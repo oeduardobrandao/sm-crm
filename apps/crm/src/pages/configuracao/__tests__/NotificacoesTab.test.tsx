@@ -40,6 +40,31 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { from: vi.fn(() => ({ update: mockSupabaseUpdate })) },
 }));
 
+// SeusClientesSection (Task 9): reads/writes the per-client + workspace-wide
+// monthly report toggle via @/store, gated to owner/admin by NotificacoesTab.
+const getClientesMock = vi.fn();
+const updateClienteMock = vi.fn().mockResolvedValue(undefined);
+const getWorkspaceBrandingMock = vi.fn();
+const updateWorkspaceBrandingMock = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('@/store', () => ({
+  getClientes: (...a: unknown[]) => getClientesMock(...a),
+  updateCliente: (...a: unknown[]) => updateClienteMock(...a),
+  getWorkspaceBranding: (...a: unknown[]) => getWorkspaceBrandingMock(...a),
+  updateWorkspaceBranding: (...a: unknown[]) => updateWorkspaceBrandingMock(...a),
+}));
+
+const CLIENTES_FIXTURE = [
+  { id: 1, nome: 'Ana Clínica', email: 'ana@example.com', send_report_email: true },
+  { id: 2, nome: 'Beto Estética', email: 'beto@example.com', send_report_email: false },
+  { id: 3, nome: 'Clínica Sem Email', email: '', send_report_email: false },
+];
+const BRANDING_FIXTURE = {
+  brand_color: '#eab308',
+  report_splash_url: null,
+  send_report_email: true,
+};
+
 // Radix Switch: mocked to a plain native checkbox (checked/onCheckedChange/
 // disabled/aria-label), same convention as MembrosTab.test.tsx and the
 // previous NotificacoesTab.test.tsx, so toggling can be driven with a plain
@@ -96,9 +121,15 @@ describe('NotificacoesTab', () => {
       user: { id: 'user-1' },
       profile: { id: 'user-1', marketing_opt_in: true },
       refetchProfile,
+      workspaceRole: 'owner',
     });
     mockSupabaseEq.mockReset().mockResolvedValue({ error: null });
     mockSupabaseUpdate.mockReset().mockReturnValue({ eq: mockSupabaseEq });
+
+    getClientesMock.mockReset().mockResolvedValue(CLIENTES_FIXTURE);
+    updateClienteMock.mockReset().mockResolvedValue(undefined);
+    getWorkspaceBrandingMock.mockReset().mockResolvedValue(BRANDING_FIXTURE);
+    updateWorkspaceBrandingMock.mockReset().mockResolvedValue(undefined);
   });
 
   it('renders the 5 CATEGORY_LABELS groups and all 22 catalog type rows', async () => {
@@ -261,6 +292,72 @@ describe('NotificacoesTab', () => {
 
       rejectSave(new Error('save failed'));
       await waitFor(() => expect(marketingSwitch.checked).toBe(true));
+    });
+  });
+
+  describe('SeusClientesSection', () => {
+    it('does not render for workspaceRole agent', async () => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true },
+        refetchProfile,
+        workspaceRole: 'agent',
+      });
+      renderTab();
+      // Wait for the tab to finish settling before asserting an absence.
+      await screen.findByRole('heading', { name: 'E-mails automáticos' });
+      expect(screen.queryByText('Seus clientes')).not.toBeInTheDocument();
+      expect(getClientesMock).not.toHaveBeenCalled();
+    });
+
+    it('renders the master row plus one row per client for workspaceRole owner', async () => {
+      renderTab();
+      expect(await screen.findByText('Todos os clientes')).toBeInTheDocument();
+      expect(screen.getByText('Ana Clínica')).toBeInTheDocument();
+      expect(screen.getByText('Beto Estética')).toBeInTheDocument();
+      expect(screen.getByText('Clínica Sem Email')).toBeInTheDocument();
+    });
+
+    it('omits the switch for a client with no email, showing "sem e-mail cadastrado" instead', async () => {
+      renderTab();
+      await screen.findByText('Clínica Sem Email');
+      expect(
+        screen.queryByLabelText('Relatório mensal para Clínica Sem Email'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('sem e-mail cadastrado')).toBeInTheDocument();
+    });
+
+    it('toggling a client row calls updateCliente(id, { send_report_email: false })', async () => {
+      renderTab();
+      const switchEl = (await screen.findByLabelText(
+        'Relatório mensal para Ana Clínica',
+      )) as HTMLInputElement;
+      expect(switchEl.checked).toBe(true);
+      fireEvent.click(switchEl);
+      await waitFor(() =>
+        expect(updateClienteMock).toHaveBeenCalledWith(1, { send_report_email: false }),
+      );
+    });
+
+    it('toggling the master row calls updateWorkspaceBranding({ send_report_email: false })', async () => {
+      renderTab();
+      const masterSwitch = (await screen.findByLabelText(
+        'Relatório mensal para todos os clientes',
+      )) as HTMLInputElement;
+      expect(masterSwitch.checked).toBe(true);
+      fireEvent.click(masterSwitch);
+      await waitFor(() =>
+        expect(updateWorkspaceBrandingMock).toHaveBeenCalledWith({ send_report_email: false }),
+      );
+    });
+
+    it('filters the client list by name, case-insensitively', async () => {
+      renderTab();
+      await screen.findByText('Ana Clínica');
+      const search = screen.getByPlaceholderText('Buscar cliente…');
+      fireEvent.change(search, { target: { value: 'BETO' } });
+      expect(screen.queryByText('Ana Clínica')).not.toBeInTheDocument();
+      expect(screen.getByText('Beto Estética')).toBeInTheDocument();
     });
   });
 });
