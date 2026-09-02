@@ -41,7 +41,9 @@ function matchesRow(row: Row, filters: Filter[]): boolean {
 
 function makeSelectChain(rows: Row[]) {
   const filters: Filter[] = [];
-  let order: { column: string; ascending: boolean } | undefined;
+  // Multiple `.order()` calls chain into a multi-key sort (primary, then
+  // tiebreak) -- matches real supabase-js/PostgREST semantics.
+  const orders: Array<{ column: string; ascending: boolean }> = [];
   let limitCount: number | undefined;
   // deno-lint-ignore no-explicit-any
   const chain: any = {
@@ -58,7 +60,7 @@ function makeSelectChain(rows: Row[]) {
       return chain;
     },
     order(column: string, opts: { ascending: boolean }) {
-      order = { column, ascending: opts.ascending };
+      orders.push({ column, ascending: opts.ascending });
       return chain;
     },
     limit(count: number) {
@@ -67,12 +69,16 @@ function makeSelectChain(rows: Row[]) {
     },
     then(onFulfilled: (v: { data: Row[] | null; error: { message: string } | null }) => unknown) {
       let result = rows.filter((r) => matchesRow(r, filters));
-      if (order) {
-        const { column, ascending } = order;
+      if (orders.length > 0) {
         result = [...result].sort((a, b) => {
-          const av = getPath(a, column) as string;
-          const bv = getPath(b, column) as string;
-          return ascending ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
+          for (const { column, ascending } of orders) {
+            const av = getPath(a, column);
+            const bv = getPath(b, column);
+            if (av === bv) continue;
+            const lt = (av as string | number) < (bv as string | number);
+            return ascending ? (lt ? -1 : 1) : (lt ? 1 : -1);
+          }
+          return 0;
         });
       }
       if (limitCount !== undefined) result = result.slice(0, limitCount);
@@ -662,49 +668,86 @@ Deno.test("60s deadline: remaining clients get their lease released without a se
   assertEquals(db.releaseCalls[0].patch, { event_claim_through: null });
 });
 
-// --- 13. events/messages query cap: safe cursor advance -----------------------------------
+// --- 13. events/messages query cap: safe cursor advance, oldest-first drain --------------
 //
 // Codex review (PR #437, P2): PostgREST itself caps an unbounded select
 // (commonly at 1000 rows). Without an explicit `.limit()` the handler had no
 // way to tell "the window really only had this many events" apart from
 // "truncated" -- and advancing event_cursor_at to claim_through regardless
-// silently dropped whatever the cap excluded, forever. These two tests
-// exercise the EVENTS_QUERY_CAP guard: when a query returns exactly the cap,
-// the cursor advances only to the oldest FETCHED row, never past it.
+// silently dropped whatever the cap excluded, forever.
+//
+// A first version of this fix ordered DESCENDING and advanced the cursor to
+// the OLDEST fetched row -- which strands the un-fetched OLDER remainder
+// below the new cursor forever (every future window only moves forward).
+// That was caught in review before shipping: the corrected design orders
+// ASCENDING (oldest first) and advances only to the NEWEST fetched row, so
+// the un-fetched NEWER remainder is exactly what the next tick's window
+// covers. The first test below proves both halves of that: the capped
+// tick's cursor stops short of claim_through, and a second, independent run
+// (simulating the next tick) picks up precisely the remainder the first
+// tick couldn't reach.
 
-Deno.test("events query hits the cap: cursor advances to the oldest FETCHED event, not claim_through", async () => {
+Deno.test("events query hits the cap: cursor advances to the newest fetched row, and the next tick drains the remainder", async () => {
   const clienteId = 15;
   const floorMs = new Date("2026-08-10T12:00:00.000Z").getTime(); // NOW - 72h
-  const capEvents: Row[] = [];
-  for (let i = 0; i < 1000; i++) {
-    capEvents.push({
+  const allEvents: Row[] = [];
+  for (let i = 0; i < 1500; i++) {
+    allEvents.push({
       id: 10_000 + i,
       post_id: 20_000 + i,
       conta_id: "ws1",
       to_status: "enviado_cliente",
-      created_at: new Date(floorMs + (i + 1) * 60_000).toISOString(), // 1 min apart, starting at floor+1min
+      created_at: new Date(floorMs + (i + 1) * 60_000).toISOString(), // 1 min apart, oldest (i=0) first
       workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Post ${i}` },
     });
   }
-  const oldestFetchedIso = capEvents[0].created_at as string; // floor + 1 min
-  const claimThrough = NOW.toISOString();
+  const ws = [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }];
 
-  const db = makeFakeDb(
-    [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: null, event_claim_through: claimThrough })],
-    {
-      postStatusEvents: capEvents,
-      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
-    },
+  // ---- tick 1: 1500 candidates, cap 1000 -- ascending order fetches i=0..999 ----
+  const tick1SafeUpperIso = allEvents[999].created_at as string; // newest of the fetched (oldest) chunk
+  const claimThrough1 = NOW.toISOString();
+  const db1 = makeFakeDb(
+    [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: null, event_claim_through: claimThrough1 })],
+    { postStatusEvents: allEvents, workspaces: ws },
   );
-  const { deps } = makeDeps(db);
-  const r = await runClientEventEmailCron(deps);
-  assertEquals(r.emailed, 1);
-  assertEquals(db.successCalls.length, 1);
+  const { deps: deps1 } = makeDeps(db1);
+  const r1 = await runClientEventEmailCron(deps1);
+  assertEquals(r1.emailed, 1);
+  assertEquals(db1.successCalls.length, 1);
   assert(
-    db.successCalls[0].patch.event_cursor_at !== claimThrough,
-    "cursor must NOT jump to claim_through when the events query was capped",
+    db1.successCalls[0].patch.event_cursor_at !== claimThrough1,
+    "tick 1's cursor must NOT jump to claim_through -- the events query was capped",
   );
-  assertEquals(db.successCalls[0].patch, { event_cursor_at: oldestFetchedIso, event_claim_through: null });
+  assertEquals(db1.successCalls[0].patch, { event_cursor_at: tick1SafeUpperIso, event_claim_through: null });
+
+  // ---- tick 2: same client, cursor now at tick 1's boundary, 15 min later ----
+  // The remaining 500 events (i=1000..1499) all fall inside this window and
+  // are under the cap this time, so the cursor reaches claim_through --
+  // proving the remainder tick 1 couldn't reach is picked up, not stranded.
+  const claimThrough2 = new Date(NOW.getTime() + 15 * 60_000).toISOString();
+  const db2 = makeFakeDb(
+    [
+      claimedRow({
+        id: clienteId,
+        conta_id: "ws1",
+        event_cursor_at: tick1SafeUpperIso,
+        event_claim_through: claimThrough2,
+      }),
+    ],
+    { postStatusEvents: allEvents, workspaces: ws }, // same full candidate set -- the query's own gt() filters out what tick 1 already consumed
+  );
+  const { deps: deps2, sent: sent2 } = makeDeps(db2, { now: () => new Date(claimThrough2) });
+  const r2 = await runClientEventEmailCron(deps2);
+  assertEquals(r2.emailed, 1);
+  assertEquals(db2.successCalls, [
+    { ids: [clienteId], patch: { event_cursor_at: claimThrough2, event_claim_through: null } },
+  ]);
+  // The 500-post remainder (i=1000..1499) actually landed in tick 2's digest:
+  // its oldest (first-encountered) post renders directly, and the render cap
+  // folds the other 480 into the overflow line -- both prove all 500 came
+  // through, not just a lucky subset.
+  assert(sent2[0].html.includes("Post 1000"), "expected the remainder's oldest post in tick 2's digest");
+  assert(sent2[0].html.includes("e mais 480 posts aguardando aprovação."), "expected all 500 remainder posts accounted for");
 });
 
 // --- 14. both queries capped: min of the two bounds ----------------------------------------
@@ -719,11 +762,11 @@ Deno.test("both events and messages hit the cap: cursor advances to the more con
       post_id: 40_000 + i,
       conta_id: "ws1",
       to_status: "enviado_cliente",
-      created_at: new Date(floorMs + 10 * 60_000 + i * 2 * 60_000).toISOString(), // starts at floor+10min, 2 min apart
+      created_at: new Date(floorMs + 10 * 60_000 + i * 2 * 60_000).toISOString(), // starts at floor+10min, 2 min apart -- drains FURTHER
       workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Post ${i}` },
     });
   }
-  const eventsOldestIso = capEvents[0].created_at as string; // floor + 10 min
+  const eventsSafeBound = capEvents[999].created_at as string; // newest fetched: floor + 2008 min
 
   const capMessages: Row[] = [];
   for (let i = 0; i < 1000; i++) {
@@ -732,10 +775,10 @@ Deno.test("both events and messages hit the cap: cursor advances to the more con
       conta_id: "ws1",
       cliente_id: clienteId,
       is_workspace_user: true,
-      created_at: new Date(floorMs + 3 * 60_000 + i * 60_000).toISOString(), // starts at floor+3min (older than events), 1 min apart
+      created_at: new Date(floorMs + 3 * 60_000 + i * 60_000).toISOString(), // starts at floor+3min, 1 min apart -- drains LESS far
     });
   }
-  const messagesOldestIso = capMessages[0].created_at as string; // floor + 3 min -- the more conservative bound
+  const messagesSafeBound = capMessages[999].created_at as string; // newest fetched: floor + 1002 min -- the more conservative bound
 
   const db = makeFakeDb(
     [claimedRow({ id: clienteId, conta_id: "ws1", event_cursor_at: null, event_claim_through: NOW.toISOString() })],
@@ -748,8 +791,61 @@ Deno.test("both events and messages hit the cap: cursor advances to the more con
   const { deps } = makeDeps(db);
   const r = await runClientEventEmailCron(deps);
   assertEquals(r.emailed, 1);
-  assert(messagesOldestIso < eventsOldestIso, "test fixture sanity: messages bound must be the older (smaller) one");
-  assertEquals(db.successCalls, [{ ids: [clienteId], patch: { event_cursor_at: messagesOldestIso, event_claim_through: null } }]);
+  assert(
+    messagesSafeBound < eventsSafeBound,
+    "test fixture sanity: messages must be the query that drained LESS far (the more conservative bound)",
+  );
+  assertEquals(db.successCalls, [
+    { ids: [clienteId], patch: { event_cursor_at: messagesSafeBound, event_claim_through: null } },
+  ]);
+});
+
+// --- 14b. dedupe tiebreak ------------------------------------------------------------------
+
+Deno.test("dedupe tiebreak: two transitions for the same post at the identical timestamp resolve deterministically by id", async () => {
+  const clienteId = 17;
+  const tiedCreatedAt = "2026-08-13T05:00:00.000Z";
+  const db = makeFakeDb(
+    [
+      claimedRow({
+        id: clienteId,
+        conta_id: "ws1",
+        event_cursor_at: "2026-08-13T00:00:00.000Z",
+        event_claim_through: NOW.toISOString(),
+      }),
+    ],
+    {
+      // Same post_id, same created_at, different ids, inserted OUT of id
+      // order to prove the sort is real (not just array/insertion order).
+      postStatusEvents: [
+        {
+          id: 900,
+          post_id: 8000,
+          conta_id: "ws1",
+          to_status: "enviado_cliente",
+          created_at: tiedCreatedAt,
+          workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Version B (higher id)" },
+        },
+        {
+          id: 100,
+          post_id: 8000,
+          conta_id: "ws1",
+          to_status: "enviado_cliente",
+          created_at: tiedCreatedAt,
+          workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Version A (lower id)" },
+        },
+      ],
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+    },
+  );
+  const { deps, sent } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  // created_at ASC + id ASC tiebreak: id=100 sorts before id=900, so the
+  // Map-overwrite dedupe processes id=100 first, then id=900 -- id=900 (the
+  // higher id, i.e. the LATER transition at the tied timestamp) wins.
+  assert(sent[0].html.includes("Version B (higher id)"), "expected the higher-id (later) version to win the dedupe");
+  assert(!sent[0].html.includes("Version A (lower id)"), "expected the lower-id (earlier) version to be superseded");
 });
 
 // --- 15. handler auth --------------------------------------------------------------------

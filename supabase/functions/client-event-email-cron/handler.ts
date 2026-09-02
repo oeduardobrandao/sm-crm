@@ -37,8 +37,14 @@
  * multi-day backlog dumped on them.
  *
  * supabase-js has no DISTINCT ON, so post approvals are deduped over an
- * ordered (created_at DESC) result in TS, keeping the first (=latest)
- * transition per post -- less SQL surface than a read RPC, per the task brief.
+ * ordered (created_at ASC, id ASC tiebreak) result in TS: iterating oldest
+ * to newest and simply overwriting a Map keyed by post_id leaves the LATEST
+ * transition per post once the loop ends -- no "skip if seen" bookkeeping
+ * needed. Less SQL surface than a read RPC, per the task brief. Both the
+ * approvals and messages queries are capped and ordered ascending (oldest
+ * first) so an over-dense window drains oldest-chunk-first across
+ * successive ticks instead of stranding a chunk permanently -- see
+ * EVENTS_QUERY_CAP's comment for the full reasoning.
  *
  * Per-client failures (a bad query, a Resend rejection, a failed cursor
  * advance after an already-sent email, ...) are caught individually and
@@ -162,6 +168,22 @@ const SEND_DEADLINE_MS = 60_000;
  * really everything." Naming the cap explicitly makes truncation detectable
  * (`rows.length === EVENTS_QUERY_CAP`) so the cursor-advance logic below can
  * react to it instead of blindly trusting an empty/short-of-1000 result.
+ *
+ * Both queries order ascending (oldest first, `created_at` then `id` as a
+ * deterministic tiebreak) and cap at this count. Under the cap, the fetched
+ * set IS the whole window and the cursor advances to `upper` as usual. At
+ * the cap, the fetched set is only the OLDEST EVENTS_QUERY_CAP rows --
+ * `(lower, lastReturned]` where `lastReturned` is the last row's
+ * created_at -- so the cursor advances only to `lastReturned` instead of
+ * `upper`. The unprocessed remainder, `(lastReturned, upper]`, is strictly
+ * NEWER, and the next tick's window starts exactly at `lastReturned` and
+ * extends forward to that tick's own (later) claim_through -- so the
+ * remainder is naturally swept up next time, and nothing strands. (An
+ * earlier version of this fix ordered DESCENDING and advanced to the
+ * oldest FETCHED row -- that stranded the un-fetched OLDER remainder below
+ * the new cursor, since every future window only ever moves forward. That
+ * was a design bug in the fix itself, caught in review before it shipped;
+ * ascending order is the correct oldest-first drain.)
  */
 const EVENTS_QUERY_CAP = 1000;
 
@@ -270,6 +292,10 @@ export async function runClientEventEmailCron(
       const upperIso = upper.toISOString();
 
       // ---- pending approvals -------------------------------------------------
+      // Ascending order (oldest first) + a deterministic `id` tiebreak (two
+      // transitions can share a created_at at whatever timestamp precision
+      // Postgres stores) -- see EVENTS_QUERY_CAP's comment for why ascending,
+      // not descending, is what makes an over-dense window drain safely.
       const { data: eventRows, error: eventsErr } = await deps.db
         .from("post_status_events")
         .select("id, post_id, created_at, workflow_posts!inner(titulo)")
@@ -279,27 +305,33 @@ export async function runClientEventEmailCron(
         .eq("workflow_posts.status", "enviado_cliente")
         .gt("created_at", lowerIso)
         .lte("created_at", upperIso)
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
         .limit(EVENTS_QUERY_CAP);
       if (eventsErr) throw new Error(`post_status_events query failed: ${eventsErr.message}`);
       const eventRowsArr = (eventRows ?? []) as PostStatusEventRow[];
 
-      // supabase-js can't DISTINCT ON: dedupe over the created_at-DESC result,
-      // keeping the first (= latest) transition seen per post.
-      const seenPosts = new Set<number>();
-      const pendingPosts: PendingPost[] = [];
-      const approvalIds: string[] = [];
+      // supabase-js can't DISTINCT ON: dedupe by post_id over the
+      // created_at-ASC result. Iterating oldest-to-newest and simply
+      // overwriting a Map on every encounter (no "skip if seen") leaves each
+      // post's LATEST transition once the loop ends, since a later iteration
+      // always overwrites an earlier one for the same key. (titulo doesn't
+      // actually vary between a post's own transitions -- it's read fresh off
+      // workflow_posts on every row -- so what the dedupe really picks is
+      // which event `id` represents this post in the idempotency key below.)
+      const latestByPost = new Map<number, { id: number; titulo: string }>();
       for (const e of eventRowsArr) {
-        if (seenPosts.has(e.post_id)) continue;
-        seenPosts.add(e.post_id);
-        pendingPosts.push({ titulo: e.workflow_posts.titulo });
-        approvalIds.push(`pse:${e.id}`);
+        latestByPost.set(e.post_id, { id: e.id, titulo: e.workflow_posts.titulo });
       }
+      const pendingPosts: PendingPost[] = Array.from(latestByPost.values()).map((p) => ({ titulo: p.titulo }));
+      const approvalIds: string[] = Array.from(latestByPost.values()).map((p) => `pse:${p.id}`);
 
       // The cap was hit -- the window holds MORE than EVENTS_QUERY_CAP events
-      // and the query (ordered created_at DESC) only returned the newest
-      // slice. Track the oldest timestamp actually fetched so the cursor
-      // never advances past it below (see safeUpperMs's use at the bottom).
+      // and the query (ordered created_at ASC) only returned the OLDEST
+      // slice: `(lower, lastReturned]`. Track that boundary so the cursor
+      // advances only up to it below (see safeUpperMs's use at the bottom) --
+      // the newer, un-fetched remainder `(lastReturned, upper]` is left for
+      // the next tick's window, which picks up right where this one stopped.
       let safeUpperMs: number | null = null;
       if (eventRowsArr.length === EVENTS_QUERY_CAP) {
         safeUpperMs = new Date(eventRowsArr[eventRowsArr.length - 1].created_at).getTime();
@@ -325,14 +357,18 @@ export async function runClientEventEmailCron(
         .eq("is_workspace_user", true)
         .gt("created_at", msgLower.toISOString())
         .lte("created_at", upperIso)
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
         .limit(EVENTS_QUERY_CAP);
       if (msgErr) throw new Error(`mensagens query failed: ${msgErr.message}`);
       const messages = (msgRows ?? []) as MensagemRow[];
       const messageIds = messages.map((m) => `msg:${m.id}`);
 
       // Same truncation guard as the approvals query above -- fold its bound
-      // into the same safeUpperMs (the more conservative of the two wins).
+      // into the same safeUpperMs. Math.min, not max: the cursor can only
+      // advance as far as whichever of the two queries drained LESS of the
+      // window, otherwise the slower query's un-fetched remainder would be
+      // falsely marked delivered.
       if (messages.length === EVENTS_QUERY_CAP) {
         const msgSafeUpperMs = new Date(messages[messages.length - 1].created_at).getTime();
         safeUpperMs = safeUpperMs === null ? msgSafeUpperMs : Math.min(safeUpperMs, msgSafeUpperMs);
@@ -395,12 +431,15 @@ export async function runClientEventEmailCron(
 
       // Normally the cursor advances all the way to `upper` (claim_through):
       // everything in the window was fetched and sent. But if either query
-      // above hit EVENTS_QUERY_CAP, `safeUpperMs` holds the oldest timestamp
-      // actually fetched -- advancing past it would falsely mark the
-      // excluded (older, un-fetched) events as delivered, silently dropping
-      // them from every future digest. safeUpperMs is always > lowerIso by
-      // construction (it comes from a row that already passed the `gt`
-      // filter), so this can never advance the cursor backwards.
+      // above hit EVENTS_QUERY_CAP, `safeUpperMs` holds the NEWEST timestamp
+      // actually fetched (the boundary of the oldest-first chunk that was
+      // processed) -- advancing only that far, instead of all the way to
+      // `upper`, means the un-fetched newer remainder is simply left for the
+      // next tick's window (which starts right at this boundary), rather
+      // than being falsely marked delivered and silently lost. safeUpperMs
+      // is always > lowerIso by construction (it comes from a row that
+      // already passed the `gt` filter), so this can never move the cursor
+      // backwards.
       const cursorAdvanceIso = safeUpperMs !== null ? new Date(safeUpperMs).toISOString() : upperIso;
 
       // The email is already sent at this point -- a cursor-advance failure
