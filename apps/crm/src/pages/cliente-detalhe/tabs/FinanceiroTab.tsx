@@ -51,7 +51,11 @@ function StatusBadge({ status }: { status: string }) {
  *     `canSeeFinancials !== true` bail-out — doing so would be a THIRD
  *     layer, beyond what the plan calls for, and RelatoriosTab (gated the
  *     same all-or-nothing way at the route) sets the precedent of trusting
- *     the route guard for "should this render at all".
+ *     the route guard for "should this render at all" — that specific
+ *     precedent still holds even though RelatoriosTab has since grown a
+ *     narrower, field-level role check of its own (the send_report_email
+ *     switch, disabled for non-owner/admin as defense-in-depth); that check
+ *     only ever disables one field, it never bails out of rendering the tab.
  *  2. Query-level, inside this component: `enabled: canSeeFinancials ===
  *     true` on both queries below, AND a read-time ternary on the data those
  *     queries return. Neither alone is sufficient — `enabled: false` only

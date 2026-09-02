@@ -73,18 +73,25 @@ export async function getWorkspaceBranding(): Promise<{
   brand_color: string;
   report_splash_url: string | null;
   send_report_email: boolean;
+  // Central de Notificações, Fase 2 (spec 2026-09-02): master switch for the
+  // "Pendências do Hub" digest, read by SeusClientesSection alongside the
+  // per-client clientes.send_event_email column.
+  send_client_event_emails: boolean;
 }> {
   const contaId = await getContaId();
   const { data, error } = await supabase
     .from('workspaces')
-    .select('brand_color, report_splash_url, send_report_email')
+    .select('brand_color, report_splash_url, send_report_email, send_client_event_emails')
     .eq('id', contaId)
     .single();
   if (error) throw error;
   return data;
 }
 
-export async function updateWorkspaceBranding(fields: { send_report_email?: boolean }) {
+export async function updateWorkspaceBranding(fields: {
+  send_report_email?: boolean;
+  send_client_event_emails?: boolean;
+}) {
   const contaId = await getContaId();
   const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
   if (error) throw error;

@@ -18,7 +18,12 @@ vi.mock('../core', () => ({
   getUserId: vi.fn(),
 }));
 
-import { getHubBranding, updateHubBranding, updateWorkspaceBranding } from '../workspace';
+import {
+  getHubBranding,
+  updateHubBranding,
+  updateWorkspaceBranding,
+  getWorkspaceBranding,
+} from '../workspace';
 
 const ROW = {
   brand_color: '#eab308',
@@ -82,5 +87,41 @@ describe('updateWorkspaceBranding', () => {
     // @ts-expect-error brand_color moved to updateHubBranding; this call would not compile.
     await updateWorkspaceBranding({ brand_color: '#000000', send_report_email: true });
     expect(mockUpdateEq).toHaveBeenCalledWith('id', 'ws-1');
+  });
+
+  // Central de Notificações, Fase 2 (spec 2026-09-02): "Pendências do Hub" master
+  // switch writes workspaces.send_client_event_emails through this same writer.
+  it('accepts send_client_event_emails alongside send_report_email', async () => {
+    mockUpdateEq.mockResolvedValue({ error: null });
+    await updateWorkspaceBranding({ send_client_event_emails: true });
+    expect(mockUpdateEq).toHaveBeenCalledWith('id', 'ws-1');
+  });
+});
+
+describe('getWorkspaceBranding', () => {
+  const mockSelectFn = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetContaId.mockResolvedValue('ws-1');
+    mockSelectFn.mockReset().mockReturnValue({ eq: () => ({ single: mockSingle }) });
+    mockFrom.mockImplementation(() => ({ select: mockSelectFn }));
+  });
+
+  it('selects and returns send_client_event_emails alongside the existing report fields', async () => {
+    const row = {
+      brand_color: '#eab308',
+      report_splash_url: null,
+      send_report_email: true,
+      send_client_event_emails: true,
+    };
+    mockSingle.mockResolvedValue({ data: row, error: null });
+
+    const result = await getWorkspaceBranding();
+
+    expect(mockSelectFn).toHaveBeenCalledWith(
+      'brand_color, report_splash_url, send_report_email, send_client_event_emails',
+    );
+    expect(result).toEqual(row);
   });
 });
