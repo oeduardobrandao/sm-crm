@@ -231,7 +231,10 @@ export default function MensagensPage() {
   const equipeConversaId = equipeMode && !isNaN(parsedConversaId) ? parsedConversaId : null;
   const invalidEquipeId = equipeMode && conversaIdParam != null && isNaN(parsedConversaId);
 
-  const { feed, conversas, clientes, sendGeneral, replyToPost } = useMensagensData(clienteId);
+  const { feed, conversas, clientes, sendGeneral, replyToPost } = useMensagensData(
+    clienteId,
+    clientesOn,
+  );
 
   // A failed background refetch (e.g. window refocus, or the seen-marker's
   // post-mount invalidation) keeps `data` populated from the last successful

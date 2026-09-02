@@ -12,14 +12,15 @@ import {
 
 const PAGE_SIZE = 50;
 
-export function useMensagensData(clienteId: number | null) {
+export function useMensagensData(clienteId: number | null, enabled = true) {
   const qc = useQueryClient();
 
   const conversas = useQuery({
     queryKey: ['mensagens-conversas'],
     queryFn: getMensagensConversas,
+    enabled,
   });
-  const clientes = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
+  const clientes = useQuery({ queryKey: ['clientes'], queryFn: getClientes, enabled });
 
   // A merely-numeric clienteId isn't enough — confirm it's a real conversation
   // before fetching its feed. Stays false (no fetch) while conversas is still
@@ -42,11 +43,15 @@ export function useMensagensData(clienteId: number | null) {
         beforeItemId: oldest.item_id,
       };
     },
-    enabled: conversaExists,
+    enabled: enabled && conversaExists,
   });
 
-  // Opening the page marks the whole feed seen for this user.
+  // Opening the page marks the whole feed seen for this user -- but only
+  // while this pane is actually the one showing (`enabled`); a workspace
+  // without feature_mensagens must never fire this write just because
+  // MensagensPage mounted the hook for a different, unrelated section.
   useEffect(() => {
+    if (!enabled) return;
     markMensagensSeen()
       .then(() => {
         qc.invalidateQueries({ queryKey: ['mensagens-unread'] });
@@ -58,7 +63,7 @@ export function useMensagensData(clienteId: number | null) {
       // must not surface as an unhandled rejection.
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [enabled]);
 
   const invalidateFeed = () => {
     qc.invalidateQueries({ queryKey: ['mensagens-feed'] });

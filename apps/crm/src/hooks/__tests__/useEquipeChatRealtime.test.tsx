@@ -34,6 +34,18 @@ function setFeature(enabled: boolean) {
   } as never);
 }
 
+/** The hook's real shape for an unlimited workspace: `features` is null,
+ * never a features object with every flag set to true. */
+function setUnlimited() {
+  mockedUseWorkspaceLimits.mockReturnValue({
+    limits: null,
+    features: null,
+    planName: null,
+    isLoading: false,
+    isUnlimited: true,
+  } as never);
+}
+
 function makeWrapper(userId: string | null, workspaceId: string | null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -86,6 +98,19 @@ describe('useEquipeChatRealtime', () => {
 
     expect(m.__getChannelCalls()).not.toContain('equipe-chat:user-1:conta-1');
     expect(m.__getEquipeMensagemSubscription()).toBeNull();
+  });
+
+  it('subscribes for an unlimited workspace (features: null, isUnlimited: true)', () => {
+    setUnlimited();
+    const { Wrapper } = makeWrapper('user-1', 'conta-1');
+    renderHook(() => useEquipeChatRealtime(null), { wrapper: Wrapper });
+
+    expect(m.__getChannelCalls()).toContain('equipe-chat:user-1:conta-1');
+    expect(m.__getEquipeMensagemSubscription()).toMatchObject({
+      event: 'INSERT',
+      schema: 'public',
+      table: 'equipe_mensagens',
+    });
   });
 
   it('invalidates equipe-mensagens (active thread) and equipe-conversas for an insert into the active conversation', () => {

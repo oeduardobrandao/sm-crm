@@ -366,4 +366,23 @@ describe('MensagensPage — feature-flag behavior', () => {
     expect(await screen.findByText('Time de Design')).toBeInTheDocument();
     expect(screen.queryByText('ACME')).not.toBeInTheDocument();
   });
+
+  it('(g) team-chat-only workspace: bare /mensagens never queries or writes the clientes side', async () => {
+    // feature_mensagens off entirely (not just redirected away from a
+    // clientes URL, as in (c)) -- the clientes pane never mounts at all on
+    // bare /mensagens, so useMensagensData must not fire its conversas/
+    // clientes queries or its mark-seen write just because MensagensPage
+    // still calls the hook unconditionally under the hood.
+    mockWorkspaceFeatures = { feature_mensagens: false, feature_team_chat: true };
+
+    renderPage('/mensagens');
+
+    expect(await screen.findByText('Time de Design')).toBeInTheDocument();
+    expect(screen.queryByText('ACME')).not.toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockConversas).not.toHaveBeenCalled();
+    expect(mockClientes).not.toHaveBeenCalled();
+    expect(mockSeen).not.toHaveBeenCalled();
+    expect(mockFeed).not.toHaveBeenCalled();
+  });
 });

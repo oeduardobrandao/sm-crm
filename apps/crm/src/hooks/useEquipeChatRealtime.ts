@@ -14,8 +14,11 @@ export function useEquipeChatRealtime(activeConversaId: number | null): void {
   const auth = useContext(AuthContext);
   const userId = auth?.user?.id ?? null;
   const workspaceId = auth?.profile?.conta_id ?? null;
-  const { features } = useWorkspaceLimits();
-  const enabled = features?.feature_team_chat === true;
+  // An unlimited workspace never gets a `features` payload (see
+  // useWorkspaceLimits), so it's carved out explicitly -- otherwise it'd
+  // read as off despite MensagensPage already rendering team chat for it.
+  const { features, isUnlimited } = useWorkspaceLimits();
+  const enabled = isUnlimited || features?.feature_team_chat === true;
 
   useEffect(() => {
     if (!enabled || !userId || !workspaceId) return;
