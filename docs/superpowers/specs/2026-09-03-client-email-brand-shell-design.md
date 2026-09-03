@@ -57,8 +57,12 @@ neutro. Somente o texto por cima muda.
 
 ### 2. Texto do cabeçalho: inverte por luminância, nunca troca a cor de fundo
 
-Reaproveita a fórmula de `relativeLuminance()` já existente em
-`packages/hub-theme/theme.ts:36-39`:
+Usa a fórmula de `relativeLuminance()` de `packages/hub-theme/theme.ts:36-39` —
+**duplicada no módulo novo, NÃO importada**: edge functions não importam de
+`packages/` por regra documentada da casa (`_shared/whatsapp.ts:4-6` explica que
+compartilhar via packages/ arrastaria o build frontend inteiro para o edge; o
+deploy só sobe assets de `supabase/functions/`). Copiar as ~4 linhas com
+comentário citando o precedente, mesmo tratamento dado aos helpers de HMAC:
 
 ```
 luminance = 0.2126*r + 0.7152*g + 0.0722*b   (r,g,b em 0-1, sem correção gamma —
@@ -82,16 +86,35 @@ cliente — colado à esquerda do nome do workspace, ambos centralizados na faix
 Sem logo: mantém o fallback atual — só o nome centralizado (agora com a cor
 calculada pela regra acima, em vez de nome colorido sobre fundo branco).
 
+Detalhes do avatar: `<img>` de no máximo 32×32 centralizado dentro do círculo
+de 40px, com `alt=""` (decorativo — o nome do workspace está literalmente ao
+lado; alt com o nome faria leitores de tela anunciarem duas vezes, e com
+imagens bloqueadas o nome adjacente já identifica o remetente).
+
 Não existe precedente de logo sobre superfície colorida em nenhum lugar do
 código (o Hub mantém o logo em área neutra) — este é o primeiro caso, decisão
 nova.
+
+### 3b. Markup do cabeçalho: tabela, nunca flex
+
+Os mockups do companion usaram `display:flex` por conveniência de protótipo —
+**o e-mail real NÃO pode**: flexbox não renderiza em Outlook desktop e em vários
+clientes. A faixa é montada com o mesmo vocabulário de tabelas dos builders
+atuais: uma tabela interna centralizada com duas células (`<td>` do avatar +
+`<td>` do nome, `vertical-align: middle`). Degradações aceitas e deliberadas em
+Outlook desktop (engine Word): `border-radius: 50%` do avatar vira quadrado e o
+anel de `box-shadow` some — o logo continua legível sobre fundo branco, que é o
+que importa; sem VML, sem hack condicional.
 
 ### 4. Rodapé: família creme
 
 Troca o rodapé atual (branco/cinza, borda superior) pelo padrão de
 `_shared/lifecycle-emails.ts:41-43` e `_shared/notification-email.ts:91`: fundo
-`#f5f3ee`, texto `#888780`. Markup igual ao precedente — uma linha por `<p>`
-(o precedente usa `<br>` dentro de um único `<td>`; manter a mesma estrutura).
+`#f5f3ee`, texto `#888780`. Markup: cada builder MANTÉM sua estrutura de linhas
+atual (`<p>` por linha — o rodapé de pendências tem um link dentro de um dos
+`<p>`s e não ganha nada sendo reescrito no formato `<br>` do precedente); o que
+muda é só fundo, cor de texto e cor do link (o link de descadastro herda o
+`#888780` do rodapé, substituindo o `#9ca3af` atual).
 
 Conteúdo por e-mail (os dois builders têm rodapés diferentes hoje — não unificar
 o conteúdo, só o tratamento visual):
@@ -119,10 +142,23 @@ cinza, sem cor do workspace. A cor já aparece na faixa e no botão; um terceiro
 lugar colorido pesaria num bloco de texto denso. **Aplica-se só ao e-mail de
 relatório mensal** — o e-mail de Pendências do Hub não tem esse bloco.
 
-### 7. Botões: inalterados
+### 7. Botões: fundo inalterado, texto segue a mesma regra de luminância
 
-Botão primário continua usando `brand_color` como fundo (já é assim hoje).
-Botão secundário (Baixar PDF, no relatório) continua neutro escuro `#1f2937`.
+O botão primário ("Ver Relatório Completo" / "Ver no Hub") continua com
+`brand_color` de fundo, mas o texto — hoje `#ffffff` fixo nos dois builders
+(`report-template/email.ts:44`, `client-event-email.ts:77`) — passa a usar
+`pickHeaderTextColor(brandColor)`, a MESMA regra do cabeçalho. Sem isso, a
+seção 2 resolveria a faixa e deixaria o botão ilegível na mesma cor pálida.
+
+Nota de fidelidade ao mockup: o mockup pálido aprovado mostrava o botão com
+FUNDO escuro (`#171717`) — resolvê-lo pelo texto, mantendo o fundo na cor do
+workspace, é a aplicação consistente da diretriz do usuário ("se o contraste
+ficar ruim, mude a cor do texto") e da decisão 1 ("a cor nunca é substituída").
+Divergência do mockup registrada aqui de propósito; se o usuário preferir o
+fundo escuro do mockup, é uma troca de 1 linha.
+
+Botão secundário (Baixar PDF, no relatório) continua neutro escuro `#1f2937`
+com texto branco — não deriva da cor do workspace, não precisa da regra.
 
 ## De onde vem o resumo de IA (contexto, não muda com esta spec)
 
@@ -181,14 +217,25 @@ parâmetros existentes.
 ## Testes
 
 - **Unitários da fórmula:** `pickHeaderTextColor` — cor forte/escura → branco;
-  cor pálida → escuro; caso de fronteira em torno de luminância 0.55.
+  cor pálida → escuro; caso de fronteira em torno de luminância 0.55; hex em
+  MAIÚSCULAS (o CHECK aceita `[0-9a-fA-F]`); e o caso âncora do default:
+  `#eab308` (fallback de quem nunca configurou marca) tem luminância ≈0.70 →
+  **texto escuro** — é o comportamento esperado, não um bug a "consertar".
 - **Unitários do markup:** `buildBrandHeaderBand` — fundo da faixa é sempre
   literalmente `brandColor` (nunca substituído); avatar presente se e somente
   se `logoUrl` setado; nome sempre presente; sem em-dash na saída; nome/URL
   hostis (`<script>`, `"`, `&`) saem escapados — nunca HTML cru interpolado.
 - **Dos dois builders:** snapshot/contains — radius 16px no card; rodapé com
-  as duas linhas e fundo creme; bloco de IA (só no relatório) permanece com
-  fundo cinza `#f8f9fa` de antes.
+  fundo creme e conteúdo por builder conforme a seção 4; texto do botão
+  primário segue `pickHeaderTextColor`; bloco de IA (só no relatório) permanece
+  com fundo cinza `#f8f9fa` de antes.
+- **Sweep de contract change (regra da casa):** `client-event-email_test.ts`
+  já pina o markup atual do builder de pendências (16+ testes) — os que fixam
+  cabeçalho/rodapé antigos DEVEM ser atualizados nesta mudança, não contornados.
+  O builder de relatório NÃO tem teste hoje (verificado: nenhum arquivo
+  `report-email*` em `supabase/functions/__tests__/`) — ganha o seu primeiro
+  arquivo de teste como parte desta spec. Conferir também os testes do cron
+  (`client-event-email-cron_test.ts`) que assertam sobre o HTML enviado.
 - **Verificação visual manual:** HTML não é testável por fidelidade de
   renderização entre clientes de e-mail via unit test — antes do merge,
   renderizar os dois e-mails com o builder real (mesma técnica usada nesta
