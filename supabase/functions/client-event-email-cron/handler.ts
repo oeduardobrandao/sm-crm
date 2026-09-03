@@ -56,6 +56,7 @@ import {
   clientEventSubject,
   signUnsubToken,
 } from "../_shared/client-event-email.ts";
+import { sanitizeFromName } from "../_shared/email-headers.ts";
 
 interface DbError {
   message: string;
@@ -238,30 +239,6 @@ function maxDate(iso: string | null, floor: Date): Date {
   if (!iso) return floor;
   const d = new Date(iso);
   return d.getTime() > floor.getTime() ? d : floor;
-}
-
-/**
- * `workspaceName` is tenant-editable free text, interpolated into the From
- * display name (`"${name}" <notificacoes@mesaas.com.br>`). CR/LF could break
- * out of the header into a second header (header injection) regardless of
- * quoting, so control characters are still stripped outright. But a name
- * containing an RFC 5322 "special" (`, ; : @ ( ) [ ] \ "` -- e.g. "Silva,
- * Souza & Cia") is NOT dangerous by itself: it only becomes ambiguous in an
- * UNQUOTED display name, where a comma reads as a second address. Stripping
- * those characters (the previous approach) mangles legitimate business
- * names for no safety benefit. The correct, always-valid fix is what RFC
- * 5322 itself provides: wrap the whole name in a quoted-string, escaping
- * only the two characters that are structurally special INSIDE a
- * quoted-string (`\` and `"`) -- everything else, including `<`, `>`, `,`,
- * `;`, `(`, `)`, is just literal text there. The HTML body's own copy of
- * workspaceName is untouched -- buildClientEventEmail already escapes it
- * for that (unrelated) context.
- */
-function sanitizeFromName(name: string): string {
-  // deno-lint-ignore no-control-regex
-  const cleaned = name.replace(/[\x00-\x1f\x7f]+/g, " ").replace(/\s+/g, " ").trim() || "Mesaas";
-  const escaped = cleaned.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  return `"${escaped}"`;
 }
 
 /**
