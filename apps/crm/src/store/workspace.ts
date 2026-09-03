@@ -9,7 +9,35 @@ export async function getWorkspaceUsers(): Promise<any[]> {
     )
     .eq('workspace_id', conta_id)
     .order('joined_at', { ascending: true });
-  if (error) throw error;
+  if (error) {
+    if (!isMissingRolesSchemaError(error)) throw error;
+    // Same pre-migration degradation as getMyMembership() below (hotfix
+    // #439): a database that predates the roles migration 400s on the
+    // enriched select (role_id / workspace_roles unknown to PostgREST's
+    // schema cache). Falling through to `throw error` here left MembrosTab's
+    // roster query rejected -- an EMPTY list, not a loud failure, because the
+    // caller (`useQuery`) just renders `wsUsers ?? []` on error. Re-run with
+    // the legacy columns instead, same fields every row would carry
+    // pre-migration.
+    const { data: legacy, error: legacyError } = await supabase
+      .from('workspace_members')
+      .select(
+        'user_id, role, joined_at, can_see_financials, profiles!inner(id, nome, avatar_url, created_at)',
+      )
+      .eq('workspace_id', conta_id)
+      .order('joined_at', { ascending: true });
+    if (legacyError) throw legacyError;
+    return (legacy || []).map((m: any) => ({
+      id: m.profiles.id,
+      nome: m.profiles.nome,
+      role: m.role,
+      role_id: null,
+      papel_nome: null,
+      can_see_financials: m.can_see_financials,
+      avatar_url: m.profiles.avatar_url,
+      created_at: m.profiles.created_at,
+    }));
+  }
   // Flatten the join result to match the expected shape
   return (data || []).map((m: any) => ({
     id: m.profiles.id,

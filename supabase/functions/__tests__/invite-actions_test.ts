@@ -239,6 +239,7 @@ function makeInviteAdmin(opts: {
   failInviteDeleteById?: boolean;   // ONLY the rollback delete (.eq("id", ...)) returns { error }
   insertReturnsNoId?: boolean;      // insert resolves with NO error and NO row
   priorPendingMembroId?: number | null; // the replaced pending row's membro_id, for the inherit lookup
+  priorPendingRoleId?: string;      // the replaced pending row's role_id, for the inherit lookup (Task 13 review fix)
 }) {
   const events: string[] = [];
   const failErr = { message: "injected failure" };
@@ -300,8 +301,17 @@ function makeInviteAdmin(opts: {
           if (table === "workspace_members") return Promise.resolve({ data: opts.isMember ? { id: "m1" } : null, error: null });
           if (table === "contas") return Promise.resolve({ data: { nome: "WS" }, error: null });
           if (table === "invites") {
+            // One canned "prior pending row" response shared by BOTH the
+            // membroId and role_id inheritance lookups (inviteOrResend runs
+            // two separate .select(...).maybeSingle() queries against
+            // "invites", one per column) -- real filtering by `.not(...)` is
+            // not modeled here, same simplification the pre-existing
+            // membroId-only fixture already made.
+            const hasPrior = opts.priorPendingMembroId != null || opts.priorPendingRoleId !== undefined;
             return Promise.resolve({
-              data: opts.priorPendingMembroId != null ? { membro_id: opts.priorPendingMembroId } : null,
+              data: hasPrior
+                ? { membro_id: opts.priorPendingMembroId ?? null, role_id: opts.priorPendingRoleId ?? null }
+                : null,
               error: null,
             });
           }
@@ -865,6 +875,62 @@ Deno.test("inviteOrResend: resend-link route WITHOUT roleId stamps role_id: null
     assertEquals(out.route, "resent-link");
     const inviteRow = admin._inserts().find((i) => i.table === "invites");
     assertEquals(inviteRow?.row.role_id, null);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
+});
+
+// -----------------------------------------------------------------------
+// role_id inheritance on resend (Task 13 review finding 1): MembrosTab's
+// "Reenviar" button (and the admin portal) posts {email, role} with no
+// role_id at all -- without inheritance, deletePriorInvites + re-insert
+// silently downgraded a restricted-papel invite to the plain 'agent'
+// fallback on every resend. Mirrors the membroId-inheritance coverage above
+// exactly (same "a resend with NO X inherits the replaced pending row's Y"
+// / "an explicit X beats the inherited one" pair).
+// -----------------------------------------------------------------------
+
+Deno.test("inviteOrResend: a resend with NO roleId inherits the replaced pending row's role_id", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 0, authUser: null, priorPendingRoleId: "role-7",
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "invited");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, "role-7");
+  assertEquals(inviteRow?.row.role, "agent"); // chassis rule follows the inherited roleId too
+});
+
+Deno.test("inviteOrResend: an explicit roleId beats the inherited one", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 0, authUser: null, priorPendingRoleId: "role-7",
+  });
+  // deno-lint-ignore no-explicit-any
+  await inviteOrResend(admin as any, { ...baseInput, roleId: "role-9" }, CRM);
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, "role-9");
+});
+
+Deno.test("inviteOrResend: resend-link route with NO roleId inherits the replaced pending row's role_id", async () => {
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
+  try {
+    const admin = makeInviteAdmin({
+      limit: null, members: 0,
+      authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+      onboarding: false, hasProfile: true, hasPassword: false,
+      priorPendingRoleId: "role-8",
+    });
+    // deno-lint-ignore no-explicit-any
+    const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+    assertEquals(out.route, "resent-link");
+    const inviteRow = admin._inserts().find((i) => i.table === "invites");
+    assertEquals(inviteRow?.row.role_id, "role-8");
+    assertEquals(inviteRow?.row.role, "agent");
   } finally {
     globalThis.fetch = realFetch;
     if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);

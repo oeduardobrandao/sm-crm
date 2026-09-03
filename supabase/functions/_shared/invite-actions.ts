@@ -270,16 +270,6 @@ export async function inviteOrResend(
 ): Promise<InviteOutcome> {
   const email = input.email.toLowerCase();
 
-  // Chassis rule at write time: invites.role is stored as 'agent' whenever
-  // roleId is present, REGARDLESS of the requested display role. The FK
-  // invites_role_same_workspace is ON DELETE SET NULL — deleting the custom
-  // role later leaves role_id NULL, and accept_workspace_invite's no-role_id
-  // path then grants membership at whatever invites.role says. If that column
-  // held the original (possibly stronger) legacy role, a deleted custom role
-  // would silently upgrade the invitee on accept. Storing 'agent' here closes
-  // that hole independent of the role_id FK's cascade behavior.
-  const effectiveRole: "owner" | "admin" | "agent" = input.roleId ? "agent" : input.role;
-
   // (1) Seat pre-check. The pending count EXCLUDES a matching pending row for
   // this email (it is being replaced, not added — finding 3), so members +
   // pending-for-OTHER-emails < limit correctly leaves room for this one row.
@@ -308,6 +298,33 @@ export async function inviteOrResend(
       .not("membro_id", "is", null).maybeSingle();
     membroId = prior?.membro_id ?? null;
   }
+
+  // Resolve the custom role_id for every invites row written below, mirroring
+  // the membroId inheritance immediately above. When the caller passes none
+  // (a resend that doesn't resubmit a role choice -- MembrosTab's "Reenviar"
+  // button, or the admin portal), inherit it from the pending row being
+  // replaced: deletePriorInvites + re-insert would otherwise silently
+  // downgrade a restricted-papel invite to the plain 'agent' fallback the
+  // next time it's resent (effectiveRole below treats a null roleId as "no
+  // custom role").
+  let roleId = input.roleId ?? null;
+  if (roleId == null) {
+    const { data: priorRole } = await adminClient
+      .from("invites").select("role_id")
+      .eq("conta_id", input.contaId).eq("email", email).eq("status", "pending")
+      .not("role_id", "is", null).maybeSingle();
+    roleId = priorRole?.role_id ?? null;
+  }
+
+  // Chassis rule at write time: invites.role is stored as 'agent' whenever
+  // roleId is present, REGARDLESS of the requested display role. The FK
+  // invites_role_same_workspace is ON DELETE SET NULL — deleting the custom
+  // role later leaves role_id NULL, and accept_workspace_invite's no-role_id
+  // path then grants membership at whatever invites.role says. If that column
+  // held the original (possibly stronger) legacy role, a deleted custom role
+  // would silently upgrade the invitee on accept. Storing 'agent' here closes
+  // that hole independent of the role_id FK's cascade behavior.
+  const effectiveRole: "owner" | "admin" | "agent" = roleId ? "agent" : input.role;
 
   // (2) Classify the existing auth user BEFORE mutating anything.
   const existingUser = await findAuthUserByEmail(adminClient, email);
@@ -341,7 +358,7 @@ export async function inviteOrResend(
       // legacy role stronger than 'agent', even after this row is later read
       // back with role_id nulled out by the role's deletion.
       const mIns = await adminClient.from("workspace_members")
-        .insert({ user_id: existingUser.id, workspace_id: input.contaId, role: effectiveRole, role_id: input.roleId ?? null });
+        .insert({ user_id: existingUser.id, workspace_id: input.contaId, role: effectiveRole, role_id: roleId });
       ensureOk(mIns.error, "member_insert");
       const { data: existingProfile } = await adminClient
         .from("profiles").select("id, active_workspace_id").eq("id", existingUser.id).maybeSingle();
@@ -367,7 +384,7 @@ export async function inviteOrResend(
       const iIns = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: effectiveRole, invited_by: input.invitedBy,
         status: "accepted", accepted_at: new Date().toISOString(), membro_id: membroId,
-        role_id: input.roleId ?? null,
+        role_id: roleId,
       }).select("id").single();
       if (membroId != null) {
         const upd = await adminClient.from("membros")
@@ -392,7 +409,7 @@ export async function inviteOrResend(
       await sendInviteEmail({ to: email, actionLink: link.properties.action_link, workspaceName: conta?.nome || "seu workspace" });
       const ins = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: effectiveRole, invited_by: input.invitedBy,
-        status: "pending", membro_id: membroId, role_id: input.roleId ?? null,
+        status: "pending", membro_id: membroId, role_id: roleId,
       }).select("id").single();
       return { route: "resent-link", inviteId: insertedId(ins, "invite_insert_pending") };
     }
@@ -410,13 +427,13 @@ export async function inviteOrResend(
     const affectedWorkspaceIds = [...new Set([
       ...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds, input.contaId,
     ])];
-    const inviteId = await sendNewUserInvite(adminClient, input, email, membroId);
+    const inviteId = await sendNewUserInvite(adminClient, input, email, membroId, roleId);
     return { route: "reinvited", affectedWorkspaceIds, inviteId };
   }
 
   // (3) New user.
   await deletePriorInvites(adminClient, email, input.contaId);
-  const inviteId = await sendNewUserInvite(adminClient, input, email, membroId);
+  const inviteId = await sendNewUserInvite(adminClient, input, email, membroId, roleId);
   return { route: "invited", inviteId };
 }
 
@@ -426,8 +443,15 @@ async function deletePriorInvites(adminClient: any, email: string, contaId: stri
   ensureOk(error, "prior_invites_delete");
 }
 
-/** Returns the id of the pending invites row it created. */
-async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string, membroId: number | null): Promise<string> {
+/**
+ * Returns the id of the pending invites row it created.
+ *
+ * `roleId` is the CALLER's already-resolved value (inviteOrResend's own
+ * `roleId` local, after the prior-pending-row inheritance) — never re-read
+ * from `input.roleId` here, or a resend that relies on inheritance would
+ * silently lose it again at this second hop.
+ */
+async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string, membroId: number | null, roleId: string | null): Promise<string> {
   // Same chassis rule as inviteOrResend's top-of-function effectiveRole:
   // invites.role is 'agent' whenever roleId is present. Threaded through to
   // sendAuthInvite's user_metadata.role too (rather than keeping that at the
@@ -435,7 +459,7 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
   // still resolved from invites.role_id by the accept-invite RPC, so
   // metadata.role is informational only, but there is no reason to have it
   // disagree with invites.role.
-  const effectiveRole: "owner" | "admin" | "agent" = input.roleId ? "agent" : input.role;
+  const effectiveRole: "owner" | "admin" | "agent" = roleId ? "agent" : input.role;
   return await sendPendingWorkspaceInvite({
     createPendingInvite: async (p) => {
       const { data, error } = await adminClient.from("invites").insert({
@@ -461,6 +485,6 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
     },
   }, {
     contaId: input.contaId, email, role: effectiveRole, invitedBy: input.invitedBy,
-    redirectTo: input.redirectBase + "/configurar-senha", membroId, roleId: input.roleId ?? null,
+    redirectTo: input.redirectBase + "/configurar-senha", membroId, roleId,
   });
 }

@@ -252,7 +252,17 @@ export default function MembrosTab() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ email: invite.email, role: invite.role }),
+        // role_id: the `invites` row (queried with select('*') above) already
+        // carries it for a restricted-papel invite. Omitting it here would
+        // have invite-user/inviteOrResend fall back to a plain 'agent'
+        // invite on resend — the server now also inherits role_id from the
+        // prior pending row when this is absent, but sending it explicitly
+        // is still correct and one round trip cheaper.
+        body: JSON.stringify({
+          email: invite.email,
+          role: invite.role,
+          role_id: invite.role_id ?? undefined,
+        }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);

@@ -129,6 +129,66 @@ describe('store core helpers and CRUD', () => {
     ]);
   });
 
+  // Pre-migration fallback (same isMissingRolesSchemaError reused by
+  // getMyMembership, hotfix #439): a database that predates the roles
+  // migration 400s on the enriched select (role_id / workspace_roles unknown
+  // to PostgREST's schema cache). Without a fallback here, MembrosTab's
+  // roster query rejected and useQuery silently rendered an empty roster
+  // (`wsUsers ?? []`) instead of a loud failure -- this pins the re-run
+  // against the legacy columns instead.
+  it('falls back to the legacy select and reports role_id/papel_nome as null when the roles schema is missing (42703)', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'workspace_members',
+      'select',
+      {
+        data: null,
+        error: { code: '42703', message: 'column workspace_members.role_id does not exist' },
+      },
+      {
+        data: [
+          {
+            user_id: 'user-4',
+            role: 'owner',
+            joined_at: '2026-04-03T10:00:00.000Z',
+            can_see_financials: true,
+            profiles: {
+              id: 'user-4',
+              nome: 'Dona da Conta',
+              avatar_url: null,
+              created_at: '2026-03-03T10:00:00.000Z',
+            },
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const users = await store.getWorkspaceUsers();
+
+    expect(users).toEqual([
+      {
+        id: 'user-4',
+        nome: 'Dona da Conta',
+        role: 'owner',
+        role_id: null,
+        papel_nome: null,
+        can_see_financials: true,
+        avatar_url: null,
+        created_at: '2026-03-03T10:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('rethrows a non-schema error instead of falling back (a network blip must not be swallowed)', async () => {
+    const queryError = { message: 'permission denied' };
+    mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+      data: null,
+      error: queryError,
+    });
+
+    await expect(store.getWorkspaceUsers()).rejects.toBe(queryError);
+  });
+
   it('returns an empty workspace list when there is no authenticated user', async () => {
     mockedSupabase.__setCurrentUser(null);
 

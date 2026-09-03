@@ -85,13 +85,15 @@ export const FINANCIAL_QUERY_KEYS = [
 export const MODULE_QUERY_KEYS: Record<PermissionModule, string[]> = {
   financeiro: ['transacoes', 'dashboardStats'],
   contratos: ['contratos'],
-  clientes: ['cliente', 'clientes'],
+  clientes: ['cliente', 'clientes', 'clientePosts', 'clienteDatas'],
   equipe: ['membros', 'workspace-users', 'invites'],
   leads: ['leads'],
   entregas: [
     'workflows',
     'workflow-templates',
     'workflow-grid',
+    'workflow-posts-with-props',
+    'workflow-posts-counts',
     'active-posts',
     'scheduled-posts',
     'concluded-workflows',
@@ -755,6 +757,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (row.role_id != null || row.role_id !== (membershipRef.current?.role_id ?? null)) {
             fetchAndApplyMembership();
           } else {
+            // Bump the shared seq FIRST: this direct apply never goes through
+            // fetchAndApplyMembership(), so without this an OLDER refetch the
+            // wr: channel (or the 60s poll) already had in flight would still
+            // see its captured `seq === membershipFetchSeq` when it resolves
+            // afterwards, and overwrite this newer, already-applied raw row
+            // with its stale result.
+            membershipFetchSeq += 1;
             applyMembership({ ...row, role_id: null, permissions: null } as MyMembership);
           }
         },

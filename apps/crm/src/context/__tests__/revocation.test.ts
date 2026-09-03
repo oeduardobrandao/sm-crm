@@ -1077,6 +1077,94 @@ describe('live revocation handler — role_id-transition refetch branch', () => 
     expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
   });
 
+  it('a wm: direct-apply (role_id unchanged) also bumps membershipFetchSeq, so an earlier in-flight role_id-transition refetch cannot overwrite it when it resolves late (Task 13 review finding 3)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-61' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-61',
+      nome: 'Admin com Corrida Mista',
+      role: 'admin',
+      conta_id: 'conta-61',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-61' } } });
+    mockGetContaId.mockResolvedValue('conta-61');
+    // Hydration: legacy admin, role_id null, financials restricted.
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { role: 'admin', can_see_financials: false, role_id: null, workspace_roles: null },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
+
+    // First event: a role_id transition (null -> 'role-x') starts a
+    // getMyMembership() refetch through fetchAndApplyMembership() — left
+    // PENDING to model it losing the race against the direct-apply event
+    // below.
+    let resolvePending!: (v: { data: unknown; error: null }) => void;
+    mockMaybeSingle.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePending = resolve;
+      }),
+    );
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-61',
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-x',
+      });
+    });
+
+    // Second event, while the first is still in flight: role_id stays null
+    // (membershipRef.current?.role_id is STILL null — the pending fetch
+    // above never resolved, so it never applied) — the plain legacy path,
+    // applied DIRECTLY from the payload without going through
+    // fetchAndApplyMembership().
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-61',
+        role: 'admin',
+        can_see_financials: true,
+        role_id: null,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('admin');
+
+    // The FIRST (now stale) refetch resolves late, with a payload that would
+    // flip both fields back if it were allowed to reach applyMembership() —
+    // it can only be allowed through if the direct-apply above failed to
+    // bump membershipFetchSeq.
+    await act(async () => {
+      resolvePending({
+        data: {
+          role: 'agent',
+          can_see_financials: false,
+          role_id: 'role-x',
+          workspace_roles: { permissions: {} },
+        },
+        error: null,
+      });
+    });
+
+    // Must still reflect the direct-apply's values — the seq bump
+    // immediately before that direct applyMembership() call is what makes
+    // the late resolution's captured `seq` stale.
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('admin');
+  });
+
   it('a refetch resolving after this effect tears down (unmount) never reaches applyMembership (no late purge/invalidate)', async () => {
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentUser({ id: 'user-62' });
@@ -1502,10 +1590,24 @@ describe('MODULE_QUERY_KEYS', () => {
     }
   });
 
-  it('financeiro/contratos/clientes/equipe match the brief exactly (facts-override sign-off)', () => {
+  it('financeiro/contratos/equipe match the brief exactly (facts-override sign-off)', () => {
     expect(MODULE_QUERY_KEYS.financeiro).toEqual(['transacoes', 'dashboardStats']);
     expect(MODULE_QUERY_KEYS.contratos).toEqual(['contratos']);
-    expect(MODULE_QUERY_KEYS.clientes).toEqual(['cliente', 'clientes']);
     expect(MODULE_QUERY_KEYS.equipe).toEqual(['membros', 'workspace-users', 'invites']);
+  });
+
+  // Task 13 review finding 4: the original map missed the two biggest
+  // entregas caches (every post-with-props list and every per-workflow post
+  // count) and the two biggest clientes-scoped caches (a client's own post
+  // list and its "datas" section) — all four verified against real
+  // queryKey usages (grep) before being added, same discipline as the rest
+  // of this map.
+  it('clientes and entregas cover the caches added in the review fix', () => {
+    expect(MODULE_QUERY_KEYS.clientes).toEqual(
+      expect.arrayContaining(['cliente', 'clientes', 'clientePosts', 'clienteDatas']),
+    );
+    expect(MODULE_QUERY_KEYS.entregas).toEqual(
+      expect.arrayContaining(['workflow-posts-with-props', 'workflow-posts-counts']),
+    );
   });
 });
