@@ -1,11 +1,13 @@
-// mcp-keys — workspace owner/admin manage their MCP API keys (create / list / revoke).
-// JWT-authed (the CRM user); does its own owner/admin + feature check; writes via service role
+// mcp-keys — manage MCP API keys (create / list / revoke) for the active workspace.
+// JWT-authed (the CRM user); does its own permission + feature check ('list' needs
+// configuracoes:ver, mutations need configuracoes:editar); writes via service role
 // (mcp_api_keys writes are service-role-only by RLS). Deploy WITHOUT --no-verify-jwt.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
 import { generateApiKey, validateScopes } from "../_shared/mcp-token.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -31,15 +33,25 @@ Deno.serve(async (req) => {
     const svc = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: profile } = await svc.from("profiles").select("role, conta_id").eq("id", user.id).single();
-    if (!profile) return json({ error: "Profile not found" }, 403);
-    if (profile.role !== "owner" && profile.role !== "admin") {
-      return json({ error: "Insufficient permissions" }, 403);
-    }
-    const contaId = profile.conta_id as string;
-
+    // Gate lê a workspace ATIVA da membership, não profiles.role (global e
+    // sujeito a ficar stale após troca de workspace -- mesma razão de
+    // invite-user/manage-workspace-user).
+    const { data: profile } = await svc.from("profiles").select("active_workspace_id").eq("id", user.id).single();
+    if (!profile?.active_workspace_id) return json({ error: "Profile not found" }, 403);
+    const contaId = profile.active_workspace_id as string;
+    // A ação é resolvida ANTES do gate porque as duas metades desta função
+    // exigem níveis diferentes: 'list' é leitura e a aba MCP em modo somente
+    // leitura (papel com `configuracoes:ver`) precisa dela para renderizar.
+    // Gatear tudo em 'editar' devolvia 403 e listas vazias para um papel que
+    // legitimamente abre a aba. As mutações seguem exigindo 'editar'.
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
+
+    const requiredAction = action === "list" ? "ver" : "editar";
+    const canManage = await hasPermissionFor(svc, user.id, contaId, "configuracoes", requiredAction);
+    if (!canManage) {
+      return json({ error: "Insufficient permissions" }, 403);
+    }
 
     if (action === "list") {
       const { data } = await svc.from("mcp_api_keys").select(SAFE_COLS)

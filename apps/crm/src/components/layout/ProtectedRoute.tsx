@@ -4,8 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { Spinner } from '@/components/ui/spinner';
 import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
-
-const AGENT_BLOCKED = ['/financeiro', '/contratos', '/leads', '/equipe'];
+import { resolveRouteGate } from './routePermissions';
+import { isLayoutGuardedPath } from './AppLayout';
 
 const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
@@ -20,7 +20,7 @@ const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
 };
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, profile, role, loading } = useAuth();
+  const { user, profile, role, can, loading } = useAuth();
   const location = useLocation();
   const { features, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
 
@@ -40,12 +40,42 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   // App.tsx declares routes lowercase with no `caseSensitive`, so React Router
   // matches `/Financeiro` to the same page as `/financeiro`. Lowercase the
-  // pathname before matching here too, or an agent typing a capital letter
-  // bypasses this redirect entirely.
+  // pathname before matching here too, or a capitalized URL bypasses both the
+  // feature gate and the permission gate below.
   const pathname = location.pathname.toLowerCase();
 
-  if (role === 'agent' && AGENT_BLOCKED.some((p) => pathname.startsWith(p))) {
-    return <Navigate to="/dashboard" replace />;
+  // Permission gate runs BEFORE the feature-gate loop below, on purpose: this
+  // restores the ordering the pre-permission-model `AGENT_BLOCKED` check had
+  // (it ran before FEATURE_GATED too). With the loop first, a role without
+  // access to a route that is ALSO feature-gated (e.g. an agent at `/leads`
+  // on a plan with `feature_leads` off) would see the upgrade screen instead
+  // of being redirected -- a regression nothing exercised before this file
+  // grew a `can()`-based gate. See ProtectedRoute.test.tsx's "ordering" test.
+  //
+  // `/financeiro` and `/contratos` are EXEMPT from this gate entirely: they
+  // are `AppLayout`'s territory, via its own three-state guards
+  // (`financialGuardOutcome` / `contractGuardOutcome`, content/loading/denied
+  // -> `FinancialRestrictionScreen`), which already fully decide access for
+  // EVERY role -- including a restricted admin, who this gate would
+  // otherwise redirect to /dashboard, silently replacing that dedicated
+  // screen with a bare bounce. Each of the two now reads its OWN capability
+  // (`financeiro:ver` / `contratos:ver`); letting `resolveRouteGate` still
+  // classify both paths keeps `nav-data.ts` and the route table honest, and
+  // only the ENFORCEMENT here is skipped. See `isLayoutGuardedPath` in
+  // `AppLayout.tsx`.
+  if (!isLayoutGuardedPath(pathname)) {
+    const gate = resolveRouteGate(pathname);
+    if (gate === 'unmapped') {
+      if (import.meta.env.DEV) {
+        console.error(`[ProtectedRoute] rota sem entrada no mapa de permissões: ${pathname}`);
+      }
+      return <Navigate to="/dashboard" replace />;
+    }
+    if (gate !== 'open') {
+      const allowed = can(gate.module, gate.action);
+      // 'unknown' falha NEUTRO (render): igual ao guard financeiro do AppLayout.
+      if (allowed === false) return <Navigate to="/dashboard" replace />;
+    }
   }
 
   if (!isUnlimited && features) {

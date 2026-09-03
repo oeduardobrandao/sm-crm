@@ -10,7 +10,7 @@ import { visibleConfigTabs, canAccessConfigTab } from './configTabs';
  * route so a tab is deep-linkable and survives a refresh.
  */
 export default function ConfiguracaoLayout() {
-  const { user, workspaceRole, membershipResolved, loading } = useAuth();
+  const { user, workspaceRole, membershipResolved, can, loading } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -79,10 +79,10 @@ export default function ConfiguracaoLayout() {
     );
   }
 
-  const tabs = visibleConfigTabs(workspaceRole);
+  const tabs = visibleConfigTabs(can, workspaceRole);
   const current = pathname.replace(/^\/configuracao\/?/, '').split('/')[0];
 
-  if (current && !canAccessConfigTab(current, workspaceRole)) {
+  if (current && !canAccessConfigTab(current, can, workspaceRole)) {
     return <Navigate to="/configuracao/perfil" replace />;
   }
 

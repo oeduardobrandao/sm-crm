@@ -8,8 +8,24 @@ vi.mock('../../../context/AuthContext', () => ({
 
 import { useAuth } from '../../../context/AuthContext';
 import ConfiguracaoLayout from '../ConfiguracaoLayout';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseAuth = vi.mocked(useAuth);
+
+/**
+ * `can` mirrors the real AuthContext: it is derived from the SAME
+ * `workspaceRole` this layout gates on (never from the stale `staleProfileRole`
+ * below), and is 'unknown' for every module while `workspaceRole` is null —
+ * matching the fact that `membership` and `workspaceRole` are always set
+ * together in the real AuthContext (see AuthContext.tsx).
+ */
+function canFor(workspaceRole: string | null) {
+  return makeCan(
+    workspaceRole === null
+      ? null
+      : fakeMembership({ role: workspaceRole as 'owner' | 'admin' | 'agent' }),
+  );
+}
 
 /**
  * `workspaceRole` (from `workspace_members`, correct per workspace) is the
@@ -42,6 +58,7 @@ function setAuth(
     role: staleProfileRole,
     workspaceRole,
     membershipResolved,
+    can: canFor(workspaceRole),
     loading,
     signOut: vi.fn(),
     refetchProfile: vi.fn(),

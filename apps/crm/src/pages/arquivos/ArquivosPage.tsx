@@ -38,6 +38,7 @@ import { BulkActionBar } from './components/BulkActionBar';
 import { useSelection } from './hooks/useSelection';
 import { UsageMeter } from '@/components/usage/UsageMeter';
 import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
+import { useAuth } from '@/context/AuthContext';
 import type { SortBy } from './components/FileGrid';
 import type { FileRecord, FolderContents } from './types';
 import type { PostMedia } from '../../store';
@@ -63,6 +64,12 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 export default function ArquivosPage() {
   const isMobile = useIsMobile();
   const isOwner = useIsWorkspaceOwner();
+  const { can } = useAuth();
+  // No role check existed here before Task 14 -- any authenticated member
+  // could upload, create folders, and bulk-delete. AGENT_ROLE_PRESET.
+  // arquivos is 'editar' (lib/permissions.ts), so this preserves full access
+  // for every legacy chassis role; only a CUSTOM role can now differ.
+  const canEditFiles = can('arquivos', 'editar') === true;
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortBy>('name');
@@ -383,6 +390,7 @@ export default function ArquivosPage() {
             queryClient.invalidateQueries({ queryKey: ['folder-tree', currentFolderId] });
           }}
           triggerRef={uploaderRef}
+          canUpload={canEditFiles}
         >
           <MobileArquivosView
             breadcrumbs={breadcrumbs}
@@ -434,6 +442,7 @@ export default function ArquivosPage() {
               copyFolderMutation.isPending ||
               zipMutation.isPending
             }
+            canEdit={canEditFiles}
           />
         </FileUploader>
         <PostMediaLightbox
@@ -615,22 +624,26 @@ export default function ArquivosPage() {
 
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Upload */}
-            <button
-              className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium bg-[var(--primary-color)] text-[#12151a] hover:opacity-90 transition-opacity"
-              onClick={() => uploaderRef.current?.openFilePicker()}
-            >
-              <Upload className="h-4 w-4" />
-              Enviar arquivo
-            </button>
+            {canEditFiles && (
+              <button
+                className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium bg-[var(--primary-color)] text-[#12151a] hover:opacity-90 transition-opacity"
+                onClick={() => uploaderRef.current?.openFilePicker()}
+              >
+                <Upload className="h-4 w-4" />
+                Enviar arquivo
+              </button>
+            )}
 
             {/* New folder for current location */}
-            <button
-              onClick={() => setCreateFolderParent(currentFolderId)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-            >
-              <FolderPlus className="h-4 w-4" />
-              Nova pasta
-            </button>
+            {canEditFiles && (
+              <button
+                onClick={() => setCreateFolderParent(currentFolderId)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                <FolderPlus className="h-4 w-4" />
+                Nova pasta
+              </button>
+            )}
 
             {/* Filter popover */}
             <FilterPopover filter={filter} onChange={setFilter} />
@@ -688,6 +701,7 @@ export default function ArquivosPage() {
             queryClient.invalidateQueries({ queryKey: ['folder-tree', currentFolderId] });
           }}
           triggerRef={uploaderRef}
+          canUpload={canEditFiles}
         >
           <div className="flex-1 overflow-y-auto p-5">
             <FileGrid
@@ -719,6 +733,7 @@ export default function ArquivosPage() {
               }}
               onDrop={handleDrop}
               classifySelection={classifySelection}
+              canEdit={canEditFiles}
             />
             {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
               <div className="text-center py-4">
@@ -769,6 +784,7 @@ export default function ArquivosPage() {
         isMoving={bulkMoveMutation.isPending}
         isCopying={copyFileMutation.isPending || copyFolderMutation.isPending}
         isDeleting={bulkDeleteMutation.isPending}
+        canEdit={canEditFiles}
       />
 
       <PostMediaLightbox

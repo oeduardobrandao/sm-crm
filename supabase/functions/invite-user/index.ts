@@ -4,6 +4,7 @@ import { classifyExistingUser, coerceHasPassword } from "../_shared/invite-class
 import { inviteOrResend } from "../_shared/invite-actions.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { resolveActiveCaller, validateMembroForInvite } from "../_shared/invite-membro.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 
 async function findAuthUserByEmail(adminClient: any, email: string) {
   let page = 1;
@@ -95,7 +96,14 @@ Deno.serve(async (req) => {
 
     // DELETE: Cancel an invite
     if (req.method === 'DELETE') {
-      if (caller.role === 'agent') throw new Error('Agentes não têm permissão para cancelar convites.');
+      // Gerenciar convites (enviar/cancelar) exige 'equipe':'editar' -- não mais
+      // um role literal. Um papel custom com essa permissão passa mesmo com o
+      // chassi role='agent'; o preset legado de agent não tem 'equipe', então
+      // segue negado, byte a byte com o comportamento anterior.
+      const canManageTeam = await hasPermissionFor(
+        adminClient, user.id, caller.workspaceId, "equipe", "editar",
+      );
+      if (!canManageTeam) throw new Error('Agentes não têm permissão para cancelar convites.');
 
       const url = new URL(req.url);
       const inviteId = url.searchParams.get('id');
@@ -129,10 +137,16 @@ Deno.serve(async (req) => {
        throw new Error('Role inválido');
     }
 
-    if (caller.role === 'agent') throw new Error('Agentes não têm permissão para convidar novos usuários.');
+    const canManageTeam = await hasPermissionFor(
+      adminClient, user.id, caller.workspaceId, "equipe", "editar",
+    );
+    if (!canManageTeam) throw new Error('Agentes não têm permissão para convidar novos usuários.');
 
-    // Admin can't invite owner
-    if (caller.role === 'admin' && role === 'owner') {
+    // Only a real owner invites an owner. NOT `caller.role === 'admin'`: that
+    // literal only blocked the legacy admin role -- a custom role (chassis
+    // role='agent') with 'equipe':'editar' sails past the actor gate above
+    // and, before this fix, could invite themselves or anyone else as owner.
+    if (caller.role !== 'owner' && role === 'owner') {
       throw new Error('Administradores não podem convidar novos donos.');
     }
 
@@ -140,10 +154,45 @@ Deno.serve(async (req) => {
     // request body; roleId is threaded alongside it into inviteOrResend, which
     // is the single choke point that applies the chassis rule — every invites
     // row AND the actual membership collapse to 'agent' whenever roleId is
-    // present, never the raw `role` here (see invite-actions.ts). A non-string
-    // body.role_id is treated as absent, not an error — only a STRING that
-    // fails the checks below is rejected.
-    const roleId: string | null = typeof body.role_id === 'string' ? body.role_id : null;
+    // present, never the raw `role` here (see invite-actions.ts).
+    //
+    // TRI-STATE parse, mirroring InviteOrResendInput.roleId's own contract:
+    // the `role_id` KEY being absent from the body (`undefined`) means a
+    // caller that doesn't know about this field at all — inviteOrResend
+    // inherits from any prior pending row for this email. A key present with
+    // `null` (or any other non-string value — never treated as an error,
+    // only a STRING that fails the checks below is rejected) means the
+    // caller made an explicit choice of "no custom role", and must NOT be
+    // silently overridden by inheritance. Every first-party caller
+    // (services/invite.ts, MembrosTab.tsx) always sends the key explicitly
+    // now — `undefined` here is reserved for a stale bundle that predates
+    // this field.
+    let roleId: string | null | undefined =
+      'role_id' in body ? (typeof body.role_id === 'string' ? body.role_id : null) : undefined;
+
+    // Spec decision: "atribuição segue dono e admin". An actor who reached
+    // this point only via 'equipe':'editar' (i.e. NOT a legacy owner/admin --
+    // caller.role is the 'agent' chassis) may invite ONLY a plain role='agent'
+    // with no custom role attached. Without this, such an actor could invite
+    // someone as role='admin' (the legacy all-modules preset) or attach any
+    // role_id (a permission set the actor may not itself hold) -- granting
+    // permissions it doesn't have. `role==='owner'` is already excluded by
+    // the guard above; this covers the remaining elevated shapes.
+    const isPrivilegedActor = caller.role === 'owner' || caller.role === 'admin';
+    if (!isPrivilegedActor && (role !== 'agent' || typeof roleId === 'string')) {
+      throw new Error('Apenas donos e admins podem convidar com função elevada ou papel.');
+    }
+    // Past the guard above, a non-privileged actor's roleId is only ever
+    // null or undefined (never a string) -- but `undefined` still reaches
+    // inviteOrResend's inherit-from-a-prior-pending-row path, which could
+    // silently re-stamp a role_id an owner/admin attached earlier for this
+    // same email. Force explicit "no custom role" so that inheritance path
+    // can never fire for a non-privileged actor; privileged actors are
+    // unaffected and keep inheriting as before.
+    if (!isPrivilegedActor) {
+      roleId = null;
+    }
+
     if (roleId) {
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       let validRoleId = UUID_RE.test(roleId);

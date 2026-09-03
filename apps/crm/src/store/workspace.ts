@@ -5,16 +5,46 @@ export async function getWorkspaceUsers(): Promise<any[]> {
   const { data, error } = await supabase
     .from('workspace_members')
     .select(
-      'user_id, role, joined_at, can_see_financials, profiles!inner(id, nome, avatar_url, created_at)',
+      'user_id, role, role_id, joined_at, can_see_financials, workspace_roles(nome), profiles!inner(id, nome, avatar_url, created_at)',
     )
     .eq('workspace_id', conta_id)
     .order('joined_at', { ascending: true });
-  if (error) throw error;
+  if (error) {
+    if (!isMissingRolesSchemaError(error)) throw error;
+    // Same pre-migration degradation as getMyMembership() below (hotfix
+    // #439): a database that predates the roles migration 400s on the
+    // enriched select (role_id / workspace_roles unknown to PostgREST's
+    // schema cache). Falling through to `throw error` here left MembrosTab's
+    // roster query rejected -- an EMPTY list, not a loud failure, because the
+    // caller (`useQuery`) just renders `wsUsers ?? []` on error. Re-run with
+    // the legacy columns instead, same fields every row would carry
+    // pre-migration.
+    const { data: legacy, error: legacyError } = await supabase
+      .from('workspace_members')
+      .select(
+        'user_id, role, joined_at, can_see_financials, profiles!inner(id, nome, avatar_url, created_at)',
+      )
+      .eq('workspace_id', conta_id)
+      .order('joined_at', { ascending: true });
+    if (legacyError) throw legacyError;
+    return (legacy || []).map((m: any) => ({
+      id: m.profiles.id,
+      nome: m.profiles.nome,
+      role: m.role,
+      role_id: null,
+      papel_nome: null,
+      can_see_financials: m.can_see_financials,
+      avatar_url: m.profiles.avatar_url,
+      created_at: m.profiles.created_at,
+    }));
+  }
   // Flatten the join result to match the expected shape
   return (data || []).map((m: any) => ({
     id: m.profiles.id,
     nome: m.profiles.nome,
     role: m.role,
+    role_id: m.role_id ?? null,
+    papel_nome: m.workspace_roles?.nome ?? null,
     can_see_financials: m.can_see_financials,
     avatar_url: m.profiles.avatar_url,
     created_at: m.profiles.created_at,
@@ -55,12 +85,32 @@ export async function getCurrentWorkspace(): Promise<{
   return data;
 }
 
+/**
+ * RLS on `workspaces` FILTERS a forbidden row out of an UPDATE instead of
+ * raising: PostgREST answers 200 with zero rows affected, so `error` is null
+ * and the caller toasts success for a save that never happened (F4, revisão
+ * externa). Every workspace update below therefore asks for the affected ids
+ * back with `.select('id')` and treats an empty result as a denial. The UI
+ * gates on `configuracoes:editar` are the primary fix; this is the backstop
+ * that keeps a missed gate from lying to the user.
+ */
+function assertWorkspaceRowAffected(rows: { id: string }[] | null): void {
+  if (!rows || rows.length === 0) {
+    throw new Error('workspace_update_forbidden');
+  }
+}
+
 export async function updateWorkspace(
   workspaceId: string,
   updates: { name?: string; logo_url?: string | null; report_splash_url?: string | null },
 ): Promise<void> {
-  const { error } = await supabase.from('workspaces').update(updates).eq('id', workspaceId);
+  const { data, error } = await supabase
+    .from('workspaces')
+    .update(updates)
+    .eq('id', workspaceId)
+    .select('id');
   if (error) throw error;
+  assertWorkspaceRowAffected(data);
 }
 
 // Report v2 whitelabel surface: a single accent colour (shared with the client
@@ -93,8 +143,13 @@ export async function updateWorkspaceBranding(fields: {
   send_client_event_emails?: boolean;
 }) {
   const contaId = await getContaId();
-  const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
+  const { data, error } = await supabase
+    .from('workspaces')
+    .update(fields)
+    .eq('id', contaId)
+    .select('id');
   if (error) throw error;
+  assertWorkspaceRowAffected(data);
 }
 
 // Hub white-label surface (Personalizar Hub, Configurações → Hub). `brand_color` lives
@@ -132,8 +187,13 @@ export async function getHubBranding(): Promise<HubBranding> {
 
 export async function updateHubBranding(fields: Partial<HubBranding>): Promise<void> {
   const contaId = await getContaId();
-  const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
+  const { data, error } = await supabase
+    .from('workspaces')
+    .update(fields)
+    .eq('id', contaId)
+    .select('id');
   if (error) throw error;
+  assertWorkspaceRowAffected(data);
 }
 
 // Auto-limpeza de armazenamento (Configurações → Armazenamento). Owner-only:
@@ -212,8 +272,11 @@ export async function callManageWorkspaceUser(
     throw new Error(result.error || result.message || `Erro HTTP ${response.status}`);
 }
 
-export async function updateWorkspaceUserRole(userId: string, role: string): Promise<void> {
-  await callManageWorkspaceUser('update-role', userId, { role });
+export async function updateWorkspaceUserRole(
+  userId: string,
+  value: { role: 'admin' | 'agent' } | { roleId: string },
+): Promise<void> {
+  await callManageWorkspaceUser('update-role', userId, value);
 }
 
 export async function removeWorkspaceUser(userId: string): Promise<void> {

@@ -5,6 +5,25 @@ import { createElement, type ReactNode } from 'react';
 import type { WorkflowEtapa } from '../../../../store';
 import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../useEntregasData';
 
+// useEntregasData reads `clienteAvatars`/`hubTokens` via two `supabase.from(...)`
+// calls made DIRECTLY (bypassing the mocked store module below), and
+// `getWorkspaceSlug`/`getWorkflowRevisaoInternaCounts`/
+// `getWorkflowAwaitingClientePostsCounts` (never overridden in the store mock
+// either) reach `supabase` internally too. Without this, all of those hit the
+// REAL `@supabase/supabase-js` client against the fake `VITE_SUPABASE_URL`
+// from vitest.config.ts — a genuine (if failing) network call whose settle
+// time is environment-dependent (fails fast on a sandbox with no DNS, but
+// takes real round-trip time wherever the runner has actual internet access).
+// That was the CI-only flake in "keeps cards and the lookup maps stable...":
+// those two queries are dependencies of the `cards` useMemo, and on a slower/
+// real-network run they could settle for the FIRST time in the gap between
+// this file's `waitFor` (which never checked them) and the assertion,
+// producing a legitimately new-but-deep-equal `cards` array — not a memo bug.
+// Auto-mocked via apps/crm/src/lib/__mocks__/supabase.ts (test/shared/
+// supabaseMock.ts's default `{ data: [], error: null }` per table is exactly
+// right here — nothing needs to be queued).
+vi.mock('../../../../lib/supabase');
+
 // ── Mock store ──────────────────────────────────────────────────────────────
 
 vi.mock('../../../../store', async (importOriginal) => {
@@ -109,8 +128,9 @@ function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return ({ children }: { children: ReactNode }) =>
+  const Wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
+  return { Wrapper, queryClient };
 }
 
 // ── Pure-function tests (unchanged) ─────────────────────────────────────────
@@ -281,7 +301,7 @@ describe('useEntregasData', () => {
     const { useEntregasData } = await import('../useEntregasData');
 
     const { result } = renderHook(() => useEntregasData(), {
-      wrapper: createWrapper(),
+      wrapper: createWrapper().Wrapper,
     });
 
     await waitFor(() => {
@@ -299,7 +319,7 @@ describe('useEntregasData', () => {
     const { useEntregasData } = await import('../useEntregasData');
 
     const { result } = renderHook(() => useEntregasData(), {
-      wrapper: createWrapper(),
+      wrapper: createWrapper().Wrapper,
     });
 
     await waitFor(() => {
@@ -319,14 +339,23 @@ describe('useEntregasData', () => {
   it('keeps cards and the lookup maps stable across a re-render with no new data', async () => {
     const { useEntregasData } = await import('../useEntregasData');
 
+    const { Wrapper, queryClient } = createWrapper();
     const { result, rerender } = renderHook(() => useEntregasData(), {
-      wrapper: createWrapper(),
+      wrapper: Wrapper,
     });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
       expect(result.current.cards.length).toBe(2);
       expect(result.current.postResponsaveis.size).toBe(2);
+      // `cards` also depends on covers/clienteAvatars/hubTokens/workspaceSlug
+      // (see useEntregasData.ts), none of which the hook exposes on its return
+      // value — isLoading/cards.length/postResponsaveis above don't cover them.
+      // Waiting for the whole QueryClient to go idle closes that gap: capturing
+      // `before` while a query this memo depends on is still in flight is what
+      // let a later, legitimate first-settlement race as a "new but deep-equal
+      // cards array" flake (CI-only, see the `lib/supabase` mock above).
+      expect(queryClient.isFetching()).toBe(0);
     });
 
     const before = result.current;
@@ -343,7 +372,7 @@ describe('useEntregasData', () => {
     const { useEntregasData } = await import('../useEntregasData');
 
     const { result, rerender } = renderHook(() => useEntregasData(), {
-      wrapper: createWrapper(),
+      wrapper: createWrapper().Wrapper,
     });
 
     // First commit: nothing has resolved yet, so every value is a fallback.
@@ -364,7 +393,7 @@ describe('useEntregasData', () => {
     const { useEntregasData } = await import('../useEntregasData');
 
     const { result } = renderHook(() => useEntregasData(), {
-      wrapper: createWrapper(),
+      wrapper: createWrapper().Wrapper,
     });
 
     await waitFor(() => {

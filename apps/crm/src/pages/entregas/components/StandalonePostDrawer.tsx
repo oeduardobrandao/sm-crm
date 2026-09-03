@@ -104,7 +104,12 @@ export function StandalonePostDrawer({
     queryFn: () => getPostStatusEvents([postId]),
   });
 
-  const { user, role } = useAuth();
+  const { user, role, can } = useAuth();
+  // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
+  // -- AGENT_ROLE_PRESET.automacoes is 'editar' (lib/permissions.ts), so a
+  // legacy agent already gets full write on instagram_comment_automations
+  // everywhere else; only this drawer shortcut denied it.
+  const canManageAutomations = can('automacoes', 'editar') === true;
 
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
@@ -497,6 +502,7 @@ export function StandalonePostDrawer({
               commentThreads={commentThreads}
               currentUserId={user?.id}
               currentUserRole={role}
+              canManageAutomations={canManageAutomations}
               workspaceUsers={workspaceUsers}
               hasInstagramAccount={hasInstagramAccount}
               igAccountStatus={igAccountStatus}

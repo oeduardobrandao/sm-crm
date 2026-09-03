@@ -9,13 +9,22 @@ vi.mock('../../../context/AuthContext', () => ({
 
 import { useAuth } from '../../../context/AuthContext';
 import { ClienteDetalheNav } from '../ClienteDetalheNav';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseAuth = vi.mocked(useAuth);
 
 const CLIENTE = { id: 42, nome: 'Aurora' } as Cliente;
 
 function setAuth(workspaceRole: string | null, canSeeFinancials: boolean | 'unknown' = true) {
-  mockedUseAuth.mockReturnValue({ workspaceRole, canSeeFinancials } as never);
+  const can = makeCan(
+    workspaceRole === null
+      ? null
+      : fakeMembership({
+          role: workspaceRole as 'owner' | 'admin' | 'agent',
+          can_see_financials: canSeeFinancials === true,
+        }),
+  );
+  mockedUseAuth.mockReturnValue({ workspaceRole, canSeeFinancials, can } as never);
 }
 
 function renderNav(path = '/clientes/42/entregas') {
@@ -61,11 +70,16 @@ describe('ClienteDetalheNav', () => {
     expect(screen.getByText('Gestão')).toBeInTheDocument();
   });
 
-  it('hides relatorios and financeiro for an agent', () => {
+  it('shows relatorios (agent preset grants analytics:ver) but hides hub and financeiro for an agent', () => {
+    // Task 12: `relatorios` now maps to {analytics,ver}, which the legacy
+    // agent preset already grants; `hub` now maps to {configuracoes,editar},
+    // which it has never had. See clienteTabs.model.test.ts for the full
+    // truth-table coverage of this divergence from the old role-list model.
     setAuth('agent', false);
     renderNav('/clientes/42/visao-geral');
     const links = screen.getAllByRole('link').map((l) => l.textContent);
-    expect(links).not.toContain('Relatórios');
+    expect(links).toContain('Relatórios');
+    expect(links).not.toContain('Hub');
     expect(links).not.toContain('Financeiro');
   });
 

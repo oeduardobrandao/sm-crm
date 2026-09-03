@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const { mockNavigate, openCSVSelectorMock, toastSuccessMock, toastErrorMock, mockUseAuth } =
   vi.hoisted(() => ({
@@ -10,7 +11,10 @@ const { mockNavigate, openCSVSelectorMock, toastSuccessMock, toastErrorMock, moc
     openCSVSelectorMock: vi.fn(),
     toastSuccessMock: vi.fn(),
     toastErrorMock: vi.fn(),
-    mockUseAuth: vi.fn(() => ({ canSeeFinancials: true as boolean | 'unknown' })),
+    mockUseAuth: vi.fn(() => ({
+      canSeeFinancials: true as boolean | 'unknown',
+      can: () => true as const,
+    })),
   }));
 
 vi.mock('react-router-dom', async () => {
@@ -472,7 +476,7 @@ beforeEach(() => {
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   mockUseAuth.mockReset();
-  mockUseAuth.mockReturnValue({ canSeeFinancials: true });
+  mockUseAuth.mockReturnValue({ canSeeFinancials: true, can: () => true });
   mockedSupabase.__resetSupabaseMock();
 
   mockedGetClientes.mockReset();
@@ -628,7 +632,7 @@ describe('ClientesPage', () => {
   });
 
   it('hides the monthly value field and omits valor_mensal from the payload when canSeeFinancials is false', async () => {
-    mockUseAuth.mockReturnValue({ canSeeFinancials: false });
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: () => true });
 
     renderPage();
 
@@ -806,7 +810,7 @@ describe('ClientesPage', () => {
   });
 
   it('rejects the whole CSV import when a restricted user supplies the protected column', async () => {
-    mockUseAuth.mockReturnValue({ canSeeFinancials: false });
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: () => true });
 
     renderPage();
 
@@ -871,5 +875,71 @@ describe('ClientesPage', () => {
         args: ['profile_picture_url', 'is', null],
       });
     });
+  });
+});
+
+/**
+ * ClientesPage had NO role check at all before Task 14 — any authenticated
+ * member could add/edit/delete/import clients. `AGENT_ROLE_PRESET.clientes`
+ * is 'editar' (lib/permissions.ts), so gating on `can('clientes', 'editar')
+ * === true` preserves that for every legacy chassis role (owner/admin/agent)
+ * byte-for-byte; only a CUSTOM role (`role_id` set) can now differ from full
+ * access, per its own `clientes` grant.
+ */
+describe('ClientesPage — mutation buttons gated on clientes:editar', () => {
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('keeps a legacy agent unrestricted: the clientes:editar preset grants Novo Cliente/Editar', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(fakeMembership({ role: 'agent' })),
+    });
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    const card = getClientCard('Gamma Care');
+    expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+  });
+
+  it('hides Novo Cliente/Importar CSV/Editar/Remover for a custom role with clientes:ver only', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'ver' } }),
+      ),
+    });
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.queryByRole('button', { name: 'Novo Cliente' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar CSV' })).not.toBeInTheDocument();
+    const card = getClientCard('Gamma Care');
+    expect(within(card).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+  });
+
+  it('shows Novo Cliente/Importar CSV/Editar/Remover for a custom role with clientes:editar', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'editar' } }),
+      ),
+    });
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    const card = getClientCard('Gamma Care');
+    expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Remover' })).toBeInTheDocument();
   });
 });

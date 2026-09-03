@@ -292,7 +292,12 @@ export function WorkflowDrawer({
     enabled: postIds.length > 0,
   });
 
-  const { user, role } = useAuth();
+  const { user, role, can } = useAuth();
+  // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
+  // -- AGENT_ROLE_PRESET.automacoes is 'editar' (lib/permissions.ts), so a
+  // legacy agent already gets full write on instagram_comment_automations
+  // everywhere else; only this drawer shortcut denied it.
+  const canManageAutomations = can('automacoes', 'editar') === true;
 
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
@@ -965,6 +970,7 @@ export function WorkflowDrawer({
                           commentThreads={commentThreads.filter((t) => t.post_id === post.id)}
                           currentUserId={user?.id}
                           currentUserRole={role}
+                          canManageAutomations={canManageAutomations}
                           workspaceUsers={workspaceUsers}
                           hasMedia={(post as any).has_media ?? false}
                           hasInstagramAccount={hasInstagramAccount}
@@ -1176,6 +1182,7 @@ interface SortablePostItemProps {
   commentThreads: CommentThreadWithComments[];
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
+  canManageAutomations: boolean;
   workspaceUsers: { id: string; nome: string; avatar_url: string }[];
   hasMedia: boolean;
   hasInstagramAccount: boolean;
@@ -1222,6 +1229,7 @@ function SortablePostItem({
   commentThreads,
   currentUserId,
   currentUserRole,
+  canManageAutomations,
   workspaceUsers,
   hasMedia,
   hasInstagramAccount,
@@ -1382,6 +1390,7 @@ function SortablePostItem({
         commentThreads={commentThreads}
         currentUserId={currentUserId}
         currentUserRole={currentUserRole}
+        canManageAutomations={canManageAutomations}
         workspaceUsers={workspaceUsers}
         hasInstagramAccount={hasInstagramAccount}
         igAccountStatus={igAccountStatus}

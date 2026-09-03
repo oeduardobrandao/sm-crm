@@ -51,8 +51,8 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 export default function MembroDetalhePage() {
-  const { role, canSeeFinancials } = useAuth();
-  const isAgent = role === 'agent';
+  const { canSeeFinancials, can } = useAuth();
+  const canEditTeam = can('equipe', 'editar') === true;
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -77,7 +77,7 @@ export default function MembroDetalhePage() {
   });
   // getTransacoes returns raw financial rows: this page is not a financial
   // route, so the route guard never covers it. Gate the fetch on the
-  // capability itself, not just `!isAgent` (a restricted admin is not an
+  // capability itself, not just `canEditTeam` (a restricted admin is not an
   // agent either).
   const { data: transacoesRaw = [], isLoading: loadingTx } = useQuery({
     queryKey: ['transacoes'],
@@ -157,7 +157,7 @@ export default function MembroDetalhePage() {
         <Button variant="outline" onClick={() => navigate('/equipe')}>
           <ArrowLeft className="h-4 w-4" /> Voltar
         </Button>
-        {!isAgent && (
+        {canEditTeam && (
           <div className="header-actions">
             <Button variant="outline" onClick={openEdit}>
               <Edit2 className="h-4 w-4" /> Editar
@@ -187,7 +187,7 @@ export default function MembroDetalhePage() {
             </div>
           </div>
 
-          {!isAgent && (
+          {canEditTeam && (
             <StatCardGrid style={{ marginBottom: '1.5rem' }}>
               {(
                 [
@@ -232,12 +232,12 @@ export default function MembroDetalhePage() {
               <div>
                 <strong>Tipo:</strong> {TIPO_LABEL[membro.tipo]}
               </div>
-              {!isAgent && (
+              {canEditTeam && (
                 <div>
                   <strong>Dia de Pagamento:</strong> {membro.data_pagamento ?? '—'}
                 </div>
               )}
-              {!isAgent && (
+              {canEditTeam && (
                 <div>
                   <strong>Custo Mensal:</strong>{' '}
                   {formatFinancialBRL(membro.custo_mensal, canSeeFinancials)}
@@ -246,7 +246,7 @@ export default function MembroDetalhePage() {
             </div>
           </div>
 
-          {!isAgent && (
+          {canEditTeam && (
             <>
               <h3 style={{ marginBottom: 12 }}>Transações</h3>
               {canSeeFinancials === true ? (

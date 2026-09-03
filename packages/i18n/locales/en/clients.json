@@ -351,6 +351,7 @@
     "includeAiAnalysisOff": "AI analysis disabled",
     "sendReportEmailAgentNote": "Only owners and admins can change client emails.",
     "reportPrefUpdateError": "Error updating setting",
+    "readOnlyHint": "Read-only",
     "postType": {
       "feed": "Feed",
       "reels": "Reels",

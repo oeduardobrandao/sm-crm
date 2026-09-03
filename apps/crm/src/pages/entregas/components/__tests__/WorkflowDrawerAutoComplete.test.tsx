@@ -52,7 +52,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { from: () => ({ select: () => ({ eq: () => ({ data: [], error: null }) }) }) },
 }));
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1' }, role: 'owner' }),
+  useAuth: () => ({ user: { id: 'u1' }, role: 'owner', can: () => true }),
 }));
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ limits: null, isLoading: false }),

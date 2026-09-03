@@ -120,17 +120,32 @@ begin
     raise exception 'agent with flag=true should NOT see financials, got %', v_got;
   end if;
 
-  -- No active workspace: NULL, which fails closed in an RLS USING clause.
-  -- (The other NULL-yielding case — membership deleted while
+  -- No active workspace: false, which fails closed in an RLS USING clause.
+  -- (The other falsy-yielding case — membership deleted while
   -- active_workspace_id still points at the workspace — is the stale-pointer
   -- assertion in 51_financial_views.sql.)
+  --
+  -- Pre-Migração-B this was NULL (the old body's bare SELECT over
+  -- workspace_members found zero rows when workspace_id = NULL, and a
+  -- non-aggregate SELECT with no matching row yields NULL). Migração B
+  -- (20260904000002) redefines the body as `SELECT public.has_permission
+  -- ('financeiro', 'ver')`, and has_permission_for's own NULL-safety guard
+  -- (Migração A, 20260903000002) is `IF p_user IS NULL OR p_workspace IS
+  -- NULL OR p_module IS NULL THEN RETURN false` -- an explicit, deterministic
+  -- false rather than a propagated NULL. Both values are equally "fails
+  -- closed" in every boolean context this predicate is used in (RLS USING,
+  -- the write guard, membros_v/clientes_v's CASE) -- verified unaffected by
+  -- 51_financial_views.sql's stale-pointer assertion, which counts rows
+  -- rather than comparing this value directly -- so this is a representation
+  -- change, not a security regression, and the assertion below is updated to
+  -- match the new (equally strict) contract.
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_none, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select public.can_see_financials() into v_got;
   reset role;
-  if v_got is not null then
-    raise exception 'user with no active workspace should get NULL, got %', v_got;
+  if v_got is not false then
+    raise exception 'user with no active workspace should get false, got %', v_got;
   end if;
 
   raise notice '50_can_see_financials: all predicate cases passed';

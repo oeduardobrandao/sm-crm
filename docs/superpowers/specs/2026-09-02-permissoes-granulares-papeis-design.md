@@ -48,8 +48,8 @@ Slugs canônicos (chaves do jsonb):
 | `contratos` | Contratos | |
 | `equipe` | Equipe | roster `membros`, membro-detalhe, convites, aba "Membros" de `/configuracao` |
 | `analytics` | Analytics / Relatórios | páginas de analytics e relatórios |
-| `automacoes` | Automações | automações de status e comentário→DM |
-| `configuracoes` | Configurações do workspace | abas staff: workspace, status, hub, relatórios, MCP; aba Hub do cliente-detalhe |
+| `automacoes` | Automações | automações de comentário→DM (`instagram_comment_automations`) |
+| `configuracoes` | Configurações do workspace | abas staff: workspace, status (inclui regras de automação de status, `post_status_automations`), hub, relatórios, MCP; aba Hub do cliente-detalhe |
 
 Fora do catálogo (fixos): Dashboard e Ajuda sempre visíveis (conteúdo do dashboard se
 auto-filtra pelas permissões); Perfil e Notificações sempre acessíveis (pessoais);
@@ -60,23 +60,39 @@ Cobrança, Armazenamento e Papéis = só dono.
 Os presets são o comportamento legado expresso como permissões. Membro **sem** `role_id`
 usa o preset derivado de `workspace_members.role`:
 
-- **Administrador**: tudo `editar`; `financeiro` condicionado ao `can_see_financials`
-  do membro (o switch atual continua funcionando para admins legados).
-- **Agente** (= comportamento atual do agente, com um delta documentado abaixo):
+- **Administrador**: tudo `editar`; `financeiro` E `contratos` condicionados ao
+  `can_see_financials` do membro (o switch atual continua funcionando para admins
+  legados — Migração B acopla contratos à mesma exceção, paridade com o app hoje:
+  nav-data.ts já esconde os dois juntos para admin restrito).
+- **Agente** (= comportamento atual do agente, sem nenhum delta observável — ver a nota
+  sobre `automacoes` abaixo):
   - `none`: `leads`, `financeiro`, `contratos`, `equipe`, `configuracoes`
-  - `ver`: `analytics`, `automacoes`
+  - `ver`: `analytics`
   - `editar`: `clientes`, `entregas`, `calendario`, `aprovacoes`, `arquivos`, `ideias`,
-    `tarefas`
+    `tarefas`, `automacoes`
 
-**Delta deliberado do preset Agente:** hoje o RLS de automações é assimétrico —
-`instagram_comment_automations` permite SELECT a qualquer membro (desvio intencional
-documentado na própria migration `20260815000002`), mas `post_status_automations`
-restringe até o SELECT a owner/admin (`20260805000002`). A v1 harmoniza: o SELECT das
-duas tabelas passa a exigir `has_permission('automacoes','ver')` e a escrita
-`('automacoes','editar')`. Com o preset `ver`, agentes ganham leitura de
-`post_status_automations` que antes não tinham — sem efeito visível (a única UI que a
-lê é gerida por quem tem `editar`), e evita que o mesmo módulo se comporte diferente
-por tabela.
+**`automacoes` cobre só automações de comentário→DM** (`instagram_comment_automations`),
+não mais automações de status. `instagram_comment_automations` já dava escrita
+irrestrita a qualquer membro do workspace, agente incluso, desde `20260829000002`
+("agent ganha escrita completa... decisão de produto revertida", pós-#399) — SELECT era
+livre desde `20260815000002`. A Migração B (`20260904000002`) rewires `ica_select/
+insert/update/delete` para `has_permission('automacoes', 'ver'/'editar')` em vez do
+tenant-check puro que tinham, e o preset do Agente para `automacoes` é `editar`
+especificamente porque é o nível que preserva essa escrita irrestrita byte a byte —
+`ver` teria revogado o que o agente já tinha. Para um papel customizado, isso passa a
+ser um gate de verdade (module-scoped), diferente do agente legado.
+
+**`post_status_automations` passa a seguir o módulo `configuracoes`, não `automacoes`.**
+Regras de automação de status são configuradas na área de Configurações > Status, e
+`configuracoes` já era `none` no preset do Agente — então esse remapeamento preserva o
+owner/admin-only que `post_status_automations` sempre teve (`20260805000002`) sem
+nenhuma mudança observável, e sem precisar de uma exceção especial dentro do módulo
+`automacoes` só para essa tabela. (Uma versão anterior deste documento tinha
+`post_status_automations` e `instagram_comment_automations` harmonizadas sob o mesmo
+módulo `automacoes` — isso teria produzido dois deltas reais: agente ganhando leitura de
+`post_status_automations` que nunca teve, e perdendo a escrita irrestrita de
+`instagram_comment_automations` que já tinha. A decisão final é remapear, não
+harmonizar, exatamente para evitar os dois.)
 
 O mapa do Agente é hardcoded em DOIS espelhos que devem ser mantidos em paridade (mesmo
 padrão do par `can_see_financials()` SQL / `deriveFinancialAccess` TS): a função SQL
@@ -174,12 +190,14 @@ Religação dos pontos que hoje já têm enforcement por papel:
 
 | Ponto atual | Passa a consultar |
 |---|---|
-| `can_see_financials()` — RLS de `transacoes`/`contratos` (SELECT), views `membros_v`/`clientes_v` | **corpo da função redefinido** → `has_permission('financeiro','ver')` (mantendo o condicional legado de admin). Nenhuma policy financeira é tocada. |
+| `can_see_financials()` — RLS de `transacoes` (SELECT), views `membros_v`/`clientes_v` | **corpo da função redefinido** → `has_permission('financeiro','ver')` (mantendo o condicional legado de admin). Nenhuma policy financeira de `transacoes` é tocada. |
 | Trigger `guard_financial_write()` (`clientes.valor_mensal`, `membros.custo_mensal`) — hoje autoriza escrita com `can_see_financials()` (leitura) | `has_permission('financeiro','editar')`. Sem isso, papel com só `financeiro: ver` alteraria valores por chamada direta ao PostgREST. Fallback legado preserva comportamento (admin com switch ⇒ editar). |
-| RLS de escrita de `transacoes`/`contratos` (INSERT/UPDATE/DELETE) | conjunto adicional `has_permission('financeiro','editar')` |
+| RLS de escrita de `transacoes` (INSERT/UPDATE/DELETE) | conjunto adicional `has_permission('financeiro','editar')` (soma, não troca — `can_see_financials()` permanece no predicado) |
+| RLS de `contratos` (SELECT e escrita, ambas via `can_see_financials()` até aqui) — Migração B, item (2)+(4b) | módulo PRÓPRIO: `has_permission('contratos','ver'\|'editar')`, sem referência a `can_see_financials()`/`financeiro` no texto da policy. O acoplamento com o flag legado de admin não desaparece — migra para DENTRO de `has_permission_for`'s ramo `admin` (`p_module IN ('financeiro','contratos')`), preservando a paridade com o app hoje (nav-data.ts já esconde `financeiro` e `contratos` juntos para admin restrito) |
 | RLS de `leads` (`get_my_role() IS DISTINCT FROM 'agent'`) | SELECT → `has_permission('leads','ver')`; escrita → `('leads','editar')` |
 | RLS de `post_status_definitions` (owner/admin) | `has_permission('configuracoes','editar')` |
-| RLS de `post_status_automations` (owner/admin em TODOS os verbos, SELECT incluso) e `instagram_comment_automations` (SELECT livre p/ membro; escrita owner/admin) | SELECT das duas → `has_permission('automacoes','ver')`; escrita das duas → `('automacoes','editar')` (harmonização; delta do preset Agente documentado no catálogo) |
+| RLS de `post_status_automations` (owner/admin em TODOS os verbos, SELECT incluso — `20260805000002`) | remapeada para o módulo `configuracoes`, não `automacoes`: SELECT → `has_permission('configuracoes','ver')`; escrita → `('configuracoes','editar')`. `configuracoes` já era `none` no preset do Agente, então o owner/admin-only é preservado sem nenhuma mudança observável |
+| RLS de `instagram_comment_automations` (SELECT livre p/ membro desde `20260815000002`; escrita livre p/ qualquer membro, agente incluso, desde `20260829000002`) | SELECT → `has_permission('automacoes','ver')`; escrita → `('automacoes','editar')`. Preset do Agente para `automacoes` é `editar` especificamente para preservar essa escrita livre byte a byte — ver a nota no catálogo |
 | `workspaces` `ws_update_owner_admin` | `has_permission('configuracoes','editar')` |
 | Edge `invite-user` + **`_shared/invite-actions.ts`** (o fluxo central: cria membership direta na rota `add-direct`, recria convites em `resend-link`/`reinvite`) | ator: `equipe.editar`; `role_id` atravessa o `inviteOrResend` inteiro — input, INSERT de `workspace_members` (com `role='agent'` quando custom), todos os INSERTs de `invites`. Travas atuais preservadas (admin não convida owner; seats). |
 | Edge `platform-admin` resend (`invite-handlers.ts` — recria convite via `inviteOrResend` selecionando só `role`) | SELECT do convite inclui `role_id` e o repassa; sem isso o resend do admin da plataforma silenciosamente rebaixa o convite para `agent` |
@@ -298,8 +316,9 @@ confirmada: v1 não reduz o catálogo aos módulos com barreira.
   `has_permission_for`/`has_permission` (dono; papel custom com ver/editar/none;
   fallback admin com e sem `can_see_financials`; fallback agente = tabela-verdade do
   preset; módulo ausente ⇒ nega; sem membership ⇒ nega; grants — `authenticated` não
-  executa o núcleo); policies religadas (leads, automações — SELECT de
-  `post_status_automations` com `ver`, escrita negada; status defs; workspaces update);
+  executa o núcleo); policies religadas (leads; `post_status_automations` sob
+  `configuracoes`; `instagram_comment_automations` sob `automacoes`; status defs;
+  workspaces update; contratos sob módulo próprio);
   trigger financeiro exige `editar` (papel `financeiro: ver` NÃO altera
   `valor_mensal`/`custo_mensal`); FK composta rejeita `role_id` de outro workspace;
   `workspace_roles` presente na publicação `supabase_realtime`; RESTRICT de exclusão

@@ -662,16 +662,26 @@ function AccentChips({ brandColor }: { brandColor: string }) {
 
 /** Branding for the client-facing Hub (Configurações → Hub), with a live preview. */
 export default function HubTab() {
-  const { role } = useAuth();
+  const { can } = useAuth();
   const queryClient = useQueryClient();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the tab layer (configTabs.ts, Task 12) -- mirrors that for this tab's
+  // own queries. Was `role === 'owner' || role === 'admin'`, which a custom
+  // role with the chassis 'agent' role never passed even when it held the
+  // tab-level grant.
+  const canViewConfig = can('configuracoes', 'ver') === true;
+  // F4 (revisão externa): every branding control below was live for a
+  // `ver`-only role. `updateHubBranding` writes to `workspaces`, whose RLS
+  // FILTERS the row out rather than raising, so PostgREST returned 200/zero
+  // rows and the save toasted success without saving anything.
+  const canEditConfig = can('configuracoes', 'editar') === true;
   const { hasFeature, isLoading: entitlementsLoading } = useEntitlements();
   const customized = !entitlementsLoading && hasFeature('feature_brand_customization');
 
   const { data: workspace } = useQuery({
     queryKey: ['currentWorkspace'],
     queryFn: getCurrentWorkspace,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const {
@@ -681,7 +691,7 @@ export default function HubTab() {
   } = useQuery({
     queryKey: ['workspace-hub-branding'],
     queryFn: getHubBranding,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const [brandColor, setBrandColor] = useState('#eab308');
@@ -698,7 +708,7 @@ export default function HubTab() {
   const [removeLogoOpen, setRemoveLogoOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const initializedRef = useRef(false);
-  const controlsDisabled = brandingPending || brandingFailed;
+  const controlsDisabled = brandingPending || brandingFailed || !canEditConfig;
 
   useEffect(() => {
     if (branding) {
@@ -872,6 +882,10 @@ export default function HubTab() {
           workspace route; the per-client tab is still the place to copy/open a
           client's actual link. HubPreview owns its own "Pré-visualização ao vivo"
           caption + toggles header. */}
+      {!canEditConfig && (
+        <p style={{ ...HINT, marginTop: 0, marginBottom: '1rem' }}>Somente leitura</p>
+      )}
+
       <div style={{ marginBottom: '2rem' }}>
         <HubPreview
           draft={previewDraft}
@@ -1079,7 +1093,7 @@ export default function HubTab() {
                   type="button"
                   id="hub-logo-dark-trigger"
                   onClick={() => logoInputRef.current?.click()}
-                  disabled={logoUploading}
+                  disabled={logoUploading || !canEditConfig}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1111,7 +1125,7 @@ export default function HubTab() {
                     variant="ghost"
                     className="text-destructive"
                     onClick={() => setRemoveLogoOpen(true)}
-                    disabled={logoUploading}
+                    disabled={logoUploading || !canEditConfig}
                     style={{ alignSelf: 'flex-start' }}
                   >
                     Remover
@@ -1124,10 +1138,11 @@ export default function HubTab() {
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 hidden
+                disabled={!canEditConfig}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   e.target.value = '';
-                  if (file) handleLogoDarkUpload(file);
+                  if (file && canEditConfig) handleLogoDarkUpload(file);
                 }}
               />
             </div>
@@ -1181,7 +1196,10 @@ export default function HubTab() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveLogoDark} disabled={logoUploading}>
+            <AlertDialogAction
+              onClick={handleRemoveLogoDark}
+              disabled={logoUploading || !canEditConfig}
+            >
               Remover
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // HubClienteTab wraps the pre-existing HubTab.tsx (ported unchanged from the
 // pre-split ClienteDetalhePage, see git history at d30adeea) with two
@@ -66,8 +67,26 @@ const CLIENTE: Cliente = {
   conta_id: 'conta-42',
 };
 
-function setAuth(workspaceRole: 'owner' | 'admin' | 'agent' | null) {
-  mockedUseAuth.mockReturnValue({ workspaceRole } as never);
+/**
+ * Task 14: the internal restriction check moved from the coarse
+ * `workspaceRole === 'agent'` to a tri-state read of `can('configuracoes',
+ * 'editar')` (`false` shows the notice, `'unknown'` shows a loading
+ * spinner, `true` renders the real Hub). Passing a legacy `workspaceRole`
+ * here derives a real, preset-backed `can` (role_id: null) so the owner/
+ * admin/agent cases below exercise the exact same truth table
+ * `derivePermission` does in production; pass `can` directly to simulate a
+ * custom role instead. Passing `null` for `workspaceRole` (with no `can`
+ * override) drives `can()` to 'unknown' for every module, mirroring a real
+ * unresolved AuthContext.
+ */
+function setAuth(
+  workspaceRole: 'owner' | 'admin' | 'agent' | null,
+  can?: ReturnType<typeof makeCan>,
+) {
+  mockedUseAuth.mockReturnValue({
+    workspaceRole,
+    can: can ?? makeCan(workspaceRole === null ? null : fakeMembership({ role: workspaceRole })),
+  } as never);
 }
 
 function OutletContextProvider({ cliente }: { cliente: Cliente }) {
@@ -141,6 +160,73 @@ describe('HubClienteTab', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('hub-tab')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The bug this task fixes: a custom role's chassis `workspaceRole` reads
+   * 'agent' (Task 11), but if its role_id permissions grant
+   * `configuracoes:editar` it already passes the ROUTE-level guard
+   * (clienteTabs.model.ts, Task 12) to reach this component. Before this
+   * fix, the notice below still fired because it read the coarse
+   * `workspaceRole` instead of `can()` — contradicting the route guard that
+   * just let the member through. Supersedes the pending chip
+   * task_7b0968a7, which flagged exactly this.
+   */
+  it('renders the real HubTab for a custom role with configuracoes:editar (the fix)', async () => {
+    setAuth(
+      'agent',
+      makeCan(
+        fakeMembership({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { configuracoes: 'editar' },
+        }),
+      ),
+    );
+    getWorkspaceSlugMock.mockResolvedValue('dk-marketing-medico');
+    renderTab();
+
+    expect(await screen.findByTestId('hub-tab')).toHaveTextContent(
+      'hub-42-conta-42-dk-marketing-medico',
+    );
+    expect(
+      screen.queryByText(/apenas para proprietários e administradores/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('still shows RoleRestrictionNotice for a custom role without configuracoes:editar', async () => {
+    setAuth(
+      'agent',
+      makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+      ),
+    );
+    getWorkspaceSlugMock.mockResolvedValue('dk-marketing-medico');
+    renderTab();
+
+    expect(await screen.findAllByText('Hub do Cliente')).toHaveLength(2);
+    expect(screen.queryByTestId('hub-tab')).not.toBeInTheDocument();
+  });
+
+  /**
+   * Task 14 fix round 2 (external review, hydration): `can()` is tri-state
+   * ('unknown' before membership resolves). The gate used to read `!==
+   * true`, which flashed the restriction notice at EVERY viewer — owner/
+   * admin included — during hydration. `setAuth(null)` drives `can()` to
+   * 'unknown' for every module (mirrors a real unresolved AuthContext).
+   */
+  it('shows a loading spinner (no notice, no HubTab) while membership/can() is unresolved', () => {
+    setAuth(null);
+    getWorkspaceSlugMock.mockResolvedValue('dk-marketing-medico');
+    const { container } = renderTab();
+
+    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.queryByTestId('hub-tab')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'O gerenciamento do Hub do Cliente está disponível apenas para proprietários e administradores do workspace.',
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it('does not render HubTab until workspaceSlug resolves, for an owner', () => {

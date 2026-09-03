@@ -351,6 +351,7 @@
     "includeAiAnalysisOff": "Análise AI desativada",
     "sendReportEmailAgentNote": "Apenas donos e admins alteram e-mails de cliente.",
     "reportPrefUpdateError": "Erro ao atualizar configuração",
+    "readOnlyHint": "Somente leitura",
     "postType": {
       "feed": "Feed",
       "reels": "Reels",

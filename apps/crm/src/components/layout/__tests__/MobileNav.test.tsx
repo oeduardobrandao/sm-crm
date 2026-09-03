@@ -23,6 +23,7 @@ vi.mock('../../../hooks/useMensagensUnread', () => ({
 import MobileNav from '../MobileNav';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
@@ -44,7 +45,10 @@ function PathProbe() {
   return <div data-testid="path">{loc.pathname}</div>;
 }
 
+type Role = 'owner' | 'admin' | 'agent';
+
 function setAuth(overrides: Record<string, unknown> = {}) {
+  const role: Role = (overrides.role as Role | undefined) ?? 'owner';
   mockedUseAuth.mockReturnValue({
     user: { id: '1' } as any,
     session: {} as any,
@@ -55,8 +59,10 @@ function setAuth(overrides: Record<string, unknown> = {}) {
       conta_id: 'c1',
       ...overrides,
     } as any,
-    role: (overrides.role as string) || 'owner',
+    role,
+    workspaceRole: role,
     canSeeFinancials: overrides.canSeeFinancials ?? true,
+    can: makeCan(fakeMembership({ role })),
     loading: false,
     signOut: (overrides.signOut as any) || vi.fn(),
     refreshProfile: vi.fn(),
@@ -353,5 +359,83 @@ describe('MobileNav', () => {
     const badge = screen.getByTestId('mensagens-nav-badge');
     expect(badge).toBeInTheDocument();
     expect(badge).toHaveTextContent('99+');
+  });
+
+  /**
+   * Task 14, revisão externa round 4 (P2): the fixed primary bar
+   * (dashboard/clientes/analytics/entregas) used to render unconditionally
+   * regardless of role -- only the "Mais" sheet (getMoreSheetGroups) ran the
+   * NAV_MODULE permission filter. A denied module's primary item now
+   * disappears too, via the same NAV_MODULE table.
+   */
+  describe('primary bar gated on NAV_MODULE/can()', () => {
+    it('hides the Clientes primary item for a custom role with clientes:none, keeping Dashboard', () => {
+      mockedUseAuth.mockReturnValue({
+        user: { id: '1' } as any,
+        profile: { id: '1', nome: 'Ana Maria', role: 'agent', conta_id: 'c1' } as any,
+        role: 'agent',
+        workspaceRole: 'agent',
+        canSeeFinancials: false,
+        can: makeCan(
+          fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'none' } }),
+        ),
+        loading: false,
+        signOut: vi.fn(),
+        refreshProfile: vi.fn(),
+      } as any);
+      renderMobileNav('/dashboard');
+
+      expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Clientes' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the Dashboard primary item even with no permissions granted at all', () => {
+      mockedUseAuth.mockReturnValue({
+        user: { id: '1' } as any,
+        profile: { id: '1', nome: 'Ana Maria', role: 'agent', conta_id: 'c1' } as any,
+        role: 'agent',
+        workspaceRole: 'agent',
+        canSeeFinancials: false,
+        can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+        loading: false,
+        signOut: vi.fn(),
+        refreshProfile: vi.fn(),
+      } as any);
+      renderMobileNav('/dashboard');
+
+      expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Clientes' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Analytics' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Entregas' })).not.toBeInTheDocument();
+    });
+
+    it("keeps every legacy agent's primary item visible (preset grants clientes/analytics/entregas) — no regression", () => {
+      setAuth({ role: 'agent' });
+      renderMobileNav('/dashboard');
+
+      expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Clientes' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Analytics' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Entregas' })).toBeInTheDocument();
+    });
+
+    it('shows a custom role with clientes:ver the Clientes primary item (the fix — ver satisfies the nav gate)', () => {
+      mockedUseAuth.mockReturnValue({
+        user: { id: '1' } as any,
+        profile: { id: '1', nome: 'Ana Maria', role: 'agent', conta_id: 'c1' } as any,
+        role: 'agent',
+        workspaceRole: 'agent',
+        canSeeFinancials: false,
+        can: makeCan(
+          fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'ver' } }),
+        ),
+        loading: false,
+        signOut: vi.fn(),
+        refreshProfile: vi.fn(),
+      } as any);
+      renderMobileNav('/dashboard');
+
+      expect(screen.getByRole('button', { name: 'Clientes' })).toBeInTheDocument();
+    });
   });
 });

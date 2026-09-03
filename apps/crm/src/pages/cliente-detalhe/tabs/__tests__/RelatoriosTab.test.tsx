@@ -4,15 +4,16 @@ import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+
+const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+vi.mock('@/context/AuthContext', () => ({ useAuth: useAuthMock }));
 
 const { updateClienteMock } = vi.hoisted(() => ({ updateClienteMock: vi.fn() }));
 vi.mock('@/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store')>()),
   updateCliente: (...args: unknown[]) => updateClienteMock(...args),
 }));
-
-const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
-vi.mock('../../../../context/AuthContext', () => ({ useAuth: useAuthMock }));
 
 const { toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
   toastSuccessMock: vi.fn(),
@@ -90,11 +91,24 @@ function renderTab(cliente: Cliente = CLIENTE) {
   return { ...utils, queryClient, invalidateSpy };
 }
 
+/**
+ * RelatoriosTab reads BOTH `can` (module permission, Task 14) and the coarse
+ * `workspaceRole` (the send_report_email DB trigger's own owner/admin check,
+ * migration 20260904000001) off `useAuth()`, so every mock has to supply both
+ * or one of the two gates silently reads `undefined`. This helper keeps them
+ * consistent: `workspaceRole` defaults to the membership's chassis role,
+ * which is exactly what a custom role reports in the real app.
+ */
+function authValue(overrides: Parameters<typeof fakeMembership>[0] = {}) {
+  const membership = fakeMembership(overrides);
+  return { can: makeCan(membership), workspaceRole: membership.role };
+}
+
 beforeEach(() => {
-  // Default to owner so the pre-existing suite below (written before the
-  // agent role gate existed) keeps exercising the "current behaviour
-  // intact" path without every test having to set this up.
-  useAuthMock.mockReturnValue({ workspaceRole: 'owner' });
+  // Default to owner so the pre-existing suites (written before either gate
+  // existed) keep exercising the "current behaviour intact" path without
+  // every test having to set this up.
+  useAuthMock.mockReturnValue(authValue({ role: 'owner' }));
 });
 
 afterEach(() => {
@@ -180,6 +194,92 @@ describe('RelatoriosTab', () => {
       .map((q) => q.queryKey[0]);
     expect(keys).toEqual([]);
   });
+
+  /**
+   * Task 14, revisão externa round 3 (P1): the TAB's own mount is gated on
+   * `analytics:ver` at the route layer (clienteTabs.model.ts) -- unrelated
+   * to whether the two switches here should be interactive, since both call
+   * `updateCliente` (a write against a tenant-only-RLS table). A viewer with
+   * read-only `analytics:ver` (custom role, no `clientes:editar`) previously
+   * got fully working write toggles just by reaching this tab. Gated on
+   * `can('clientes','editar') === true`; `AGENT_ROLE_PRESET.clientes` is
+   * 'editar', so a legacy agent (who already sees this tab, per the
+   * documented delta) keeps the switches -- parity with the client-edit
+   * access it already has everywhere else.
+   *
+   * send_report_email carries a SECOND, independent gate (migration
+   * 20260904000001's trg_cliente_notify_guard, which checks the coarse
+   * owner/admin role and knows nothing about role_id/permissions), so it is
+   * only interactive when BOTH gates clear. include_ai_analysis has no such
+   * trigger and only carries the clientes:editar gate.
+   */
+  describe('switches gated on clientes:editar', () => {
+    it('keeps include_ai_analysis enabled for a legacy agent (clientes preset is editar — parity, not a regression)', () => {
+      useAuthMock.mockReturnValue(authValue({ role: 'agent' }));
+      renderTab();
+
+      expect(screen.getByLabelText('Incluir análise AI')).not.toBeDisabled();
+      expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+      // send_report_email still blocked by the DB trigger's owner/admin check.
+      expect(screen.getByLabelText('Enviar relatório por e-mail')).toBeDisabled();
+    });
+
+    it('keeps both switches enabled for a custom role with clientes:editar on an admin chassis', () => {
+      useAuthMock.mockReturnValue(
+        authValue({ role: 'admin', role_id: 'role-1', permissions: { clientes: 'editar' } }),
+      );
+      renderTab();
+
+      expect(screen.getByLabelText('Enviar relatório por e-mail')).not.toBeDisabled();
+      expect(screen.getByLabelText('Incluir análise AI')).not.toBeDisabled();
+      expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+    });
+
+    it('disables both switches (with "Somente leitura") for a custom role with analytics:ver but no clientes:editar', () => {
+      useAuthMock.mockReturnValue(
+        authValue({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { analytics: 'ver' },
+        }),
+      );
+      renderTab();
+
+      // Asserts the `disabled` attribute itself, not a click-then-no-call
+      // round trip: the mocked Switch is a plain controlled <input>, and
+      // jsdom's fireEvent.click dispatches a synthetic event that still
+      // reaches its onChange handler even when disabled (real browsers
+      // suppress this for genuine user clicks; Radix's actual Switch
+      // enforces it in its own click handling regardless). `disabled` is
+      // the contract this suite can verify without re-testing Radix/jsdom
+      // click semantics.
+      const sendEmail = screen.getByLabelText('Enviar relatório por e-mail');
+      const includeAi = screen.getByLabelText('Incluir análise AI');
+      expect(sendEmail).toBeDisabled();
+      expect(includeAi).toBeDisabled();
+      expect(screen.getByText('Somente leitura')).toBeInTheDocument();
+      // The read-only hint replaces the owner/admin note: with no
+      // clientes:editar at all, "only owners/admins" would misdescribe why.
+      expect(
+        screen.queryByText('Apenas donos e admins alteram e-mails de cliente.'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('keeps include_ai_analysis enabled for a custom role with clientes:editar', () => {
+      useAuthMock.mockReturnValue(
+        authValue({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { clientes: 'editar' },
+        }),
+      );
+      renderTab();
+
+      expect(screen.getByLabelText('Incluir análise AI')).not.toBeDisabled();
+      expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Enviar relatório por e-mail')).toBeDisabled();
+    });
+  });
 });
 
 // The route itself already keeps an agent off /clientes/:id/relatorios
@@ -191,7 +291,7 @@ describe('RelatoriosTab', () => {
 // (trg_cliente_notify_guard, migration 20260904000001).
 describe('RelatoriosTab — agent role gate on send_report_email', () => {
   it('disables the send_report_email switch and shows the explanatory note for an agent', () => {
-    useAuthMock.mockReturnValue({ workspaceRole: 'agent' });
+    useAuthMock.mockReturnValue(authValue({ role: 'agent' }));
     renderTab();
 
     const sendEmail = screen.getByLabelText('Enviar relatório por e-mail') as HTMLInputElement;
@@ -202,7 +302,7 @@ describe('RelatoriosTab — agent role gate on send_report_email', () => {
   });
 
   it('does not call updateCliente when an agent clicks the disabled send_report_email switch', () => {
-    useAuthMock.mockReturnValue({ workspaceRole: 'agent' });
+    useAuthMock.mockReturnValue(authValue({ role: 'agent' }));
     renderTab();
 
     fireEvent.click(screen.getByLabelText('Enviar relatório por e-mail'));
@@ -211,7 +311,7 @@ describe('RelatoriosTab — agent role gate on send_report_email', () => {
   });
 
   it('leaves include_ai_analysis enabled and clickable for an agent', async () => {
-    useAuthMock.mockReturnValue({ workspaceRole: 'agent' });
+    useAuthMock.mockReturnValue(authValue({ role: 'agent' }));
     updateClienteMock.mockResolvedValue(undefined);
     renderTab();
 
@@ -226,7 +326,7 @@ describe('RelatoriosTab — agent role gate on send_report_email', () => {
   });
 
   it('does not show the agent note or disable the switch for an owner', () => {
-    useAuthMock.mockReturnValue({ workspaceRole: 'owner' });
+    useAuthMock.mockReturnValue(authValue({ role: 'owner' }));
     renderTab();
 
     const sendEmail = screen.getByLabelText('Enviar relatório por e-mail') as HTMLInputElement;
@@ -237,7 +337,7 @@ describe('RelatoriosTab — agent role gate on send_report_email', () => {
   });
 
   it('does not show the agent note or disable the switch for an admin', () => {
-    useAuthMock.mockReturnValue({ workspaceRole: 'admin' });
+    useAuthMock.mockReturnValue(authValue({ role: 'admin' }));
     renderTab();
 
     const sendEmail = screen.getByLabelText('Enviar relatório por e-mail') as HTMLInputElement;

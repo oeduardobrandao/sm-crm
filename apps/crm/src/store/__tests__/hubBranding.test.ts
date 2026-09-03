@@ -3,9 +3,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // See membership.test.ts for why vi.hoisted() is required here: the '../workspace'
 // import below pulls in '../core', which runs this factory before any plain
 // top-level const in this file would be initialized.
-const { mockSingle, mockUpdateEq, mockGetContaId, mockFrom } = vi.hoisted(() => ({
+const { mockSingle, mockUpdateEq, mockUpdateSelect, mockGetContaId, mockFrom } = vi.hoisted(() => ({
   mockSingle: vi.fn(),
   mockUpdateEq: vi.fn(),
+  // F4 backstop: every workspace update now ends in `.select('id')` so a
+  // zero-row (RLS-filtered) update can be told apart from a real save.
+  mockUpdateSelect: vi.fn(),
   mockGetContaId: vi.fn(),
   mockFrom: vi.fn(),
 }));
@@ -21,6 +24,7 @@ vi.mock('../core', () => ({
 import {
   getHubBranding,
   updateHubBranding,
+  updateWorkspace,
   updateWorkspaceBranding,
   getWorkspaceBranding,
 } from '../workspace';
@@ -42,6 +46,8 @@ describe('getHubBranding / updateHubBranding', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetContaId.mockResolvedValue('ws-1');
+    mockUpdateEq.mockReturnValue({ select: mockUpdateSelect });
+    mockUpdateSelect.mockResolvedValue({ data: [{ id: 'ws-1' }], error: null });
     mockFrom.mockImplementation(() => ({
       select: () => ({ eq: () => ({ single: mockSingle }) }),
       update: () => ({ eq: mockUpdateEq }),
@@ -61,15 +67,26 @@ describe('getHubBranding / updateHubBranding', () => {
   });
 
   it('updates only the fields passed in', async () => {
-    mockUpdateEq.mockResolvedValue({ error: null });
     await updateHubBranding({ hub_radius: 'square', hub_hide_branding: false });
     expect(mockUpdateEq).toHaveBeenCalledWith('id', 'ws-1');
+    expect(mockUpdateSelect).toHaveBeenCalledWith('id');
   });
 
   it('throws when the update fails', async () => {
     const updateError = { message: 'boom' };
-    mockUpdateEq.mockResolvedValue({ error: updateError });
+    mockUpdateSelect.mockResolvedValue({ data: null, error: updateError });
     await expect(updateHubBranding({ hub_radius: 'square' })).rejects.toBe(updateError);
+  });
+
+  // F4 (revisão externa): RLS on `workspaces` FILTERS a forbidden row out of
+  // an UPDATE instead of raising -- PostgREST answers 200 with zero rows and
+  // `error` stays null. Without this check the caller toasted success for a
+  // save that never happened.
+  it('throws when the update is RLS-filtered to zero rows despite no error', async () => {
+    mockUpdateSelect.mockResolvedValue({ data: [], error: null });
+    await expect(updateHubBranding({ hub_radius: 'square' })).rejects.toThrow(
+      'workspace_update_forbidden',
+    );
   });
 });
 
@@ -77,13 +94,14 @@ describe('updateWorkspaceBranding', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetContaId.mockResolvedValue('ws-1');
+    mockUpdateEq.mockReturnValue({ select: mockUpdateSelect });
+    mockUpdateSelect.mockResolvedValue({ data: [{ id: 'ws-1' }], error: null });
     mockFrom.mockImplementation(() => ({
       update: () => ({ eq: mockUpdateEq }),
     }));
   });
 
   it('no longer accepts brand_color at the type level — updateHubBranding is its one writer', async () => {
-    mockUpdateEq.mockResolvedValue({ error: null });
     // @ts-expect-error brand_color moved to updateHubBranding; this call would not compile.
     await updateWorkspaceBranding({ brand_color: '#000000', send_report_email: true });
     expect(mockUpdateEq).toHaveBeenCalledWith('id', 'ws-1');
@@ -92,9 +110,45 @@ describe('updateWorkspaceBranding', () => {
   // Central de Notificações, Fase 2 (spec 2026-09-02): "Pendências do Hub" master
   // switch writes workspaces.send_client_event_emails through this same writer.
   it('accepts send_client_event_emails alongside send_report_email', async () => {
-    mockUpdateEq.mockResolvedValue({ error: null });
     await updateWorkspaceBranding({ send_client_event_emails: true });
     expect(mockUpdateEq).toHaveBeenCalledWith('id', 'ws-1');
+  });
+
+  it('throws when the update is RLS-filtered to zero rows despite no error', async () => {
+    mockUpdateSelect.mockResolvedValue({ data: [], error: null });
+    await expect(updateWorkspaceBranding({ send_report_email: true })).rejects.toThrow(
+      'workspace_update_forbidden',
+    );
+  });
+});
+
+// updateWorkspace (name/logo/report splash) shares the same backstop.
+describe('updateWorkspace', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUpdateEq.mockReturnValue({ select: mockUpdateSelect });
+    mockUpdateSelect.mockResolvedValue({ data: [{ id: 'ws-1' }], error: null });
+    mockFrom.mockImplementation(() => ({
+      update: () => ({ eq: mockUpdateEq }),
+    }));
+  });
+
+  it('resolves when a row comes back', async () => {
+    await expect(updateWorkspace('ws-1', { name: 'Nova' })).resolves.toBeUndefined();
+    expect(mockUpdateSelect).toHaveBeenCalledWith('id');
+  });
+
+  it('throws when the update is RLS-filtered to zero rows despite no error', async () => {
+    mockUpdateSelect.mockResolvedValue({ data: [], error: null });
+    await expect(updateWorkspace('ws-1', { name: 'Nova' })).rejects.toThrow(
+      'workspace_update_forbidden',
+    );
+  });
+
+  it('throws when the update itself errors', async () => {
+    const updateError = { message: 'boom' };
+    mockUpdateSelect.mockResolvedValue({ data: null, error: updateError });
+    await expect(updateWorkspace('ws-1', { name: 'Nova' })).rejects.toBe(updateError);
   });
 });
 

@@ -42,9 +42,20 @@ const HINT: CSSProperties = {
 
 /** Branding for the monthly client report, with a live preview. */
 export default function RelatoriosTab() {
-  const { role } = useAuth();
+  const { can } = useAuth();
   const queryClient = useQueryClient();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the tab layer (configTabs.ts, Task 12) -- mirrors that for this tab's
+  // own queries. Was `role === 'owner' || role === 'admin'`, which a custom
+  // role with the chassis 'agent' role never passed even when it held the
+  // tab-level grant.
+  const canViewConfig = can('configuracoes', 'ver') === true;
+  // F4 (revisão externa): `ver`-only ainda via todos os controles de escrita.
+  // `updateWorkspaceBranding` grava em `workspaces`, cuja RLS FILTRA a linha
+  // em vez de levantar erro -- o PostgREST devolvia 200 com zero linhas e o
+  // toast de sucesso mentia. O backstop de zero linhas fica em
+  // store/workspace.ts; esconder o controle é a correção primária.
+  const canEditConfig = can('configuracoes', 'editar') === true;
 
   // The workspace supplies the logo and name shown in the live preview, plus
   // the id used to persist the cover art. Name/logo are edited on the Workspace
@@ -52,7 +63,7 @@ export default function RelatoriosTab() {
   const { data: workspace } = useQuery({
     queryKey: ['currentWorkspace'],
     queryFn: getCurrentWorkspace,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   type WorkspaceBranding = Awaited<ReturnType<typeof getWorkspaceBranding>>;
@@ -63,7 +74,7 @@ export default function RelatoriosTab() {
   } = useQuery({
     queryKey: ['workspace-branding'],
     queryFn: getWorkspaceBranding,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const [sendReportEmail, setSendReportEmail] = useState(false);
@@ -171,9 +182,12 @@ export default function RelatoriosTab() {
   return (
     <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
       <h3 className="config-title">Relatório Mensal</h3>
-      <p style={{ ...HINT, marginTop: 0, marginBottom: '1.5rem' }}>
+      <p style={{ ...HINT, marginTop: 0, marginBottom: canEditConfig ? '1.5rem' : '0.5rem' }}>
         A marca que seus clientes veem no relatório mensal do Instagram.
       </p>
+      {!canEditConfig && (
+        <p style={{ ...HINT, marginTop: 0, marginBottom: '1.5rem' }}>Somente leitura</p>
+      )}
 
       <div className="config-report-grid">
         <div>
@@ -245,7 +259,7 @@ export default function RelatoriosTab() {
                 id="report-splash-trigger"
                 variant="outline"
                 onClick={() => splashInputRef.current?.click()}
-                disabled={splashUploading}
+                disabled={splashUploading || !canEditConfig}
               >
                 {splashUploading && <Spinner size="sm" />}
                 {splashUploading ? 'Enviando…' : splashUrl ? 'Substituir arte' : 'Enviar arte'}
@@ -255,7 +269,7 @@ export default function RelatoriosTab() {
                   variant="ghost"
                   className="text-destructive"
                   onClick={() => setSplashRemoveOpen(true)}
-                  disabled={splashUploading}
+                  disabled={splashUploading || !canEditConfig}
                 >
                   Remover arte
                 </Button>
@@ -270,10 +284,11 @@ export default function RelatoriosTab() {
               type="file"
               accept="image/jpeg,image/png,image/webp"
               hidden
+              disabled={!canEditConfig}
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
-                if (file) handleSplashUpload(file);
+                if (file && canEditConfig) handleSplashUpload(file);
               }}
             />
           </div>
@@ -283,7 +298,7 @@ export default function RelatoriosTab() {
             <Switch
               id="report-email"
               checked={sendReportEmail}
-              disabled={brandingPending || brandingFailed}
+              disabled={brandingPending || brandingFailed || !canEditConfig}
               onCheckedChange={setSendReportEmail}
               style={{ marginTop: 2, flexShrink: 0 }}
             />
@@ -316,7 +331,9 @@ export default function RelatoriosTab() {
               placeholder values over the workspace's real branding. */}
           <Button
             onClick={() => brandingMutation.mutate()}
-            disabled={brandingMutation.isPending || brandingPending || brandingFailed}
+            disabled={
+              brandingMutation.isPending || brandingPending || brandingFailed || !canEditConfig
+            }
           >
             {brandingMutation.isPending && <Spinner size="sm" />} Salvar
           </Button>
@@ -347,7 +364,10 @@ export default function RelatoriosTab() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveSplash} disabled={splashUploading}>
+            <AlertDialogAction
+              onClick={handleRemoveSplash}
+              disabled={splashUploading || !canEditConfig}
+            >
               Remover arte
             </AlertDialogAction>
           </AlertDialogFooter>

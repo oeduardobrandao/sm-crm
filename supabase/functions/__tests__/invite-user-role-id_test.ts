@@ -23,7 +23,12 @@ Deno.test("invite-user: a non-uuid role_id is rejected with 400 'Papel inválido
   // generic 500 for every other thrown Error here. Only the explicit-status
   // pattern used by the sibling membroId validation actually reaches the
   // client as 400.
-  const roleIdBlock = source.match(/const roleId: string \| null[\s\S]*?\n {4}\}\n/)?.[0] ?? "";
+  // Anchored on `if (roleId) {`, not on the `const roleId = ...` declaration
+  // above it: a second external-review round inserted an elevated-invite
+  // guard between the two (own `if (...) { throw ... }` block, own 4-indent
+  // closing brace), which made the old declaration-anchored regex capture
+  // that intervening block instead of this one.
+  const roleIdBlock = source.match(/if \(roleId\) \{[\s\S]*?\n {4}\}\n/)?.[0] ?? "";
   assert(roleIdBlock.length > 0, "expected a role_id validation block");
   assertMatch(roleIdBlock, /status:\s*400/, "expected the role_id rejection to respond 400");
   assert(!/throw new Error\(['"]Papel inválido/.test(source), "must not rely on the generic 500 catch-all for this validation");

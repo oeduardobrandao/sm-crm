@@ -30,27 +30,37 @@ it('TT-01: owner: tudo true', () => {
 });
 
 // TT-02: admin legado, can_see_financials=true: financeiro/ver e
-// financeiro/editar => true
-it('TT-02: admin legado (can_see_financials=true): financeiro/ver e financeiro/editar true', () => {
+// financeiro/editar => true. Migração B (20260904000002) acopla contratos à
+// mesma exceção — ver o comentário no ramo 'admin' de derivePermission.
+it('TT-02: admin legado (can_see_financials=true): financeiro e contratos (ver/editar) true', () => {
   const m = legacy('admin', true);
   expect(derivePermission(m, 'financeiro', 'ver')).toBe(true);
   expect(derivePermission(m, 'financeiro', 'editar')).toBe(true);
+  expect(derivePermission(m, 'contratos', 'ver')).toBe(true);
+  expect(derivePermission(m, 'contratos', 'editar')).toBe(true);
 });
 
 // TT-03: admin legado, can_see_financials=false: financeiro/ver e
-// financeiro/editar => false
-it('TT-03: admin legado (can_see_financials=false): financeiro/ver e financeiro/editar false', () => {
+// financeiro/editar => false. Migração B: contratos segue o mesmo flag —
+// fato de produção (nav-data.ts já esconde financeiro E contratos juntos
+// para admin restrito; a RLS legada de contratos_select também lia
+// can_see_financials() diretamente), não uma restrição nova.
+it('TT-03: admin legado (can_see_financials=false): financeiro e contratos (ver/editar) false', () => {
   const m = legacy('admin', false);
   expect(derivePermission(m, 'financeiro', 'ver')).toBe(false);
   expect(derivePermission(m, 'financeiro', 'editar')).toBe(false);
+  expect(derivePermission(m, 'contratos', 'ver')).toBe(false);
+  expect(derivePermission(m, 'contratos', 'editar')).toBe(false);
 });
 
-// TT-04: admin legado, módulos fora de financeiro => true independente do flag
-it('TT-04: admin legado fora de financeiro: sempre true independente do flag', () => {
+// TT-04: admin legado, módulos fora de financeiro/contratos => true
+// independente do flag. Migração B adiciona contratos à mesma exceção que
+// financeiro já tinha (era só financeiro antes desta migração).
+it('TT-04: admin legado fora de financeiro/contratos: sempre true independente do flag', () => {
   for (const canFin of [true, false]) {
     const m = legacy('admin', canFin);
     for (const mod of PERMISSION_MODULES) {
-      if (mod === 'financeiro') continue;
+      if (mod === 'financeiro' || mod === 'contratos') continue;
       expect(derivePermission(m, mod, 'editar')).toBe(true);
     }
   }
@@ -70,11 +80,16 @@ it('TT-06: agent legado: analytics/ver true, analytics/editar false', () => {
   expect(derivePermission(m, 'analytics', 'editar')).toBe(false);
 });
 
-// TT-07: agent legado: automacoes/ver=true, automacoes/editar=false
-it('TT-07: agent legado: automacoes/ver true, automacoes/editar false', () => {
+// TT-07: agent legado: automacoes/ver=true, automacoes/editar=true. Migração
+// B (20260904000002) remapeou 'automacoes' para governar só instagram_
+// comment_automations, que já dava escrita livre a qualquer membro (agente
+// incluso) desde 20260829000002 -- 'editar' preserva isso byte a byte
+// ('ver', usado antes de uma rodada anterior desta migração, teria revogado
+// a escrita que o agente já tinha).
+it('TT-07: agent legado: automacoes/ver e automacoes/editar true', () => {
   const m = legacy('agent');
   expect(derivePermission(m, 'automacoes', 'ver')).toBe(true);
-  expect(derivePermission(m, 'automacoes', 'editar')).toBe(false);
+  expect(derivePermission(m, 'automacoes', 'editar')).toBe(true);
 });
 
 // TT-08: agent legado: leads/ver, financeiro/ver, equipe/ver, contratos/ver,
@@ -266,7 +281,7 @@ it('AGENT_ROLE_PRESET snapshot (mudar aqui exige mudar public.has_permission_for
       "analytics": "ver",
       "aprovacoes": "editar",
       "arquivos": "editar",
-      "automacoes": "ver",
+      "automacoes": "editar",
       "calendario": "editar",
       "clientes": "editar",
       "configuracoes": "none",

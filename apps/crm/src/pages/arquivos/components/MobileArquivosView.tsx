@@ -43,6 +43,12 @@ interface MobileArquivosViewProps {
   onBulkZip: () => void;
   onBulkDelete: () => void;
   isBusy: boolean;
+  /** `can('arquivos', 'editar') === true`. Required (not defaulted) so
+   * ArquivosPage.tsx (this component's only caller) makes the decision
+   * explicitly -- a forgotten wire-up must fail closed, not open. Hides the
+   * upload/create-folder FAB, the selection bar's Excluir button, and
+   * (threaded to FileContextMenu) each file's Renomear/Excluir. */
+  canEdit: boolean;
 }
 
 function FileIcon({ kind, className }: { kind: FileRecord['kind']; className?: string }) {
@@ -281,6 +287,7 @@ function MobileFileGrid({
   isInSelectionMode,
   onToggleSelect,
   longPressTimer,
+  canEdit,
 }: {
   files: FileRecord[];
   onFileAction: (action: string, file: FileRecord) => void;
@@ -289,13 +296,20 @@ function MobileFileGrid({
   isInSelectionMode: boolean;
   onToggleSelect: (id: number) => void;
   longPressTimer: { current: ReturnType<typeof setTimeout> | null };
+  canEdit: boolean;
 }) {
   return (
     <div className="grid grid-cols-2 gap-2.5 px-3">
       {files.map((f) => {
         const isSelected = selectedIds.has(f.id);
         return (
-          <FileContextMenu key={f.id} item={f} type="file" onActionComplete={onActionComplete}>
+          <FileContextMenu
+            key={f.id}
+            item={f}
+            type="file"
+            onActionComplete={onActionComplete}
+            canEdit={canEdit}
+          >
             <button
               onClick={(e) => {
                 if (isInSelectionMode) {
@@ -375,6 +389,7 @@ function MobileFileList({
   isInSelectionMode,
   onToggleSelect,
   longPressTimer,
+  canEdit,
 }: {
   files: FileRecord[];
   onFileAction: (action: string, file: FileRecord) => void;
@@ -383,6 +398,7 @@ function MobileFileList({
   isInSelectionMode: boolean;
   onToggleSelect: (id: number) => void;
   longPressTimer: { current: ReturnType<typeof setTimeout> | null };
+  canEdit: boolean;
 }) {
   return (
     <div
@@ -392,7 +408,13 @@ function MobileFileList({
       {files.map((f, i) => {
         const isSelected = selectedIds.has(f.id);
         return (
-          <FileContextMenu key={f.id} item={f} type="file" onActionComplete={onActionComplete}>
+          <FileContextMenu
+            key={f.id}
+            item={f}
+            type="file"
+            onActionComplete={onActionComplete}
+            canEdit={canEdit}
+          >
             <div
               onClick={(e) => {
                 if (isInSelectionMode) {
@@ -491,6 +513,7 @@ export function MobileArquivosView({
   onBulkZip,
   onBulkDelete,
   isBusy,
+  canEdit,
 }: MobileArquivosViewProps) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filter, setFilter] = useState<FileFilter>('todos');
@@ -548,12 +571,14 @@ export function MobileArquivosView({
             <button className="w-[34px] h-[34px] rounded-sm bg-[var(--surface-hover)] flex items-center justify-center text-[var(--text-main)]">
               <Search className="h-4 w-4" />
             </button>
-            <button
-              onClick={isInsideFolder ? onUploadClick : onCreateFolder}
-              className="w-[34px] h-[34px] rounded-sm bg-[var(--primary-color)] flex items-center justify-center text-[#12151a]"
-            >
-              <Plus className="h-4 w-4" strokeWidth={2.5} />
-            </button>
+            {canEdit && (
+              <button
+                onClick={isInsideFolder ? onUploadClick : onCreateFolder}
+                className="w-[34px] h-[34px] rounded-sm bg-[var(--primary-color)] flex items-center justify-center text-[#12151a]"
+              >
+                <Plus className="h-4 w-4" strokeWidth={2.5} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -700,6 +725,7 @@ export function MobileArquivosView({
                 isInSelectionMode={isInSelectionMode}
                 onToggleSelect={onToggleSelect}
                 longPressTimer={longPressTimer}
+                canEdit={canEdit}
               />
             )}
             {filteredFiles.length > 0 && viewMode === 'list' && (
@@ -711,6 +737,7 @@ export function MobileArquivosView({
                 isInSelectionMode={isInSelectionMode}
                 onToggleSelect={onToggleSelect}
                 longPressTimer={longPressTimer}
+                canEdit={canEdit}
               />
             )}
           </>
@@ -720,13 +747,15 @@ export function MobileArquivosView({
       {isInSelectionMode && (
         <div className="fixed bottom-[80px] left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--surface-main)] border border-[var(--border-color)] shadow-lg">
           <span className="text-xs font-bold text-[var(--primary-color)]">{selectionCount}</span>
-          <button
-            onClick={onBulkMove}
-            disabled={isBusy}
-            className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
-          >
-            Mover
-          </button>
+          {canEdit && (
+            <button
+              onClick={onBulkMove}
+              disabled={isBusy}
+              className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
+            >
+              Mover
+            </button>
+          )}
           <button
             onClick={onBulkZip}
             disabled={isBusy}
@@ -734,20 +763,24 @@ export function MobileArquivosView({
           >
             ZIP
           </button>
-          <button
-            onClick={onBulkCopy}
-            disabled={isBusy}
-            className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
-          >
-            Copiar
-          </button>
-          <button
-            onClick={onBulkDelete}
-            disabled={isBusy}
-            className="text-xs px-2.5 py-1 rounded-full bg-[rgba(245,90,66,0.15)] text-[var(--danger)] disabled:opacity-50"
-          >
-            Excluir
-          </button>
+          {canEdit && (
+            <button
+              onClick={onBulkCopy}
+              disabled={isBusy}
+              className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
+            >
+              Copiar
+            </button>
+          )}
+          {canEdit && (
+            <button
+              onClick={onBulkDelete}
+              disabled={isBusy}
+              className="text-xs px-2.5 py-1 rounded-full bg-[rgba(245,90,66,0.15)] text-[var(--danger)] disabled:opacity-50"
+            >
+              Excluir
+            </button>
+          )}
           <button onClick={onClearSelection} className="text-[var(--text-muted)]">
             <X className="h-3.5 w-3.5" />
           </button>

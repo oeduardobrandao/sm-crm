@@ -8,11 +8,19 @@
 --
 -- 1-3. instagram_comment_automations: flag-off blocks INSERT; flag-on lets
 --      any workspace member (owner/admin/agent) write, same conta_id-only
---      RLS shape as workflow_posts_all (20260402) -- migration 20260829000001
---      dropped the owner/admin-only INSERT/UPDATE/DELETE restriction from
---      20260815000002; downgrade (flag back off) keeps the existing row
---      editable/deletable but blocks new INSERTs (block-new/keep-existing,
---      same policy as 06).
+--      RLS SHAPE as workflow_posts_all (20260402) always had. Migration
+--      20260829000002 dropped the owner/admin-only INSERT/UPDATE/DELETE
+--      restriction from 20260815000002 for good — migration 20260904000002
+--      (Migração B, permissões granulares) rewires ica_* onto
+--      has_permission('automacoes', ...) instead of a plain tenant check,
+--      but the agent PRESET for 'automacoes' is 'editar' specifically so
+--      this suite's behaviour stays byte-for-byte identical: legacy agent
+--      full CRUD is preserved via the preset, not via an unconditional
+--      policy. A CUSTOM role, unlike the legacy agent, IS genuinely gated by
+--      the 'automacoes' module now (covered in
+--      75_permission_rls_rewire.sql's RW-03, not here). Downgrade (flag back
+--      off) keeps the existing row editable/deletable but blocks new
+--      INSERTs (block-new/keep-existing, same policy as 06).
 -- 4. Structural tenant-safety: the composite FKs ica_client_same_tenant and
 --    ias_automation_same_tenant reject cross-workspace pointers even for a
 --    caller that bypasses RLS entirely (table owner, standing in for the
@@ -100,13 +108,19 @@ begin
     values (v_ws, v_cli, 'Promo', array['preco'], 'Chama no DM que te mando o link!')
     returning id into v_auto;
 
-  -- agent SELECT sees the automation
+  -- agent SELECT sees the automation (has_permission('automacoes','ver') --
+  -- legacy agent preset -- migration 20260904000002)
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_agent, 'role', 'authenticated')::text, true);
   select count(*) into v_seen from instagram_comment_automations where conta_id = v_ws;
   assert v_seen = 1, format('agent should read the automation, saw %s', v_seen);
 
-  -- agent INSERT allowed (full CRUD, same as owner/admin)
+  -- agent INSERT allowed (full CRUD, same as owner/admin) -- product
+  -- decision (migration item (6) final round): the agent preset for
+  -- 'automacoes' is 'editar', which preserves 20260829000002's "any
+  -- workspace member writes" byte-for-byte. Enforced via
+  -- has_permission('automacoes','editar') now, not an unconditional policy,
+  -- but the OBSERVED result for a legacy agent is identical.
   insert into instagram_comment_automations
     (conta_id, client_id, name, keywords, dm_message)
     values (v_ws, v_cli, 'Agent-made', array['x'], 'y')

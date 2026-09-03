@@ -1158,6 +1158,17 @@ Aguardar o review externo do Codex (regra da casa), verificar cada apontamento c
 
 ### Task 10: Migração B (religação SQL) + suítes psql
 
+> **Errata (pós-implementação):** o brief abaixo (e a spec original) descrevia
+> `post_status_automations` e `instagram_comment_automations` harmonizadas sob o mesmo
+> módulo `automacoes`. A decisão de produto final foi remapear em vez de harmonizar —
+> `post_status_automations` segue `configuracoes`; `automacoes` cobre só
+> `instagram_comment_automations`, com o preset do Agente em `editar`. Também mudou o
+> tratamento de `contratos` (módulo próprio, não mais can_see_financials() direto) e
+> ganhou o grant explícito de `workspace_roles`. **A spec
+> (`docs/superpowers/specs/2026-09-02-permissoes-granulares-papeis-design.md`) é quem
+> governa** onde ela e este plano divergirem — este documento não foi atualizado
+> retroativamente linha a linha.
+
 **Files:**
 - Create: `supabase/migrations/20260910000001_workspace_roles_b_enforcement.sql` (renumerar acima do tail de main na abertura do PR)
 - Create: `supabase/tests/entitlements/75_permission_rls_rewire.sql`
@@ -1201,7 +1212,11 @@ Aguardar o review externo do Codex (regra da casa), verificar cada apontamento c
 --        (regressão do 52)
 ```
 
-- [ ] **Step 2: Escrever a migração.** Conteúdo, nesta ordem:
+- [ ] **Step 2: Escrever a migração.** Incluir também (follow-up do incidente do PR A):
+grant explícito de SELECT em `workspace_roles` para `authenticated` com REVOKE
+enumerado dos demais (hoje depende dos default privileges do Supabase — que
+cobriram em prod, mas o padrão da casa em 20260728000001 é explicitar) + post-condition
+verificando o grant. Demais conteúdo, nesta ordem:
 
 ```sql
 -- (1) Núcleo financeiro passa a consultar o modelo de papéis. Nenhuma policy
@@ -1636,6 +1651,14 @@ git commit -m "feat(equipe): superfícies de mutação por módulo gateadas por 
 
 ### Task 15: Gate do PR B + runbook de deploy
 
+> **Lição do incidente do PR A (2026-09-02):** o merge dispara o deploy do frontend
+> na Vercel IMEDIATAMENTE, então "banco antes de frontend" significa "banco antes de
+> MERGEAR". A janela de minutos entre o merge do #434 e o db push terminar derrubou
+> o app para todos os membros (getMyMembership 400 por tabela ausente) até a
+> migração aplicar. O hotfix #439 adicionou `isMissingRolesSchemaError` +
+> fallback legado em `getMyMembership` — PRESERVAR esse fallback em qualquer
+> mudança futura da função.
+
 - [ ] **Step 1: Verificação completa** (mesma da Task 9, incluindo entitlements com Docker se disponível).
 
 - [ ] **Step 2: Renumerar migração B acima do tail de origin/main** (mesmo procedimento da Task 9 Step 2).
@@ -1644,14 +1667,33 @@ git commit -m "feat(equipe): superfícies de mutação por módulo gateadas por 
 
 - [ ] **Step 4: Abrir PR B** (mesmo formato do PR A, título `feat(equipe): religação das permissões granulares (RLS, edge functions, guards)`, corpo com os greps de saída e o resultado do roteiro E2E). Aguardar Codex.
 
-- [ ] **Step 5: Runbook de deploy (executar no rollout, na ordem):**
+- [ ] **Step 5: Runbook de deploy (ordem OBRIGATÓRIA, lição do incidente do PR A):**
 
-1. `npx supabase db push --linked` (conferir ANTES `cat supabase/.temp/project-ref` — prod é `skjzpekeqefvlojenfsw`; o link FLIPA).
-2. Edge functions (com `--use-api`; `--no-verify-jwt` NÃO se aplica a nenhuma destas, todas verificam JWT próprio): PR A: `manage-workspace-roles`, `manage-workspace-user`, `invite-user`, `platform-admin`. PR B: os mesmos que mudaram + `automation-media`, `mcp-keys`, `mcp-oauth-consent`.
-3. Frontend (Vercel deploya no merge).
-4. Smoke em prod: `/configuracao/papeis` abre para dono; membro legado sem mudança; criar+atribuir papel num workspace de teste.
+1. **ANTES do merge do PR B**: `npx supabase db push --linked` com a migração B
+   (conferir ANTES `cat supabase/.temp/project-ref` — prod é `skjzpekeqefvlojenfsw`;
+   o link FLIPA; se o push acusar migrações de terceiros não registradas, sondar os
+   objetos em prod e registrar versões já aplicadas em
+   `supabase_migrations.schema_migrations` — NUNCA `--include-all` às cegas).
+2. **AINDA antes do merge**: edge functions (com `--use-api`; `--no-verify-jwt` NÃO
+   se aplica a nenhuma destas, todas verificam JWT próprio): as pendentes do PR A
+   se ainda não subiram (`manage-workspace-roles`, `manage-workspace-user`,
+   `invite-user`, `platform-admin`) + as do PR B (`automation-media`, `mcp-keys`,
+   `mcp-oauth-consent`, e as do A que mudaram de novo).
+3. **Só então mergear** — a Vercel deploya o frontend no merge, já com o banco pronto.
+4. Smoke em prod: `/configuracao/papeis` abre para dono e cria papel; membro legado
+   sem mudança; atribuir papel num workspace de teste e conferir nav/rotas.
 
 ---
+
+## Chores herdados do incidente do PR A (entram no PR B)
+
+- Após o merge do hotfix #439: rebase do branch B sobre main preservando
+  `isMissingRolesSchemaError` + fallback em `getMyMembership`
+  (`apps/crm/src/store/workspace.ts` — conflito provável com a versão da Task 7;
+  as duas intenções devem sobreviver, como no rebase do #435).
+- Desligar o banner de incidente: `INCIDENT_BANNER_ACTIVE = false` em
+  `apps/crm/src/components/layout/IncidentBanner.tsx` (chore no PR B, só depois
+  do #439 mergeado e do incidente formalmente encerrado).
 
 ## Fora de escopo (Fase 2 e follow-ups registrados)
 

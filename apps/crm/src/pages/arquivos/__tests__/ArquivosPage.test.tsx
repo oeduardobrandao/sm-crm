@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 vi.mock('@/services/fileService', () => ({
   getFolderContents: vi.fn(),
@@ -14,6 +15,12 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+vi.mock('@/context/AuthContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/context/AuthContext')>();
+  return { ...actual, useAuth: useAuthMock };
+});
 
 import { getFolderContents, createFolder } from '@/services/fileService';
 import { toast } from 'sonner';
@@ -88,6 +95,7 @@ describe('ArquivosPage', () => {
   beforeEach(() => {
     mockedGetFolderContents.mockReset();
     mockedCreateFolder.mockReset();
+    useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'owner' })) });
   });
 
   it('renders sidebar with FolderTree and heading', async () => {
@@ -107,6 +115,38 @@ describe('ArquivosPage', () => {
     // There may be multiple "Nova pasta" (one in tree, one in toolbar)
     const novaPastaButtons = screen.getAllByText('Nova pasta');
     expect(novaPastaButtons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  /**
+   * Task 14: ArquivosPage had NO role check at all before this task -- any
+   * authenticated member could upload, create folders, and bulk-delete.
+   * `AGENT_ROLE_PRESET.arquivos` is 'editar' (lib/permissions.ts), so gating
+   * the toolbar's "Enviar arquivo" button on `can('arquivos', 'editar') ===
+   * true` preserves that for every legacy chassis role byte-for-byte; only a
+   * CUSTOM role (role_id set) can now differ from full access.
+   */
+  it('hides the toolbar Enviar arquivo button for a custom role without arquivos:editar', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+    });
+    mockedGetFolderContents.mockResolvedValue(makeFolderContents());
+
+    render(<ArquivosPage />, { wrapper: createWrapper() });
+
+    expect(screen.queryByText('Enviar arquivo')).not.toBeInTheDocument();
+  });
+
+  it('shows the toolbar Enviar arquivo button for a custom role with arquivos:editar (the fix)', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { arquivos: 'editar' } }),
+      ),
+    });
+    mockedGetFolderContents.mockResolvedValue(makeFolderContents());
+
+    render(<ArquivosPage />, { wrapper: createWrapper() });
+
+    expect(screen.getByText('Enviar arquivo')).toBeInTheDocument();
   });
 
   it('renders view mode toggle buttons', async () => {

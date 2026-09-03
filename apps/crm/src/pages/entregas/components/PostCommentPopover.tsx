@@ -4,6 +4,7 @@ import type { CommentThreadWithComments, PostComment, Membro } from '@/store';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { MentionText } from '@/components/mentions/MentionText';
 import { MentionTextarea } from '@/components/mentions/MentionTextarea';
+import { useAuth } from '@/context/AuthContext';
 
 interface WorkspaceUser {
   id: string;
@@ -16,7 +17,6 @@ interface PostCommentPopoverProps {
   membros: Membro[];
   workspaceUsers?: WorkspaceUser[];
   currentUserId: string;
-  currentUserRole: 'owner' | 'admin' | 'agent';
   onReply: (threadId: number, content: string) => Promise<void>;
   onResolve: (threadId: number) => Promise<void>;
   onReopen: (threadId: number) => Promise<void>;
@@ -70,7 +70,6 @@ function CommentItem({
   membros,
   workspaceUsers,
   currentUserId,
-  currentUserRole,
   readOnly,
   onEdit,
   onDelete,
@@ -79,7 +78,6 @@ function CommentItem({
   membros: Membro[];
   workspaceUsers: WorkspaceUser[];
   currentUserId: string;
-  currentUserRole: 'owner' | 'admin' | 'agent';
   readOnly?: boolean;
   onEdit: (commentId: number, content: string) => Promise<void>;
   onDelete: (commentId: number) => void;
@@ -88,9 +86,20 @@ function CommentItem({
   const [editContent, setEditContent] = useState(comment.content);
   const [saving, setSaving] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
+  const { can } = useAuth();
 
   const isAuthor = comment.author_id === currentUserId;
-  const canDelete = isAuthor || currentUserRole === 'owner' || currentUserRole === 'admin';
+  // Was `currentUserRole === 'owner' || currentUserRole === 'admin'`.
+  // Deleting SOMEONE ELSE's comment is moderation, not post-content editing:
+  // `post_comments` DELETE RLS is tenant-only (no author/role predicate), so
+  // this UI gate is the ONLY authorization boundary here -- `entregas:editar`
+  // would have widened every legacy agent (AGENT_ROLE_PRESET.entregas is
+  // 'editar') into deleting other people's comments, which the old
+  // owner/admin-only check never allowed. `equipe:editar` reproduces the old
+  // gate byte-for-byte for every legacy chassis role (AGENT_ROLE_PRESET.
+  // equipe is 'none') and models moderation as a team-management capability,
+  // matching MembrosTab/EquipePage's own gate for this module.
+  const canDelete = isAuthor || can('equipe', 'editar') === true;
   const membro = resolveAuthor(comment.author_id, membros, workspaceUsers);
 
   useEffect(() => {
@@ -195,7 +204,6 @@ export default function PostCommentPopover({
   membros,
   workspaceUsers = [],
   currentUserId,
-  currentUserRole,
   onReply,
   onResolve,
   onReopen,
@@ -306,7 +314,6 @@ export default function PostCommentPopover({
             membros={membros}
             workspaceUsers={workspaceUsers}
             currentUserId={currentUserId}
-            currentUserRole={currentUserRole}
             readOnly={readOnly}
             onEdit={onEditComment}
             onDelete={handleDelete}

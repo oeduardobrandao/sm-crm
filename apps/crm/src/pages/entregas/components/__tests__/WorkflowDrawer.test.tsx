@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { BoardCard } from '../../hooks/useEntregasData';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 // WorkflowDrawer has no prior test harness (EntregasPage.test.tsx mocks WorkflowDrawer
@@ -16,7 +17,13 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'user-1' }, role: 'owner', loading: false, profile: null }),
+  useAuth: () => ({
+    user: { id: 'user-1' },
+    role: 'owner',
+    loading: false,
+    profile: null,
+    can: makeCan(fakeMembership({ role: 'owner' })),
+  }),
 }));
 
 vi.mock('@/hooks/useWorkspaceLimits', () => ({

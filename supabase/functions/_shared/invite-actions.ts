@@ -160,11 +160,25 @@ export interface CancelResult {
 
 /**
  * Admin-side invite cancel. Only pending/expired invites may be cancelled
- * (accepted is live membership + history — refuse). When the invitee never
- * finished onboarding the orphan auth user is deleted globally; we capture its
- * impact via captureOrphanImpact BEFORE the delete — the union of its
- * workspace_members set AND any other workspaces holding a pending invite for
- * that email — so callers can audit every workspace the user vanished from.
+ * (accepted is live membership + history — refuse).
+ *
+ * BLAST-RADIUS RULE: the orphan auth user is deleted ONLY when this workspace
+ * is its last tie. `deleteOrphanedAuthUser` is global — it drops the profile,
+ * EVERY workspace_members row and the auth record — so cancelling one
+ * workspace's invite used to evict an identity that other workspaces still
+ * depended on, and to leave their pending invites permanently unredeemable
+ * (the rows survive, having no FK on the email, but their links die with the
+ * user). `captureOrphanImpact` is called BEFORE any mutation precisely so this
+ * can be decided; when it reports any `otherWorkspaceIds` we cancel locally —
+ * delete only this workspace's invite row, `deletedUser: false`,
+ * `affectedWorkspaceIds: [contaId]`.
+ *
+ * This applies to EVERY actor, not just custom roles. The invite/reinvite path
+ * (`inviteOrResend`) handles the same collision differently on purpose: it can
+ * return `needs-confirmation` and let a human opt in, because there the delete
+ * is a means to re-issuing an invite the caller actually wants. A cancel has
+ * no such upside — nobody cancelling workspace A's invite is asking to remove
+ * the person from workspace B — so it fails closed with no prompt.
  */
 export async function cancelInvite(
   adminClient: any,
@@ -200,9 +214,15 @@ export async function cancelInvite(
     });
     if (action === "reinvite" || action === "resend-link") {
       const impact = await captureOrphanImpact(adminClient, authUser.id, email, args.contaId);
-      await deleteOrphanedAuthUser(adminClient, authUser.id);
-      affectedWorkspaceIds = [...new Set([...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds])];
-      deletedUser = true;
+      // Any tie to another workspace vetoes the global delete — see the
+      // blast-radius rule in this function's docstring. Falling through leaves
+      // deletedUser=false and affectedWorkspaceIds=[] so only args.contaId is
+      // reported below, and only this workspace's invite row is removed.
+      if (impact.otherWorkspaceIds.length === 0) {
+        await deleteOrphanedAuthUser(adminClient, authUser.id);
+        affectedWorkspaceIds = [...new Set([...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds])];
+        deletedUser = true;
+      }
     }
   }
 
@@ -225,13 +245,32 @@ export interface InviteOrResendInput {
   /** Membro da equipe this invite links to (Equipe form). Stamped on every
    * invites row; the added route links membros.crm_user_id immediately. */
   membroId?: number | null;
-  /** Custom workspace_roles.id, when the caller picked a granular role.
-   * Stamped on every invites row. Chassis rule: whenever roleId is present,
-   * every invites row written from `role` above collapses to 'agent' too —
-   * never the caller's requested legacy display role — so a later deletion
-   * of the custom role (role_id → NULL via ON DELETE SET NULL) can never
-   * leave behind a stronger legacy role for accept_workspace_invite's
-   * no-role_id path to grant. See effectiveRole below. */
+  /**
+   * Custom workspace_roles.id, when the caller picked a granular role.
+   * Stamped on every invites row. Chassis rule: whenever the RESOLVED roleId
+   * (see below) is present, every invites row written from `role` above
+   * collapses to 'agent' too — never the caller's requested legacy display
+   * role — so a later deletion of the custom role (role_id → NULL via ON
+   * DELETE SET NULL) can never leave behind a stronger legacy role for
+   * accept_workspace_invite's no-role_id path to grant. See effectiveRole
+   * below.
+   *
+   * TRI-STATE on purpose, and the three states are NOT interchangeable:
+   * - `undefined` (key omitted, or explicitly set to `undefined`) — the
+   *   caller does not know about custom roles at all (a legacy/stale bundle,
+   *   or an integration that predates this field). `inviteOrResend` inherits
+   *   whatever role_id the pending row being replaced already carried, the
+   *   same belt-and-braces treatment `membroId` already gets.
+   * - `null` — the caller made an EXPLICIT choice of "no custom role" (a
+   *   plain admin/agent preset). This must NEVER be overridden by
+   *   inheritance: every first-party caller (services/invite.ts,
+   *   MembrosTab.tsx, the platform-admin handlers) sends this explicitly
+   *   precisely so a fresh "Convidar"/resend with a deliberately different
+   *   role choice can never regress back to a stale role_id some earlier,
+   *   unrelated pending invite for the same email happened to carry.
+   * - a string — use it as-is (validated by the HTTP layer before this
+   *   function ever sees it).
+   */
   roleId?: string | null;
 }
 export interface InviteOrResendOpts {
@@ -270,16 +309,6 @@ export async function inviteOrResend(
 ): Promise<InviteOutcome> {
   const email = input.email.toLowerCase();
 
-  // Chassis rule at write time: invites.role is stored as 'agent' whenever
-  // roleId is present, REGARDLESS of the requested display role. The FK
-  // invites_role_same_workspace is ON DELETE SET NULL — deleting the custom
-  // role later leaves role_id NULL, and accept_workspace_invite's no-role_id
-  // path then grants membership at whatever invites.role says. If that column
-  // held the original (possibly stronger) legacy role, a deleted custom role
-  // would silently upgrade the invitee on accept. Storing 'agent' here closes
-  // that hole independent of the role_id FK's cascade behavior.
-  const effectiveRole: "owner" | "admin" | "agent" = input.roleId ? "agent" : input.role;
-
   // (1) Seat pre-check. The pending count EXCLUDES a matching pending row for
   // this email (it is being replaced, not added — finding 3), so members +
   // pending-for-OTHER-emails < limit correctly leaves room for this one row.
@@ -308,6 +337,44 @@ export async function inviteOrResend(
       .not("membro_id", "is", null).maybeSingle();
     membroId = prior?.membro_id ?? null;
   }
+
+  // Resolve the custom role_id for every invites row written below, mirroring
+  // the membroId inheritance immediately above -- but TRI-STATE on
+  // `input.roleId`, not a loose `== null` check (see the field's own
+  // JSDoc on InviteOrResendInput for the full contract):
+  //   - `undefined` -> a caller that doesn't know about custom roles at all
+  //     (legacy/stale bundle). Inherit from the pending row being replaced:
+  //     deletePriorInvites + re-insert would otherwise silently downgrade a
+  //     restricted-papel invite to the plain 'agent' fallback the next time
+  //     it's resent.
+  //   - `null` -> the caller made an EXPLICIT choice of "no custom role".
+  //     Must NOT inherit here: a fresh "Convidar" (or a resend) with a
+  //     deliberately different, plain role choice must never regress back to
+  //     a stale role_id some earlier, unrelated pending invite for the same
+  //     email happened to carry. Every first-party caller now sends `null`
+  //     explicitly for exactly this reason -- inherit is reserved for the
+  //     `undefined` case only.
+  //   - a string -> use it as-is.
+  let roleId: string | null;
+  if (input.roleId === undefined) {
+    const { data: priorRole } = await adminClient
+      .from("invites").select("role_id")
+      .eq("conta_id", input.contaId).eq("email", email).eq("status", "pending")
+      .not("role_id", "is", null).maybeSingle();
+    roleId = priorRole?.role_id ?? null;
+  } else {
+    roleId = input.roleId;
+  }
+
+  // Chassis rule at write time: invites.role is stored as 'agent' whenever
+  // roleId is present, REGARDLESS of the requested display role. The FK
+  // invites_role_same_workspace is ON DELETE SET NULL — deleting the custom
+  // role later leaves role_id NULL, and accept_workspace_invite's no-role_id
+  // path then grants membership at whatever invites.role says. If that column
+  // held the original (possibly stronger) legacy role, a deleted custom role
+  // would silently upgrade the invitee on accept. Storing 'agent' here closes
+  // that hole independent of the role_id FK's cascade behavior.
+  const effectiveRole: "owner" | "admin" | "agent" = roleId ? "agent" : input.role;
 
   // (2) Classify the existing auth user BEFORE mutating anything.
   const existingUser = await findAuthUserByEmail(adminClient, email);
@@ -341,7 +408,7 @@ export async function inviteOrResend(
       // legacy role stronger than 'agent', even after this row is later read
       // back with role_id nulled out by the role's deletion.
       const mIns = await adminClient.from("workspace_members")
-        .insert({ user_id: existingUser.id, workspace_id: input.contaId, role: effectiveRole, role_id: input.roleId ?? null });
+        .insert({ user_id: existingUser.id, workspace_id: input.contaId, role: effectiveRole, role_id: roleId });
       ensureOk(mIns.error, "member_insert");
       const { data: existingProfile } = await adminClient
         .from("profiles").select("id, active_workspace_id").eq("id", existingUser.id).maybeSingle();
@@ -367,7 +434,7 @@ export async function inviteOrResend(
       const iIns = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: effectiveRole, invited_by: input.invitedBy,
         status: "accepted", accepted_at: new Date().toISOString(), membro_id: membroId,
-        role_id: input.roleId ?? null,
+        role_id: roleId,
       }).select("id").single();
       if (membroId != null) {
         const upd = await adminClient.from("membros")
@@ -392,7 +459,7 @@ export async function inviteOrResend(
       await sendInviteEmail({ to: email, actionLink: link.properties.action_link, workspaceName: conta?.nome || "seu workspace" });
       const ins = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: effectiveRole, invited_by: input.invitedBy,
-        status: "pending", membro_id: membroId, role_id: input.roleId ?? null,
+        status: "pending", membro_id: membroId, role_id: roleId,
       }).select("id").single();
       return { route: "resent-link", inviteId: insertedId(ins, "invite_insert_pending") };
     }
@@ -410,13 +477,13 @@ export async function inviteOrResend(
     const affectedWorkspaceIds = [...new Set([
       ...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds, input.contaId,
     ])];
-    const inviteId = await sendNewUserInvite(adminClient, input, email, membroId);
+    const inviteId = await sendNewUserInvite(adminClient, input, email, membroId, roleId);
     return { route: "reinvited", affectedWorkspaceIds, inviteId };
   }
 
   // (3) New user.
   await deletePriorInvites(adminClient, email, input.contaId);
-  const inviteId = await sendNewUserInvite(adminClient, input, email, membroId);
+  const inviteId = await sendNewUserInvite(adminClient, input, email, membroId, roleId);
   return { route: "invited", inviteId };
 }
 
@@ -426,8 +493,15 @@ async function deletePriorInvites(adminClient: any, email: string, contaId: stri
   ensureOk(error, "prior_invites_delete");
 }
 
-/** Returns the id of the pending invites row it created. */
-async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string, membroId: number | null): Promise<string> {
+/**
+ * Returns the id of the pending invites row it created.
+ *
+ * `roleId` is the CALLER's already-resolved value (inviteOrResend's own
+ * `roleId` local, after the prior-pending-row inheritance) — never re-read
+ * from `input.roleId` here, or a resend that relies on inheritance would
+ * silently lose it again at this second hop.
+ */
+async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string, membroId: number | null, roleId: string | null): Promise<string> {
   // Same chassis rule as inviteOrResend's top-of-function effectiveRole:
   // invites.role is 'agent' whenever roleId is present. Threaded through to
   // sendAuthInvite's user_metadata.role too (rather than keeping that at the
@@ -435,7 +509,7 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
   // still resolved from invites.role_id by the accept-invite RPC, so
   // metadata.role is informational only, but there is no reason to have it
   // disagree with invites.role.
-  const effectiveRole: "owner" | "admin" | "agent" = input.roleId ? "agent" : input.role;
+  const effectiveRole: "owner" | "admin" | "agent" = roleId ? "agent" : input.role;
   return await sendPendingWorkspaceInvite({
     createPendingInvite: async (p) => {
       const { data, error } = await adminClient.from("invites").insert({
@@ -461,6 +535,6 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
     },
   }, {
     contaId: input.contaId, email, role: effectiveRole, invitedBy: input.invitedBy,
-    redirectTo: input.redirectBase + "/configurar-senha", membroId, roleId: input.roleId ?? null,
+    redirectTo: input.redirectBase + "/configurar-senha", membroId, roleId,
   });
 }

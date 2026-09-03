@@ -16,14 +16,11 @@ import {
   mcpScopesFromClaim,
   validateConsentPayload,
 } from "../_shared/mcp-oauth.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-function isManager(role: string | null | undefined): boolean {
-  return role === "owner" || role === "admin";
-}
 
 /**
  * Fetches Supabase's OAuth authorization details for a pending authorization, verified with the
@@ -76,17 +73,19 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
 
-    // Workspaces the user may connect: their owner/admin memberships, annotated with whether the
-    // workspace's plan enables MCP (the consent UI disables the rest).
+    // Workspaces the user may connect: those where they hold 'configuracoes':'editar'
+    // (owner/admin legados, ou papel custom com a permissão), anotadas com se o plano da
+    // workspace habilita MCP (a UI de consentimento desabilita o resto).
     if (action === "eligible-workspaces") {
       const { data: memberships } = await svc
         .from("workspace_members")
         .select("workspace_id, role, workspaces!inner(id, name)")
-        .eq("user_id", user.id)
-        .in("role", ["owner", "admin"]);
+        .eq("user_id", user.id);
       const rows = (memberships ?? []) as any[];
       const workspaces = [];
       for (const m of rows) {
+        const canManage = await hasPermissionFor(svc, user.id, m.workspace_id as string, "configuracoes", "editar");
+        if (!canManage) continue;
         const feature_mcp = await effectivePlanFeature(svc, m.workspace_id as string, "feature_mcp");
         workspaces.push({
           id: m.workspace_id as string,
@@ -110,14 +109,11 @@ Deno.serve(async (req) => {
       if (!auth) return json({ error: "invalid_authorization" }, 400);
       const { clientId, requestedMcp } = auth;
 
-      // Authorize against the CHOSEN workspace (not the active one): must be owner/admin there.
-      const { data: membership } = await svc
-        .from("workspace_members")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("workspace_id", conta_id)
-        .maybeSingle();
-      if (!membership || !isManager(membership.role as string)) {
+      // Authorize against the CHOSEN workspace (not the active one): 'configuracoes':'editar'
+      // there. has_permission_for fails closed on a missing membership (no separate lookup
+      // needed -- a non-member resolves to false).
+      const canManage = await hasPermissionFor(svc, user.id, conta_id, "configuracoes", "editar");
+      if (!canManage) {
         return json({ error: "Insufficient permissions" }, 403);
       }
 
@@ -180,17 +176,27 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    // List / revoke the workspace's Claude OAuth connections — owner/admin of the ACTIVE workspace.
+    // List / revoke the workspace's Claude OAuth connections — 'configuracoes':'editar' on the
+    // ACTIVE workspace. active_workspace_id, not profiles.conta_id: the latter is global and
+    // goes stale on a workspace switch (same rule as invite-user/manage-workspace-user).
     if (action === "list-grants" || action === "revoke-grant") {
       const { data: profile } = await svc
         .from("profiles")
-        .select("role, conta_id")
+        .select("active_workspace_id")
         .eq("id", user.id)
         .single();
-      if (!profile || !isManager(profile.role as string)) {
+      const contaId = profile?.active_workspace_id as string | undefined;
+      if (!contaId) {
         return json({ error: "Insufficient permissions" }, 403);
       }
-      const contaId = profile.conta_id as string;
+      // Mesmo split do mcp-keys: 'list-grants' é leitura e a aba MCP em modo
+      // somente leitura (`configuracoes:ver`) precisa dela para renderizar a
+      // lista de conexões; 'revoke-grant' é mutação e segue exigindo 'editar'.
+      const requiredAction = action === "list-grants" ? "ver" : "editar";
+      const canManage = await hasPermissionFor(svc, user.id, contaId, "configuracoes", requiredAction);
+      if (!canManage) {
+        return json({ error: "Insufficient permissions" }, 403);
+      }
 
       if (action === "list-grants") {
         const { data: grants } = await svc

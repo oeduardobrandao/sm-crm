@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { useAuth } from '@/context/AuthContext';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,12 +39,22 @@ const STATUS_TAG: Record<Exclude<Cliente['status'], 'ativo'>, string> = {
  * clientes.send_report_email / clientes.send_event_email. Um cliente que já
  * se descadastrou do digest de pendências (clientes.event_email_unsub_at)
  * tem o interruptor daquela coluna esmaecido; reativar exige confirmação num
- * AlertDialog, nunca um toggle direto. Renderizada só para owner/admin: o
- * gate fica em NotificacoesTab. */
+ * AlertDialog, nunca um toggle direto.
+ *
+ * Renderizada só para `configuracoes:ver` (o gate da SEÇÃO fica em
+ * NotificacoesTab) -- mas os `updateCliente`/`updateWorkspaceBranding` abaixo
+ * escrevem em `clientes`/`workspaces`, tabelas com RLS tenant-only (sem
+ * predicado de módulo/role). Um papel custom com `configuracoes:ver` mas sem
+ * `clientes:editar` passava no gate da seção e conseguia mutar preferências de
+ * entrega de qualquer cliente -- os switches abaixo são o único limite de
+ * autorização real para essa escrita, daí o segundo gate aqui (Task 14,
+ * revisão externa round 3, P1). */
 export default function SeusClientesSection() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [confirmReactivateId, setConfirmReactivateId] = useState<number | null>(null);
+  const { can } = useAuth();
+  const canEditClients = can('clientes', 'editar') === true;
 
   const { data: clientes, isLoading: clientesLoading } = useQuery({
     queryKey: CLIENTES_QUERY_KEY,
@@ -184,6 +195,9 @@ export default function SeusClientesSection() {
           O relatório mensal e as pendências do Hub de cada cliente, um por um. Os gerais ligam ou
           desligam todo mundo de uma vez.
         </p>
+        {!canEditClients && (
+          <p className="mt-1 text-xs text-[color:var(--text-muted)]">Somente leitura</p>
+        )}
       </div>
 
       <div className="grid grid-cols-[1fr_170px_170px] items-start gap-2 pb-2">
@@ -210,6 +224,7 @@ export default function SeusClientesSection() {
           <Switch
             aria-label="Relatório mensal para todos os clientes"
             checked={masterEnabled}
+            disabled={!canEditClients}
             onCheckedChange={(v) => saveMaster.mutate(v)}
           />
         </span>
@@ -217,6 +232,7 @@ export default function SeusClientesSection() {
           <Switch
             aria-label="Pendências do Hub para todos os clientes"
             checked={masterEventEnabled}
+            disabled={!canEditClients}
             onCheckedChange={(v) => saveMasterEvent.mutate(v)}
           />
         </span>
@@ -271,6 +287,7 @@ export default function SeusClientesSection() {
                   <Switch
                     aria-label={`Relatório mensal para ${cliente.nome} (${cliente.email})`}
                     checked={cliente.send_report_email ?? false}
+                    disabled={!canEditClients}
                     onCheckedChange={(v) => {
                       if (cliente.id == null) return;
                       saveCliente.mutate({ id: cliente.id, enabled: v });
@@ -292,13 +309,17 @@ export default function SeusClientesSection() {
                     <Switch
                       aria-label={`Pendências do Hub para ${cliente.nome} (${cliente.email})`}
                       checked={cliente.send_event_email ?? false}
-                      // Deliberadamente NÃO usa a prop `disabled`: um controle
+                      // O esmaecimento de `unsubbed` é só VISUAL: um controle
                       // realmente desabilitado não recebe clique nenhum, e
                       // reativar precisa do clique para abrir o AlertDialog de
-                      // confirmação. O esmaecimento é só visual.
+                      // confirmação. `disabled` fica reservado ao gate de
+                      // permissão (Task 14) -- aí não há mutação a autorizar,
+                      // reativação inclusive, então bloquear o clique é o
+                      // comportamento certo.
                       className={unsubbed ? 'opacity-60' : undefined}
+                      disabled={!canEditClients}
                       onCheckedChange={(v) => {
-                        if (cliente.id == null) return;
+                        if (cliente.id == null || !canEditClients) return;
                         if (unsubbed) {
                           setConfirmReactivateId(cliente.id);
                           return;
