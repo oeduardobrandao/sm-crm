@@ -1,4 +1,5 @@
 import { escapeHtml } from "./escape.ts";
+import { sanitizeFromName } from "../email-headers.ts";
 import {
   buildBrandHeaderBand,
   buildPreheader,
@@ -6,6 +7,13 @@ import {
   formatCompactPtBr,
   type EmailKpis,
 } from "./brand-header.ts";
+
+export const REPORT_FROM_ADDRESS = "relatorios@mesaas.com.br";
+
+/** From header for the monthly report email; the workspace name is tenant-editable. */
+export function buildReportFrom(workspaceName: string | null | undefined): string {
+  return `${sanitizeFromName(workspaceName ?? "Mesaas")} <${REPORT_FROM_ADDRESS}>`;
+}
 
 interface ReportEmailParams {
   clientName: string;

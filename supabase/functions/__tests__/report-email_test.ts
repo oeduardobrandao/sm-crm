@@ -1,5 +1,5 @@
 import { assertStringIncludes, assert } from "jsr:@std/assert";
-import { buildReportEmail } from "../_shared/report-template/email.ts";
+import { buildReportEmail, buildReportFrom, REPORT_FROM_ADDRESS } from "../_shared/report-template/email.ts";
 
 const base = {
   clientName: "Marina Arrais", month: "2026-08", workspaceName: "DK",
@@ -55,4 +55,16 @@ Deno.test("eyebrow com o mês; bloco de IA continua neutro com corte de 300", ()
   assertStringIncludes(h, "Relatório mensal");
   assertStringIncludes(h, "#f8f9fa");
   assert(!h.includes("x".repeat(301)));
+});
+
+Deno.test("From: nome hostil do workspace não injeta header nem forja outro endereço", () => {
+  const from = buildReportFrom('Evil\r\nBcc: attacker@evil.test" <attacker@evil.test>');
+  assert(!from.includes("\r") && !from.includes("\n"), "CR/LF sobreviveu no From");
+  assert(from.endsWith(` <${REPORT_FROM_ADDRESS}>`), "endereço remetente foi trocado");
+  assert(from === '"Evil Bcc: attacker@evil.test\\" <attacker@evil.test>" <relatorios@mesaas.com.br>');
+});
+Deno.test("From: nome normal vira quoted-string; null/vazio cai em Mesaas", () => {
+  assert(buildReportFrom("Silva, Souza & Cia") === '"Silva, Souza & Cia" <relatorios@mesaas.com.br>');
+  assert(buildReportFrom(null) === '"Mesaas" <relatorios@mesaas.com.br>');
+  assert(buildReportFrom("   ") === '"Mesaas" <relatorios@mesaas.com.br>');
 });

@@ -1406,7 +1406,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       }
 
       // 7. Build and send email
-      const { buildReportEmail } = await import("../_shared/report-template/email.ts");
+      const { buildReportEmail, buildReportFrom } = await import("../_shared/report-template/email.ts");
 
       const hubUrl = await resolveHubUrl(serviceClient, report.client_id, contaId);
       const emailHtml = buildReportEmail({
@@ -1436,7 +1436,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: `${workspace?.name ?? 'Mesaas'} <relatorios@mesaas.com.br>`,
+          from: buildReportFrom(workspace?.name),
           to: [cliente.email],
           subject: `Seu relatório de ${monthLabel} está pronto!`,
           html: emailHtml,

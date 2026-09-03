@@ -192,7 +192,7 @@ Deno.serve(async (req) => {
           .single();
 
         if (wsFlags?.send_report_email && clientFlags?.send_report_email && clientFlags?.email) {
-          const { buildReportEmail } = await import("../_shared/report-template/email.ts");
+          const { buildReportEmail, buildReportFrom } = await import("../_shared/report-template/email.ts");
 
           let pdfUrl = '';
           if (reportRow.storage_path) {
@@ -227,7 +227,7 @@ Deno.serve(async (req) => {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                from: `${wsFlags.name ?? 'Mesaas'} <relatorios@mesaas.com.br>`,
+                from: buildReportFrom(wsFlags.name),
                 to: [clientFlags.email],
                 subject: `Seu relatório de ${monthLabel} está pronto!`,
                 html: emailHtml,
