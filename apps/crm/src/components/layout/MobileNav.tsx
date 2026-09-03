@@ -8,7 +8,7 @@ import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { getMoreSheetGroups, NAV_MODULE } from './nav-data';
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 import { Search, MessageCircle, Compass } from 'lucide-react';
-import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
+import GlobalSearchDialog from './GlobalSearchDialog';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { useGuide } from '../guide/GuideContext';
@@ -315,12 +315,7 @@ export default function MobileNav() {
           </button>
         </SheetContent>
       </Sheet>
-      <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <CommandInput placeholder="Buscar..." />
-        <CommandList>
-          <CommandEmpty>Nenhum resultado.</CommandEmpty>
-        </CommandList>
-      </CommandDialog>
+      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </>
   );
 }

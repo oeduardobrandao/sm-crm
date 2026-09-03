@@ -20,6 +20,13 @@ vi.mock('../../../hooks/useMensagensUnread', () => ({
   useMensagensUnread: vi.fn(() => 0),
 }));
 
+// The real dialog needs a QueryClientProvider and the store modules; here we
+// only care that the "Buscar" row hands control to it.
+vi.mock('../GlobalSearchDialog', () => ({
+  default: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="global-search-dialog" /> : null,
+}));
+
 import MobileNav from '../MobileNav';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
@@ -192,6 +199,23 @@ describe('MobileNav', () => {
 
     await waitFor(() => expect(more).toHaveAttribute('aria-expanded', 'false'));
     expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
+  });
+
+  it('opens the shared global search dialog from the Buscar row and closes the sheet', async () => {
+    setAuth();
+    renderMobileNav('/dashboard');
+
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+    expect(screen.queryByTestId('global-search-dialog')).toBeNull();
+
+    const buscar = Array.from(document.querySelectorAll('.mobile-more-item')).find((el) =>
+      el.textContent?.includes('Buscar'),
+    );
+    expect(buscar).toBeTruthy();
+    fireEvent.click(buscar!);
+
+    expect(screen.getByTestId('global-search-dialog')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull());
   });
 
   it('navigates from more sheet and closes it', async () => {

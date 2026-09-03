@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
@@ -9,7 +10,9 @@ import { SectionCard } from './components/SectionCard';
 import { ArticleCard } from './components/ArticleCard';
 
 export default function AjudaPage() {
-  const [search, setSearch] = useState('');
+  // `?q=` vem do item "Ver todos em Ajuda" da busca global (⌘K).
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
 
   const { data: articles = [], isLoading } = useQuery({
     queryKey: ['kb-articles'],
