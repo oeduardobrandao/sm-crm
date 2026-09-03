@@ -3,15 +3,19 @@
 begin;
 do $$
 declare
-  v_ws uuid; v_ws2 uuid; v_cli bigint; v_q uuid; v_q2 uuid;
+  v_ws uuid; v_ws2 uuid; v_cli bigint; v_q uuid; v_q2 uuid; v_user uuid := gen_random_uuid();
   v_key text; v_key2 text; v_res jsonb; v_used bigint; v_blocked boolean;
   v_n int;
 begin
   -- free = storage_quota_bytes 104857600 (100MB)
+  -- As RPCs rodam sob service_role em produção (edge functions). A guarda lê
+  -- auth.role() do GUC request.jwt.claims, então o teste precisa simular isso.
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   v_ws := et_make_workspace('free');
   v_ws2 := et_make_workspace('free');
+  insert into auth.users (id) values (v_user);
   insert into clientes (user_id, conta_id, nome, sigla, cor)
-    values (gen_random_uuid(), v_ws, 'Cliente Audio', 'CA', '#000000') returning id into v_cli;
+    values (v_user, v_ws, 'Cliente Audio', 'CA', '#000000') returning id into v_cli;
   insert into hub_briefing_questions (cliente_id, conta_id, question, display_order)
     values (v_cli, v_ws, 'Qual a história da marca?', 0) returning id into v_q;
   insert into hub_briefing_questions (cliente_id, conta_id, question, display_order)
@@ -55,6 +59,16 @@ begin
   assert (select audio_r2_key from hub_briefing_questions where id = v_q2) is null, 'blocked finalize must not write';
   update workspaces set storage_used_bytes = 3000 where id = v_ws;
 
+  -- 4b. regravar perto da quota desconta o áudio substituído: used = quota,
+  -- sendo 3000 bytes desta própria pergunta; trocar por 2000 tem que passar.
+  update workspaces set storage_used_bytes = 104857600 where id = v_ws;
+  v_res := briefing_audio_finalize(v_ws, v_cli, v_q, 'briefing-audio/' || v_ws || '/' || v_q || '/d.webm', 2000, 'audio/webm', 20);
+  assert (v_res->>'reserved')::boolean, 'replace near quota must net out the old bytes';
+  select storage_used_bytes into v_used from workspaces where id = v_ws;
+  assert v_used = 104857600 - 3000 + 2000, format('used after near-quota replace: %s', v_used);
+  update workspaces set storage_used_bytes = 2000 where id = v_ws;
+  v_key2 := 'briefing-audio/' || v_ws || '/' || v_q || '/d.webm';
+
   -- 5. chave fora do prefixo da pergunta -> invalid_key
   v_blocked := false;
   begin
@@ -93,6 +107,7 @@ begin
   assert v_n = 2, 'deleted row key enqueued (second time for this key in this test)';
 
   -- 9. CHECK de tenant: chave de outra workspace não entra nem via service role
+  -- (ainda sob claims service_role, então a guarda deixa passar e o CHECK dispara)
   v_blocked := false;
   begin
     update hub_briefing_questions set audio_r2_key = 'briefing-audio/' || v_ws2 || '/' || v_q2 || '/z.webm'
@@ -116,6 +131,16 @@ begin
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   update hub_briefing_questions set audio_transcription_status = 'failed' where id = v_q2;
   assert (select audio_transcription_status from hub_briefing_questions where id = v_q2) = 'failed';
+
+  -- 12. release em workspace inexistente -> workspace_not_found
+  v_blocked := false;
+  begin
+    perform briefing_audio_release(gen_random_uuid(), v_q2);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm like 'workspace_not_found%', format('wrong msg: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'release on unknown workspace must raise';
   perform set_config('request.jwt.claims', '', true);
 
   raise notice 'PASS briefing_audio_rpcs';

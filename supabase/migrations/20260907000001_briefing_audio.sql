@@ -118,6 +118,7 @@ DECLARE
   v_used bigint;
   v_quota bigint;
   v_prev text;
+  v_prev_bytes bigint;
 BEGIN
   IF p_key IS NULL OR p_key NOT LIKE 'briefing-audio/' || p_conta_id::text || '/' || p_question_id::text || '/%' THEN
     RAISE EXCEPTION 'invalid_key' USING ERRCODE = 'P0001';
@@ -131,7 +132,7 @@ BEGIN
     RAISE EXCEPTION 'workspace_not_found' USING ERRCODE = 'P0001';
   END IF;
 
-  SELECT audio_r2_key INTO v_prev
+  SELECT audio_r2_key, audio_size_bytes INTO v_prev, v_prev_bytes
     FROM hub_briefing_questions
    WHERE id = p_question_id AND conta_id = p_conta_id AND cliente_id = p_cliente_id
    FOR UPDATE;
@@ -143,8 +144,10 @@ BEGIN
     RETURN jsonb_build_object('reserved', false, 'previous_key', NULL);
   END IF;
 
+  -- Regravar: o áudio anterior é liberado pelo trigger nesta mesma chamada,
+  -- então a quota é conferida sobre o uso líquido (sem os bytes antigos).
   v_quota := effective_plan_limit(p_conta_id, 'storage_quota_bytes');
-  IF v_quota IS NOT NULL AND v_used + p_bytes > v_quota THEN
+  IF v_quota IS NOT NULL AND v_used - COALESCE(v_prev_bytes, 0) + p_bytes > v_quota THEN
     RAISE EXCEPTION 'quota_exceeded' USING ERRCODE = 'P0001';
   END IF;
 
@@ -175,6 +178,9 @@ DECLARE
   v_prev text;
 BEGIN
   PERFORM 1 FROM workspaces WHERE id = p_conta_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'workspace_not_found' USING ERRCODE = 'P0001';
+  END IF;
   SELECT audio_r2_key INTO v_prev
     FROM hub_briefing_questions
    WHERE id = p_question_id AND conta_id = p_conta_id
