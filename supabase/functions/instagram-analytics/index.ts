@@ -209,6 +209,9 @@ Deno.serve(async (req) => {
 
   const json = createJsonResponder(corsHeaders);
 
+  // Declared outside the try so the catch block can mark the account expired.
+  const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
   try {
     // Verify auth
     const token = authHeader?.replace(/^Bearer\s+/i, '');
@@ -219,8 +222,6 @@ Deno.serve(async (req) => {
     const userRes = await supabaseClient.auth.getUser();
     const user = userRes.data?.user;
     if (userRes.error || !user) throw new Error("Unauthorized: Token verification failed");
-
-    const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
     // Get user's conta_id
     const { data: profile } = await serviceClient
