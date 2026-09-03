@@ -889,9 +889,20 @@ Deno.test("inviteOrResend: resend-link route WITHOUT roleId stamps role_id: null
 // fallback on every resend. Mirrors the membroId-inheritance coverage above
 // exactly (same "a resend with NO X inherits the replaced pending row's Y"
 // / "an explicit X beats the inherited one" pair).
+//
+// TRI-STATE (round-2 review finding): the fix above initially inherited on
+// ANY falsy roleId, which meant a FRESH "Convidar" for an email that already
+// had a pending custom-papel invite silently kept that old role_id even when
+// the caller explicitly picked a plain preset role -- a real regression, not
+// a resend at all. `input.roleId` now has three distinct states: `undefined`
+// (key omitted -- a legacy/stale caller, inherit) vs. `null` (the caller
+// explicitly chose "no custom role" -- must NEVER inherit) vs. a string (use
+// it). Every test below that omits `roleId` from its input object is
+// exercising `undefined` specifically -- see the explicit-null test for the
+// state that must NOT inherit.
 // -----------------------------------------------------------------------
 
-Deno.test("inviteOrResend: a resend with NO roleId inherits the replaced pending row's role_id", async () => {
+Deno.test("inviteOrResend: a resend with the roleId KEY ABSENT (undefined) inherits the replaced pending row's role_id", async () => {
   const admin = makeInviteAdmin({
     limit: null, members: 0, authUser: null, priorPendingRoleId: "role-7",
   });
@@ -903,7 +914,7 @@ Deno.test("inviteOrResend: a resend with NO roleId inherits the replaced pending
   assertEquals(inviteRow?.row.role, "agent"); // chassis rule follows the inherited roleId too
 });
 
-Deno.test("inviteOrResend: an explicit roleId beats the inherited one", async () => {
+Deno.test("inviteOrResend: an explicit roleId (string) beats the inherited one", async () => {
   const admin = makeInviteAdmin({
     limit: null, members: 0, authUser: null, priorPendingRoleId: "role-7",
   });
@@ -911,6 +922,38 @@ Deno.test("inviteOrResend: an explicit roleId beats the inherited one", async ()
   await inviteOrResend(admin as any, { ...baseInput, roleId: "role-9" }, CRM);
   const inviteRow = admin._inserts().find((i) => i.table === "invites");
   assertEquals(inviteRow?.row.role_id, "role-9");
+});
+
+Deno.test("inviteOrResend: a FRESH invite with roleId EXPLICITLY null does NOT inherit a pending custom-papel invite's role_id (round-2 regression fix)", async () => {
+  // Reproduces the exact regression: an email already has a pending
+  // custom-papel invite (role_id "role-7"); the caller now sends a brand-new
+  // invite with an explicit plain-role choice (roleId: null, e.g. MembrosTab's
+  // "Convidar" with a preset selected, or EquipePage/InviteSection via
+  // services/invite.ts). The stale role_id must NOT resurface.
+  const admin = makeInviteAdmin({
+    limit: null, members: 0, authUser: null, priorPendingRoleId: "role-7",
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, roleId: null }, CRM);
+  assertEquals(out.route, "invited");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, null);
+  assertEquals(inviteRow?.row.role, baseInput.role); // NOT collapsed to 'agent' -- no custom role at all
+});
+
+Deno.test("inviteOrResend CRM mode: add-direct with roleId EXPLICITLY null does NOT inherit, even with a pending custom-papel invite for the same email", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 1,
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    hasProfile: true, onboarding: true, hasPassword: true, isMember: false,
+    priorPendingRoleId: "role-7",
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, roleId: null }, CRM);
+  assertEquals(out.route, "added");
+  const memberRow = admin._inserts().find((i) => i.table === "workspace_members");
+  assertEquals(memberRow?.row.role_id, null);
+  assertEquals(memberRow?.row.role, baseInput.role);
 });
 
 Deno.test("inviteOrResend: resend-link route with NO roleId inherits the replaced pending row's role_id", async () => {

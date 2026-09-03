@@ -106,6 +106,15 @@ vi.mock('@/components/ui/select', async () => {
   return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem };
 });
 
+// Mutable holder so individual tests can supply `invites` rows (e.g. for
+// "Reenviar") without redefining the whole vi.mock factory. vi.hoisted (not a
+// plain const) because the vi.mock factory below runs before ordinary
+// top-level statements execute — see the identical pattern/comment on
+// useAuthMock/storeMock above.
+const { invitesRowsHolder } = vi.hoisted(() => ({
+  invitesRowsHolder: { current: [] as Record<string, unknown>[] },
+}));
+
 vi.mock('../../../../lib/supabase', () => ({
   supabase: {
     auth: {
@@ -115,7 +124,7 @@ vi.mock('../../../../lib/supabase', () => ({
       select: () => ({
         eq: () => ({
           in: () => ({
-            order: async () => ({ data: [] }),
+            order: async () => ({ data: invitesRowsHolder.current }),
           }),
         }),
       }),
@@ -410,6 +419,7 @@ describe('MembrosTab — action buttons gated on equipe:editar', () => {
 describe('MembrosTab — atribuição de papel custom', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    invitesRowsHolder.current = [];
     storeMock.getWorkspaceRoles.mockResolvedValue([
       { id: 'role-1', nome: 'Editor de Conteúdo', permissions: {}, created_at: '2026-01-01' },
       { id: 'role-2', nome: 'Financeiro Only', permissions: {}, created_at: '2026-01-01' },
@@ -525,6 +535,120 @@ describe('MembrosTab — atribuição de papel custom', () => {
         email: 'nova@equipe.com',
         role: 'agent',
         role_id: 'role-2',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('the invite modal sends role_id: null (never omitted) when a preset role is chosen', async () => {
+    // Round-2 fix: role_id must be sent EXPLICITLY as null for a preset
+    // choice, never omitted — invite-actions.ts treats an absent key as
+    // "legacy caller, inherit from a prior pending invite for this email",
+    // which would silently resurrect a stale custom papel from an unrelated
+    // earlier invite instead of the plain role just picked here.
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite enviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+      fireEvent.change(screen.getByRole('textbox'), {
+        target: { value: 'nova@equipe.com' },
+      });
+      // Default select value is already 'agent' (a preset) — no papel click.
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar Convite' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body).toEqual({
+        email: 'nova@equipe.com',
+        role: 'agent',
+        role_id: null,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('"Reenviar" sends the pending invite\'s role_id explicitly (custom papel case)', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+    invitesRowsHolder.current = [
+      {
+        id: 'inv-1',
+        email: 'pendente-custom@x.com',
+        role: 'agent',
+        role_id: 'role-1',
+        status: 'pending',
+        expires_at: '2099-01-01T00:00:00Z',
+      },
+    ];
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite reenviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      fireEvent.click(await screen.findByRole('button', { name: 'Reenviar' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body).toEqual({
+        email: 'pendente-custom@x.com',
+        role: 'agent',
+        role_id: 'role-1',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('"Reenviar" sends role_id: null explicitly (never omitted) for a legacy pending invite with no custom papel', async () => {
+    // Round-2 fix: the resend path must never rely on the server's inherit
+    // fallback (reserved for legacy/stale callers) even for its own
+    // no-custom-role case -- MembrosTab always knows the row's actual value
+    // and must say so explicitly.
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+    invitesRowsHolder.current = [
+      {
+        id: 'inv-2',
+        email: 'pendente-legado@x.com',
+        role: 'admin',
+        role_id: null,
+        status: 'pending',
+        expires_at: '2099-01-01T00:00:00Z',
+      },
+    ];
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite reenviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      fireEvent.click(await screen.findByRole('button', { name: 'Reenviar' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body).toEqual({
+        email: 'pendente-legado@x.com',
+        role: 'admin',
+        role_id: null,
       });
     } finally {
       vi.unstubAllGlobals();

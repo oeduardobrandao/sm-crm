@@ -225,13 +225,32 @@ export interface InviteOrResendInput {
   /** Membro da equipe this invite links to (Equipe form). Stamped on every
    * invites row; the added route links membros.crm_user_id immediately. */
   membroId?: number | null;
-  /** Custom workspace_roles.id, when the caller picked a granular role.
-   * Stamped on every invites row. Chassis rule: whenever roleId is present,
-   * every invites row written from `role` above collapses to 'agent' too —
-   * never the caller's requested legacy display role — so a later deletion
-   * of the custom role (role_id → NULL via ON DELETE SET NULL) can never
-   * leave behind a stronger legacy role for accept_workspace_invite's
-   * no-role_id path to grant. See effectiveRole below. */
+  /**
+   * Custom workspace_roles.id, when the caller picked a granular role.
+   * Stamped on every invites row. Chassis rule: whenever the RESOLVED roleId
+   * (see below) is present, every invites row written from `role` above
+   * collapses to 'agent' too — never the caller's requested legacy display
+   * role — so a later deletion of the custom role (role_id → NULL via ON
+   * DELETE SET NULL) can never leave behind a stronger legacy role for
+   * accept_workspace_invite's no-role_id path to grant. See effectiveRole
+   * below.
+   *
+   * TRI-STATE on purpose, and the three states are NOT interchangeable:
+   * - `undefined` (key omitted, or explicitly set to `undefined`) — the
+   *   caller does not know about custom roles at all (a legacy/stale bundle,
+   *   or an integration that predates this field). `inviteOrResend` inherits
+   *   whatever role_id the pending row being replaced already carried, the
+   *   same belt-and-braces treatment `membroId` already gets.
+   * - `null` — the caller made an EXPLICIT choice of "no custom role" (a
+   *   plain admin/agent preset). This must NEVER be overridden by
+   *   inheritance: every first-party caller (services/invite.ts,
+   *   MembrosTab.tsx, the platform-admin handlers) sends this explicitly
+   *   precisely so a fresh "Convidar"/resend with a deliberately different
+   *   role choice can never regress back to a stale role_id some earlier,
+   *   unrelated pending invite for the same email happened to carry.
+   * - a string — use it as-is (validated by the HTTP layer before this
+   *   function ever sees it).
+   */
   roleId?: string | null;
 }
 export interface InviteOrResendOpts {
@@ -300,20 +319,31 @@ export async function inviteOrResend(
   }
 
   // Resolve the custom role_id for every invites row written below, mirroring
-  // the membroId inheritance immediately above. When the caller passes none
-  // (a resend that doesn't resubmit a role choice -- MembrosTab's "Reenviar"
-  // button, or the admin portal), inherit it from the pending row being
-  // replaced: deletePriorInvites + re-insert would otherwise silently
-  // downgrade a restricted-papel invite to the plain 'agent' fallback the
-  // next time it's resent (effectiveRole below treats a null roleId as "no
-  // custom role").
-  let roleId = input.roleId ?? null;
-  if (roleId == null) {
+  // the membroId inheritance immediately above -- but TRI-STATE on
+  // `input.roleId`, not a loose `== null` check (see the field's own
+  // JSDoc on InviteOrResendInput for the full contract):
+  //   - `undefined` -> a caller that doesn't know about custom roles at all
+  //     (legacy/stale bundle). Inherit from the pending row being replaced:
+  //     deletePriorInvites + re-insert would otherwise silently downgrade a
+  //     restricted-papel invite to the plain 'agent' fallback the next time
+  //     it's resent.
+  //   - `null` -> the caller made an EXPLICIT choice of "no custom role".
+  //     Must NOT inherit here: a fresh "Convidar" (or a resend) with a
+  //     deliberately different, plain role choice must never regress back to
+  //     a stale role_id some earlier, unrelated pending invite for the same
+  //     email happened to carry. Every first-party caller now sends `null`
+  //     explicitly for exactly this reason -- inherit is reserved for the
+  //     `undefined` case only.
+  //   - a string -> use it as-is.
+  let roleId: string | null;
+  if (input.roleId === undefined) {
     const { data: priorRole } = await adminClient
       .from("invites").select("role_id")
       .eq("conta_id", input.contaId).eq("email", email).eq("status", "pending")
       .not("role_id", "is", null).maybeSingle();
     roleId = priorRole?.role_id ?? null;
+  } else {
+    roleId = input.roleId;
   }
 
   // Chassis rule at write time: invites.role is stored as 'agent' whenever

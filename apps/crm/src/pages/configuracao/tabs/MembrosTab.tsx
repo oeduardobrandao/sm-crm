@@ -190,10 +190,14 @@ export default function MembrosTab() {
       // Decode the 'admin' | 'agent' | 'custom:<uuid>' select encoding: a
       // custom papel always invites with the underlying 'agent' chassis role
       // plus role_id — mirrors updateWorkspaceUserRole's own split above and
-      // EquipePage's invite submit.
+      // EquipePage's invite submit. role_id is ALWAYS sent explicitly
+      // (uuid, or null for a plain preset) — invite-user/inviteOrResend
+      // treat an ABSENT key as "inherit from a prior pending invite for this
+      // email", and this is a deliberate, explicit role choice that must
+      // never be silently overridden by that inheritance.
       const body = inviteRole.startsWith('custom:')
         ? { email: inviteEmail, role: 'agent', role_id: inviteRole.slice(7) }
-        : { email: inviteEmail, role: inviteRole };
+        : { email: inviteEmail, role: inviteRole, role_id: null };
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
         method: 'POST',
         headers: {
@@ -253,15 +257,16 @@ export default function MembrosTab() {
           Authorization: `Bearer ${session?.access_token}`,
         },
         // role_id: the `invites` row (queried with select('*') above) already
-        // carries it for a restricted-papel invite. Omitting it here would
-        // have invite-user/inviteOrResend fall back to a plain 'agent'
-        // invite on resend — the server now also inherits role_id from the
-        // prior pending row when this is absent, but sending it explicitly
-        // is still correct and one round trip cheaper.
+        // carries it — sent EXPLICITLY as a uuid or `null`, never omitted.
+        // invite-user/inviteOrResend treat an absent key as "inherit from a
+        // prior pending row for this email", which exists for callers that
+        // don't know about this field at all — this one does, and always
+        // knows the row's actual value, so it must say so explicitly
+        // (including the `null` case) rather than relying on inheritance.
         body: JSON.stringify({
           email: invite.email,
           role: invite.role,
-          role_id: invite.role_id ?? undefined,
+          role_id: invite.role_id ?? null,
         }),
       });
       const result = await res.json();

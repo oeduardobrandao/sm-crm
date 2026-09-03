@@ -154,10 +154,21 @@ Deno.serve(async (req) => {
     // request body; roleId is threaded alongside it into inviteOrResend, which
     // is the single choke point that applies the chassis rule — every invites
     // row AND the actual membership collapse to 'agent' whenever roleId is
-    // present, never the raw `role` here (see invite-actions.ts). A non-string
-    // body.role_id is treated as absent, not an error — only a STRING that
-    // fails the checks below is rejected.
-    const roleId: string | null = typeof body.role_id === 'string' ? body.role_id : null;
+    // present, never the raw `role` here (see invite-actions.ts).
+    //
+    // TRI-STATE parse, mirroring InviteOrResendInput.roleId's own contract:
+    // the `role_id` KEY being absent from the body (`undefined`) means a
+    // caller that doesn't know about this field at all — inviteOrResend
+    // inherits from any prior pending row for this email. A key present with
+    // `null` (or any other non-string value — never treated as an error,
+    // only a STRING that fails the checks below is rejected) means the
+    // caller made an explicit choice of "no custom role", and must NOT be
+    // silently overridden by inheritance. Every first-party caller
+    // (services/invite.ts, MembrosTab.tsx) always sends the key explicitly
+    // now — `undefined` here is reserved for a stale bundle that predates
+    // this field.
+    const roleId: string | null | undefined =
+      'role_id' in body ? (typeof body.role_id === 'string' ? body.role_id : null) : undefined;
     if (roleId) {
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       let validRoleId = UUID_RE.test(roleId);

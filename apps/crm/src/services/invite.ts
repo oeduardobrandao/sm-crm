@@ -28,11 +28,16 @@ export async function inviteUser(
 ): Promise<InviteResult> {
   if (!email) throw new Error('Email é obrigatório');
   const headers = await getAuthHeaders();
-  const body: Record<string, unknown> = { email, role };
+  // role_id is ALWAYS sent explicitly (uuid, or null when there is none) —
+  // snake_case because invite-user reads `body.role_id`, not `roleId`. Never
+  // omitted: invite-user/inviteOrResend treat the KEY's absence as "legacy
+  // caller, inherit whatever role_id an existing pending invite for this
+  // email already carries" — first-party callers (this function) must send
+  // `null` explicitly for a deliberate plain-role choice, or a fresh invite
+  // could silently resurrect a stale custom papel from an unrelated earlier
+  // invite to the same address instead of the role the caller just picked.
+  const body: Record<string, unknown> = { email, role, role_id: roleId ?? null };
   if (membroId != null) body.membroId = membroId;
-  // Snake_case on purpose: invite-user reads `body.role_id`, not `roleId` —
-  // mirrors the request shape the edge function (Task 6) actually parses.
-  if (roleId != null) body.role_id = roleId;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-user`, {
     method: 'POST',
     headers,

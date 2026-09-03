@@ -184,6 +184,14 @@ export async function handleAdminCreateInvite(
     email: input.email,
     role: input.role,
     invitedBy: adminUserId, // honest attribution: the admin who actually sent it
+    // Explicit, not omitted: this support tool has no concept of custom
+    // papéis at all (validateCreateInvite only accepts admin/agent), but
+    // inviteOrResend's roleId is tri-state — omitting the field here would
+    // read as "legacy caller, inherit whatever role_id a prior pending
+    // invite for this email already carries", silently resurrecting a
+    // custom papel from an unrelated earlier invite instead of the plain
+    // admin/agent role this admin explicitly picked.
+    roleId: null,
     redirectBase,
   }, {
     addOnboarded: false, // a support tool never silently grants membership
