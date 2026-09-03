@@ -113,6 +113,7 @@ npx tsc -p apps/admin/tsconfig.json --noEmit
 npx tsc -p tsconfig.scripts.json
 
 npm run test           # Vitest
+npm run check:functions # deno check nas edge functions (test:functions roda com --no-check)
 npm run test:functions # deno test nas edge functions
 npm run lint           # eslint apps/ packages/
 npm run format:check   # prettier
@@ -122,7 +123,7 @@ Jobs do CI (oito, em `.github/workflows/ci.yml`): `typecheck-and-test`,
 `edge-function-tests`, `entitlement-tests`, `coverage-threshold`, `format-check`,
 `migration-version-guard`, `e2e` e `e2e-secrets-guard`.
 
-Três detalhes que costumam enganar:
+Quatro detalhes que costumam enganar:
 
 - `migration-version-guard` falha se duas migrations compartilharem o prefixo de
   versão, porque a segunda seria silenciosamente ignorada no banco remoto.
@@ -132,6 +133,9 @@ Três detalhes que costumam enganar:
 - `e2e` verde nem sempre quer dizer que o e2e rodou: sem os secrets configurados
   o job pula em silêncio. É para isso que existe o `e2e-secrets-guard`, que
   avisa quais secrets faltam.
+- `test:functions` roda com `--no-check`, então não faz typecheck das edge
+  functions. Quem barra erro de tipo em `supabase/functions/` é o
+  `check:functions`, que roda antes dos testes no job `edge-function-tests`.
 
 ## 📦 Build & Deploy
 

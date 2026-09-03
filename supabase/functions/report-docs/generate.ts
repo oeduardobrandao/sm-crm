@@ -146,7 +146,8 @@ export async function generateReportDocument(
         recsDoc = aiRecommendationsDoc(ai.output);
         goalsDoc = aiGoalsDoc(ai.output);
       } else {
-        console.warn(`[report-docs] AI falhou: ${"error" in ai ? ai.error : ai.status}`);
+        const reason = "error" in ai ? ai.error : (ai as GenerateResult).status;
+        console.warn(`[report-docs] AI falhou: ${reason}`);
       }
     } finally {
       clearTimeout(timer);

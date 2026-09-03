@@ -267,7 +267,9 @@ export async function putObject(
   const res = await fetch(url, {
     method: "PUT",
     headers: { "Content-Type": contentType },
-    body: bytes,
+    // BodyInit wants Uint8Array<ArrayBuffer>; re-view the same bytes (no copy)
+    // so a generically typed Uint8Array<ArrayBufferLike> still type-checks.
+    body: new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength),
     signal: AbortSignal.timeout(OBJECT_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {

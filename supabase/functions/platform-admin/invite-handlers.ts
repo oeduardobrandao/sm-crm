@@ -1,10 +1,10 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { getAuthStatesByEmails, cancelInvite, inviteOrResend } from "../_shared/invite-actions.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { computeInviteFlags, createMessage, resendOutcomeMessage, validateCreateInvite, validateResendTarget } from "./invites-enrich.ts";
 
 export async function handleGetWorkspaceInvites(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string },
   headers: Record<string, string>,
 ) {
@@ -49,7 +49,7 @@ export async function handleGetWorkspaceInvites(
 }
 
 export async function handleAdminCancelInvite(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string; invite_id?: string },
   adminUserId: string,
   headers: Record<string, string>,
@@ -87,7 +87,7 @@ export async function handleAdminCancelInvite(
 }
 
 export async function handleAdminResendInvite(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string; invite_id?: string; confirm_cross_workspace?: unknown },
   adminUserId: string,
   headers: Record<string, string>,
@@ -153,7 +153,7 @@ export async function handleAdminResendInvite(
 }
 
 export async function handleAdminCreateInvite(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: unknown; email?: unknown; role?: unknown; confirm_cross_workspace?: unknown },
   adminUserId: string,
   headers: Record<string, string>,

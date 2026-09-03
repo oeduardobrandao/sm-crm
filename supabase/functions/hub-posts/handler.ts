@@ -29,7 +29,7 @@ function injectSignedUrls(content: any, urlMap: Record<string, string>): any {
 
 type DbClient = {
   from: (table: string) => any;
-  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
 };
 
 interface HubPostsHandlerDeps {
@@ -132,7 +132,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       return { ...rest, workflow_titulo: workflow?.titulo ?? null, workflow_created_at: workflow?.created_at ?? null };
     });
 
-    const workflowIds = [...new Set(flatPosts.map((post: any) => post.workflow_id).filter(Boolean))];
+    const workflowIds = [...new Set<number>(flatPosts.map((post: any) => post.workflow_id).filter(Boolean))];
 
     const postIds = flatPosts.map((post: { id: number }) => post.id);
 

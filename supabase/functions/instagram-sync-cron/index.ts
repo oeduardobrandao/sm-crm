@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramSyncCronHandler } from "./handler.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
@@ -93,7 +93,7 @@ async function decryptToken(encryptedBase64: string): Promise<string> {
 
 // --- Sync a single Instagram account ---
 async function syncAccount(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   account: {
     id: string;
     instagram_user_id: string;
