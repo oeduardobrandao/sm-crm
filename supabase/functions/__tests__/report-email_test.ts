@@ -35,6 +35,15 @@ Deno.test("KPIs: 3 tiles com formato compacto e cores de delta; fila some sem da
   const semFila = buildReportEmail(base);
   assert(!semFila.includes("Visualizações"));
 });
+Deno.test("delta zero é NEUTRO: cinza, sem sinal, '0%' (nunca '+0%' verde) no tile e no preheader", () => {
+  const h = buildReportEmail({ ...base, emailKpis: {
+    views: { value: 48200, pct_change: 0 },
+  }});
+  assertStringIncludes(h, "Visualizações 0% em Agosto de 2026.");
+  assertStringIncludes(h, 'color: #6b7280;">0%</p>');
+  assert(!h.includes("+0%"));
+  assert(!h.match(/#16a34a[^<]*0%/));   // "0%" nunca sai verde
+});
 Deno.test("CTA: botão único com texto por luminância; PDF vira link", () => {
   const palida = buildReportEmail({ ...base, brandColor: "#fef3c7" });
   assertStringIncludes(palida, "background: #fef3c7; color: #171717");

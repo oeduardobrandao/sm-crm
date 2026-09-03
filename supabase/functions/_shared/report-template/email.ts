@@ -31,14 +31,26 @@ const KPI_TILES: Array<{ key: keyof EmailKpis; label: string }> = [
   { key: "followers_gained", label: "Seguidores" },
 ];
 
-/** Delta em `+x%`/`-x%` (hífen no negativo, nunca em-dash); ausente sem pct_change. */
+/** `{sign}{magnitude}%` de um `pct_change`, com a cor que vai junto. Positivo
+ * ESTRITO (>0) ganha "+" e verde; negativo ESTRITO (<0) ganha "-" e cinza
+ * neutro (spec §10: nunca vermelho); zero é neutro nos dois eixos -- sem
+ * sinal ("0%", nunca "+0%") e cinza, não verde. Compartilhado por
+ * `kpiDeltaLine` (tile) e `buildReportPreheader` (sentença da prévia) para
+ * que as duas superfícies apliquem exatamente a mesma regra de zero. */
+function formatPctDelta(pctChange: number): { text: string; color: string } {
+  if (pctChange === 0) return { text: "0%", color: "#6b7280" };
+  const positive = pctChange > 0;
+  return {
+    text: `${positive ? "+" : "-"}${Math.abs(pctChange)}%`,
+    color: positive ? "#16a34a" : "#6b7280",
+  };
+}
+
+/** Delta em `+x%`/`-x%`/`0%` (hífen no negativo, nunca em-dash); ausente sem pct_change. */
 function kpiDeltaLine(pctChange: number | undefined): string {
   if (typeof pctChange !== "number") return "";
-  const positive = pctChange >= 0;
-  const color = positive ? "#16a34a" : "#6b7280";
-  const sign = positive ? "+" : "-";
-  const magnitude = Math.abs(pctChange);
-  return `<p style="margin: 4px 0 0; font-size: 12px; font-weight: 600; color: ${color};">${sign}${magnitude}%</p>`;
+  const { text, color } = formatPctDelta(pctChange);
+  return `<p style="margin: 4px 0 0; font-size: 12px; font-weight: 600; color: ${color};">${text}</p>`;
 }
 
 /** Fila de 3 tiles Visualizações/Interações/Seguidores. Some inteira sem `kpis`; tile sem entry some sozinho. */
@@ -66,10 +78,8 @@ function buildKpiRow(kpis: EmailKpis | null | undefined): string {
 function buildReportPreheader(monthLabel: string, kpis: EmailKpis | null | undefined): string {
   const pctChange = kpis?.views?.pct_change;
   if (typeof pctChange === "number") {
-    const positive = pctChange >= 0;
-    const sign = positive ? "+" : "-";
-    const magnitude = Math.abs(pctChange);
-    return buildPreheader(`Visualizações ${sign}${magnitude}% em ${monthLabel}. Veja o relatório completo.`);
+    const { text } = formatPctDelta(pctChange);
+    return buildPreheader(`Visualizações ${text} em ${monthLabel}. Veja o relatório completo.`);
   }
   return buildPreheader(`Seu relatório de ${monthLabel} está pronto.`);
 }
