@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- guard_financial_write()'s post-Migração-B condition
--- (20260904000001_workspace_roles_b_enforcement.sql, item (2)): the trigger
+-- (20260904000002_workspace_roles_b_enforcement.sql, item (2)): the trigger
 -- guarding membros.custo_mensal / clientes.valor_mensal now requires
 -- has_permission('financeiro','editar'), not can_see_financials() (which is
 -- itself now just financeiro/ver). Custom-role fixture technique from

@@ -196,7 +196,7 @@ Deno.test("delete: key ainda referenciada por automação -> 409 e nada é trash
 // Task 11: o gate mutante trocou de isWorkspaceEditor(member.role) para
 // has_permission_for(user, conta, 'automacoes', 'editar') -- a MESMA permissão
 // que a RLS de instagram_comment_automations exige para escrever (ica_insert/
-// update/delete, migração 20260904000001). Migração B também mudou o preset de
+// update/delete, migração 20260904000002). Migração B também mudou o preset de
 // agent para 'automacoes':'editar' (era só 'ver'), então agent legado agora
 // PASSA aqui -- mudança de comportamento deliberada, não uma regressão de
 // isolamento (ver correções do brief da Task 11).

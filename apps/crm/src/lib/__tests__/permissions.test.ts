@@ -30,7 +30,7 @@ it('TT-01: owner: tudo true', () => {
 });
 
 // TT-02: admin legado, can_see_financials=true: financeiro/ver e
-// financeiro/editar => true. Migração B (20260904000001) acopla contratos à
+// financeiro/editar => true. Migração B (20260904000002) acopla contratos à
 // mesma exceção — ver o comentário no ramo 'admin' de derivePermission.
 it('TT-02: admin legado (can_see_financials=true): financeiro e contratos (ver/editar) true', () => {
   const m = legacy('admin', true);
@@ -81,7 +81,7 @@ it('TT-06: agent legado: analytics/ver true, analytics/editar false', () => {
 });
 
 // TT-07: agent legado: automacoes/ver=true, automacoes/editar=true. Migração
-// B (20260904000001) remapeou 'automacoes' para governar só instagram_
+// B (20260904000002) remapeou 'automacoes' para governar só instagram_
 // comment_automations, que já dava escrita livre a qualquer membro (agente
 // incluso) desde 20260829000002 -- 'editar' preserva isso byte a byte
 // ('ver', usado antes de uma rodada anterior desta migração, teria revogado

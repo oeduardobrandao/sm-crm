@@ -75,7 +75,7 @@ usa o preset derivado de `workspace_members.role`:
 não mais automações de status. `instagram_comment_automations` já dava escrita
 irrestrita a qualquer membro do workspace, agente incluso, desde `20260829000002`
 ("agent ganha escrita completa... decisão de produto revertida", pós-#399) — SELECT era
-livre desde `20260815000002`. A Migração B (`20260904000001`) rewires `ica_select/
+livre desde `20260815000002`. A Migração B (`20260904000002`) rewires `ica_select/
 insert/update/delete` para `has_permission('automacoes', 'ver'/'editar')` em vez do
 tenant-check puro que tinham, e o preset do Agente para `automacoes` é `editar`
 especificamente porque é o nível que preserva essa escrita irrestrita byte a byte —

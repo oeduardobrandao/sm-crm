@@ -10,7 +10,7 @@
 --      any workspace member (owner/admin/agent) write, same conta_id-only
 --      RLS SHAPE as workflow_posts_all (20260402) always had. Migration
 --      20260829000002 dropped the owner/admin-only INSERT/UPDATE/DELETE
---      restriction from 20260815000002 for good — migration 20260904000001
+--      restriction from 20260815000002 for good — migration 20260904000002
 --      (Migração B, permissões granulares) rewires ica_* onto
 --      has_permission('automacoes', ...) instead of a plain tenant check,
 --      but the agent PRESET for 'automacoes' is 'editar' specifically so
@@ -109,7 +109,7 @@ begin
     returning id into v_auto;
 
   -- agent SELECT sees the automation (has_permission('automacoes','ver') --
-  -- legacy agent preset -- migration 20260904000001)
+  -- legacy agent preset -- migration 20260904000002)
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_agent, 'role', 'authenticated')::text, true);
   select count(*) into v_seen from instagram_comment_automations where conta_id = v_ws;

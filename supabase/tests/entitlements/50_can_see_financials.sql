@@ -128,7 +128,7 @@ begin
   -- Pre-Migração-B this was NULL (the old body's bare SELECT over
   -- workspace_members found zero rows when workspace_id = NULL, and a
   -- non-aggregate SELECT with no matching row yields NULL). Migração B
-  -- (20260904000001) redefines the body as `SELECT public.has_permission
+  -- (20260904000002) redefines the body as `SELECT public.has_permission
   -- ('financeiro', 'ver')`, and has_permission_for's own NULL-safety guard
   -- (Migração A, 20260903000002) is `IF p_user IS NULL OR p_workspace IS
   -- NULL OR p_module IS NULL THEN RETURN false` -- an explicit, deterministic

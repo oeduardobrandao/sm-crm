@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Migração B (20260904000001_workspace_roles_b_enforcement.sql): exercises
+-- Migração B (20260904000002_workspace_roles_b_enforcement.sql): exercises
 -- every RLS point it rewires under a REAL custom papel (role_id), plus the
 -- legacy-fallback regressions the rewire must not disturb.
 --

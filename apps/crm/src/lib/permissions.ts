@@ -31,7 +31,7 @@ export type PermissionCheck = boolean | 'unknown';
  * decide a resolução de fato. Mudou o preset na SQL, muda aqui, e o teste de
  * paridade (TT-05..08) + o pgTAP 72 precisam mudar juntos.
  */
-// automacoes: 'editar' (não 'ver'). Migração B (20260904000001) remapeou o
+// automacoes: 'editar' (não 'ver'). Migração B (20260904000002) remapeou o
 // módulo: post_status_automations agora segue 'configuracoes' (já 'none'
 // aqui, owner/admin-only preservado sem tocar em nada), e 'automacoes'
 // passou a governar só instagram_comment_automations -- que já dava escrita
@@ -93,7 +93,7 @@ export function derivePermission(
     return levelAllows(membership.permissions?.[module] ?? 'none', action);
   }
   if (membership.role === 'admin') {
-    // Migração B (20260904000001_workspace_roles_b_enforcement.sql, item 2):
+    // Migração B (20260904000002_workspace_roles_b_enforcement.sql, item 2):
     // contratos entra na mesma exceção de financeiro. Fato de produção: um
     // admin restrito (can_see_financials=false) já não vê contratos hoje —
     // nav-data.ts esconde os dois itens juntos para admin restrito, e a RLS

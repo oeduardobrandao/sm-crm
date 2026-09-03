@@ -120,7 +120,7 @@ begin
 
   -- TT-02: admin legado, can_see_financials=true (default): financeiro/ver e
   -- financeiro/editar => true. Migração B
-  -- (20260904000001_workspace_roles_b_enforcement.sql, item 2) acopla
+  -- (20260904000002_workspace_roles_b_enforcement.sql, item 2) acopla
   -- contratos à mesma exceção do ramo 'admin' -- fato de produção (admin
   -- restrito já não via contratos antes desta migração: nav-data.ts escondia
   -- os dois juntos, e a RLS legada de contratos_select lia
@@ -191,7 +191,7 @@ begin
   raise notice '72: TT-06 ok';
 
   -- TT-07: agent legado: automacoes/ver=true, automacoes/editar=true.
-  -- Migração B (20260904000001_workspace_roles_b_enforcement.sql, item 6)
+  -- Migração B (20260904000002_workspace_roles_b_enforcement.sql, item 6)
   -- remaps 'automacoes' to govern only instagram_comment_automations, which
   -- already gave every workspace member (agent included) unrestricted write
   -- since 20260829000002 -- 'editar' is what preserves that byte-for-byte

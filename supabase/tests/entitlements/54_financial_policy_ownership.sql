@@ -43,7 +43,7 @@
 --
 -- Re-run that by hand if the sweep's WHERE clause is ever touched.
 --
--- UPDATE (Migração B, 20260904000001_workspace_roles_b_enforcement.sql):
+-- UPDATE (Migração B, 20260904000002_workspace_roles_b_enforcement.sql):
 -- contratos moved off can_see_financials()/financeiro entirely, onto its own
 -- has_permission('contratos', ...) module (item 4b of that migration).
 -- transacoes is untouched -- still financeiro/can_see_financials(), with

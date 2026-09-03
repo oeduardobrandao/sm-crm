@@ -68,7 +68,7 @@ export function createAutomationMediaHandler(deps: AutomationMediaDeps) {
     // Mesmo split de mutação vs leitura que a RLS de instagram_comment_automations
     // (ica_insert/update/delete vs ica_select): as rotas mutantes exigem
     // has_permission_for('automacoes','editar') -- a MESMA permissão que
-    // autoriza escrever a automação em si (ver migração 20260904000001, RLS
+    // autoriza escrever a automação em si (ver migração 20260904000002, RLS
     // ica_insert/update/delete). O cartão de mídia é parte de criar essas
     // automações, então o mesmo gate se aplica; isso inclui o preset legado
     // de agent, que ganhou automacoes:'editar' nessa migração (era só 'ver')
