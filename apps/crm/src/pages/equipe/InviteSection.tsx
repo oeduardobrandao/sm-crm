@@ -1,5 +1,6 @@
 import { UserPlus } from 'lucide-react';
 import type { UseFormReturn } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -13,6 +14,7 @@ import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/comp
 import { InviteTimeLeft } from '../configuracao/inviteHelpers';
 import { UsageMeter } from '@/components/usage/UsageMeter';
 import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
+import { getWorkspaceRoles } from '@/store';
 import type { MembroFormValues } from './membroForm';
 import type { SeatState } from './inviteSupport';
 
@@ -58,11 +60,25 @@ export function InviteSection({
   form,
   seat,
   pendingInvite,
+  canManageWorkspace,
 }: {
   form: UseFormReturn<MembroFormValues>;
   seat: SeatState;
   pendingInvite: { email: string; role: string; expires_at: string } | null;
+  /**
+   * Same prop EquipePage already computes for itself (owner/admin, or a
+   * custom role with `equipe:editar`) — gates the custom-papel options below
+   * exactly like PapeisTab/MembrosTab gate their own `getWorkspaceRoles`
+   * fetch, so an agent who can't manage the workspace never fires this query.
+   */
+  canManageWorkspace: boolean;
 }) {
+  const { data: workspaceRoles = [] } = useQuery({
+    queryKey: ['workspace-roles'],
+    queryFn: getWorkspaceRoles,
+    enabled: canManageWorkspace,
+  });
+
   const sectionTitle = (
     <span
       style={{
@@ -160,6 +176,11 @@ export function InviteSection({
                   <SelectContent>
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="agent">Agente</SelectItem>
+                    {workspaceRoles.map((r) => (
+                      <SelectItem key={r.id} value={`custom:${r.id}`}>
+                        {r.nome}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />

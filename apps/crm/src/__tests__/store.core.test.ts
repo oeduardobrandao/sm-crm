@@ -78,6 +78,10 @@ describe('store core helpers and CRUD', () => {
         id: 'user-2',
         nome: 'Mariana Freitas',
         role: 'admin',
+        // No role_id/workspace_roles in the mocked row (legacy member,
+        // matches the pre-Task-13 shape) -- both flatten to null.
+        role_id: null,
+        papel_nome: null,
         avatar_url: 'https://cdn.mesaas.com/mariana.jpg',
         created_at: '2026-03-01T10:00:00.000Z',
       },
@@ -86,6 +90,43 @@ describe('store core helpers and CRUD', () => {
       method: 'eq',
       args: ['workspace_id', 'conta-1'],
     });
+  });
+
+  it('flattens role_id and the embedded workspace_roles.nome as papel_nome for a member with a custom papel', async () => {
+    mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
+      data: [
+        {
+          user_id: 'user-3',
+          role: 'agent',
+          role_id: 'role-1',
+          joined_at: '2026-04-02T10:00:00.000Z',
+          can_see_financials: false,
+          workspace_roles: { nome: 'Editor de Conteúdo' },
+          profiles: {
+            id: 'user-3',
+            nome: 'Carla Editora',
+            avatar_url: null,
+            created_at: '2026-03-02T10:00:00.000Z',
+          },
+        },
+      ],
+      error: null,
+    });
+
+    const users = await store.getWorkspaceUsers();
+
+    expect(users).toEqual([
+      {
+        id: 'user-3',
+        nome: 'Carla Editora',
+        role: 'agent',
+        role_id: 'role-1',
+        papel_nome: 'Editor de Conteúdo',
+        can_see_financials: false,
+        avatar_url: null,
+        created_at: '2026-03-02T10:00:00.000Z',
+      },
+    ]);
   });
 
   it('returns an empty workspace list when there is no authenticated user', async () => {
@@ -116,7 +157,7 @@ describe('store core helpers and CRUD', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await store.updateWorkspaceUserRole('user-44', 'admin');
+    await store.updateWorkspaceUserRole('user-44', { role: 'admin' });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [input, init] = fetchMock.mock.calls[0];
@@ -128,6 +169,22 @@ describe('store core helpers and CRUD', () => {
       action: 'update-role',
       targetUserId: 'user-44',
       role: 'admin',
+    });
+  });
+
+  it('spreads roleId (custom papel) into the update-role request body instead of role', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await store.updateWorkspaceUserRole('user-44', { roleId: 'role-1' });
+
+    expect(JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))).toEqual({
+      action: 'update-role',
+      targetUserId: 'user-44',
+      roleId: 'role-1',
     });
   });
 

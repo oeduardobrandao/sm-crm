@@ -24,13 +24,19 @@ export async function inviteUser(
   email: string,
   role: InviteRole,
   membroId?: number,
+  roleId?: string,
 ): Promise<InviteResult> {
   if (!email) throw new Error('Email é obrigatório');
   const headers = await getAuthHeaders();
+  const body: Record<string, unknown> = { email, role };
+  if (membroId != null) body.membroId = membroId;
+  // Snake_case on purpose: invite-user reads `body.role_id`, not `roleId` —
+  // mirrors the request shape the edge function (Task 6) actually parses.
+  if (roleId != null) body.role_id = roleId;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-user`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(membroId != null ? { email, role, membroId } : { email, role }),
+    body: JSON.stringify(body),
   });
   const result = await res.json();
   if (!res.ok) {

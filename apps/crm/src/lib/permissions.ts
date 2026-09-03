@@ -105,3 +105,45 @@ export function derivePermission(
   }
   return levelAllows(AGENT_ROLE_PRESET[module], action);
 }
+
+/**
+ * Generalizes the financial-only live-revocation purge (AuthContext's
+ * FINANCIAL_QUERY_KEYS block) to EVERY module: compares `derivePermission(_,
+ * module, 'ver')` before vs. after a membership change, module by module —
+ * never a coarse "role changed" or "permissions object changed" comparison,
+ * which would flag every module as transitioned on ANY edit (e.g. a papel
+ * losing `leads` alone would wrongly look like it also lost `clientes`).
+ *
+ * `'ver'` only: this feeds a cache-purge decision (can the user still list
+ * this module's data at all), not an edit-capability check — a
+ * `editar` -> `ver` narrowing never needs to blow away a query cache the
+ * user can still legitimately read.
+ *
+ * A transition is:
+ * - downgraded: was exactly `true`, now `false` or `'unknown'` — mirrors the
+ *   financial purge's own `previous !== nowAllowed` guard reasoning (see
+ *   AuthContext.tsx's applyMembership): `'unknown'` is not `true` either, so
+ *   the very first resolution into a restricted state (never having been
+ *   granted at all) still counts as a downgrade that must purge.
+ * - upgraded: was `false` or `'unknown'`, now exactly `true`.
+ * - anything else (true -> true, false -> false, 'unknown' -> 'unknown',
+ *   false <-> 'unknown') is not a transition — neither list gets the module.
+ *
+ * Order in each returned array follows `PERMISSION_MODULES`, not caller
+ * input order — callers should treat both as unordered sets.
+ */
+export function computePermissionTransitions(
+  prev: MyMembership | null,
+  next: MyMembership | null,
+): { downgraded: PermissionModule[]; upgraded: PermissionModule[] } {
+  const downgraded: PermissionModule[] = [];
+  const upgraded: PermissionModule[] = [];
+  for (const module of PERMISSION_MODULES) {
+    const before = derivePermission(prev, module, 'ver');
+    const after = derivePermission(next, module, 'ver');
+    if (before === after) continue;
+    if (before === true) downgraded.push(module);
+    else if (after === true) upgraded.push(module);
+  }
+  return { downgraded, upgraded };
+}

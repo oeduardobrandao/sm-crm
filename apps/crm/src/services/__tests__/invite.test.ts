@@ -129,6 +129,31 @@ describe('invite service', () => {
       expect(body).toEqual({ email: 'novo@equipe.com', role: 'agent' });
     });
 
+    it('includes role_id (snake_case) in the body when a custom papel roleId is provided', async () => {
+      fetchHarness.queueResponse({ json: { success: true, message: 'Convite enviado!' } });
+
+      await inviteUser('novo@equipe.com', 'agent', 42, 'role-uuid-1');
+
+      const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
+      // Snake_case on purpose — invite-user (Task 6) reads body.role_id, not
+      // a camelCase roleId.
+      expect(body).toEqual({
+        email: 'novo@equipe.com',
+        role: 'agent',
+        membroId: 42,
+        role_id: 'role-uuid-1',
+      });
+    });
+
+    it('omits role_id from the body when roleId is not provided (preset role invite)', async () => {
+      fetchHarness.queueResponse({ json: { success: true } });
+
+      await inviteUser('novo@equipe.com', 'admin');
+
+      const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
+      expect(body).not.toHaveProperty('role_id');
+    });
+
     it('attaches the error payload to the thrown Error so entitlement mapping works', async () => {
       fetchHarness.queueResponse({
         ok: false,

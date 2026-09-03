@@ -5,7 +5,7 @@ export async function getWorkspaceUsers(): Promise<any[]> {
   const { data, error } = await supabase
     .from('workspace_members')
     .select(
-      'user_id, role, joined_at, can_see_financials, profiles!inner(id, nome, avatar_url, created_at)',
+      'user_id, role, role_id, joined_at, can_see_financials, workspace_roles(nome), profiles!inner(id, nome, avatar_url, created_at)',
     )
     .eq('workspace_id', conta_id)
     .order('joined_at', { ascending: true });
@@ -15,6 +15,8 @@ export async function getWorkspaceUsers(): Promise<any[]> {
     id: m.profiles.id,
     nome: m.profiles.nome,
     role: m.role,
+    role_id: m.role_id ?? null,
+    papel_nome: m.workspace_roles?.nome ?? null,
     can_see_financials: m.can_see_financials,
     avatar_url: m.profiles.avatar_url,
     created_at: m.profiles.created_at,
@@ -212,8 +214,11 @@ export async function callManageWorkspaceUser(
     throw new Error(result.error || result.message || `Erro HTTP ${response.status}`);
 }
 
-export async function updateWorkspaceUserRole(userId: string, role: string): Promise<void> {
-  await callManageWorkspaceUser('update-role', userId, { role });
+export async function updateWorkspaceUserRole(
+  userId: string,
+  value: { role: 'admin' | 'agent' } | { roleId: string },
+): Promise<void> {
+  await callManageWorkspaceUser('update-role', userId, value);
 }
 
 export async function removeWorkspaceUser(userId: string): Promise<void> {

@@ -19,6 +19,7 @@ import {
 import { getMyMembership, type MyMembership } from '../store/workspace';
 import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAccess';
 import {
+  computePermissionTransitions,
   derivePermission,
   type PermissionAction,
   type PermissionCheck,
@@ -50,6 +51,81 @@ export const FINANCIAL_QUERY_KEYS = [
   'contratos',
   'dashboardStats',
 ];
+
+/**
+ * Query-cache keys to purge (downgrade) or invalidate (upgrade) per module on
+ * a live permission transition — the generalized, per-module counterpart of
+ * FINANCIAL_QUERY_KEYS above, which stays module-specific to `financeiro` and
+ * keeps covering the already-tested financial block untouched (see the
+ * comment on its own purge in applyMembership below).
+ *
+ * Keys are the real first-array-element query keys used across the CRM
+ * (verified with `grep -rn "queryKey: \['" apps/crm/src --include='*.ts*'`,
+ * not the placeholder list from the original task brief, which included keys
+ * that don't exist anywhere in the codebase — e.g. a literal `'workflow'` or
+ * `'posts'` key. TanStack Query's removeQueries/invalidateQueries match by
+ * exact positional equality of the leading key segments, so a key that is
+ * merely a *substring* of a real one (`'workflow'` vs. the real
+ * `'workflow-templates'`) never matches anything and would have been a
+ * silent no-op purge.
+ *
+ * Deliberately NOT exhaustive down to every parameterized per-item key in the
+ * app (e.g. every `workflow-posts-with-props` variant) — this is
+ * defense-in-depth over an in-memory cache for a tab that never refetches on
+ * its own, not the enforcement boundary (RLS + has_permission_for already
+ * deny the underlying read). Covers each module's primary/list-level
+ * queries, the same level of care FINANCIAL_QUERY_KEYS already applies to
+ * `financeiro`.
+ *
+ * `aprovacoes` and `configuracoes` are intentionally `[]`: `aprovacoes` has
+ * no CRM route mounted yet (see routePermissions.ts's own comment on the
+ * same module) and `configuracoes` never holds module-scoped list data of
+ * its own.
+ */
+export const MODULE_QUERY_KEYS: Record<PermissionModule, string[]> = {
+  financeiro: ['transacoes', 'dashboardStats'],
+  contratos: ['contratos'],
+  clientes: ['cliente', 'clientes'],
+  equipe: ['membros', 'workspace-users', 'invites'],
+  leads: ['leads'],
+  entregas: [
+    'workflows',
+    'workflow-templates',
+    'workflow-grid',
+    'active-posts',
+    'scheduled-posts',
+    'concluded-workflows',
+    'concluded-summaries',
+    'standalone-post',
+    'post-approvals',
+    'post-media',
+    'post-preview',
+  ],
+  calendario: ['calendar-deadlines', 'allClienteDatas'],
+  aprovacoes: [],
+  arquivos: ['folder-contents', 'folder-tree', 'folder-info'],
+  ideias: ['ideias', 'hub-ideias-all', 'ideia-images'],
+  tarefas: ['tarefas', 'subtarefas', 'tarefa-tags'],
+  analytics: [
+    'portfolio-summary',
+    'analytics-overview',
+    'analytics-history',
+    'analytics-posts',
+    'analytics-times',
+    'analytics-reports',
+    'stories-analytics',
+    'report-docs',
+    'report-templates',
+  ],
+  automacoes: [
+    'instagram-automations',
+    'instagram-automations-count',
+    'instagram-automation-sends',
+    'ig-automation-ready-account',
+    'automation-production-covers',
+  ],
+  configuracoes: [],
+};
 
 interface AuthContextValue {
   user: User | null;
@@ -479,6 +555,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let membershipFetchSeq = 0;
 
     const applyMembership = (next: MyMembership | null) => {
+      // Captured before ANY state/ref mutation below (including
+      // `membershipRef.current = next` a few lines down) — feeds the
+      // generalized per-module purge at the bottom of this function via
+      // computePermissionTransitions(previousMembership, next). Same
+      // read-before-overwrite discipline as `canSeeFinancialsRef` below, and
+      // for the identical reason: two applyMembership calls can land
+      // back-to-back with no render in between (see that block's comment),
+      // so this must be the last value THIS handler itself applied, never a
+      // lagging render-committed one.
+      const previousMembership = membershipRef.current;
+
       setWorkspaceRole(next?.role ?? null);
       // Both callers of applyMembership (the realtime UPDATE payload and the
       // poll's getMyMembership() result) only ever invoke it with a genuine,
@@ -574,6 +661,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       }
+
+      // Generalized, per-module counterpart of the financial-only block just
+      // above — that block stays exactly as-is (it purges a broader,
+      // hand-picked key set for a subtly different signal: financial columns
+      // masked INSIDE clientes/membros rows, not just standalone
+      // financeiro/contratos data) and keeps covering the scenarios already
+      // tested for it. This one is additive: it fires for EVERY
+      // PermissionModule, financeiro/contratos included, so a transition on
+      // ANY module (not only the financial one) purges or invalidates that
+      // module's own query-cache keys too. Running both for financeiro/
+      // contratos is intentional and harmless — removeQueries/
+      // invalidateQueries are idempotent for a key with no matching queries.
+      //
+      // Uses `previousMembership`, captured at the very top of this function
+      // BEFORE `membershipRef.current` was overwritten a few lines up — the
+      // exact same back-to-back-calls-in-one-commit race the ref reads above
+      // exist to close (see this function's opening comment).
+      const { downgraded, upgraded } = computePermissionTransitions(previousMembership, next);
+      for (const module of downgraded) {
+        for (const key of MODULE_QUERY_KEYS[module]) {
+          queryClient.removeQueries({ queryKey: [key] });
+        }
+      }
+      for (const module of upgraded) {
+        for (const key of MODULE_QUERY_KEYS[module]) {
+          queryClient.invalidateQueries({ queryKey: [key] });
+        }
+      }
     };
 
     // Shared by both getMyMembership() call sites below (the channel's
@@ -646,6 +761,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       )
       .subscribe();
 
+    // Companion subscription: an owner/admin editing a CUSTOM ROLE's
+    // `permissions` (Configurações → Papéis) changes what every member
+    // assigned to that role can do, but writes NO row in workspace_members —
+    // the channel above, filtered on `workspace_members`, never fires for it.
+    // Without this, a role edit would sit invisible until the 60s poll (the
+    // one below) happens to catch it.
+    //
+    // Filtered on `conta_id=eq.${workspaceId}` (not the edited role's id,
+    // which this client doesn't know ahead of time) — any role edit in the
+    // workspace triggers a refetch. Routed through fetchAndApplyMembership(),
+    // never applied directly from the payload: this table's row IS
+    // `workspace_roles`, not this member's `workspace_members` row, so there
+    // is no "raw row" to apply here even for the plain case — only
+    // getMyMembership()'s embed can say whether THIS member's `role_id`
+    // actually points at the role that just changed. An edit to a role this
+    // member does NOT hold produces a harmless refetch that resolves to the
+    // same membership (computePermissionTransitions sees no transition,
+    // financeiro's own ref comparison sees no change either) — the seq guard
+    // above (shared with the wm: channel and the poll) still applies here, so
+    // an in-flight refetch from this channel can never race the others out of
+    // order or survive this effect's teardown.
+    const rolesChannel = supabase
+      .channel(`wr:${userId}:${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'workspace_roles',
+          filter: `conta_id=eq.${workspaceId}`,
+        },
+        () => {
+          fetchAndApplyMembership();
+        },
+      )
+      .subscribe();
+
     // Bounded polling fallback. Refetch-on-focus alone is insufficient: focus
     // events never fire for a tab that stays foregrounded, which is precisely
     // the indefinite-cache case this exists to address. It is also the only
@@ -671,6 +823,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       membershipFetchSeq += 1;
       clearInterval(poll);
       void supabase.removeChannel(channel);
+      void supabase.removeChannel(rolesChannel);
     };
   }, [userId, profile?.conta_id, queryClient]);
 

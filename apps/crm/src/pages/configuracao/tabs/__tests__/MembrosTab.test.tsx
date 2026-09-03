@@ -1,3 +1,4 @@
+import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +8,7 @@ const { useAuthMock, storeMock } = vi.hoisted(() => ({
   storeMock: {
     getInitials: vi.fn((name: string) => (name ? name[0].toUpperCase() : '?')),
     getWorkspaceUsers: vi.fn(async () => []),
+    getWorkspaceRoles: vi.fn(async () => [] as { id: string; nome: string }[]),
     removeWorkspaceUser: vi.fn(async () => {}),
     updateWorkspaceUserRole: vi.fn(async () => {}),
     setWorkspaceUserFinancialAccess: vi.fn(async () => {}),
@@ -50,6 +52,59 @@ vi.mock('@/components/ui/switch', () => ({
     />
   ),
 }));
+
+// Radix Select requires pointer-capture/scrollIntoView APIs jsdom doesn't
+// implement — mocked the same way PapeisTab.test.tsx does, so the role
+// SelectItems (including the custom-papel ones) render as plain clickable
+// buttons instead of fighting jsdom's missing portal/pointer-capture
+// behaviour. MembrosTab drives these Selects with plain useState (no
+// react-hook-form Controller involved here), so a bare value/onValueChange
+// passthrough is enough.
+vi.mock('@/components/ui/select', async () => {
+  const ReactModule = await vi.importActual<typeof import('react')>('react');
+
+  interface SelectContextValue {
+    value?: string;
+    onValueChange?: (value: string) => void;
+  }
+  const SelectContext = ReactModule.createContext<SelectContextValue>({});
+
+  function Select({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (value: string) => void;
+    children: React.ReactNode;
+  }) {
+    return (
+      <SelectContext.Provider value={{ value, onValueChange }}>
+        <div>{children}</div>
+      </SelectContext.Provider>
+    );
+  }
+  function SelectTrigger({ children }: { children: React.ReactNode }) {
+    return <button type="button">{children}</button>;
+  }
+  function SelectValue({ placeholder }: { placeholder?: string }) {
+    const { value } = ReactModule.useContext(SelectContext);
+    return <span>{value || placeholder || ''}</span>;
+  }
+  function SelectContent({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+  function SelectItem({ value, children }: { value: string; children: React.ReactNode }) {
+    const { onValueChange } = ReactModule.useContext(SelectContext);
+    return (
+      <button type="button" onClick={() => onValueChange?.(value)}>
+        {children}
+      </button>
+    );
+  }
+
+  return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem };
+});
 
 vi.mock('../../../../lib/supabase', () => ({
   supabase: {
@@ -344,5 +399,135 @@ describe('MembrosTab — action buttons gated on equipe:editar', () => {
     await screen.findByText('Ana Owner');
     expect(screen.getByRole('button', { name: /Convidar/ })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Função' }).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Task 13: papel (custom-role) assignment in the UI. `wsUsers` rows now carry
+ * `role_id`/`papel_nome` (getWorkspaceUsers, store/workspace.ts), and the
+ * função select encodes 'admin' | 'agent' | 'custom:<uuid>'.
+ */
+describe('MembrosTab — atribuição de papel custom', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getWorkspaceRoles.mockResolvedValue([
+      { id: 'role-1', nome: 'Editor de Conteúdo', permissions: {}, created_at: '2026-01-01' },
+      { id: 'role-2', nome: 'Financeiro Only', permissions: {}, created_at: '2026-01-01' },
+    ]);
+  });
+
+  it('shows the papel name badge (not the legacy RoleBadge label) for a member with a custom papel', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      {
+        id: 'u1',
+        nome: 'Carla Editora',
+        role: 'agent',
+        role_id: 'role-1',
+        papel_nome: 'Editor de Conteúdo',
+        avatar_url: null,
+        created_at: '2026-01-01',
+      },
+    ]);
+    renderTab();
+
+    await screen.findByText('Carla Editora');
+    expect(screen.getByText('Editor de Conteúdo')).toBeInTheDocument();
+    // RoleBadge's legacy label for 'agent' must NOT appear alongside it.
+    expect(screen.queryByText('Agente')).not.toBeInTheDocument();
+  });
+
+  it('a legacy member (no role_id) keeps the ordinary RoleBadge label', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'u1', nome: 'Beto Admin', role: 'admin', role_id: null, avatar_url: null },
+    ]);
+    renderTab();
+
+    await screen.findByText('Beto Admin');
+    expect(screen.getByText('Admin')).toBeInTheDocument();
+  });
+
+  it('opening "Função" for a custom-papel member pre-selects custom:<roleId>, and saving a different preset calls updateWorkspaceUserRole with { role }', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      {
+        id: 'u1',
+        nome: 'Carla Editora',
+        role: 'agent',
+        role_id: 'role-1',
+        papel_nome: 'Editor de Conteúdo',
+        avatar_url: null,
+      },
+    ]);
+    renderTab();
+
+    await screen.findByText('Carla Editora');
+    fireEvent.click(screen.getByRole('button', { name: 'Função' }));
+
+    // The select's mocked SelectValue renders the current value as text.
+    expect(await screen.findByText('custom:role-1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Admin' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => {
+      expect(storeMock.updateWorkspaceUserRole).toHaveBeenCalledWith('u1', { role: 'admin' });
+    });
+    expect(toast.success).toHaveBeenCalledWith('Função atualizada!');
+  });
+
+  it('selecting a custom papel for a legacy member calls updateWorkspaceUserRole with { roleId }', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'u2', nome: 'Beto Admin', role: 'admin', role_id: null, avatar_url: null },
+    ]);
+    renderTab();
+
+    await screen.findByText('Beto Admin');
+    fireEvent.click(screen.getByRole('button', { name: 'Função' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editor de Conteúdo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => {
+      expect(storeMock.updateWorkspaceUserRole).toHaveBeenCalledWith('u2', { roleId: 'role-1' });
+    });
+  });
+
+  it('the invite modal lists custom papéis and sends role: agent + role_id when one is picked', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite enviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+      // The invite modal's <Label>Email *</Label> has no htmlFor/id pairing
+      // with the <Input> beside it, so getByLabelText can't resolve it — the
+      // email field is the only textbox rendered in the dialog at this point.
+      fireEvent.change(screen.getByRole('textbox'), {
+        target: { value: 'nova@equipe.com' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Financeiro Only' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar Convite' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body).toEqual({
+        email: 'nova@equipe.com',
+        role: 'agent',
+        role_id: 'role-2',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

@@ -36,6 +36,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import {
   getInitials,
+  getWorkspaceRoles,
   getWorkspaceUsers,
   removeWorkspaceUser,
   setWorkspaceUserFinancialAccess,
@@ -72,6 +73,17 @@ export default function MembrosTab() {
     enabled: canViewTeam,
   });
 
+  // Gated on `canManageTeam` (equipe:editar), not just owner/admin: the
+  // server-side authorization for update-role/invite-user is
+  // `hasPermissionFor(..., 'equipe', 'editar')` (manage-workspace-user/
+  // index.ts), so a custom role with that grant can assign papéis too — this
+  // must match, not a coarser owner/admin-only gate.
+  const { data: workspaceRoles = [] } = useQuery({
+    queryKey: ['workspace-roles'],
+    queryFn: getWorkspaceRoles,
+    enabled: canManageTeam,
+  });
+
   const { data: invites, refetch: refetchInvites } = useQuery({
     queryKey: ['invites'],
     queryFn: async () => {
@@ -100,7 +112,11 @@ export default function MembrosTab() {
 
   const handleEditRole = (u: Record<string, string>) => {
     setEditRoleUser(u as unknown as { id: string; nome: string; role: string });
-    setEditRoleValue(u.role);
+    // Encoding: 'admin' | 'agent' | 'custom:<uuid>'. A member with a custom
+    // papel always has role_id set (the server pins the chassis role to
+    // 'agent' for those — see roleUpdate.ts's resolveRoleUpdate), so role_id
+    // alone decides which form this select opens in.
+    setEditRoleValue(u.role_id ? `custom:${u.role_id}` : u.role);
     setEditRoleOpen(true);
   };
 
@@ -108,7 +124,10 @@ export default function MembrosTab() {
     if (!editRoleUser) return;
     setEditRoleLoading(true);
     try {
-      await updateWorkspaceUserRole(editRoleUser.id, editRoleValue);
+      const value = editRoleValue.startsWith('custom:')
+        ? { roleId: editRoleValue.slice(7) }
+        : { role: editRoleValue as 'admin' | 'agent' };
+      await updateWorkspaceUserRole(editRoleUser.id, value);
       refetchWsUsers();
       setEditRoleOpen(false);
       toast.success('Função atualizada!');
@@ -168,13 +187,20 @@ export default function MembrosTab() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+      // Decode the 'admin' | 'agent' | 'custom:<uuid>' select encoding: a
+      // custom papel always invites with the underlying 'agent' chassis role
+      // plus role_id — mirrors updateWorkspaceUserRole's own split above and
+      // EquipePage's invite submit.
+      const body = inviteRole.startsWith('custom:')
+        ? { email: inviteEmail, role: 'agent', role_id: inviteRole.slice(7) }
+        : { email: inviteEmail, role: inviteRole };
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+        body: JSON.stringify(body),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || result.message || `Erro ${res.status}`);
@@ -276,7 +302,16 @@ export default function MembrosTab() {
                 >
                   {u.nome}
                 </div>
-                <RoleBadge role={u.role} />
+                {u.papel_nome ? (
+                  // Custom papel: same badge look as RoleBadge (badge
+                  // badge-neutral), but with the papel's own name instead of
+                  // one of the three legacy PT-BR labels — inviteHelpers
+                  // itself stays untouched for the legacy cases (RoleBadge's
+                  // three-entry map has no slot for an arbitrary papel name).
+                  <span className="badge badge-neutral">{u.papel_nome}</span>
+                ) : (
+                  <RoleBadge role={u.role} />
+                )}
               </div>
               {isOwner && u.role === 'admin' && (
                 <div
@@ -399,6 +434,11 @@ export default function MembrosTab() {
               <SelectContent>
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="agent">Agente</SelectItem>
+                {workspaceRoles.map((r) => (
+                  <SelectItem key={r.id} value={`custom:${r.id}`}>
+                    {r.nome}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -452,6 +492,11 @@ export default function MembrosTab() {
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="agent">Agente</SelectItem>
+                  {workspaceRoles.map((r) => (
+                    <SelectItem key={r.id} value={`custom:${r.id}`}>
+                      {r.nome}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

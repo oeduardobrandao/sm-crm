@@ -250,7 +250,20 @@ export default function EquipePage() {
         values.inviteEnabled && canManageWorkspace && membroId != null && desiredCrmUser === null;
       if (wantsInvite) {
         try {
-          const result = await inviteUser(values.inviteEmail.trim(), values.inviteRole, membroId);
+          // Decode the 'admin' | 'agent' | 'custom:<uuid>' select encoding:
+          // a custom papel always invites with the underlying 'agent' chassis
+          // role plus its roleId (mirrors manage-workspace-user's own
+          // role/roleId split — the server never sees the encoding itself).
+          const encoded = values.inviteRole;
+          const isCustom = encoded.startsWith('custom:');
+          const role = isCustom ? 'agent' : (encoded as 'admin' | 'agent');
+          // Omit the 4th argument entirely for a preset role rather than
+          // passing an explicit `undefined` — inviteUser's own `roleId != null`
+          // check treats both the same, but this keeps the arg list exactly
+          // 3-long for the common (non-custom) case.
+          const result = isCustom
+            ? await inviteUser(values.inviteEmail.trim(), role, membroId, encoded.slice(7))
+            : await inviteUser(values.inviteEmail.trim(), role, membroId);
           toast.success(inviteSuccessMessage(result));
           captureEvent('invite_sent', { source: 'equipe' });
         } catch (err) {
@@ -787,6 +800,7 @@ export default function EquipePage() {
                   form={form}
                   seat={seat}
                   pendingInvite={editing?.id ? (pendingByMembroId.get(editing.id) ?? null) : null}
+                  canManageWorkspace={canManageWorkspace}
                 />
               )}
               <DialogFooter>
