@@ -107,7 +107,9 @@ export async function generateReportDocument(
     // generateAINarrative -- o pipeline legado (instagram-report-generator-v2)
     // não passa nada e continua idêntico.
     const controller = new AbortController();
-    let timer: number | undefined;
+    // ReturnType<typeof setTimeout>, not `number`: under --node-modules-dir the
+    // npm graph's @types/node can win the setTimeout overload (seen in CI).
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<GenerateResult>((resolve) => {
       timer = setTimeout(
         () => {
