@@ -107,7 +107,9 @@ export async function generateReportDocument(
     // generateAINarrative -- o pipeline legado (instagram-report-generator-v2)
     // não passa nada e continua idêntico.
     const controller = new AbortController();
-    let timer: number | undefined;
+    // ReturnType<typeof setTimeout>, not `number`: under --node-modules-dir the
+    // npm graph's @types/node can win the setTimeout overload (seen in CI).
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<GenerateResult>((resolve) => {
       timer = setTimeout(
         () => {
@@ -146,7 +148,8 @@ export async function generateReportDocument(
         recsDoc = aiRecommendationsDoc(ai.output);
         goalsDoc = aiGoalsDoc(ai.output);
       } else {
-        console.warn(`[report-docs] AI falhou: ${"error" in ai ? ai.error : ai.status}`);
+        const reason = "error" in ai ? ai.error : (ai as GenerateResult).status;
+        console.warn(`[report-docs] AI falhou: ${reason}`);
       }
     } finally {
       clearTimeout(timer);

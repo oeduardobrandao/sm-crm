@@ -32,6 +32,7 @@ npm run test             # Vitest frontend/unit suite
 npm run test:watch       # Vitest in watch mode
 npm run test:coverage    # Vitest with V8 coverage
 deno test supabase/functions/    # Deno edge-function suite
+npm run check:functions  # deno check over the edge functions (test:functions runs --no-check)
 
 # Lint & format (both enforced in CI)
 npm run lint             # eslint apps/ packages/ (runs in the typecheck-and-test job)
@@ -52,7 +53,7 @@ pushes to `main` and `staging`, with **eight** jobs:
 | Job | Runs |
 |---|---|
 | `typecheck-and-test` | `npm run lint`, then `tsc` for **all four** projects (crm, hub, admin, `tsconfig.scripts.json`), then `npm run test:coverage` |
-| `edge-function-tests` | `npm run test:functions` (Deno) |
+| `edge-function-tests` | `npm run check:functions` (`deno check` over every `*/index.ts` and `_shared` module), then `npm run test:functions` (Deno) |
 | `entitlement-tests` | `supabase start` + `bash scripts/test-entitlements.sh` — the psql RLS/entitlement suites |
 | `coverage-threshold` | `npm run coverage:check` |
 | `format-check` | `npm run format:check` |
@@ -60,7 +61,7 @@ pushes to `main` and `staging`, with **eight** jobs:
 | `e2e` | Playwright |
 | `e2e-secrets-guard` | warns when E2E secrets are absent |
 
-Three things this list is here to prevent:
+Four things this list is here to prevent:
 
 - **`npm run build` is not the typecheck.** It only covers the CRM. CI
   typechecks four projects separately, so a Hub, Admin or scripts break passes
@@ -72,9 +73,14 @@ Three things this list is here to prevent:
   job skips silently, which is exactly why `e2e-secrets-guard` exists: it emits
   a warning naming the missing secrets. Check that warning before trusting a
   green e2e.
+- **`test:functions` does not type-check.** It runs `deno test --no-check`, so a
+  reference to an out-of-scope variable in an edge function passes the test
+  suite. `check:functions` is the only type gate for `supabase/functions/`; it
+  runs first in the same job.
 
 Before pushing, run `npm run lint`, `npm run format:check` (`npm run format`
-auto-fixes), the four `tsc` commands, `npm run test` and `npm run test:functions`.
+auto-fixes), the four `tsc` commands, `npm run test`, `npm run check:functions`
+and `npm run test:functions`.
 `npm run test:db` needs Docker locally; CI covers it either way.
 
 Migration filenames must use a unique timestamp version prefix (the digits before the first `_`). Two files sharing a prefix collide in Supabase's `schema_migrations` history table — only the first applies and the second is silently skipped. The `migration-version-guard` CI job fails the build on duplicates.

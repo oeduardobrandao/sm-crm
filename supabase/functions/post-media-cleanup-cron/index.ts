@@ -13,7 +13,7 @@ import {
 } from "../_shared/stream.ts";
 import { createPostMediaCleanupCronHandler } from "./handler.ts";
 import { runStreamSweeps } from "./stream-steps.ts";
-import { runOrphanScan } from "./orphan-scan.ts";
+import { runOrphanScan, type OrphanScanDeps } from "./orphan-scan.ts";
 import { runIntegrityCanary } from "./canary.ts";
 
 const CRON_NAME = "post-media-cleanup-cron";
@@ -122,7 +122,13 @@ Deno.serve(createPostMediaCleanupCronHandler({
     // Hardened module (see orphan-scan.ts): chunked known-set queries, abort on any
     // query error, and an empty-known-set circuit breaker — the 2026-08 incident
     // (silent .in() failures -> empty known set -> mass deletion) cannot recur.
-    const scan = await runOrphanScan({ db: svc, listOrphanKeys, trashObject });
+    // The cast keeps tsc from expanding PostgrestFilterBuilder against the
+    // narrow structural `db` contract (TS2589: excessively deep instantiation).
+    const scan = await runOrphanScan({
+      db: svc as unknown as OrphanScanDeps["db"],
+      listOrphanKeys,
+      trashObject,
+    });
 
     // Purge trash/ entries past their 30-day undo window (bounded per run).
     let trashPurged = 0;

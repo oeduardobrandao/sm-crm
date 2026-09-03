@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { revertPlanTarget } from "./revert-target.ts";
 import { handleCreatePlan, handleUpdatePlan } from "./plan-mutations.ts";
@@ -162,7 +162,7 @@ const MCP_KEY_COLS =
   "id, name, token_suffix, scopes, last_used_at, expires_at, revoked_at, created_at";
 
 async function handleListWorkspaceMcpKeys(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string },
   headers: Record<string, string>,
 ) {
@@ -177,7 +177,7 @@ async function handleListWorkspaceMcpKeys(
 }
 
 async function handleRevokeMcpKey(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string; key_id?: string },
   revokerUserId: string,
   headers: Record<string, string>,
@@ -193,7 +193,7 @@ async function handleRevokeMcpKey(
 }
 
 async function handleRevokeAllMcpKeys(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string },
   revokerUserId: string,
   headers: Record<string, string>,
@@ -210,7 +210,7 @@ async function handleRevokeAllMcpKeys(
 
 // ─── MCP OAuth grants (Claude connections; platform-level observe/revoke) ───
 async function handleListWorkspaceOAuthGrants(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string },
   headers: Record<string, string>,
 ) {
@@ -240,7 +240,7 @@ async function handleListWorkspaceOAuthGrants(
 }
 
 async function handleRevokeOAuthGrant(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string; grant_id?: string },
   revokerUserId: string,
   headers: Record<string, string>,
@@ -256,7 +256,7 @@ async function handleRevokeOAuthGrant(
 }
 
 async function handleRevokeAllOAuthGrants(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id?: string },
   revokerUserId: string,
   headers: Record<string, string>,
@@ -274,7 +274,7 @@ async function handleRevokeAllOAuthGrants(
 // ─── Workspaces ────────────────────────────────────────────────
 
 async function handleGetWorkspace(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id: string },
   headers: Record<string, string>,
 ) {
@@ -394,7 +394,7 @@ function stripeDashboardUrl(livemode: boolean, kind: string, id: string): string
  * is unreachable or the key is unset we fall back to the plan's catalog price.
  */
 async function buildSubscriptionDetail(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   workspaceId: string,
 ) {
   const { data: row } = await svc
@@ -503,7 +503,7 @@ async function applyCatalogFallback<
     amount_source: "stripe" | "pagarme" | "catalog" | null;
   },
 >(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   info: T,
   planId: string | null,
   billingInterval: string | null,
@@ -526,7 +526,7 @@ async function applyCatalogFallback<
 // ─── Plans ─────────────────────────────────────────────────────
 
 async function handleListPlans(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   headers: Record<string, string>,
 ) {
   const { data: plans, error } = await svc
@@ -549,7 +549,7 @@ async function handleListPlans(
 }
 
 async function handleDeletePlan(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { plan_id: string },
   headers: Record<string, string>,
 ) {
@@ -585,7 +585,7 @@ async function handleDeletePlan(
 // ─── Workspace Plan Assignment ─────────────────────────────────
 
 async function handleSetWorkspacePlan(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id: string; plan_id: string },
   adminId: string,
   headers: Record<string, string>,
@@ -630,7 +630,7 @@ async function handleSetWorkspacePlan(
 }
 
 async function handleUnsetWorkspacePlan(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id: string },
   adminId: string,
   headers: Record<string, string>,
@@ -689,7 +689,7 @@ async function handleUnsetWorkspacePlan(
 }
 
 async function handleSetWorkspaceOverrides(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id: string; resource_overrides?: Record<string, number>; feature_overrides?: Record<string, boolean>; notes?: string },
   adminId: string,
   headers: Record<string, string>,
@@ -728,7 +728,7 @@ async function handleSetWorkspaceOverrides(
 }
 
 async function handleClearWorkspaceOverrides(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { workspace_id: string },
   adminId: string,
   headers: Record<string, string>,
@@ -766,7 +766,7 @@ async function handleClearWorkspaceOverrides(
 // ─── Admins ────────────────────────────────────────────────────
 
 async function handleListAdmins(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   headers: Record<string, string>,
 ) {
   const { data: admins, error } = await svc
@@ -794,7 +794,7 @@ async function handleListAdmins(
 }
 
 async function handleInviteAdmin(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { email: string },
   adminId: string,
   headers: Record<string, string>,
@@ -836,7 +836,7 @@ async function handleInviteAdmin(
 }
 
 async function handleRemoveAdmin(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { admin_id: string },
   callerAdminId: string,
   headers: Record<string, string>,
@@ -865,7 +865,7 @@ const BANNER_COLUMNS = [
 ] as const;
 
 async function handleListBanners(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { status?: string },
   headers: Record<string, string>,
 ) {
@@ -895,7 +895,7 @@ async function handleListBanners(
 }
 
 async function handleCreateBanner(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: Record<string, unknown>,
   adminId: string,
   headers: Record<string, string>,
@@ -925,7 +925,7 @@ async function handleCreateBanner(
 }
 
 async function handleUpdateBanner(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: Record<string, unknown>,
   headers: Record<string, string>,
 ) {
@@ -962,7 +962,7 @@ async function handleUpdateBanner(
 }
 
 async function handleDeleteBanner(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { banner_id?: string },
   headers: Record<string, string>,
 ) {
@@ -1007,7 +1007,7 @@ const KB_ARTICLE_COLUMNS = [
 const RESERVED_SLUGS = ["novo", "editar"];
 
 async function handleListKbArticles(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { category?: string; status?: string },
   headers: Record<string, string>,
 ) {
@@ -1030,7 +1030,7 @@ async function handleListKbArticles(
 }
 
 async function handleGetKbArticle(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { article_id?: string },
   headers: Record<string, string>,
 ) {
@@ -1047,7 +1047,7 @@ async function handleGetKbArticle(
 }
 
 async function handleCreateKbArticle(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: Record<string, unknown>,
   adminId: string,
   headers: Record<string, string>,
@@ -1084,7 +1084,7 @@ async function handleCreateKbArticle(
 }
 
 async function handleUpdateKbArticle(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: Record<string, unknown>,
   headers: Record<string, string>,
 ) {
@@ -1128,7 +1128,7 @@ async function handleUpdateKbArticle(
 }
 
 async function handleDeleteKbArticle(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { article_id?: string },
   headers: Record<string, string>,
 ) {
@@ -1151,7 +1151,7 @@ async function handleDeleteKbArticle(
 }
 
 async function handleListKbContextLinks(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { article_id?: string },
   headers: Record<string, string>,
 ) {
@@ -1168,7 +1168,7 @@ async function handleListKbContextLinks(
 }
 
 async function handleUpsertKbContextLink(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: Record<string, unknown>,
   headers: Record<string, string>,
 ) {
@@ -1222,7 +1222,7 @@ async function handleUpsertKbContextLink(
 }
 
 async function handleDeleteKbContextLink(
-  svc: ReturnType<typeof createClient>,
+  svc: SupabaseClient,
   body: { link_id?: string },
   headers: Record<string, string>,
 ) {
