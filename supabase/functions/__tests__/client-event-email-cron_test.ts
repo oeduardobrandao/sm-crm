@@ -268,7 +268,7 @@ Deno.test("claimed client with 2 pending posts + 1 unseen message: window, one e
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T11:30:00.000Z",
-          workflow_posts: { cliente_id: 1, status: "enviado_cliente", titulo: "Post A" },
+          workflow_posts: { cliente_id: 1, status: "enviado_cliente", tipo: "feed", titulo: "Post A" },
         },
         {
           id: 11,
@@ -276,7 +276,7 @@ Deno.test("claimed client with 2 pending posts + 1 unseen message: window, one e
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T11:45:00.000Z",
-          workflow_posts: { cliente_id: 1, status: "enviado_cliente", titulo: "Post B" },
+          workflow_posts: { cliente_id: 1, status: "enviado_cliente", tipo: "reels", titulo: "Post B" },
         },
       ],
       mensagens: [
@@ -290,6 +290,15 @@ Deno.test("claimed client with 2 pending posts + 1 unseen message: window, one e
   assertEquals(r, { claimed: 1, emailed: 1, skippedNoContent: 0, skippedNoHub: 0, failed: 0, released: 0 });
   assertEquals(sent.length, 1);
   assert(sent[0].html.includes("Post A") && sent[0].html.includes("Post B"), "expected both post titles");
+  // `tipo` (added by this task) flows from the workflow_posts embed all the
+  // way to the icon the builder renders for each post row -- feed's 🖼 and
+  // reels' 🎬 both present proves the field is actually read, not dropped.
+  assert(sent[0].html.includes("🖼"), "expected the feed icon for Post A");
+  assert(sent[0].html.includes("🎬"), "expected the reels icon for Post B");
+  // Adaptive title/CTA (this task): 2 posts + 1 message -> the title counts
+  // posts (not messages), and the CTA reads "Revisar e aprovar".
+  assert(sent[0].html.includes("2 posts esperam sua aprovação"), "expected the adaptive posts title");
+  assert(sent[0].html.includes("Revisar e aprovar"), "expected the posts CTA label");
   // event_claimed_at is NOT in the patch (anti-starvation ruling: the
   // success path advances the cursor and clears the LEASE only -- the
   // last-attempt marker survives as the rotation/backoff key).
@@ -338,7 +347,7 @@ function makeFromNameDb(name: string, clienteId: number) {
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T05:00:00.000Z",
-          workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Post" },
+          workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: "Post" },
         },
       ],
       workspaces: [{ id: "ws1", name, brand_color: "#ffbf30", logo_url: null }],
@@ -392,7 +401,7 @@ Deno.test("NULL cursor: lower bound is now-72h, an event 80h old is excluded", a
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-10T04:00:00.000Z", // 80h before NOW
-          workflow_posts: { cliente_id: 2, status: "enviado_cliente", titulo: "Old post" },
+          workflow_posts: { cliente_id: 2, status: "enviado_cliente", tipo: "feed", titulo: "Old post" },
         },
       ],
     },
@@ -425,7 +434,7 @@ Deno.test("cursor 5 days old: lower bound is still now-72h (GREATEST)", async ()
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-09T12:00:00.000Z",
-          workflow_posts: { cliente_id: 3, status: "enviado_cliente", titulo: "Too old" },
+          workflow_posts: { cliente_id: 3, status: "enviado_cliente", tipo: "feed", titulo: "Too old" },
         },
         // Inside now-72h: must survive.
         {
@@ -434,7 +443,7 @@ Deno.test("cursor 5 days old: lower bound is still now-72h (GREATEST)", async ()
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T11:00:00.000Z",
-          workflow_posts: { cliente_id: 3, status: "enviado_cliente", titulo: "Recent" },
+          workflow_posts: { cliente_id: 3, status: "enviado_cliente", tipo: "feed", titulo: "Recent" },
         },
       ],
       workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
@@ -467,7 +476,7 @@ Deno.test("post entered/left enviado_cliente is excluded; a post claimed twice i
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T05:00:00.000Z",
-          workflow_posts: { cliente_id: 4, status: "enviado_cliente", titulo: "Dup post (old)" },
+          workflow_posts: { cliente_id: 4, status: "enviado_cliente", tipo: "feed", titulo: "Dup post (old)" },
         },
         {
           id: 41,
@@ -475,7 +484,7 @@ Deno.test("post entered/left enviado_cliente is excluded; a post claimed twice i
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T09:00:00.000Z",
-          workflow_posts: { cliente_id: 4, status: "enviado_cliente", titulo: "Dup post (latest)" },
+          workflow_posts: { cliente_id: 4, status: "enviado_cliente", tipo: "feed", titulo: "Dup post (latest)" },
         },
         {
           id: 42,
@@ -483,7 +492,7 @@ Deno.test("post entered/left enviado_cliente is excluded; a post claimed twice i
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T06:00:00.000Z",
-          workflow_posts: { cliente_id: 4, status: "postado", titulo: "Left status" },
+          workflow_posts: { cliente_id: 4, status: "postado", tipo: "feed", titulo: "Left status" },
         },
       ],
       workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
@@ -517,7 +526,7 @@ Deno.test("message already seen by the client (last_seen_at >= created_at) is ex
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T05:00:00.000Z",
-          workflow_posts: { cliente_id: 5, status: "enviado_cliente", titulo: "Post" },
+          workflow_posts: { cliente_id: 5, status: "enviado_cliente", tipo: "feed", titulo: "Post" },
         },
       ],
       mensagens: [
@@ -573,7 +582,7 @@ Deno.test("empty hub URL: lease released, cursor intact, skippedNoHub++, no send
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T05:00:00.000Z",
-          workflow_posts: { cliente_id: 7, status: "enviado_cliente", titulo: "Post" },
+          workflow_posts: { cliente_id: 7, status: "enviado_cliente", tipo: "feed", titulo: "Post" },
         },
       ],
     },
@@ -606,7 +615,7 @@ Deno.test("send failure: lease released, cursor intact, failed++, report() calle
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T05:00:00.000Z",
-          workflow_posts: { cliente_id: 8, status: "enviado_cliente", titulo: "Post" },
+          workflow_posts: { cliente_id: 8, status: "enviado_cliente", tipo: "feed", titulo: "Post" },
         },
       ],
       workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
@@ -677,7 +686,7 @@ Deno.test("60s deadline: remaining clients get their lease released without a se
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-13T05:00:00.000Z",
-          workflow_posts: { cliente_id: 9, status: "enviado_cliente", titulo: "Post" },
+          workflow_posts: { cliente_id: 9, status: "enviado_cliente", tipo: "feed", titulo: "Post" },
         },
       ],
       workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
@@ -725,7 +734,7 @@ Deno.test("events query hits the cap: cursor advances to the newest fetched row,
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: new Date(floorMs + (i + 1) * 60_000).toISOString(), // 1 min apart, oldest (i=0) first
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Post ${i}` },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: `Post ${i}` },
     });
   }
   const ws = [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }];
@@ -790,7 +799,7 @@ Deno.test("both events and messages hit the cap: cursor advances to the more con
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: new Date(floorMs + 10 * 60_000 + i * 2 * 60_000).toISOString(), // starts at floor+10min, 2 min apart -- drains FURTHER
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Post ${i}` },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: `Post ${i}` },
     });
   }
   const eventsSafeBound = capEvents[999].created_at as string; // newest fetched: floor + 2008 min
@@ -851,7 +860,7 @@ Deno.test("dedupe tiebreak: two transitions for the same post at the identical t
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: tiedCreatedAt,
-          workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Version B (higher id)" },
+          workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: "Version B (higher id)" },
         },
         {
           id: 100,
@@ -859,7 +868,7 @@ Deno.test("dedupe tiebreak: two transitions for the same post at the identical t
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: tiedCreatedAt,
-          workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Version A (lower id)" },
+          workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: "Version A (lower id)" },
         },
       ],
       workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
@@ -902,7 +911,7 @@ Deno.test("tie cluster straddling the cap: all siblings delivered via one supple
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: new Date(floorMs + (i + 1) * 60_000).toISOString(),
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Pre ${i}` },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: `Pre ${i}` },
     });
   }
   // 11 events (rows 995-1005) sharing the EXACT same created_at -- the cap
@@ -916,7 +925,7 @@ Deno.test("tie cluster straddling the cap: all siblings delivered via one supple
     conta_id: "ws1",
     to_status: "enviado_cliente",
     created_at: tiedTsIso,
-    workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Tied ${j}` },
+    workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: `Tied ${j}` },
   }));
   // 5 more events strictly AFTER the tied timestamp -- must NOT be part of
   // tick 1's digest, and must be exactly what tick 2 delivers.
@@ -928,7 +937,7 @@ Deno.test("tie cluster straddling the cap: all siblings delivered via one supple
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: new Date(tiedTsMs + (k + 1) * 60_000).toISOString(),
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: `Post-tie ${k}` },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: `Post-tie ${k}` },
     });
   }
   const allEvents = [...preTie, ...tied, ...postTie];
@@ -1014,7 +1023,7 @@ Deno.test("asymmetric cap (messages caps, events under): tick 2 does not repeat 
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: new Date(floorMs + 2 * 60_000).toISOString(), // floor + 2 min
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Event Early" },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: "Event Early" },
     },
     {
       id: 70_002,
@@ -1022,7 +1031,7 @@ Deno.test("asymmetric cap (messages caps, events under): tick 2 does not repeat 
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: new Date(floorMs + 1500 * 60_000).toISOString(), // floor + 1500 min
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Event Middle" },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: "Event Middle" },
     },
     {
       id: 70_003,
@@ -1030,7 +1039,7 @@ Deno.test("asymmetric cap (messages caps, events under): tick 2 does not repeat 
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: new Date(floorMs + 2000 * 60_000).toISOString(), // floor + 2000 min
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Event Late" },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: "Event Late" },
     },
   ];
 
@@ -1144,7 +1153,7 @@ Deno.test("trim comparator handles prod-shaped timestamps (+00:00 offset, micros
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: toProdFormat(boundMs - 1000), // 1s before the bound
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Prod Before" },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: "Prod Before" },
     },
     {
       id: 70_002,
@@ -1152,7 +1161,7 @@ Deno.test("trim comparator handles prod-shaped timestamps (+00:00 offset, micros
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: toProdFormat(boundMs), // exactly at the bound
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Prod At Bound" },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: "Prod At Bound" },
     },
     {
       id: 70_003,
@@ -1160,7 +1169,7 @@ Deno.test("trim comparator handles prod-shaped timestamps (+00:00 offset, micros
       conta_id: "ws1",
       to_status: "enviado_cliente",
       created_at: toProdFormat(boundMs + 1000), // 1s after the bound
-      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", titulo: "Prod After" },
+      workflow_posts: { cliente_id: clienteId, status: "enviado_cliente", tipo: "feed", titulo: "Prod After" },
     },
   ];
 
