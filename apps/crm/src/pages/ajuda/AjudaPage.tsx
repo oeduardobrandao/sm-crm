@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { getPublishedArticles } from '@/store/kb';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
+import { filterArticles } from './filterArticles';
 import { SectionCard } from './components/SectionCard';
 import { ArticleCard } from './components/ArticleCard';
 
@@ -27,13 +28,7 @@ export default function AjudaPage() {
     })).filter((s) => s.count > 0);
   }, [articles]);
 
-  const filteredArticles = useMemo(() => {
-    if (!search.trim()) return [];
-    const q = search.toLowerCase();
-    return articles.filter(
-      (a) => a.title.toLowerCase().includes(q) || a.content_plain.toLowerCase().includes(q),
-    );
-  }, [articles, search]);
+  const filteredArticles = useMemo(() => filterArticles(articles, search), [articles, search]);
 
   const isSearching = search.trim().length > 0;
 
