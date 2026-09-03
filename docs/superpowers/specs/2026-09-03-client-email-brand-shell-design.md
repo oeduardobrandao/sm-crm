@@ -1,6 +1,6 @@
-# Shell de marca nos e-mails ao cliente final — design
+# Shell de marca e conteúdo dos e-mails ao cliente final — design
 
-**Data:** 2026-09-03 · **Status:** aprovado (brainstorm com visual companion)
+**Data:** 2026-09-03 · **Status:** aprovado (brainstorm com visual companion; duas rodadas — shell nas seções 1-7, conteúdo nas seções 8-11)
 
 ## Objetivo
 
@@ -160,6 +160,86 @@ fundo escuro do mockup, é uma troca de 1 linha.
 Botão secundário (Baixar PDF, no relatório) continua neutro escuro `#1f2937`
 com texto branco — não deriva da cor do workspace, não precisa da regra.
 
+## Melhorias de conteúdo (segunda rodada, todas aprovadas)
+
+### 8. Preheaders (ambos os e-mails)
+
+Span invisível logo após `<body>` (técnica padrão: `display:none; max-height:0;
+overflow:hidden; mso-hide:all` + preenchimento de `&nbsp;&zwnj;` para não vazar
+o texto seguinte na prévia) controlando o texto de prévia da inbox:
+
+- **Relatório:** "Visualizações {+x%/−x%} em {mês}. Veja o relatório completo."
+  quando os KPIs do e-mail (seção 10) existem com delta de views; fallback
+  "Seu relatório de {mês} está pronto." quando não.
+- **Pendências:** dinâmico com as contagens reais — "{N} posts aguardando sua
+  aprovação e {M} mensagens." (omitir a parte zerada; singular/plural correto).
+
+### 9. Relatório: hierarquia
+
+- **Eyebrow** acima da saudação: "Relatório mensal · {Mês de AAAA}" (uppercase,
+  espaçado, cinza — mesmo tratamento do rótulo "Destaque do mês"). O `<h1>`
+  continua a saudação.
+- **CTA único:** só "Ver Relatório Completo" como botão. "Baixar PDF" deixa de
+  ser botão escuro e vira **link de texto** centralizado abaixo do botão
+  (sublinhado, cinza `#6b7280`). As condições de existência de cada um não
+  mudam (hubUrl vazio esconde o botão — nesse caso o link de PDF continua, e
+  vice-versa).
+
+### 10. Relatório: fila de KPIs (o único item com backend)
+
+Fila de 3 tiles entre a saudação e o "Destaque do mês": **Visualizações ·
+Interações · Seguidores**, cada um com valor grande + rótulo + delta percentual
+vs. mês anterior.
+
+**Encanamento (o gerador legado NÃO tem views):** verificado — o KPI map de
+`instagram-report-generator-v2` emite `followers_gained`, `engagement_rate`,
+`reach`, `saves`, `posts_count`, `profile_views`, `website_clicks`
+(`index.ts:658-684`) e **nenhum views de conta**. Views existe no pipeline de
+blocos (`report-docs/account-window.ts:156`, `_shared/report-docs/kpis.ts:15`),
+resolvido das tabelas de métricas diárias/mensais — a fonte que a iniciativa de
+paridade com o app do Instagram validou como exata. Solução:
+
+- Nova coluna `analytics_reports.email_kpis jsonb` (nullable), escrita pelo
+  gerador no momento da geração, com shape
+  `{ views: {value, pct_change?}, interactions: {value, pct_change?},
+  followers_gained: {value, pct_change?} }` — views/interações lidos da mesma
+  fonte diária/mensal que o pipeline de blocos usa; followers_gained o gerador
+  já tem. `pct_change` ausente quando não há mês anterior.
+- `report-worker` lê `email_kpis` junto de `ai_content` e passa ao builder.
+- **Degradação:** `email_kpis` null (relatórios antigos, sem backfill — YAGNI)
+  → a fila inteira some e o e-mail fica como na seção 9; tile individual sem
+  valor → some só o tile.
+- **Cores do delta:** positivo verde `#16a34a`; negativo **cinza neutro**
+  `#6b7280` (nunca vermelho — e-mail para o cliente final não deve alarmar);
+  sem `pct_change` → sem linha de delta.
+- Formato de número: pt-BR compacto ("48,2 mil"), mesmo helper de formatação
+  nos 3 tiles.
+
+### 11. Pendências: número como título, linhas com tipo, CTA acionável
+
+- **Título adaptativo** (substitui "Você tem pendências com {ws}"):
+  posts > 0 → "{N} posts esperam sua aprovação" ("1 post espera sua
+  aprovação"); posts = 0 e mensagens > 0 → "{M} mensagens esperam você"
+  ("1 mensagem espera você"). Ambos zerados é impossível (o cron libera o
+  lease sem enviar). A saudação "Olá, {nome}!" vira a primeira linha do corpo.
+  **Assunto do e-mail não muda** (continua "Você tem pendências com {ws}" — o
+  preheader já carrega a especificidade; mexer no assunto é outra decisão).
+- **Posts como linhas** (tabela, uma por post): célula de ícone por tipo +
+  título. Mapa de ícones sobre `workflow_posts.tipo` (CHECK confirmado:
+  `feed | reels | stories | carrossel`): feed 🖼, carrossel 🗂, reels 🎬,
+  stories 📱 — emoji simples, zero imagem externa; tipo desconhecido (defesa)
+  cai em 🖼. Corte de 20 + "e mais N posts aguardando aprovação." continua
+  idêntico.
+- **Mensagens como linha própria** com o mesmo tratamento visual (fundo
+  `#f8f9fa`, ícone 💬), substituindo a frase solta.
+- **CTA:** posts > 0 → "Revisar e aprovar"; só mensagens → "Ver mensagens".
+- **Mudança de contrato:** `ClientEventEmailParams.pendingPosts` passa de
+  `{titulo}[]` para `{titulo, tipo}[]`, e o handler do cron passa a selecionar
+  `tipo` no embed de `workflow_posts` — isso ATUALIZA a nota da seção
+  "Implementação" de que as assinaturas não mudam: a do builder de pendências
+  muda neste campo; sweep de contract change cobre
+  `client-event-email_test.ts` E `client-event-email-cron_test.ts`.
+
 ## De onde vem o resumo de IA (contexto, não muda com esta spec)
 
 Gerado por `generateAINarrative()` em `_shared/report-template/ai.ts:201`, via
@@ -210,9 +290,11 @@ Testes do módulo cobrem nome de workspace e `logoUrl` hostis (`<script>`,
 aspas, `&`) confirmando que a saída de `buildBrandHeaderBand` está escapada.
 
 Ambos os builders substituem seu `logoSection` local por uma chamada a
-`buildBrandHeaderBand`. Nenhuma mudança de assinatura pública dos dois builders
-(`buildReportEmail`, `buildClientEventEmail`) — `brandColor`/`logoUrl` já são
-parâmetros existentes.
+`buildBrandHeaderBand`. Mudanças de assinatura dos builders (consequência das
+seções 10-11, não do shell): `buildReportEmail` ganha `emailKpis` opcional
+(null-safe, fila some quando ausente); `buildClientEventEmail` tem
+`pendingPosts` alterado de `{titulo}[]` para `{titulo, tipo}[]`.
+`brandColor`/`logoUrl` já eram parâmetros existentes.
 
 ## Testes
 
@@ -236,11 +318,21 @@ parâmetros existentes.
   `report-email*` em `supabase/functions/__tests__/`) — ganha o seu primeiro
   arquivo de teste como parte desta spec. Conferir também os testes do cron
   (`client-event-email-cron_test.ts`) que assertam sobre o HTML enviado.
+- **Das melhorias de conteúdo:** preheader presente e invisível (contém o
+  texto esperado, dentro do span oculto) nos dois builders, com os fallbacks;
+  relatório: eyebrow com o mês, PDF como link e não botão, fila de KPIs
+  renderiza os 3 tiles com deltas (positivo verde, negativo cinza), some
+  inteira com `emailKpis` null e por-tile com campo ausente, números em pt-BR
+  compacto; pendências: título adaptativo (plural/singular, só-mensagens),
+  ícone correto por tipo + fallback de tipo desconhecido, linha de mensagens,
+  CTA adaptativo. Gerador: grava `email_kpis` com views vindo da fonte
+  diária/mensal (teste com fixture provando a origem, não o KPI map).
 - **Verificação visual manual:** HTML não é testável por fidelidade de
   renderização entre clientes de e-mail via unit test — antes do merge,
   renderizar os dois e-mails com o builder real (mesma técnica usada nesta
   conversa: script Deno chamando o builder direto) e checar visualmente com
-  pelo menos uma cor forte e uma cor pálida de exemplo.
+  pelo menos uma cor forte e uma cor pálida de exemplo, com e sem
+  `email_kpis`/logo.
 
 ## Referências
 
