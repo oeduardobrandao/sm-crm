@@ -75,6 +75,14 @@ export default function MembrosTab() {
   // and manage invites (canManageTeam alone), but the Função button must
   // stay owner/admin-only or it dead-ends in a 403.
   const canAssignRoles = workspaceRole === 'owner' || workspaceRole === 'admin';
+  // Server rule (manage-workspace-user/index.ts, ~:226-229): "Cannot modify
+  // an owner (unless caller is also owner)" -- applies to BOTH update-role
+  // AND remove, for ANY caller, including an admin (canAssignRoles === true
+  // is not enough) and a custom equipe:editar actor. Combined with the
+  // existing self-row exclusion into one derived check so Função/Remover
+  // never render on a row the server would 403 on.
+  const canActOnMember = (u: Record<string, string>) =>
+    u.id !== user?.id && (u.role !== 'owner' || isOwner);
 
   const { data: wsUsers, refetch: refetchWsUsers } = useQuery({
     queryKey: ['workspace-users'],
@@ -360,7 +368,7 @@ export default function MembrosTab() {
                   />
                 </div>
               )}
-              {canManageTeam && u.id !== user?.id && (
+              {canManageTeam && canActOnMember(u) && (
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   {canAssignRoles && (
                     <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>

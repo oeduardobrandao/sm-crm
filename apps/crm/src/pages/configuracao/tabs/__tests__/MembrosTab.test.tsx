@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -148,6 +148,19 @@ function renderTab() {
       <MembrosTab />
     </QueryClientProvider>,
   );
+}
+
+/** Scopes a query to one member row, identified by its displayed name —
+ * lets tests assert exactly which row a button does/doesn't appear on,
+ * instead of a page-wide "at least one Remover exists somewhere" count that
+ * a hidden-on-the-owner-row bug wouldn't catch. Waits for the row itself
+ * (the roster query is async), so callers don't need their own leading
+ * `await screen.findByText(...)` first. */
+async function getRow(name: string) {
+  const nameEl = await screen.findByText(name);
+  const row = nameEl.closest('.config-member-row');
+  expect(row).not.toBeNull();
+  return within(row as HTMLElement);
 }
 
 /**
@@ -385,7 +398,7 @@ describe('MembrosTab — action buttons gated on equipe:editar', () => {
     expect(screen.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
   });
 
-  it('shows Convidar/Remover for a custom role with equipe:editar', async () => {
+  it('shows Convidar and Remover on the non-owner row for a custom role with equipe:editar', async () => {
     setAuth({
       workspaceRole: 'agent',
       staleProfileRole: 'agent',
@@ -397,7 +410,9 @@ describe('MembrosTab — action buttons gated on equipe:editar', () => {
 
     await screen.findByText('Ana Owner');
     expect(screen.getByRole('button', { name: /Convidar/ })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Remover' }).length).toBeGreaterThan(0);
+    // Beto Admin (not an owner row) gets Remover from equipe:editar alone.
+    const betoRow = await getRow('Beto Admin');
+    expect(betoRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
   });
 
   /**
@@ -410,7 +425,7 @@ describe('MembrosTab — action buttons gated on equipe:editar', () => {
    * canManageTeam alone -- only `update-role` carries the extra chassis
    * requirement.
    */
-  it('hides Função (but keeps Remover) for a custom role with equipe:editar whose chassis is agent', async () => {
+  it('hides Função (but keeps Remover) on the non-owner row for a custom role with equipe:editar whose chassis is agent', async () => {
     setAuth({
       workspaceRole: 'agent',
       staleProfileRole: 'agent',
@@ -422,17 +437,86 @@ describe('MembrosTab — action buttons gated on equipe:editar', () => {
 
     await screen.findByText('Ana Owner');
     expect(screen.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Remover' }).length).toBeGreaterThan(0);
+    const betoRow = await getRow('Beto Admin');
+    expect(betoRow.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+    expect(betoRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
   });
 
-  it('a legacy owner/admin (unconditional equipe:editar) still sees every action button — no regression', async () => {
+  it('a legacy admin sees Função/Remover on the non-owner row, still gated correctly (no regression)', async () => {
     setAuth({ workspaceRole: 'admin', staleProfileRole: 'admin' });
     renderTab();
 
     await screen.findByText('Ana Owner');
     expect(screen.getByRole('button', { name: /Convidar/ })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Função' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Remover' }).length).toBeGreaterThan(0);
+    const betoRow = await getRow('Beto Admin');
+    expect(betoRow.getByRole('button', { name: 'Função' })).toBeInTheDocument();
+    expect(betoRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+  });
+
+  /**
+   * User-reported bug (live verification, pre-existing on main): the reporting
+   * admin saw Função/Remover on the workspace Dono's own row, even though
+   * manage-workspace-user/index.ts's "Cannot modify workspace owner (unless
+   * caller is also owner)" rule (~:226-229) applies to BOTH update-role and
+   * remove, for ANY non-owner caller -- including an admin, whose
+   * `canAssignRoles` gate for Função has no owner-row carve-out on its own.
+   * `canActOnMember` (MembrosTab.tsx) now hides both buttons on any row
+   * where `u.role === 'owner'` unless the VIEWER is also `workspaceRole ===
+   * 'owner'`.
+   */
+  describe('owner row protected from non-owner actors (server rule parity)', () => {
+    it('hides Função and Remover on the Dono row for an admin viewer', async () => {
+      setAuth({ workspaceRole: 'admin', staleProfileRole: 'admin' });
+      renderTab();
+
+      const ownerRow = await getRow('Ana Owner');
+      expect(ownerRow.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+      expect(ownerRow.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+    });
+
+    it('hides Função and Remover on the Dono row for a custom equipe:editar actor (chassis agent)', async () => {
+      setAuth({
+        workspaceRole: 'agent',
+        staleProfileRole: 'agent',
+        can: makeCan(
+          fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+        ),
+      });
+      renderTab();
+
+      const ownerRow = await getRow('Ana Owner');
+      expect(ownerRow.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+      expect(ownerRow.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+    });
+
+    it('shows Função and Remover on another Dono row for an owner viewer', async () => {
+      storeMock.getWorkspaceUsers.mockResolvedValue([
+        { id: 'u1', nome: 'Ana Owner', role: 'owner', avatar_url: null, created_at: '2026-01-01' },
+      ]);
+      setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+      renderTab();
+
+      const ownerRow = await getRow('Ana Owner');
+      expect(ownerRow.getByRole('button', { name: 'Função' })).toBeInTheDocument();
+      expect(ownerRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+    });
+
+    it("still hides Função and Remover on the viewer's own row, even for an owner viewer", async () => {
+      storeMock.getWorkspaceUsers.mockResolvedValue([
+        { id: 'me', nome: 'Eu Mesma', role: 'owner', avatar_url: null, created_at: '2026-01-01' },
+        { id: 'u2', nome: 'Beto Admin', role: 'admin', avatar_url: null, created_at: '2026-01-02' },
+      ]);
+      setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+      renderTab();
+
+      const ownRow = await getRow('Eu Mesma');
+      expect(ownRow.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+      expect(ownRow.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+      // Sanity: the gate isn't just globally broken -- a non-self row still works.
+      const betoRow = await getRow('Beto Admin');
+      expect(betoRow.getByRole('button', { name: 'Função' })).toBeInTheDocument();
+      expect(betoRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+    });
   });
 });
 
