@@ -74,7 +74,8 @@ begin
   -- free = storage_quota_bytes 104857600 (100MB)
   v_ws := et_make_workspace('free');
   v_ws2 := et_make_workspace('free');
-  insert into clientes (nome, conta_id) values ('Cliente Audio', v_ws) returning id into v_cli;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (gen_random_uuid(), v_ws, 'Cliente Audio', 'CA', '#000000') returning id into v_cli;
   insert into hub_briefing_questions (cliente_id, conta_id, question, display_order)
     values (v_cli, v_ws, 'Qual a história da marca?', 0) returning id into v_q;
   insert into hub_briefing_questions (cliente_id, conta_id, question, display_order)
@@ -163,25 +164,22 @@ begin
   exception when check_violation then v_blocked := true; end;
   assert v_blocked, 'cross-tenant key must violate CHECK';
 
-  -- 10. guarda: authenticated não escreve audio_*, mas escreve answer
-  perform set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', gen_random_uuid()::text)::text, true);
-  set local role authenticated;
+  -- 10. guarda: chamador que não é service_role não escreve audio_*, mas escreve answer.
+  -- auth.role() lê o GUC request.jwt.claims; ficamos como postgres (bypass de RLS)
+  -- para que o UPDATE atinja a linha e o trigger dispare.
+  perform set_config('request.jwt.claims', '{"role":"authenticated"}', true);
   v_blocked := false;
   begin
     update hub_briefing_questions set audio_size_bytes = 1 where id = v_q2;
   exception when insufficient_privilege then v_blocked := true; end;
   assert v_blocked, 'authenticated must not write audio_* columns';
-  reset role;
-  perform set_config('request.jwt.claims', '', true);
-  -- (RLS de hub_briefing_questions filtra por get_my_conta_id(); o UPDATE de answer
-  -- como authenticated sem workspace ativa atinge 0 linhas e não dispara a guarda.
-  -- A prova de que answer segue livre é que a guarda só olha colunas audio_*: ver 11.)
+  update hub_briefing_questions set answer = 'texto livre' where id = v_q2;
+  assert (select answer from hub_briefing_questions where id = v_q2) = 'texto livre', 'answer stays writable';
 
   -- 11. service role escreve audio_* (caminho das edge functions)
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
-  set local role service_role;
   update hub_briefing_questions set audio_transcription_status = 'failed' where id = v_q2;
-  reset role;
+  assert (select audio_transcription_status from hub_briefing_questions where id = v_q2) = 'failed';
   perform set_config('request.jwt.claims', '', true);
 
   raise notice 'PASS briefing_audio_rpcs';
@@ -403,7 +401,7 @@ REVOKE ALL ON FUNCTION public.briefing_audio_release(uuid, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.briefing_audio_release(uuid, uuid) TO service_role;
 ```
 
-Observação: `clientes` tem allowlist de colunas (`GRANT SELECT`), mas o INSERT do teste roda como `postgres`, então não é afetado. Se `insert into clientes (nome, conta_id)` falhar por coluna NOT NULL extra, confira `\d clientes` e complete o INSERT.
+Observação: `clientes` exige `user_id, conta_id, nome, sigla, cor` NOT NULL (baseline). O INSERT do teste roda como `postgres`, então a allowlist de colunas não interfere.
 
 - [ ] **Step 4: Rodar o teste SQL e confirmar PASS**
 
