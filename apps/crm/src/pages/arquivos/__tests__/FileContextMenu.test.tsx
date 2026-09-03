@@ -82,7 +82,12 @@ describe('FileContextMenu', () => {
 
   it('right-click opens context menu with Renomear and Excluir', () => {
     render(
-      <FileContextMenu item={makeFolder()} type="folder" onActionComplete={onActionComplete}>
+      <FileContextMenu
+        item={makeFolder()}
+        type="folder"
+        onActionComplete={onActionComplete}
+        canEdit={true}
+      >
         <div>Folder target</div>
       </FileContextMenu>,
     );
@@ -98,7 +103,12 @@ describe('FileContextMenu', () => {
     const { container } = render(
       <table>
         <tbody>
-          <FileContextMenu item={makeFile()} type="file" onActionComplete={onActionComplete}>
+          <FileContextMenu
+            item={makeFile()}
+            type="file"
+            onActionComplete={onActionComplete}
+            canEdit={true}
+          >
             <tr data-testid="file-row">
               <td>Arquivo</td>
             </tr>
@@ -117,7 +127,7 @@ describe('FileContextMenu', () => {
   it('shows Download option for files with url', () => {
     const file = makeFile({ url: 'https://cdn.example.com/file.jpg' });
     render(
-      <FileContextMenu item={file} type="file" onActionComplete={onActionComplete}>
+      <FileContextMenu item={file} type="file" onActionComplete={onActionComplete} canEdit={true}>
         <div>File target</div>
       </FileContextMenu>,
     );
@@ -129,7 +139,12 @@ describe('FileContextMenu', () => {
 
   it('does not show Download for folders', () => {
     render(
-      <FileContextMenu item={makeFolder()} type="folder" onActionComplete={onActionComplete}>
+      <FileContextMenu
+        item={makeFolder()}
+        type="folder"
+        onActionComplete={onActionComplete}
+        canEdit={true}
+      >
         <div>Folder target</div>
       </FileContextMenu>,
     );
@@ -142,7 +157,12 @@ describe('FileContextMenu', () => {
   it('system folders show "cannot delete" message instead of delete button', () => {
     const sysFolder = makeFolder({ source: 'system' });
     render(
-      <FileContextMenu item={sysFolder} type="folder" onActionComplete={onActionComplete}>
+      <FileContextMenu
+        item={sysFolder}
+        type="folder"
+        onActionComplete={onActionComplete}
+        canEdit={true}
+      >
         <div>System folder</div>
       </FileContextMenu>,
     );
@@ -162,6 +182,7 @@ describe('FileContextMenu', () => {
         item={makeFolder({ id: 1, name: 'Original' })}
         type="folder"
         onActionComplete={onActionComplete}
+        canEdit={true}
       >
         <div>Rename target</div>
       </FileContextMenu>,
@@ -193,7 +214,7 @@ describe('FileContextMenu', () => {
 
     const file = makeFile({ id: 100, name: 'foto.jpg' });
     render(
-      <FileContextMenu item={file} type="file" onActionComplete={onActionComplete}>
+      <FileContextMenu item={file} type="file" onActionComplete={onActionComplete} canEdit={true}>
         <div>File rename</div>
       </FileContextMenu>,
     );
@@ -218,6 +239,7 @@ describe('FileContextMenu', () => {
         item={makeFolder({ id: 3, name: 'Excluir Esta' })}
         type="folder"
         onActionComplete={onActionComplete}
+        canEdit={true}
       >
         <div>Delete folder</div>
       </FileContextMenu>,
@@ -247,7 +269,7 @@ describe('FileContextMenu', () => {
 
     const file = makeFile({ id: 50, name: 'apagar.jpg' });
     render(
-      <FileContextMenu item={file} type="file" onActionComplete={onActionComplete}>
+      <FileContextMenu item={file} type="file" onActionComplete={onActionComplete} canEdit={true}>
         <div>Delete file</div>
       </FileContextMenu>,
     );
@@ -270,7 +292,7 @@ describe('FileContextMenu', () => {
   it('blocks delete for files linked to posts and shows error toast', () => {
     const file = makeFile({ id: 100, reference_count: 2 });
     render(
-      <FileContextMenu item={file} type="file" onActionComplete={onActionComplete}>
+      <FileContextMenu item={file} type="file" onActionComplete={onActionComplete} canEdit={true}>
         <div>Linked file</div>
       </FileContextMenu>,
     );
@@ -282,9 +304,84 @@ describe('FileContextMenu', () => {
     expect(mockedToast.error).toHaveBeenCalledWith(expect.stringContaining('2 post(s)'));
   });
 
+  /**
+   * Task 14 fix round 2 (external review): `canEdit` is a required prop
+   * (no fail-open default) -- ArquivosPage.tsx wires it to
+   * `can('arquivos', 'editar')`. Renomear/Excluir hide when false;
+   * Informações/Mover para…/Copiar para… stay visible (not this task's
+   * scope, and Move/Copy already gate their own destination picker
+   * elsewhere).
+   */
+  describe('canEdit={false}', () => {
+    it('hides Renomear and Excluir but keeps Informações/Mover/Copiar for a folder', () => {
+      render(
+        <FileContextMenu
+          item={makeFolder()}
+          type="folder"
+          onActionComplete={onActionComplete}
+          canEdit={false}
+        >
+          <div>Restricted folder</div>
+        </FileContextMenu>,
+      );
+
+      rightClick(screen.getByText('Restricted folder'));
+
+      expect(screen.queryByText('Renomear')).not.toBeInTheDocument();
+      expect(screen.queryByText('Excluir')).not.toBeInTheDocument();
+      expect(screen.getByText('Informações')).toBeInTheDocument();
+      expect(screen.getByText('Mover para…')).toBeInTheDocument();
+      expect(screen.getByText('Copiar para…')).toBeInTheDocument();
+    });
+
+    it('hides Renomear and Excluir for a file too', () => {
+      const file = makeFile({ url: 'https://cdn.example.com/file.jpg' });
+      render(
+        <FileContextMenu
+          item={file}
+          type="file"
+          onActionComplete={onActionComplete}
+          canEdit={false}
+        >
+          <div>Restricted file</div>
+        </FileContextMenu>,
+      );
+
+      rightClick(screen.getByText('Restricted file'));
+
+      expect(screen.queryByText('Renomear')).not.toBeInTheDocument();
+      expect(screen.queryByText('Excluir')).not.toBeInTheDocument();
+      expect(screen.getByText('Download')).toBeInTheDocument();
+    });
+
+    it('still shows the "system folder" message for a system folder, independent of canEdit', () => {
+      const sysFolder = makeFolder({ source: 'system' });
+      render(
+        <FileContextMenu
+          item={sysFolder}
+          type="folder"
+          onActionComplete={onActionComplete}
+          canEdit={false}
+        >
+          <div>System folder restricted</div>
+        </FileContextMenu>,
+      );
+
+      rightClick(screen.getByText('System folder restricted'));
+
+      expect(screen.getByText(/não pode ser excluída/)).toBeInTheDocument();
+      expect(screen.queryByText('Renomear')).not.toBeInTheDocument();
+    });
+  });
+
   it('closes menu on Escape key', () => {
     render(
-      <FileContextMenu item={makeFolder()} type="folder" onActionComplete={onActionComplete}>
+      <FileContextMenu
+        item={makeFolder()}
+        type="folder"
+        onActionComplete={onActionComplete}
+        canEdit={true}
+      >
         <div>Escape target</div>
       </FileContextMenu>,
     );

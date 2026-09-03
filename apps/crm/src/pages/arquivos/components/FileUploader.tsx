@@ -20,6 +20,11 @@ export interface FileUploaderProps {
   onUploadComplete: () => void;
   children: React.ReactNode;
   triggerRef: React.RefObject<{ openFilePicker: () => void } | null>;
+  /** `can('arquivos', 'editar') === true`. Required (not defaulted) so a
+   * restricted viewer can never upload via drag-and-drop even when the
+   * toolbar's upload button is hidden -- ArquivosPage.tsx is this
+   * component's only caller. */
+  canUpload: boolean;
 }
 
 // ─── Video thumbnail helper ────────────────────────────────────────
@@ -65,6 +70,7 @@ export function FileUploader({
   onUploadComplete,
   children,
   triggerRef,
+  canUpload,
 }: FileUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -145,6 +151,10 @@ export function FileUploader({
 
   const processFiles = useCallback(
     (files: FileList | File[]) => {
+      // Single choke point for both the hidden file input and the drop
+      // handler below -- closes the gate even if something else ever
+      // reaches this function directly.
+      if (!canUpload) return;
       const fileArray = Array.from(files).filter((f) => f.type !== '');
 
       for (const file of fileArray) {
@@ -162,7 +172,7 @@ export function FileUploader({
         }
       }
     },
-    [startUpload],
+    [startUpload, canUpload],
   );
 
   // ─── File input change ─────────────────────────────────────────
@@ -179,6 +189,7 @@ export function FileUploader({
     // Only activate for external file drops, not internal move drags
     const types: readonly string[] | string[] = e.dataTransfer.types ?? [];
     if (Array.from(types).includes('application/x-arquivos')) return;
+    if (!canUpload) return;
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(true);
@@ -197,6 +208,7 @@ export function FileUploader({
     // Ignore internal move drags
     const types: readonly string[] | string[] = e.dataTransfer.types ?? [];
     if (Array.from(types).includes('application/x-arquivos')) return;
+    if (!canUpload) return;
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);

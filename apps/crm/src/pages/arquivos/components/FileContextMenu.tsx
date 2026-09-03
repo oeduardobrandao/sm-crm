@@ -48,6 +48,11 @@ interface FileContextMenuProps {
   onRename?: () => void;
   onRequestMove?: () => void;
   onRequestCopy?: () => void;
+  /** `can('arquivos', 'editar') === true`. Required (not defaulted) so every
+   * caller (FileGrid.tsx, MobileArquivosView.tsx) makes this decision
+   * explicitly. Hides Renomear/Excluir; Informações/Download stay visible
+   * (read-only). */
+  canEdit: boolean;
 }
 
 interface MenuPosition {
@@ -63,6 +68,7 @@ export function FileContextMenu({
   onRename,
   onRequestMove,
   onRequestCopy,
+  canEdit,
 }: FileContextMenuProps) {
   const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -204,14 +210,16 @@ export function FileContextMenu({
             style={{ top: menuPos.y, left: menuPos.x }}
           >
             {/* Rename */}
-            <button
-              role="menuitem"
-              onClick={openRename}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-              Renomear
-            </button>
+            {canEdit && (
+              <button
+                role="menuitem"
+                onClick={openRename}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                Renomear
+              </button>
+            )}
 
             {/* Info */}
             <button
@@ -274,14 +282,16 @@ export function FileContextMenu({
                 Pasta do sistema — não pode ser excluída
               </div>
             ) : (
-              <button
-                role="menuitem"
-                onClick={openDelete}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--danger)] hover:bg-[var(--surface-hover)] transition-colors"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Excluir
-              </button>
+              canEdit && (
+                <button
+                  role="menuitem"
+                  onClick={openDelete}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--danger)] hover:bg-[var(--surface-hover)] transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Excluir
+                </button>
+              )
             )}
           </div>,
           document.body,

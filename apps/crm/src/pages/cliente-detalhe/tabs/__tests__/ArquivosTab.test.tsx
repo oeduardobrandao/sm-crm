@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
 import type { FileRecord, Folder, FolderContents } from '@/pages/arquivos/types';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // ArquivosTab is `ClienteArquivosSection` ported verbatim out of the
 // pre-split ClienteDetalhePage (see git history at d30adeea): a capped
@@ -31,15 +32,28 @@ vi.mock('@/services/fileService', async (importOriginal) => ({
 
 // FileGrid has its own render suite; stub it here (same convention as
 // RedesSociaisTab.test.tsx mocking InstagramSection) so this suite can focus
-// on the query/composition logic that actually belongs to ArquivosTab.
+// on the query/composition logic that actually belongs to ArquivosTab. Also
+// surfaces the `canEdit` prop this task threads through, so this suite can
+// assert on it without re-testing FileGrid/FileContextMenu's own rendering.
 vi.mock('@/pages/arquivos/components/FileGrid', () => ({
-  FileGrid: ({ files, subfolders }: { files: FileRecord[]; subfolders: Folder[] }) => (
-    <div data-testid="file-grid">
+  FileGrid: ({
+    files,
+    subfolders,
+    canEdit,
+  }: {
+    files: FileRecord[];
+    subfolders: Folder[];
+    canEdit: boolean;
+  }) => (
+    <div data-testid="file-grid" data-can-edit={String(canEdit)}>
       files:{files.map((f) => f.name).join(',')}|subfolders:
       {subfolders.map((f) => f.name).join(',')}
     </div>
   ),
 }));
+
+const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+vi.mock('@/context/AuthContext', () => ({ useAuth: useAuthMock }));
 
 import { __queueSupabaseResult, __resetSupabaseMock } from '@/lib/supabase';
 import ArquivosTab from '../ArquivosTab';
@@ -119,6 +133,10 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   __resetSupabaseMock();
+});
+
+beforeEach(() => {
+  useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'owner' })) });
 });
 
 describe('ArquivosTab', () => {
@@ -257,5 +275,51 @@ describe('ArquivosTab', () => {
       .getAll()
       .map((q) => q.queryKey[0]);
     expect(new Set(keys)).toEqual(new Set(['client-folder', 'folder-contents']));
+  });
+
+  /**
+   * Task 14 fix round 2 (external review): this 12-item preview mounts the
+   * real FileGrid/FileContextMenu, whose Renomear/Excluir call
+   * services/fileService directly -- so it is a real mutation surface, not
+   * just a read-only shortcut to /arquivos, and needs the same
+   * `arquivos:editar` gate as the standalone ArquivosPage.tsx.
+   */
+  describe('canEdit threaded to FileGrid', () => {
+    beforeEach(() => {
+      __queueSupabaseResult('folders', 'select', { data: { id: 7 }, error: null });
+      getFolderContentsMock.mockResolvedValue({
+        folder: null,
+        subfolders: [],
+        files: [makeFile(1)],
+        breadcrumbs: [],
+      } satisfies FolderContents);
+    });
+
+    it('passes canEdit=true for a legacy agent (arquivos preset is editar)', async () => {
+      useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'agent' })) });
+      renderTab();
+
+      expect(await screen.findByTestId('file-grid')).toHaveAttribute('data-can-edit', 'true');
+    });
+
+    it('passes canEdit=false for a custom role with no arquivos grant at all', async () => {
+      useAuthMock.mockReturnValue({
+        can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+      });
+      renderTab();
+
+      expect(await screen.findByTestId('file-grid')).toHaveAttribute('data-can-edit', 'false');
+    });
+
+    it('passes canEdit=true for a custom role with arquivos:editar', async () => {
+      useAuthMock.mockReturnValue({
+        can: makeCan(
+          fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { arquivos: 'editar' } }),
+        ),
+      });
+      renderTab();
+
+      expect(await screen.findByTestId('file-grid')).toHaveAttribute('data-can-edit', 'true');
+    });
   });
 });

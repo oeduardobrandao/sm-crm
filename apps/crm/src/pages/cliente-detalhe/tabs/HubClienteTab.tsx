@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
+import { Spinner } from '@/components/ui/spinner';
 import { getWorkspaceSlug } from '@/store';
 import { HubTab } from '../HubTab';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
@@ -41,6 +42,15 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
  * 'editar')` the route guard itself uses, so a custom role that clears the
  * gate never sees a notice contradicting it.
  *
+ * Task 14 fix round 2 (external review, hydration): `can()` is tri-state
+ * (`derivePermission` returns `'unknown'` before membership resolves) --
+ * the gate above used to read `!== true`, which treats 'unknown' the same
+ * as an explicit `false` and flashed this restriction notice at EVERY
+ * viewer, owner/admin included, for the first render or two while
+ * membership is still loading. Now `false` shows the notice, `'unknown'`
+ * shows a loading spinner (no notice, no content), and only `true` renders
+ * the real Hub.
+ *
  * Query isolation: `getWorkspaceSlug` is scoped to only this route (it was
  * page-wide before). HubTab owns the rest of its queries internally
  * (hub-token/hub-brand-crm/hub-pages-crm, all keyed by clienteId).
@@ -49,14 +59,24 @@ export default function HubClienteTab() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const { t } = useTranslation('clients');
   const { can } = useAuth();
-  const restricted = can('configuracoes', 'editar') !== true;
+  const canEdit = can('configuracoes', 'editar');
 
   const { data: workspaceSlug } = useQuery({
     queryKey: ['workspace-slug'],
     queryFn: getWorkspaceSlug,
   });
 
-  if (restricted) {
+  if (canEdit === 'unknown') {
+    return (
+      <div id="sec-hub" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <div className="flex items-center justify-center py-8">
+          <Spinner size="md" />
+        </div>
+      </div>
+    );
+  }
+
+  if (canEdit === false) {
     return (
       <div id="sec-hub" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 className="text-xl font-bold tracking-tight text-foreground mb-3">

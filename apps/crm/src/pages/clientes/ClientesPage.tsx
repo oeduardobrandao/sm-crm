@@ -627,7 +627,7 @@ export default function ClientesPage() {
               {filtered.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={canEditClients ? 5 : 4}
                     style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
                   >
                     {t('emptyList', 'Nenhum cliente encontrado.')}

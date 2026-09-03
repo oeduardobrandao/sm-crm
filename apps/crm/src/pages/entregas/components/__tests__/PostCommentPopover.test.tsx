@@ -190,29 +190,31 @@ describe('PostCommentPopover', () => {
   });
 
   /**
-   * Task 14: `currentUserRole === 'owner' || currentUserRole === 'admin'`
-   * collapsed onto `can('entregas', 'editar') === true`. Unlike
-   * equipe/configuracoes, `AGENT_ROLE_PRESET.entregas` is 'editar' (lib/
-   * permissions.ts) -- a legacy agent already has full edit rights
-   * throughout the rest of the Entregas module (any post, not just their
-   * own), so this specific delete-gate was the one inconsistent holdout that
-   * denied it. The conversion is a deliberate widening for legacy agents,
-   * not a regression: it brings this gate in line with the rest of the
-   * module rather than preserving the old, narrower behaviour.
+   * Task 14 fix round 2 (external review): `currentUserRole === 'owner' ||
+   * currentUserRole === 'admin'` collapsed onto `can('equipe', 'editar') ===
+   * true`, NOT `entregas`. `post_comments` DELETE RLS is tenant-only (no
+   * author/role predicate) -- this client-side gate is the ONLY
+   * authorization boundary for deleting someone ELSE's comment, so gating on
+   * `entregas:editar` (AGENT_ROLE_PRESET.entregas is 'editar') would have
+   * been a REAL privilege escalation: every legacy agent could delete any
+   * comment, which the old owner/admin-only check never allowed.
+   * `equipe:editar` reproduces the old gate byte-for-byte for every legacy
+   * chassis role (AGENT_ROLE_PRESET.equipe is 'none') and models moderation
+   * as a team-management capability.
    */
-  it('now shows delete for a legacy agent viewing another user comment too, matching the rest of Entregas', () => {
+  it('keeps delete hidden for a legacy agent viewing another user comment (equipe preset is none, matches the old owner/admin-only gate)', () => {
     mockUseAuth.mockReturnValue({ can: makeCan(fakeMembership({ role: 'agent' })) });
     const thread = makeThread();
     render(<PostCommentPopover thread={thread} {...defaultProps} currentUserId="user-2" />);
 
     expect(screen.queryByTitle('Editar')).not.toBeInTheDocument();
-    expect(screen.getByTitle('Excluir')).toBeInTheDocument();
+    expect(screen.queryByTitle('Excluir')).not.toBeInTheDocument();
   });
 
-  it('hides delete for a custom role with entregas:ver only, viewing another user comment', () => {
+  it('hides delete for a custom role with equipe:ver only, viewing another user comment', () => {
     mockUseAuth.mockReturnValue({
       can: makeCan(
-        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { entregas: 'ver' } }),
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'ver' } }),
       ),
     });
     const thread = makeThread();
@@ -222,10 +224,10 @@ describe('PostCommentPopover', () => {
     expect(screen.queryByTitle('Excluir')).not.toBeInTheDocument();
   });
 
-  it('shows delete for a custom role with entregas:editar, viewing another user comment (the fix)', () => {
+  it('shows delete for a custom role with equipe:editar, viewing another user comment (the fix)', () => {
     mockUseAuth.mockReturnValue({
       can: makeCan(
-        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { entregas: 'editar' } }),
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
       ),
     });
     const thread = makeThread();

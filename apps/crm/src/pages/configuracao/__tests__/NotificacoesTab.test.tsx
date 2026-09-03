@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/notification-catalog';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // Real catalog + category constants (Task 3) are pure static data: kept real
 // here so the "5 groups / 22 rows" assertions exercise the actual catalog,
@@ -178,6 +179,7 @@ describe('NotificacoesTab', () => {
       profile: { id: 'user-1', marketing_opt_in: true },
       refetchProfile,
       workspaceRole: 'owner',
+      can: makeCan(fakeMembership({ role: 'owner' })),
     });
     mockSupabaseEq.mockReset().mockResolvedValue({ error: null });
     mockSupabaseUpdate.mockReset().mockReturnValue({ eq: mockSupabaseEq });
@@ -352,18 +354,58 @@ describe('NotificacoesTab', () => {
   });
 
   describe('SeusClientesSection', () => {
-    it('does not render for workspaceRole agent', async () => {
+    /**
+     * Task 14: `isOwnerOrAdmin = workspaceRole === 'owner' || workspaceRole
+     * === 'admin'` collapsed onto `can('configuracoes', 'ver') === true`.
+     * `AGENT_ROLE_PRESET.configuracoes` is 'none', so this legacy-agent case
+     * reproduces the OLD gate byte-for-byte -- only a CUSTOM role (role_id
+     * set) can now diverge from its chassis role.
+     */
+    it('does not render for a legacy agent (configuracoes preset is none)', async () => {
       mockUseAuth.mockReturnValue({
         user: { id: 'user-1' },
         profile: { id: 'user-1', marketing_opt_in: true },
         refetchProfile,
         workspaceRole: 'agent',
+        can: makeCan(fakeMembership({ role: 'agent' })),
       });
       renderTab();
       // Wait for the tab to finish settling before asserting an absence.
       await screen.findByRole('heading', { name: 'E-mails automáticos' });
       expect(screen.queryByText('Seus clientes')).not.toBeInTheDocument();
       expect(getClientesMock).not.toHaveBeenCalled();
+    });
+
+    it('does not render for a custom role with no configuracoes grant at all', async () => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true },
+        refetchProfile,
+        workspaceRole: 'agent',
+        can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+      });
+      renderTab();
+      await screen.findByRole('heading', { name: 'E-mails automáticos' });
+      expect(screen.queryByText('Seus clientes')).not.toBeInTheDocument();
+      expect(getClientesMock).not.toHaveBeenCalled();
+    });
+
+    it('renders for a custom role with configuracoes:editar (the fix)', async () => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true },
+        refetchProfile,
+        workspaceRole: 'agent',
+        can: makeCan(
+          fakeMembership({
+            role: 'agent',
+            role_id: 'role-1',
+            permissions: { configuracoes: 'editar' },
+          }),
+        ),
+      });
+      renderTab();
+      expect(await screen.findByText('Todos os clientes')).toBeInTheDocument();
     });
 
     it('renders the master row plus one row per client for workspaceRole owner', async () => {

@@ -11,9 +11,11 @@ interface BulkActionBarProps {
   isCopying?: boolean;
   isDeleting?: boolean;
   isZipping?: boolean;
-  /** `can('arquivos', 'editar') === true`. Defaults to `true` for the one
-   * existing caller's convenience -- hides the Excluir button when false. */
-  canDelete?: boolean;
+  /** `can('arquivos', 'editar') === true`. Required (not defaulted) so
+   * ArquivosPage.tsx (this component's only caller) makes the decision
+   * explicitly -- a forgotten wire-up must fail closed, not open. Hides the
+   * Excluir button when false. */
+  canDelete: boolean;
 }
 
 export function BulkActionBar({
@@ -27,7 +29,7 @@ export function BulkActionBar({
   isCopying,
   isDeleting,
   isZipping,
-  canDelete = true,
+  canDelete,
 }: BulkActionBarProps) {
   if (count === 0) return null;
 

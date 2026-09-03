@@ -66,6 +66,15 @@ export default function MembrosTab() {
   // server-side regardless of `equipe:editar`, so this intentionally does not
   // fold into `canManageTeam`.
   const isOwner = workspaceRole === 'owner';
+  // `update-role` is a STRICTER lever than `equipe:editar` too --
+  // manage-workspace-user/index.ts explicitly requires the caller's chassis
+  // role to be owner/admin ON TOP OF equipe:editar ("atribuição segue dono e
+  // admin": a custom role could otherwise hand out a permission set — e.g.
+  // legacy admin, or its own role_id — that it doesn't itself hold). A
+  // custom equipe:editar actor (chassis 'agent') can still remove members
+  // and manage invites (canManageTeam alone), but the Função button must
+  // stay owner/admin-only or it dead-ends in a 403.
+  const canAssignRoles = workspaceRole === 'owner' || workspaceRole === 'admin';
 
   const { data: wsUsers, refetch: refetchWsUsers } = useQuery({
     queryKey: ['workspace-users'],
@@ -73,11 +82,14 @@ export default function MembrosTab() {
     enabled: canViewTeam,
   });
 
-  // Gated on `canManageTeam` (equipe:editar), not just owner/admin: the
-  // server-side authorization for update-role/invite-user is
-  // `hasPermissionFor(..., 'equipe', 'editar')` (manage-workspace-user/
-  // index.ts), so a custom role with that grant can assign papéis too — this
-  // must match, not a coarser owner/admin-only gate.
+  // Gated on `canManageTeam` (equipe:editar): the roster still needs this
+  // list for the Convidar dialog's role select, which stays open to any
+  // equipe:editar actor. CORRECTION (external review, Task 14 round 2): the
+  // claim this comment used to make -- that a custom equipe:editar role can
+  // also assign roles via update-role -- is wrong. manage-workspace-user/
+  // index.ts requires the caller's CHASSIS role to be owner/admin for
+  // `action === 'update-role'` specifically, on top of equipe:editar (see
+  // `canAssignRoles` above, which gates the Função button accordingly).
   const { data: workspaceRoles = [] } = useQuery({
     queryKey: ['workspace-roles'],
     queryFn: getWorkspaceRoles,
@@ -350,9 +362,11 @@ export default function MembrosTab() {
               )}
               {canManageTeam && u.id !== user?.id && (
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                  <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>
-                    Função
-                  </Button>
+                  {canAssignRoles && (
+                    <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>
+                      Função
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"

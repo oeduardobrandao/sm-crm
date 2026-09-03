@@ -390,6 +390,7 @@ export default function ArquivosPage() {
             queryClient.invalidateQueries({ queryKey: ['folder-tree', currentFolderId] });
           }}
           triggerRef={uploaderRef}
+          canUpload={canEditFiles}
         >
           <MobileArquivosView
             breadcrumbs={breadcrumbs}
@@ -700,6 +701,7 @@ export default function ArquivosPage() {
             queryClient.invalidateQueries({ queryKey: ['folder-tree', currentFolderId] });
           }}
           triggerRef={uploaderRef}
+          canUpload={canEditFiles}
         >
           <div className="flex-1 overflow-y-auto p-5">
             <FileGrid
@@ -731,6 +733,7 @@ export default function ArquivosPage() {
               }}
               onDrop={handleDrop}
               classifySelection={classifySelection}
+              canEdit={canEditFiles}
             />
             {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
               <div className="text-center py-4">

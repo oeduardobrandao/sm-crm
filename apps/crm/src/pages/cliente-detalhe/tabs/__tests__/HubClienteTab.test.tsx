@@ -69,11 +69,15 @@ const CLIENTE: Cliente = {
 
 /**
  * Task 14: the internal restriction check moved from the coarse
- * `workspaceRole === 'agent'` to `can('configuracoes', 'editar') !== true`.
- * Passing a legacy `workspaceRole` here derives a real, preset-backed `can`
- * (role_id: null) so the owner/admin/agent cases below exercise the exact
- * same truth table `derivePermission` does in production; pass `can`
- * directly to simulate a custom role instead.
+ * `workspaceRole === 'agent'` to a tri-state read of `can('configuracoes',
+ * 'editar')` (`false` shows the notice, `'unknown'` shows a loading
+ * spinner, `true` renders the real Hub). Passing a legacy `workspaceRole`
+ * here derives a real, preset-backed `can` (role_id: null) so the owner/
+ * admin/agent cases below exercise the exact same truth table
+ * `derivePermission` does in production; pass `can` directly to simulate a
+ * custom role instead. Passing `null` for `workspaceRole` (with no `can`
+ * override) drives `can()` to 'unknown' for every module, mirroring a real
+ * unresolved AuthContext.
  */
 function setAuth(
   workspaceRole: 'owner' | 'admin' | 'agent' | null,
@@ -202,6 +206,27 @@ describe('HubClienteTab', () => {
 
     expect(await screen.findAllByText('Hub do Cliente')).toHaveLength(2);
     expect(screen.queryByTestId('hub-tab')).not.toBeInTheDocument();
+  });
+
+  /**
+   * Task 14 fix round 2 (external review, hydration): `can()` is tri-state
+   * ('unknown' before membership resolves). The gate used to read `!==
+   * true`, which flashed the restriction notice at EVERY viewer — owner/
+   * admin included — during hydration. `setAuth(null)` drives `can()` to
+   * 'unknown' for every module (mirrors a real unresolved AuthContext).
+   */
+  it('shows a loading spinner (no notice, no HubTab) while membership/can() is unresolved', () => {
+    setAuth(null);
+    getWorkspaceSlugMock.mockResolvedValue('dk-marketing-medico');
+    const { container } = renderTab();
+
+    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.queryByTestId('hub-tab')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'O gerenciamento do Hub do Cliente está disponível apenas para proprietários e administradores do workspace.',
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it('does not render HubTab until workspaceSlug resolves, for an owner', () => {

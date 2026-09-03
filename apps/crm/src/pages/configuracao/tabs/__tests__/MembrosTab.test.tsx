@@ -385,7 +385,7 @@ describe('MembrosTab — action buttons gated on equipe:editar', () => {
     expect(screen.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
   });
 
-  it('shows Convidar/Função/Remover for a custom role with equipe:editar', async () => {
+  it('shows Convidar/Remover for a custom role with equipe:editar', async () => {
     setAuth({
       workspaceRole: 'agent',
       staleProfileRole: 'agent',
@@ -397,7 +397,31 @@ describe('MembrosTab — action buttons gated on equipe:editar', () => {
 
     await screen.findByText('Ana Owner');
     expect(screen.getByRole('button', { name: /Convidar/ })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Função' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Remover' }).length).toBeGreaterThan(0);
+  });
+
+  /**
+   * Task 14 fix round 2 (external review, P2 confirmed): `update-role` is a
+   * STRICTER server-side gate than `equipe:editar` alone --
+   * manage-workspace-user/index.ts requires the caller's CHASSIS role to be
+   * owner/admin for that action specifically ("atribuição segue dono e
+   * admin"), so a custom equipe:editar actor (chassis 'agent') who saw the
+   * Função button would get a 403 on click. Remover/Convidar stay on
+   * canManageTeam alone -- only `update-role` carries the extra chassis
+   * requirement.
+   */
+  it('hides Função (but keeps Remover) for a custom role with equipe:editar whose chassis is agent', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+      ),
+    });
+    renderTab();
+
+    await screen.findByText('Ana Owner');
+    expect(screen.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Remover' }).length).toBeGreaterThan(0);
   });
 
@@ -408,6 +432,7 @@ describe('MembrosTab — action buttons gated on equipe:editar', () => {
     await screen.findByText('Ana Owner');
     expect(screen.getByRole('button', { name: /Convidar/ })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Função' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Remover' }).length).toBeGreaterThan(0);
   });
 });
 
