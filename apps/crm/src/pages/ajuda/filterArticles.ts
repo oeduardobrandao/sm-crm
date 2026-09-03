@@ -1,4 +1,4 @@
-import { normalize } from '@/components/layout/kbSearch';
+import { normalize } from '@/lib/normalizeText';
 import type { KbArticle } from '@/store/kb';
 
 /**
