@@ -144,6 +144,12 @@ export default function ClienteDetalhePage() {
     );
   }
 
+  // Shared by the photo-upload trigger and the header's "Editar" button
+  // (which opens ClienteEditDialog below) -- a custom role with only
+  // `clientes:ver` must not reach either mutation surface, even though it
+  // can view this page (Task 14, revisão externa round 4, P2).
+  const canEditClient = can('clientes', 'editar') === true;
+
   return (
     <div className="cliente-detalhe-page">
       <ClienteDetalheHeader
@@ -154,7 +160,8 @@ export default function ClienteDetalhePage() {
         plano={cliente.plano}
         status={cliente.status}
         imageUrl={cliente.foto_url}
-        canEditPhoto={can('clientes', 'editar') === true}
+        canEditPhoto={canEditClient}
+        canEdit={canEditClient}
         onBack={() => navigate('/clientes')}
         onEdit={() => setEditOpen(true)}
       />

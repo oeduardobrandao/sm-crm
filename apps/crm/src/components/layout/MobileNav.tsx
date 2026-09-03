@@ -5,7 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
-import { getMoreSheetGroups } from './nav-data';
+import { getMoreSheetGroups, NAV_MODULE } from './nav-data';
+import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 import { Search, MessageCircle, Compass } from 'lucide-react';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -25,8 +26,21 @@ const PRIMARY_ITEMS = [
   { id: 'entregas', route: '/entregas', label: 'Entregas', icon: 'ph-kanban' },
 ];
 
-function getActiveIndex(pathname: string): number {
-  const idx = PRIMARY_ITEMS.findIndex((item) => pathname.startsWith(item.route));
+/** `dashboard` has no NAV_MODULE entry (outside the permission catalog, same
+ * as getNavGroups treats it) so it always survives this filter -- "keep
+ * Dashboard always" falls out of the shared table rather than needing its
+ * own special case here. */
+function filterPrimaryItems(
+  can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck,
+): typeof PRIMARY_ITEMS {
+  return PRIMARY_ITEMS.filter((item) => {
+    const gate = NAV_MODULE[item.id];
+    return !gate || can(gate[0], gate[1]) === true;
+  });
+}
+
+function getActiveIndex(items: typeof PRIMARY_ITEMS, pathname: string): number {
+  const idx = items.findIndex((item) => pathname.startsWith(item.route));
   return idx >= 0 ? idx : -1;
 }
 
@@ -49,7 +63,14 @@ export default function MobileNav() {
   const isMoreRouteActive = moreSheetGroups.some((group) =>
     group.items.some((item) => location.pathname.startsWith(item.route)),
   );
-  const activeIndex = isMoreRouteActive ? -1 : getActiveIndex(location.pathname);
+  // Task 14, revisão externa round 4 (P2): the fixed primary bar used to
+  // render dashboard/clientes/analytics/entregas unconditionally -- only the
+  // "Mais" sheet (getMoreSheetGroups, which already runs the NAV_MODULE
+  // permission filter) was gated. A denied module's primary item now
+  // disappears too, sharing the same NAV_MODULE table `getNavGroups` uses so
+  // the two can't drift apart on which modules require which grant.
+  const primaryItems = filterPrimaryItems(can);
+  const activeIndex = isMoreRouteActive ? -1 : getActiveIndex(primaryItems, location.pathname);
 
   useEffect(() => {
     const phoneMedia = window.matchMedia('(max-width: 767px)');
@@ -88,7 +109,7 @@ export default function MobileNav() {
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
         <nav className="mobile-nav-glass" id="mobile-nav" aria-label="Navegação principal">
           <div className="mobile-nav-items">
-            {PRIMARY_ITEMS.map((item, index) => {
+            {primaryItems.map((item, index) => {
               const active = activeIndex === index;
               return (
                 <button

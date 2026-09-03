@@ -243,7 +243,11 @@ const NAV_FEATURE: Record<string, string> = {
  * politica-de-privacidade, analytics-tiktok) are outside the permission
  * catalog and always pass through unfiltered here.
  */
-const NAV_MODULE: Partial<Record<string, [PermissionModule, PermissionAction]>> = {
+/** Exported so MobileNav.tsx's fixed primary bar (dashboard/clientes/
+ * analytics/entregas, rendered outside the `getNavGroups`-driven "Mais"
+ * sheet) can gate on the exact same table instead of a second, hand-rolled
+ * mapping that could silently drift from this one. */
+export const NAV_MODULE: Partial<Record<string, [PermissionModule, PermissionAction]>> = {
   calendario: ['calendario', 'ver'],
   leads: ['leads', 'ver'],
   clientes: ['clientes', 'ver'],

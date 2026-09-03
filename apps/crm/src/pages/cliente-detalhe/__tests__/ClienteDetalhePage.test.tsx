@@ -337,6 +337,37 @@ describe('ClienteDetalhePage', () => {
     expect(await screen.findByLabelText('Alterar foto do cliente')).toBeInTheDocument();
   });
 
+  /**
+   * Task 14, revisão externa round 4 (P2): the header's "Editar" button
+   * (opens ClienteEditDialog) used to render unconditionally regardless of
+   * role -- a custom role with only `clientes:ver` reached this page and
+   * could still open the edit dialog, even though `canEditPhoto` was
+   * already gated on `can('clientes','editar')`. Both flags now share the
+   * same derived `canEditClient` in ClienteDetalhePage.tsx.
+   */
+  it('hides the header Editar button for a custom role with clientes:ver only', async () => {
+    setAuth('agent', {
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'ver' } }),
+      ),
+    });
+    renderAt('/clientes/42/visao-geral');
+    await screen.findByText('conteudo visao-geral');
+    expect(screen.queryByRole('button', { name: /editar/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the header Editar button for a legacy agent (clientes preset is editar — unchanged)', async () => {
+    setAuth('agent');
+    renderAt('/clientes/42/visao-geral');
+    expect(await screen.findByRole('button', { name: /editar/i })).toBeInTheDocument();
+  });
+
+  it('keeps the header Editar button for a legacy admin (unchanged)', async () => {
+    setAuth('admin');
+    renderAt('/clientes/42/visao-geral');
+    expect(await screen.findByRole('button', { name: /editar/i })).toBeInTheDocument();
+  });
+
   describe('client edit', () => {
     it('invalidates both cliente and clientes query keys after a successful save', async () => {
       setAuth('owner');
