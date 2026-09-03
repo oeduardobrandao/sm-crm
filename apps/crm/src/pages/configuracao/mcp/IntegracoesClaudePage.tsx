@@ -205,6 +205,11 @@ export default function IntegracoesClaudePage() {
   // chassis 'agent' role never passed even when it held the tab-level
   // grant.
   const canViewConfig = can('configuracoes', 'ver') === true;
+  // F4 (revisão externa): criar/revogar chave e desconectar um grant são
+  // escritas -- um papel `ver`-only via todos esses controles. Aqui as
+  // escritas passam por edge functions que negam de verdade, mas o controle
+  // ativo ainda promete uma ação que sempre falha.
+  const canEditConfig = can('configuracoes', 'editar') === true;
   const queryClient = useQueryClient();
 
   const [client, setClient] = useState<McpClient>('claude');
@@ -299,9 +304,15 @@ export default function IntegracoesClaudePage() {
 
   return (
     <>
-      <p className="text-sm text-muted-foreground" style={{ marginBottom: '1.5rem' }}>
+      <p className="text-sm text-muted-foreground" style={{ marginBottom: '0.5rem' }}>
         Conecte Claude, ChatGPT ou Codex para ler clientes, posts e pautas deste workspace.
       </p>
+      {!canEditConfig && (
+        <p className="text-xs text-muted-foreground" style={{ marginBottom: '1.5rem' }}>
+          Somente leitura
+        </p>
+      )}
+      {canEditConfig && <div style={{ marginBottom: '1rem' }} />}
 
       <FeatureGate flag="feature_mcp" label="Integração com agentes (MCP)">
         <div className="card animate-up" style={{ marginBottom: '1rem' }}>
@@ -504,6 +515,7 @@ export default function IntegracoesClaudePage() {
                     variant="outline"
                     size="sm"
                     style={{ flexShrink: 0 }}
+                    disabled={!canEditConfig}
                     onClick={() => setRevokeGrantTarget(g)}
                   >
                     Desconectar
@@ -526,7 +538,9 @@ export default function IntegracoesClaudePage() {
             <h3 className="config-title" style={{ margin: 0 }}>
               Chaves de API
             </h3>
-            <Button onClick={() => setCreateOpen(true)}>Criar chave</Button>
+            <Button disabled={!canEditConfig} onClick={() => setCreateOpen(true)}>
+              Criar chave
+            </Button>
           </div>
 
           {isLoading ? (
@@ -581,7 +595,12 @@ export default function IntegracoesClaudePage() {
                       >
                         Conectar
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => setRevokeTarget(k)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!canEditConfig}
+                        onClick={() => setRevokeTarget(k)}
+                      >
                         Revogar
                       </Button>
                     </div>

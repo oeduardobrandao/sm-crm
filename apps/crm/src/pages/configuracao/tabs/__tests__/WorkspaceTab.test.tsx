@@ -139,3 +139,66 @@ describe('WorkspaceTab — queries gated on configuracoes:ver', () => {
     });
   });
 });
+
+/**
+ * F4 (revisão externa, confirmado): a `configuracoes:ver`-only role reached
+ * this tab AND got every mutation control live. `updateWorkspace` writes to
+ * `workspaces`, whose RLS FILTERS the row out rather than raising, so
+ * PostgREST answered 200/zero-rows, `updateWorkspace` reported success and
+ * the user got a "Workspace atualizado!" toast for a save that never landed.
+ * The controls are now gated on `can('configuracoes','editar')`.
+ */
+describe('WorkspaceTab — mutation controls gated on configuracoes:editar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: 'https://cdn.example.com/logo.png',
+    });
+  });
+
+  it('disables save/logo controls and shows "Somente leitura" for a ver-only custom role', async () => {
+    useAuthMock.mockReturnValue({
+      profile: { id: 'user-1', conta_id: 'ws-1' },
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+      ),
+    });
+    renderTab();
+
+    expect(await screen.findByRole('button', { name: /Salvar/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Trocar Logo/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Remover$/ })).toBeDisabled();
+    expect(screen.getByText('Somente leitura')).toBeInTheDocument();
+  });
+
+  it('keeps them enabled for configuracoes:editar', async () => {
+    useAuthMock.mockReturnValue({
+      profile: { id: 'user-1', conta_id: 'ws-1' },
+      can: makeCan(
+        fakeMembership({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { configuracoes: 'editar' },
+        }),
+      ),
+    });
+    renderTab();
+
+    expect(await screen.findByRole('button', { name: /Salvar/ })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Trocar Logo/ })).not.toBeDisabled();
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+
+  it('keeps them enabled for a legacy admin (regression)', async () => {
+    useAuthMock.mockReturnValue({
+      profile: { id: 'user-1', conta_id: 'ws-1' },
+      can: makeCan(fakeMembership({ role: 'admin' })),
+    });
+    renderTab();
+
+    expect(await screen.findByRole('button', { name: /Salvar/ })).not.toBeDisabled();
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+});

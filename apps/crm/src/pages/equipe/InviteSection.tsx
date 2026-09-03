@@ -67,20 +67,17 @@ export function InviteSection({
   pendingInvite: { email: string; role: string; expires_at: string } | null;
   /**
    * Same prop EquipePage already computes for itself — gates the
-   * custom-papel `getWorkspaceRoles` fetch below so an agent who can't
+   * custom-papel `getWorkspaceRoles` fetch below so a member who can't
    * manage the workspace never fires it.
    *
-   * As of this task, EquipePage still computes this as the COARSE
-   * `membershipResolved === true && (workspaceRole === 'owner' ||
-   * workspaceRole === 'admin')` — a role-literal check, not `can()`. Unlike
-   * MembrosTab.tsx (Configurações → Membros), which already gates its
-   * equivalent controls on `can('equipe', 'editar') === true`, a custom
-   * papel granted `equipe:editar` does NOT yet see the invite section here
-   * on the Equipe page. Fail-closed (no privilege leak), just an
-   * inconsistent UI. Converting EquipePage's gate to `can('equipe',
-   * 'editar')` is Task 14's job ("Varredura das superfícies de mutação"),
-   * not this one — this prop just threads through whatever the caller
-   * currently computes.
+   * EquipePage now computes it as `can('equipe', 'editar') === true`
+   * (Task 14), the same check MembrosTab.tsx uses for its equivalent
+   * controls and the same one `manage-workspace-user`/`invite-user` enforce
+   * server-side. Before that conversion the caller used the coarse
+   * `workspaceRole === 'owner' || 'admin'` literal, which hid this section
+   * from a custom papel granted `equipe:editar` even though the server would
+   * have accepted its writes. This prop still just threads through whatever
+   * the caller computes.
    */
   canManageWorkspace: boolean;
 }) {

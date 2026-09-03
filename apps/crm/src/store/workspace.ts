@@ -85,12 +85,32 @@ export async function getCurrentWorkspace(): Promise<{
   return data;
 }
 
+/**
+ * RLS on `workspaces` FILTERS a forbidden row out of an UPDATE instead of
+ * raising: PostgREST answers 200 with zero rows affected, so `error` is null
+ * and the caller toasts success for a save that never happened (F4, revisão
+ * externa). Every workspace update below therefore asks for the affected ids
+ * back with `.select('id')` and treats an empty result as a denial. The UI
+ * gates on `configuracoes:editar` are the primary fix; this is the backstop
+ * that keeps a missed gate from lying to the user.
+ */
+function assertWorkspaceRowAffected(rows: { id: string }[] | null): void {
+  if (!rows || rows.length === 0) {
+    throw new Error('workspace_update_forbidden');
+  }
+}
+
 export async function updateWorkspace(
   workspaceId: string,
   updates: { name?: string; logo_url?: string | null; report_splash_url?: string | null },
 ): Promise<void> {
-  const { error } = await supabase.from('workspaces').update(updates).eq('id', workspaceId);
+  const { data, error } = await supabase
+    .from('workspaces')
+    .update(updates)
+    .eq('id', workspaceId)
+    .select('id');
   if (error) throw error;
+  assertWorkspaceRowAffected(data);
 }
 
 // Report v2 whitelabel surface: a single accent colour (shared with the client
@@ -123,8 +143,13 @@ export async function updateWorkspaceBranding(fields: {
   send_client_event_emails?: boolean;
 }) {
   const contaId = await getContaId();
-  const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
+  const { data, error } = await supabase
+    .from('workspaces')
+    .update(fields)
+    .eq('id', contaId)
+    .select('id');
   if (error) throw error;
+  assertWorkspaceRowAffected(data);
 }
 
 // Hub white-label surface (Personalizar Hub, Configurações → Hub). `brand_color` lives
@@ -162,8 +187,13 @@ export async function getHubBranding(): Promise<HubBranding> {
 
 export async function updateHubBranding(fields: Partial<HubBranding>): Promise<void> {
   const contaId = await getContaId();
-  const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
+  const { data, error } = await supabase
+    .from('workspaces')
+    .update(fields)
+    .eq('id', contaId)
+    .select('id');
   if (error) throw error;
+  assertWorkspaceRowAffected(data);
 }
 
 // Auto-limpeza de armazenamento (Configurações → Armazenamento). Owner-only:

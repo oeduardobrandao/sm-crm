@@ -596,3 +596,71 @@ describe('HubTab — queries gated on configuracoes:ver', () => {
     });
   });
 });
+
+/**
+ * F4 (revisão externa, confirmado): a `configuracoes:ver`-only role reached
+ * this tab and got every branding control live. `updateHubBranding` writes to
+ * `workspaces`, whose RLS FILTERS the row out rather than raising, so the save
+ * came back 200/zero-rows and toasted success without saving. Controls now
+ * gate on `can('configuracoes','editar')`; the store call additionally throws
+ * on a zero-row result (see store/__tests__/hubBranding.test.ts).
+ */
+describe('HubTab — mutation controls gated on configuracoes:editar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEntitlements = { hasFeature: () => true, isLoading: false };
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: null,
+    });
+    storeMock.getHubBranding.mockResolvedValue({
+      brand_color: '#111111',
+      hub_surface_theme: 'neutral',
+      hub_font_display: 'fraunces',
+      hub_font_body: 'instrument-sans',
+      hub_radius: 'soft',
+      hub_card_style: 'filled',
+      hub_logo_style: 'round',
+      hub_logo_dark_url: null,
+      hub_hide_branding: false,
+      hub_default_appearance: 'light',
+    });
+  });
+
+  it('disables Salvar and shows "Somente leitura" for a ver-only custom role', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+      ),
+    });
+    renderTab();
+
+    expect(await screen.findByText('Somente leitura')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).toBeDisabled());
+  });
+
+  it('keeps Salvar enabled for configuracoes:editar', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { configuracoes: 'editar' },
+        }),
+      ),
+    });
+    renderTab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).not.toBeDisabled());
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+
+  it('keeps Salvar enabled for a legacy admin (regression)', async () => {
+    useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'admin' })) });
+    renderTab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).not.toBeDisabled());
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+});

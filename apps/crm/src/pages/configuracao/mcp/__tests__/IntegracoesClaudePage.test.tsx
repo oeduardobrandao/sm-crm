@@ -107,3 +107,67 @@ describe('IntegracoesClaudePage — gated on configuracoes:ver', () => {
     });
   });
 });
+
+/**
+ * F4 (revisão externa): a `configuracoes:ver`-only role reached the page and
+ * still saw "Criar chave", "Revogar" and "Desconectar" as live controls. The
+ * writes here go through edge functions that DO deny, so nothing was silently
+ * lost -- but an enabled control that always fails is the same UX defect the
+ * finding names, so the controls follow `can('configuracoes','editar')` like
+ * every other config surface.
+ */
+describe('IntegracoesClaudePage — mutation controls gated on configuracoes:editar', () => {
+  const KEY = {
+    id: 'key-1',
+    name: 'Chave Claude',
+    scopes: ['clients:read'],
+    created_at: '2026-01-01T00:00:00Z',
+    expires_at: null,
+    revoked_at: null,
+    last_used_at: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listMcpKeysMock.mockResolvedValue([KEY]);
+    listOAuthGrantsMock.mockResolvedValue([]);
+  });
+
+  it('disables Criar chave / Revogar and shows "Somente leitura" for a ver-only custom role', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+      ),
+    });
+    renderPage();
+
+    expect(await screen.findByText('Somente leitura')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Criar chave' })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Revogar' })).toBeDisabled());
+  });
+
+  it('keeps them enabled for configuracoes:editar', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { configuracoes: 'editar' },
+        }),
+      ),
+    });
+    renderPage();
+
+    expect(screen.getByRole('button', { name: 'Criar chave' })).not.toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Revogar' })).not.toBeDisabled());
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+
+  it('keeps them enabled for a legacy admin (regression)', async () => {
+    useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'admin' })) });
+    renderPage();
+
+    expect(screen.getByRole('button', { name: 'Criar chave' })).not.toBeDisabled();
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+});

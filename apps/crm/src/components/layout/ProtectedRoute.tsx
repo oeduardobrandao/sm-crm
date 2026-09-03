@@ -5,7 +5,7 @@ import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { Spinner } from '@/components/ui/spinner';
 import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { resolveRouteGate } from './routePermissions';
-import { isFinancialPath } from './AppLayout';
+import { isLayoutGuardedPath } from './AppLayout';
 
 const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
@@ -53,16 +53,17 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   // grew a `can()`-based gate. See ProtectedRoute.test.tsx's "ordering" test.
   //
   // `/financeiro` and `/contratos` are EXEMPT from this gate entirely: they
-  // are `AppLayout`'s territory, via its own three-state
-  // `financialGuardOutcome` (content/loading/denied ->
-  // `FinancialRestrictionScreen`), which already fully decides access for
+  // are `AppLayout`'s territory, via its own three-state guards
+  // (`financialGuardOutcome` / `contractGuardOutcome`, content/loading/denied
+  // -> `FinancialRestrictionScreen`), which already fully decide access for
   // EVERY role -- including a restricted admin, who this gate would
   // otherwise redirect to /dashboard, silently replacing that dedicated
-  // screen with a bare bounce. Letting `resolveRouteGate` still classify
-  // these two paths (as `{financeiro,ver}`/`{contratos,ver}`) keeps
-  // `nav-data.ts` and the route table honest; only the ENFORCEMENT here is
-  // skipped. See `isFinancialPath`/`FINANCIAL_PATHS` in `AppLayout.tsx`.
-  if (!isFinancialPath(pathname)) {
+  // screen with a bare bounce. Each of the two now reads its OWN capability
+  // (`financeiro:ver` / `contratos:ver`); letting `resolveRouteGate` still
+  // classify both paths keeps `nav-data.ts` and the route table honest, and
+  // only the ENFORCEMENT here is skipped. See `isLayoutGuardedPath` in
+  // `AppLayout.tsx`.
+  if (!isLayoutGuardedPath(pathname)) {
     const gate = resolveRouteGate(pathname);
     if (gate === 'unmapped') {
       if (import.meta.env.DEV) {

@@ -13,7 +13,13 @@ import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/
 import type { Cliente } from '../../store';
 
 export type ClienteTabKey =
-  'visao-geral' | 'entregas' | 'redes-sociais' | 'relatorios' | 'hub' | 'arquivos' | 'financeiro';
+  | 'visao-geral'
+  | 'entregas'
+  | 'redes-sociais'
+  | 'relatorios'
+  | 'hub'
+  | 'arquivos'
+  | 'financeiro';
 
 export type ClienteTabGroup = 'cliente' | 'canais' | 'gestao';
 

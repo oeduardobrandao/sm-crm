@@ -23,7 +23,9 @@ import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/
  * evaluated via `can()`.
  */
 export type ConfigPermission =
-  { module: PermissionModule; action: PermissionAction } | 'owner' | 'all';
+  | { module: PermissionModule; action: PermissionAction }
+  | 'owner'
+  | 'all';
 
 export interface ConfigTab {
   /** Path segment under /configuracao. */

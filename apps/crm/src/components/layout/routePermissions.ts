@@ -1,7 +1,9 @@
 import type { PermissionAction, PermissionModule } from '@/lib/permissions';
 
 export type RouteGate =
-  { module: PermissionModule; action: PermissionAction } | 'open' | 'unmapped';
+  | { module: PermissionModule; action: PermissionAction }
+  | 'open'
+  | 'unmapped';
 
 interface RouteRule {
   prefix: string;

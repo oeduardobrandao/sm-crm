@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FinancialAccess } from '../../../lib/financialAccess';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -90,7 +91,17 @@ import AppLayout from '../AppLayout';
 
 const mockedUseAuth = vi.mocked(useAuth);
 
-function setCanSeeFinancials(canSeeFinancials: FinancialAccess) {
+/**
+ * AppLayout now reads BOTH `canSeeFinancials` (the /financeiro guard) and
+ * `can('contratos','ver')` (the /contratos guard, F1) off `useAuth()`, so the
+ * mock has to supply both. `membership` defaults to a legacy owner, which
+ * clears every capability -- the contract guard then stays 'content' on the
+ * financial-route tests below and never interferes with what they assert.
+ */
+function setCanSeeFinancials(
+  canSeeFinancials: FinancialAccess,
+  membership: Parameters<typeof fakeMembership>[0] = { role: 'owner' },
+) {
   mockedUseAuth.mockReturnValue({
     user: { id: 'u1' } as never,
     profile: { id: 'u1', nome: 'Ana', role: 'owner', conta_id: 'c1' } as never,
@@ -98,6 +109,7 @@ function setCanSeeFinancials(canSeeFinancials: FinancialAccess) {
     workspaceRole: 'owner',
     membershipResolved: true,
     canSeeFinancials,
+    can: makeCan(fakeMembership(membership)),
     loading: false,
     refetchProfile: vi.fn(),
     signOut: vi.fn(),
@@ -171,6 +183,7 @@ function renderLayout(pathname = '/dashboard') {
           />
           <Route path="/clientes" element={<div>Clientes screen</div>} />
           <Route path="/financeiro" element={<div>Financeiro screen</div>} />
+          <Route path="/contratos" element={<div>Contratos screen</div>} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -291,5 +304,85 @@ describe('AppLayout financial guard wiring', () => {
     await screen.findByTestId('global-banner');
 
     expect(screen.getByText('Dashboard screen')).toBeInTheDocument();
+  });
+});
+
+/**
+ * F1: /contratos left FINANCIAL_PATHS and got its own guard on
+ * `can('contratos','ver')`. These prove the layout wires that capability
+ * (not canSeeFinancials) into the /contratos decision, and that the two
+ * guards no longer bleed into each other.
+ */
+describe('AppLayout contract guard wiring', () => {
+  it('renders /contratos for {contratos: editar, financeiro: none} — the shape that used to hit the restriction screen', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    setCanSeeFinancials(false, {
+      role: 'agent',
+      role_id: 'role-1',
+      permissions: { contratos: 'editar' },
+    });
+
+    renderLayout('/contratos');
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByText('Contratos screen')).toBeInTheDocument();
+    expect(screen.queryByText('Acesso a contratos restrito')).not.toBeInTheDocument();
+  });
+
+  it('shows the contracts restriction screen for {contratos: none, financeiro: editar}', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    setCanSeeFinancials(true, {
+      role: 'agent',
+      role_id: 'role-1',
+      permissions: { financeiro: 'editar' },
+    });
+
+    renderLayout('/contratos');
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByText('Acesso a contratos restrito')).toBeInTheDocument();
+    expect(screen.queryByText('Contratos screen')).not.toBeInTheDocument();
+    // Copy is contracts-specific, not the financial wording.
+    expect(screen.queryByText('Acesso financeiro restrito')).not.toBeInTheDocument();
+    // The shell survives, same as the financial guard.
+    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+  });
+
+  it('still restricts /contratos for a legacy restricted admin (regression)', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    setCanSeeFinancials(false, { role: 'admin', can_see_financials: false });
+
+    renderLayout('/contratos');
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByText('Acesso a contratos restrito')).toBeInTheDocument();
+    expect(screen.queryByText('Contratos screen')).not.toBeInTheDocument();
+  });
+
+  it('shows a spinner, not a denial, while the contracts capability is unknown', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'u1' } as never,
+      profile: { id: 'u1', nome: 'Ana', role: 'owner', conta_id: 'c1' } as never,
+      role: 'owner',
+      workspaceRole: 'owner',
+      membershipResolved: false,
+      canSeeFinancials: 'unknown',
+      can: makeCan(null),
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    const { container } = renderLayout('/contratos');
+    await screen.findByTestId('global-banner');
+
+    expect(screen.queryByText('Contratos screen')).not.toBeInTheDocument();
+    expect(screen.queryByText('Acesso a contratos restrito')).not.toBeInTheDocument();
+    expect(container.querySelector('.animate-spin')).not.toBeNull();
   });
 });
