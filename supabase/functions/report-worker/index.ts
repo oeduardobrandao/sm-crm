@@ -173,7 +173,7 @@ Deno.serve(async (req) => {
     try {
       const { data: reportRow } = await supabase
         .from('analytics_reports')
-        .select('client_id, conta_id, report_month, storage_path, ai_content')
+        .select('client_id, conta_id, report_month, storage_path, ai_content, email_kpis')
         .eq('id', claimed.id)
         .single();
 
@@ -211,6 +211,7 @@ Deno.serve(async (req) => {
             aiSummary: reportRow.ai_content?.executive_summary ?? null,
             pdfUrl,
             hubUrl: await resolveHubUrl(supabase, reportRow.client_id, reportRow.conta_id),
+            emailKpis: reportRow.email_kpis ?? null,
           });
 
           const [year, mm] = reportRow.report_month.split('-');
