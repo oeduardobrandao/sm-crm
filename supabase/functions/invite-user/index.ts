@@ -169,6 +169,20 @@ Deno.serve(async (req) => {
     // this field.
     const roleId: string | null | undefined =
       'role_id' in body ? (typeof body.role_id === 'string' ? body.role_id : null) : undefined;
+
+    // Spec decision: "atribuição segue dono e admin". An actor who reached
+    // this point only via 'equipe':'editar' (i.e. NOT a legacy owner/admin --
+    // caller.role is the 'agent' chassis) may invite ONLY a plain role='agent'
+    // with no custom role attached. Without this, such an actor could invite
+    // someone as role='admin' (the legacy all-modules preset) or attach any
+    // role_id (a permission set the actor may not itself hold) -- granting
+    // permissions it doesn't have. `role==='owner'` is already excluded by
+    // the guard above; this covers the remaining elevated shapes.
+    const isPrivilegedActor = caller.role === 'owner' || caller.role === 'admin';
+    if (!isPrivilegedActor && (role !== 'agent' || typeof roleId === 'string')) {
+      throw new Error('Apenas donos e admins podem convidar com função elevada ou papel.');
+    }
+
     if (roleId) {
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       let validRoleId = UUID_RE.test(roleId);

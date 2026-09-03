@@ -162,6 +162,21 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 403, headers });
     }
 
+    // update-role specifically requires owner/admin, ON TOP OF equipe:editar.
+    // Spec decision: "atribuição segue dono e admin" -- a custom role (chassis
+    // 'agent') holding equipe:editar can still remove members and manage
+    // invites, but assigning roles/permission sets is reserved for the two
+    // legacy roles that already hold every permission themselves. Without
+    // this, such an actor could set a colleague to the legacy admin preset
+    // (all modules) -- a permission set the actor doesn't hold. remove and
+    // cancel-invite stay on equipe:editar alone.
+    if (action === "update-role" && callerRole !== "owner" && callerRole !== "admin") {
+      return new Response(
+        JSON.stringify({ error: "Apenas donos e admins podem alterar funções." }),
+        { status: 403, headers },
+      );
+    }
+
     // --- Cancel Invite (does not require targetUserId) ---
     if (action === "cancel-invite") {
       if (!inviteId) {

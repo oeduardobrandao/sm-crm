@@ -118,3 +118,33 @@ Deno.test("regression: caller cannot modify themselves, even as owner", () => {
   assertEquals(cannotModifySelf("u1", "u1"), true);
   assertEquals(cannotModifySelf("u1", "u2"), false);
 });
+
+// --- Second external-review round: update-role additionally requires owner/admin ---
+// Spec decision: "atribuição segue dono e admin". A custom-role actor (chassis
+// 'agent') can still hold 'equipe':'editar' and pass the actor gate above --
+// enough to remove members and manage invites -- but update-role specifically
+// is reserved for the two legacy roles that already hold every permission
+// themselves. Without this, such an actor could set a colleague to the legacy
+// admin preset (all modules), a permission set the actor doesn't hold.
+
+/** Mirrors the update-role-specific owner/admin gate in index.ts (runs AFTER the actor gate above). */
+function updateRoleBlocked(action: string, callerRole: string): boolean {
+  return action === "update-role" && callerRole !== "owner" && callerRole !== "admin";
+}
+
+Deno.test("update-role: custom-role actor (chassis 'agent', has equipe:editar) is denied", () => {
+  assertEquals(updateRoleBlocked("update-role", "agent"), true);
+});
+
+Deno.test("update-role: legacy admin is allowed (regression)", () => {
+  assertEquals(updateRoleBlocked("update-role", "admin"), false);
+});
+
+Deno.test("update-role: legacy owner is allowed (regression)", () => {
+  assertEquals(updateRoleBlocked("update-role", "owner"), false);
+});
+
+Deno.test("remove and cancel-invite stay on equipe:editar alone -- NOT gated by this owner/admin check", () => {
+  assertEquals(updateRoleBlocked("remove", "agent"), false);
+  assertEquals(updateRoleBlocked("cancel-invite", "agent"), false);
+});

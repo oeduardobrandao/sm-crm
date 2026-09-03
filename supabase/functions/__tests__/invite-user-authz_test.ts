@@ -110,3 +110,56 @@ Deno.test("owner-invite guard: any caller inviting a non-owner role is unaffecte
   assertEquals(ownerInviteBlocked("admin", "agent"), false);
   assertEquals(ownerInviteBlocked("owner", "admin"), false);
 });
+
+// --- "Apenas donos e admins podem convidar com função elevada ou papel." guard ---
+//
+// Second external-review round: "atribuição segue dono e admin" (spec
+// decision). An actor who only holds 'equipe':'editar' (never a legacy
+// owner/admin) could otherwise invite someone as role='admin' (the legacy
+// all-modules preset) or attach ANY role_id -- a permission set the actor
+// itself may not hold. role==='owner' is excluded upstream by the guard
+// above; this covers the remaining elevated shapes: role='admin', or any
+// role_id (custom permission set) regardless of the coarse `role` value.
+
+Deno.test("invite-user: the elevated-invite guard is a source fact, not merely a code comment", () => {
+  assertMatch(
+    source,
+    /const isPrivilegedActor = caller\.role === ['"]owner['"] \|\| caller\.role === ['"]admin['"];/,
+  );
+  assertMatch(
+    source,
+    /if \(!isPrivilegedActor && \(role !== ['"]agent['"] \|\| typeof roleId === ['"]string['"]\)\)/,
+  );
+  assertMatch(source, /Apenas donos e admins podem convidar com função elevada ou papel\./);
+});
+
+/** Mirrors the elevated-invite guard in index.ts. */
+function elevatedInviteBlocked(callerRole: string, role: string, roleId: string | null | undefined): boolean {
+  const isPrivilegedActor = callerRole === "owner" || callerRole === "admin";
+  return !isPrivilegedActor && (role !== "agent" || typeof roleId === "string");
+}
+
+Deno.test("elevated-invite guard: custom-role actor (equipe:editar only) inviting role='admin' -> denied", () => {
+  assertEquals(elevatedInviteBlocked("agent", "admin", undefined), true);
+  assertEquals(elevatedInviteBlocked("agent", "admin", null), true);
+});
+
+Deno.test("elevated-invite guard: custom-role actor inviting role='agent' WITH a role_id -> denied", () => {
+  assertEquals(elevatedInviteBlocked("agent", "agent", "6b1f2e2e-1234-4abc-9def-0123456789ab"), true);
+});
+
+Deno.test("elevated-invite guard: custom-role actor inviting plain role='agent' with no role_id -> allowed", () => {
+  assertEquals(elevatedInviteBlocked("agent", "agent", undefined), false); // key absent
+  assertEquals(elevatedInviteBlocked("agent", "agent", null), false); // key present, explicit "no custom role"
+});
+
+Deno.test("elevated-invite guard: legacy admin is unaffected -- can invite role='admin' or attach a role_id", () => {
+  assertEquals(elevatedInviteBlocked("admin", "admin", undefined), false);
+  assertEquals(elevatedInviteBlocked("admin", "agent", "6b1f2e2e-1234-4abc-9def-0123456789ab"), false);
+});
+
+Deno.test("elevated-invite guard: owner is unaffected -- can invite any role or attach a role_id", () => {
+  assertEquals(elevatedInviteBlocked("owner", "admin", undefined), false);
+  assertEquals(elevatedInviteBlocked("owner", "agent", "6b1f2e2e-1234-4abc-9def-0123456789ab"), false);
+  assertEquals(elevatedInviteBlocked("owner", "owner", undefined), false);
+});

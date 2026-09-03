@@ -28,10 +28,18 @@
 --
 -- service_role is deliberately NOT in the REVOKE list: edge functions
 -- (invite flows, role management) read workspace_roles directly with the
--- service key, and this migration must not touch that access.
+-- service key, and this migration must not touch that access. It was ALSO
+-- never granted anything explicitly here or in Migration A — production
+-- worked only because Supabase's hosted `pg_default_acl` auto-grants ALL on
+-- new tables to service_role (verified in prod), which the local CLI image
+-- does not (see supabase/tests/entitlements/_helpers.sql). House standard
+-- (memory: "REVOKE FROM PUBLIC also strips service_role — re-grant
+-- explicitly") is to make that grant explicit rather than lean on an
+-- environment default, so it is asserted below like every other grant here.
 -- =================================================================
 REVOKE ALL ON public.workspace_roles FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.workspace_roles TO authenticated;
+GRANT ALL ON public.workspace_roles TO service_role;
 
 DO $$
 DECLARE
@@ -68,11 +76,12 @@ BEGIN
   IF acl LIKE '=%' OR acl LIKE '%,=%' THEN
     RAISE EXCEPTION 'workspace_roles: PUBLIC retains privilege — acl=%', acl;
   END IF;
-  -- service_role is intentionally NOT asserted here: this migration does not
-  -- touch its grant, and the local CLI image's default ACL (no auto-grant to
-  -- service_role, unlike hosted Supabase — see _helpers.sql) means asserting
-  -- a specific state for it would be environment-dependent, not a property of
-  -- this migration.
+  -- service_role's grant is explicit above (not an environment default
+  -- anymore), so it IS asserted here — an ACL entry must exist for it,
+  -- whatever exact privilege letters it carries (ALL, not just SELECT).
+  IF acl NOT LIKE '%service_role=%' THEN
+    RAISE EXCEPTION 'workspace_roles: service_role has no ACL entry (expected an explicit grant) — acl=%', acl;
+  END IF;
 END $$;
 
 -- =================================================================

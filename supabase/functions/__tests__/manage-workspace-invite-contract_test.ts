@@ -45,3 +45,23 @@ Deno.test("actor gate consults has_permission_for('equipe','editar') instead of 
   // callerRole is still assigned from the membership row, for the owner-protection guards below.
   assertMatch(source, /const callerRole = callerMembership\.role;/);
 });
+
+// Second external-review round: "atribuição segue dono e admin" (spec decision).
+// A custom-role actor (chassis 'agent') holding only 'equipe':'editar' could
+// update-role a colleague to the legacy admin preset (all modules) -- a
+// permission set the actor itself doesn't hold. update-role now ALSO requires
+// callerRole owner/admin, on top of the equipe:editar actor gate; remove and
+// cancel-invite stay on equipe:editar alone (not gated by this literal).
+Deno.test("update-role additionally requires callerRole owner/admin, on top of equipe:editar", () => {
+  assertMatch(
+    source,
+    /if \(action === ["']update-role["'] && callerRole !== ["']owner["'] && callerRole !== ["']admin["']\)/,
+  );
+  assertMatch(source, /Apenas donos e admins podem alterar funções\./);
+  // This new check must sit BEFORE the cancel-invite/remove branches share no
+  // dependency on it -- i.e. it must not accidentally gate those actions too.
+  const updateRoleGateIndex = source.indexOf("Apenas donos e admins podem alterar funções.");
+  const cancelInviteIndex = source.indexOf('action === "cancel-invite"');
+  assert(updateRoleGateIndex > -1 && cancelInviteIndex > -1 && updateRoleGateIndex < cancelInviteIndex,
+    "expected the update-role owner/admin gate before the cancel-invite branch");
+});

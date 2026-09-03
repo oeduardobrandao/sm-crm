@@ -64,6 +64,12 @@ begin
   if v_acl like '=%' or v_acl like '%,=%' then
     raise exception 'WR-00: PUBLIC retains privilege on workspace_roles -- acl=%', v_acl;
   end if;
+  -- service_role's grant is explicit in the migration now (house standard:
+  -- REVOKE FROM PUBLIC also strips service_role -- re-grant explicitly), not
+  -- an environment default -- mirrors the migration's own post-condition.
+  if v_acl not like '%service_role=%' then
+    raise exception 'WR-00: service_role has no ACL entry on workspace_roles -- acl=%', v_acl;
+  end if;
 
   v_ws := et_make_workspace('max');
   insert into auth.users (id) values (v_owner);
