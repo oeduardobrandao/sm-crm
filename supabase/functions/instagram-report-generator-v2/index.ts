@@ -1070,10 +1070,18 @@ Deno.serve(async (req) => {
 
     // =====================================================================
     // 17b. Email KPIs (spec §10) — views from the parity source, interactions
-    // + followers from the accumulators already computed in step 5. A
-    // metrics-query failure here NEVER fails report generation: caught,
-    // logged, and the column falls back to null (the email degrades, per
-    // spec, to the version without the KPI row).
+    // + followers from the accumulators already computed in step 5.
+    //
+    // Ordinary PostgREST-level failures resolve as `{ data: null, error }`,
+    // not a throw — those are logged via `warnQueryError` below (the same
+    // helper and pattern as the step-3 snapshot queries) and degrade
+    // `viewsMonth`/`prevViewsMonth` to null, same as a genuinely absent row.
+    // The `try/catch` around the whole block guards a DIFFERENT failure mode:
+    // an actual thrown exception (network/DNS failure, or a bug in
+    // `buildEmailKpis`) would otherwise propagate to the handler's outer
+    // catch and fail the ENTIRE report generation (no PDF, no HTML, status
+    // stuck at error) over a KPI row that the spec says must degrade
+    // silently instead — never take the report down with it.
     // =====================================================================
     let emailKpis: EmailKpis | null = null;
     try {
@@ -1091,6 +1099,8 @@ Deno.serve(async (req) => {
           .eq("month", prevWindow.startDate)
           .maybeSingle(),
       ]);
+      warnQueryError("email-kpis report-month metrics", monthlyRes.error);
+      warnQueryError("email-kpis prev-month metrics", prevMonthlyRes.error);
       const viewsMonth = typeof monthlyRes.data?.views_month === "number"
         ? monthlyRes.data.views_month
         : null;
