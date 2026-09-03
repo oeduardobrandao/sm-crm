@@ -2,9 +2,11 @@ import { useMemo } from 'react';
 import { Chart as ReactChart } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
+  BarController,
   BarElement,
   CategoryScale,
   Legend,
+  LineController,
   LineElement,
   LinearScale,
   PointElement,
@@ -18,10 +20,17 @@ import type { SemanaAgg } from '@/services/workflowAnalytics';
 import { formatSemanaCurta, formatSemanaLonga } from '../format';
 import { SectionCard, SectionEmpty } from './SectionCard';
 
+// BarController/LineController EXPLÍCITOS: o react-chartjs-2 só auto-registra
+// o controller do componente tipado importado, e o tree-shaking do build de
+// produção remove os registros dos componentes não usados. Sem o
+// LineController aqui, o dataset type:'line' quebrava SÓ em produção
+// (incidente de 2026-09-02: `"line" is not a registered controller`).
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  BarController,
   BarElement,
+  LineController,
   PointElement,
   LineElement,
   Tooltip,
