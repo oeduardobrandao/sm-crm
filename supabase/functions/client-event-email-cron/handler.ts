@@ -103,7 +103,7 @@ interface PostStatusEventRow {
   id: number;
   post_id: number;
   created_at: string;
-  workflow_posts: { titulo: string };
+  workflow_posts: { titulo: string; tipo: string };
 }
 
 interface MensagemRow {
@@ -113,6 +113,7 @@ interface MensagemRow {
 
 interface PendingPost {
   titulo: string;
+  tipo: string;
 }
 
 export interface ClientEventEmailCronDeps {
@@ -343,7 +344,7 @@ export async function runClientEventEmailCron(
       // not descending, is what makes an over-dense window drain safely.
       const { data: eventRows, error: eventsErr } = await deps.db
         .from("post_status_events")
-        .select("id, post_id, created_at, workflow_posts!inner(titulo)")
+        .select("id, post_id, created_at, workflow_posts!inner(titulo, tipo)")
         .eq("conta_id", row.conta_id)
         .eq("to_status", "enviado_cliente")
         .eq("workflow_posts.cliente_id", row.id)
@@ -370,7 +371,7 @@ export async function runClientEventEmailCron(
         const last = eventRowsArr[eventRowsArr.length - 1];
         const { data: tiedEventRows, error: tiedEventsErr } = await deps.db
           .from("post_status_events")
-          .select("id, post_id, created_at, workflow_posts!inner(titulo)")
+          .select("id, post_id, created_at, workflow_posts!inner(titulo, tipo)")
           .eq("conta_id", row.conta_id)
           .eq("to_status", "enviado_cliente")
           .eq("workflow_posts.cliente_id", row.id)
@@ -474,11 +475,14 @@ export async function runClientEventEmailCron(
       // transitions -- it's read fresh off workflow_posts on every row --
       // so what the dedupe really picks is which event `id` represents this
       // post in the idempotency key below.)
-      const latestByPost = new Map<number, { id: number; titulo: string }>();
+      const latestByPost = new Map<number, { id: number; titulo: string; tipo: string }>();
       for (const e of eventRowsArr) {
-        latestByPost.set(e.post_id, { id: e.id, titulo: e.workflow_posts.titulo });
+        latestByPost.set(e.post_id, { id: e.id, titulo: e.workflow_posts.titulo, tipo: e.workflow_posts.tipo });
       }
-      const pendingPosts: PendingPost[] = Array.from(latestByPost.values()).map((p) => ({ titulo: p.titulo }));
+      const pendingPosts: PendingPost[] = Array.from(latestByPost.values()).map((p) => ({
+        titulo: p.titulo,
+        tipo: p.tipo,
+      }));
       const approvalIds: string[] = Array.from(latestByPost.values()).map((p) => `pse:${p.id}`);
       const messageIds = messages.map((m) => `msg:${m.id}`);
 

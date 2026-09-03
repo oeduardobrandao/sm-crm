@@ -1358,7 +1358,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       // 1. Fetch report — verify belongs to user's workspace and is ready
       const { data: report } = await serviceClient
         .from('analytics_reports')
-        .select('id, report_month, status, storage_path, ai_content, last_emailed_at, client_id, conta_id')
+        .select('id, report_month, status, storage_path, ai_content, email_kpis, last_emailed_at, client_id, conta_id')
         .eq('id', reportId)
         .eq('conta_id', contaId)
         .single();
@@ -1417,6 +1417,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
         aiSummary: report.ai_content?.executive_summary ?? null,
         pdfUrl,
         hubUrl,
+        emailKpis: report.email_kpis ?? null,
       });
 
       // Format month for subject
