@@ -784,7 +784,7 @@ export default function ArquivosPage() {
         isMoving={bulkMoveMutation.isPending}
         isCopying={copyFileMutation.isPending || copyFolderMutation.isPending}
         isDeleting={bulkDeleteMutation.isPending}
-        canDelete={canEditFiles}
+        canEdit={canEditFiles}
       />
 
       <PostMediaLightbox

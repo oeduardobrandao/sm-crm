@@ -307,13 +307,14 @@ describe('FileContextMenu', () => {
   /**
    * Task 14 fix round 2 (external review): `canEdit` is a required prop
    * (no fail-open default) -- ArquivosPage.tsx wires it to
-   * `can('arquivos', 'editar')`. Renomear/Excluir hide when false;
-   * Informações/Mover para…/Copiar para… stay visible (not this task's
-   * scope, and Move/Copy already gate their own destination picker
-   * elsewhere).
+   * `can('arquivos', 'editar')`. Round 3 (P2, external review) widened the
+   * gate from Renomear/Excluir to ALSO cover Mover para…/Copiar para… --
+   * both mutate placement (move) or create a copy, the same class of write
+   * as rename/delete. Only Informações (and Download, for files) stay
+   * visible -- both are read-only.
    */
   describe('canEdit={false}', () => {
-    it('hides Renomear and Excluir but keeps Informações/Mover/Copiar for a folder', () => {
+    it('hides Renomear/Excluir/Mover/Copiar but keeps Informações for a folder', () => {
       render(
         <FileContextMenu
           item={makeFolder()}
@@ -329,12 +330,12 @@ describe('FileContextMenu', () => {
 
       expect(screen.queryByText('Renomear')).not.toBeInTheDocument();
       expect(screen.queryByText('Excluir')).not.toBeInTheDocument();
+      expect(screen.queryByText('Mover para…')).not.toBeInTheDocument();
+      expect(screen.queryByText('Copiar para…')).not.toBeInTheDocument();
       expect(screen.getByText('Informações')).toBeInTheDocument();
-      expect(screen.getByText('Mover para…')).toBeInTheDocument();
-      expect(screen.getByText('Copiar para…')).toBeInTheDocument();
     });
 
-    it('hides Renomear and Excluir for a file too', () => {
+    it('hides Renomear/Excluir/Mover/Copiar for a file too, keeping Download', () => {
       const file = makeFile({ url: 'https://cdn.example.com/file.jpg' });
       render(
         <FileContextMenu
@@ -351,7 +352,27 @@ describe('FileContextMenu', () => {
 
       expect(screen.queryByText('Renomear')).not.toBeInTheDocument();
       expect(screen.queryByText('Excluir')).not.toBeInTheDocument();
+      expect(screen.queryByText('Mover para…')).not.toBeInTheDocument();
+      expect(screen.queryByText('Copiar para…')).not.toBeInTheDocument();
       expect(screen.getByText('Download')).toBeInTheDocument();
+    });
+
+    it('shows Mover para…/Copiar para… when canEdit is true', () => {
+      render(
+        <FileContextMenu
+          item={makeFolder()}
+          type="folder"
+          onActionComplete={onActionComplete}
+          canEdit={true}
+        >
+          <div>Editable folder</div>
+        </FileContextMenu>,
+      );
+
+      rightClick(screen.getByText('Editable folder'));
+
+      expect(screen.getByText('Mover para…')).toBeInTheDocument();
+      expect(screen.getByText('Copiar para…')).toBeInTheDocument();
     });
 
     it('still shows the "system folder" message for a system folder, independent of canEdit', () => {

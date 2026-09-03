@@ -747,13 +747,15 @@ export function MobileArquivosView({
       {isInSelectionMode && (
         <div className="fixed bottom-[80px] left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--surface-main)] border border-[var(--border-color)] shadow-lg">
           <span className="text-xs font-bold text-[var(--primary-color)]">{selectionCount}</span>
-          <button
-            onClick={onBulkMove}
-            disabled={isBusy}
-            className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
-          >
-            Mover
-          </button>
+          {canEdit && (
+            <button
+              onClick={onBulkMove}
+              disabled={isBusy}
+              className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
+            >
+              Mover
+            </button>
+          )}
           <button
             onClick={onBulkZip}
             disabled={isBusy}
@@ -761,13 +763,15 @@ export function MobileArquivosView({
           >
             ZIP
           </button>
-          <button
-            onClick={onBulkCopy}
-            disabled={isBusy}
-            className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
-          >
-            Copiar
-          </button>
+          {canEdit && (
+            <button
+              onClick={onBulkCopy}
+              disabled={isBusy}
+              className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
+            >
+              Copiar
+            </button>
+          )}
           {canEdit && (
             <button
               onClick={onBulkDelete}

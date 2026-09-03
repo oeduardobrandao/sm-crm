@@ -408,6 +408,79 @@ describe('NotificacoesTab', () => {
       expect(await screen.findByText('Todos os clientes')).toBeInTheDocument();
     });
 
+    /**
+     * Task 14, revisão externa round 3 (P1): the section's own gate is
+     * `configuracoes:ver` (NotificacoesTab), but `saveMaster`/`saveCliente`
+     * write `workspaces`/`clientes` -- tables with tenant-only RLS, no
+     * module/role predicate. A custom role with `configuracoes:ver` but no
+     * `clientes:editar` grant passed the section's gate and could still
+     * mutate report-delivery prefs for any client. Both switches are now
+     * disabled (with a "Somente leitura" hint) unless
+     * `can('clientes','editar') === true`.
+     */
+    it('disables both switches (with "Somente leitura") for configuracoes:ver + clientes:none', async () => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true },
+        refetchProfile,
+        workspaceRole: 'agent',
+        can: makeCan(
+          fakeMembership({
+            role: 'agent',
+            role_id: 'role-1',
+            permissions: { configuracoes: 'ver' },
+          }),
+        ),
+      });
+      renderTab();
+
+      // Asserts the `disabled` attribute itself, not a click-then-no-call
+      // round trip: the mocked Switch is a plain controlled <input>, and
+      // jsdom's fireEvent.click can still reach its onChange handler even
+      // when disabled (verified empirically to be inconsistent across test
+      // files using this exact same mock -- real browsers/Radix's actual
+      // Switch suppress this for genuine clicks, but that is not a
+      // guarantee this mock reproduces). `disabled` is the contract this
+      // suite can verify without re-testing Radix/jsdom click semantics.
+      const masterSwitch = await screen.findByLabelText('Relatório mensal para todos os clientes');
+      expect(masterSwitch).toBeDisabled();
+      const clientSwitch = await screen.findByLabelText(
+        'Relatório mensal para Ana Clínica (ana@example.com)',
+      );
+      expect(clientSwitch).toBeDisabled();
+      // A coluna "Pendências do Hub" (Fase 2, #437) escreve nas mesmas
+      // tabelas tenant-only e carrega o mesmo gate.
+      expect(
+        await screen.findByLabelText('Pendências do Hub para todos os clientes'),
+      ).toBeDisabled();
+      expect(
+        await screen.findByLabelText('Pendências do Hub para Ana Clínica (ana@example.com)'),
+      ).toBeDisabled();
+      expect(screen.getByText('Somente leitura')).toBeInTheDocument();
+    });
+
+    it('keeps both switches enabled for a legacy admin (unchanged)', async () => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true },
+        refetchProfile,
+        workspaceRole: 'admin',
+        can: makeCan(fakeMembership({ role: 'admin' })),
+      });
+      renderTab();
+
+      const masterSwitch = await screen.findByLabelText('Relatório mensal para todos os clientes');
+      expect(masterSwitch).not.toBeDisabled();
+      const clientSwitch = await screen.findByLabelText(
+        'Relatório mensal para Ana Clínica (ana@example.com)',
+      );
+      expect(clientSwitch).not.toBeDisabled();
+      expect(
+        await screen.findByLabelText('Pendências do Hub para todos os clientes'),
+      ).not.toBeDisabled();
+      expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+    });
+
     it('renders the master row plus one row per client for workspaceRole owner', async () => {
       renderTab();
       expect(await screen.findByText('Todos os clientes')).toBeInTheDocument();
