@@ -88,16 +88,12 @@ function makeAutomation(over?: Partial<InstagramCommentAutomation>): InstagramCo
   };
 }
 
-function tree(props?: {
-  post?: WorkflowPost;
-  currentUserRole?: 'owner' | 'admin' | 'agent';
-  hasInstagramAccount?: boolean;
-}) {
+function tree(props?: { post?: WorkflowPost; canManage?: boolean; hasInstagramAccount?: boolean }) {
   return (
     <PostAutomationSection
       post={props?.post ?? makePost()}
       clienteId={7}
-      currentUserRole={props?.currentUserRole ?? 'owner'}
+      canManage={props?.canManage ?? true}
       hasInstagramAccount={props?.hasInstagramAccount ?? true}
     />
   );
@@ -105,7 +101,7 @@ function tree(props?: {
 
 function renderSection(props?: {
   post?: WorkflowPost;
-  currentUserRole?: 'owner' | 'admin' | 'agent';
+  canManage?: boolean;
   hasInstagramAccount?: boolean;
 }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -325,17 +321,17 @@ describe('PostAutomationSection', () => {
     expect(screen.getByTestId('dialog-initial-target').textContent).toBe('null');
   });
 
-  it('gives an agent the list but no way to create or edit', async () => {
+  it('gives a viewer without canManage the list but no way to create or edit', async () => {
     mockGetAutomationsForPost.mockResolvedValue([makeAutomation()]);
-    renderSection({ currentUserRole: 'agent' });
+    renderSection({ canManage: false });
 
     expect(await screen.findByText('Promo de agosto')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'postSection.createForPost' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Promo de agosto/ })).toBeNull();
   });
 
-  it('lets an admin create, same as an owner', async () => {
-    renderSection({ currentUserRole: 'admin' });
+  it('lets a caller with canManage create', async () => {
+    renderSection({ canManage: true });
 
     expect(await screen.findByRole('button', { name: 'postSection.createForPost' })).toBeTruthy();
   });

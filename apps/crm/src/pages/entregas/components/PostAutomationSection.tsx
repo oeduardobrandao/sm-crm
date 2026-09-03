@@ -39,12 +39,20 @@ function isAwaitingPublication(a: InstagramCommentAutomation): boolean {
 export function PostAutomationSection({
   post,
   clienteId,
-  currentUserRole,
+  canManage,
   hasInstagramAccount,
 }: {
   post: WorkflowPost;
   clienteId: number;
-  currentUserRole: 'owner' | 'admin' | 'agent';
+  /** `can('automacoes', 'editar') === true`, computed by the caller
+   * (WorkflowDrawer/StandalonePostDrawer already call `useAuth()`). Was
+   * `currentUserRole === 'owner' || currentUserRole === 'admin'` -- the
+   * `automacoes` module has given every agent full write access to
+   * instagram_comment_automations since 20260829000002 (AGENT_ROLE_PRESET.
+   * automacoes is 'editar', lib/permissions.ts), so that coarse check was
+   * the one place in this shortcut that denied agents what the full
+   * Automações page and the server (has_permission_for) already grant them. */
+  canManage: boolean;
   hasInstagramAccount: boolean;
 }) {
   const { t } = useTranslation('automations');
@@ -77,8 +85,6 @@ export function PostAutomationSection({
     queryFn: () => getAutomationsForPost(post.id as number, post.instagram_media_id ?? null),
     enabled,
   });
-
-  const canManage = currentUserRole === 'owner' || currentUserRole === 'admin';
 
   // Which half of the dialog's target picker this post belongs to: once it has a
   // media id it is a live post, before that it is only an internal row. The

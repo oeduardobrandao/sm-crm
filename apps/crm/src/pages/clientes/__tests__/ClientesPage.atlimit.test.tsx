@@ -43,7 +43,7 @@ vi.mock('../../../hooks/useIsWorkspaceOwner', () => ({
 }));
 
 vi.mock('../../../context/AuthContext', () => ({
-  useAuth: () => ({ canSeeFinancials: true }),
+  useAuth: () => ({ canSeeFinancials: true, can: () => true }),
 }));
 
 // The CSV import button is wrapped in FeatureGate; render its children unconditionally

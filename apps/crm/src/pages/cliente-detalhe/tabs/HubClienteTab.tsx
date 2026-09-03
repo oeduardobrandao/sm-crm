@@ -27,15 +27,19 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
  *
  * Task 12 (permission-model rewire) moved `hub`'s tab-level gate to
  * `configuracoes:editar` (clienteTabs.model.ts), which a legacy agent never
- * has — so ClienteDetalhePage's own guard now redirects a legacy agent away
- * before this component ever mounts, and the `isAgent` branch below is
- * unreachable for that case. It was deliberately left AS IS (out of Task 12's
- * file list) rather than removed, because it is NOT fully dead: a CUSTOM role
- * whose chassis `workspaceRole` reads 'agent' (see Task 11 report) but whose
- * role_id permissions grant `configuracoes:editar` WOULD pass the route-level
- * guard and reach here, and then get incorrectly shown this restriction
- * notice anyway, since `isAgent` only reads the coarse `workspaceRole`, not
- * `can()`. Flagged as a follow-up rather than fixed inline here.
+ * has — so ClienteDetalhePage's own guard redirects a legacy agent away
+ * before this component ever mounts, and the notice below is unreachable
+ * for that case.
+ *
+ * Task 14 fix: the notice used to fire on the coarse `workspaceRole ===
+ * 'agent'` check, which a CUSTOM role whose chassis `workspaceRole` reads
+ * 'agent' (see Task 11 report) but whose role_id permissions grant
+ * `configuracoes:editar` would still pass the route-level guard and reach
+ * here — the chassis check then wrongly showed this restriction notice
+ * anyway, even though the route guard (and the server) had already decided
+ * this member IS authorized. Now keyed on the same `can('configuracoes',
+ * 'editar')` the route guard itself uses, so a custom role that clears the
+ * gate never sees a notice contradicting it.
  *
  * Query isolation: `getWorkspaceSlug` is scoped to only this route (it was
  * page-wide before). HubTab owns the rest of its queries internally
@@ -44,15 +48,15 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 export default function HubClienteTab() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const { t } = useTranslation('clients');
-  const { workspaceRole } = useAuth();
-  const isAgent = workspaceRole === 'agent';
+  const { can } = useAuth();
+  const restricted = can('configuracoes', 'editar') !== true;
 
   const { data: workspaceSlug } = useQuery({
     queryKey: ['workspace-slug'],
     queryFn: getWorkspaceSlug,
   });
 
-  if (isAgent) {
+  if (restricted) {
     return (
       <div id="sec-hub" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 className="text-xl font-bold tracking-tight text-foreground mb-3">

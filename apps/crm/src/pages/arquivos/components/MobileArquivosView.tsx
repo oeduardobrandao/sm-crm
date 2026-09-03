@@ -43,6 +43,10 @@ interface MobileArquivosViewProps {
   onBulkZip: () => void;
   onBulkDelete: () => void;
   isBusy: boolean;
+  /** `can('arquivos', 'editar') === true`. Defaults to `true` for the one
+   * existing caller's convenience -- hides the upload/create-folder FAB and
+   * the selection bar's Excluir button when false. */
+  canEdit?: boolean;
 }
 
 function FileIcon({ kind, className }: { kind: FileRecord['kind']; className?: string }) {
@@ -491,6 +495,7 @@ export function MobileArquivosView({
   onBulkZip,
   onBulkDelete,
   isBusy,
+  canEdit = true,
 }: MobileArquivosViewProps) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filter, setFilter] = useState<FileFilter>('todos');
@@ -548,12 +553,14 @@ export function MobileArquivosView({
             <button className="w-[34px] h-[34px] rounded-sm bg-[var(--surface-hover)] flex items-center justify-center text-[var(--text-main)]">
               <Search className="h-4 w-4" />
             </button>
-            <button
-              onClick={isInsideFolder ? onUploadClick : onCreateFolder}
-              className="w-[34px] h-[34px] rounded-sm bg-[var(--primary-color)] flex items-center justify-center text-[#12151a]"
-            >
-              <Plus className="h-4 w-4" strokeWidth={2.5} />
-            </button>
+            {canEdit && (
+              <button
+                onClick={isInsideFolder ? onUploadClick : onCreateFolder}
+                className="w-[34px] h-[34px] rounded-sm bg-[var(--primary-color)] flex items-center justify-center text-[#12151a]"
+              >
+                <Plus className="h-4 w-4" strokeWidth={2.5} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -741,13 +748,15 @@ export function MobileArquivosView({
           >
             Copiar
           </button>
-          <button
-            onClick={onBulkDelete}
-            disabled={isBusy}
-            className="text-xs px-2.5 py-1 rounded-full bg-[rgba(245,90,66,0.15)] text-[var(--danger)] disabled:opacity-50"
-          >
-            Excluir
-          </button>
+          {canEdit && (
+            <button
+              onClick={onBulkDelete}
+              disabled={isBusy}
+              className="text-xs px-2.5 py-1 rounded-full bg-[rgba(245,90,66,0.15)] text-[var(--danger)] disabled:opacity-50"
+            >
+              Excluir
+            </button>
+          )}
           <button onClick={onClearSelection} className="text-[var(--text-muted)]">
             <X className="h-3.5 w-3.5" />
           </button>

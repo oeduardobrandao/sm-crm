@@ -291,7 +291,16 @@ describe('ClienteDetalhePage', () => {
     });
   });
 
-  it('shows the photo-upload control for an owner but not for an agent', async () => {
+  /**
+   * Task 14: `canEditPhoto = workspaceRole === 'owner' || workspaceRole ===
+   * 'admin'` collapsed onto `can('clientes', 'editar') === true`.
+   * `AGENT_ROLE_PRESET.clientes` is 'editar' (lib/permissions.ts, same
+   * preset ClientesPage's own mutation buttons rely on), so a LEGACY agent
+   * now sees the control too — this is a deliberate widening that brings the
+   * photo control in line with the rest of the clientes module, not a
+   * regression. Only a CUSTOM role can still be denied it.
+   */
+  it('shows the photo-upload control for an owner and for a legacy agent (clientes preset is editar)', async () => {
     setAuth('owner');
     mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
     const ownerRender = renderAt('/clientes/42/visao-geral');
@@ -300,9 +309,32 @@ describe('ClienteDetalhePage', () => {
 
     setAuth('agent');
     mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
+    const agentRender = renderAt('/clientes/42/visao-geral');
+    expect(await screen.findByLabelText('Alterar foto do cliente')).toBeInTheDocument();
+    agentRender.unmount();
+  });
+
+  it('hides the photo-upload control for a custom role with clientes:ver only', async () => {
+    setAuth('agent', {
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'ver' } }),
+      ),
+    });
+    mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
     renderAt('/clientes/42/visao-geral');
     await screen.findByText('conteudo visao-geral');
     expect(screen.queryByLabelText('Alterar foto do cliente')).not.toBeInTheDocument();
+  });
+
+  it('shows the photo-upload control for a custom role with clientes:editar', async () => {
+    setAuth('agent', {
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'editar' } }),
+      ),
+    });
+    mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
+    renderAt('/clientes/42/visao-geral');
+    expect(await screen.findByLabelText('Alterar foto do cliente')).toBeInTheDocument();
   });
 
   describe('client edit', () => {

@@ -2,11 +2,10 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
-const { isAtLimitMock, limitsRef } = vi.hoisted(() => ({
-  isAtLimitMock: vi.fn(),
-  limitsRef: { current: null as unknown as Record<string, number | null> },
-}));
+// Follows LeadsPage.atlimit.test.tsx's mocking convention (shallow UI
+// primitive stand-ins so only LeadsPage's own logic is exercised).
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -35,7 +34,7 @@ vi.mock('../../../store', async () => {
 });
 
 vi.mock('../../../hooks/useEntitlements', () => ({
-  useEntitlements: () => ({ isAtLimit: isAtLimitMock, limits: limitsRef.current }),
+  useEntitlements: () => ({ isAtLimit: () => false, limits: null }),
 }));
 
 vi.mock('../../../hooks/useIsWorkspaceOwner', () => ({
@@ -43,14 +42,11 @@ vi.mock('../../../hooks/useIsWorkspaceOwner', () => ({
 }));
 
 vi.mock('@/components/usage/UsageMeter', () => ({
-  UsageMeter: ({ label, used, limit }: { label: string; used: number; limit: number }) => (
-    <div>{`${used} de ${limit} ${label}`}</div>
-  ),
+  UsageMeter: () => null,
 }));
 
-vi.mock('../../../context/AuthContext', () => ({
-  useAuth: () => ({ canSeeFinancials: true, can: () => true }),
-}));
+const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+vi.mock('../../../context/AuthContext', () => ({ useAuth: useAuthMock }));
 
 vi.mock('@/components/paywall/FeatureGate', () => ({
   FeatureGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -162,100 +158,63 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  isAtLimitMock.mockReset();
-  limitsRef.current = null;
   mockedGetLeads.mockReset();
-  mockedGetLeads.mockResolvedValue([]);
+  mockedGetLeads.mockResolvedValue([{ id: 1, nome: 'Ana Lead', status: 'novo' } as store.Lead]);
   mockedGetLeadsCount.mockReset();
-  mockedGetLeadsCount.mockResolvedValue(0);
+  mockedGetLeadsCount.mockResolvedValue(1);
+  useAuthMock.mockReturnValue({
+    canSeeFinancials: true,
+    can: makeCan(fakeMembership({ role: 'owner' })),
+  });
 });
 
-describe('LeadsPage at-limit create button', () => {
-  it('disables "Novo Lead" and shows the limit title when at the plan limit', async () => {
-    isAtLimitMock.mockReturnValue(true);
-    renderPage();
-
-    await waitFor(() => {
-      expect(mockedGetLeads).toHaveBeenCalled();
+/**
+ * Task 14: LeadsPage had NO internal role check before this task -- the
+ * ROUTE already blocked a legacy agent (AGENT_ROLE_PRESET.leads is 'none',
+ * routePermissions.ts gates /leads on leads:ver), so gating the create/edit
+ * row-action UI on `can('leads', 'editar') === true` only starts to matter
+ * for a custom role that reaches this page with leads:ver but not
+ * leads:editar -- exactly the gap the tab-level `ver` gate leaves open.
+ */
+describe('LeadsPage — mutation UI gated on leads:editar', () => {
+  it('keeps a legacy admin unchanged (leads preset resolves to true, matches the old "route already restricted this" behaviour)', async () => {
+    useAuthMock.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'admin' })),
     });
-
-    const createBtn = screen.getByRole('button', { name: /Novo Lead/ });
-    expect(createBtn).toBeDisabled();
-    expect(createBtn).toHaveAttribute('title', 'Limite do plano atingido');
-  });
-
-  it('keeps "Novo Lead" enabled and untitled when below the plan limit', async () => {
-    isAtLimitMock.mockReturnValue(false);
     renderPage();
 
-    await waitFor(() => {
-      expect(mockedGetLeads).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getAllByText('Ana Lead').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: /Novo Lead/ })).toBeInTheDocument();
+    expect(screen.getByTitle('Converter em cliente')).toBeInTheDocument();
+  });
+
+  it('hides Novo Lead/Importar CSV and the row actions for a custom role with leads:ver only', async () => {
+    useAuthMock.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { leads: 'ver' } }),
+      ),
     });
-
-    const createBtn = screen.getByRole('button', { name: /Novo Lead/ });
-    expect(createBtn).not.toBeDisabled();
-    expect(createBtn).not.toHaveAttribute('title');
-  });
-
-  it('calls isAtLimit with the max_leads key and the exact server count', async () => {
-    isAtLimitMock.mockReturnValue(false);
-    mockedGetLeads.mockResolvedValue([
-      { id: 1, nome: 'A', status: 'novo' } as store.Lead,
-      { id: 2, nome: 'B', status: 'novo' } as store.Lead,
-      { id: 3, nome: 'C', status: 'novo' } as store.Lead,
-    ]);
-    mockedGetLeadsCount.mockResolvedValue(3);
     renderPage();
 
-    await waitFor(() => {
-      expect(isAtLimitMock).toHaveBeenCalledWith('max_leads', 3);
+    await waitFor(() => expect(mockedGetLeads).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /Novo Lead/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Importar CSV/i })).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Converter em cliente')).not.toBeInTheDocument();
+  });
+
+  it('shows Novo Lead and the row actions for a custom role with leads:editar (the fix)', async () => {
+    useAuthMock.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { leads: 'editar' } }),
+      ),
     });
-  });
-
-  it('feeds isAtLimit the exact server count, not the list length', async () => {
-    isAtLimitMock.mockReturnValue(false);
-    mockedGetLeads.mockResolvedValue([{ id: 1 } as never, { id: 2 } as never]);
-    mockedGetLeadsCount.mockResolvedValue(1205); // truncated list scenario
-    renderPage();
-    await waitFor(() => expect(isAtLimitMock).toHaveBeenCalledWith('max_leads', 1205));
-  });
-
-  it('shows the header meter from the exact count', async () => {
-    isAtLimitMock.mockReturnValue(false);
-    limitsRef.current = { max_leads: 200 };
-    mockedGetLeads.mockResolvedValue([]);
-    mockedGetLeadsCount.mockResolvedValue(37);
-    renderPage();
-    expect(await screen.findByText('37 de 200 leads')).toBeInTheDocument();
-  });
-
-  it('hides the header meter while getLeadsCount is still pending, even with limits set', async () => {
-    isAtLimitMock.mockReturnValue(false);
-    limitsRef.current = { max_leads: 200 };
-    mockedGetLeads.mockResolvedValue([{ id: 1 } as never, { id: 2 } as never]);
-    // Never resolves -- leadsCount stays undefined for the life of the test.
-    mockedGetLeadsCount.mockReturnValue(new Promise(() => {}));
     renderPage();
 
-    // Wait for the leads list itself to finish loading (its query resolves),
-    // so any state update triggered by that settles before we assert.
-    await waitFor(() => expect(screen.queryByTestId('spinner')).not.toBeInTheDocument());
-    expect(screen.queryByText(/de 200 leads/)).not.toBeInTheDocument();
-  });
-
-  it('hides the header meter when getLeadsCount rejects, but the create button still follows the list-length fallback', async () => {
-    isAtLimitMock.mockReturnValue(false);
-    limitsRef.current = { max_leads: 200 };
-    mockedGetLeads.mockResolvedValue([{ id: 1 } as never, { id: 2 } as never, { id: 3 } as never]);
-    mockedGetLeadsCount.mockRejectedValue(new Error('rpc failed'));
-    renderPage();
-
-    await waitFor(() => {
-      // leadsCount rejected -> usedLeads falls back to leads.length (3).
-      expect(isAtLimitMock).toHaveBeenCalledWith('max_leads', 3);
-    });
-    expect(screen.queryByText(/de 200 leads/)).not.toBeInTheDocument();
-    const createBtn = screen.getByRole('button', { name: /Novo Lead/ });
-    expect(createBtn).not.toBeDisabled();
+    await waitFor(() => expect(screen.getAllByText('Ana Lead').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: /Novo Lead/ })).toBeInTheDocument();
+    expect(screen.getByTitle('Converter em cliente')).toBeInTheDocument();
   });
 });

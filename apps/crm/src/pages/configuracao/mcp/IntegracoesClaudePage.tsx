@@ -198,8 +198,13 @@ function CopyField({
 }
 
 export default function IntegracoesClaudePage() {
-  const { role } = useAuth();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  const { can } = useAuth();
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the tab layer (configTabs.ts, Task 12) -- mirrors that here. Was
+  // `role === 'owner' || role === 'admin'`, which a custom role with the
+  // chassis 'agent' role never passed even when it held the tab-level
+  // grant.
+  const canViewConfig = can('configuracoes', 'ver') === true;
   const queryClient = useQueryClient();
 
   const [client, setClient] = useState<McpClient>('claude');
@@ -217,13 +222,13 @@ export default function IntegracoesClaudePage() {
   const { data: keys = [], isLoading } = useQuery({
     queryKey: ['mcp-keys'],
     queryFn: listMcpKeys,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const { data: grants = [] } = useQuery({
     queryKey: ['mcp-oauth-grants'],
     queryFn: listOAuthGrants,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
   const activeGrants = grants.filter((g) => !g.revoked_at);
 
@@ -282,7 +287,7 @@ export default function IntegracoesClaudePage() {
     setTimeout(() => setCopiedKey(null), 1500);
   };
 
-  if (!isOwnerOrAdmin) {
+  if (!canViewConfig) {
     return (
       <div className="card animate-up">
         <p className="text-sm text-muted-foreground">

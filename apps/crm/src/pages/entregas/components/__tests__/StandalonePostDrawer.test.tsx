@@ -11,7 +11,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'user-1' }, role: 'owner', loading: false, profile: null }),
+  useAuth: () => ({
+    user: { id: 'user-1' },
+    role: 'owner',
+    loading: false,
+    profile: null,
+    can: () => true,
+  }),
 }));
 
 vi.mock('@/hooks/useWorkspaceLimits', () => ({

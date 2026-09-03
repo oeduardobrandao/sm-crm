@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const { useAuthMock, storeMock } = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
@@ -70,6 +71,7 @@ describe('RelatoriosTab — report branding', () => {
       user: { id: 'user-1', email: 'ana@exemplo.com' },
       profile: { id: 'user-1', nome: 'Ana' },
       role: 'owner',
+      can: makeCan(fakeMembership({ role: 'owner' })),
       signOut: vi.fn(),
       refetchProfile: vi.fn(),
     });
@@ -134,5 +136,120 @@ describe('RelatoriosTab — report branding', () => {
       expect(screen.getByText('#111111')).toBeInTheDocument();
     });
     expect(screen.getByTestId('report-preview')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Task 14: `isOwnerOrAdmin = role === 'owner' || role === 'admin'` collapsed
+ * onto `can('configuracoes', 'ver') === true`. `AGENT_ROLE_PRESET.
+ * configuracoes` is 'none' and admin resolves to `true` for every
+ * non-financial module (lib/permissions.ts), so the two legacy-preset cases
+ * below reproduce the OLD isOwnerOrAdmin gate byte-for-byte -- only a CUSTOM
+ * role (role_id set) can now diverge from its chassis role.
+ *
+ * `levelAllows` (lib/permissions.ts) treats the 'ver' ACTION as satisfied by
+ * either the 'ver' OR 'editar' LEVEL -- only 'none' (or no grant at all)
+ * fails it. So a custom role needs no `configuracoes` grant whatsoever to be
+ * blocked here; either 'ver' or 'editar' unblocks it.
+ */
+describe('RelatoriosTab — queries gated on configuracoes:ver', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: null,
+    });
+    storeMock.getWorkspaceBranding.mockResolvedValue({
+      brand_color: '#111111',
+      report_splash_url: null,
+      send_report_email: false,
+    });
+  });
+
+  it('keeps a legacy agent blocked (configuracoes preset is none, matches the old isOwnerOrAdmin gate)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(fakeMembership({ role: 'agent' })),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storeMock.getCurrentWorkspace).not.toHaveBeenCalled();
+    expect(storeMock.getWorkspaceBranding).not.toHaveBeenCalled();
+  });
+
+  it('keeps a legacy admin unchanged (configuracoes preset resolves to true)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(fakeMembership({ role: 'admin' })),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await waitFor(() => {
+      expect(storeMock.getCurrentWorkspace).toHaveBeenCalled();
+      expect(storeMock.getWorkspaceBranding).toHaveBeenCalled();
+    });
+  });
+
+  it('blocks the queries for a custom role with no configuracoes grant at all', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storeMock.getCurrentWorkspace).not.toHaveBeenCalled();
+    expect(storeMock.getWorkspaceBranding).not.toHaveBeenCalled();
+  });
+
+  it('unblocks the queries for a custom role with configuracoes:ver alone (the fix -- action is "ver", so `ver` satisfies it)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+      ),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await waitFor(() => {
+      expect(storeMock.getCurrentWorkspace).toHaveBeenCalled();
+      expect(storeMock.getWorkspaceBranding).toHaveBeenCalled();
+    });
+  });
+
+  it('unblocks the queries for a custom role with configuracoes:editar too', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', email: 'ana@exemplo.com' },
+      profile: { id: 'user-1', nome: 'Ana' },
+      can: makeCan(
+        fakeMembership({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { configuracoes: 'editar' },
+        }),
+      ),
+      signOut: vi.fn(),
+      refetchProfile: vi.fn(),
+    });
+    renderTab();
+
+    await waitFor(() => {
+      expect(storeMock.getCurrentWorkspace).toHaveBeenCalled();
+      expect(storeMock.getWorkspaceBranding).toHaveBeenCalled();
+    });
   });
 });

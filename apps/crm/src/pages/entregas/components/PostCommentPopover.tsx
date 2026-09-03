@@ -4,6 +4,7 @@ import type { CommentThreadWithComments, PostComment, Membro } from '@/store';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { MentionText } from '@/components/mentions/MentionText';
 import { MentionTextarea } from '@/components/mentions/MentionTextarea';
+import { useAuth } from '@/context/AuthContext';
 
 interface WorkspaceUser {
   id: string;
@@ -16,7 +17,6 @@ interface PostCommentPopoverProps {
   membros: Membro[];
   workspaceUsers?: WorkspaceUser[];
   currentUserId: string;
-  currentUserRole: 'owner' | 'admin' | 'agent';
   onReply: (threadId: number, content: string) => Promise<void>;
   onResolve: (threadId: number) => Promise<void>;
   onReopen: (threadId: number) => Promise<void>;
@@ -70,7 +70,6 @@ function CommentItem({
   membros,
   workspaceUsers,
   currentUserId,
-  currentUserRole,
   readOnly,
   onEdit,
   onDelete,
@@ -79,7 +78,6 @@ function CommentItem({
   membros: Membro[];
   workspaceUsers: WorkspaceUser[];
   currentUserId: string;
-  currentUserRole: 'owner' | 'admin' | 'agent';
   readOnly?: boolean;
   onEdit: (commentId: number, content: string) => Promise<void>;
   onDelete: (commentId: number) => void;
@@ -88,9 +86,14 @@ function CommentItem({
   const [editContent, setEditContent] = useState(comment.content);
   const [saving, setSaving] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
+  const { can } = useAuth();
 
   const isAuthor = comment.author_id === currentUserId;
-  const canDelete = isAuthor || currentUserRole === 'owner' || currentUserRole === 'admin';
+  // Was `currentUserRole === 'owner' || currentUserRole === 'admin'` -- a
+  // custom role granted entregas:editar has the 'agent' chassis role and was
+  // wrongly denied delete on other people's comments despite the server-side
+  // authorization boundary (RLS on post_comments) already allowing it.
+  const canDelete = isAuthor || can('entregas', 'editar') === true;
   const membro = resolveAuthor(comment.author_id, membros, workspaceUsers);
 
   useEffect(() => {
@@ -195,7 +198,6 @@ export default function PostCommentPopover({
   membros,
   workspaceUsers = [],
   currentUserId,
-  currentUserRole,
   onReply,
   onResolve,
   onReopen,
@@ -306,7 +308,6 @@ export default function PostCommentPopover({
             membros={membros}
             workspaceUsers={workspaceUsers}
             currentUserId={currentUserId}
-            currentUserRole={currentUserRole}
             readOnly={readOnly}
             onEdit={onEditComment}
             onDelete={handleDelete}

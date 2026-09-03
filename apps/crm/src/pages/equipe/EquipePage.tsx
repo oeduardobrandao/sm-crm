@@ -113,10 +113,15 @@ export default function EquipePage() {
   const qc = useQueryClient();
   const isDesktop = useIsDesktop();
   const navigate = useNavigate();
-  const { role, canSeeFinancials, workspaceRole, membershipResolved, profile } = useAuth();
-  const isAgent = role === 'agent';
-  const canManageWorkspace =
-    membershipResolved === true && (workspaceRole === 'owner' || workspaceRole === 'admin');
+  const { canSeeFinancials, can, profile } = useAuth();
+  // Legacy chassis-role checks (agent-vs-not, owner-or-admin) both collapsed
+  // onto the real authorization boundary: `manage-workspace-user`/
+  // `invite-user` already enforce `equipe:editar` server-side (Task 11). A
+  // custom role granted that permission has the 'agent' chassis role but
+  // must reach the same UI a legacy admin does — the coarse checks blocked
+  // it even though the server would have allowed the write.
+  const canEditTeam = can('equipe', 'editar') === true;
+  const canManageWorkspace = canEditTeam;
 
   const [filter, setFilter] = useState<FilterTipo>('todos');
   const [search, setSearch] = useState('');
@@ -138,7 +143,7 @@ export default function EquipePage() {
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
     queryFn: getWorkspaceUsers,
-    enabled: !isAgent,
+    enabled: canEditTeam,
   });
   const { limits, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
   const { data: pendingInviteRows = [] } = useQuery({
@@ -374,7 +379,7 @@ export default function EquipePage() {
           </HelpTooltip>
         </div>
         <div className="header-actions">
-          {!isAgent && (
+          {canEditTeam && (
             <HelpTooltip content="Colunas CSV: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento">
               <span style={{ display: 'flex' }}>
                 <HelpCircle
@@ -384,12 +389,12 @@ export default function EquipePage() {
               </span>
             </HelpTooltip>
           )}
-          {!isAgent && (
+          {canEditTeam && (
             <Button variant="outline" onClick={handleCSVImport}>
               <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
             </Button>
           )}
-          {!isAgent && (
+          {canEditTeam && (
             <Button onClick={openAdd}>
               <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Adicionar Membro
             </Button>
@@ -397,7 +402,7 @@ export default function EquipePage() {
         </div>
       </div>
 
-      {isAgent && (
+      {!canEditTeam && (
         <div style={{ marginBottom: '1rem' }}>
           <RoleRestrictionNotice
             title="Visualização limitada"
@@ -493,7 +498,7 @@ export default function EquipePage() {
                 <TableHead>Cargo</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Vínculo</TableHead>
-                {!isAgent && <TableHead style={{ width: 88 }} />}
+                {canEditTeam && <TableHead style={{ width: 88 }} />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -532,7 +537,7 @@ export default function EquipePage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {m.crm_user_id || isAgent ? (
+                      {m.crm_user_id || !canEditTeam ? (
                         <span style={{ color: 'var(--text-muted)' }}>—</span>
                       ) : pendingByMembroId.has(m.id!) ? (
                         <Badge variant="warning" size="sm">
@@ -544,7 +549,7 @@ export default function EquipePage() {
                         </Badge>
                       )}
                     </TableCell>
-                    {!isAgent && (
+                    {canEditTeam && (
                       <TableCell
                         onClick={(e) => e.stopPropagation()}
                         style={{ paddingRight: '0.75rem', textAlign: 'right' }}
@@ -577,7 +582,7 @@ export default function EquipePage() {
               {filtered.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={isAgent ? 4 : 5}
+                    colSpan={!canEditTeam ? 4 : 5}
                     style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
                   >
                     Nenhum membro encontrado.
@@ -633,7 +638,7 @@ export default function EquipePage() {
                       <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
                         {TIPO_LABEL[m.tipo]}
                       </Badge>
-                      {!isAgent &&
+                      {canEditTeam &&
                         !m.crm_user_id &&
                         (pendingByMembroId.has(m.id!) ? (
                           <Badge variant="warning" size="sm">
@@ -648,7 +653,7 @@ export default function EquipePage() {
                   </div>
 
                   <div className="flex gap-1" style={{ marginLeft: 'auto' }}>
-                    {!isAgent && (
+                    {canEditTeam && (
                       <>
                         <Button
                           size="icon"

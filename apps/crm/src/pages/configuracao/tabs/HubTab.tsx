@@ -662,16 +662,21 @@ function AccentChips({ brandColor }: { brandColor: string }) {
 
 /** Branding for the client-facing Hub (Configurações → Hub), with a live preview. */
 export default function HubTab() {
-  const { role } = useAuth();
+  const { can } = useAuth();
   const queryClient = useQueryClient();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the tab layer (configTabs.ts, Task 12) -- mirrors that for this tab's
+  // own queries. Was `role === 'owner' || role === 'admin'`, which a custom
+  // role with the chassis 'agent' role never passed even when it held the
+  // tab-level grant.
+  const canViewConfig = can('configuracoes', 'ver') === true;
   const { hasFeature, isLoading: entitlementsLoading } = useEntitlements();
   const customized = !entitlementsLoading && hasFeature('feature_brand_customization');
 
   const { data: workspace } = useQuery({
     queryKey: ['currentWorkspace'],
     queryFn: getCurrentWorkspace,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const {
@@ -681,7 +686,7 @@ export default function HubTab() {
   } = useQuery({
     queryKey: ['workspace-hub-branding'],
     queryFn: getHubBranding,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const [brandColor, setBrandColor] = useState('#eab308');

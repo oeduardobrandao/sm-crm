@@ -22,14 +22,20 @@ import { getCurrentWorkspace, updateWorkspace } from '../../../store';
 
 /** Workspace identity (name + logo) and the Instagram auto-sync switch. */
 export default function WorkspaceTab() {
-  const { profile, role } = useAuth();
+  const { profile, can } = useAuth();
   const queryClient = useQueryClient();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the route/tab layer (configTabs.ts, Task 12) -- this mirrors that
+  // same check for the tab's OWN queries, which a custom role granted only
+  // `ver` (not `editar`) can still reach. Was `role === 'owner' || role ===
+  // 'admin'`, which a custom role with the chassis 'agent' role never passed
+  // even when it held the tab-level grant.
+  const canViewConfig = can('configuracoes', 'ver') === true;
 
   const { data: workspace, refetch: refetchWorkspace } = useQuery({
     queryKey: ['currentWorkspace'],
     queryFn: getCurrentWorkspace,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const [wsName, setWsName] = useState('');
@@ -119,7 +125,7 @@ export default function WorkspaceTab() {
         .eq('clientes.conta_id', profile.conta_id);
       return data ?? [];
     },
-    enabled: isOwnerOrAdmin && !!profile?.conta_id,
+    enabled: canViewConfig && !!profile?.conta_id,
   });
 
   const autoSyncEnabled = (igAccounts ?? []).some(

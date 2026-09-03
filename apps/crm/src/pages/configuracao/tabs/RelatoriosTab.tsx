@@ -42,9 +42,14 @@ const HINT: CSSProperties = {
 
 /** Branding for the monthly client report, with a live preview. */
 export default function RelatoriosTab() {
-  const { role } = useAuth();
+  const { can } = useAuth();
   const queryClient = useQueryClient();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the tab layer (configTabs.ts, Task 12) -- mirrors that for this tab's
+  // own queries. Was `role === 'owner' || role === 'admin'`, which a custom
+  // role with the chassis 'agent' role never passed even when it held the
+  // tab-level grant.
+  const canViewConfig = can('configuracoes', 'ver') === true;
 
   // The workspace supplies the logo and name shown in the live preview, plus
   // the id used to persist the cover art. Name/logo are edited on the Workspace
@@ -52,7 +57,7 @@ export default function RelatoriosTab() {
   const { data: workspace } = useQuery({
     queryKey: ['currentWorkspace'],
     queryFn: getCurrentWorkspace,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   type WorkspaceBranding = Awaited<ReturnType<typeof getWorkspaceBranding>>;
@@ -63,7 +68,7 @@ export default function RelatoriosTab() {
   } = useQuery({
     queryKey: ['workspace-branding'],
     queryFn: getWorkspaceBranding,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const [sendReportEmail, setSendReportEmail] = useState(false);

@@ -154,7 +154,7 @@ export default function ClienteDetalhePage() {
         plano={cliente.plano}
         status={cliente.status}
         imageUrl={cliente.foto_url}
-        canEditPhoto={workspaceRole === 'owner' || workspaceRole === 'admin'}
+        canEditPhoto={can('clientes', 'editar') === true}
         onBack={() => navigate('/clientes')}
         onEdit={() => setEditOpen(true)}
       />

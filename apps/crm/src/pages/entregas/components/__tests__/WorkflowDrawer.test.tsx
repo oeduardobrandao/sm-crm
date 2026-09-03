@@ -16,7 +16,13 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'user-1' }, role: 'owner', loading: false, profile: null }),
+  useAuth: () => ({
+    user: { id: 'user-1' },
+    role: 'owner',
+    loading: false,
+    profile: null,
+    can: () => true,
+  }),
 }));
 
 vi.mock('@/hooks/useWorkspaceLimits', () => ({

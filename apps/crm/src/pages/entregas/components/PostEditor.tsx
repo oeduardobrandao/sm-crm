@@ -658,7 +658,6 @@ export function PostEditor({
                   membros={membros ?? []}
                   workspaceUsers={workspaceUsers ?? []}
                   currentUserId={currentUserId}
-                  currentUserRole={currentUserRole}
                   onReply={onReplyToComment ?? (async () => {})}
                   onResolve={handleResolveThread}
                   onReopen={handleReopenThread}
