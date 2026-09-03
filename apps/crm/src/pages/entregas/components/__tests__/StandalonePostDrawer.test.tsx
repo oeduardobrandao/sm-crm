@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 // Follows WorkflowDrawer.test.tsx's pattern: stub every heavy leaf component so
@@ -16,7 +17,7 @@ vi.mock('@/context/AuthContext', () => ({
     role: 'owner',
     loading: false,
     profile: null,
-    can: () => true,
+    can: makeCan(fakeMembership({ role: 'owner' })),
   }),
 }));
 
