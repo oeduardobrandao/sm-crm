@@ -32,7 +32,13 @@ como estão hoje, com os ajustes pontuais listados abaixo.
 - Dark mode em cliente de e-mail: nenhum e-mail da casa hoje responde a
   `prefers-color-scheme` (suporte inconsistente entre clientes de e-mail); não
   é objetivo desta mudança.
-- Largura do card (560px) e a família de fonte (Arial/Helvetica) — inalteradas.
+- Largura do card (560px) — inalterada.
+- Família de fonte — inalterada. **Correção:** os dois builders afetados usam
+  hoje `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
+  (`report-template/email.ts:54`, `client-event-email.ts:83`), não Arial —
+  Arial/Helvetica é a família da OUTRA família visual
+  (`lifecycle-emails.ts`/`notification-email.ts`). Esta spec não unifica
+  fontes; cada família mantém a sua.
 
 ## Decisões de design (validadas em mockup)
 
@@ -132,6 +138,13 @@ demais campos ficam em `analytics_reports.ai_content` para o relatório
 completo. Sem `GEMINI_API_KEY`, `ai_content` é `null` e o bloco inteiro some do
 e-mail — comportamento já existente, sem mudança.
 
+**Truncamento no e-mail:** apesar de `executive_summary` poder ter até 500
+caracteres na geração, o builder do e-mail corta para os primeiros 300
+(`report-template/email.ts:38`, `aiSummary.substring(0, 300)`) antes de
+escapar e renderizar. Comportamento existente, mantido sem mudança por esta
+spec — citado aqui porque a seção 6 (bloco permanece neutro) não altera essa
+lógica, só a cor de fundo ao redor dela.
+
 ## Implementação: módulo compartilhado
 
 Os dois builders (`report-template/email.ts`, `client-event-email.ts`) hoje
@@ -146,6 +159,20 @@ export function buildBrandHeaderBand(p: {
 }): string  // fragmento <tr><td>...</td></tr> pronto para os dois builders
 ```
 
+**Contrato de escaping (explícito — evita HTML injetado):** `buildBrandHeaderBand`
+recebe `workspaceName`/`logoUrl` **crus** (não escapados) e aplica `escapeHtml`
+internamente antes de interpolar, no mesmo padrão que os dois builders já usam
+hoje para esses campos (`report-template/email.ts:29,32`,
+`client-event-email.ts:40,45` — ambos escapam antes de montar `logoSection`).
+`brandColor` não passa por `escapeHtml`: é validado no banco pelo CHECK
+`^#[0-9a-fA-F]{6}$` antes de chegar aqui, então é seguro interpolar direto (mesmo
+tratamento que os builders já dão a ele hoje). Os builders chamadores passam os
+valores crus recebidos em seus próprios parâmetros — não escapam antes de
+chamar `buildBrandHeaderBand`, para não escapar duas vezes.
+
+Testes do módulo cobrem nome de workspace e `logoUrl` hostis (`<script>`,
+aspas, `&`) confirmando que a saída de `buildBrandHeaderBand` está escapada.
+
 Ambos os builders substituem seu `logoSection` local por uma chamada a
 `buildBrandHeaderBand`. Nenhuma mudança de assinatura pública dos dois builders
 (`buildReportEmail`, `buildClientEventEmail`) — `brandColor`/`logoUrl` já são
@@ -157,7 +184,8 @@ parâmetros existentes.
   cor pálida → escuro; caso de fronteira em torno de luminância 0.55.
 - **Unitários do markup:** `buildBrandHeaderBand` — fundo da faixa é sempre
   literalmente `brandColor` (nunca substituído); avatar presente se e somente
-  se `logoUrl` setado; nome sempre presente; sem em-dash na saída.
+  se `logoUrl` setado; nome sempre presente; sem em-dash na saída; nome/URL
+  hostis (`<script>`, `"`, `&`) saem escapados — nunca HTML cru interpolado.
 - **Dos dois builders:** snapshot/contains — radius 16px no card; rodapé com
   as duas linhas e fundo creme; bloco de IA (só no relatório) permanece com
   fundo cinza `#f8f9fa` de antes.
