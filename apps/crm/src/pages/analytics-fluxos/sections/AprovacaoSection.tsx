@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Chart as ReactChart } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
+  BarController,
   BarElement,
   CategoryScale,
   LinearScale,
@@ -17,7 +18,11 @@ import type { Cliente } from '../../../store';
 import { formatHorasOuSemDados, horizonteCaption } from '../format';
 import { SectionCard, SectionEmpty } from './SectionCard';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
+// BarController explícito: esta seção usa o componente genérico do
+// react-chartjs-2, que não auto-registra controller nenhum, e o tree-shaking
+// de produção descarta registros de componentes tipados não importados
+// (incidente de 2026-09-02 no RitmoChart, mesma classe).
+ChartJS.register(CategoryScale, LinearScale, BarController, BarElement, Tooltip);
 
 /** Rows in the "slowest clients" ranking before it stops being a ranking. */
 const TOP_N = 8;
