@@ -60,6 +60,27 @@ describe('formatMentionToken / parseMentionTokens round-trip', () => {
     const ref: MentionRef = { entityType: 'membro', id: 5, label: 'Bruno', parentId: 99 };
     expect(formatMentionToken(ref)).toBe('@[Bruno](membro:5)');
   });
+
+  it('round-trips a label containing "]" (bracketed post title)', () => {
+    const ref: MentionRef = {
+      entityType: 'post',
+      id: 3519,
+      label: 'Carrossel - [AUTOMAÇÃO] Zumbido no ouvido',
+      parentId: 968,
+    };
+    const token = formatMentionToken(ref);
+    expect(token).toBe('@[Carrossel - [AUTOMAÇÃO] Zumbido no ouvido](post:3519:968)');
+    expect(parseMentionTokens(token)).toEqual([{ kind: 'mention', ref }]);
+  });
+
+  it('collapses line terminators in the label so the token stays parseable', () => {
+    const ref: MentionRef = { entityType: 'tarefa', id: 8, label: 'Linha um\nlinha dois' };
+    const token = formatMentionToken(ref);
+    expect(token).toBe('@[Linha um linha dois](tarefa:8)');
+    expect(parseMentionTokens(token)).toEqual([
+      { kind: 'mention', ref: { ...ref, label: 'Linha um linha dois', parentId: null } },
+    ]);
+  });
 });
 
 describe('parseMentionTokens', () => {
@@ -85,10 +106,39 @@ describe('parseMentionTokens', () => {
     ]);
   });
 
-  it('falls through to plain text when the label contains "]" (regex cannot represent it)', () => {
-    const text = 'Oi @[Foo]Bar](membro:3) tchau';
-    const result = parseMentionTokens(text);
-    expect(result).toEqual([{ kind: 'text', value: text }]);
+  it('parses a label containing "]" instead of falling through as plain text', () => {
+    const result = parseMentionTokens('Oi @[Foo]Bar](membro:3) tchau');
+    expect(result).toEqual([
+      { kind: 'text', value: 'Oi ' },
+      { kind: 'mention', ref: { entityType: 'membro', id: 3, label: 'Foo]Bar', parentId: null } },
+      { kind: 'text', value: ' tchau' },
+    ]);
+  });
+
+  it('parses a post title with bracketed segments (the reported unclickable-mention bug)', () => {
+    const label =
+      'Carrossel - [AUTOMAÇÃO] Zumbido no ouvido não é "estresse". Às vezes é isso aqui.';
+    const result = parseMentionTokens(`@[${label}](post:3519:968)`);
+    expect(result).toEqual([
+      { kind: 'mention', ref: { entityType: 'post', id: 3519, label, parentId: 968 } },
+    ]);
+  });
+
+  it('keeps two bracketed-label mentions on one line separate (lazy label match)', () => {
+    const result = parseMentionTokens('@[A [x]](membro:1) e @[B [y]](membro:2)');
+    expect(result).toEqual([
+      { kind: 'mention', ref: { entityType: 'membro', id: 1, label: 'A [x]', parentId: null } },
+      { kind: 'text', value: ' e ' },
+      { kind: 'mention', ref: { entityType: 'membro', id: 2, label: 'B [y]', parentId: null } },
+    ]);
+  });
+
+  it('does not swallow a literal tail-less "@[...]" fragment into a later mention label', () => {
+    const result = parseMentionTokens('veja @[interno] e @[Ana](membro:1)');
+    expect(result).toEqual([
+      { kind: 'text', value: 'veja @[interno] e ' },
+      { kind: 'mention', ref: { entityType: 'membro', id: 1, label: 'Ana', parentId: null } },
+    ]);
   });
 
   it('does not match an unknown entity type', () => {
