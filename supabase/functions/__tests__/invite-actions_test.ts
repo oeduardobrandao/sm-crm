@@ -941,6 +941,60 @@ Deno.test("inviteOrResend: a FRESH invite with roleId EXPLICITLY null does NOT i
   assertEquals(inviteRow?.row.role, baseInput.role); // NOT collapsed to 'agent' -- no custom role at all
 });
 
+// -----------------------------------------------------------------------
+// invite-user/index.ts (Task 11, external review) coerces roleId to
+// explicit null for a NON-PRIVILEGED actor -- one who reached the invite
+// endpoint only via 'equipe':'editar', never a legacy owner/admin -- BEFORE
+// calling inviteOrResend, even when that actor's request OMITTED the
+// role_id key entirely (raw parse: undefined). Without that coercion,
+// `undefined` would reach the inherit-from-a-prior-pending-row branch below
+// and silently re-stamp a role_id an owner/admin had attached to an
+// earlier pending invite for the SAME email -- a server-side bypass of the
+// "atribuição segue dono e admin" guard (the CRM UI always sends the key
+// explicitly, so this was only reachable via a crafted direct call).
+// `resolveInviteRoleId` mirrors that exact coercion (see the source-contract
+// test for it in invite-user-authz_test.ts); these two tests run its output
+// through the REAL inviteOrResend to prove the full round-trip, not just
+// the coercion in isolation.
+// -----------------------------------------------------------------------
+
+/** Mirrors invite-user/index.ts's post-guard roleId coercion. */
+function resolveInviteRoleId(
+  isPrivilegedActor: boolean,
+  rawRoleId: string | null | undefined,
+): string | null | undefined {
+  return isPrivilegedActor ? rawRoleId : null;
+}
+
+Deno.test("inviteOrResend: a NON-PRIVILEGED actor who omitted role_id does NOT inherit a prior pending elevated role_id (coerced to null first)", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 0, authUser: null, priorPendingRoleId: "role-7",
+  });
+  const rawRoleId = undefined; // the actor's request has no role_id key at all
+  const coerced = resolveInviteRoleId(/* isPrivilegedActor */ false, rawRoleId);
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, roleId: coerced }, CRM);
+  assertEquals(out.route, "invited");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, null);
+  assertEquals(inviteRow?.row.role, baseInput.role); // NOT collapsed to 'agent' -- no custom role at all
+});
+
+Deno.test("inviteOrResend: control -- a PRIVILEGED actor who omitted role_id STILL inherits the prior pending row's role_id", async () => {
+  const admin = makeInviteAdmin({
+    limit: null, members: 0, authUser: null, priorPendingRoleId: "role-7",
+  });
+  const rawRoleId = undefined;
+  const coerced = resolveInviteRoleId(/* isPrivilegedActor */ true, rawRoleId);
+  assertEquals(coerced, undefined); // unaffected by the coercion -- inheritance path is still reachable
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, roleId: coerced }, CRM);
+  assertEquals(out.route, "invited");
+  const inviteRow = admin._inserts().find((i) => i.table === "invites");
+  assertEquals(inviteRow?.row.role_id, "role-7");
+  assertEquals(inviteRow?.row.role, "agent"); // chassis rule follows the inherited roleId too
+});
+
 Deno.test("inviteOrResend CRM mode: add-direct with roleId EXPLICITLY null does NOT inherit, even with a pending custom-papel invite for the same email", async () => {
   const admin = makeInviteAdmin({
     limit: null, members: 1,

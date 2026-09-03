@@ -163,3 +163,62 @@ Deno.test("elevated-invite guard: owner is unaffected -- can invite any role or 
   assertEquals(elevatedInviteBlocked("owner", "agent", "6b1f2e2e-1234-4abc-9def-0123456789ab"), false);
   assertEquals(elevatedInviteBlocked("owner", "owner", undefined), false);
 });
+
+// --- Non-privileged actor never inherits a role_id (round-3 external-review fix) ---
+//
+// The elevated-invite guard above only inspects the RAW parsed roleId
+// (undefined | null | string). It rejects an EXPLICIT string, but a
+// non-privileged actor who simply OMITS the role_id key (raw: undefined)
+// sails through the guard -- and `undefined` is exactly the value that
+// makes inviteOrResend INHERIT a role_id from any prior pending invite for
+// that email (see invite-actions.ts and the composed end-to-end tests in
+// invite-actions_test.ts). A prior pending invite carrying an elevated
+// role_id (created earlier by an owner/admin) would then get silently
+// re-stamped by a non-privileged actor's resend -- a server-side bypass,
+// since the guard's own string check never fires for `undefined`. The CRM
+// UI always sends the role_id key explicitly, so this was only reachable
+// via a crafted direct call, not through the app -- but the server must not
+// rely on client cooperation for its own authorization.
+//
+// Fix: force roleId to explicit null for a non-privileged actor right after
+// the guard, regardless of whether the raw value was undefined or null --
+// never let `undefined` reach inviteOrResend for that actor.
+
+Deno.test("invite-user: the non-privileged roleId coercion is a source fact, sits AFTER the elevated-invite guard and BEFORE the roleId UUID validation", () => {
+  assertMatch(source, /let roleId: string \| null \| undefined =/, "roleId must be reassignable (let, not const) to be coerced");
+  assertMatch(
+    source,
+    /if \(!isPrivilegedActor\) \{\s*\n\s*roleId = null;\s*\n\s*\}/,
+    "expected an explicit `roleId = null` coercion gated on !isPrivilegedActor",
+  );
+  const guardIndex = source.indexOf("Apenas donos e admins podem convidar com função elevada ou papel.");
+  const coercionIndex = source.indexOf("roleId = null;");
+  const validationIndex = source.indexOf("if (roleId) {");
+  assert(
+    guardIndex > -1 && coercionIndex > -1 && validationIndex > -1 &&
+    guardIndex < coercionIndex && coercionIndex < validationIndex,
+    "expected order: elevated-invite guard, then the roleId=null coercion, then the roleId UUID/exists validation",
+  );
+});
+
+/** Mirrors invite-user/index.ts's post-guard roleId coercion (also exercised end-to-end in invite-actions_test.ts). */
+function resolveInviteRoleId(
+  isPrivilegedActor: boolean,
+  rawRoleId: string | null | undefined,
+): string | null | undefined {
+  return isPrivilegedActor ? rawRoleId : null;
+}
+
+Deno.test("roleId coercion: non-privileged actor's OMITTED role_id (undefined) is forced to null -- never left to inherit", () => {
+  assertEquals(resolveInviteRoleId(false, undefined), null);
+});
+
+Deno.test("roleId coercion: non-privileged actor's EXPLICIT null stays null (no change in behavior)", () => {
+  assertEquals(resolveInviteRoleId(false, null), null);
+});
+
+Deno.test("roleId coercion: privileged actor (owner/admin) is unaffected -- omitted role_id stays undefined, still inherits", () => {
+  assertEquals(resolveInviteRoleId(true, undefined), undefined);
+  assertEquals(resolveInviteRoleId(true, null), null);
+  assertEquals(resolveInviteRoleId(true, "6b1f2e2e-1234-4abc-9def-0123456789ab"), "6b1f2e2e-1234-4abc-9def-0123456789ab");
+});

@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
     // (services/invite.ts, MembrosTab.tsx) always sends the key explicitly
     // now — `undefined` here is reserved for a stale bundle that predates
     // this field.
-    const roleId: string | null | undefined =
+    let roleId: string | null | undefined =
       'role_id' in body ? (typeof body.role_id === 'string' ? body.role_id : null) : undefined;
 
     // Spec decision: "atribuição segue dono e admin". An actor who reached
@@ -181,6 +181,16 @@ Deno.serve(async (req) => {
     const isPrivilegedActor = caller.role === 'owner' || caller.role === 'admin';
     if (!isPrivilegedActor && (role !== 'agent' || typeof roleId === 'string')) {
       throw new Error('Apenas donos e admins podem convidar com função elevada ou papel.');
+    }
+    // Past the guard above, a non-privileged actor's roleId is only ever
+    // null or undefined (never a string) -- but `undefined` still reaches
+    // inviteOrResend's inherit-from-a-prior-pending-row path, which could
+    // silently re-stamp a role_id an owner/admin attached earlier for this
+    // same email. Force explicit "no custom role" so that inheritance path
+    // can never fire for a non-privileged actor; privileged actors are
+    // unaffected and keep inheriting as before.
+    if (!isPrivilegedActor) {
+      roleId = null;
     }
 
     if (roleId) {
