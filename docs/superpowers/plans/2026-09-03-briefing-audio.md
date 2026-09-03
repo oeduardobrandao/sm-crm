@@ -67,15 +67,19 @@ Spec: `docs/superpowers/specs/2026-09-03-briefing-audio-design.md`.
 begin;
 do $$
 declare
-  v_ws uuid; v_ws2 uuid; v_cli bigint; v_q uuid; v_q2 uuid;
+  v_ws uuid; v_ws2 uuid; v_cli bigint; v_q uuid; v_q2 uuid; v_user uuid := gen_random_uuid();
   v_key text; v_key2 text; v_res jsonb; v_used bigint; v_blocked boolean;
   v_n int;
 begin
   -- free = storage_quota_bytes 104857600 (100MB)
+  -- As RPCs rodam sob service_role em produção (edge functions). A guarda lê
+  -- auth.role() do GUC request.jwt.claims, então o teste precisa simular isso.
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   v_ws := et_make_workspace('free');
   v_ws2 := et_make_workspace('free');
+  insert into auth.users (id) values (v_user);
   insert into clientes (user_id, conta_id, nome, sigla, cor)
-    values (gen_random_uuid(), v_ws, 'Cliente Audio', 'CA', '#000000') returning id into v_cli;
+    values (v_user, v_ws, 'Cliente Audio', 'CA', '#000000') returning id into v_cli;
   insert into hub_briefing_questions (cliente_id, conta_id, question, display_order)
     values (v_cli, v_ws, 'Qual a história da marca?', 0) returning id into v_q;
   insert into hub_briefing_questions (cliente_id, conta_id, question, display_order)
@@ -119,6 +123,16 @@ begin
   assert (select audio_r2_key from hub_briefing_questions where id = v_q2) is null, 'blocked finalize must not write';
   update workspaces set storage_used_bytes = 3000 where id = v_ws;
 
+  -- 4b. regravar perto da quota desconta o áudio substituído: used = quota,
+  -- sendo 3000 bytes desta própria pergunta; trocar por 2000 tem que passar.
+  update workspaces set storage_used_bytes = 104857600 where id = v_ws;
+  v_res := briefing_audio_finalize(v_ws, v_cli, v_q, 'briefing-audio/' || v_ws || '/' || v_q || '/d.webm', 2000, 'audio/webm', 20);
+  assert (v_res->>'reserved')::boolean, 'replace near quota must net out the old bytes';
+  select storage_used_bytes into v_used from workspaces where id = v_ws;
+  assert v_used = 104857600 - 3000 + 2000, format('used after near-quota replace: %s', v_used);
+  update workspaces set storage_used_bytes = 2000 where id = v_ws;
+  v_key2 := 'briefing-audio/' || v_ws || '/' || v_q || '/d.webm';
+
   -- 5. chave fora do prefixo da pergunta -> invalid_key
   v_blocked := false;
   begin
@@ -157,6 +171,7 @@ begin
   assert v_n = 2, 'deleted row key enqueued (second time for this key in this test)';
 
   -- 9. CHECK de tenant: chave de outra workspace não entra nem via service role
+  -- (ainda sob claims service_role, então a guarda deixa passar e o CHECK dispara)
   v_blocked := false;
   begin
     update hub_briefing_questions set audio_r2_key = 'briefing-audio/' || v_ws2 || '/' || v_q2 || '/z.webm'
@@ -180,6 +195,16 @@ begin
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   update hub_briefing_questions set audio_transcription_status = 'failed' where id = v_q2;
   assert (select audio_transcription_status from hub_briefing_questions where id = v_q2) = 'failed';
+
+  -- 12. release em workspace inexistente -> workspace_not_found
+  v_blocked := false;
+  begin
+    perform briefing_audio_release(gen_random_uuid(), v_q2);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm like 'workspace_not_found%', format('wrong msg: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'release on unknown workspace must raise';
   perform set_config('request.jwt.claims', '', true);
 
   raise notice 'PASS briefing_audio_rpcs';
@@ -322,6 +347,7 @@ DECLARE
   v_used bigint;
   v_quota bigint;
   v_prev text;
+  v_prev_bytes bigint;
 BEGIN
   IF p_key IS NULL OR p_key NOT LIKE 'briefing-audio/' || p_conta_id::text || '/' || p_question_id::text || '/%' THEN
     RAISE EXCEPTION 'invalid_key' USING ERRCODE = 'P0001';
@@ -335,7 +361,7 @@ BEGIN
     RAISE EXCEPTION 'workspace_not_found' USING ERRCODE = 'P0001';
   END IF;
 
-  SELECT audio_r2_key INTO v_prev
+  SELECT audio_r2_key, audio_size_bytes INTO v_prev, v_prev_bytes
     FROM hub_briefing_questions
    WHERE id = p_question_id AND conta_id = p_conta_id AND cliente_id = p_cliente_id
    FOR UPDATE;
@@ -347,8 +373,10 @@ BEGIN
     RETURN jsonb_build_object('reserved', false, 'previous_key', NULL);
   END IF;
 
+  -- Regravar: o áudio anterior é liberado pelo trigger nesta mesma chamada,
+  -- então a quota é conferida sobre o uso líquido (sem os bytes antigos).
   v_quota := effective_plan_limit(p_conta_id, 'storage_quota_bytes');
-  IF v_quota IS NOT NULL AND v_used + p_bytes > v_quota THEN
+  IF v_quota IS NOT NULL AND v_used - COALESCE(v_prev_bytes, 0) + p_bytes > v_quota THEN
     RAISE EXCEPTION 'quota_exceeded' USING ERRCODE = 'P0001';
   END IF;
 
@@ -379,6 +407,9 @@ DECLARE
   v_prev text;
 BEGIN
   PERFORM 1 FROM workspaces WHERE id = p_conta_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'workspace_not_found' USING ERRCODE = 'P0001';
+  END IF;
   SELECT audio_r2_key INTO v_prev
     FROM hub_briefing_questions
    WHERE id = p_question_id AND conta_id = p_conta_id
@@ -595,6 +626,8 @@ Deno.test("retry: sem áudio 404; já done devolve sem anexar de novo; failed ro
   const base = { db, conta_id: "conta-1", cliente_id: 14, question_id: Q, signGetUrl, transcribe: async () => ({ text: "X" }) };
   db.queue("hub_briefing_questions", "select", { data: { ...audioRow, audio_r2_key: null }, error: null });
   assertEquals((await transcribeBriefingAudio(base)).status, 404);
+  const sel = db.calls.find((c) => c.table === "hub_briefing_questions" && c.operation === "select");
+  assert(sel?.modifiers.some((m) => m.method === "eq" && m.args[0] === "cliente_id" && m.args[1] === 14), "retry must scope by cliente_id");
 
   db.queue("hub_briefing_questions", "select", { data: { ...audioRow, audio_transcription_status: "done", audio_transcript: "X" }, error: null });
   const done = await transcribeBriefingAudio(base);
@@ -776,6 +809,7 @@ function rpcErrorStatus(msg: string): number {
 interface TranscriptionArgs {
   db: BriefingAudioDb;
   conta_id: string;
+  cliente_id: number;
   question_id: string;
   signGetUrl: (key: string) => Promise<string>;
   transcribe: Transcriber | null;
@@ -783,16 +817,21 @@ interface TranscriptionArgs {
 
 type FullRow = AudioRow & { answer: string | null; audio_transcript?: string | null };
 
-async function loadRow(db: BriefingAudioDb, conta_id: string, question_id: string): Promise<FullRow | null> {
+async function loadRow(
+  db: BriefingAudioDb, conta_id: string, cliente_id: number, question_id: string,
+): Promise<FullRow | null> {
+  // Escopo por cliente_id além de conta_id: o token do hub é de UM cliente e
+  // question_id vem da URL; sem isso um cliente lê a resposta e o áudio de outro
+  // cliente da mesma workspace.
   const { data } = await db.from("hub_briefing_questions")
     .select(`answer, audio_transcript, ${AUDIO_COLUMNS}`)
-    .eq("id", question_id).eq("conta_id", conta_id)
+    .eq("id", question_id).eq("conta_id", conta_id).eq("cliente_id", cliente_id)
     .maybeSingle();
   return (data as FullRow | null) ?? null;
 }
 
 async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResult> {
-  const row = await loadRow(a.db, a.conta_id, a.question_id);
+  const row = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
   if (!row?.audio_r2_key) return { status: 404, body: { error: "Áudio não encontrado." } };
 
   let result: { text: string; duration?: number } | null = null;
@@ -847,7 +886,6 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
 }
 
 export interface FinalizeAudioArgs extends TranscriptionArgs {
-  cliente_id: number;
   r2_key: string;
   mime_type: string;
   size_bytes: number;
@@ -896,12 +934,10 @@ export async function finalizeBriefingAudio(a: FinalizeAudioArgs): Promise<Brief
   return runTranscription(a);
 }
 
-export interface TranscribeAudioArgs extends TranscriptionArgs {
-  cliente_id: number;
-}
+export type TranscribeAudioArgs = TranscriptionArgs;
 
 export async function transcribeBriefingAudio(a: TranscribeAudioArgs): Promise<BriefingAudioResult> {
-  const row = await loadRow(a.db, a.conta_id, a.question_id);
+  const row = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
   if (!row?.audio_r2_key) return { status: 404, body: { error: "Áudio não encontrado." } };
   if (row.audio_transcription_status === "done") {
     return {
