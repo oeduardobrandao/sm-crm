@@ -74,11 +74,14 @@ function Harness({
   pendingInvite = null,
   inviteEnabled = false,
   canManageWorkspace = true,
+  canAssignRoles = true,
 }: {
   seat: SeatState;
   pendingInvite?: { email: string; role: string; expires_at: string } | null;
   inviteEnabled?: boolean;
   canManageWorkspace?: boolean;
+  /** Chassis check (owner/admin), distinct from canManageWorkspace. */
+  canAssignRoles?: boolean;
 }) {
   const form = useForm<MembroFormValues>({
     resolver: zodResolver(membroSchema),
@@ -95,6 +98,7 @@ function Harness({
           seat={seat}
           pendingInvite={pendingInvite}
           canManageWorkspace={canManageWorkspace}
+          canAssignRoles={canAssignRoles}
         />
       </Form>
     </QueryClientProvider>
@@ -199,5 +203,59 @@ describe('InviteSection', () => {
     await waitFor(() => {
       expect(screen.getByText('custom:role-9')).toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * Revisão externa (P2), same finding as MembrosTab's invite dialog. This
+ * section's own gate (`canManageWorkspace` = `equipe:editar`) is NOT the check
+ * that decides which roles may be handed out: `invite-user/index.ts` requires
+ * the caller's CHASSIS role to be owner/admin before it accepts role='admin'
+ * or any role_id. A custom `equipe:editar` actor was offered both and only
+ * found out on submit.
+ */
+describe('InviteSection — role options follow the chassis rule', () => {
+  beforeEach(() => {
+    getWorkspaceRolesMock.mockClear();
+    getWorkspaceRolesMock.mockResolvedValue([
+      { id: 'role-1', nome: 'Editor de Conteúdo' },
+      { id: 'role-2', nome: 'Financeiro Only' },
+    ]);
+  });
+
+  it('a non-privileged equipe:editar actor sees ONLY Agente', async () => {
+    render(<Harness seat={OK_SEAT} inviteEnabled canAssignRoles={false} />);
+
+    // Wait for the papéis query to settle, so a missing custom option is a
+    // real assertion rather than a race against the fetch.
+    await waitFor(() => expect(getWorkspaceRolesMock).toHaveBeenCalled());
+
+    expect(screen.getByRole('button', { name: 'Agente' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Admin' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editor de Conteúdo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Financeiro Only' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Apenas donos e admins convidam com função elevada ou papel.'),
+    ).toBeInTheDocument();
+  });
+
+  it('a privileged actor sees Admin, Agente and every custom papel', async () => {
+    render(<Harness seat={OK_SEAT} inviteEnabled canAssignRoles />);
+
+    expect(await screen.findByRole('button', { name: 'Editor de Conteúdo' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Financeiro Only' })).toBeInTheDocument();
+    expect(
+      screen.queryByText('Apenas donos e admins convidam com função elevada ou papel.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('the default form value stays agent, so a non-privileged actor submits a valid shape', async () => {
+    render(<Harness seat={OK_SEAT} inviteEnabled canAssignRoles={false} />);
+    await waitFor(() => expect(getWorkspaceRolesMock).toHaveBeenCalled());
+    // MEMBRO_FORM_DEFAULTS.inviteRole is the value the Select renders; with no
+    // elevated option available it can never become 'admin' or 'custom:*'.
+    expect(MEMBRO_FORM_DEFAULTS.inviteRole).toBe('agent');
   });
 });

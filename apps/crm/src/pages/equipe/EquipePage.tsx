@@ -113,7 +113,7 @@ export default function EquipePage() {
   const qc = useQueryClient();
   const isDesktop = useIsDesktop();
   const navigate = useNavigate();
-  const { canSeeFinancials, can, profile } = useAuth();
+  const { canSeeFinancials, can, profile, workspaceRole } = useAuth();
   // Legacy chassis-role checks (agent-vs-not, owner-or-admin) both collapsed
   // onto the real authorization boundary: `manage-workspace-user`/
   // `invite-user` already enforce `equipe:editar` server-side (Task 11). A
@@ -122,6 +122,12 @@ export default function EquipePage() {
   // it even though the server would have allowed the write.
   const canEditTeam = can('equipe', 'editar') === true;
   const canManageWorkspace = canEditTeam;
+  // CHASSIS check, on top of equipe:editar. invite-user requires the caller to
+  // be a legacy owner/admin before it will accept role='admin' or any role_id
+  // ("atribuição segue dono e admin"), so a custom equipe:editar actor must
+  // not be offered those options -- the invite would only fail on submit.
+  // Mirrors MembrosTab's `canAssignRoles`.
+  const canAssignRoles = workspaceRole === 'owner' || workspaceRole === 'admin';
 
   const [filter, setFilter] = useState<FilterTipo>('todos');
   const [search, setSearch] = useState('');
@@ -806,6 +812,7 @@ export default function EquipePage() {
                   seat={seat}
                   pendingInvite={editing?.id ? (pendingByMembroId.get(editing.id) ?? null) : null}
                   canManageWorkspace={canManageWorkspace}
+                  canAssignRoles={canAssignRoles}
                 />
               )}
               <DialogFooter>

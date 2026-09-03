@@ -680,3 +680,107 @@ describe('MembrosTab — atribuição de papel custom', () => {
     }
   });
 });
+
+/**
+ * Revisão externa (P2): the invite dialog's função select offered Admin and
+ * every custom papel to ANY `equipe:editar` actor. `invite-user/index.ts`
+ * rejects both shapes unless the caller's CHASSIS role is owner/admin
+ * (`isPrivilegedActor`; "Apenas donos e admins podem convidar com função
+ * elevada ou papel."), so those options were a dead end that only failed after
+ * the invite was submitted. The select now mirrors `canAssignRoles`, the same
+ * chassis check that already gated the Função button.
+ */
+describe('MembrosTab — invite dialog role options follow the chassis rule', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invitesRowsHolder.current = [];
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+    storeMock.getWorkspaceRoles.mockResolvedValue([
+      { id: 'role-1', nome: 'Editor de Conteúdo', permissions: {}, created_at: '2026-01-01' },
+      { id: 'role-2', nome: 'Financeiro Only', permissions: {}, created_at: '2026-01-01' },
+    ]);
+  });
+
+  it('a custom equipe:editar actor (chassis agent) sees ONLY Agente', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-9', permissions: { equipe: 'editar' } }),
+      ),
+    });
+    renderTab();
+    await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+
+    expect(screen.getByRole('button', { name: 'Agente' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Admin' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editor de Conteúdo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Financeiro Only' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Apenas donos e admins convidam com função elevada ou papel.'),
+    ).toBeInTheDocument();
+  });
+
+  it('a legacy admin still sees Admin, Agente and every custom papel', async () => {
+    setAuth({ workspaceRole: 'admin', staleProfileRole: 'admin' });
+    renderTab();
+    await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+
+    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editor de Conteúdo' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Financeiro Only' })).toBeInTheDocument();
+    expect(
+      screen.queryByText('Apenas donos e admins convidam com função elevada ou papel.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a legacy owner sees every option too (regression)', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    renderTab();
+    await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+
+    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editor de Conteúdo' })).toBeInTheDocument();
+  });
+
+  it('the non-privileged actor can still send an agent invite (role=agent, role_id=null)', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-9', permissions: { equipe: 'editar' } }),
+      ),
+    });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite enviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'nova@equipe.com' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar Convite' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      // Exactly the shape invite-user accepts from a non-privileged actor.
+      expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+        email: 'nova@equipe.com',
+        role: 'agent',
+        role_id: null,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

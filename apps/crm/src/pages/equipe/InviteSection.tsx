@@ -61,6 +61,7 @@ export function InviteSection({
   seat,
   pendingInvite,
   canManageWorkspace,
+  canAssignRoles,
 }: {
   form: UseFormReturn<MembroFormValues>;
   seat: SeatState;
@@ -80,6 +81,18 @@ export function InviteSection({
    * the caller computes.
    */
   canManageWorkspace: boolean;
+  /**
+   * The CHASSIS check (`workspaceRole` is owner/admin), deliberately NOT the
+   * same thing as `canManageWorkspace` above (`equipe:editar`).
+   * `invite-user/index.ts` requires both to invite with an elevated role:
+   * `isPrivilegedActor = caller.role === 'owner' || 'admin'`, and a
+   * non-privileged actor sending `role !== 'agent'` or any `role_id` gets
+   * "Apenas donos e admins podem convidar com função elevada ou papel."
+   * Offering those options to a custom `equipe:editar` actor was a dead end:
+   * the invite only failed after being submitted. Same rule, same prop name,
+   * as MembrosTab's own invite dialog.
+   */
+  canAssignRoles: boolean;
 }) {
   const { data: workspaceRoles = [] } = useQuery({
     queryKey: ['workspace-roles'],
@@ -182,15 +195,21 @@ export function InviteSection({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    {canAssignRoles && <SelectItem value="admin">Admin</SelectItem>}
                     <SelectItem value="agent">Agente</SelectItem>
-                    {workspaceRoles.map((r) => (
-                      <SelectItem key={r.id} value={`custom:${r.id}`}>
-                        {r.nome}
-                      </SelectItem>
-                    ))}
+                    {canAssignRoles &&
+                      workspaceRoles.map((r) => (
+                        <SelectItem key={r.id} value={`custom:${r.id}`}>
+                          {r.nome}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
+                {!canAssignRoles && (
+                  <p className="text-xs text-[color:var(--text-muted)]">
+                    Apenas donos e admins convidam com função elevada ou papel.
+                  </p>
+                )}
                 <FormMessage />
               </FormItem>
             )}

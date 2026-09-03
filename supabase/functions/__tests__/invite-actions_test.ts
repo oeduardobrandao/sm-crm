@@ -71,6 +71,11 @@ function makeCancelAdmin(opts: {
   onboarding?: boolean;
   hasPassword?: boolean | null;
   memberships?: string[]; // workspace_ids the user belongs to
+  // OTHER workspaces holding a pending invite for the same email. The capture
+  // SELECT already filters `.neq('conta_id', contaId)`, so whatever is listed
+  // here is by definition "other" -- the second half of the blast radius, and
+  // the half that leaves no membership row behind to notice.
+  pendingElsewhere?: string[];
   invitesDeleteError?: boolean; // inject an error on the final `invites` delete
 }) {
   const deletes: string[] = [];
@@ -96,6 +101,11 @@ function makeCancelAdmin(opts: {
     // deno-lint-ignore no-explicit-any
     rpc: (_fn: string, _p: any) => Promise.resolve({ data: opts.hasPassword ?? null, error: null }),
     from: (table: string) => {
+      // Per-chain flag: `invites` is read twice (the pending-elsewhere capture)
+      // and written once (the final delete), and both terminate on the same
+      // thenable. `from()` builds a fresh api per call, so this distinguishes
+      // them without leaking state between chains.
+      let isDelete = false;
       const api: any = {
         select: () => {
           // Only the workspace_members capture-before-delete SELECT is logged here —
@@ -114,13 +124,18 @@ function makeCancelAdmin(opts: {
           return Promise.resolve({ data: null, error: null });
         },
         delete: () => {
+          isDelete = true;
           ops.push("delete:" + table);
           deletes.push("del:" + table);
           return api;
         },
         then: (r: (x: any) => unknown) => {
-          if (table === "workspace_members") {
+          if (table === "workspace_members" && !isDelete) {
             return Promise.resolve(r({ data: (opts.memberships ?? []).map((w) => ({ workspace_id: w })), error: null }));
+          }
+          if (table === "invites" && !isDelete) {
+            ops.push("select:invites_pending");
+            return Promise.resolve(r({ data: (opts.pendingElsewhere ?? []).map((c) => ({ conta_id: c })), error: null }));
           }
           if (table === "invites" && opts.invitesDeleteError) {
             return Promise.resolve(r({ data: null, error: { message: "boom" } }));
@@ -147,27 +162,82 @@ Deno.test("cancelInvite rejects a wrong-workspace invite", async () => {
   await assertThrowsAsyncMessage(() => cancelInvite(admin as any, { inviteId: "i1", contaId: "c1" }), "invite_not_found");
 });
 
-Deno.test("cancelInvite deletes a never-onboarded user and reports affected workspaces", async () => {
+Deno.test("cancelInvite deletes a never-onboarded user whose ONLY tie is this workspace", async () => {
   const admin = makeCancelAdmin({
     invite: { id: "i1", conta_id: "c1", email: "a@x.com", status: "pending" },
-    authUser: { id: "u1", email_confirmed_at: null }, // never confirmed -> reinvite class -> delete
+    authUser: { id: "u1", email_confirmed_at: null }, // never confirmed -> reinvite class
     onboarding: false,
     hasPassword: false,
-    memberships: ["c1", "c2"],
+    memberships: ["c1"],
+    pendingElsewhere: [],
   });
   // deno-lint-ignore no-explicit-any
   const res = await cancelInvite(admin as any, { inviteId: "i1", contaId: "c1" });
   assertEquals(res.deletedUser, true);
-  assertEquals(res.affectedWorkspaceIds.sort(), ["c1", "c2"]);
+  assertEquals(res.affectedWorkspaceIds.sort(), ["c1"]);
   assert(admin._deletes().includes("auth:u1"), "expected the auth user to be deleted");
   // Prove capture-before-delete ordering, not just the final affectedWorkspaceIds
-  // value: a regression that moved the capture SELECT to run AFTER the deletes
+  // value: a regression that moved the capture SELECTs to run AFTER the deletes
   // would still produce the same affectedWorkspaceIds above but would fail this.
   assertEquals(admin._ops(), [
     "select:workspace_members",
+    "select:invites_pending",
     "delete:profiles",
     "delete:workspace_members",
     "deleteUser",
+    "delete:invites",
+  ]);
+});
+
+/**
+ * Blast-radius rule (revisão externa, P1). `deleteOrphanedAuthUser` is global:
+ * profile + EVERY workspace_members row + the auth record. Cancelling ONE
+ * workspace's invite must never evict an identity another workspace still
+ * depends on. `equipe:editar` custom roles can now reach this path, which is
+ * what raised the finding, but the rule is actor-independent.
+ */
+Deno.test("cancelInvite does NOT delete an orphan holding a membership in another workspace", async () => {
+  const admin = makeCancelAdmin({
+    invite: { id: "i1", conta_id: "c1", email: "a@x.com", status: "pending" },
+    authUser: { id: "u1", email_confirmed_at: null },
+    onboarding: false,
+    hasPassword: false,
+    memberships: ["c1", "c2"], // c2 is the veto
+    pendingElsewhere: [],
+  });
+  // deno-lint-ignore no-explicit-any
+  const res = await cancelInvite(admin as any, { inviteId: "i1", contaId: "c1" });
+  assertEquals(res.deletedUser, false);
+  assertEquals(res.affectedWorkspaceIds, ["c1"], "only the acted-on workspace is affected");
+  assert(!admin._deletes().includes("auth:u1"), "must NOT delete a user workspace c2 still needs");
+  // The local cancel still happens: the invite row goes, nothing else does.
+  assertEquals(admin._ops(), [
+    "select:workspace_members",
+    "select:invites_pending",
+    "delete:invites",
+  ]);
+});
+
+Deno.test("cancelInvite does NOT delete an orphan with a pending invite in another workspace", async () => {
+  const admin = makeCancelAdmin({
+    invite: { id: "i1", conta_id: "c1", email: "a@x.com", status: "pending" },
+    authUser: { id: "u1", email_confirmed_at: null },
+    onboarding: false,
+    hasPassword: false,
+    memberships: ["c1"],
+    pendingElsewhere: ["c3"], // no membership row anywhere else -- only this veto
+  });
+  // deno-lint-ignore no-explicit-any
+  const res = await cancelInvite(admin as any, { inviteId: "i1", contaId: "c1" });
+  assertEquals(res.deletedUser, false);
+  assertEquals(res.affectedWorkspaceIds, ["c1"]);
+  assert(
+    !admin._deletes().includes("auth:u1"),
+    "deleting would leave c3's invite pending forever and unredeemable",
+  );
+  assertEquals(admin._ops(), [
+    "select:workspace_members",
+    "select:invites_pending",
     "delete:invites",
   ]);
 });

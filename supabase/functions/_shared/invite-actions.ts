@@ -160,11 +160,25 @@ export interface CancelResult {
 
 /**
  * Admin-side invite cancel. Only pending/expired invites may be cancelled
- * (accepted is live membership + history — refuse). When the invitee never
- * finished onboarding the orphan auth user is deleted globally; we capture its
- * impact via captureOrphanImpact BEFORE the delete — the union of its
- * workspace_members set AND any other workspaces holding a pending invite for
- * that email — so callers can audit every workspace the user vanished from.
+ * (accepted is live membership + history — refuse).
+ *
+ * BLAST-RADIUS RULE: the orphan auth user is deleted ONLY when this workspace
+ * is its last tie. `deleteOrphanedAuthUser` is global — it drops the profile,
+ * EVERY workspace_members row and the auth record — so cancelling one
+ * workspace's invite used to evict an identity that other workspaces still
+ * depended on, and to leave their pending invites permanently unredeemable
+ * (the rows survive, having no FK on the email, but their links die with the
+ * user). `captureOrphanImpact` is called BEFORE any mutation precisely so this
+ * can be decided; when it reports any `otherWorkspaceIds` we cancel locally —
+ * delete only this workspace's invite row, `deletedUser: false`,
+ * `affectedWorkspaceIds: [contaId]`.
+ *
+ * This applies to EVERY actor, not just custom roles. The invite/reinvite path
+ * (`inviteOrResend`) handles the same collision differently on purpose: it can
+ * return `needs-confirmation` and let a human opt in, because there the delete
+ * is a means to re-issuing an invite the caller actually wants. A cancel has
+ * no such upside — nobody cancelling workspace A's invite is asking to remove
+ * the person from workspace B — so it fails closed with no prompt.
  */
 export async function cancelInvite(
   adminClient: any,
@@ -200,9 +214,15 @@ export async function cancelInvite(
     });
     if (action === "reinvite" || action === "resend-link") {
       const impact = await captureOrphanImpact(adminClient, authUser.id, email, args.contaId);
-      await deleteOrphanedAuthUser(adminClient, authUser.id);
-      affectedWorkspaceIds = [...new Set([...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds])];
-      deletedUser = true;
+      // Any tie to another workspace vetoes the global delete — see the
+      // blast-radius rule in this function's docstring. Falling through leaves
+      // deletedUser=false and affectedWorkspaceIds=[] so only args.contaId is
+      // reported below, and only this workspace's invite row is removed.
+      if (impact.otherWorkspaceIds.length === 0) {
+        await deleteOrphanedAuthUser(adminClient, authUser.id);
+        affectedWorkspaceIds = [...new Set([...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds])];
+        deletedUser = true;
+      }
     }
   }
 

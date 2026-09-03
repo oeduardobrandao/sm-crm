@@ -17,6 +17,12 @@ import { hasPermissionFor } from "../_shared/permissions.ts";
 //     isManager(membership.role) for that workspace).
 //   - list-grants / revoke-grant: authorizes against the ACTIVE workspace
 //     (profile.active_workspace_id, not the stale global profile.conta_id).
+//
+// Revisão externa (P2): that last gate demanded 'editar' for BOTH actions,
+// so a papel with `configuracoes:ver` opening the read-only MCP tab got a 403
+// and an empty connections list. 'list-grants' now requires only 'ver';
+// 'revoke-grant' keeps 'editar'. eligible-workspaces and approve are
+// unchanged -- both are consent-GRANTING steps, i.e. mutations.
 
 function assertMatch(value: string, pattern: RegExp, msg?: string) {
   assert(pattern.test(value), msg ?? `Expected source to match ${pattern}`);
@@ -26,12 +32,20 @@ const source = await Deno.readTextFile(
   new URL("../mcp-oauth-consent/index.ts", import.meta.url),
 );
 
-Deno.test("mcp-oauth-consent: isManager is gone, all three gates call hasPermissionFor('configuracoes','editar')", () => {
+Deno.test("mcp-oauth-consent: isManager is gone; the two mutation gates hardcode 'editar'", () => {
   assertMatch(source, /import \{ hasPermissionFor \} from ["']\.\.\/_shared\/permissions\.ts["']/);
   assert(!/function isManager/.test(source), "the role-literal isManager helper must be removed");
   assert(!/\.in\(["']role["'],\s*\[["']owner["'],\s*["']admin["']\]\)/.test(source), "eligible-workspaces must not pre-filter by role at the query level");
   const gateCalls = source.match(/hasPermissionFor\(svc,\s*user\.id,\s*[^,]+,\s*["']configuracoes["'],\s*["']editar["']\)/g) ?? [];
-  assertEquals(gateCalls.length, 3, "expected one gate call each for eligible-workspaces, approve, and list/revoke-grant");
+  assertEquals(gateCalls.length, 2, "eligible-workspaces and approve keep the hardcoded 'editar' gate");
+});
+
+Deno.test("mcp-oauth-consent: the grants gate splits list-grants ('ver') from revoke-grant ('editar')", () => {
+  assertMatch(source, /const requiredAction = action === ["']list-grants["'] \? ["']ver["'] : ["']editar["']/);
+  assertMatch(
+    source,
+    /hasPermissionFor\(svc,\s*user\.id,\s*contaId,\s*["']configuracoes["'],\s*requiredAction\)/,
+  );
 });
 
 Deno.test("mcp-oauth-consent: list-grants/revoke-grant scope from profile.active_workspace_id, not profile.conta_id", () => {
@@ -122,10 +136,12 @@ async function activeWorkspaceGate(
   svc: any,
   userId: string,
   profile: { active_workspace_id: string | null } | null,
+  action = "revoke-grant",
 ): Promise<{ status: number; contaId?: string }> {
   const contaId = profile?.active_workspace_id as string | undefined;
   if (!contaId) return { status: 403 };
-  const canManage = await hasPermissionFor(svc, userId, contaId, "configuracoes", "editar");
+  const requiredAction = action === "list-grants" ? "ver" : "editar";
+  const canManage = await hasPermissionFor(svc, userId, contaId, "configuracoes", requiredAction);
   if (!canManage) return { status: 403 };
   return { status: 200, contaId };
 }
@@ -159,4 +175,46 @@ Deno.test("list/revoke-grant: no active workspace -> 403, no RPC call", async ()
   assertEquals((await activeWorkspaceGate(svc, "u1", { active_workspace_id: null })).status, 403);
   assertEquals((await activeWorkspaceGate(svc, "u1", null)).status, 403);
   assertEquals(svc.calls.length, 0);
+});
+
+/**
+ * Revisão externa (P2): the read/write split on the grants block. Asserting
+ * the p_action actually sent, not just the status -- a regression that kept
+ * demanding 'editar' would still pass a status-only check against a
+ * permissive stub.
+ */
+Deno.test("list-grants: a ver-only role is allowed and asks for p_action 'ver'", async () => {
+  const svc = createSupabaseQueryMock();
+  svc.queueRpc("has_permission_for", { data: true, error: null });
+  assertEquals(
+    (await activeWorkspaceGate(svc, "u1", { active_workspace_id: "ws-a" }, "list-grants")).status,
+    200,
+  );
+  const call = svc.calls.find((c: { table: string }) => c.table === "rpc:has_permission_for");
+  assertEquals(call?.payload, {
+    p_user: "u1",
+    p_workspace: "ws-a",
+    p_module: "configuracoes",
+    p_action: "ver",
+  });
+});
+
+Deno.test("revoke-grant: a ver-only role is refused, and the gate asks for 'editar'", async () => {
+  const svc = createSupabaseQueryMock();
+  svc.queueRpc("has_permission_for", { data: false, error: null });
+  assertEquals(
+    (await activeWorkspaceGate(svc, "u1", { active_workspace_id: "ws-a" }, "revoke-grant")).status,
+    403,
+  );
+  const call = svc.calls.find((c: { table: string }) => c.table === "rpc:has_permission_for");
+  assertEquals((call?.payload as { p_action: string }).p_action, "editar");
+});
+
+Deno.test("list-grants: a role with neither ver nor editar is still refused", async () => {
+  const svc = createSupabaseQueryMock();
+  svc.queueRpc("has_permission_for", { data: false, error: null });
+  assertEquals(
+    (await activeWorkspaceGate(svc, "u1", { active_workspace_id: "ws-a" }, "list-grants")).status,
+    403,
+  );
 });

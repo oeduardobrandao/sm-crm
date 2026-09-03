@@ -189,7 +189,11 @@ Deno.serve(async (req) => {
       if (!contaId) {
         return json({ error: "Insufficient permissions" }, 403);
       }
-      const canManage = await hasPermissionFor(svc, user.id, contaId, "configuracoes", "editar");
+      // Mesmo split do mcp-keys: 'list-grants' é leitura e a aba MCP em modo
+      // somente leitura (`configuracoes:ver`) precisa dela para renderizar a
+      // lista de conexões; 'revoke-grant' é mutação e segue exigindo 'editar'.
+      const requiredAction = action === "list-grants" ? "ver" : "editar";
+      const canManage = await hasPermissionFor(svc, user.id, contaId, "configuracoes", requiredAction);
       if (!canManage) {
         return json({ error: "Insufficient permissions" }, 403);
       }

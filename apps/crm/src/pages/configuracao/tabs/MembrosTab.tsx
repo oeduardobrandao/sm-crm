@@ -512,6 +512,12 @@ export default function MembrosTab() {
                 onChange={(e) => setInviteEmail(e.target.value)}
               />
             </div>
+            {/* Só um ator privilegiado (chassi dono/admin) vê Admin e os papéis
+                custom. `invite-user` recusa as duas formas para quem chegou
+                aqui só via `equipe:editar` ("Apenas donos e admins podem
+                convidar com função elevada ou papel."), então oferecê-las era
+                um beco sem saída: o convite só falhava depois de enviado.
+                Agente é a única opção que esse ator pode de fato usar. */}
             <div className="space-y-1">
               <Label>Função</Label>
               <Select value={inviteRole} onValueChange={setInviteRole}>
@@ -519,15 +525,21 @@ export default function MembrosTab() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  {canAssignRoles && <SelectItem value="admin">Admin</SelectItem>}
                   <SelectItem value="agent">Agente</SelectItem>
-                  {workspaceRoles.map((r) => (
-                    <SelectItem key={r.id} value={`custom:${r.id}`}>
-                      {r.nome}
-                    </SelectItem>
-                  ))}
+                  {canAssignRoles &&
+                    workspaceRoles.map((r) => (
+                      <SelectItem key={r.id} value={`custom:${r.id}`}>
+                        {r.nome}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
+              {!canAssignRoles && (
+                <p className="text-xs text-[color:var(--text-muted)]">
+                  Apenas donos e admins convidam com função elevada ou papel.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
