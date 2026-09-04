@@ -81,7 +81,10 @@ async function visiblePopupImageKeys(deps: SignR2UrlsDeps, authHeader: string): 
 /**
  * Para platform admins, qualquer image_key referenciada por QUALQUER popup (draft
  * incluído) é assinável: a lista e o preview do editor precisam mostrar a imagem que
- * outro admin subiu. Fora do admin este caminho nunca roda.
+ * outro admin subiu. A porta é a linha em platform_admins, não o app de origem: um
+ * platform admin recebe este conjunto de qualquer contexto, o que é aceitável porque
+ * admins já são totalmente confiáveis e o conteúdo é material de divulgação
+ * pré-publicação, não dado de tenant.
  */
 async function adminPopupImageKeys(deps: SignR2UrlsDeps, svc: DbClient, userId: string): Promise<Set<string> | null> {
   const keys = new Set<string>();
@@ -175,11 +178,14 @@ export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
       if (kbRows) kbKeys = kbRows.map((r: { cover_image_url: string }) => r.cover_image_url);
     }
 
+    // Só consulta popups para o que a allowlist de artigos não resolveu: capas de
+    // artigo, editor de post e Estúdio não pagam as duas viagens extras.
     let popupKeys: string[] = [];
-    if (otherKeys.length > 0) {
+    const unresolved = otherKeys.filter((k) => !kbKeys.includes(k));
+    if (unresolved.length > 0) {
       const adminKeys = await adminPopupImageKeys(deps, svc, resolved.userId);
       const visible = adminKeys ?? await visiblePopupImageKeys(deps, req.headers.get("Authorization")!);
-      popupKeys = otherKeys.filter((k) => visible.has(k) && !kbKeys.includes(k));
+      popupKeys = unresolved.filter((k) => visible.has(k));
     }
 
     const validKeys = [...ownKeys, ...kbKeys, ...popupKeys];

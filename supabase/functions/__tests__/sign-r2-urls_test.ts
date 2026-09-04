@@ -238,3 +238,32 @@ Deno.test("usuário comum (não admin) segue pela RLS do próprio contexto", asy
   assertEquals((await res.json()).urls[POPUP_KEY], `https://r2.example.com/${POPUP_KEY}?signed=1`);
   assertEquals(userDbCalled, 1);
 });
+
+Deno.test("não consulta popups quando a allowlist de artigos já resolveu todas as otherKeys", async () => {
+  let adminChecked = 0;
+  let userDbCalled = 0;
+  const KB = "contas/kb-owner/files/cover.png";
+  const handler = createSignR2UrlsHandler(makeDeps({
+    createDb: () => ({
+      auth: { getUser: async () => ({ data: { user: { id: "user-1" } }, error: null }) },
+      from: (table: string) => ({
+        select: (_c: string) => ({
+          eq: (_col: string, _v: string) => ({
+            single: async () => ({ data: { conta_id: "conta-abc" }, error: null }),
+            in: async () => ({ data: table === "kb_articles" ? [{ cover_image_url: KB }] : [], error: null }),
+            abortSignal: (_s: AbortSignal) => ({
+              maybeSingle: async () => { adminChecked++; return { data: null, error: null }; }
+            }),
+          }),
+          abortSignal: async (_s: AbortSignal) => ({ data: [], error: null }),
+        }),
+      }),
+    }),
+    createUserDb: (h) => { userDbCalled++; return userDbReturning([])(h); },
+  }));
+  const res = await handler(makeReq("POST", { keys: [KB, "contas/conta-abc/files/own.png"] }));
+  const data = await res.json();
+  assertEquals(data.urls[KB], `https://r2.example.com/${KB}?signed=1`);
+  assertEquals(adminChecked, 0);
+  assertEquals(userDbCalled, 0);
+});
