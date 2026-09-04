@@ -76,7 +76,11 @@ describe('AudioRecorder', () => {
     await act(async () => {
       vi.advanceTimersByTime(3000);
     });
-    expect(screen.getByText('0:03')).toBeInTheDocument();
+    expect(screen.getByText('0:03 / 5:00')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: /tempo de gravação/i })).toHaveAttribute(
+      'aria-valuenow',
+      '3',
+    );
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /parar/i }));

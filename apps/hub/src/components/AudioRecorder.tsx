@@ -171,39 +171,69 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
 
   if (!isRecordingSupported()) return null;
   const busy = phase !== 'idle';
+  const nearLimit = elapsed >= WARN_AT_SECONDS;
 
   return (
     <div className="space-y-2">
       {mode === 'idle' && (
-        <button
-          type="button"
-          className={`${BTN} hub-btn-secondary`}
-          disabled={disabled || busy || starting}
-          onClick={() => void start()}
-        >
-          <Mic size={16} />
-          {busy ? (phase === 'uploading' ? 'Enviando áudio…' : 'Transcrevendo…') : 'Gravar áudio'}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className={`${BTN} hub-btn-secondary`}
+            disabled={disabled || busy || starting}
+            onClick={() => void start()}
+          >
+            <Mic size={16} />
+            {busy ? (phase === 'uploading' ? 'Enviando áudio…' : 'Transcrevendo…') : 'Gravar áudio'}
+          </button>
+          {!busy && (
+            <span className="text-xs hub-tx3">
+              Até {formatDuration(MAX_AUDIO_SECONDS)} por resposta.
+            </span>
+          )}
+        </div>
       )}
 
       {mode === 'recording' && (
-        <div className="flex items-center gap-3">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse"
-            aria-hidden
-          />
-          <span className="text-[13px] tabular-nums hub-txt">{formatDuration(elapsed)}</span>
-          <button
-            type="button"
-            className={`${BTN} hub-btn-primary`}
-            onClick={stop}
-            aria-label="Parar gravação"
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse"
+              aria-hidden
+            />
+            <span className="text-[13px] tabular-nums hub-txt">
+              {formatDuration(elapsed)} / {formatDuration(MAX_AUDIO_SECONDS)}
+            </span>
+            <button
+              type="button"
+              className={`${BTN} hub-btn-primary`}
+              onClick={stop}
+              aria-label="Parar gravação"
+            >
+              Parar
+            </button>
+            {nearLimit && (
+              <span className="text-xs text-amber-600">
+                Restam {formatDuration(MAX_AUDIO_SECONDS - elapsed)}. A gravação para sozinha no
+                limite.
+              </span>
+            )}
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Tempo de gravação"
+            aria-valuemin={0}
+            aria-valuemax={MAX_AUDIO_SECONDS}
+            aria-valuenow={elapsed}
+            className="h-1 w-full max-w-[420px] overflow-hidden rounded-full bg-[var(--hub-bd)]"
           >
-            Parar
-          </button>
-          {elapsed >= WARN_AT_SECONDS && (
-            <span className="text-xs hub-tx3">Limite de 5 minutos. A gravação para sozinha.</span>
-          )}
+            <div
+              className={`h-full rounded-full transition-[width] duration-200 ${
+                nearLimit ? 'bg-amber-500' : 'bg-[var(--hub-txt)]'
+              }`}
+              style={{ width: `${Math.min(100, (elapsed / MAX_AUDIO_SECONDS) * 100)}%` }}
+            />
+          </div>
         </div>
       )}
 
