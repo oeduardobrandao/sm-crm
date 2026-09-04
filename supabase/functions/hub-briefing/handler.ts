@@ -1,5 +1,6 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { resolveHubToken, type HubToken } from "../_shared/hub-token.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import {
   AUDIO_COLUMNS,
@@ -83,6 +84,18 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       const resolved = await resolveOrReject(token);
       if (resolved instanceof Response) return resolved;
       const hubToken = resolved;
+
+      // Gate de plano: só a ESCRITA de áudio é paga. O DELETE fica de fora de
+      // propósito — depois de um downgrade o cliente ainda pode ouvir (GET) e
+      // remover o que já havia gravado, só não pode gravar/transcrever mais.
+      if (isPresign || isTranscribe || (isAudio && req.method === "POST")) {
+        const audioOn = await effectivePlanFeature(
+          db as never,
+          hubToken.conta_id,
+          "feature_briefing_audio",
+        );
+        if (!audioOn) return json({ error: "Recurso indisponível no plano atual." }, 403);
+      }
 
       const okWrite = await deps.rateLimit(
         db,

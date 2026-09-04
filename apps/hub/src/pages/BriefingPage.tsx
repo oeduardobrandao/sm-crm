@@ -20,7 +20,11 @@ import { ScrollableTabs } from '../components/ScrollableTabs';
 import type { BriefingAudio, BriefingAudioResponse, BriefingQuestion } from '../types';
 
 export function BriefingPage() {
-  const { token } = useHub();
+  const { token, bootstrap } = useHub();
+  // Gate de plano (Pro/Max). Ausente num bootstrap antigo = desligado; o
+  // hub-briefing recusa a escrita de qualquer forma, isto só evita oferecer
+  // um botão que responderia 403.
+  const audioEnabled = bootstrap.feature_briefing_audio === true;
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['hub-briefing', token],
@@ -131,6 +135,7 @@ export function BriefingPage() {
                   token={token}
                   question={q}
                   onSave={handleSave(q.id)}
+                  audioEnabled={audioEnabled}
                   onAudioChanged={() => qc.invalidateQueries({ queryKey: ['hub-briefing', token] })}
                 />
               ))}
@@ -146,11 +151,13 @@ function QuestionItem({
   token,
   question,
   onSave,
+  audioEnabled,
   onAudioChanged,
 }: {
   token: string;
   question: BriefingQuestion;
   onSave: (answer: string) => Promise<void>;
+  audioEnabled: boolean;
   onAudioChanged: () => void;
 }) {
   const [answer, setAnswer] = useState(question.answer ?? '');
@@ -358,7 +365,7 @@ function QuestionItem({
             <span className={audio.transcription_status === 'failed' ? 'text-red-500' : 'hub-tx3'}>
               {transcriptionLabel}
             </span>
-            {audio.transcription_status !== 'done' && (
+            {audioEnabled && audio.transcription_status !== 'done' && (
               <button
                 type="button"
                 className="font-semibold underline hub-txt disabled:opacity-50"
@@ -380,7 +387,7 @@ function QuestionItem({
         </div>
       )}
 
-      {isRecordingSupported() && (
+      {audioEnabled && isRecordingSupported() && (
         <AudioRecorder phase={phase} disabled={busyAction !== null} onRecorded={handleRecorded} />
       )}
       {audioError && <p className="text-xs text-red-500">{audioError}</p>}

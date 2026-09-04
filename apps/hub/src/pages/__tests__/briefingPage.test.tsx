@@ -63,16 +63,21 @@ const hubValue = {
     is_active: true,
     cliente_id: 14,
     feature_mensagens: true,
+    feature_briefing_audio: true,
   },
   token: 'token-publico',
   workspace: 'mesaas',
 };
 
-function renderPage(page: ReactElement) {
+function renderPage(page: ReactElement, bootstrapOverrides: Record<string, unknown> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const value = {
+    ...hubValue,
+    bootstrap: { ...hubValue.bootstrap, ...bootstrapOverrides },
+  };
   const result = render(
     <QueryClientProvider client={qc}>
-      <HubContext.Provider value={hubValue}>
+      <HubContext.Provider value={value}>
         <MemoryRouter>{page}</MemoryRouter>
       </HubContext.Provider>
     </QueryClientProvider>,
@@ -453,5 +458,31 @@ describe('BriefingPage audio', () => {
     });
 
     await waitFor(() => expect(screen.queryByText('player 65s')).not.toBeInTheDocument());
+  });
+});
+
+describe('BriefingPage plan gate (feature_briefing_audio)', () => {
+  it('hides the recorder and the retry action when the plan lacks the feature', async () => {
+    renderPage(<BriefingPage />, { feature_briefing_audio: false });
+    await screen.findByText('Público?');
+
+    expect(screen.queryByText('fake-record')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /tentar novamente/i })).not.toBeInTheDocument();
+    // O que já foi gravado continua audível e removível depois de um downgrade.
+    expect(screen.getByText('player 65s')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remover áudio/i })).toBeInTheDocument();
+  });
+
+  it('hides the recorder when the bootstrap omits the flag entirely (stale response)', async () => {
+    renderPage(<BriefingPage />, { feature_briefing_audio: undefined });
+    await screen.findByText('Marca?');
+    expect(screen.queryByText('fake-record')).not.toBeInTheDocument();
+  });
+
+  it('renders the recorder when the plan has the feature', async () => {
+    renderPage(<BriefingPage />);
+    await screen.findByText('Marca?');
+    expect(screen.getAllByText('fake-record').length).toBe(2);
+    expect(screen.getByRole('button', { name: /tentar novamente/i })).toBeInTheDocument();
   });
 });

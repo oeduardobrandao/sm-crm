@@ -25,12 +25,23 @@ function makeHandler(
   });
 }
 
-function setupToken(db: ReturnType<typeof createSupabaseQueryMock>) {
+function setupToken(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  opts: { briefingAudio?: boolean } = {},
+) {
   db.queue("client_hub_tokens", "select", {
     data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
     error: null,
   });
+  // A fila de effective_plan_feature é FIFO: a 1ª chamada é feature_hub_portal,
+  // dentro de resolveHubToken; a 2ª é feature_briefing_audio, o gate das rotas
+  // de ESCRITA de áudio (presign, finalize, transcribe — nunca o DELETE).
   db.queueRpc("effective_plan_feature", { data: true, error: null });
+  db.queueRpc("effective_plan_feature", { data: opts.briefingAudio !== false, error: null });
+}
+
+function countFeatureRpcCalls(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return db.calls.filter((c) => c.table === "rpc:effective_plan_feature").length;
 }
 
 function getReq() {
@@ -304,4 +315,60 @@ Deno.test("hub-briefing POST simples (sem segmento) segue salvando answer", asyn
   const res = await makeHandler(db)(postReq("", { token: "t", question_id: Q, answer: "oi" }));
   assertEquals(res.status, 200);
   assertEquals(await readJson(res), { ok: true });
+});
+
+// ── Gate de plano (feature_briefing_audio) ─────────────────────────────
+
+Deno.test("hub-briefing: feature_briefing_audio off -> 403 no presign", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db, { briefingAudio: false });
+  const res = await makeHandler(db)(
+    postReq("/upload-url", { token: "t", question_id: Q, mime_type: "audio/webm", size_bytes: 5000 }),
+  );
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "Recurso indisponível no plano atual." });
+});
+
+Deno.test("hub-briefing: feature_briefing_audio off -> 403 no finalize e no transcribe", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db, { briefingAudio: false });
+  const res = await makeHandler(db)(
+    postReq(`/${Q}/audio`, { token: "t", r2_key: KEY, mime_type: "audio/webm", size_bytes: 5000 }),
+  );
+  assertEquals(res.status, 403);
+
+  const db2 = createSupabaseQueryMock();
+  setupToken(db2, { briefingAudio: false });
+  const res2 = await makeHandler(db2)(postReq(`/${Q}/audio/transcribe`, { token: "t" }));
+  assertEquals(res2.status, 403);
+});
+
+Deno.test("hub-briefing: DELETE do áudio segue liberado com o plano sem a feature", async () => {
+  // Depois de um downgrade o cliente ainda precisa conseguir remover (e ouvir,
+  // via GET) o que já gravou — só a escrita nova é paga.
+  const db = createSupabaseQueryMock();
+  setupToken(db, { briefingAudio: false });
+  db.queue("hub_briefing_questions", "select", { data: { id: Q, audio_r2_key: KEY }, error: null });
+  db.queueRpc("briefing_audio_release", { data: KEY, error: null });
+  const res = await makeHandler(db)(
+    new Request(`https://example.test/hub-briefing/${Q}/audio?token=t`, { method: "DELETE" }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(await readJson(res), { ok: true });
+  // Só o feature_hub_portal do resolveHubToken: o gate nem é consultado.
+  assertEquals(countFeatureRpcCalls(db), 1);
+});
+
+Deno.test("hub-briefing: com a feature ligada o presign segue normal", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db, { briefingAudio: true });
+  db.queue("hub_briefing_questions", "select", { data: { id: Q }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: null, error: null });
+  const res = await makeHandler(db)(
+    postReq("/upload-url", { token: "t", question_id: Q, mime_type: "audio/webm", size_bytes: 5000 }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).r2_key, KEY);
+  assertEquals(countFeatureRpcCalls(db), 2);
 });

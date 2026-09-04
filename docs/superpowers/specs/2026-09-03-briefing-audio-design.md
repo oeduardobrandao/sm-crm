@@ -92,6 +92,12 @@ Testes: normalização de mime, cap, prefixo da chave, mismatches do HEAD, mapea
 - `CLAUDE.md` env vars: `TRANSCRIBE_WORKER_URL`, `TRANSCRIBE_SECRET` (opcionais; sem elas o áudio salva e a transcrição fica `failed`). `README.md`: linha de `workers/transcribe/` e nota de deploy manual.
 - Ordem de deploy (Vercel publica o frontend no merge, então banco e functions vão antes): 1) `npx supabase db push --linked`; 2) `wrangler deploy` em `workers/transcribe` + `wrangler secret put TRANSCRIBE_SECRET`; 3) secrets `TRANSCRIBE_WORKER_URL`/`TRANSCRIBE_SECRET` no Supabase; 4) `npx supabase functions deploy hub-briefing --no-verify-jwt` e `briefing-audio --no-verify-jwt`; 5) merge. Contratos GET/POST antigos são aditivos, bundles antigos do Hub seguem funcionando.
 
+## Gate por plano
+
+O recurso é pago: `plans.feature_briefing_audio` (migration `20260907000002_plans_feature_briefing_audio.sql`), ligado em **Pro**, **Max** e no `lifetime` de cortesia. Só a **escrita** passa pelo gate — `hub-briefing` responde 403 `Recurso indisponível no plano atual.` em `POST /upload-url`, `POST /{id}/audio` e `POST /{id}/audio/transcribe`, depois de resolver o token e antes do rate limit de escrita. O `GET` do briefing, o `DELETE /{id}/audio` e o player do CRM (`briefing-audio`) ficam de fora de propósito: depois de um downgrade o cliente ainda ouve e remove o que já gravou, só não grava nem transcreve mais. O `hub-bootstrap` devolve `feature_briefing_audio` (fail closed em erro de RPC) e o Hub esconde o gravador e o "Tentar novamente" quando ele é falso — sem CTA de upgrade, já que quem vê o Hub não é quem contrata o plano.
+
+Como a flag entra em `_shared/entitlements.ts:FEATURE_COLUMNS`, o rollout precisa de `npx supabase db push --linked` **antes** do merge e do redeploy de `workspace-limits`, `platform-admin`, `paywall-report`, `hub-bootstrap` e `hub-briefing` (os três últimos com `--no-verify-jwt`).
+
 ## Riscos e pontos em aberto
 1. Orçamento 20/3600 na chave de áudio = 10 gravações/hora por cliente (presign + finalize). Subir para 40 se apertar.
 2. Uploads abandonados (PUT sem finalize) em `briefing-audio/` nunca são varridos (o scan só olha `contas/`). Aceitável na v1; follow-up: scan de `briefing-audio/` contra `hub_briefing_questions.audio_r2_key`.
