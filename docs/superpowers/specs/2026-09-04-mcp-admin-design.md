@@ -261,6 +261,16 @@ create.
 | `list_plans` | nenhuma | `plans` com limites e features, mesmo shape de `list-plans` |
 | `get_dashboard` | nenhuma | `{ totals: { workspaces, members, clients, with_overrides, active_plans }, mrr: { mrr_cents, paying_count }, trials: { trial_mrr_cents, trial_count } }` |
 
+**Dados pessoais.** `get_dashboard` devolve **só agregados**: dos `Response`
+de `handleGetMrr`/`handleGetTrials` ficam apenas `mrr_cents`, `paying_count`,
+`trial_mrr_cents`, `trial_count`; os arrays `workspaces`/`trials` (com
+`owner_name`, `owner_email`, `owner_telefone`, `owner_marketing_opt_in`) são
+descartados e um teste garante que nenhuma chave `owner_*` aparece na saída.
+`list_workspaces` e `get_workspace` mantêm nome e e-mail do dono/membros (é o
+que identifica um workspace para o admin), mas removem `telefone`/
+`owner_telefone` e `marketing_opt_in`/`owner_marketing_opt_in` antes de
+devolver: a transcrição de um agente não é o lugar de telefone de cliente.
+
 As quatro tools reutilizam os handlers do `platform-admin` lendo o `Response`
 que devolvem: `handleListWorkspaces` (`list-workspaces.ts`), `handleGetMrr` e
 `handleGetTrials` (`mrr.ts`) já são módulos sem `Deno.serve`;
