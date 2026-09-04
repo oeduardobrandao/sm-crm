@@ -384,7 +384,7 @@ Regra de frequência:
               <p className="text-xs text-destructive -mt-3">{errors.pages[pageIndex].cta}</p>
             )}
 ```
-Preview: `const anyCta = hasCta || form.pages.some((p) => p.cta_label.trim() && p.cta_url.trim());` e no `<PopupCard>`: pages mapeadas com `ctaLabel: p.cta_label.trim() && p.cta_url.trim() ? p.cta_label : null`, `onCta={anyCta ? () => {} : undefined}`.
+Preview: `const anyCta = hasCta || form.pages.some((p) => p.cta_label.trim() && p.cta_url.trim());` e no `<PopupCard>`: pages mapeadas com `ctaLabel: p.cta_label.trim() && p.cta_url.trim() ? p.cta_label : null`, `onCta={anyCta ? () => {} : undefined}`. O default do secundário passa a olhar o CTA **efetivo da última página**: `const last = form.pages[form.pages.length - 1]; const lastHasCta = Boolean((last.cta_label.trim() && last.cta_url.trim()) || hasCta); const secondaryLabel = form.secondary_label.trim() || defaultSecondaryLabel(form.require_ack, lastHasCta);` (o placeholder do input "Secondary label" usa o mesmo `lastHasCta`). Teste: página única com CTA só na página e sem CTA global → o preview mostra "Agora não", não "Fechar".
 
 - [ ] **Step 4: `npx vitest run apps/admin`, `npx tsc -p apps/admin/tsconfig.json --noEmit`, `npm run lint`, `npm run format`.**
 
@@ -469,7 +469,7 @@ export interface PopupPage {
     [popup, effectiveCtaUrl, record, navigate],
   );
 ```
-`const anyCta = Boolean(popup.cta_label && popup.cta_url) || popup.pages.some((p) => p.cta_label && p.cta_url);` (mantém `hasCta` global para o `defaultSecondaryLabel`). No `<PopupCard>`: `pages={popup.pages.map((p) => ({ ..., ctaLabel: p.cta_label && p.cta_url ? p.cta_label : null }))}`, `ctaLabel={hasCta ? popup.cta_label : null}`, `onCta={anyCta ? handleCta : undefined}`.
+`const anyCta = Boolean(popup.cta_label && popup.cta_url) || popup.pages.some((p) => p.cta_label && p.cta_url);`. O default do secundário olha o CTA efetivo da última página: `const lastHasCta = effectiveCtaUrl(popup.pages.length - 1) !== null; const secondaryLabel = popup.secondary_label ?? defaultSecondaryLabel(requireAck, lastHasCta);` (teste: popup sem CTA global e com CTA só na última página mostra "Agora não"). No `<PopupCard>`: `pages={popup.pages.map((p) => ({ ..., ctaLabel: p.cta_label && p.cta_url ? p.cta_label : null }))}`, `ctaLabel={hasCta ? popup.cta_label : null}`, `onCta={anyCta ? handleCta : undefined}`.
 
 - [ ] **Step 4: `npx vitest run apps/crm/src/components/layout apps/crm/src/store`, `npx tsc -p apps/crm/tsconfig.json --noEmit`, `npm run lint`, `npm run format`.**
 
