@@ -13,10 +13,12 @@ export interface PopupPage {
   eyebrow: string | null;
   body: string;
   image_key: string | null;
+  cta_label: string | null;
+  cta_url: string | null;
 }
 
 const MAX_PAGES = 6;
-const PAGE_KEYS = new Set(["title", "eyebrow", "body", "image_key"]);
+const PAGE_KEYS = new Set(["title", "eyebrow", "body", "image_key", "cta_label", "cta_url"]);
 const IMAGE_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
 const CTA_URL_RE = /^(\/(?!\/)|https?:\/\/)/;
 
@@ -74,7 +76,23 @@ export function validatePages(
     ) {
       return { ok: false, error: `page ${i}: image_key belongs to another workspace` };
     }
-    pages.push({ title, eyebrow: eyebrow.value, body, image_key: image.value });
+    const pageCtaLabel = optionalText(r.cta_label, 40);
+    if (!pageCtaLabel.ok) return { ok: false, error: `page ${i}: cta_label max 40` };
+    const pageCtaUrl = optionalText(r.cta_url, 2048);
+    if (!pageCtaUrl.ok) return { ok: false, error: `page ${i}: cta_url max 2048` };
+    if ((pageCtaLabel.value === null) !== (pageCtaUrl.value === null)) {
+      return { ok: false, error: `page ${i}: cta_label and cta_url go together` };
+    }
+    if (
+      pageCtaUrl.value !== null &&
+      (!CTA_URL_RE.test(pageCtaUrl.value) || /[\t\r\n]/.test(pageCtaUrl.value))
+    ) {
+      return { ok: false, error: `page ${i}: cta_url must start with / or http(s)://` };
+    }
+    pages.push({
+      title, eyebrow: eyebrow.value, body, image_key: image.value,
+      cta_label: pageCtaLabel.value, cta_url: pageCtaUrl.value,
+    });
   }
   return { ok: true, pages };
 }
@@ -94,7 +112,9 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
 
   const frequency = row.frequency ?? "once";
   if (frequency !== "once" && frequency !== "until_cta") return "invalid frequency";
-  if (frequency === "until_cta" && ctaUrl.value === null) return "until_cta requires a CTA";
+  if (frequency === "until_cta" && ctaUrl.value === null && !pagesHaveCta(row.pages)) {
+    return "until_cta requires a CTA";
+  }
   const requireAck = row.require_ack === true;
   if (requireAck && frequency === "until_cta") return "require_ack implies once";
 
@@ -169,6 +189,11 @@ async function adminContaId(svc: Svc, userId: string): Promise<string | null> {
   const { data, error } = await svc.from("profiles").select("conta_id").eq("id", userId).maybeSingle();
   if (error) throw error;
   return (data?.conta_id as string | undefined) ?? null;
+}
+
+function pagesHaveCta(pages: unknown): boolean {
+  return Array.isArray(pages) &&
+    pages.some((p) => typeof (p as { cta_url?: unknown })?.cta_url === "string" && (p as { cta_url: string }).cta_url);
 }
 
 function pagesHaveImages(pages: unknown): boolean {
