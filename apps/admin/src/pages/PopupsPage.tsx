@@ -73,6 +73,8 @@ const DARK_VARS = {
   '--text-main': '#e8eaf0',
   '--text-muted': '#9ca3af',
   '--border-color': '#1e2430',
+  '--cta-bg': '#e8eaf0',
+  '--cta-fg': '#12151a',
 } as React.CSSProperties;
 
 export default function PopupsPage() {
@@ -689,6 +691,9 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                   value={form.ends_at}
                   onChange={(e) => setForm((f) => ({ ...f, ends_at: e.target.value }))}
                 />
+                {errors?.schedule && (
+                  <p className="text-xs text-destructive mt-1">{errors.schedule}</p>
+                )}
               </div>
             </div>
 

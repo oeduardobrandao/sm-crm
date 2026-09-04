@@ -66,6 +66,13 @@ describe('PopupCard navegação por posição', () => {
     expect(props.onSecondary).toHaveBeenCalled();
   });
 
+  it('CTA ink usa os tokens de tema do CRM (--cta-bg/--cta-fg), com fallback claro', () => {
+    renderCard({ page: 2, ctaStyle: 'ink' });
+    const style = screen.getByRole('button', { name: 'Ver' }).getAttribute('style');
+    expect(style).toContain('var(--cta-bg, #12151a)');
+    expect(style).toContain('var(--cta-fg, #ffffff)');
+  });
+
   it('página única: sem pontinhos, sem contador, CTA + secundário', () => {
     renderCard({ pages: [pages[0]], page: 0 });
     expect(screen.queryByRole('button', { name: /Página 1 de/ })).toBeNull();

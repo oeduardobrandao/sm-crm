@@ -44,7 +44,10 @@ describe('popupToForm / formToPayload', () => {
     expect(form.pages).toHaveLength(2);
     expect(form.pages[0].key).not.toBe(form.pages[1].key);
     expect(form.pages[1].eyebrow).toBe('');
-    expect(form.starts_at).toBe(popup.starts_at!.slice(0, 16));
+    // True round trip: form -> payload must land back on the exact same ISO
+    // instant, not just the same UTC digits (the fixture's ...T12:00:00.000Z
+    // round-trips exactly).
+    expect(formToPayload(popupToForm(popup)).starts_at).toBe(popup.starts_at);
 
     const payload = formToPayload(form);
     expect(payload.pages).toEqual([
@@ -57,6 +60,11 @@ describe('popupToForm / formToPayload', () => {
     expect(payload.target_workspace_ids).toBeNull();
     expect(payload.ends_at).toBeNull();
     expect(typeof payload.starts_at).toBe('string');
+  });
+
+  it('popupToForm não deriva pelo fuso horário local (checagem de offset manual, vale em qualquer fuso)', () => {
+    const local = popupToForm(popup).starts_at;
+    expect(new Date(local).toISOString()).toBe(popup.starts_at);
   });
 
   it('formulário vazio tem uma página e defaults da spec', () => {
@@ -104,6 +112,15 @@ describe('validateForm', () => {
     expect(validateForm(f)!.target).toBe('Select at least one plan');
     const g = { ...valid(), target_mode: 'workspace' as const };
     expect(validateForm(g)!.target).toBe('Select at least one workspace');
+  });
+
+  it('ends_at deve vir depois de starts_at quando os dois estão preenchidos', () => {
+    const f = { ...valid(), starts_at: '2026-09-10T12:00', ends_at: '2026-09-10T10:00' };
+    expect(validateForm(f)!.schedule).toBe('End must be after start');
+    const eq = { ...valid(), starts_at: '2026-09-10T12:00', ends_at: '2026-09-10T12:00' };
+    expect(validateForm(eq)!.schedule).toBe('End must be after start');
+    const ok = { ...valid(), starts_at: '2026-09-10T12:00', ends_at: '2026-09-10T13:00' };
+    expect(validateForm(ok)?.schedule).toBeUndefined();
   });
 
   it('limites de tamanho', () => {

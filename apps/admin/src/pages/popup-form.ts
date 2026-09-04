@@ -1,3 +1,4 @@
+import { format } from 'date-fns';
 import type { GlobalPopup } from '../lib/api';
 
 export const MAX_PAGES = 6;
@@ -38,6 +39,7 @@ export interface PopupFormErrors {
   cta?: string;
   frequency?: string;
   target?: string;
+  schedule?: string;
 }
 
 let pageKeyCounter = 0;
@@ -83,8 +85,11 @@ export function popupToForm(p: GlobalPopup): PopupFormState {
     target_mode: p.target_mode,
     target_plan_ids: p.target_plan_ids ?? [],
     target_workspace_ids: p.target_workspace_ids ?? [],
-    starts_at: p.starts_at ? p.starts_at.slice(0, 16) : '',
-    ends_at: p.ends_at ? p.ends_at.slice(0, 16) : '',
+    // ISO (UTC) -> local `datetime-local` value. Slicing the UTC digits
+    // instead would have the browser reinterpret them as local time and
+    // drift the schedule by the UTC offset on every edit-save.
+    starts_at: p.starts_at ? format(new Date(p.starts_at), "yyyy-MM-dd'T'HH:mm") : '',
+    ends_at: p.ends_at ? format(new Date(p.ends_at), "yyyy-MM-dd'T'HH:mm") : '',
     status: p.status,
   };
 }
@@ -152,6 +157,11 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
     any = true;
   } else if (f.target_mode === 'workspace' && f.target_workspace_ids.length === 0) {
     errors.target = 'Select at least one workspace';
+    any = true;
+  }
+
+  if (f.starts_at && f.ends_at && new Date(f.ends_at) <= new Date(f.starts_at)) {
+    errors.schedule = 'End must be after start';
     any = true;
   }
 

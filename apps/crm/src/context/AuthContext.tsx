@@ -277,6 +277,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Never let a support-tooling nicety break auth.
         }
         queryClient.clear();
+        // Same shared-machine reasoning as resetAnalytics()/Crisp above: B
+        // must not inherit A's popup shown/skipped/closed state
+        // (sessionStorage, per-tab). Mirrors `signOut` below.
+        clearPopupSession();
         // A non-null nextUser still has hydration ahead of it (the
         // profile-fetch effect below, keyed on userId, takes over `loading`
         // from here). Raising it back to true -- rather than leaving it at

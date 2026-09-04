@@ -63,7 +63,7 @@ const btnBase: CSSProperties = {
 };
 
 const btnStyles: Record<'ink' | 'brand' | 'ghost' | 'link', CSSProperties> = {
-  ink: { ...btnBase, background: '#12151a', color: '#ffffff' },
+  ink: { ...btnBase, background: 'var(--cta-bg, #12151a)', color: 'var(--cta-fg, #ffffff)' },
   brand: { ...btnBase, background: '#ffbf30', color: '#12151a' },
   ghost: {
     ...btnBase,

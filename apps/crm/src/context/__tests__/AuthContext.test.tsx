@@ -221,6 +221,10 @@ describe('AuthProvider', () => {
     // prove it is purged on the switch instead of surviving for user B.
     queryClient.setQueryData(['transacoes'], [{ id: 'tx-a' }]);
 
+    // Seed A's popup session state (shared-machine regression, same as
+    // signOut below): B must not inherit A's shown/skipped/closed popups.
+    sessionStorage.setItem('mesaas_popup_shown', 'p1');
+
     // Block B's profile fetch so we can observe the state in between the
     // auth event and B's own hydration completing.
     let resolveProfileB!: (profile: Record<string, unknown> | null) => void;
@@ -265,6 +269,9 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('workspaceRole')).toHaveTextContent('null');
     expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('unknown');
     expect(queryClient.getQueryData(['transacoes'])).toBeUndefined();
+    // Same shared-machine reasoning: B must not inherit A's popup
+    // shown/skipped/closed state (sessionStorage, per-tab). Mirrors signOut.
+    expect(sessionStorage.getItem('mesaas_popup_shown')).toBeNull();
     // posthog-js keeps A's distinct_id across a second identify() call
     // without an explicit reset() first — omitting this call would merge
     // B's events/person-properties into A's PostHog profile.

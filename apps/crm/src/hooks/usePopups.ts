@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getActivePopups,
@@ -43,9 +44,14 @@ export function usePopups() {
     },
   });
 
+  const record = useCallback(
+    (popupId: string, action: PopupAction) => mutation.mutate({ popupId, action }),
+    [mutation.mutate],
+  );
+
   return {
     popupsQuery,
     interactionsQuery,
-    record: (popupId: string, action: PopupAction) => mutation.mutate({ popupId, action }),
+    record,
   };
 }
