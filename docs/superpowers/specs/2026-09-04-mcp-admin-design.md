@@ -12,7 +12,7 @@ plataforma** em nome de um `platform_admin`:
 | Recurso | Ver | Criar | Editar |
 |---|---|---|---|
 | Banners globais (`global_banners`) | sim | sim | sim |
-| Popups globais (`global_popups`) | sim | sim | sim |
+| Popups globais (`global_popups`) | sim | sim | sim, incl. imagem das páginas |
 | Artigos de suporte (`kb_articles`) | sim | sim | sim, incl. imagem de capa e imagens inline |
 | Workspaces, planos, dashboard | somente leitura | não | não |
 
@@ -51,9 +51,16 @@ Não há tool de exclusão em nenhum recurso. Arquivar um banner ou popup é
    caminho do editor do Admin (R2 sob o `conta_id` do admin) fica como está e
    **não** é exposto pelo MCP: imagens inline com `r2Key` 403 para leitores de
    outros workspaces depois de 1h (`20260717000002_kb_article_screenshots.sql`).
-6. **Popups não recebem imagens novas pelo MCP.** `image_key` só é aceito se
-   já estiver persistido naquele popup (mesma regra `alreadyAllowedKeys` do
-   validador). Adicionar imagem em popup continua sendo tarefa da UI do Admin.
+6. **Imagens de popup seguem o caminho da UI do Admin: R2 sob o workspace
+   pessoal do admin.** O validador (`validatePages`) já aceita `image_key` sob
+   `contas/<conta do admin>/files/`, e `sign-r2-urls` já assina essas chaves
+   para qualquer usuário que possa ver o popup, então nem o CRM nem o validador
+   mudam. A única obrigação nova é registrar a linha em `files` (via
+   `file_insert_with_quota`, como o `file-upload-finalize`): o orphan-scan do
+   `post-media-cleanup-cron` move para a lixeira qualquer objeto em `contas/`
+   sem linha em `files`/`post_media`. Pré-requisito, já verdadeiro para a UI:
+   o admin precisa de `profiles.conta_id`; sem ele a tool responde
+   `McpInputError`.
 
 ## 3. Arquitetura
 
@@ -66,7 +73,8 @@ supabase/functions/mcp-admin/index.ts     ── PRM discovery, 401+WWW-Authenti
         ├─ tools.ts        registro das tools (escopo + audit + errorResult)
         ├─ queries.ts      banners / popups / kb / platform (leitura e escrita)
         ├─ markdown.ts     Markdown ⇄ TipTap + content_plain (puro)
-        └─ images.ts       upload_kb_image (bucket kb-images) + probe de dimensões
+        └─ images.ts       upload_kb_image (bucket kb-images), upload_popup_image (R2 + files)
+                           e probe de dimensões
 supabase/functions/_shared/mcp-admin-auth.ts  ── escopos, AdminMcpContext, resolveAdminCtx
 supabase/functions/_shared/admin-popups.ts    ── validadores de popup (movidos)
 supabase/functions/_shared/admin-banners.ts   ── validador de banner (novo)
@@ -196,12 +204,17 @@ chars, `link` https ou caminho relativo `/…`, `custom_color` `^#[0-9a-fA-F]{6}
 | `get_popup` | `popup_id` | um popup |
 | `create_popup` | `pages` (1..6 de `{ title, eyebrow?, body }`), `target_mode`, e os opcionais `cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, target_plan_ids, target_workspace_ids, starts_at, ends_at, status` | `{ id, status }` |
 | `update_popup` | `popup_id` + subconjunto | `{ id, status }` |
+| `upload_popup_image` | `filename, mime_type, size_bytes?, source_url?` | seção 7 |
 
-Validação = `validatePages(pages, undefined, persistedImageKeys(atual))` +
+`pages` aceita `image_key` em cada página. Validação =
+`validatePages(pages, contaDoAdmin, persistedImageKeys(atual))` +
 `validatePopupFields(merged)` + `normalizePopupText`, importados de
-`_shared/admin-popups.ts`. Em `update_popup`, `pages` substitui o array
-inteiro; `image_key` só passa se já existir no popup atual. Contadores vêm da
-view `popup_interaction_counts` (service role).
+`_shared/admin-popups.ts`, exatamente como o `platform-admin`. Em
+`update_popup`, `pages` substitui o array inteiro; uma `image_key` passa se
+já existir no popup atual (pode ter sido enviada por outro admin) ou se estiver
+sob `contas/<conta do admin>/files/`. Antes de persistir, cada `image_key`
+nova é finalizada (seção 7). Contadores vêm da view
+`popup_interaction_counts` (service role).
 
 ### 4.3 Artigos de suporte (`kb:read` / `kb:write`)
 
@@ -296,7 +309,9 @@ para `width`/`height`. Falha no probe → `width`/`height` `null` (o renderer do
 CRM já trata `null`, só perde o `aspect-ratio` de placeholder). URLs `http://`
 ou não-https são rejeitadas com `McpInputError`.
 
-## 7. Imagens (`upload_kb_image`)
+## 7. Imagens
+
+### 7.1 Artigos (`upload_kb_image`)
 
 Dois modos, decididos por `source_url`:
 
@@ -320,6 +335,32 @@ usa `upsert: false`, então uma colisão de `uuid8` falha em vez de sobrescrever
 O `public_url` serve tanto para `![alt](public_url)` no corpo quanto para
 `cover_image_url`. Nenhuma alteração em `sign-r2-urls`: o bucket é público e
 `r2Key: null` faz o CRM renderizar o `src` sem assinar.
+
+### 7.2 Popups (`upload_popup_image`)
+
+Espelha o fluxo `file-upload-url → PUT → file-upload-finalize` da UI, com o
+`conta_id` de `profiles` do admin (`ctx.user_id`) como dono. Chave
+`contas/<conta>/files/<uuid>.<ext>`, `mime_type` em `image/jpeg|png|webp|gif`,
+cap 10 MB, quota do workspace do admin checada antes de assinar (mesmo
+precheck de `createMediaUpload` do `mcp`).
+
+**A. Importar de URL** (`source_url`): mesmas regras de fetch da 7.1; o
+servidor faz o `PUT` no R2 pela URL pré-assinada (`signPutUrl` + `fetch` com
+`AbortSignal`, padrão já usado nas functions), chama `file_insert_with_quota`
+com `kind: "image"`, `uploaded_by: ctx.user_id`, `width`/`height` do probe, e
+responde `{ image_key, width, height, size_bytes }`.
+
+**B. Upload direto**: exige `size_bytes`; responde
+`{ image_key, upload_url, expires_in: 900 }`. A linha em `files` **não** é
+criada aqui. Ela é criada na primeira vez que a `image_key` entra num
+`create_popup`/`update_popup`: o servidor faz `headObject` (objeto existe,
+`contentType` bate com o mime da extensão, tamanho ≤ 10 MB) e só então chama
+`file_insert_with_quota`; objeto ausente → `McpInputError("image_key not
+uploaded yet")`. Um upload que nunca é usado num popup fica sem linha e o
+orphan-scan o recolhe no ciclo normal, sem lixo em `files`.
+
+A finalização é idempotente: se já existe linha em `files` com aquela
+`r2_key`, nada é inserido.
 
 ## 8. Segurança
 
@@ -352,7 +393,11 @@ Deno, em `supabase/functions/__tests__/`, com o fake `makeFakeDb` do padrão
   colunas fora da allowlist descartadas, `image_key` novo rejeitado em popup,
   slug duplicado → mensagem amigável, `content`+`content_plain` sempre juntos).
 - `mcp-admin-images_test.ts`: probe de dimensões PNG/JPEG/WebP/GIF em fixtures
-  de bytes; rejeição de http/IP/localhost; cap de tamanho.
+  de bytes; rejeição de http/IP/localhost; cap de tamanho; popup: chave sob o
+  conta do admin, quota excedida → `McpInputError`, admin sem `conta_id` →
+  `McpInputError`, finalização no persist (headObject ausente → erro; linha
+  em `files` criada uma única vez; `image_key` já persistida não refaz
+  headObject).
 - `mcp-oauth-consent`: extensão de `mcp-oauth_test.ts` para `target:
   "platform"` (payload, gate de platform_admins, tabela alvo).
 - `platform-admin-popups_test.ts` continua passando após o move para
@@ -380,6 +425,5 @@ Deno, em `supabase/functions/__tests__/`, com o fake `makeFakeDb` do padrão
 
 - Chaves estáticas `mesaas_adm_` e página de emissão no Admin.
 - UI de revogação de grants de admin na página de Admins.
-- Imagens novas em popups via MCP.
 - `kb_context_links` (vínculo artigo ↔ rota) via MCP.
 - Escrita em workspaces/planos.
