@@ -108,5 +108,124 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
   return null;
 }
 
-// Usado só para o tipo; os handlers entram na Task 3.
-export type Svc = SupabaseClient;
+type Svc = SupabaseClient;
+type Headers = Record<string, string>;
+
+const ACTIONS = ["seen", "closed", "cta", "ack"] as const;
+type Counts = Record<(typeof ACTIONS)[number], number>;
+
+function json(body: unknown, status: number, headers: Headers): Response {
+  return new Response(JSON.stringify(body), { status, headers });
+}
+
+function pickColumns(body: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const col of POPUP_COLUMNS) {
+    if (body[col] !== undefined) out[col] = body[col];
+  }
+  return out;
+}
+
+export async function handleListPopups(svc: Svc, body: { status?: string }, headers: Headers) {
+  let query = svc.from("global_popups").select("*").order("created_at", { ascending: false });
+  if (body.status) query = query.eq("status", body.status);
+  const { data: popups, error } = await query;
+  if (error) throw error;
+
+  const rows = (popups ?? []) as Array<Record<string, unknown> & { id: string }>;
+  const counts = new Map<string, Counts>();
+  for (const p of rows) counts.set(p.id, { seen: 0, closed: 0, cta: 0, ack: 0 });
+
+  if (rows.length > 0) {
+    const { data: agg, error: aggErr } = await svc
+      .from("popup_interaction_counts")
+      .select("popup_id, action, users")
+      .in("popup_id", rows.map((p) => p.id));
+    if (aggErr) throw aggErr;
+    for (const r of (agg ?? []) as Array<{ popup_id: string; action: string; users: number }>) {
+      const c = counts.get(r.popup_id);
+      if (c && (ACTIONS as readonly string[]).includes(r.action)) c[r.action as keyof Counts] = r.users;
+    }
+  }
+
+  return json({ popups: rows.map((p) => ({ ...p, counts: counts.get(p.id) })) }, 200, headers);
+}
+
+export async function handleCreatePopup(
+  svc: Svc,
+  body: Record<string, unknown>,
+  adminId: string,
+  headers: Headers,
+) {
+  if (body.pages === undefined || !body.target_mode) {
+    return json({ error: "pages and target_mode are required" }, 400, headers);
+  }
+  const pages = validatePages(body.pages);
+  if (!pages.ok) {
+    console.error("[popups] create rejected:", pages.error);
+    return json({ error: "Invalid popup" }, 400, headers);
+  }
+  const insert = { ...pickColumns(body), pages: pages.pages, created_by: adminId };
+  const fieldError = validatePopupFields(insert);
+  if (fieldError) {
+    console.error("[popups] create rejected:", fieldError);
+    return json({ error: "Invalid popup" }, 400, headers);
+  }
+
+  const { data, error } = await svc.from("global_popups").insert(insert).select().single();
+  if (error) throw error;
+  return json({ popup: data }, 201, headers);
+}
+
+export async function handleUpdatePopup(svc: Svc, body: Record<string, unknown>, headers: Headers) {
+  const popupId = body.popup_id;
+  if (typeof popupId !== "string" || !popupId) return json({ error: "popup_id is required" }, 400, headers);
+
+  const update = pickColumns(body);
+  if (Object.keys(update).length === 0) return json({ error: "No fields to update" }, 400, headers);
+
+  if (update.pages !== undefined) {
+    const pages = validatePages(update.pages);
+    if (!pages.ok) {
+      console.error("[popups] update rejected:", pages.error);
+      return json({ error: "Invalid popup" }, 400, headers);
+    }
+    update.pages = pages.pages;
+  }
+
+  // Regras cruzadas valem sobre a linha resultante, não só sobre o patch.
+  const { data: current, error: readErr } = await svc
+    .from("global_popups").select("*").eq("id", popupId).maybeSingle();
+  if (readErr) throw readErr;
+  if (!current) return json({ error: "Popup not found" }, 404, headers);
+
+  const fieldError = validatePopupFields({ ...(current as Record<string, unknown>), ...update });
+  if (fieldError) {
+    console.error("[popups] update rejected:", fieldError);
+    return json({ error: "Invalid popup" }, 400, headers);
+  }
+
+  const { data, error } = await svc
+    .from("global_popups").update(update).eq("id", popupId).select().single();
+  if (error) throw error;
+  return json({ popup: data }, 200, headers);
+}
+
+export async function handleDeletePopup(svc: Svc, body: { popup_id?: string }, headers: Headers) {
+  const { popup_id } = body;
+  if (!popup_id) return json({ error: "popup_id is required" }, 400, headers);
+
+  // Falha fechada: sem linha é 404, erro de leitura sobe. Nunca cair no DELETE
+  // com a guarda de draft pulada.
+  const { data: popup, error: readErr } = await svc
+    .from("global_popups").select("status").eq("id", popup_id).maybeSingle();
+  if (readErr) throw readErr;
+  if (!popup) return json({ error: "Popup not found" }, 404, headers);
+  if (popup.status !== "draft") {
+    return json({ error: "Only draft popups can be deleted" }, 400, headers);
+  }
+
+  const { error } = await svc.from("global_popups").delete().eq("id", popup_id);
+  if (error) throw error;
+  return json({ message: "Popup deleted" }, 200, headers);
+}
