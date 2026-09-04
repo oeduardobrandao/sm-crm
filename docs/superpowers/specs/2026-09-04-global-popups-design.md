@@ -77,6 +77,7 @@ CHECK (cta_style IN ('ink', 'brand'))
 CHECK (frequency IN ('once', 'until_cta'))
 CHECK ((cta_label IS NULL) = (cta_url IS NULL))                 -- par completo ou nenhum
 CHECK (frequency <> 'until_cta' OR cta_url IS NOT NULL)         -- senão nunca termina
+CHECK (NOT (require_ack AND frequency = 'until_cta'))          -- ver "Semântica de já viu"
 CHECK (status IN ('draft', 'active', 'archived'))
 CHECK (target_mode IN ('all', 'plan', 'workspace'))
 CHECK (target_mode <> 'plan' OR (target_plan_ids IS NOT NULL AND array_length(target_plan_ids, 1) > 0))
@@ -113,6 +114,11 @@ Avaliada no CRM a partir das interações do próprio usuário:
 
 `seen` nunca esconde. É gravado **uma vez por usuário por popup**, na primeira exibição;
 o cliente verifica no cache das próprias interações antes de inserir.
+
+`require_ack` implica `once`. Sem X, sem clique fora e sem Esc, `closed` nunca acontece,
+então `until_cta` seria idêntico a `once`. O CHECK proíbe a combinação, o
+`platform-admin` responde 400, e o formulário força `Once` e desabilita o radio de
+frequência enquanto "Require acknowledgement" está marcado.
 
 ### View `popup_interaction_counts`
 
@@ -151,10 +157,11 @@ O admin lê e escreve tudo pelo service role dentro do `platform-admin`, como no
 
 ### Migration
 
-Um arquivo, `supabase/migrations/20260904000010_global_popups.sql`. O prefixo precisa
-ficar acima da cauda de `origin/main` no momento de abrir o PR (hoje
-`20260902000010_story_insights.sql`); reconferir com
-`git ls-tree origin/main:supabase/migrations | tail`.
+Um arquivo, `supabase/migrations/20260906000010_global_popups.sql`. O prefixo precisa
+ficar acima da cauda de `origin/main` no momento de abrir o PR (em 2026-09-04 a cauda
+é `20260906000001_harden_cliente_foto_fn_search_path.sql`); reconferir com
+`git ls-tree --name-only origin/main:supabase/migrations | tail` e renumerar se a
+cauda tiver avançado.
 
 ### `platform-admin`
 
@@ -167,8 +174,9 @@ Quatro actions no molde exato dos handlers de banner, com allowlist `POPUP_COLUM
 | `update-popup` | Exige `popup_id`; atualiza só colunas da allowlist; 400 se nada a atualizar. |
 | `delete-popup` | Exige `popup_id`; 400 se `status <> 'draft'`; hard delete, cascade nas interações. |
 
-Validação adicional no servidor, com 400 e mensagem genérica: par de CTA incompleto e
-`until_cta` sem CTA (o banco também trava, mas o erro de CHECK não deve vazar).
+Validação adicional no servidor, com 400 e mensagem genérica: par de CTA incompleto,
+`until_cta` sem CTA e `require_ack` com `until_cta` (o banco também trava, mas o erro
+de CHECK não deve vazar).
 
 ### `sign-r2-urls`
 
@@ -220,8 +228,8 @@ Campos, na ordem:
 | CTA label / CTA URL | dois text lado a lado | os dois ou nenhum |
 | Secondary label | text | opcional; placeholder mostra o default que o CRM usará |
 | CTA style | segmented `Ink` / `Brand yellow` | default Ink |
-| Frequency | radio `Once per user` / `Every session until CTA` | default Once |
-| Require acknowledgement | checkbox | default off |
+| Frequency | radio `Once per user` / `Every session until CTA` | default Once; desabilitado e forçado em Once enquanto Require acknowledgement está marcado |
+| Require acknowledgement | checkbox | default off; marcar força Frequency = Once |
 | Target | `TargetPicker` | igual aos banners |
 | Starts at / Ends at | datetime-local | opcionais |
 | Status | select | default Draft |
@@ -347,10 +355,19 @@ terminaram:
 5. Ao abrir: grava `mesaas_popup_shown`, `markSeen` (se ainda não há `seen` no cache)
    e `captureEvent('popup_shown', { popup_id })`.
 
-Renderiza o `Dialog` do CRM (`components/ui/dialog`) com `PopupCard` dentro, sem o
-chrome padrão do `DialogContent` (sem padding, sem título extra; o card é o conteúdo).
-Com `require_ack`: `onEscapeKeyDown` e `onInteractOutside` com `preventDefault`, e
-`requireAck` no card esconde o X. `aria-labelledby` aponta para o título do card.
+**Não usa o `DialogContent` do CRM.** Ele envolve os filhos em um wrapper fixo com
+`p-6` e renderiza um `DialogPrimitive.Close` (o X do canto) sem nenhuma prop que
+desligue os dois, então o card ficaria com padding indesejado, dois X sobrepostos e,
+em `require_ack`, um X funcional. O host compõe os primitivos diretamente:
+`Dialog`, `DialogPortal` e `DialogOverlay` exportados de `components/ui/dialog`
+(mesmo overlay, mesmo `z-[9010]`), e um `DialogPrimitive.Content` próprio de
+`@radix-ui/react-dialog` centralizado, `z-[9011]`, sem padding e sem X, com o
+`PopupCard` como único filho. `dialog.tsx` não muda.
+
+Com `require_ack`: `onEscapeKeyDown` e `onInteractOutside` com `preventDefault` no
+`Content`, e `requireAck` no card esconde o X do próprio card. O título do card recebe
+um `id` e o `Content` aponta `aria-labelledby` para ele; `aria-describedby` vai para o
+corpo.
 
 Ações:
 
@@ -360,9 +377,11 @@ Ações:
 | Botão secundário (com `require_ack`) | `ack` | | `popup_ack` | fecha |
 | CTA | `cta` | | `popup_cta` | fecha e navega |
 
-Navegação do CTA: `sanitizeUrl(cta_url)`; se começa com `/`, `navigate()` do router;
-senão `window.open(url, '_blank', 'noopener,noreferrer')`. A gravação acontece antes
-de navegar.
+Navegação do CTA: `safe = sanitizeUrl(cta_url)`. Se `safe` começa com `/`,
+`navigate(safe)` do router. Senão, `openExternalUrl(cta_url)` de `utils/security.ts`,
+que devolve `null` sem abrir nada quando a URL é rejeitada (`sanitizeUrl` devolve `'#'`
+nesses casos; nunca chamar `window.open` com esse valor). A interação `cta` é gravada
+antes de navegar, e o popup fecha mesmo quando a navegação vira no-op.
 
 Os quatro nomes de evento (`popup_shown`, `popup_closed`, `popup_cta`, `popup_ack`)
 entram na união `AnalyticsEvent` em `apps/crm/src/lib/analytics.ts`, que é tipada.
