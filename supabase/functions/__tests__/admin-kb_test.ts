@@ -38,6 +38,7 @@ Deno.test("validateKbArticle: tags, display_order, excerpt, cover_image_url", ()
 
 Deno.test("validateKbArticle: content deve ser doc TipTap e vir junto de content_plain", () => {
   assertEquals(validateKbArticle({ ...BASE, content: { type: "doc", content: [] }, content_plain: "" }), null);
+  assertEquals(validateKbArticle({ ...BASE, content: null, content_plain: "" }), null); // artigo novo sem corpo
   assert(validateKbArticle({ ...BASE, content: "<p>x</p>", content_plain: "x" }) !== null);
   assert(validateKbArticle({ ...BASE, content: { type: "doc", content: [] } }) !== null);
   assert(validateKbArticle({ ...BASE, content_plain: "x" }) !== null);

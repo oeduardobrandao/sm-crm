@@ -77,8 +77,10 @@ export function validateKbArticle(row: Record<string, unknown>): string | null {
   const hasPlain = row.content_plain !== undefined;
   if (hasContent !== hasPlain) return "content and content_plain go together";
   if (hasContent) {
+    // content é jsonb NULLABLE e o editor do Admin salva null até o primeiro toque no corpo:
+    // null = "sem corpo ainda", válido. Só um valor presente precisa ter forma de doc.
     const c = row.content as { type?: unknown } | null;
-    if (!c || typeof c !== "object" || Array.isArray(c) || c.type !== "doc") return "content must be a TipTap doc";
+    if (c !== null && (typeof c !== "object" || Array.isArray(c) || c.type !== "doc")) return "content must be a TipTap doc";
     if (typeof row.content_plain !== "string") return "content_plain must be a string";
   }
   return null;
