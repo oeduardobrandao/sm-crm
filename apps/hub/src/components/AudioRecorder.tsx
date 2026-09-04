@@ -47,12 +47,15 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   const releaseStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -70,7 +73,14 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
   }, [previewUrl]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      const rec = recorderRef.current;
+      if (rec) {
+        rec.ondataavailable = null;
+        rec.onstop = null;
+      }
       releaseStream();
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
@@ -83,46 +93,59 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
   }, []);
 
   async function start() {
+    if (mode !== 'idle' || startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
     setError(null);
-    let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (e) {
-      const name = (e as { name?: string }).name;
-      setError(
-        name === 'NotAllowedError' || name === 'SecurityError'
-          ? 'Permita o acesso ao microfone no navegador para gravar.'
-          : 'Não foi possível acessar o microfone.',
-      );
-      return;
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        const name = (e as { name?: string }).name;
+        setError(
+          name === 'NotAllowedError' || name === 'SecurityError'
+            ? 'Permita o acesso ao microfone no navegador para gravar.'
+            : 'Não foi possível acessar o microfone.',
+        );
+        return;
+      }
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      streamRef.current = stream;
+      const mime = pickRecorderMime();
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorderRef.current = rec;
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      rec.onstop = () => {
+        if (!mountedRef.current) return;
+        const seconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
+        const type = rec.mimeType || mime || 'audio/webm';
+        const out = new Blob(chunksRef.current, { type });
+        releaseStream();
+        setElapsed(seconds);
+        setBlob(out);
+        setPreviewUrl(URL.createObjectURL(out));
+        setMode('preview');
+      };
+      startedAtRef.current = Date.now();
+      setElapsed(0);
+      setMode('recording');
+      rec.start(1000);
+      tickRef.current = setInterval(() => {
+        const s = Math.floor((Date.now() - startedAtRef.current) / 1000);
+        setElapsed(s);
+        if (s >= MAX_AUDIO_SECONDS) stop();
+      }, 250);
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
     }
-    streamRef.current = stream;
-    const mime = pickRecorderMime();
-    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-    recorderRef.current = rec;
-    chunksRef.current = [];
-    rec.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
-    };
-    rec.onstop = () => {
-      const seconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
-      const type = rec.mimeType || mime || 'audio/webm';
-      const out = new Blob(chunksRef.current, { type });
-      releaseStream();
-      setElapsed(seconds);
-      setBlob(out);
-      setPreviewUrl(URL.createObjectURL(out));
-      setMode('preview');
-    };
-    startedAtRef.current = Date.now();
-    setElapsed(0);
-    setMode('recording');
-    rec.start(1000);
-    tickRef.current = setInterval(() => {
-      const s = Math.floor((Date.now() - startedAtRef.current) / 1000);
-      setElapsed(s);
-      if (s >= MAX_AUDIO_SECONDS) stop();
-    }, 250);
   }
 
   async function send() {
@@ -132,8 +155,10 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
     try {
       await onRecorded(blob, mime, seconds);
       discard();
-    } catch (e) {
-      setError((e as Error).message || 'Não foi possível enviar o áudio.');
+    } catch {
+      // The parent owns upload/transcription errors and renders them itself
+      // (see BriefingPage's handleRecorded). Stay in preview so the user can
+      // retry or discard; do not render a second error here.
     }
   }
 
@@ -146,9 +171,8 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
         <button
           type="button"
           className={`${BTN} hub-btn-secondary`}
-          disabled={disabled || busy}
+          disabled={disabled || busy || starting}
           onClick={() => void start()}
-          aria-label="Gravar áudio"
         >
           <Mic size={16} />
           {busy ? (phase === 'uploading' ? 'Enviando áudio…' : 'Transcrevendo…') : 'Gravar áudio'}

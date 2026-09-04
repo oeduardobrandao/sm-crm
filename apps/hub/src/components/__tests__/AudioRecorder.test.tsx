@@ -112,4 +112,81 @@ describe('AudioRecorder', () => {
     });
     expect(screen.getByText(/permita o acesso ao microfone/i)).toBeInTheDocument();
   });
+
+  it('stays in preview and renders no error when onRecorded rejects (the parent owns the error)', async () => {
+    vi.useFakeTimers();
+    const onRecorded = vi.fn(async () => {
+      throw new Error('Áudio maior que 15 MB. Grave um trecho mais curto.');
+    });
+    render(<AudioRecorder phase="idle" onRecorded={onRecorded} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /gravar áudio/i }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /parar/i }));
+    });
+
+    vi.useRealTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /enviar/i }));
+    });
+    await waitFor(() => expect(onRecorded).toHaveBeenCalledTimes(1));
+
+    // Still in preview: Enviar is present, and no error text is rendered
+    // (the recorder never sets its own `error` state on a rejection).
+    expect(screen.getByRole('button', { name: /enviar/i })).toBeInTheDocument();
+    expect(screen.queryByText(/áudio maior que 15 mb/i)).not.toBeInTheDocument();
+    expect(document.querySelector('p.text-red-500')).not.toBeInTheDocument();
+  });
+
+  it('ignores a second click while a start is already in flight', async () => {
+    let resolveGetUserMedia!: (v: { getTracks: () => { stop: () => void }[] }) => void;
+    const getUserMedia = vi.fn(
+      () =>
+        new Promise((r) => {
+          resolveGetUserMedia = r;
+        }),
+    );
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    render(<AudioRecorder phase="idle" onRecorded={vi.fn(async () => {})} />);
+    const btn = screen.getByRole('button', { name: /gravar áudio/i });
+
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveGetUserMedia({ getTracks: () => [{ stop: stopTrack }] });
+    });
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+  });
+
+  it('does not leak an object URL when the recorder stops after unmount', async () => {
+    vi.useFakeTimers();
+    const onRecorded = vi.fn(async () => {});
+    const { unmount } = render(<AudioRecorder phase="idle" onRecorded={onRecorded} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /gravar áudio/i }));
+    });
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+    const rec = FakeMediaRecorder.instances[0];
+
+    vi.useRealTimers();
+    unmount();
+
+    (URL.createObjectURL as ReturnType<typeof vi.fn>).mockClear();
+    rec.stop();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
 });

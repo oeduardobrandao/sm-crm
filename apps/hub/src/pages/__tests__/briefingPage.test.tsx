@@ -35,7 +35,12 @@ vi.mock('../../components/AudioRecorder', () => ({
     <button
       type="button"
       data-phase={phase}
-      onClick={() => void onRecorded(new Blob(['abc']), 'audio/webm', 3)}
+      onClick={() => {
+        // Mirrors the real AudioRecorder's send(): it awaits onRecorded and
+        // swallows a rejection itself (the parent owns the error), so the
+        // fake must not leave an unhandled rejection here either.
+        onRecorded(new Blob(['abc']), 'audio/webm', 3).catch(() => {});
+      }}
     >
       fake-record
     </button>
@@ -160,6 +165,22 @@ describe('BriefingPage audio', () => {
       fireEvent.click(screen.getByRole('button', { name: /remover áudio/i }));
     });
     expect(deleteBriefingAudio).toHaveBeenCalledWith('token-publico', 'q2');
+  });
+
+  it('renders an upload/transcription failure exactly once and re-enables the textarea', async () => {
+    vi.mocked(uploadBriefingAudio).mockRejectedValue(
+      new Error('Áudio maior que 15 MB. Grave um trecho mais curto.'),
+    );
+    renderPage(<BriefingPage />);
+    await screen.findByText('Marca?');
+    const textareas = screen.getAllByRole('textbox');
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByText('fake-record')[0]);
+    });
+
+    await waitFor(() => expect(screen.getAllByText(/áudio maior que 15 mb/i)).toHaveLength(1));
+    expect(textareas[0]).not.toBeDisabled();
   });
 
   it('surfaces text-save failures instead of swallowing them', async () => {

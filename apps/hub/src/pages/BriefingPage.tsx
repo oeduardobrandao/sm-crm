@@ -291,7 +291,6 @@ function QuestionItem({
               className="font-semibold underline hub-tx3 disabled:opacity-50"
               disabled={busyAction !== null || locked}
               onClick={() => void handleRemove()}
-              aria-label="Remover áudio"
             >
               {busyAction === 'remove' ? 'Removendo…' : 'Remover áudio'}
             </button>
