@@ -3412,6 +3412,112 @@ Depois do PR: rodar a review externa do Codex (padrão do repo) e tratar os find
 
 ---
 
+### Task 10: Endurecimento pós-review (órfãos em `briefing-audio/`, `pending` preso, UI após falha, CLAUDE.md em inglês)
+
+Origem: review externa da branch. (1) Uploads pré-assinados podem ficar no R2 sem `finalize` e o cron de órfãos só varre `contas/`; (2) se a edge function for morta entre a RPC e a escrita final, a linha fica `pending` para sempre; (3) após uma falha de rede no upload o Hub não mostra o estado do servidor; (4) a entrada nova do CLAUDE.md ficou em português numa seção em inglês.
+
+**Files:**
+- Modify: `supabase/functions/post-media-cleanup-cron/orphan-scan.ts`, `supabase/functions/__tests__/orphan-scan_test.ts`
+- Modify: `supabase/functions/_shared/briefing-audio.ts` (`buildAudioView`), `supabase/functions/__tests__/briefing-audio_test.ts`
+- Modify: `apps/hub/src/pages/BriefingPage.tsx`, `apps/hub/src/pages/__tests__/briefingPage.test.tsx`
+- Modify: `CLAUDE.md`
+
+**Interfaces:**
+- `runOrphanScan(deps)` mantém a assinatura e o shape de retorno; `deps.db.from` passa a aceitar também `"hub_briefing_questions"`; `deps.listOrphanKeys` é chamado uma vez por prefixo.
+- `buildAudioView(row, signGetUrl, now = Date.now())`: `pending` com `audio_recorded_at` mais antigo que `STALE_PENDING_MS = 10 * 60 * 1000` é apresentado como `failed` (o Hub então oferece "Tentar novamente"; `runTranscription` re-executa porque no banco o status segue `pending`). Exportar `STALE_PENDING_MS`.
+
+- [ ] **Step 1: Testes**
+
+`orphan-scan_test.ts`: adicione casos (siga o estilo dos existentes): (a) `listOrphanKeys` é chamado com `"contas/"` E `"briefing-audio/"`; (b) uma chave `briefing-audio/c/q/x.webm` referenciada em `hub_briefing_questions.audio_r2_key` NÃO é enviada ao lixo; (c) uma chave `briefing-audio/...` sem referência É enviada ao lixo; (d) erro na query de `hub_briefing_questions` aborta o alvo `briefing-audio` com `aborted: "known-query:hub_briefing_questions.audio_r2_key"` e zero exclusões nesse alvo. Os testes existentes precisam continuar verdes: se o mock de `db.from` deles não tratar a nova tabela, estenda o mock para devolver `{ data: [], error: null }` para `hub_briefing_questions`.
+
+`briefing-audio_test.ts`: `buildAudioView` com `audio_transcription_status: "pending"` e `audio_recorded_at` há 11 min (passe `now`) → `transcription_status: "failed"`; há 2 min → `"pending"`; `done` nunca é rebaixado.
+
+`briefingPage.test.tsx`: (a) `uploadBriefingAudio` rejeita → `fetchBriefing` é chamado de novo (invalidate) e, com o segundo `fetchBriefing` devolvendo a pergunta com `audio` `pending`, a página mostra o player e "Tentar novamente"; (b) quando `fetchBriefing` devolve `audio: null` para uma pergunta cujo estado local tinha áudio (removido em outra aba), o player some.
+
+- [ ] **Step 2: Rodar e ver falhar**
+
+```bash
+npm run test:functions -- --filter "orphan"
+npm run test:functions -- --filter "briefing-audio"
+npx vitest run apps/hub/src/pages/__tests__/briefingPage.test.tsx
+```
+
+- [ ] **Step 3: Implementar**
+
+`orphan-scan.ts`: generalize em alvos:
+
+```ts
+type ScanTarget = {
+  prefix: string;
+  refs: Array<{ table: "post_media" | "files" | "hub_briefing_questions"; columns: string[] }>;
+};
+export const SCAN_TARGETS: ScanTarget[] = [
+  { prefix: "contas/", refs: [
+    { table: "post_media", columns: ["r2_key", "thumbnail_r2_key"] },
+    { table: "files", columns: ["r2_key", "thumbnail_r2_key"] },
+  ] },
+  // Áudio do briefing vive fora de contas/ de propósito (ver migration
+  // 20260907000001); sem este alvo, uploads pré-assinados sem finalize
+  // ficariam no bucket para sempre.
+  { prefix: "briefing-audio/", refs: [{ table: "hub_briefing_questions", columns: ["audio_r2_key"] }] },
+];
+```
+
+Para cada alvo: `candidates = await deps.listOrphanKeys(target.prefix, 24h)`; monte `known` com `select(columns.join(", ")).in(column, batch)` para cada coluna, adicionando ao set todo valor string não nulo das colunas selecionadas; mantenha as três propriedades (chunk de 50, abort em erro de query com `aborted: \`known-query:${table}.${column}\``, floor de conjunto vazio ≥ 50). O cap `MAX_TRASH_PER_RUN` é global à execução. Some `candidates/trashed/capped` entre alvos; `aborted` recebe o primeiro alvo abortado e os alvos seguintes ainda rodam (um abort em `contas/` não pode impedir a varredura de `briefing-audio/`, e vice-versa). Atualize o tipo `OrphanScanDeps["db"]["from"]` para a união de tabelas e o `select` para aceitar `string`.
+
+`briefing-audio.ts`:
+
+```ts
+export const STALE_PENDING_MS = 10 * 60 * 1000;
+export async function buildAudioView(row: AudioRow, signGetUrl, now: number = Date.now()) {
+  ...
+  let status = row.audio_transcription_status;
+  if (status === "pending" && row.audio_recorded_at) {
+    const started = Date.parse(row.audio_recorded_at);
+    // Função morta entre a RPC e a escrita final deixa "pending" no banco;
+    // depois de 10 min mostramos como falha para o cliente poder tentar de novo.
+    if (Number.isFinite(started) && now - started > STALE_PENDING_MS) status = "failed";
+  }
+  ...
+}
+```
+
+`BriefingPage.tsx` (`QuestionItem`): `useEffect(() => { setAudio(question.audio); }, [question.audio]);` (o servidor é a verdade para o áudio; o texto local não é tocado). No `catch` de `handleRecorded`, além de `setAudioError`, chame `onAudioChanged()` para refetch (o servidor pode ter gravado o áudio antes da falha de rede).
+
+`CLAUDE.md`: reescreva a entrada `TRANSCRIBE_WORKER_URL`, `TRANSCRIBE_SECRET` em inglês, no estilo das vizinhas:
+
+```markdown
+- `TRANSCRIBE_WORKER_URL`, `TRANSCRIBE_SECRET` -- Cloudflare Worker `workers/transcribe`
+  (Workers AI, Whisper turbo) that transcribes Hub briefing audio answers. Both
+  optional, no default: when unset, hub-briefing still stores the audio and marks
+  the transcription `failed` (the client sees "Tentar novamente"). The secret must
+  match the one set on the worker with `wrangler secret put TRANSCRIBE_SECRET`
+```
+
+- [ ] **Step 4: Verificar**
+
+```bash
+npm run test:functions -- --filter "orphan"
+npm run test:functions -- --filter "briefing-audio"
+npm run test:functions
+git checkout deno.lock
+npm run check:functions
+npx vitest run apps/hub/src
+npx tsc -p apps/hub/tsconfig.json --noEmit
+npm run lint && npm run format && npm run format:check
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add supabase/functions/post-media-cleanup-cron/orphan-scan.ts supabase/functions/__tests__/orphan-scan_test.ts supabase/functions/_shared/briefing-audio.ts supabase/functions/__tests__/briefing-audio_test.ts apps/hub/src/pages/BriefingPage.tsx apps/hub/src/pages/__tests__/briefingPage.test.tsx CLAUDE.md
+git commit -m "fix(briefing): varredura de órfãos em briefing-audio/, pending preso vira falha e UI sincroniza após erro
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
 ## Self-review
 
 - **Cobertura do spec:** áudio por pergunta (T5), um por pergunta com substituição (T1 RPC + T5), anexar ao final (T2 `appendTranscript`), Whisper no Workers AI sem limite por plano (T6, nenhum medidor), prefixo fora de `contas/` (T1/T2), transcrição síncrona com 90 s e fallback `failed` + retry (T2/T3/T5), 5 min/15 MB (T2/T4/T5/T6), erros visíveis no Hub (T5), player próprio compartilhado (T5) usado no Hub (T6) e CRM (T8), env vars opcionais (T3/T9), rate limit próprio (T3), guarda de colunas (T1), rollout (T9).
