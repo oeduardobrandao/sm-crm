@@ -205,6 +205,11 @@ Monorepo with npm workspaces:
 - `META_WEBHOOK_VERIFY_TOKEN` -- Meta webhook verify token for the Instagram
   comment-to-DM automation (instagram-webhook). REQUIRED, no default -- throws
   at module load if missing
+- `TRANSCRIBE_WORKER_URL`, `TRANSCRIBE_SECRET` -- Worker Cloudflare `workers/transcribe`
+  (Workers AI, Whisper turbo) que transcreve os áudios do briefing do Hub. Ambas
+  opcionais, sem default: sem elas `hub-briefing` salva o áudio e marca a
+  transcrição como `failed` (o cliente vê "Tentar novamente"). O segredo é o
+  mesmo configurado no worker via `wrangler secret put TRANSCRIBE_SECRET`
 - `IG_AUTOMATION_SCOPES_LIVE` -- optional, default off (unset/`false`). While off, the
   Instagram OAuth URL only requests the approved trio of base scopes; flipping it to
   `true` adds the optional `instagram_business_manage_comments` AND
