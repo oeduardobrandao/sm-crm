@@ -76,3 +76,23 @@ describe('vercel.json routing contract', () => {
     expect(APP_ROUTE_PREFIXES as readonly string[]).not.toContain('blog');
   });
 });
+
+describe('vercel.json Permissions-Policy', () => {
+  // O briefing por áudio do Hub usa getUserMedia. Com `microphone=()` o
+  // navegador rejeita com NotAllowedError SEM abrir o prompt de permissão
+  // (incidente 2026-09-04), então a policy global precisa liberar `self`.
+  test('nenhuma regra bloqueia o microfone para a própria origem', () => {
+    const policies = headers.flatMap((h) =>
+      h.headers
+        .filter((x) => x.key === 'Permissions-Policy')
+        .map((x) => ({ source: h.source, value: x.value })),
+    );
+    expect(policies.length).toBeGreaterThan(0);
+    for (const p of policies) {
+      expect(p.value, `${p.source} bloqueia o microfone`).not.toMatch(/microphone=\(\)/);
+      expect(p.value, `${p.source} não libera o microfone para self`).toMatch(
+        /microphone=\(self\)/,
+      );
+    }
+  });
+});
