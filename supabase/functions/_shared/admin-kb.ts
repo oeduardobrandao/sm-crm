@@ -49,7 +49,16 @@ export function normalizeKb(row: Record<string, unknown>): Record<string, unknow
   return out;
 }
 
-export function validateKbArticle(row: Record<string, unknown>): string | null {
+/** true quando `cover` é uma chave R2 nova (não https, diferente da já persistida) --
+ * o caller precisa então resolver o conta_id do admin chamador para validar posse. */
+export function coverNeedsOwnership(cover: unknown, persisted: string | null | undefined): boolean {
+  return typeof cover === "string" && !cover.startsWith("https://") && cover !== persisted;
+}
+
+export function validateKbArticle(
+  row: Record<string, unknown>,
+  opts: { allowedContaId?: string; persistedCover?: string | null } = {},
+): string | null {
   const title = typeof row.title === "string" ? row.title.trim() : "";
   if (title.length === 0 || title.length > 200) return "title required (max 200)";
   const slug = typeof row.slug === "string" ? row.slug.trim() : "";
@@ -70,8 +79,17 @@ export function validateKbArticle(row: Record<string, unknown>): string | null {
   const excerpt = row.excerpt ?? null;
   if (excerpt !== null && (typeof excerpt !== "string" || excerpt.length > 300)) return "excerpt max 300";
   const cover = row.cover_image_url ?? null;
-  if (cover !== null && (typeof cover !== "string" || !(cover.startsWith("https://") || R2_KEY_RE.test(cover)))) {
-    return "cover_image_url must be https or an R2 key";
+  if (cover !== null) {
+    if (typeof cover !== "string") return "cover_image_url must be https or an R2 key";
+    if (!cover.startsWith("https://")) {
+      if (!R2_KEY_RE.test(cover)) return "cover_image_url must be https or an R2 key";
+      // Chave R2 só passa se já for a capa persistida deste artigo (pode ter sido enviada por
+      // outro admin) ou se estiver sob o workspace do admin chamador -- senão qualquer kb:write
+      // publicaria um arquivo privado de outro workspace (sign-r2-urls assina capas publicadas).
+      const alreadyPersisted = opts.persistedCover !== undefined && opts.persistedCover === cover;
+      const ownKey = opts.allowedContaId !== undefined && cover.startsWith(`contas/${opts.allowedContaId}/files/`);
+      if (!alreadyPersisted && !ownKey) return "cover_image_url R2 key belongs to another workspace";
+    }
   }
 
   const hasContent = row.content !== undefined;

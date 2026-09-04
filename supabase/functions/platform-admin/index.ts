@@ -8,7 +8,8 @@ import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
 import { handleListPopups, handleCreatePopup, handleUpdatePopup, handleDeletePopup } from "./popups.ts";
 import { normalizeBanner, pickBannerColumns, validateBanner } from "../_shared/admin-banners.ts";
-import { isUniqueViolation, normalizeKb, pickKbColumns, validateKbArticle } from "../_shared/admin-kb.ts";
+import { coverNeedsOwnership, isUniqueViolation, normalizeKb, pickKbColumns, validateKbArticle } from "../_shared/admin-kb.ts";
+import { adminContaId } from "../_shared/admin-popups.ts";
 import { handleGetWorkspace } from "./workspace-detail.ts";
 import { handleListPlans } from "./plans.ts";
 
@@ -129,9 +130,9 @@ Deno.serve(async (req: Request) => {
       case "get-kb-article":
         return await handleGetKbArticle(svc, body, headers);
       case "create-kb-article":
-        return await handleCreateKbArticle(svc, body, admin.id, headers);
+        return await handleCreateKbArticle(svc, body, { adminId: admin.id, userId: user.id }, headers);
       case "update-kb-article":
-        return await handleUpdateKbArticle(svc, body, headers);
+        return await handleUpdateKbArticle(svc, body, { userId: user.id }, headers);
       case "delete-kb-article":
         return await handleDeleteKbArticle(svc, body, headers);
       case "list-kb-context-links":
@@ -758,7 +759,7 @@ async function handleGetKbArticle(
 async function handleCreateKbArticle(
   svc: SupabaseClient,
   body: Record<string, unknown>,
-  adminId: string,
+  actor: { adminId: string; userId: string },
   headers: Record<string, string>,
 ) {
   const { action: _, ...rest } = body;
@@ -770,8 +771,21 @@ async function handleCreateKbArticle(
     );
   }
 
-  const insert = normalizeKb({ author_id: adminId, ...pickKbColumns(rest) });
-  const fieldError = validateKbArticle(insert);
+  const insert = normalizeKb({ author_id: actor.adminId, ...pickKbColumns(rest) });
+
+  // Uma chave R2 nova só pode virar capa se pertencer ao workspace do admin chamador --
+  // senão qualquer kb:write publicaria (e sign-r2-urls assinaria) um arquivo privado de
+  // outro workspace para todo mundo que ler o artigo.
+  let contaId: string | undefined;
+  if (coverNeedsOwnership(insert.cover_image_url, null)) {
+    const found = await adminContaId(svc, actor.userId);
+    if (found === null) {
+      return new Response(JSON.stringify({ error: "cover_image_url R2 key belongs to another workspace" }), { status: 400, headers });
+    }
+    contaId = found;
+  }
+
+  const fieldError = validateKbArticle(insert, { allowedContaId: contaId });
   if (fieldError) return new Response(JSON.stringify({ error: fieldError }), { status: 400, headers });
 
   const { data, error } = await svc.from("kb_articles").insert(insert).select().single();
@@ -786,6 +800,7 @@ async function handleCreateKbArticle(
 async function handleUpdateKbArticle(
   svc: SupabaseClient,
   body: Record<string, unknown>,
+  actor: { userId: string },
   headers: Record<string, string>,
 ) {
   const { action: _, article_id, ...rest } = body;
@@ -810,8 +825,22 @@ async function handleUpdateKbArticle(
     .from("kb_articles").select("*").eq("id", article_id).maybeSingle();
   if (readErr) throw readErr;
   if (!current) return new Response(JSON.stringify({ error: "Article not found" }), { status: 404, headers });
+
+  const persistedCover = ((current as Record<string, unknown>).cover_image_url as string | null | undefined) ?? null;
+  let contaId: string | undefined;
+  if (coverNeedsOwnership(update.cover_image_url, persistedCover)) {
+    const found = await adminContaId(svc, actor.userId);
+    if (found === null) {
+      return new Response(JSON.stringify({ error: "cover_image_url R2 key belongs to another workspace" }), { status: 400, headers });
+    }
+    contaId = found;
+  }
+
   // Linha atual normalizada antes de mesclar (cover_image_url/excerpt "" legados → null).
-  const fieldError = validateKbArticle({ ...normalizeKb(current as Record<string, unknown>), ...update });
+  const fieldError = validateKbArticle(
+    { ...normalizeKb(current as Record<string, unknown>), ...update },
+    { allowedContaId: contaId, persistedCover },
+  );
   if (fieldError) return new Response(JSON.stringify({ error: fieldError }), { status: 400, headers });
 
   const { data, error } = await svc.from("kb_articles").update(update).eq("id", article_id).select().single();

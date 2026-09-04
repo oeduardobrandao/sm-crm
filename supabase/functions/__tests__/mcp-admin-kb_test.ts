@@ -5,6 +5,8 @@ import { expectInputError, has, insertPayload, makeDeps, makeFakeDb, updatePaylo
 
 const DOC = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Olá" }] }] };
 const ROW = { id: "a1", title: "T", slug: "t", excerpt: null, content: DOC, content_plain: "Olá", cover_image_url: null, category: "clientes", tags: [], status: "draft", display_order: 0, author_id: "adm-1", created_at: "t", updated_at: "t" };
+const CONTA = "11111111-1111-1111-1111-111111111111";
+const OTHER_KEY = "contas/22222222-2222-2222-2222-222222222222/files/x.png";
 
 Deno.test("listKbArticles: sem corpo, filtros de status e categoria, ordem por display_order", async () => {
   const { db, calls } = makeFakeDb({ kb_articles: [{ data: [ROW], error: null }] });
@@ -73,4 +75,24 @@ Deno.test("updateKbArticle: patch só de metadados não toca content; patch com 
   await expectInputError(() => updateKbArticle(makeDeps(makeFakeDb({ kb_articles: [{ data: ROW, error: null }] }).db), { article_id: "a1" }), "Nada para atualizar");
   await expectInputError(() => updateKbArticle(makeDeps(makeFakeDb({ kb_articles: [{ data: null, error: null }] }).db), { article_id: "zz", title: "x" }), "não encontrado");
   await expectInputError(() => updateKbArticle(makeDeps(makeFakeDb({ kb_articles: [{ data: ROW, error: null }] }).db), { article_id: "a1", content: DOC }), "content_markdown");
+});
+
+Deno.test("updateKbArticle: cover_image_url com chave R2 de outro workspace é rejeitada; a própria chave persistida passa sem consultar profiles", async () => {
+  const { db, calls } = makeFakeDb({
+    kb_articles: [{ data: ROW, error: null }],
+    profiles: [{ data: { conta_id: CONTA }, error: null }],
+  });
+  await expectInputError(
+    () => updateKbArticle(makeDeps(db), { article_id: "a1", cover_image_url: OTHER_KEY }),
+    "another workspace",
+  );
+  assert(calls.some((c) => c.table === "profiles"));
+
+  const ROW_WITH_COVER = { ...ROW, cover_image_url: OTHER_KEY };
+  const { db: db2, calls: calls2 } = makeFakeDb({
+    kb_articles: [{ data: ROW_WITH_COVER, error: null }, { data: { id: "a1", slug: "t", status: "draft" }, error: null }],
+  });
+  const r = await updateKbArticle(makeDeps(db2), { article_id: "a1", cover_image_url: ROW_WITH_COVER.cover_image_url });
+  assertEquals(r, { id: "a1", slug: "t", status: "draft" });
+  assert(!calls2.some((c) => c.table === "profiles"));
 });

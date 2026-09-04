@@ -6,7 +6,7 @@ import {
   adminContaId, newImageKeys, normalizePopupText, pagesHaveImages, persistedImageKeys,
   pickPopupColumns, validatePages, validatePopupFields,
 } from "../_shared/admin-popups.ts";
-import { isUniqueViolation, normalizeKb, pickKbColumns, validateKbArticle } from "../_shared/admin-kb.ts";
+import { coverNeedsOwnership, isUniqueViolation, normalizeKb, pickKbColumns, validateKbArticle } from "../_shared/admin-kb.ts";
 import { finalizePopupImages, fillImageDims } from "./images.ts";
 import { markdownToTiptap, tiptapToMarkdown, tiptapToPlain } from "./markdown.ts";
 import type { Deps } from "./deps.ts";
@@ -216,7 +216,18 @@ export async function createKbArticle(d: Deps, args: Record<string, unknown>) {
   if (args.content_markdown === undefined) throw new McpInputError("content_markdown é obrigatório.");
   const body = await bodyFromMarkdown(d, args);
   const insert = normalizeKb({ ...pickKbColumns(args), ...body, author_id: d.ctx.admin_id });
-  const err = validateKbArticle(insert);
+
+  // Uma chave R2 nova só pode virar capa se pertencer ao workspace do admin chamador -- senão
+  // qualquer kb:write publicaria (e sign-r2-urls assinaria) um arquivo privado de outro
+  // workspace para todo mundo que ler o artigo.
+  let contaId: string | undefined;
+  if (coverNeedsOwnership(insert.cover_image_url, null)) {
+    const found = await adminContaId(d.db, d.ctx.user_id);
+    if (found === null) throw new McpInputError("cover_image_url: use a public_url de upload_kb_image (https).");
+    contaId = found;
+  }
+
+  const err = validateKbArticle(insert, { allowedContaId: contaId });
   if (err) throw new McpInputError(err);
   const { data, error } = await d.db.from("kb_articles").insert(insert).select("id, slug, status").single();
   if (error) mapKbWriteError(error);
@@ -231,7 +242,19 @@ export async function updateKbArticle(d: Deps, args: Record<string, unknown>) {
   const { data: current, error: readErr } = await d.db.from("kb_articles").select("*").eq("id", id).maybeSingle();
   if (readErr) throw readErr;
   if (!current) throw notFound("Artigo");
-  const err = validateKbArticle({ ...normalizeKb(current as Record<string, unknown>), ...update });
+
+  const persistedCover = ((current as Record<string, unknown>).cover_image_url as string | null | undefined) ?? null;
+  let contaId: string | undefined;
+  if (coverNeedsOwnership(update.cover_image_url, persistedCover)) {
+    const found = await adminContaId(d.db, d.ctx.user_id);
+    if (found === null) throw new McpInputError("cover_image_url: use a public_url de upload_kb_image (https).");
+    contaId = found;
+  }
+
+  const err = validateKbArticle(
+    { ...normalizeKb(current as Record<string, unknown>), ...update },
+    { allowedContaId: contaId, persistedCover },
+  );
   if (err) throw new McpInputError(err);
   const { data, error } = await d.db.from("kb_articles").update(update).eq("id", id).select("id, slug, status").single();
   if (error) mapKbWriteError(error);

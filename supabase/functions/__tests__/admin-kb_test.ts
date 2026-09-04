@@ -1,9 +1,12 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
-  isUniqueViolation, KB_CATEGORIES, normalizeKb, pickKbColumns, validateKbArticle,
+  coverNeedsOwnership, isUniqueViolation, KB_CATEGORIES, normalizeKb, pickKbColumns, validateKbArticle,
 } from "../_shared/admin-kb.ts";
 
 const BASE = { title: "Como criar um post", slug: "como-criar-um-post", category: "primeiros-passos", status: "draft" };
+const CONTA = "11111111-1111-1111-1111-111111111111";
+const OWN_KEY = `contas/${CONTA}/files/abc.png`;
+const OTHER_KEY = "contas/22222222-2222-2222-2222-222222222222/files/x.png";
 
 Deno.test("validateKbArticle: linha mínima válida", () => {
   assertEquals(validateKbArticle(BASE), null);
@@ -31,9 +34,29 @@ Deno.test("validateKbArticle: tags, display_order, excerpt, cover_image_url", ()
   assert(validateKbArticle({ ...BASE, display_order: -1 }) !== null);
   assert(validateKbArticle({ ...BASE, display_order: 1.5 }) !== null);
   assert(validateKbArticle({ ...BASE, excerpt: "x".repeat(301) }) !== null);
-  assertEquals(validateKbArticle({ ...BASE, cover_image_url: "https://x.supabase.co/storage/v1/object/public/kb-images/a/b.png" }), null);
-  assertEquals(validateKbArticle({ ...BASE, cover_image_url: "contas/11111111-1111-1111-1111-111111111111/files/abc.png" }), null);
   assert(validateKbArticle({ ...BASE, cover_image_url: "http://x/y.png" }) !== null);
+});
+
+Deno.test("validateKbArticle: cover_image_url em chave R2 exige posse do workspace do admin (ou capa já persistida)", () => {
+  // https é sempre ok, sem precisar de opts.
+  assertEquals(validateKbArticle({ ...BASE, cover_image_url: "https://x.supabase.co/storage/v1/object/public/kb-images/a/b.png" }), null);
+  // Chave R2 sem opts (nenhum allowedContaId, nenhuma persistedCover) é rejeitada.
+  assert(validateKbArticle({ ...BASE, cover_image_url: OWN_KEY })?.includes("another workspace"));
+  // Chave sob o workspace do admin chamador passa.
+  assertEquals(validateKbArticle({ ...BASE, cover_image_url: OWN_KEY }, { allowedContaId: CONTA }), null);
+  // Chave de outro workspace, mesmo com allowedContaId setado, é rejeitada.
+  assert(validateKbArticle({ ...BASE, cover_image_url: OTHER_KEY }, { allowedContaId: CONTA })?.includes("another workspace"));
+  // Chave igual à capa já persistida passa mesmo sem allowedContaId (pode ter sido enviada por outro admin).
+  assertEquals(validateKbArticle({ ...BASE, cover_image_url: OTHER_KEY }, { persistedCover: OTHER_KEY }), null);
+});
+
+Deno.test("coverNeedsOwnership: https é sempre false; mesma chave já persistida é false; chave R2 nova é true", () => {
+  assertEquals(coverNeedsOwnership("https://x/y.png", null), false);
+  assertEquals(coverNeedsOwnership(OWN_KEY, OWN_KEY), false);
+  assertEquals(coverNeedsOwnership(OWN_KEY, null), true);
+  assertEquals(coverNeedsOwnership(OWN_KEY, OTHER_KEY), true);
+  assertEquals(coverNeedsOwnership(null, null), false);
+  assertEquals(coverNeedsOwnership(undefined, null), false);
 });
 
 Deno.test("validateKbArticle: content deve ser doc TipTap e vir junto de content_plain", () => {
@@ -169,4 +192,28 @@ Deno.test("handleUpdateKbArticle: par content/content_plain checado no patch ant
   assert(selectIdx >= 0, "expected the current-row select inside handleUpdateKbArticle");
 
   assert(pairCheckIdx < selectIdx, "the pairing check must run before the current row is read/merged");
+});
+
+// Regressão da falha "cover_image_url em chave R2 de outro workspace publica arquivo alheio":
+// handleCreateKbArticle e handleUpdateKbArticle precisam resolver a posse via
+// coverNeedsOwnership()/adminContaId() antes de aceitar uma chave R2 como capa. Mesma
+// limitação do teste acima (sem export de handlers HTTP individuais): contrato de fonte.
+Deno.test("handleCreateKbArticle e handleUpdateKbArticle checam posse de cover_image_url (coverNeedsOwnership + adminContaId)", async () => {
+  const src = await Deno.readTextFile(new URL("../platform-admin/index.ts", import.meta.url));
+
+  function extractFn(name: string): string {
+    const start = src.indexOf(`async function ${name}`);
+    assert(start >= 0, `${name} not found`);
+    const rest = src.slice(start + `async function ${name}`.length);
+    const nextFnOffset = rest.indexOf("async function");
+    return rest.slice(0, nextFnOffset >= 0 ? nextFnOffset : undefined);
+  }
+
+  const createFn = extractFn("handleCreateKbArticle");
+  assert(createFn.includes("coverNeedsOwnership("), "handleCreateKbArticle must call coverNeedsOwnership(");
+  assert(createFn.includes("adminContaId("), "handleCreateKbArticle must call adminContaId(");
+
+  const updateFn = extractFn("handleUpdateKbArticle");
+  assert(updateFn.includes("coverNeedsOwnership("), "handleUpdateKbArticle must call coverNeedsOwnership(");
+  assert(updateFn.includes("adminContaId("), "handleUpdateKbArticle must call adminContaId(");
 });
