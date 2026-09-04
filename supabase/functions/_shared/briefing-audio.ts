@@ -146,6 +146,19 @@ async function loadRow(
 async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResult> {
   const row = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
   if (!row?.audio_r2_key) return { status: 404, body: { error: "Áudio não encontrado." } };
+  if (row.audio_transcription_status === "done") {
+    // Already transcribed — a retry (finalize idempotent RPC or a duplicate
+    // transcribe call) must not re-run Whisper or append the text again.
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        answer: row.answer ?? null,
+        transcript: row.audio_transcript ?? null,
+        audio: await buildAudioView(row, a.signGetUrl),
+      },
+    };
+  }
 
   let result: { text: string; duration?: number } | null = null;
   if (a.transcribe) {
@@ -179,15 +192,33 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
     (typeof resultDuration === "number" && Number.isFinite(resultDuration) && resultDuration > 0
       ? Math.round(resultDuration)
       : null);
-  const { error } = await where(a.db.from("hub_briefing_questions").update({
+  // Conditioned on audio_transcription_status != "done": guards against two
+  // concurrent retries both reading the same `answer` and racing to append the
+  // transcript twice. Whichever write lands first flips the row to "done" and
+  // the loser's UPDATE matches zero rows.
+  const { data: updated, error } = await where(a.db.from("hub_briefing_questions").update({
     answer,
     audio_transcript: text,
     audio_transcription_status: "done",
     audio_duration_seconds: duration,
-  }));
+  })).neq("audio_transcription_status", "done").select("id");
   if (error) {
     console.error("briefing-audio save transcript error:", (error as { message?: string }).message ?? error);
     return { status: 500, body: { error: "internal error" } };
+  }
+  if (!Array.isArray(updated) || updated.length === 0) {
+    // Concurrent run won the race and already wrote "done" — re-read and return
+    // its answer/transcript instead of appending on top of it.
+    const current = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        answer: current?.answer ?? row.answer ?? null,
+        transcript: current?.audio_transcript ?? null,
+        audio: await buildAudioView(current ?? row, a.signGetUrl),
+      },
+    };
   }
   return {
     status: 200,
@@ -229,7 +260,7 @@ export async function finalizeBriefingAudio(a: FinalizeAudioArgs): Promise<Brief
   const duration = typeof a.duration_seconds === "number" && Number.isFinite(a.duration_seconds) && a.duration_seconds > 0
     ? Math.round(a.duration_seconds)
     : null;
-  const { error } = await a.db.rpc("briefing_audio_finalize", {
+  const { data, error } = await a.db.rpc("briefing_audio_finalize", {
     p_conta_id: a.conta_id,
     p_cliente_id: a.cliente_id,
     p_question_id: a.question_id,
@@ -248,25 +279,23 @@ export async function finalizeBriefingAudio(a: FinalizeAudioArgs): Promise<Brief
     return { status, body: { error: msg } };
   }
 
+  // The RPC is idempotent on a same-key retry (timeout on the up-to-90s
+  // synchronous transcription, or a double click): it reports reserved:false
+  // instead of re-reserving quota. Route through transcribeBriefingAudio,
+  // which — via runTranscription's "already done" guard — skips a duplicate
+  // paid Whisper call and a duplicate transcript append.
+  if (data && typeof data === "object" && (data as { reserved?: boolean }).reserved === false) {
+    return transcribeBriefingAudio(a);
+  }
+
   return runTranscription(a);
 }
 
 export type TranscribeAudioArgs = TranscriptionArgs;
 
 export async function transcribeBriefingAudio(a: TranscribeAudioArgs): Promise<BriefingAudioResult> {
-  const row = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
-  if (!row?.audio_r2_key) return { status: 404, body: { error: "Áudio não encontrado." } };
-  if (row.audio_transcription_status === "done") {
-    return {
-      status: 200,
-      body: {
-        ok: true,
-        answer: row.answer ?? null,
-        transcript: row.audio_transcript ?? null,
-        audio: await buildAudioView(row, a.signGetUrl),
-      },
-    };
-  }
+  // The "already done" short-circuit (and the 404 for a missing/removed audio)
+  // lives in runTranscription now, shared with finalizeBriefingAudio's retry path.
   return runTranscription(a);
 }
 
