@@ -37,6 +37,13 @@ Deno.test("validatePages: rejeita image_key fora do formato R2 e chaves desconhe
   assertEquals(validatePages([{ title: "T", body: "B", extra: 1 }]).ok, false);
 });
 
+Deno.test("validatePages: string vazia em eyebrow e image_key vira null", () => {
+  const r = validatePages([{ title: "T", body: "B", eyebrow: "", image_key: "   " }]);
+  assert(r.ok, "esperava ok");
+  assertEquals(r.pages[0].eyebrow, null);
+  assertEquals(r.pages[0].image_key, null);
+});
+
 Deno.test("validatePopupFields: par de CTA, until_cta, require_ack, tamanhos e formato da URL", () => {
   const base = { cta_label: null, cta_url: null, secondary_label: null, frequency: "once", require_ack: false, target_mode: "all" };
   assertEquals(validatePopupFields(base), null);
@@ -58,4 +65,8 @@ Deno.test("validatePopupFields: par de CTA, until_cta, require_ack, tamanhos e f
   assert(validatePopupFields({ ...base, target_mode: "plan" }) !== null, "plan sem coluna");
   assert(validatePopupFields({ ...base, target_mode: "workspace", target_workspace_ids: [] }) !== null, "workspace sem ids");
   assert(validatePopupFields({ ...base, target_mode: "bogus" }) !== null, "target_mode inválido");
+  // "" conta como ausente: par vazio é válido, e um lado vazio com o outro preenchido é par incompleto
+  assertEquals(validatePopupFields({ ...base, cta_label: "", cta_url: "", secondary_label: "" }), null);
+  assert(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "" }) !== null, "url vazia com label");
+  assert(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "//evil.com" }) !== null, "url protocol-relative");
 });
