@@ -45,7 +45,12 @@ export function makeFakeDb(responses: Record<string, Resp[]>, rpc: Record<string
         getPublicUrl: (path: string) => ({ data: { publicUrl: `https://sb/storage/v1/object/public/${bucket}/${path}` } }),
       }),
     },
-    auth: { getUser: () => Promise.resolve({ data: { user: null }, error: null }) },
+    auth: {
+      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      // handleGetWorkspace (reused by mcp-admin's getWorkspace) calls auth.admin.getUserById
+      // per member; tests that exercise it override this with their own fixture.
+      admin: { getUserById: (_id: string) => Promise.resolve({ data: { user: null }, error: null }) },
+    },
   };
   return { db, calls, storageCalls };
 }

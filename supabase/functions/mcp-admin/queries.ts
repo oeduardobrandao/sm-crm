@@ -10,6 +10,10 @@ import { isUniqueViolation, normalizeKb, pickKbColumns, validateKbArticle } from
 import { finalizePopupImages, fillImageDims } from "./images.ts";
 import { markdownToTiptap, tiptapToMarkdown, tiptapToPlain } from "./markdown.ts";
 import type { Deps } from "./deps.ts";
+import { handleListWorkspaces } from "../platform-admin/list-workspaces.ts";
+import { handleGetMrr, handleGetTrials } from "../platform-admin/mrr.ts";
+import { handleGetWorkspace } from "../platform-admin/workspace-detail.ts";
+import { handleListPlans } from "../platform-admin/plans.ts";
 
 export type { Deps };
 
@@ -232,4 +236,75 @@ export async function updateKbArticle(d: Deps, args: Record<string, unknown>) {
   const { data, error } = await d.db.from("kb_articles").update(update).eq("id", id).select("id, slug, status").single();
   if (error) mapKbWriteError(error);
   return { id: data.id as string, slug: data.slug as string, status: data.status as string };
+}
+
+// ---------------------------------------------------------------------------
+// Plataforma (somente leitura; reaproveita os handlers do platform-admin)
+// ---------------------------------------------------------------------------
+
+const NO_HEADERS: Record<string, string> = {};
+const PII_KEYS = ["telefone", "marketing_opt_in", "owner_telefone", "owner_marketing_opt_in"];
+
+function stripPii<T extends Record<string, unknown>>(row: T): T {
+  const out = { ...row };
+  for (const k of PII_KEYS) delete (out as Record<string, unknown>)[k];
+  return out;
+}
+
+/** Lê o JSON de um handler do platform-admin; 4xx vira McpInputError, 5xx propaga. */
+async function handlerJson(res: Response, notFoundLabel: string): Promise<Record<string, unknown>> {
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (res.status === 404) throw notFound(notFoundLabel);
+  if (res.status >= 400 && res.status < 500) throw new McpInputError(String(body.error ?? "Requisição inválida."));
+  if (!res.ok) throw new Error(`platform-admin handler failed: ${res.status}`);
+  return body;
+}
+
+export async function listWorkspaces(d: Deps, args: { search?: string; plan_id?: string; offset?: number; limit?: number }) {
+  const limit = Math.min(Math.max(1, Math.trunc(args.limit ?? 20)), 100);
+  const offset = Math.max(0, Math.trunc(args.offset ?? 0));
+  const res = await handleListWorkspaces(d.db, { search: args.search, plan_id: args.plan_id, offset, limit }, NO_HEADERS);
+  const body = await handlerJson(res, "Workspace");
+  return { ...body, workspaces: ((body.workspaces ?? []) as Array<Record<string, unknown>>).map(stripPii) } as {
+    workspaces: Array<Record<string, unknown>>; total: number; total_members: number; total_clients: number; total_with_overrides: number;
+  };
+}
+
+export async function getWorkspace(d: Deps, args: { workspace_id: string }) {
+  const id = requireId(args.workspace_id, "workspace_id");
+  const res = await handleGetWorkspace(d.db, { workspace_id: id }, NO_HEADERS);
+  const body = await handlerJson(res, "Workspace") as {
+    owner: Record<string, unknown> | null; members: Array<Record<string, unknown>>; [k: string]: unknown;
+  };
+  return { ...body, owner: body.owner ? stripPii(body.owner) : null, members: (body.members ?? []).map(stripPii) };
+}
+
+export async function listPlans(d: Deps) {
+  const res = await handleListPlans(d.db, NO_HEADERS);
+  return (await handlerJson(res, "Plano")) as { plans: Array<Record<string, unknown>> };
+}
+
+export async function getDashboard(d: Deps) {
+  const [wsRes, plansRes, mrrRes, trialsRes] = await Promise.all([
+    handleListWorkspaces(d.db, { limit: 1 }, NO_HEADERS),
+    handleListPlans(d.db, NO_HEADERS),
+    handleGetMrr(d.db, NO_HEADERS),
+    handleGetTrials(d.db, NO_HEADERS),
+  ]);
+  const ws = await handlerJson(wsRes, "Workspace");
+  const plans = await handlerJson(plansRes, "Plano");
+  const mrr = await handlerJson(mrrRes, "MRR");
+  const trials = await handlerJson(trialsRes, "Trials");
+  // Só agregados: os arrays workspaces/trials trazem contato dos donos e ficam de fora.
+  return {
+    totals: {
+      workspaces: Number(ws.total ?? 0),
+      members: Number(ws.total_members ?? 0),
+      clients: Number(ws.total_clients ?? 0),
+      with_overrides: Number(ws.total_with_overrides ?? 0),
+      active_plans: ((plans.plans ?? []) as unknown[]).length,
+    },
+    mrr: { mrr_cents: Number(mrr.mrr_cents ?? 0), paying_count: Number(mrr.paying_count ?? 0) },
+    trials: { trial_mrr_cents: Number(trials.trial_mrr_cents ?? 0), trial_count: Number(trials.trial_count ?? 0) },
+  };
 }
