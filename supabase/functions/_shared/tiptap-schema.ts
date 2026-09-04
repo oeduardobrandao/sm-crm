@@ -80,6 +80,24 @@ const NODE_ATTRS: Record<string, Record<string, AttrRule>> = {
 /** Nós-folha que não podem ter `content`. */
 const LEAF = new Set(["text", "horizontalRule", "hardBreak", "inlineImage", "youtube", "iframe"]);
 
+/** Filhos permitidos por tipo (espelha o schema ProseMirror do editor do Admin/CRM). */
+const BLOCKS = [
+  "paragraph", "heading", "bulletList", "orderedList", "blockquote", "codeBlock",
+  "horizontalRule", "inlineImage", "youtube", "iframe", "callout",
+];
+const INLINE = ["text", "hardBreak"];
+const CONTENT: Record<string, readonly string[]> = {
+  doc: BLOCKS,
+  paragraph: INLINE,
+  heading: INLINE,
+  blockquote: BLOCKS,
+  callout: BLOCKS,
+  listItem: BLOCKS,
+  bulletList: ["listItem"],
+  orderedList: ["listItem"],
+  codeBlock: ["text"],
+};
+
 const MARK_ATTRS: Record<string, Record<string, AttrRule>> = {
   bold: {}, italic: {}, strike: {}, code: {}, underline: {},
   link: {
@@ -148,6 +166,16 @@ function validateNode(node: unknown, path: string): TiptapNode {
   if (n.content !== undefined) {
     if (LEAF.has(n.type)) throw new McpInputError(`${path}: ${n.type} não aceita content`);
     if (!Array.isArray(n.content)) throw new McpInputError(`${path}: content inválido`);
+    const allowedChildren = CONTENT[n.type];
+    for (const child of n.content) {
+      const childType = String((child as TiptapNode)?.type);
+      if (allowedChildren && !allowedChildren.includes(childType)) {
+        throw new McpInputError(`${path}: ${n.type} não aceita filho ${childType}`);
+      }
+      if (n.type === "codeBlock" && (child as TiptapNode)?.marks) {
+        throw new McpInputError(`${path}: codeBlock não aceita marks`);
+      }
+    }
     n.content.forEach((c, i) => validateNode(c, `${path}.${n.type}[${i}]`));
   }
   return n;

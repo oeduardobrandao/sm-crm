@@ -340,7 +340,8 @@ function codeSpan(text: string): string {
 function escapeMd(s: string): string {
   return s
     .replace(/[\\*_`\[\]~<]/g, (c) => `\\${c}`)
-    .replace(/^(\s*)([#>+-]|\d+\.)/gm, (_m, ws, tok) => `${ws}\\${tok}`);
+    .replace(/^(\s*)(?:([#>+-])|(\d+)([.)]))/gm, (_m, ws, sym, digits, punct) =>
+      sym !== undefined ? `${ws}\\${sym}` : `${ws}${digits}\\${punct}`);
 }
 
 /** Destino de link/imagem: a forma simples do CommonMark não aceita parênteses desbalanceados

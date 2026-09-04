@@ -157,6 +157,15 @@ Deno.test("validateTiptapDoc: rejeita tipo, atributo, mark e domínio fora da al
   throwsInput(() => validateTiptapDoc({ type: "paragraph" }), "doc");
 });
 
+Deno.test("validateTiptapDoc: aninhamento fora do schema é rejeitado", () => {
+  const wrap = (n: unknown) => ({ type: "doc", content: [n] });
+  throwsInput(() => validateTiptapDoc(wrap(p({ type: "bulletList", content: [{ type: "listItem", content: [p(t("x"))] }] }))), "paragraph");
+  throwsInput(() => validateTiptapDoc(wrap({ type: "bulletList", content: [p(t("x"))] })), "bulletList");
+  throwsInput(() => validateTiptapDoc(wrap({ type: "doc", content: [] })), "doc");
+  throwsInput(() => validateTiptapDoc(wrap({ type: "codeBlock", attrs: { language: null }, content: [t("x", [{ type: "bold" }])] })), "codeBlock");
+  throwsInput(() => validateTiptapDoc(wrap({ type: "listItem", content: [p(t("x"))] })), "listItem");
+});
+
 Deno.test("encodeOpaque/decodeOpaque: round-trip com UTF-8", () => {
   const n = { type: "paragraph", content: [t("ação ✓")] };
   const enc = encodeOpaque(n);
@@ -232,8 +241,10 @@ Deno.test("tiptapToMarkdown: destino com parênteses vai na forma <…> e o roun
 });
 
 Deno.test("tiptapToMarkdown: escapa caracteres especiais do Markdown no texto", () => {
-  const { markdown } = tiptapToMarkdown({ type: "doc", content: [p(t("2 * 3 = 6, a_b [x] `y` # não é título")), p(t("- não é lista"))] });
-  assertEquals(markdown, "2 \\* 3 = 6, a\\_b \\[x\\] \\`y\\` # não é título\n\n\\- não é lista");
+  const doc = { type: "doc", content: [p(t("2 * 3 = 6, a_b [x] `y` # não é título")), p(t("- não é lista")), p(t("1) Confirme"))] };
+  const { markdown } = tiptapToMarkdown(doc);
+  assertEquals(markdown, "2 \\* 3 = 6, a\\_b \\[x\\] \\`y\\` # não é título\n\n\\- não é lista\n\n1\\) Confirme");
+  assertEquals(markdownToTiptap(markdown), doc);
 });
 
 Deno.test("tiptapToMarkdown: crases dentro de código não fecham a cerca nem o codespan; round-trip preservado", () => {
