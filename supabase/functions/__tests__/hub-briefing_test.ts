@@ -4,12 +4,20 @@ import { createHubBriefingHandler } from "../hub-briefing/handler.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
-function makeHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
+function makeHandler(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  opts: { transcribe?: ((key: string) => Promise<{ text: string } | null>) | null; rateLimit?: (k: string) => boolean } = {},
+) {
   return createHubBriefingHandler({
     buildCorsHeaders,
     createDb: () => db as never,
     now: () => "2026-06-16T12:00:00.000Z",
-    rateLimit: async () => true,
+    rateLimit: async (_db, key) => (opts.rateLimit ? opts.rateLimit(key) : true),
+    signPutUrl: async (key: string) => `https://put.example.com/${key}`,
+    signGetUrl: async (key: string) => `https://get.example.com/${key}`,
+    headObject: async () => ({ contentLength: 5000, contentType: "audio/webm" }),
+    transcribe: opts.transcribe ?? null,
+    randomUUID: () => "fixed-uuid",
   });
 }
 
@@ -52,13 +60,15 @@ Deno.test("hub-briefing GET groups questions under their briefings", async () =>
         id: "b1",
         title: "Onboarding",
         display_order: 0,
-        questions: [{ id: "q1", question: "Marca?", answer: null, section: null, display_order: 0 }],
+        questions: [{ id: "q1", question: "Marca?", answer: null, section: null, display_order: 0, audio: null }],
       },
       {
         id: "b2",
         title: "Campanha",
         display_order: 1,
-        questions: [{ id: "q2", question: "Verba?", answer: "1000", section: "Mídia", display_order: 0 }],
+        questions: [
+          { id: "q2", question: "Verba?", answer: "1000", section: "Mídia", display_order: 0, audio: null },
+        ],
       },
     ],
   });
@@ -132,4 +142,125 @@ Deno.test("hub-briefing GET hides database error details", async () => {
   const response = await makeHandler(db)(getReq());
   assertEquals(response.status, 500);
   assertEquals(await readJson(response), { error: "Internal server error" });
+});
+
+const Q = "11111111-1111-1111-1111-111111111111";
+const KEY = `briefing-audio/conta-1/${Q}/fixed-uuid.webm`;
+
+function postReq(path: string, body: unknown) {
+  return new Request(`https://example.test/hub-briefing${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+Deno.test("hub-briefing GET inclui audio assinado quando a pergunta tem áudio", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("briefings", "select", { data: [{ id: "b1", title: "Briefing", display_order: 0 }], error: null });
+  db.queue("hub_briefing_questions", "select", {
+    data: [{
+      id: Q, question: "Marca?", answer: "texto", section: null, display_order: 0, briefing_id: "b1",
+      audio_r2_key: KEY, audio_mime: "audio/webm", audio_size_bytes: 5000, audio_duration_seconds: 12,
+      audio_transcription_status: "done", audio_recorded_at: "2026-09-03T00:00:00Z",
+    }],
+    error: null,
+  });
+  const body = await readJson(await makeHandler(db)(getReq()));
+  assertEquals(body.briefings[0].questions[0].audio, {
+    url: `https://get.example.com/${KEY}`, mime: "audio/webm", duration_seconds: 12,
+    transcription_status: "done", recorded_at: "2026-09-03T00:00:00Z",
+  });
+});
+
+Deno.test("hub-briefing POST /upload-url devolve presign no prefixo da pergunta", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("hub_briefing_questions", "select", { data: { id: Q }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: null, error: null });
+  const res = await makeHandler(db)(postReq("/upload-url", { token: "t", question_id: Q, mime_type: "audio/webm;codecs=opus", size_bytes: 5000 }));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.r2_key, KEY);
+  assertEquals(body.mime_type, "audio/webm");
+});
+
+Deno.test("hub-briefing POST /upload-url sem question_id -> 400; 429 na chave de áudio", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  const res = await makeHandler(db)(postReq("/upload-url", { token: "t", mime_type: "audio/webm", size_bytes: 10 }));
+  assertEquals(res.status, 400);
+
+  const db2 = createSupabaseQueryMock();
+  setupToken(db2);
+  const limited = makeHandler(db2, { rateLimit: (k) => !k.startsWith("hub-write:hub-briefing-audio:") });
+  const res2 = await limited(postReq("/upload-url", { token: "t", question_id: Q, mime_type: "audio/webm", size_bytes: 10 }));
+  assertEquals(res2.status, 429);
+});
+
+Deno.test("hub-briefing POST /{id}/audio finaliza, transcreve e devolve answer", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  db.queue("hub_briefing_questions", "select", {
+    data: {
+      answer: null, audio_transcript: null, audio_r2_key: KEY, audio_mime: "audio/webm", audio_size_bytes: 5000,
+      audio_duration_seconds: 12, audio_transcription_status: "pending", audio_recorded_at: "2026-09-03T00:00:00Z",
+    },
+    error: null,
+  });
+  // Update+select("id") must return a non-empty array — that's how
+  // runTranscription (briefing-audio.ts) distinguishes "this call won the
+  // race and applied the write" from "a concurrent retry already finished
+  // first" (see its `!Array.isArray(updated) || updated.length === 0`
+  // guard), which re-reads the row instead of trusting a stale in-memory
+  // answer.
+  db.queue("hub_briefing_questions", "update", { data: [{ id: Q }], error: null });
+  const res = await makeHandler(db, { transcribe: async () => ({ text: "Nossa marca." }) })(
+    postReq(`/${Q}/audio`, { token: "t", r2_key: KEY, mime_type: "audio/webm", size_bytes: 5000, duration_seconds: 12 }),
+  );
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.answer, "Nossa marca.");
+  assertEquals(body.audio.transcription_status, "done");
+});
+
+Deno.test("hub-briefing POST /{id}/audio propaga 413 da quota", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("briefing_audio_finalize", { data: null, error: { message: "quota_exceeded" } });
+  const res = await makeHandler(db)(
+    postReq(`/${Q}/audio`, { token: "t", r2_key: KEY, mime_type: "audio/webm", size_bytes: 5000, duration_seconds: 12 }),
+  );
+  assertEquals(res.status, 413);
+});
+
+Deno.test("hub-briefing POST /{id}/audio/transcribe e DELETE /{id}/audio", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("hub_briefing_questions", "select", { data: { answer: "a", audio_r2_key: null }, error: null });
+  const r1 = await makeHandler(db)(postReq(`/${Q}/audio/transcribe`, { token: "t" }));
+  assertEquals(r1.status, 404);
+
+  const db2 = createSupabaseQueryMock();
+  setupToken(db2);
+  db2.queue("hub_briefing_questions", "select", { data: { id: Q, audio_r2_key: KEY }, error: null });
+  db2.queueRpc("briefing_audio_release", { data: KEY, error: null });
+  const r2 = await makeHandler(db2)(
+    new Request(`https://example.test/hub-briefing/${Q}/audio?token=t`, { method: "DELETE" }),
+  );
+  assertEquals(r2.status, 200);
+  assertEquals(await readJson(r2), { ok: true });
+});
+
+Deno.test("hub-briefing POST simples (sem segmento) segue salvando answer", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("hub_briefing_questions", "select", { data: { id: Q }, error: null });
+  db.queue("hub_briefing_questions", "update", { data: null, error: null });
+  const res = await makeHandler(db)(postReq("", { token: "t", question_id: Q, answer: "oi" }));
+  assertEquals(res.status, 200);
+  assertEquals(await readJson(res), { ok: true });
 });
