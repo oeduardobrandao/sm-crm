@@ -119,6 +119,12 @@ create policy "Users can read own popup interactions"
   on popup_interactions for select to authenticated
   using (user_id = auth.uid());
 
+-- Só popups que o próprio usuário enxerga (a policy de SELECT de global_popups
+-- vale dentro do EXISTS): sem isso qualquer usuário infla as métricas de um
+-- popup que nunca viu.
 create policy "Users can insert own popup interactions"
   on popup_interactions for insert to authenticated
-  with check (user_id = auth.uid());
+  with check (
+    user_id = auth.uid()
+    and exists (select 1 from global_popups p where p.id = popup_id)
+  );

@@ -71,6 +71,23 @@ begin
   end;
   assert v_rejected, 'A conseguiu inserir interacao com user_id de B';
 
+  -- popup que A nao enxerga (draft, plano max, fora da janela): insert rejeitado
+  v_rejected := false;
+  begin
+    insert into popup_interactions (popup_id, user_id, action) values (v_p_draft, v_ua, 'cta');
+  exception when insufficient_privilege then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'A inseriu interacao em popup draft que nao enxerga';
+
+  v_rejected := false;
+  begin
+    insert into popup_interactions (popup_id, user_id, action) values (v_p_plan, v_ua, 'seen');
+  exception when insufficient_privilege then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'A inseriu interacao em popup de plano que nao enxerga';
+
   -- ---- (c) view invisivel para authenticated ----
   v_rejected := false;
   begin
