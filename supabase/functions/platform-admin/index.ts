@@ -6,6 +6,7 @@ import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendIn
 import { handleListWorkspaces } from "./list-workspaces.ts";
 import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
+import { handleListPopups, handleCreatePopup, handleUpdatePopup, handleDeletePopup } from "./popups.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
@@ -132,6 +133,14 @@ Deno.serve(async (req: Request) => {
         return await handleUpdateBanner(svc, body, headers);
       case "delete-banner":
         return await handleDeleteBanner(svc, body, headers);
+      case "list-popups":
+        return await handleListPopups(svc, body, headers);
+      case "create-popup":
+        return await handleCreatePopup(svc, body, { adminId: admin.id, userId: user.id }, headers);
+      case "update-popup":
+        return await handleUpdatePopup(svc, body, { userId: user.id }, headers);
+      case "delete-popup":
+        return await handleDeletePopup(svc, body, headers);
       case "list-kb-articles":
         return await handleListKbArticles(svc, body, headers);
       case "get-kb-article":

@@ -26,6 +26,7 @@ import {
   type PermissionModule,
 } from '../lib/permissions';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
+import { clearPopupSession } from '../hooks/popupSession';
 
 interface Profile {
   id: string;
@@ -276,6 +277,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Never let a support-tooling nicety break auth.
         }
         queryClient.clear();
+        // Same shared-machine reasoning as resetAnalytics()/Crisp above: B
+        // must not inherit A's popup shown/skipped/closed state
+        // (sessionStorage, per-tab). Mirrors `signOut` below.
+        clearPopupSession();
         // A non-null nextUser still has hydration ahead of it (the
         // profile-fetch effect below, keyed on userId, takes over `loading`
         // from here). Raising it back to true -- rather than leaving it at
@@ -908,6 +913,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Drop all cached per-user data (entitlements, notifications, …) so the next
     // account that logs in never sees the previous user's plan/limits.
     queryClient.clear();
+    // Same shared-machine reasoning: the next user in this tab must not inherit
+    // this user's popup shown/skipped/closed state (sessionStorage, per-tab).
+    clearPopupSession();
   };
 
   const can = useCallback(

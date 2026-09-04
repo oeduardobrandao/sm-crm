@@ -16,6 +16,7 @@ import { GuidePill } from '../guide/GuidePill';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 const GuideDialog = lazy(() => import('../guide/GuideDialog'));
+const GlobalPopupHost = lazy(() => import('./GlobalPopupHost'));
 
 export const FINANCIAL_PATHS = ['/financeiro'];
 
@@ -202,6 +203,9 @@ export default function AppLayout() {
         <GuidePill />
         <Suspense fallback={null}>
           <GuideDialog />
+        </Suspense>
+        <Suspense fallback={null}>
+          <GlobalPopupHost />
         </Suspense>
       </div>
     </GuideProvider>

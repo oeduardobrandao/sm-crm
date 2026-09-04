@@ -86,6 +86,10 @@ vi.mock('../../guide/GuideDialog', () => ({
   default: () => null,
 }));
 
+vi.mock('../GlobalPopupHost', () => ({
+  default: () => null,
+}));
+
 import { useAuth } from '../../../context/AuthContext';
 import AppLayout from '../AppLayout';
 
