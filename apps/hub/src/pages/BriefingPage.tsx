@@ -160,16 +160,24 @@ function QuestionItem({
   const [audioError, setAudioError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<'retry' | 'remove' | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const locked = phase !== 'idle';
+  // Tracks the most recently typed value and whether a debounced save for it
+  // hasn't landed yet. An audio action (record, retry) that starts while this
+  // is dirty must flush it first — the server computes the "done" transcript
+  // append from the DB row's current `answer`, so a cancelled debounce would
+  // let the server overwrite the user's unsaved edit with a stale value.
+  const pendingRef = useRef<{ value: string; dirty: boolean }>({ value: answer, dirty: false });
+  const locked = phase !== 'idle' || busyAction !== null;
 
   const handleChange = useCallback(
     (value: string) => {
       setAnswer(value);
       setStatus('saving');
+      pendingRef.current = { value, dirty: true };
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
         try {
           await onSave(value);
+          pendingRef.current = { value, dirty: false };
           setStatus('saved');
           setTimeout(() => setStatus('idle'), 2000);
         } catch {
@@ -180,6 +188,28 @@ function QuestionItem({
     [onSave],
   );
 
+  // Flushes a pending debounced save synchronously instead of letting
+  // handleRecorded/handleRetry cancel it outright. Throws (after surfacing
+  // the failure via `status`) when the save itself fails, so callers can
+  // abort the audio action rather than proceed against a stale answer.
+  async function flushPendingSave(): Promise<void> {
+    if (!pendingRef.current.dirty) return;
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const value = pendingRef.current.value;
+    try {
+      await onSave(value);
+      pendingRef.current = { value, dirty: false };
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 2000);
+    } catch {
+      setStatus('error');
+      throw new Error('flush-pending-save-failed');
+    }
+  }
+
   function applyResponse(res: BriefingAudioResponse) {
     if (res.answer !== null) setAnswer(res.answer);
     setAudio(res.audio);
@@ -187,7 +217,12 @@ function QuestionItem({
   }
 
   async function handleRecorded(blob: Blob, mime: string, durationSeconds: number) {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    try {
+      await flushPendingSave();
+    } catch {
+      setAudioError('Não foi possível salvar o texto. Tente de novo.');
+      throw new Error('Não foi possível salvar o texto. Tente de novo.');
+    }
     setAudioError(null);
     setPhase('uploading');
     try {
@@ -209,6 +244,12 @@ function QuestionItem({
   }
 
   async function handleRetry() {
+    try {
+      await flushPendingSave();
+    } catch {
+      setAudioError('Não foi possível salvar o texto. Tente de novo.');
+      return;
+    }
     setBusyAction('retry');
     setAudioError(null);
     try {

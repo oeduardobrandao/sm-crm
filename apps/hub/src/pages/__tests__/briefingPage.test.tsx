@@ -183,6 +183,87 @@ describe('BriefingPage audio', () => {
     expect(textareas[0]).not.toBeDisabled();
   });
 
+  it('flushes a pending debounced save before starting the upload, preserving call order', async () => {
+    let resolveUpload!: (v: unknown) => void;
+    vi.mocked(uploadBriefingAudio).mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolveUpload = r;
+        }) as never,
+    );
+    renderPage(<BriefingPage />);
+    await screen.findByText('Marca?');
+    const textareas = screen.getAllByRole('textbox');
+
+    // Type, then trigger the recorder immediately — before the 800ms
+    // debounce has any chance to fire on its own.
+    fireEvent.change(textareas[0], { target: { value: 'Digitando rápido' } });
+    await act(async () => {
+      fireEvent.click(screen.getAllByText('fake-record')[0]);
+    });
+
+    expect(submitBriefingAnswer).toHaveBeenCalledWith('token-publico', 'q1', 'Digitando rápido');
+    expect(uploadBriefingAudio).toHaveBeenCalled();
+    const submitOrder = vi.mocked(submitBriefingAnswer).mock.invocationCallOrder[0];
+    const uploadOrder = vi.mocked(uploadBriefingAudio).mock.invocationCallOrder[0];
+    expect(submitOrder).toBeLessThan(uploadOrder);
+
+    await act(async () => {
+      resolveUpload({
+        ok: true,
+        answer: 'Digitando rápido\n\nTranscrito.',
+        transcript: 'Transcrito.',
+        audio: { ...audio, transcription_status: 'done' },
+      });
+    });
+    await waitFor(() => expect(textareas[0]).toHaveValue('Digitando rápido\n\nTranscrito.'));
+  });
+
+  it('aborts the audio action when the flushed save fails, keeping the recorder in preview', async () => {
+    vi.mocked(submitBriefingAnswer).mockRejectedValue(new Error('HTTP 500'));
+    renderPage(<BriefingPage />);
+    await screen.findByText('Marca?');
+    const textareas = screen.getAllByRole('textbox');
+
+    fireEvent.change(textareas[0], { target: { value: 'Digitando rápido' } });
+    await act(async () => {
+      fireEvent.click(screen.getAllByText('fake-record')[0]);
+    });
+
+    expect(submitBriefingAnswer).toHaveBeenCalledWith('token-publico', 'q1', 'Digitando rápido');
+    expect(uploadBriefingAudio).not.toHaveBeenCalled();
+    expect(screen.getByText(/não foi possível salvar o texto/i)).toBeInTheDocument();
+    expect(textareas[0]).not.toBeDisabled();
+  });
+
+  it('disables the textarea while a retry is in flight', async () => {
+    let resolveRetry!: (v: unknown) => void;
+    vi.mocked(retryBriefingTranscription).mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolveRetry = r;
+        }) as never,
+    );
+    renderPage(<BriefingPage />);
+    await screen.findByText('Público?');
+    const textareas = screen.getAllByRole('textbox');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }));
+    });
+    expect(textareas[1]).toBeDisabled();
+
+    await act(async () => {
+      resolveRetry({
+        ok: true,
+        answer: 'Novo',
+        transcript: 'Novo',
+        audio: { ...audio, transcription_status: 'done' },
+      });
+    });
+    await waitFor(() => expect(textareas[1]).not.toBeDisabled());
+  });
+
   it('surfaces text-save failures instead of swallowing them', async () => {
     vi.mocked(submitBriefingAnswer).mockRejectedValue(new Error('HTTP 500'));
     renderPage(<BriefingPage />);

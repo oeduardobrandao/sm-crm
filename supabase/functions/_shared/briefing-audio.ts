@@ -198,49 +198,93 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
     };
   }
 
-  const answer = appendTranscript(row.answer, text);
   const resultDuration = result?.duration;
   const duration = row.audio_duration_seconds ??
     (typeof resultDuration === "number" && Number.isFinite(resultDuration) && resultDuration > 0
       ? Math.round(resultDuration)
       : null);
-  // Conditioned on audio_transcription_status != "done": guards against two
-  // concurrent retries both reading the same `answer` and racing to append the
-  // transcript twice. Whichever write lands first flips the row to "done" and
-  // the loser's UPDATE matches zero rows.
-  const { data: updated, error } = await where(a.db.from("hub_briefing_questions").update({
-    answer,
-    audio_transcript: text,
-    audio_transcription_status: "done",
-    audio_duration_seconds: duration,
-  })).neq("audio_transcription_status", "done").select("id");
-  if (error) {
-    console.error("briefing-audio save transcript error:", (error as { message?: string }).message ?? error);
-    return { status: 500, body: { error: "internal error" } };
+
+  // The "done" write is a compare-and-swap on `answer`, not just on
+  // audio_transcription_status: without it, a text edit the user saved while
+  // transcription was running gets silently clobbered — we'd write
+  // `<stale answer> + transcript` on top of it. Each attempt CASes on the
+  // answer it just read; a miss means either a concurrent transcription
+  // already won (status flipped to "done" — return its result) or the
+  // answer changed underneath us (re-append onto the fresh value and retry,
+  // up to MAX_DONE_ATTEMPTS total).
+  const MAX_DONE_ATTEMPTS = 3;
+  let currentRow: FullRow = row;
+  for (let attempt = 1; attempt <= MAX_DONE_ATTEMPTS; attempt++) {
+    const answer = appendTranscript(currentRow.answer, text);
+    const casAnswer = (q: ReturnType<BriefingAudioDb["from"]>) =>
+      currentRow.answer == null ? q.is("answer", null) : q.eq("answer", currentRow.answer);
+    // Conditioned on audio_transcription_status != "done" too: guards against
+    // two concurrent retries both reading the same status and racing to
+    // append the transcript twice. Whichever write lands first flips the row
+    // to "done" and the loser's UPDATE matches zero rows either way.
+    const { data: updated, error } = await casAnswer(
+      where(a.db.from("hub_briefing_questions").update({
+        answer,
+        audio_transcript: text,
+        audio_transcription_status: "done",
+        audio_duration_seconds: duration,
+      })).neq("audio_transcription_status", "done"),
+    ).select("id");
+    if (error) {
+      console.error("briefing-audio save transcript error:", (error as { message?: string }).message ?? error);
+      return { status: 500, body: { error: "internal error" } };
+    }
+    if (Array.isArray(updated) && updated.length > 0) {
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          answer,
+          transcript: text,
+          audio: await buildAudioView(
+            { ...row, audio_transcription_status: "done", audio_duration_seconds: duration }, a.signGetUrl,
+          ),
+        },
+      };
+    }
+
+    const fresh = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
+    if (!fresh) break;
+    if (fresh.audio_transcription_status === "done") {
+      // Concurrent run won the race and already wrote "done" — return its
+      // answer/transcript instead of appending on top of it.
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          answer: fresh.answer ?? null,
+          transcript: fresh.audio_transcript ?? null,
+          audio: await buildAudioView(fresh, a.signGetUrl),
+        },
+      };
+    }
+    // Still pending, but `answer` moved underneath us — retry the append
+    // against the value that's there now.
+    currentRow = fresh;
   }
-  if (!Array.isArray(updated) || updated.length === 0) {
-    // Concurrent run won the race and already wrote "done" — re-read and return
-    // its answer/transcript instead of appending on top of it.
-    const current = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
-    return {
-      status: 200,
-      body: {
-        ok: true,
-        answer: current?.answer ?? row.answer ?? null,
-        transcript: current?.audio_transcript ?? null,
-        audio: await buildAudioView(current ?? row, a.signGetUrl),
-      },
-    };
-  }
+
+  // Exhausted retries without landing the CAS: give up on this run instead of
+  // risking another silent overwrite. Mark the row "failed" (guarded by the
+  // same neq, so a concurrent "done" still wins) and return the freshest
+  // answer with no transcript — the user can retry manually.
+  await where(a.db.from("hub_briefing_questions").update({ audio_transcription_status: "failed" })).neq(
+    "audio_transcription_status",
+    "done",
+  );
+  const finalRow = (await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id)) ??
+    { ...currentRow, audio_transcription_status: "failed" };
   return {
     status: 200,
     body: {
       ok: true,
-      answer,
-      transcript: text,
-      audio: await buildAudioView(
-        { ...row, audio_transcription_status: "done", audio_duration_seconds: duration }, a.signGetUrl,
-      ),
+      answer: finalRow.answer ?? null,
+      transcript: finalRow.audio_transcript ?? null,
+      audio: await buildAudioView(finalRow, a.signGetUrl),
     },
   };
 }

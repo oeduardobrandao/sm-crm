@@ -275,6 +275,109 @@ Deno.test("finalize: perdedor da corrida concorrente não duplica o texto anexad
   );
 });
 
+Deno.test("finalize: escreve done com CAS na coluna answer (eq quando existe, is null quando vazia)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  db.queue("hub_briefing_questions", "select", { data: { ...audioRow, audio_duration_seconds: null }, error: null });
+  db.queue("hub_briefing_questions", "update", { data: [{ id: Q }], error: null });
+  await finalizeBriefingAudio(finalizeArgs(db, {
+    transcribe: async () => ({ text: "Nova fala." }),
+  }));
+  const upd = db.calls.find((c) => c.table === "hub_briefing_questions" && c.operation === "update");
+  assert(
+    upd?.modifiers.some((m) => m.method === "eq" && m.args[0] === "answer" && m.args[1] === "Já tinha texto."),
+    "done update must CAS on the previously-read answer",
+  );
+
+  const db2 = createSupabaseQueryMock();
+  db2.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  db2.queue("hub_briefing_questions", "select", {
+    data: { ...audioRow, answer: null, audio_duration_seconds: null },
+    error: null,
+  });
+  db2.queue("hub_briefing_questions", "update", { data: [{ id: Q }], error: null });
+  await finalizeBriefingAudio(finalizeArgs(db2, {
+    transcribe: async () => ({ text: "Primeira fala." }),
+  }));
+  const upd2 = db2.calls.find((c) => c.table === "hub_briefing_questions" && c.operation === "update");
+  assert(
+    upd2?.modifiers.some((m) => m.method === "is" && m.args[0] === "answer" && m.args[1] === null),
+    "done update must use IS NULL when the previously-read answer is null",
+  );
+});
+
+Deno.test("finalize: answer editado durante a transcrição não é sobrescrito, retry re-anexa sobre o valor fresco", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  db.queue("hub_briefing_questions", "select", { data: audioRow, error: null });
+  // First CAS write misses: the answer changed underneath us (user saved a
+  // text edit while transcription was running), so eq("answer", "Já tinha
+  // texto.") no longer matches any row.
+  db.queue("hub_briefing_questions", "update", { data: [], error: null });
+  db.queue("hub_briefing_questions", "select", {
+    data: { ...audioRow, answer: "Editado enquanto isso." },
+    error: null,
+  });
+  // Retry, CASing on the freshly re-read answer, lands.
+  db.queue("hub_briefing_questions", "update", { data: [{ id: Q }], error: null });
+  let transcribeCalls = 0;
+  const res = await finalizeBriefingAudio(finalizeArgs(db, {
+    transcribe: async () => {
+      transcribeCalls++;
+      return { text: "X" };
+    },
+  }));
+  assertEquals(transcribeCalls, 1);
+  assertEquals(res.status, 200);
+  assertEquals(res.body.answer, "Editado enquanto isso.\n\nX");
+  const updates = db.calls.filter((c) => c.table === "hub_briefing_questions" && c.operation === "update");
+  assertEquals(updates.length, 2);
+  assert(
+    updates[0].modifiers.some((m) => m.method === "eq" && m.args[0] === "answer" && m.args[1] === "Já tinha texto."),
+    "first attempt CASes on the originally-read answer",
+  );
+  assert(
+    updates[1].modifiers.some(
+      (m) => m.method === "eq" && m.args[0] === "answer" && m.args[1] === "Editado enquanto isso.",
+    ),
+    "retry must CAS on the freshly re-read answer",
+  );
+});
+
+Deno.test("finalize: esgota as tentativas de CAS e marca failed sem perder a edição concorrente", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  db.queue("hub_briefing_questions", "select", { data: audioRow, error: null });
+  // Every CAS attempt loses because the answer keeps moving; each miss is
+  // followed by a reload to decide whether to retry or bail.
+  db.queue("hub_briefing_questions", "update", { data: [], error: null }); // attempt 1
+  db.queue("hub_briefing_questions", "select", { data: { ...audioRow, answer: "Edição 1." }, error: null });
+  db.queue("hub_briefing_questions", "update", { data: [], error: null }); // attempt 2
+  db.queue("hub_briefing_questions", "select", { data: { ...audioRow, answer: "Edição 2." }, error: null });
+  db.queue("hub_briefing_questions", "update", { data: [], error: null }); // attempt 3 (last)
+  db.queue("hub_briefing_questions", "select", { data: { ...audioRow, answer: "Edição 3." }, error: null });
+  // Attempts exhausted: mark failed, then re-read the freshest row for the response.
+  db.queue("hub_briefing_questions", "update", { data: null, error: null });
+  db.queue("hub_briefing_questions", "select", {
+    data: { ...audioRow, answer: "Edição 3.", audio_transcription_status: "failed" },
+    error: null,
+  });
+  const res = await finalizeBriefingAudio(finalizeArgs(db, {
+    transcribe: async () => ({ text: "X" }),
+  }));
+  assertEquals(res.status, 200);
+  assertEquals(res.body.answer, "Edição 3.");
+  assertEquals(res.body.transcript, null);
+  assertEquals((res.body.audio as Record<string, unknown>).transcription_status, "failed");
+  const updates = db.calls.filter((c) => c.table === "hub_briefing_questions" && c.operation === "update");
+  assertEquals(updates.length, 4);
+  assertEquals((updates[3].payload as Record<string, unknown>).audio_transcription_status, "failed");
+  assert(
+    updates[3].modifiers.some((m) => m.method === "neq" && m.args[0] === "audio_transcription_status" && m.args[1] === "done"),
+    "the failure marker must stay guarded by the same neq",
+  );
+});
+
 Deno.test("finalize: transcriber que lança vira failed sem 500", async () => {
   const db = createSupabaseQueryMock();
   db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
