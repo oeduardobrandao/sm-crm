@@ -115,6 +115,13 @@ describe('validateForm', () => {
     const h = valid();
     h.pages[0].eyebrow = 'x'.repeat(61);
     expect(validateForm(h)!.pages[0]).toEqual({ eyebrow: 'Max 60 characters' });
+    const b = valid();
+    b.pages[0].body = 'x'.repeat(2001);
+    expect(validateForm(b)!.pages[0].body).toBe('Max 2000 characters');
+    const u = { ...valid(), cta_label: 'Ver', cta_url: '/' + 'x'.repeat(2048) };
+    expect(validateForm(u)!.cta).toBe('CTA URL max 2048 characters');
+    const s = { ...valid(), secondary_label: 'x'.repeat(41) };
+    expect(validateForm(s)!.cta).toBe('Secondary label max 40 characters');
   });
 });
 
@@ -150,5 +157,13 @@ describe('páginas', () => {
     const off = withRequireAck(on, false);
     expect(off.require_ack).toBe(false);
     expect(off.frequency).toBe('once');
+  });
+
+  it('movePage ignora índices fora do range e from === to', () => {
+    const f = { ...emptyForm(), pages: [newPage(), newPage()] };
+    expect(movePage(f, 5, 0)).toBe(f);
+    expect(movePage(f, 0, 9)).toBe(f);
+    expect(movePage(f, 1, 1)).toBe(f);
+    expect(movePage(f, 0, 1).pages.every(Boolean)).toBe(true);
   });
 });

@@ -174,6 +174,8 @@ export function removePage(f: PopupFormState, index: number): PopupFormState {
 }
 
 export function movePage(f: PopupFormState, from: number, to: number): PopupFormState {
+  const last = f.pages.length - 1;
+  if (from < 0 || from > last || to < 0 || to > last || from === to) return f;
   const pages = [...f.pages];
   const [moved] = pages.splice(from, 1);
   pages.splice(to, 0, moved);
