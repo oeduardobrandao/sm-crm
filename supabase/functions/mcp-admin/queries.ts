@@ -6,7 +6,9 @@ import {
   adminContaId, newImageKeys, normalizePopupText, pagesHaveImages, persistedImageKeys,
   pickPopupColumns, validatePages, validatePopupFields,
 } from "../_shared/admin-popups.ts";
-import { finalizePopupImages } from "./images.ts";
+import { isUniqueViolation, normalizeKb, pickKbColumns, validateKbArticle } from "../_shared/admin-kb.ts";
+import { finalizePopupImages, fillImageDims } from "./images.ts";
+import { markdownToTiptap, tiptapToMarkdown, tiptapToPlain } from "./markdown.ts";
 import type { Deps } from "./deps.ts";
 
 export type { Deps };
@@ -155,4 +157,79 @@ export async function updatePopup(d: Deps, args: Record<string, unknown>) {
   const { data, error } = await d.db.from("global_popups").update(update).eq("id", id).select("id, status").single();
   if (error) throw error;
   return { id: data.id as string, status: data.status as string };
+}
+
+// ---------------------------------------------------------------------------
+// Artigos (kb_articles)
+// ---------------------------------------------------------------------------
+
+const KB_LIST_COLUMNS = "id, title, slug, excerpt, category, tags, status, display_order, cover_image_url, updated_at";
+const KB_LIST_COLUMN_LIST = KB_LIST_COLUMNS.split(", ");
+
+export async function listKbArticles(d: Deps, args: { status?: string; category?: string }) {
+  let q = d.db.from("kb_articles").select(KB_LIST_COLUMNS).order("display_order", { ascending: true });
+  if (args.status) q = q.eq("status", args.status);
+  if (args.category) q = q.eq("category", args.category);
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  // select() já restringe as colunas no Postgres real; a projeção abaixo é defensiva (mantém
+  // a resposta estável mesmo se o client devolver campos extras).
+  return { articles: rows.map((row) => Object.fromEntries(KB_LIST_COLUMN_LIST.map((c) => [c, row[c]]))) };
+}
+
+export async function getKbArticle(d: Deps, args: { article_id?: string; slug?: string }) {
+  const byId = typeof args.article_id === "string" && args.article_id.trim();
+  const bySlug = typeof args.slug === "string" && args.slug.trim();
+  if (!byId && !bySlug) throw new McpInputError("Informe article_id ou slug.");
+  let q = d.db.from("kb_articles").select("*");
+  q = byId ? q.eq("id", byId) : q.eq("slug", bySlug);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw error;
+  if (!data) throw notFound("Artigo");
+  const { content, content_plain: _plain, ...meta } = data as Record<string, unknown>;
+  const { markdown, opaque_blocks } = tiptapToMarkdown(content);
+  return { article: { ...meta, content_markdown: markdown, opaque_blocks } };
+}
+
+/** Converte content_markdown (se presente) em content + content_plain, sempre juntos. */
+async function bodyFromMarkdown(d: Deps, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (args.content !== undefined || args.content_plain !== undefined) {
+    throw new McpInputError("Envie o corpo em content_markdown; content/content_plain são derivados pelo servidor.");
+  }
+  if (args.content_markdown === undefined) return {};
+  if (typeof args.content_markdown !== "string") throw new McpInputError("content_markdown deve ser texto.");
+  const doc = await fillImageDims(d, markdownToTiptap(args.content_markdown));
+  return { content: doc, content_plain: tiptapToPlain(doc) };
+}
+
+function mapKbWriteError(error: unknown): never {
+  if (isUniqueViolation(error)) throw new McpInputError("Já existe um artigo com esse slug.");
+  throw error;
+}
+
+export async function createKbArticle(d: Deps, args: Record<string, unknown>) {
+  if (args.content_markdown === undefined) throw new McpInputError("content_markdown é obrigatório.");
+  const body = await bodyFromMarkdown(d, args);
+  const insert = normalizeKb({ ...pickKbColumns(args), ...body, author_id: d.ctx.admin_id });
+  const err = validateKbArticle(insert);
+  if (err) throw new McpInputError(err);
+  const { data, error } = await d.db.from("kb_articles").insert(insert).select("id, slug, status").single();
+  if (error) mapKbWriteError(error);
+  return { id: data.id as string, slug: data.slug as string, status: data.status as string };
+}
+
+export async function updateKbArticle(d: Deps, args: Record<string, unknown>) {
+  const id = requireId(args.article_id, "article_id");
+  const body = await bodyFromMarkdown(d, args);
+  const update = normalizeKb({ ...pickKbColumns(args), ...body });
+  if (Object.keys(update).length === 0) throw new McpInputError("Nada para atualizar.");
+  const { data: current, error: readErr } = await d.db.from("kb_articles").select("*").eq("id", id).maybeSingle();
+  if (readErr) throw readErr;
+  if (!current) throw notFound("Artigo");
+  const err = validateKbArticle({ ...normalizeKb(current as Record<string, unknown>), ...update });
+  if (err) throw new McpInputError(err);
+  const { data, error } = await d.db.from("kb_articles").update(update).eq("id", id).select("id, slug, status").single();
+  if (error) mapKbWriteError(error);
+  return { id: data.id as string, slug: data.slug as string, status: data.status as string };
 }
