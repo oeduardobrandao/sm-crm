@@ -106,6 +106,7 @@ Deno.test("validatePages: CTA por página normaliza, exige par e aplica as regra
   assertEquals(validatePages([{ title: "T", body: "B", cta_label: "x".repeat(41), cta_url: "/x" }]).ok, false);
   assertEquals(validatePages([{ title: "T", body: "B", cta_label: "Ver", cta_url: "javascript:alert(1)" }]).ok, false);
   assertEquals(validatePages([{ title: "T", body: "B", cta_label: "Ver", cta_url: "//evil.com" }]).ok, false);
+  assertEquals(validatePages([{ title: "T", body: "B", cta_label: "Ver", cta_url: "/\\evil.com" }]).ok, false);
   assertEquals(validatePages([{ title: "T", body: "B", cta_label: "Ver", cta_url: "/\t/evil.com" }]).ok, false);
 });
 

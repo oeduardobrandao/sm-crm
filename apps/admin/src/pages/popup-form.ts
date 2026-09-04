@@ -9,6 +9,14 @@ const MAX_LABEL = 40;
 const MAX_URL = 2048;
 const CTA_URL_RE = /^(\/(?![/\\])|https?:\/\/)/; // `//host` é protocol-relative, não caminho interno, nem `/\host`
 
+/** Regra única da URL de CTA (global e por página), espelhando o servidor. */
+function ctaUrlError(url: string): string | null {
+  if (/[\t\r\n]/.test(url) || !CTA_URL_RE.test(url))
+    return 'CTA URL must start with / or http(s)://';
+  if (url.length > MAX_URL) return `CTA URL max ${MAX_URL} characters`;
+  return null;
+}
+
 export interface PageForm {
   /** Identidade estável para o dnd-kit e o React. Nunca vai para o payload. */
   key: string;
@@ -146,10 +154,10 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
     if (pg.eyebrow.trim().length > MAX_EYEBROW) e.eyebrow = `Max ${MAX_EYEBROW} characters`;
     const pl = pg.cta_label.trim();
     const pu = pg.cta_url.trim();
+    const puErr = pu ? ctaUrlError(pu) : null;
     if ((pl === '') !== (pu === '')) e.cta = 'CTA needs both a label and a URL';
     else if (pl.length > MAX_LABEL) e.cta = `CTA label max ${MAX_LABEL} characters`;
-    else if (pu && !CTA_URL_RE.test(pu)) e.cta = 'CTA URL must start with / or http(s)://';
-    else if (pu.length > MAX_URL) e.cta = `CTA URL max ${MAX_URL} characters`;
+    else if (puErr) e.cta = puErr;
     if (e.title || e.body || e.eyebrow || e.cta) {
       errors.pages[i] = e;
       any = true;
@@ -158,12 +166,10 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
 
   const label = f.cta_label.trim();
   const url = f.cta_url.trim();
+  const urlErr = url ? ctaUrlError(url) : null;
   if ((label === '') !== (url === '')) errors.cta = 'CTA needs both a label and a URL';
   else if (label.length > MAX_LABEL) errors.cta = `CTA label max ${MAX_LABEL} characters`;
-  else if (url && /[\t\r\n]/.test(url)) {
-    errors.cta = 'CTA URL must start with / or http(s)://';
-  } else if (url && !CTA_URL_RE.test(url)) errors.cta = 'CTA URL must start with / or http(s)://';
-  else if (url.length > MAX_URL) errors.cta = `CTA URL max ${MAX_URL} characters`;
+  else if (urlErr) errors.cta = urlErr;
   else if (f.secondary_label.trim().length > MAX_LABEL) {
     errors.cta = `Secondary label max ${MAX_LABEL} characters`;
   }

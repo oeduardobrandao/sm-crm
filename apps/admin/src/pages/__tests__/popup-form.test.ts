@@ -140,6 +140,10 @@ describe('validateForm', () => {
     expect(validateForm(f)!.pages[0].cta).toBe('CTA needs both a label and a URL');
     f.pages[0].cta_url = 'ajuda';
     expect(validateForm(f)!.pages[0].cta).toBe('CTA URL must start with / or http(s)://');
+    f.pages[0].cta_url = '/\\evil.com';
+    expect(validateForm(f)!.pages[0].cta).toBe('CTA URL must start with / or http(s)://');
+    f.pages[0].cta_url = '/\t/evil.com';
+    expect(validateForm(f)!.pages[0].cta).toBe('CTA URL must start with / or http(s)://');
     f.pages[0].cta_url = '/ajuda';
     expect(validateForm(f)).toBeNull();
     const g = { ...f, frequency: 'until_cta' as const };

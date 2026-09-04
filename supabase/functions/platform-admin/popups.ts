@@ -22,6 +22,13 @@ const PAGE_KEYS = new Set(["title", "eyebrow", "body", "image_key", "cta_label",
 const IMAGE_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
 const CTA_URL_RE = /^(\/(?![/\\])|https?:\/\/)/; // `//host` é protocol-relative, nem `/\host`
 
+/** Regra única da URL de CTA (global e por página): prefixo permitido e sem tab/CR/LF, que o browser remove antes de interpretar. */
+function ctaUrlProblem(url: string): string | null {
+  if (/[\t\r\n]/.test(url)) return "cta_url contains control characters";
+  if (!CTA_URL_RE.test(url)) return "cta_url must start with / or http(s)://";
+  return null;
+}
+
 function optionalText(value: unknown, max: number): { ok: true; value: string | null } | { ok: false } {
   if (value === undefined || value === null) return { ok: true, value: null };
   if (typeof value !== "string") return { ok: false };
@@ -83,11 +90,9 @@ export function validatePages(
     if ((pageCtaLabel.value === null) !== (pageCtaUrl.value === null)) {
       return { ok: false, error: `page ${i}: cta_label and cta_url go together` };
     }
-    if (
-      pageCtaUrl.value !== null &&
-      (!CTA_URL_RE.test(pageCtaUrl.value) || /[\t\r\n]/.test(pageCtaUrl.value))
-    ) {
-      return { ok: false, error: `page ${i}: cta_url must start with / or http(s)://` };
+    if (pageCtaUrl.value !== null) {
+      const p = ctaUrlProblem(pageCtaUrl.value);
+      if (p) return { ok: false, error: `page ${i}: ${p}` };
     }
     pages.push({
       title, eyebrow: eyebrow.value, body, image_key: image.value,
@@ -104,11 +109,9 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
   const ctaUrl = optionalText(row.cta_url, 2048);
   if (!ctaUrl.ok) return "cta_url max 2048";
   if ((ctaLabel.value === null) !== (ctaUrl.value === null)) return "cta_label and cta_url go together";
-  if (ctaUrl.value !== null && /[\t\r\n]/.test(ctaUrl.value)) {
-    return "cta_url contains control characters";
-  }
-  if (ctaUrl.value !== null && !CTA_URL_RE.test(ctaUrl.value)) {
-    return "cta_url must start with / or http(s)://";
+  if (ctaUrl.value !== null) {
+    const p = ctaUrlProblem(ctaUrl.value);
+    if (p) return p;
   }
   const secondary = optionalText(row.secondary_label, 40);
   if (!secondary.ok) return "secondary_label max 40";
