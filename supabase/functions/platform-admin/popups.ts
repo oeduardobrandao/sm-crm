@@ -134,6 +134,21 @@ function pickColumns(body: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+const TEXT_COLUMNS = ["cta_label", "cta_url", "secondary_label"] as const;
+
+/** Trim + "" → null nas colunas de texto opcionais, para que o que persiste seja o
+ * mesmo que validatePopupFields avaliou (senão "   " passa na validação e cai no CHECK). */
+function normalizePopupText(row: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...row };
+  for (const col of TEXT_COLUMNS) {
+    if (typeof out[col] === "string") {
+      const t = (out[col] as string).trim();
+      out[col] = t.length > 0 ? t : null;
+    }
+  }
+  return out;
+}
+
 export async function handleListPopups(svc: Svc, body: { status?: string }, headers: Headers) {
   let query = svc.from("global_popups").select("*").order("created_at", { ascending: false });
   if (body.status) query = query.eq("status", body.status);
@@ -174,7 +189,7 @@ export async function handleCreatePopup(
     console.error("[popups] create rejected:", pages.error);
     return json({ error: "Invalid popup" }, 400, headers);
   }
-  const insert = { ...pickColumns(body), pages: pages.pages, created_by: adminId };
+  const insert = normalizePopupText({ ...pickColumns(body), pages: pages.pages, created_by: adminId });
   const fieldError = validatePopupFields(insert);
   if (fieldError) {
     console.error("[popups] create rejected:", fieldError);
@@ -190,7 +205,7 @@ export async function handleUpdatePopup(svc: Svc, body: Record<string, unknown>,
   const popupId = body.popup_id;
   if (typeof popupId !== "string" || !popupId) return json({ error: "popup_id is required" }, 400, headers);
 
-  const update = pickColumns(body);
+  const update = normalizePopupText(pickColumns(body));
   if (Object.keys(update).length === 0) return json({ error: "No fields to update" }, 400, headers);
 
   if (update.pages !== undefined) {

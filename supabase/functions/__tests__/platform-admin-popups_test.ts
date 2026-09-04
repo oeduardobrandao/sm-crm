@@ -224,3 +224,42 @@ Deno.test("list-popups: ignora action desconhecida na view e devolve lista vazia
   assertEquals((await res2.json()).popups, []);
   assert(!empty.calls.some((c) => c.table === "popup_interaction_counts"), "view consultada com lista vazia");
 });
+
+Deno.test("create-popup: texto só com espaços vira null antes de persistir (par nulo válido); url vazia com label é 400", async () => {
+  const { db, calls } = makeFakeDb({ global_popups: [{ data: ROW, error: null }] });
+  const r = await handleCreatePopup(
+    db,
+    { action: "create-popup", pages: PAGES, target_mode: "all", cta_label: "   ", cta_url: null, secondary_label: "" },
+    "adm",
+    H,
+  );
+  assertEquals(r.status, 201);
+  const payload = lastPayload(calls, "global_popups", "insert")!;
+  assertEquals(payload.cta_label, null);
+  assertEquals(payload.secondary_label, null);
+
+  const bad = await handleCreatePopup(
+    makeFakeDb({}).db,
+    { action: "create-popup", pages: PAGES, target_mode: "all", cta_label: "Ver", cta_url: "   " },
+    "adm",
+    H,
+  );
+  assertEquals(bad.status, 400);
+});
+
+Deno.test("update-popup: patch com espaços é normalizado antes da mescla", async () => {
+  const current = { ...ROW, cta_label: "Ver", cta_url: "/x" };
+  const { db, calls } = makeFakeDb({
+    global_popups: [{ data: current, error: null }, { data: { ...current, secondary_label: null }, error: null }],
+  });
+  const r = await handleUpdatePopup(db, { action: "update-popup", popup_id: "p1", secondary_label: "  " }, H);
+  assertEquals(r.status, 200);
+  assertEquals(lastPayload(calls, "global_popups", "update")!.secondary_label, null);
+
+  const bad = await handleUpdatePopup(
+    makeFakeDb({ global_popups: [{ data: current, error: null }] }).db,
+    { action: "update-popup", popup_id: "p1", cta_url: " " },
+    H,
+  );
+  assertEquals(bad.status, 400);
+});
