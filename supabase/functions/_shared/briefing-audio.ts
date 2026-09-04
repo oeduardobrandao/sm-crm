@@ -51,11 +51,24 @@ export function appendTranscript(answer: string | null | undefined, text: string
   return base + text.trim();
 }
 
+/** A row stuck "pending" this long (edge function killed between the RPC and
+ * the final transcription write) is shown to the client as "failed" so they
+ * can retry — the DB row itself stays "pending", so `runTranscription` still
+ * re-runs on that retry instead of hitting the "already done" short-circuit. */
+export const STALE_PENDING_MS = 10 * 60 * 1000;
+
 export async function buildAudioView(
-  row: AudioRow, signGetUrl: (key: string) => Promise<string>,
+  row: AudioRow, signGetUrl: (key: string) => Promise<string>, now: number = Date.now(),
 ): Promise<AudioView | null> {
   if (!row.audio_r2_key) return null;
-  const status = row.audio_transcription_status;
+  let status = row.audio_transcription_status;
+  if (status === "pending" && row.audio_recorded_at) {
+    const started = Date.parse(row.audio_recorded_at);
+    // Função morta entre a RPC e a escrita final deixa "pending" no banco;
+    // depois de STALE_PENDING_MS mostramos como falha para o cliente poder
+    // tentar de novo.
+    if (Number.isFinite(started) && now - started > STALE_PENDING_MS) status = "failed";
+  }
   return {
     url: await signGetUrl(row.audio_r2_key),
     mime: row.audio_mime ?? "audio/webm",

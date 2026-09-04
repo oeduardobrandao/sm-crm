@@ -70,13 +70,14 @@ const hubValue = {
 
 function renderPage(page: ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={qc}>
       <HubContext.Provider value={hubValue}>
         <MemoryRouter>{page}</MemoryRouter>
       </HubContext.Provider>
     </QueryClientProvider>,
   );
+  return { ...result, qc };
 }
 
 const audio = {
@@ -87,8 +88,8 @@ const audio = {
   recorded_at: '2026-09-03T00:00:00Z',
 };
 
-beforeEach(() => {
-  vi.mocked(fetchBriefing).mockResolvedValue({
+function briefingWithQ2Audio(q2Audio: typeof audio | null) {
+  return {
     briefings: [
       {
         id: 'b1',
@@ -103,11 +104,22 @@ beforeEach(() => {
             display_order: 0,
             audio: null,
           },
-          { id: 'q2', question: 'Público?', answer: null, section: null, display_order: 1, audio },
+          {
+            id: 'q2',
+            question: 'Público?',
+            answer: null,
+            section: null,
+            display_order: 1,
+            audio: q2Audio,
+          },
         ],
       },
     ],
-  });
+  };
+}
+
+beforeEach(() => {
+  vi.mocked(fetchBriefing).mockResolvedValue(briefingWithQ2Audio(audio));
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -281,5 +293,39 @@ describe('BriefingPage audio', () => {
     });
     expect(screen.getByText(/não foi possível salvar/i)).toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  it('invalidates and refetches after an upload failure, syncing to the server audio state', async () => {
+    vi.mocked(uploadBriefingAudio).mockRejectedValue(new Error('network error'));
+    const pendingAudio = { ...audio, transcription_status: 'pending' as const };
+    vi.mocked(fetchBriefing)
+      .mockResolvedValueOnce(briefingWithQ2Audio(null))
+      .mockResolvedValueOnce(briefingWithQ2Audio(pendingAudio));
+    renderPage(<BriefingPage />);
+    await screen.findByText('Marca?');
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByText('fake-record')[0]);
+    });
+
+    // O upload falhou (rede), mas o servidor pode ter gravado o áudio antes
+    // da falha — a página refaz o fetch em vez de confiar só no estado local.
+    await waitFor(() => expect(fetchBriefing).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText('player 65s')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /tentar novamente/i })).toBeInTheDocument();
+  });
+
+  it('drops the local audio player when a background refetch shows the audio was removed elsewhere', async () => {
+    vi.mocked(fetchBriefing)
+      .mockResolvedValueOnce(briefingWithQ2Audio(audio))
+      .mockResolvedValueOnce(briefingWithQ2Audio(null));
+    const { qc } = renderPage(<BriefingPage />);
+    await screen.findByText('player 65s');
+
+    await act(async () => {
+      await qc.invalidateQueries({ queryKey: ['hub-briefing', 'token-publico'] });
+    });
+
+    await waitFor(() => expect(screen.queryByText('player 65s')).not.toBeInTheDocument());
   });
 });

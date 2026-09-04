@@ -2,11 +2,13 @@ import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import {
   appendTranscript,
+  buildAudioView,
   finalizeBriefingAudio,
   makeWorkerTranscriber,
   normalizeAudioMime,
   presignBriefingAudio,
   removeBriefingAudio,
+  STALE_PENDING_MS,
   transcribeBriefingAudio,
 } from "../_shared/briefing-audio.ts";
 
@@ -32,6 +34,28 @@ Deno.test("appendTranscript: separa com linha em branco só quando há texto", (
   assertEquals(appendTranscript(null, " Olá "), "Olá");
   assertEquals(appendTranscript("   ", "Olá"), "Olá");
   assertEquals(appendTranscript("Antes.\n", "Depois"), "Antes.\n\nDepois");
+});
+
+Deno.test("buildAudioView: pending mais velho que STALE_PENDING_MS aparece como failed", async () => {
+  const started = Date.parse(audioRow.audio_recorded_at);
+  const view = await buildAudioView(audioRow, signGetUrl, started + STALE_PENDING_MS + 60_000);
+  assertEquals(view?.transcription_status, "failed");
+});
+
+Deno.test("buildAudioView: pending dentro de STALE_PENDING_MS continua pending", async () => {
+  const started = Date.parse(audioRow.audio_recorded_at);
+  const view = await buildAudioView(audioRow, signGetUrl, started + 2 * 60_000);
+  assertEquals(view?.transcription_status, "pending");
+});
+
+Deno.test("buildAudioView: done nunca é rebaixado, mesmo com audio_recorded_at velho", async () => {
+  const started = Date.parse(audioRow.audio_recorded_at);
+  const view = await buildAudioView(
+    { ...audioRow, audio_transcription_status: "done" },
+    signGetUrl,
+    started + STALE_PENDING_MS + 60_000,
+  );
+  assertEquals(view?.transcription_status, "done");
 });
 
 Deno.test("presign: mime inválido 415, tamanho fora 400, pergunta alheia 404", async () => {

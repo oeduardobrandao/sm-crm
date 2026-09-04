@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import {
@@ -168,6 +168,14 @@ function QuestionItem({
   const pendingRef = useRef<{ value: string; dirty: boolean }>({ value: answer, dirty: false });
   const locked = phase !== 'idle' || busyAction !== null;
 
+  // The server is the source of truth for audio: a background refetch (e.g.
+  // triggered by onAudioChanged after another tab removed it, or after this
+  // question's upload failed) must replace the local audio state. The typed
+  // answer text is never touched here — only `audio`.
+  useEffect(() => {
+    setAudio(question.audio);
+  }, [question.audio]);
+
   const handleChange = useCallback(
     (value: string) => {
       setAnswer(value);
@@ -237,6 +245,10 @@ function QuestionItem({
       applyResponse(res);
     } catch (e) {
       setAudioError((e as Error).message || 'Não foi possível enviar o áudio.');
+      // O servidor pode ter gravado o áudio antes da falha de rede (ex: o
+      // upload/finalize terminou no servidor, mas a resposta não chegou) —
+      // refaz o fetch em vez de confiar só no estado local.
+      onAudioChanged();
       throw e;
     } finally {
       setPhase('idle');
