@@ -210,6 +210,14 @@ Deno.test("revoke-grant: a ver-only role is refused, and the gate asks for 'edit
   assertEquals((call?.payload as { p_action: string }).p_action, "editar");
 });
 
+Deno.test("mcp-oauth-consent: target platform exige platform_admins e grava em admin_mcp_oauth_grants", async () => {
+  const src = await Deno.readTextFile(new URL("../mcp-oauth-consent/index.ts", import.meta.url));
+  assertMatch(src, /platform_admin: await isPlatformAdmin\(svc, user\.id\)/, "eligible-workspaces deve anotar platform_admin");
+  assertMatch(src, /target === "platform"[\s\S]*?isPlatformAdmin\(svc, user\.id\)[\s\S]*?from\("admin_mcp_oauth_grants"\)[\s\S]*?upsert\(/, "approve platform: gate + upsert na tabela do admin");
+  assertMatch(src, /action === "list-admin-grants" \|\| action === "revoke-admin-grant"[\s\S]*?isPlatformAdmin\(svc, user\.id\)/, "list/revoke admin grants gated por platform_admins");
+  assert(!/admin_mcp_oauth_grants"\)[\s\S]{0,400}assertPlanFeature/.test(src), "grants do admin não passam por feature_mcp");
+});
+
 Deno.test("list-grants: a role with neither ver nor editar is still refused", async () => {
   const svc = createSupabaseQueryMock();
   svc.queueRpc("has_permission_for", { data: false, error: null });
