@@ -57,7 +57,7 @@ Spec: `docs/superpowers/specs/2026-09-03-briefing-audio-design.md`.
 - Create: `supabase/tests/briefing_audio_rpcs.sql`
 
 **Interfaces:**
-- Produces: colunas `audio_r2_key, audio_mime, audio_size_bytes, audio_duration_seconds, audio_transcript, audio_transcription_status, audio_recorded_at` em `hub_briefing_questions`; RPC `briefing_audio_finalize(p_conta_id uuid, p_cliente_id bigint, p_question_id uuid, p_key text, p_bytes bigint, p_mime text, p_duration int) RETURNS jsonb` (`{"reserved": bool, "previous_key": text|null}`); RPC `briefing_audio_release(p_conta_id uuid, p_question_id uuid) RETURNS text` (chave antiga ou NULL). Ambas só para `service_role`. Exceções: `invalid_key`, `invalid_bytes`, `workspace_not_found`, `question_not_found`, `quota_exceeded` (todas `P0001`).
+- Produces: colunas `audio_r2_key, audio_mime, audio_size_bytes, audio_duration_seconds, audio_transcript, audio_transcription_status, audio_recorded_at` em `hub_briefing_questions`; RPC `briefing_audio_finalize(p_conta_id uuid, p_cliente_id bigint, p_question_id uuid, p_key text, p_bytes bigint, p_mime text, p_duration int) RETURNS jsonb` (`{"reserved": bool, "previous_key": text|null}`); RPC `briefing_audio_release(p_conta_id uuid, p_cliente_id bigint, p_question_id uuid) RETURNS text` (chave antiga ou NULL; `question_not_found` se a pergunta não for desse cliente). Ambas só para `service_role`. Exceções: `invalid_key`, `invalid_bytes`, `workspace_not_found`, `question_not_found`, `quota_exceeded` (todas `P0001`).
 
 - [ ] **Step 1: Escrever o teste SQL (falha porque as RPCs não existem)**
 
@@ -156,13 +156,26 @@ begin
   assert v_blocked, 'wrong cliente must be rejected';
 
   -- 7. release zera colunas, decrementa e enfileira
-  assert briefing_audio_release(v_ws, v_q) = v_key2, 'release returns the old key';
+  assert briefing_audio_release(v_ws, v_cli, v_q) = v_key2, 'release returns the old key';
   select storage_used_bytes into v_used from workspaces where id = v_ws;
   assert v_used = 0, format('used after release: %s', v_used);
   assert (select audio_r2_key from hub_briefing_questions where id = v_q) is null;
   select count(*) into v_n from post_media_deletions where r2_key = v_key2;
   assert v_n = 1, 'released key must be enqueued once';
-  assert briefing_audio_release(v_ws, v_q) is null, 'second release is a no-op';
+  assert briefing_audio_release(v_ws, v_cli, v_q) is null, 'second release is a no-op';
+
+  -- 7b. release com cliente errado -> question_not_found (mesmo escopo do finalize)
+  v_res := briefing_audio_finalize(v_ws, v_cli, v_q, v_key, 500, 'audio/webm', 5);
+  v_blocked := false;
+  begin
+    perform briefing_audio_release(v_ws, v_cli + 1, v_q);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm like 'question_not_found%', format('wrong msg: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'release for another cliente must be rejected';
+  assert (select audio_r2_key from hub_briefing_questions where id = v_q) = v_key, 'rejected release must not touch the row';
+  assert briefing_audio_release(v_ws, v_cli, v_q) = v_key, 'cleanup for step 8';
 
   -- 8. DELETE da pergunta com áudio decrementa e enfileira
   v_res := briefing_audio_finalize(v_ws, v_cli, v_q, v_key, 500, 'audio/webm', 5);
@@ -170,7 +183,7 @@ begin
   select storage_used_bytes into v_used from workspaces where id = v_ws;
   assert v_used = 0, format('used after row delete: %s', v_used);
   select count(*) into v_n from post_media_deletions where r2_key = v_key;
-  assert v_n = 2, 'deleted row key enqueued (second time for this key in this test)';
+  assert v_n = 3, 'deleted row key enqueued (third time for this key in this test: steps 3, 7b, 8)';
 
   -- 9. CHECK de tenant: chave de outra workspace não entra nem via service role
   -- (ainda sob claims service_role, então a guarda deixa passar e o CHECK dispara)
@@ -201,7 +214,7 @@ begin
   -- 12. release em workspace inexistente -> workspace_not_found
   v_blocked := false;
   begin
-    perform briefing_audio_release(gen_random_uuid(), v_q2);
+    perform briefing_audio_release(gen_random_uuid(), v_cli, v_q2);
   exception when sqlstate 'P0001' then
     assert sqlerrm like 'workspace_not_found%', format('wrong msg: %s', sqlerrm);
     v_blocked := true;
@@ -399,7 +412,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.briefing_audio_release(p_conta_id uuid, p_question_id uuid)
+CREATE OR REPLACE FUNCTION public.briefing_audio_release(p_conta_id uuid, p_cliente_id bigint, p_question_id uuid)
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -412,10 +425,15 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'workspace_not_found' USING ERRCODE = 'P0001';
   END IF;
+  -- Mesmo escopo do finalize: conta + cliente (defesa em profundidade; o
+  -- token do hub é de UM cliente e question_id vem da URL).
   SELECT audio_r2_key INTO v_prev
     FROM hub_briefing_questions
-   WHERE id = p_question_id AND conta_id = p_conta_id
+   WHERE id = p_question_id AND conta_id = p_conta_id AND cliente_id = p_cliente_id
    FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'question_not_found' USING ERRCODE = 'P0001';
+  END IF;
   IF v_prev IS NULL THEN
     RETURN NULL;
   END IF;
@@ -430,8 +448,8 @@ $$;
 
 REVOKE ALL ON FUNCTION public.briefing_audio_finalize(uuid, bigint, uuid, text, bigint, text, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.briefing_audio_finalize(uuid, bigint, uuid, text, bigint, text, int) TO service_role;
-REVOKE ALL ON FUNCTION public.briefing_audio_release(uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.briefing_audio_release(uuid, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.briefing_audio_release(uuid, bigint, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.briefing_audio_release(uuid, bigint, uuid) TO service_role;
 ```
 
 Observação: `clientes` exige `user_id, conta_id, nome, sigla, cor` NOT NULL (baseline). O INSERT do teste roda como `postgres`, então a allowlist de colunas não interfere.
@@ -656,7 +674,7 @@ Deno.test("remove: pergunta alheia 404; sem áudio ok; com áudio chama release"
   db.queueRpc("briefing_audio_release", { data: KEY, error: null });
   assertEquals((await removeBriefingAudio(base)).status, 200);
   const rel = db.calls.find((c) => c.table === "rpc:briefing_audio_release");
-  assertEquals(rel?.payload, { p_conta_id: "conta-1", p_question_id: Q });
+  assertEquals(rel?.payload, { p_conta_id: "conta-1", p_cliente_id: 14, p_question_id: Q });
 });
 
 Deno.test("makeWorkerTranscriber: null sem env; POST com bearer; null em 500 e texto vazio", async () => {
@@ -969,7 +987,7 @@ export async function removeBriefingAudio(a: RemoveAudioArgs): Promise<BriefingA
   if (!q) return { status: 404, body: { error: "Pergunta não encontrada." } };
   if (!q.audio_r2_key) return { status: 200, body: { ok: true } };
   const { error } = await a.db.rpc("briefing_audio_release", {
-    p_conta_id: a.conta_id, p_question_id: a.question_id,
+    p_conta_id: a.conta_id, p_cliente_id: a.cliente_id, p_question_id: a.question_id,
   });
   if (error) {
     console.error("briefing_audio_release error:", (error as { message?: string }).message ?? error);
