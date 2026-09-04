@@ -202,7 +202,61 @@ BEGIN
 END;
 $$;
 
+-- Append da transcrição: UPDATE atômico, feito INTEIRO no banco.
+-- Antes isso era um compare-and-swap no cliente (.eq("answer", <valor lido>)
+-- + laço de retry). O supabase-js manda .eq() na query string, então uma
+-- resposta longa — segunda gravação numa pergunta que já carrega uma
+-- transcrição — estourava o limite da request-line: 500, transcrição perdida
+-- e linha travada em 'pending'. Aqui o append e a condição vivem na mesma
+-- instrução, sem nada do texto antigo passar pela URL.
+--
+-- Separador igual ao de appendTranscript (_shared/briefing-audio.ts):
+-- answer.trimEnd() + "\n\n" + text.trim(), e answer só de espaços conta como
+-- vazia. rtrim/btrim precisam do conjunto explícito de brancos porque o
+-- padrão do Postgres corta apenas espaço — não \n, que é justamente o caso
+-- de 'Antes.\n' virar 'Antes.\n\nDepois'.
+--
+-- Devolve NULL (linha composta toda nula) quando nada casou: já 'done',
+-- pergunta sem áudio, ou cliente/conta errados.
+CREATE OR REPLACE FUNCTION public.briefing_audio_apply_transcript(
+  p_conta_id uuid, p_cliente_id bigint, p_question_id uuid, p_text text, p_duration int
+) RETURNS hub_briefing_questions
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_ws constant text := E' \t\n\r\f\v';
+  v_text text := btrim(p_text, v_ws);
+  v_row hub_briefing_questions;
+BEGIN
+  -- Defensivo: texto vazio nunca deve zerar a resposta que já está lá.
+  IF v_text = '' OR v_text IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  UPDATE hub_briefing_questions
+     SET answer = CASE
+                    WHEN coalesce(btrim(answer, v_ws), '') = '' THEN v_text
+                    ELSE rtrim(answer, v_ws) || E'\n\n' || v_text
+                  END,
+         audio_transcript = v_text,
+         audio_transcription_status = 'done',
+         audio_duration_seconds = coalesce(audio_duration_seconds, p_duration)
+   WHERE id = p_question_id
+     AND conta_id = p_conta_id
+     AND cliente_id = p_cliente_id
+     AND audio_r2_key IS NOT NULL
+     AND audio_transcription_status IS DISTINCT FROM 'done'
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
 REVOKE ALL ON FUNCTION public.briefing_audio_finalize(uuid, bigint, uuid, text, bigint, text, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.briefing_audio_finalize(uuid, bigint, uuid, text, bigint, text, int) TO service_role;
 REVOKE ALL ON FUNCTION public.briefing_audio_release(uuid, bigint, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.briefing_audio_release(uuid, bigint, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.briefing_audio_apply_transcript(uuid, bigint, uuid, text, int) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.briefing_audio_apply_transcript(uuid, bigint, uuid, text, int) TO service_role;

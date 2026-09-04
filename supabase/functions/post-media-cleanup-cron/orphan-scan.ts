@@ -11,15 +11,18 @@
 //      that target — deleting "everything" is never a plausible correct outcome.
 //
 // The scan runs over multiple R2 prefixes ("scan targets"), each with its own
-// reference table(s)/column(s). MAX_TRASH_PER_RUN is a single budget shared
-// across every target in a run.
+// reference table(s)/column(s) and its OWN MAX_TRASH_PER_RUN budget: a single
+// shared budget let a busy contas/ starve briefing-audio/ forever (first target
+// wins the whole cap, later ones reap nothing every run). Per-target totals are
+// reported in `targets` so the cron alert can name which prefix was capped or
+// aborted instead of collapsing them into one number.
 
 export const KNOWN_CHUNK = 50;
 /** With at least this many aged candidates, an empty known set means the
  * reference queries lied (or the DB is unreachable) — never that every single
  * object is genuinely orphaned. */
 export const EMPTY_KNOWN_FLOOR = 50;
-/** Hard ceiling on automated removals per run, shared across ALL scan targets.
+/** Hard ceiling on automated removals per run, applied PER SCAN TARGET.
  * A legitimate hourly run trims a handful of stragglers; anything near this cap
  * is an anomaly that a human should look at first. The remainder waits for
  * later runs (or the human). */
@@ -72,13 +75,27 @@ export interface OrphanScanDeps {
   trashObject(key: string): Promise<void>;
 }
 
-export interface OrphanScanResult {
+/** Per-prefix outcome. One entry per SCAN_TARGETS entry, always, even when the
+ * target had zero candidates. */
+export interface OrphanScanTargetResult {
+  prefix: string;
   candidates: number;
-  /** Objects moved to trash/ this run (recoverable for 30 days). */
   trashed: number;
-  /** Orphans left for later runs because MAX_TRASH_PER_RUN was hit. */
   capped: number;
   aborted: string | null;
+}
+
+export interface OrphanScanResult {
+  /** Sum across targets. */
+  candidates: number;
+  /** Objects moved to trash/ this run (recoverable for 30 days), all targets. */
+  trashed: number;
+  /** Orphans left for later runs because a target hit MAX_TRASH_PER_RUN. */
+  capped: number;
+  /** "prefix: reason" for every aborted target, joined with "; " — null when
+   * none aborted. An abort in a later target is never hidden by an earlier one. */
+  aborted: string | null;
+  targets: OrphanScanTargetResult[];
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -88,18 +105,23 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 export async function runOrphanScan(deps: OrphanScanDeps): Promise<OrphanScanResult> {
-  let candidatesTotal = 0;
-  let trashedTotal = 0;
-  let cappedTotal = 0;
-  let aborted: string | null = null;
+  const targets: OrphanScanTargetResult[] = [];
 
   for (const target of SCAN_TARGETS) {
+    const outcome: OrphanScanTargetResult = {
+      prefix: target.prefix,
+      candidates: 0,
+      trashed: 0,
+      capped: 0,
+      aborted: null,
+    };
+    targets.push(outcome);
+
     const candidates = await deps.listOrphanKeys(target.prefix, 24 * 60 * 60 * 1000);
-    candidatesTotal += candidates.length;
+    outcome.candidates = candidates.length;
     if (candidates.length === 0) continue;
 
     const known = new Set<string>();
-    let targetAborted: string | null = null;
 
     columnLoop: for (const ref of target.refs) {
       for (const column of ref.columns) {
@@ -114,7 +136,7 @@ export async function runOrphanScan(deps: OrphanScanDeps): Promise<OrphanScanRes
             // incident happened — abort THIS TARGET with zero deletions, but
             // let the remaining targets still run.
             console.error("orphan-scan:known-query", ref.table, column, error.message);
-            targetAborted = `known-query:${ref.table}.${column}`;
+            outcome.aborted = `known-query:${ref.table}.${column}`;
             break columnLoop;
           }
           for (const row of data ?? []) {
@@ -127,32 +149,41 @@ export async function runOrphanScan(deps: OrphanScanDeps): Promise<OrphanScanRes
       }
     }
 
-    if (targetAborted) {
-      if (aborted === null) aborted = targetAborted;
-      continue;
-    }
+    if (outcome.aborted) continue;
 
     if (known.size === 0 && candidates.length >= EMPTY_KNOWN_FLOOR) {
       console.error("orphan-scan:empty-known-set", target.prefix, candidates.length, "candidates");
-      if (aborted === null) aborted = "empty-known-set";
+      outcome.aborted = "empty-known-set";
       continue;
     }
 
     for (const key of candidates) {
       if (known.has(key)) continue;
-      if (trashedTotal >= MAX_TRASH_PER_RUN) {
-        cappedTotal++;
+      // Budget is per target: a contas/ flood must not starve briefing-audio/.
+      if (outcome.trashed >= MAX_TRASH_PER_RUN) {
+        outcome.capped++;
         continue;
       }
       try {
         await deps.trashObject(key);
-        trashedTotal++;
+        outcome.trashed++;
       } catch (e) {
         console.error("orphan-scan:trash", key, e); // retried next run
       }
     }
+
+    if (outcome.capped > 0) {
+      console.error("orphan-scan:capped", target.prefix, outcome.capped, "orphans deferred to later runs");
+    }
   }
 
-  if (cappedTotal > 0) console.error("orphan-scan:capped", cappedTotal, "orphans deferred to later runs");
-  return { candidates: candidatesTotal, trashed: trashedTotal, capped: cappedTotal, aborted };
+  const abortedList = targets.filter((t) => t.aborted).map((t) => `${t.prefix}: ${t.aborted}`);
+  const sum = (pick: (t: OrphanScanTargetResult) => number) => targets.reduce((n, t) => n + pick(t), 0);
+  return {
+    candidates: sum((t) => t.candidates),
+    trashed: sum((t) => t.trashed),
+    capped: sum((t) => t.capped),
+    aborted: abortedList.length > 0 ? abortedList.join("; ") : null,
+    targets,
+  };
 }

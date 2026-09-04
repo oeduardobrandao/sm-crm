@@ -3,9 +3,9 @@
 begin;
 do $$
 declare
-  v_ws uuid; v_ws2 uuid; v_cli bigint; v_q uuid; v_q2 uuid; v_user uuid := gen_random_uuid();
-  v_key text; v_key2 text; v_res jsonb; v_used bigint; v_blocked boolean;
-  v_n int;
+  v_ws uuid; v_ws2 uuid; v_cli bigint; v_q uuid; v_q2 uuid; v_q3 uuid; v_user uuid := gen_random_uuid();
+  v_key text; v_key2 text; v_key3 text; v_res jsonb; v_used bigint; v_blocked boolean;
+  v_n int; v_row hub_briefing_questions;
 begin
   -- free = storage_quota_bytes 104857600 (100MB)
   -- As RPCs rodam sob service_role em produção (edge functions). A guarda lê
@@ -154,6 +154,47 @@ begin
     v_blocked := true;
   end;
   assert v_blocked, 'release on unknown workspace must raise';
+
+  -- 13. apply_transcript sobre resposta vazia: answer vira só a transcrição
+  insert into hub_briefing_questions (cliente_id, conta_id, question, display_order)
+    values (v_cli, v_ws, 'Terceira?', 2) returning id into v_q3;
+  v_key3 := 'briefing-audio/' || v_ws || '/' || v_q3 || '/e.webm';
+  perform briefing_audio_finalize(v_ws, v_cli, v_q3, v_key3, 100, 'audio/webm', null);
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, '  Primeira fala. ', 7);
+  -- `v_row IS NOT NULL` num composto só é verdade quando TODAS as colunas
+  -- são não-nulas; a checagem correta é a chave.
+  assert v_row.id is not null, 'apply on a pending row must return the updated row';
+  assert (select answer from hub_briefing_questions where id = v_q3) = 'Primeira fala.',
+    format('answer after first apply: %s', (select answer from hub_briefing_questions where id = v_q3));
+  assert (select audio_transcript from hub_briefing_questions where id = v_q3) = 'Primeira fala.';
+  assert (select audio_transcription_status from hub_briefing_questions where id = v_q3) = 'done';
+  assert (select audio_duration_seconds from hub_briefing_questions where id = v_q3) = 7,
+    'duration nula na linha é preenchida com p_duration';
+
+  -- 14. segunda aplicação sobre linha já done devolve NULL e não anexa de novo
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, 'Segunda fala.', 9);
+  assert v_row.id is null, 'apply on a done row must return NULL';
+  assert (select answer from hub_briefing_questions where id = v_q3) = 'Primeira fala.',
+    'done row must not be appended to twice';
+
+  -- 15. separador: answer terminando em \n vira exatamente uma linha em branco
+  update hub_briefing_questions
+     set answer = 'Antes.' || E'\n', audio_transcript = null, audio_transcription_status = 'pending'
+   where id = v_q3;
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, 'Depois', 3);
+  assert v_row.id is not null, 'apply on a pending row must update';
+  assert (select answer from hub_briefing_questions where id = v_q3) = 'Antes.' || E'\n\n' || 'Depois',
+    format('separator: %s', (select answer from hub_briefing_questions where id = v_q3));
+  assert (select audio_duration_seconds from hub_briefing_questions where id = v_q3) = 7,
+    'duration já preenchida não é sobrescrita';
+
+  -- 16. cliente errado -> NULL e linha intacta
+  update hub_briefing_questions set audio_transcription_status = 'pending' where id = v_q3;
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli + 1, v_q3, 'Alheio', 1);
+  assert v_row.id is null, 'apply for another cliente must return NULL';
+  assert (select answer from hub_briefing_questions where id = v_q3) = 'Antes.' || E'\n\n' || 'Depois',
+    'apply for another cliente must not touch the row';
+
   perform set_config('request.jwt.claims', '', true);
 
   raise notice 'PASS briefing_audio_rpcs';

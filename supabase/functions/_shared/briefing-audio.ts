@@ -45,6 +45,13 @@ export function extFromAudioMime(mime: string): string {
   return map[mime] ?? "bin";
 }
 
+/** Regra de separação entre a resposta escrita e a transcrição.
+ *
+ * NÃO é o caminho de runtime: quem anexa de verdade é a RPC
+ * `briefing_audio_apply_transcript` (migration 20260907000001), que faz o
+ * append dentro do próprio UPDATE. Esta função continua exportada e testada
+ * porque documenta — e trava — a regra que a RPC espelha em SQL. Mudou aqui,
+ * mude lá. */
 export function appendTranscript(answer: string | null | undefined, text: string): string {
   const current = answer ?? "";
   const base = current.trim() ? current.trimEnd() + "\n\n" : "";
@@ -144,7 +151,17 @@ interface TranscriptionArgs {
   transcribe: Transcriber | null;
 }
 
-type FullRow = AudioRow & { answer: string | null; audio_transcript?: string | null };
+type FullRow = AudioRow & { id?: string | null; answer: string | null; audio_transcript?: string | null };
+
+/** A RPC devolve `hub_briefing_questions` (uma linha composta). O PostgREST
+ * expande `SELECT * FROM fn()`, então um composto NULL volta como UMA linha
+ * com todas as colunas nulas — não como "nenhuma linha". `id` é o que separa
+ * "atualizou" de "não casou". Aceita objeto ou array de um. */
+function rpcRow(data: unknown): FullRow | null {
+  const row = (Array.isArray(data) ? data[0] : data) as FullRow | null | undefined;
+  if (!row || typeof row !== "object" || row.id == null) return null;
+  return row;
+}
 
 async function loadRow(
   db: BriefingAudioDb, conta_id: string, cliente_id: number, question_id: string,
@@ -190,8 +207,8 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
     q.eq("id", a.question_id).eq("conta_id", a.conta_id).eq("cliente_id", a.cliente_id);
 
   if (!text) {
-    // Same neq guard as the success write below: if a concurrent run already
-    // flipped the row to "done", this failure must not downgrade it back.
+    // Guarda neq: se uma execução concorrente já virou a linha para "done"
+    // (a RPC de append), esta falha não pode rebaixá-la de volta.
     await where(a.db.from("hub_briefing_questions").update({ audio_transcription_status: "failed" })).neq(
       "audio_transcription_status",
       "done",
@@ -212,92 +229,55 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
   }
 
   const resultDuration = result?.duration;
-  const duration = row.audio_duration_seconds ??
-    (typeof resultDuration === "number" && Number.isFinite(resultDuration) && resultDuration > 0
-      ? Math.round(resultDuration)
-      : null);
+  const duration = typeof resultDuration === "number" && Number.isFinite(resultDuration) && resultDuration > 0
+    ? Math.round(resultDuration)
+    : null;
 
-  // The "done" write is a compare-and-swap on `answer`, not just on
-  // audio_transcription_status: without it, a text edit the user saved while
-  // transcription was running gets silently clobbered — we'd write
-  // `<stale answer> + transcript` on top of it. Each attempt CASes on the
-  // answer it just read; a miss means either a concurrent transcription
-  // already won (status flipped to "done" — return its result) or the
-  // answer changed underneath us (re-append onto the fresh value and retry,
-  // up to MAX_DONE_ATTEMPTS total).
-  const MAX_DONE_ATTEMPTS = 3;
-  let currentRow: FullRow = row;
-  for (let attempt = 1; attempt <= MAX_DONE_ATTEMPTS; attempt++) {
-    const answer = appendTranscript(currentRow.answer, text);
-    const casAnswer = (q: ReturnType<BriefingAudioDb["from"]>) =>
-      currentRow.answer == null ? q.is("answer", null) : q.eq("answer", currentRow.answer);
-    // Conditioned on audio_transcription_status != "done" too: guards against
-    // two concurrent retries both reading the same status and racing to
-    // append the transcript twice. Whichever write lands first flips the row
-    // to "done" and the loser's UPDATE matches zero rows either way.
-    const { data: updated, error } = await casAnswer(
-      where(a.db.from("hub_briefing_questions").update({
-        answer,
-        audio_transcript: text,
-        audio_transcription_status: "done",
-        audio_duration_seconds: duration,
-      })).neq("audio_transcription_status", "done"),
-    ).select("id");
-    if (error) {
-      console.error("briefing-audio save transcript error:", (error as { message?: string }).message ?? error);
-      return { status: 500, body: { error: "internal error" } };
-    }
-    if (Array.isArray(updated) && updated.length > 0) {
-      return {
-        status: 200,
-        body: {
-          ok: true,
-          answer,
-          transcript: text,
-          audio: await buildAudioView(
-            { ...row, audio_transcription_status: "done", audio_duration_seconds: duration }, a.signGetUrl,
-          ),
-        },
-      };
-    }
-
-    const fresh = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
-    if (!fresh) break;
-    if (fresh.audio_transcription_status === "done") {
-      // Concurrent run won the race and already wrote "done" — return its
-      // answer/transcript instead of appending on top of it.
-      return {
-        status: 200,
-        body: {
-          ok: true,
-          answer: fresh.answer ?? null,
-          transcript: fresh.audio_transcript ?? null,
-          audio: await buildAudioView(fresh, a.signGetUrl),
-        },
-      };
-    }
-    // Still pending, but `answer` moved underneath us — retry the append
-    // against the value that's there now.
-    currentRow = fresh;
+  // Append ATÔMICO no banco (briefing_audio_apply_transcript). Antes isto era
+  // um compare-and-swap client-side com .eq("answer", <valor lido>) num laço de
+  // retry: o supabase-js manda .eq() na query string, então uma resposta longa
+  // — segunda gravação numa pergunta que já carrega uma transcrição — estourava
+  // o limite da request-line e virava 500, perdendo a transcrição e deixando a
+  // linha travada em "pending". A RPC resolve as duas coisas de uma vez: o
+  // append e a guarda (status <> 'done', áudio presente, conta+cliente) vivem
+  // na mesma instrução, e nada do texto antigo passa pela URL.
+  const { data: applied, error } = await a.db.rpc("briefing_audio_apply_transcript", {
+    p_conta_id: a.conta_id,
+    p_cliente_id: a.cliente_id,
+    p_question_id: a.question_id,
+    p_text: text,
+    p_duration: duration,
+  });
+  if (error) {
+    console.error("briefing_audio_apply_transcript error:", (error as { message?: string }).message ?? error);
+    return { status: 500, body: { error: "internal error" } };
   }
 
-  // Exhausted retries without landing the CAS: give up on this run instead of
-  // risking another silent overwrite. Mark the row "failed" (guarded by the
-  // same neq, so a concurrent "done" still wins) and return the freshest
-  // answer with no transcript — the user can retry manually.
-  await where(a.db.from("hub_briefing_questions").update({ audio_transcription_status: "failed" })).neq(
-    "audio_transcription_status",
-    "done",
-  );
-  const finalRow = (await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id)) ??
-    { ...currentRow, audio_transcription_status: "failed" };
+  const updated = rpcRow(applied);
+  if (!updated) {
+    // Nada casou: outra execução concorrente já gravou "done", ou o áudio
+    // sumiu no meio do caminho. Devolve o estado atual da linha em vez de
+    // supor qualquer coisa.
+    const fresh = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
+    if (!fresh?.audio_r2_key) return { status: 404, body: { error: "Áudio não encontrado." } };
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        answer: fresh.answer ?? null,
+        transcript: fresh.audio_transcript ?? null,
+        audio: await buildAudioView(fresh, a.signGetUrl),
+      },
+    };
+  }
+
   return {
     status: 200,
     body: {
       ok: true,
-      answer: finalRow.answer ?? null,
-      transcript: finalRow.audio_transcript ?? null,
-      audio: await buildAudioView(finalRow, a.signGetUrl),
+      answer: updated.answer ?? null,
+      transcript: updated.audio_transcript ?? null,
+      audio: await buildAudioView(updated, a.signGetUrl),
     },
   };
 }
@@ -314,7 +294,9 @@ export async function finalizeBriefingAudio(a: FinalizeAudioArgs): Promise<Brief
   const mime = normalizeAudioMime(a.mime_type);
   if (!mime) return { status: 415, body: { error: "unsupported file type" } };
   const prefix = `${AUDIO_KEY_PREFIX}${a.conta_id}/${a.question_id}/`;
-  if (typeof a.r2_key !== "string" || !a.r2_key.startsWith(prefix)) {
+  // `..` rejeitado além do prefixo, espelhando o worker de transcrição
+  // (workers/transcribe/src/index.ts): a chave é repassada como caminho no R2.
+  if (typeof a.r2_key !== "string" || !a.r2_key.startsWith(prefix) || a.r2_key.includes("..")) {
     return { status: 400, body: { error: "invalid r2_key" } };
   }
   if (!validSize(a.size_bytes)) return { status: 400, body: { error: "size_bytes out of range" } };

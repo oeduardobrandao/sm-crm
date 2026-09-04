@@ -211,13 +211,17 @@ Deno.test("hub-briefing POST /{id}/audio finaliza, transcreve e devolve answer",
     },
     error: null,
   });
-  // Update+select("id") must return a non-empty array — that's how
-  // runTranscription (briefing-audio.ts) distinguishes "this call won the
-  // race and applied the write" from "a concurrent retry already finished
-  // first" (see its `!Array.isArray(updated) || updated.length === 0`
-  // guard), which re-reads the row instead of trusting a stale in-memory
-  // answer.
-  db.queue("hub_briefing_questions", "update", { data: [{ id: Q }], error: null });
+  // O append é uma RPC atômica: a linha que ela devolve É a resposta. Sem
+  // linha, runTranscription (briefing-audio.ts) relê a pergunta em vez de
+  // confiar num answer velho em memória.
+  db.queueRpc("briefing_audio_apply_transcript", {
+    data: {
+      id: Q, answer: "Nossa marca.", audio_transcript: "Nossa marca.", audio_r2_key: KEY,
+      audio_mime: "audio/webm", audio_size_bytes: 5000, audio_duration_seconds: 12,
+      audio_transcription_status: "done", audio_recorded_at: "2026-09-03T00:00:00Z",
+    },
+    error: null,
+  });
   const res = await makeHandler(db, { transcribe: async () => ({ text: "Nossa marca." }) })(
     postReq(`/${Q}/audio`, { token: "t", r2_key: KEY, mime_type: "audio/webm", size_bytes: 5000, duration_seconds: 12 }),
   );

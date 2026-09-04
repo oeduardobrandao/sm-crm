@@ -53,7 +53,7 @@ Deno.test("orphan-scan: chunks known-set queries and only deletes true orphans",
   assertEquals(result.aborted, null);
   assertEquals(result.trashed, 1);
   assertEquals(deleted, ["contas/w/files/obj-0.png"]);
-  // 4 table/column pairs x 2 chunks each (251 candidates, chunk 200).
+  // 4 table/column pairs x 2 chunks each (100 candidates, KNOWN_CHUNK = 50).
   assertEquals(queries.length, 8);
   assertEquals(Math.max(...queries.map((q) => q.batchSize)), KNOWN_CHUNK);
 });
@@ -73,7 +73,7 @@ Deno.test("orphan-scan: any known-set query error aborts with ZERO deletions", a
       deleted.push(key);
     },
   });
-  assertEquals(result.aborted, "known-query:files.thumbnail_r2_key");
+  assertEquals(result.aborted, "contas/: known-query:files.thumbnail_r2_key");
   assertEquals(result.trashed, 0);
   assertEquals(deleted.length, 0);
 });
@@ -89,7 +89,7 @@ Deno.test("orphan-scan: empty known set with many candidates trips the circuit b
       deleted.push(key);
     },
   });
-  assertEquals(result.aborted, "empty-known-set");
+  assertEquals(result.aborted, "contas/: empty-known-set");
   assertEquals(result.trashed, 0);
   assertEquals(deleted.length, 0);
 });
@@ -128,6 +128,13 @@ Deno.test("orphan-scan: MAX_TRASH_PER_RUN caps removals and reports the deferred
   assertEquals(result.trashed, MAX_TRASH_PER_RUN);
   assertEquals(result.capped, 30);
   assertEquals(trashed.length, MAX_TRASH_PER_RUN);
+  assertEquals(result.targets.map((t) => t.prefix), ["contas/", "briefing-audio/"]);
+  assertEquals(result.targets[0], {
+    prefix: "contas/", candidates: MAX_TRASH_PER_RUN + 30, trashed: MAX_TRASH_PER_RUN, capped: 30, aborted: null,
+  });
+  assertEquals(result.targets[1], {
+    prefix: "briefing-audio/", candidates: 0, trashed: 0, capped: 0, aborted: null,
+  });
 });
 
 Deno.test("orphan-scan: scans both contas/ and briefing-audio/ prefixes, once each", async () => {
@@ -198,7 +205,7 @@ Deno.test("orphan-scan: a hub_briefing_questions query error aborts only the bri
       deleted.push(k);
     },
   });
-  assertEquals(result.aborted, "known-query:hub_briefing_questions.audio_r2_key");
+  assertEquals(result.aborted, "briefing-audio/: known-query:hub_briefing_questions.audio_r2_key");
   // Zero exclusões no alvo abortado (briefing-audio/) — mas o alvo contas/,
   // que não foi tocado pelo erro, roda normalmente e trasha seu próprio órfão.
   assertEquals(deleted, [contasOrphan]);
@@ -220,15 +227,22 @@ Deno.test("orphan-scan: a contas/ query error aborts only that target — briefi
       deleted.push(k);
     },
   });
-  assertEquals(result.aborted, "known-query:post_media.r2_key");
+  assertEquals(result.aborted, "contas/: known-query:post_media.r2_key");
   assertEquals(deleted, [briefingOrphan]);
   assertEquals(result.trashed, 1);
 });
 
-Deno.test("orphan-scan: MAX_TRASH_PER_RUN is one budget shared across targets", async () => {
-  const contasOrphans = Array.from({ length: MAX_TRASH_PER_RUN - 5 }, (_, i) => `contas/w/files/o-${i}.png`);
-  const briefingOrphans = Array.from({ length: 10 }, (_, i) => `briefing-audio/c/q/o-${i}.webm`);
-  const { db } = makeDb(() => ({ data: [], error: null }));
+Deno.test("orphan-scan: MAX_TRASH_PER_RUN is a budget PER target, not one shared pot", async () => {
+  // Regression: with a single shared budget, a contas/ flood that exhausts the
+  // cap left briefing-audio/ reaping ZERO orphans on every single run.
+  const contasOrphans = Array.from({ length: MAX_TRASH_PER_RUN + 10 }, (_, i) => `contas/w/files/o-${i}.png`);
+  const briefingOrphans = Array.from({ length: 3 }, (_, i) => `briefing-audio/c/q/o-${i}.webm`);
+  // One known contas/ key keeps the empty-known-set breaker out of the way for
+  // that target; it contributes nothing to briefing-audio/ (different column).
+  const { db } = makeDb(() => ({
+    data: [{ r2_key: "contas/other/known.png", thumbnail_r2_key: null }],
+    error: null,
+  }));
   const trashed: string[] = [];
   const result = await runOrphanScan({
     db,
@@ -238,7 +252,38 @@ Deno.test("orphan-scan: MAX_TRASH_PER_RUN is one budget shared across targets", 
     },
   });
   assertEquals(result.aborted, null);
-  assertEquals(result.trashed, MAX_TRASH_PER_RUN);
-  assertEquals(result.capped, 5);
-  assertEquals(trashed.length, MAX_TRASH_PER_RUN);
+  assertEquals(result.targets[0], {
+    prefix: "contas/", candidates: MAX_TRASH_PER_RUN + 10, trashed: MAX_TRASH_PER_RUN, capped: 10, aborted: null,
+  });
+  assertEquals(result.targets[1], {
+    prefix: "briefing-audio/", candidates: 3, trashed: 3, capped: 0, aborted: null,
+  });
+  // Top-level numbers stay the sums.
+  assertEquals(result.trashed, MAX_TRASH_PER_RUN + 3);
+  assertEquals(result.capped, 10);
+  assertEquals(result.candidates, MAX_TRASH_PER_RUN + 13);
+  assertEquals(trashed.filter((k) => k.startsWith("briefing-audio/")), briefingOrphans);
+});
+
+Deno.test("orphan-scan: an abort in briefing-audio/ is reported even when contas/ also aborts", async () => {
+  const { db } = makeDb((table) =>
+    table === "post_media" || table === "hub_briefing_questions"
+      ? { data: null, error: { message: "boom" } }
+      : { data: [], error: null }
+  );
+  const deleted: string[] = [];
+  const result = await runOrphanScan({
+    db,
+    listOrphanKeys: async (prefix) => (prefix === "contas/" ? ["contas/w/files/a.png"] : ["briefing-audio/c/q/b.webm"]),
+    trashObject: async (k) => {
+      deleted.push(k);
+    },
+  });
+  assertEquals(
+    result.aborted,
+    "contas/: known-query:post_media.r2_key; briefing-audio/: known-query:hub_briefing_questions.audio_r2_key",
+  );
+  assertEquals(result.targets[1].aborted, "known-query:hub_briefing_questions.audio_r2_key");
+  assertEquals(deleted, []);
+  assertEquals(result.trashed, 0);
 });
