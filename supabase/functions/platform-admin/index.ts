@@ -1097,6 +1097,11 @@ async function handleUpdateKbArticle(
   if (Object.keys(update).length === 0) {
     return new Response(JSON.stringify({ error: "No fields to update" }), { status: 400, headers });
   }
+  // A regra "content e content_plain juntos" precisa valer no PATCH: na linha mesclada os
+  // dois sempre existem (vêm do select *), então lá ela nunca dispara.
+  if ((update.content !== undefined) !== (update.content_plain !== undefined)) {
+    return new Response(JSON.stringify({ error: "content and content_plain go together" }), { status: 400, headers });
+  }
   const { data: current, error: readErr } = await svc
     .from("kb_articles").select("*").eq("id", article_id).maybeSingle();
   if (readErr) throw readErr;

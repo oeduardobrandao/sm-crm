@@ -62,3 +62,26 @@ Deno.test("KB_CATEGORIES espelha apps/admin/src/lib/kb-categories.ts", async () 
   const keys = [...body.matchAll(/^\s*'?([a-z0-9-]+)'?\s*:/gm)].map((m) => m[1]);
   assertEquals([...KB_CATEGORIES].sort(), [...keys].sort());
 });
+
+// handleUpdateKbArticle roda a regra "content e content_plain juntos" sobre a linha MESCLADA
+// (atual do select("*") + patch), e na linha mesclada os dois sempre existem -- a regra nunca
+// dispara ali. Sem checar o par no PATCH em si, um PATCH só com `content` deixa content_plain
+// desatualizado (FTS dessincronizado). platform-admin/index.ts não exporta handlers HTTP
+// individuais para invocação direta neste suite (roteador cru), então este teste é um
+// contrato de fonte: confirma que a checagem do par existe ANTES da leitura do select("*").
+Deno.test("handleUpdateKbArticle: par content/content_plain checado no patch antes da mescla", async () => {
+  const src = await Deno.readTextFile(new URL("../platform-admin/index.ts", import.meta.url));
+  const start = src.indexOf("async function handleUpdateKbArticle");
+  assert(start >= 0, "handleUpdateKbArticle not found");
+  const rest = src.slice(start + "async function handleUpdateKbArticle".length);
+  const nextFnOffset = rest.indexOf("async function");
+  const fn = rest.slice(0, nextFnOffset >= 0 ? nextFnOffset : undefined);
+
+  const pairCheckIdx = fn.search(/\(update\.content !== undefined\) !== \(update\.content_plain !== undefined\)/);
+  assert(pairCheckIdx >= 0, "expected the content/content_plain pairing check inside handleUpdateKbArticle");
+
+  const selectIdx = fn.indexOf('.from("kb_articles").select("*")');
+  assert(selectIdx >= 0, "expected the current-row select inside handleUpdateKbArticle");
+
+  assert(pairCheckIdx < selectIdx, "the pairing check must run before the current row is read/merged");
+});

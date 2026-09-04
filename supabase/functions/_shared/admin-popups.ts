@@ -18,7 +18,7 @@ export interface PopupPage {
 const MAX_PAGES = 6;
 const PAGE_KEYS = new Set(["title", "eyebrow", "body", "image_key"]);
 const IMAGE_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
-const CTA_URL_RE = /^(\/(?!\/)|https?:\/\/)/;
+const CTA_URL_RE = /^(\/(?![\/\\])|https?:\/\/)/; // sem // nem /\ (o browser lê \ como /)
 
 function optionalText(value: unknown, max: number): { ok: true; value: string | null } | { ok: false } {
   if (value === undefined || value === null) return { ok: true, value: null };
