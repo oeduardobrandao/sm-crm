@@ -171,6 +171,48 @@ describe('AudioRecorder', () => {
     expect(FakeMediaRecorder.instances).toHaveLength(1);
   });
 
+  it('ignores a second Enviar click while a send is in flight, disables Descartar meanwhile, and returns to idle once it resolves', async () => {
+    vi.useFakeTimers();
+    let resolveOnRecorded!: () => void;
+    const onRecorded = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveOnRecorded = resolve;
+        }),
+    );
+    render(<AudioRecorder phase="idle" onRecorded={onRecorded} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /gravar áudio/i }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /parar/i }));
+    });
+
+    vi.useRealTimers();
+
+    await act(async () => {
+      const sendBtn = screen.getByRole('button', { name: /enviar/i });
+      fireEvent.click(sendBtn);
+      fireEvent.click(sendBtn);
+    });
+
+    expect(onRecorded).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /descartar/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /enviando/i })).toBeDisabled();
+
+    await act(async () => {
+      resolveOnRecorded();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /gravar áudio/i })).toBeInTheDocument(),
+    );
+  });
+
   it('does not leak an object URL when the recorder stops after unmount', async () => {
     vi.useFakeTimers();
     const onRecorded = vi.fn(async () => {});

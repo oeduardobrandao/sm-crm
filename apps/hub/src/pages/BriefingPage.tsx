@@ -225,14 +225,19 @@ function QuestionItem({
   }
 
   async function handleRecorded(blob: Blob, mime: string, durationSeconds: number) {
+    // Locks the textarea and the recorder for the whole operation, including
+    // the flush below — otherwise a second click on "Enviar" during that
+    // network round-trip (busy was only set after the flush resolved) could
+    // fire a second presign/upload/finalize before this one lands.
+    setPhase('uploading');
     try {
       await flushPendingSave();
     } catch {
       setAudioError('Não foi possível salvar o texto. Tente de novo.');
+      setPhase('idle');
       throw new Error('Não foi possível salvar o texto. Tente de novo.');
     }
     setAudioError(null);
-    setPhase('uploading');
     try {
       const res = await uploadBriefingAudio({
         token,
@@ -256,13 +261,18 @@ function QuestionItem({
   }
 
   async function handleRetry() {
+    // Locks the recorder/answer for the whole operation, including the flush
+    // below — otherwise a second click on "Tentar novamente" during that
+    // network round-trip (busyAction was only set after the flush resolved)
+    // could fire a second transcription request before this one lands.
+    setBusyAction('retry');
     try {
       await flushPendingSave();
     } catch {
       setAudioError('Não foi possível salvar o texto. Tente de novo.');
+      setBusyAction(null);
       return;
     }
-    setBusyAction('retry');
     setAudioError(null);
     try {
       applyResponse(await retryBriefingTranscription(token, question.id));

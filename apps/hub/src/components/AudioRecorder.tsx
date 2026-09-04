@@ -48,6 +48,7 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -55,6 +56,7 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
   const startedAtRef = useRef(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startingRef = useRef(false);
+  const sendingRef = useRef(false);
   const mountedRef = useRef(true);
 
   const releaseStream = useCallback(() => {
@@ -149,7 +151,9 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
   }
 
   async function send() {
-    if (!blob) return;
+    if (!blob || sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
     const mime = blob.type || 'audio/webm';
     const seconds = elapsed;
     try {
@@ -159,6 +163,9 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
       // The parent owns upload/transcription errors and renders them itself
       // (see BriefingPage's handleRecorded). Stay in preview so the user can
       // retry or discard; do not render a second error here.
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
     }
   }
 
@@ -212,10 +219,10 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
           <button
             type="button"
             className={`${BTN} hub-btn-primary`}
-            disabled={busy}
+            disabled={busy || sending}
             onClick={() => void send()}
           >
-            {phase === 'uploading'
+            {sending || phase === 'uploading'
               ? 'Enviando…'
               : phase === 'transcribing'
                 ? 'Transcrevendo…'
@@ -224,7 +231,7 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
           <button
             type="button"
             className={`${BTN} hub-btn-secondary`}
-            disabled={busy}
+            disabled={busy || sending}
             onClick={discard}
           >
             Descartar

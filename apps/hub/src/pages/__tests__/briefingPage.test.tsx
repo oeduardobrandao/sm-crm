@@ -231,6 +231,37 @@ describe('BriefingPage audio', () => {
     await waitFor(() => expect(textareas[0]).toHaveValue('Digitando rápido\n\nTranscrito.'));
   });
 
+  it('locks the textarea and puts the recorder in phase="uploading" while the flush is still in flight', async () => {
+    // Regression test: setPhase('uploading') must happen BEFORE
+    // flushPendingSave(), not after it resolves -- otherwise a second click
+    // on "Enviar" during the flush's network round-trip could fire a second
+    // presign/upload/finalize before the first one lands.
+    let resolveSubmit!: (v: unknown) => void;
+    vi.mocked(submitBriefingAnswer).mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolveSubmit = r;
+        }) as never,
+    );
+    renderPage(<BriefingPage />);
+    await screen.findByText('Marca?');
+    const textareas = screen.getAllByRole('textbox');
+
+    fireEvent.change(textareas[0], { target: { value: 'Digitando rápido' } });
+    await act(async () => {
+      fireEvent.click(screen.getAllByText('fake-record')[0]);
+    });
+
+    // The flush (submitBriefingAnswer) is still pending -- phase must
+    // already be 'uploading' and the textarea already locked.
+    expect(textareas[0]).toBeDisabled();
+    expect(screen.getAllByText('fake-record')[0]).toHaveAttribute('data-phase', 'uploading');
+
+    await act(async () => {
+      resolveSubmit(undefined);
+    });
+  });
+
   it('aborts the audio action when the flushed save fails, keeping the recorder in preview', async () => {
     vi.mocked(submitBriefingAnswer).mockRejectedValue(new Error('HTTP 500'));
     renderPage(<BriefingPage />);
