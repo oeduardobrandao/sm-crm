@@ -25,6 +25,10 @@ describe('CRM URL security', () => {
     expect(sanitizeUrl('/\\evil.com')).toBe('#');
     expect(sanitizeUrl('/\\\\evil.com')).toBe('#');
     expect(sanitizeUrl('/ajuda')).toBe('/ajuda');
+    expect(sanitizeUrl('/\t/evil.com')).toBe('#');
+    expect(sanitizeUrl('/\n/evil.com')).toBe('#');
+    expect(sanitizeUrl('/\r/evil.com')).toBe('#');
+    expect(sanitizeUrl('/aju\tda')).toBe('/ajuda');
   });
 
   it('opens only sanitized external URLs in an isolated tab', () => {
