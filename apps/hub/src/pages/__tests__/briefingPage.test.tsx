@@ -346,6 +346,101 @@ describe('BriefingPage audio', () => {
     expect(screen.getByRole('button', { name: /tentar novamente/i })).toBeInTheDocument();
   });
 
+  it('resyncs the textarea to the server answer after an upload failure whose transcript still landed', async () => {
+    vi.mocked(uploadBriefingAudio).mockRejectedValue(new Error('network error'));
+    const doneAudio = { ...audio, transcription_status: 'done' as const };
+    vi.mocked(fetchBriefing)
+      .mockResolvedValueOnce(briefingWithQ2Audio(null))
+      .mockResolvedValueOnce({
+        briefings: [
+          {
+            id: 'b1',
+            title: 'Briefing',
+            display_order: 0,
+            questions: [
+              {
+                id: 'q1',
+                question: 'Marca?',
+                answer: 'Antes.',
+                section: null,
+                display_order: 0,
+                audio: null,
+              },
+              {
+                id: 'q2',
+                question: 'Público?',
+                answer: 'Antes.\n\nTranscrito no servidor.',
+                section: null,
+                display_order: 1,
+                audio: doneAudio,
+              },
+            ],
+          },
+        ],
+      });
+    renderPage(<BriefingPage />);
+    await screen.findByText('Marca?');
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByText('fake-record')[0]);
+    });
+
+    await waitFor(() => expect(fetchBriefing).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getAllByRole('textbox')[1]).toHaveValue('Antes.\n\nTranscrito no servidor.'),
+    );
+  });
+
+  it('does not overwrite an in-progress local edit when the background refetch brings a fresher answer', async () => {
+    vi.mocked(uploadBriefingAudio).mockRejectedValue(new Error('network error'));
+    const doneAudio = { ...audio, transcription_status: 'done' as const };
+    vi.mocked(fetchBriefing)
+      .mockResolvedValueOnce(briefingWithQ2Audio(null))
+      .mockResolvedValueOnce({
+        briefings: [
+          {
+            id: 'b1',
+            title: 'Briefing',
+            display_order: 0,
+            questions: [
+              {
+                id: 'q1',
+                question: 'Marca?',
+                answer: 'Antes.',
+                section: null,
+                display_order: 0,
+                audio: null,
+              },
+              {
+                id: 'q2',
+                question: 'Público?',
+                answer: 'Antes.\n\nTranscrito no servidor.',
+                section: null,
+                display_order: 1,
+                audio: doneAudio,
+              },
+            ],
+          },
+        ],
+      });
+    renderPage(<BriefingPage />);
+    await screen.findByText('Marca?');
+    const textareas = screen.getAllByRole('textbox');
+
+    // Type into q2's own textarea before the failed upload on q1 triggers the
+    // background refetch — a pending save on q2 must survive that refetch.
+    fireEvent.change(textareas[1], { target: { value: 'Editando ao vivo' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByText('fake-record')[0]);
+    });
+
+    await waitFor(() => expect(fetchBriefing).toHaveBeenCalledTimes(2));
+    // Give the effect a tick to (not) run.
+    await waitFor(() => expect(screen.getByText('player 65s')).toBeInTheDocument());
+    expect(textareas[1]).toHaveValue('Editando ao vivo');
+  });
+
   it('drops the local audio player when a background refetch shows the audio was removed elsewhere', async () => {
     vi.mocked(fetchBriefing)
       .mockResolvedValueOnce(briefingWithQ2Audio(audio))

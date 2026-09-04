@@ -170,11 +170,30 @@ function QuestionItem({
 
   // The server is the source of truth for audio: a background refetch (e.g.
   // triggered by onAudioChanged after another tab removed it, or after this
-  // question's upload failed) must replace the local audio state. The typed
-  // answer text is never touched here — only `audio`.
+  // question's upload failed) must replace the local audio state.
+  //
+  // It's also the source of truth for the answer text once it diverges from
+  // what's shown locally — this covers an upload that failed on the client
+  // (network drop) but actually finished server-side, appending the
+  // transcript to `answer` before the response was lost; the refetch that
+  // follows (onAudioChanged) brings back a fresher `question.answer` than
+  // local state. We only take it over when nothing local is in flight or
+  // unsaved: never while the user is actively typing (a dirty pending save)
+  // or while a save/audio action is being flushed to the server.
   useEffect(() => {
     setAudio(question.audio);
-  }, [question.audio]);
+    if (
+      question.answer != null &&
+      question.answer !== answer &&
+      !pendingRef.current.dirty &&
+      status !== 'saving' &&
+      phase === 'idle' &&
+      busyAction === null
+    ) {
+      setAnswer(question.answer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question.audio, question.answer]);
 
   const handleChange = useCallback(
     (value: string) => {

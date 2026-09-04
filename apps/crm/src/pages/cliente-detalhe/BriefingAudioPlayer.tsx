@@ -21,17 +21,30 @@ const STATUS: Record<string, { label: string; variant: 'success' | 'warning' | '
 
 export function BriefingAudioPlayer({ question }: { question: HubBriefingQuestionRow }) {
   const { data, isError } = useQuery({
-    queryKey: ['briefing-audio-url', question.id, question.audio_r2_key],
+    queryKey: [
+      'briefing-audio-url',
+      question.id,
+      question.audio_r2_key,
+      question.audio_transcription_status,
+    ],
     queryFn: () => fetchBriefingAudio(question.id),
-    // A URL assinada vale 60 min; 30 dá folga de sobra para refetch.
+    // A URL assinada vale 60 min; 30 dá folga de sobra para refetch. Incluir
+    // audio_transcription_status na key força um refetch quando a pergunta-pai
+    // (que refaz o fetch ao focar a aba) enxerga um status mais novo — do
+    // contrário essa query fica presa no valor cacheado por até 30 min.
     staleTime: 30 * 60 * 1000,
     enabled: !!question.audio_r2_key,
   });
   if (!question.audio_r2_key) return null;
-  // A view já buscada aplica a regra de "pending velho vira failed"
-  // (STALE_PENDING_MS, _shared/briefing-audio.ts); a coluna crua da pergunta é
-  // só o fallback enquanto a URL assinada não chegou.
-  const rawStatus = data?.transcription_status ?? question.audio_transcription_status;
+  // question.audio_transcription_status é o valor mais fresco (a pergunta-pai
+  // refaz o fetch ao focar). Só quando ele ainda está 'pending' é que vale a
+  // pena preferir o status da view já buscada, que aplica a regra de "pending
+  // velho vira failed" (STALE_PENDING_MS, _shared/briefing-audio.ts) — nos
+  // demais casos (done/failed) o status da pergunta já é definitivo.
+  const rawStatus =
+    question.audio_transcription_status === 'pending'
+      ? (data?.transcription_status ?? 'pending')
+      : question.audio_transcription_status;
   const status = rawStatus ? STATUS[rawStatus] : null;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-3">
