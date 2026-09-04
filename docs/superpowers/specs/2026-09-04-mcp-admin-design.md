@@ -166,9 +166,13 @@ GET/DELETE, `checkRateLimit(db, \`mcp-admin:${ctx.key_id}\`, 120, 60)`,
   quando `target === "workspace"`.
 
 Revogação no v1: `mcp-oauth-consent` ganha `list-admin-grants` e
-`revoke-admin-grant` (mesma forma dos equivalentes de workspace, gate =
-`platform_admins`). Sem UI no v1; ficam acessíveis por chamada direta e
-entram na página de Admins do Admin num follow-up.
+`revoke-admin-grant`. Gate: o chamador precisa estar em `platform_admins`.
+Escopo **admin-wide**: qualquer platform admin lista e revoga os grants de
+qualquer admin (a tabela não tem `conta_id`; a página de Admins do Admin, no
+follow-up, é supervisão entre admins, não autoatendimento). `list-admin-grants`
+devolve `{ id, user_id, email, client_id, scopes, created_at, revoked_at }`;
+`revoke-admin-grant` recebe `grant_id`, seta `revoked_at`/`revoked_by` e audita
+`mcp_admin.oauth.revoke`. Sem UI no v1.
 
 ## 4. Tools
 
@@ -176,7 +180,9 @@ Todas retornam JSON em `content[0].text`. Erros seguem o `errorResult` do
 `mcp`: `McpScopeError` → `Permission denied: missing scope 'x'`,
 `McpInputError` → mensagem literal, resto → `Internal error.` com log interno.
 Cada chamada bem-sucedida grava `audit_log` com `action: "mcp_admin.<tool>"`,
-`resource_type: "mcp_admin"`, `actor_user_id: ctx.user_id`, sem `conta_id`, e
+`resource_type: "mcp_admin"`, `actor_user_id: ctx.user_id`, sem `conta_id`,
+`resource_id` = id do recurso tocado (`banner_id`/`popup_id`/`article_id`/
+`workspace_id` do argumento, ou o `id` do resultado num create), e
 `metadata: { key_id, tool, args }` onde `args` só carrega ids e filtros.
 
 ### 4.1 Banners (`banners:read` / `banners:write`)
@@ -193,7 +199,10 @@ Cada chamada bem-sucedida grava `audit_log` com `action: "mcp_admin.<tool>"`,
 chars, `link` https ou caminho relativo `/…`, `custom_color` `^#[0-9a-fA-F]{6}$`,
 `target_mode: plan` exige `target_plan_ids` não vazio e `workspace` exige
 `target_workspace_ids` não vazio (fecha o buraco do `array_length('{}')`),
-`ends_at > starts_at`, timestamps parseáveis. `dismissal_count` vem de uma
+`ends_at > starts_at`, timestamps parseáveis. Uma migration companheira
+troca os dois CHECKs de targeting de `global_banners` para
+`coalesce(array_length(...), 0) > 0`, como `global_popups` já faz, para o
+invariante valer também fora das edge functions. `dismissal_count` vem de uma
 única query agregada em `banner_dismissals` (não o N+1 do handler atual).
 
 ### 4.2 Popups (`popups:read` / `popups:write`)
@@ -212,7 +221,10 @@ chars, `link` https ou caminho relativo `/…`, `custom_color` `^#[0-9a-fA-F]{6}
 `_shared/admin-popups.ts`, exatamente como o `platform-admin`. Em
 `update_popup`, `pages` substitui o array inteiro; uma `image_key` passa se
 já existir no popup atual (pode ter sido enviada por outro admin) ou se estiver
-sob `contas/<conta do admin>/files/`. Antes de persistir, cada `image_key`
+sob `contas/<conta do admin>/files/`. Quando alguma página traz `image_key`
+nova, o servidor resolve `profiles.conta_id` do admin antes de validar; sem
+`conta_id` → `McpInputError` (nunca `validatePages` com `allowedContaId`
+indefinido, que desligaria a checagem). Antes de persistir, cada `image_key`
 nova é finalizada (seção 7). Contadores vêm da view
 `popup_interaction_counts` (service role).
 
@@ -221,7 +233,7 @@ nova é finalizada (seção 7). Contadores vêm da view
 | Tool | Entrada | Saída |
 |---|---|---|
 | `list_kb_articles` | `status?: draft\|published`, `category?` | `[{ id, title, slug, excerpt, category, tags, status, display_order, cover_image_url, updated_at }]` (sem corpo) |
-| `get_kb_article` | `article_id` **ou** `slug` | metadados + `content_markdown` + `opaque_blocks: number` |
+| `get_kb_article` | `article_id` **ou** `slug` (`article_id` prevalece se vierem os dois) | metadados + `content_markdown` + `opaque_blocks: number` |
 | `create_kb_article` | `title, slug, category, content_markdown, excerpt?, tags?, status?, display_order?, cover_image_url?` | `{ id, slug, status }` |
 | `update_kb_article` | `article_id` + subconjunto (incl. `content_markdown`, `cover_image_url`) | `{ id, slug, status }` |
 | `upload_kb_image` | `filename, mime_type, source_url?, article_slug?` | seção 7 |
@@ -249,12 +261,14 @@ create.
 | `list_plans` | nenhuma | `plans` com limites e features, mesmo shape de `list-plans` |
 | `get_dashboard` | nenhuma | `{ totals: { workspaces, members, clients, with_overrides, active_plans }, mrr: { mrr_cents, paying_count }, trials: { trial_mrr_cents, trial_count } }` |
 
-`list_workspaces` e `get_dashboard` reutilizam `handleListWorkspaces`,
-`handleGetMrr` e `handleGetTrials` (módulos sem `Deno.serve`, já exportados)
-lendo o `Response` que devolvem. `get_workspace` e `list_plans` são queries
-próprias em `queries.ts`, pois os handlers equivalentes vivem dentro de
-`platform-admin/index.ts` e não podem ser importados sem executar o
-`Deno.serve`.
+As quatro tools reutilizam os handlers do `platform-admin` lendo o `Response`
+que devolvem: `handleListWorkspaces` (`list-workspaces.ts`), `handleGetMrr` e
+`handleGetTrials` (`mrr.ts`) já são módulos sem `Deno.serve`;
+`handleGetWorkspace` (com `buildSubscriptionDetail`, `extractLimits`,
+`extractFeatures`) e `handleListPlans` saem de `platform-admin/index.ts` para
+`platform-admin/workspace-detail.ts` e `platform-admin/plans.ts` (cut/paste,
+sem mudança de comportamento) para poderem ser importados. Uma única
+implementação por leitura, sem drift entre Admin e MCP.
 
 ## 5. Escopos e UI
 
@@ -286,18 +300,40 @@ lexer; a árvore de tokens é mapeada para nós TipTap.
 | `---` | `horizontalRule` |
 | linha terminada em `\` ou dois espaços | `hardBreak` |
 | `![alt](url)` em linha própria | `inlineImage { r2Key: null, src: url, alt, width, height, blurSrc: null, displayWidth: null, loading: false }` |
-| parágrafo com só uma URL de YouTube | `youtube { src }` |
+| parágrafo com só uma URL de YouTube | `youtube { src, width: 640, height: 480, start: 0 }` (defaults da extensão) |
 | `:::callout emoji=💡 color=blue` … `:::` | `callout { emoji, color }` com o conteúdo interno parseado recursivamente; `color` em `brown\|gray\|orange\|yellow\|green\|blue\|purple\|pink`, default `brown`; emoji default 💡 |
-| `<!--tiptap:BASE64-->` em linha própria | o nó decodificado, inserido verbatim |
+| `<!--tiptap:BASE64-->` em linha própria | o nó decodificado, **validado por `validateTiptapNode`** (abaixo) e inserido |
 
 Serialização inversa cobre a mesma tabela. Qualquer nó ou mark **fora** dela
 (`iframe`, `inlineImage` com `r2Key`, `underline`, `textStyle`/`color`,
 `highlight`, atributos desconhecidos) é serializado como bloco opaco
 `<!--tiptap:BASE64(JSON do nó)-->`; marks desconhecidas em texto viram o texto
 sem a mark **e** o parágrafo inteiro vira opaco, para não perder formatação.
-`get_kb_article` devolve `opaque_blocks` para o agente saber que há trechos
-que ele não deve reescrever à mão. Isso garante round-trip sem perda para
-artigos editados na UI do Admin.
+Um `youtube` só vira URL simples se `width`/`height`/`start` forem os defaults
+(640/480/0); com atributos customizados vai como bloco opaco. `get_kb_article`
+devolve `opaque_blocks` para o agente saber que há trechos que ele não deve
+reescrever à mão. Isso garante round-trip sem perda para artigos editados na
+UI do Admin.
+
+**Validação de schema na escrita.** `content_markdown` é texto livre, então um
+bloco opaco digitado à mão é vetor de injeção de nó arbitrário (o artigo
+renderiza em todos os workspaces). Todo documento gerado, incluindo cada nó
+decodificado de bloco opaco, passa por `validateTiptapDoc(doc)` antes de
+persistir. É uma allowlist recursiva: tipos de nó `doc, paragraph, heading
+(level 2|3), text, bulletList, orderedList (start int), listItem, blockquote,
+codeBlock (language string|null), horizontalRule, hardBreak, inlineImage,
+youtube, iframe, callout`; atributos por tipo com forma e domínio fixos
+(`inlineImage.r2Key` null ou `^contas/[0-9a-f-]{36}/files/[^/]+$`,
+`inlineImage.src` null ou https, `width/height/displayWidth` int|null,
+`blurSrc` null ou `data:image/`, `youtube.src` URL do YouTube,
+`iframe.src` https em host da allowlist de `IframeExtension.ts`
+(loom.com, arcade.software, scribehow.com e subdomínios), `callout.color` na
+lista de 8 cores, `callout.emoji` ≤ 8 chars); marks `bold, italic, strike,
+code, underline, link (href https ou `/…`), textStyle (color null ou hex),
+highlight (color string ≤ 20)`. Qualquer tipo, atributo ou mark fora da lista
+→ `McpInputError` nomeando o tipo. A lista de hosts do iframe é duplicada de
+`apps/admin/src/components/editor/IframeExtension.ts` com comentário cruzado
+e teste de sincronia (seção 9).
 
 `content_plain` = texto de cada bloco de nível superior (recursivo,
 `hardBreak` → espaço, imagens → `alt`), blocos unidos por `\n`. É o que
@@ -315,17 +351,21 @@ ou não-https são rejeitadas com `McpInputError`.
 
 Dois modos, decididos por `source_url`:
 
-**A. Importar de URL** (`source_url` presente): o servidor baixa (https
-apenas; host não pode ser IP literal nem `localhost`; `Content-Type` `image/*`;
-cap 10 MB por `Content-Length` e por stream; timeout 20 s), grava com service
-role em `kb-images/<pasta>/<uuid8>-<nome>.<ext>` e responde
-`{ path, public_url, width, height, size_bytes }`.
+**A. Importar de URL** (`source_url` presente): o servidor baixa com
+`fetchImageSafely` (seção 7.3), grava com service role em
+`kb-images/<pasta>/<uuid8>-<nome>.<ext>` (extensão do tipo *sniffado*, não do
+`mime_type` declarado) e responde `{ path, public_url, width, height,
+size_bytes }`.
 
 **B. Upload direto** (sem `source_url`): responde
 `{ path, public_url, upload_url, expires_in: 7200 }` onde `upload_url` vem de
 `storage.from("kb-images").createSignedUploadUrl(path)`. O agente faz `PUT`
 com o binário e `Content-Type` correto. Dimensões são resolvidas no probe da
-seção 6 quando a URL entra num artigo.
+seção 6 quando a URL entra num artigo. O que o servidor não vê neste modo é
+imposto pelo próprio Storage: uma migration grava em `storage.buckets`
+`allowed_mime_types = {image/jpeg,image/png,image/webp,image/gif}` e
+`file_size_limit = 10485760` para o bucket `kb-images`, então um PUT com outro
+tipo ou maior que 10 MB é recusado pelo Supabase, com ou sem MCP.
 
 `<pasta>` = `article_slug` (validado com a regex de slug) ou `uploads`.
 `<nome>` = `filename` normalizado (`[a-z0-9-]`, ≤ 60 chars). `mime_type` em
@@ -344,23 +384,46 @@ Espelha o fluxo `file-upload-url → PUT → file-upload-finalize` da UI, com o
 cap 10 MB, quota do workspace do admin checada antes de assinar (mesmo
 precheck de `createMediaUpload` do `mcp`).
 
-**A. Importar de URL** (`source_url`): mesmas regras de fetch da 7.1; o
-servidor faz o `PUT` no R2 pela URL pré-assinada (`signPutUrl` + `fetch` com
-`AbortSignal`, padrão já usado nas functions), chama `file_insert_with_quota`
-com `kind: "image"`, `uploaded_by: ctx.user_id`, `width`/`height` do probe, e
-responde `{ image_key, width, height, size_bytes }`.
+**A. Importar de URL** (`source_url`): `fetchImageSafely` (seção 7.3); o
+servidor grava no R2 com `putObject` de `_shared/r2.ts` (PUT pré-assinado com
+`AbortSignal`), chama `file_insert_with_quota` com `kind: "image"`,
+`uploaded_by: ctx.user_id`, `width`/`height` do parser de dimensões, e
+responde `{ image_key, width, height, size_bytes }`. Falha no insert apaga o
+objeto recém-gravado (`deleteObject`) antes de propagar.
 
 **B. Upload direto**: exige `size_bytes`; responde
 `{ image_key, upload_url, expires_in: 900 }`. A linha em `files` **não** é
 criada aqui. Ela é criada na primeira vez que a `image_key` entra num
 `create_popup`/`update_popup`: o servidor faz `headObject` (objeto existe,
-`contentType` bate com o mime da extensão, tamanho ≤ 10 MB) e só então chama
-`file_insert_with_quota`; objeto ausente → `McpInputError("image_key not
-uploaded yet")`. Um upload que nunca é usado num popup fica sem linha e o
+`contentType` está na allowlist `image/jpeg|png|webp|gif`, tamanho ≤ 10 MB) e
+só então chama `file_insert_with_quota`; objeto ausente → `McpInputError`
+("imagem ainda não enviada"), tipo ou tamanho fora do permitido →
+`McpInputError` (o objeto fica órfão e o cron o recolhe). É esse HEAD que
+impõe no modo B o que o modo A impõe pelo sniff. Um upload que nunca é usado num popup fica sem linha e o
 orphan-scan o recolhe no ciclo normal, sem lixo em `files`.
 
 A finalização é idempotente: se já existe linha em `files` com aquela
 `r2_key`, nada é inserido.
+
+### 7.3 Fetch seguro (`_shared/safe-image-fetch.ts`)
+
+O pipeline de importação de URL já existe, endurecido, em
+`_shared/brand-logo.ts` (`materializeBrandLogo`, camadas 1 a 7 do cabeçalho
+daquele arquivo). Ele sai de lá para `_shared/safe-image-fetch.ts` como
+`fetchImageSafely(deps, rawUrl, { maxBytes, timeoutMs, truncate? })`, e
+`materializeBrandLogo` passa a chamá-lo (a suíte `brand-logo_test.ts` segue
+verde como regressão). Regras, na ordem: https apenas; sem credenciais na URL;
+host IP-literal rejeitado em qualquer notação; resolução DNS A+AAAA com
+deadline de 5 s e rejeição de qualquer endereço loopback, privado, link-local,
+CGNAT, multicast, v4-mapped ou NAT64; `redirect: "manual"` com qualquer 3xx
+rejeitado; timeout de fetch; `Content-Type` `image/*`; cap por
+`Content-Length` e por stream; sniff de magic bytes PNG/JPEG/GIF/WebP (SVG
+nunca). `truncate: true` (usado pelo probe de dimensões da seção 6, cap 64 KB)
+devolve os primeiros bytes em vez de falhar por tamanho. Risco residual,
+aceito como no `brand-logo`: DNS rebinding entre a resolução e o fetch;
+`Deno.resolveDns` indisponível no runtime falha **fechado**
+(`dns_resolution_failed`), e o smoke do rollout confirma que o modo A funciona
+em prod.
 
 ## 8. Segurança
 
@@ -370,8 +433,11 @@ A finalização é idempotente: se já existe linha em `files` com aquela
 - Nenhuma tool exclui linhas. `archived`/`draft` são o máximo de destruição.
 - Colunas gravadas passam por allowlist (`BANNER_COLUMNS`, `POPUP_COLUMNS`,
   `KB_ARTICLE_COLUMNS`) antes do insert/update.
-- Fetch de URL externa (probe e importação) é https-only, com timeout e cap de
-  bytes, e nunca segue para hosts IP/localhost.
+- Fetch de URL externa (probe e importação) passa por `fetchImageSafely`
+  (seção 7.3): https, DNS resolvido e checado contra faixas privadas, sem
+  redirects, timeout, cap por stream, sniff de bytes.
+- Blocos opacos e todo o documento gerado passam por `validateTiptapDoc`
+  (seção 6): nenhum nó, atributo ou mark fora da allowlist chega ao banco.
 - Erros internos nunca chegam ao cliente; `McpInputError` é a única mensagem
   literal.
 - Rate limit `mcp-admin:<key_id>` 120/min, com o mesmo fail-open do `mcp`
@@ -392,8 +458,18 @@ Deno, em `supabase/functions/__tests__/`, com o fake `makeFakeDb` do padrão
   `mcp-admin-kb_test.ts`: validadores puros + queries (payload gravado,
   colunas fora da allowlist descartadas, `image_key` novo rejeitado em popup,
   slug duplicado → mensagem amigável, `content`+`content_plain` sempre juntos).
-- `mcp-admin-images_test.ts`: probe de dimensões PNG/JPEG/WebP/GIF em fixtures
-  de bytes; rejeição de http/IP/localhost; cap de tamanho; popup: chave sob o
+- `safe-image-fetch_test.ts`: os casos de URL/DNS/redirect/cap/sniff hoje em
+  `brand-logo_test.ts` passam a exercitar `fetchImageSafely` diretamente
+  (`brand-logo_test.ts` continua inteira, como regressão da delegação), mais
+  `truncate: true`.
+- `mcp-admin-markdown_test.ts` também cobre `validateTiptapDoc`: bloco opaco
+  com `iframe` de host fora da allowlist → erro; `inlineImage` com `r2Key`
+  fora do formato → erro; mark desconhecida → erro; documento válido com todos
+  os tipos → ok; teste de sincronia da lista de hosts com
+  `apps/admin/src/components/editor/IframeExtension.ts` e de `KB_CATEGORIES`
+  com `apps/admin/src/lib/kb-categories.ts` (lê os dois arquivos e compara).
+- `mcp-admin-images_test.ts`: parser de dimensões PNG/JPEG/WebP/GIF em fixtures
+  de bytes; popup: chave sob o
   conta do admin, quota excedida → `McpInputError`, admin sem `conta_id` →
   `McpInputError`, finalização no persist (headObject ausente → erro; linha
   em `files` criada uma única vez; `image_key` já persistida não refaz
@@ -409,8 +485,11 @@ Deno, em `supabase/functions/__tests__/`, com o fake `makeFakeDb` do padrão
 
 ## 10. Rollout
 
-1. Migration `admin_mcp_oauth_grants` em prod **antes** do merge (o merge
-   deploya o CRM na hora).
+1. Migrations em prod **antes** do merge (o merge deploya o CRM na hora):
+   `admin_mcp_oauth_grants`, `coalesce` nos CHECKs de `global_banners`,
+   limites do bucket `kb-images`. Em staging, aplicar antes as migrations que
+   faltam lá (`20260907000010_global_popups.sql` está ausente em staging, e o
+   smoke dos popups depende dela).
 2. Deploy `mcp-oauth-consent` (JWT on) e `mcp-admin` (`--no-verify-jwt`),
    `--use-api`, prod e staging. `platform-admin` também, por causa do move dos
    validadores.
@@ -419,7 +498,10 @@ Deno, em `supabase/functions/__tests__/`, com o fake `makeFakeDb` do padrão
    OAuth em branco, escolher "Administração da plataforma" no consent.
 5. Smoke: `get_dashboard`, `list_kb_articles`, `get_kb_article` de um artigo
    com screenshot (verifica `opaque_blocks`/imagens), `create_kb_article`
-   draft com `upload_kb_image` modo A, conferir no CRM `/ajuda`.
+   draft com `upload_kb_image` modo A (confirma que `Deno.resolveDns` existe
+   no runtime; se falhar com `dns_resolution_failed` para um host público,
+   abrir follow-up antes de liberar o modo A), `upload_popup_image` modo A +
+   `create_popup` draft, conferir no CRM `/ajuda` e no Admin.
 
 ## 11. Fora de escopo (follow-ups)
 
@@ -427,3 +509,5 @@ Deno, em `supabase/functions/__tests__/`, com o fake `makeFakeDb` do padrão
 - UI de revogação de grants de admin na página de Admins.
 - `kb_context_links` (vínculo artigo ↔ rota) via MCP.
 - Escrita em workspaces/planos.
+- Pinar o IP resolvido no fetch (o `fetch` do edge runtime não permite); o
+  rebinding fica como risco residual aceito, igual ao `brand-logo`.
