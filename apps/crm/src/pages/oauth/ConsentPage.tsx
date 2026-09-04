@@ -27,6 +27,8 @@ interface AuthDetails {
 
 type Phase = 'loading' | 'consent' | 'submitting' | 'redirecting' | 'error';
 
+const PLATFORM = '__platform__';
+
 function hostOf(uri: string): string {
   try {
     return new URL(uri).host;
@@ -45,7 +47,6 @@ export default function ConsentPage() {
   const [workspaces, setWorkspaces] = useState<EligibleWorkspace[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [scopes, setScopes] = useState<string[]>(AGENT_PRESET);
-  const PLATFORM = '__platform__';
   const [platformAdmin, setPlatformAdmin] = useState(false);
 
   useEffect(() => {
@@ -87,9 +88,13 @@ export default function ConsentPage() {
         setWorkspaces(ws);
         setPlatformAdmin(platform_admin);
         // Preselect the first MCP-enabled workspace, else the first one, else platform admin.
-        setSelected(
-          (ws.find((w) => w.feature_mcp) ?? ws[0])?.id ?? (platform_admin ? PLATFORM : null),
-        );
+        const preselected =
+          (ws.find((w) => w.feature_mcp) ?? ws[0])?.id ?? (platform_admin ? PLATFORM : null);
+        setSelected(preselected);
+        // The scopes above default to the workspace preset — when the platform option is
+        // what actually got preselected (no eligible workspace), swap to the admin preset
+        // so the checklist and the submitted scopes match the `target: 'platform'` grant.
+        if (preselected === PLATFORM) setScopes(ADMIN_READ_PRESET);
       } catch {
         if (cancelled) return;
         setWorkspaces([]);
