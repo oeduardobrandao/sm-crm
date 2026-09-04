@@ -168,12 +168,28 @@ export interface HubContentBlock {
   level?: 1 | 2 | 3;
 }
 
+export interface BriefingAudio {
+  url: string;
+  mime: string;
+  duration_seconds: number | null;
+  transcription_status: 'pending' | 'done' | 'failed' | null;
+  recorded_at: string | null;
+}
+
 export interface BriefingQuestion {
   id: string;
   question: string;
   answer: string | null;
   section: string | null;
   display_order: number;
+  audio: BriefingAudio | null;
+}
+
+export interface BriefingAudioResponse {
+  ok: boolean;
+  answer: string | null;
+  transcript: string | null;
+  audio: BriefingAudio | null;
 }
 
 export interface Briefing {
