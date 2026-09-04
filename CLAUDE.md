@@ -205,6 +205,11 @@ Monorepo with npm workspaces:
 - `META_WEBHOOK_VERIFY_TOKEN` -- Meta webhook verify token for the Instagram
   comment-to-DM automation (instagram-webhook). REQUIRED, no default -- throws
   at module load if missing
+- `TRANSCRIBE_WORKER_URL`, `TRANSCRIBE_SECRET` -- Cloudflare Worker `workers/transcribe`
+  (Workers AI, Whisper turbo) that transcribes Hub briefing audio answers. Both
+  optional, no default: when unset, hub-briefing still stores the audio and marks
+  the transcription `failed` (the client sees "Tentar novamente"). The secret must
+  match the one set on the worker with `wrangler secret put TRANSCRIBE_SECRET`
 - `IG_AUTOMATION_SCOPES_LIVE` -- optional, default off (unset/`false`). While off, the
   Instagram OAuth URL only requests the approved trio of base scopes; flipping it to
   `true` adds the optional `instagram_business_manage_comments` AND
@@ -236,7 +241,7 @@ Monorepo with npm workspaces:
 - Page param validation: `Math.max(1, parseInt(pageStr) || 1)`
 - localStorage iteration: collect keys first, then remove. Modifying during iteration skips items
 - Roles are `owner | admin | agent` -- always check via `AuthContext`, never hardcode
-- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub)
+- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing` (token do hub) and `briefing-audio` (verifies the user JWT itself) both need it too
 - Hub app uses token-based access (no Supabase auth), builds to `dist/hub/` with base path `/hub/`
 - Vercel rewrites in `vercel.json` route Hub URLs to `/hub/index.html` and CRM URLs to `/index.html`
 - `membros` and `clientes` use column-level `GRANT SELECT` allowlists (Migration `20260728000002`). Any column added to either table is invisible to the CRM until it is added to the grant, to `membros_v`/`clientes_v`, and to the `*_SAFE_COLUMNS` constants in `store/team.ts` / `store/clients.ts`. The failure surfaces as a confusing missing-column error. The same allowlist also keeps six PostgREST embeds, ten dependent RLS policies and `get_client_health_aggregates()` working -- none of which a `from('clientes')` grep finds.

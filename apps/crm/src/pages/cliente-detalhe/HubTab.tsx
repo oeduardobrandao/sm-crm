@@ -114,6 +114,7 @@ import { useFileUrl } from '@/hooks/useFileUrl';
 import { uploadFile } from '@/services/fileService';
 import { BriefingTemplatesModal } from './BriefingTemplatesModal';
 import { SortableQuestion, SortableSection, SECTION_PREFIX } from './BriefingReorder';
+import { BriefingAudioPlayer } from './BriefingAudioPlayer';
 import {
   reorderQuestionWithinSection,
   reorderSections,
@@ -1247,6 +1248,7 @@ function BriefingEditor({
                             Sem resposta ainda
                           </p>
                         )}
+                        <BriefingAudioPlayer question={q} />
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <Button
