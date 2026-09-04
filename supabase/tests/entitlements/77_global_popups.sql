@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Global popups (migration 20260906000010_global_popups.sql, spec 2026-09-04):
+-- Global popups (migration 20260907000010_global_popups.sql, spec 2026-09-04):
 --   (a) RLS de global_popups: ativo + janela + targeting (all / plan / workspace),
 --       mesmo predicado dos banners.
 --   (b) popup_interactions: cada usuario le e insere so as proprias linhas.

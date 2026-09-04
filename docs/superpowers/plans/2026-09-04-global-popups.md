@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Migration com prefixo **acima da cauda de `origin/main`**. Hoje: `20260906000010_global_popups.sql`. Reconferir com `git ls-tree --name-only origin/main:supabase/migrations | tail` antes de abrir o PR; renumerar se a cauda avançou.
+- Migration com prefixo **acima da cauda de `origin/main`**. Hoje: `20260907000010_global_popups.sql`. Reconferir com `git ls-tree --name-only origin/main:supabase/migrations | tail` antes de abrir o PR; renumerar se a cauda avançou.
 - Edge functions em **Deno**: imports `npm:` ou relativos `.ts`. CORS sempre via `buildCorsHeaders(req)`. Nunca devolver detalhe de erro ao cliente (mensagem genérica, `console.error` interno).
 - `sign-r2-urls` e `platform-admin` já existem; **não** mudar suas flags de JWT no deploy.
 - Frontend: ES modules, `lucide-react` para ícones, `sonner` para toasts, `react-hook-form` NÃO é necessário aqui (as páginas do admin usam `useState`, seguir o padrão da `BannersPage`).
@@ -29,7 +29,7 @@
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `supabase/migrations/20260906000010_global_popups.sql` | tabelas, CHECKs, trigger, view, RLS |
+| `supabase/migrations/20260907000010_global_popups.sql` | tabelas, CHECKs, trigger, view, RLS |
 | `supabase/tests/entitlements/77_global_popups.sql` | prova da RLS e dos CHECKs (CI `entitlement-tests`) |
 | `supabase/functions/platform-admin/popups.ts` | `validatePages`, `validatePopupFields`, 4 handlers |
 | `supabase/functions/platform-admin/index.ts` | 4 `case` novos |
@@ -58,7 +58,7 @@
 **Spec:** Parte 1 (tabelas, CHECKs, view, RLS, migration).
 
 **Files:**
-- Create: `supabase/migrations/20260906000010_global_popups.sql`
+- Create: `supabase/migrations/20260907000010_global_popups.sql`
 - Create: `supabase/tests/entitlements/77_global_popups.sql`
 
 **Interfaces:**
@@ -72,7 +72,7 @@ Crie `supabase/tests/entitlements/77_global_popups.sql`:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Global popups (migration 20260906000010_global_popups.sql, spec 2026-09-04):
+-- Global popups (migration 20260907000010_global_popups.sql, spec 2026-09-04):
 --   (a) RLS de global_popups: ativo + janela + targeting (all / plan / workspace),
 --       mesmo predicado dos banners.
 --   (b) popup_interactions: cada usuario le e insere so as proprias linhas.
@@ -232,7 +232,7 @@ Esperado: `77_global_popups.sql` falha com `relation "global_popups" does not ex
 
 - [ ] **Step 3: Escrever a migration**
 
-Crie `supabase/migrations/20260906000010_global_popups.sql`:
+Crie `supabase/migrations/20260907000010_global_popups.sql`:
 
 ```sql
 -- Global popups: anúncios em modal, no máximo um por sessão no CRM
@@ -377,12 +377,12 @@ Sem Docker, ao menos confira que o prefixo é único e acima da cauda:
 ls supabase/migrations | sed 's/_.*//' | sort | uniq -d; git ls-tree --name-only origin/main:supabase/migrations | tail -1
 ```
 
-Esperado: nenhuma duplicata impressa; a cauda de `origin/main` é menor que `20260906000010`.
+Esperado: nenhuma duplicata impressa; a cauda de `origin/main` é menor que `20260907000010`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260906000010_global_popups.sql supabase/tests/entitlements/77_global_popups.sql
+git add supabase/migrations/20260907000010_global_popups.sql supabase/tests/entitlements/77_global_popups.sql
 git commit -m "feat(popups): tabelas global_popups e popup_interactions com RLS, view de contagens e suíte SQL"
 ```
 
@@ -4336,7 +4336,7 @@ Confira o link atual (`cat supabase/.temp/project-ref`; STAGING = `wlyzhyfondykz
 npx supabase db push --project-ref wlyzhyfondykzpsiqsce
 ```
 
-Esperado: `20260906000010_global_popups.sql` aplicada. Confirme:
+Esperado: `20260907000010_global_popups.sql` aplicada. Confirme:
 
 ```bash
 npx supabase db query --project-ref wlyzhyfondykzpsiqsce "select count(*) from global_popups"
@@ -4361,7 +4361,7 @@ Executar os Steps 6 das Tasks 8 e 12 nesta ordem: criar popup no admin (`npm run
 git fetch origin main && git ls-tree --name-only origin/main:supabase/migrations | tail -3
 ```
 
-Se a cauda for maior que `20260906000010`, renomeie a migration (e a referência na spec) para um prefixo acima, commit, e só então:
+Se a cauda for maior que `20260907000010`, renomeie a migration (e a referência na spec) para um prefixo acima, commit, e só então:
 
 ```bash
 gh pr create --title "feat(popups): editor de popups no admin e host no CRM" --body-file - <<'EOF'

@@ -184,7 +184,7 @@ O admin lê e escreve tudo pelo service role dentro do `platform-admin`, como no
 
 ### Migration
 
-Um arquivo, `supabase/migrations/20260906000010_global_popups.sql`. O prefixo precisa
+Um arquivo, `supabase/migrations/20260907000010_global_popups.sql`. O prefixo precisa
 ficar acima da cauda de `origin/main` no momento de abrir o PR (em 2026-09-04 a cauda
 é `20260906000001_harden_cliente_foto_fn_search_path.sql`); reconferir com
 `git ls-tree --name-only origin/main:supabase/migrations | tail` e renumerar se a
