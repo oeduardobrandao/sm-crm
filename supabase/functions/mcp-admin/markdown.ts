@@ -26,7 +26,7 @@ export const CALLOUT_COLORS = ["brown", "gray", "orange", "yellow", "green", "bl
 export const YOUTUBE_RE = /^https:\/\/(www\.)?(youtube\.com\/watch\?v=|youtube\.com\/embed\/|youtu\.be\/)[\w-]+/;
 export const YOUTUBE_DEFAULTS = { width: 640, height: 480, start: 0 };
 export const R2_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
-const HREF_RE = /^(\/(?!\/)|https:\/\/)/;
+const HREF_RE = /^(\/(?![\/\\])|https:\/\/)/; // sem // nem /\ (o browser lê \ como /)
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 // Reconhece qualquer conteúdo entre os delimitadores (não só base64 válido): um
 // <!--tiptap:...--> malformado deve virar McpInputError de decodeOpaque ("opaco"),
@@ -454,7 +454,11 @@ function serializeInline(nodes: TiptapNode[] | undefined): string | null {
     if (has("italic")) s = `*${s}*`;
     if (has("strike")) s = `~~${s}~~`;
     const link = marks.find((m) => m.type === "link");
-    if (link) s = `[${s}](${String(link.attrs?.href ?? "")})`;
+    if (link) {
+      // "texto![x](url)" seria lido como imagem: escapa o "!" que fecha o trecho anterior.
+      if (out.endsWith("!")) out = `${out.slice(0, -1)}\\!`;
+      s = `[${s}](${String(link.attrs?.href ?? "")})`;
+    }
     out += s;
   }
   return out;

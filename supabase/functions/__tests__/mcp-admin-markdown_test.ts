@@ -35,6 +35,7 @@ Deno.test("markdownToTiptap: link, hard break, escape e html inline viram texto"
   ]);
   throwsInput(() => markdownToTiptap("[x](http://inseguro)"), "link");
   throwsInput(() => markdownToTiptap("[x](javascript:alert(1))"), "link");
+  throwsInput(() => markdownToTiptap("[x](/\\evil.com)"), "link");
 });
 
 Deno.test("markdownToTiptap: listas (aninhada, ordenada com start), citação, código, hr", () => {
@@ -186,6 +187,13 @@ Deno.test("tiptapToMarkdown: nós e marks sem equivalente viram blocos opacos e 
   const { markdown, opaque_blocks } = tiptapToMarkdown({ type: "doc", content: [iframe, r2img, yt, colored, p(t("ok"))] });
   assertEquals(opaque_blocks, 4);
   assertEquals(markdown, [encodeOpaque(iframe), encodeOpaque(r2img), encodeOpaque(yt), encodeOpaque(colored), "ok"].join("\n\n"));
+});
+
+Deno.test("tiptapToMarkdown: '!' colado num link é escapado (senão vira imagem); round-trip preservado", () => {
+  const doc = { type: "doc", content: [p(t("Confira!"), t("aqui", [{ type: "link", attrs: { href: "https://x.y" } }]))] };
+  const { markdown } = tiptapToMarkdown(doc);
+  assertEquals(markdown, "Confira\\![aqui](https://x.y)");
+  assertEquals(markdownToTiptap(markdown), doc);
 });
 
 Deno.test("tiptapToMarkdown: escapa caracteres especiais do Markdown no texto", () => {
