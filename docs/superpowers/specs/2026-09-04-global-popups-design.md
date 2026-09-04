@@ -32,7 +32,8 @@ um dos formatos.
 - `packages/ui/PopupCard.tsx`: card compartilhado entre admin (preview) e CRM (real),
   com navegação entre páginas.
 - CRM: `store/popups.ts`, `hooks/usePopups.ts` com `pickPopup`, `GlobalPopupHost`
-  montado no `AppLayout`.
+  montado no `AppLayout`, e o campo `autoOpen` novo em `GuideContext` /
+  `guideGating.ts` para o host esperar a decisão do guia.
 - Testes: SQL (RLS), Deno (handlers e allowlist), Vitest (admin, CRM, pacote).
 
 **Fora (não mexe):**
@@ -207,8 +208,12 @@ próprio, testável): array de 1 a 6; cada item com `title` (1 a 120), `body` (1
 Qualquer falha responde 400 com mensagem genérica.
 
 Validação adicional no servidor, com 400 e mensagem genérica: par de CTA incompleto,
-`until_cta` sem CTA e `require_ack` com `until_cta` (o banco também trava, mas o erro
-de CHECK não deve vazar).
+`until_cta` sem CTA, `require_ack` com `until_cta` (o banco também trava, mas o erro
+de CHECK não deve vazar), `cta_label` e `secondary_label` com até 40 caracteres, e
+`cta_url` com até 2048 caracteres começando com `/` ou com `http://` ou `https://`.
+O `platform-admin` é o único caminho de escrita, então essas regras não podem viver só
+no formulário: um label longo quebra a linha de botões lado a lado e uma URL malformada
+vira no-op silencioso no CRM.
 
 ### `sign-r2-urls`
 
@@ -227,6 +232,11 @@ e libera as que estão em `otherKeys`. O handler ganha uma dependência
 `createUserDb(authHeader)` ao lado de `createDb`, injetável nos testes. A allowlist de
 artigos continua no service role, porque artigo publicado é público para qualquer
 usuário autenticado.
+
+A consulta de popups fica **isolada em `try/catch`** e degrada para "nenhuma chave de
+popup", com log interno, nunca com 500. O endpoint atende capas de artigo, editor de
+post, drawers de fluxo e Estúdio pelo mesmo caminho; um defeito ou timeout na parte
+nova não pode derrubar a assinatura das `ownKeys` de todo mundo.
 
 Popups em draft, fora da janela ou não direcionados ao workspace não resolvem para
 usuários do CRM. No admin, a chave está sob o prefixo da própria conta do admin, então
@@ -432,8 +442,20 @@ Lazy, dentro de `Suspense`, montado no `AppLayout` depois do `GuideDialog`. Deci
 **uma vez** por montagem, quando `useAuth().loading` é false e as duas queries
 terminaram:
 
-1. Se o guia de primeiros passos está aberto (`useGuide()?.isOpen`; o hook devolve
-   null fora do provider), grava `mesaas_popup_skipped` e não mostra nada nesta sessão.
+1. Espera o guia de primeiros passos decidir se vai abrir sozinho. Amostrar
+   `isOpen` uma vez não basta: a auto-abertura do guia depende de cinco queries de
+   sinais (`useGuideSignals`) que podem resolver depois das duas queries do popup,
+   e aí o guia abriria por cima do popup já exibido. `GuideApi` ganha
+   `autoOpen: 'unknown' | 'no' | 'yes'`, calculado em `GuideProvider` por uma função
+   pura `guideAutoOpenState(...)` em `guideGating.ts`, ao lado de
+   `shouldAutoOpenGuide` e com as mesmas condições **menos o pathname**: `'yes'`
+   quando já abriu ou vai abrir assim que o dono chegar em `/dashboard` (dono, sem
+   progresso registrado, zero clientes e zero fluxos); `'no'` quando não é dono, o
+   guia já foi aberto, dispensado ou concluído, ou os sinais resolveram com algum
+   cliente ou fluxo; `'unknown'` enquanto auth ou os sinais ainda carregam. O host
+   espera enquanto for `'unknown'` e, se for `'yes'` (ou `useGuide()?.isOpen`), grava
+   `mesaas_popup_skipped` e não mostra nada nesta sessão. `useGuide()` devolve null
+   fora do provider; null conta como `'no'`.
 2. `pickPopup(...)`. Se null, encerra.
 3. Coleta as `image_key` de todas as páginas e resolve em uma chamada a
    `resolveInlineImageUrls`. Falhou: abre com as páginas sem imagem.
@@ -505,10 +527,12 @@ Hoje os banners não têm teste no admin nem no CRM. Aqui o alvo é a lógica, n
   validações inline incluindo página sem título, adicionar/remover/reordenar página
   respeitando o limite de 6, `TargetPicker` troca de modo e limpa seleções.
 - **Vitest CRM**: `pickPopup` com os quatro descartes e a ordenação;
-  `GlobalPopupHost` (some o X com `require_ack`, Esc bloqueado, CTA relativo chama
-  `navigate`, CTA absoluto chama `window.open`, interações e eventos gravados incluindo
-  `popup_page`, pula quando o guia está aberto, erro de query não renderiza nada,
-  `pages` malformado é descartado).
+  `guideAutoOpenState` (não dono, sinais pendentes, dono novo fora do dashboard,
+  dono com clientes, progresso já registrado); `GlobalPopupHost` (some o X com
+  `require_ack`, Esc bloqueado, CTA relativo chama `navigate`, CTA absoluto chama
+  `window.open`, interações e eventos gravados incluindo `popup_page`, espera enquanto
+  o guia está `'unknown'` e pula em `'yes'`, erro de query não renderiza nada, `pages`
+  malformado é descartado).
 - **Vitest pacote** (`packages/ui/__tests__/PopupCard.test.tsx`): defaults de
   `secondaryLabel`, links sanitizados, botões por posição da página (primeira, meio,
   última, única), pontinhos trocam de página, sufixo `n de N`.
@@ -535,9 +559,16 @@ Staging primeiro, mesma ordem, para a verificação em browser.
   agenda.
 - **Sessão por aba.** `sessionStorage` não é compartilhado entre abas; um usuário com
   duas abas pode ver o mesmo popup `until_cta` duas vezes no dia. Aceito.
-- **Popup em cima do guia.** Se o wizard de primeiros passos abre sozinho, o popup pula
-  a sessão inteira em vez de aparecer logo depois. Menos intrusivo para quem acabou de
-  entrar.
+- **Popup em cima do guia.** Se o wizard de primeiros passos abre sozinho, ou vai
+  abrir assim que o dono chegar ao dashboard, o popup pula a sessão inteira em vez de
+  aparecer logo depois. Menos intrusivo para quem acabou de entrar. O custo é o campo
+  `autoOpen` a mais na `GuideApi`; sem ele, a ordem de resolução das queries decidiria
+  se os dois modais abrem juntos.
+- **Editar um popup ativo não o reexibe para quem já interagiu.** "Já viu" é por
+  `popup_id`, não por conteúdo, igual aos banners. Corrigir o texto de um aviso com
+  confirmação obrigatória só alcança quem ainda não confirmou; para reexibir a todos,
+  o admin arquiva e cria outro. Registrado como escolha consciente; uma action
+  "resetar vistos" pode entrar depois se virar caso de suporte recorrente.
 - **`pages` em jsonb, não em tabela filha.** Ganha simplicidade de RLS e de CRUD; perde
   a validação de formato no banco, que fica no `platform-admin`. Se um dia precisar de
   métrica por página no banco, uma tabela filha entra sem migrar o conteúdo.
