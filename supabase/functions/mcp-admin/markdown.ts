@@ -412,3 +412,149 @@ export function markdownToTiptap(md: string): TiptapNode {
   }
   return validateTiptapDoc({ type: "doc", content });
 }
+
+// ---------------------------------------------------------------------------
+// TipTap → Markdown
+// ---------------------------------------------------------------------------
+
+const SERIALIZABLE_MARKS = new Set(["bold", "italic", "strike", "code", "link"]);
+
+function longestBacktickRun(s: string): number {
+  let max = 0;
+  for (const m of s.matchAll(/`+/g)) max = Math.max(max, m[0].length);
+  return max;
+}
+
+/** Codespan com delimitador mais longo que qualquer crase interna; espaço de guarda quando o
+ * texto começa/termina com crase (CommonMark descarta UM espaço de cada lado). */
+function codeSpan(text: string): string {
+  const ticks = "`".repeat(longestBacktickRun(text) + 1);
+  const pad = text.startsWith("`") || text.endsWith("`") || text.length === 0 ? " " : "";
+  return `${ticks}${pad}${text}${pad}${ticks}`;
+}
+
+/** Escapa o que o lexer interpretaria como sintaxe. Início de linha: #, >, -, +, N. */
+function escapeMd(s: string): string {
+  return s
+    .replace(/[\\*_`\[\]~<]/g, (c) => `\\${c}`)
+    .replace(/^(\s*)([#>+-]|\d+\.)/gm, (_m, ws, tok) => `${ws}\\${tok}`);
+}
+
+/** null = tem mark fora do subconjunto (o bloco inteiro vira opaco). */
+function serializeInline(nodes: TiptapNode[] | undefined): string | null {
+  let out = "";
+  for (const n of nodes ?? []) {
+    if (n.type === "hardBreak") { out += "\\\n"; continue; }
+    if (n.type !== "text") return null;
+    const marks = n.marks ?? [];
+    if (marks.some((m) => !SERIALIZABLE_MARKS.has(m.type))) return null;
+    const has = (t: string) => marks.some((m) => m.type === t);
+    let s = has("code") ? codeSpan(n.text ?? "") : escapeMd(n.text ?? "");
+    if (has("bold")) s = `**${s}**`;
+    if (has("italic")) s = `*${s}*`;
+    if (has("strike")) s = `~~${s}~~`;
+    const link = marks.find((m) => m.type === "link");
+    if (link) s = `[${s}](${String(link.attrs?.href ?? "")})`;
+    out += s;
+  }
+  return out;
+}
+
+function indent(s: string, prefix: string): string {
+  return s.split("\n").map((l) => (l.length ? prefix + l : prefix.trimEnd())).join("\n");
+}
+
+function serializeBlocks(nodes: TiptapNode[] | undefined, counter: { opaque: number }): string {
+  return (nodes ?? []).map((n) => serializeBlock(n, counter)).join("\n\n");
+}
+
+function opaque(n: TiptapNode, counter: { opaque: number }): string {
+  counter.opaque++;
+  return encodeOpaque(n);
+}
+
+function serializeBlock(n: TiptapNode, counter: { opaque: number }): string {
+  switch (n.type) {
+    case "paragraph": {
+      const s = serializeInline(n.content);
+      return s === null ? opaque(n, counter) : s;
+    }
+    case "heading": {
+      const s = serializeInline(n.content);
+      if (s === null) return opaque(n, counter);
+      return `${"#".repeat(Number(n.attrs?.level ?? 2))} ${s}`;
+    }
+    case "bulletList":
+    case "orderedList": {
+      const ordered = n.type === "orderedList";
+      const start = Number(n.attrs?.start ?? 1);
+      const lines: string[] = [];
+      (n.content ?? []).forEach((item, i) => {
+        const marker = ordered ? `${start + i}. ` : "- ";
+        const body = serializeBlocks(item.content, counter).replace(/\n\n/g, "\n");
+        const [first = "", ...rest] = body.split("\n");
+        lines.push(marker + first);
+        for (const r of rest) lines.push(" ".repeat(marker.length) + r);
+      });
+      return lines.join("\n");
+    }
+    case "blockquote":
+      return indent(serializeBlocks(n.content, counter), "> ");
+    case "codeBlock": {
+      const lang = typeof n.attrs?.language === "string" ? n.attrs.language : "";
+      const body = (n.content ?? []).map((c) => c.text ?? "").join("");
+      // Cerca sempre mais longa que qualquer sequência de crases do corpo (CommonMark permite
+      // cercas de N>=3 crases), senão um ``` dentro do código fecha o bloco cedo.
+      const fence = "`".repeat(Math.max(3, longestBacktickRun(body) + 1));
+      return `${fence}${lang}\n${body}\n${fence}`;
+    }
+    case "horizontalRule":
+      return "---";
+    case "inlineImage": {
+      const a = n.attrs ?? {};
+      if (a.r2Key === null && typeof a.src === "string") return `![${String(a.alt ?? "")}](${a.src})`;
+      return opaque(n, counter);
+    }
+    case "youtube": {
+      const a = n.attrs ?? {};
+      const isDefault = (a.width ?? YOUTUBE_DEFAULTS.width) === YOUTUBE_DEFAULTS.width &&
+        (a.height ?? YOUTUBE_DEFAULTS.height) === YOUTUBE_DEFAULTS.height &&
+        (a.start ?? YOUTUBE_DEFAULTS.start) === YOUTUBE_DEFAULTS.start;
+      return isDefault && typeof a.src === "string" ? a.src : opaque(n, counter);
+    }
+    case "callout": {
+      const a = n.attrs ?? {};
+      return `:::callout emoji=${String(a.emoji ?? "💡")} color=${String(a.color ?? "brown")}\n${serializeBlocks(n.content, counter)}\n:::`;
+    }
+    default:
+      return opaque(n, counter);
+  }
+}
+
+/** doc TipTap → Markdown do subconjunto; o resto vira <!--tiptap:…--> e é contado. */
+export function tiptapToMarkdown(doc: unknown): { markdown: string; opaque_blocks: number } {
+  if (!doc || typeof doc !== "object") return { markdown: "", opaque_blocks: 0 };
+  const counter = { opaque: 0 };
+  const markdown = serializeBlocks((doc as TiptapNode).content, counter);
+  return { markdown, opaque_blocks: counter.opaque };
+}
+
+// ---------------------------------------------------------------------------
+// TipTap → texto puro (content_plain: FTS + tempo de leitura no CRM)
+// ---------------------------------------------------------------------------
+
+function plainOf(n: TiptapNode): string {
+  if (n.type === "text") return n.text ?? "";
+  if (n.type === "hardBreak") return " ";
+  if (n.type === "inlineImage") return String(n.attrs?.alt ?? "");
+  if (n.type === "listItem" || n.type === "blockquote" || n.type === "callout" ||
+      n.type === "bulletList" || n.type === "orderedList") {
+    return (n.content ?? []).map(plainOf).filter((s) => s.length).join("\n");
+  }
+  return (n.content ?? []).map(plainOf).join("");
+}
+
+export function tiptapToPlain(doc: unknown): string {
+  if (!doc || typeof doc !== "object") return "";
+  return ((doc as TiptapNode).content ?? []).map(plainOf).filter((s) => s.length).join("\n");
+}

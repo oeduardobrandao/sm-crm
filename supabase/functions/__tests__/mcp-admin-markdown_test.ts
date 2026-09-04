@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
-  decodeOpaque, encodeOpaque, IFRAME_ALLOWED_HOSTS, markdownToTiptap, validateTiptapDoc,
+  decodeOpaque, encodeOpaque, IFRAME_ALLOWED_HOSTS, markdownToTiptap, tiptapToMarkdown,
+  tiptapToPlain, validateTiptapDoc,
 } from "../mcp-admin/markdown.ts";
 import { McpInputError } from "../_shared/mcp-token.ts";
 
@@ -143,4 +144,99 @@ Deno.test("IFRAME_ALLOWED_HOSTS espelha apps/admin/src/components/editor/IframeE
   const body = src.slice(src.indexOf("ALLOWED_DOMAINS"), src.indexOf("];"));
   const hosts = [...body.matchAll(/'([a-z0-9.-]+)'/g)].map((m) => m[1]);
   assertEquals([...IFRAME_ALLOWED_HOSTS].sort(), hosts.sort());
+});
+
+Deno.test("tiptapToMarkdown: blocos e marks do subconjunto", () => {
+  const doc = { type: "doc", content: [
+    { type: "heading", attrs: { level: 2 }, content: [t("Título")] },
+    p(t("a "), t("b", [{ type: "bold" }]), t(" "), t("c", [{ type: "italic" }, { type: "link", attrs: { href: "https://x.y" } }]), { type: "hardBreak" }, t("d")),
+    { type: "bulletList", content: [
+      { type: "listItem", content: [p(t("um"))] },
+      { type: "listItem", content: [p(t("dois")), { type: "bulletList", content: [{ type: "listItem", content: [p(t("sub"))] }] }] },
+    ] },
+    { type: "orderedList", attrs: { start: 3 }, content: [{ type: "listItem", content: [p(t("três"))] }, { type: "listItem", content: [p(t("quatro"))] }] },
+    { type: "blockquote", content: [p(t("cit")), p(t("dois"))] },
+    { type: "codeBlock", attrs: { language: "ts" }, content: [t("const a = 1;")] },
+    { type: "horizontalRule" },
+    { type: "inlineImage", attrs: { r2Key: null, src: "https://x.y/z.png", alt: "Legenda", width: 10, height: 5, blurSrc: null, displayWidth: null, loading: false } },
+    { type: "youtube", attrs: { src: "https://youtu.be/abc", width: 640, height: 480, start: 0 } },
+    { type: "callout", attrs: { emoji: "🚀", color: "blue" }, content: [p(t("dica"))] },
+  ] };
+  const { markdown, opaque_blocks } = tiptapToMarkdown(doc);
+  assertEquals(opaque_blocks, 0);
+  assertEquals(markdown, [
+    "## Título",
+    "a **b** [*c*](https://x.y)\\\nd",
+    "- um\n- dois\n  - sub",
+    "3. três\n4. quatro",
+    "> cit\n>\n> dois",
+    "```ts\nconst a = 1;\n```",
+    "---",
+    "![Legenda](https://x.y/z.png)",
+    "https://youtu.be/abc",
+    ":::callout emoji=🚀 color=blue\ndica\n:::",
+  ].join("\n\n"));
+});
+
+Deno.test("tiptapToMarkdown: nós e marks sem equivalente viram blocos opacos e são contados", () => {
+  const iframe = { type: "iframe", attrs: { src: "https://www.loom.com/embed/x", width: "100%", height: "400px" } };
+  const r2img = { type: "inlineImage", attrs: { r2Key: "contas/11111111-1111-1111-1111-111111111111/files/a.png", src: null, alt: null, width: 1, height: 1, blurSrc: null, displayWidth: null, loading: false } };
+  const yt = { type: "youtube", attrs: { src: "https://youtu.be/abc", width: 320, height: 240, start: 0 } };
+  const colored = p(t("x", [{ type: "textStyle", attrs: { color: "#337EA9" } }]), t(" y"));
+  const { markdown, opaque_blocks } = tiptapToMarkdown({ type: "doc", content: [iframe, r2img, yt, colored, p(t("ok"))] });
+  assertEquals(opaque_blocks, 4);
+  assertEquals(markdown, [encodeOpaque(iframe), encodeOpaque(r2img), encodeOpaque(yt), encodeOpaque(colored), "ok"].join("\n\n"));
+});
+
+Deno.test("tiptapToMarkdown: escapa caracteres especiais do Markdown no texto", () => {
+  const { markdown } = tiptapToMarkdown({ type: "doc", content: [p(t("2 * 3 = 6, a_b [x] `y` # não é título")), p(t("- não é lista"))] });
+  assertEquals(markdown, "2 \\* 3 = 6, a\\_b \\[x\\] \\`y\\` # não é título\n\n\\- não é lista");
+});
+
+Deno.test("tiptapToMarkdown: crases dentro de código não fecham a cerca nem o codespan; round-trip preservado", () => {
+  const doc = { type: "doc", content: [
+    { type: "codeBlock", attrs: { language: "md" }, content: [t("```js\nx\n```")] },
+    p(t("use "), t("`a`", [{ type: "code" }]), t(" ou "), t("a``b", [{ type: "code" }])),
+  ] };
+  const { markdown } = tiptapToMarkdown(doc);
+  assertEquals(markdown, "````md\n```js\nx\n```\n````\n\nuse `` `a` `` ou ```a``b```");
+  assertEquals(markdownToTiptap(markdown), doc);
+});
+
+Deno.test("round-trip: markdown → tiptap → markdown é estável; tiptap com opacos volta idêntico", () => {
+  const md = [
+    "## Passo 1",
+    "Abra **Clientes** e clique em [Novo](/clientes/novo).",
+    "- um\n- dois\n  - sub",
+    "1. a\n2. b",
+    "> nota",
+    "```\nx\n```",
+    "![Tela](https://x.y/z.png)",
+    ":::callout emoji=💡 color=green\nDica **forte**\n:::",
+  ].join("\n\n");
+  const doc = markdownToTiptap(md);
+  assertEquals(tiptapToMarkdown(doc).markdown, md);
+  assertEquals(markdownToTiptap(tiptapToMarkdown(doc).markdown), doc);
+
+  const fromUi = { type: "doc", content: [
+    { type: "iframe", attrs: { src: "https://www.loom.com/embed/x", width: "100%", height: "400px" } },
+    p(t("texto "), t("azul", [{ type: "textStyle", attrs: { color: "#337EA9" } }])),
+    { type: "inlineImage", attrs: { r2Key: "contas/11111111-1111-1111-1111-111111111111/files/a.png", src: null, alt: "a", width: 800, height: 600, blurSrc: null, displayWidth: 400, loading: false } },
+  ] };
+  const { markdown, opaque_blocks } = tiptapToMarkdown(fromUi);
+  assertEquals(opaque_blocks, 3);
+  assertEquals(markdownToTiptap(markdown), fromUi);
+});
+
+Deno.test("tiptapToPlain: texto dos blocos separado por \\n; hardBreak vira espaço; imagem vira alt", () => {
+  const doc = { type: "doc", content: [
+    { type: "heading", attrs: { level: 2 }, content: [t("T")] },
+    p(t("a "), t("b", [{ type: "bold" }]), { type: "hardBreak" }, t("c")),
+    { type: "bulletList", content: [{ type: "listItem", content: [p(t("um"))] }, { type: "listItem", content: [p(t("dois"))] }] },
+    { type: "inlineImage", attrs: { r2Key: null, src: "https://x/y", alt: "Legenda", width: null, height: null, blurSrc: null, displayWidth: null, loading: false } },
+    { type: "codeBlock", attrs: { language: null }, content: [t("x = 1")] },
+  ] };
+  assertEquals(tiptapToPlain(doc), "T\na b c\num\ndois\nLegenda\nx = 1");
+  assertEquals(tiptapToPlain(null), "");
+  assertEquals(tiptapToMarkdown(null), { markdown: "", opaque_blocks: 0 });
 });
