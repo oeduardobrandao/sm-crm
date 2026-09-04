@@ -197,6 +197,25 @@ begin
     v_rejected := true;
   end;
   assert v_rejected, 'cta_label sem cta_url foi aceito';
+
+  -- array vazio (nao NULL): array_length devolve NULL e um CHECK ingenuo passaria
+  v_rejected := false;
+  begin
+    insert into global_popups (pages, target_mode, target_plan_ids)
+      values (v_pages, 'plan', '{}'::text[]);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'target_mode plan com array vazio foi aceito';
+
+  v_rejected := false;
+  begin
+    insert into global_popups (pages, target_mode, target_workspace_ids)
+      values (v_pages, 'workspace', '{}'::uuid[]);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'target_mode workspace com array vazio foi aceito';
 end $$;
 rollback;
 ```
@@ -260,10 +279,12 @@ create table global_popups (
     check (status in ('draft', 'active', 'archived')),
   constraint global_popups_target_mode_check
     check (target_mode in ('all', 'plan', 'workspace')),
+  -- array_length('{}', 1) é NULL, e CHECK com NULL passa: o coalesce fecha o
+  -- buraco que a migration dos banners deixou (array vazio aceito).
   constraint global_popups_plan_targets_check
-    check (target_mode <> 'plan' or (target_plan_ids is not null and array_length(target_plan_ids, 1) > 0)),
+    check (target_mode <> 'plan' or coalesce(array_length(target_plan_ids, 1), 0) > 0),
   constraint global_popups_workspace_targets_check
-    check (target_mode <> 'workspace' or (target_workspace_ids is not null and array_length(target_workspace_ids, 1) > 0)),
+    check (target_mode <> 'workspace' or coalesce(array_length(target_workspace_ids, 1), 0) > 0),
   constraint global_popups_schedule_check
     check (ends_at is null or starts_at is null or ends_at > starts_at)
 );
@@ -427,7 +448,7 @@ Deno.test("validatePages: rejeita image_key fora do formato R2 e chaves desconhe
 });
 
 Deno.test("validatePopupFields: par de CTA, until_cta, require_ack, tamanhos e formato da URL", () => {
-  const base = { cta_label: null, cta_url: null, secondary_label: null, frequency: "once", require_ack: false };
+  const base = { cta_label: null, cta_url: null, secondary_label: null, frequency: "once", require_ack: false, target_mode: "all" };
   assertEquals(validatePopupFields(base), null);
   assertEquals(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "/ajuda" }), null);
   assertEquals(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "https://x.y/z" }), null);
@@ -441,6 +462,12 @@ Deno.test("validatePopupFields: par de CTA, until_cta, require_ack, tamanhos e f
   assert(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "/" + "x".repeat(2048) }) !== null, "url longa");
   assert(validatePopupFields({ ...base, frequency: "weekly" }) !== null, "frequency inválida");
   assert(validatePopupFields({ ...base, cta_style: "neon" }) !== null, "cta_style inválido");
+  // Targeting: o CHECK do banco só cobre NULL; array vazio precisa ser barrado aqui.
+  assertEquals(validatePopupFields({ ...base, target_mode: "plan", target_plan_ids: ["pro"] }), null);
+  assert(validatePopupFields({ ...base, target_mode: "plan", target_plan_ids: [] }) !== null, "plan sem ids");
+  assert(validatePopupFields({ ...base, target_mode: "plan" }) !== null, "plan sem coluna");
+  assert(validatePopupFields({ ...base, target_mode: "workspace", target_workspace_ids: [] }) !== null, "workspace sem ids");
+  assert(validatePopupFields({ ...base, target_mode: "bogus" }) !== null, "target_mode inválido");
 });
 ```
 
@@ -549,6 +576,21 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
 
   const style = row.cta_style ?? "ink";
   if (style !== "ink" && style !== "brand") return "invalid cta_style";
+
+  // Targeting: array_length('{}') é NULL no Postgres, então o CHECK do banco só
+  // barra NULL. Array vazio precisa ser barrado aqui, senão o popup nasce
+  // invisível para todo mundo.
+  const mode = row.target_mode;
+  if (mode !== "all" && mode !== "plan" && mode !== "workspace") return "invalid target_mode";
+  if (mode === "plan" && !(Array.isArray(row.target_plan_ids) && row.target_plan_ids.length > 0)) {
+    return "plan targeting needs at least one plan";
+  }
+  if (
+    mode === "workspace" &&
+    !(Array.isArray(row.target_workspace_ids) && row.target_workspace_ids.length > 0)
+  ) {
+    return "workspace targeting needs at least one workspace";
+  }
   return null;
 }
 
@@ -587,7 +629,8 @@ git commit -m "feat(popups): validação de pages e campos do popup no platform-
   - `handleListPopups(svc, body: { status?: string }, headers) → 200 { popups: (row & { counts: { seen, closed, cta, ack } })[] }`
   - `handleCreatePopup(svc, body, adminId, headers) → 201 { popup }` ou 400 `{ error: "Invalid popup" }`
   - `handleUpdatePopup(svc, body: { popup_id, ...cols }, headers) → 200 { popup }`; 400 `{ error: "popup_id is required" }` / `"No fields to update"` / `"Invalid popup"`; 404 `{ error: "Popup not found" }`
-  - `handleDeletePopup(svc, body: { popup_id }, headers) → 200 { message: "Popup deleted" }`; 400 `"Only draft popups can be deleted"`
+  - `handleDeletePopup(svc, body: { popup_id }, headers) → 200 { message: "Popup deleted" }`; 400 `"Only draft popups can be deleted"`; 404 `"Popup not found"`
+  - `validatePopupFields` (Task 2) também valida `target_mode` contra `target_plan_ids` / `target_workspace_ids` (array vazio é rejeitado).
 
 - [ ] **Step 1: Acrescentar os testes dos handlers (falham: handlers não existem)**
 
@@ -718,9 +761,11 @@ Deno.test("update-popup: 400 quando a mescla viola regra (require_ack sobre unti
   assertEquals(r.status, 400);
 });
 
-Deno.test("delete-popup: só draft", async () => {
+Deno.test("delete-popup: só draft; 404 sem linha", async () => {
   let r = await handleDeletePopup(makeFakeDb({ global_popups: [{ data: { status: "active" }, error: null }] }).db, { popup_id: "p1" }, H);
   assertEquals(r.status, 400);
+  r = await handleDeletePopup(makeFakeDb({ global_popups: [{ data: null, error: null }] }).db, { popup_id: "nope" }, H);
+  assertEquals(r.status, 404);
   const { db, calls } = makeFakeDb({ global_popups: [{ data: { status: "draft" }, error: null }] });
   r = await handleDeletePopup(db, { popup_id: "p1" }, H);
   assertEquals(r.status, 200);
@@ -848,8 +893,13 @@ export async function handleDeletePopup(svc: Svc, body: { popup_id?: string }, h
   const { popup_id } = body;
   if (!popup_id) return json({ error: "popup_id is required" }, 400, headers);
 
-  const { data: popup } = await svc.from("global_popups").select("status").eq("id", popup_id).single();
-  if (popup && popup.status !== "draft") {
+  // Falha fechada: sem linha é 404, erro de leitura sobe. Nunca cair no DELETE
+  // com a guarda de draft pulada.
+  const { data: popup, error: readErr } = await svc
+    .from("global_popups").select("status").eq("id", popup_id).maybeSingle();
+  if (readErr) throw readErr;
+  if (!popup) return json({ error: "Popup not found" }, 404, headers);
+  if (popup.status !== "draft") {
     return json({ error: "Only draft popups can be deleted" }, 400, headers);
   }
 
@@ -1849,7 +1899,7 @@ export interface PopupFormState {
   target_mode: 'all' | 'plan' | 'workspace'; target_plan_ids: string[]; target_workspace_ids: string[];
   starts_at: string; ends_at: string; status: 'draft' | 'active' | 'archived';
 }
-export interface PopupFormErrors { pages: Record<number, { title?: string; body?: string }>; cta?: string; frequency?: string; target?: string }
+export interface PopupFormErrors { pages: Record<number, { title?: string; eyebrow?: string; body?: string }>; cta?: string; frequency?: string; target?: string }
 export function newPage(): PageForm
 export function emptyForm(): PopupFormState
 export function popupToForm(p: GlobalPopup): PopupFormState
@@ -1977,6 +2027,9 @@ describe('validateForm', () => {
     expect(validateForm(f)!.pages[0].title).toBe('Max 120 characters');
     const g = { ...valid(), cta_label: 'x'.repeat(41), cta_url: '/x' };
     expect(validateForm(g)!.cta).toBe('CTA label max 40 characters');
+    const h = valid();
+    h.pages[0].eyebrow = 'x'.repeat(61);
+    expect(validateForm(h)!.pages[0]).toEqual({ eyebrow: 'Max 60 characters' });
   });
 });
 
@@ -2063,7 +2116,7 @@ export interface PopupFormState {
 }
 
 export interface PopupFormErrors {
-  pages: Record<number, { title?: string; body?: string }>;
+  pages: Record<number, { title?: string; eyebrow?: string; body?: string }>;
   cta?: string;
   frequency?: string;
   target?: string;
@@ -2148,13 +2201,13 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
   let any = false;
 
   f.pages.forEach((pg, i) => {
-    const e: { title?: string; body?: string } = {};
+    const e: { title?: string; eyebrow?: string; body?: string } = {};
     if (!pg.title.trim()) e.title = 'Title is required';
     else if (pg.title.trim().length > MAX_TITLE) e.title = `Max ${MAX_TITLE} characters`;
     if (!pg.body.trim()) e.body = 'Body is required';
     else if (pg.body.trim().length > MAX_BODY) e.body = `Max ${MAX_BODY} characters`;
-    if (pg.eyebrow.trim().length > MAX_EYEBROW) e.title = e.title ?? `Eyebrow max ${MAX_EYEBROW} characters`;
-    if (e.title || e.body) {
+    if (pg.eyebrow.trim().length > MAX_EYEBROW) e.eyebrow = `Max ${MAX_EYEBROW} characters`;
+    if (e.title || e.body || e.eyebrow) {
       errors.pages[i] = e;
       any = true;
     }
@@ -2822,6 +2875,9 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                 <label htmlFor="popup-eyebrow" className={LABEL}>Eyebrow (optional)</label>
                 <input id="popup-eyebrow" className={INPUT} value={page.eyebrow} maxLength={60}
                   onChange={(e) => updatePage({ eyebrow: e.target.value })} />
+                {errors?.pages[pageIndex]?.eyebrow && (
+                  <p className="text-xs text-destructive mt-1">{errors.pages[pageIndex].eyebrow}</p>
+                )}
               </div>
             </div>
 

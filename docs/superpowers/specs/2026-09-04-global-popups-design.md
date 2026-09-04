@@ -97,8 +97,8 @@ CHECK (frequency <> 'until_cta' OR cta_url IS NOT NULL)         -- senão nunca 
 CHECK (NOT (require_ack AND frequency = 'until_cta'))          -- ver "Semântica de já viu"
 CHECK (status IN ('draft', 'active', 'archived'))
 CHECK (target_mode IN ('all', 'plan', 'workspace'))
-CHECK (target_mode <> 'plan' OR (target_plan_ids IS NOT NULL AND array_length(target_plan_ids, 1) > 0))
-CHECK (target_mode <> 'workspace' OR (target_workspace_ids IS NOT NULL AND array_length(target_workspace_ids, 1) > 0))
+CHECK (target_mode <> 'plan' OR coalesce(array_length(target_plan_ids, 1), 0) > 0)             -- '{}' dá NULL em array_length; o coalesce barra array vazio
+CHECK (target_mode <> 'workspace' OR coalesce(array_length(target_workspace_ids, 1), 0) > 0)
 CHECK (ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at)
 ```
 
@@ -209,8 +209,11 @@ Qualquer falha responde 400 com mensagem genérica.
 
 Validação adicional no servidor, com 400 e mensagem genérica: par de CTA incompleto,
 `until_cta` sem CTA, `require_ack` com `until_cta` (o banco também trava, mas o erro
-de CHECK não deve vazar), `cta_label` e `secondary_label` com até 40 caracteres, e
-`cta_url` com até 2048 caracteres começando com `/` ou com `http://` ou `https://`.
+de CHECK não deve vazar), `cta_label` e `secondary_label` com até 40 caracteres,
+`cta_url` com até 2048 caracteres começando com `/` ou com `http://` ou `https://`, e
+`target_mode` por plano ou workspace sem nenhum id (array vazio incluído). `delete-popup`
+responde 404 quando o id não existe, em vez de cair no DELETE com a guarda de draft
+pulada.
 O `platform-admin` é o único caminho de escrita, então essas regras não podem viver só
 no formulário: um label longo quebra a linha de botões lado a lado e uma URL malformada
 vira no-op silencioso no CRM.
