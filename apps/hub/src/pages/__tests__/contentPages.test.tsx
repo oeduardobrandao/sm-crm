@@ -304,6 +304,7 @@ describe('hub content pages', () => {
               answer: null,
               section: 'Marca',
               display_order: 1,
+              audio: null,
             },
           ],
         },
@@ -335,6 +336,7 @@ describe('hub content pages', () => {
               answer: 'Acolhedora',
               section: 'Marca',
               display_order: 1,
+              audio: null,
             },
             {
               id: 'q2',
@@ -342,6 +344,7 @@ describe('hub content pages', () => {
               answer: null,
               section: 'Geral',
               display_order: 2,
+              audio: null,
             },
           ],
         },
