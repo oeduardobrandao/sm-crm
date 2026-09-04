@@ -6,6 +6,7 @@ import {
   finalizeBriefingAudio,
   makeWorkerTranscriber,
   normalizeAudioMime,
+  normalizeDuration,
   presignBriefingAudio,
   removeBriefingAudio,
   STALE_PENDING_MS,
@@ -172,6 +173,55 @@ Deno.test("finalize: duration_seconds Infinity vira p_duration null na RPC", asy
   await finalizeBriefingAudio(finalizeArgs(db, { duration_seconds: Infinity }));
   const call = db.calls.find((c) => c.table === "rpc:briefing_audio_finalize");
   assertEquals((call?.payload as Record<string, unknown>).p_duration, null);
+});
+
+Deno.test("normalizeDuration: arredonda dentro da faixa, descarta fora dela", () => {
+  assertEquals(normalizeDuration(299.6), 300);
+  assertEquals(normalizeDuration(1), 1);
+  assertEquals(normalizeDuration(600), 600); // teto de slack (2x MAX_AUDIO_SECONDS)
+  assertEquals(normalizeDuration(600.4), null); // faixa checada no valor bruto, antes de arredondar
+  assertEquals(normalizeDuration(700), null);
+  assertEquals(normalizeDuration(1e15), null);
+  assertEquals(normalizeDuration(0), null);
+  assertEquals(normalizeDuration(-1), null);
+  assertEquals(normalizeDuration(NaN), null);
+  assertEquals(normalizeDuration(Infinity), null);
+  assertEquals(normalizeDuration(undefined), null);
+  assertEquals(normalizeDuration("300"), null);
+});
+
+Deno.test("finalize: duration_seconds 1e15 vira p_duration null na RPC (estouraria int4)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  db.queue("hub_briefing_questions", "select", { data: audioRow, error: null });
+  db.queue("hub_briefing_questions", "update", { data: null, error: null });
+  const res = await finalizeBriefingAudio(finalizeArgs(db, { duration_seconds: 1e15 }));
+  assertEquals(res.status, 200);
+  const call = db.calls.find((c) => c.table === "rpc:briefing_audio_finalize");
+  assertEquals((call?.payload as Record<string, unknown>).p_duration, null);
+});
+
+Deno.test("finalize: duration_seconds 299.6 vira p_duration 300 na RPC", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  db.queue("hub_briefing_questions", "select", { data: audioRow, error: null });
+  db.queue("hub_briefing_questions", "update", { data: null, error: null });
+  await finalizeBriefingAudio(finalizeArgs(db, { duration_seconds: 299.6 }));
+  const call = db.calls.find((c) => c.table === "rpc:briefing_audio_finalize");
+  assertEquals((call?.payload as Record<string, unknown>).p_duration, 300);
+});
+
+Deno.test("finalize: duração relatada pelo worker (700s) vira p_duration null na RPC de append", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  db.queue("hub_briefing_questions", "select", { data: { ...audioRow, audio_duration_seconds: null }, error: null });
+  db.queueRpc("briefing_audio_apply_transcript", {
+    data: { ...audioRow, id: Q, answer: "X", audio_transcript: "X", audio_transcription_status: "done" },
+    error: null,
+  });
+  await finalizeBriefingAudio(finalizeArgs(db, { transcribe: async () => ({ text: "X", duration: 700 }) }));
+  const apply = db.calls.find((c) => c.table === "rpc:briefing_audio_apply_transcript");
+  assertEquals((apply?.payload as Record<string, unknown>).p_duration, null);
 });
 
 Deno.test("finalize sem transcriber: marca failed, mantém áudio e devolve answer atual", async () => {

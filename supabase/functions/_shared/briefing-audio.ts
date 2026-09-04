@@ -3,6 +3,19 @@ import { effectivePlanLimit } from "./entitlements-rpc.ts";
 export const BRIEFING_AUDIO_MIME = ["audio/webm", "audio/mp4", "audio/ogg", "audio/mpeg", "audio/wav"];
 export const MAX_AUDIO_BYTES = 15 * 1024 * 1024; // 15 MiB
 export const AUDIO_KEY_PREFIX = "briefing-audio/";
+/** Duração documentada como teto por gravação. `normalizeDuration` aceita até
+ * o dobro disso (drift de relógio / duração relatada pelo worker) antes de
+ * descartar o valor — sem isso um `duration_seconds` absurdo (ex.: 1e15)
+ * estoura o `int4` da coluna e a RPC lança um 500 genérico. */
+export const MAX_AUDIO_SECONDS = 300;
+
+/** Normaliza uma duração de áudio vinda de fora (cliente ou worker de
+ * transcrição) para um inteiro seguro de gravar em `p_duration int`, ou
+ * `null` quando o valor é inválido/fora de faixa — nunca deixa passar algo
+ * que possa estourar a coluna. */
+export function normalizeDuration(x: unknown): number | null {
+  return typeof x === "number" && Number.isFinite(x) && x > 0 && x <= MAX_AUDIO_SECONDS * 2 ? Math.round(x) : null;
+}
 export const AUDIO_COLUMNS =
   "audio_r2_key, audio_mime, audio_size_bytes, audio_duration_seconds, audio_transcription_status, audio_recorded_at";
 
@@ -237,10 +250,7 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
     };
   }
 
-  const resultDuration = result?.duration;
-  const duration = typeof resultDuration === "number" && Number.isFinite(resultDuration) && resultDuration > 0
-    ? Math.round(resultDuration)
-    : null;
+  const duration = normalizeDuration(result?.duration);
 
   // Append ATÔMICO no banco (briefing_audio_apply_transcript). Antes isto era
   // um compare-and-swap client-side com .eq("answer", <valor lido>) num laço de
@@ -319,9 +329,7 @@ export async function finalizeBriefingAudio(a: FinalizeAudioArgs): Promise<Brief
     return { status: 400, body: { error: "content-type mismatch" } };
   }
 
-  const duration = typeof a.duration_seconds === "number" && Number.isFinite(a.duration_seconds) && a.duration_seconds > 0
-    ? Math.round(a.duration_seconds)
-    : null;
+  const duration = normalizeDuration(a.duration_seconds);
   const { data, error } = await a.db.rpc("briefing_audio_finalize", {
     p_conta_id: a.conta_id,
     p_cliente_id: a.cliente_id,
