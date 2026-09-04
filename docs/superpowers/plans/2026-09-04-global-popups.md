@@ -504,7 +504,7 @@ export interface PopupPage {
 const MAX_PAGES = 6;
 const PAGE_KEYS = new Set(["title", "eyebrow", "body", "image_key"]);
 const IMAGE_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
-const CTA_URL_RE = /^(\/|https?:\/\/)/;
+const CTA_URL_RE = /^(\/(?!\/)|https?:\/\/)/; // `//host` é protocol-relative, não caminho interno
 
 function optionalText(value: unknown, max: number): { ok: true; value: string | null } | { ok: false } {
   if (value === undefined || value === null) return { ok: true, value: null };
@@ -2010,6 +2010,8 @@ describe('validateForm', () => {
     expect(validateForm(f)!.cta).toBe('CTA needs both a label and a URL');
     f = { ...valid(), cta_label: 'Ver', cta_url: 'ajuda' };
     expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
+    f = { ...valid(), cta_label: 'Ver', cta_url: '//evil.com' };
+    expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
     f = { ...valid(), frequency: 'until_cta' };
     expect(validateForm(f)!.frequency).toBe('"Until CTA" needs a CTA');
   });
@@ -2088,7 +2090,7 @@ const MAX_EYEBROW = 60;
 const MAX_BODY = 2000;
 const MAX_LABEL = 40;
 const MAX_URL = 2048;
-const CTA_URL_RE = /^(\/|https?:\/\/)/;
+const CTA_URL_RE = /^(\/(?!\/)|https?:\/\/)/; // `//host` é protocol-relative, não caminho interno
 
 export interface PageForm {
   /** Identidade estável para o dnd-kit e o React. Nunca vai para o payload. */
