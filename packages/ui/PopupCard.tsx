@@ -65,17 +65,12 @@ const btnBase: CSSProperties = {
 };
 
 const btnStyles: Record<'ink' | 'brand' | 'ghost' | 'link', CSSProperties> = {
-  // Borda combina com o próprio fundo (em vez de `transparent`): mesmo efeito visual
-  // (borda invisível, largura reservada p/ alinhar com ghost/link), mas o texto
-  // "transparent" some do style inline, que é o que os testes usam pra distinguir
-  // o CTA (ink/brand) do "Próximo" fantasma (ghost) na página com CTA próprio.
   ink: {
     ...btnBase,
     background: 'var(--cta-bg, #12151a)',
     color: 'var(--cta-fg, #ffffff)',
-    borderColor: 'var(--cta-bg, #12151a)',
   },
-  brand: { ...btnBase, background: '#ffbf30', color: '#12151a', borderColor: '#ffbf30' },
+  brand: { ...btnBase, background: '#ffbf30', color: '#12151a' },
   ghost: {
     ...btnBase,
     background: 'transparent',

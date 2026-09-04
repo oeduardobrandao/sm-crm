@@ -551,8 +551,8 @@ export interface PopupPage {
   eyebrow: string | null;
   body: string;
   image_key: string | null;
-  cta_label: string | null;
-  cta_url: string | null;
+  cta_label?: string | null;
+  cta_url?: string | null;
 }
 
 export interface GlobalPopup {

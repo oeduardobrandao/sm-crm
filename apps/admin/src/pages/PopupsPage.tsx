@@ -785,7 +785,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                   eyebrow: p.eyebrow || null,
                   body: p.body || 'Body preview...',
                   imageUrl: p.image_key ? (imageUrls?.[p.image_key] ?? null) : null,
-                  ctaLabel: p.cta_label.trim() && p.cta_url.trim() ? p.cta_label : null,
+                  ctaLabel: p.cta_label.trim() && p.cta_url.trim() ? p.cta_label.trim() : null,
                 }))}
                 page={pageIndex}
                 onPageChange={setSelected}

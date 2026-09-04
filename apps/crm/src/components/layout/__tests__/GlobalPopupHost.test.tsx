@@ -180,6 +180,24 @@ describe('GlobalPopupHost', () => {
     expect(screen.getByRole('button', { name: 'Agora não' })).toBeInTheDocument();
   });
 
+  it('until_cta com CTA só em página: o botão existe, grava cta e o popup some para sempre', async () => {
+    getActivePopupsMock.mockResolvedValue([
+      {
+        ...popup,
+        cta_label: null,
+        cta_url: null,
+        frequency: 'until_cta',
+        pages: [{ ...popup.pages[0], cta_label: 'Ver um', cta_url: '/pagina-um' }, popup.pages[1]],
+      },
+    ]);
+    renderHost();
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver um' }));
+    await waitFor(() => expect(recordPopupInteractionMock).toHaveBeenCalledWith('p1', 'cta'));
+    expect(navigateMock).toHaveBeenCalledWith('/pagina-um');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   it('CTA absoluto abre nova aba com noopener', async () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     getActivePopupsMock.mockResolvedValue([

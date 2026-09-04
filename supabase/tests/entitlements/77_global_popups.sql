@@ -151,6 +151,26 @@ begin
   end;
   assert v_rejected, 'until_cta sem CTA global nem de pagina foi aceito';
 
+  -- forma legada de pagina (sem a chave cta_url): tambem rejeitado
+  v_rejected := false;
+  begin
+    insert into global_popups (pages, target_mode, frequency)
+      values (v_pages, 'all', 'until_cta');
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'until_cta com paginas sem chave cta_url foi aceito';
+
+  -- pagina com cta_url mas sem cta_label: CTA incompleto, tambem rejeitado
+  v_rejected := false;
+  begin
+    insert into global_popups (pages, target_mode, frequency)
+      values ('[{"title":"T","body":"B","cta_url":"/x"}]'::jsonb, 'all', 'until_cta');
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'until_cta com cta_url sem cta_label na pagina foi aceito';
+
   v_rejected := false;
   begin
     insert into global_popups (pages, target_mode, cta_label) values (v_pages, 'all', 'Ver');

@@ -75,8 +75,8 @@ describe('PopupCard navegação por posição', () => {
     fireEvent.click(cta);
     expect(props.onCta).toHaveBeenCalledWith(1);
     const next = screen.getByRole('button', { name: 'Próximo' });
-    expect(next.getAttribute('style')).toContain('transparent');
-    expect(cta.getAttribute('style')).not.toContain('transparent');
+    expect(next.style.background).toBe('transparent');
+    expect(cta.style.background.startsWith('var(--cta-bg')).toBe(true);
   });
 
   it('última página com CTA próprio substitui o global; sem CTA efetivo só o secundário', () => {
