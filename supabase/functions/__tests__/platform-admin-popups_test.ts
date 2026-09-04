@@ -301,9 +301,32 @@ Deno.test("create-popup: image_key só da conta do admin; sem imagem não consul
   assertEquals((await handleCreatePopup(noProfile.db, withImg(`contas/${CONTA}/files/a.png`), { adminId: "adm", userId: "u1" }, H)).status, 400);
 });
 
-Deno.test("update-popup: image_key de outra conta é 400 antes de ler a linha", async () => {
-  const db = makeFakeDb({ profiles: [{ data: { conta_id: CONTA }, error: null }] });
-  const r = await handleUpdatePopup(db.db, { action: "update-popup", popup_id: "p1", pages: [{ title: "T", body: "B", image_key: `contas/${OTHER}/files/a.png` }] }, { userId: "u1" }, H);
-  assertEquals(r.status, 400);
-  assert(!db.calls.some((c) => c.table === "global_popups"), "tocou global_popups com image_key alheia");
+Deno.test("update-popup: image_key já persistida de outra conta continua válida; chave nova precisa ser da conta do admin", async () => {
+  const theirs = `contas/${OTHER}/files/a.png`;
+  const mine = `contas/${CONTA}/files/b.png`;
+  const current = { ...ROW, pages: [{ title: "T", eyebrow: null, body: "B", image_key: theirs }] };
+
+  // Só reenvia a chave já persistida (editando o título): não consulta profiles, atualiza.
+  const keep = makeFakeDb({ global_popups: [{ data: current, error: null }, { data: current, error: null }] });
+  const r1 = await handleUpdatePopup(keep.db, { action: "update-popup", popup_id: "p1", pages: [{ title: "Novo", body: "B", image_key: theirs }] }, { userId: "u1" }, H);
+  assertEquals(r1.status, 200);
+  assert(!keep.calls.some((c) => c.table === "profiles"), "consultou profiles sem chave nova");
+  assert(keep.calls.some((c) => c.table === "global_popups" && c.method === "update"), "nao atualizou");
+
+  // Chave nova da própria conta: consulta profiles e aceita.
+  const add = makeFakeDb({ profiles: [{ data: { conta_id: CONTA }, error: null }], global_popups: [{ data: current, error: null }, { data: current, error: null }] });
+  const r2 = await handleUpdatePopup(add.db, { action: "update-popup", popup_id: "p1", pages: [{ title: "T", body: "B", image_key: theirs }, { title: "T2", body: "B2", image_key: mine }] }, { userId: "u1" }, H);
+  assertEquals(r2.status, 200);
+
+  // Chave nova de outra conta: 400 e nenhum update.
+  const bad = makeFakeDb({ profiles: [{ data: { conta_id: CONTA }, error: null }], global_popups: [{ data: current, error: null }] });
+  const r3 = await handleUpdatePopup(bad.db, { action: "update-popup", popup_id: "p1", pages: [{ title: "T", body: "B", image_key: `contas/${OTHER}/files/new.png` }] }, { userId: "u1" }, H);
+  assertEquals(r3.status, 400);
+  assert(!bad.calls.some((c) => c.table === "global_popups" && c.method === "update"), "atualizou com chave alheia");
+});
+
+Deno.test("validatePages: alreadyAllowedKeys libera chave de outra conta ja persistida", () => {
+  const theirs = `contas/${OTHER}/files/a.png`;
+  assertEquals(validatePages([{ title: "T", body: "B", image_key: theirs }], CONTA, new Set([theirs])).ok, true);
+  assertEquals(validatePages([{ title: "T", body: "B", image_key: theirs }], CONTA, new Set()).ok, false);
 });

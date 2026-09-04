@@ -39,6 +39,7 @@ function requiredText(value: unknown, max: number): string | null {
 export function validatePages(
   input: unknown,
   allowedContaId?: string,
+  alreadyAllowedKeys?: ReadonlySet<string>,
 ): { ok: true; pages: PopupPage[] } | { ok: false; error: string } {
   if (!Array.isArray(input)) return { ok: false, error: "pages must be an array" };
   if (input.length < 1 || input.length > MAX_PAGES) {
@@ -68,6 +69,7 @@ export function validatePages(
     if (
       image.value !== null &&
       allowedContaId !== undefined &&
+      !alreadyAllowedKeys?.has(image.value) &&
       !image.value.startsWith(`contas/${allowedContaId}/files/`)
     ) {
       return { ok: false, error: `page ${i}: image_key belongs to another workspace` };
@@ -180,6 +182,16 @@ function pagesHaveImages(pages: unknown): boolean {
   );
 }
 
+/** image_key já persistidas na linha: podem ter sido enviadas por outro admin e continuam válidas. */
+function persistedImageKeys(pages: unknown): Set<string> {
+  const keys = new Set<string>();
+  if (!Array.isArray(pages)) return keys;
+  for (const p of pages as Array<{ image_key?: unknown }>) {
+    if (typeof p?.image_key === "string" && p.image_key) keys.add(p.image_key);
+  }
+  return keys;
+}
+
 export async function handleListPopups(svc: Svc, body: { status?: string }, headers: Headers) {
   let query = svc.from("global_popups").select("*").order("created_at", { ascending: false });
   if (body.status) query = query.eq("status", body.status);
@@ -253,9 +265,19 @@ export async function handleUpdatePopup(
   const update = normalizePopupText(pickColumns(body));
   if (Object.keys(update).length === 0) return json({ error: "No fields to update" }, 400, headers);
 
+  // Regras cruzadas valem sobre a linha resultante, não só sobre o patch.
+  const { data: current, error: readErr } = await svc
+    .from("global_popups").select("*").eq("id", popupId).maybeSingle();
+  if (readErr) throw readErr;
+  if (!current) return json({ error: "Popup not found" }, 404, headers);
+
   if (update.pages !== undefined) {
+    const persisted = persistedImageKeys((current as Record<string, unknown>).pages);
+    const hasNewKey = Array.isArray(update.pages) && (update.pages as Array<Record<string, unknown>>).some(
+      (p) => typeof p?.image_key === "string" && p.image_key !== "" && !persisted.has(p.image_key),
+    );
     let contaId: string | undefined;
-    if (pagesHaveImages(update.pages)) {
+    if (hasNewKey) {
       const found = await adminContaId(svc, actor.userId);
       if (found === null) {
         console.error("[popups] update rejected: admin has no conta_id");
@@ -263,19 +285,13 @@ export async function handleUpdatePopup(
       }
       contaId = found;
     }
-    const pages = validatePages(update.pages, contaId);
+    const pages = validatePages(update.pages, contaId ?? undefined, persisted);
     if (!pages.ok) {
       console.error("[popups] update rejected:", pages.error);
       return json({ error: "Invalid popup" }, 400, headers);
     }
     update.pages = pages.pages;
   }
-
-  // Regras cruzadas valem sobre a linha resultante, não só sobre o patch.
-  const { data: current, error: readErr } = await svc
-    .from("global_popups").select("*").eq("id", popupId).maybeSingle();
-  if (readErr) throw readErr;
-  if (!current) return json({ error: "Popup not found" }, 404, headers);
 
   const fieldError = validatePopupFields({ ...(current as Record<string, unknown>), ...update });
   if (fieldError) {
