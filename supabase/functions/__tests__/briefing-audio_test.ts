@@ -67,6 +67,19 @@ Deno.test("presign: devolve chave no prefixo da pergunta, mime normalizado e 413
   assertEquals(full.body.error, "quota_exceeded");
 });
 
+Deno.test("presign: erro na RPC de quota vira 500 sem lançar", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("hub_briefing_questions", "select", { data: { id: Q }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: null, error: { message: "boom" } });
+  const res = await presignBriefingAudio({
+    db, conta_id: "conta-1", cliente_id: 14, question_id: Q,
+    mime_type: "audio/webm", size_bytes: 5000, signPutUrl, randomUUID: () => "fixed-uuid",
+  });
+  assertEquals(res.status, 500);
+  assertEquals(res.body, { error: "internal error" });
+});
+
 function finalizeArgs(db: ReturnType<typeof createSupabaseQueryMock>, extra: Record<string, unknown> = {}) {
   return {
     db, conta_id: "conta-1", cliente_id: 14, question_id: Q, r2_key: KEY,
@@ -99,6 +112,16 @@ Deno.test("finalize: mapeia erros da RPC (413/404/400) e 500 genérico", async (
   assertEquals(res.body.error, "internal error");
 });
 
+Deno.test("finalize: duration_seconds Infinity vira p_duration null na RPC", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  db.queue("hub_briefing_questions", "select", { data: audioRow, error: null });
+  db.queue("hub_briefing_questions", "update", { data: null, error: null });
+  await finalizeBriefingAudio(finalizeArgs(db, { duration_seconds: Infinity }));
+  const call = db.calls.find((c) => c.table === "rpc:briefing_audio_finalize");
+  assertEquals((call?.payload as Record<string, unknown>).p_duration, null);
+});
+
 Deno.test("finalize sem transcriber: marca failed, mantém áudio e devolve answer atual", async () => {
   const db = createSupabaseQueryMock();
   db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
@@ -113,6 +136,10 @@ Deno.test("finalize sem transcriber: marca failed, mantém áudio e devolve answ
   assertEquals(audio.url, `https://get.example.com/${KEY}`);
   const upd = db.calls.find((c) => c.table === "hub_briefing_questions" && c.operation === "update");
   assertEquals((upd?.payload as Record<string, unknown>).audio_transcription_status, "failed");
+  assert(
+    upd?.modifiers.some((m) => m.method === "eq" && m.args[0] === "cliente_id" && m.args[1] === 14),
+    "transcription update must scope by cliente_id",
+  );
 });
 
 Deno.test("finalize com transcriber: anexa transcrição ao answer e marca done", async () => {

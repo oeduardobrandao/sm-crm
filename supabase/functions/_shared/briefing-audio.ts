@@ -91,14 +91,19 @@ export async function presignBriefingAudio(a: PresignAudioArgs): Promise<Briefin
   if (!q) return { status: 404, body: { error: "Pergunta não encontrada." } };
 
   // Best-effort early quota check (authoritative check is in the RPC at finalize).
-  const { data: ws } = await a.db.from("workspaces")
-    .select("storage_used_bytes").eq("id", a.conta_id).single();
-  const quota = await effectivePlanLimit(a.db as never, a.conta_id, "storage_quota_bytes");
-  if (quota !== null) {
-    const used = Number(ws?.storage_used_bytes ?? 0);
-    if (used + a.size_bytes > quota) {
-      return { status: 413, body: { error: "quota_exceeded", used, quota } };
+  try {
+    const { data: ws } = await a.db.from("workspaces")
+      .select("storage_used_bytes").eq("id", a.conta_id).single();
+    const quota = await effectivePlanLimit(a.db as never, a.conta_id, "storage_quota_bytes");
+    if (quota !== null) {
+      const used = Number(ws?.storage_used_bytes ?? 0);
+      if (used + a.size_bytes > quota) {
+        return { status: 413, body: { error: "quota_exceeded", used, quota } };
+      }
     }
+  } catch (e) {
+    console.error("briefing-audio presign quota check error:", (e as Error).message ?? e);
+    return { status: 500, body: { error: "internal error" } };
   }
 
   const id = (a.randomUUID ?? crypto.randomUUID.bind(crypto))();
@@ -152,7 +157,8 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
     }
   }
   const text = result?.text?.trim() ?? "";
-  const where = (q: ReturnType<BriefingAudioDb["from"]>) => q.eq("id", a.question_id).eq("conta_id", a.conta_id);
+  const where = (q: ReturnType<BriefingAudioDb["from"]>) =>
+    q.eq("id", a.question_id).eq("conta_id", a.conta_id).eq("cliente_id", a.cliente_id);
 
   if (!text) {
     await where(a.db.from("hub_briefing_questions").update({ audio_transcription_status: "failed" }));
@@ -168,8 +174,11 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
   }
 
   const answer = appendTranscript(row.answer, text);
+  const resultDuration = result?.duration;
   const duration = row.audio_duration_seconds ??
-    (typeof result?.duration === "number" && result.duration > 0 ? Math.round(result.duration) : null);
+    (typeof resultDuration === "number" && Number.isFinite(resultDuration) && resultDuration > 0
+      ? Math.round(resultDuration)
+      : null);
   const { error } = await where(a.db.from("hub_briefing_questions").update({
     answer,
     audio_transcript: text,
@@ -217,7 +226,7 @@ export async function finalizeBriefingAudio(a: FinalizeAudioArgs): Promise<Brief
     return { status: 400, body: { error: "content-type mismatch" } };
   }
 
-  const duration = typeof a.duration_seconds === "number" && a.duration_seconds > 0
+  const duration = typeof a.duration_seconds === "number" && Number.isFinite(a.duration_seconds) && a.duration_seconds > 0
     ? Math.round(a.duration_seconds)
     : null;
   const { error } = await a.db.rpc("briefing_audio_finalize", {
