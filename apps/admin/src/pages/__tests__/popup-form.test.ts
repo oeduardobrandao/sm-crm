@@ -17,8 +17,15 @@ import {
 const popup: GlobalPopup = {
   id: 'p1',
   pages: [
-    { title: 'Um', eyebrow: 'Novo', body: 'b1', image_key: 'contas/x/files/a.png' },
-    { title: 'Dois', eyebrow: null, body: 'b2', image_key: null },
+    {
+      title: 'Um',
+      eyebrow: 'Novo',
+      body: 'b1',
+      image_key: 'contas/x/files/a.png',
+      cta_label: 'Ver aqui',
+      cta_url: '/p1',
+    },
+    { title: 'Dois', eyebrow: null, body: 'b2', image_key: null, cta_label: null, cta_url: null },
   ],
   cta_label: 'Ver',
   cta_url: '/ajuda',
@@ -51,8 +58,22 @@ describe('popupToForm / formToPayload', () => {
 
     const payload = formToPayload(form);
     expect(payload.pages).toEqual([
-      { title: 'Um', eyebrow: 'Novo', body: 'b1', image_key: 'contas/x/files/a.png' },
-      { title: 'Dois', eyebrow: null, body: 'b2', image_key: null },
+      {
+        title: 'Um',
+        eyebrow: 'Novo',
+        body: 'b1',
+        image_key: 'contas/x/files/a.png',
+        cta_label: 'Ver aqui',
+        cta_url: '/p1',
+      },
+      {
+        title: 'Dois',
+        eyebrow: null,
+        body: 'b2',
+        image_key: null,
+        cta_label: null,
+        cta_url: null,
+      },
     ]);
     expect(JSON.stringify(payload)).not.toContain('"key"');
     expect(payload.secondary_label).toBeNull();
@@ -104,7 +125,36 @@ describe('validateForm', () => {
     f = { ...valid(), cta_label: 'Ver', cta_url: '//evil.com' };
     expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
     f = { ...valid(), frequency: 'until_cta' };
-    expect(validateForm(f)!.frequency).toBe('"Until CTA" needs a CTA');
+    expect(validateForm(f)!.frequency).toBe(
+      '"Until CTA" needs a CTA on the popup or on at least one page',
+    );
+  });
+
+  it('CTA por página: par completo, limites, e until_cta aceito com CTA só em página', () => {
+    const f = valid();
+    f.pages[0].cta_label = 'Ver';
+    expect(validateForm(f)!.pages[0].cta).toBe('CTA needs both a label and a URL');
+    f.pages[0].cta_url = 'ajuda';
+    expect(validateForm(f)!.pages[0].cta).toBe('CTA URL must start with / or http(s)://');
+    f.pages[0].cta_url = '/ajuda';
+    expect(validateForm(f)).toBeNull();
+    const g = { ...f, frequency: 'until_cta' as const };
+    expect(validateForm(g)).toBeNull();
+    const h = { ...valid(), frequency: 'until_cta' as const };
+    expect(validateForm(h)!.frequency).toBe(
+      '"Until CTA" needs a CTA on the popup or on at least one page',
+    );
+    expect(formToPayload(f).pages).toEqual([
+      {
+        title: 'T',
+        eyebrow: null,
+        body: 'B',
+        image_key: null,
+        cta_label: 'Ver',
+        cta_url: '/ajuda',
+      },
+    ]);
+    expect(pageHasContent({ ...newPage(), cta_url: '/x' })).toBe(true);
   });
 
   it('target por plano ou workspace sem seleção', () => {

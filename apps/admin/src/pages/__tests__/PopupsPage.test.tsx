@@ -23,8 +23,22 @@ import PopupsPage from '../PopupsPage';
 const popup = {
   id: 'p1',
   pages: [
-    { title: 'Analytics de Stories', eyebrow: 'Novo', body: 'b', image_key: null },
-    { title: 'Segunda', eyebrow: null, body: 'b2', image_key: null },
+    {
+      title: 'Analytics de Stories',
+      eyebrow: 'Novo',
+      body: 'b',
+      image_key: null,
+      cta_label: null,
+      cta_url: null,
+    },
+    {
+      title: 'Segunda',
+      eyebrow: null,
+      body: 'b2',
+      image_key: null,
+      cta_label: null,
+      cta_url: null,
+    },
   ],
   cta_label: 'Ver',
   cta_url: '/ajuda',
@@ -105,12 +119,57 @@ describe('PopupsPage editor', () => {
     await waitFor(() => expect(createPopup).toHaveBeenCalledTimes(1));
     const payload = vi.mocked(createPopup).mock.calls[0][0];
     expect(payload.pages).toEqual([
-      { title: 'Página 1', eyebrow: null, body: 'corpo 1', image_key: null },
-      { title: 'Página 2', eyebrow: null, body: 'corpo 2', image_key: null },
+      {
+        title: 'Página 1',
+        eyebrow: null,
+        body: 'corpo 1',
+        image_key: null,
+        cta_label: null,
+        cta_url: null,
+      },
+      {
+        title: 'Página 2',
+        eyebrow: null,
+        body: 'corpo 2',
+        image_key: null,
+        cta_label: null,
+        cta_url: null,
+      },
     ]);
     expect(payload.require_ack).toBe(true);
     expect(payload.frequency).toBe('once');
     expect(JSON.stringify(payload)).not.toContain('"key"');
+  });
+
+  it('CTA por página vai no payload da página, não no global', async () => {
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'P1' } });
+    fireEvent.change(screen.getByLabelText('Body (Markdown)'), { target: { value: 'b' } });
+    fireEvent.change(screen.getByLabelText('Page CTA label'), {
+      target: { value: 'Ver só aqui' },
+    });
+    fireEvent.change(screen.getByLabelText('Page CTA URL'), { target: { value: '/so-aqui' } });
+    expect(screen.getByRole('button', { name: 'Ver só aqui' })).toBeInTheDocument(); // preview
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(createPopup).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(createPopup).mock.calls[0][0] as {
+      pages: Array<Record<string, unknown>>;
+      cta_url: unknown;
+    };
+    expect(payload.pages[0].cta_label).toBe('Ver só aqui');
+    expect(payload.pages[0].cta_url).toBe('/so-aqui');
+    expect(payload.cta_url).toBeNull();
+  });
+
+  it('default do secundário segue o CTA efetivo da última página: "Agora não" com CTA só na página, sem CTA global', async () => {
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
+    fireEvent.change(screen.getByLabelText('Page CTA label'), { target: { value: 'Ver' } });
+    fireEvent.change(screen.getByLabelText('Page CTA URL'), { target: { value: '/x' } });
+    expect(screen.getByRole('button', { name: 'Agora não' })).toBeInTheDocument();
   });
 
   it('preview segue a aba selecionada', async () => {
