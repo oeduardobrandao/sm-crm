@@ -11,9 +11,9 @@ import {
   listWorkspaces,
   type GlobalBanner,
 } from '../lib/api';
+import { TargetPicker } from '../components/TargetPicker';
 
 const BANNER_TYPES = ['info', 'warning', 'critical'] as const;
-const TARGET_MODES = ['all', 'plan', 'workspace'] as const;
 const STATUSES = ['draft', 'active', 'archived'] as const;
 
 const TYPE_COLORS: Record<string, { accent: string; bg: string }> = {
@@ -411,95 +411,16 @@ export default function BannersPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                  Target
-                </label>
-                <div className="flex gap-3 mb-3">
-                  {TARGET_MODES.map((m) => (
-                    <label
-                      key={m}
-                      className="flex items-center gap-2 text-sm text-muted-foreground"
-                    >
-                      <input
-                        type="radio"
-                        name="target_mode"
-                        value={m}
-                        checked={form.target_mode === m}
-                        onChange={() =>
-                          setForm((f) => ({
-                            ...f,
-                            target_mode: m,
-                            target_plan_ids: [],
-                            target_workspace_ids: [],
-                          }))
-                        }
-                      />
-                      {m === 'all' ? 'All' : m === 'plan' ? 'By Plan' : 'By Workspace'}
-                    </label>
-                  ))}
-                </div>
-
-                {form.target_mode === 'plan' && plansData?.plans && (
-                  <div className="flex flex-wrap gap-2">
-                    {plansData.plans.map((p) => (
-                      <label
-                        key={p.id}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                          form.target_plan_ids.includes(p.id)
-                            ? 'bg-primary/20 text-primary border border-primary/30'
-                            : 'bg-secondary text-muted-foreground border border-transparent'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="hidden"
-                          checked={form.target_plan_ids.includes(p.id)}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              target_plan_ids: e.target.checked
-                                ? [...f.target_plan_ids, p.id]
-                                : f.target_plan_ids.filter((id) => id !== p.id),
-                            }))
-                          }
-                        />
-                        {p.name}
-                      </label>
-                    ))}
-                  </div>
-                )}
-
-                {form.target_mode === 'workspace' && workspacesData?.workspaces && (
-                  <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                    {workspacesData.workspaces.map((ws) => (
-                      <label
-                        key={ws.id}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                          form.target_workspace_ids.includes(ws.id)
-                            ? 'bg-primary/20 text-primary border border-primary/30'
-                            : 'bg-secondary text-muted-foreground border border-transparent'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="hidden"
-                          checked={form.target_workspace_ids.includes(ws.id)}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              target_workspace_ids: e.target.checked
-                                ? [...f.target_workspace_ids, ws.id]
-                                : f.target_workspace_ids.filter((id) => id !== ws.id),
-                            }))
-                          }
-                        />
-                        {ws.name}
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <TargetPicker
+                value={{
+                  target_mode: form.target_mode,
+                  target_plan_ids: form.target_plan_ids,
+                  target_workspace_ids: form.target_workspace_ids,
+                }}
+                plans={plansData?.plans}
+                workspaces={workspacesData?.workspaces}
+                onChange={(next) => setForm((f) => ({ ...f, ...next }))}
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

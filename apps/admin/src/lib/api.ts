@@ -541,6 +541,52 @@ export function deleteBanner(banner_id: string) {
   return adminApi<{ message: string }>('delete-banner', { banner_id });
 }
 
+// ─── Popups ─────────────────────────────────────────────────
+
+export interface PopupPage {
+  title: string;
+  eyebrow: string | null;
+  body: string;
+  image_key: string | null;
+}
+
+export interface GlobalPopup {
+  id: string;
+  pages: PopupPage[];
+  cta_label: string | null;
+  cta_url: string | null;
+  cta_style: 'ink' | 'brand';
+  secondary_label: string | null;
+  frequency: 'once' | 'until_cta';
+  require_ack: boolean;
+  target_mode: 'all' | 'plan' | 'workspace';
+  target_plan_ids: string[] | null;
+  target_workspace_ids: string[] | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  status: 'draft' | 'active' | 'archived';
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  counts: { seen: number; closed: number; cta: number; ack: number };
+}
+
+export function listPopups(params?: { status?: string }) {
+  return adminApi<{ popups: GlobalPopup[] }>('list-popups', params || {});
+}
+
+export function createPopup(params: Record<string, unknown>) {
+  return adminApi<{ popup: GlobalPopup }>('create-popup', params);
+}
+
+export function updatePopup(params: Record<string, unknown>) {
+  return adminApi<{ popup: GlobalPopup }>('update-popup', params);
+}
+
+export function deletePopup(popup_id: string) {
+  return adminApi<{ message: string }>('delete-popup', { popup_id });
+}
+
 // ─── Workspace Events ───────────────────────────────────────
 
 export interface WorkspaceEvent {
