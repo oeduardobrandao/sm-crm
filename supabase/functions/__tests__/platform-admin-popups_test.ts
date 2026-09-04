@@ -77,6 +77,10 @@ Deno.test("validatePopupFields: par de CTA, until_cta, require_ack, tamanhos e f
   assertEquals(validatePopupFields({ ...base, cta_label: "", cta_url: "", secondary_label: "" }), null);
   assert(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "" }) !== null, "url vazia com label");
   assert(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "//evil.com" }) !== null, "url protocol-relative");
+  assertEquals(validatePopupFields({ ...base, starts_at: "2026-09-01T00:00:00Z", ends_at: "2026-09-02T00:00:00Z" }), null);
+  assert(validatePopupFields({ ...base, starts_at: "2026-09-02T00:00:00Z", ends_at: "2026-09-01T00:00:00Z" }) !== null, "ends antes de starts");
+  assert(validatePopupFields({ ...base, starts_at: "2026-09-02T00:00:00Z", ends_at: "2026-09-02T00:00:00Z" }) !== null, "ends igual a starts");
+  assert(validatePopupFields({ ...base, starts_at: "not-a-date", ends_at: "2026-09-02T00:00:00Z" }) !== null, "timestamp invalido");
 });
 
 type Resp = { data: unknown; error: unknown };
@@ -139,6 +143,7 @@ Deno.test("list-popups: junta counts da view por popup, zerando ações ausentes
 Deno.test("create-popup: 400 sem pages/target_mode, 400 com pages inválido, 201 com allowlist e created_by", async () => {
   let r = await handleCreatePopup(makeFakeDb({}).db, { action: "create-popup", target_mode: "all" }, "adm", H);
   assertEquals(r.status, 400);
+  assertEquals((await r.json()).error, "Invalid popup");
   r = await handleCreatePopup(makeFakeDb({}).db, { action: "create-popup", pages: [], target_mode: "all" }, "adm", H);
   assertEquals(r.status, 400);
 
@@ -204,4 +209,18 @@ Deno.test("delete-popup: só draft; 404 sem linha", async () => {
   r = await handleDeletePopup(db, { popup_id: "p1" }, H);
   assertEquals(r.status, 200);
   assert(calls.some((c) => c.table === "global_popups" && c.method === "delete"));
+});
+
+Deno.test("list-popups: ignora action desconhecida na view e devolve lista vazia sem consultar a view", async () => {
+  const { db } = makeFakeDb({
+    global_popups: [{ data: [{ ...ROW, id: "p1" }], error: null }],
+    popup_interaction_counts: [{ data: [{ popup_id: "p1", action: "bogus", users: 9 }], error: null }],
+  });
+  const res = await handleListPopups(db, {}, H);
+  assertEquals((await res.json()).popups[0].counts, { seen: 0, closed: 0, cta: 0, ack: 0 });
+
+  const empty = makeFakeDb({ global_popups: [{ data: [], error: null }] });
+  const res2 = await handleListPopups(empty.db, {}, H);
+  assertEquals((await res2.json()).popups, []);
+  assert(!empty.calls.some((c) => c.table === "popup_interaction_counts"), "view consultada com lista vazia");
 });

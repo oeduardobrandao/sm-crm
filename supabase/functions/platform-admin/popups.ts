@@ -105,6 +105,14 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
   ) {
     return "workspace targeting needs at least one workspace";
   }
+
+  // O banco tem o CHECK (ends_at > starts_at); barrar aqui vira 400 em vez de 500.
+  if (typeof row.starts_at === "string" && typeof row.ends_at === "string") {
+    const start = Date.parse(row.starts_at);
+    const end = Date.parse(row.ends_at);
+    if (Number.isNaN(start) || Number.isNaN(end)) return "invalid schedule timestamps";
+    if (end <= start) return "ends_at must be after starts_at";
+  }
   return null;
 }
 
@@ -158,7 +166,8 @@ export async function handleCreatePopup(
   headers: Headers,
 ) {
   if (body.pages === undefined || !body.target_mode) {
-    return json({ error: "pages and target_mode are required" }, 400, headers);
+    console.error("[popups] create rejected: pages and target_mode are required");
+    return json({ error: "Invalid popup" }, 400, headers);
   }
   const pages = validatePages(body.pages);
   if (!pages.ok) {
