@@ -40,3 +40,17 @@ function set(key: string, value: string) {
 export const markPopupShown = (id: string) => set(SHOWN, id);
 export const markPopupClosed = (id: string) => set(CLOSED_PREFIX + id, '1');
 export const markPopupsSkipped = () => set(SKIPPED, '1');
+
+/** Chamado no signOut: o próximo usuário do mesmo tab não herda o estado de popup do anterior. */
+export function clearPopupSession(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && (k === SHOWN || k === SKIPPED || k.startsWith(CLOSED_PREFIX))) keys.push(k);
+    }
+    for (const k of keys) sessionStorage.removeItem(k);
+  } catch {
+    /* ignora */
+  }
+}

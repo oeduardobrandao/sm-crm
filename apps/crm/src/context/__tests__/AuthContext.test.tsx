@@ -426,6 +426,10 @@ describe('AuthProvider', () => {
     });
     expect(queryClient.getQueryData(['workspace-limits', 'conta-1'])).toBeDefined();
 
+    // Seed a previous user's popup session state (shared-machine regression:
+    // the next account in the same tab must not inherit shown/skipped/closed).
+    sessionStorage.setItem('mesaas_popup_shown', 'p1');
+
     render(
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
@@ -445,6 +449,7 @@ describe('AuthProvider', () => {
     await waitFor(() => {
       expect(queryClient.getQueryData(['workspace-limits', 'conta-1'])).toBeUndefined();
     });
+    expect(sessionStorage.getItem('mesaas_popup_shown')).toBeNull();
   });
 
   it('useAuth throws when used outside AuthProvider', () => {

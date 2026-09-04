@@ -49,21 +49,20 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
     guideState !== 'unknown';
 
   // Snapshot dos valores no momento da decisão: o efeito depende só de `ready`,
-  // para um refetch ou um re-render não cancelar o timer de abertura.
-  const latest = useRef({
-    guideState,
-    guideOpen: guide?.isOpen ?? false,
-    popups: popupsQuery.data,
-    interactions: interactionsQuery.data,
-    error: popupsQuery.status === 'error' || interactionsQuery.status === 'error',
-  });
-  latest.current = {
+  // para um refetch ou um re-render não cancelar o timer de abertura. Escrito
+  // num efeito sem deps (roda a cada render, depois de renderizar) em vez de
+  // durante o render, para não mutar um ref na fase de render.
+  const snapshot = {
     guideState,
     guideOpen: guide?.isOpen ?? false,
     popups: popupsQuery.data,
     interactions: interactionsQuery.data,
     error: popupsQuery.status === 'error' || interactionsQuery.status === 'error',
   };
+  const latest = useRef(snapshot);
+  useEffect(() => {
+    latest.current = snapshot;
+  });
 
   useEffect(() => {
     mounted.current = true;
@@ -178,9 +177,12 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
         >
           {/* asChild + span: o card já renderiza o h2 do título (apontado pelo
               aria-labelledby). Um Title <h2> aqui duplicaria o heading; este só
-              existe para o aviso de a11y do Radix. */}
+              existe para o aviso de a11y do Radix. aria-hidden para não ser
+              anunciado de novo por leitores de tela (o h2 do card já é). */}
           <DialogPrimitive.Title asChild>
-            <span className="sr-only">{popup.pages[page]?.title}</span>
+            <span className="sr-only" aria-hidden="true">
+              {popup.pages[page]?.title}
+            </span>
           </DialogPrimitive.Title>
           <PopupCard
             pages={popup.pages.map((p) => ({

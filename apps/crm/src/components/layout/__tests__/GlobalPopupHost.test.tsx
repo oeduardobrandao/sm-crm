@@ -189,6 +189,13 @@ describe('GlobalPopupHost', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('pula a sessão quando o guia já está aberto (mesmo com autoOpen no)', async () => {
+    useGuideMock.mockReturnValue({ autoOpen: 'no', isOpen: true });
+    renderHost();
+    await waitFor(() => expect(sessionStorage.getItem('mesaas_popup_skipped')).toBe('1'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('erro na query não renderiza nada e não quebra', async () => {
     getActivePopupsMock.mockRejectedValue(new Error('boom'));
     renderHost();
