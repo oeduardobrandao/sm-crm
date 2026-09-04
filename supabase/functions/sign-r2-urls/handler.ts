@@ -33,7 +33,7 @@ function contentTypeForKey(key: string): string {
 async function resolveContaId(
   deps: SignR2UrlsDeps,
   req: Request,
-): Promise<{ contaId: string } | { errorStatus: 401 | 403; message: string }> {
+): Promise<{ contaId: string; userId: string } | { errorStatus: 401 | 403; message: string }> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return { errorStatus: 401, message: "Unauthorized" };
   const token = authHeader.replace("Bearer ", "");
@@ -45,7 +45,7 @@ async function resolveContaId(
   const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", user.id)
     .single();
   if (!profile?.conta_id) return { errorStatus: 403, message: "Profile not found" };
-  return { contaId: profile.conta_id };
+  return { contaId: profile.conta_id, userId: user.id };
 }
 
 const POPUP_LOOKUP_TIMEOUT_MS = 3_000;
@@ -76,6 +76,39 @@ async function visiblePopupImageKeys(deps: SignR2UrlsDeps, authHeader: string): 
     console.error("[sign-r2-urls] popup image lookup failed:", err);
   }
   return keys;
+}
+
+/**
+ * Para platform admins, qualquer image_key referenciada por QUALQUER popup (draft
+ * incluído) é assinável: a lista e o preview do editor precisam mostrar a imagem que
+ * outro admin subiu. Fora do admin este caminho nunca roda.
+ */
+async function adminPopupImageKeys(deps: SignR2UrlsDeps, svc: DbClient, userId: string): Promise<Set<string> | null> {
+  const keys = new Set<string>();
+  try {
+    const { data: admin } = await svc
+      .from("platform_admins")
+      .select("id")
+      .eq("user_id", userId)
+      .abortSignal(AbortSignal.timeout(POPUP_LOOKUP_TIMEOUT_MS))
+      .maybeSingle();
+    if (!admin) return null;
+    const { data, error } = await svc
+      .from("global_popups")
+      .select("pages")
+      .abortSignal(AbortSignal.timeout(POPUP_LOOKUP_TIMEOUT_MS));
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ pages?: unknown }>) {
+      if (!Array.isArray(row.pages)) continue;
+      for (const page of row.pages as Array<{ image_key?: unknown }>) {
+        if (typeof page?.image_key === "string" && page.image_key) keys.add(page.image_key);
+      }
+    }
+    return keys;
+  } catch (err) {
+    console.error("[sign-r2-urls] admin popup image lookup failed:", err);
+    return null;
+  }
 }
 
 export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
@@ -144,7 +177,8 @@ export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
 
     let popupKeys: string[] = [];
     if (otherKeys.length > 0) {
-      const visible = await visiblePopupImageKeys(deps, req.headers.get("Authorization")!);
+      const adminKeys = await adminPopupImageKeys(deps, svc, resolved.userId);
+      const visible = adminKeys ?? await visiblePopupImageKeys(deps, req.headers.get("Authorization")!);
       popupKeys = otherKeys.filter((k) => visible.has(k) && !kbKeys.includes(k));
     }
 

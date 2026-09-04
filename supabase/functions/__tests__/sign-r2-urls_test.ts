@@ -17,7 +17,13 @@ function makeDeps(overrides: Partial<Parameters<typeof createSignR2UrlsHandler>[
             single: async () => ({ data: { conta_id: "conta-abc" }, error: null }),
             // kb_articles lookup chains .in() after .eq(); default to no matches.
             in: async (_inCol: string, _vals: string[]) => ({ data: [], error: null }),
+            // platform_admins lookup chains .eq().abortSignal().maybeSingle(); default: not an admin.
+            abortSignal: (_s: AbortSignal) => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
           }),
+          // global_popups admin lookup chains .select().abortSignal(); default: no rows.
+          abortSignal: async (_s: AbortSignal) => ({ data: [], error: null }),
         }),
       }),
     }),
@@ -185,4 +191,50 @@ Deno.test("consulta de popups só roda quando há otherKeys", async () => {
   }));
   await handler(makeReq("POST", { keys: ["contas/conta-abc/files/own.png"] }));
   assertEquals(called, 0);
+});
+
+// ── Platform admin: qualquer imagem de popup, inclusive draft ────────────────
+
+function adminDb(popupRows: unknown[]) {
+  return () => ({
+    auth: { getUser: async () => ({ data: { user: { id: "admin-user" } }, error: null }) },
+    from: (table: string) => ({
+      select: (_cols: string) => ({
+        eq: (_c: string, _v: string) => ({
+          single: async () => ({ data: { conta_id: "conta-abc" }, error: null }),
+          in: async () => ({ data: [], error: null }),
+          abortSignal: () => ({ maybeSingle: async () => ({ data: table === "platform_admins" ? { id: "adm-1" } : null, error: null }) }),
+        }),
+        abortSignal: async () => ({ data: table === "global_popups" ? popupRows : [], error: null }),
+      }),
+    }),
+  });
+}
+
+Deno.test("platform admin: assina image_key de popup draft de outro admin (service role, sem RLS de usuário)", async () => {
+  let userDbCalled = 0;
+  const handler = createSignR2UrlsHandler(makeDeps({
+    createDb: adminDb([{ pages: [{ title: "T", body: "B", image_key: POPUP_KEY }] }]),
+    createUserDb: (h) => { userDbCalled++; return userDbReturning([])(h); },
+  }));
+  const res = await handler(makeReq("POST", { keys: [POPUP_KEY] }));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).urls[POPUP_KEY], `https://r2.example.com/${POPUP_KEY}?signed=1`);
+  assertEquals(userDbCalled, 0);
+});
+
+Deno.test("platform admin: chave que nenhum popup referencia continua negada", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps({ createDb: adminDb([]) }));
+  const res = await handler(makeReq("POST", { keys: [POPUP_KEY] }));
+  assertEquals((await res.json()).urls, {});
+});
+
+Deno.test("usuário comum (não admin) segue pela RLS do próprio contexto", async () => {
+  let userDbCalled = 0;
+  const handler = createSignR2UrlsHandler(makeDeps({
+    createUserDb: (h) => { userDbCalled++; return userDbReturning([{ pages: [{ title: "T", body: "B", image_key: POPUP_KEY }] }])(h); },
+  }));
+  const res = await handler(makeReq("POST", { keys: [POPUP_KEY] }));
+  assertEquals((await res.json()).urls[POPUP_KEY], `https://r2.example.com/${POPUP_KEY}?signed=1`);
+  assertEquals(userDbCalled, 1);
 });
