@@ -4,6 +4,7 @@
 // opacos <!--tiptap:BASE64--> (texto livre do agente = vetor de injeção de nó).
 import { marked, type Token, type Tokens } from "npm:marked@15.0.12";
 import { McpInputError } from "../_shared/mcp-token.ts";
+import { isSafeHref } from "../_shared/safe-href.ts";
 
 export type TiptapMark = { type: string; attrs?: Record<string, unknown> };
 export type TiptapNode = {
@@ -26,7 +27,6 @@ export const CALLOUT_COLORS = ["brown", "gray", "orange", "yellow", "green", "bl
 export const YOUTUBE_RE = /^https:\/\/(www\.)?(youtube\.com\/watch\?v=|youtube\.com\/embed\/|youtu\.be\/)[\w-]+/;
 export const YOUTUBE_DEFAULTS = { width: 640, height: 480, start: 0 };
 export const R2_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
-const HREF_RE = /^(\/(?![\/\\])|https:\/\/)/; // sem // nem /\ (o browser lê \ como /)
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 // Reconhece qualquer conteúdo entre os delimitadores (não só base64 válido): um
 // <!--tiptap:...--> malformado deve virar McpInputError de decodeOpaque ("opaco"),
@@ -111,7 +111,7 @@ const LEAF = new Set(["text", "horizontalRule", "hardBreak", "inlineImage", "you
 const MARK_ATTRS: Record<string, Record<string, AttrRule>> = {
   bold: {}, italic: {}, strike: {}, code: {}, underline: {},
   link: {
-    href: (v) => isStr(v) && HREF_RE.test(v as string) && (v as string).length <= 2048,
+    href: (v) => isStr(v) && isSafeHref(v as string),
     target: isStrOrNull, rel: isStrOrNull, class: isStrOrNull,
   },
   textStyle: { color: (v) => isNull(v) || (isStr(v) && HEX_COLOR_RE.test(v as string)) },
@@ -167,6 +167,9 @@ function validateNode(node: unknown, path: string): TiptapNode {
     if (n.attrs === undefined) throw new McpInputError(`${path}: ${n.type} exige attrs`);
   }
   checkAttrs("nó", n.type, n.attrs, rules);
+  if (n.type === "inlineImage" && n.attrs?.r2Key == null && n.attrs?.src == null) {
+    throw new McpInputError(`${path}: inlineImage precisa de r2Key ou src`);
+  }
   if (n.content !== undefined) {
     if (LEAF.has(n.type)) throw new McpInputError(`${path}: ${n.type} não aceita content`);
     if (!Array.isArray(n.content)) throw new McpInputError(`${path}: content inválido`);
@@ -280,7 +283,7 @@ function inlineNodes(tokens: Token[], marks: TiptapMark[]): TiptapNode[] {
         break;
       case "link": {
         const href = (tok as Tokens.Link).href;
-        if (!HREF_RE.test(href)) throw new McpInputError(`link "${href}": use https:// ou um caminho iniciado por /`);
+        if (!isSafeHref(href)) throw new McpInputError(`link "${href}": use https:// ou um caminho iniciado por /`);
         out.push(...inlineNodes((tok as Tokens.Link).tokens, [...marks, { type: "link", attrs: { href } }]));
         break;
       }

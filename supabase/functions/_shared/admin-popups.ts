@@ -1,6 +1,7 @@
 // Validação e normalização de popups globais. Compartilhado por platform-admin (UI do Admin)
 // e mcp-admin (agente): único lugar onde os limites de formato vivem, o banco só garante
 // "array de 1..6". Puro, exceto adminContaId.
+import { isSafeHref } from "./safe-href.ts";
 
 export const POPUP_COLUMNS = [
   "pages", "cta_label", "cta_url", "cta_style", "secondary_label", "frequency",
@@ -18,7 +19,6 @@ export interface PopupPage {
 const MAX_PAGES = 6;
 const PAGE_KEYS = new Set(["title", "eyebrow", "body", "image_key"]);
 const IMAGE_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
-const CTA_URL_RE = /^(\/(?![\/\\])|https?:\/\/)/; // sem // nem /\ (o browser lê \ como /)
 
 function optionalText(value: unknown, max: number): { ok: true; value: string | null } | { ok: false } {
   if (value === undefined || value === null) return { ok: true, value: null };
@@ -86,7 +86,7 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
   const ctaUrl = optionalText(row.cta_url, 2048);
   if (!ctaUrl.ok) return "cta_url max 2048";
   if ((ctaLabel.value === null) !== (ctaUrl.value === null)) return "cta_label and cta_url go together";
-  if (ctaUrl.value !== null && !CTA_URL_RE.test(ctaUrl.value)) {
+  if (ctaUrl.value !== null && !isSafeHref(ctaUrl.value, { allowHttp: true })) {
     return "cta_url must start with / or http(s)://";
   }
   const secondary = optionalText(row.secondary_label, 40);

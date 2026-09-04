@@ -1,5 +1,6 @@
 // Validação de banners globais. Compartilhado por platform-admin e mcp-admin. Avalia a linha
 // MESCLADA (create: body; update: atual + patch), como admin-popups.ts.
+import { isSafeHref } from "./safe-href.ts";
 
 export const BANNER_COLUMNS = [
   "type", "content", "link", "custom_color", "target_mode",
@@ -10,8 +11,6 @@ export const BANNER_COLUMNS = [
 const TYPES = ["info", "warning", "critical"];
 const STATUSES = ["draft", "active", "archived"];
 const MODES = ["all", "plan", "workspace"];
-// Caminho relativo não pode começar com // nem /\ (o browser lê \ como / e vira host externo).
-const LINK_RE = /^(\/(?![\/\\])|https:\/\/)/;
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const TEXT_COLUMNS = ["link", "custom_color"] as const;
 
@@ -50,7 +49,7 @@ export function validateBanner(row: Record<string, unknown>): string | null {
   if (content.length === 0 || content.length > 500) return "content required (max 500)";
 
   const link = row.link ?? null;
-  if (link !== null && (typeof link !== "string" || !LINK_RE.test(link.trim()) || link.length > 2048)) {
+  if (link !== null && (typeof link !== "string" || !isSafeHref(link.trim()))) {
     return "link must start with / or https://";
   }
   const color = row.custom_color ?? null;

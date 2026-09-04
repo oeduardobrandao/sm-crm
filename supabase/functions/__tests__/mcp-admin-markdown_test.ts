@@ -36,6 +36,10 @@ Deno.test("markdownToTiptap: link, hard break, escape e html inline viram texto"
   throwsInput(() => markdownToTiptap("[x](http://inseguro)"), "link");
   throwsInput(() => markdownToTiptap("[x](javascript:alert(1))"), "link");
   throwsInput(() => markdownToTiptap("[x](/\\evil.com)"), "link");
+  // Tab literal fora de <>: o CommonMark exige destino sem espaço em branco, então marked nem
+  // reconhece isto como link (vira texto solto) -- por isso o ataque real usa <>, que permite
+  // espaço em branco no destino e é o que preserva o tab até chegar em isSafeHref.
+  throwsInput(() => markdownToTiptap("[x](</\t\\evil.com>)"), "link");
 });
 
 Deno.test("markdownToTiptap: listas (aninhada, ordenada com start), citação, código, hr", () => {
@@ -127,6 +131,7 @@ Deno.test("validateTiptapDoc: rejeita tipo, atributo, mark e domínio fora da al
   throwsInput(() => validateTiptapDoc(wrap(p(t("x", [{ type: "bold", onclick: "x" }])))), "onclick");
   throwsInput(() => validateTiptapDoc(wrap({ type: "inlineImage", attrs: { r2Key: "../etc", src: null, alt: null, width: null, height: null, blurSrc: null, displayWidth: null, loading: false } })), "inlineImage");
   throwsInput(() => validateTiptapDoc(wrap({ type: "inlineImage", attrs: { r2Key: null, src: "https://x/y", alt: null, width: null, height: null, blurSrc: null, displayWidth: null, loading: false, onload: "x" } })), "inlineImage");
+  throwsInput(() => validateTiptapDoc(wrap({ type: "inlineImage", attrs: { r2Key: null, src: null, alt: null, width: null, height: null, blurSrc: null, displayWidth: null, loading: false } })), "inlineImage");
   throwsInput(() => validateTiptapDoc(wrap({ type: "youtube", attrs: { src: "https://vimeo.com/1", width: 640, height: 480, start: 0 } })), "youtube");
   throwsInput(() => validateTiptapDoc(wrap({ type: "callout", attrs: { emoji: "💡", color: "neon" }, content: [p()] })), "callout");
   throwsInput(() => validateTiptapDoc(wrap(p({ type: "text" }))), "text");
