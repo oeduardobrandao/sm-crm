@@ -84,6 +84,8 @@ Deno.test("validatePopupFields: par de CTA, until_cta, require_ack, tamanhos e f
   assert(validatePopupFields({ ...base, starts_at: "not-a-date" }) !== null, "starts_at sozinho invalido");
   assert(validatePopupFields({ ...base, ends_at: "nope" }) !== null, "ends_at sozinho invalido");
   assertEquals(validatePopupFields({ ...base, starts_at: "2026-09-01T00:00:00Z" }), null);
+  assertEquals(validatePopupFields({ ...base, status: "active" }), null);
+  assert(validatePopupFields({ ...base, status: "pubished" }) !== null, "status inválido");
 });
 
 type Resp = { data: unknown; error: unknown };

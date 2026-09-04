@@ -99,6 +99,9 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
   const style = row.cta_style ?? "ink";
   if (style !== "ink" && style !== "brand") return "invalid cta_style";
 
+  const status = row.status ?? "draft";
+  if (status !== "draft" && status !== "active" && status !== "archived") return "invalid status";
+
   // Targeting: array_length('{}') é NULL no Postgres, então o CHECK do banco só
   // barra NULL. Array vazio precisa ser barrado aqui, senão o popup nasce
   // invisível para todo mundo.
