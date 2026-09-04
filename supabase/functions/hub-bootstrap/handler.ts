@@ -106,6 +106,16 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
     }
 
     // Fail closed, same defence-in-depth principle as above: an entitlements RPC
+    // hiccup must never break the client's portal — here it just hides the
+    // briefing's audio recorder.
+    let featureBriefingAudio = false;
+    try {
+      featureBriefingAudio = await effectivePlanFeature(db as any, conta.id, "feature_briefing_audio");
+    } catch {
+      // intentionally ignored — defaults to false
+    }
+
+    // Fail closed, same defence-in-depth principle as above: an entitlements RPC
     // hiccup must never break the client's portal.
     let brandCustomization = false;
     try {
@@ -144,6 +154,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       is_active: hubToken.is_active,
       cliente_id: hubToken.cliente_id,
       feature_mensagens: featureMensagens,
+      feature_briefing_audio: featureBriefingAudio,
       hub_theme: brandCustomization
         ? {
             customized: true,

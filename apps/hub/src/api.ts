@@ -10,6 +10,7 @@ import type {
   HubPageFull,
   BriefingQuestion,
   Briefing,
+  BriefingAudioResponse,
   HubIdeia,
   IdeiaImage,
   IdeiaReaction,
@@ -127,6 +128,35 @@ export function fetchBriefing(token: string) {
 
 export function submitBriefingAnswer(token: string, question_id: string, answer: string) {
   return post<{ ok: boolean }>('hub-briefing', { token, question_id, answer });
+}
+
+export function presignBriefingAudio(
+  token: string,
+  payload: { question_id: string; mime_type: string; size_bytes: number },
+) {
+  return post<{ upload_url: string; r2_key: string; mime_type: string }>(
+    'hub-briefing/upload-url',
+    {
+      token,
+      ...payload,
+    },
+  );
+}
+
+export function finalizeBriefingAudio(
+  token: string,
+  questionId: string,
+  payload: { r2_key: string; mime_type: string; size_bytes: number; duration_seconds: number },
+) {
+  return post<BriefingAudioResponse>(`hub-briefing/${questionId}/audio`, { token, ...payload });
+}
+
+export function retryBriefingTranscription(token: string, questionId: string) {
+  return post<BriefingAudioResponse>(`hub-briefing/${questionId}/audio/transcribe`, { token });
+}
+
+export function deleteBriefingAudio(token: string, questionId: string) {
+  return del<{ ok: boolean }>('hub-briefing', `${questionId}/audio`, token);
 }
 
 async function patch<T>(fn: string, id: string, token: string, body: unknown): Promise<T> {

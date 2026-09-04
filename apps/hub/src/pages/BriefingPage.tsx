@@ -1,13 +1,30 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
-import { fetchBriefing, submitBriefingAnswer } from '../api';
+import {
+  deleteBriefingAudio,
+  fetchBriefing,
+  retryBriefingTranscription,
+  submitBriefingAnswer,
+} from '../api';
+import { describeAudioError, uploadBriefingAudio } from '../services/briefingAudio';
+import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
+import {
+  AudioRecorder,
+  HUB_AUDIO_VARS,
+  isRecordingSupported,
+  type RecorderPhase,
+} from '../components/AudioRecorder';
 import { PageHeader } from '../components/PageHeader';
 import { ScrollableTabs } from '../components/ScrollableTabs';
-import type { BriefingQuestion } from '../types';
+import type { BriefingAudio, BriefingAudioResponse, BriefingQuestion } from '../types';
 
 export function BriefingPage() {
-  const { token } = useHub();
+  const { token, bootstrap } = useHub();
+  // Gate de plano (Pro/Max). Ausente num bootstrap antigo = desligado; o
+  // hub-briefing recusa a escrita de qualquer forma, isto só evita oferecer
+  // um botão que responderia 403.
+  const audioEnabled = bootstrap.feature_briefing_audio === true;
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['hub-briefing', token],
@@ -115,9 +132,11 @@ export function BriefingPage() {
               {visibleQuestions.map((q) => (
                 <QuestionItem
                   key={q.id}
-                  question={q.question}
-                  initialAnswer={q.answer}
+                  token={token}
+                  question={q}
                   onSave={handleSave(q.id)}
+                  audioEnabled={audioEnabled}
+                  onAudioChanged={() => qc.invalidateQueries({ queryKey: ['hub-briefing', token] })}
                 />
               ))}
             </div>
@@ -129,51 +148,249 @@ export function BriefingPage() {
 }
 
 function QuestionItem({
+  token,
   question,
-  initialAnswer,
   onSave,
+  audioEnabled,
+  onAudioChanged,
 }: {
-  question: string;
-  initialAnswer: string | null;
+  token: string;
+  question: BriefingQuestion;
   onSave: (answer: string) => Promise<void>;
+  audioEnabled: boolean;
+  onAudioChanged: () => void;
 }) {
-  const [answer, setAnswer] = useState(initialAnswer ?? '');
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [answer, setAnswer] = useState(question.answer ?? '');
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [phase, setPhase] = useState<RecorderPhase>('idle');
+  const [audio, setAudio] = useState<BriefingAudio | null>(question.audio);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<'retry' | 'remove' | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks the most recently typed value and whether a debounced save for it
+  // hasn't landed yet. An audio action (record, retry) that starts while this
+  // is dirty must flush it first — the server computes the "done" transcript
+  // append from the DB row's current `answer`, so a cancelled debounce would
+  // let the server overwrite the user's unsaved edit with a stale value.
+  const pendingRef = useRef<{ value: string; dirty: boolean }>({ value: answer, dirty: false });
+  const locked = phase !== 'idle' || busyAction !== null;
+
+  // The server is the source of truth for audio: a background refetch (e.g.
+  // triggered by onAudioChanged after another tab removed it, or after this
+  // question's upload failed) must replace the local audio state.
+  //
+  // It's also the source of truth for the answer text once it diverges from
+  // what's shown locally — this covers an upload that failed on the client
+  // (network drop) but actually finished server-side, appending the
+  // transcript to `answer` before the response was lost; the refetch that
+  // follows (onAudioChanged) brings back a fresher `question.answer` than
+  // local state. We only take it over when nothing local is in flight or
+  // unsaved: never while the user is actively typing (a dirty pending save)
+  // or while a save/audio action is being flushed to the server.
+  useEffect(() => {
+    setAudio(question.audio);
+    if (
+      question.answer != null &&
+      question.answer !== answer &&
+      !pendingRef.current.dirty &&
+      status !== 'saving' &&
+      phase === 'idle' &&
+      busyAction === null
+    ) {
+      setAnswer(question.answer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question.audio, question.answer]);
 
   const handleChange = useCallback(
     (value: string) => {
       setAnswer(value);
       setStatus('saving');
+      pendingRef.current = { value, dirty: true };
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
         try {
           await onSave(value);
+          pendingRef.current = { value, dirty: false };
           setStatus('saved');
           setTimeout(() => setStatus('idle'), 2000);
         } catch {
-          setStatus('idle');
+          setStatus('error');
         }
       }, 800);
     },
     [onSave],
   );
 
+  // Flushes a pending debounced save synchronously instead of letting
+  // handleRecorded/handleRetry cancel it outright. Throws (after surfacing
+  // the failure via `status`) when the save itself fails, so callers can
+  // abort the audio action rather than proceed against a stale answer.
+  async function flushPendingSave(): Promise<void> {
+    if (!pendingRef.current.dirty) return;
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const value = pendingRef.current.value;
+    try {
+      await onSave(value);
+      pendingRef.current = { value, dirty: false };
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 2000);
+    } catch {
+      setStatus('error');
+      throw new Error('flush-pending-save-failed');
+    }
+  }
+
+  function applyResponse(res: BriefingAudioResponse) {
+    if (res.answer !== null) setAnswer(res.answer);
+    setAudio(res.audio);
+    onAudioChanged();
+  }
+
+  async function handleRecorded(blob: Blob, mime: string, durationSeconds: number) {
+    // Locks the textarea and the recorder for the whole operation, including
+    // the flush below — otherwise a second click on "Enviar" during that
+    // network round-trip (busy was only set after the flush resolved) could
+    // fire a second presign/upload/finalize before this one lands.
+    setPhase('uploading');
+    try {
+      await flushPendingSave();
+    } catch {
+      setAudioError('Não foi possível salvar o texto. Tente de novo.');
+      setPhase('idle');
+      throw new Error('Não foi possível salvar o texto. Tente de novo.');
+    }
+    setAudioError(null);
+    try {
+      const res = await uploadBriefingAudio({
+        token,
+        questionId: question.id,
+        blob,
+        mime,
+        durationSeconds,
+        onPhase: setPhase,
+      });
+      applyResponse(res);
+    } catch (e) {
+      setAudioError(describeAudioError(e, 'Não foi possível enviar o áudio.'));
+      // O servidor pode ter gravado o áudio antes da falha de rede (ex: o
+      // upload/finalize terminou no servidor, mas a resposta não chegou) —
+      // refaz o fetch em vez de confiar só no estado local.
+      onAudioChanged();
+      throw e;
+    } finally {
+      setPhase('idle');
+    }
+  }
+
+  async function handleRetry() {
+    // Locks the recorder/answer for the whole operation, including the flush
+    // below — otherwise a second click on "Tentar novamente" during that
+    // network round-trip (busyAction was only set after the flush resolved)
+    // could fire a second transcription request before this one lands.
+    setBusyAction('retry');
+    try {
+      await flushPendingSave();
+    } catch {
+      setAudioError('Não foi possível salvar o texto. Tente de novo.');
+      setBusyAction(null);
+      return;
+    }
+    setAudioError(null);
+    try {
+      applyResponse(await retryBriefingTranscription(token, question.id));
+    } catch (e) {
+      setAudioError(describeAudioError(e, 'Não foi possível transcrever.'));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleRemove() {
+    setBusyAction('remove');
+    setAudioError(null);
+    try {
+      await deleteBriefingAudio(token, question.id);
+      setAudio(null);
+      onAudioChanged();
+    } catch (e) {
+      setAudioError(describeAudioError(e, 'Não foi possível remover o áudio.'));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  const transcriptionLabel =
+    audio?.transcription_status === 'done'
+      ? 'Transcrição adicionada à resposta.'
+      : audio?.transcription_status === 'pending'
+        ? 'Transcrição pendente.'
+        : audio
+          ? 'Não foi possível transcrever este áudio.'
+          : null;
+
   return (
     <div className="hub-card p-5 sm:p-6 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[14px] font-semibold hub-txt leading-snug">{question}</p>
+        <p className="text-[14px] font-semibold hub-txt leading-snug">{question.question}</p>
         <span className="shrink-0 text-[11px] font-medium min-w-[56px] text-right">
           {status === 'saving' && <span className="hub-tx3">Salvando…</span>}
           {status === 'saved' && <span className="text-emerald-600">✓ Salvo</span>}
+          {status === 'error' && (
+            <span className="text-red-500">Não foi possível salvar. Tente de novo.</span>
+          )}
         </span>
       </div>
       <textarea
-        className="hub-focus-accent w-full border hub-border rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-[color-mix(in_srgb,var(--hub-soft)_40%,transparent)] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:bg-[var(--hub-card)] focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
+        className="hub-focus-accent w-full border hub-border rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-[color-mix(in_srgb,var(--hub-soft)_40%,transparent)] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:bg-[var(--hub-card)] focus:border-[var(--hub-bd2)] focus:ring-4 transition-all disabled:opacity-60"
         value={answer}
+        disabled={locked}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder="Digite sua resposta…"
+        placeholder="Digite sua resposta ou grave um áudio…"
       />
+
+      {audio && (
+        <div className="space-y-2 rounded-lg border hub-border p-3">
+          <AudioPlayer
+            src={audio.url}
+            durationSeconds={audio.duration_seconds}
+            label="Resposta em áudio"
+            className="hub-txt w-full max-w-[420px]"
+            style={HUB_AUDIO_VARS}
+          />
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <span className={audio.transcription_status === 'failed' ? 'text-red-500' : 'hub-tx3'}>
+              {transcriptionLabel}
+            </span>
+            {audioEnabled && audio.transcription_status !== 'done' && (
+              <button
+                type="button"
+                className="font-semibold underline hub-txt disabled:opacity-50"
+                disabled={busyAction !== null || locked}
+                onClick={() => void handleRetry()}
+              >
+                {busyAction === 'retry' ? 'Transcrevendo…' : 'Tentar novamente'}
+              </button>
+            )}
+            <button
+              type="button"
+              className="font-semibold underline hub-tx3 disabled:opacity-50"
+              disabled={busyAction !== null || locked}
+              onClick={() => void handleRemove()}
+            >
+              {busyAction === 'remove' ? 'Removendo…' : 'Remover áudio'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {audioEnabled && isRecordingSupported() && (
+        <AudioRecorder phase={phase} disabled={busyAction !== null} onRecorded={handleRecorded} />
+      )}
+      {audioError && <p className="text-xs text-red-500">{audioError}</p>}
     </div>
   );
 }

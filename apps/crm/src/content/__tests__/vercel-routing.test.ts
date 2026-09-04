@@ -76,3 +76,35 @@ describe('vercel.json routing contract', () => {
     expect(APP_ROUTE_PREFIXES as readonly string[]).not.toContain('blog');
   });
 });
+
+describe('vercel.json Permissions-Policy', () => {
+  // O briefing por áudio do Hub usa getUserMedia. Com `microphone=()` o
+  // navegador rejeita com NotAllowedError SEM abrir o prompt de permissão
+  // (incidente 2026-09-04). O catch-all continua bloqueando o microfone no
+  // CRM/Admin/site; só as duas regras do Hub liberam `self`, e elas precisam
+  // vir DEPOIS do catch-all porque, com a mesma chave, a última regra que
+  // casa é a que vale.
+  const HUB_SOURCES = ['/:workspace/hub/:token', '/:workspace/hub/:token/(.*)'];
+  const policyOf = (source: string) =>
+    headers.find((h) => h.source === source)?.headers.find((x) => x.key === 'Permissions-Policy')
+      ?.value;
+
+  test('o catch-all segue bloqueando o microfone fora do Hub', () => {
+    expect(policyOf('/(.*)')).toMatch(/microphone=\(\)/);
+  });
+
+  test('as duas regras do Hub liberam o microfone para self, depois do catch-all', () => {
+    const catchAllIdx = headers.findIndex((h) => h.source === '/(.*)');
+    expect(catchAllIdx).toBeGreaterThanOrEqual(0);
+    for (const src of HUB_SOURCES) {
+      expect(policyOf(src), `${src} não libera o microfone`).toMatch(/microphone=\(self\)/);
+      expect(policyOf(src), `${src} libera câmera ou geolocalização`).toMatch(
+        /camera=\(\).*geolocation=\(\)/,
+      );
+      expect(
+        headers.findIndex((h) => h.source === src),
+        `${src} precisa vir depois do catch-all`,
+      ).toBeGreaterThan(catchAllIdx);
+    }
+  });
+});

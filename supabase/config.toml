@@ -177,6 +177,9 @@ verify_jwt = false
 [functions.ideia-media-manage]
 verify_jwt = false
 
+[functions.briefing-audio]
+verify_jwt = false
+
 [functions.lifecycle-email-cron]
 verify_jwt = false
 

@@ -166,8 +166,16 @@ Deno.serve(createPostMediaCleanupCronHandler({
     if (canaryMissing.length > 0) {
       alerts.push({ error: `integrity canary: ${canaryMissing.length}/${canaryChecked} sampled objects MISSING (ids ${canaryMissing.map((m) => m.id).join(",")})` });
     }
+    // scan.aborted já vem como "prefixo: motivo" de CADA alvo abortado — um
+    // abort em briefing-audio/ não some atrás de um em contas/.
     if (scan.aborted) alerts.push({ error: `orphan scan aborted: ${scan.aborted}` });
-    if (scan.capped > 0) alerts.push({ error: `orphan scan capped: ${scan.capped} orphans deferred (cap ${scan.trashed} trashed)` });
+    if (scan.capped > 0) {
+      const perTarget = scan.targets
+        .filter((t) => t.capped > 0)
+        .map((t) => `${t.prefix} ${t.capped} deferred/${t.trashed} trashed`)
+        .join("; ");
+      alerts.push({ error: `orphan scan capped: ${perTarget}` });
+    }
     if (failed > 0) alerts.push({ error: `deletion drain: ${failed} rows failed this run` });
     if (streamErrors > 0) alerts.push({ error: `stream sweeps: ${streamErrors} step errors` });
     if (alerts.length > 0) {
