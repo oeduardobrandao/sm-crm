@@ -367,7 +367,7 @@ describe('hub content pages', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Geral' }));
     expect(screen.getByText('Qual o principal objetivo?')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText('Digite sua resposta…'), {
+    fireEvent.change(screen.getByPlaceholderText('Digite sua resposta ou grave um áudio…'), {
       target: { value: 'Gerar mais leads qualificados' },
     });
 

@@ -1,10 +1,23 @@
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
-import { fetchBriefing, submitBriefingAnswer } from '../api';
+import {
+  deleteBriefingAudio,
+  fetchBriefing,
+  retryBriefingTranscription,
+  submitBriefingAnswer,
+} from '../api';
+import { uploadBriefingAudio } from '../services/briefingAudio';
+import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
+import {
+  AudioRecorder,
+  HUB_AUDIO_VARS,
+  isRecordingSupported,
+  type RecorderPhase,
+} from '../components/AudioRecorder';
 import { PageHeader } from '../components/PageHeader';
 import { ScrollableTabs } from '../components/ScrollableTabs';
-import type { BriefingQuestion } from '../types';
+import type { BriefingAudio, BriefingAudioResponse, BriefingQuestion } from '../types';
 
 export function BriefingPage() {
   const { token } = useHub();
@@ -115,9 +128,10 @@ export function BriefingPage() {
               {visibleQuestions.map((q) => (
                 <QuestionItem
                   key={q.id}
-                  question={q.question}
-                  initialAnswer={q.answer}
+                  token={token}
+                  question={q}
                   onSave={handleSave(q.id)}
+                  onAudioChanged={() => qc.invalidateQueries({ queryKey: ['hub-briefing', token] })}
                 />
               ))}
             </div>
@@ -129,17 +143,24 @@ export function BriefingPage() {
 }
 
 function QuestionItem({
+  token,
   question,
-  initialAnswer,
   onSave,
+  onAudioChanged,
 }: {
-  question: string;
-  initialAnswer: string | null;
+  token: string;
+  question: BriefingQuestion;
   onSave: (answer: string) => Promise<void>;
+  onAudioChanged: () => void;
 }) {
-  const [answer, setAnswer] = useState(initialAnswer ?? '');
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [answer, setAnswer] = useState(question.answer ?? '');
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [phase, setPhase] = useState<RecorderPhase>('idle');
+  const [audio, setAudio] = useState<BriefingAudio | null>(question.audio);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<'retry' | 'remove' | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locked = phase !== 'idle';
 
   const handleChange = useCallback(
     (value: string) => {
@@ -152,28 +173,136 @@ function QuestionItem({
           setStatus('saved');
           setTimeout(() => setStatus('idle'), 2000);
         } catch {
-          setStatus('idle');
+          setStatus('error');
         }
       }, 800);
     },
     [onSave],
   );
 
+  function applyResponse(res: BriefingAudioResponse) {
+    if (res.answer !== null) setAnswer(res.answer);
+    setAudio(res.audio);
+    onAudioChanged();
+  }
+
+  async function handleRecorded(blob: Blob, mime: string, durationSeconds: number) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setAudioError(null);
+    setPhase('uploading');
+    try {
+      const res = await uploadBriefingAudio({
+        token,
+        questionId: question.id,
+        blob,
+        mime,
+        durationSeconds,
+        onPhase: setPhase,
+      });
+      applyResponse(res);
+    } catch (e) {
+      setAudioError((e as Error).message || 'Não foi possível enviar o áudio.');
+      throw e;
+    } finally {
+      setPhase('idle');
+    }
+  }
+
+  async function handleRetry() {
+    setBusyAction('retry');
+    setAudioError(null);
+    try {
+      applyResponse(await retryBriefingTranscription(token, question.id));
+    } catch (e) {
+      setAudioError((e as Error).message || 'Não foi possível transcrever.');
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleRemove() {
+    setBusyAction('remove');
+    setAudioError(null);
+    try {
+      await deleteBriefingAudio(token, question.id);
+      setAudio(null);
+      onAudioChanged();
+    } catch (e) {
+      setAudioError((e as Error).message || 'Não foi possível remover o áudio.');
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  const transcriptionLabel =
+    audio?.transcription_status === 'done'
+      ? 'Transcrição adicionada à resposta.'
+      : audio?.transcription_status === 'pending'
+        ? 'Transcrição pendente.'
+        : audio
+          ? 'Não foi possível transcrever este áudio.'
+          : null;
+
   return (
     <div className="hub-card p-5 sm:p-6 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[14px] font-semibold hub-txt leading-snug">{question}</p>
+        <p className="text-[14px] font-semibold hub-txt leading-snug">{question.question}</p>
         <span className="shrink-0 text-[11px] font-medium min-w-[56px] text-right">
           {status === 'saving' && <span className="hub-tx3">Salvando…</span>}
           {status === 'saved' && <span className="text-emerald-600">✓ Salvo</span>}
+          {status === 'error' && (
+            <span className="text-red-500">Não foi possível salvar. Tente de novo.</span>
+          )}
         </span>
       </div>
       <textarea
-        className="hub-focus-accent w-full border hub-border rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-[color-mix(in_srgb,var(--hub-soft)_40%,transparent)] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:bg-[var(--hub-card)] focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
+        className="hub-focus-accent w-full border hub-border rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-[color-mix(in_srgb,var(--hub-soft)_40%,transparent)] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:bg-[var(--hub-card)] focus:border-[var(--hub-bd2)] focus:ring-4 transition-all disabled:opacity-60"
         value={answer}
+        disabled={locked}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder="Digite sua resposta…"
+        placeholder="Digite sua resposta ou grave um áudio…"
       />
+
+      {audio && (
+        <div className="space-y-2 rounded-lg border hub-border p-3">
+          <AudioPlayer
+            src={audio.url}
+            durationSeconds={audio.duration_seconds}
+            label="Resposta em áudio"
+            className="hub-txt w-full max-w-[420px]"
+            style={HUB_AUDIO_VARS}
+          />
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <span className={audio.transcription_status === 'failed' ? 'text-red-500' : 'hub-tx3'}>
+              {transcriptionLabel}
+            </span>
+            {audio.transcription_status !== 'done' && (
+              <button
+                type="button"
+                className="font-semibold underline hub-txt disabled:opacity-50"
+                disabled={busyAction !== null || locked}
+                onClick={() => void handleRetry()}
+              >
+                {busyAction === 'retry' ? 'Transcrevendo…' : 'Tentar novamente'}
+              </button>
+            )}
+            <button
+              type="button"
+              className="font-semibold underline hub-tx3 disabled:opacity-50"
+              disabled={busyAction !== null || locked}
+              onClick={() => void handleRemove()}
+              aria-label="Remover áudio"
+            >
+              {busyAction === 'remove' ? 'Removendo…' : 'Remover áudio'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isRecordingSupported() && (
+        <AudioRecorder phase={phase} disabled={busyAction !== null} onRecorded={handleRecorded} />
+      )}
+      {audioError && <p className="text-xs text-red-500">{audioError}</p>}
     </div>
   );
 }
