@@ -220,6 +220,17 @@ Deno.test("tiptapToMarkdown: '!' colado num link é escapado (senão vira imagem
   assertEquals(markdownToTiptap(markdown), doc);
 });
 
+Deno.test("tiptapToMarkdown: destino com parênteses vai na forma <…> e o round-trip preserva o href", () => {
+  const href = "https://pt.wikipedia.org/wiki/Foo_(bar)";
+  const doc = { type: "doc", content: [
+    p(t("veja "), t("isto", [{ type: "link", attrs: { href } }])),
+    { type: "inlineImage", attrs: { r2Key: null, src: "https://x.y/a(1).png", alt: "a", width: null, height: null, blurSrc: null, displayWidth: null, loading: false } },
+  ] };
+  const { markdown } = tiptapToMarkdown(doc);
+  assertEquals(markdown, `veja [isto](<${href}>)\n\n![a](<https://x.y/a(1).png>)`);
+  assertEquals(markdownToTiptap(markdown), doc);
+});
+
 Deno.test("tiptapToMarkdown: escapa caracteres especiais do Markdown no texto", () => {
   const { markdown } = tiptapToMarkdown({ type: "doc", content: [p(t("2 * 3 = 6, a_b [x] `y` # não é título")), p(t("- não é lista"))] });
   assertEquals(markdown, "2 \\* 3 = 6, a\\_b \\[x\\] \\`y\\` # não é título\n\n\\- não é lista");

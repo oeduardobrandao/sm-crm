@@ -488,6 +488,13 @@ function escapeMd(s: string): string {
     .replace(/^(\s*)([#>+-]|\d+\.)/gm, (_m, ws, tok) => `${ws}\\${tok}`);
 }
 
+/** Destino de link/imagem: a forma simples do CommonMark não aceita parênteses desbalanceados
+ * nem espaços; nesses casos usa a forma <…> (isSafeHref já barrou controle/espaço e <, >
+ * nunca passam pelo parser sem quebrar, então basta checar parênteses). */
+function mdDestination(url: string): string {
+  return /[()]/.test(url) ? `<${url}>` : url;
+}
+
 /** null = tem mark fora do subconjunto (o bloco inteiro vira opaco). */
 function serializeInline(nodes: TiptapNode[] | undefined): string | null {
   let out = "";
@@ -505,7 +512,7 @@ function serializeInline(nodes: TiptapNode[] | undefined): string | null {
     if (link) {
       // "texto![x](url)" seria lido como imagem: escapa o "!" que fecha o trecho anterior.
       if (out.endsWith("!")) out = `${out.slice(0, -1)}\\!`;
-      s = `[${s}](${String(link.attrs?.href ?? "")})`;
+      s = `[${s}](${mdDestination(String(link.attrs?.href ?? ""))})`;
     }
     out += s;
   }
@@ -564,7 +571,7 @@ function serializeBlock(n: TiptapNode, counter: { opaque: number }): string {
       return "---";
     case "inlineImage": {
       const a = n.attrs ?? {};
-      if (a.r2Key === null && typeof a.src === "string") return `![${String(a.alt ?? "")}](${a.src})`;
+      if (a.r2Key === null && typeof a.src === "string") return `![${String(a.alt ?? "")}](${mdDestination(a.src)})`;
       return opaque(n, counter);
     }
     case "youtube": {
