@@ -257,7 +257,7 @@ create.
 | Tool | Entrada | Saída |
 |---|---|---|
 | `list_workspaces` | `search?, plan_id?, offset?, limit? (≤ 100)` | resultado do RPC `admin_list_workspaces` via `handleListWorkspaces` (mesmo shape que a página Workspaces do Admin) |
-| `get_workspace` | `workspace_id` | `{ id, name, created_at, plan_id, plan_source, is_internal, members: [{ role, email, joined_at }], counts: { members, clients }, subscription: { status, provider, current_period_end } \| null, overrides }` |
+| `get_workspace` | `workspace_id` | saída de `handleGetWorkspace` (`workspace, owner, members, plan, override, resolved_limits, resolved_features, subscription, usage`), com `owner` e cada `members[]` reduzidos a `{ user_id, name, email, role, joined_at }` (sem `telefone`, sem `marketing_opt_in`) |
 | `list_plans` | nenhuma | `plans` com limites e features, mesmo shape de `list-plans` |
 | `get_dashboard` | nenhuma | `{ totals: { workspaces, members, clients, with_overrides, active_plans }, mrr: { mrr_cents, paying_count }, trials: { trial_mrr_cents, trial_count } }` |
 
@@ -519,5 +519,9 @@ Deno, em `supabase/functions/__tests__/`, com o fake `makeFakeDb` do padrão
 - UI de revogação de grants de admin na página de Admins.
 - `kb_context_links` (vínculo artigo ↔ rota) via MCP.
 - Escrita em workspaces/planos.
+- Coleta de lixo do bucket `kb-images` para uploads do modo B nunca
+  referenciados por um artigo (o `orphan-scan` só cobre `contas/` no R2).
+  Volume esperado é baixo (só admins); follow-up = varredura periódica do
+  bucket contra `kb_articles.content`/`cover_image_url`.
 - Pinar o IP resolvido no fetch (o `fetch` do edge runtime não permite); o
   rebinding fica como risco residual aceito, igual ao `brand-logo`.
