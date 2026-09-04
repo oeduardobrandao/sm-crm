@@ -121,6 +121,8 @@ Deno.test("validateTiptapDoc: rejeita tipo, atributo, mark e domínio fora da al
   throwsInput(() => validateTiptapDoc(wrap({ type: "heading", attrs: { level: 1 }, content: [t("x")] })), "heading");
   throwsInput(() => validateTiptapDoc(wrap(p(t("x", [{ type: "fontFamily" }])))), "fontFamily");
   throwsInput(() => validateTiptapDoc(wrap(p(t("x", [{ type: "link", attrs: { href: "javascript:x" } }])))), "link");
+  throwsInput(() => validateTiptapDoc(wrap(p(t("x", [{ type: "link" }])))), "link"); // sem attrs → sem href
+  throwsInput(() => validateTiptapDoc(wrap(p(t("x", [{ type: "bold", onclick: "x" }])))), "onclick");
   throwsInput(() => validateTiptapDoc(wrap({ type: "inlineImage", attrs: { r2Key: "../etc", src: null, alt: null, width: null, height: null, blurSrc: null, displayWidth: null, loading: false } })), "inlineImage");
   throwsInput(() => validateTiptapDoc(wrap({ type: "inlineImage", attrs: { r2Key: null, src: "https://x/y", alt: null, width: null, height: null, blurSrc: null, displayWidth: null, loading: false, onload: "x" } })), "inlineImage");
   throwsInput(() => validateTiptapDoc(wrap({ type: "youtube", attrs: { src: "https://vimeo.com/1", width: 640, height: 480, start: 0 } })), "youtube");

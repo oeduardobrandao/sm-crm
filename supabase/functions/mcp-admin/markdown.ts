@@ -147,9 +147,17 @@ function validateNode(node: unknown, path: string): TiptapNode {
     if (n.marks !== undefined) {
       if (!Array.isArray(n.marks)) throw new McpInputError(`${path}: marks inválidas`);
       for (const m of n.marks) {
-        const mr = m && typeof m === "object" ? MARK_ATTRS[(m as TiptapMark).type] : undefined;
-        if (!mr) throw new McpInputError(`${path}: mark "${String((m as TiptapMark)?.type)}" não permitida`);
-        checkAttrs("mark", (m as TiptapMark).type, (m as TiptapMark).attrs, mr);
+        const mk = m as TiptapMark;
+        const mr = m && typeof m === "object" && !Array.isArray(m) ? MARK_ATTRS[mk.type] : undefined;
+        if (!mr) throw new McpInputError(`${path}: mark "${String(mk?.type)}" não permitida`);
+        for (const k of Object.keys(mk)) {
+          if (k !== "type" && k !== "attrs") throw new McpInputError(`${path}: chave "${k}" não permitida na mark ${mk.type}`);
+        }
+        // Marks com atributo obrigatório (link.href) não podem vir sem attrs.
+        if (mk.attrs === undefined && Object.values(mr).some((rule) => !rule(null))) {
+          throw new McpInputError(`${path}: mark ${mk.type} exige attrs`);
+        }
+        checkAttrs("mark", mk.type, mk.attrs, mr);
       }
     }
   } else {
