@@ -15,9 +15,15 @@ const LINK_RE = /^(\/(?![\/\\])|https:\/\/)/;
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const TEXT_COLUMNS = ["link", "custom_color"] as const;
 
+const BANNER_COLUMN_SET = new Set<string>(BANNER_COLUMNS);
+
+/** Preserva a ordem de chaves de `body` (não a ordem canônica de BANNER_COLUMNS): o
+ * payload persistido deve refletir a ordem com que o chamador enviou os campos. */
 export function pickBannerColumns(body: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const col of BANNER_COLUMNS) if (body[col] !== undefined) out[col] = body[col];
+  for (const col of Object.keys(body)) {
+    if (BANNER_COLUMN_SET.has(col) && body[col] !== undefined) out[col] = body[col];
+  }
   return out;
 }
 
