@@ -1,5 +1,6 @@
 // Validação de artigos da base de conhecimento (kb_articles). Compartilhado por platform-admin
 // (editor do Admin) e mcp-admin (agente). Linha MESCLADA em update.
+import { validateTiptapDoc } from "./tiptap-schema.ts";
 
 export const KB_ARTICLE_COLUMNS = [
   "title", "slug", "excerpt", "content", "content_plain",
@@ -81,6 +82,13 @@ export function validateKbArticle(row: Record<string, unknown>): string | null {
     // null = "sem corpo ainda", válido. Só um valor presente precisa ter forma de doc.
     const c = row.content as { type?: unknown } | null;
     if (c !== null && (typeof c !== "object" || Array.isArray(c) || c.type !== "doc")) return "content must be a TipTap doc";
+    if (c !== null) {
+      try {
+        validateTiptapDoc(c);
+      } catch (e) {
+        return e instanceof Error ? e.message : "content has unsupported nodes";
+      }
+    }
     if (typeof row.content_plain !== "string") return "content_plain must be a string";
   }
   return null;

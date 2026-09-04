@@ -44,6 +44,91 @@ Deno.test("validateKbArticle: content deve ser doc TipTap e vir junto de content
   assert(validateKbArticle({ ...BASE, content_plain: "x" }) !== null);
 });
 
+Deno.test("validateKbArticle: content passa pela allowlist de nós (rejeita nó desconhecido; aceita tudo que o editor do Admin produz)", () => {
+  assert(
+    validateKbArticle({
+      ...BASE,
+      content: { type: "doc", content: [{ type: "script", attrs: {} }] },
+      content_plain: "x",
+    })?.includes("script"),
+  );
+
+  const fullDoc = {
+    type: "doc",
+    content: [
+      { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Título" }] },
+      { type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Subtítulo" }] },
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "negrito", marks: [{ type: "bold" }] },
+          { type: "text", text: "itálico", marks: [{ type: "italic" }] },
+          { type: "text", text: "riscado", marks: [{ type: "strike" }] },
+          { type: "text", text: "código", marks: [{ type: "code" }] },
+          { type: "text", text: "sublinhado", marks: [{ type: "underline" }] },
+          {
+            type: "text",
+            text: "link",
+            marks: [{
+              type: "link",
+              attrs: { href: "https://x.y", target: "_blank", rel: "noopener noreferrer nofollow", class: null },
+            }],
+          },
+          { type: "text", text: "colorido", marks: [{ type: "textStyle", attrs: { color: "#337EA9" } }] },
+          { type: "text", text: "marcado", marks: [{ type: "highlight", attrs: { color: "yellow" } }] },
+        ],
+      },
+      {
+        type: "bulletList",
+        content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "item" }] }] }],
+      },
+      {
+        type: "orderedList",
+        attrs: { start: 1, type: null },
+        content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "item" }] }] }],
+      },
+      { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "citação" }] }] },
+      { type: "codeBlock", attrs: { language: null }, content: [{ type: "text", text: "code" }] },
+      { type: "horizontalRule" },
+      { type: "paragraph", content: [{ type: "text", text: "quebra" }, { type: "hardBreak" }, { type: "text", text: "linha" }] },
+      {
+        type: "inlineImage",
+        attrs: {
+          r2Key: "contas/11111111-1111-1111-1111-111111111111/files/a.png",
+          src: "https://signed",
+          alt: "x",
+          width: 800,
+          height: 600,
+          blurSrc: "data:image/webp;base64,AA==",
+          displayWidth: 400,
+          loading: false,
+        },
+      },
+      {
+        type: "inlineImage",
+        attrs: {
+          r2Key: null,
+          src: "https://x.supabase.co/storage/v1/object/public/kb-images/a/b.png",
+          alt: "a",
+          width: 1440,
+          height: 900,
+          blurSrc: null,
+          displayWidth: null,
+          loading: false,
+        },
+      },
+      { type: "youtube", attrs: { src: "https://www.youtube.com/watch?v=abc123", start: 0, width: 640, height: 480 } },
+      { type: "iframe", attrs: { src: "https://www.loom.com/embed/x", width: "100%", height: "400px" } },
+      {
+        type: "callout",
+        attrs: { emoji: "💡", color: "brown" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "dica" }] }],
+      },
+    ],
+  };
+  assertEquals(validateKbArticle({ ...BASE, content: fullDoc, content_plain: "x" }), null);
+});
+
 Deno.test("pickKbColumns + normalizeKb: allowlist, trim, '' → null", () => {
   const p = pickKbColumns({ title: " T ", slug: "t", category: "clientes", excerpt: "", cover_image_url: " ", author_id: "x" });
   assertEquals(Object.keys(p).sort(), ["category", "cover_image_url", "excerpt", "slug", "title"]);
