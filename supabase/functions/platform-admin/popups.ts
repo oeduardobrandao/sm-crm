@@ -18,7 +18,7 @@ export interface PopupPage {
 const MAX_PAGES = 6;
 const PAGE_KEYS = new Set(["title", "eyebrow", "body", "image_key"]);
 const IMAGE_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
-const CTA_URL_RE = /^(\/(?!\/)|https?:\/\/)/;
+const CTA_URL_RE = /^(\/(?![/\\])|https?:\/\/)/; // `//host` é protocol-relative, nem `/\host`
 
 function optionalText(value: unknown, max: number): { ok: true; value: string | null } | { ok: false } {
   if (value === undefined || value === null) return { ok: true, value: null };
@@ -86,6 +86,9 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
   const ctaUrl = optionalText(row.cta_url, 2048);
   if (!ctaUrl.ok) return "cta_url max 2048";
   if ((ctaLabel.value === null) !== (ctaUrl.value === null)) return "cta_label and cta_url go together";
+  if (ctaUrl.value !== null && /[\t\r\n]/.test(ctaUrl.value)) {
+    return "cta_url contains control characters";
+  }
   if (ctaUrl.value !== null && !CTA_URL_RE.test(ctaUrl.value)) {
     return "cta_url must start with / or http(s)://";
   }

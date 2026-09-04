@@ -17,16 +17,25 @@ export function sanitizeExternalUrl(value: string | undefined | null): string {
 export function sanitizeUrl(value: string | undefined | null): string {
   if (!value) return '#';
   const trimmed = value.trim();
-  if (trimmed.startsWith('//')) return '#';
+  // O browser remove tab/LF/CR de QUALQUER posição antes de interpretar a URL (WHATWG),
+  // então `/\t/evil.com` vira `//evil.com`. Normalizar igual antes de decidir. Links markdown
+  // chegam aqui com esses caracteres já percent-encoded (`%09`/`%0a`/`%0d`) pelo parser de
+  // origem (micromark, via mdast-util-to-hast normalizeUri), então a mesma limpeza precisa
+  // cobrir as duas formas -- igual já valia para `\` cru vs. `%5c`.
+  const stripped = trimmed.replace(/[\t\r\n]|%0[9ad]/gi, '');
+  // `//host` é protocol-relative; o browser trata `\` como `/` em http(s), então `/\host` também é.
+  // Links markdown chegam aqui já com o `\` percent-encoded (`%5C`) pelo parser de origem
+  // (micromark), então o mesmo prefixo bloqueado precisa cobrir a forma crua e a codificada.
+  if (/^\/(?:[/\\]|%5c)/i.test(stripped)) return '#';
   if (
-    trimmed.startsWith('/') ||
-    trimmed.startsWith('./') ||
-    trimmed.startsWith('../') ||
-    trimmed.startsWith('#')
+    stripped.startsWith('/') ||
+    stripped.startsWith('./') ||
+    stripped.startsWith('../') ||
+    stripped.startsWith('#')
   ) {
-    return trimmed;
+    return stripped;
   }
-  return sanitizeExternalUrl(trimmed);
+  return sanitizeExternalUrl(stripped);
 }
 
 export function openExternalUrl(value: string | undefined | null): Window | null {
