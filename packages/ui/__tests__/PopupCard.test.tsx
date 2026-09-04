@@ -48,6 +48,8 @@ describe('PopupCard navegação por posição', () => {
   it('página do meio: Voltar e Próximo chamam onPageChange; sem eyebrow mostra só "2 de 3"', () => {
     const { props } = renderCard({ page: 1 });
     expect(screen.getByText('2 de 3')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ver' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Agora não' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
     expect(props.onPageChange).toHaveBeenCalledWith(0);
     fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
@@ -112,5 +114,10 @@ describe('PopupCard fechar, confirmação e conteúdo', () => {
     expect(container.querySelector('img')).toHaveAttribute('src', 'https://img/x.png');
     expect(document.getElementById('t1')?.textContent).toBe('Um');
     expect(document.getElementById('b1')).not.toBeNull();
+  });
+
+  it('pages vazio não renderiza nada nem lança', () => {
+    const { container } = renderCard({ pages: [], page: 0 });
+    expect(container).toBeEmptyDOMElement();
   });
 });

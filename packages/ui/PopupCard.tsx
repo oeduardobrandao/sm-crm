@@ -112,6 +112,9 @@ export function PopupCard({
   titleId,
   bodyId,
 }: PopupCardProps) {
+  // Componente compartilhado: um host que passe [] não pode derrubar a árvore.
+  if (pages.length === 0) return null;
+
   const total = pages.length;
   const index = Math.min(Math.max(page, 0), total - 1);
   const current = pages[index];
