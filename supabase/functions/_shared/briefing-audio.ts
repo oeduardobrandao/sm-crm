@@ -179,6 +179,13 @@ async function loadRow(
 async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResult> {
   const row = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
   if (!row?.audio_r2_key) return { status: 404, body: { error: "Áudio não encontrado." } };
+  // Capturada ANTES de transcrever (que pode levar até 90s): se a pergunta for
+  // re-gravada nesse meio tempo, `key` continua sendo a chave que este
+  // transcribe está de fato processando, não a que a linha aponta depois.
+  // Toda escrita desta chamada (RPC de append e o UPDATE de "failed" abaixo)
+  // é amarrada a ela — uma transcrição órfã não pode gravar por cima de uma
+  // gravação mais nova.
+  const key = row.audio_r2_key;
   if (row.audio_transcription_status === "done") {
     // Already transcribed — a retry (finalize idempotent RPC or a duplicate
     // transcribe call) must not re-run Whisper or append the text again.
@@ -207,12 +214,14 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
     q.eq("id", a.question_id).eq("conta_id", a.conta_id).eq("cliente_id", a.cliente_id);
 
   if (!text) {
-    // Guarda neq: se uma execução concorrente já virou a linha para "done"
-    // (a RPC de append), esta falha não pode rebaixá-la de volta.
-    await where(a.db.from("hub_briefing_questions").update({ audio_transcription_status: "failed" })).neq(
-      "audio_transcription_status",
-      "done",
-    );
+    // Guarda neq + eq(audio_r2_key): se uma execução concorrente já virou a
+    // linha para "done" (a RPC de append), ou se a pergunta foi re-gravada
+    // depois que este transcribe começou (audio_r2_key mudou para uma chave
+    // nova), esta falha não pode rebaixá-la de volta nem estampar "failed"
+    // numa gravação mais nova ainda em voo.
+    await where(a.db.from("hub_briefing_questions").update({ audio_transcription_status: "failed" }))
+      .eq("audio_r2_key", key)
+      .neq("audio_transcription_status", "done");
     // Re-read after the (possibly no-op) write so the response reflects
     // whatever actually ended up on the row instead of an assumed "failed".
     const current = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
@@ -245,6 +254,7 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
     p_conta_id: a.conta_id,
     p_cliente_id: a.cliente_id,
     p_question_id: a.question_id,
+    p_key: key,
     p_text: text,
     p_duration: duration,
   });
@@ -255,9 +265,10 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
 
   const updated = rpcRow(applied);
   if (!updated) {
-    // Nada casou: outra execução concorrente já gravou "done", ou o áudio
-    // sumiu no meio do caminho. Devolve o estado atual da linha em vez de
-    // supor qualquer coisa.
+    // Nada casou: outra execução concorrente já gravou "done", o áudio sumiu
+    // no meio do caminho, ou a pergunta foi re-gravada e `key` já não é a
+    // chave atual da linha (transcrição órfã de uma chave substituída).
+    // Devolve o estado atual da linha em vez de supor qualquer coisa.
     const fresh = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
     if (!fresh?.audio_r2_key) return { status: 404, body: { error: "Áudio não encontrado." } };
     return {

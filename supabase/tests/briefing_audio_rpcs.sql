@@ -160,7 +160,7 @@ begin
     values (v_cli, v_ws, 'Terceira?', 2) returning id into v_q3;
   v_key3 := 'briefing-audio/' || v_ws || '/' || v_q3 || '/e.webm';
   perform briefing_audio_finalize(v_ws, v_cli, v_q3, v_key3, 100, 'audio/webm', null);
-  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, '  Primeira fala. ', 7);
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, v_key3, '  Primeira fala. ', 7);
   -- `v_row IS NOT NULL` num composto só é verdade quando TODAS as colunas
   -- são não-nulas; a checagem correta é a chave.
   assert v_row.id is not null, 'apply on a pending row must return the updated row';
@@ -172,7 +172,7 @@ begin
     'duration nula na linha é preenchida com p_duration';
 
   -- 14. segunda aplicação sobre linha já done devolve NULL e não anexa de novo
-  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, 'Segunda fala.', 9);
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, v_key3, 'Segunda fala.', 9);
   assert v_row.id is null, 'apply on a done row must return NULL';
   assert (select answer from hub_briefing_questions where id = v_q3) = 'Primeira fala.',
     'done row must not be appended to twice';
@@ -181,7 +181,7 @@ begin
   update hub_briefing_questions
      set answer = 'Antes.' || E'\n', audio_transcript = null, audio_transcription_status = 'pending'
    where id = v_q3;
-  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, 'Depois', 3);
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, v_key3, 'Depois', 3);
   assert v_row.id is not null, 'apply on a pending row must update';
   assert (select answer from hub_briefing_questions where id = v_q3) = 'Antes.' || E'\n\n' || 'Depois',
     format('separator: %s', (select answer from hub_briefing_questions where id = v_q3));
@@ -190,10 +190,33 @@ begin
 
   -- 16. cliente errado -> NULL e linha intacta
   update hub_briefing_questions set audio_transcription_status = 'pending' where id = v_q3;
-  v_row := briefing_audio_apply_transcript(v_ws, v_cli + 1, v_q3, 'Alheio', 1);
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli + 1, v_q3, v_key3, 'Alheio', 1);
   assert v_row.id is null, 'apply for another cliente must return NULL';
   assert (select answer from hub_briefing_questions where id = v_q3) = 'Antes.' || E'\n\n' || 'Depois',
     'apply for another cliente must not touch the row';
+
+  -- 17. chave amarrada: transcrição órfã (de uma chave já substituída por uma
+  -- re-gravação) não pode gravar por cima do texto/status da chave nova.
+  -- Sequência: pergunta guarda v_key3 pending (herdada do passo 16); simula
+  -- a re-gravação trocando para uma chave nova (v_key), e a transcrição
+  -- atrasada da chave antiga (v_key3) chega depois.
+  update hub_briefing_questions
+     set audio_r2_key = v_key, audio_transcript = null, audio_transcription_status = 'pending'
+   where id = v_q3;
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, v_key3, 'Transcrição atrasada da chave antiga.', 4);
+  assert v_row.id is null, 'apply with a stale key (superseded by a re-record) must return NULL';
+  assert (select audio_r2_key from hub_briefing_questions where id = v_q3) = v_key,
+    'stale-key apply must not touch audio_r2_key';
+  assert (select audio_transcript from hub_briefing_questions where id = v_q3) is null,
+    'stale-key apply must not write the orphaned transcript';
+  assert (select audio_transcription_status from hub_briefing_questions where id = v_q3) = 'pending',
+    'stale-key apply must not flip status to done';
+  assert (select answer from hub_briefing_questions where id = v_q3) = 'Antes.' || E'\n\n' || 'Depois',
+    'stale-key apply must not touch answer';
+  -- a chave atual (v_key) ainda aplica normalmente
+  v_row := briefing_audio_apply_transcript(v_ws, v_cli, v_q3, v_key, 'Transcrição da chave atual.', 4);
+  assert v_row.id is not null, 'apply with the current key must still succeed';
+  assert (select audio_transcription_status from hub_briefing_questions where id = v_q3) = 'done';
 
   perform set_config('request.jwt.claims', '', true);
 

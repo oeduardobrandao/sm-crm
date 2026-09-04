@@ -217,9 +217,24 @@ $$;
 -- de 'Antes.\n' virar 'Antes.\n\nDepois'.
 --
 -- Devolve NULL (linha composta toda nula) quando nada casou: já 'done',
--- pergunta sem áudio, ou cliente/conta errados.
+-- pergunta sem áudio, cliente/conta errados, ou p_key não é mais a chave
+-- atual da linha (ver p_key abaixo).
+--
+-- p_key amarra o append à gravação que foi transcrita. Sem isso: usuário
+-- grava A -> finalize reserva + 'pending' e dispara a transcrição de A
+-- (síncrona, até ~90s); o fetch do cliente cai; usuário re-grava B ->
+-- finalize troca para B ('pending' de novo) e enfileira A para exclusão; a
+-- transcrição de A (que ainda estava rodando) termina e chamava esta RPC só
+-- com o filtro `audio_transcription_status <> 'done'` — casava a linha
+-- mesmo já apontando para B, gravava o TEXTO de A e status 'done'; quando a
+-- transcrição de B terminava, o guard `<> 'done'` barrava e o texto de B
+-- era descartado (o player toca B, a resposta é de A, sem retry). p_key
+-- exige que audio_r2_key ainda seja a chave que foi transcrita: uma
+-- transcrição órfã (de uma chave já substituída) não casa mais nenhuma
+-- linha e devolve NULL, e quem chamou relê o estado atual em vez de supor
+-- que escreveu.
 CREATE OR REPLACE FUNCTION public.briefing_audio_apply_transcript(
-  p_conta_id uuid, p_cliente_id bigint, p_question_id uuid, p_text text, p_duration int
+  p_conta_id uuid, p_cliente_id bigint, p_question_id uuid, p_key text, p_text text, p_duration int
 ) RETURNS hub_briefing_questions
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -246,7 +261,7 @@ BEGIN
    WHERE id = p_question_id
      AND conta_id = p_conta_id
      AND cliente_id = p_cliente_id
-     AND audio_r2_key IS NOT NULL
+     AND audio_r2_key = p_key
      AND audio_transcription_status IS DISTINCT FROM 'done'
   RETURNING * INTO v_row;
 
@@ -258,5 +273,5 @@ REVOKE ALL ON FUNCTION public.briefing_audio_finalize(uuid, bigint, uuid, text, 
 GRANT EXECUTE ON FUNCTION public.briefing_audio_finalize(uuid, bigint, uuid, text, bigint, text, int) TO service_role;
 REVOKE ALL ON FUNCTION public.briefing_audio_release(uuid, bigint, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.briefing_audio_release(uuid, bigint, uuid) TO service_role;
-REVOKE ALL ON FUNCTION public.briefing_audio_apply_transcript(uuid, bigint, uuid, text, int) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.briefing_audio_apply_transcript(uuid, bigint, uuid, text, int) TO service_role;
+REVOKE ALL ON FUNCTION public.briefing_audio_apply_transcript(uuid, bigint, uuid, text, text, int) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.briefing_audio_apply_transcript(uuid, bigint, uuid, text, text, int) TO service_role;

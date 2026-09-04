@@ -194,6 +194,10 @@ Deno.test("finalize sem transcriber: marca failed, mantém áudio e devolve answ
     "transcription update must scope by cliente_id",
   );
   assert(
+    upd?.modifiers.some((m) => m.method === "eq" && m.args[0] === "audio_r2_key" && m.args[1] === KEY),
+    "failure update must be scoped to the key that was actually transcribed",
+  );
+  assert(
     upd?.modifiers.some((m) => m.method === "neq" && m.args[0] === "audio_transcription_status" && m.args[1] === "done"),
     "failure update must be conditioned on audio_transcription_status != done",
   );
@@ -247,7 +251,7 @@ Deno.test("finalize com transcriber: anexa via RPC atômica e devolve a linha da
   assert(!db.calls.some((c) => c.operation === "update"), "append must not go through a PostgREST UPDATE");
   const apply = db.calls.find((c) => c.table === "rpc:briefing_audio_apply_transcript");
   assertEquals(apply?.payload, {
-    p_conta_id: "conta-1", p_cliente_id: 14, p_question_id: Q,
+    p_conta_id: "conta-1", p_cliente_id: 14, p_question_id: Q, p_key: KEY,
     p_text: "Nossa marca nasceu em 2010.", p_duration: 12,
   });
 });
@@ -338,6 +342,37 @@ Deno.test("finalize: RPC sem linha (corrida perdida) devolve o estado relido, se
   assertEquals(res.status, 200);
   assertEquals(res.body.answer, "Já tinha texto.\n\nOutro venceu.");
   assertEquals((res.body.audio as Record<string, unknown>).transcription_status, "done");
+});
+
+Deno.test("finalize: transcrição órfã de uma chave substituída (re-gravação) não sobrescreve a gravação nova", async () => {
+  const OTHER_KEY = `briefing-audio/conta-1/${Q}/newer-uuid.webm`;
+  const db = createSupabaseQueryMock();
+  db.queueRpc("briefing_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
+  // Este transcribe está processando KEY, mas a pergunta já foi re-gravada:
+  // a linha lida aqui ainda é a de KEY (é o que este runTranscription vê).
+  db.queue("hub_briefing_questions", "select", { data: audioRow, error: null });
+  // A RPC amarra o append à chave (p_key = KEY); como audio_r2_key da linha já
+  // é OTHER_KEY, nada casa e ela devolve NULL.
+  db.queueRpc("briefing_audio_apply_transcript", { data: null, error: null });
+  // O reload reflete a gravação nova: chave e status diferentes dos que este
+  // transcribe processou.
+  db.queue("hub_briefing_questions", "select", {
+    data: {
+      ...audioRow, audio_r2_key: OTHER_KEY, audio_transcription_status: "pending", answer: "Já tinha texto.",
+      // Recente: garante que STALE_PENDING_MS (buildAudioView) não rebaixe
+      // este "pending" para "failed" e mascare o que este teste checa.
+      audio_recorded_at: new Date().toISOString(),
+    },
+    error: null,
+  });
+  const res = await finalizeBriefingAudio(finalizeArgs(db, {
+    transcribe: async () => ({ text: "Texto da gravação antiga, não deve aparecer." }),
+  }));
+  assertEquals(res.status, 200);
+  assertEquals(res.body.answer, "Já tinha texto.");
+  assertEquals((res.body.audio as Record<string, unknown>).transcription_status, "pending");
+  const apply = db.calls.find((c) => c.table === "rpc:briefing_audio_apply_transcript");
+  assertEquals((apply?.payload as Record<string, unknown>).p_key, KEY, "apply must be keyed to the audio it actually transcribed");
 });
 
 Deno.test("finalize: linha composta toda nula do PostgREST conta como 'não casou'", async () => {
