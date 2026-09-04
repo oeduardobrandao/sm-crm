@@ -136,9 +136,9 @@ Deno.serve(async (req: Request) => {
       case "list-popups":
         return await handleListPopups(svc, body, headers);
       case "create-popup":
-        return await handleCreatePopup(svc, body, admin.id, headers);
+        return await handleCreatePopup(svc, body, { adminId: admin.id, userId: user.id }, headers);
       case "update-popup":
-        return await handleUpdatePopup(svc, body, headers);
+        return await handleUpdatePopup(svc, body, { userId: user.id }, headers);
       case "delete-popup":
         return await handleDeletePopup(svc, body, headers);
       case "list-kb-articles":

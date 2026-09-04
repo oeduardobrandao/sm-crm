@@ -81,6 +81,9 @@ Deno.test("validatePopupFields: par de CTA, until_cta, require_ack, tamanhos e f
   assert(validatePopupFields({ ...base, starts_at: "2026-09-02T00:00:00Z", ends_at: "2026-09-01T00:00:00Z" }) !== null, "ends antes de starts");
   assert(validatePopupFields({ ...base, starts_at: "2026-09-02T00:00:00Z", ends_at: "2026-09-02T00:00:00Z" }) !== null, "ends igual a starts");
   assert(validatePopupFields({ ...base, starts_at: "not-a-date", ends_at: "2026-09-02T00:00:00Z" }) !== null, "timestamp invalido");
+  assert(validatePopupFields({ ...base, starts_at: "not-a-date" }) !== null, "starts_at sozinho invalido");
+  assert(validatePopupFields({ ...base, ends_at: "nope" }) !== null, "ends_at sozinho invalido");
+  assertEquals(validatePopupFields({ ...base, starts_at: "2026-09-01T00:00:00Z" }), null);
 });
 
 type Resp = { data: unknown; error: unknown };
@@ -141,17 +144,17 @@ Deno.test("list-popups: junta counts da view por popup, zerando ações ausentes
 });
 
 Deno.test("create-popup: 400 sem pages/target_mode, 400 com pages inválido, 201 com allowlist e created_by", async () => {
-  let r = await handleCreatePopup(makeFakeDb({}).db, { action: "create-popup", target_mode: "all" }, "adm", H);
+  let r = await handleCreatePopup(makeFakeDb({}).db, { action: "create-popup", target_mode: "all" }, { adminId: "adm", userId: "u1" }, H);
   assertEquals(r.status, 400);
   assertEquals((await r.json()).error, "Invalid popup");
-  r = await handleCreatePopup(makeFakeDb({}).db, { action: "create-popup", pages: [], target_mode: "all" }, "adm", H);
+  r = await handleCreatePopup(makeFakeDb({}).db, { action: "create-popup", pages: [], target_mode: "all" }, { adminId: "adm", userId: "u1" }, H);
   assertEquals(r.status, 400);
 
   const { db, calls } = makeFakeDb({ global_popups: [{ data: ROW, error: null }] });
   r = await handleCreatePopup(
     db,
     { action: "create-popup", pages: PAGES, target_mode: "all", cta_label: "Ver", cta_url: "/x", bogus: 1 },
-    "adm",
+    { adminId: "adm", userId: "u1" },
     H,
   );
   assertEquals(r.status, 201);
@@ -166,7 +169,7 @@ Deno.test("create-popup: 400 quando as regras cruzadas falham (until_cta sem CTA
   const r = await handleCreatePopup(
     makeFakeDb({}).db,
     { action: "create-popup", pages: PAGES, target_mode: "all", frequency: "until_cta" },
-    "adm",
+    { adminId: "adm", userId: "u1" },
     H,
   );
   assertEquals(r.status, 400);
@@ -178,7 +181,7 @@ Deno.test("update-popup: valida sobre a linha mesclada e atualiza só a allowlis
   const { db, calls } = makeFakeDb({
     global_popups: [{ data: current, error: null }, { data: { ...current, frequency: "until_cta" }, error: null }],
   });
-  const r = await handleUpdatePopup(db, { action: "update-popup", popup_id: "p1", frequency: "until_cta", id: "hack" }, H);
+  const r = await handleUpdatePopup(db, { action: "update-popup", popup_id: "p1", frequency: "until_cta", id: "hack" }, { userId: "u1" }, H);
   assertEquals(r.status, 200);
   const payload = lastPayload(calls, "global_popups", "update")!;
   assertEquals(payload.frequency, "until_cta");
@@ -190,13 +193,14 @@ Deno.test("update-popup: 400 quando a mescla viola regra (require_ack sobre unti
   let r = await handleUpdatePopup(
     makeFakeDb({ global_popups: [{ data: current, error: null }] }).db,
     { action: "update-popup", popup_id: "p1", require_ack: true },
+    { userId: "u1" },
     H,
   );
   assertEquals(r.status, 400);
   r = await handleUpdatePopup(makeFakeDb({ global_popups: [{ data: null, error: null }] }).db,
-    { action: "update-popup", popup_id: "nope", status: "active" }, H);
+    { action: "update-popup", popup_id: "nope", status: "active" }, { userId: "u1" }, H);
   assertEquals(r.status, 404);
-  r = await handleUpdatePopup(makeFakeDb({}).db, { action: "update-popup", popup_id: "p1" }, H);
+  r = await handleUpdatePopup(makeFakeDb({}).db, { action: "update-popup", popup_id: "p1" }, { userId: "u1" }, H);
   assertEquals(r.status, 400);
 });
 
@@ -230,7 +234,7 @@ Deno.test("create-popup: texto só com espaços vira null antes de persistir (pa
   const r = await handleCreatePopup(
     db,
     { action: "create-popup", pages: PAGES, target_mode: "all", cta_label: "   ", cta_url: null, secondary_label: "" },
-    "adm",
+    { adminId: "adm", userId: "u1" },
     H,
   );
   assertEquals(r.status, 201);
@@ -241,7 +245,7 @@ Deno.test("create-popup: texto só com espaços vira null antes de persistir (pa
   const bad = await handleCreatePopup(
     makeFakeDb({}).db,
     { action: "create-popup", pages: PAGES, target_mode: "all", cta_label: "Ver", cta_url: "   " },
-    "adm",
+    { adminId: "adm", userId: "u1" },
     H,
   );
   assertEquals(bad.status, 400);
@@ -252,14 +256,52 @@ Deno.test("update-popup: patch com espaços é normalizado antes da mescla", asy
   const { db, calls } = makeFakeDb({
     global_popups: [{ data: current, error: null }, { data: { ...current, secondary_label: null }, error: null }],
   });
-  const r = await handleUpdatePopup(db, { action: "update-popup", popup_id: "p1", secondary_label: "  " }, H);
+  const r = await handleUpdatePopup(db, { action: "update-popup", popup_id: "p1", secondary_label: "  " }, { userId: "u1" }, H);
   assertEquals(r.status, 200);
   assertEquals(lastPayload(calls, "global_popups", "update")!.secondary_label, null);
 
   const bad = await handleUpdatePopup(
     makeFakeDb({ global_popups: [{ data: current, error: null }] }).db,
     { action: "update-popup", popup_id: "p1", cta_url: " " },
+    { userId: "u1" },
     H,
   );
   assertEquals(bad.status, 400);
+});
+
+const CONTA = "11111111-1111-1111-1111-111111111111";
+const OTHER = "22222222-2222-2222-2222-222222222222";
+
+Deno.test("validatePages: com allowedContaId, image_key de outra conta é rejeitada", () => {
+  const mine = `contas/${CONTA}/files/a.png`;
+  const theirs = `contas/${OTHER}/files/a.png`;
+  assertEquals(validatePages([{ title: "T", body: "B", image_key: mine }], CONTA).ok, true);
+  assertEquals(validatePages([{ title: "T", body: "B", image_key: theirs }], CONTA).ok, false);
+  assertEquals(validatePages([{ title: "T", body: "B" }], CONTA).ok, true);
+});
+
+Deno.test("create-popup: image_key só da conta do admin; sem imagem não consulta profiles", async () => {
+  const withImg = (key: string) => ({ action: "create-popup", pages: [{ title: "T", body: "B", image_key: key }], target_mode: "all" });
+  const ok = makeFakeDb({ profiles: [{ data: { conta_id: CONTA }, error: null }], global_popups: [{ data: ROW, error: null }] });
+  assertEquals((await handleCreatePopup(ok.db, withImg(`contas/${CONTA}/files/a.png`), { adminId: "adm", userId: "u1" }, H)).status, 201);
+
+  const bad = makeFakeDb({ profiles: [{ data: { conta_id: CONTA }, error: null }] });
+  const r = await handleCreatePopup(bad.db, withImg(`contas/${OTHER}/files/a.png`), { adminId: "adm", userId: "u1" }, H);
+  assertEquals(r.status, 400);
+  assertEquals((await r.json()).error, "Invalid popup");
+  assert(!bad.calls.some((c) => c.table === "global_popups" && c.method === "insert"), "inseriu com image_key alheia");
+
+  const noImg = makeFakeDb({ global_popups: [{ data: ROW, error: null }] });
+  await handleCreatePopup(noImg.db, { action: "create-popup", pages: PAGES, target_mode: "all" }, { adminId: "adm", userId: "u1" }, H);
+  assert(!noImg.calls.some((c) => c.table === "profiles"), "consultou profiles sem imagem");
+
+  const noProfile = makeFakeDb({ profiles: [{ data: null, error: null }] });
+  assertEquals((await handleCreatePopup(noProfile.db, withImg(`contas/${CONTA}/files/a.png`), { adminId: "adm", userId: "u1" }, H)).status, 400);
+});
+
+Deno.test("update-popup: image_key de outra conta é 400 antes de ler a linha", async () => {
+  const db = makeFakeDb({ profiles: [{ data: { conta_id: CONTA }, error: null }] });
+  const r = await handleUpdatePopup(db.db, { action: "update-popup", popup_id: "p1", pages: [{ title: "T", body: "B", image_key: `contas/${OTHER}/files/a.png` }] }, { userId: "u1" }, H);
+  assertEquals(r.status, 400);
+  assert(!db.calls.some((c) => c.table === "global_popups"), "tocou global_popups com image_key alheia");
 });

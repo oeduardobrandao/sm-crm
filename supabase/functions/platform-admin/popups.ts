@@ -38,6 +38,7 @@ function requiredText(value: unknown, max: number): string | null {
 
 export function validatePages(
   input: unknown,
+  allowedContaId?: string,
 ): { ok: true; pages: PopupPage[] } | { ok: false; error: string } {
   if (!Array.isArray(input)) return { ok: false, error: "pages must be an array" };
   if (input.length < 1 || input.length > MAX_PAGES) {
@@ -63,6 +64,13 @@ export function validatePages(
     if (!image.ok) return { ok: false, error: `page ${i}: image_key invalid` };
     if (image.value !== null && !IMAGE_KEY_RE.test(image.value)) {
       return { ok: false, error: `page ${i}: image_key must be an R2 key` };
+    }
+    if (
+      image.value !== null &&
+      allowedContaId !== undefined &&
+      !image.value.startsWith(`contas/${allowedContaId}/files/`)
+    ) {
+      return { ok: false, error: `page ${i}: image_key belongs to another workspace` };
     }
     pages.push({ title, eyebrow: eyebrow.value, body, image_key: image.value });
   }
@@ -107,12 +115,13 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
   }
 
   // O banco tem o CHECK (ends_at > starts_at); barrar aqui vira 400 em vez de 500.
-  if (typeof row.starts_at === "string" && typeof row.ends_at === "string") {
-    const start = Date.parse(row.starts_at);
-    const end = Date.parse(row.ends_at);
-    if (Number.isNaN(start) || Number.isNaN(end)) return "invalid schedule timestamps";
-    if (end <= start) return "ends_at must be after starts_at";
-  }
+  // Cada timestamp, se presente como string, precisa parsear sozinho -- um único
+  // starts_at/ends_at malformado (sem o outro lado) não pode cair direto no CHECK e virar 500.
+  const start = typeof row.starts_at === "string" ? Date.parse(row.starts_at) : null;
+  if (start !== null && Number.isNaN(start)) return "invalid schedule timestamps";
+  const end = typeof row.ends_at === "string" ? Date.parse(row.ends_at) : null;
+  if (end !== null && Number.isNaN(end)) return "invalid schedule timestamps";
+  if (start !== null && end !== null && end <= start) return "ends_at must be after starts_at";
   return null;
 }
 
@@ -149,6 +158,25 @@ function normalizePopupText(row: Record<string, unknown>): Record<string, unknow
   return out;
 }
 
+/** conta_id do admin chamador (profiles.id = auth uid). As imagens sobem via file-upload-url
+ * sob contas/<conta>/files/, então uma image_key legítima sempre tem este prefixo. */
+async function adminContaId(svc: Svc, userId: string): Promise<string | null> {
+  const { data, error } = await svc.from("profiles").select("conta_id").eq("id", userId).maybeSingle();
+  if (error) throw error;
+  return (data?.conta_id as string | undefined) ?? null;
+}
+
+function pagesHaveImages(pages: unknown): boolean {
+  return (
+    Array.isArray(pages) &&
+    pages.some(
+      (p) =>
+        p && typeof p === "object" && typeof (p as Record<string, unknown>).image_key === "string" &&
+        (p as Record<string, unknown>).image_key !== "",
+    )
+  );
+}
+
 export async function handleListPopups(svc: Svc, body: { status?: string }, headers: Headers) {
   let query = svc.from("global_popups").select("*").order("created_at", { ascending: false });
   if (body.status) query = query.eq("status", body.status);
@@ -177,19 +205,28 @@ export async function handleListPopups(svc: Svc, body: { status?: string }, head
 export async function handleCreatePopup(
   svc: Svc,
   body: Record<string, unknown>,
-  adminId: string,
+  actor: { adminId: string; userId: string },
   headers: Headers,
 ) {
   if (body.pages === undefined || !body.target_mode) {
     console.error("[popups] create rejected: pages and target_mode are required");
     return json({ error: "Invalid popup" }, 400, headers);
   }
-  const pages = validatePages(body.pages);
+  let contaId: string | undefined;
+  if (pagesHaveImages(body.pages)) {
+    const found = await adminContaId(svc, actor.userId);
+    if (found === null) {
+      console.error("[popups] create rejected: admin has no conta_id");
+      return json({ error: "Invalid popup" }, 400, headers);
+    }
+    contaId = found;
+  }
+  const pages = validatePages(body.pages, contaId);
   if (!pages.ok) {
     console.error("[popups] create rejected:", pages.error);
     return json({ error: "Invalid popup" }, 400, headers);
   }
-  const insert = normalizePopupText({ ...pickColumns(body), pages: pages.pages, created_by: adminId });
+  const insert = normalizePopupText({ ...pickColumns(body), pages: pages.pages, created_by: actor.adminId });
   const fieldError = validatePopupFields(insert);
   if (fieldError) {
     console.error("[popups] create rejected:", fieldError);
@@ -201,7 +238,12 @@ export async function handleCreatePopup(
   return json({ popup: data }, 201, headers);
 }
 
-export async function handleUpdatePopup(svc: Svc, body: Record<string, unknown>, headers: Headers) {
+export async function handleUpdatePopup(
+  svc: Svc,
+  body: Record<string, unknown>,
+  actor: { userId: string },
+  headers: Headers,
+) {
   const popupId = body.popup_id;
   if (typeof popupId !== "string" || !popupId) return json({ error: "popup_id is required" }, 400, headers);
 
@@ -209,7 +251,16 @@ export async function handleUpdatePopup(svc: Svc, body: Record<string, unknown>,
   if (Object.keys(update).length === 0) return json({ error: "No fields to update" }, 400, headers);
 
   if (update.pages !== undefined) {
-    const pages = validatePages(update.pages);
+    let contaId: string | undefined;
+    if (pagesHaveImages(update.pages)) {
+      const found = await adminContaId(svc, actor.userId);
+      if (found === null) {
+        console.error("[popups] update rejected: admin has no conta_id");
+        return json({ error: "Invalid popup" }, 400, headers);
+      }
+      contaId = found;
+    }
+    const pages = validatePages(update.pages, contaId);
     if (!pages.ok) {
       console.error("[popups] update rejected:", pages.error);
       return json({ error: "Invalid popup" }, 400, headers);
