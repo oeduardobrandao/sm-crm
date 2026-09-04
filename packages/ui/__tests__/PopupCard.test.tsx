@@ -61,9 +61,41 @@ describe('PopupCard navegação por posição', () => {
     expect(screen.getByRole('button', { name: 'Voltar' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Próximo' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Ver' }));
-    expect(props.onCta).toHaveBeenCalled();
+    expect(props.onCta).toHaveBeenCalledWith(2);
     fireEvent.click(screen.getByRole('button', { name: 'Agora não' }));
     expect(props.onSecondary).toHaveBeenCalled();
+  });
+
+  it('CTA de página no meio: botão principal acima da navegação e Próximo vira outline', () => {
+    const { props } = renderCard({
+      page: 1,
+      pages: [pages[0], { ...pages[1], ctaLabel: 'Ver só aqui' }, pages[2]],
+    });
+    const cta = screen.getByRole('button', { name: 'Ver só aqui' });
+    fireEvent.click(cta);
+    expect(props.onCta).toHaveBeenCalledWith(1);
+    const next = screen.getByRole('button', { name: 'Próximo' });
+    expect(next.getAttribute('style')).toContain('transparent');
+    expect(cta.getAttribute('style')).not.toContain('transparent');
+  });
+
+  it('última página com CTA próprio substitui o global; sem CTA efetivo só o secundário', () => {
+    const { props, unmount } = renderCard({
+      page: 2,
+      pages: [pages[0], pages[1], { ...pages[2], ctaLabel: 'Sobrescrito' }],
+    });
+    expect(screen.queryByRole('button', { name: 'Ver' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Sobrescrito' }));
+    expect(props.onCta).toHaveBeenCalledWith(2);
+    unmount();
+    renderCard({ page: 2, ctaLabel: null });
+    expect(screen.queryByRole('button', { name: 'Ver' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Agora não' })).toBeInTheDocument();
+  });
+
+  it('primeira página sem CTA próprio não mostra o CTA global', () => {
+    renderCard({ page: 0 });
+    expect(screen.queryByRole('button', { name: 'Ver' })).toBeNull();
   });
 
   it('CTA ink usa os tokens de tema do CRM (--cta-bg/--cta-fg), com fallback claro', () => {

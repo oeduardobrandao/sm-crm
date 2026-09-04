@@ -15,6 +15,8 @@ export interface PopupCardPage {
   eyebrow?: string | null;
   body: string;
   imageUrl?: string | null;
+  /** CTA próprio da página; sobrescreve o CTA global (que só aparece na última). */
+  ctaLabel?: string | null;
 }
 
 export interface PopupCardProps {
@@ -26,7 +28,7 @@ export interface PopupCardProps {
   secondaryLabel: string;
   requireAck: boolean;
   sanitizeHref: (href: string) => string;
-  onCta?: () => void;
+  onCta?: (pageIndex: number) => void;
   onSecondary: () => void;
   onClose: () => void;
   titleId?: string;
@@ -63,8 +65,17 @@ const btnBase: CSSProperties = {
 };
 
 const btnStyles: Record<'ink' | 'brand' | 'ghost' | 'link', CSSProperties> = {
-  ink: { ...btnBase, background: 'var(--cta-bg, #12151a)', color: 'var(--cta-fg, #ffffff)' },
-  brand: { ...btnBase, background: '#ffbf30', color: '#12151a' },
+  // Borda combina com o próprio fundo (em vez de `transparent`): mesmo efeito visual
+  // (borda invisível, largura reservada p/ alinhar com ghost/link), mas o texto
+  // "transparent" some do style inline, que é o que os testes usam pra distinguir
+  // o CTA (ink/brand) do "Próximo" fantasma (ghost) na página com CTA próprio.
+  ink: {
+    ...btnBase,
+    background: 'var(--cta-bg, #12151a)',
+    color: 'var(--cta-fg, #ffffff)',
+    borderColor: 'var(--cta-bg, #12151a)',
+  },
+  brand: { ...btnBase, background: '#ffbf30', color: '#12151a', borderColor: '#ffbf30' },
   ghost: {
     ...btnBase,
     background: 'transparent',
@@ -121,7 +132,9 @@ export function PopupCard({
   const isFirst = index === 0;
   const isLast = index === total - 1;
   const multi = total > 1;
-  const hasCta = Boolean(ctaLabel && onCta);
+  const pageCtaLabel = current.ctaLabel ?? (isLast ? ctaLabel : null);
+  const hasCta = Boolean(pageCtaLabel && onCta);
+  const fireCta = () => onCta?.(index);
 
   const counter = multi ? `${index + 1} de ${total}` : null;
   const eyebrow = current.eyebrow
@@ -224,18 +237,25 @@ export function PopupCard({
         </div>
 
         {multi && !isLast && (
-          <div className="mt-[18px] flex items-center justify-between gap-2.5">
-            {isFirst ? (
-              <span />
-            ) : (
-              <Btn kind="link" onClick={() => onPageChange(index - 1)}>
-                Voltar
+          <div className="mt-[18px] flex flex-col gap-2.5">
+            {hasCta && (
+              <Btn kind={ctaStyle} onClick={fireCta} className="w-full">
+                {pageCtaLabel}
               </Btn>
             )}
-            {dots}
-            <Btn kind={ctaStyle} onClick={() => onPageChange(index + 1)}>
-              Próximo
-            </Btn>
+            <div className="flex items-center justify-between gap-2.5">
+              {isFirst ? (
+                <span />
+              ) : (
+                <Btn kind="link" onClick={() => onPageChange(index - 1)}>
+                  Voltar
+                </Btn>
+              )}
+              {dots}
+              <Btn kind={hasCta ? 'ghost' : ctaStyle} onClick={() => onPageChange(index + 1)}>
+                Próximo
+              </Btn>
+            </div>
           </div>
         )}
 
@@ -251,8 +271,8 @@ export function PopupCard({
             )}
             <div className="flex flex-col gap-2.5 sm:flex-row">
               {hasCta && (
-                <Btn kind={ctaStyle} onClick={onCta} className="flex-1">
-                  {ctaLabel}
+                <Btn kind={ctaStyle} onClick={fireCta} className="flex-1">
+                  {pageCtaLabel}
                 </Btn>
               )}
               <Btn kind="ghost" onClick={onSecondary} className="flex-1">
