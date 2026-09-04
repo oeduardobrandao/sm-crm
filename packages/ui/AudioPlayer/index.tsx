@@ -101,8 +101,11 @@ export function AudioPlayer({ src, durationSeconds, className, style, label }: A
         onEnded={() => {
           setPlaying(false);
           setCurrent(0);
+          if (audioRef.current) audioRef.current.currentTime = 0;
         }}
         onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
+        // Both wired: some engines (MediaRecorder .webm) only report a finite
+        // duration on 'durationchange', not on 'loadedmetadata'.
         onLoadedMetadata={(e) => setMediaDuration(e.currentTarget.duration)}
         onDurationChange={(e) => setMediaDuration(e.currentTarget.duration)}
       />
@@ -121,16 +124,27 @@ export function AudioPlayer({ src, durationSeconds, className, style, label }: A
           alignItems: 'center',
           justifyContent: 'center',
           background: 'var(--audio-btn-bg, currentColor)',
-          color: 'var(--audio-btn-fg, #fff)',
         }}
       >
         {playing ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="var(--audio-btn-fg, #fff)"
+            aria-hidden
+          >
             <rect x="6" y="5" width="4" height="14" rx="1" />
             <rect x="14" y="5" width="4" height="14" rx="1" />
           </svg>
         ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="var(--audio-btn-fg, #fff)"
+            aria-hidden
+          >
             <path d="M8 5.5v13l10-6.5z" />
           </svg>
         )}

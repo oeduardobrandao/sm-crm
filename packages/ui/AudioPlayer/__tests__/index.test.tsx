@@ -9,7 +9,11 @@ beforeEach(() => {
   Object.defineProperty(HTMLMediaElement.prototype, 'play', { configurable: true, value: play });
   Object.defineProperty(HTMLMediaElement.prototype, 'pause', { configurable: true, value: pause });
 });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  delete (HTMLMediaElement.prototype as { play?: unknown }).play;
+  delete (HTMLMediaElement.prototype as { pause?: unknown }).pause;
+});
 
 describe('AudioPlayer', () => {
   it('formats clocks as m:ss', () => {
@@ -60,12 +64,79 @@ describe('AudioPlayer', () => {
     expect(audio.currentTime).toBe(55);
   });
 
-  it('resets to paused at the end', () => {
+  it('seeks Home to 0 and End to the total', () => {
+    render(<AudioPlayer src="blob:x" durationSeconds={100} />);
+    const audio = document.querySelector('audio') as HTMLAudioElement;
+    Object.defineProperty(audio, 'currentTime', { configurable: true, writable: true, value: 40 });
+    const slider = screen.getByRole('slider');
+
+    fireEvent.keyDown(slider, { key: 'End' });
+    expect(audio.currentTime).toBe(100);
+    expect(slider).toHaveAttribute('aria-valuenow', '100');
+
+    fireEvent.keyDown(slider, { key: 'Home' });
+    expect(audio.currentTime).toBe(0);
+    expect(slider).toHaveAttribute('aria-valuenow', '0');
+  });
+
+  it('ignores track clicks when there is no known total duration', () => {
+    render(<AudioPlayer src="blob:x" />);
+    const audio = document.querySelector('audio') as HTMLAudioElement;
+    Object.defineProperty(audio, 'currentTime', { configurable: true, writable: true, value: 0 });
+    const slider = screen.getByRole('slider');
+    slider.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        width: 200,
+        top: 0,
+        height: 4,
+        right: 200,
+        bottom: 4,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.click(slider, { clientX: 100 });
+    expect(audio.currentTime).toBe(0);
+
+    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    expect(audio.currentTime).toBe(0);
+  });
+
+  it('resets to paused at the end and rewinds playback position to 0', () => {
     render(<AudioPlayer src="blob:x" durationSeconds={10} />);
     const audio = document.querySelector('audio') as HTMLAudioElement;
+    Object.defineProperty(audio, 'currentTime', { configurable: true, writable: true, value: 10 });
     fireEvent(audio, new Event('play'));
     expect(screen.getByRole('button', { name: /pausar/i })).toBeInTheDocument();
     fireEvent(audio, new Event('ended'));
     expect(screen.getByRole('button', { name: /reproduzir/i })).toBeInTheDocument();
+    expect(audio.currentTime).toBe(0);
+  });
+
+  it('resets the clock and button when the src changes', () => {
+    const { rerender } = render(<AudioPlayer src="blob:a" durationSeconds={30} />);
+    const audio = document.querySelector('audio') as HTMLAudioElement;
+    Object.defineProperty(audio, 'currentTime', { configurable: true, writable: true, value: 12 });
+    fireEvent(audio, new Event('timeupdate'));
+    fireEvent(audio, new Event('play'));
+    expect(screen.getByText('0:12 / 0:30')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /pausar/i })).toBeInTheDocument();
+
+    rerender(<AudioPlayer src="blob:b" durationSeconds={45} />);
+    expect(screen.getByText('0:00 / 0:45')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reproduzir/i })).toBeInTheDocument();
+  });
+
+  it('draws the play button visible with no CSS variables set', () => {
+    render(<AudioPlayer src="blob:x" durationSeconds={10} />);
+    const button = screen.getByRole('button', { name: /reproduzir/i });
+    expect(button.style.color).toBe('');
+    expect(button.style.background).toBe('var(--audio-btn-bg, currentColor)');
+
+    const svg = button.querySelector('svg');
+    expect(svg).not.toBeNull();
+    expect(svg?.getAttribute('fill')).toBe('var(--audio-btn-fg, #fff)');
   });
 });
