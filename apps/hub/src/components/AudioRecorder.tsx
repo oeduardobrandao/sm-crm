@@ -151,7 +151,7 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
   }
 
   async function send() {
-    if (!blob || sendingRef.current) return;
+    if (!blob || sendingRef.current || disabled) return;
     sendingRef.current = true;
     setSending(true);
     const mime = blob.type || 'audio/webm';
@@ -249,7 +249,7 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
           <button
             type="button"
             className={`${BTN} hub-btn-primary`}
-            disabled={busy || sending}
+            disabled={disabled || busy || sending}
             onClick={() => void send()}
           >
             {sending || phase === 'uploading'
@@ -261,7 +261,7 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
           <button
             type="button"
             className={`${BTN} hub-btn-secondary`}
-            disabled={busy || sending}
+            disabled={disabled || busy || sending}
             onClick={discard}
           >
             Descartar

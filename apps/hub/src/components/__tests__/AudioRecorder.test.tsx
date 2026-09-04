@@ -217,6 +217,59 @@ describe('AudioRecorder', () => {
     );
   });
 
+  it('disables Enviar and Descartar in preview mode when disabled, and blocks the send', async () => {
+    vi.useFakeTimers();
+    const onRecorded = vi.fn(async () => {});
+    const { rerender } = render(
+      <AudioRecorder phase="idle" onRecorded={onRecorded} disabled={false} />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /gravar áudio/i }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /parar/i }));
+    });
+
+    vi.useRealTimers();
+
+    rerender(<AudioRecorder phase="idle" onRecorded={onRecorded} disabled />);
+
+    const sendBtn = screen.getByRole('button', { name: /enviar/i });
+    const discardBtn = screen.getByRole('button', { name: /descartar/i });
+    expect(sendBtn).toBeDisabled();
+    expect(discardBtn).toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(sendBtn);
+    });
+    expect(onRecorded).not.toHaveBeenCalled();
+  });
+
+  it('keeps Parar enabled while recording even when disabled is true', async () => {
+    vi.useFakeTimers();
+    const onRecorded = vi.fn(async () => {});
+    const { rerender } = render(
+      <AudioRecorder phase="idle" onRecorded={onRecorded} disabled={false} />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /gravar áudio/i }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    // `disabled` flips true mid-recording (e.g. a concurrent action on another
+    // question) -- stopping must still work so the mic gets released.
+    rerender(<AudioRecorder phase="idle" onRecorded={onRecorded} disabled />);
+
+    expect(screen.getByRole('button', { name: /parar/i })).toBeEnabled();
+  });
+
   it('does not leak an object URL when the recorder stops after unmount', async () => {
     vi.useFakeTimers();
     const onRecorded = vi.fn(async () => {});
