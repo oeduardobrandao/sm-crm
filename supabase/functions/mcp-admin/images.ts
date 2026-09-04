@@ -155,8 +155,9 @@ async function requireAdminConta(d: Deps): Promise<string> {
 }
 
 async function assertQuota(d: Deps, contaId: string, needed: number) {
-  const { data } = await d.db.from("workspaces").select("storage_quota_bytes, storage_used_bytes").eq("id", contaId).single();
-  const quota = data?.storage_quota_bytes as number | null | undefined;
+  // Quota vem do plano (effective_plan_limit); workspaces só guarda o consumo.
+  const quota = await d.storageQuota(contaId);
+  const { data } = await d.db.from("workspaces").select("storage_used_bytes").eq("id", contaId).single();
   const used = Number(data?.storage_used_bytes ?? 0);
   if (quota != null && used + needed > quota) throw new McpInputError("Cota de armazenamento do seu workspace excedida; libere espaço em Arquivos.");
 }

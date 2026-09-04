@@ -52,14 +52,16 @@ Deno.test("uploadKbImage modo B: URL assinada, pasta padrão uploads, mime fora 
 
 Deno.test("uploadPopupImage modo A: chave sob o conta do admin, PUT no R2, linha em files via RPC", async () => {
   const { db, calls } = makeFakeDb(
-    { profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }], workspaces: [{ data: { storage_quota_bytes: 1000000, storage_used_bytes: 10 }, error: null }] },
+    { profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }], workspaces: [{ data: { storage_used_bytes: 10 }, error: null }] },
     { file_insert_with_quota: [{ data: { id: 7 }, error: null }] },
   );
   const puts: string[] = [];
-  const r = await uploadPopupImage(makeDeps(db, { putObject: async (k) => { puts.push(k); } }), { filename: "banner", mime_type: "image/png", source_url: "https://cdn.x/y.png" });
+  const seen: string[] = [];
+  const r = await uploadPopupImage(makeDeps(db, { putObject: async (k) => { puts.push(k); }, storageQuota: async (id) => { seen.push(id); return null; } }), { filename: "banner", mime_type: "image/png", source_url: "https://cdn.x/y.png" });
   const key = "contas/11111111-1111-1111-1111-111111111111/files/00000001-0000-4000-8000-000000000000.png";
   assertEquals(r, { image_key: key, width: 10, height: 5, size_bytes: PNG_10x5.byteLength });
   assertEquals(puts, [key]);
+  assertEquals(seen, ["11111111-1111-1111-1111-111111111111"]);
   const p = rpcPayload(calls, "file_insert_with_quota")!;
   assertEquals(p.conta_id, "11111111-1111-1111-1111-111111111111");
   assertEquals(p.r2_key, key); assertEquals(p.kind, "image"); assertEquals(p.uploaded_by, CTX.user_id);
@@ -70,11 +72,11 @@ Deno.test("uploadPopupImage: admin sem conta_id, quota excedida, e falha no inse
   await expectInputError(() => uploadPopupImage(makeDeps(makeFakeDb({ profiles: [{ data: null, error: null }] }).db), { filename: "x", mime_type: "image/png", size_bytes: 10 }), "workspace");
   await expectInputError(() => uploadPopupImage(makeDeps(makeFakeDb({
     profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }],
-    workspaces: [{ data: { storage_quota_bytes: 100, storage_used_bytes: 95 }, error: null }],
-  }).db), { filename: "x", mime_type: "image/png", size_bytes: 10 }), "Cota");
+    workspaces: [{ data: { storage_used_bytes: 95 }, error: null }],
+  }).db, { storageQuota: async () => 100 }), { filename: "x", mime_type: "image/png", size_bytes: 10 }), "Cota");
   const deleted: string[] = [];
   const { db } = makeFakeDb(
-    { profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }], workspaces: [{ data: { storage_quota_bytes: null, storage_used_bytes: 0 }, error: null }] },
+    { profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }], workspaces: [{ data: { storage_used_bytes: 0 }, error: null }] },
     { file_insert_with_quota: [{ data: null, error: { message: "quota_exceeded" } }] },
   );
   await expectInputError(() => uploadPopupImage(makeDeps(db, { deleteObject: async (k) => { deleted.push(k); } }), { filename: "x", mime_type: "image/png", source_url: "https://cdn.x/y.png" }), "Cota");
@@ -82,9 +84,9 @@ Deno.test("uploadPopupImage: admin sem conta_id, quota excedida, e falha no inse
 });
 
 Deno.test("uploadPopupImage modo B: exige size_bytes; devolve upload_url pré-assinada (900 s)", async () => {
-  const { db } = makeFakeDb({ profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }], workspaces: [{ data: { storage_quota_bytes: null, storage_used_bytes: 0 }, error: null }] });
+  const { db } = makeFakeDb({ profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }], workspaces: [{ data: { storage_used_bytes: 0 }, error: null }] });
   await expectInputError(() => uploadPopupImage(makeDeps(db), { filename: "x", mime_type: "image/png" }), "size_bytes");
-  const { db: db2 } = makeFakeDb({ profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }], workspaces: [{ data: { storage_quota_bytes: null, storage_used_bytes: 0 }, error: null }] });
+  const { db: db2 } = makeFakeDb({ profiles: [{ data: { conta_id: "11111111-1111-1111-1111-111111111111" }, error: null }], workspaces: [{ data: { storage_used_bytes: 0 }, error: null }] });
   const r = await uploadPopupImage(makeDeps(db2), { filename: "x", mime_type: "image/png", size_bytes: 1234 });
   assertEquals(r, { image_key: "contas/11111111-1111-1111-1111-111111111111/files/00000001-0000-4000-8000-000000000000.png", upload_url: "https://r2/put/contas/11111111-1111-1111-1111-111111111111/files/00000001-0000-4000-8000-000000000000.png", expires_in: 900 });
 });

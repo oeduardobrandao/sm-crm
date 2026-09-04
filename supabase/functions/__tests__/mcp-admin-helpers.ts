@@ -73,6 +73,7 @@ export function makeDeps(db: unknown, over: Partial<Deps> = {}): Deps {
     deleteObject: async () => {},
     resolveDns: async (_h, t) => (t === "A" ? ["93.184.216.34"] : []),
     fetchUrl: async () => new Response(PNG_10x5, { status: 200, headers: { "content-type": "image/png" } }),
+    storageQuota: async () => null,
     ...over,
   };
 }

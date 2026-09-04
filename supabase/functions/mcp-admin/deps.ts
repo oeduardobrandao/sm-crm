@@ -13,4 +13,6 @@ export interface Deps {
   deleteObject: (key: string) => Promise<void>;
   resolveDns: (hostname: string, recordType: "A" | "AAAA") => Promise<string[]>;
   fetchUrl: (url: string, init: RequestInit) => Promise<Response>;
+  /** Limite de storage do plano efetivo (null = ilimitado); workspaces.storage_quota_bytes é coluna morta. */
+  storageQuota: (contaId: string) => Promise<number | null>;
 }
