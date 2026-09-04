@@ -86,17 +86,20 @@ export async function presignBriefingAudio(a: PresignAudioArgs): Promise<Briefin
   if (!validSize(a.size_bytes)) return { status: 400, body: { error: "size_bytes out of range" } };
 
   const { data: q } = await a.db.from("hub_briefing_questions")
-    .select("id").eq("id", a.question_id).eq("cliente_id", a.cliente_id).eq("conta_id", a.conta_id)
+    .select("id, audio_size_bytes").eq("id", a.question_id).eq("cliente_id", a.cliente_id).eq("conta_id", a.conta_id)
     .maybeSingle();
   if (!q) return { status: 404, body: { error: "Pergunta não encontrada." } };
 
   // Best-effort early quota check (authoritative check is in the RPC at finalize).
+  // Nets out this question's current audio_size_bytes, mirroring the RPC's
+  // `v_used - COALESCE(v_prev_bytes,0) + p_bytes`: a re-record replaces the
+  // existing audio, so its bytes shouldn't count twice against the quota.
   try {
     const { data: ws } = await a.db.from("workspaces")
       .select("storage_used_bytes").eq("id", a.conta_id).single();
     const quota = await effectivePlanLimit(a.db as never, a.conta_id, "storage_quota_bytes");
     if (quota !== null) {
-      const used = Number(ws?.storage_used_bytes ?? 0);
+      const used = Number(ws?.storage_used_bytes ?? 0) - Number(q.audio_size_bytes ?? 0);
       if (used + a.size_bytes > quota) {
         return { status: 413, body: { error: "quota_exceeded", used, quota } };
       }
@@ -174,14 +177,23 @@ async function runTranscription(a: TranscriptionArgs): Promise<BriefingAudioResu
     q.eq("id", a.question_id).eq("conta_id", a.conta_id).eq("cliente_id", a.cliente_id);
 
   if (!text) {
-    await where(a.db.from("hub_briefing_questions").update({ audio_transcription_status: "failed" }));
+    // Same neq guard as the success write below: if a concurrent run already
+    // flipped the row to "done", this failure must not downgrade it back.
+    await where(a.db.from("hub_briefing_questions").update({ audio_transcription_status: "failed" })).neq(
+      "audio_transcription_status",
+      "done",
+    );
+    // Re-read after the (possibly no-op) write so the response reflects
+    // whatever actually ended up on the row instead of an assumed "failed".
+    const current = await loadRow(a.db, a.conta_id, a.cliente_id, a.question_id);
+    const finalRow = current ?? { ...row, audio_transcription_status: "failed" };
     return {
       status: 200,
       body: {
         ok: true,
-        answer: row.answer ?? null,
-        transcript: null,
-        audio: await buildAudioView({ ...row, audio_transcription_status: "failed" }, a.signGetUrl),
+        answer: finalRow.answer ?? null,
+        transcript: finalRow.audio_transcript ?? null,
+        audio: await buildAudioView(finalRow, a.signGetUrl),
       },
     };
   }
