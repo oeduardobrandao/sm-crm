@@ -1026,6 +1026,8 @@ export function makeWorkerTranscriber(opts: {
 }
 ```
 
+**Decisão pós-review (2026-09-03), obrigatória:** o finalize precisa ser idempotente de ponta a ponta. A RPC já devolve `{reserved:false}` num retry com a mesma chave, mas o código acima transcreveria de novo e anexaria o texto duas vezes. Regras: (1) `finalizeBriefingAudio` lê `data.reserved`; se `false`, delega a `transcribeBriefingAudio` (que não re-anexa quando `done`); (2) `runTranscription` retorna o estado atual sem chamar `transcribe` quando `audio_transcription_status === "done"`; (3) a gravação final do `done` é condicional: `.update({...}).eq(id).eq(conta_id).eq(cliente_id).neq("audio_transcription_status", "done").select("id")`; se não atualizar nenhuma linha (outra execução concorrente venceu), recarrega a linha e devolve o `answer`/`audio` atuais sem anexar. Testes cobrem os três casos.
+
 - [ ] **Step 4: Rodar e confirmar PASS**
 
 ```bash
