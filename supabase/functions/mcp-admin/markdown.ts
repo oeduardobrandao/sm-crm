@@ -196,16 +196,48 @@ type Segment =
   | { kind: "callout"; emoji: string; color: string; text: string };
 
 /** Separa diretivas (:::callout … ::: e <!--tiptap:…-->) do Markdown comum, linha a linha. */
+/** Estado de uma cerca de código CommonMark (```/~~~) aberta ao varrer linhas. */
+type FenceState = { ch: string; len: number } | null;
+
+const FENCE_OPEN_RE = /^\s{0,3}(`{3,}|~{3,})/;
+const FENCE_CLOSE_RE = /^(`{3,}|~{3,})$/;
+
+/** Casa a abertura de uma cerca de código na linha (indentação de até 3 espaços, CommonMark). */
+function matchFenceOpen(line: string): FenceState {
+  const m = line.match(FENCE_OPEN_RE);
+  if (!m) return null;
+  return { ch: m[1][0], len: m[1].length };
+}
+
+/** true se `line` fecha a cerca `fence` (mesmo caractere, corrida >= comprimento de abertura). */
+function matchFenceClose(line: string, fence: FenceState): boolean {
+  if (!fence) return false;
+  const m = line.trim().match(FENCE_CLOSE_RE);
+  return !!m && m[1][0] === fence.ch && m[1].length >= fence.len;
+}
+
 function splitSegments(md: string): Segment[] {
   const lines = md.replace(/\r\n?/g, "\n").split("\n");
   const out: Segment[] = [];
   let buf: string[] = [];
+  let fence: FenceState = null;
   const flush = () => {
     if (buf.length) out.push({ kind: "md", text: buf.join("\n") });
     buf = [];
   };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (fence) {
+      buf.push(line);
+      if (matchFenceClose(line, fence)) fence = null;
+      continue;
+    }
+    const open = matchFenceOpen(line);
+    if (open) {
+      fence = open;
+      buf.push(line);
+      continue;
+    }
     const op = line.trim().match(OPAQUE_RE);
     if (op) { flush(); out.push({ kind: "opaque", b64: op[1] }); continue; }
     const co = line.trim().match(CALLOUT_OPEN_RE);
@@ -214,9 +246,22 @@ function splitSegments(md: string): Segment[] {
       const { emoji, color } = parseCalloutArgs(co[1] ?? "");
       const body: string[] = [];
       let closed = false;
+      let calloutFence: FenceState = null;
       for (i = i + 1; i < lines.length; i++) {
-        if (lines[i].trim() === ":::") { closed = true; break; }
-        body.push(lines[i]);
+        const inner = lines[i];
+        if (calloutFence) {
+          body.push(inner);
+          if (matchFenceClose(inner, calloutFence)) calloutFence = null;
+          continue;
+        }
+        const innerOpen = matchFenceOpen(inner);
+        if (innerOpen) {
+          calloutFence = innerOpen;
+          body.push(inner);
+          continue;
+        }
+        if (inner.trim() === ":::") { closed = true; break; }
+        body.push(inner);
       }
       if (!closed) throw new McpInputError(":::callout sem a linha de fechamento ':::'");
       out.push({ kind: "callout", emoji, color, text: body.join("\n") });

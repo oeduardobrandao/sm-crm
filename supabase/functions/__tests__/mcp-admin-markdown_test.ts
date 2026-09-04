@@ -107,6 +107,25 @@ Deno.test("markdownToTiptap: tabela e outros blocos sem equivalente são rejeita
   assertEquals(markdownToTiptap("   \n"), { type: "doc", content: [] });
 });
 
+Deno.test("markdownToTiptap: diretivas dentro de cerca de código são código, não callout/opaco; round-trip", () => {
+  const md = "Exemplo:\n\n```\n:::callout emoji=💡 color=blue\nDica\n:::\n<!--tiptap:AAAA-->\n```";
+  const doc = markdownToTiptap(md);
+  assertEquals(doc.content, [
+    p(t("Exemplo:")),
+    { type: "codeBlock", attrs: { language: null }, content: [t(":::callout emoji=💡 color=blue\nDica\n:::\n<!--tiptap:AAAA-->")] },
+  ]);
+  assertEquals(markdownToTiptap(tiptapToMarkdown(doc).markdown), doc);
+});
+
+Deno.test("markdownToTiptap: cerca de código dentro de callout não fecha o callout", () => {
+  const doc = markdownToTiptap(":::callout\n```\n:::\n```\n:::");
+  assertEquals(doc.content, [
+    { type: "callout", attrs: { emoji: "💡", color: "brown" }, content: [
+      { type: "codeBlock", attrs: { language: null }, content: [t(":::")] },
+    ] },
+  ]);
+});
+
 Deno.test("validateTiptapDoc: aceita todos os tipos e marks da allowlist", () => {
   const doc = { type: "doc", content: [
     { type: "heading", attrs: { level: 3 }, content: [t("h", [{ type: "underline" }, { type: "textStyle", attrs: { color: "#337EA9" } }, { type: "highlight", attrs: { color: "yellow" } }])] },
