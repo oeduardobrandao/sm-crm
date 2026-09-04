@@ -275,7 +275,7 @@ export async function removeBriefingAudio(a: RemoveAudioArgs): Promise<BriefingA
   if (!q) return { status: 404, body: { error: "Pergunta não encontrada." } };
   if (!q.audio_r2_key) return { status: 200, body: { ok: true } };
   const { error } = await a.db.rpc("briefing_audio_release", {
-    p_conta_id: a.conta_id, p_question_id: a.question_id,
+    p_conta_id: a.conta_id, p_cliente_id: a.cliente_id, p_question_id: a.question_id,
   });
   if (error) {
     console.error("briefing_audio_release error:", (error as { message?: string }).message ?? error);

@@ -90,13 +90,26 @@ begin
   assert v_blocked, 'wrong cliente must be rejected';
 
   -- 7. release zera colunas, decrementa e enfileira
-  assert briefing_audio_release(v_ws, v_q) = v_key2, 'release returns the old key';
+  assert briefing_audio_release(v_ws, v_cli, v_q) = v_key2, 'release returns the old key';
   select storage_used_bytes into v_used from workspaces where id = v_ws;
   assert v_used = 0, format('used after release: %s', v_used);
   assert (select audio_r2_key from hub_briefing_questions where id = v_q) is null;
   select count(*) into v_n from post_media_deletions where r2_key = v_key2;
   assert v_n = 1, 'released key must be enqueued once';
-  assert briefing_audio_release(v_ws, v_q) is null, 'second release is a no-op';
+  assert briefing_audio_release(v_ws, v_cli, v_q) is null, 'second release is a no-op';
+
+  -- 7b. release com cliente errado -> question_not_found (mesmo escopo do finalize)
+  v_res := briefing_audio_finalize(v_ws, v_cli, v_q, v_key, 500, 'audio/webm', 5);
+  v_blocked := false;
+  begin
+    perform briefing_audio_release(v_ws, v_cli + 1, v_q);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm like 'question_not_found%', format('wrong msg: %s', sqlerrm);
+    v_blocked := true;
+  end;
+  assert v_blocked, 'release for another cliente must be rejected';
+  assert (select audio_r2_key from hub_briefing_questions where id = v_q) = v_key, 'rejected release must not touch the row';
+  assert briefing_audio_release(v_ws, v_cli, v_q) = v_key, 'cleanup for step 8';
 
   -- 8. DELETE da pergunta com áudio decrementa e enfileira
   v_res := briefing_audio_finalize(v_ws, v_cli, v_q, v_key, 500, 'audio/webm', 5);
@@ -104,7 +117,7 @@ begin
   select storage_used_bytes into v_used from workspaces where id = v_ws;
   assert v_used = 0, format('used after row delete: %s', v_used);
   select count(*) into v_n from post_media_deletions where r2_key = v_key;
-  assert v_n = 2, 'deleted row key enqueued (second time for this key in this test)';
+  assert v_n = 3, 'deleted row key enqueued (third time for this key in this test: steps 3, 7b, 8)';
 
   -- 9. CHECK de tenant: chave de outra workspace não entra nem via service role
   -- (ainda sob claims service_role, então a guarda deixa passar e o CHECK dispara)
@@ -135,7 +148,7 @@ begin
   -- 12. release em workspace inexistente -> workspace_not_found
   v_blocked := false;
   begin
-    perform briefing_audio_release(gen_random_uuid(), v_q2);
+    perform briefing_audio_release(gen_random_uuid(), v_cli, v_q2);
   exception when sqlstate 'P0001' then
     assert sqlerrm like 'workspace_not_found%', format('wrong msg: %s', sqlerrm);
     v_blocked := true;

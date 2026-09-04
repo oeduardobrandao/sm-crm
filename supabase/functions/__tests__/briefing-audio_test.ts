@@ -176,7 +176,7 @@ Deno.test("remove: pergunta alheia 404; sem áudio ok; com áudio chama release"
   db.queueRpc("briefing_audio_release", { data: KEY, error: null });
   assertEquals((await removeBriefingAudio(base)).status, 200);
   const rel = db.calls.find((c) => c.table === "rpc:briefing_audio_release");
-  assertEquals(rel?.payload, { p_conta_id: "conta-1", p_question_id: Q });
+  assertEquals(rel?.payload, { p_conta_id: "conta-1", p_cliente_id: 14, p_question_id: Q });
 });
 
 Deno.test("makeWorkerTranscriber: null sem env; POST com bearer; null em 500 e texto vazio", async () => {

@@ -168,7 +168,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.briefing_audio_release(p_conta_id uuid, p_question_id uuid)
+CREATE OR REPLACE FUNCTION public.briefing_audio_release(p_conta_id uuid, p_cliente_id bigint, p_question_id uuid)
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -181,10 +181,15 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'workspace_not_found' USING ERRCODE = 'P0001';
   END IF;
+  -- Mesmo escopo do finalize: conta + cliente (defesa em profundidade; o
+  -- token do hub é de UM cliente e question_id vem da URL).
   SELECT audio_r2_key INTO v_prev
     FROM hub_briefing_questions
-   WHERE id = p_question_id AND conta_id = p_conta_id
+   WHERE id = p_question_id AND conta_id = p_conta_id AND cliente_id = p_cliente_id
    FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'question_not_found' USING ERRCODE = 'P0001';
+  END IF;
   IF v_prev IS NULL THEN
     RETURN NULL;
   END IF;
@@ -199,5 +204,5 @@ $$;
 
 REVOKE ALL ON FUNCTION public.briefing_audio_finalize(uuid, bigint, uuid, text, bigint, text, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.briefing_audio_finalize(uuid, bigint, uuid, text, bigint, text, int) TO service_role;
-REVOKE ALL ON FUNCTION public.briefing_audio_release(uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.briefing_audio_release(uuid, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.briefing_audio_release(uuid, bigint, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.briefing_audio_release(uuid, bigint, uuid) TO service_role;
