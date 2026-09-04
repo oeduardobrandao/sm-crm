@@ -120,4 +120,26 @@ describe('PopupsPage editor', () => {
     fireEvent.click(screen.getAllByRole('tab')[1]);
     expect(screen.getByRole('heading', { level: 2, name: 'Segunda' })).toBeInTheDocument();
   });
+
+  it('preview sanitiza links do markdown como o CRM: //host vira #, caminho interno passa', async () => {
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
+    fireEvent.change(screen.getByLabelText('Body (Markdown)'), {
+      target: { value: '[a](//evil.com) [b](/ajuda) [c](https://x.y)' },
+    });
+    expect(screen.getByRole('link', { name: 'a' })).toHaveAttribute('href', '#');
+    expect(screen.getByRole('link', { name: 'b' })).toHaveAttribute('href', '/ajuda');
+    expect(screen.getByRole('link', { name: 'c' })).toHaveAttribute('href', 'https://x.y');
+  });
+
+  it('editar a página limpa o erro inline', async () => {
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    expect(await screen.findByText('Title is required')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Ok' } });
+    expect(screen.queryByText('Title is required')).toBeNull();
+  });
 });

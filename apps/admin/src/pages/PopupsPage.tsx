@@ -29,6 +29,7 @@ import {
   type GlobalPopup,
 } from '../lib/api';
 import { uploadInlineImage, resolveInlineImageUrls } from '../lib/inline-image';
+import { sanitizeExternalUrl } from '../lib/security';
 import { TargetPicker } from '../components/TargetPicker';
 import {
   MAX_PAGES,
@@ -51,9 +52,20 @@ const INPUT =
   'w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary';
 const LABEL = 'block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5';
 
-/** Só http(s) e caminhos relativos; o CRM usa sanitizeUrl, o preview segue a mesma regra. */
+/** Espelha o sanitizeUrl do CRM (apps/crm/src/utils/security.ts): `//host` (protocol-relative)
+ *  vira '#'; caminhos internos (`/`, `./`, `../`, `#`) passam direto; o resto vai para
+ *  sanitizeExternalUrl (só http(s) sem credenciais). */
 function previewHref(href: string): string {
-  return /^(\/|https?:\/\/)/.test(href) ? href : '#';
+  if (href.startsWith('//')) return '#';
+  if (
+    href.startsWith('/') ||
+    href.startsWith('./') ||
+    href.startsWith('../') ||
+    href.startsWith('#')
+  ) {
+    return href;
+  }
+  return sanitizeExternalUrl(href);
 }
 
 const DARK_VARS = {
@@ -315,11 +327,13 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const updatePage = (patch: Partial<PageForm>) =>
+  const updatePage = (patch: Partial<PageForm>) => {
     setForm((f) => ({
       ...f,
       pages: f.pages.map((p, i) => (i === pageIndex ? { ...p, ...patch } : p)),
     }));
+    setErrors(null);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -351,7 +365,8 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
     if (pageHasContent(form.pages[index]) && !window.confirm('Remove this page and its content?'))
       return;
     setForm((f) => removePage(f, index));
-    setSelected((s) => Math.max(0, Math.min(s, form.pages.length - 2)));
+    setSelected((s) => (index < s ? s - 1 : Math.min(s, form.pages.length - 2)));
+    setErrors(null);
   };
 
   const sensors = useSensors(
@@ -366,6 +381,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
     if (from < 0 || to < 0) return;
     setForm((f) => movePage(f, from, to));
     setSelected(to);
+    setErrors(null);
   };
 
   useEffect(() => {
@@ -424,6 +440,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                         onClick={() => {
                           setForm((f) => addPage(f));
                           setSelected(form.pages.length);
+                          setErrors(null);
                         }}
                         className="text-xs px-3 py-1.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary"
                       >
@@ -806,15 +823,17 @@ function PageTab({
     opacity: isDragging ? 0.5 : 1,
   };
   const label = page.title.trim() ? page.title.trim().slice(0, 18) : 'Untitled';
+  const tone = active
+    ? 'bg-card text-foreground font-semibold'
+    : 'bg-secondary text-muted-foreground';
+  // O anel de erro precisa ganhar explicitamente de "active" — duas classes ring-* de
+  // cores diferentes competem pela ordem no stylesheet, não pela ordem no className.
+  const ring = hasError ? 'ring-1 ring-destructive' : active ? 'ring-1 ring-border' : '';
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-1.5 pl-1.5 pr-2 py-1.5 rounded-lg text-xs ${
-        active
-          ? 'bg-card text-foreground font-semibold ring-1 ring-border'
-          : 'bg-secondary text-muted-foreground'
-      } ${hasError ? 'ring-1 ring-destructive' : ''}`}
+      className={`flex items-center gap-1.5 pl-1.5 pr-2 py-1.5 rounded-lg text-xs ${tone} ${ring}`}
     >
       <span
         {...attributes}
