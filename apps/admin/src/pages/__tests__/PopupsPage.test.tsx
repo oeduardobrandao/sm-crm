@@ -126,11 +126,12 @@ describe('PopupsPage editor', () => {
     await screen.findByText('Analytics de Stories');
     fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
     fireEvent.change(screen.getByLabelText('Body (Markdown)'), {
-      target: { value: '[a](//evil.com) [b](/ajuda) [c](https://x.y)' },
+      target: { value: '[a](//evil.com) [b](/ajuda) [c](https://x.y) [d](/\\evil.com)' },
     });
     expect(screen.getByRole('link', { name: 'a' })).toHaveAttribute('href', '#');
     expect(screen.getByRole('link', { name: 'b' })).toHaveAttribute('href', '/ajuda');
     expect(screen.getByRole('link', { name: 'c' })).toHaveAttribute('href', 'https://x.y');
+    expect(screen.getByRole('link', { name: 'd' })).toHaveAttribute('href', '#');
   });
 
   it('editar a página limpa o erro inline', async () => {

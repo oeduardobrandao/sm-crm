@@ -17,7 +17,10 @@ export function sanitizeExternalUrl(value: string | undefined | null): string {
 export function sanitizeUrl(value: string | undefined | null): string {
   if (!value) return '#';
   const trimmed = value.trim();
-  if (trimmed.startsWith('//')) return '#';
+  // `//host` é protocol-relative; o browser trata `\` como `/` em http(s), então `/\host` também é.
+  // Links markdown chegam aqui já com o `\` percent-encoded (`%5C`) pelo parser de origem
+  // (micromark), então o mesmo prefixo bloqueado precisa cobrir a forma crua e a codificada.
+  if (/^\/(?:[/\\]|%5c)/i.test(trimmed)) return '#';
   if (
     trimmed.startsWith('/') ||
     trimmed.startsWith('./') ||

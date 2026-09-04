@@ -56,7 +56,10 @@ const LABEL = 'block text-xs font-medium text-muted-foreground uppercase trackin
  *  vira '#'; caminhos internos (`/`, `./`, `../`, `#`) passam direto; o resto vai para
  *  sanitizeExternalUrl (só http(s) sem credenciais). */
 function previewHref(href: string): string {
-  if (href.startsWith('//')) return '#';
+  // `//host` é protocol-relative; o browser trata `\` como `/` em http(s), então `/\host` também é.
+  // Links markdown chegam aqui já com o `\` percent-encoded (`%5C`) pelo parser de origem
+  // (micromark), então o mesmo prefixo bloqueado precisa cobrir a forma crua e a codificada.
+  if (/^\/(?:[/\\]|%5c)/i.test(href)) return '#';
   if (
     href.startsWith('/') ||
     href.startsWith('./') ||

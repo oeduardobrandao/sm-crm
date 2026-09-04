@@ -77,6 +77,7 @@ Deno.test("validatePopupFields: par de CTA, until_cta, require_ack, tamanhos e f
   assertEquals(validatePopupFields({ ...base, cta_label: "", cta_url: "", secondary_label: "" }), null);
   assert(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "" }) !== null, "url vazia com label");
   assert(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "//evil.com" }) !== null, "url protocol-relative");
+  assert(validatePopupFields({ ...base, cta_label: "Ver", cta_url: "/\\evil.com" }) !== null, "url com backslash");
   assertEquals(validatePopupFields({ ...base, starts_at: "2026-09-01T00:00:00Z", ends_at: "2026-09-02T00:00:00Z" }), null);
   assert(validatePopupFields({ ...base, starts_at: "2026-09-02T00:00:00Z", ends_at: "2026-09-01T00:00:00Z" }) !== null, "ends antes de starts");
   assert(validatePopupFields({ ...base, starts_at: "2026-09-02T00:00:00Z", ends_at: "2026-09-02T00:00:00Z" }) !== null, "ends igual a starts");
