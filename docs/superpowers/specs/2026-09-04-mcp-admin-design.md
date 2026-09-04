@@ -209,8 +209,8 @@ invariante valer também fora das edge functions. `dismissal_count` vem de uma
 
 | Tool | Entrada | Saída |
 |---|---|---|
-| `list_popups` | `status?` | `[{ id, pages, cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, target_mode, target_plan_ids, target_workspace_ids, starts_at, ends_at, status, seen_count, closed_count, cta_count, ack_count, created_at, updated_at }]` |
-| `get_popup` | `popup_id` | um popup |
+| `list_popups` | `status?` | `[{ id, pages, cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, target_mode, target_plan_ids, target_workspace_ids, starts_at, ends_at, status, counts: { seen, closed, cta, ack }, created_at, updated_at }]` |
+| `get_popup` | `popup_id` | um popup, com `counts: { seen, closed, cta, ack }` |
 | `create_popup` | `pages` (1..6 de `{ title, eyebrow?, body }`), `target_mode`, e os opcionais `cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, target_plan_ids, target_workspace_ids, starts_at, ends_at, status` | `{ id, status }` |
 | `update_popup` | `popup_id` + subconjunto | `{ id, status }` |
 | `upload_popup_image` | `filename, mime_type, size_bytes?, source_url?` | seção 7 |
@@ -502,7 +502,11 @@ Deno, em `supabase/functions/__tests__/`, com o fake `makeFakeDb` do padrão
    smoke dos popups depende dela).
 2. Deploy `mcp-oauth-consent` (JWT on) e `mcp-admin` (`--no-verify-jwt`),
    `--use-api`, prod e staging. `platform-admin` também, por causa do move dos
-   validadores.
+   validadores. Antes de deployar `platform-admin`, rodar `validateTiptapDoc`
+   sobre todas as linhas de `kb_articles.content` em prod (script Deno com
+   service role) e corrigir/ampliar a allowlist para o que for sinalizado; a
+   validação agora vale para a linha mesclada, então uma linha divergente
+   ficaria ineditável.
 3. Merge → Vercel publica o consent page novo.
 4. Conector: URL `https://<ref>.supabase.co/functions/v1/mcp-admin`, campos
    OAuth em branco, escolher "Administração da plataforma" no consent.
