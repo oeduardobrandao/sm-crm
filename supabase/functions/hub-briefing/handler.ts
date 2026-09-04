@@ -185,15 +185,25 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
         display_order: number;
         briefing_id: string | null;
       };
-      const qs = await Promise.all(((questions ?? []) as QRow[]).map(async (q) => ({
-        id: q.id,
-        question: q.question,
-        answer: q.answer,
-        section: q.section,
-        display_order: q.display_order,
-        briefing_id: q.briefing_id,
-        audio: await buildAudioView(q, signGet),
-      })));
+      const qs = await Promise.all(((questions ?? []) as QRow[]).map(async (q) => {
+        // Assinar a URL do áudio é I/O externo: se o R2 falhar numa pergunta,
+        // ela perde só o player — o briefing inteiro não pode virar 500.
+        let audio = null;
+        try {
+          audio = await buildAudioView(q, signGet);
+        } catch (e) {
+          console.error("hub-briefing:sign-audio", q.id, (e as Error).message ?? e);
+        }
+        return {
+          id: q.id,
+          question: q.question,
+          answer: q.answer,
+          section: q.section,
+          display_order: q.display_order,
+          briefing_id: q.briefing_id,
+          audio,
+        };
+      }));
       const strip = ({ briefing_id: _b, ...rest }: (typeof qs)[number]) => rest;
 
       // Legacy rows with a null briefing_id coalesce into the first briefing.

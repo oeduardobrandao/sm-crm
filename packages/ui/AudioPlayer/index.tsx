@@ -95,7 +95,11 @@ export function AudioPlayer({ src, durationSeconds, className, style, label }: A
       <audio
         ref={audioRef}
         src={src}
-        preload="metadata"
+        // 'none': a duração total vem de `durationSeconds` (o timer do
+        // gravador), então não há motivo para baixar metadados de cada áudio
+        // só para montar a lista. Os handlers de metadata continuam ligados
+        // porque o browser os dispara assim que o play começa a carregar.
+        preload="none"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => {

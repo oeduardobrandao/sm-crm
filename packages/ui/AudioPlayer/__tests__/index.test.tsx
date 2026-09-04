@@ -10,7 +10,7 @@ beforeEach(() => {
   Object.defineProperty(HTMLMediaElement.prototype, 'pause', { configurable: true, value: pause });
 });
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
   delete (HTMLMediaElement.prototype as { play?: unknown }).play;
   delete (HTMLMediaElement.prototype as { pause?: unknown }).pause;
 });

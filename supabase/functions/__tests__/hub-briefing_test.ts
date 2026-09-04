@@ -6,7 +6,11 @@ const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.me
 
 function makeHandler(
   db: ReturnType<typeof createSupabaseQueryMock>,
-  opts: { transcribe?: ((key: string) => Promise<{ text: string } | null>) | null; rateLimit?: (k: string) => boolean } = {},
+  opts: {
+    transcribe?: ((key: string) => Promise<{ text: string } | null>) | null;
+    rateLimit?: (k: string) => boolean;
+    signGetUrl?: (key: string) => Promise<string>;
+  } = {},
 ) {
   return createHubBriefingHandler({
     buildCorsHeaders,
@@ -14,7 +18,7 @@ function makeHandler(
     now: () => "2026-06-16T12:00:00.000Z",
     rateLimit: async (_db, key) => (opts.rateLimit ? opts.rateLimit(key) : true),
     signPutUrl: async (key: string) => `https://put.example.com/${key}`,
-    signGetUrl: async (key: string) => `https://get.example.com/${key}`,
+    signGetUrl: opts.signGetUrl ?? (async (key: string) => `https://get.example.com/${key}`),
     headObject: async () => ({ contentLength: 5000, contentType: "audio/webm" }),
     transcribe: opts.transcribe ?? null,
     randomUUID: () => "fixed-uuid",
@@ -172,6 +176,39 @@ Deno.test("hub-briefing GET inclui audio assinado quando a pergunta tem áudio",
     url: `https://get.example.com/${KEY}`, mime: "audio/webm", duration_seconds: 12,
     transcription_status: "done", recorded_at: "2026-09-03T00:00:00Z",
   });
+});
+
+Deno.test("hub-briefing GET: falha ao assinar um áudio deixa a pergunta com audio null, sem 500", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  const OTHER = "22222222-2222-2222-2222-222222222222";
+  const otherKey = `briefing-audio/conta-1/${OTHER}/ok.webm`;
+  db.queue("briefings", "select", { data: [{ id: "b1", title: "Briefing", display_order: 0 }], error: null });
+  db.queue("hub_briefing_questions", "select", {
+    data: [
+      {
+        id: Q, question: "Marca?", answer: "texto", section: null, display_order: 0, briefing_id: "b1",
+        audio_r2_key: KEY, audio_mime: "audio/webm", audio_size_bytes: 5000, audio_duration_seconds: 12,
+        audio_transcription_status: "done", audio_recorded_at: "2026-09-03T00:00:00Z",
+      },
+      {
+        id: OTHER, question: "Público?", answer: null, section: null, display_order: 1, briefing_id: "b1",
+        audio_r2_key: otherKey, audio_mime: "audio/webm", audio_size_bytes: 100, audio_duration_seconds: 3,
+        audio_transcription_status: "done", audio_recorded_at: "2026-09-03T00:00:00Z",
+      },
+    ],
+    error: null,
+  });
+  const res = await makeHandler(db, {
+    signGetUrl: async (key: string) => {
+      if (key === KEY) throw new Error("r2 signing down");
+      return `https://get.example.com/${key}`;
+    },
+  })(getReq());
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.briefings[0].questions[0].audio, null);
+  assertEquals(body.briefings[0].questions[1].audio.url, `https://get.example.com/${otherKey}`);
 });
 
 Deno.test("hub-briefing POST /upload-url devolve presign no prefixo da pergunta", async () => {

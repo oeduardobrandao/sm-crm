@@ -23,13 +23,16 @@ export function BriefingAudioPlayer({ question }: { question: HubBriefingQuestio
   const { data, isError } = useQuery({
     queryKey: ['briefing-audio-url', question.id, question.audio_r2_key],
     queryFn: () => fetchBriefingAudio(question.id),
-    staleTime: 50 * 60 * 1000,
+    // A URL assinada vale 60 min; 30 dá folga de sobra para refetch.
+    staleTime: 30 * 60 * 1000,
     enabled: !!question.audio_r2_key,
   });
   if (!question.audio_r2_key) return null;
-  const status = question.audio_transcription_status
-    ? STATUS[question.audio_transcription_status]
-    : null;
+  // A view já buscada aplica a regra de "pending velho vira failed"
+  // (STALE_PENDING_MS, _shared/briefing-audio.ts); a coluna crua da pergunta é
+  // só o fallback enquanto a URL assinada não chegou.
+  const rawStatus = data?.transcription_status ?? question.audio_transcription_status;
+  const status = rawStatus ? STATUS[rawStatus] : null;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-3">
       {data ? (
