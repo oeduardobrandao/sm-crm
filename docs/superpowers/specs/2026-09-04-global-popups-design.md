@@ -233,10 +233,13 @@ e libera as que estão em `otherKeys`. O handler ganha uma dependência
 artigos continua no service role, porque artigo publicado é público para qualquer
 usuário autenticado.
 
-A consulta de popups fica **isolada em `try/catch`** e degrada para "nenhuma chave de
-popup", com log interno, nunca com 500. O endpoint atende capas de artigo, editor de
-post, drawers de fluxo e Estúdio pelo mesmo caminho; um defeito ou timeout na parte
-nova não pode derrubar a assinatura das `ownKeys` de todo mundo.
+A consulta de popups fica **isolada em `try/catch` e com timeout próprio**
+(`.abortSignal(AbortSignal.timeout(3000))` no builder do supabase-js) e degrada para
+"nenhuma chave de popup", com log interno, nunca com 500. `try/catch` sozinho não
+cobre um I/O que trava (AGENTS.md: kills do runtime passam por cima do `catch`); o
+timeout é o que garante que o endpoint responde. Ele atende capas de artigo, editor
+de post, drawers de fluxo e Estúdio pelo mesmo caminho; um defeito ou travamento na
+parte nova não pode derrubar a assinatura das `ownKeys` de todo mundo.
 
 Popups em draft, fora da janela ou não direcionados ao workspace não resolvem para
 usuários do CRM. No admin, a chave está sob o prefixo da própria conta do admin, então
@@ -274,8 +277,12 @@ sticky à direita. Abaixo de `md`, uma coluna com o preview no fim.
 O formulário tem dois blocos. No topo, as **abas de página**: uma aba por página com
 número e título truncado, arrastável para reordenar com `@dnd-kit/sortable` (já é
 dependência da raiz, usada em `SortableEtapaList` no CRM), botão `×` que remove a
-página (com confirmação se ela tem conteúdo) e `+ Page` até o limite de 6. Selecionar uma aba mostra os
-campos daquela página:
+página (com confirmação se ela tem conteúdo) e `+ Page` até o limite de 6. Cada
+página do formulário carrega um `key` gerado no cliente (contador incremental) que é a
+identidade estável para o `@dnd-kit` e para o React; índice como id é armadilha
+conhecida quando se insere e remove itens. O `key` nunca vai para o payload:
+`formToPayload` monta `pages` só com `title`, `eyebrow`, `body` e `image_key`.
+Selecionar uma aba mostra os campos daquela página:
 
 | Campo | Input | Regra |
 |---|---|---|
@@ -451,8 +458,10 @@ terminaram:
    `shouldAutoOpenGuide` e com as mesmas condições **menos o pathname**: `'yes'`
    quando já abriu ou vai abrir assim que o dono chegar em `/dashboard` (dono, sem
    progresso registrado, zero clientes e zero fluxos); `'no'` quando não é dono, o
-   guia já foi aberto, dispensado ou concluído, ou os sinais resolveram com algum
-   cliente ou fluxo; `'unknown'` enquanto auth ou os sinais ainda carregam. O host
+   guia já foi aberto, dispensado ou concluído, os sinais resolveram com algum
+   cliente ou fluxo, **ou qualquer um dos dois sinais terminou em `error`** (o guia
+   nunca abre sobre erro, como `shouldAutoOpenGuide`, então o popup não fica
+   esperando); `'unknown'` só enquanto auth ou os sinais estão em `pending`. O host
    espera enquanto for `'unknown'` e, se for `'yes'` (ou `useGuide()?.isOpen`), grava
    `mesaas_popup_skipped` e não mostra nada nesta sessão. `useGuide()` devolve null
    fora do provider; null conta como `'no'`.
