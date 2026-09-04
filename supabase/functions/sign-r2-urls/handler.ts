@@ -8,6 +8,8 @@ type DbClient = {
 interface SignR2UrlsDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
+  /** Client no contexto do usuário (anon key + Authorization do request): a RLS decide o que ele vê. */
+  createUserDb: (authHeader: string) => { from: (table: string) => any };
   signGetUrl: (key: string, expiresSeconds?: number) => Promise<string>;
   /** Raw object bytes for the GET proxy route (see below). */
   getObjectBytes: (key: string) => Promise<Uint8Array | null>;
@@ -44,6 +46,36 @@ async function resolveContaId(
     .single();
   if (!profile?.conta_id) return { errorStatus: 403, message: "Profile not found" };
   return { contaId: profile.conta_id };
+}
+
+const POPUP_LOOKUP_TIMEOUT_MS = 3_000;
+
+/**
+ * image_key das páginas de popups que a RLS de global_popups devolve para este usuário
+ * (ativo, dentro da janela, alvo do workspace). Isolado: qualquer falha ou timeout
+ * vira "nenhuma chave", nunca um 500, porque este endpoint também assina as ownKeys
+ * do editor de post, drawers e capas de artigo. try/catch sozinho não segura um I/O
+ * que trava; o AbortSignal é o que garante a resposta.
+ */
+async function visiblePopupImageKeys(deps: SignR2UrlsDeps, authHeader: string): Promise<Set<string>> {
+  const keys = new Set<string>();
+  try {
+    const userDb = deps.createUserDb(authHeader);
+    const { data, error } = await userDb
+      .from("global_popups")
+      .select("pages")
+      .abortSignal(AbortSignal.timeout(POPUP_LOOKUP_TIMEOUT_MS));
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ pages?: unknown }>) {
+      if (!Array.isArray(row.pages)) continue;
+      for (const page of row.pages as Array<{ image_key?: unknown }>) {
+        if (typeof page?.image_key === "string" && page.image_key) keys.add(page.image_key);
+      }
+    }
+  } catch (err) {
+    console.error("[sign-r2-urls] popup image lookup failed:", err);
+  }
+  return keys;
 }
 
 export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
@@ -110,7 +142,13 @@ export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
       if (kbRows) kbKeys = kbRows.map((r: { cover_image_url: string }) => r.cover_image_url);
     }
 
-    const validKeys = [...ownKeys, ...kbKeys];
+    let popupKeys: string[] = [];
+    if (otherKeys.length > 0) {
+      const visible = await visiblePopupImageKeys(deps, req.headers.get("Authorization")!);
+      popupKeys = otherKeys.filter((k) => visible.has(k) && !kbKeys.includes(k));
+    }
+
+    const validKeys = [...ownKeys, ...kbKeys, ...popupKeys];
     const urls: Record<string, string> = {};
     await Promise.all(validKeys.map(async (key) => {
       urls[key] = await deps.signGetUrl(key, 3600);

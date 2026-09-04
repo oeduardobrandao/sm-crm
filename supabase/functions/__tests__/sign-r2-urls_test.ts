@@ -21,6 +21,13 @@ function makeDeps(overrides: Partial<Parameters<typeof createSignR2UrlsHandler>[
         }),
       }),
     }),
+    createUserDb: (_authHeader: string) => ({
+      from: (_table: string) => ({
+        select: (_cols: string) => ({
+          abortSignal: async (_s: AbortSignal) => ({ data: [], error: null }),
+        }),
+      }),
+    }),
     signGetUrl: async (key: string) => `https://r2.example.com/${key}?signed=1`,
     getObjectBytes: async (key: string) =>
       key.includes("missing") ? null : new Uint8Array([0x89, 0x50, 0x4e]),
@@ -126,4 +133,56 @@ Deno.test("GET without auth header is 401", async () => {
   const handler = createSignR2UrlsHandler(makeDeps());
   const res = await handler(makeGetReq("contas/conta-abc/files/img1.png", false));
   assertEquals(res.status, 401);
+});
+
+// ── Imagens de popups (global_popups.pages[].image_key) ───────────────────────
+
+const POPUP_KEY = "contas/00000000-0000-0000-0000-000000000000/files/popup.png";
+
+function userDbReturning(rows: unknown[]) {
+  return (_authHeader: string) => ({
+    from: (_table: string) => ({
+      select: (_cols: string) => ({
+        abortSignal: async (_s: AbortSignal) => ({ data: rows, error: null }),
+      }),
+    }),
+  });
+}
+
+Deno.test("assina image_key de página de popup que a RLS do usuário devolve", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps({
+    createUserDb: userDbReturning([{ pages: [{ title: "T", body: "B", image_key: POPUP_KEY }] }]),
+  }));
+  const res = await handler(makeReq("POST", { keys: [POPUP_KEY, "contas/conta-abc/files/own.png"] }));
+  assertEquals(res.status, 200);
+  const data = await res.json();
+  assertEquals(data.urls[POPUP_KEY], `https://r2.example.com/${POPUP_KEY}?signed=1`);
+  assertEquals(data.urls["contas/conta-abc/files/own.png"], "https://r2.example.com/contas/conta-abc/files/own.png?signed=1");
+});
+
+Deno.test("não assina chave de popup que o client do usuário não devolve (draft ou não direcionado)", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps({ createUserDb: userDbReturning([]) }));
+  const res = await handler(makeReq("POST", { keys: [POPUP_KEY] }));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).urls, {});
+});
+
+Deno.test("falha na consulta de popups não derruba a assinatura das ownKeys", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps({
+    createUserDb: () => { throw new Error("boom"); },
+  }));
+  const res = await handler(makeReq("POST", { keys: [POPUP_KEY, "contas/conta-abc/files/own.png"] }));
+  assertEquals(res.status, 200);
+  const data = await res.json();
+  assertEquals(data.urls[POPUP_KEY], undefined);
+  assertEquals(data.urls["contas/conta-abc/files/own.png"], "https://r2.example.com/contas/conta-abc/files/own.png?signed=1");
+});
+
+Deno.test("consulta de popups só roda quando há otherKeys", async () => {
+  let called = 0;
+  const handler = createSignR2UrlsHandler(makeDeps({
+    createUserDb: (h) => { called++; return userDbReturning([])(h); },
+  }));
+  await handler(makeReq("POST", { keys: ["contas/conta-abc/files/own.png"] }));
+  assertEquals(called, 0);
 });
