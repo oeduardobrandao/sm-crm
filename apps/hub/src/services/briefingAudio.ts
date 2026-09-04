@@ -31,6 +31,54 @@ export function validateBriefingAudio(blob: Blob, mime: string): string {
   return normalized;
 }
 
+const QUOTA_MESSAGE =
+  'O espaço de armazenamento do plano acabou. Fale com a agência para liberar espaço.';
+const GENERIC_UPLOAD_FAILURE_MESSAGE = 'O envio do áudio falhou. Tente de novo.';
+const GENERIC_UNAVAILABLE_MESSAGE = 'Não foi possível concluir agora. Tente de novo em instantes.';
+
+/** Backend codes that all mean "the upload/object ended up in a bad state". */
+const GENERIC_UPLOAD_FAILURE_CODES = new Set([
+  'size mismatch',
+  'content-type mismatch',
+  'object not found',
+  'invalid r2_key',
+  'invalid_key',
+  'invalid_bytes',
+  'size_bytes out of range',
+]);
+
+/**
+ * Maps a raw error (often a backend code or an `HTTP <status>` string from
+ * `api.ts`'s post/del helpers) to a Portuguese, client-facing message. Falls
+ * back to the caller-provided message for anything unrecognized.
+ */
+export function describeAudioError(e: unknown, fallback: string): string {
+  const raw = e instanceof Error ? e.message : typeof e === 'string' ? e : '';
+  if (!raw) return fallback;
+
+  if (raw === 'quota_exceeded') return QUOTA_MESSAGE;
+  if (raw === 'question_not_found' || raw === 'Pergunta não encontrada.') {
+    return 'Esta pergunta não está mais disponível. Recarregue a página.';
+  }
+  if (raw === 'Áudio não encontrado.') return 'O áudio não foi encontrado. Grave de novo.';
+  if (raw === 'unsupported file type') return 'Formato de áudio não suportado neste navegador.';
+  if (GENERIC_UPLOAD_FAILURE_CODES.has(raw)) return GENERIC_UPLOAD_FAILURE_MESSAGE;
+  if (raw.startsWith('Muitas tentativas')) return raw;
+
+  const uploadFalhouMatch = /^Upload falhou: (\d+)$/.exec(raw);
+  if (uploadFalhouMatch) {
+    return uploadFalhouMatch[1] === '413' ? QUOTA_MESSAGE : GENERIC_UPLOAD_FAILURE_MESSAGE;
+  }
+  if (/^HTTP 5\d{2}$/.test(raw) || raw === 'internal error') return GENERIC_UNAVAILABLE_MESSAGE;
+
+  // Already Portuguese (thrown by validateBriefingAudio/uploadBriefingAudio,
+  // or another backend message we don't special-case above) — keep as is.
+  const looksPortuguese = /[À-ÿ]/.test(raw) || /^[A-ZÀ-Ý][a-zà-ÿ]+ (de|no|não|vazia)/.test(raw);
+  if (looksPortuguese) return raw;
+
+  return fallback;
+}
+
 export type UploadPhase = 'uploading' | 'transcribing';
 
 export async function uploadBriefingAudio(args: {

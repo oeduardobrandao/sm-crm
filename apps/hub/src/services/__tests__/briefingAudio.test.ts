@@ -6,7 +6,12 @@ vi.mock('../../api', () => ({
 }));
 
 import { finalizeBriefingAudio, presignBriefingAudio } from '../../api';
-import { normalizeAudioMime, uploadBriefingAudio, validateBriefingAudio } from '../briefingAudio';
+import {
+  describeAudioError,
+  normalizeAudioMime,
+  uploadBriefingAudio,
+  validateBriefingAudio,
+} from '../briefingAudio';
 
 class FakeXHR {
   static last: FakeXHR | null = null;
@@ -84,5 +89,47 @@ describe('briefingAudio service', () => {
       duration_seconds: 7,
     });
     expect(phases).toEqual(['uploading', 'transcribing']);
+  });
+
+  describe('describeAudioError', () => {
+    it('maps quota_exceeded to a Portuguese, actionable message', () => {
+      expect(describeAudioError(new Error('quota_exceeded'), 'fallback')).toBe(
+        'O espaço de armazenamento do plano acabou. Fale com a agência para liberar espaço.',
+      );
+    });
+
+    it('maps an R2 413 upload failure to the quota message', () => {
+      expect(describeAudioError(new Error('Upload falhou: 413'), 'fallback')).toBe(
+        'O espaço de armazenamento do plano acabou. Fale com a agência para liberar espaço.',
+      );
+    });
+
+    it('maps other Upload falhou codes to the generic upload-failure message', () => {
+      expect(describeAudioError(new Error('Upload falhou: 500'), 'fallback')).toBe(
+        'O envio do áudio falhou. Tente de novo.',
+      );
+    });
+
+    it('maps HTTP 5xx to a generic "try again later" message', () => {
+      expect(describeAudioError(new Error('HTTP 500'), 'fallback')).toBe(
+        'Não foi possível concluir agora. Tente de novo em instantes.',
+      );
+    });
+
+    it('passes through the rate-limit message unchanged', () => {
+      const msg = 'Muitas tentativas. Aguarde alguns minutos.';
+      expect(describeAudioError(new Error(msg), 'fallback')).toBe(msg);
+    });
+
+    it('passes through already-Portuguese messages unchanged', () => {
+      const msg = 'Formato de áudio não suportado: video/mp4';
+      expect(describeAudioError(new Error(msg), 'fallback')).toBe(msg);
+    });
+
+    it('falls back for unrecognized errors', () => {
+      expect(describeAudioError(new Error('some_unknown_code'), 'fallback')).toBe('fallback');
+      expect(describeAudioError(new Error(''), 'fallback')).toBe('fallback');
+      expect(describeAudioError('not an Error instance', 'fallback')).toBe('fallback');
+    });
   });
 });

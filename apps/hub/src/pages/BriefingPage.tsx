@@ -7,7 +7,7 @@ import {
   retryBriefingTranscription,
   submitBriefingAnswer,
 } from '../api';
-import { uploadBriefingAudio } from '../services/briefingAudio';
+import { describeAudioError, uploadBriefingAudio } from '../services/briefingAudio';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import {
   AudioRecorder,
@@ -249,7 +249,7 @@ function QuestionItem({
       });
       applyResponse(res);
     } catch (e) {
-      setAudioError((e as Error).message || 'Não foi possível enviar o áudio.');
+      setAudioError(describeAudioError(e, 'Não foi possível enviar o áudio.'));
       // O servidor pode ter gravado o áudio antes da falha de rede (ex: o
       // upload/finalize terminou no servidor, mas a resposta não chegou) —
       // refaz o fetch em vez de confiar só no estado local.
@@ -277,7 +277,7 @@ function QuestionItem({
     try {
       applyResponse(await retryBriefingTranscription(token, question.id));
     } catch (e) {
-      setAudioError((e as Error).message || 'Não foi possível transcrever.');
+      setAudioError(describeAudioError(e, 'Não foi possível transcrever.'));
     } finally {
       setBusyAction(null);
     }
@@ -291,7 +291,7 @@ function QuestionItem({
       setAudio(null);
       onAudioChanged();
     } catch (e) {
-      setAudioError((e as Error).message || 'Não foi possível remover o áudio.');
+      setAudioError(describeAudioError(e, 'Não foi possível remover o áudio.'));
     } finally {
       setBusyAction(null);
     }
