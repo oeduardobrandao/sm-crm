@@ -1,18 +1,19 @@
 # Editor de popups no admin (anúncios em modal no CRM): design
 
-**Data:** 2026-09-04 · **Status:** aprovado (brainstorm com visual companion; UI validada em mockup, design fechado em três partes: dados/edge, admin, CRM/testes)
+**Data:** 2026-09-04 · **Status:** aprovado (brainstorm com visual companion; UI validada em mockup, design fechado em três partes: dados/edge, admin, CRM/testes; páginas múltiplas adicionadas em segunda rodada)
 
 ## Objetivo
 
 O admin da plataforma já publica **banners** (barras horizontais abaixo da topbar do
 CRM) com targeting por plano ou workspace, agenda e dismiss por usuário. Esta spec
 adiciona o segundo formato: **popups**, um modal centralizado que aparece uma vez por
-sessão dentro do shell logado do CRM, com título, imagem opcional, corpo em markdown,
-botão de ação (CTA) opcional e dois modos de frequência.
+sessão dentro do shell logado do CRM, com uma ou mais páginas (cada uma com título,
+imagem opcional e corpo em markdown), botão de ação (CTA) opcional na última página e
+dois modos de frequência.
 
 Um modelo único cobre os três usos levantados: anúncio de novidade (imagem + CTA para
-ajuda ou `/novidades`), aviso que exige confirmação (sem X, botão "Entendi") e promoção
-ou upsell (CTA amarelo para planos, insistente até o clique).
+ajuda ou `/novidades`, em uma ou várias páginas), aviso que exige confirmação (sem X,
+botão "Entendi") e promoção ou upsell (CTA amarelo para planos, insistente até o clique).
 
 A abordagem escolhida **espelha a pilha dos banners** (tabela nova, RLS copiada, quatro
 actions novas no `platform-admin`, página nova no admin, host novo no CRM) em vez de
@@ -25,10 +26,11 @@ um dos formatos.
 **Dentro:**
 - Migration: `global_popups`, `popup_interactions`, view `popup_interaction_counts`, RLS.
 - `platform-admin`: `list-popups`, `create-popup`, `update-popup`, `delete-popup`.
-- `sign-r2-urls`: allowlist para `image_key` de popups ativos.
-- Admin: rota `/admin/popups`, `PopupsPage` (lista + editor com preview lateral),
-  API em `lib/api.ts`, alias `@mesaas/ui`, extração do `TargetPicker`.
-- `packages/ui/PopupCard.tsx`: card compartilhado entre admin (preview) e CRM (real).
+- `sign-r2-urls`: allowlist para as imagens das páginas de popups visíveis ao usuário.
+- Admin: rota `/admin/popups`, `PopupsPage` (lista + editor com abas de página e
+  preview lateral), API em `lib/api.ts`, alias `@mesaas/ui`, extração do `TargetPicker`.
+- `packages/ui/PopupCard.tsx`: card compartilhado entre admin (preview) e CRM (real),
+  com navegação entre páginas.
 - CRM: `store/popups.ts`, `hooks/usePopups.ts` com `pickPopup`, `GlobalPopupHost`
   montado no `AppLayout`.
 - Testes: SQL (RLS), Deno (handlers e allowlist), Vitest (admin, CRM, pacote).
@@ -39,6 +41,7 @@ um dos formatos.
 - Hub do cliente, landing e login: popups só aparecem dentro do shell logado do CRM.
 - Targeting por rota (`target_paths`) e por papel (`target_roles`): não entram. Ambos
   são uma coluna a mais e um filtro a mais, sem migração dolorosa, se surgirem depois.
+- CTA por página: não entra. O CTA é do popup e aparece só na última página.
 - Crop ou redimensionamento de imagem: a imagem é exibida em 16:9 com
   `object-fit: cover`; o formulário só avisa a proporção recomendada.
 - Auto-arquivamento por cron: como nos banners, `ends_at` é filtrado na leitura e o
@@ -51,14 +54,11 @@ um dos formatos.
 | Coluna | Tipo | Regra |
 |---|---|---|
 | `id` | `uuid PK` default `gen_random_uuid()` | |
-| `title` | `text NOT NULL` | |
-| `eyebrow` | `text` | opcional; texto pequeno em caixa alta acima do título |
-| `body` | `text NOT NULL` | markdown; renderizado com `react-markdown` + `remark-gfm`, sem HTML cru |
-| `image_key` | `text` | chave R2 opcional (`contas/<conta do admin>/files/<id>.<ext>`), mesmo caminho das capas da base de conhecimento |
+| `pages` | `jsonb NOT NULL` | array de 1 a 6 páginas; formato abaixo |
 | `cta_label` | `text` | |
 | `cta_url` | `text` | relativa (`/ajuda/...`) ou absoluta (`https://...`) |
 | `cta_style` | `text NOT NULL` default `'ink'` | `'ink'` (tinta escura, padrão dos CTAs do CRM) ou `'brand'` (amarelo `#ffbf30`) |
-| `secondary_label` | `text` | opcional; ver defaults abaixo |
+| `secondary_label` | `text` | opcional; ver defaults na Parte 2 |
 | `frequency` | `text NOT NULL` default `'once'` | `'once'` ou `'until_cta'` |
 | `require_ack` | `boolean NOT NULL` default `false` | sem X, sem fechar clicando fora, sem Esc |
 | `target_mode` | `text NOT NULL` | `'all'`, `'plan'`, `'workspace'` |
@@ -70,9 +70,25 @@ um dos formatos.
 | `created_by` | `uuid` FK `platform_admins(id)` on delete set null | |
 | `created_at`, `updated_at` | `timestamptz` default `now()` | trigger de `updated_at` igual ao dos banners |
 
+Formato de cada item de `pages` (validado no `platform-admin`, ver abaixo):
+
+```ts
+interface PopupPage {
+  title: string;              // 1 a 120 caracteres
+  eyebrow?: string | null;    // até 60 caracteres; texto pequeno em caixa alta acima do título
+  body: string;               // markdown, 1 a 2000 caracteres; react-markdown + remark-gfm, sem HTML cru
+  image_key?: string | null;  // chave R2 `contas/<conta do admin>/files/<id>.<ext>`, mesmo caminho das capas da base de conhecimento
+}
+```
+
+Popup de uma página é o array com um item. `pages` é jsonb em vez de tabela filha
+porque o conteúdo é sempre lido e escrito inteiro, a ordem é o índice do array, e a RLS
+fica em uma tabela só.
+
 Constraints:
 
 ```sql
+CHECK (jsonb_typeof(pages) = 'array' AND jsonb_array_length(pages) BETWEEN 1 AND 6)
 CHECK (cta_style IN ('ink', 'brand'))
 CHECK (frequency IN ('once', 'until_cta'))
 CHECK ((cta_label IS NULL) = (cta_url IS NULL))                 -- par completo ou nenhum
@@ -84,6 +100,9 @@ CHECK (target_mode <> 'plan' OR (target_plan_ids IS NOT NULL AND array_length(ta
 CHECK (target_mode <> 'workspace' OR (target_workspace_ids IS NOT NULL AND array_length(target_workspace_ids, 1) > 0))
 CHECK (ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at)
 ```
+
+O formato interno de cada página (campos obrigatórios, tamanhos) é responsabilidade do
+`platform-admin`, único caminho de escrita. O banco garante só que é um array de 1 a 6.
 
 `target_plan_ids` é `text[]` porque `plans.id` é text (a migration dos banners também
 usa `text[]`, apesar da spec antiga dizer `uuid[]`).
@@ -105,6 +124,9 @@ Append-only. Uma linha por ação de um usuário sobre um popup.
 o INSERT é feito direto pelo cliente sob RLS, sem handler na frente; sem ele, qualquer
 string viraria um bucket na view de contagens.
 
+Não há métrica por página no banco. Fechar na página 2 de 3 grava `closed` como
+qualquer outro fechamento; o funil por página fica no PostHog (Parte 3).
+
 ### Semântica de "já viu"
 
 Avaliada no CRM a partir das interações do próprio usuário:
@@ -121,6 +143,8 @@ o cliente verifica no cache das próprias interações antes de inserir.
 então `until_cta` seria idêntico a `once`. O CHECK proíbe a combinação, o
 `platform-admin` responde 400, e o formulário força `Once` e desabilita o radio de
 frequência enquanto "Require acknowledgement" está marcado.
+
+Em `until_cta`, quando o popup reaparece em outra sessão, abre na página 1.
 
 ### View `popup_interaction_counts`
 
@@ -172,9 +196,15 @@ Quatro actions no molde exato dos handlers de banner, com allowlist `POPUP_COLUM
 | Action | Comportamento |
 |---|---|
 | `list-popups` | Lista todos, filtro opcional de `status`, ordem `created_at desc`. Junta as contagens da view em `counts: { seen, closed, cta, ack }` por popup. |
-| `create-popup` | Exige `title`, `body`, `target_mode`. Insere só colunas da allowlist e `created_by = admin.id`. |
+| `create-popup` | Exige `pages` válido e `target_mode`. Insere só colunas da allowlist e `created_by = admin.id`. |
 | `update-popup` | Exige `popup_id`; atualiza só colunas da allowlist; 400 se nada a atualizar. |
 | `delete-popup` | Exige `popup_id`; 400 se `status <> 'draft'`; hard delete, cascade nas interações. |
+
+Validação de `pages` no servidor (função pura `validatePages(input)` em um módulo
+próprio, testável): array de 1 a 6; cada item com `title` (1 a 120), `body` (1 a
+2000), `eyebrow` opcional (até 60), `image_key` opcional que precisa casar com
+`^contas/[0-9a-f-]{36}/files/[^/]+$`. Chaves desconhecidas no item são rejeitadas.
+Qualquer falha responde 400 com mensagem genérica.
 
 Validação adicional no servidor, com 400 e mensagem genérica: par de CTA incompleto,
 `until_cta` sem CTA e `require_ack` com `until_cta` (o banco também trava, mas o erro
@@ -183,8 +213,8 @@ de CHECK não deve vazar).
 ### `sign-r2-urls`
 
 Hoje, chaves fora do prefixo `contas/<conta do usuário>/` só são assinadas se forem
-`cover_image_url` de artigo publicado. Passa a assinar também `image_key` de
-`global_popups`, com uma query a mais só quando há `otherKeys`.
+`cover_image_url` de artigo publicado. Passa a assinar também as `image_key` das
+páginas de `global_popups`, com uma query a mais só quando há `otherKeys`.
 
 Essa query **não** roda no service role com um filtro solto de `status = 'active'`,
 porque isso assinaria a imagem de um popup que o usuário nem pode ver (targeting por
@@ -192,9 +222,11 @@ plano ou workspace, janela de agenda). Ela roda em um client no contexto do usu�
 (anon key + o header `Authorization` do request, o mesmo padrão de
 `instagram-analytics` e `manage-workspace-roles`), então a RLS de `global_popups`
 aplica exatamente o predicado da linha: ativo, dentro da janela e alvo do workspace.
-O handler ganha uma dependência `createUserDb(authHeader)` ao lado de `createDb`,
-injetável nos testes. A allowlist de artigos continua no service role, porque artigo
-publicado é público para qualquer usuário autenticado.
+O handler seleciona `pages` dos popups visíveis, extrai todas as `image_key` em código
+e libera as que estão em `otherKeys`. O handler ganha uma dependência
+`createUserDb(authHeader)` ao lado de `createDb`, injetável nos testes. A allowlist de
+artigos continua no service role, porque artigo publicado é público para qualquer
+usuário autenticado.
 
 Popups em draft, fora da janela ou não direcionados ao workspace não resolvem para
 usuários do CRM. No admin, a chave está sob o prefixo da própria conta do admin, então
@@ -207,37 +239,46 @@ o preview do editor resolve por `ownKeys` como a capa de artigo já faz.
 - `apps/admin/src/router.tsx`: rota `popups`, lazy, `PopupsPage`.
 - `AdminLayout` `NAV_ITEMS`: `{ to: '/admin/popups', icon: AppWindow, label: 'Popups' }`
   logo abaixo de Banners.
-- `apps/admin/src/lib/api.ts`: interface `GlobalPopup` (colunas da tabela +
-  `counts`) e `listPopups`, `createPopup`, `updatePopup`, `deletePopup`, no molde das
-  funções de banner.
+- `apps/admin/src/lib/api.ts`: interfaces `PopupPage` e `GlobalPopup` (colunas da
+  tabela + `counts`) e `listPopups`, `createPopup`, `updatePopup`, `deletePopup`, no
+  molde das funções de banner.
 - Alias `@mesaas/ui` em `apps/admin/vite.config.ts` e `apps/admin/tsconfig.json`
   (`"@mesaas/ui/*": ["../../packages/ui/*"]`), igual ao CRM e ao Hub.
 
 ### `PopupsPage`
 
-Mesma estrutura da `BannersPage`: cabeçalho com "New Popup", busca por título, filtro de
-status, lista clicável, draft com opacidade reduzida, badge `EXPIRED` derivado quando
-`status = 'active'` e `ends_at < now()`.
+Mesma estrutura da `BannersPage`: cabeçalho com "New Popup", busca (casa com o título
+de qualquer página), filtro de status, lista clicável, draft com opacidade reduzida,
+badge `EXPIRED` derivado quando `status = 'active'` e `ends_at < now()`.
 
-Colunas (desktop): título com miniatura da imagem (ou placeholder neutro) e linha de
-métricas `seen · closed · cta · ack`; frequência (`Once` / `Until CTA`, com sufixo
-`· ack` quando `require_ack`); target; agenda; status. Mobile: card compacto como o
-dos banners.
+Colunas (desktop): título da primeira página com miniatura da imagem dela (ou
+placeholder neutro), badge `N pages` quando há mais de uma, e linha de métricas
+`seen · closed · cta · ack`; frequência (`Once` / `Until CTA`, com sufixo `· ack`
+quando `require_ack`); target; agenda; status. Mobile: card compacto como o dos banners.
 
 ### Editor
 
 Modal `max-w-5xl`. A partir de `md`, duas colunas: formulário à esquerda, preview
 sticky à direita. Abaixo de `md`, uma coluna com o preview no fim.
 
-Campos, na ordem:
+O formulário tem dois blocos. No topo, as **abas de página**: uma aba por página com
+número e título truncado, arrastável para reordenar com `@dnd-kit/sortable` (já é
+dependência da raiz, usada em `SortableEtapaList` no CRM), botão `×` que remove a
+página (com confirmação se ela tem conteúdo) e `+ Page` até o limite de 6. Selecionar uma aba mostra os
+campos daquela página:
 
 | Campo | Input | Regra |
 |---|---|---|
-| Title | text | obrigatório |
-| Eyebrow | text | opcional |
+| Title | text | obrigatório, até 120 |
+| Eyebrow | text | opcional, até 60 |
 | Image | dropzone com miniatura, replace, remove | opcional; aviso "recomendado 16:9, até 10 MB" |
-| Body | textarea markdown | obrigatório |
-| CTA label / CTA URL | dois text lado a lado | os dois ou nenhum |
+| Body | textarea markdown | obrigatório, até 2000 |
+
+Abaixo, sob o cabeçalho `Popup settings (apply to all pages)`, os campos do popup:
+
+| Campo | Input | Regra |
+|---|---|---|
+| CTA label / CTA URL | dois text lado a lado | os dois ou nenhum; aparece só na última página |
 | Secondary label | text | opcional; placeholder mostra o default que o CRM usará |
 | CTA style | segmented `Ink` / `Brand yellow` | default Ink |
 | Frequency | radio `Once per user` / `Every session until CTA` | default Once; desabilitado e forçado em Once enquanto Require acknowledgement está marcado |
@@ -248,14 +289,17 @@ Campos, na ordem:
 
 Botões: Create/Update, Cancel, Delete (só quando editando um draft).
 
-Preview: `PopupCard` real com os valores do formulário, e um toggle `Light` / `Dark`.
-O modo dark envolve o card em um wrapper que define as variáveis legadas do CRM com os
-valores do tema escuro (`--card-bg: #12151a`, `--text-main: #e8eaf0`,
-`--text-muted: #9ca3af`, `--border-color: #1e2430`).
+Preview: `PopupCard` real com os valores do formulário, **controlado**: a página
+exibida é a aba selecionada, e navegar no preview (pontinhos, Voltar, Próximo) troca
+a aba. Toggle `Light` / `Dark`: o modo dark envolve o card em um wrapper que define
+as variáveis legadas do CRM com os valores do tema escuro (`--card-bg: #12151a`,
+`--text-main: #e8eaf0`, `--text-muted: #9ca3af`, `--border-color: #1e2430`).
 
 ### Validação no formulário
 
-Antes de enviar, erro inline abaixo do campo:
+Antes de enviar, erro inline abaixo do campo (e a aba da página com erro ganha um
+marcador):
+- Página sem título ou sem corpo; limites de tamanho.
 - CTA com label sem URL ou URL sem label.
 - `until_cta` sem CTA.
 - Target por plano ou workspace sem nenhum selecionado.
@@ -265,9 +309,10 @@ Antes de enviar, erro inline abaixo do campo:
 
 Reaproveita `uploadInlineImage` de `apps/admin/src/lib/inline-image.ts` (o fluxo da
 capa de artigo: `file-upload-url` → PUT no R2 → `file-upload-finalize`). Guarda
-`r2Key` em `image_key`. O preview resolve a URL assinada com `resolveInlineImageUrls`.
-Trocar a imagem sobe uma nova e substitui a chave; a antiga fica órfã no R2 como as capas
-de artigo substituídas ficam hoje (mesma dívida, fora de escopo).
+`r2Key` em `pages[i].image_key`. O preview resolve as URLs assinadas de todas as
+páginas com uma chamada a `resolveInlineImageUrls`. Trocar a imagem sobe uma nova e
+substitui a chave; a antiga fica órfã no R2 como as capas de artigo substituídas
+ficam hoje (mesma dívida, fora de escopo).
 
 ### `TargetPicker`
 
@@ -282,11 +327,17 @@ Componente puramente visual, importado por caminho (`@mesaas/ui/PopupCard`), sem
 importar nada de `apps/*`. Props:
 
 ```ts
-interface PopupCardProps {
+interface PopupCardPage {
   title: string;
   eyebrow?: string | null;
   body: string;                       // markdown
   imageUrl?: string | null;           // já resolvida (assinada)
+}
+
+interface PopupCardProps {
+  pages: PopupCardPage[];             // 1 a 6
+  page: number;                       // índice da página exibida (controlado)
+  onPageChange: (index: number) => void;
   ctaLabel?: string | null;
   ctaStyle: 'ink' | 'brand';
   secondaryLabel: string;             // já com default aplicado
@@ -295,20 +346,40 @@ interface PopupCardProps {
   onCta?: () => void;
   onSecondary: () => void;
   onClose: () => void;                // X
+  titleId?: string;                   // para aria-labelledby do Dialog
+  bodyId?: string;                    // para aria-describedby do Dialog
 }
 ```
 
-Renderiza: imagem 16:9 opcional com X sobreposto; sem imagem, o X fica no canto do
-corpo. Eyebrow, título, corpo (`react-markdown` + `remark-gfm`, links via
-`sanitizeHref`, `target="_blank"`, `rel="noopener noreferrer"`), linha de botões.
-Botões: CTA (se houver) + secundário; com `requireAck` e sem CTA, só o secundário.
-Largura máxima 420px; abaixo de 480px de viewport, margem de 16px e botões empilhados.
+Renderiza a página `page`: imagem 16:9 opcional com X sobreposto (sem imagem, o X
+fica no canto do corpo); eyebrow; título; corpo (`react-markdown` + `remark-gfm`,
+links via `sanitizeHref`, `target="_blank"`, `rel="noopener noreferrer"`); e a linha
+de navegação. Com mais de uma página, o eyebrow recebe o sufixo `· n de N` (ou só
+`n de N` quando a página não tem eyebrow).
+
+Linha de navegação, por posição:
+
+| Página | Esquerda | Centro | Direita |
+|---|---|---|---|
+| primeira (N > 1) | | pontinhos | `Próximo` (estilo do CTA) |
+| do meio | `Voltar` (link discreto) | pontinhos | `Próximo` |
+| última (N > 1) | `Voltar` acima da linha de botões | pontinhos | CTA (se houver) + secundário, lado a lado |
+| única (N = 1) | | | CTA (se houver) + secundário |
+
+Os pontinhos são botões (`aria-label="Página n de N"`) e trocam de página. `Voltar` e
+`Próximo` chamam `onPageChange`. O X, quando não há `requireAck`, aparece em todas as
+páginas. Com `requireAck` e sem CTA, a última página tem só o secundário. Trocar de
+página anima com um fade curto; sem swipe no mobile nesta versão.
+
+Largura máxima 420px; abaixo de 480px de viewport, margem de 16px e botões da última
+página empilhados.
 
 Estilo com os tokens legados do CRM e fallback claro: `var(--card-bg, #ffffff)`,
 `var(--text-main, #12151a)`, `var(--text-muted, #374151)`,
 `var(--border-color, rgba(30,36,48,.1))`, raio 12px, fonte `var(--font-main, -apple-system, ...)`.
 CTA `ink`: fundo `#12151a`, texto branco. CTA `brand`: fundo `#ffbf30`, texto `#12151a`.
-Secundário: outline com `--border-color`.
+`Próximo` usa o mesmo estilo do CTA. Secundário: outline com `--border-color`.
+`Voltar`: texto em `--text-muted`, sem borda.
 
 Defaults de `secondary_label`, aplicados por quem monta o card (CRM e preview do admin
 usam a mesma função `defaultSecondaryLabel(requireAck, hasCta)` exportada do pacote):
@@ -323,7 +394,10 @@ usam a mesma função `defaultSecondaryLabel(requireAck, hasCta)` exportada do p
 - `getMyPopupInteractions()`: `popup_id, action` de `popup_interactions` do usuário atual.
 - `recordPopupInteraction(popupId, action)`: `insert`.
 
-Tipos `GlobalPopup` e `PopupInteraction` exportados daqui; sem hooks no store.
+Tipos `GlobalPopup`, `PopupPage` e `PopupInteraction` exportados daqui; sem hooks no
+store. O CRM confia no formato de `pages` (só o `platform-admin` escreve), mas
+`getActivePopups` descarta em código qualquer popup cujo `pages` não seja um array
+não vazio, com `console.warn`, para um dado inesperado nunca derrubar o shell.
 
 ### Hook `usePopups` (`apps/crm/src/hooks/usePopups.ts`)
 
@@ -361,11 +435,11 @@ terminaram:
 1. Se o guia de primeiros passos está aberto (`useGuide()?.isOpen`; o hook devolve
    null fora do provider), grava `mesaas_popup_skipped` e não mostra nada nesta sessão.
 2. `pickPopup(...)`. Se null, encerra.
-3. Se há `image_key`, resolve com `resolveInlineImageUrls([image_key])`. Falhou:
-   abre sem imagem.
-4. Espera 800 ms após o load e abre.
+3. Coleta as `image_key` de todas as páginas e resolve em uma chamada a
+   `resolveInlineImageUrls`. Falhou: abre com as páginas sem imagem.
+4. Espera 800 ms após o load e abre na página 1.
 5. Ao abrir: grava `mesaas_popup_shown`, `markSeen` (se ainda não há `seen` no cache)
-   e `captureEvent('popup_shown', { popup_id })`.
+   e `captureEvent('popup_shown', { popup_id, pages: N })`.
 
 **Não usa o `DialogContent` do CRM.** Ele envolve os filhos em um wrapper fixo com
 `p-6` e renderiza um `DialogPrimitive.Close` (o X do canto) sem nenhuma prop que
@@ -377,17 +451,22 @@ em `require_ack`, um X funcional. O host compõe os primitivos diretamente:
 `PopupCard` como único filho. `dialog.tsx` não muda.
 
 Com `require_ack`: `onEscapeKeyDown` e `onInteractOutside` com `preventDefault` no
-`Content`, e `requireAck` no card esconde o X do próprio card. O título do card recebe
-um `id` e o `Content` aponta `aria-labelledby` para ele; `aria-describedby` vai para o
-corpo.
+`Content`, e `requireAck` no card esconde o X do próprio card. A pessoa precisa
+chegar à última página e clicar no botão de confirmação. O título da página atual
+recebe um `id` e o `Content` aponta `aria-labelledby` para ele; `aria-describedby`
+vai para o corpo.
+
+O host guarda o índice da página em estado local. Cada troca dispara
+`captureEvent('popup_page', { popup_id, page })`, o que dá o funil por página sem
+tocar no banco.
 
 Ações:
 
 | Origem | Interação gravada | Sessão | Evento PostHog | Depois |
 |---|---|---|---|---|
-| X ou botão secundário (sem `require_ack`) | `closed` | `closed:<id>` | `popup_closed` | fecha |
+| X em qualquer página, ou botão secundário (sem `require_ack`) | `closed` | `closed:<id>` | `popup_closed` com `page` | fecha |
 | Botão secundário (com `require_ack`) | `ack` | | `popup_ack` | fecha |
-| CTA | `cta` | | `popup_cta` | fecha e navega |
+| CTA (só na última página) | `cta` | | `popup_cta` | fecha e navega |
 
 Navegação do CTA: `safe = sanitizeUrl(cta_url)`. Se `safe` começa com `/`,
 `navigate(safe)` do router. Senão, `openExternalUrl(cta_url)` de `utils/security.ts`,
@@ -395,8 +474,9 @@ que devolve `null` sem abrir nada quando a URL é rejeitada (`sanitizeUrl` devol
 nesses casos; nunca chamar `window.open` com esse valor). A interação `cta` é gravada
 antes de navegar, e o popup fecha mesmo quando a navegação vira no-op.
 
-Os quatro nomes de evento (`popup_shown`, `popup_closed`, `popup_cta`, `popup_ack`)
-entram na união `AnalyticsEvent` em `apps/crm/src/lib/analytics.ts`, que é tipada.
+Os cinco nomes de evento (`popup_shown`, `popup_page`, `popup_closed`, `popup_cta`,
+`popup_ack`) entram na união `AnalyticsEvent` em `apps/crm/src/lib/analytics.ts`,
+que é tipada.
 
 ### Ordem de exibição em relação ao resto do shell
 
@@ -412,24 +492,29 @@ Hoje os banners não têm teste no admin nem no CRM. Aqui o alvo é a lógica, n
   `entitlement-tests`): usuário de workspace A vê popup `all`, vê popup `workspace` que
   o inclui, não vê o que não o inclui, não vê draft nem fora da janela; targeting por
   plano via `resolve_workspace_plan`; usuário B não lê interações de A e não insere com
-  `user_id` de A.
+  `user_id` de A; `pages` vazio e `action` inválida são rejeitados pelo CHECK.
 - **Deno** (`supabase/functions/__tests__/`): `platform-admin-popups_test.ts` (campos
-  obrigatórios, par de CTA, `until_cta` sem CTA, delete só em draft, `counts` montado
-  da view); extensão de `sign-r2-urls_test.ts` (chave de popup visível pelo `createUserDb`
-  assinada; chave que o client do usuário não devolve, por ser draft ou não
-  direcionado, negada; e continua negando chave de outra conta).
+  obrigatórios, `validatePages` com cada limite e chave desconhecida, par de CTA,
+  `until_cta` sem CTA, `require_ack` com `until_cta`, delete só em draft, `counts`
+  montado da view); extensão de `sign-r2-urls_test.ts` (chave de página de popup
+  visível pelo `createUserDb` assinada; chave que o client do usuário não devolve, por
+  ser draft ou não direcionado, negada; e continua negando chave de outra conta).
 - **Vitest admin** (`apps/admin/src/pages/__tests__/PopupsPage.test.tsx`,
   `apps/admin/src/components/__tests__/TargetPicker.test.tsx`): `formToPayload`
-  (nulos, datas em ISO, arrays só no modo certo), as quatro validações inline,
-  `TargetPicker` troca de modo e limpa seleções.
+  (nulos, datas em ISO, arrays só no modo certo, `pages` montado das abas), as
+  validações inline incluindo página sem título, adicionar/remover/reordenar página
+  respeitando o limite de 6, `TargetPicker` troca de modo e limpa seleções.
 - **Vitest CRM**: `pickPopup` com os quatro descartes e a ordenação;
   `GlobalPopupHost` (some o X com `require_ack`, Esc bloqueado, CTA relativo chama
-  `navigate`, CTA absoluto chama `window.open`, interações e eventos gravados, pula
-  quando o guia está aberto, erro de query não renderiza nada).
+  `navigate`, CTA absoluto chama `window.open`, interações e eventos gravados incluindo
+  `popup_page`, pula quando o guia está aberto, erro de query não renderiza nada,
+  `pages` malformado é descartado).
 - **Vitest pacote** (`packages/ui/__tests__/PopupCard.test.tsx`): defaults de
-  `secondaryLabel`, links sanitizados, botões conforme props.
-- **Browser** (staging, login seed): criar popup no admin com imagem, ver no CRM em
-  light e dark, confirmar `until_cta` reaparecendo em nova aba e sumindo após o CTA.
+  `secondaryLabel`, links sanitizados, botões por posição da página (primeira, meio,
+  última, única), pontinhos trocam de página, sufixo `n de N`.
+- **Browser** (staging, login seed): criar popup de 3 páginas no admin com imagem,
+  ver no CRM em light e dark navegando entre páginas, confirmar `until_cta`
+  reaparecendo em nova aba na página 1 e sumindo após o CTA.
 
 ## Rollout
 
@@ -453,6 +538,11 @@ Staging primeiro, mesma ordem, para a verificação em browser.
 - **Popup em cima do guia.** Se o wizard de primeiros passos abre sozinho, o popup pula
   a sessão inteira em vez de aparecer logo depois. Menos intrusivo para quem acabou de
   entrar.
+- **`pages` em jsonb, não em tabela filha.** Ganha simplicidade de RLS e de CRUD; perde
+  a validação de formato no banco, que fica no `platform-admin`. Se um dia precisar de
+  métrica por página no banco, uma tabela filha entra sem migrar o conteúdo.
+- **CTA só na última página.** Quem fecha antes não vê o CTA. É o comportamento
+  desejado: o CTA é a conclusão do anúncio, não um atalho.
 - **Imagens órfãs no R2** ao trocar ou remover a imagem: mesma dívida das capas de
   artigo; fora de escopo.
 - **`seen` sem UNIQUE**: a deduplicação é no cliente. Uma corrida entre duas abas pode
