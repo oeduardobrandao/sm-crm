@@ -8,6 +8,7 @@ import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
 import { handleListPopups, handleCreatePopup, handleUpdatePopup, handleDeletePopup } from "./popups.ts";
 import { normalizeBanner, pickBannerColumns, validateBanner } from "../_shared/admin-banners.ts";
+import { isUniqueViolation, normalizeKb, pickKbColumns, validateKbArticle } from "../_shared/admin-kb.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
@@ -1010,13 +1011,6 @@ async function handleDeleteBanner(
 
 // ─── Knowledge Base ──────────────────────────────────────────
 
-const KB_ARTICLE_COLUMNS = [
-  "title", "slug", "excerpt", "content", "content_plain",
-  "cover_image_url", "category", "tags", "status", "display_order",
-] as const;
-
-const RESERVED_SLUGS = ["novo", "editar"];
-
 async function handleListKbArticles(
   svc: SupabaseClient,
   body: { category?: string; status?: string },
@@ -1072,24 +1066,15 @@ async function handleCreateKbArticle(
     );
   }
 
-  if (RESERVED_SLUGS.includes(rest.slug as string)) {
-    return new Response(
-      JSON.stringify({ error: `Slug "${rest.slug}" is reserved` }),
-      { status: 400, headers },
-    );
-  }
+  const insert = normalizeKb({ author_id: adminId, ...pickKbColumns(rest) });
+  const fieldError = validateKbArticle(insert);
+  if (fieldError) return new Response(JSON.stringify({ error: fieldError }), { status: 400, headers });
 
-  const insert: Record<string, unknown> = { author_id: adminId };
-  for (const col of KB_ARTICLE_COLUMNS) {
-    if (rest[col] !== undefined) insert[col] = rest[col];
+  const { data, error } = await svc.from("kb_articles").insert(insert).select().single();
+  if (error) {
+    if (isUniqueViolation(error)) return new Response(JSON.stringify({ error: "slug already in use" }), { status: 409, headers });
+    throw error;
   }
-
-  const { data, error } = await svc
-    .from("kb_articles")
-    .insert(insert)
-    .select()
-    .single();
-  if (error) throw error;
 
   return new Response(JSON.stringify({ article: data }), { status: 201, headers });
 }
@@ -1108,32 +1093,23 @@ async function handleUpdateKbArticle(
     );
   }
 
-  if (rest.slug && RESERVED_SLUGS.includes(rest.slug as string)) {
-    return new Response(
-      JSON.stringify({ error: `Slug "${rest.slug}" is reserved` }),
-      { status: 400, headers },
-    );
-  }
-
-  const update: Record<string, unknown> = {};
-  for (const col of KB_ARTICLE_COLUMNS) {
-    if (rest[col] !== undefined) update[col] = rest[col];
-  }
-
+  const update = normalizeKb(pickKbColumns(rest));
   if (Object.keys(update).length === 0) {
-    return new Response(
-      JSON.stringify({ error: "No fields to update" }),
-      { status: 400, headers },
-    );
+    return new Response(JSON.stringify({ error: "No fields to update" }), { status: 400, headers });
   }
+  const { data: current, error: readErr } = await svc
+    .from("kb_articles").select("*").eq("id", article_id).maybeSingle();
+  if (readErr) throw readErr;
+  if (!current) return new Response(JSON.stringify({ error: "Article not found" }), { status: 404, headers });
+  // Linha atual normalizada antes de mesclar (cover_image_url/excerpt "" legados → null).
+  const fieldError = validateKbArticle({ ...normalizeKb(current as Record<string, unknown>), ...update });
+  if (fieldError) return new Response(JSON.stringify({ error: fieldError }), { status: 400, headers });
 
-  const { data, error } = await svc
-    .from("kb_articles")
-    .update(update)
-    .eq("id", article_id)
-    .select()
-    .single();
-  if (error) throw error;
+  const { data, error } = await svc.from("kb_articles").update(update).eq("id", article_id).select().single();
+  if (error) {
+    if (isUniqueViolation(error)) return new Response(JSON.stringify({ error: "slug already in use" }), { status: 409, headers });
+    throw error;
+  }
 
   return new Response(JSON.stringify({ article: data }), { status: 200, headers });
 }
