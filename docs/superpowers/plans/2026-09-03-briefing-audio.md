@@ -20,6 +20,7 @@ Spec: `docs/superpowers/specs/2026-09-03-briefing-audio-design.md`.
 - Novas env vars (opcionais, sem default): `TRANSCRIBE_WORKER_URL`, `TRANSCRIBE_SECRET`. Sem elas o áudio salva e a transcrição fica `failed`.
 - Rate limit novo: `hub-write:hub-briefing-audio:{conta}:{cliente}` 20 por 3600 s.
 - Migration: prefixo `20260907000001` (reconferir `git ls-tree --name-only origin/main:supabase/migrations | tail -1` antes do PR e renumerar acima se preciso).
+- Player de áudio: nunca `<audio controls>` nativo nas telas; sempre `@mesaas/ui/AudioPlayer` (decisão do usuário em 2026-09-03).
 - Classes `hub-*` do Hub são CSS puro: variantes Tailwind (`hover:`, `md:`) não funcionam nelas.
 - Antes de cada commit rode `npm run format` (prettier) nos arquivos de `apps/**`.
 - Cada tarefa termina com commit. Mensagens no padrão `feat(briefing): ...` / `test(...)` com trailer `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
@@ -37,6 +38,7 @@ Spec: `docs/superpowers/specs/2026-09-03-briefing-audio-design.md`.
 | `apps/hub/src/types.ts`, `api.ts` | tipos e wrappers das rotas |
 | `apps/hub/src/services/ideiaMedia.ts` | `putToR2` exportado (Blob + contentType) |
 | `apps/hub/src/services/briefingAudio.ts` | validação, escolha de mime, orquestração presign → PUT → finalize |
+| `packages/ui/AudioPlayer/index.tsx` | player próprio compartilhado (`@mesaas/ui/AudioPlayer`): play/pause, barra com seek, tempo |
 | `apps/hub/src/components/AudioRecorder.tsx` | gravador (MediaRecorder) com prévia |
 | `apps/hub/src/pages/BriefingPage.tsx` | integra gravador, player, status, erros visíveis |
 | `workers/transcribe/*` | Worker Cloudflare: R2 binding + Workers AI Whisper |
@@ -1778,7 +1780,296 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ---
 
-### Task 5: Hub UI: `AudioRecorder` e integração na `BriefingPage`
+### Task 5: Player de áudio próprio `@mesaas/ui/AudioPlayer`
+
+**Files:**
+- Create: `packages/ui/AudioPlayer/index.tsx`
+- Create: `packages/ui/AudioPlayer/__tests__/index.test.tsx`
+
+**Interfaces:**
+- Consumes: nada do projeto (arquivo standalone, sem imports `@/`, como `packages/ui/VideoPlayer`; ambos os apps já aliasam `@mesaas/ui/*` para `packages/ui/*`, e o vitest da raiz também).
+- Produces: `export function AudioPlayer(props: { src: string; durationSeconds?: number | null; className?: string; style?: CSSProperties; label?: string })` e `export function formatClock(seconds: number): string` (`m:ss`). Estilo via variáveis CSS com fallback: `--audio-btn-bg` (fundo do play, padrão `currentColor`), `--audio-btn-fg` (ícone, padrão `#fff`), `--audio-track` (trilha, padrão `rgba(0,0,0,.1)`), `--audio-fill` (progresso, padrão `currentColor`). Importado nos apps como `@mesaas/ui/AudioPlayer`.
+
+Motivação: o `<audio controls>` nativo muda de cara entre Chrome e Safari e não segue o whitelabel. Este player é mínimo e nosso: botão redondo de 36px, trilha de 4px com seek por clique e teclado, `atual / total` em tabular. Gotcha real: um `.webm` gravado pelo `MediaRecorder` reporta `duration = Infinity`; por isso `durationSeconds` (o timer do gravador, salvo no banco) é a fonte do total quando a mídia não informa.
+
+- [ ] **Step 1: Escrever o teste**
+
+`packages/ui/AudioPlayer/__tests__/index.test.tsx`:
+
+```tsx
+import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AudioPlayer, formatClock } from '../index';
+
+const play = vi.fn(async () => {});
+const pause = vi.fn();
+
+beforeEach(() => {
+  Object.defineProperty(HTMLMediaElement.prototype, 'play', { configurable: true, value: play });
+  Object.defineProperty(HTMLMediaElement.prototype, 'pause', { configurable: true, value: pause });
+});
+afterEach(() => vi.clearAllMocks());
+
+describe('AudioPlayer', () => {
+  it('formats clocks as m:ss', () => {
+    expect(formatClock(0)).toBe('0:00');
+    expect(formatClock(65.4)).toBe('1:05');
+    expect(formatClock(Number.POSITIVE_INFINITY)).toBe('0:00');
+  });
+
+  it('shows the given duration when the media reports none and toggles play/pause', () => {
+    render(<AudioPlayer src="blob:x" durationSeconds={58} />);
+    expect(screen.getByText('0:00 / 0:58')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /reproduzir/i }));
+    expect(play).toHaveBeenCalledTimes(1);
+    const audio = document.querySelector('audio') as HTMLAudioElement;
+    fireEvent(audio, new Event('play'));
+    expect(screen.getByRole('button', { name: /pausar/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /pausar/i }));
+    expect(pause).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates the clock on timeupdate and seeks on track click and keyboard', () => {
+    render(<AudioPlayer src="blob:x" durationSeconds={100} />);
+    const audio = document.querySelector('audio') as HTMLAudioElement;
+    Object.defineProperty(audio, 'currentTime', { configurable: true, writable: true, value: 25 });
+    fireEvent(audio, new Event('timeupdate'));
+    expect(screen.getByText('0:25 / 1:40')).toBeInTheDocument();
+
+    const slider = screen.getByRole('slider');
+    slider.getBoundingClientRect = () =>
+      ({ left: 0, width: 200, top: 0, height: 4, right: 200, bottom: 4, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    fireEvent.click(slider, { clientX: 100 });
+    expect(audio.currentTime).toBe(50);
+    expect(slider).toHaveAttribute('aria-valuenow', '50');
+
+    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    expect(audio.currentTime).toBe(55);
+  });
+
+  it('resets to paused at the end', () => {
+    render(<AudioPlayer src="blob:x" durationSeconds={10} />);
+    const audio = document.querySelector('audio') as HTMLAudioElement;
+    fireEvent(audio, new Event('play'));
+    expect(screen.getByRole('button', { name: /pausar/i })).toBeInTheDocument();
+    fireEvent(audio, new Event('ended'));
+    expect(screen.getByRole('button', { name: /reproduzir/i })).toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 2: Rodar e confirmar falha**
+
+```bash
+npx vitest run packages/ui/AudioPlayer
+```
+
+Esperado: falha por módulo `../index` inexistente.
+
+- [ ] **Step 3: Implementar `packages/ui/AudioPlayer/index.tsx`**
+
+```tsx
+import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
+
+// Shared across the CRM and Hub apps as '@mesaas/ui/AudioPlayer' (standalone
+// file pattern from packages/ui/index.ts: no '@/' imports, never in the barrel).
+//
+// Minimal player the apps control: round play/pause, a seekable track and
+// "current / total". Styled by CSS custom properties so each app maps its own
+// tokens: --audio-btn-bg, --audio-btn-fg, --audio-track, --audio-fill.
+//
+// MediaRecorder .webm files report duration = Infinity, so `durationSeconds`
+// (the recorder's timer, stored server-side) is the total when the media has none.
+
+export interface AudioPlayerProps {
+  src: string;
+  durationSeconds?: number | null;
+  className?: string;
+  style?: CSSProperties;
+  /** Accessible name prefix for the controls, e.g. "Resposta em áudio". */
+  label?: string;
+}
+
+export function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const s = Math.floor(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+const SEEK_STEP = 5;
+
+export function AudioPlayer({ src, durationSeconds, className, style, label }: AudioPlayerProps) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [mediaDuration, setMediaDuration] = useState<number | null>(null);
+
+  const total =
+    mediaDuration && Number.isFinite(mediaDuration) && mediaDuration > 0
+      ? mediaDuration
+      : typeof durationSeconds === 'number' && durationSeconds > 0
+        ? durationSeconds
+        : 0;
+  const ratio = total > 0 ? Math.min(1, current / total) : 0;
+
+  useEffect(() => {
+    setPlaying(false);
+    setCurrent(0);
+    setMediaDuration(null);
+  }, [src]);
+
+  function toggle() {
+    const el = audioRef.current;
+    if (!el) return;
+    if (playing) el.pause();
+    else void el.play().catch(() => setPlaying(false));
+  }
+
+  function seekTo(seconds: number) {
+    const el = audioRef.current;
+    if (!el || total <= 0) return;
+    const next = Math.max(0, Math.min(total, seconds));
+    el.currentTime = next;
+    setCurrent(next);
+  }
+
+  function onTrackClick(e: MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    seekTo(((e.clientX - rect.left) / rect.width) * total);
+  }
+
+  function onTrackKey(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      seekTo(current + SEEK_STEP);
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      seekTo(current - SEEK_STEP);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      seekTo(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      seekTo(total);
+    }
+  }
+
+  const name = label ? `${label}: ` : '';
+
+  return (
+    <div className={className} style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, ...style }}>
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          setPlaying(false);
+          setCurrent(0);
+        }}
+        onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
+        onLoadedMetadata={(e) => setMediaDuration(e.currentTarget.duration)}
+        onDurationChange={(e) => setMediaDuration(e.currentTarget.duration)}
+      />
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={playing ? `${name}Pausar` : `${name}Reproduzir`}
+        style={{
+          flexShrink: 0,
+          width: 36,
+          height: 36,
+          borderRadius: 9999,
+          border: 0,
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--audio-btn-bg, currentColor)',
+          color: 'var(--audio-btn-fg, #fff)',
+        }}
+      >
+        {playing ? (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <rect x="6" y="5" width="4" height="14" rx="1" />
+            <rect x="14" y="5" width="4" height="14" rx="1" />
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <path d="M8 5.5v13l10-6.5z" />
+          </svg>
+        )}
+      </button>
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label={`${name}Posição`}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(total)}
+        aria-valuenow={Math.round(current)}
+        aria-valuetext={`${formatClock(current)} de ${formatClock(total)}`}
+        onClick={onTrackClick}
+        onKeyDown={onTrackKey}
+        style={{ flex: '1 1 0', minWidth: 80, height: 24, display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+      >
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: 4,
+            borderRadius: 9999,
+            background: 'var(--audio-track, rgba(0,0,0,.1))',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: `${ratio * 100}%`,
+              borderRadius: 9999,
+              background: 'var(--audio-fill, currentColor)',
+            }}
+          />
+        </div>
+      </div>
+      <span style={{ flexShrink: 0, fontSize: 12, fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
+        {formatClock(current)} / {formatClock(total)}
+      </span>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: Rodar testes e typecheck dos dois apps**
+
+```bash
+npx vitest run packages/ui/AudioPlayer
+npx tsc -p apps/hub/tsconfig.json --noEmit
+npx tsc -p apps/crm/tsconfig.json --noEmit
+```
+
+Se o `tsc` do Hub ou do CRM não enxergar `packages/ui/AudioPlayer` (tsconfig `include`), confira como `VideoPlayer` entra e siga o mesmo caminho.
+
+- [ ] **Step 5: Commit**
+
+```bash
+npm run format
+git add packages/ui/AudioPlayer
+git commit -m "feat(ui): AudioPlayer compartilhado com seek e tempo
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 6: Hub UI: `AudioRecorder` e integração na `BriefingPage`
 
 **Files:**
 - Create: `apps/hub/src/components/AudioRecorder.tsx`
@@ -1787,7 +2078,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `apps/hub/src/pages/__tests__/briefingPage.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 4.
+- Consumes: Task 4 e `AudioPlayer` da Task 5 (`import { AudioPlayer } from '@mesaas/ui/AudioPlayer'`). No Hub, aplique as variáveis `HUB_AUDIO_VARS` (definidas e exportadas em `AudioRecorder.tsx`, ver código) para o player seguir o whitelabel.
 - Produces: `AudioRecorder` com props `{ phase: 'idle' | 'uploading' | 'transcribing'; disabled?: boolean; onRecorded: (blob: Blob, mime: string, durationSeconds: number) => Promise<void> }`; helpers exportados `isRecordingSupported(): boolean`, `formatDuration(seconds: number): string`.
 
 - [ ] **Step 1: Escrever os testes**
@@ -1797,6 +2088,12 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```tsx
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('@mesaas/ui/AudioPlayer', () => ({
+  AudioPlayer: ({ durationSeconds }: { durationSeconds?: number | null }) => (
+    <div data-testid="audio-player">{`player ${durationSeconds ?? 0}s`}</div>
+  ),
+}));
+
 import { AudioRecorder, formatDuration, isRecordingSupported } from '../AudioRecorder';
 
 class FakeMediaRecorder {
@@ -1867,6 +2164,7 @@ describe('AudioRecorder', () => {
       fireEvent.click(screen.getByRole('button', { name: /parar/i }));
     });
     expect(stopTrack).toHaveBeenCalled();
+    expect(screen.getByTestId('audio-player')).toHaveTextContent('player 3s');
     expect(screen.getByRole('button', { name: /enviar/i })).toBeInTheDocument();
 
     await act(async () => {
@@ -1914,9 +2212,14 @@ vi.mock('../../services/briefingAudio', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../services/briefingAudio')>()),
   uploadBriefingAudio: vi.fn(),
 }));
+vi.mock('@mesaas/ui/AudioPlayer', () => ({
+  AudioPlayer: ({ durationSeconds }: { durationSeconds?: number | null }) => (
+    <div data-testid="audio-player">{`player ${durationSeconds ?? 0}s`}</div>
+  ),
+}));
 vi.mock('../../components/AudioRecorder', () => ({
   isRecordingSupported: () => true,
-  formatDuration: (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`,
+  HUB_AUDIO_VARS: {},
   AudioRecorder: ({ onRecorded, phase }: { onRecorded: (b: Blob, m: string, s: number) => Promise<void>; phase: string }) => (
     <button type="button" data-phase={phase} onClick={() => void onRecorded(new Blob(['abc']), 'audio/webm', 3)}>
       fake-record
@@ -1994,7 +2297,7 @@ describe('BriefingPage audio', () => {
     renderPage(<BriefingPage />);
     await screen.findByText('Público?');
 
-    expect(screen.getByText('1:05')).toBeInTheDocument();
+    expect(screen.getByText('player 65s')).toBeInTheDocument();
     expect(screen.getByText(/não foi possível transcrever/i)).toBeInTheDocument();
 
     await act(async () => {
@@ -2035,7 +2338,17 @@ npx vitest run apps/hub/src/components/__tests__/AudioRecorder.test.tsx apps/hub
 
 ```tsx
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import { MAX_AUDIO_SECONDS, pickRecorderMime } from '../services/briefingAudio';
+
+/** Hub tokens for the shared player (whitelabel-aware). */
+export const HUB_AUDIO_VARS = {
+  '--audio-btn-bg': 'var(--hub-primary)',
+  '--audio-btn-fg': 'var(--hub-primary-fg)',
+  '--audio-track': 'var(--hub-bd)',
+  '--audio-fill': 'var(--hub-txt)',
+} as CSSProperties;
 
 export type RecorderPhase = 'idle' | 'uploading' | 'transcribing';
 
@@ -2194,8 +2507,7 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
 
       {mode === 'preview' && previewUrl && (
         <div className="flex flex-wrap items-center gap-3">
-          <audio controls preload="metadata" src={previewUrl} className="h-9 max-w-full" />
-          <span className="text-[13px] tabular-nums hub-tx3">{formatDuration(elapsed)}</span>
+          <AudioPlayer src={previewUrl} durationSeconds={elapsed} label="Prévia" className="hub-txt w-full max-w-[360px]" style={HUB_AUDIO_VARS} />
           <button type="button" className={`${BTN} hub-btn-primary`} disabled={busy} onClick={() => void send()}>
             {phase === 'uploading' ? 'Enviando…' : phase === 'transcribing' ? 'Transcrevendo…' : 'Enviar'}
           </button>
@@ -2233,7 +2545,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { deleteBriefingAudio, fetchBriefing, retryBriefingTranscription, submitBriefingAnswer } from '../api';
 import { uploadBriefingAudio } from '../services/briefingAudio';
-import { AudioRecorder, formatDuration, isRecordingSupported, type RecorderPhase } from '../components/AudioRecorder';
+import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
+import { AudioRecorder, HUB_AUDIO_VARS, isRecordingSupported, type RecorderPhase } from '../components/AudioRecorder';
 import { PageHeader } from '../components/PageHeader';
 import { ScrollableTabs } from '../components/ScrollableTabs';
 import type { BriefingAudio, BriefingAudioResponse, BriefingQuestion } from '../types';
@@ -2372,12 +2685,13 @@ function QuestionItem({
 
       {audio && (
         <div className="space-y-2 rounded-lg border hub-border p-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <audio controls preload="none" src={audio.url} className="h-9 max-w-full" />
-            {audio.duration_seconds !== null && (
-              <span className="text-[13px] tabular-nums hub-tx3">{formatDuration(audio.duration_seconds)}</span>
-            )}
-          </div>
+          <AudioPlayer
+            src={audio.url}
+            durationSeconds={audio.duration_seconds}
+            label="Resposta em áudio"
+            className="hub-txt w-full max-w-[420px]"
+            style={HUB_AUDIO_VARS}
+          />
           <div className="flex flex-wrap items-center gap-3 text-xs">
             <span className={audio.transcription_status === 'failed' ? 'text-red-500' : 'hub-tx3'}>
               {transcriptionLabel}
@@ -2438,7 +2752,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ---
 
-### Task 6: Worker `workers/transcribe` (Workers AI Whisper) + spike
+### Task 7: Worker `workers/transcribe` (Workers AI Whisper) + spike
 
 **Files:**
 - Create: `workers/transcribe/wrangler.toml`, `package.json`, `tsconfig.json`, `vitest.config.ts`, `.gitignore`
@@ -2698,7 +3012,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ---
 
-### Task 7: CRM: edge function `briefing-audio`, serviço e player no HubTab
+### Task 8: CRM: edge function `briefing-audio`, serviço e player no HubTab
 
 **Files:**
 - Create: `supabase/functions/briefing-audio/index.ts`, `handler.ts`
@@ -2923,15 +3237,20 @@ export async function fetchBriefingAudio(questionId: string): Promise<CrmBriefin
 `apps/crm/src/pages/cliente-detalhe/BriefingAudioPlayer.tsx`:
 
 ```tsx
+import type { CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import { Badge } from '@/components/ui/badge';
 import { fetchBriefingAudio } from '@/services/briefingAudio';
 import type { HubBriefingQuestionRow } from '@/store/hub';
 
-function formatDuration(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
+/** CRM tokens for the shared player: ink CTA button, subtle track. */
+const CRM_AUDIO_VARS = {
+  '--audio-btn-bg': 'var(--cta-bg)',
+  '--audio-btn-fg': 'var(--cta-fg)',
+  '--audio-track': 'var(--surface-2)',
+  '--audio-fill': 'var(--text-main)',
+} as CSSProperties;
 
 const STATUS: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' }> = {
   done: { label: 'Transcrito', variant: 'success' },
@@ -2951,14 +3270,17 @@ export function BriefingAudioPlayer({ question }: { question: HubBriefingQuestio
   return (
     <div className="mt-2 flex flex-wrap items-center gap-3">
       {data ? (
-        <audio controls preload="none" src={data.url} className="h-8 max-w-full" />
+        <AudioPlayer
+          src={data.url}
+          durationSeconds={question.audio_duration_seconds}
+          label="Resposta em áudio"
+          className="w-full max-w-[380px] text-foreground"
+          style={CRM_AUDIO_VARS}
+        />
       ) : isError ? (
         <span className="text-xs text-muted-foreground">Não foi possível carregar o áudio.</span>
       ) : (
         <span className="text-xs text-muted-foreground">Carregando áudio…</span>
-      )}
-      {question.audio_duration_seconds != null && (
-        <span className="text-xs tabular-nums text-muted-foreground">{formatDuration(question.audio_duration_seconds)}</span>
       )}
       {status && (
         <Badge variant={status.variant} size="sm">
@@ -2994,7 +3316,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ---
 
-### Task 8: Docs, verificação completa e PR
+### Task 9: Docs, verificação completa e PR
 
 **Files:**
 - Modify: `CLAUDE.md` (seção "Edge functions (Deno.env)")
@@ -3072,6 +3394,6 @@ Depois do PR: rodar a review externa do Codex (padrão do repo) e tratar os find
 
 ## Self-review
 
-- **Cobertura do spec:** áudio por pergunta (T5), um por pergunta com substituição (T1 RPC + T5), anexar ao final (T2 `appendTranscript`), Whisper no Workers AI sem limite por plano (T6, nenhum medidor), prefixo fora de `contas/` (T1/T2), transcrição síncrona com 90 s e fallback `failed` + retry (T2/T3/T5), 5 min/15 MB (T2/T4/T5/T6), erros visíveis no Hub (T5), CRM player (T7), env vars opcionais (T3/T8), rate limit próprio (T3), guarda de colunas (T1), rollout (T8).
+- **Cobertura do spec:** áudio por pergunta (T5), um por pergunta com substituição (T1 RPC + T5), anexar ao final (T2 `appendTranscript`), Whisper no Workers AI sem limite por plano (T6, nenhum medidor), prefixo fora de `contas/` (T1/T2), transcrição síncrona com 90 s e fallback `failed` + retry (T2/T3/T5), 5 min/15 MB (T2/T4/T5/T6), erros visíveis no Hub (T5), player próprio compartilhado (T5) usado no Hub (T6) e CRM (T8), env vars opcionais (T3/T9), rate limit próprio (T3), guarda de colunas (T1), rollout (T9).
 - **Placeholders:** nenhum "TBD"; os pontos abertos (mp4 no Safari, latência) são medidos no spike da T6 com ação definida.
 - **Consistência de tipos:** `AudioView`/`BriefingAudio` têm os mesmos cinco campos em Deno, Hub e CRM; `finalize`/`transcribe` devolvem `{ ok, answer, transcript, audio }` nos três lugares; rotas de `api.ts` batem com o roteamento de T3; `putToR2(url, blob, contentType)` é a única assinatura usada.
