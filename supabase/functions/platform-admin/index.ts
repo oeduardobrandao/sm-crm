@@ -7,6 +7,7 @@ import { handleListWorkspaces } from "./list-workspaces.ts";
 import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
 import { handleListPopups, handleCreatePopup, handleUpdatePopup, handleDeletePopup } from "./popups.ts";
+import { normalizeBanner, pickBannerColumns, validateBanner } from "../_shared/admin-banners.ts";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
@@ -867,12 +868,6 @@ async function handleRemoveAdmin(
 
 // ─── Banners ──────────────────────────────────────────────────
 
-const BANNER_COLUMNS = [
-  "type", "content", "link", "custom_color", "target_mode",
-  "target_plan_ids", "target_workspace_ids", "dismissible",
-  "starts_at", "ends_at", "status",
-] as const;
-
 async function handleListBanners(
   svc: SupabaseClient,
   body: { status?: string },
@@ -918,9 +913,11 @@ async function handleCreateBanner(
     );
   }
 
-  const insert: Record<string, unknown> = { created_by: adminId };
-  for (const col of BANNER_COLUMNS) {
-    if (rest[col] !== undefined) insert[col] = rest[col];
+  const insert = normalizeBanner({ created_by: adminId, ...pickBannerColumns(rest) });
+  const fieldError = validateBanner(insert);
+  if (fieldError) {
+    console.error("[banners] create rejected:", fieldError);
+    return new Response(JSON.stringify({ error: "Invalid banner" }), { status: 400, headers });
   }
 
   const { data, error } = await svc
@@ -947,16 +944,21 @@ async function handleUpdateBanner(
     );
   }
 
-  const update: Record<string, unknown> = {};
-  for (const col of BANNER_COLUMNS) {
-    if (rest[col] !== undefined) update[col] = rest[col];
-  }
-
+  const update = normalizeBanner(pickBannerColumns(rest));
   if (Object.keys(update).length === 0) {
-    return new Response(
-      JSON.stringify({ error: "No fields to update" }),
-      { status: 400, headers },
-    );
+    return new Response(JSON.stringify({ error: "No fields to update" }), { status: 400, headers });
+  }
+  const { data: current, error: readErr } = await svc
+    .from("global_banners").select("*").eq("id", banner_id).maybeSingle();
+  if (readErr) throw readErr;
+  if (!current) return new Response(JSON.stringify({ error: "Banner not found" }), { status: 404, headers });
+  // Linhas antigas nunca passaram por este validador: normalizar a atual antes de mesclar
+  // (link/custom_color "" → null), senão um banner legado fica impossível de editar.
+  const merged = { ...normalizeBanner(current as Record<string, unknown>), ...update };
+  const fieldError = validateBanner(merged);
+  if (fieldError) {
+    console.error("[banners] update rejected:", fieldError);
+    return new Response(JSON.stringify({ error: "Invalid banner" }), { status: 400, headers });
   }
 
   const { data, error } = await svc
