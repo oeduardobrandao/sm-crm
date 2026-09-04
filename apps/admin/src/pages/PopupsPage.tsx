@@ -56,16 +56,25 @@ const LABEL = 'block text-xs font-medium text-muted-foreground uppercase trackin
  *  vira '#'; caminhos internos (`/`, `./`, `../`, `#`) passam direto; o resto vai para
  *  sanitizeExternalUrl (só http(s) sem credenciais). */
 function previewHref(href: string): string {
-  if (href.startsWith('//')) return '#';
+  // O browser remove tab/LF/CR de QUALQUER posição antes de interpretar a URL (WHATWG),
+  // então `/\t/evil.com` vira `//evil.com`. Normalizar igual antes de decidir. Links markdown
+  // chegam aqui com esses caracteres já percent-encoded (`%09`/`%0a`/`%0d`) pelo parser de
+  // origem (micromark, via mdast-util-to-hast normalizeUri), então a mesma limpeza precisa
+  // cobrir as duas formas -- igual já valia para `\` cru vs. `%5c`.
+  const stripped = href.replace(/[\t\r\n]|%0[9ad]/gi, '');
+  // `//host` é protocol-relative; o browser trata `\` como `/` em http(s), então `/\host` também é.
+  // Links markdown chegam aqui já com o `\` percent-encoded (`%5C`) pelo parser de origem
+  // (micromark), então o mesmo prefixo bloqueado precisa cobrir a forma crua e a codificada.
+  if (/^\/(?:[/\\]|%5c)/i.test(stripped)) return '#';
   if (
-    href.startsWith('/') ||
-    href.startsWith('./') ||
-    href.startsWith('../') ||
-    href.startsWith('#')
+    stripped.startsWith('/') ||
+    stripped.startsWith('./') ||
+    stripped.startsWith('../') ||
+    stripped.startsWith('#')
   ) {
-    return href;
+    return stripped;
   }
-  return sanitizeExternalUrl(href);
+  return sanitizeExternalUrl(stripped);
 }
 
 const DARK_VARS = {

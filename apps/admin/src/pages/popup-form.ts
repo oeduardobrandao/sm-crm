@@ -7,7 +7,7 @@ const MAX_EYEBROW = 60;
 const MAX_BODY = 2000;
 const MAX_LABEL = 40;
 const MAX_URL = 2048;
-const CTA_URL_RE = /^(\/(?!\/)|https?:\/\/)/; // `//host` é protocol-relative, não caminho interno
+const CTA_URL_RE = /^(\/(?![/\\])|https?:\/\/)/; // `//host` é protocol-relative, não caminho interno, nem `/\host`
 
 export interface PageForm {
   /** Identidade estável para o dnd-kit e o React. Nunca vai para o payload. */
@@ -160,7 +160,9 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
   const url = f.cta_url.trim();
   if ((label === '') !== (url === '')) errors.cta = 'CTA needs both a label and a URL';
   else if (label.length > MAX_LABEL) errors.cta = `CTA label max ${MAX_LABEL} characters`;
-  else if (url && !CTA_URL_RE.test(url)) errors.cta = 'CTA URL must start with / or http(s)://';
+  else if (url && /[\t\r\n]/.test(url)) {
+    errors.cta = 'CTA URL must start with / or http(s)://';
+  } else if (url && !CTA_URL_RE.test(url)) errors.cta = 'CTA URL must start with / or http(s)://';
   else if (url.length > MAX_URL) errors.cta = `CTA URL max ${MAX_URL} characters`;
   else if (f.secondary_label.trim().length > MAX_LABEL) {
     errors.cta = `Secondary label max ${MAX_LABEL} characters`;

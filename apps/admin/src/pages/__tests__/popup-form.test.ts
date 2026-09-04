@@ -124,6 +124,10 @@ describe('validateForm', () => {
     expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
     f = { ...valid(), cta_label: 'Ver', cta_url: '//evil.com' };
     expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
+    f = { ...valid(), cta_label: 'Ver', cta_url: '/\\evil.com' };
+    expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
+    f = { ...valid(), cta_label: 'Ver', cta_url: '/\t/evil.com' };
+    expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
     f = { ...valid(), frequency: 'until_cta' };
     expect(validateForm(f)!.frequency).toBe(
       '"Until CTA" needs a CTA on the popup or on at least one page',
