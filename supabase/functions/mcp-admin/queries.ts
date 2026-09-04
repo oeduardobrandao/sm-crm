@@ -268,10 +268,19 @@ export async function updateKbArticle(d: Deps, args: Record<string, unknown>) {
 const NO_HEADERS: Record<string, string> = {};
 const PII_KEYS = ["telefone", "marketing_opt_in", "owner_telefone", "owner_marketing_opt_in"];
 
+/** Remove chaves de PII do nível informado, e recorre em carriers aninhados conhecidos
+ *  (`owner` objeto, `members` array) -- o RPC admin_list_workspaces devolve o dono como
+ *  objeto aninhado (owner.telefone/marketing_opt_in), não como chaves owner_* no topo. */
 function stripPii<T extends Record<string, unknown>>(row: T): T {
-  const out = { ...row };
-  for (const k of PII_KEYS) delete (out as Record<string, unknown>)[k];
-  return out;
+  const out = { ...row } as Record<string, unknown>;
+  for (const k of PII_KEYS) delete out[k];
+  const owner = out.owner;
+  if (owner && typeof owner === "object") out.owner = stripPii(owner as Record<string, unknown>);
+  const members = out.members;
+  if (Array.isArray(members)) {
+    out.members = members.map((m) => (m && typeof m === "object" ? stripPii(m as Record<string, unknown>) : m));
+  }
+  return out as T;
 }
 
 /** Lê o JSON de um handler do platform-admin; 4xx vira McpInputError, 5xx propaga. */

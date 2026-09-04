@@ -2,13 +2,32 @@ import { assert, assertEquals } from "./assert.ts";
 import { getDashboard, getWorkspace, listPlans, listWorkspaces } from "../mcp-admin/queries.ts";
 import { makeDeps, makeFakeDb } from "./mcp-admin-helpers.ts";
 
-const WS = { id: "w1", name: "Agência X", plan_id: "max", owner_name: "Ana", owner_email: "ana@x.y", owner_telefone: "+55", owner_marketing_opt_in: true, member_count: 3, client_count: 7 };
+// Formato real do RPC admin_list_workspaces (migration 20260825000010): owner é um objeto
+// aninhado {name, email, telefone, marketing_opt_in}, não chaves owner_* no topo -- ver
+// também WorkspaceSummary em apps/admin/src/lib/api.ts.
+const WS = {
+  id: "w1",
+  name: "Agência X",
+  plan_id: "max",
+  owner: { name: "Ana", email: "ana@x.y", telefone: "+55", marketing_opt_in: true },
+  member_count: 3,
+  client_count: 7,
+};
 
-Deno.test("listWorkspaces: usa o RPC admin_list_workspaces e remove telefone/opt-in do dono", async () => {
+Deno.test("listWorkspaces: usa o RPC admin_list_workspaces e remove telefone/opt-in do dono aninhado", async () => {
   const { db, calls } = makeFakeDb({}, { admin_list_workspaces: [{ data: { workspaces: [WS], total: 1, total_members: 3, total_clients: 7, total_with_overrides: 0 }, error: null }] });
   const r = await listWorkspaces(makeDeps(db), { search: "Agência", limit: 500 });
   assertEquals(r.total, 1);
-  assertEquals(r.workspaces[0], { id: "w1", name: "Agência X", plan_id: "max", owner_name: "Ana", owner_email: "ana@x.y", member_count: 3, client_count: 7 });
+  assertEquals(r.workspaces[0], {
+    id: "w1",
+    name: "Agência X",
+    plan_id: "max",
+    owner: { name: "Ana", email: "ana@x.y" },
+    member_count: 3,
+    client_count: 7,
+  });
+  assert(!JSON.stringify(r).includes("telefone"));
+  assert(!JSON.stringify(r).includes("marketing_opt_in"));
   const rpcArgs = calls.find((c) => c.table === "rpc:admin_list_workspaces")!.args[0] as Record<string, unknown>;
   assertEquals(rpcArgs.p_search, "Agência");
   assertEquals(rpcArgs.p_limit, 100); // teto
@@ -31,6 +50,8 @@ Deno.test("getWorkspace: reutiliza handleGetWorkspace e remove telefone/opt-in d
   assertEquals(r.members.length, 1);
   assert(!("telefone" in r.members[0]) && !("marketing_opt_in" in r.members[0]));
   assertEquals(r.plan, { id: "max", name: "Max" });
+  assert(!JSON.stringify(r).includes("telefone"));
+  assert(!JSON.stringify(r).includes("marketing_opt_in"));
 });
 
 Deno.test("getWorkspace: 404 do handler vira McpInputError", async () => {
