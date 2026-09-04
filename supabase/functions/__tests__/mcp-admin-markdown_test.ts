@@ -230,6 +230,34 @@ Deno.test("tiptapToMarkdown: blocos e marks do subconjunto", () => {
   ].join("\n\n"));
 });
 
+Deno.test("tiptapToMarkdown: item de lista com codeBlock (linha em branco) e com dois parágrafos preserva a estrutura no round-trip", () => {
+  const doc = { type: "doc", content: [
+    { type: "bulletList", content: [
+      { type: "listItem", content: [
+        p(t("Exemplo:")),
+        { type: "codeBlock", attrs: { language: "python" }, content: [t("def f():\n    pass\n\ndef g():\n    pass")] },
+      ] },
+      { type: "listItem", content: [p(t("Primeiro parágrafo.")), p(t("Segundo parágrafo."))] },
+    ] },
+  ] };
+  const { markdown } = tiptapToMarkdown(doc);
+  assertEquals(markdown, [
+    "- Exemplo:",
+    "",
+    "  ```python",
+    "  def f():",
+    "      pass",
+    "",
+    "  def g():",
+    "      pass",
+    "  ```",
+    "- Primeiro parágrafo.",
+    "",
+    "  Segundo parágrafo.",
+  ].join("\n"));
+  assertEquals(markdownToTiptap(markdown), doc);
+});
+
 Deno.test("tiptapToMarkdown: nós e marks sem equivalente viram blocos opacos e são contados", () => {
   const iframe = { type: "iframe", attrs: { src: "https://www.loom.com/embed/x", width: "100%", height: "400px" } };
   const r2img = { type: "inlineImage", attrs: { r2Key: "contas/11111111-1111-1111-1111-111111111111/files/a.png", src: null, alt: null, width: 1, height: 1, blurSrc: null, displayWidth: null, loading: false } };

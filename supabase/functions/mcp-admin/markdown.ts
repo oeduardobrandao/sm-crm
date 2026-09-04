@@ -411,10 +411,23 @@ function serializeBlock(n: TiptapNode, counter: { opaque: number }): string {
       const lines: string[] = [];
       (n.content ?? []).forEach((item, i) => {
         const marker = ordered ? `${start + i}. ` : "- ";
-        const body = serializeBlocks(item.content, counter).replace(/\n\n/g, "\n");
+        // Serializa cada bloco-filho do item isoladamente (nunca `.replace` sobre o corpo
+        // inteiro): isso preservaria linhas em branco genuínas dentro de um codeBlock aninhado
+        // e apagaria a quebra entre dois parágrafos do mesmo item. Entre um parágrafo e uma
+        // sublista mantém uma única "\n" (a forma tight que o teste "sub" já espera); em
+        // qualquer outro par usa "\n\n" -- uma linha em branco entre blocos dentro de um item
+        // indentado é CommonMark válido e só torna a lista loose.
+        const children = item.content ?? [];
+        const parts = children.map((c) => serializeBlock(c, counter));
+        let body = parts[0] ?? "";
+        for (let j = 1; j < parts.length; j++) {
+          const tight = children[j - 1]?.type === "paragraph" &&
+            (children[j]?.type === "bulletList" || children[j]?.type === "orderedList");
+          body += (tight ? "\n" : "\n\n") + parts[j];
+        }
         const [first = "", ...rest] = body.split("\n");
         lines.push(marker + first);
-        for (const r of rest) lines.push(" ".repeat(marker.length) + r);
+        for (const r of rest) lines.push(r.length ? " ".repeat(marker.length) + r : "");
       });
       return lines.join("\n");
     }
