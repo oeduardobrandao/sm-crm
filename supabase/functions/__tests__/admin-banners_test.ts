@@ -25,6 +25,7 @@ Deno.test("validateBanner: link https ou caminho relativo; custom_color hex", ()
   assertEquals(validateBanner({ ...BASE, link: "/ajuda" }), null);
   assert(validateBanner({ ...BASE, link: "http://x.y" }) !== null);
   assert(validateBanner({ ...BASE, link: "//evil" }) !== null);
+  assert(validateBanner({ ...BASE, link: "/\\evil.com" }) !== null);
   assert(validateBanner({ ...BASE, link: "javascript:alert(1)" }) !== null);
   assertEquals(validateBanner({ ...BASE, custom_color: "#ffbf30" }), null);
   assert(validateBanner({ ...BASE, custom_color: "ffbf30" }) !== null);

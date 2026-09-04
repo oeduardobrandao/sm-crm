@@ -10,7 +10,8 @@ export const BANNER_COLUMNS = [
 const TYPES = ["info", "warning", "critical"];
 const STATUSES = ["draft", "active", "archived"];
 const MODES = ["all", "plan", "workspace"];
-const LINK_RE = /^(\/(?!\/)|https:\/\/)/;
+// Caminho relativo não pode começar com // nem /\ (o browser lê \ como / e vira host externo).
+const LINK_RE = /^(\/(?![\/\\])|https:\/\/)/;
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const TEXT_COLUMNS = ["link", "custom_color"] as const;
 

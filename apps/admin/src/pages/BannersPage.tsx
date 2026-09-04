@@ -355,7 +355,7 @@ export default function BannersPage() {
                     value={form.link}
                     onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
                     placeholder="https://..."
-                    pattern="https://.*|/(?!/).*"
+                    pattern="https://.*|/(?![/\\]).*"
                     title="https://… ou um caminho iniciado por /"
                     className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
