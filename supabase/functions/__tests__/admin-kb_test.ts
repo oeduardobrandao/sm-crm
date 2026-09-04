@@ -114,6 +114,16 @@ Deno.test("validateKbArticle: content passa pela allowlist de nós (rejeita nó 
       { type: "codeBlock", attrs: { language: null }, content: [{ type: "text", text: "code" }] },
       { type: "horizontalRule" },
       { type: "paragraph", content: [{ type: "text", text: "quebra" }, { type: "hardBreak" }, { type: "text", text: "linha" }] },
+      // hardBreak com marks: o parser DOM do ProseMirror abre as marks correntes (aqui,
+      // bold) no <br> quando ele fica no meio de um trecho formatado.
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "a", marks: [{ type: "bold" }] },
+          { type: "hardBreak", marks: [{ type: "bold" }] },
+          { type: "text", text: "b", marks: [{ type: "bold" }] },
+        ],
+      },
       {
         type: "inlineImage",
         attrs: {

@@ -27,6 +27,7 @@ export async function handleGetWorkspace(
   svc: SupabaseClient,
   body: { workspace_id: string },
   headers: Record<string, string>,
+  opts: { readOnly?: boolean } = {},
 ) {
   const { workspace_id } = body;
   if (!workspace_id) {
@@ -105,7 +106,7 @@ export async function handleGetWorkspace(
     }
   }
 
-  const subscription = await buildSubscriptionDetail(svc, workspace_id);
+  const subscription = await buildSubscriptionDetail(svc, workspace_id, opts);
 
   return new Response(JSON.stringify({
     workspace: ws,
@@ -142,10 +143,15 @@ export function stripeDashboardUrl(livemode: boolean, kind: string, id: string):
  * admin has manually comped the workspace's effective plan, so we surface it here.
  * The exact amount (incl. coupons/custom prices) comes live from Stripe; if Stripe
  * is unreachable or the key is unset we fall back to the plan's catalog price.
+ *
+ * `opts.readOnly` skips the live Stripe fetch (and its write-back to the mirror)
+ * entirely -- callers that only hold a read scope (e.g. mcp-admin's `platform:read`)
+ * must not trigger an outbound Stripe call or a DB write just by reading a workspace.
  */
 export async function buildSubscriptionDetail(
   svc: SupabaseClient,
   workspaceId: string,
+  opts: { readOnly?: boolean } = {},
 ) {
   const { data: row } = await svc
     .from("workspace_subscriptions")
@@ -201,7 +207,7 @@ export async function buildSubscriptionDetail(
     return applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
   }
 
-  if (row.stripe_subscription_id) {
+  if (!opts.readOnly && row.stripe_subscription_id) {
     try {
       const { stripe } = await import("../_shared/stripe.ts");
       const amt = await fetchStripeAmount(stripe, row.stripe_subscription_id, row.billing_interval ?? null);

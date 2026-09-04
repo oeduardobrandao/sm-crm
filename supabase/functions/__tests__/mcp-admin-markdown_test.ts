@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
-  decodeOpaque, encodeOpaque, IFRAME_ALLOWED_HOSTS, markdownToTiptap, tiptapToMarkdown,
-  tiptapToPlain, validateTiptapDoc,
+  decodeOpaque, encodeOpaque, HIGHLIGHT_COLORS, IFRAME_ALLOWED_HOSTS, markdownToTiptap,
+  tiptapToMarkdown, tiptapToPlain, validateTiptapDoc,
 } from "../mcp-admin/markdown.ts";
 import { McpInputError } from "../_shared/mcp-token.ts";
 
@@ -157,6 +157,14 @@ Deno.test("validateTiptapDoc: rejeita tipo, atributo, mark e domínio fora da al
   throwsInput(() => validateTiptapDoc({ type: "paragraph" }), "doc");
 });
 
+Deno.test("validateTiptapDoc: hardBreak aceita marks (ProseMirror abre marks em <br> dentro de texto formatado) mas nunca text", () => {
+  const wrap = (n: unknown) => ({ type: "doc", content: [n] });
+  const doc = wrap(p(t("a", [{ type: "bold" }]), { type: "hardBreak", marks: [{ type: "bold" }] }, t("b", [{ type: "bold" }])));
+  assertEquals(validateTiptapDoc(doc), doc);
+  throwsInput(() => validateTiptapDoc(wrap(p({ type: "hardBreak", marks: [{ type: "fontFamily" }] }))), "fontFamily");
+  throwsInput(() => validateTiptapDoc(wrap(p({ type: "hardBreak", text: "x" }))), "text");
+});
+
 Deno.test("validateTiptapDoc: aninhamento fora do schema é rejeitado", () => {
   const wrap = (n: unknown) => ({ type: "doc", content: [n] });
   throwsInput(() => validateTiptapDoc(wrap(p({ type: "bulletList", content: [{ type: "listItem", content: [p(t("x"))] }] }))), "paragraph");
@@ -178,6 +186,16 @@ Deno.test("IFRAME_ALLOWED_HOSTS espelha apps/admin/src/components/editor/IframeE
   const body = src.slice(src.indexOf("ALLOWED_DOMAINS"), src.indexOf("];"));
   const hosts = [...body.matchAll(/'([a-z0-9.-]+)'/g)].map((m) => m[1]);
   assertEquals([...IFRAME_ALLOWED_HOSTS].sort(), hosts.sort());
+});
+
+Deno.test("HIGHLIGHT_COLORS espelha apps/admin/src/components/editor/ArticleEditor.tsx (HIGHLIGHT_COLORS, sem 'None'/null)", async () => {
+  const src = await Deno.readTextFile(new URL("../../../apps/admin/src/components/editor/ArticleEditor.tsx", import.meta.url));
+  const start = src.indexOf("const HIGHLIGHT_COLORS");
+  const body = src.slice(start, src.indexOf("];", start));
+  // "color: 'xxx'" (o valor persistido); ignora "color: null" (a opção "None") -- "cssColor: '#…'"
+  // não casa (é "Color" maiúsculo, e o valor é hex, não [a-z]+).
+  const colors = [...body.matchAll(/color:\s*'([a-z]+)'/g)].map((m) => m[1]);
+  assertEquals([...HIGHLIGHT_COLORS].sort(), colors.sort());
 });
 
 Deno.test("tiptapToMarkdown: blocos e marks do subconjunto", () => {
@@ -240,6 +258,19 @@ Deno.test("tiptapToMarkdown: destino com parênteses vai na forma <…> e o roun
   assertEquals(markdownToTiptap(markdown), doc);
 });
 
+Deno.test("tiptapToMarkdown: '<'/'>' no destino são percent-encoded antes da forma <…>; round-trip estável após uma serialização", () => {
+  const href = "https://x.y/a(b)>c";
+  const doc = { type: "doc", content: [p(t("veja "), t("isto", [{ type: "link", attrs: { href } }]))] };
+  const { markdown: md1 } = tiptapToMarkdown(doc);
+  assertEquals(md1, "veja [isto](<https://x.y/a(b)%3Ec>)");
+  const doc2 = markdownToTiptap(md1);
+  const parsedHref = String((doc2.content[0] as { content: Array<{ marks?: Array<{ attrs?: { href?: string } }> }> })
+    .content[1].marks?.[0].attrs?.href);
+  assert(!parsedHref.includes(">"), `href "${parsedHref}" ainda tem '>' cru`);
+  const { markdown: md2 } = tiptapToMarkdown(doc2);
+  assertEquals(md2, md1);
+});
+
 Deno.test("tiptapToMarkdown: escapa caracteres especiais do Markdown no texto", () => {
   const doc = { type: "doc", content: [p(t("2 * 3 = 6, a_b [x] `y` # não é título")), p(t("- não é lista")), p(t("1) Confirme"))] };
   const { markdown } = tiptapToMarkdown(doc);
@@ -280,6 +311,20 @@ Deno.test("round-trip: markdown → tiptap → markdown é estável; tiptap com 
   const { markdown, opaque_blocks } = tiptapToMarkdown(fromUi);
   assertEquals(opaque_blocks, 3);
   assertEquals(markdownToTiptap(markdown), fromUi);
+});
+
+Deno.test("tiptapToMarkdown: marks em hardBreak não sobrevivem ao Markdown, por design (marked não expressa <br> marcado)", () => {
+  const withMarks = { type: "doc", content: [
+    p(t("a", [{ type: "bold" }]), { type: "hardBreak", marks: [{ type: "bold" }] }, t("b", [{ type: "bold" }])),
+  ] };
+  const { markdown } = tiptapToMarkdown(withMarks);
+  assertEquals(markdown, "**a**\\\n**b**");
+  // O round-trip volta com o MESMO markdown, mas o doc reidratado tem o hardBreak SEM marks --
+  // "\\\n" é um token opaco no lexer, não carrega formatação alguma.
+  const withoutMarks = { type: "doc", content: [
+    p(t("a", [{ type: "bold" }]), { type: "hardBreak" }, t("b", [{ type: "bold" }])),
+  ] };
+  assertEquals(markdownToTiptap(markdown), withoutMarks);
 });
 
 Deno.test("tiptapToPlain: texto dos blocos separado por \\n; hardBreak vira espaço; imagem vira alt", () => {

@@ -16,8 +16,7 @@ CREATE TABLE IF NOT EXISTS admin_mcp_oauth_grants (
   UNIQUE (user_id, client_id)
 );
 
-CREATE INDEX IF NOT EXISTS admin_mcp_oauth_grants_lookup_idx
-  ON admin_mcp_oauth_grants (user_id, client_id);
+-- Sem índice extra para (user_id, client_id): a UNIQUE acima já cria um.
 
 ALTER TABLE admin_mcp_oauth_grants ENABLE ROW LEVEL SECURITY;
 

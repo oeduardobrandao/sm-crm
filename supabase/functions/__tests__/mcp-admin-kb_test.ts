@@ -19,7 +19,10 @@ Deno.test("listKbArticles: sem corpo, filtros de status e categoria, ordem por d
 
 Deno.test("getKbArticle: por id (prevalece sobre slug) ou slug; devolve markdown + opaque_blocks", async () => {
   const iframe = { type: "iframe", attrs: { src: "https://www.loom.com/embed/x", width: "100%", height: "400px" } };
-  const row = { ...ROW, content: { type: "doc", content: [...DOC.content, iframe] } };
+  // `secret` simula uma coluna que um `select("*")` devolveria mas o SELECT explícito não pede
+  // -- a projeção de getKbArticle é por allowlist, não por spread de `data`, então mesmo com o
+  // fake db ignorando o SELECT e devolvendo o campo extra, ele não deve aparecer na resposta.
+  const row = { ...ROW, content: { type: "doc", content: [...DOC.content, iframe] }, secret: 1 };
   const { db, calls } = makeFakeDb({ kb_articles: [{ data: row, error: null }] });
   const r = await getKbArticle(makeDeps(db), { article_id: "a1", slug: "ignorado" });
   assertEquals(r.article.content_markdown, `Olá\n\n${encodeOpaque(iframe)}`);
@@ -27,6 +30,7 @@ Deno.test("getKbArticle: por id (prevalece sobre slug) ou slug; devolve markdown
   assert(has(calls, "kb_articles", "eq", ["id", "a1"]));
   assert(!has(calls, "kb_articles", "eq", ["slug", "ignorado"]));
   assert(!("content" in r.article) && !("content_plain" in r.article));
+  assert(!("secret" in r.article));
 
   const { db: db2, calls: calls2 } = makeFakeDb({ kb_articles: [{ data: ROW, error: null }] });
   await getKbArticle(makeDeps(db2), { slug: "t" });

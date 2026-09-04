@@ -34,15 +34,31 @@ Deno.test("listWorkspaces: usa o RPC admin_list_workspaces e remove telefone/opt
 });
 
 Deno.test("getWorkspace: reutiliza handleGetWorkspace e remove telefone/opt-in de owner e members", async () => {
-  const { db } = makeFakeDb({
+  const { db, calls } = makeFakeDb({
     workspaces: [{ data: { id: "w1", name: "X", logo_url: null, created_at: "t", plan_id: "max", plan_source: "manual" }, error: null }],
     workspace_members: [{ data: [{ user_id: "u1", role: "owner", joined_at: "t" }], error: null }],
     profiles: [{ data: { nome: "Ana", telefone: "+55", marketing_opt_in: true }, error: null }],
     clientes: [{ data: null, error: null, count: 2 } as never],
     integracoes_status: [{ data: null, error: null, count: 0 } as never],
     workspace_plan_overrides: [{ data: null, error: null }],
-    plans: [{ data: { id: "max", name: "Max" }, error: null }],
-    workspace_subscriptions: [{ data: null, error: null }],
+    // 3 leituras de `plans`, em ordem: (1) plano efetivo do workspace em handleGetWorkspace,
+    // (2) plan_name dentro de buildSubscriptionDetail, (3) preço de catálogo em
+    // applyCatalogFallback -- é aí que price_brl entra e vira amount_source "catalog".
+    plans: [
+      { data: { id: "max", name: "Max" }, error: null },
+      { data: { id: "max", name: "Max" }, error: null },
+      { data: { price_brl: 29900, price_brl_annual: null }, error: null },
+    ],
+    // Linha com stripe_subscription_id: getWorkspace (mcp-admin, escopo platform:read) passa
+    // { readOnly: true } para handleGetWorkspace, então buildSubscriptionDetail NUNCA deve
+    // chamar o Stripe nem gravar de volta em workspace_subscriptions -- só o mirror/catálogo.
+    workspace_subscriptions: [{
+      data: {
+        status: "active", plan_id: "max", billing_interval: "month", stripe_subscription_id: "sub_1",
+        provider: "stripe",
+      },
+      error: null,
+    }],
   });
   db.auth.admin = { getUserById: async () => ({ data: { user: { email: "ana@x.y" } } }) } as never;
   const r = await getWorkspace(makeDeps(db), { workspace_id: "w1" });
@@ -52,6 +68,11 @@ Deno.test("getWorkspace: reutiliza handleGetWorkspace e remove telefone/opt-in d
   assertEquals(r.plan, { id: "max", name: "Max" });
   assert(!JSON.stringify(r).includes("telefone"));
   assert(!JSON.stringify(r).includes("marketing_opt_in"));
+  assert(
+    !calls.some((c) => c.table === "workspace_subscriptions" && c.method === "update"),
+    "platform:read não pode gravar em workspace_subscriptions (opportunistic refresh do Admin)",
+  );
+  assertEquals((r.subscription as { amount_source: string | null }).amount_source, "catalog");
 });
 
 Deno.test("getWorkspace: 404 do handler vira McpInputError", async () => {

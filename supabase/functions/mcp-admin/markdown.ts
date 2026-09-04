@@ -6,7 +6,7 @@ import { marked, type Token, type Tokens } from "npm:marked@15.0.12";
 import { McpInputError } from "../_shared/mcp-token.ts";
 import { isSafeHref } from "../_shared/safe-href.ts";
 import {
-  CALLOUT_COLORS, IFRAME_ALLOWED_HOSTS, isSafeHttpsUrl, R2_KEY_RE, type TiptapMark,
+  CALLOUT_COLORS, HIGHLIGHT_COLORS, IFRAME_ALLOWED_HOSTS, isSafeHttpsUrl, R2_KEY_RE, type TiptapMark,
   type TiptapNode, validateTiptapDoc, YOUTUBE_DEFAULTS, YOUTUBE_RE,
 } from "../_shared/tiptap-schema.ts";
 
@@ -14,7 +14,10 @@ import {
 // inclusive): o schema/allowlist recursivo agora vive em _shared/tiptap-schema.ts, comum ao
 // caminho do agente (aqui) e ao do editor do Admin (_shared/admin-kb.ts).
 export type { TiptapMark, TiptapNode };
-export { CALLOUT_COLORS, IFRAME_ALLOWED_HOSTS, R2_KEY_RE, validateTiptapDoc, YOUTUBE_DEFAULTS, YOUTUBE_RE };
+export {
+  CALLOUT_COLORS, HIGHLIGHT_COLORS, IFRAME_ALLOWED_HOSTS, R2_KEY_RE, validateTiptapDoc,
+  YOUTUBE_DEFAULTS, YOUTUBE_RE,
+};
 
 // Reconhece qualquer conteúdo entre os delimitadores (não só base64 válido): um
 // <!--tiptap:...--> malformado deve virar McpInputError de decodeOpaque ("opaco"),
@@ -345,10 +348,12 @@ function escapeMd(s: string): string {
 }
 
 /** Destino de link/imagem: a forma simples do CommonMark não aceita parênteses desbalanceados
- * nem espaços; nesses casos usa a forma <…> (isSafeHref já barrou controle/espaço e <, >
- * nunca passam pelo parser sem quebrar, então basta checar parênteses). */
+ * nem espaços; nesses casos usa a forma <…>. Um "<" ou ">" cru no destino quebraria a forma
+ * <…> (fecha a tag cedo ou aninha `<`), então os dois são percent-encoded antes de decidir a
+ * forma -- isSafeHref já barrou controle/espaço, então basta isso mais os parênteses. */
 function mdDestination(url: string): string {
-  return /[()]/.test(url) ? `<${url}>` : url;
+  const escaped = url.replace(/</g, "%3C").replace(/>/g, "%3E");
+  return /[()]/.test(escaped) ? `<${escaped}>` : escaped;
 }
 
 /** null = tem mark fora do subconjunto (o bloco inteiro vira opaco). */

@@ -22,6 +22,9 @@ export const IFRAME_ALLOWED_HOSTS = [
 ];
 /** Espelho de CalloutExtension.tsx (CALLOUT_COLORS). */
 export const CALLOUT_COLORS = ["brown", "gray", "orange", "yellow", "green", "blue", "purple", "pink"];
+/** ESPELHO de apps/admin/src/components/editor/ArticleEditor.tsx (HIGHLIGHT_COLORS, sem a
+ * entrada "None"/null); mcp-admin-markdown_test.ts falha se divergir. */
+export const HIGHLIGHT_COLORS = ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink"];
 export const YOUTUBE_RE = /^https:\/\/(www\.)?(youtube\.com\/watch\?v=|youtube\.com\/embed\/|youtu\.be\/)[\w-]+/;
 export const YOUTUBE_DEFAULTS = { width: 640, height: 480, start: 0 };
 export const R2_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
@@ -108,7 +111,7 @@ const MARK_ATTRS: Record<string, Record<string, AttrRule>> = {
     target: isStrOrNull, rel: isStrOrNull, class: isStrOrNull, title: isStrOrNull,
   },
   textStyle: { color: (v) => isNull(v) || (isStr(v) && HEX_COLOR_RE.test(v as string)) },
-  highlight: { color: (v) => isNull(v) || (isStr(v) && (v as string).length <= 20) },
+  highlight: { color: (v) => isNull(v) || (isStr(v) && HIGHLIGHT_COLORS.includes(v as string)) },
 };
 
 function checkAttrs(kind: string, name: string, attrs: unknown, rules: Record<string, AttrRule>) {
@@ -127,6 +130,25 @@ function checkAttrs(kind: string, name: string, attrs: unknown, rules: Record<st
   }
 }
 
+/** Valida `marks` de um nó (text ou hardBreak -- os dois únicos tipos inline que carregam
+ * marks; o parser DOM do ProseMirror abre marks em nós hardBreak dentro de texto formatado,
+ * ex.: `<p><strong>a<br>b</strong></p>` → hardBreak com marks: [{type:"bold"}]). */
+function validateMarks(path: string, nodeType: string, marks: unknown[]) {
+  for (const m of marks) {
+    const mk = m as TiptapMark;
+    const mr = m && typeof m === "object" && !Array.isArray(m) ? MARK_ATTRS[mk.type] : undefined;
+    if (!mr) throw new McpInputError(`${path}: mark "${String(mk?.type)}" não permitida em ${nodeType}`);
+    for (const k of Object.keys(mk)) {
+      if (k !== "type" && k !== "attrs") throw new McpInputError(`${path}: chave "${k}" não permitida na mark ${mk.type}`);
+    }
+    // Marks com atributo obrigatório (link.href) não podem vir sem attrs.
+    if (mk.attrs === undefined && Object.values(mr).some((rule) => !rule(null))) {
+      throw new McpInputError(`${path}: mark ${mk.type} exige attrs`);
+    }
+    checkAttrs("mark", mk.type, mk.attrs, mr);
+  }
+}
+
 function validateNode(node: unknown, path: string): TiptapNode {
   if (!node || typeof node !== "object" || Array.isArray(node)) throw new McpInputError(`${path}: nó inválido`);
   const n = node as TiptapNode;
@@ -139,19 +161,14 @@ function validateNode(node: unknown, path: string): TiptapNode {
     if (typeof n.text !== "string" || n.text.length === 0) throw new McpInputError(`${path}: text sem texto`);
     if (n.marks !== undefined) {
       if (!Array.isArray(n.marks)) throw new McpInputError(`${path}: marks inválidas`);
-      for (const m of n.marks) {
-        const mk = m as TiptapMark;
-        const mr = m && typeof m === "object" && !Array.isArray(m) ? MARK_ATTRS[mk.type] : undefined;
-        if (!mr) throw new McpInputError(`${path}: mark "${String(mk?.type)}" não permitida`);
-        for (const k of Object.keys(mk)) {
-          if (k !== "type" && k !== "attrs") throw new McpInputError(`${path}: chave "${k}" não permitida na mark ${mk.type}`);
-        }
-        // Marks com atributo obrigatório (link.href) não podem vir sem attrs.
-        if (mk.attrs === undefined && Object.values(mr).some((rule) => !rule(null))) {
-          throw new McpInputError(`${path}: mark ${mk.type} exige attrs`);
-        }
-        checkAttrs("mark", mk.type, mk.attrs, mr);
-      }
+      validateMarks(path, n.type, n.marks);
+    }
+  } else if (n.type === "hardBreak") {
+    // hardBreak aceita marks (ver validateMarks acima) mas nunca text.
+    if (n.text !== undefined) throw new McpInputError(`${path}: text/marks só em nós text`);
+    if (n.marks !== undefined) {
+      if (!Array.isArray(n.marks)) throw new McpInputError(`${path}: marks inválidas`);
+      validateMarks(path, n.type, n.marks);
     }
   } else {
     if (n.text !== undefined || n.marks !== undefined) throw new McpInputError(`${path}: text/marks só em nós text`);

@@ -169,6 +169,10 @@ export async function updatePopup(d: Deps, args: Record<string, unknown>) {
 
 const KB_LIST_COLUMNS = "id, title, slug, excerpt, category, tags, status, display_order, cover_image_url, updated_at";
 const KB_LIST_COLUMN_LIST = KB_LIST_COLUMNS.split(", ");
+// getKbArticle devolve mais que a listagem (author_id, created_at) além de content_markdown/
+// opaque_blocks derivados de `content` -- mas NUNCA content/content_plain crus.
+const KB_ARTICLE_COLUMN_LIST = [...KB_LIST_COLUMN_LIST, "author_id", "created_at"];
+const KB_ARTICLE_SELECT = `${KB_ARTICLE_COLUMN_LIST.join(", ")}, content`;
 
 export async function listKbArticles(d: Deps, args: { status?: string; category?: string }) {
   let q = d.db.from("kb_articles").select(KB_LIST_COLUMNS).order("display_order", { ascending: true });
@@ -186,13 +190,17 @@ export async function getKbArticle(d: Deps, args: { article_id?: string; slug?: 
   const byId = typeof args.article_id === "string" && args.article_id.trim();
   const bySlug = typeof args.slug === "string" && args.slug.trim();
   if (!byId && !bySlug) throw new McpInputError("Informe article_id ou slug.");
-  let q = d.db.from("kb_articles").select("*");
+  let q = d.db.from("kb_articles").select(KB_ARTICLE_SELECT);
   q = byId ? q.eq("id", byId) : q.eq("slug", bySlug);
   const { data, error } = await q.maybeSingle();
   if (error) throw error;
   if (!data) throw notFound("Artigo");
-  const { content, content_plain: _plain, ...meta } = data as Record<string, unknown>;
-  const { markdown, opaque_blocks } = tiptapToMarkdown(content);
+  const row = data as Record<string, unknown>;
+  // Projeção explícita (não spread de `data`): select() já restringe as colunas no Postgres
+  // real, mas isto mantém a resposta estável e nunca vaza content/content_plain crus (nem
+  // qualquer coluna futura que alguém adicione ao SELECT sem atualizar esta lista).
+  const meta = Object.fromEntries(KB_ARTICLE_COLUMN_LIST.map((c) => [c, row[c]]));
+  const { markdown, opaque_blocks } = tiptapToMarkdown(row.content);
   return { article: { ...meta, content_markdown: markdown, opaque_blocks } };
 }
 
@@ -304,7 +312,9 @@ export async function listWorkspaces(d: Deps, args: { search?: string; plan_id?:
 
 export async function getWorkspace(d: Deps, args: { workspace_id: string }) {
   const id = requireId(args.workspace_id, "workspace_id");
-  const res = await handleGetWorkspace(d.db, { workspace_id: id }, NO_HEADERS);
+  // readOnly: platform:read não deve disparar o fetch (+write-back) ao vivo no Stripe que
+  // buildSubscriptionDetail faz para o Admin -- só o mirror/catálogo local.
+  const res = await handleGetWorkspace(d.db, { workspace_id: id }, NO_HEADERS, { readOnly: true });
   const body = await handlerJson(res, "Workspace") as {
     owner: Record<string, unknown> | null; members: Array<Record<string, unknown>>; [k: string]: unknown;
   };
