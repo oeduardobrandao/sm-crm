@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
-  coverNeedsOwnership, isUniqueViolation, KB_CATEGORIES, normalizeKb, pickKbColumns, validateKbArticle,
+  collectR2Keys, contentNeedsOwnership, coverNeedsOwnership, isUniqueViolation, KB_CATEGORIES, normalizeKb,
+  pickKbColumns, validateKbArticle,
 } from "../_shared/admin-kb.ts";
 
 const BASE = { title: "Como criar um post", slug: "como-criar-um-post", category: "primeiros-passos", status: "draft" };
@@ -159,7 +160,70 @@ Deno.test("validateKbArticle: content passa pela allowlist de nós (rejeita nó 
       },
     ],
   };
-  assertEquals(validateKbArticle({ ...BASE, content: fullDoc, content_plain: "x" }), null);
+  // fullDoc tem um inlineImage com r2Key sob CONTA -- sem allowedContaId isso seria rejeitado
+  // pela regra nova de posse do corpo (contentNeedsOwnership); passamos o conta_id do admin
+  // dono desse doc para manter o teste honesto (exercita a regra em vez de contorná-la).
+  assertEquals(validateKbArticle({ ...BASE, content: fullDoc, content_plain: "x" }, { allowedContaId: CONTA }), null);
+});
+
+Deno.test("collectR2Keys: coleta todo inlineImage.attrs.r2Key string; ignora r2Key null", () => {
+  const doc = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "x" }],
+      },
+      { type: "inlineImage", attrs: { r2Key: OWN_KEY, src: null } },
+      { type: "inlineImage", attrs: { r2Key: null, src: "https://x/y.png" } },
+      {
+        type: "blockquote",
+        content: [{ type: "paragraph", content: [{ type: "inlineImage", attrs: { r2Key: OTHER_KEY, src: null } }] }],
+      },
+    ],
+  };
+  assertEquals(collectR2Keys(doc), new Set([OWN_KEY, OTHER_KEY]));
+  assertEquals(collectR2Keys(null), new Set());
+  assertEquals(collectR2Keys({ type: "doc", content: [] }), new Set());
+});
+
+Deno.test("contentNeedsOwnership: true quando algum r2Key do doc não está no set persistido", () => {
+  const doc = { type: "doc", content: [{ type: "inlineImage", attrs: { r2Key: OWN_KEY, src: null } }] };
+  assertEquals(contentNeedsOwnership(doc, new Set()), true);
+  assertEquals(contentNeedsOwnership(doc, new Set([OWN_KEY])), false);
+  assertEquals(contentNeedsOwnership(null, new Set()), false);
+});
+
+Deno.test("validateKbArticle: inlineImage.r2Key no corpo exige posse do workspace (ou chave já persistida)", () => {
+  const docWithForeignKey = {
+    type: "doc",
+    content: [{ type: "inlineImage", attrs: { r2Key: OTHER_KEY, src: null } }],
+  };
+  // Sem opts: rejeitado.
+  assert(
+    validateKbArticle({ ...BASE, content: docWithForeignKey, content_plain: "x" })?.includes("another workspace"),
+  );
+  // allowedContaId de outro conta_id (não o do OTHER_KEY): ainda rejeitado.
+  assert(
+    validateKbArticle(
+      { ...BASE, content: docWithForeignKey, content_plain: "x" },
+      { allowedContaId: CONTA },
+    )?.includes("another workspace"),
+  );
+  // persistedR2Keys já contém a chave (artigo existente, corpo ecoado sem mudança): passa.
+  assertEquals(
+    validateKbArticle(
+      { ...BASE, content: docWithForeignKey, content_plain: "x" },
+      { persistedR2Keys: new Set([OTHER_KEY]) },
+    ),
+    null,
+  );
+  // Chave sob o próprio workspace do admin chamador: passa.
+  const docWithOwnKey = { type: "doc", content: [{ type: "inlineImage", attrs: { r2Key: OWN_KEY, src: null } }] };
+  assertEquals(
+    validateKbArticle({ ...BASE, content: docWithOwnKey, content_plain: "x" }, { allowedContaId: CONTA }),
+    null,
+  );
 });
 
 Deno.test("pickKbColumns + normalizeKb: allowlist, trim, '' → null", () => {
@@ -222,8 +286,10 @@ Deno.test("handleCreateKbArticle e handleUpdateKbArticle checam posse de cover_i
   const createFn = extractFn("handleCreateKbArticle");
   assert(createFn.includes("coverNeedsOwnership("), "handleCreateKbArticle must call coverNeedsOwnership(");
   assert(createFn.includes("adminContaId("), "handleCreateKbArticle must call adminContaId(");
+  assert(createFn.includes("contentNeedsOwnership("), "handleCreateKbArticle must call contentNeedsOwnership(");
 
   const updateFn = extractFn("handleUpdateKbArticle");
   assert(updateFn.includes("coverNeedsOwnership("), "handleUpdateKbArticle must call coverNeedsOwnership(");
   assert(updateFn.includes("adminContaId("), "handleUpdateKbArticle must call adminContaId(");
+  assert(updateFn.includes("contentNeedsOwnership("), "handleUpdateKbArticle must call contentNeedsOwnership(");
 });

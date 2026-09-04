@@ -8,7 +8,10 @@ import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
 import { handleListPopups, handleCreatePopup, handleUpdatePopup, handleDeletePopup } from "./popups.ts";
 import { normalizeBanner, pickBannerColumns, validateBanner } from "../_shared/admin-banners.ts";
-import { coverNeedsOwnership, isUniqueViolation, normalizeKb, pickKbColumns, validateKbArticle } from "../_shared/admin-kb.ts";
+import {
+  collectR2Keys, contentNeedsOwnership, coverNeedsOwnership, isUniqueViolation, normalizeKb, pickKbColumns,
+  validateKbArticle,
+} from "../_shared/admin-kb.ts";
 import { adminContaId } from "../_shared/admin-popups.ts";
 import { handleGetWorkspace } from "./workspace-detail.ts";
 import { handleListPlans } from "./plans.ts";
@@ -773,11 +776,15 @@ async function handleCreateKbArticle(
 
   const insert = normalizeKb({ author_id: actor.adminId, ...pickKbColumns(rest) });
 
-  // Uma chave R2 nova só pode virar capa se pertencer ao workspace do admin chamador --
-  // senão qualquer kb:write publicaria (e sign-r2-urls assinaria) um arquivo privado de
-  // outro workspace para todo mundo que ler o artigo.
+  // Uma chave R2 nova só pode virar capa (ou aparecer num inlineImage do corpo, via bloco
+  // opaco) se pertencer ao workspace do admin chamador -- senão qualquer kb:write publicaria
+  // (e sign-r2-urls assinaria) um arquivo privado de outro workspace para todo mundo que ler
+  // o artigo. Artigo novo: nenhuma chave persistida ainda.
+  const persistedR2Keys = new Set<string>();
   let contaId: string | undefined;
-  if (coverNeedsOwnership(insert.cover_image_url, null)) {
+  const needsOwnership = coverNeedsOwnership(insert.cover_image_url, null) ||
+    (insert.content !== undefined && contentNeedsOwnership(insert.content, persistedR2Keys));
+  if (needsOwnership) {
     const found = await adminContaId(svc, actor.userId);
     if (found === null) {
       return new Response(JSON.stringify({ error: "cover_image_url R2 key belongs to another workspace" }), { status: 400, headers });
@@ -785,7 +792,7 @@ async function handleCreateKbArticle(
     contaId = found;
   }
 
-  const fieldError = validateKbArticle(insert, { allowedContaId: contaId });
+  const fieldError = validateKbArticle(insert, { allowedContaId: contaId, persistedR2Keys });
   if (fieldError) return new Response(JSON.stringify({ error: fieldError }), { status: 400, headers });
 
   const { data, error } = await svc.from("kb_articles").insert(insert).select().single();
@@ -827,8 +834,11 @@ async function handleUpdateKbArticle(
   if (!current) return new Response(JSON.stringify({ error: "Article not found" }), { status: 404, headers });
 
   const persistedCover = ((current as Record<string, unknown>).cover_image_url as string | null | undefined) ?? null;
+  const persistedR2Keys = collectR2Keys((current as Record<string, unknown>).content);
   let contaId: string | undefined;
-  if (coverNeedsOwnership(update.cover_image_url, persistedCover)) {
+  const needsOwnership = coverNeedsOwnership(update.cover_image_url, persistedCover) ||
+    (update.content !== undefined && contentNeedsOwnership(update.content, persistedR2Keys));
+  if (needsOwnership) {
     const found = await adminContaId(svc, actor.userId);
     if (found === null) {
       return new Response(JSON.stringify({ error: "cover_image_url R2 key belongs to another workspace" }), { status: 400, headers });
@@ -839,7 +849,7 @@ async function handleUpdateKbArticle(
   // Linha atual normalizada antes de mesclar (cover_image_url/excerpt "" legados → null).
   const fieldError = validateKbArticle(
     { ...normalizeKb(current as Record<string, unknown>), ...update },
-    { allowedContaId: contaId, persistedCover },
+    { allowedContaId: contaId, persistedCover, persistedR2Keys },
   );
   if (fieldError) return new Response(JSON.stringify({ error: fieldError }), { status: 400, headers });
 

@@ -55,9 +55,35 @@ export function coverNeedsOwnership(cover: unknown, persisted: string | null | u
   return typeof cover === "string" && !cover.startsWith("https://") && cover !== persisted;
 }
 
+/** Varre um doc TipTap e coleta todo `inlineImage.attrs.r2Key` string -- inclusive os
+ * decodificados de blocos opacos <!--tiptap:BASE64--> (mcp-admin/markdown.ts), que carregam
+ * JSON de nó livre e não passam pelo caminho normal de upload (uploadKbImage só produz
+ * cover/inlineImage com `src` https + r2Key null). Puro; não valida forma, só coleta. */
+export function collectR2Keys(doc: unknown): Set<string> {
+  const keys = new Set<string>();
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return;
+    const n = node as { type?: unknown; attrs?: Record<string, unknown>; content?: unknown };
+    if (n.type === "inlineImage" && typeof n.attrs?.r2Key === "string") keys.add(n.attrs.r2Key);
+    if (Array.isArray(n.content)) for (const child of n.content) walk(child);
+  };
+  walk(doc);
+  return keys;
+}
+
+/** true quando `doc` referencia algum r2Key que não está em `persisted` -- o caller precisa
+ * então resolver o conta_id do admin chamador para validar posse (mesma forma de
+ * coverNeedsOwnership, para o corpo do artigo). */
+export function contentNeedsOwnership(doc: unknown, persisted: ReadonlySet<string>): boolean {
+  for (const key of collectR2Keys(doc)) {
+    if (!persisted.has(key)) return true;
+  }
+  return false;
+}
+
 export function validateKbArticle(
   row: Record<string, unknown>,
-  opts: { allowedContaId?: string; persistedCover?: string | null } = {},
+  opts: { allowedContaId?: string; persistedCover?: string | null; persistedR2Keys?: ReadonlySet<string> } = {},
 ): string | null {
   const title = typeof row.title === "string" ? row.title.trim() : "";
   if (title.length === 0 || title.length > 200) return "title required (max 200)";
@@ -105,6 +131,15 @@ export function validateKbArticle(
         validateTiptapDoc(c);
       } catch (e) {
         return e instanceof Error ? e.message : "content has unsupported nodes";
+      }
+      // Um inlineImage dentro de um bloco opaco <!--tiptap:BASE64--> (mcp-admin/markdown.ts)
+      // carrega JSON de nó livre: validateTiptapDoc só confere a FORMA do r2Key, não a posse.
+      // Mesma regra do cover_image_url acima -- senão kb:write publicaria (e sign-r2-urls
+      // assinaria) um arquivo privado de outro workspace embutido no corpo do artigo.
+      for (const key of collectR2Keys(c)) {
+        const alreadyPersisted = opts.persistedR2Keys?.has(key) ?? false;
+        const ownKey = opts.allowedContaId !== undefined && key.startsWith(`contas/${opts.allowedContaId}/files/`);
+        if (!alreadyPersisted && !ownKey) return "content: inlineImage r2Key belongs to another workspace";
       }
     }
     if (typeof row.content_plain !== "string") return "content_plain must be a string";

@@ -100,3 +100,32 @@ Deno.test("updateKbArticle: cover_image_url com chave R2 de outro workspace é r
   assertEquals(r, { id: "a1", slug: "t", status: "draft" });
   assert(!calls2.some((c) => c.table === "profiles"));
 });
+
+Deno.test("updateKbArticle: inlineImage.r2Key de outro workspace embutido num bloco opaco é rejeitado; a própria chave persistida no corpo passa sem consultar profiles", async () => {
+  const foreignImage = { type: "inlineImage", attrs: { r2Key: OTHER_KEY, src: null } };
+  const { db, calls } = makeFakeDb({
+    kb_articles: [{ data: ROW, error: null }],
+    profiles: [{ data: { conta_id: CONTA }, error: null }],
+  });
+  await expectInputError(
+    () => updateKbArticle(makeDeps(db), { article_id: "a1", content_markdown: `Olá\n\n${encodeOpaque(foreignImage)}` }),
+    "another workspace",
+  );
+  assert(calls.some((c) => c.table === "profiles"));
+
+  // O próprio artigo já tem essa imagem no corpo persistido (ex.: outro admin a colocou lá
+  // antes) -- ecoar o mesmo r2Key de volta não deve exigir posse nem consultar profiles.
+  const ROW_WITH_IMAGE = { ...ROW, content: { type: "doc", content: [...DOC.content, foreignImage] } };
+  const { db: db2, calls: calls2 } = makeFakeDb({
+    kb_articles: [
+      { data: ROW_WITH_IMAGE, error: null },
+      { data: { id: "a1", slug: "t", status: "draft" }, error: null },
+    ],
+  });
+  const r = await updateKbArticle(makeDeps(db2), {
+    article_id: "a1",
+    content_markdown: `Olá\n\n${encodeOpaque(foreignImage)}`,
+  });
+  assertEquals(r, { id: "a1", slug: "t", status: "draft" });
+  assert(!calls2.some((c) => c.table === "profiles"));
+});
