@@ -56,12 +56,12 @@ const popup = {
   created_at: '2026-09-01T00:00:00Z',
 };
 
-function renderHost() {
+function renderHost(opts: { openDelayMs?: number } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <GlobalPopupHost openDelayMs={0} />
+        <GlobalPopupHost openDelayMs={opts.openDelayMs ?? 0} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -209,5 +209,32 @@ describe('GlobalPopupHost', () => {
     renderHost();
     await screen.findByRole('dialog');
     expect(document.querySelector('[role="dialog"] img')).toBeNull();
+  });
+
+  it('não abre por cima do guia aberto manualmente durante a espera', async () => {
+    const guide = { autoOpen: 'no' as const, isOpen: false };
+    useGuideMock.mockImplementation(() => guide);
+    const { rerender } = renderHost({ openDelayMs: 300 });
+    // A decisão (elegível, guia fechado) já foi tomada e o resolve de imagens já
+    // disparou: ainda dentro do delay de abertura, antes do setOpen(true).
+    await waitFor(() => expect(resolveInlineImageUrlsMock).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // Guia aberto manualmente (pill/sidebar) enquanto o popup ainda espera o delay.
+    guide.isOpen = true;
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <GlobalPopupHost openDelayMs={300} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400));
+    });
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(sessionStorage.getItem('mesaas_popup_skipped')).toBe('1');
   });
 });

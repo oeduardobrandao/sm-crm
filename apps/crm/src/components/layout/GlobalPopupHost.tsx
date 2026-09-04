@@ -102,6 +102,12 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
       await new Promise((r) => setTimeout(r, openDelayMs));
       if (!mounted.current) return;
 
+      // O guia pode ter sido aberto manualmente enquanto esperávamos; nunca abrir por cima.
+      if (latest.current.guideOpen || latest.current.guideState === 'yes') {
+        markPopupsSkipped();
+        return;
+      }
+
       setDecision({ popup: chosen, images });
       setPage(0);
       setOpen(true);
