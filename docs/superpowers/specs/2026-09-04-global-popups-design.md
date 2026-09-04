@@ -97,11 +97,13 @@ Append-only. Uma linha por ação de um usuário sobre um popup.
 | `id` | `uuid PK` | |
 | `popup_id` | `uuid NOT NULL` FK `global_popups(id)` on delete cascade | |
 | `user_id` | `uuid NOT NULL` FK `auth.users(id)` on delete cascade | |
-| `action` | `text NOT NULL` | `'seen'`, `'closed'`, `'cta'`, `'ack'` |
+| `action` | `text NOT NULL` | `CHECK (action IN ('seen', 'closed', 'cta', 'ack'))` |
 | `created_at` | `timestamptz` default `now()` | |
 
 Índice em `(popup_id, user_id)`. Sem UNIQUE: um usuário em `until_cta` pode ter vários
-`closed` ao longo das sessões antes do `cta`.
+`closed` ao longo das sessões antes do `cta`. O CHECK em `action` é obrigatório porque
+o INSERT é feito direto pelo cliente sob RLS, sem handler na frente; sem ele, qualquer
+string viraria um bucket na view de contagens.
 
 ### Semântica de "já viu"
 
@@ -182,11 +184,21 @@ de CHECK não deve vazar).
 
 Hoje, chaves fora do prefixo `contas/<conta do usuário>/` só são assinadas se forem
 `cover_image_url` de artigo publicado. Passa a assinar também `image_key` de
-`global_popups` com `status = 'active'`. Uma query a mais, só quando há `otherKeys`.
+`global_popups`, com uma query a mais só quando há `otherKeys`.
 
-Popups em draft não resolvem para usuários do CRM. No admin, a chave está sob o prefixo
-da própria conta do admin, então o preview do editor resolve por `ownKeys` como a capa
-de artigo já faz.
+Essa query **não** roda no service role com um filtro solto de `status = 'active'`,
+porque isso assinaria a imagem de um popup que o usuário nem pode ver (targeting por
+plano ou workspace, janela de agenda). Ela roda em um client no contexto do usuário
+(anon key + o header `Authorization` do request, o mesmo padrão de
+`instagram-analytics` e `manage-workspace-roles`), então a RLS de `global_popups`
+aplica exatamente o predicado da linha: ativo, dentro da janela e alvo do workspace.
+O handler ganha uma dependência `createUserDb(authHeader)` ao lado de `createDb`,
+injetável nos testes. A allowlist de artigos continua no service role, porque artigo
+publicado é público para qualquer usuário autenticado.
+
+Popups em draft, fora da janela ou não direcionados ao workspace não resolvem para
+usuários do CRM. No admin, a chave está sob o prefixo da própria conta do admin, então
+o preview do editor resolve por `ownKeys` como a capa de artigo já faz.
 
 ## Parte 2: admin
 
@@ -403,8 +415,9 @@ Hoje os banners não têm teste no admin nem no CRM. Aqui o alvo é a lógica, n
   `user_id` de A.
 - **Deno** (`supabase/functions/__tests__/`): `platform-admin-popups_test.ts` (campos
   obrigatórios, par de CTA, `until_cta` sem CTA, delete só em draft, `counts` montado
-  da view); extensão de `sign-r2-urls_test.ts` (chave de popup ativo assinada, de draft
-  não, e continua negando chave de outra conta).
+  da view); extensão de `sign-r2-urls_test.ts` (chave de popup visível pelo `createUserDb`
+  assinada; chave que o client do usuário não devolve, por ser draft ou não
+  direcionado, negada; e continua negando chave de outra conta).
 - **Vitest admin** (`apps/admin/src/pages/__tests__/PopupsPage.test.tsx`,
   `apps/admin/src/components/__tests__/TargetPicker.test.tsx`): `formToPayload`
   (nulos, datas em ISO, arrays só no modo certo), as quatro validações inline,
