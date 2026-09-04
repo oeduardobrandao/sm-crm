@@ -42,10 +42,12 @@ create table global_popups (
     check (status in ('draft', 'active', 'archived')),
   constraint global_popups_target_mode_check
     check (target_mode in ('all', 'plan', 'workspace')),
+  -- array_length('{}', 1) é NULL, e CHECK com NULL passa: o coalesce fecha o
+  -- buraco que a migration dos banners deixou (array vazio aceito).
   constraint global_popups_plan_targets_check
-    check (target_mode <> 'plan' or (target_plan_ids is not null and array_length(target_plan_ids, 1) > 0)),
+    check (target_mode <> 'plan' or coalesce(array_length(target_plan_ids, 1), 0) > 0),
   constraint global_popups_workspace_targets_check
-    check (target_mode <> 'workspace' or (target_workspace_ids is not null and array_length(target_workspace_ids, 1) > 0)),
+    check (target_mode <> 'workspace' or coalesce(array_length(target_workspace_ids, 1), 0) > 0),
   constraint global_popups_schedule_check
     check (ends_at is null or starts_at is null or ends_at > starts_at)
 );

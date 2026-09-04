@@ -126,5 +126,24 @@ begin
     v_rejected := true;
   end;
   assert v_rejected, 'cta_label sem cta_url foi aceito';
+
+  -- array vazio (nao NULL): array_length devolve NULL e um CHECK ingenuo passaria
+  v_rejected := false;
+  begin
+    insert into global_popups (pages, target_mode, target_plan_ids)
+      values (v_pages, 'plan', '{}'::text[]);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'target_mode plan com array vazio foi aceito';
+
+  v_rejected := false;
+  begin
+    insert into global_popups (pages, target_mode, target_workspace_ids)
+      values (v_pages, 'workspace', '{}'::uuid[]);
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'target_mode workspace com array vazio foi aceito';
 end $$;
 rollback;
