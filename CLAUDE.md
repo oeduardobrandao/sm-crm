@@ -120,6 +120,7 @@ Monorepo with npm workspaces:
 - `_shared/cors.ts` -- `buildCorsHeaders(req)` for CORS (never use wildcard `*`)
 - `_shared/audit.ts` -- `insertAuditLog()` for audit trail
 - `_shared/r2.ts` -- Cloudflare R2 storage client (presigned URLs)
+- `mcp-admin/` -- MCP do Admin da plataforma (OAuth-only; `platform_admins` + `admin_mcp_oauth_grants`; banners, popups, artigos da KB em Markdown, leituras de workspaces/planos/dashboard). Escopos em `_shared/mcp-admin-scopes.ts`, bundlados também em `mcp-oauth-consent`: mudar escopo = redeploy dos dois + CRM
 - Cron functions authenticate via `x-cron-secret` header (not JWT)
 - All other functions verify JWT via `Authorization: Bearer <token>` header
 
