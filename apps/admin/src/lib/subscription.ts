@@ -70,7 +70,7 @@ export function statusMeta(status: string | null | undefined): StatusMeta {
 /**
  * Coarse status groups used by the Workspaces list filter and the Dashboard at-risk card.
  * MUST stay in sync with the CASE on p_status inside admin_list_workspaces
- * (supabase/migrations/20260907000030_admin_list_workspaces_filters_sort.sql).
+ * (supabase/migrations/20260909000001_admin_list_workspaces_filters_sort.sql).
  */
 export type WorkspaceStatusGroup = 'ativo' | 'teste' | 'pendente' | 'cancelado' | 'sem_assinatura';
 

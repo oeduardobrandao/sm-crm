@@ -33,7 +33,7 @@
 | `apps/admin/src/components/ui/card.tsx` | Card, CardHeader, CardTitle, CardContent (Task 1) |
 | `apps/admin/src/components/EmptyState.tsx`, `ErrorState.tsx`, `PageHeader.tsx` | Composition components (Task 2) |
 | `apps/admin/src/lib/subscription.ts` | + `WorkspaceStatusGroup`, `statusGroup()`, labels; `SubscriptionSummary` gains two fields (Task 3) |
-| `supabase/migrations/20260907000030_admin_list_workspaces_filters_sort.sql` | RPC v5 (Task 4) |
+| `supabase/migrations/20260909000001_admin_list_workspaces_filters_sort.sql` | RPC v5 (Task 4) |
 | `supabase/functions/platform-admin/list-workspaces.ts` | Pass-through of new params (Task 5) |
 | `supabase/tests/entitlements/70..73_admin_list_workspaces_*.sql` | CI-gated psql suites for the RPC (Task 6) |
 | `apps/admin/src/lib/api.ts` | `ListWorkspacesParams`, sort/activity types (Task 7) |
@@ -456,7 +456,7 @@ Append after `statusMeta`:
 /**
  * Coarse status groups used by the Workspaces list filter and the Dashboard at-risk card.
  * MUST stay in sync with the CASE on p_status inside admin_list_workspaces
- * (supabase/migrations/20260907000030_admin_list_workspaces_filters_sort.sql).
+ * (supabase/migrations/20260909000001_admin_list_workspaces_filters_sort.sql).
  */
 export type WorkspaceStatusGroup = 'ativo' | 'teste' | 'pendente' | 'cancelado' | 'sem_assinatura';
 
@@ -520,7 +520,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ### Task 4: Migration, `admin_list_workspaces` v5
 
 **Files:**
-- Create: `supabase/migrations/20260907000030_admin_list_workspaces_filters_sort.sql`
+- Create: `supabase/migrations/20260909000001_admin_list_workspaces_filters_sort.sql`
 
 **Interfaces:**
 - Produces the RPC signature `admin_list_workspaces(text, text, int, int, timestamptz, text, boolean, text, timestamptz, text, text)` returning the same jsonb shape as today, with `subscription.failed_payment_count` and `subscription.current_period_end` added to each row.
@@ -761,7 +761,7 @@ Expected: every statement succeeds; the pg_proc count is 1.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/migrations/20260907000030_admin_list_workspaces_filters_sort.sql
+git add supabase/migrations/20260909000001_admin_list_workspaces_filters_sort.sql
 git commit -m "feat(admin): admin_list_workspaces v5 com filtros de status/overrides/atividade e ordenação
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -869,7 +869,7 @@ export async function handleListWorkspaces(
   });
 ```
 
-Keep the rest of the function unchanged. Update the doc comment to mention v5 (`20260907000030`).
+Keep the rest of the function unchanged. Update the doc comment to mention v5 (`20260909000001`).
 
 - [ ] **Step 5: Run tests**
 
@@ -3789,7 +3789,7 @@ git fetch origin main
 git ls-tree --name-only origin/main:supabase/migrations | tail -3
 ```
 
-If any file on `origin/main` has a prefix ≥ `20260907000030`, rename the migration (and the two references to its filename in `subscription.ts` and `list-workspaces.ts` comments) to a higher unique version, then:
+If any file on `origin/main` has a prefix ≥ `20260909000001`, rename the migration (and the two references to its filename in `subscription.ts` and `list-workspaces.ts` comments) to a higher unique version, then:
 
 ```bash
 git push -u origin feat/admin-portal-revamp-phase1
