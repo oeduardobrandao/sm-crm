@@ -1,16 +1,31 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, Trash2 } from 'lucide-react';
+import { UserPlus, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { listAdmins, inviteAdmin, removeAdmin } from '../lib/api';
 import { useAdminAuth } from '../context/AdminAuthContext';
+import { PageHeader } from '../components/PageHeader';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState } from '../components/ErrorState';
+import { Button } from '../components/ui/button';
+import { Card } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Skeleton } from '../components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table';
 
 export default function AdminsPage() {
   const queryClient = useQueryClient();
   const { user } = useAdminAuth();
   const [email, setEmail] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'admins'],
     queryFn: listAdmins,
   });
@@ -40,92 +55,121 @@ export default function AdminsPage() {
     inviteMutation.mutate();
   };
 
+  const admins = data?.admins ?? [];
+  const formatDate = (iso: string) => new Date(iso).toLocaleDateString('pt-BR');
+
   return (
     <div>
-      <h1 className="font-sf text-2xl font-bold mb-1">Admins</h1>
-      <p className="text-sm text-muted-foreground mb-6">Administradores da plataforma</p>
+      <PageHeader title="Admins" description="Administradores da plataforma" />
 
-      <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3 mb-8">
-        <input
+      <form onSubmit={handleInvite} className="mb-8 flex flex-col gap-3 sm:flex-row">
+        <Input
           type="email"
+          aria-label="E-mail do novo admin"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="E-mail do novo admin…"
           required
-          className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
+          className="flex-1"
         />
-        <button
-          type="submit"
-          disabled={inviteMutation.isPending}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
-        >
-          <UserPlus size={16} />
-          Convidar Admin
-        </button>
+        <Button type="submit" disabled={inviteMutation.isPending}>
+          <UserPlus />
+          Convidar admin
+        </Button>
       </form>
 
-      <div className="bg-card border border-border rounded-2xl p-5">
-        {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_2fr_1.5fr_0.5fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>E-mail</span>
-          <span>Convidado por</span>
-          <span>Adicionado em</span>
-          <span></span>
-        </div>
-
+      <Card>
         {isLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Carregando…</p>
+          <div className="flex flex-col gap-3 p-5">
+            <Skeleton className="h-4 w-64" />
+            <Skeleton className="h-4 w-56" />
+            <Skeleton className="h-4 w-60" />
+          </div>
+        ) : isError ? (
+          <ErrorState message="Não foi possível carregar os admins." onRetry={() => refetch()} />
+        ) : admins.length === 0 ? (
+          <EmptyState icon={Users} title="Nenhum admin cadastrado" />
         ) : (
-          (data?.admins || []).map((admin) => {
-            const isSelf = admin.user_id === user?.id;
-            return (
-              <div
-                key={admin.id}
-                className="border-b border-border/50 py-3 md:grid md:grid-cols-[2fr_2fr_1.5fr_0.5fr] md:gap-2 md:items-center"
-              >
-                {/* Mobile card */}
-                <div className="md:hidden flex items-center justify-between">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm text-foreground">{admin.email}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {admin.invited_by_email ? `Por ${admin.invited_by_email}` : '—'} ·{' '}
-                      {new Date(admin.created_at).toLocaleDateString('pt-BR')}
-                    </span>
-                  </div>
-                  {!isSelf && (
-                    <button
-                      onClick={() => removeMutation.mutate(admin.id)}
-                      disabled={removeMutation.isPending}
-                      className="text-dim-foreground hover:text-destructive transition-colors disabled:opacity-50 p-1"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-                {/* Desktop row */}
-                <span className="hidden md:inline text-sm text-foreground">{admin.email}</span>
-                <span className="hidden md:inline text-sm text-muted-foreground">
-                  {admin.invited_by_email || '—'}
-                </span>
-                <span className="hidden md:inline text-sm text-muted-foreground">
-                  {new Date(admin.created_at).toLocaleDateString('pt-BR')}
-                </span>
-                <span className="hidden md:inline">
-                  {!isSelf && (
-                    <button
-                      onClick={() => removeMutation.mutate(admin.id)}
-                      disabled={removeMutation.isPending}
-                      className="text-dim-foreground hover:text-destructive transition-colors disabled:opacity-50"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </span>
-              </div>
-            );
-          })
+          <>
+            <Table className="hidden md:table">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-[0.7rem] uppercase tracking-wider">E-mail</TableHead>
+                  <TableHead className="text-[0.7rem] uppercase tracking-wider">
+                    Convidado por
+                  </TableHead>
+                  <TableHead className="text-[0.7rem] uppercase tracking-wider">
+                    Adicionado em
+                  </TableHead>
+                  <TableHead className="w-12" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {admins.map((admin) => {
+                  const isSelf = admin.user_id === user?.id;
+                  return (
+                    <TableRow key={admin.id}>
+                      <TableCell className="text-sm text-foreground">{admin.email}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {admin.invited_by_email || '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDate(admin.created_at)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {!isSelf && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Remover admin"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => removeMutation.mutate(admin.id)}
+                            disabled={removeMutation.isPending}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+
+            <ul className="flex flex-col md:hidden">
+              {admins.map((admin) => {
+                const isSelf = admin.user_id === user?.id;
+                return (
+                  <li
+                    key={admin.id}
+                    className="flex items-center justify-between gap-3 border-b border-border/50 px-5 py-3 last:border-0"
+                  >
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <span className="truncate text-sm text-foreground">{admin.email}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {admin.invited_by_email ? `Por ${admin.invited_by_email}` : '—'} ·{' '}
+                        {formatDate(admin.created_at)}
+                      </span>
+                    </div>
+                    {!isSelf && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Remover admin"
+                        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeMutation.mutate(admin.id)}
+                        disabled={removeMutation.isPending}
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
