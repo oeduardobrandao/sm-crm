@@ -40,6 +40,19 @@ describe('useWorkspacesParams', () => {
     expect(result.current.params.pag).toBe(5);
   });
 
+  it('two set() calls in one synchronous block both apply', () => {
+    const { result } = renderHook(() => useWorkspacesParams(), {
+      wrapper: wrap('/admin/workspaces?status=ativo&plano=pro&pag=2'),
+    });
+    act(() => {
+      result.current.set({ status: '' });
+      result.current.set({ plano: '' });
+    });
+    expect(result.current.params.status).toBe('');
+    expect(result.current.params.plano).toBe('');
+    expect(result.current.params.pag).toBe(1);
+  });
+
   it('reset() clears filters and page but keeps sort and page size', () => {
     const { result } = renderHook(() => useWorkspacesParams(), {
       wrapper: wrap('/admin/workspaces?q=x&status=ativo&criado=7d&pag=2&ord=name&dir=asc&por=50'),

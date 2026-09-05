@@ -1,5 +1,5 @@
 // apps/admin/src/hooks/useWorkspacesParams.ts
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   DEFAULT_PARAMS,
@@ -16,17 +16,26 @@ export function useWorkspacesParams() {
   const [searchParams, setSearchParams] = useSearchParams();
   const params = useMemo(() => parseWorkspacesParams(searchParams), [searchParams]);
 
+  // react-router's `setSearchParams` updater form still resolves `prev` from the hook's
+  // own render-time closure (see useSearchParams in react-router), so it does NOT advance
+  // between two synchronous set() calls in the same tick -- both would read the same stale
+  // snapshot and the second call would silently discard the first. This ref tracks the
+  // latest composed params synchronously so each set() call builds on the previous one.
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+
   const set = useCallback(
     (patch: Partial<WorkspacesListParams>, opts?: { replace?: boolean }) => {
-      const next: WorkspacesListParams = { ...params, ...patch };
       const touchesFilterOrSize = Object.keys(patch).some((k) => !KEEP_PAGE_KEYS.has(k));
-      if (touchesFilterOrSize && patch.pag === undefined) next.pag = 1;
       // Typing in the search box rewrites the URL on every debounce tick; those must not
       // pile up in history. Everything else is a deliberate navigation.
       const replace = opts?.replace ?? ('q' in patch && Object.keys(patch).length === 1);
+      const next: WorkspacesListParams = { ...paramsRef.current, ...patch };
+      if (touchesFilterOrSize && patch.pag === undefined) next.pag = 1;
+      paramsRef.current = next;
       setSearchParams(serializeWorkspacesParams(next), { replace });
     },
-    [params, setSearchParams],
+    [setSearchParams],
   );
 
   const reset = useCallback(() => {
