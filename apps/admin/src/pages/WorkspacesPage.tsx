@@ -1,313 +1,177 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
+import type { JSX } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Search, ArrowRight, Download } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { listWorkspaces, listPlans, type WorkspaceSummary } from '../lib/api';
-import { getPlanColor } from '../lib/plan-colors';
 import {
-  statusMeta,
-  toneBadgeClass,
-  hasSubscription,
-  formatMoney,
-  intervalSuffix,
-} from '../lib/subscription';
-import { describeActivity, ACTIVITY_TONE_CLASS } from './workspace-activity';
-import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
-import { toCSV, downloadCSV } from '../lib/csv-export';
+  listPlans,
+  listWorkspaces,
+  type WorkspaceSortKey,
+  type WorkspaceSummary,
+} from '../lib/api';
+import { downloadCSV, toCSV } from '../lib/csv-export';
+import { Button } from '../components/ui/button';
+import { Card } from '../components/ui/card';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState } from '../components/ErrorState';
+import { PageHeader } from '../components/PageHeader';
+import { useWorkspacesParams } from '../hooks/useWorkspacesParams';
+import { WorkspacesFilterChips } from './workspaces/WorkspacesFilterChips';
+import { WorkspacesPagination } from './workspaces/WorkspacesPagination';
+import { WorkspacesTable, WorkspacesTableSkeleton } from './workspaces/WorkspacesTable';
+import { readColumnPrefs, writeColumnPrefs, type ColumnPrefs } from './workspaces-columns';
 import { WORKSPACE_EXPORT_COLUMNS, buildWorkspaceExportRows } from './workspaces-export';
+import { hasActiveFilters, nextSort, toListWorkspacesRequest } from './workspaces-params';
+import { WorkspacesToolbar } from './workspaces/WorkspacesToolbar';
 
-const activity = (ws: WorkspaceSummary) =>
-  describeActivity(ws.last_activity_at, ws.created_at, new Date());
+const EXPORT_PAGE_SIZE = 200;
+const EXPORT_MAX_ROWS = 2000;
 
 export default function WorkspacesPage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState('');
-  const [planFilter, setPlanFilter] = useState('');
-  const [page, setPage] = useState(0);
-  const limit = 20;
+  const { params, set, reset } = useWorkspacesParams();
+  const [prefs, setPrefs] = useState<ColumnPrefs>(() => readColumnPrefs());
   const [exporting, setExporting] = useState(false);
+
+  // One clock per render: the activity labels and the created_since cutoff agree.
+  const now = useMemo(() => new Date(), [params]); // eslint-disable-line react-hooks/exhaustive-deps
+  const request = useMemo(() => toListWorkspacesRequest(params, now), [params, now]);
+
+  const list = useQuery({
+    queryKey: ['admin', 'workspaces', request],
+    queryFn: () => listWorkspaces(request),
+    placeholderData: keepPreviousData,
+  });
+
+  const plansQuery = useQuery({ queryKey: ['admin', 'plans'], queryFn: listPlans });
+  const plans = plansQuery.data?.plans ?? [];
+
+  const onPrefs = useCallback((next: ColumnPrefs) => {
+    setPrefs(next);
+    writeColumnPrefs(next);
+  }, []);
+
+  const onSort = useCallback((key: WorkspaceSortKey) => set(nextSort(params, key)), [params, set]);
 
   async function handleExportCsv() {
     setExporting(true);
     try {
-      const PAGE_SIZE = 200;
-      const MAX_ROWS = 2000;
-      // Freezes the filtered set to this instant, so a workspace created while this export is
-      // mid-flight (which would otherwise shift every existing row's position, since newest
-      // sorts first) can't duplicate or drop a row across two of the calls below.
+      // Freeze the set to this instant so signups mid-export can't shift rows across pages.
       const asOf = new Date().toISOString();
       const all: WorkspaceSummary[] = [];
       let total = Infinity;
-      for (let offset = 0; offset < Math.min(total, MAX_ROWS); offset += PAGE_SIZE) {
+      for (let offset = 0; offset < Math.min(total, EXPORT_MAX_ROWS); offset += EXPORT_PAGE_SIZE) {
         const page = await listWorkspaces({
-          search: search || undefined,
-          plan_id: planFilter || undefined,
+          ...request,
           offset,
-          limit: PAGE_SIZE,
+          limit: EXPORT_PAGE_SIZE,
           as_of: asOf,
         });
         total = page.total;
         all.push(...page.workspaces);
       }
-
       if (all.length === 0) {
-        toast.error('Nothing to export');
+        toast.error('Nada para exportar');
         return;
       }
-
-      const rows = all.slice(0, MAX_ROWS);
-      const csv = toCSV(buildWorkspaceExportRows(rows), WORKSPACE_EXPORT_COLUMNS);
-      downloadCSV(`workspaces-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-
-      if (total > MAX_ROWS) {
+      const rows = all.slice(0, EXPORT_MAX_ROWS);
+      downloadCSV(
+        `workspaces-${new Date().toISOString().slice(0, 10)}.csv`,
+        toCSV(buildWorkspaceExportRows(rows), WORKSPACE_EXPORT_COLUMNS),
+      );
+      if (total > EXPORT_MAX_ROWS) {
         toast.warning(
-          `Exported the first ${MAX_ROWS} of ${total} matching workspaces. Narrow your search or plan filter to export the rest.`,
+          `Exportados os primeiros ${EXPORT_MAX_ROWS} de ${total} workspaces. Refine os filtros para exportar o restante.`,
         );
       }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Export failed');
+    } catch {
+      toast.error('Falha ao exportar');
     } finally {
       setExporting(false);
     }
   }
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'workspaces', { search, plan_id: planFilter, offset: page * limit, limit }],
-    queryFn: () =>
-      listWorkspaces({
-        search: search || undefined,
-        plan_id: planFilter || undefined,
-        offset: page * limit,
-        limit,
-      }),
-  });
+  const total = list.data?.total;
+  const workspaces = list.data?.workspaces ?? [];
+  const filtered = hasActiveFilters(params);
 
-  const { data: plansData } = useQuery({
-    queryKey: ['admin', 'plans'],
-    queryFn: listPlans,
-  });
-
-  const workspaces = data?.workspaces || [];
-  const total = data?.total || 0;
-  const totalPages = Math.ceil(total / limit);
+  let body: JSX.Element;
+  if (list.isPending) {
+    body = <WorkspacesTableSkeleton visible={prefs.visible} />;
+  } else if (list.isError) {
+    body = (
+      <ErrorState
+        message="Não foi possível carregar os workspaces."
+        onRetry={() => list.refetch()}
+      />
+    );
+  } else if (workspaces.length === 0) {
+    body = filtered ? (
+      <EmptyState
+        icon={Building2}
+        title="Nenhum workspace com esses filtros"
+        description="Tente ampliar a busca ou remover um dos filtros ativos."
+        action={
+          <Button variant="outline" size="sm" onClick={reset}>
+            Limpar filtros
+          </Button>
+        }
+      />
+    ) : (
+      <EmptyState icon={Building2} title="Nenhum workspace cadastrado ainda." />
+    );
+  } else {
+    body = (
+      <>
+        <WorkspacesTable
+          workspaces={workspaces}
+          visible={prefs.visible}
+          density={prefs.density}
+          sort={{ ord: params.ord, dir: params.dir }}
+          onSort={onSort}
+          onOpen={(id) => navigate(`/admin/workspaces/${id}`)}
+          now={now}
+          busy={list.isFetching}
+        />
+        <WorkspacesPagination
+          total={total ?? 0}
+          pag={params.pag}
+          por={params.por}
+          onPage={(pag) => set({ pag })}
+          onPageSize={(por) => set({ por })}
+        />
+      </>
+    );
+  }
 
   return (
     <div>
-      <h1 className="font-sf text-2xl font-bold mb-1">Workspaces</h1>
-      <p className="text-sm text-muted-foreground mb-6">All registered workspaces</p>
-
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="flex-1 relative">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            type="text"
-            placeholder="Search workspaces..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-            className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
-          />
-        </div>
-        <select
-          value={planFilter}
-          onChange={(e) => {
-            setPlanFilter(e.target.value);
-            setPage(0);
-          }}
-          className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground focus:outline-none focus:border-primary"
-        >
-          <option value="">All Plans</option>
-          {plansData?.plans?.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={handleExportCsv}
-          disabled={exporting}
-          className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
-        >
-          <Download size={16} />
-          {exporting ? 'Exporting…' : 'Export CSV'}
-        </button>
-      </div>
-
-      <div className="bg-card border border-border rounded-2xl p-5">
-        {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[1.8fr_1.3fr_0.9fr_1.1fr_0.55fr_0.55fr_0.7fr_0.85fr_0.4fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Workspace</span>
-          <span>Owner</span>
-          <span>Plan</span>
-          <span>Stripe</span>
-          <span>Clients</span>
-          <span>Members</span>
-          <span>Created</span>
-          <span>Last activity</span>
-          <span></span>
-        </div>
-
-        {isLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Loading...</p>
-        ) : workspaces.length === 0 ? (
-          <p className="text-sm text-dim-foreground py-4">No workspaces found.</p>
-        ) : (
-          workspaces.map((ws) => (
-            <div
-              key={ws.id}
-              onClick={() => navigate(`/admin/workspaces/${ws.id}`)}
-              className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[1.8fr_1.3fr_0.9fr_1.1fr_0.55fr_0.55fr_0.7fr_0.85fr_0.4fr] md:gap-2 md:items-center"
-            >
-              {/* Mobile card layout */}
-              <div className="md:hidden flex flex-col gap-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-foreground font-medium">{ws.name}</span>
-                  {ws.has_overrides && (
-                    <span className="text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-warning/10 text-warning">
-                      OVERRIDES
-                    </span>
-                  )}
-                  <ArrowRight size={14} className="ml-auto text-muted-foreground" />
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span className="truncate max-w-[180px]">{ws.owner?.email || '—'}</span>
-                  {ws.plan_name && (
-                    <span
-                      className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
-                      style={{
-                        color: getPlanColor(ws.plan_name),
-                        backgroundColor: getPlanColor(ws.plan_name) + '26',
-                      }}
-                    >
-                      {ws.plan_name}
-                    </span>
-                  )}
-                  {hasSubscription(ws.subscription) && (
-                    <span
-                      className={`inline-block text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(ws.subscription.status).tone)}`}
-                    >
-                      Stripe: {ws.subscription.plan_name ?? '—'} ·{' '}
-                      {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
-                      {intervalSuffix(ws.subscription.interval)} ·{' '}
-                      {statusMeta(ws.subscription.status).label}
-                    </span>
-                  )}
-                  <span>{ws.client_count} clients</span>
-                  <span>{ws.member_count} members</span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className={ACTIVITY_TONE_CLASS[activity(ws).tone]}>
-                        Ativo: {activity(ws).label}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>{activity(ws).title}</TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
-              {/* Desktop row */}
-              <span className="hidden md:inline">
-                <span className="text-foreground font-medium">{ws.name}</span>
-                {ws.has_overrides && (
-                  <span className="ml-2 text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-warning/10 text-warning">
-                    OVERRIDES
-                  </span>
-                )}
-              </span>
-              <span className="hidden md:inline text-muted-foreground truncate text-sm">
-                {ws.owner?.email || '—'}
-              </span>
-              <span className="hidden md:inline text-sm">
-                {ws.plan_name ? (
-                  <span
-                    className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
-                    style={{
-                      color: getPlanColor(ws.plan_name),
-                      backgroundColor: getPlanColor(ws.plan_name) + '26',
-                    }}
-                  >
-                    {ws.plan_name}
-                  </span>
-                ) : (
-                  <span className="text-dim-foreground">—</span>
-                )}
-              </span>
-              <span className="hidden min-w-0 items-center gap-2 text-sm md:flex">
-                {hasSubscription(ws.subscription) ? (
-                  <>
-                    <span
-                      className={`shrink-0 text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(ws.subscription.status).tone)}`}
-                    >
-                      {ws.subscription.plan_name ?? 'Stripe'}
-                    </span>
-                    <span className="whitespace-nowrap font-sf text-xs text-muted-foreground">
-                      {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
-                      {intervalSuffix(ws.subscription.interval)}
-                    </span>
-                    {ws.subscription.status !== 'active' && (
-                      <span className="truncate text-[0.65rem] text-muted-foreground">
-                        {statusMeta(ws.subscription.status).label}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-dim-foreground">—</span>
-                )}
-              </span>
-              <span className="hidden md:inline font-sf text-sm">{ws.client_count}</span>
-              <span className="hidden md:inline font-sf text-sm">{ws.member_count}</span>
-              <span className="hidden md:inline text-muted-foreground text-sm">
-                {new Date(ws.created_at).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'short',
-                })}
-              </span>
-              <Tooltip>
-                {/* asChild keeps the span: the default trigger is a <button>, which would sit
-                    inside this navigable row and hijack its click. */}
-                <TooltipTrigger asChild>
-                  <span
-                    className={`hidden w-fit md:inline text-sm ${ACTIVITY_TONE_CLASS[activity(ws).tone]}`}
-                  >
-                    {activity(ws).label}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{activity(ws).title}</TooltipContent>
-              </Tooltip>
-              <span className="hidden md:inline text-muted-foreground">
-                <ArrowRight size={16} />
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={page === 0}
-            className="px-3 py-1.5 rounded-lg text-sm bg-card border border-border text-muted-foreground disabled:opacity-30"
-          >
-            Previous
-          </button>
-          <span className="px-3 py-1.5 text-sm text-muted-foreground">
-            {page + 1} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={page >= totalPages - 1}
-            className="px-3 py-1.5 rounded-lg text-sm bg-card border border-border text-muted-foreground disabled:opacity-30"
-          >
-            Next
-          </button>
-        </div>
-      )}
+      <PageHeader
+        title="Workspaces"
+        description={
+          total === undefined
+            ? 'Todos os workspaces cadastrados'
+            : `${total} workspaces cadastrados`
+        }
+      />
+      <WorkspacesToolbar
+        params={params}
+        plans={plans}
+        prefs={prefs}
+        onChange={set}
+        onPrefs={onPrefs}
+        onExport={handleExportCsv}
+        exporting={exporting}
+      />
+      <WorkspacesFilterChips
+        params={params}
+        plans={plans}
+        total={total}
+        onChange={set}
+        onClear={reset}
+      />
+      <Card className="overflow-hidden">{body}</Card>
     </div>
   );
 }
