@@ -20,13 +20,16 @@ function setDocument(base: '/' | '/admin/', entryHash = 'abc') {
 /** fetchFn that records URLs and resolves immediately, unless `pending` holds a URL back. */
 function makeFetch(manifest: Manifest = MANIFEST, failing: string[] = []) {
   const calls: string[] = [];
+  const responses: Response[] = [];
   const fetchFn = vi.fn(async (input: string) => {
     calls.push(input);
     if (input.endsWith('build-manifest.json')) return new Response(JSON.stringify(manifest));
     if (failing.includes(input)) throw new Error('404');
-    return new Response('');
+    const response = new Response('chunk');
+    responses.push(response);
+    return response;
   });
-  return { fetchFn, calls };
+  return { fetchFn, calls, responses };
 }
 
 function setConnection(value: { saveData?: boolean; effectiveType?: string } | undefined) {
@@ -54,7 +57,7 @@ afterEach(() => {
 
 describe('prefetchBuildAssets', () => {
   it('resolves manifest files against the manifest URL and skips what the document already loads', async () => {
-    const { fetchFn, calls } = makeFetch();
+    const { fetchFn, calls, responses } = makeFetch();
     run({ manifestUrl: '/build-manifest.json', fetchFn });
     await vi.advanceTimersByTimeAsync(2_000);
 
@@ -65,6 +68,9 @@ describe('prefetchBuildAssets', () => {
       '/assets/ClientesPage-ghi.js',
     ]);
     expect((fetchFn.mock.calls[1] as unknown[])[1]).toMatchObject({ priority: 'low' });
+    // The cache entry is only complete once the body is read to the end.
+    expect(responses).toHaveLength(3);
+    expect(responses.every((response) => response.bodyUsed)).toBe(true);
   });
 
   it('honours a base path such as /admin/', async () => {
@@ -135,6 +141,14 @@ describe('prefetchBuildAssets', () => {
 
   it('gives up silently when the manifest cannot be read', async () => {
     const fetchFn = vi.fn(async () => new Response('not json', { status: 500 }));
+    run({ manifestUrl: '/build-manifest.json', fetchFn });
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up silently when the manifest is not JSON', async () => {
+    const fetchFn = vi.fn(async () => new Response('<html>login</html>', { status: 200 }));
     run({ manifestUrl: '/build-manifest.json', fetchFn });
     await vi.advanceTimersByTimeAsync(2_000);
 

@@ -106,7 +106,10 @@ export function prefetchBuildAssets(options: PrefetchBuildOptions): () => void {
       while (queue.length > 0 && !signal.aborted) {
         const path = queue.shift()!;
         try {
-          await fetchFn(path, { signal, priority: 'low' });
+          const response = await fetchFn(path, { signal, priority: 'low' });
+          // Resolving on headers is not enough: the cache entry is only complete once the
+          // body has been read to the end.
+          await response.arrayBuffer();
         } catch {
           // One miss does not stop the queue.
         }
