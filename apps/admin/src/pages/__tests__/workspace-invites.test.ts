@@ -30,31 +30,31 @@ const inv = (o: Partial<InviteInfo>): InviteInfo => ({
 
 describe('authStateLabel', () => {
   it('no account when there is no auth user', () => {
-    expect(authStateLabel(null)).toBe('no account');
+    expect(authStateLabel(null)).toBe('sem conta');
   });
   it('member of this workspace wins over everything', () => {
     expect(
       authStateLabel(auth({ is_member: true, has_password: true, onboarding_complete: true })),
-    ).toBe('member of this workspace');
+    ).toBe('membro deste workspace');
   });
   it('onboarded when password + onboarding complete', () => {
     expect(authStateLabel(auth({ has_password: true, onboarding_complete: true }))).toBe(
-      'onboarded',
+      'onboarding concluído',
     );
   });
   it('confirmed, no password', () => {
     expect(authStateLabel(auth({ email_confirmed: true, has_password: false }))).toBe(
-      'confirmed, no password',
+      'confirmado, sem senha',
     );
   });
   it('email sent, never opened requires a recorded send (finding 4)', () => {
     expect(authStateLabel(auth({ confirmation_sent_at: '2026-07-23T00:00:00Z' }))).toBe(
-      'email sent, never opened',
+      'e-mail enviado, nunca aberto',
     );
   });
   it('account exists (no send recorded) when a user exists but no send is on file', () => {
     expect(authStateLabel(auth({ confirmation_sent_at: null }))).toBe(
-      'account exists (no send recorded)',
+      'conta existe (sem envio registrado)',
     );
   });
 });
@@ -62,11 +62,11 @@ describe('authStateLabel', () => {
 describe('statusTags', () => {
   it('adds a silent-add tag', () => {
     expect(statusTags(inv({ status: 'accepted', silent_add: true }))).toContain(
-      'added silently — no email was sent',
+      'adicionado silenciosamente. Nenhum e-mail foi enviado',
     );
   });
   it('adds a link-expired tag', () => {
-    expect(statusTags(inv({ status: 'pending', link_expired: true }))).toContain('link expired');
+    expect(statusTags(inv({ status: 'pending', link_expired: true }))).toContain('link expirado');
   });
   it('a clean pending invite has no extra tags', () => {
     expect(statusTags(inv({ status: 'pending' }))).toEqual([]);

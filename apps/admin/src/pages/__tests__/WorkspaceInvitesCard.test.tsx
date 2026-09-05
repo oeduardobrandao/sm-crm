@@ -52,7 +52,7 @@ describe('WorkspaceInvitesCard', () => {
       total: 1,
     });
     renderCard();
-    expect(await screen.findByText(/added silently/i)).toBeTruthy();
+    expect(await screen.findByText(/adicionado silenciosamente/i)).toBeTruthy();
     // accepted rows expose no Cancel/Resend
     expect(screen.queryByRole('button', { name: /reenviar/i })).toBeNull();
   });
@@ -87,7 +87,7 @@ describe('WorkspaceInvitesCard', () => {
       total: 1,
     });
     renderCard();
-    expect(await screen.findByText('onboarded')).toBeTruthy();
+    expect(await screen.findByText('onboarding concluído')).toBeTruthy();
   });
 
   it('notes truncation when total exceeds the shown rows', async () => {

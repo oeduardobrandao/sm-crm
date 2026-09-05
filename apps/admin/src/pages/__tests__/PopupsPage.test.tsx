@@ -96,7 +96,7 @@ describe('PopupsPage editor', () => {
     expect(screen.getByRole('heading', { name: 'Novo popup' })).toBeInTheDocument();
     expect(screen.getAllByRole('tab')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
-    expect(await screen.findByText('Title is required')).toBeInTheDocument();
+    expect(await screen.findByText('Título é obrigatório')).toBeInTheDocument();
     expect(createPopup).not.toHaveBeenCalled();
   });
 
@@ -205,8 +205,8 @@ describe('PopupsPage editor', () => {
     await screen.findByText('Analytics de Stories');
     fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
-    expect(await screen.findByText('Title is required')).toBeInTheDocument();
+    expect(await screen.findByText('Título é obrigatório')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Ok' } });
-    expect(screen.queryByText('Title is required')).toBeNull();
+    expect(screen.queryByText('Título é obrigatório')).toBeNull();
   });
 });
