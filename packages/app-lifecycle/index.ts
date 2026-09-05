@@ -13,3 +13,12 @@ export {
   trackUnsavedWork,
 } from './src/unsaved-work';
 export { useUnsavedWork } from './src/use-unsaved-work';
+export { installSilentUpdate } from './src/silent-update';
+export type {
+  InstallSilentUpdateOptions,
+  SilentUpdateBlocker,
+  SilentUpdateBlockerArgs,
+  SilentUpdateLocation,
+  SilentUpdateRouter,
+  SilentUpdateRouterState,
+} from './src/silent-update';
