@@ -84,6 +84,7 @@ const PENDING = {
         interval: 'month',
         discount_label: null,
         failed_payment_count: 3,
+        provider: 'stripe',
         current_period_end: null,
       },
     },
