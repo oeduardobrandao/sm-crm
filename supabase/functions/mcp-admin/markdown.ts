@@ -396,12 +396,16 @@ function opaque(n: TiptapNode, counter: { opaque: number }): string {
 function serializeBlock(n: TiptapNode, counter: { opaque: number }): string {
   switch (n.type) {
     case "paragraph": {
+      // Parágrafo vazio (espaçador, sem `content`): sem equivalente em Markdown -- "" seria
+      // engolido pelo join("\n\n") do bloco pai e markdownToTiptap perderia o nó no round-trip.
+      if (!n.content || n.content.length === 0) return opaque(n, counter);
       const s = serializeInline(n.content);
-      return s === null ? opaque(n, counter) : s;
+      return s === null || s === "" ? opaque(n, counter) : s;
     }
     case "heading": {
+      if (!n.content || n.content.length === 0) return opaque(n, counter);
       const s = serializeInline(n.content);
-      if (s === null) return opaque(n, counter);
+      if (s === null || s === "") return opaque(n, counter);
       return `${"#".repeat(Number(n.attrs?.level ?? 2))} ${s}`;
     }
     case "bulletList":

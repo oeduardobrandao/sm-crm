@@ -268,6 +268,15 @@ Deno.test("tiptapToMarkdown: nós e marks sem equivalente viram blocos opacos e 
   assertEquals(markdown, [encodeOpaque(iframe), encodeOpaque(r2img), encodeOpaque(yt), encodeOpaque(colored), "ok"].join("\n\n"));
 });
 
+Deno.test("tiptapToMarkdown: parágrafo vazio (espaçador) vira bloco opaco e sobrevive ao round-trip", () => {
+  const doc = { type: "doc", content: [p(t("a")), { type: "paragraph" }, { type: "heading", attrs: { level: 2 }, content: [t("T")] }] };
+  const { markdown, opaque_blocks } = tiptapToMarkdown(doc);
+  assertEquals(opaque_blocks, 1);
+  assertEquals(markdown, `a\n\n${encodeOpaque({ type: "paragraph" })}\n\n## T`);
+  assertEquals(markdownToTiptap(markdown), doc);
+  assertEquals(markdownToTiptap(tiptapToMarkdown(markdownToTiptap(markdown)).markdown), doc);
+});
+
 Deno.test("tiptapToMarkdown: '!' colado num link é escapado (senão vira imagem); round-trip preservado", () => {
   const doc = { type: "doc", content: [p(t("Confira!"), t("aqui", [{ type: "link", attrs: { href: "https://x.y" } }]))] };
   const { markdown } = tiptapToMarkdown(doc);
