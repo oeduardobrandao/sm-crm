@@ -67,6 +67,23 @@ Deno.test("validateConsentPayload rejects missing fields and bad scopes", () => 
   assertEquals(badScope.ok, false); // not in allowlist
 });
 
+Deno.test("validateConsentPayload: target platform dispensa conta_id e valida escopos do admin", () => {
+  const r = validateConsentPayload({ authorization_id: "a", target: "platform", scopes: ["kb:read", "banners:write"] });
+  assert(r.ok);
+  if (r.ok) assertEquals(r.value, { authorization_id: "a", target: "platform", conta_id: null, scopes: ["kb:read", "banners:write"] });
+  assertEquals(validateConsentPayload({ authorization_id: "a", target: "platform", scopes: ["posts:read"] }).ok, false);
+  assertEquals(validateConsentPayload({ authorization_id: "a", target: "platform", scopes: [] }).ok, false);
+});
+
+Deno.test("validateConsentPayload: target default é workspace (contrato antigo intacto) e target inválido é rejeitado", () => {
+  const r = validateConsentPayload({ authorization_id: "a", conta_id: "c", scopes: ["posts:read"] });
+  assert(r.ok);
+  if (r.ok) assertEquals(r.value.target, "workspace");
+  assertEquals(validateConsentPayload({ authorization_id: "a", target: "workspace", scopes: ["posts:read"] }).ok, false); // sem conta_id
+  assertEquals(validateConsentPayload({ authorization_id: "a", target: "galaxy", conta_id: "c", scopes: ["posts:read"] }).ok, false);
+  assertEquals(validateConsentPayload({ authorization_id: "a", conta_id: "c", scopes: ["kb:read"] }).ok, false); // escopo do admin no target workspace
+});
+
 Deno.test("mcpScopesFromClaim extracts allowlisted scopes from string or array", () => {
   assertEquals(mcpScopesFromClaim("openid clientes:read posts:read"), [
     "clientes:read",

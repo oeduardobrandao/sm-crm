@@ -7,30 +7,23 @@ import { handleListWorkspaces } from "./list-workspaces.ts";
 import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
 import { handleListPopups, handleCreatePopup, handleUpdatePopup, handleDeletePopup } from "./popups.ts";
-// Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
-import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
-import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
+import { normalizeBanner, pickBannerColumns, validateBanner } from "../_shared/admin-banners.ts";
+import {
+  collectR2Keys, contentNeedsOwnership, coverNeedsOwnership, isUniqueViolation, normalizeKb, pickKbColumns,
+  validateKbArticle,
+} from "../_shared/admin-kb.ts";
+import { adminContaId } from "../_shared/admin-popups.ts";
+import { handleGetWorkspace } from "./workspace-detail.ts";
+import { handleListPlans } from "./plans.ts";
+import { setStripeLoader } from "../_shared/stripe-loader.ts";
+
+// Registra o loader do Stripe só para este function -- ver _shared/stripe-loader.ts. mcp-admin
+// não registra nada, e cai no fallback do espelho/catálogo (o comportamento desejado para as
+// tools de leitura, e o que desbloqueia o bundling remoto do --use-api).
+setStripeLoader(() => import("../_shared/stripe.ts").then((m) => m.stripe));
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-type PlanRow = Record<string, unknown>;
-
-function extractLimits(plan: PlanRow): Record<string, number | null> {
-  const limits: Record<string, number | null> = {};
-  for (const col of [...RESOURCE_COLUMNS, ...RATE_COLUMNS]) {
-    limits[col] = (plan[col] as number | null) ?? null;
-  }
-  return limits;
-}
-
-function extractFeatures(plan: PlanRow): Record<string, boolean> {
-  const features: Record<string, boolean> = {};
-  for (const col of FEATURE_COLUMNS) {
-    features[col] = (plan[col] as boolean) ?? false;
-  }
-  return features;
-}
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -146,9 +139,9 @@ Deno.serve(async (req: Request) => {
       case "get-kb-article":
         return await handleGetKbArticle(svc, body, headers);
       case "create-kb-article":
-        return await handleCreateKbArticle(svc, body, admin.id, headers);
+        return await handleCreateKbArticle(svc, body, { adminId: admin.id, userId: user.id }, headers);
       case "update-kb-article":
-        return await handleUpdateKbArticle(svc, body, headers);
+        return await handleUpdateKbArticle(svc, body, { userId: user.id }, headers);
       case "delete-kb-article":
         return await handleDeleteKbArticle(svc, body, headers);
       case "list-kb-context-links":
@@ -278,283 +271,6 @@ async function handleRevokeAllOAuthGrants(
     .eq("conta_id", body.workspace_id).is("revoked_at", null).select("id");
   if (error) throw error;
   return new Response(JSON.stringify({ message: "All connections revoked", count: (data ?? []).length }), { status: 200, headers });
-}
-
-// ─── Workspaces ────────────────────────────────────────────────
-
-async function handleGetWorkspace(
-  svc: SupabaseClient,
-  body: { workspace_id: string },
-  headers: Record<string, string>,
-) {
-  const { workspace_id } = body;
-  if (!workspace_id) {
-    return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
-  }
-
-  const { data: ws, error } = await svc
-    .from("workspaces")
-    .select("id, name, logo_url, created_at, plan_id, plan_source")
-    .eq("id", workspace_id)
-    .single();
-  if (error || !ws) {
-    return new Response(JSON.stringify({ error: "Workspace not found" }), { status: 404, headers });
-  }
-
-  const { data: members } = await svc
-    .from("workspace_members")
-    .select("user_id, role, joined_at")
-    .eq("workspace_id", workspace_id);
-
-  const enrichedMembers = await Promise.all(
-    (members || []).map(async (m) => {
-      const { data: profile } = await svc
-        .from("profiles")
-        .select("nome, telefone, marketing_opt_in")
-        .eq("id", m.user_id)
-        .single();
-      const { data: authUser } = await svc.auth.admin.getUserById(m.user_id);
-      return {
-        user_id: m.user_id,
-        name: profile?.nome || "Unknown",
-        email: authUser?.user?.email || "Unknown",
-        telefone: profile?.telefone || null,
-        marketing_opt_in: profile?.marketing_opt_in ?? false,
-        role: m.role,
-        joined_at: m.joined_at,
-      };
-    })
-  );
-
-  const owner = enrichedMembers.find((m) => m.role === "owner") || null;
-
-  const { count: clientCount } = await svc
-    .from("clientes")
-    .select("id", { count: "exact", head: true })
-    .eq("conta_id", workspace_id);
-
-  const { count: integrationCount } = await svc
-    .from("integracoes_status")
-    .select("id", { count: "exact", head: true })
-    .eq("conta_id", workspace_id);
-
-  const { data: override } = await svc
-    .from("workspace_plan_overrides")
-    .select("resource_overrides, feature_overrides, notes")
-    .eq("workspace_id", workspace_id)
-    .maybeSingle();
-
-  let plan = null;
-  let resolvedLimits: Record<string, number | null> | null = null;
-  let resolvedFeatures: Record<string, boolean> | null = null;
-
-  if (ws.plan_id) {
-    const { data: planData } = await svc.from("plans").select("*").eq("id", ws.plan_id).single();
-    if (planData) {
-      plan = planData;
-      resolvedLimits = { ...extractLimits(planData), ...(override?.resource_overrides || {}) };
-      resolvedFeatures = { ...extractFeatures(planData), ...(override?.feature_overrides || {}) };
-    }
-  } else {
-    const { data: defaultPlan } = await svc.from("plans").select("*").eq("is_default", true).maybeSingle();
-    if (defaultPlan) {
-      plan = defaultPlan;
-      resolvedLimits = extractLimits(defaultPlan);
-      resolvedFeatures = extractFeatures(defaultPlan);
-    }
-  }
-
-  const subscription = await buildSubscriptionDetail(svc, workspace_id);
-
-  return new Response(JSON.stringify({
-    workspace: ws,
-    owner,
-    members: enrichedMembers,
-    plan: plan ? { id: plan.id, name: plan.name } : null,
-    override: override ? {
-      resource_overrides: override.resource_overrides,
-      feature_overrides: override.feature_overrides,
-      notes: override.notes,
-    } : null,
-    resolved_limits: resolvedLimits,
-    resolved_features: resolvedFeatures,
-    subscription,
-    usage: {
-      client_count: clientCount || 0,
-      member_count: enrichedMembers.length,
-      integration_count: integrationCount || 0,
-    },
-  }), { status: 200, headers });
-}
-
-// ─── Stripe subscription detail (live amount, catalog fallback) ────────────────
-// Amount/coupon helpers live in ../_shared/stripe-amount.ts (shared with the
-// lifecycle founder notices).
-
-function stripeDashboardUrl(livemode: boolean, kind: string, id: string): string {
-  return `https://dashboard.stripe.com/${livemode ? "" : "test/"}${kind}/${id}`;
-}
-
-/**
- * Builds the Stripe-subscription view for one workspace. The local mirror
- * (workspace_subscriptions) always reflects the real Stripe status even when an
- * admin has manually comped the workspace's effective plan, so we surface it here.
- * The exact amount (incl. coupons/custom prices) comes live from Stripe; if Stripe
- * is unreachable or the key is unset we fall back to the plan's catalog price.
- */
-async function buildSubscriptionDetail(
-  svc: SupabaseClient,
-  workspaceId: string,
-) {
-  const { data: row } = await svc
-    .from("workspace_subscriptions")
-    .select(
-      "status, plan_id, billing_interval, current_period_end, cancel_at_period_end, failed_payment_count, stripe_customer_id, stripe_subscription_id, provider, pagarme_subscription_id, installments, amount_cents, gross_cents, currency, amount_interval, discount_label",
-    )
-    .eq("workspace_id", workspaceId)
-    .maybeSingle();
-  if (!row) return null;
-
-  let planName: string | null = null;
-  if (row.plan_id) {
-    const { data: plan } = await svc.from("plans").select("name").eq("id", row.plan_id).single();
-    planName = plan?.name ?? null;
-  }
-
-  const provider: "stripe" | "pagarme" = row.provider === "pagarme" ? "pagarme" : "stripe";
-  const info = {
-    provider,
-    status: row.status ?? null,
-    plan_id: row.plan_id ?? null,
-    plan_name: planName,
-    billing_interval: row.billing_interval ?? null,
-    current_period_end: row.current_period_end ?? null,
-    cancel_at_period_end: row.cancel_at_period_end ?? false,
-    failed_payment_count: row.failed_payment_count ?? 0,
-    stripe_customer_id: row.stripe_customer_id ?? null,
-    stripe_subscription_id: row.stripe_subscription_id ?? null,
-    pagarme_subscription_id: row.pagarme_subscription_id ?? null,
-    installments: (row.installments as number | null) ?? null,
-    amount_cents: null as number | null,
-    gross_cents: null as number | null,
-    currency: null as string | null,
-    interval: row.billing_interval ?? null,
-    discount_label: null as string | null,
-    amount_source: null as "stripe" | "pagarme" | "catalog" | null,
-    stripe_dashboard_url: null as string | null,
-  };
-
-  // A Pagar.me-owned row reads ONLY the mirror (written synchronously at checkout). Never a
-  // Stripe live-fetch (its stripe_subscription_id, if present, is a dead pre-switch leftover
-  // whose price would clobber the mirror on write-back) and no dashboard URL in v1.
-  if (provider === "pagarme") {
-    if (row.amount_cents != null) {
-      info.amount_cents = row.amount_cents as number;
-      info.gross_cents = (row.gross_cents as number | null) ?? null;
-      info.currency = (row.currency as string | null) ?? null;
-      info.interval = (row.amount_interval as string | null) ?? row.billing_interval ?? null;
-      info.discount_label = (row.discount_label as string | null) ?? null;
-      info.amount_source = "pagarme";
-      return info;
-    }
-    return applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
-  }
-
-  if (row.stripe_subscription_id) {
-    try {
-      const { stripe } = await import("../_shared/stripe.ts");
-      const amt = await fetchStripeAmount(stripe, row.stripe_subscription_id, row.billing_interval ?? null);
-      info.amount_cents = amt.amount_cents;
-      info.gross_cents = amt.gross_cents;
-      info.currency = amt.currency;
-      info.interval = amt.interval;
-      info.discount_label = amt.discount_label;
-      info.amount_source = "stripe";
-      info.stripe_dashboard_url = stripeDashboardUrl(
-        amt.livemode,
-        "subscriptions",
-        row.stripe_subscription_id,
-      );
-      // Opportunistic refresh: viewing a workspace updates its cached amount, so
-      // the list/MRR pages keep reading a mirror that tracks live Stripe. CAS on provider:
-      // if a concurrent Pagar.me bind took the row while the Stripe fetch was in flight,
-      // zero rows match — skip and log rather than clobbering the fresh Pagar.me mirror.
-      const { data: writtenBack, error: writeBackError } = await svc
-        .from("workspace_subscriptions")
-        .update(buildAmountColumns(amt))
-        .eq("workspace_id", workspaceId)
-        .eq("provider", "stripe")
-        // Same-provider pin (see pricing.ts liveFetch): the id observed at read time must
-        // still match, or a mid-fetch rebind would get the old subscription's amount.
-        .eq("stripe_subscription_id", row.stripe_subscription_id)
-        .select("workspace_id");
-      if (writeBackError) {
-        console.error("[platform-admin] amount write-back failed:", writeBackError.message);
-      } else if (!writtenBack?.length) {
-        console.warn(
-          `[platform-admin] amount write-back skipped for workspace ${workspaceId}: provider changed mid-fetch`,
-        );
-      }
-      return info;
-    } catch (err) {
-      console.error("[platform-admin] stripe fetch failed:", (err as Error).message);
-    }
-  }
-
-  return applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
-}
-
-/** Fills amount from the plan's list price when neither mirror nor live fetch produced one. */
-async function applyCatalogFallback<
-  T extends {
-    amount_cents: number | null;
-    currency: string | null;
-    amount_source: "stripe" | "pagarme" | "catalog" | null;
-  },
->(
-  svc: SupabaseClient,
-  info: T,
-  planId: string | null,
-  billingInterval: string | null,
-): Promise<T> {
-  if (!planId) return info;
-  const { data: plan } = await svc
-    .from("plans")
-    .select("price_brl, price_brl_annual")
-    .eq("id", planId)
-    .single();
-  const cents = billingInterval === "year" ? plan?.price_brl_annual : plan?.price_brl;
-  if (cents != null) {
-    info.amount_cents = cents as number;
-    info.currency = "brl";
-    info.amount_source = "catalog";
-  }
-  return info;
-}
-
-// ─── Plans ─────────────────────────────────────────────────────
-
-async function handleListPlans(
-  svc: SupabaseClient,
-  headers: Record<string, string>,
-) {
-  const { data: plans, error } = await svc
-    .from("plans")
-    .select("*")
-    .order("sort_order", { ascending: true });
-  if (error) throw error;
-
-  const enriched = await Promise.all(
-    (plans || []).map(async (plan) => {
-      const { count } = await svc
-        .from("workspaces")
-        .select("*", { count: "exact", head: true })
-        .eq("plan_id", plan.id);
-      return { ...plan, workspace_count: count || 0 };
-    })
-  );
-
-  return new Response(JSON.stringify({ plans: enriched }), { status: 200, headers });
 }
 
 async function handleDeletePlan(
@@ -867,12 +583,6 @@ async function handleRemoveAdmin(
 
 // ─── Banners ──────────────────────────────────────────────────
 
-const BANNER_COLUMNS = [
-  "type", "content", "link", "custom_color", "target_mode",
-  "target_plan_ids", "target_workspace_ids", "dismissible",
-  "starts_at", "ends_at", "status",
-] as const;
-
 async function handleListBanners(
   svc: SupabaseClient,
   body: { status?: string },
@@ -918,9 +628,11 @@ async function handleCreateBanner(
     );
   }
 
-  const insert: Record<string, unknown> = { created_by: adminId };
-  for (const col of BANNER_COLUMNS) {
-    if (rest[col] !== undefined) insert[col] = rest[col];
+  const insert = normalizeBanner({ created_by: adminId, ...pickBannerColumns(rest) });
+  const fieldError = validateBanner(insert);
+  if (fieldError) {
+    console.error("[banners] create rejected:", fieldError);
+    return new Response(JSON.stringify({ error: "Invalid banner" }), { status: 400, headers });
   }
 
   const { data, error } = await svc
@@ -947,16 +659,21 @@ async function handleUpdateBanner(
     );
   }
 
-  const update: Record<string, unknown> = {};
-  for (const col of BANNER_COLUMNS) {
-    if (rest[col] !== undefined) update[col] = rest[col];
-  }
-
+  const update = normalizeBanner(pickBannerColumns(rest));
   if (Object.keys(update).length === 0) {
-    return new Response(
-      JSON.stringify({ error: "No fields to update" }),
-      { status: 400, headers },
-    );
+    return new Response(JSON.stringify({ error: "No fields to update" }), { status: 400, headers });
+  }
+  const { data: current, error: readErr } = await svc
+    .from("global_banners").select("*").eq("id", banner_id).maybeSingle();
+  if (readErr) throw readErr;
+  if (!current) return new Response(JSON.stringify({ error: "Banner not found" }), { status: 404, headers });
+  // Linhas antigas nunca passaram por este validador: normalizar a atual antes de mesclar
+  // (link/custom_color "" → null), senão um banner legado fica impossível de editar.
+  const merged = { ...normalizeBanner(current as Record<string, unknown>), ...update };
+  const fieldError = validateBanner(merged);
+  if (fieldError) {
+    console.error("[banners] update rejected:", fieldError);
+    return new Response(JSON.stringify({ error: "Invalid banner" }), { status: 400, headers });
   }
 
   const { data, error } = await svc
@@ -1008,13 +725,6 @@ async function handleDeleteBanner(
 
 // ─── Knowledge Base ──────────────────────────────────────────
 
-const KB_ARTICLE_COLUMNS = [
-  "title", "slug", "excerpt", "content", "content_plain",
-  "cover_image_url", "category", "tags", "status", "display_order",
-] as const;
-
-const RESERVED_SLUGS = ["novo", "editar"];
-
 async function handleListKbArticles(
   svc: SupabaseClient,
   body: { category?: string; status?: string },
@@ -1058,7 +768,7 @@ async function handleGetKbArticle(
 async function handleCreateKbArticle(
   svc: SupabaseClient,
   body: Record<string, unknown>,
-  adminId: string,
+  actor: { adminId: string; userId: string },
   headers: Record<string, string>,
 ) {
   const { action: _, ...rest } = body;
@@ -1070,24 +780,32 @@ async function handleCreateKbArticle(
     );
   }
 
-  if (RESERVED_SLUGS.includes(rest.slug as string)) {
-    return new Response(
-      JSON.stringify({ error: `Slug "${rest.slug}" is reserved` }),
-      { status: 400, headers },
-    );
+  const insert = normalizeKb({ author_id: actor.adminId, ...pickKbColumns(rest) });
+
+  // Uma chave R2 nova só pode virar capa (ou aparecer num inlineImage do corpo, via bloco
+  // opaco) se pertencer ao workspace do admin chamador -- senão qualquer kb:write publicaria
+  // (e sign-r2-urls assinaria) um arquivo privado de outro workspace para todo mundo que ler
+  // o artigo. Artigo novo: nenhuma chave persistida ainda.
+  const persistedR2Keys = new Set<string>();
+  let contaId: string | undefined;
+  const needsOwnership = coverNeedsOwnership(insert.cover_image_url, null) ||
+    (insert.content !== undefined && contentNeedsOwnership(insert.content, persistedR2Keys));
+  if (needsOwnership) {
+    const found = await adminContaId(svc, actor.userId);
+    if (found === null) {
+      return new Response(JSON.stringify({ error: "cover_image_url R2 key belongs to another workspace" }), { status: 400, headers });
+    }
+    contaId = found;
   }
 
-  const insert: Record<string, unknown> = { author_id: adminId };
-  for (const col of KB_ARTICLE_COLUMNS) {
-    if (rest[col] !== undefined) insert[col] = rest[col];
-  }
+  const fieldError = validateKbArticle(insert, { allowedContaId: contaId, persistedR2Keys });
+  if (fieldError) return new Response(JSON.stringify({ error: fieldError }), { status: 400, headers });
 
-  const { data, error } = await svc
-    .from("kb_articles")
-    .insert(insert)
-    .select()
-    .single();
-  if (error) throw error;
+  const { data, error } = await svc.from("kb_articles").insert(insert).select().single();
+  if (error) {
+    if (isUniqueViolation(error)) return new Response(JSON.stringify({ error: "slug already in use" }), { status: 409, headers });
+    throw error;
+  }
 
   return new Response(JSON.stringify({ article: data }), { status: 201, headers });
 }
@@ -1095,6 +813,7 @@ async function handleCreateKbArticle(
 async function handleUpdateKbArticle(
   svc: SupabaseClient,
   body: Record<string, unknown>,
+  actor: { userId: string },
   headers: Record<string, string>,
 ) {
   const { action: _, article_id, ...rest } = body;
@@ -1106,32 +825,45 @@ async function handleUpdateKbArticle(
     );
   }
 
-  if (rest.slug && RESERVED_SLUGS.includes(rest.slug as string)) {
-    return new Response(
-      JSON.stringify({ error: `Slug "${rest.slug}" is reserved` }),
-      { status: 400, headers },
-    );
-  }
-
-  const update: Record<string, unknown> = {};
-  for (const col of KB_ARTICLE_COLUMNS) {
-    if (rest[col] !== undefined) update[col] = rest[col];
-  }
-
+  const update = normalizeKb(pickKbColumns(rest));
   if (Object.keys(update).length === 0) {
-    return new Response(
-      JSON.stringify({ error: "No fields to update" }),
-      { status: 400, headers },
-    );
+    return new Response(JSON.stringify({ error: "No fields to update" }), { status: 400, headers });
+  }
+  // A regra "content e content_plain juntos" precisa valer no PATCH: na linha mesclada os
+  // dois sempre existem (vêm do select *), então lá ela nunca dispara.
+  if ((update.content !== undefined) !== (update.content_plain !== undefined)) {
+    return new Response(JSON.stringify({ error: "content and content_plain go together" }), { status: 400, headers });
+  }
+  const { data: current, error: readErr } = await svc
+    .from("kb_articles").select("*").eq("id", article_id).maybeSingle();
+  if (readErr) throw readErr;
+  if (!current) return new Response(JSON.stringify({ error: "Article not found" }), { status: 404, headers });
+
+  const persistedCover = ((current as Record<string, unknown>).cover_image_url as string | null | undefined) ?? null;
+  const persistedR2Keys = collectR2Keys((current as Record<string, unknown>).content);
+  let contaId: string | undefined;
+  const needsOwnership = coverNeedsOwnership(update.cover_image_url, persistedCover) ||
+    (update.content !== undefined && contentNeedsOwnership(update.content, persistedR2Keys));
+  if (needsOwnership) {
+    const found = await adminContaId(svc, actor.userId);
+    if (found === null) {
+      return new Response(JSON.stringify({ error: "cover_image_url R2 key belongs to another workspace" }), { status: 400, headers });
+    }
+    contaId = found;
   }
 
-  const { data, error } = await svc
-    .from("kb_articles")
-    .update(update)
-    .eq("id", article_id)
-    .select()
-    .single();
-  if (error) throw error;
+  // Linha atual normalizada antes de mesclar (cover_image_url/excerpt "" legados → null).
+  const fieldError = validateKbArticle(
+    { ...normalizeKb(current as Record<string, unknown>), ...update },
+    { allowedContaId: contaId, persistedCover, persistedR2Keys },
+  );
+  if (fieldError) return new Response(JSON.stringify({ error: fieldError }), { status: 400, headers });
+
+  const { data, error } = await svc.from("kb_articles").update(update).eq("id", article_id).select().single();
+  if (error) {
+    if (isUniqueViolation(error)) return new Response(JSON.stringify({ error: "slug already in use" }), { status: 409, headers });
+    throw error;
+  }
 
   return new Response(JSON.stringify({ article: data }), { status: 200, headers });
 }
