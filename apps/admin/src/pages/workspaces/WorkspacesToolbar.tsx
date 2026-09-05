@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Columns3, Download, Search } from 'lucide-react';
 import type { Plan } from '../../lib/api';
 import { STATUS_GROUPS, STATUS_GROUP_LABELS } from '../../lib/subscription';
@@ -100,15 +100,28 @@ export function WorkspacesToolbar({
   exporting,
 }: WorkspacesToolbarProps) {
   const [text, setText] = useState(params.q);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  /** Last q this toolbar itself committed; its echo must not overwrite newer typing. */
+  const lastSentRef = useRef(params.q);
 
-  // External changes (chip removal, "Limpar filtros", back button) win over local typing.
-  useEffect(() => setText(params.q), [params.q]);
+  // External changes (chip removal, "Limpar filtros", back button) win over local typing;
+  // the echo of our own commit does not.
+  useEffect(() => {
+    if (params.q !== lastSentRef.current) {
+      lastSentRef.current = params.q;
+      setText(params.q);
+    }
+  }, [params.q]);
 
   useEffect(() => {
     if (text === params.q) return;
-    const t = setTimeout(() => onChange({ q: text }), SEARCH_DEBOUNCE_MS);
+    const t = setTimeout(() => {
+      lastSentRef.current = text;
+      onChangeRef.current({ q: text });
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [text, params.q, onChange]);
+  }, [text, params.q]);
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
