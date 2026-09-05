@@ -60,7 +60,7 @@ function Row({
       className="flex cursor-pointer items-center justify-between gap-3 py-2 hover:bg-secondary/30"
     >
       <div className="min-w-0">
-        <div className="truncate text-sm font-medium text-foreground">
+        <div className="text-sm font-medium text-foreground">
           <RowLink to={to} className="block truncate">
             {name}
           </RowLink>
