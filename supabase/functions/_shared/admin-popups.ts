@@ -14,11 +14,22 @@ export interface PopupPage {
   eyebrow: string | null;
   body: string;
   image_key: string | null;
+  cta_label: string | null;
+  cta_url: string | null;
 }
 
 const MAX_PAGES = 6;
-const PAGE_KEYS = new Set(["title", "eyebrow", "body", "image_key"]);
+const PAGE_KEYS = new Set(["title", "eyebrow", "body", "image_key", "cta_label", "cta_url"]);
 const IMAGE_KEY_RE = /^contas\/[0-9a-f-]{36}\/files\/[^/]+$/;
+
+/** Regra única da URL de CTA (global e por página): prefixo permitido e sem tab/CR/LF, que o
+ * browser remove antes de interpretar. isSafeHref já cobre esse e outros casos (protocol-relative,
+ * `/\host`), mas mantemos a mensagem distinta de main para caracteres de controle. */
+function ctaUrlProblem(url: string): string | null {
+  if (/[\t\r\n]/.test(url)) return "cta_url contains control characters";
+  if (!isSafeHref(url, { allowHttp: true })) return "cta_url must start with / or http(s)://";
+  return null;
+}
 
 function optionalText(value: unknown, max: number): { ok: true; value: string | null } | { ok: false } {
   if (value === undefined || value === null) return { ok: true, value: null };
@@ -74,7 +85,21 @@ export function validatePages(
     ) {
       return { ok: false, error: `page ${i}: image_key belongs to another workspace` };
     }
-    pages.push({ title, eyebrow: eyebrow.value, body, image_key: image.value });
+    const pageCtaLabel = optionalText(r.cta_label, 40);
+    if (!pageCtaLabel.ok) return { ok: false, error: `page ${i}: cta_label max 40` };
+    const pageCtaUrl = optionalText(r.cta_url, 2048);
+    if (!pageCtaUrl.ok) return { ok: false, error: `page ${i}: cta_url max 2048` };
+    if ((pageCtaLabel.value === null) !== (pageCtaUrl.value === null)) {
+      return { ok: false, error: `page ${i}: cta_label and cta_url go together` };
+    }
+    if (pageCtaUrl.value !== null) {
+      const p = ctaUrlProblem(pageCtaUrl.value);
+      if (p) return { ok: false, error: `page ${i}: ${p}` };
+    }
+    pages.push({
+      title, eyebrow: eyebrow.value, body, image_key: image.value,
+      cta_label: pageCtaLabel.value, cta_url: pageCtaUrl.value,
+    });
   }
   return { ok: true, pages };
 }
@@ -86,15 +111,18 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
   const ctaUrl = optionalText(row.cta_url, 2048);
   if (!ctaUrl.ok) return "cta_url max 2048";
   if ((ctaLabel.value === null) !== (ctaUrl.value === null)) return "cta_label and cta_url go together";
-  if (ctaUrl.value !== null && !isSafeHref(ctaUrl.value, { allowHttp: true })) {
-    return "cta_url must start with / or http(s)://";
+  if (ctaUrl.value !== null) {
+    const p = ctaUrlProblem(ctaUrl.value);
+    if (p) return p;
   }
   const secondary = optionalText(row.secondary_label, 40);
   if (!secondary.ok) return "secondary_label max 40";
 
   const frequency = row.frequency ?? "once";
   if (frequency !== "once" && frequency !== "until_cta") return "invalid frequency";
-  if (frequency === "until_cta" && ctaUrl.value === null) return "until_cta requires a CTA";
+  if (frequency === "until_cta" && ctaUrl.value === null && !pagesHaveCta(row.pages)) {
+    return "until_cta requires a CTA";
+  }
   const requireAck = row.require_ack === true;
   if (requireAck && frequency === "until_cta") return "require_ack implies once";
 
@@ -160,6 +188,11 @@ export async function adminContaId(svc: { from: (table: string) => any }, userId
   const { data, error } = await svc.from("profiles").select("conta_id").eq("id", userId).maybeSingle();
   if (error) throw error;
   return (data?.conta_id as string | undefined) ?? null;
+}
+
+function pagesHaveCta(pages: unknown): boolean {
+  return Array.isArray(pages) &&
+    pages.some((p) => typeof (p as { cta_url?: unknown })?.cta_url === "string" && (p as { cta_url: string }).cta_url);
 }
 
 export function pagesHaveImages(pages: unknown): boolean {

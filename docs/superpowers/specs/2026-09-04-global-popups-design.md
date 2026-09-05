@@ -590,3 +590,58 @@ Staging primeiro, mesma ordem, para a verificação em browser.
   artigo; fora de escopo.
 - **`seen` sem UNIQUE**: a deduplicação é no cliente. Uma corrida entre duas abas pode
   gravar dois `seen`; a view conta `distinct user_id`, então a métrica não infla.
+
+## Adendo 2026-09-04: CTA por página
+
+**Status:** aprovado (segunda rodada de brainstorm, opção "CTA global com sobrescrita por página, global só na última").
+
+**Comportamento.** O CTA do popup (`cta_label` / `cta_url`) continua existindo e continua
+aparecendo só na última página. Cada página pode ter um CTA próprio, `cta_label` +
+`cta_url` dentro do item de `pages` (par completo ou nenhum, mesmos limites do CTA
+global: label até 40, URL até 2048 começando com `/` ou `http(s)://`, sem `//host`,
+`/\host` nem caracteres de controle). O CTA da página aparece naquela página: nas do
+meio e na primeira, como botão principal em linha inteira acima da linha
+"Voltar · pontinhos · Próximo", e nesse caso "Próximo" vira outline para não haver dois
+botões principais; na última, no lugar do CTA global. Clicar em qualquer CTA registra
+`cta`, dispara `popup_cta` com `page`, fecha o popup e navega, com a mesma sanitização.
+`until_cta` exige um CTA em algum lugar: global ou em ao menos uma página.
+
+**Dados.** Nenhuma coluna nova. Formato do item de `pages` ganha `cta_label?: string |
+null` e `cta_url?: string | null`. Migration `20260907000020_popups_page_cta.sql` troca
+o CHECK `global_popups_until_cta_needs_cta_check` por
+`frequency <> 'until_cta' OR cta_url IS NOT NULL OR jsonb_path_exists(pages, '$[*].cta_url ? (@ != null)')`.
+Popups existentes continuam válidos.
+
+**Servidor.** `validatePages` valida o par por página (chaves `cta_label`/`cta_url`
+entram em `PAGE_KEYS`, normalização `""` → null, mesmas regras de URL do CTA global);
+`validatePopupFields` passa a aceitar `until_cta` quando há CTA global ou em alguma
+página (recebe a linha já com `pages` normalizado). Nada muda no `sign-r2-urls`.
+
+**Admin.** Os campos do CTA global ficam no bloco "Popup settings". A aba de cada página
+ganha "Page CTA (optional)" com label e URL e a nota "Overrides the popup CTA on this
+page". `PageForm` ganha `cta_label`/`cta_url`; `validateForm` valida o par por página em
+`errors.pages[i].cta` (mesmas mensagens do CTA global) e a regra de `until_cta` vira
+'"Until CTA" needs a CTA on the popup or on at least one page'. `formToPayload` emite os
+dois campos por página (null quando vazios). O preview usa o mesmo card com o CTA
+efetivo por página.
+
+**Card compartilhado.** `PopupCardPage` ganha `ctaLabel?: string | null`. O card calcula
+o CTA efetivo da página: `page.ctaLabel ?? (isLast ? ctaLabel : null)`. `onCta` recebe o
+índice da página. Layout por posição: página com CTA próprio (não última) → linha do CTA
+(estilo do popup, largura total) + linha de navegação com "Próximo" outline; última →
+CTA efetivo + secundário como hoje; sem CTA efetivo → como hoje.
+
+**CRM.** `PopupPage` do store ganha os dois campos; `GlobalPopupHost` resolve
+`effectiveCtaUrl(pageIndex)` = `pages[i].cta_url ?? (última ? popup.cta_url : null)`,
+grava `cta`, captura `popup_cta` com `page`, navega. `pickPopup`, sessão e `until_cta`
+não mudam.
+
+**Testes.** SQL: CHECK aceita `until_cta` com CTA só em página e rejeita sem nenhum.
+Deno: `validatePages` (par por página, limites, `//`/`/\`/controle), `until_cta` com CTA
+em página. Vitest: `popup-form` (par por página, `until_cta` com CTA em página),
+`PopupsPage` (campos na aba, payload por página), `PopupCard` (CTA em página do meio com
+Próximo outline, última com CTA próprio, sem CTA), `GlobalPopupHost` (CTA de página
+grava e navega com a URL da página; última usa a global).
+
+**Rollout.** Migration em produção (só troca de CHECK), deploy do `platform-admin`,
+merge. Sem janela: nenhuma coluna some.

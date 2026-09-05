@@ -211,7 +211,7 @@ invariante valer também fora das edge functions. `dismissal_count` vem de uma
 |---|---|---|
 | `list_popups` | `status?` | `[{ id, pages, cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, target_mode, target_plan_ids, target_workspace_ids, starts_at, ends_at, status, counts: { seen, closed, cta, ack }, created_at, updated_at }]` |
 | `get_popup` | `popup_id` | um popup, com `counts: { seen, closed, cta, ack }` |
-| `create_popup` | `pages` (1..6 de `{ title, eyebrow?, body }`), `target_mode`, e os opcionais `cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, target_plan_ids, target_workspace_ids, starts_at, ends_at, status` | `{ id, status }` |
+| `create_popup` | `pages` (1..6 de `{ title, eyebrow?, body, image_key?, cta_label?, cta_url? }`), `target_mode`, e os opcionais `cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, target_plan_ids, target_workspace_ids, starts_at, ends_at, status` | `{ id, status }` |
 | `update_popup` | `popup_id` + subconjunto | `{ id, status }` |
 | `upload_popup_image` | `filename, mime_type, size_bytes?, source_url?` | seção 7 |
 

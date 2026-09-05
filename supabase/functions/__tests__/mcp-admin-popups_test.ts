@@ -25,7 +25,7 @@ Deno.test("createPopup sem imagens: não consulta profiles; created_by = admin_i
   const r = await createPopup(makeDeps(db), { pages: [{ title: " Olá ", body: "corpo" }], target_mode: "all", cta_label: "Ver", cta_url: "/ajuda" });
   assertEquals(r, { id: "p9", status: "draft" });
   const ins = insertPayload(calls, "global_popups")!;
-  assertEquals(ins.pages, [{ title: "Olá", eyebrow: null, body: "corpo", image_key: null }]);
+  assertEquals(ins.pages, [{ title: "Olá", eyebrow: null, body: "corpo", image_key: null, cta_label: null, cta_url: null }]);
   assertEquals(ins.created_by, "adm-1");
   assert(!calls.some((c) => c.table === "profiles"));
   await expectInputError(() => createPopup(makeDeps(db), { pages: [{ title: "T", body: "B" }], target_mode: "all", cta_label: "Ver" }), "cta");
@@ -39,7 +39,7 @@ Deno.test("createPopup com imagem nova: resolve conta do admin, finaliza (headOb
   );
   await createPopup(makeDeps(db), { pages: [{ title: "T", body: "B", image_key: KEY_NEW }], target_mode: "all" });
   assertEquals(rpcPayload(calls, "file_insert_with_quota")?.r2_key, KEY_NEW);
-  assert(has(calls, "global_popups", "insert", [{ pages: [{ title: "T", eyebrow: null, body: "B", image_key: KEY_NEW }], target_mode: "all", created_by: "adm-1" }]));
+  assert(has(calls, "global_popups", "insert", [{ pages: [{ title: "T", eyebrow: null, body: "B", image_key: KEY_NEW, cta_label: null, cta_url: null }], target_mode: "all", created_by: "adm-1" }]));
 });
 
 Deno.test("createPopup com imagem de outro workspace, ou admin sem conta_id → McpInputError", async () => {
@@ -51,7 +51,7 @@ Deno.test("updatePopup: image_key já persistida passa sem profiles/headObject; 
   const { db, calls } = makeFakeDb({ global_popups: [{ data: ROW, error: null }, { data: { id: "p1", status: "active" }, error: null }] });
   const r = await updatePopup(makeDeps(db), { popup_id: "p1", status: "active", pages: [{ title: "T2", body: "B2", image_key: KEY_OLD }] });
   assertEquals(r, { id: "p1", status: "active" });
-  assertEquals(updatePayload(calls, "global_popups")!.pages, [{ title: "T2", eyebrow: null, body: "B2", image_key: KEY_OLD }]);
+  assertEquals(updatePayload(calls, "global_popups")!.pages, [{ title: "T2", eyebrow: null, body: "B2", image_key: KEY_OLD, cta_label: null, cta_url: null }]);
   assert(!calls.some((c) => c.table === "profiles" || c.table === "files"));
 
   const { db: db2, calls: calls2 } = makeFakeDb(

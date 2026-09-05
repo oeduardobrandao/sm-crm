@@ -56,16 +56,25 @@ const LABEL = 'block text-xs font-medium text-muted-foreground uppercase trackin
  *  vira '#'; caminhos internos (`/`, `./`, `../`, `#`) passam direto; o resto vai para
  *  sanitizeExternalUrl (só http(s) sem credenciais). */
 function previewHref(href: string): string {
-  if (href.startsWith('//')) return '#';
+  // O browser remove tab/LF/CR de QUALQUER posição antes de interpretar a URL (WHATWG),
+  // então `/\t/evil.com` vira `//evil.com`. Normalizar igual antes de decidir. Links markdown
+  // chegam aqui com esses caracteres já percent-encoded (`%09`/`%0a`/`%0d`) pelo parser de
+  // origem (micromark, via mdast-util-to-hast normalizeUri), então a mesma limpeza precisa
+  // cobrir as duas formas -- igual já valia para `\` cru vs. `%5c`.
+  const stripped = href.replace(/[\t\r\n]|%0[9ad]/gi, '');
+  // `//host` é protocol-relative; o browser trata `\` como `/` em http(s), então `/\host` também é.
+  // Links markdown chegam aqui já com o `\` percent-encoded (`%5C`) pelo parser de origem
+  // (micromark), então o mesmo prefixo bloqueado precisa cobrir a forma crua e a codificada.
+  if (/^\/(?:[/\\]|%5c)/i.test(stripped)) return '#';
   if (
-    href.startsWith('/') ||
-    href.startsWith('./') ||
-    href.startsWith('../') ||
-    href.startsWith('#')
+    stripped.startsWith('/') ||
+    stripped.startsWith('./') ||
+    stripped.startsWith('../') ||
+    stripped.startsWith('#')
   ) {
-    return href;
+    return stripped;
   }
-  return sanitizeExternalUrl(href);
+  return sanitizeExternalUrl(stripped);
 }
 
 const DARK_VARS = {
@@ -391,8 +400,11 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
   }, [form.pages.length, selected]);
 
   const hasCta = Boolean(form.cta_label.trim() && form.cta_url.trim());
+  const anyCta = hasCta || form.pages.some((p) => p.cta_label.trim() && p.cta_url.trim());
+  const last = form.pages[form.pages.length - 1];
+  const lastHasCta = Boolean((last.cta_label.trim() && last.cta_url.trim()) || hasCta);
   const secondaryLabel =
-    form.secondary_label.trim() || defaultSecondaryLabel(form.require_ack, hasCta);
+    form.secondary_label.trim() || defaultSecondaryLabel(form.require_ack, lastHasCta);
   const pending = createMut.isPending || updateMut.isPending;
 
   return (
@@ -552,6 +564,39 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
               )}
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="popup-page-cta-label" className={LABEL}>
+                  Page CTA label
+                </label>
+                <input
+                  id="popup-page-cta-label"
+                  className={INPUT}
+                  maxLength={40}
+                  value={page.cta_label}
+                  onChange={(e) => updatePage({ cta_label: e.target.value })}
+                />
+              </div>
+              <div>
+                <label htmlFor="popup-page-cta-url" className={LABEL}>
+                  Page CTA URL
+                </label>
+                <input
+                  id="popup-page-cta-url"
+                  className={INPUT}
+                  placeholder="/ajuda/... or https://..."
+                  value={page.cta_url}
+                  onChange={(e) => updatePage({ cta_url: e.target.value })}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground -mt-3">
+              Overrides the popup CTA on this page.
+            </p>
+            {errors?.pages[pageIndex]?.cta && (
+              <p className="text-xs text-destructive -mt-3">{errors.pages[pageIndex].cta}</p>
+            )}
+
             <div className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground border-t border-border pt-4">
               Popup settings (apply to all pages)
             </div>
@@ -594,7 +639,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                   className={INPUT}
                   maxLength={40}
                   value={form.secondary_label}
-                  placeholder={defaultSecondaryLabel(form.require_ack, hasCta)}
+                  placeholder={defaultSecondaryLabel(form.require_ack, lastHasCta)}
                   onChange={(e) => setForm((f) => ({ ...f, secondary_label: e.target.value }))}
                 />
               </div>
@@ -749,6 +794,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                   eyebrow: p.eyebrow || null,
                   body: p.body || 'Body preview...',
                   imageUrl: p.image_key ? (imageUrls?.[p.image_key] ?? null) : null,
+                  ctaLabel: p.cta_label.trim() && p.cta_url.trim() ? p.cta_label.trim() : null,
                 }))}
                 page={pageIndex}
                 onPageChange={setSelected}
@@ -757,7 +803,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                 secondaryLabel={secondaryLabel}
                 requireAck={form.require_ack}
                 sanitizeHref={previewHref}
-                onCta={hasCta ? () => {} : undefined}
+                onCta={anyCta ? () => {} : undefined}
                 onSecondary={() => {}}
                 onClose={() => {}}
                 titleId={titleId}

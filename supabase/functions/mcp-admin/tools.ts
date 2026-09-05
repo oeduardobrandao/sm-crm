@@ -88,6 +88,8 @@ const POPUP_PAGE = z.object({
   eyebrow: z.string().max(60).nullable().optional(),
   body: z.string().max(2000),
   image_key: z.string().nullable().optional().describe("image_key devolvida por upload_popup_image, ou uma já persistida neste popup"),
+  cta_label: z.string().max(40).nullable().optional().describe("sobrescreve o CTA do popup nesta página; precisa vir acompanhado de cta_url"),
+  cta_url: z.string().nullable().optional().describe("sobrescreve o CTA do popup nesta página; precisa vir acompanhado de cta_label"),
 });
 const POPUP_FIELDS = {
   pages: z.array(POPUP_PAGE).min(1).max(6).optional(),
