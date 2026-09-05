@@ -2261,6 +2261,25 @@ Acrescente ao final da lista em `## Gotchas` do `CLAUDE.md`:
 - Deploys trocam de versão em silêncio (`installSilentUpdate` em `packages/app-lifecycle`). Todo editor fora de modal com conteúdo não persistido ou save em voo chama `useUnsavedWork(condição)`, e toda função de upload envolve a promise em `trackUnsavedWork`. Modais com `confirmClose` já estão cobertos pelo `DialogContent`. Sem isso, um recarregamento em aba oculta ou inativa pode descartar o que o usuário digitou. Spec: `docs/superpowers/specs/2026-09-05-seamless-updates-design.md`
 ```
 
+- [ ] **Step 1b: Corrigir o cabeçalho de `unsaved-work.ts`**
+
+O doc comment de `packages/app-lifecycle/src/unsaved-work.ts` ainda diz que o gatilho de navegação consulta só o registro. Desde a revisão de design, os três gatilhos consultam registro, heurística e `holdWhile`. Troque as duas frases finais do cabeçalho:
+
+```
+ * editor with content. The passive reload triggers (hidden tab, idle) consult both, so an
+ * editor shipped without the hook fails closed. The navigation trigger consults only the
+ * registry: leaving an unregistered editor by navigation already discards its content today.
+```
+
+por:
+
+```
+ * editor with content. Every reload trigger (navigation, hidden tab, idle) consults both, so
+ * an editor shipped without the hook fails closed everywhere.
+```
+
+Se o texto atual diferir um pouco, ajuste a frase equivalente; a afirmação a remover é "the navigation trigger consults only the registry".
+
 - [ ] **Step 2: Rodar os gates que o CI roda**
 
 ```bash
@@ -2278,7 +2297,7 @@ git status --porcelain
 
 Expected: tudo verde. `test:functions` suja `deno.lock` na raiz: se `git status` mostrar `deno.lock`, descarte com `git checkout -- deno.lock`.
 
-- [ ] **Step 3: Smoke no browser com deploy simulado**
+- [ ] **Step 3: Smoke no browser com deploy simulado (executado pelo controller, não pelo implementador desta task)**
 
 O dev server não serve `/assets/` com hash, então o detector nunca dispara nele. Use o build de produção servido pelo `vite preview` e simule o deploy com um segundo build.
 
@@ -2296,8 +2315,8 @@ Expected: os três comportamentos acima observados; screenshot da aba Network do
 - [ ] **Step 4: Commit e branch pronta**
 
 ```bash
-git add CLAUDE.md
-git commit -m "docs: gotcha sobre useUnsavedWork e trackUnsavedWork para editores e uploads
+git add CLAUDE.md packages/app-lifecycle/src/unsaved-work.ts
+git commit -m "docs: gotcha sobre useUnsavedWork e trackUnsavedWork para editores e uploads; cabeçalho do registro atualizado
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 git log --oneline origin/main..HEAD
