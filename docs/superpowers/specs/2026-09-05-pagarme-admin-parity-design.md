@@ -92,7 +92,9 @@ export interface PagarmeLive {
   /** Status normalizado (mesma tabela do webhook); null quando o status remoto é desconhecido. */
   status: 'trialing' | 'active' | 'canceled' | null;
   remote_status: string;
-  /** Próxima cobrança: active = next_billing_at ?? current_cycle.billing_at; future = start_at; senão null. */
+  /** Próxima cobrança: active = next_billing_at ?? current_cycle.billing_at ?? current_cycle.end_at
+   *  (end_at é o único campo do ciclo observado em sandbox neste repo; billing_at só aparece no
+   *  exemplo de boleto da doc); future = start_at; senão null. */
   next_billing_at: string | null;
   start_at: string | null;
   canceled_at: string | null;

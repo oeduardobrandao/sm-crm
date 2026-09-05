@@ -207,6 +207,13 @@ Deno.test("buildPagarmeLive: active prefers next_billing_at, falls back to curre
   );
   assertEquals(b.next_billing_at, "2027-10-02T00:00:00Z");
   assertEquals(b.drift, null);
+  // Only the sandbox-observed cycle shape ({ end_at }): the next charge is the cycle boundary.
+  const c = buildPagarmeLive(
+    remote({ status: "active", next_billing_at: null, current_cycle: { end_at: "2027-10-03T00:00:00Z" } }),
+    mirror,
+  );
+  assertEquals(c.next_billing_at, "2027-10-03T00:00:00Z");
+  assertEquals(c.drift, null);
 });
 
 Deno.test("buildPagarmeLive: canceled and failed → canceled, next charge null, canceled_at kept", () => {
@@ -362,7 +369,7 @@ export interface PagarmeLive {
   /** Normalized with the webhook's table; null when the remote status is unknown to us. */
   status: PagarmeLiveStatus | null;
   remote_status: string;
-  /** active: next_billing_at ?? current_cycle.billing_at; future: start_at; otherwise null. */
+  /** active: next_billing_at ?? current_cycle.billing_at ?? current_cycle.end_at; future: start_at; otherwise null. */
   next_billing_at: string | null;
   start_at: string | null;
   canceled_at: string | null;
@@ -428,9 +435,18 @@ export function periodDiffers(mirror: string | null, live: string | null): boole
   return Math.abs(a - b) > PERIOD_TOLERANCE_MS;
 }
 
+/**
+ * active: the documented top-level next_billing_at, then the cycle's billing_at (documented
+ * only in the boleto example), then the cycle's end_at, the one cycle field every sibling
+ * module in this repo has actually observed in sandbox (prepaid: the next charge is at the
+ * cycle boundary). future: start_at. Otherwise null.
+ */
 function nextBilling(remote: PagarmeRemoteSubscription): string | null {
   if (remote.status === "active") {
-    return remote.next_billing_at ?? remote.current_cycle?.billing_at ?? null;
+    return remote.next_billing_at ??
+      remote.current_cycle?.billing_at ??
+      remote.current_cycle?.end_at ??
+      null;
   }
   if (remote.status === "future") return remote.start_at ?? null;
   return null;
@@ -1799,7 +1815,7 @@ git status --short   # .env.staging must NOT appear (it is gitignored); if it do
 Then start the Admin against staging with the Browser pane: `preview_start` with `name: "admin-staging"` (already defined in the tracked `.claude/launch.json`: `npm run dev:admin:staging`, port 5178 with auto-port). Log in with the seed admin (memory: `reference_seed_login_browser_verification.md`: credentials come from `SEED_EMAIL`/`SEED_PASSWORD` in `.env.staging`, injected via a node script into localStorage; never typed into chat), and check:
 
 1. Workspaces list: a Pagar.me workspace shows the "Pagar.me" caption after the amount; a Stripe one shows "Stripe"; `read_page` confirms both strings.
-2. Open the Pagar.me workspace: header shows "Abrir no Pagar.me"; the href (via `read_page`) equals `<base>/subscriptions/<sub_id>/info`; "Cartão" shows **real values** (`•••• <last4> · MM/AA` of a sandbox test card, with or without a brand) and "Próxima cobrança" shows a date; no "Espelho desatualizado" note for a healthy row. **If "Cartão" renders "—" on an active or trialing subscription, the response shape differs from the plan's assumption: STOP, fetch the raw object once with `curl -u "$PAGARME_SECRET_KEY:" https://api.pagar.me/core/v5/subscriptions/<sub_id>` (key read from the sandbox secret via a file, never pasted on the command line), fix `mapCard` in `pagarme-detail.ts` plus its tests, redeploy, and re-check before continuing.**
+2. Open the Pagar.me workspace: header shows "Abrir no Pagar.me"; the href (via `read_page`) equals `<base>/subscriptions/<sub_id>/info`; "Cartão" shows **real values** (`•••• <last4> · MM/AA` of a sandbox test card, with or without a brand) and "Próxima cobrança" shows a **real date**; no "Espelho desatualizado" note for a healthy row. Check both an `active` (already charged) and a `future` (trial) sandbox subscription if both exist. **If "Cartão" or "Próxima cobrança" renders "—" on an active or trialing subscription, the response shape differs from the plan's assumption: STOP, fetch the raw object once with `curl -u "$PAGARME_SECRET_KEY:" https://api.pagar.me/core/v5/subscriptions/<sub_id>` (key read from the sandbox secret via a file, never pasted on the command line), fix `mapCard` in `pagarme-detail.ts` plus its tests, redeploy, and re-check before continuing.**
 3. `read_console_messages` and `read_network_requests` for the `platform-admin` call: 200, no errors.
 4. CSV export of the list includes the "Provedor" column (trigger the export and check the network response body or the downloaded text).
 5. Failure path: temporarily unset the secret in staging (`npx supabase secrets unset PAGARME_DASHBOARD_BASE --project-ref wlyzhyfondykzpsiqsce`), reload the detail page, confirm the link is gone and the page still renders; then set it again with 4b.
