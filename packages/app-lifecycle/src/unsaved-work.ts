@@ -4,9 +4,8 @@
  * Two layers. `holdUnsavedWork` is the explicit one: an editor with unsaved input, a save
  * in flight or an upload holds while that is true. `isDocumentBusy` is the safety net for
  * surfaces nobody registered: it reads the DOM for an open dialog, a focused editable or an
- * editor with content. The passive reload triggers (hidden tab, idle) consult both, so an
- * editor shipped without the hook fails closed. The navigation trigger consults only the
- * registry: leaving an unregistered editor by navigation already discards its content today.
+ * editor with content. Every reload trigger (navigation, hidden tab, idle) consults both, so
+ * an editor shipped without the hook fails closed everywhere.
  */
 
 let holds = 0;

@@ -251,6 +251,7 @@ Monorepo with npm workspaces:
 - Hub app uses token-based access (no Supabase auth), builds to `dist/hub/` with base path `/hub/`
 - Vercel rewrites in `vercel.json` route Hub URLs to `/hub/index.html` and CRM URLs to `/index.html`
 - `membros` and `clientes` use column-level `GRANT SELECT` allowlists (Migration `20260728000002`). Any column added to either table is invisible to the CRM until it is added to the grant, to `membros_v`/`clientes_v`, and to the `*_SAFE_COLUMNS` constants in `store/team.ts` / `store/clients.ts`. The failure surfaces as a confusing missing-column error. The same allowlist also keeps six PostgREST embeds, ten dependent RLS policies and `get_client_health_aggregates()` working -- none of which a `from('clientes')` grep finds.
+- Deploys trocam de versão em silêncio (`installSilentUpdate` em `packages/app-lifecycle`). Todo editor fora de modal com conteúdo não persistido ou save em voo chama `useUnsavedWork(condição)`, e toda função de upload envolve a promise em `trackUnsavedWork`. Modais com `confirmClose` já estão cobertos pelo `DialogContent`. Sem isso, um recarregamento em aba oculta ou inativa pode descartar o que o usuário digitou. Spec: `docs/superpowers/specs/2026-09-05-seamless-updates-design.md`
 
 ## Deployment
 
