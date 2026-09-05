@@ -185,7 +185,7 @@ export default function AdminLayout() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-                  className="h-7 w-7 text-muted-foreground hover:text-primary"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
                   aria-label={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
                   title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
                 >
@@ -196,7 +196,7 @@ export default function AdminLayout() {
                 variant="ghost"
                 size="icon"
                 onClick={toggleGlass}
-                className={`h-7 w-7 ${glassEnabled ? 'text-primary' : 'text-muted-foreground'} hover:text-primary`}
+                className={`h-7 w-7 ${glassEnabled ? 'text-primary' : 'text-muted-foreground'} hover:text-foreground`}
                 aria-label={glassEnabled ? 'Desativar Liquid Glass' : 'Ativar Liquid Glass'}
                 title={
                   glassEnabled
@@ -210,7 +210,7 @@ export default function AdminLayout() {
           </div>
           <button
             onClick={signOut}
-            className="text-xs text-muted-foreground hover:text-primary transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             Sair
           </button>

@@ -58,7 +58,13 @@ export default function LoginPage() {
     >
       <div className="w-full max-w-[400px] rounded-3xl bg-card p-10 text-card-foreground shadow-xl">
         <div className="flex flex-col items-center mb-8">
-          <img src="/logo-black.svg" alt="Mesaas" className="h-5 w-auto" />
+          <img src="/logo-black.svg" alt="Mesaas" className="h-5 w-auto dark:hidden" />
+          <img
+            src="/logo-white.svg"
+            alt=""
+            aria-hidden="true"
+            className="hidden h-5 w-auto dark:block"
+          />
           <p className="mt-2 text-sm font-medium uppercase tracking-widest text-muted-foreground">
             admin
           </p>

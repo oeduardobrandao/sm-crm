@@ -107,6 +107,9 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
     <Card className="mt-6 min-w-0">
       <CardHeader>
         <CardTitle>Histórico de eventos ({total})</CardTitle>
+        <span id="event-type-label" className="sr-only">
+          Tipo de evento
+        </span>
         <Select
           value={filterType === '' ? ALL : filterType}
           onValueChange={(v) => {
@@ -114,7 +117,11 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
             setPage(0);
           }}
         >
-          <SelectTrigger aria-label="Tipo de evento" className="h-8 w-auto gap-2 text-xs">
+          <SelectTrigger
+            id="event-type-trigger"
+            aria-labelledby="event-type-label event-type-trigger"
+            className="h-8 w-auto gap-2 text-xs"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

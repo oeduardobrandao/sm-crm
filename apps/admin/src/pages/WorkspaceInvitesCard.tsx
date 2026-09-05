@@ -161,8 +161,15 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
               placeholder="pessoa@exemplo.com"
               className="min-w-0 flex-1"
             />
+            <span id="invite-role-label" className="sr-only">
+              Papel
+            </span>
             <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'agent')}>
-              <SelectTrigger aria-label="Papel" className="w-full sm:w-32">
+              <SelectTrigger
+                id="invite-role-trigger"
+                aria-labelledby="invite-role-label invite-role-trigger"
+                className="w-full sm:w-32"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

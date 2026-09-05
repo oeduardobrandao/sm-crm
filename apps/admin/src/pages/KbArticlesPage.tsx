@@ -95,11 +95,18 @@ export default function KbArticlesPage() {
             className="pl-8"
           />
         </div>
+        <span id="kb-category-label" className="sr-only">
+          Categoria
+        </span>
         <Select
           value={categoryFilter === '' ? ALL : categoryFilter}
           onValueChange={(v) => setCategoryFilter(v === ALL ? '' : v)}
         >
-          <SelectTrigger aria-label="Categoria" className="w-auto gap-2">
+          <SelectTrigger
+            id="kb-category-trigger"
+            aria-labelledby="kb-category-label kb-category-trigger"
+            className="w-auto gap-2"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -111,11 +118,18 @@ export default function KbArticlesPage() {
             ))}
           </SelectContent>
         </Select>
+        <span id="kb-status-label" className="sr-only">
+          Status
+        </span>
         <Select
           value={statusFilter === '' ? ALL : statusFilter}
           onValueChange={(v) => setStatusFilter(v === ALL ? '' : v)}
         >
-          <SelectTrigger aria-label="Status" className="w-auto gap-2">
+          <SelectTrigger
+            id="kb-status-trigger"
+            aria-labelledby="kb-status-label kb-status-trigger"
+            className="w-auto gap-2"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

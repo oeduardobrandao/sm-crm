@@ -263,6 +263,9 @@ export default function WorkspaceDetailPage() {
         </div>
 
         <div className="flex flex-col items-stretch gap-1 sm:items-end">
+          <span id="workspace-plan-label" className="sr-only">
+            Plano do workspace
+          </span>
           <Select
             value={selectedPlanId === '' ? NO_PLAN : selectedPlanId}
             onValueChange={(v) => {
@@ -271,7 +274,11 @@ export default function WorkspaceDetailPage() {
               setPlanMutation.mutate(planId);
             }}
           >
-            <SelectTrigger aria-label="Plano do workspace" className="w-full sm:w-auto">
+            <SelectTrigger
+              id="workspace-plan-trigger"
+              aria-labelledby="workspace-plan-label workspace-plan-trigger"
+              className="w-full sm:w-auto"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
