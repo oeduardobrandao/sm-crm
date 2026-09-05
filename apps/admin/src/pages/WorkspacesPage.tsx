@@ -40,12 +40,15 @@ export default function WorkspacesPage() {
   // the user picks a preset again (the same freeze the CSV export gets from as_of).
   const now = useMemo(() => new Date(), [params.criado]); // eslint-disable-line react-hooks/exhaustive-deps
   const request = useMemo(() => toListWorkspacesRequest(params, now), [params, now]);
+  // Display clock for the activity labels: refreshed whenever a fetch lands, so a long
+  // session keeps "há N dias" honest while the created_since cutoff above stays pinned.
 
   const list = useQuery({
     queryKey: ['admin', 'workspaces', request],
     queryFn: () => listWorkspaces(request),
     placeholderData: keepPreviousData,
   });
+  const displayNow = useMemo(() => new Date(), [list.dataUpdatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const plansQuery = useQuery({ queryKey: ['admin', 'plans'], queryFn: listPlans });
   const plans = plansQuery.data?.plans ?? [];
@@ -160,7 +163,7 @@ export default function WorkspacesPage() {
           sort={{ ord: params.ord, dir: params.dir }}
           onSort={onSort}
           onOpen={(id) => navigate(`/admin/workspaces/${id}`)}
-          now={now}
+          now={displayNow}
           busy={list.isFetching}
         />
         <WorkspacesPagination
