@@ -585,15 +585,21 @@ Repita com `uploadFile`, `uploadIdeiaImage` (CRM), `uploadInlineImage` (CRM), `u
 
 - [ ] **Step 2: Envolver o upload do avatar**
 
-Em `ClienteAvatarUpload.tsx`, importe `trackUnsavedWork` e envolva a expressão inteira `supabase.storage.from(...).upload(path, blob, { contentType: 'image/png' })` (linhas 58 a 60) em `trackUnsavedWork(...)`, mantendo o `await` do lado de fora:
+Em `ClienteAvatarUpload.tsx`, adicione `import { trackUnsavedWork } from '@mesaas/app-lifecycle';` após `import { toast } from 'sonner';` e troque as linhas 58 a 60:
 
 ```ts
-      const { error } = await trackUnsavedWork(
-        supabase.storage.from(BUCKET).upload(path, blob, { contentType: 'image/png' }),
-      );
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { contentType: 'image/png' });
 ```
 
-Use os nomes reais das variáveis que já estão na linha (`BUCKET` acima é ilustrativo: copie o que o arquivo tem).
+por:
+
+```ts
+      const { error: upErr } = await trackUnsavedWork(
+        supabase.storage.from('avatars').upload(path, blob, { contentType: 'image/png' }),
+      );
+```
 
 - [ ] **Step 3: Typecheck dos três apps e suítes dos serviços**
 
@@ -670,6 +676,8 @@ e no teste `'stops polling when stopped'` troque `const stop = watch(vi.fn());` 
     stops.push(watcher.stop);
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    // Let the install-time check settle so the explicit ones below are calls 2 and 3.
+    await new Promise((resolve) => setTimeout(resolve, 10));
     await expect(watcher.check()).resolves.toBe(true);
     await expect(watcher.check()).resolves.toBe(false);
   });
@@ -1035,15 +1043,17 @@ describe('installSilentUpdate: hidden tab', () => {
     setVisibility('hidden');
     await vi.advanceTimersByTimeAsync(4_999);
     expect(reload).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    await vi.advanceTimersByTimeAsync(0);
+    // The timer fires at 5 s; the extra ticks flush the check() and the reload that follow it.
+    await vi.advanceTimersByTimeAsync(50);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('disarms when the tab becomes visible again', async () => {
     const router = new FakeRouter();
     mockFetch([HTML('aaa'), HTML('bbb')]);
-    install(router, { intervalMs: 60_000 });
+    // Becoming visible re-polls (and finds the deploy); a long idleAfterMs keeps the idle
+    // trigger out of this test.
+    install(router, { intervalMs: 60_000, idleAfterMs: 60_000 });
     await vi.advanceTimersByTimeAsync(0);
 
     setVisibility('hidden');
@@ -1102,7 +1112,7 @@ describe('installSilentUpdate: idle', () => {
     await reachPending(router);
     visibility = 'hidden';
 
-    await vi.advanceTimersByTimeAsync(4_000);
+    await vi.advanceTimersByTimeAsync(12_000);
     expect(reload).not.toHaveBeenCalled();
   });
 
@@ -1343,11 +1353,15 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
   for (const type of INPUT_EVENTS) {
     window.addEventListener(type, onInput, { passive: true, capture: true });
   }
-  const idleTimer = setInterval(() => {
-    if (document.visibilityState !== 'visible') return;
-    if (Date.now() - lastInputAt < idleAfterMs) return;
-    void reloadIfQuiet();
-  }, IDLE_TICK_MS);
+  // Tick at most every 30 s; a shorter idleAfterMs (tests) ticks at that period instead.
+  const idleTimer = setInterval(
+    () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastInputAt < idleAfterMs) return;
+      void reloadIfQuiet();
+    },
+    Math.min(IDLE_TICK_MS, idleAfterMs),
+  );
 
   return function uninstall() {
     watcher.stop();
@@ -1381,7 +1395,7 @@ export type {
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npx vitest run packages/app-lifecycle/__tests__/silent-update.test.ts`
-Expected: PASS, 17 testes. Se o teste de inatividade falhar por um tick, lembre que o tick é a cada 30 s: com `idleAfterMs: 10_000` o primeiro tick que vê 10 s de inatividade é o de 30 s. Ajuste os avanços dos testes de idle para `30_500` em vez de `10_500` e `8_000 / 5_000 / 6_000` para `25_000 / 5_000 / 31_000`, mantendo a semântica (input reinicia a contagem).
+Expected: PASS, 17 testes. O tick de inatividade é `min(30 s, idleAfterMs)`, então com `idleAfterMs: 10_000` os testes veem um tick a cada 10 s contados do install.
 
 - [ ] **Step 5: Commit**
 
@@ -1612,21 +1626,16 @@ describe('prefetchBuildAssets', () => {
       '/assets/EntregasPage-def.css',
       '/assets/ClientesPage-ghi.js',
     ]);
-    expect(fetchFn.mock.calls[1][1]).toMatchObject({ priority: 'low' });
+    expect((fetchFn.mock.calls[1] as unknown[])[1]).toMatchObject({ priority: 'low' });
   });
 
   it('honours a base path such as /admin/', async () => {
     setDocument('/admin/');
-    const { calls } = makeFetch();
-    run({ manifestUrl: '/admin/build-manifest.json', fetchFn: makeFetch().fetchFn });
-    // The fetchFn above is a fresh instance; use one whose calls we can read.
-    cancels.pop()!();
-    const tracked = makeFetch();
-    run({ manifestUrl: '/admin/build-manifest.json', fetchFn: tracked.fetchFn });
+    const { fetchFn, calls } = makeFetch();
+    run({ manifestUrl: '/admin/build-manifest.json', fetchFn });
     await vi.advanceTimersByTimeAsync(2_000);
 
-    expect(calls).toEqual([]);
-    expect(tracked.calls).toEqual([
+    expect(calls).toEqual([
       '/admin/build-manifest.json',
       '/admin/assets/EntregasPage-def.js',
       '/admin/assets/EntregasPage-def.css',
@@ -1636,13 +1645,11 @@ describe('prefetchBuildAssets', () => {
 
   it('aborts when the manifest entry is not the script the document loaded', async () => {
     setDocument('/', 'zzz');
-    const { calls } = makeFetch();
-    const tracked = makeFetch();
-    run({ manifestUrl: '/build-manifest.json', fetchFn: tracked.fetchFn });
+    const { fetchFn, calls } = makeFetch();
+    run({ manifestUrl: '/build-manifest.json', fetchFn });
     await vi.advanceTimersByTimeAsync(2_000);
 
-    expect(calls).toEqual([]);
-    expect(tracked.calls).toEqual(['/build-manifest.json']);
+    expect(calls).toEqual(['/build-manifest.json']);
   });
 
   it('does nothing on a data-saver or slow connection', async () => {
