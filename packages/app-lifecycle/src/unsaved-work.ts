@@ -26,10 +26,21 @@ export function hasUnsavedWork(): boolean {
   return holds > 0;
 }
 
-/** Hold the registry until `work` settles, resolving or rejecting exactly like it. */
-export function trackUnsavedWork<T>(work: Promise<T>): Promise<T> {
+/** An upload that has not settled by then is presumed hung; no legitimate one takes this long. */
+const TRACK_MAX_MS = 30 * 60_000;
+
+/**
+ * Hold the registry until `work` settles, resolving or rejecting exactly like it. The hold
+ * is capped at `maxMs`: a request that never settles (an XHR without a timeout on a stalled
+ * connection) must not disable the passive reload triggers for the rest of the tab's life.
+ */
+export function trackUnsavedWork<T>(work: Promise<T>, maxMs = TRACK_MAX_MS): Promise<T> {
   const release = holdUnsavedWork();
-  return work.finally(release);
+  const ceiling = setTimeout(release, maxMs);
+  return work.finally(() => {
+    clearTimeout(ceiling);
+    release();
+  });
 }
 
 const TEXT_INPUT_TYPES = new Set(['text', 'search', 'email', 'url', 'tel', 'number', 'password']);

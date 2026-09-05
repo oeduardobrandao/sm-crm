@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   hasUnsavedWork,
   holdUnsavedWork,
@@ -60,6 +60,18 @@ describe('trackUnsavedWork', () => {
     expect(hasUnsavedWork()).toBe(true);
     await expect(tracked).rejects.toThrow('upload failed');
     expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it('gives up the hold at the ceiling when the promise never settles', () => {
+    vi.useFakeTimers();
+    try {
+      trackUnsavedWork(new Promise<never>(() => {}), 1_000);
+      expect(hasUnsavedWork()).toBe(true);
+      vi.advanceTimersByTime(1_000);
+      expect(hasUnsavedWork()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
