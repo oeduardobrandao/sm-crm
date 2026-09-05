@@ -65,7 +65,10 @@ export interface PagarmeRemoteSubscription {
   } | null;
   card?: {
     brand?: string | null;
+    first_six_digits?: string | null;
     last_four_digits?: string | null;
+    /** Único campo de número que o exemplo oficial mostra na assinatura, ex. "424242******4242". */
+    masked_number?: string | null;
     exp_month?: number | null;
     exp_year?: number | null;
   } | null;
@@ -111,7 +114,14 @@ export interface PagarmeDetailGateway {
 - `buildPagarmeLive(remote, mirror: { status: string | null; current_period_end: string | null }): PagarmeLive`
   - `status` via `normalizePagarmeStatus(remote.status)`.
   - `next_billing_at` conforme a regra do tipo acima.
-  - `card` mapeado campo a campo; `null` quando `remote.card` é ausente.
+  - `card` mapeado campo a campo; `null` quando `remote.card` é ausente. **Shape do cartão
+    não validado no repo** (nenhum caller lê o cartão de volta hoje): o exemplo oficial de
+    resposta de assinatura mostra `card` no topo com `holder_name`, `masked_number`,
+    `exp_month`, `exp_year`, `status`, sem `brand` nem `last_four_digits`. Por isso o mapper é
+    defensivo: `last4 = last_four_digits ?? últimos 4 dígitos de masked_number`, `brand`
+    fica `null` quando ausente (a UI mostra só `•••• 4242 · 12/28`). A verificação manual
+    em staging (seção 7) precisa confirmar valores reais renderizados; "—" com assinatura
+    ativa é sinal de shape errado e bloqueia o merge até ajustar o mapper.
   - `drift` conforme as regras abaixo.
 - `createPagarmeDetailGateway(): PagarmeDetailGateway`
   - Port fino sobre `pagarmeFetch<PagarmeRemoteSubscription>("GET", "/subscriptions/{id}")`,
@@ -134,10 +144,13 @@ Codificam conhecimento de billing já fixado pelo webhook; os testes as pinam.
    timestamp; uma tolerância de um dia absorve qualquer deslocamento de fuso, e uma
    mudança real de período é sempre de um mês ou um ano. Valor imparsável de um dos lados
    conta como diferente.
-3. **Cancelado sem ciclo.** Se o remoto está `canceled` e o período mapeado é `null`, não há
-   divergência de período: o espelho retém o `current_period_end` de propósito
-   (`isPaidThrough` depende disso).
-4. Ambos `null` (espelho e remoto) não é divergência.
+3. **Período remoto `null` nunca é divergência.** `mapPagarmeTemporalFields` devolve `null`
+   para qualquer status que não seja `future`/`active` (isto é, `canceled` **e** `failed`,
+   que a regra 1 normaliza para o mesmo `canceled`) e também para `active`/`future` sem
+   datas. Em todos esses casos o espelho retém o `current_period_end` de propósito
+   (`isPaidThrough` depende disso) e não há como julgar. A regra é sobre o período mapeado,
+   não sobre a string bruta de status.
+4. Ambos `null` (espelho e remoto) não é divergência. Espelho `null` com remoto preenchido é.
 
 ## 2. Backend: `workspace-detail.ts`
 
@@ -176,7 +189,10 @@ do `readOnly`.
 `PAGARME_DASHBOARD_BASE`: prefixo do painel Pagar.me até a conta, ex.
 `https://dash.pagar.me/merch_xxx/acc_yyy`. Opcional, sem default; quando ausente ou
 inválida o link é omitido. Valores diferentes em prod (conta live) e staging (conta
-sandbox). Documentar em `CLAUDE.md` junto das outras `PAGARME_*`.
+sandbox). Documentar em `CLAUDE.md` junto das outras `PAGARME_*` **e** acrescentar ao
+bloco Pagar.me de `.env.example` (regra do `AGENTS.md`: os templates `*.example` são
+atualizados a cada variável nova). `.env.e2e.local.example` não muda: a variável não entra
+no E2E.
 
 ## 3. Contrato do frontend (`apps/admin/src/lib/subscription.ts`)
 
@@ -267,11 +283,16 @@ bandeira com inicial maiúscula (`visa` → `Visa`), últimos 4 precedidos de `�
 - `pages/__tests__/workspace-subscription.test.ts`: `formatCard` (completo, sem validade, sem
   bandeira, `null`), `describeDrift` (só status, só período, ambos, `null`).
 - `pages/__tests__/workspaces-export.test.ts`: coluna "Provedor" com e sem assinatura.
+- `pages/__tests__/WorkspacesTable.test.tsx`: legenda "Pagar.me"/"Stripe" na célula e
+  ausência de legenda quando `provider` é `null`.
 
 **Verificação manual** com o Admin em `dev:admin:staging` contra a conta sandbox (que tem
 assinaturas e cartões reais de teste): link abre a assinatura certa, campos ao vivo
-aparecem, e a nota de falha aparece ao remover temporariamente a secret. Confirmar também
-que `get_workspace` do `mcp-admin` continua sem chamada externa (teste Deno cobre).
+aparecem **com valores reais** (o campo "Cartão" precisa mostrar últimos 4 e validade de um
+cartão de teste, nunca "—", e "Próxima cobrança" uma data; "—" numa assinatura ativa
+indica shape errado da resposta e bloqueia o merge até corrigir o mapper), e a nota de
+falha aparece ao remover temporariamente a secret. Confirmar também que `get_workspace` do
+`mcp-admin` continua sem chamada externa (teste Deno cobre).
 
 ## 8. Rollout
 
@@ -286,4 +307,4 @@ Ordem obrigatória (o merge faz deploy do frontend na hora; ver incidente #434):
    coerente, ainda que o comportamento dele não mude.
 4. Merge do PR (frontend). O frontend é null-safe nos campos novos, então a ordem 3 → 4 só
    evita uma janela sem link.
-5. Atualizar `CLAUDE.md` (variável nova) no mesmo PR.
+5. Atualizar `CLAUDE.md` e `.env.example` (variável nova) no mesmo PR.
