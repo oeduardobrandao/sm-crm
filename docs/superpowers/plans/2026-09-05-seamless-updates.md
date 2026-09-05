@@ -60,13 +60,13 @@
 - Test: `packages/app-lifecycle/__tests__/unsaved-work.test.ts`
 
 **Interfaces:**
-- Produces: `holdUnsavedWork(): () => void`, `hasUnsavedWork(): boolean`, `trackUnsavedWork<T>(work: Promise<T>): Promise<T>`, `isDocumentBusy(doc?: Document): boolean`, `resetUnsavedWorkForTests(): void`.
+- Produces: `holdUnsavedWork(): () => void`, `hasUnsavedWork(): boolean`, `trackUnsavedWork<T>(work: Promise<T>, maxMs?: number): Promise<T>` (teto padrão 30 min), `isDocumentBusy(doc?: Document): boolean`, `resetUnsavedWorkForTests(): void`.
 
 - [ ] **Step 1: Escrever o teste que falha**
 
 ```ts
 // packages/app-lifecycle/__tests__/unsaved-work.test.ts
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   hasUnsavedWork,
   holdUnsavedWork,
@@ -128,6 +128,18 @@ describe('trackUnsavedWork', () => {
     expect(hasUnsavedWork()).toBe(true);
     await expect(tracked).rejects.toThrow('upload failed');
     expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it('gives up the hold at the ceiling when the promise never settles', () => {
+    vi.useFakeTimers();
+    try {
+      trackUnsavedWork(new Promise<never>(() => {}), 1_000);
+      expect(hasUnsavedWork()).toBe(true);
+      vi.advanceTimersByTime(1_000);
+      expect(hasUnsavedWork()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -225,10 +237,21 @@ export function hasUnsavedWork(): boolean {
   return holds > 0;
 }
 
-/** Hold the registry until `work` settles, resolving or rejecting exactly like it. */
-export function trackUnsavedWork<T>(work: Promise<T>): Promise<T> {
+/** An upload that has not settled by then is presumed hung; no legitimate one takes this long. */
+const TRACK_MAX_MS = 30 * 60_000;
+
+/**
+ * Hold the registry until `work` settles, resolving or rejecting exactly like it. The hold
+ * is capped at `maxMs`: a request that never settles (an XHR without a timeout on a stalled
+ * connection) must not disable the passive reload triggers for the rest of the tab's life.
+ */
+export function trackUnsavedWork<T>(work: Promise<T>, maxMs = TRACK_MAX_MS): Promise<T> {
   const release = holdUnsavedWork();
-  return work.finally(release);
+  const ceiling = setTimeout(release, maxMs);
+  return work.finally(() => {
+    clearTimeout(ceiling);
+    release();
+  });
 }
 
 const TEXT_INPUT_TYPES = new Set(['text', 'search', 'email', 'url', 'tel', 'number', 'password']);
@@ -285,7 +308,7 @@ export {
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npx vitest run packages/app-lifecycle/__tests__/unsaved-work.test.ts`
-Expected: PASS, 15 testes.
+Expected: PASS, 17 testes.
 
 - [ ] **Step 5: Commit**
 
@@ -829,7 +852,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `watchForNewVersion` (Task 6), `hasUnsavedWork`, `isDocumentBusy` (Task 1), `RELOAD_STAMP_KEY` (Task 6).
-- Produces: `installSilentUpdate(options: InstallSilentUpdateOptions): () => void` e os tipos `SilentUpdateRouter`, `SilentUpdateLocation`, `SilentUpdateBlockerArgs`, `SilentUpdateBlocker`, `SilentUpdateRouterState`. O router do React Router 7 (`createBrowserRouter`) satisfaz `SilentUpdateRouter` sem cast.
+- Produces: `installSilentUpdate(options: InstallSilentUpdateOptions): () => void` (com `holdWhile?: () => boolean`) e os tipos `SilentUpdateRouter`, `SilentUpdateLocation`, `SilentUpdateBlockerArgs`, `SilentUpdateBlocker`, `SilentUpdateRouterState`. O router do React Router 7 (`createBrowserRouter`) satisfaz `SilentUpdateRouter` sem cast.
 
 - [ ] **Step 1: Escrever os testes que falham**
 
@@ -856,6 +879,7 @@ class FakeRouter implements SilentUpdateRouter {
   subscribers = new Set<(state: SilentUpdateRouterState) => void>();
   state: SilentUpdateRouterState = { blockers: new Map() };
   proceed = vi.fn();
+  reset = vi.fn();
 
   getBlocker(_key: string, fn: (args: SilentUpdateBlockerArgs) => boolean) {
     this.blockerFn = fn;
@@ -887,6 +911,7 @@ class FakeRouter implements SilentUpdateRouter {
         state: 'blocked',
         location: nextLocation,
         proceed: this.proceed,
+        reset: this.reset,
       });
     }
     for (const subscriber of this.subscribers) subscriber(this.state);
@@ -1009,11 +1034,25 @@ describe('installSilentUpdate: navigation', () => {
     expect(router.navigate({ pathname: '/clientes' })).toBe(true);
   });
 
-  it('swaps even when the document looks busy (navigation already discards that today)', async () => {
+  it('does not swap while the document looks busy', async () => {
     const router = new FakeRouter();
     await reachPending(router);
     document.body.innerHTML = '<textarea>rascunho</textarea>';
 
+    expect(router.navigate({ pathname: '/clientes' })).toBe(false);
+    document.body.innerHTML = '';
+    expect(router.navigate({ pathname: '/clientes' })).toBe(true);
+  });
+
+  it('does not swap while holdWhile reports the app busy', async () => {
+    const router = new FakeRouter();
+    let mutating = true;
+    mockFetch([HTML('aaa'), HTML('bbb')]);
+    install(router, { holdWhile: () => mutating });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    expect(router.navigate({ pathname: '/clientes' })).toBe(false);
+    mutating = false;
     expect(router.navigate({ pathname: '/clientes' })).toBe(true);
   });
 
@@ -1024,7 +1063,8 @@ describe('installSilentUpdate: navigation', () => {
     router.navigate({ pathname: '/clientes' });
     expect(assign).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(router.proceed).toHaveBeenCalledTimes(1);
+    expect(router.reset).toHaveBeenCalledTimes(1);
+    expect(router.proceed).not.toHaveBeenCalled();
 
     router.state.blockers.clear();
     expect(router.navigate({ pathname: '/equipe' })).toBe(false);
@@ -1116,9 +1156,12 @@ describe('installSilentUpdate: idle', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('does not reload while unsaved work is held or the document is busy', async () => {
+  it('does not reload while unsaved work is held, the document is busy or holdWhile is true', async () => {
     const router = new FakeRouter();
-    await reachPending(router);
+    let mutating = false;
+    mockFetch([HTML('aaa'), HTML('bbb')]);
+    install(router, { holdWhile: () => mutating });
+    await vi.advanceTimersByTimeAsync(1_500);
     const release = holdUnsavedWork();
     await vi.advanceTimersByTimeAsync(10_500);
     expect(reload).not.toHaveBeenCalled();
@@ -1127,6 +1170,14 @@ describe('installSilentUpdate: idle', () => {
     document.body.innerHTML = '<div contenteditable="true">Legenda</div>';
     await vi.advanceTimersByTimeAsync(10_500);
     expect(reload).not.toHaveBeenCalled();
+    document.body.innerHTML = '';
+
+    mutating = true;
+    await vi.advanceTimersByTimeAsync(10_500);
+    expect(reload).not.toHaveBeenCalled();
+    mutating = false;
+    await vi.advanceTimersByTimeAsync(10_500);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('does not reload when the server does not answer', async () => {
@@ -1176,9 +1227,10 @@ Expected: FAIL, import de `../src/silent-update` não resolve.
  * - the tab has been hidden for `hiddenAfterMs`;
  * - the tab is visible but has had no input for `idleAfterMs`.
  *
- * Every trigger defers to the unsaved-work registry. The two passive ones also defer to the
- * DOM heuristic (`isDocumentBusy`) and only reload after the server answered, since nobody
- * is there to notice a network error page.
+ * Every trigger defers to the unsaved-work registry, the DOM heuristic (`isDocumentBusy`)
+ * and the app's `holdWhile` (in-flight mutations: a full navigation aborts requests that a
+ * client-side route change would let finish). The two passive triggers also wait for the
+ * server to answer, since nobody is there to notice a network error page.
  */
 
 import { RELOAD_STAMP_KEY } from './deploy-recovery';
@@ -1210,6 +1262,7 @@ export interface SilentUpdateBlocker {
   state: string;
   location?: SilentUpdateLocation;
   proceed?: () => void;
+  reset?: () => void;
 }
 
 export interface SilentUpdateRouterState {
@@ -1234,6 +1287,8 @@ export interface InstallSilentUpdateOptions {
   /** Passed to `watchForNewVersion`. */
   documentUrl?: string;
   intervalMs?: number;
+  /** App-level busy signal, e.g. `() => queryClient.isMutating() > 0`. Default: never busy. */
+  holdWhile?: () => boolean;
 }
 
 function stampReload(): void {
@@ -1261,6 +1316,7 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     hiddenAfterMs = DEFAULT_HIDDEN_AFTER_MS,
     idleAfterMs = DEFAULT_IDLE_AFTER_MS,
     swapWatchdogMs = DEFAULT_SWAP_WATCHDOG_MS,
+    holdWhile = () => false,
   } = options;
   const documentUrl = options.documentUrl ?? window.location.href;
 
@@ -1286,11 +1342,15 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     window.location.reload();
   }
 
-  /** Passive reload: registry, DOM heuristic, then a live answer from the server. */
+  function quiet(): boolean {
+    return !hasUnsavedWork() && !isDocumentBusy() && !holdWhile();
+  }
+
+  /** Passive reload: registry, DOM heuristic, app busy signal, then a live server answer. */
   async function reloadIfQuiet(alreadyAnswered = false): Promise<void> {
-    if (!pending || reloading || hasUnsavedWork() || isDocumentBusy()) return;
+    if (!pending || reloading || !quiet()) return;
     if (!alreadyAnswered && !(await serverAnswers(documentUrl))) return;
-    if (!pending || reloading || hasUnsavedWork() || isDocumentBusy()) return;
+    if (!pending || reloading || !quiet()) return;
     reloadNow();
   }
 
@@ -1305,7 +1365,7 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
       navigator.onLine !== false &&
       historyAction === 'PUSH' &&
       nextLocation.pathname !== currentLocation.pathname &&
-      !hasUnsavedWork(),
+      quiet(),
   );
   const unsubscribe = router.subscribe((state) => {
     const blocker = state.blockers.get(BLOCKER_KEY);
@@ -1315,11 +1375,13 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     const { pathname, search, hash } = blocker.location;
     stampReload();
     watchdog = setTimeout(() => {
-      // Still here: the document request did not replace this page. Let the navigation the
-      // user asked for go on client-side; the passive triggers keep the swap alive.
+      // Still here: the document request did not replace this page. Cancel the blocked
+      // navigation (not proceed: a slow document navigation that lands later would give a
+      // second transition). The next click navigates client-side; the passive triggers keep
+      // the swap alive.
       watchdog = null;
       reloading = false;
-      blocker.proceed?.();
+      blocker.reset?.();
     }, swapWatchdogMs);
     window.location.assign(pathname + search + hash);
   });
@@ -1395,7 +1457,7 @@ export type {
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npx vitest run packages/app-lifecycle/__tests__/silent-update.test.ts`
-Expected: PASS, 17 testes. O tick de inatividade é `min(30 s, idleAfterMs)`, então com `idleAfterMs: 10_000` os testes veem um tick a cada 10 s contados do install.
+Expected: PASS, 18 testes. O tick de inatividade é `min(30 s, idleAfterMs)`, então com `idleAfterMs: 10_000` os testes veem um tick a cada 10 s contados do install.
 
 - [ ] **Step 5: Commit**
 
@@ -1413,6 +1475,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `apps/crm/src/main.tsx`
+- Modify: `apps/crm/src/App.tsx` (linha 82: exportar `queryClient`)
 - Modify: `apps/admin/src/main.tsx`
 - Delete: `apps/crm/src/lib/new-version-toast.ts`, `apps/admin/src/lib/new-version-toast.ts`
 
@@ -1426,7 +1489,8 @@ Em `apps/crm/src/main.tsx`:
 1. Troque `import { installDeployRecovery, watchForNewVersion } from '@mesaas/app-lifecycle';` por `import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';`.
 2. Remova `import { showNewVersionToast } from './lib/new-version-toast';`.
 3. Remova a linha `watchForNewVersion({ onNewVersion: showNewVersionToast });`.
-4. Troque o bloco do router (comentário e criação) por:
+4. Em `apps/crm/src/App.tsx`, troque `const queryClient = new QueryClient({` (linha 82) por `export const queryClient = new QueryClient({`, e em `main.tsx` troque `import App from './App';` por `import App, { queryClient } from './App';`.
+5. Troque o bloco do router (comentário e criação) por:
 
 ```tsx
 // Minimal DATA router (single splat route; App keeps its own descendant <Routes>). It was
@@ -1437,8 +1501,8 @@ Em `apps/crm/src/main.tsx`:
 const router = createBrowserRouter([{ path: '*', element: <App /> }]);
 
 // A deploy while this tab is open: move to the new build at the next route change, or once
-// the tab has been hidden or idle for a while, never over unsaved work.
-installSilentUpdate({ router });
+// the tab has been hidden or idle for a while, never over unsaved work or an in-flight mutation.
+installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 ```
 
 - [ ] **Step 2: Admin**
@@ -1447,12 +1511,13 @@ Em `apps/admin/src/main.tsx`:
 
 1. Troque `import { installDeployRecovery, watchForNewVersion } from '@mesaas/app-lifecycle';` por `import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';`.
 2. Remova `import { showNewVersionToast } from './lib/new-version-toast';`.
-3. Troque `watchForNewVersion({ onNewVersion: showNewVersionToast });` por:
+3. Remova a linha `watchForNewVersion({ onNewVersion: showNewVersionToast });`.
+4. Logo após o bloco `const queryClient = new QueryClient({ ... });` (que precisa existir antes, porque `holdWhile` lê dele), acrescente:
 
 ```ts
 // A deploy while this tab is open: move to the new build at the next route change, or once
-// the tab has been hidden or idle for a while, never over unsaved work.
-installSilentUpdate({ router });
+// the tab has been hidden or idle for a while, never over unsaved work or an in-flight mutation.
+installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 ```
 
 - [ ] **Step 3: Apagar os toasts**
@@ -1473,7 +1538,7 @@ Expected: sem erro. Se `installSilentUpdate({ router })` reclamar do tipo do rou
 
 ```bash
 npm run format >/dev/null
-git add apps/crm/src/main.tsx apps/admin/src/main.tsx
+git add apps/crm/src/main.tsx apps/crm/src/App.tsx apps/admin/src/main.tsx
 git commit -m "feat(crm,admin): troca silenciosa de versão no lugar do toast
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -1495,12 +1560,12 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 1. Troque `import { installDeployRecovery } from '@mesaas/app-lifecycle';` por `import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';`.
 2. Remova `import { NewVersionBanner } from './components/NewVersionBanner';` e a linha `<NewVersionBanner />` do JSX.
-3. Após `installDeployRecovery();` e o `initI18n({...})`, antes de `const queryClient = new QueryClient();`, acrescente:
+3. Logo após `const queryClient = new QueryClient();` (que precisa existir antes, porque `holdWhile` lê dele), acrescente:
 
 ```ts
 // A deploy while this tab is open: move to the new build at the next route change, or once
-// the tab has been hidden or idle for a while, never over unsaved work.
-installSilentUpdate({ router });
+// the tab has been hidden or idle for a while, never over unsaved work or an in-flight mutation.
+installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 ```
 
 - [ ] **Step 2: Apagar o banner e as chaves**

@@ -35,9 +35,9 @@ Fora de escopo:
 | Manter a aba antiga viva pré-buscando os chunks para o cache HTTP | Assets são `immutable` por um ano; uma aba antiga encontra tudo localmente mesmo depois que a Vercel parou de servir aquele build. Custo: cerca de 1 MB gzip extra em idle por build novo no CRM, e só os chunks que mudaram nos builds seguintes |
 | Pré-busca só para usuário autenticado | Landing e páginas de SEO não pagam nada |
 | Três gatilhos de troca: navegação, aba oculta, inatividade | Cobrem, respectivamente, o uso ativo, a pausa e quem passa o dia numa tela só |
-| Navegação completa tem cão de guarda e uma única tentativa por aba | Se a aba estiver offline naquele instante, `location.assign` cai na página de erro do navegador. O bloqueador não dispara com `navigator.onLine === false`; se a página continuar viva 8 s depois do `assign`, a navegação client-side segue com `proceed()` e o gatilho de navegação fica desligado até o próximo carregamento. Os gatilhos passivos só recarregam depois de confirmar que o servidor responde |
+| Navegação completa tem cão de guarda e uma única tentativa por aba | Se a aba estiver offline naquele instante, `location.assign` cai na página de erro do navegador. O bloqueador não dispara com `navigator.onLine === false`; se a página continuar viva 8 s depois do `assign`, a navegação bloqueada é cancelada com `reset()` e o gatilho de navegação fica desligado até o próximo carregamento; `proceed()` produziria duas transições quando a navegação lenta chegasse. Os gatilhos passivos só recarregam depois de confirmar que o servidor responde |
 | Só PUSH com mudança de `pathname` troca de versão | REPLACE é usado para limpar query (`useOpenParam` abre o diálogo e remove `?novo=1` no mesmo tick; 17 ocorrências de `replace: true`) e PUSH sem mudança de pathname é filtro, aba ou drawer por query (10 `setSearchParams`). Uma navegação completa nesses casos perderia o estado em memória que a URL não carrega. POP duplicaria a entrada de histórico |
-| Trabalho não salvo é um registro explícito, e os gatilhos passivos ainda checam o DOM | Recarregar nunca pode disparar diálogo de `beforeunload`, então a decisão tem que ser tomada antes. O registro cobre o que conhecemos; a heurística de DOM (diálogo aberto, editável focado, textarea ou contenteditable com conteúdo) cobre o que o registro não conhece, para que um editor novo sem hook falhe fechado nos gatilhos que recarregam sem ação do usuário |
+| Trabalho não salvo é um registro explícito, e os gatilhos passivos ainda checam o DOM | Recarregar nunca pode disparar diálogo de `beforeunload`, então a decisão tem que ser tomada antes. O registro cobre o que conhecemos; a heurística de DOM (diálogo aberto, editável focado, textarea ou contenteditable com conteúdo) cobre o que o registro não conhece, para que um editor novo sem hook falhe fechado nos três gatilhos |
 | Polling continua em 5 minutos | Com a pré-busca, detectar o deploy mais cedo deixou de ser urgente |
 | Recarregamento silencioso não depende de `sessionStorage` | O gatilho é um mismatch verificado de fingerprint, não um erro; não há risco de loop. Quando o storage existe, o carimbo de cooldown do deploy-recovery é gravado mesmo assim |
 
@@ -77,13 +77,15 @@ referências a `/assets/` do HTML, resposta sem referências é ignorada.
 ```ts
 export function holdUnsavedWork(): () => void; // devolve release, idempotente
 export function hasUnsavedWork(): boolean;    // registro explícito
-export function trackUnsavedWork<T>(work: Promise<T>): Promise<T>; // segura até a promise assentar
+export function trackUnsavedWork<T>(work: Promise<T>, maxMs?: number): Promise<T>; // segura até assentar, teto 30 min
 export function isDocumentBusy(doc?: Document): boolean; // heurística de DOM
 export function useUnsavedWork(active: boolean): void; // segura enquanto montado e active
 ```
 
-`hasUnsavedWork` é um contador. `isDocumentBusy` é a rede para o que ninguém registrou e
-retorna `true` quando qualquer um vale:
+`hasUnsavedWork` é um contador. `trackUnsavedWork` solta sozinho depois de 30 minutos: um
+XHR sem timeout numa conexão travada nunca assenta, e não pode desligar os gatilhos passivos
+pelo resto da vida da aba; nenhum upload legítimo passa disso. `isDocumentBusy` é a rede
+para o que ninguém registrou e retorna `true` quando qualquer um vale:
 
 - existe `[role="dialog"]` ou `[role="alertdialog"]` no documento (Dialog, Sheet e
   AlertDialog do Radix; cobre qualquer formulário modal);
@@ -93,8 +95,7 @@ retorna `true` quando qualquer um vale:
   `textContent` não vazio (editores TipTap).
 
 A heurística é deliberadamente conservadora: um drawer aberto o dia inteiro adia a troca
-até ser fechado ou até a próxima navegação. Um editor novo sem `useUnsavedWork` falha
-fechado nos gatilhos passivos.
+até ser fechado. Um editor novo sem `useUnsavedWork` falha fechado nos três gatilhos.
 
 Pontos de registro, todos via `useUnsavedWork`:
 
@@ -138,18 +139,22 @@ export function installSilentUpdate(options: {
   idleAfterMs?: number;    // padrão 10 min
   documentUrl?: string;
   intervalMs?: number;
+  /** Mutações em voo do app: cada main.tsx passa `() => queryClient.isMutating() > 0`. */
+  holdWhile?: () => boolean;
 }): () => void; // desinstala
 ```
 
-Estados: `idle` → `pending` (o watcher viu build novo) → reload. Todo gatilho exige
-`pending` e `hasUnsavedWork() === false`. Os gatilhos de aba oculta e inatividade exigem
-também `isDocumentBusy() === false`, porque recarregam sem ação do usuário. O gatilho de
-navegação não consulta a heurística: sair de um editor sem registro por navegação já
-descarta o conteúdo hoje, então a troca de versão não muda o resultado.
+Estados: `idle` → `pending` (o watcher viu build novo) → reload. Todo gatilho, inclusive o
+de navegação, exige `pending`, `hasUnsavedWork() === false`, `isDocumentBusy() === false` e
+`holdWhile() === false`. A navegação entra na mesma regra porque uma navegação completa
+aborta requisições em voo (um PATCH do kanban, por exemplo), coisa que a troca de rota
+client-side nunca faz; `holdWhile` é como o app expõe isso, via `queryClient.isMutating()`.
+Os gatilhos passivos exigem ainda uma resposta 2xx do servidor, porque ninguém está lá para
+ver uma página de erro de rede.
 
 | Gatilho | Condição | Ação |
 |---|---|---|
-| Navegação | Bloqueador `silent-update` registrado com `router.getBlocker`; retorna `true` só para PUSH em que `nextLocation.pathname !== currentLocation.pathname`, quando pendente, sem registro de trabalho não salvo, com `navigator.onLine !== false` e sem tentativa anterior nesta aba | Ao ver o bloqueador em `blocked` via `router.subscribe`, arma o cão de guarda de 8 s e chama `window.location.assign(pathname + search + hash)` do destino. Se o cão de guarda disparar, a página não foi substituída: chama `proceed()` do bloqueador para a navegação client-side seguir e desliga o gatilho de navegação até o próximo carregamento |
+| Navegação | Bloqueador `silent-update` registrado com `router.getBlocker`; retorna `true` só para PUSH em que `nextLocation.pathname !== currentLocation.pathname`, quando pendente, sem registro, sem documento ocupado, sem `holdWhile`, com `navigator.onLine !== false` e sem tentativa anterior nesta aba | Ao ver o bloqueador em `blocked` via `router.subscribe`, arma o cão de guarda de 8 s e chama `window.location.assign(pathname + search + hash)` do destino. Se o cão de guarda disparar, a página não foi substituída: cancela a navegação bloqueada com `reset()` e desliga o gatilho de navegação até o próximo carregamento. O próximo clique navega client-side |
 | Aba oculta | `visibilitychange` para `hidden` arma um timer de `hiddenAfterMs`; `visible` desarma | Ao disparar, chama `check()` do watcher (o polling estava pausado). Recarrega se ficou pendente, `isDocumentBusy()` é falso e o servidor respondeu: ou o próprio `check()` resolveu `true`, ou um GET do documento com `no-store` respondeu 2xx |
 | Inatividade | `pointerdown`, `keydown`, `wheel`, `scroll` e `touchstart`, passivos e em captura, atualizam `lastInputAt`. Tick a cada 30 s | Se visível, `now - lastInputAt >= idleAfterMs` e `isDocumentBusy()` é falso, faz um GET do documento com `no-store` e recarrega se respondeu 2xx |
 
@@ -161,7 +166,10 @@ Caminho de falha da navegação completa: `location.assign` pode não substituir
 (aba offline naquele instante, proxy, DNS no meio do cutover do próprio deploy). Três
 proteções, em ordem: o bloqueador nem dispara com `navigator.onLine === false`; a tentativa
 é única por aba, então um clique nunca repete um `assign` condenado; e o cão de guarda de 8 s
-devolve a navegação ao router com `proceed()`. Se o navegador já tiver trocado para a sua
+cancela a navegação bloqueada com `reset()`. `proceed()` foi descartado: não existe API para
+cancelar uma navegação de documento em voo, e uma navegação lenta que chegasse depois do
+cão de guarda produziria duas transições. Com `reset()`, se a navegação lenta chegar o
+usuário vê o destino que pediu; se não chegar, o próximo clique navega client-side. Se o navegador já tiver trocado para a sua
 página de erro de rede, nada roda mais, e o usuário volta com o botão voltar ou recarrega:
 o mesmo que acontece hoje com qualquer link em uma aba offline. Os gatilhos passivos, por
 recarregarem sem ação do usuário, exigem uma resposta 2xx do servidor imediatamente antes.
@@ -197,10 +205,11 @@ confirmado como admin. Hub não chama.
 
 ### 3.5 Ligação nos apps
 
-- CRM `main.tsx`: `installDeployRecovery()` continua primeiro; `installSilentUpdate({ router })`
-  logo depois de `createBrowserRouter`. Sai o import do toast.
-- Admin `main.tsx`: idem, com o `router` exportado de `router.tsx`.
-- Hub `main.tsx`: `installSilentUpdate({ router })`. Sai o `NewVersionBanner`.
+- CRM `main.tsx`: `installDeployRecovery()` continua primeiro; `installSilentUpdate({ router,
+  holdWhile: () => queryClient.isMutating() > 0 })` logo depois de `createBrowserRouter`. O
+  `queryClient` passa a ser exportado de `App.tsx`. Sai o import do toast.
+- Admin `main.tsx`: idem, com o `router` exportado de `router.tsx` e o `queryClient` local.
+- Hub `main.tsx`: idem. Sai o `NewVersionBanner`.
 
 Os botões de recarregar das telas de erro ficam como estão.
 
@@ -231,7 +240,7 @@ migration nem edge function envolvida.
 Vitest em `packages/app-lifecycle/__tests__`, com timers falsos e `fetch` mockado:
 
 - `unsaved-work`: hold e release, release idempotente, contagem com múltiplos holds;
-  `trackUnsavedWork` segura até resolver e também até rejeitar; hook segura e libera
+  `trackUnsavedWork` segura até resolver, até rejeitar, e solta no teto se nunca assentar; hook segura e libera
   conforme `active` e desmontagem; `isDocumentBusy` com diálogo aberto, textarea focada,
   textarea com conteúdo, contenteditable com conteúdo, e documento limpo.
 - `new-version`: os testes atuais adaptados ao retorno `{ stop, check }`; `check()` ignora a
@@ -239,9 +248,9 @@ Vitest em `packages/app-lifecycle/__tests__`, com timers falsos e `fetch` mockad
   `false` em erro ou depois de parado.
 - `silent-update`: nada acontece antes de pendente; PUSH com pathname novo vira `assign`
   no destino certo com search e hash; PUSH sem mudar pathname, REPLACE e POP passam;
-  offline não troca; cão de guarda chama `proceed()` e a navegação seguinte passa sem
-  troca; registro de trabalho não salvo bloqueia os três gatilhos; documento ocupado
-  bloqueia aba oculta e inatividade mas não a navegação; aba oculta arma e desarma o timer
+  offline não troca; cão de guarda chama `reset()` e a navegação seguinte passa sem
+  troca; registro de trabalho não salvo, documento ocupado e `holdWhile` bloqueiam os três
+  gatilhos; aba oculta arma e desarma o timer
   e chama `check()` antes de recarregar; inatividade só conta com a aba visível, input
   reinicia a contagem e servidor sem resposta impede o reload; desinstalar remove
   listeners, timers e bloqueador.
