@@ -327,7 +327,9 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Create: `packages/app-lifecycle/src/use-unsaved-work.ts`
 - Modify: `packages/app-lifecycle/index.ts`
+- Modify: `packages/app-lifecycle/src/unsaved-work.ts` (endurecimento, Step 3b)
 - Test: `packages/app-lifecycle/__tests__/use-unsaved-work.test.tsx`
+- Test: `packages/app-lifecycle/__tests__/unsaved-work.test.ts` (três casos novos, Step 3b)
 
 **Interfaces:**
 - Consumes: `holdUnsavedWork` (Task 1).
@@ -395,17 +397,81 @@ Em `packages/app-lifecycle/index.ts`, acrescente:
 export { useUnsavedWork } from './src/use-unsaved-work';
 ```
 
+- [ ] **Step 3b: Endurecer o registro (achados da revisão da Task 1), testes primeiro**
+
+Acrescente a `packages/app-lifecycle/__tests__/unsaved-work.test.ts` (os dois primeiros no `describe('holdUnsavedWork')` e `describe('trackUnsavedWork')`, o terceiro em `describe('isDocumentBusy')`), rode e veja os três falharem:
+
+```ts
+  it('does not go negative when a stale release fires after a reset', () => {
+    const stale = holdUnsavedWork();
+    resetUnsavedWorkForTests();
+    stale();
+    const live = holdUnsavedWork();
+    expect(hasUnsavedWork()).toBe(true);
+    live();
+    expect(hasUnsavedWork()).toBe(false);
+  });
+```
+
+```ts
+  it('defaults the ceiling to 30 minutes', () => {
+    vi.useFakeTimers();
+    try {
+      trackUnsavedWork(new Promise<never>(() => {}));
+      vi.advanceTimersByTime(30 * 60_000 - 1);
+      expect(hasUnsavedWork()).toBe(true);
+      vi.advanceTimersByTime(1);
+      expect(hasUnsavedWork()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+```
+
+```ts
+  it('is true with a bare contenteditable that has content', () => {
+    document.body.innerHTML = '<div contenteditable><p>Legenda</p></div>';
+    expect(isDocumentBusy()).toBe(true);
+  });
+```
+
+Depois, em `packages/app-lifecycle/src/unsaved-work.ts`:
+
+1. No release devolvido por `holdUnsavedWork`, troque `holds -= 1;` por `holds = Math.max(0, holds - 1);` (um release antigo que dispara depois de `resetUnsavedWorkForTests` não pode levar o contador abaixo de zero e esconder um hold vivo).
+2. Troque o helper `isContentEditable` por:
+
+```ts
+function isContentEditable(el: Element): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  // jsdom does not implement `isContentEditable`; per HTML, a bare `contenteditable` or an
+  // empty value also means editable. TipTap sets "true".
+  if (el.isContentEditable === true) return true;
+  const attr = el.getAttribute('contenteditable');
+  return attr !== null && attr.toLowerCase() !== 'false';
+}
+```
+
+3. Troque o laço de `[contenteditable="true"]` em `isDocumentBusy` por:
+
+```ts
+  for (const el of doc.querySelectorAll('[contenteditable]:not([contenteditable="false"])')) {
+    if ((el.textContent ?? '').trim() !== '') return true;
+  }
+```
+
+4. No doc comment de `trackUnsavedWork`, acrescente a frase: `Takes a real Promise: wrap a builder-style thenable (supabase-js query builders) in Promise.resolve(...) first.`
+
 - [ ] **Step 4: Rodar e ver passar**
 
-Run: `npx vitest run packages/app-lifecycle/__tests__/use-unsaved-work.test.tsx`
-Expected: PASS, 2 testes.
+Run: `npx vitest run packages/app-lifecycle/__tests__/use-unsaved-work.test.tsx packages/app-lifecycle/__tests__/unsaved-work.test.ts`
+Expected: PASS, 2 + 20 testes.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 npm run format >/dev/null
-git add packages/app-lifecycle/src/use-unsaved-work.ts packages/app-lifecycle/index.ts packages/app-lifecycle/__tests__/use-unsaved-work.test.tsx
-git commit -m "feat(app-lifecycle): hook useUnsavedWork
+git add packages/app-lifecycle/src/use-unsaved-work.ts packages/app-lifecycle/index.ts packages/app-lifecycle/src/unsaved-work.ts packages/app-lifecycle/__tests__/use-unsaved-work.test.tsx packages/app-lifecycle/__tests__/unsaved-work.test.ts
+git commit -m "feat(app-lifecycle): hook useUnsavedWork e endurecimento do registro
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -420,6 +486,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx` (após `const [savingIds, setSavingIds] = useState<Set<number>>(new Set());`, linha 178)
 - Modify: `apps/crm/src/pages/entregas/components/StandalonePostDrawer.tsx` (após `const [isSaving, setIsSaving] = useState(false);`, linha 226)
 - Modify: `apps/crm/src/pages/contratos/ContratosPage.tsx` (após `const [saving, setSaving] = useState(false);`, linha 122)
+- Modify: `apps/crm/src/pages/entregas/components/CalendarPostDetailPanel.tsx` (linha 90: remover `role="dialog"`)
 - Test: `apps/crm/src/components/ui/__tests__/dialog-confirm-close.test.tsx`
 
 **Interfaces:**
@@ -506,6 +573,20 @@ Em cada arquivo, adicione o import `import { useUnsavedWork } from '@mesaas/app-
   useUnsavedWork(saving);
 ```
 
+`CalendarPostDetailPanel.tsx`, linha 90: o painel lateral do calendário não é modal e não tem editor, mas declara `role="dialog"`, o que deixaria `isDocumentBusy()` verdadeiro o tempo todo em que um post do calendário estiver selecionado. Troque
+
+```tsx
+    <aside className="calendar-detail-panel" role="dialog" aria-label="Detalhes do post">
+```
+
+por
+
+```tsx
+    <aside className="calendar-detail-panel" aria-label="Detalhes do post">
+```
+
+(`aside` já é o landmark `complementary`; nenhum teste consulta esse painel por `role="dialog"`.)
+
 - [ ] **Step 6: Typecheck e suíte do CRM**
 
 Run: `npx tsc -p apps/crm/tsconfig.json --noEmit && npx vitest run apps/crm`
@@ -515,8 +596,8 @@ Expected: sem erro de tipo; suíte verde. Se algum teste desses componentes mock
 
 ```bash
 npm run format >/dev/null
-git add apps/crm/src/components/ui/dialog.tsx apps/crm/src/components/ui/__tests__/dialog-confirm-close.test.tsx apps/crm/src/pages/relatorio-editor/useLayoutAutosave.ts apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx apps/crm/src/pages/entregas/components/StandalonePostDrawer.tsx apps/crm/src/pages/contratos/ContratosPage.tsx
-git commit -m "feat(crm): registra trabalho não salvo em modais, drawers de post, contratos e autosave do relatório
+git add apps/crm/src/components/ui/dialog.tsx apps/crm/src/components/ui/__tests__/dialog-confirm-close.test.tsx apps/crm/src/pages/relatorio-editor/useLayoutAutosave.ts apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx apps/crm/src/pages/entregas/components/StandalonePostDrawer.tsx apps/crm/src/pages/contratos/ContratosPage.tsx apps/crm/src/pages/entregas/components/CalendarPostDetailPanel.tsx
+git commit -m "feat(crm): registra trabalho não salvo em modais, drawers de post, contratos e autosave do relatório; painel do calendário deixa de ser dialog
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -527,7 +608,6 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `apps/hub/src/pages/BriefingPage.tsx` (função `QuestionItem`, após `const locked = phase !== 'idle' || busyAction !== null;`)
-- Modify: `apps/hub/src/pages/IdeiasPage.tsx` (função `IdeiaModal`, após `const qc = useQueryClient();`)
 
 **Interfaces:**
 - Consumes: `useUnsavedWork` (Task 2).
@@ -542,15 +622,9 @@ Adicione `import { useUnsavedWork } from '@mesaas/app-lifecycle';` aos imports d
   useUnsavedWork(answer !== (question.answer ?? '') || status === 'saving' || locked);
 ```
 
-- [ ] **Step 2: Registrar em `IdeiaModal`**
+- [ ] **Step 2: Conferir que `IdeiaModal` não precisa de registro**
 
-Adicione o mesmo import a `IdeiasPage.tsx` e, após `const qc = useQueryClient();` dentro de `IdeiaModal`:
-
-```ts
-  // The modal is a plain portal without role="dialog", so the DOM heuristic cannot see it:
-  // hold while it is open.
-  useUnsavedWork(true);
-```
+O portal do `IdeiaModal` renderiza `<div role="dialog" aria-modal="true">` (`apps/hub/src/pages/IdeiasPage.tsx:535`), então a heurística `isDocumentBusy()` já o vê enquanto estiver aberto. Não adicione hook ali. Confirme com `grep -n 'role="dialog"' apps/hub/src/pages/IdeiasPage.tsx`.
 
 - [ ] **Step 3: Typecheck e suíte do Hub**
 
@@ -561,8 +635,8 @@ Expected: sem erro de tipo; suíte verde. Mesma nota da Task 3 sobre mocks parci
 
 ```bash
 npm run format >/dev/null
-git add apps/hub/src/pages/BriefingPage.tsx apps/hub/src/pages/IdeiasPage.tsx
-git commit -m "feat(hub): registra trabalho não salvo no briefing e no modal de ideias
+git add apps/hub/src/pages/BriefingPage.tsx
+git commit -m "feat(hub): registra trabalho não salvo no briefing
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -879,7 +953,6 @@ class FakeRouter implements SilentUpdateRouter {
   subscribers = new Set<(state: SilentUpdateRouterState) => void>();
   state: SilentUpdateRouterState = { blockers: new Map() };
   proceed = vi.fn();
-  reset = vi.fn();
 
   getBlocker(_key: string, fn: (args: SilentUpdateBlockerArgs) => boolean) {
     this.blockerFn = fn;
@@ -911,7 +984,6 @@ class FakeRouter implements SilentUpdateRouter {
         state: 'blocked',
         location: nextLocation,
         proceed: this.proceed,
-        reset: this.reset,
       });
     }
     for (const subscriber of this.subscribers) subscriber(this.state);
@@ -921,6 +993,7 @@ class FakeRouter implements SilentUpdateRouter {
 
 const reload = vi.fn();
 const assign = vi.fn();
+const stop = vi.fn();
 let visibility: 'visible' | 'hidden' = 'visible';
 let online = true;
 const uninstalls: Array<() => void> = [];
@@ -961,6 +1034,7 @@ beforeEach(() => {
   document.body.innerHTML = '';
   reload.mockClear();
   assign.mockClear();
+  stop.mockClear();
   visibility = 'visible';
   online = true;
   window.sessionStorage.clear();
@@ -970,6 +1044,7 @@ beforeEach(() => {
   });
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online });
+  Object.defineProperty(window, 'stop', { configurable: true, value: stop });
 });
 
 afterEach(() => {
@@ -978,6 +1053,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   delete (document as unknown as { visibilityState?: string }).visibilityState;
   delete (navigator as unknown as { onLine?: boolean }).onLine;
+  delete (window as unknown as { stop?: unknown }).stop;
 });
 
 function setVisibility(state: 'visible' | 'hidden') {
@@ -1044,6 +1120,23 @@ describe('installSilentUpdate: navigation', () => {
     expect(router.navigate({ pathname: '/clientes' })).toBe(true);
   });
 
+  it('keeps waiting at the watchdog while holdWhile is true', async () => {
+    const router = new FakeRouter();
+    let mutating = false;
+    mockFetch([HTML('aaa'), HTML('bbb')]);
+    install(router, { holdWhile: () => mutating });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    router.navigate({ pathname: '/clientes' });
+    mutating = true;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(router.proceed).not.toHaveBeenCalled();
+    mutating = false;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(router.proceed).toHaveBeenCalledTimes(1);
+  });
+
   it('does not swap while holdWhile reports the app busy', async () => {
     const router = new FakeRouter();
     let mutating = true;
@@ -1063,8 +1156,8 @@ describe('installSilentUpdate: navigation', () => {
     router.navigate({ pathname: '/clientes' });
     expect(assign).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(router.reset).toHaveBeenCalledTimes(1);
-    expect(router.proceed).not.toHaveBeenCalled();
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(router.proceed).toHaveBeenCalledTimes(1);
 
     router.state.blockers.clear();
     expect(router.navigate({ pathname: '/equipe' })).toBe(false);
@@ -1262,7 +1355,6 @@ export interface SilentUpdateBlocker {
   state: string;
   location?: SilentUpdateLocation;
   proceed?: () => void;
-  reset?: () => void;
 }
 
 export interface SilentUpdateRouterState {
@@ -1374,15 +1466,23 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     navigationSwapEnabled = false;
     const { pathname, search, hash } = blocker.location;
     stampReload();
-    watchdog = setTimeout(() => {
-      // Still here: the document request did not replace this page. Cancel the blocked
-      // navigation (not proceed: a slow document navigation that lands later would give a
-      // second transition). The next click navigates client-side; the passive triggers keep
-      // the swap alive.
+    const giveUpSwap = () => {
+      if (holdWhile()) {
+        // A mutation started while the document request hung; stopping the page's loads now
+        // could cut it. Look again in a moment.
+        watchdog = setTimeout(giveUpSwap, swapWatchdogMs);
+        return;
+      }
+      // Still here: the document request did not replace this page. Stop it (the browser's
+      // Stop button, so a slow response cannot land later as a second transition) and let
+      // the navigation the user asked for go on client-side. The passive triggers keep the
+      // swap alive.
       watchdog = null;
       reloading = false;
-      blocker.reset?.();
-    }, swapWatchdogMs);
+      if (typeof window.stop === 'function') window.stop();
+      blocker.proceed?.();
+    };
+    watchdog = setTimeout(giveUpSwap, swapWatchdogMs);
     window.location.assign(pathname + search + hash);
   });
 
@@ -1457,7 +1557,7 @@ export type {
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npx vitest run packages/app-lifecycle/__tests__/silent-update.test.ts`
-Expected: PASS, 18 testes. O tick de inatividade é `min(30 s, idleAfterMs)`, então com `idleAfterMs: 10_000` os testes veem um tick a cada 10 s contados do install.
+Expected: PASS, 19 testes. O tick de inatividade é `min(30 s, idleAfterMs)`, então com `idleAfterMs: 10_000` os testes veem um tick a cada 10 s contados do install.
 
 - [ ] **Step 5: Commit**
 
