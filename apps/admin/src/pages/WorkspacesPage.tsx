@@ -96,6 +96,15 @@ export default function WorkspacesPage() {
   const workspaces = list.data?.workspaces ?? [];
   const filtered = hasActiveFilters(params);
 
+  // Under active filters `total` is the FILTERED count, so spelling it out here would read as
+  // "cadastrados no total". The chips row already reports the filtered count as "N resultados".
+  const headerDescription =
+    filtered || total === undefined
+      ? 'Todos os workspaces cadastrados'
+      : total === 1
+        ? '1 workspace cadastrado'
+        : `${total} workspaces cadastrados`;
+
   let body: JSX.Element;
   if (list.isPending) {
     body = <WorkspacesTableSkeleton visible={prefs.visible} />;
@@ -107,20 +116,35 @@ export default function WorkspacesPage() {
       />
     );
   } else if (workspaces.length === 0) {
-    body = filtered ? (
-      <EmptyState
-        icon={Building2}
-        title="Nenhum workspace com esses filtros"
-        description="Tente ampliar a busca ou remover um dos filtros ativos."
-        action={
-          <Button variant="outline" size="sm" onClick={reset}>
-            Limpar filtros
-          </Button>
-        }
-      />
-    ) : (
-      <EmptyState icon={Building2} title="Nenhum workspace cadastrado ainda." />
-    );
+    // Zero rows with a non-zero total means the requested page is past the end of the result
+    // set -- nothing clamps `pag` against the page count, and both "nenhum workspace" states
+    // would be a dead end here, since neither offers a way back to a page that has rows.
+    body =
+      (total ?? 0) > 0 ? (
+        <EmptyState
+          icon={Building2}
+          title="Página fora do intervalo"
+          description="Esta página não existe mais para os filtros atuais."
+          action={
+            <Button variant="outline" size="sm" onClick={() => set({ pag: 1 })}>
+              Voltar à primeira página
+            </Button>
+          }
+        />
+      ) : filtered ? (
+        <EmptyState
+          icon={Building2}
+          title="Nenhum workspace com esses filtros"
+          description="Tente ampliar a busca ou remover um dos filtros ativos."
+          action={
+            <Button variant="outline" size="sm" onClick={reset}>
+              Limpar filtros
+            </Button>
+          }
+        />
+      ) : (
+        <EmptyState icon={Building2} title="Nenhum workspace cadastrado ainda." />
+      );
   } else {
     body = (
       <>
@@ -149,11 +173,7 @@ export default function WorkspacesPage() {
     <div>
       <PageHeader
         title="Workspaces"
-        description={
-          total === undefined
-            ? 'Todos os workspaces cadastrados'
-            : `${total} workspaces cadastrados`
-        }
+        description={headerDescription}
       />
       <WorkspacesToolbar
         params={params}

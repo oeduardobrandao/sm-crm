@@ -120,6 +120,24 @@ describe('WorkspacesPage', () => {
     expect(await screen.findByText('Nenhum workspace cadastrado ainda.')).toBeInTheDocument();
   });
 
+  it('keeps the header generic when filters are active, and counts in the chips row', async () => {
+    renderPage('/admin/workspaces?status=ativo');
+    await screen.findAllByText('Alpha');
+    // The header count would read as "cadastrados no total" while showing a filtered number.
+    expect(screen.getByText('Todos os workspaces cadastrados')).toBeInTheDocument();
+    expect(screen.queryByText('2 workspaces cadastrados')).toBeNull();
+    expect(screen.getByText('2 resultados')).toBeInTheDocument();
+  });
+
+  it('offers a way back when the page is past the end of the result set', async () => {
+    mockedList.mockResolvedValue(response([], 20));
+    renderPage('/admin/workspaces?pag=9');
+    expect(await screen.findByText('Página fora do intervalo')).toBeInTheDocument();
+    expect(screen.queryByText('Nenhum workspace cadastrado ainda.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar à primeira página' }));
+    expect(screen.getByTestId('url').textContent).toBe('/admin/workspaces');
+  });
+
   it('shows the error state and refetches on retry', async () => {
     mockedList.mockRejectedValueOnce(new Error('boom'));
     renderPage();
