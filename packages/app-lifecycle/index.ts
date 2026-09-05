@@ -22,3 +22,5 @@ export type {
   SilentUpdateRouter,
   SilentUpdateRouterState,
 } from './src/silent-update';
+export { prefetchBuildAssets } from './src/prefetch-build';
+export type { PrefetchBuildOptions } from './src/prefetch-build';
