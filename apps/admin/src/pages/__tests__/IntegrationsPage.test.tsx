@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -54,30 +54,31 @@ function renderPage() {
 describe('IntegrationsPage', () => {
   it('mostra a URL do conector MCP do Admin', async () => {
     renderPage();
-    await screen.findByText('admin1@mesaas.com.br');
+    await screen.findByRole('table');
     const input = screen.getByDisplayValue(/\/functions\/v1\/mcp-admin$/) as HTMLInputElement;
     expect(input.value).toContain('/functions/v1/mcp-admin');
   });
 
   it('lista uma conexão ativa e uma revogada', async () => {
     renderPage();
-    expect(await screen.findByText('admin1@mesaas.com.br')).toBeInTheDocument();
-    expect(screen.getByText('admin2@mesaas.com.br')).toBeInTheDocument();
-    expect(screen.getByText('Ativa')).toBeInTheDocument();
-    expect(screen.getByText('Revogada')).toBeInTheDocument();
+    const table = within(await screen.findByRole('table'));
+    expect(table.getByText('admin1@mesaas.com.br')).toBeInTheDocument();
+    expect(table.getByText('admin2@mesaas.com.br')).toBeInTheDocument();
+    expect(table.getByText('Ativa')).toBeInTheDocument();
+    expect(table.getByText('Revogada')).toBeInTheDocument();
   });
 
   it('mostra estado vazio quando não há conexões', async () => {
     vi.mocked(listAdminMcpGrants).mockResolvedValue({ grants: [] } as never);
     renderPage();
-    expect(await screen.findByText('Nenhuma conexão ainda.')).toBeInTheDocument();
+    expect(await screen.findByText('Nenhuma conexão autorizada')).toBeInTheDocument();
   });
 
   it('clicar em Revogar na conexão ativa confirma e chama a API com o id', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPage();
-    await screen.findByText('admin1@mesaas.com.br');
-    const revokeButtons = screen.getAllByRole('button', { name: /Revogar/ });
+    const table = within(await screen.findByRole('table'));
+    const revokeButtons = table.getAllByRole('button', { name: /Revogar/ });
     expect(revokeButtons).toHaveLength(1); // só a conexão ativa tem o botão
     fireEvent.click(revokeButtons[0]);
     await waitFor(() => expect(revokeAdminMcpGrant).toHaveBeenCalledWith('g1'));
@@ -86,15 +87,15 @@ describe('IntegrationsPage', () => {
   it('cancelar a confirmação não chama a API', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderPage();
-    await screen.findByText('admin1@mesaas.com.br');
-    fireEvent.click(screen.getByRole('button', { name: /Revogar/ }));
+    const table = within(await screen.findByRole('table'));
+    fireEvent.click(table.getByRole('button', { name: /Revogar/ }));
     expect(revokeAdminMcpGrant).not.toHaveBeenCalled();
   });
 
   it('a conexão revogada não tem botão Revogar', async () => {
     renderPage();
-    await screen.findByText('admin2@mesaas.com.br');
-    const revokeButtons = screen.getAllByRole('button', { name: /Revogar/ });
+    const table = within(await screen.findByRole('table'));
+    const revokeButtons = table.getAllByRole('button', { name: /Revogar/ });
     expect(revokeButtons).toHaveLength(1);
   });
 
@@ -102,7 +103,7 @@ describe('IntegrationsPage', () => {
     vi.mocked(listAdminMcpGrants).mockRejectedValueOnce(new Error('network down'));
     renderPage();
     expect(await screen.findByText('Não foi possível carregar as conexões.')).toBeInTheDocument();
-    expect(screen.queryByText('Nenhuma conexão ainda.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nenhuma conexão autorizada')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeInTheDocument();
   });
 });
