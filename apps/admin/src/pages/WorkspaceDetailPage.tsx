@@ -35,7 +35,7 @@ import {
 } from '../lib/api';
 import { sanitizeExternalUrl } from '../lib/security';
 import { computeOverridesPayload } from './workspace-overrides';
-import { describeDrift, formatCard } from './workspace-subscription';
+import { describeDrift, formatCard, formatLongDay } from './workspace-subscription';
 import WorkspaceInvitesCard from './WorkspaceInvitesCard';
 import WorkspaceEventsCard from './WorkspaceEventsCard';
 
@@ -323,13 +323,10 @@ export default function WorkspaceDetailPage() {
               </Field>
               <Field label={data.subscription.cancel_at_period_end ? 'Cancela em' : 'Renova em'}>
                 <span className="text-sm">
-                  {data.subscription.current_period_end
-                    ? new Date(data.subscription.current_period_end).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: 'long',
-                        year: 'numeric',
-                      })
-                    : '—'}
+                  {formatLongDay(
+                    data.subscription.current_period_end,
+                    data.subscription.provider === 'pagarme',
+                  )}
                 </span>
               </Field>
               {data.subscription.failed_payment_count > 0 && (
@@ -348,15 +345,7 @@ export default function WorkspaceDetailPage() {
                   </Field>
                   <Field label="Próxima cobrança">
                     <span className="text-sm">
-                      {data.subscription.pagarme_live.next_billing_at
-                        ? new Date(
-                            data.subscription.pagarme_live.next_billing_at,
-                          ).toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric',
-                          })
-                        : '—'}
+                      {formatLongDay(data.subscription.pagarme_live.next_billing_at, true)}
                     </span>
                   </Field>
                 </>

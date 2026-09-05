@@ -5,12 +5,34 @@
  */
 import { statusMeta, type PagarmeDrift, type PagarmeLiveCard } from '../lib/subscription';
 
-/** ISO timestamp → "dd/MM/yyyy" (pt-BR). "—" for null, empty or unparsable input. */
+/** ISO timestamp → "dd/MM/yyyy" on the UTC calendar (only Pagar.me boundaries reach this, via describeDrift). "—" for null, empty or unparsable input. */
 export function formatDay(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return d.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+/**
+ * Long pt-BR date ("03 de outubro de 2026"). `utc: true` for Pagar.me values, which are
+ * midnight-UTC calendar boundaries and would print the previous day in America/Sao_Paulo;
+ * Stripe values are true instants and stay in the viewer's local time.
+ */
+export function formatLongDay(iso: string | null | undefined, utc = false): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    ...(utc ? { timeZone: 'UTC' } : {}),
+  });
 }
 
 function capitalize(value: string): string {

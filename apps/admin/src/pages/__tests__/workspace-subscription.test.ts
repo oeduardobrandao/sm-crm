@@ -1,16 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { describeDrift, formatCard, formatDay } from '../workspace-subscription';
+import { describeDrift, formatCard, formatDay, formatLongDay } from '../workspace-subscription';
 
 describe('formatDay', () => {
   it('renders dd/MM/yyyy in pt-BR', () => {
     // Midday UTC so the calendar day is the same in every timezone the tests may run in.
     expect(formatDay('2026-09-03T12:00:00Z')).toBe('03/09/2026');
   });
+  it('renders midnight-UTC boundaries on the UTC calendar, not the local day', () => {
+    expect(formatDay('2026-10-03T00:00:00Z')).toBe('03/10/2026');
+  });
   it('renders a dash for null, empty or unparsable input', () => {
     expect(formatDay(null)).toBe('—');
     expect(formatDay(undefined)).toBe('—');
     expect(formatDay('')).toBe('—');
     expect(formatDay('not-a-date')).toBe('—');
+  });
+});
+
+describe('formatLongDay', () => {
+  it('renders a long pt-BR date', () => {
+    expect(formatLongDay('2026-10-03T12:00:00Z')).toBe('03 de outubro de 2026');
+  });
+  it('renders midnight-UTC boundaries on the UTC calendar when utc is true', () => {
+    expect(formatLongDay('2026-10-03T00:00:00Z', true)).toBe('03 de outubro de 2026');
+  });
+  it('renders a dash for null, empty or unparsable input', () => {
+    expect(formatLongDay(null)).toBe('—');
+    expect(formatLongDay('')).toBe('—');
+    expect(formatLongDay('not-a-date', true)).toBe('—');
   });
 });
 
@@ -57,14 +74,14 @@ describe('describeDrift', () => {
     expect(
       describeDrift({
         status: null,
-        period: { mirror: '2026-10-03T12:00:00Z', live: '2027-10-03T12:00:00Z' },
+        period: { mirror: '2026-10-03T00:00:00Z', live: '2027-10-03T00:00:00Z' },
       }),
     ).toEqual(['Período: espelho 03/10/2026, Pagar.me 03/10/2027']);
   });
   it('describes both, status first', () => {
     const lines = describeDrift({
       status: { mirror: null, live: 'active' },
-      period: { mirror: null, live: '2027-10-03T12:00:00Z' },
+      period: { mirror: null, live: '2027-10-03T00:00:00Z' },
     });
     expect(lines).toEqual([
       'Status: espelho —, Pagar.me Ativo',
