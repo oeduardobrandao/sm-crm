@@ -30,6 +30,15 @@ describe('trialDeadlineLabel', () => {
     expect(trialDeadlineLabel(at(DAY), NOW)).toBe('amanhã');
     expect(trialDeadlineLabel(at(3 * DAY), NOW)).toBe('em 3 dias');
   });
+
+  it('counts days in the viewer local zone, not UTC', () => {
+    // 21:00 local today vs 23:30 local today: same local day even if UTC has rolled over.
+    const nowLocal = new Date(2026, 8, 4, 21, 0, 0);
+    const laterToday = new Date(2026, 8, 4, 23, 30, 0);
+    const earlyTomorrow = new Date(2026, 8, 5, 0, 30, 0);
+    expect(trialDeadlineLabel(laterToday.toISOString(), nowLocal)).toBe('hoje');
+    expect(trialDeadlineLabel(earlyTomorrow.toISOString(), nowLocal)).toBe('amanhã');
+  });
 });
 
 describe('pendingLabel', () => {
@@ -55,5 +64,13 @@ describe('pendingLabel', () => {
   it('renders a dash when nothing is known', () => {
     expect(pendingLabel({ failed_payment_count: 0, current_period_end: null }, NOW)).toBe('—');
     expect(pendingLabel(null, NOW)).toBe('—');
+  });
+
+  it('vence hoje follows the local calendar day', () => {
+    const nowLocal = new Date(2026, 8, 4, 21, 0, 0);
+    const laterToday = new Date(2026, 8, 4, 23, 30, 0).toISOString();
+    expect(
+      pendingLabel({ failed_payment_count: 0, current_period_end: laterToday }, nowLocal),
+    ).toBe('vence hoje');
   });
 });

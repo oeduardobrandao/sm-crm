@@ -6,10 +6,10 @@ const DAY_MS = 86_400_000;
 
 export const TRIAL_ENDING_SOON_DAYS = 3;
 
-/** Calendar-day distance (UTC) from `now` to `date`; negative when in the past. */
+/** Calendar-day distance from `now` to `date` in the viewer's local zone; negative when in the past. */
 function calendarDays(date: Date, now: Date): number {
-  const utc = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  return Math.round((utc(date) - utc(now)) / DAY_MS);
+  const local = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return Math.round((local(date) - local(now)) / DAY_MS);
 }
 
 export function selectTrialsEndingSoon<T extends { trial_ends_at: string | null }>(
