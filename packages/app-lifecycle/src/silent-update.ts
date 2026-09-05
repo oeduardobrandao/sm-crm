@@ -18,7 +18,7 @@
 
 import { RELOAD_STAMP_KEY } from './deploy-recovery';
 import { watchForNewVersion } from './new-version';
-import { hasUnsavedWork, isDocumentBusy } from './unsaved-work';
+import { hasUnsavedWork, isDocumentBusy, trackDocumentEdits } from './unsaved-work';
 
 const BLOCKER_KEY = 'silent-update';
 const DEFAULT_HIDDEN_AFTER_MS = 5 * 60_000;
@@ -101,6 +101,7 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     holdWhile = () => false,
   } = options;
   const documentUrl = options.documentUrl ?? window.location.href;
+  const stopEditTracking = trackDocumentEdits();
 
   let pending = false;
   let reloading = false;
@@ -228,6 +229,7 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
   );
 
   return function uninstall() {
+    stopEditTracking();
     watcher.stop();
     unsubscribe();
     router.deleteBlocker(BLOCKER_KEY);

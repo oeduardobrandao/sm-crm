@@ -182,10 +182,13 @@ describe('installSilentUpdate: navigation', () => {
   it('does not swap while the document looks busy', async () => {
     const router = new FakeRouter();
     await reachPending(router);
-    document.body.innerHTML = '<textarea>rascunho</textarea>';
+    document.body.innerHTML = '<textarea></textarea>';
+    const el = document.querySelector('textarea')!;
+    el.value = 'rascunho';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
 
     expect(router.navigate({ pathname: '/clientes' })).toBe(false);
-    document.body.innerHTML = '';
+    el.remove();
     expect(router.navigate({ pathname: '/clientes' })).toBe(true);
   });
 
@@ -332,10 +335,12 @@ describe('installSilentUpdate: idle', () => {
     expect(reload).not.toHaveBeenCalled();
     release();
 
-    document.body.innerHTML = '<div contenteditable="true">Legenda</div>';
+    document.body.innerHTML = '<textarea></textarea>';
+    const el = document.querySelector('textarea')!;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
     await vi.advanceTimersByTimeAsync(10_500);
     expect(reload).not.toHaveBeenCalled();
-    document.body.innerHTML = '';
+    el.remove();
 
     mutating = true;
     await vi.advanceTimersByTimeAsync(10_500);

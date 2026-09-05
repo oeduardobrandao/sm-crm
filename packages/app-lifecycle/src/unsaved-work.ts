@@ -4,8 +4,9 @@
  * Two layers. `holdUnsavedWork` is the explicit one: an editor with unsaved input, a save
  * in flight or an upload holds while that is true. `isDocumentBusy` is the safety net for
  * surfaces nobody registered: it reads the DOM for an open dialog, a focused editable or an
- * editor with content. Every reload trigger (navigation, hidden tab, idle) consults both, so
- * an editor shipped without the hook fails closed everywhere.
+ * editable the user typed into, until it leaves the DOM. Every reload trigger (navigation,
+ * hidden tab, idle) consults both, so an editor shipped without the hook fails closed
+ * everywhere.
  */
 
 let holds = 0;
@@ -62,24 +63,44 @@ function isEditable(el: Element | null): boolean {
   return isContentEditable(el);
 }
 
+/** Editable elements the user typed into, kept until they leave the DOM. */
+const touched = new Set<Element>();
+
+/**
+ * Start recording user edits: a capture-phase `input` listener marks its editable target,
+ * and a touched element keeps the document busy until it leaves the DOM. Pre-filled content
+ * never counts; a real edit fails closed until the editor unmounts. Returns the stop function.
+ */
+export function trackDocumentEdits(doc: Document = document): () => void {
+  const onInput = (event: Event) => {
+    const target = event.target;
+    if (target instanceof Element && isEditable(target)) touched.add(target);
+  };
+  doc.addEventListener('input', onInput, { capture: true, passive: true });
+  return () => doc.removeEventListener('input', onInput, { capture: true });
+}
+
+function hasTouchedEditable(): boolean {
+  for (const el of touched) {
+    if (!el.isConnected) touched.delete(el);
+  }
+  return touched.size > 0;
+}
+
 /**
  * True when reloading now would plausibly lose something: an open dialog (Radix Dialog,
  * Sheet and AlertDialog all render `role="dialog"` or `role="alertdialog"`), a focused
- * editable, or a textarea / contenteditable with content. Deliberately conservative.
+ * editable, or an editable the user typed into. Deliberately conservative.
  */
 export function isDocumentBusy(doc: Document = document): boolean {
   if (doc.querySelector('[role="dialog"], [role="alertdialog"]')) return true;
   if (isEditable(doc.activeElement)) return true;
-  for (const el of doc.querySelectorAll('textarea')) {
-    if (el.value.trim() !== '') return true;
-  }
-  for (const el of doc.querySelectorAll('[contenteditable]:not([contenteditable="false"])')) {
-    if ((el.textContent ?? '').trim() !== '') return true;
-  }
+  if (hasTouchedEditable()) return true;
   return false;
 }
 
 /** Test seam: forget every hold. */
 export function resetUnsavedWorkForTests(): void {
   holds = 0;
+  touched.clear();
 }

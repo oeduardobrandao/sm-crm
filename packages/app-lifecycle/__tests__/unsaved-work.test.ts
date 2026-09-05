@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   hasUnsavedWork,
   holdUnsavedWork,
   isDocumentBusy,
   resetUnsavedWorkForTests,
+  trackDocumentEdits,
   trackUnsavedWork,
 } from '../src/unsaved-work';
 
@@ -131,30 +132,49 @@ describe('isDocumentBusy', () => {
     document.querySelector<HTMLElement>('[contenteditable]')!.focus();
     expect(isDocumentBusy()).toBe(true);
   });
+});
 
-  it('is true with a textarea that has content', () => {
+describe('isDocumentBusy: edits', () => {
+  let stop: () => void;
+  beforeEach(() => {
+    stop = trackDocumentEdits();
+  });
+  afterEach(() => stop());
+
+  it('ignores pre-filled content nobody touched', () => {
+    document.body.innerHTML =
+      '<textarea>legenda</textarea><div contenteditable="true"><p>Corpo</p></div>';
+    expect(isDocumentBusy()).toBe(false);
+  });
+
+  it('is true after the user types into a textarea, until it leaves the DOM', () => {
     document.body.innerHTML = '<textarea></textarea>';
-    document.querySelector('textarea')!.value = 'rascunho';
+    const el = document.querySelector('textarea')!;
+    el.value = 'r';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
     expect(isDocumentBusy()).toBe(true);
-  });
-
-  it('ignores an empty textarea', () => {
-    document.body.innerHTML = '<textarea>   </textarea>';
+    el.remove();
     expect(isDocumentBusy()).toBe(false);
   });
 
-  it('is true with a contenteditable that has content', () => {
-    document.body.innerHTML = '<div contenteditable="true"><p>Legenda do post</p></div>';
-    expect(isDocumentBusy()).toBe(true);
-  });
-
-  it('ignores an empty contenteditable', () => {
+  it('is true after the user types into a contenteditable', () => {
     document.body.innerHTML = '<div contenteditable="true"><p></p></div>';
+    const host = document.querySelector<HTMLElement>('[contenteditable]')!;
+    host.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(isDocumentBusy()).toBe(true);
+  });
+
+  it('ignores input events from a checkbox', () => {
+    document.body.innerHTML = '<input type="checkbox" />';
+    document.querySelector('input')!.dispatchEvent(new Event('input', { bubbles: true }));
     expect(isDocumentBusy()).toBe(false);
   });
 
-  it('is true with a bare contenteditable that has content', () => {
-    document.body.innerHTML = '<div contenteditable><p>Legenda</p></div>';
-    expect(isDocumentBusy()).toBe(true);
+  it('records nothing once stopped', () => {
+    stop();
+    document.body.innerHTML = '<textarea></textarea>';
+    document.querySelector('textarea')!.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(isDocumentBusy()).toBe(false);
+    stop = trackDocumentEdits();
   });
 });
