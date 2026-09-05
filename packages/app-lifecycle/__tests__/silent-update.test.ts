@@ -6,6 +6,7 @@ import type {
   SilentUpdateRouter,
   SilentUpdateRouterState,
 } from '../src/silent-update';
+import { reloadForNewDeploy } from '../src/deploy-recovery';
 import { holdUnsavedWork, resetUnsavedWorkForTests } from '../src/unsaved-work';
 
 const HTML = (hash: string) =>
@@ -147,7 +148,6 @@ describe('installSilentUpdate: navigation', () => {
 
     expect(router.navigate({ pathname: '/clientes', search: '?novo=1', hash: '#top' })).toBe(true);
     expect(assign).toHaveBeenCalledWith('/clientes?novo=1#top');
-    expect(window.sessionStorage.getItem('mesaas:deploy-reload-at')).not.toBeNull();
   });
 
   it('lets a PUSH on the same pathname, a REPLACE and a POP through', async () => {
@@ -227,12 +227,13 @@ describe('installSilentUpdate: navigation', () => {
 
     router.navigate({ pathname: '/clientes' });
     expect(assign).toHaveBeenCalledTimes(1);
-    expect(window.sessionStorage.getItem('mesaas:deploy-reload-at')).not.toBeNull();
+    expect(reloadForNewDeploy()).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(stop).toHaveBeenCalledTimes(1);
     expect(router.proceed).toHaveBeenCalledTimes(1);
-    // A swap that did not happen must not leave deploy-recovery's cooldown behind.
-    expect(window.sessionStorage.getItem('mesaas:deploy-reload-at')).toBeNull();
+    // A swap that did not happen must not leave deploy-recovery suppressed behind.
+    expect(reloadForNewDeploy()).toBe(true);
 
     router.state.blockers.clear();
     expect(router.navigate({ pathname: '/equipe' })).toBe(false);

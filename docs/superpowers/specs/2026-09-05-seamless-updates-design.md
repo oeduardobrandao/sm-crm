@@ -39,7 +39,7 @@ Fora de escopo:
 | Só PUSH com mudança de `pathname` troca de versão | REPLACE é usado para limpar query (`useOpenParam` abre o diálogo e remove `?novo=1` no mesmo tick; 17 ocorrências de `replace: true`) e PUSH sem mudança de pathname é filtro, aba ou drawer por query (10 `setSearchParams`). Uma navegação completa nesses casos perderia o estado em memória que a URL não carrega. POP duplicaria a entrada de histórico |
 | Trabalho não salvo é um registro explícito, e os gatilhos passivos ainda checam o DOM | Recarregar nunca pode disparar diálogo de `beforeunload`, então a decisão tem que ser tomada antes. O registro cobre o que conhecemos; a heurística de DOM (diálogo aberto, editável focado, textarea ou contenteditable com conteúdo) cobre o que o registro não conhece, para que um editor novo sem hook falhe fechado nos três gatilhos |
 | Polling continua em 5 minutos | Com a pré-busca, detectar o deploy mais cedo deixou de ser urgente |
-| Recarregamento silencioso não depende de `sessionStorage` | O gatilho é um mismatch verificado de fingerprint, não um erro; não há risco de loop. Quando o storage existe, o carimbo de cooldown do deploy-recovery é gravado mesmo assim |
+| Recarregamento silencioso não depende de `sessionStorage` | O gatilho é um mismatch verificado de fingerprint, não um erro; não há risco de loop. A supressão do deploy-recovery durante uma navegação em voo vive em memória (`suppressDeployRecovery()`), nunca em `sessionStorage`, e por isso não sobrevive à página de destino |
 
 ## 3. Arquitetura
 
@@ -154,12 +154,11 @@ ver uma página de erro de rede.
 
 | Gatilho | Condição | Ação |
 |---|---|---|
-| Navegação | Bloqueador `silent-update` registrado com `router.getBlocker`; retorna `true` só para PUSH em que `nextLocation.pathname !== currentLocation.pathname`, quando pendente, sem registro, sem documento ocupado, sem `holdWhile`, com `navigator.onLine !== false` e sem tentativa anterior nesta aba | Ao ver o bloqueador em `blocked` via `router.subscribe`, arma o cão de guarda de 8 s e chama `window.location.assign(pathname + search + hash)` do destino. Se o cão de guarda disparar, a página não foi substituída: `window.stop()` aborta a navegação de documento pendente (o botão Parar do navegador, para que uma resposta lenta não chegue depois como segunda transição), `proceed()` deixa a navegação client-side que o usuário pediu seguir, e o gatilho de navegação fica desligado até o próximo carregamento. Se `holdWhile()` estiver ativo nesse instante, espera mais um período antes de parar as cargas. Ao desistir, apaga o carimbo de cooldown gravado antes do `assign`: ele existe para que um chunk 404 na página velha não cancele a navegação em voo com um reload do deploy-recovery, e não pode sobreviver a uma troca que não aconteceu |
+| Navegação | Bloqueador `silent-update` registrado com `router.getBlocker`; retorna `true` só para PUSH em que `nextLocation.pathname !== currentLocation.pathname`, quando pendente, sem registro, sem documento ocupado, sem `holdWhile`, com `navigator.onLine !== false` e sem tentativa anterior nesta aba | Ao ver o bloqueador em `blocked` via `router.subscribe`, arma o cão de guarda de 8 s e chama `window.location.assign(pathname + search + hash)` do destino. Se o cão de guarda disparar, a página não foi substituída: `window.stop()` aborta a navegação de documento pendente (o botão Parar do navegador, para que uma resposta lenta não chegue depois como segunda transição), `proceed()` deixa a navegação client-side que o usuário pediu seguir, e o gatilho de navegação fica desligado até o próximo carregamento. Se `holdWhile()` estiver ativo nesse instante, espera mais um período antes de parar as cargas. Ao desistir, libera a supressão do deploy-recovery armada antes do `assign` (`suppressDeployRecovery()`, em memória): ela existe para que um chunk 404 na página velha não cancele a navegação em voo com um reload do deploy-recovery, e não pode sobreviver a uma troca que não aconteceu |
 | Aba oculta | `visibilitychange` para `hidden` arma um timer de `hiddenAfterMs`; `visible` desarma e reinicia a contagem de inatividade (uma aba que volta de horas oculta não pode recarregar no primeiro tick enquanto o usuário olha) | Ao disparar, chama `check()` do watcher (o polling estava pausado). Recarrega se ficou pendente, `isDocumentBusy()` é falso e o servidor respondeu: ou o próprio `check()` resolveu `true`, ou um GET do documento com `no-store` respondeu 2xx |
 | Inatividade | `pointerdown`, `keydown`, `wheel`, `scroll` e `touchstart`, passivos e em captura, atualizam `lastInputAt`. Tick a cada 30 s | Se visível, `now - lastInputAt >= idleAfterMs` e `isDocumentBusy()` é falso, faz um GET do documento com `no-store` e recarrega se respondeu 2xx |
 
-Recarregar é `window.location.reload()`, precedido do carimbo de cooldown do
-deploy-recovery quando `sessionStorage` existe. Depois do reload, o documento novo vira a
+Recarregar é `window.location.reload()`. Depois do reload, o documento novo vira a
 baseline e nada fica pendente.
 
 Caminho de falha da navegação completa: `location.assign` pode não substituir a página
@@ -171,7 +170,10 @@ ele, uma navegação de documento lenta poderia chegar depois e substituir a pá
 router acabou de renderizar. O `proceed()` é o que honra o clique: `reset()` deixaria o
 usuário exatamente onde estava, sem erro e sem tela nova, como se o clique não tivesse
 existido. Como `window.stop()` aborta todas as cargas da página, o cão de guarda espera mais
-um período enquanto `holdWhile()` acusar mutação em voo. Se o navegador já tiver trocado para a sua
+um período enquanto `holdWhile()` acusar mutação em voo. A supressão do deploy-recovery
+armada antes do `assign` é liberada exatamente nesse ponto de desistência, em memória, nunca
+em `sessionStorage`: ela só existia para proteger a navegação em voo, e uma navegação que
+não aconteceu não pode deixá-la presa. Se o navegador já tiver trocado para a sua
 página de erro de rede, nada roda mais, e o usuário volta com o botão voltar ou recarrega:
 o mesmo que acontece hoje com qualquer link em uma aba offline. Os gatilhos passivos, por
 recarregarem sem ação do usuário, exigem uma resposta 2xx do servidor imediatamente antes.

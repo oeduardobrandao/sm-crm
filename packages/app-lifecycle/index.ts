@@ -3,6 +3,7 @@ export {
   isModuleLoadError,
   reloadForNewDeploy,
   RELOAD_STAMP_KEY,
+  suppressDeployRecovery,
 } from './src/deploy-recovery';
 export { extractBuildFingerprint, watchForNewVersion } from './src/new-version';
 export type { NewVersionWatcher, WatchForNewVersionOptions } from './src/new-version';

@@ -16,7 +16,7 @@
  * server to answer, since nobody is there to notice a network error page.
  */
 
-import { RELOAD_STAMP_KEY } from './deploy-recovery';
+import { suppressDeployRecovery } from './deploy-recovery';
 import { watchForNewVersion } from './new-version';
 import { hasUnsavedWork, isDocumentBusy, trackDocumentEdits } from './unsaved-work';
 
@@ -75,15 +75,6 @@ export interface InstallSilentUpdateOptions {
   holdWhile?: () => boolean;
 }
 
-function stampReload(): void {
-  try {
-    window.sessionStorage.setItem(RELOAD_STAMP_KEY, String(Date.now()));
-  } catch {
-    // No storage (private mode). The trigger is a verified fingerprint change, not an
-    // error, so there is no loop to guard against: reload anyway.
-  }
-}
-
 async function serverAnswers(url: string): Promise<boolean> {
   try {
     const response = await fetch(url, { cache: 'no-store', headers: { Accept: 'text/html' } });
@@ -113,6 +104,7 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
   let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
   let swapRearms = 0;
+  let releaseRecovery: (() => void) | null = null;
 
   const watcher = watchForNewVersion({
     documentUrl,
@@ -124,7 +116,6 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
 
   function reloadNow(): void {
     reloading = true;
-    stampReload();
     window.location.reload();
   }
 
@@ -166,7 +157,10 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     reloading = true;
     navigationSwapEnabled = false;
     const { pathname, search, hash } = blocker.location;
-    stampReload();
+    // Hold off deploy-recovery while this navigation is in flight: a chunk 404 on the old
+    // page must not turn into a reload that cancels it. Released below, in whichever branch
+    // the swap ends up in.
+    releaseRecovery = suppressDeployRecovery();
     const giveUpSwap = () => {
       if (holdWhile() && swapRearms < MAX_SWAP_WATCHDOG_REARMS) {
         // A mutation started while the document request hung; stopping the page's loads now
@@ -183,13 +177,10 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
       // swap alive.
       watchdog = null;
       reloading = false;
-      // The stamp taken before assign() kept deploy-recovery from reloading over the
-      // navigation in flight; a swap that did not happen must not leave it behind.
-      try {
-        window.sessionStorage.removeItem(RELOAD_STAMP_KEY);
-      } catch {
-        // No storage: nothing was stamped either.
-      }
+      // The suppression held off deploy-recovery for the navigation in flight; a swap that
+      // did not happen must not leave it held forever.
+      releaseRecovery?.();
+      releaseRecovery = null;
       if (typeof window.stop === 'function') window.stop();
       blocker.proceed?.();
     };
@@ -264,6 +255,10 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     }
     clearInterval(idleTimer);
     if (hiddenTimer !== null) clearTimeout(hiddenTimer);
-    if (watchdog !== null) clearTimeout(watchdog);
+    if (watchdog !== null) {
+      clearTimeout(watchdog);
+      releaseRecovery?.();
+      releaseRecovery = null;
+    }
   };
 }
