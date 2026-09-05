@@ -62,6 +62,10 @@ export const DENSITY_STORAGE_KEY = 'admin.workspaces.density';
 
 const KNOWN_KEYS = new Set<string>(WORKSPACE_COLUMNS.map((c) => c.key));
 
+function defaultPrefs(): ColumnPrefs {
+  return { visible: [...DEFAULT_COLUMN_PREFS.visible], density: DEFAULT_COLUMN_PREFS.density };
+}
+
 function defaultStorage(): Storage | null {
   try {
     return typeof localStorage === 'undefined' ? null : localStorage;
@@ -77,18 +81,18 @@ function normalizeVisible(keys: string[]): WorkspaceColumnKey[] {
 }
 
 export function readColumnPrefs(storage: Storage | null = defaultStorage()): ColumnPrefs {
-  if (!storage) return DEFAULT_COLUMN_PREFS;
+  if (!storage) return defaultPrefs();
   try {
     const rawCols = storage.getItem(COLUMNS_STORAGE_KEY);
     const parsed: unknown = rawCols ? JSON.parse(rawCols) : null;
     const visible = Array.isArray(parsed)
       ? normalizeVisible(parsed.filter((k): k is string => typeof k === 'string'))
-      : DEFAULT_COLUMN_PREFS.visible;
+      : [...DEFAULT_COLUMN_PREFS.visible];
     const rawDensity = storage.getItem(DENSITY_STORAGE_KEY);
     const density: Density = rawDensity === 'compacta' ? 'compacta' : 'confortavel';
     return { visible, density };
   } catch {
-    return DEFAULT_COLUMN_PREFS;
+    return defaultPrefs();
   }
 }
 

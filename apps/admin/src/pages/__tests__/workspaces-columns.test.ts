@@ -56,4 +56,11 @@ describe('workspaces-columns', () => {
     const shown = toggleColumn(hidden, 'owner');
     expect(shown.visible).toEqual(DEFAULT_COLUMN_PREFS.visible);
   });
+
+  it('readColumnPrefs returns a fresh copy, never the shared default', () => {
+    const a = readColumnPrefs();
+    a.visible.pop();
+    expect(readColumnPrefs()).toEqual(DEFAULT_COLUMN_PREFS);
+    expect(DEFAULT_COLUMN_PREFS.visible).toHaveLength(WORKSPACE_COLUMNS.length);
+  });
 });
