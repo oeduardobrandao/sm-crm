@@ -97,4 +97,12 @@ describe('IntegrationsPage', () => {
     const revokeButtons = screen.getAllByRole('button', { name: /Revogar/ });
     expect(revokeButtons).toHaveLength(1);
   });
+
+  it('mostra erro com botão de tentar novamente quando a busca falha', async () => {
+    vi.mocked(listAdminMcpGrants).mockRejectedValueOnce(new Error('network down'));
+    renderPage();
+    expect(await screen.findByText('Não foi possível carregar as conexões.')).toBeInTheDocument();
+    expect(screen.queryByText('Nenhuma conexão ainda.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeInTheDocument();
+  });
 });

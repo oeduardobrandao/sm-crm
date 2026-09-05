@@ -144,6 +144,21 @@ Deno.test("ADMIN_SCOPE_OPTIONS/ADMIN_READ_PRESET do CRM espelham _shared/mcp-adm
   assertEquals(presetValues, ADMIN_MCP_READ_PRESET);
 });
 
+// Mesma classe de bug, segundo espelho: apps/admin/src/lib/mcp-admin-scopes.ts documenta uma
+// cópia manual de ADMIN_MCP_ALLOWED_SCOPES para a página Integrations do Admin (comentário no
+// topo do arquivo confirma que não tinha guarda de sincronia).
+Deno.test("ADMIN_SCOPES do app Admin espelha _shared/mcp-admin-scopes.ts", async () => {
+  const src = await Deno.readTextFile(new URL("../../../apps/admin/src/lib/mcp-admin-scopes.ts", import.meta.url));
+
+  const optionsStart = src.indexOf("export const ADMIN_SCOPES");
+  assert(optionsStart >= 0, "ADMIN_SCOPES not found in apps/admin/src/lib/mcp-admin-scopes.ts");
+  const optionsEnd = src.indexOf("] as const;", optionsStart);
+  const optionsBlock = src.slice(optionsStart, optionsEnd);
+  const optionValues = [...optionsBlock.matchAll(/value:\s*'([^']+)'/g)].map((m) => m[1]);
+
+  assertEquals(optionValues, [...ADMIN_MCP_ALLOWED_SCOPES]);
+});
+
 Deno.test("requireAdminScope: lança McpScopeError com o escopo faltante", () => {
   const ctx: AdminMcpContext = { admin_id: "a", user_id: "u", scopes: ["kb:read"], key_id: "oauth:c" };
   requireAdminScope(ctx, "kb:read");

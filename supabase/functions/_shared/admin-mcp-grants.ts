@@ -19,10 +19,11 @@ export interface AdminMcpGrantRow {
 
 /** Lista todos os grants OAuth do MCP do Admin, mais recentes primeiro, com o e-mail do admin. */
 export async function listAdminMcpGrants(svc: any): Promise<AdminMcpGrantRow[]> {
-  const { data: grants } = await svc
+  const { data: grants, error: grantsError } = await svc
     .from("admin_mcp_oauth_grants")
     .select("id, user_id, client_id, scopes, created_at, revoked_at")
     .order("created_at", { ascending: false });
+  if (grantsError) throw grantsError;
   const rows = (grants ?? []) as Array<{
     id: string;
     user_id: string;
@@ -34,7 +35,8 @@ export async function listAdminMcpGrants(svc: any): Promise<AdminMcpGrantRow[]> 
   const userIds = [...new Set(rows.map((g) => g.user_id))];
   const adminsResult = userIds.length
     ? await svc.from("platform_admins").select("user_id, email").in("user_id", userIds)
-    : { data: [] as Array<{ user_id: string; email: string }> };
+    : { data: [] as Array<{ user_id: string; email: string }>, error: null };
+  if (adminsResult.error) throw adminsResult.error;
   const admins = (adminsResult.data ?? []) as Array<{ user_id: string; email: string }>;
   const emailByUser = new Map<string, string>(admins.map((a): [string, string] => [a.user_id, a.email]));
   return rows.map((g) => ({

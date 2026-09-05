@@ -39,6 +39,20 @@ Deno.test("listAdminMcpGrants: sem grants -> lista vazia, sem consultar platform
   assert(!calls.some((c) => c.table === "platform_admins"));
 });
 
+Deno.test("listAdminMcpGrants: erro na query dos grants propaga em vez de virar lista vazia", async () => {
+  const { db } = makeFakeDb({
+    admin_mcp_oauth_grants: [{ data: null, error: { message: "boom" } }],
+  });
+  let caught: unknown;
+  try {
+    await listAdminMcpGrants(db);
+  } catch (e) {
+    caught = e;
+  }
+  assert(caught !== undefined, "esperava que o erro propagasse em vez de resolver silenciosamente");
+  assertEquals((caught as { message: string }).message, "boom");
+});
+
 Deno.test("listAdminMcpGrants: email null quando o user_id não tem linha em platform_admins", async () => {
   const { db } = makeFakeDb({
     admin_mcp_oauth_grants: [

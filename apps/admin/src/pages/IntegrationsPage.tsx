@@ -14,7 +14,7 @@ function truncateClientId(clientId: string): string {
 export default function IntegrationsPage() {
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'admin-mcp-grants'],
     queryFn: listAdminMcpGrants,
   });
@@ -144,6 +144,16 @@ export default function IntegrationsPage() {
 
           {isLoading ? (
             <p className="text-sm text-dim-foreground py-4">Carregando...</p>
+          ) : isError ? (
+            <div className="flex flex-col items-start gap-2 py-4">
+              <p className="text-sm text-destructive">Não foi possível carregar as conexões.</p>
+              <button
+                onClick={() => refetch()}
+                className="text-sm font-semibold text-primary hover:underline"
+              >
+                Tentar novamente
+              </button>
+            </div>
           ) : grants.length === 0 ? (
             <p className="text-sm text-dim-foreground py-4">Nenhuma conexão ainda.</p>
           ) : (
