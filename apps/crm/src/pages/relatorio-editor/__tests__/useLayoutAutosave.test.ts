@@ -12,6 +12,7 @@ vi.mock('sonner', () => ({ toast: { error: toastErrorMock, success: vi.fn() } })
 
 import { useLayoutAutosave } from '../useLayoutAutosave';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { hasUnsavedWork } from '@mesaas/app-lifecycle';
 
 const baseLayout: ReportLayout = {
   version: 1,
@@ -141,6 +142,44 @@ describe('useLayoutAutosave', () => {
       await Promise.resolve();
     });
     expect(updateMock).toHaveBeenCalledWith('doc-1', { title: 'Relatório de Abril' });
+  });
+
+  it('título pendente segura o registro de trabalho não salvo até o save concluir', async () => {
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    expect(hasUnsavedWork()).toBe(false);
+    act(() => result.current.setTitle('Relatório de Abril'));
+    expect(hasUnsavedWork()).toBe(true);
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledWith('doc-1', { title: 'Relatório de Abril' });
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it('falha no save de título mantém o registro seguro até o retry dar certo', async () => {
+    updateMock.mockRejectedValueOnce(new Error('offline'));
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    act(() => result.current.setTitle('Relatório de Maio'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(hasUnsavedWork()).toBe(true);
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(hasUnsavedWork()).toBe(false);
   });
 
   it('terceira edição durante request em voo mantém saving true', async () => {

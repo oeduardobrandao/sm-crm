@@ -50,6 +50,7 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
   const layoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleDirty = useRef(false);
+  const [titleDirtyState, setTitleDirtyState] = useState(false);
   const pendingLayout = useRef<ReportLayout | null>(null);
   const docIdRef = useRef(docId);
   const titleRef = useRef(title);
@@ -69,6 +70,13 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
   function setSavingState(value: boolean) {
     savingRef.current = value;
     setSaving(value);
+  }
+
+  // Mirrors `titleDirty` into state so the unsaved-work registry (a render-time boolean)
+  // covers the title's debounce and retry window, exactly like the beforeunload guard does.
+  function setTitleDirty(value: boolean) {
+    titleDirty.current = value;
+    setTitleDirtyState(value);
   }
 
   useEffect(
@@ -176,7 +184,7 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
       titleTimer.current = null;
       appendToDocChain(docIdRef.current, async () => {
         if (!titleDirty.current) return;
-        titleDirty.current = false;
+        setTitleDirty(false);
         const toSave = titleRef.current;
         try {
           await updateReportDoc(docIdRef.current, { title: toSave });
@@ -190,7 +198,7 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
           toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
           // Mesmo tratamento do layout: retenta com backoff até esgotar
           // RETRY_DELAYS_MS, depois retém a dirty flag sem novo timer.
-          titleDirty.current = true;
+          setTitleDirty(true);
           const delay = RETRY_DELAYS_MS[titleRetryCount.current];
           if (delay !== undefined) {
             titleRetryCount.current += 1;
@@ -212,7 +220,7 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
 
   function setTitle(next: string) {
     setTitleState(next);
-    titleDirty.current = true;
+    setTitleDirty(true);
     titleRetryCount.current = 0;
     scheduleTitleFlush(TITLE_DEBOUNCE_MS);
   }
@@ -232,9 +240,9 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
-  // A save in flight must finish before any silent version swap. Text still inside the
-  // debounce window is covered by the DOM heuristic (the editor is contenteditable with content).
-  useUnsavedWork(saving);
+  // A pending layout, a pending title or a save in flight must all finish before any silent
+  // version swap: the same condition as the beforeunload guard above.
+  useUnsavedWork(saving || titleDirtyState);
 
   return { layout, applyLayout, title, setTitle, saving };
 }
