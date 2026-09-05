@@ -15,6 +15,12 @@ import {
 import { adminContaId } from "../_shared/admin-popups.ts";
 import { handleGetWorkspace } from "./workspace-detail.ts";
 import { handleListPlans } from "./plans.ts";
+import { setStripeLoader } from "../_shared/stripe-loader.ts";
+
+// Registra o loader do Stripe só para este function -- ver _shared/stripe-loader.ts. mcp-admin
+// não registra nada, e cai no fallback do espelho/catálogo (o comportamento desejado para as
+// tools de leitura, e o que desbloqueia o bundling remoto do --use-api).
+setStripeLoader(() => import("../_shared/stripe.ts").then((m) => m.stripe));
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

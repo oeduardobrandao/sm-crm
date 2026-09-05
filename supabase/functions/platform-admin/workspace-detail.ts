@@ -2,6 +2,7 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 // Single source of truth for plan columns (includes max_mcp_keys / feature_mcp).
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
+import { loadStripe } from "../_shared/stripe-loader.ts";
 
 type PlanRow = Record<string, unknown>;
 
@@ -208,43 +209,48 @@ export async function buildSubscriptionDetail(
   }
 
   if (!opts.readOnly && row.stripe_subscription_id) {
-    try {
-      const { stripe } = await import("../_shared/stripe.ts");
-      const amt = await fetchStripeAmount(stripe, row.stripe_subscription_id, row.billing_interval ?? null);
-      info.amount_cents = amt.amount_cents;
-      info.gross_cents = amt.gross_cents;
-      info.currency = amt.currency;
-      info.interval = amt.interval;
-      info.discount_label = amt.discount_label;
-      info.amount_source = "stripe";
-      info.stripe_dashboard_url = stripeDashboardUrl(
-        amt.livemode,
-        "subscriptions",
-        row.stripe_subscription_id,
-      );
-      // Opportunistic refresh: viewing a workspace updates its cached amount, so
-      // the list/MRR pages keep reading a mirror that tracks live Stripe. CAS on provider:
-      // if a concurrent Pagar.me bind took the row while the Stripe fetch was in flight,
-      // zero rows match — skip and log rather than clobbering the fresh Pagar.me mirror.
-      const { data: writtenBack, error: writeBackError } = await svc
-        .from("workspace_subscriptions")
-        .update(buildAmountColumns(amt))
-        .eq("workspace_id", workspaceId)
-        .eq("provider", "stripe")
-        // Same-provider pin (see pricing.ts liveFetch): the id observed at read time must
-        // still match, or a mid-fetch rebind would get the old subscription's amount.
-        .eq("stripe_subscription_id", row.stripe_subscription_id)
-        .select("workspace_id");
-      if (writeBackError) {
-        console.error("[platform-admin] amount write-back failed:", writeBackError.message);
-      } else if (!writtenBack?.length) {
-        console.warn(
-          `[platform-admin] amount write-back skipped for workspace ${workspaceId}: provider changed mid-fetch`,
+    // A null client means no loader is registered for this function (e.g. mcp-admin, whose
+    // read-only tools never want a live Stripe call) -- fall through to the catalog fallback
+    // below without logging anything; that path is expected, not an error.
+    const stripe = await loadStripe();
+    if (stripe) {
+      try {
+        const amt = await fetchStripeAmount(stripe, row.stripe_subscription_id, row.billing_interval ?? null);
+        info.amount_cents = amt.amount_cents;
+        info.gross_cents = amt.gross_cents;
+        info.currency = amt.currency;
+        info.interval = amt.interval;
+        info.discount_label = amt.discount_label;
+        info.amount_source = "stripe";
+        info.stripe_dashboard_url = stripeDashboardUrl(
+          amt.livemode,
+          "subscriptions",
+          row.stripe_subscription_id,
         );
+        // Opportunistic refresh: viewing a workspace updates its cached amount, so
+        // the list/MRR pages keep reading a mirror that tracks live Stripe. CAS on provider:
+        // if a concurrent Pagar.me bind took the row while the Stripe fetch was in flight,
+        // zero rows match — skip and log rather than clobbering the fresh Pagar.me mirror.
+        const { data: writtenBack, error: writeBackError } = await svc
+          .from("workspace_subscriptions")
+          .update(buildAmountColumns(amt))
+          .eq("workspace_id", workspaceId)
+          .eq("provider", "stripe")
+          // Same-provider pin (see pricing.ts liveFetch): the id observed at read time must
+          // still match, or a mid-fetch rebind would get the old subscription's amount.
+          .eq("stripe_subscription_id", row.stripe_subscription_id)
+          .select("workspace_id");
+        if (writeBackError) {
+          console.error("[platform-admin] amount write-back failed:", writeBackError.message);
+        } else if (!writtenBack?.length) {
+          console.warn(
+            `[platform-admin] amount write-back skipped for workspace ${workspaceId}: provider changed mid-fetch`,
+          );
+        }
+        return info;
+      } catch (err) {
+        console.error("[platform-admin] stripe fetch failed:", (err as Error).message);
       }
-      return info;
-    } catch (err) {
-      console.error("[platform-admin] stripe fetch failed:", (err as Error).message);
     }
   }
 

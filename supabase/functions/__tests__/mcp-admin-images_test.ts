@@ -107,6 +107,28 @@ Deno.test("finalizePopupImages: linha existente pula; ausente → headObject + R
   await expectInputError(() => finalizePopupImages(makeDeps(makeFakeDb({ files: [{ data: null, error: null }] }).db, { headObject: async () => ({ contentLength: 11 * 1024 * 1024, contentType: "image/png" }) }), [k2], conta), "10 MB");
 });
 
+Deno.test("finalizePopupImages: reconfere a cota pelo tamanho real do objeto (Content-Length não é vinculado no PUT pré-assinado)", async () => {
+  // Modo B: a cota foi checada na emissão da upload_url contra o size_bytes DECLARADO pelo
+  // chamador. O PUT pré-assinado não vincula Content-Length, então um upload de 50 bytes real
+  // (contra um size_bytes declarado bem menor lá na emissão) precisa estourar a cota aqui, no
+  // finalize -- antes de gravar a linha em files.
+  const conta = "11111111-1111-1111-1111-111111111111";
+  const key = `contas/${conta}/files/c.png`;
+  const { db, calls } = makeFakeDb({
+    files: [{ data: null, error: null }],
+    workspaces: [{ data: { storage_used_bytes: 95 }, error: null }],
+  });
+  await expectInputError(
+    () => finalizePopupImages(
+      makeDeps(db, { storageQuota: async () => 100, headObject: async () => ({ contentLength: 50, contentType: "image/png" }) }),
+      [key],
+      conta,
+    ),
+    "Cota",
+  );
+  assert(!calls.some((c) => c.table === "rpc:file_insert_with_quota"));
+});
+
 Deno.test("fillImageDims: preenche width/height de inlineImage sem dims via probe; falha deixa null", async () => {
   const img = (src: string) => ({ type: "inlineImage", attrs: { r2Key: null, src, alt: null, width: null, height: null, blurSrc: null, displayWidth: null, loading: false } });
   const doc = { type: "doc", content: [img("https://cdn.x/ok.png"), { type: "blockquote", content: [img("https://cdn.x/fail.png")] }] };

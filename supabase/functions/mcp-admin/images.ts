@@ -223,6 +223,10 @@ export async function finalizePopupImages(d: Deps, keys: string[], contaId: stri
     const mime = head.contentType ?? "";
     if (!IMAGE_MIMES.includes(mime)) throw new McpInputError(`Imagem ${key}: tipo ${mime || "desconhecido"} não permitido (PNG/JPEG/WebP/GIF).`);
     if (head.contentLength <= 0 || head.contentLength > MAX_IMAGE_BYTES) throw new McpInputError(`Imagem ${key}: tamanho fora do limite de 10 MB.`);
+    // Modo B: a cota foi checada na emissão contra o size_bytes declarado pelo chamador, mas o
+    // PUT pré-assinado não vincula Content-Length -- reconfere aqui contra o tamanho real do
+    // objeto (head.contentLength) antes de gravar a linha em files.
+    await assertQuota(d, contaId, head.contentLength);
     const name = key.slice(key.lastIndexOf("/") + 1);
     await insertFileRow(d, fileInsertPayload(contaId, key, name, mime, head.contentLength, null, d.ctx.user_id));
   }

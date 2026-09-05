@@ -17,6 +17,7 @@ import { handleListWorkspaces } from "../platform-admin/list-workspaces.ts";
 import { handleGetMrr, handleGetTrials } from "../platform-admin/mrr.ts";
 import { handleGetWorkspace } from "../platform-admin/workspace-detail.ts";
 import { handleListPlans } from "../platform-admin/plans.ts";
+import type { OwnerContact } from "../platform-admin/owner-contact.ts";
 
 export type { Deps };
 
@@ -337,12 +338,18 @@ export async function listPlans(d: Deps) {
   return (await handlerJson(res, "Plano")) as { plans: Array<Record<string, unknown>> };
 }
 
+// getDashboard só quer os agregados de handleGetMrr/handleGetTrials -- os arrays workspaces/
+// trials (com o contato do dono) são descartados abaixo. Sem este stub, cada chamada faria
+// fetchOwnerContacts real por baixo (default de handleGetMrr/handleGetTrials), que chama
+// auth.admin.getUserById por dono só para jogar o resultado fora.
+const noOwnerContacts = async (): Promise<Map<string, OwnerContact>> => new Map();
+
 export async function getDashboard(d: Deps) {
   const [wsRes, plansRes, mrrRes, trialsRes] = await Promise.all([
     handleListWorkspaces(d.db, { limit: 1 }, NO_HEADERS),
     handleListPlans(d.db, NO_HEADERS),
-    handleGetMrr(d.db, NO_HEADERS),
-    handleGetTrials(d.db, NO_HEADERS),
+    handleGetMrr(d.db, NO_HEADERS, noOwnerContacts),
+    handleGetTrials(d.db, NO_HEADERS, noOwnerContacts),
   ]);
   const ws = await handlerJson(wsRes, "Workspace");
   const plans = await handlerJson(plansRes, "Plano");

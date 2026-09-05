@@ -98,3 +98,43 @@ Deno.test("getDashboard: só agregados — nenhuma chave owner_* ou lista de wor
   assertEquals(r, { totals: { workspaces: 12, members: 30, clients: 70, with_overrides: 2, active_plans: 2 }, mrr: { mrr_cents: 0, paying_count: 0 }, trials: { trial_mrr_cents: 0, trial_count: 0 } });
   assert(!JSON.stringify(r).includes("owner_"));
 });
+
+Deno.test("getDashboard: com assinatura paga, nunca faz fan-out de contato do dono (getUserById)", async () => {
+  // handleGetMrr e handleGetTrials, chamados fora do mcp-admin, resolvem o dono de cada
+  // workspace precificado via fetchOwnerContacts (default), que chama auth.admin.getUserById
+  // por dono -- dado que getDashboard descarta esse contato (só agregados saem), passar o
+  // fetchOwnerContactsFn default aqui seria um fan-out inteiro sem uso. Esta linha paga prova
+  // que o stub `noOwnerContacts` do getDashboard evita a chamada por completo.
+  const PAYING_SUB = {
+    workspace_id: "w1", provider: "stripe", status: "active", plan_id: "max",
+    billing_interval: "month", stripe_subscription_id: "sub_1",
+    amount_cents: 29900, currency: "brl", amount_interval: "month", discount_label: null,
+    current_period_end: "2026-10-01T00:00:00.000Z",
+  };
+  const { db } = makeFakeDb(
+    {
+      // [0] handleListPlans (dashboard, sem planos -> sem fan-out de contagem por plano);
+      // [1]/[2] planById dentro de handleGetMrr/handleGetTrials.
+      plans: [
+        { data: [], error: null },
+        { data: [{ id: "max", name: "Max", price_brl: 29900, price_brl_annual: null }], error: null },
+        { data: [{ id: "max", name: "Max", price_brl: 29900, price_brl_annual: null }], error: null },
+      ],
+      workspaces: [
+        { data: [{ id: "w1", name: "Agência X", created_at: "2026-01-01T00:00:00.000Z" }], error: null },
+        { data: [{ id: "w1", name: "Agência X", created_at: "2026-01-01T00:00:00.000Z" }], error: null },
+      ],
+      workspace_subscriptions: [{ data: [PAYING_SUB], error: null }, { data: [PAYING_SUB], error: null }],
+    },
+    {
+      admin_list_workspaces: [{ data: { workspaces: [WS], total: 1, total_members: 1, total_clients: 1, total_with_overrides: 0 }, error: null }],
+      admin_workspace_last_activity: [{ data: [], error: null }, { data: [], error: null }],
+    },
+  );
+  db.auth.admin.getUserById = () => {
+    throw new Error("must not be called");
+  };
+  const r = await getDashboard(makeDeps(db));
+  assertEquals(r.mrr, { mrr_cents: 29900, paying_count: 1 });
+  assertEquals(r.trials, { trial_mrr_cents: 29900, trial_count: 1 });
+});
