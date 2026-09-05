@@ -27,8 +27,9 @@ export function WorkspacesPagination({
 }: WorkspacesPaginationProps) {
   if (total === 0) return null;
   const totalPages = Math.max(1, Math.ceil(total / por));
-  const start = (pag - 1) * por + 1;
-  const end = Math.min(total, pag * por);
+  const current = Math.min(Math.max(1, pag), totalPages);
+  const start = (current - 1) * por + 1;
+  const end = Math.min(total, current * por);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
@@ -57,13 +58,13 @@ export function WorkspacesPagination({
             variant="outline"
             size="icon"
             className="h-7 w-7"
-            disabled={pag <= 1}
-            onClick={() => onPage(pag - 1)}
+            disabled={current <= 1}
+            onClick={() => onPage(current - 1)}
             aria-label="Página anterior"
           >
             <ChevronLeft />
           </Button>
-          {pageWindow(pag, totalPages).map((p, i) =>
+          {pageWindow(current, totalPages).map((p, i) =>
             p === 'gap' ? (
               <span key={`gap-${i}`} className="px-1">
                 …
@@ -71,10 +72,10 @@ export function WorkspacesPagination({
             ) : (
               <Button
                 key={p}
-                variant={p === pag ? 'ink' : 'outline'}
+                variant={p === current ? 'ink' : 'outline'}
                 size="sm"
                 className="h-7 min-w-7 px-2 text-xs"
-                aria-current={p === pag ? 'page' : undefined}
+                aria-current={p === current ? 'page' : undefined}
                 onClick={() => onPage(p)}
               >
                 {p}
@@ -85,8 +86,8 @@ export function WorkspacesPagination({
             variant="outline"
             size="icon"
             className="h-7 w-7"
-            disabled={pag >= totalPages}
-            onClick={() => onPage(pag + 1)}
+            disabled={current >= totalPages}
+            onClick={() => onPage(current + 1)}
             aria-label="Próxima página"
           >
             <ChevronRight />

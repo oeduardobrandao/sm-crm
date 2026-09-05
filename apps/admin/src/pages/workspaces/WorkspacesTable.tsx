@@ -201,8 +201,8 @@ export function WorkspacesTable({
         </TableBody>
       </Table>
 
-      {/* Mobile: one card per row, name always shown. Secondary fields still respect
-          `visible` so hiding a column (e.g. for privacy or focus) hides it everywhere. */}
+      {/* Mobile: one card per row. Ignores column prefs on purpose -- the mobile card
+          always shows the same secondary fields regardless of `visible`/density. */}
       <ul className={cn('flex flex-col md:hidden', busy && 'opacity-60')}>
         {workspaces.map((ws) => (
           <li
@@ -220,14 +220,12 @@ export function WorkspacesTable({
               <ArrowRight size={14} className="ml-auto text-muted-foreground" />
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              {visible.includes('owner') ? (
-                <span className="max-w-[180px] truncate">{ws.owner?.email || '—'}</span>
-              ) : null}
-              {visible.includes('plan') ? <PlanBadge name={ws.plan_name} /> : null}
-              {visible.includes('subscription') ? <SubscriptionCell ws={ws} /> : null}
-              {visible.includes('client_count') ? <span>{ws.client_count} clientes</span> : null}
-              {visible.includes('member_count') ? <span>{ws.member_count} membros</span> : null}
-              {visible.includes('last_activity_at') ? <ActivityCell ws={ws} now={now} /> : null}
+              <span className="max-w-[180px] truncate">{ws.owner?.email || '—'}</span>
+              <PlanBadge name={ws.plan_name} />
+              <SubscriptionCell ws={ws} />
+              <span>{ws.client_count} clientes</span>
+              <span>{ws.member_count} membros</span>
+              <ActivityCell ws={ws} now={now} />
             </div>
           </li>
         ))}

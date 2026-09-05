@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import type { WorkspaceSummary } from '../../lib/api';
@@ -62,11 +62,19 @@ function renderTable(props: Partial<Parameters<typeof WorkspacesTable>[0]> = {})
 describe('WorkspacesTable', () => {
   it('renders one header per visible column and hides the rest', () => {
     renderTable({ visible: ['name', 'plan', 'client_count'] });
-    expect(screen.getByRole('columnheader', { name: /Workspace/ })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: /Plano/ })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: /Clientes/ })).toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: /Dono/ })).toBeNull();
-    expect(screen.queryByText('rafa@agencianorte.com')).toBeNull();
+    const table = within(screen.getByRole('table'));
+    expect(table.getByRole('columnheader', { name: /Workspace/ })).toBeInTheDocument();
+    expect(table.getByRole('columnheader', { name: /Plano/ })).toBeInTheDocument();
+    expect(table.getByRole('columnheader', { name: /Clientes/ })).toBeInTheDocument();
+    expect(table.queryByRole('columnheader', { name: /Dono/ })).toBeNull();
+    expect(table.queryByText('rafa@agencianorte.com')).toBeNull();
+  });
+
+  it('mobile card ignores column visibility and always shows the secondary fields', () => {
+    renderTable({ visible: ['name'] });
+    const card = within(screen.getByRole('list'));
+    expect(card.getByText('rafa@agencianorte.com')).toBeInTheDocument();
+    expect(card.getByText('42 clientes')).toBeInTheDocument();
   });
 
   it('marks the active sort column with aria-sort and calls onSort on click', () => {
