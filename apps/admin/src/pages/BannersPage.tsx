@@ -12,6 +12,7 @@ import {
   type GlobalBanner,
 } from '../lib/api';
 import { TargetPicker } from '../components/TargetPicker';
+import { RowButton } from '../components/RowLink';
 
 const BANNER_TYPES = ['info', 'warning', 'critical'] as const;
 const STATUSES = ['draft', 'active', 'archived'] as const;
@@ -271,10 +272,10 @@ export default function BannersPage() {
                 {/* Mobile card */}
                 <div className="md:hidden flex flex-col gap-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium truncate">
+                    <RowButton onClick={() => openEdit(b)} className="truncate text-sm">
                       {b.content.slice(0, 60)}
                       {b.content.length > 60 ? '...' : ''}
-                    </span>
+                    </RowButton>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span
@@ -294,10 +295,13 @@ export default function BannersPage() {
                 {/* Desktop row */}
                 <div className="hidden md:grid grid-cols-[2fr_0.7fr_1fr_1fr_0.7fr_0.5fr] gap-2 items-center">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">
+                    <RowButton
+                      onClick={() => openEdit(b)}
+                      className="block max-w-full truncate text-sm"
+                    >
                       {b.content.slice(0, 80)}
                       {b.content.length > 80 ? '...' : ''}
-                    </div>
+                    </RowButton>
                     <div className="text-xs text-muted-foreground mt-0.5 truncate">
                       {getTargetLabel(b)}
                     </div>
