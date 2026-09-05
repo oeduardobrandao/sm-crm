@@ -672,3 +672,23 @@ export function upsertKbContextLink(params: Record<string, unknown>) {
 export function deleteKbContextLink(link_id: string) {
   return adminApi<{ message: string }>('delete-kb-context-link', { link_id });
 }
+
+// ─── MCP do Admin (conector platform-admin) ────────────────────
+
+export interface AdminMcpGrant {
+  id: string;
+  user_id: string;
+  email: string | null;
+  client_id: string;
+  scopes: string[];
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export function listAdminMcpGrants() {
+  return adminApi<{ grants: AdminMcpGrant[] }>('list-admin-mcp-grants');
+}
+
+export function revokeAdminMcpGrant(grantId: string) {
+  return adminApi<{ ok: true }>('revoke-admin-mcp-grant', { grant_id: grantId });
+}

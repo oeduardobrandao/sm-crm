@@ -16,6 +16,7 @@ import { adminContaId } from "../_shared/admin-popups.ts";
 import { handleGetWorkspace } from "./workspace-detail.ts";
 import { handleListPlans } from "./plans.ts";
 import { setStripeLoader } from "../_shared/stripe-loader.ts";
+import { listAdminMcpGrants, revokeAdminMcpGrant } from "../_shared/admin-mcp-grants.ts";
 
 // Registra o loader do Stripe só para este function -- ver _shared/stripe-loader.ts. mcp-admin
 // não registra nada, e cai no fallback do espelho/catálogo (o comportamento desejado para as
@@ -112,6 +113,10 @@ Deno.serve(async (req: Request) => {
         return await handleRevokeOAuthGrant(svc, body, user.id, headers);
       case "revoke-all-oauth-grants":
         return await handleRevokeAllOAuthGrants(svc, body, user.id, headers);
+      case "list-admin-mcp-grants":
+        return await handleListAdminMcpGrants(svc, headers);
+      case "revoke-admin-mcp-grant":
+        return await handleRevokeAdminMcpGrant(svc, body, user.id, headers);
       case "list-admins":
         return await handleListAdmins(svc, headers);
       case "invite-admin":
@@ -486,6 +491,33 @@ async function handleClearWorkspaceOverrides(
   if (error) throw error;
 
   return new Response(JSON.stringify({ message: "Overrides cleared" }), { status: 200, headers });
+}
+
+// ─── MCP do Admin (conector platform-admin) ────────────────────
+
+async function handleListAdminMcpGrants(
+  svc: SupabaseClient,
+  headers: Record<string, string>,
+) {
+  const grants = await listAdminMcpGrants(svc);
+  return new Response(JSON.stringify({ grants }), { status: 200, headers });
+}
+
+async function handleRevokeAdminMcpGrant(
+  svc: SupabaseClient,
+  body: { grant_id?: string },
+  actorUserId: string,
+  headers: Record<string, string>,
+) {
+  const grantId = typeof body.grant_id === "string" ? body.grant_id : "";
+  if (!grantId) {
+    return new Response(JSON.stringify({ error: "grant_id is required" }), { status: 400, headers });
+  }
+  const result = await revokeAdminMcpGrant(svc, grantId, actorUserId);
+  if (!result.ok) {
+    return new Response(JSON.stringify({ error: "Grant not found" }), { status: 404, headers });
+  }
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
 }
 
 // ─── Admins ────────────────────────────────────────────────────

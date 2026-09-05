@@ -520,7 +520,14 @@ Deno, em `supabase/functions/__tests__/`, com o fake `makeFakeDb` do padrão
 ## 11. Fora de escopo (follow-ups)
 
 - Chaves estáticas `mesaas_adm_` e página de emissão no Admin.
-- UI de revogação de grants de admin na página de Admins.
+- ~~UI de revogação de grants de admin na página de Admins.~~ Feito: página
+  `/admin/integrations` (Admin) lista e revoga `admin_mcp_oauth_grants` via
+  `list-admin-mcp-grants`/`revoke-admin-mcp-grant` no `platform-admin`, que
+  reusam `listAdminMcpGrants`/`revokeAdminMcpGrant` de
+  `_shared/admin-mcp-grants.ts` (o mesmo módulo usado por
+  `list-admin-grants`/`revoke-admin-grant` no `mcp-oauth-consent`). A página
+  também mostra a URL do conector e os passos de conexão (claude.ai, Claude
+  Code, Codex).
 - `kb_context_links` (vínculo artigo ↔ rota) via MCP.
 - Escrita em workspaces/planos.
 - Coleta de lixo do bucket `kb-images` para uploads do modo B nunca
