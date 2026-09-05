@@ -1692,7 +1692,7 @@ Expected: FAIL (nenhum `link`).
 ```tsx
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, Pencil, Plus, Search } from 'lucide-react';
 import { listKbArticles } from '../lib/api';
 import {
@@ -1733,6 +1733,7 @@ function statusBadge(status: string): { label: string; variant: 'success' | 'neu
 }
 
 export default function KbArticlesPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -1856,17 +1857,15 @@ export default function KbArticlesPage() {
             const catLabel = CATEGORIES[a.category] ?? a.category;
             const to = kbArticleEditPath(a.id);
             return (
-              <Link
+              <div
                 key={a.id}
-                to={to}
-                tabIndex={-1}
-                aria-hidden="true"
+                onClick={() => navigate(to)}
                 className={cn(
-                  '-mx-5 block cursor-pointer border-b border-border/50 px-5 py-3 transition-colors hover:bg-secondary/30',
+                  '-mx-5 cursor-pointer border-b border-border/50 px-5 py-3 transition-colors hover:bg-secondary/30',
                   a.status === 'draft' && 'opacity-50',
                 )}
               >
-                {/* The whole row is a mouse target; the title below is the keyboard/AT target. */}
+                {/* The whole row is a mouse target; the title link below is the keyboard/AT target. */}
                 <div className="flex flex-col gap-1.5 md:hidden">
                   <RowLink to={to} className="truncate text-sm">
                     {a.title}
@@ -1894,7 +1893,7 @@ export default function KbArticlesPage() {
                     <Pencil size={14} />
                   </span>
                 </div>
-              </Link>
+              </div>
             );
           })
         )}
@@ -1904,12 +1903,12 @@ export default function KbArticlesPage() {
 }
 ```
 
-Nota para o implementador: a linha inteira deixa de ser `div onClick={navigate}` e vira um `Link` com `tabIndex={-1}` e `aria-hidden`, para o mouse continuar abrindo a linha inteira sem criar um segundo tab stop. O `RowLink` interno é o alvo de teclado. Como a linha externa também é um `<a>`, o `stopPropagation` do `RowLink` evita a navegação dupla. Se o `Link` externo com `aria-hidden` fizer `findAllByRole('link', { name: 'Primeiro post' })` não achar o interno (aria-hidden esconde descendentes), troque a linha externa de volta para `<div onClick={() => navigate(to)}>` com `useNavigate`, exatamente como Banners e Dashboard fazem; o teste do passo 1 vale para as duas formas.
+A linha inteira continua sendo uma `div` com `onClick={() => navigate(to)}` para o mouse (mesmo padrão de Banners e Dashboard); o `RowLink` no título é o único alvo de teclado e leitor de tela. Nunca use `aria-hidden` no contêiner da linha: esconderia o link interno da árvore de acessibilidade.
 
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npx vitest run apps/admin/src/pages/__tests__/KbArticlesPage.test.tsx`
-Expected: PASS (5 testes). Se o teste 1 falhar por `aria-hidden` no `Link` externo, aplique a alternativa da nota acima.
+Expected: PASS (5 testes).
 
 - [ ] **Step 5: Commit**
 
