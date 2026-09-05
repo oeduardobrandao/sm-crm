@@ -139,7 +139,12 @@ export interface GlobalBanner {
 
 export type WorkspaceActivityBucket = '7d' | '30d' | 'dormente' | 'nunca';
 export type WorkspaceSortKey =
-  'name' | 'plan' | 'client_count' | 'member_count' | 'created_at' | 'last_activity_at';
+  | 'name'
+  | 'plan'
+  | 'client_count'
+  | 'member_count'
+  | 'created_at'
+  | 'last_activity_at';
 export type SortDir = 'asc' | 'desc';
 
 // A `type` literal (not `interface`) so it keeps the implicit string index signature
