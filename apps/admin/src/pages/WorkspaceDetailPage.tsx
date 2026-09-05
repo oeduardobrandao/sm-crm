@@ -63,7 +63,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: (keyId: string) => revokeMcpKey(id!, keyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'mcp-keys'] });
-      toast.success('Key revoked');
+      toast.success('Chave revogada');
     },
     onError: (e: unknown) => toast.error((e as Error).message),
   });
@@ -71,7 +71,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => revokeAllMcpKeys(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'mcp-keys'] });
-      toast.success('All keys revoked');
+      toast.success('Todas as chaves revogadas');
     },
     onError: (e: unknown) => toast.error((e as Error).message),
   });
@@ -87,7 +87,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: (grantId: string) => revokeOAuthGrant(id!, grantId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'oauth-grants'] });
-      toast.success('Connection revoked');
+      toast.success('Conexão revogada');
     },
     onError: (e: unknown) => toast.error((e as Error).message),
   });
@@ -95,7 +95,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => revokeAllOAuthGrants(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'oauth-grants'] });
-      toast.success('All connections revoked');
+      toast.success('Todas as conexões revogadas');
     },
     onError: (e: unknown) => toast.error((e as Error).message),
   });
@@ -131,7 +131,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: (planId: string) => setWorkspacePlan(id!, planId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Plan updated');
+      toast.success('Plano atualizado');
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -139,7 +139,7 @@ export default function WorkspaceDetailPage() {
   const saveOverridesMutation = useMutation({
     mutationFn: () => {
       const plan = plansData?.plans?.find((p) => p.id === selectedPlanId);
-      if (!plan) throw new Error('No plan selected');
+      if (!plan) throw new Error('Nenhum plano selecionado');
 
       const { resource_overrides, feature_overrides } = computeOverridesPayload(
         plan,
@@ -159,7 +159,7 @@ export default function WorkspaceDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Overrides saved');
+      toast.success('Overrides salvos');
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -168,7 +168,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => clearWorkspaceOverrides(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Overrides cleared');
+      toast.success('Overrides removidos');
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -177,13 +177,13 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => unsetWorkspacePlan(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Comp removido — workspace volta à cobrança normal');
+      toast.success('Comp removido. Workspace volta à cobrança normal');
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   if (isLoading || !data) {
-    return <p className="text-dim-foreground">Loading...</p>;
+    return <p className="text-dim-foreground">Carregando…</p>;
   }
 
   const plan = plansData?.plans?.find((p) => p.id === selectedPlanId);
@@ -200,7 +200,7 @@ export default function WorkspaceDetailPage() {
         onClick={() => navigate('/admin/workspaces')}
         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-4 transition-colors"
       >
-        <ArrowLeft size={16} /> Back
+        <ArrowLeft size={16} /> Voltar
       </button>
 
       <div className="flex min-w-0 flex-col gap-4 mb-8 sm:flex-row sm:items-center">
@@ -211,8 +211,8 @@ export default function WorkspaceDetailPage() {
           <div className="min-w-0">
             <h1 className="font-sf text-xl font-bold break-words">{data.workspace.name}</h1>
             <p className="text-sm text-muted-foreground truncate">
-              Owner: {data.owner?.email || '—'}
-              {data.owner?.telefone ? ` · ${data.owner.telefone}` : ''} · Created{' '}
+              Dono: {data.owner?.email || '—'}
+              {data.owner?.telefone ? ` · ${data.owner.telefone}` : ''} · Criado em{' '}
               {new Date(data.workspace.created_at).toLocaleDateString('pt-BR')}
             </p>
           </div>
@@ -227,7 +227,7 @@ export default function WorkspaceDetailPage() {
             }}
             className="w-full min-w-0 max-w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none sm:w-auto"
           >
-            <option value="">No plan</option>
+            <option value="">Sem plano</option>
             {plansData?.plans?.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -341,7 +341,7 @@ export default function WorkspaceDetailPage() {
 
       <div className="grid min-w-0 max-w-full grid-cols-1 gap-6 mb-6 md:grid-cols-2">
         <div className="bg-card border border-border rounded-2xl p-5 min-w-0">
-          <h2 className="font-semibold mb-4">Resource Limits</h2>
+          <h2 className="font-semibold mb-4">Limites de recursos</h2>
           <div className="flex flex-col gap-2">
             {RESOURCE_LIMIT_KEYS.map((key) => (
               <LimitRow
@@ -356,7 +356,7 @@ export default function WorkspaceDetailPage() {
             ))}
           </div>
 
-          <h3 className="font-semibold mt-5 mb-3 text-sm text-muted-foreground">Rate Limits</h3>
+          <h3 className="font-semibold mt-5 mb-3 text-sm text-muted-foreground">Limites de taxa</h3>
           <div className="flex flex-col gap-2">
             {RATE_LIMIT_KEYS.map((key) => (
               <LimitRow
@@ -373,7 +373,7 @@ export default function WorkspaceDetailPage() {
         </div>
 
         <div className="bg-card border border-border rounded-2xl p-5 min-w-0 overflow-hidden">
-          <h2 className="font-semibold mb-4">Feature Flags</h2>
+          <h2 className="font-semibold mb-4">Funcionalidades</h2>
           <div className="flex flex-col gap-2">
             {FEATURE_FLAG_KEYS.map((key) => (
               <div key={key} className="flex items-center justify-between gap-2 overflow-hidden">
@@ -385,12 +385,12 @@ export default function WorkspaceDetailPage() {
                     onClick={() => setFeatureEdits((prev) => ({ ...prev, [key]: !prev[key] }))}
                     className={`text-sm font-medium ${featureEdits[key] ? 'text-success' : 'text-destructive'}`}
                   >
-                    {featureEdits[key] ? 'ON' : 'OFF'}
+                    {featureEdits[key] ? 'ATIVO' : 'INATIVO'}
                   </button>
                   {isOverridden(key, 'feature') && (
                     <span
                       className="w-1.5 h-1.5 rounded-full bg-warning shrink-0"
-                      title={`override (plan: ${plan?.[key] ? 'ON' : 'OFF'})`}
+                      title={`override (plano: ${plan?.[key] ? 'ATIVO' : 'INATIVO'})`}
                     />
                   )}
                 </div>
@@ -403,19 +403,19 @@ export default function WorkspaceDetailPage() {
       {/* MCP API Keys */}
       <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">MCP API Keys</h2>
+          <h2 className="font-semibold">Chaves de API do MCP</h2>
           {mcpKeys?.some((k) => !k.revoked_at) && (
             <button
               onClick={() => revokeAllMcpKeysMutation.mutate()}
               disabled={revokeAllMcpKeysMutation.isPending}
               className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
             >
-              Revoke all
+              Revogar todas
             </button>
           )}
         </div>
         {!mcpKeys || mcpKeys.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No keys.</p>
+          <p className="text-sm text-muted-foreground">Nenhuma chave.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {mcpKeys.map((k) => (
@@ -426,14 +426,14 @@ export default function WorkspaceDetailPage() {
                   <span className="ml-2 text-xs text-muted-foreground">{k.scopes.join(', ')}</span>
                 </div>
                 {k.revoked_at ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">revoked</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">revogada</span>
                 ) : (
                   <button
                     onClick={() => revokeMcpKeyMutation.mutate(k.id)}
                     disabled={revokeMcpKeyMutation.isPending}
                     className="shrink-0 text-xs font-medium text-destructive hover:underline disabled:opacity-50"
                   >
-                    Revoke
+                    Revogar
                   </button>
                 )}
               </div>
@@ -445,19 +445,19 @@ export default function WorkspaceDetailPage() {
       {/* MCP OAuth Connections (Claude) */}
       <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">MCP OAuth Connections</h2>
+          <h2 className="font-semibold">Conexões OAuth do MCP</h2>
           {oauthGrants?.some((g) => !g.revoked_at) && (
             <button
               onClick={() => revokeAllOAuthGrantsMutation.mutate()}
               disabled={revokeAllOAuthGrantsMutation.isPending}
               className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
             >
-              Revoke all
+              Revogar todas
             </button>
           )}
         </div>
         {!oauthGrants || oauthGrants.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No connections.</p>
+          <p className="text-sm text-muted-foreground">Nenhuma conexão.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {oauthGrants.map((g) => (
@@ -467,14 +467,14 @@ export default function WorkspaceDetailPage() {
                   <span className="ml-2 text-xs text-muted-foreground">{g.scopes.join(', ')}</span>
                 </div>
                 {g.revoked_at ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">revoked</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">revogada</span>
                 ) : (
                   <button
                     onClick={() => revokeOAuthGrantMutation.mutate(g.id)}
                     disabled={revokeOAuthGrantMutation.isPending}
                     className="shrink-0 text-xs font-medium text-destructive hover:underline disabled:opacity-50"
                   >
-                    Revoke
+                    Revogar
                   </button>
                 )}
               </div>
@@ -484,11 +484,11 @@ export default function WorkspaceDetailPage() {
       </div>
 
       <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
-        <h2 className="font-semibold mb-3">Notes</h2>
+        <h2 className="font-semibold mb-3">Notas</h2>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Admin notes..."
+          placeholder="Notas do admin…"
           rows={2}
           className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary resize-none"
         />
@@ -500,26 +500,26 @@ export default function WorkspaceDetailPage() {
           disabled={saveOverridesMutation.isPending}
           className="w-full px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50 sm:w-auto"
         >
-          {saveOverridesMutation.isPending ? 'Saving...' : 'Save Overrides'}
+          {saveOverridesMutation.isPending ? 'Salvando…' : 'Salvar overrides'}
         </button>
         <button
           onClick={() => clearMutation.mutate()}
           disabled={clearMutation.isPending}
           className="w-full px-6 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50 sm:w-auto"
         >
-          Reset to Plan Defaults
+          Restaurar padrões do plano
         </button>
       </div>
 
       <div className="min-w-0 overflow-hidden bg-card border border-border rounded-2xl p-5">
-        <h2 className="font-semibold mb-4">Members ({data.members.length})</h2>
+        <h2 className="font-semibold mb-4">Membros ({data.members.length})</h2>
         {/* Desktop table header */}
         <div className="hidden md:grid grid-cols-[1.5fr_1.9fr_1.4fr_0.8fr_0.9fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Name</span>
-          <span>Email</span>
-          <span>Phone</span>
-          <span>Role</span>
-          <span>Joined</span>
+          <span>Nome</span>
+          <span>E-mail</span>
+          <span>Telefone</span>
+          <span>Papel</span>
+          <span>Entrou em</span>
         </div>
         {data.members.map((m) => (
           <div
@@ -560,7 +560,7 @@ export default function WorkspaceDetailPage() {
                   {m.marketing_opt_in && (
                     <span
                       className="shrink-0 text-[0.55rem] font-semibold uppercase px-1 py-0.5 rounded-sm bg-success/10 text-success"
-                      title="Opted in to marketing contact"
+                      title="Aceitou contato de marketing"
                     >
                       MKT
                     </span>
@@ -632,11 +632,11 @@ function LimitRow({
         {isOverridden ? (
           <span
             className="w-1.5 h-1.5 rounded-full bg-warning shrink-0"
-            title={`plan: ${planValue ?? '—'}`}
+            title={`plano: ${planValue ?? '—'}`}
           />
         ) : (
           <span className="text-[0.7rem] text-dim-foreground hidden sm:inline whitespace-nowrap">
-            plan: {planValue ?? '—'}
+            plano: {planValue ?? '—'}
           </span>
         )}
       </div>

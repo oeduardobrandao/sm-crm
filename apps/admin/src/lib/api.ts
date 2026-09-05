@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { SubscriptionInfo, SubscriptionSummary } from './subscription';
+import type { SubscriptionInfo, SubscriptionSummary, WorkspaceStatusGroup } from './subscription';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -135,6 +135,48 @@ export interface GlobalBanner {
   created_at: string;
   updated_at: string;
   dismissal_count: number;
+}
+
+export type WorkspaceActivityBucket = '7d' | '30d' | 'dormente' | 'nunca';
+export type WorkspaceSortKey =
+  | 'name'
+  | 'plan'
+  | 'client_count'
+  | 'member_count'
+  | 'created_at'
+  | 'last_activity_at';
+export type SortDir = 'asc' | 'desc';
+
+// A `type` literal (not `interface`) so it keeps the implicit string index signature
+// TS grants object-type literals -- adminApi()'s `params` parameter needs that to accept it.
+// This matches every other multi-field adminApi() params shape in this file (see
+// setWorkspaceOverrides below): none of them are declared as `interface`.
+export type ListWorkspacesParams = {
+  search?: string;
+  plan_id?: string;
+  offset?: number;
+  limit?: number;
+  /** Freezes the filtered set to how it looked at this instant (ISO), for multi-call exports. */
+  as_of?: string;
+  /** Subscription status group; mirrors the CASE on p_status in admin_list_workspaces. */
+  status?: WorkspaceStatusGroup;
+  has_overrides?: boolean;
+  activity?: WorkspaceActivityBucket;
+  /** ISO timestamp; created_at >= created_since. */
+  created_since?: string;
+  sort?: WorkspaceSortKey;
+  dir?: SortDir;
+};
+
+export interface ListWorkspacesResponse {
+  workspaces: WorkspaceSummary[];
+  total: number;
+  /** Membership count across the whole filtered set, not just the returned page. */
+  total_members: number;
+  /** Client count across the whole filtered set, not just the returned page. */
+  total_clients: number;
+  /** Workspaces with plan overrides across the whole filtered set, not just the page. */
+  total_with_overrides: number;
 }
 
 // ─── Column definitions ─────────────────────────────────────
@@ -274,26 +316,8 @@ export function verifyAdmin() {
   return adminApi<{ is_admin: boolean }>('verify-admin');
 }
 
-export function listWorkspaces(params?: {
-  search?: string;
-  plan_id?: string;
-  offset?: number;
-  limit?: number;
-  /** Freezes the filtered set to how it looked at this instant (ISO timestamp), so a multi-call
-   * paginated export can't have its result set shift underneath it from concurrent signups.
-   * Omit for normal single-call browsing -- it behaves exactly as before. */
-  as_of?: string;
-}) {
-  return adminApi<{
-    workspaces: WorkspaceSummary[];
-    total: number;
-    /** Membership count across the whole filtered set, not just the returned page. */
-    total_members: number;
-    /** Client count across the whole filtered set, not just the returned page. */
-    total_clients: number;
-    /** Workspaces with plan overrides across the whole filtered set, not just the page. */
-    total_with_overrides: number;
-  }>('list-workspaces', params || {});
+export function listWorkspaces(params?: ListWorkspacesParams) {
+  return adminApi<ListWorkspacesResponse>('list-workspaces', params || {});
 }
 
 export function getWorkspace(workspace_id: string) {

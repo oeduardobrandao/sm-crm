@@ -12,8 +12,8 @@ const CTA_URL_RE = /^(\/(?![/\\])|https?:\/\/)/; // `//host` é protocol-relativ
 /** Regra única da URL de CTA (global e por página), espelhando o servidor. */
 function ctaUrlError(url: string): string | null {
   if (/[\t\r\n]/.test(url) || !CTA_URL_RE.test(url))
-    return 'CTA URL must start with / or http(s)://';
-  if (url.length > MAX_URL) return `CTA URL max ${MAX_URL} characters`;
+    return 'A URL do CTA deve começar com / ou http(s)://';
+  if (url.length > MAX_URL) return `URL do CTA: máximo de ${MAX_URL} caracteres`;
   return null;
 }
 
@@ -147,16 +147,16 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
 
   f.pages.forEach((pg, i) => {
     const e: { title?: string; eyebrow?: string; body?: string; cta?: string } = {};
-    if (!pg.title.trim()) e.title = 'Title is required';
-    else if (pg.title.trim().length > MAX_TITLE) e.title = `Max ${MAX_TITLE} characters`;
-    if (!pg.body.trim()) e.body = 'Body is required';
-    else if (pg.body.trim().length > MAX_BODY) e.body = `Max ${MAX_BODY} characters`;
-    if (pg.eyebrow.trim().length > MAX_EYEBROW) e.eyebrow = `Max ${MAX_EYEBROW} characters`;
+    if (!pg.title.trim()) e.title = 'Título é obrigatório';
+    else if (pg.title.trim().length > MAX_TITLE) e.title = `Máximo de ${MAX_TITLE} caracteres`;
+    if (!pg.body.trim()) e.body = 'Corpo é obrigatório';
+    else if (pg.body.trim().length > MAX_BODY) e.body = `Máximo de ${MAX_BODY} caracteres`;
+    if (pg.eyebrow.trim().length > MAX_EYEBROW) e.eyebrow = `Máximo de ${MAX_EYEBROW} caracteres`;
     const pl = pg.cta_label.trim();
     const pu = pg.cta_url.trim();
     const puErr = pu ? ctaUrlError(pu) : null;
-    if ((pl === '') !== (pu === '')) e.cta = 'CTA needs both a label and a URL';
-    else if (pl.length > MAX_LABEL) e.cta = `CTA label max ${MAX_LABEL} characters`;
+    if ((pl === '') !== (pu === '')) e.cta = 'O CTA precisa de rótulo e URL';
+    else if (pl.length > MAX_LABEL) e.cta = `Rótulo do CTA: máximo de ${MAX_LABEL} caracteres`;
     else if (puErr) e.cta = puErr;
     if (e.title || e.body || e.eyebrow || e.cta) {
       errors.pages[i] = e;
@@ -167,30 +167,31 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
   const label = f.cta_label.trim();
   const url = f.cta_url.trim();
   const urlErr = url ? ctaUrlError(url) : null;
-  if ((label === '') !== (url === '')) errors.cta = 'CTA needs both a label and a URL';
-  else if (label.length > MAX_LABEL) errors.cta = `CTA label max ${MAX_LABEL} characters`;
+  if ((label === '') !== (url === '')) errors.cta = 'O CTA precisa de rótulo e URL';
+  else if (label.length > MAX_LABEL)
+    errors.cta = `Rótulo do CTA: máximo de ${MAX_LABEL} caracteres`;
   else if (urlErr) errors.cta = urlErr;
   else if (f.secondary_label.trim().length > MAX_LABEL) {
-    errors.cta = `Secondary label max ${MAX_LABEL} characters`;
+    errors.cta = `Rótulo secundário: máximo de ${MAX_LABEL} caracteres`;
   }
   if (errors.cta) any = true;
 
   const anyPageCta = f.pages.some((pg) => pg.cta_url.trim());
   if (f.frequency === 'until_cta' && !url && !anyPageCta) {
-    errors.frequency = '"Until CTA" needs a CTA on the popup or on at least one page';
+    errors.frequency = '"Até o CTA" precisa de um CTA no popup ou em ao menos uma página';
     any = true;
   }
 
   if (f.target_mode === 'plan' && f.target_plan_ids.length === 0) {
-    errors.target = 'Select at least one plan';
+    errors.target = 'Selecione ao menos um plano';
     any = true;
   } else if (f.target_mode === 'workspace' && f.target_workspace_ids.length === 0) {
-    errors.target = 'Select at least one workspace';
+    errors.target = 'Selecione ao menos um workspace';
     any = true;
   }
 
   if (f.starts_at && f.ends_at && new Date(f.ends_at) <= new Date(f.starts_at)) {
-    errors.schedule = 'End must be after start';
+    errors.schedule = 'O término deve ser depois do início';
     any = true;
   }
 

@@ -12,10 +12,10 @@ import {
 import { authStateLabel, statusTags, canActOnInvite } from './workspace-invites';
 
 const CANCEL_WARNING =
-  'This deletes the invite and, if the person never finished onboarding, deletes their account — removing them from ALL workspaces. Continue?';
+  'Isso exclui o convite e, se a pessoa nunca terminou o onboarding, também exclui a conta dela, removendo-a de TODOS os workspaces. Continuar?';
 
 const SEAT_LIMIT_MESSAGE =
-  "This workspace is at its team-member limit — resending would exceed the plan's seat count.";
+  'Este workspace está no limite de membros da equipe. Reenviar excederia o número de vagas do plano.';
 
 /**
  * A 409 from the cross-workspace gate is a question, not a failure: nothing has
@@ -29,7 +29,7 @@ function confirmedCrossWorkspace(e: unknown, retry: () => void): boolean {
   if (body?.error !== 'cross_workspace_confirmation_required') return false;
   const count = body.other_workspace_count ?? 0;
   const warning =
-    `${body.message ?? ''}\n\nThis will remove that account from ${count} other workspace(s) and break their pending invite links. Continue?`.trim();
+    `${body.message ?? ''}\n\nIsso vai remover essa conta de ${count} outro(s) workspace(s) e quebrar os links de convite pendentes dela. Continuar?`.trim();
   if (window.confirm(warning)) retry();
   return true;
 }
@@ -61,7 +61,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
     onMutate: ({ inviteId }) => setBusyId(inviteId),
     onSettled: () => setBusyId(null),
     onSuccess: (res) => {
-      toast.success(res.message ?? 'Invitation sent.');
+      toast.success(res.message ?? 'Convite enviado.');
       invalidate();
     },
     onError: (e: unknown, vars) => {
@@ -82,7 +82,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
     onSettled: () => setBusyId(null),
     onSuccess: (res) => {
       toast.success(
-        res.deleted_user ? 'Invite cancelled and account removed.' : 'Invite cancelled.',
+        res.deleted_user ? 'Convite cancelado e conta removida.' : 'Convite cancelado.',
       );
       invalidate();
     },
@@ -93,7 +93,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
     mutationFn: (confirmCrossWorkspace: boolean) =>
       adminCreateInvite(workspaceId, email.trim(), role, confirmCrossWorkspace),
     onSuccess: (res) => {
-      toast.success(res.message ?? 'Invitation sent.');
+      toast.success(res.message ?? 'Convite enviado.');
       closeForm();
       invalidate();
     },
@@ -110,18 +110,18 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
   return (
     <div className="min-w-0 overflow-hidden bg-card border border-border rounded-2xl p-5 mt-6 mb-6">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="font-semibold">Invites ({total})</h2>
+        <h2 className="font-semibold">Convites ({total})</h2>
         <div className="flex items-center gap-3">
           {total > invites.length && (
             <span className="text-xs text-muted-foreground">
-              showing {invites.length} of {total}
+              mostrando {invites.length} de {total}
             </span>
           )}
           <button
             onClick={() => (formOpen ? closeForm() : setFormOpen(true))}
             className="text-xs font-medium text-primary hover:underline"
           >
-            + Invite
+            + Convidar
           </button>
         </div>
       </div>
@@ -135,7 +135,7 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
           className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center"
         >
           <input
-            aria-label="Email"
+            aria-label="E-mail"
             type="email"
             required
             value={email}
@@ -144,12 +144,12 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
             className="min-w-0 flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
           />
           <select
-            aria-label="Role"
+            aria-label="Papel"
             value={role}
             onChange={(e) => setRole(e.target.value as 'admin' | 'agent')}
             className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground focus:outline-none focus:border-primary transition-colors"
           >
-            <option value="agent">Agent</option>
+            <option value="agent">Agente</option>
             <option value="admin">Admin</option>
           </select>
           <button
@@ -157,36 +157,36 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
             disabled={createMutation.isPending}
             className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
           >
-            Send
+            Enviar
           </button>
           <button
             type="button"
             onClick={closeForm}
             className="text-xs font-medium text-muted-foreground hover:underline"
           >
-            Dismiss
+            Descartar
           </button>
         </form>
       )}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : isError ? (
         <button onClick={() => refetch()} className="text-sm text-destructive hover:underline">
-          Failed to load invites — retry
+          Falha ao carregar convites. Tentar novamente
         </button>
       ) : invites.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No invites.</p>
+        <p className="text-sm text-muted-foreground">Nenhum convite.</p>
       ) : (
         <>
           {/* Desktop header row (finding 8) */}
           <div className="hidden md:grid grid-cols-[2fr_0.7fr_1fr_1.1fr_1.6fr_1fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-2 border-b border-border">
-            <span>Email</span>
-            <span>Role</span>
+            <span>E-mail</span>
+            <span>Papel</span>
             <span>Status</span>
-            <span>Sent</span>
-            <span>Auth state</span>
-            <span>Actions</span>
+            <span>Enviado</span>
+            <span>Estado de autenticação</span>
+            <span>Ações</span>
           </div>
           <div className="flex flex-col gap-2">
             {invites.map((it) => (
@@ -255,14 +255,14 @@ function InviteRow({
               disabled={busy}
               className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
             >
-              Resend
+              Reenviar
             </button>
             <button
               onClick={onCancel}
               disabled={busy}
               className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
             >
-              Cancel
+              Cancelar
             </button>
           </>
         )}

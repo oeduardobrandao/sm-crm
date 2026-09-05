@@ -27,6 +27,8 @@ function baseWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
       currency: 'brl',
       interval: 'month',
       discount_label: null,
+      failed_payment_count: 0,
+      current_period_end: null,
     },
     ...overrides,
   };
@@ -44,6 +46,8 @@ describe('buildWorkspaceExportRows', () => {
           currency: 'brl',
           interval: 'year',
           discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
         },
       }),
     ]);
@@ -67,6 +71,8 @@ describe('buildWorkspaceExportRows', () => {
           currency: 'brl',
           interval: 'year',
           discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
         },
       }),
     ]);
@@ -86,7 +92,7 @@ describe('buildWorkspaceExportRows', () => {
     expect(rows[0].owner_name).toBe('');
     expect(rows[0].owner_email).toBe('');
     expect(rows[0].owner_telefone).toBe('');
-    expect(rows[0].owner_marketing_opt_in).toBe('no');
+    expect(rows[0].owner_marketing_opt_in).toBe('não');
   });
 
   it('blanks subscription columns when the workspace has no subscription', () => {
@@ -112,6 +118,8 @@ describe('buildWorkspaceExportRows', () => {
           currency: null,
           interval: null,
           discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
         },
       }),
     ]);
@@ -128,8 +136,8 @@ describe('buildWorkspaceExportRows', () => {
     expect(rows[0].last_activity_at).toBe('2026-08-20');
   });
 
-  it('renders overrides as yes/no', () => {
+  it('renders overrides as sim/não', () => {
     const rows = buildWorkspaceExportRows([baseWorkspace({ has_overrides: true })]);
-    expect(rows[0].has_overrides).toBe('yes');
+    expect(rows[0].has_overrides).toBe('sim');
   });
 });

@@ -113,44 +113,44 @@ describe('validateForm', () => {
   it('página sem título ou corpo, com o índice certo', () => {
     const f = addPage(valid());
     const e = validateForm(f)!;
-    expect(e.pages[1]).toEqual({ title: 'Title is required', body: 'Body is required' });
+    expect(e.pages[1]).toEqual({ title: 'Título é obrigatório', body: 'Corpo é obrigatório' });
     expect(e.pages[0]).toBeUndefined();
   });
 
   it('CTA pela metade, URL com prefixo errado, until_cta sem CTA', () => {
     let f = { ...valid(), cta_label: 'Ver' };
-    expect(validateForm(f)!.cta).toBe('CTA needs both a label and a URL');
+    expect(validateForm(f)!.cta).toBe('O CTA precisa de rótulo e URL');
     f = { ...valid(), cta_label: 'Ver', cta_url: 'ajuda' };
-    expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
+    expect(validateForm(f)!.cta).toBe('A URL do CTA deve começar com / ou http(s)://');
     f = { ...valid(), cta_label: 'Ver', cta_url: '//evil.com' };
-    expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
+    expect(validateForm(f)!.cta).toBe('A URL do CTA deve começar com / ou http(s)://');
     f = { ...valid(), cta_label: 'Ver', cta_url: '/\\evil.com' };
-    expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
+    expect(validateForm(f)!.cta).toBe('A URL do CTA deve começar com / ou http(s)://');
     f = { ...valid(), cta_label: 'Ver', cta_url: '/\t/evil.com' };
-    expect(validateForm(f)!.cta).toBe('CTA URL must start with / or http(s)://');
+    expect(validateForm(f)!.cta).toBe('A URL do CTA deve começar com / ou http(s)://');
     f = { ...valid(), frequency: 'until_cta' };
     expect(validateForm(f)!.frequency).toBe(
-      '"Until CTA" needs a CTA on the popup or on at least one page',
+      '"Até o CTA" precisa de um CTA no popup ou em ao menos uma página',
     );
   });
 
   it('CTA por página: par completo, limites, e until_cta aceito com CTA só em página', () => {
     const f = valid();
     f.pages[0].cta_label = 'Ver';
-    expect(validateForm(f)!.pages[0].cta).toBe('CTA needs both a label and a URL');
+    expect(validateForm(f)!.pages[0].cta).toBe('O CTA precisa de rótulo e URL');
     f.pages[0].cta_url = 'ajuda';
-    expect(validateForm(f)!.pages[0].cta).toBe('CTA URL must start with / or http(s)://');
+    expect(validateForm(f)!.pages[0].cta).toBe('A URL do CTA deve começar com / ou http(s)://');
     f.pages[0].cta_url = '/\\evil.com';
-    expect(validateForm(f)!.pages[0].cta).toBe('CTA URL must start with / or http(s)://');
+    expect(validateForm(f)!.pages[0].cta).toBe('A URL do CTA deve começar com / ou http(s)://');
     f.pages[0].cta_url = '/\t/evil.com';
-    expect(validateForm(f)!.pages[0].cta).toBe('CTA URL must start with / or http(s)://');
+    expect(validateForm(f)!.pages[0].cta).toBe('A URL do CTA deve começar com / ou http(s)://');
     f.pages[0].cta_url = '/ajuda';
     expect(validateForm(f)).toBeNull();
     const g = { ...f, frequency: 'until_cta' as const };
     expect(validateForm(g)).toBeNull();
     const h = { ...valid(), frequency: 'until_cta' as const };
     expect(validateForm(h)!.frequency).toBe(
-      '"Until CTA" needs a CTA on the popup or on at least one page',
+      '"Até o CTA" precisa de um CTA no popup ou em ao menos uma página',
     );
     expect(formToPayload(f).pages).toEqual([
       {
@@ -167,16 +167,16 @@ describe('validateForm', () => {
 
   it('target por plano ou workspace sem seleção', () => {
     const f = { ...valid(), target_mode: 'plan' as const };
-    expect(validateForm(f)!.target).toBe('Select at least one plan');
+    expect(validateForm(f)!.target).toBe('Selecione ao menos um plano');
     const g = { ...valid(), target_mode: 'workspace' as const };
-    expect(validateForm(g)!.target).toBe('Select at least one workspace');
+    expect(validateForm(g)!.target).toBe('Selecione ao menos um workspace');
   });
 
   it('ends_at deve vir depois de starts_at quando os dois estão preenchidos', () => {
     const f = { ...valid(), starts_at: '2026-09-10T12:00', ends_at: '2026-09-10T10:00' };
-    expect(validateForm(f)!.schedule).toBe('End must be after start');
+    expect(validateForm(f)!.schedule).toBe('O término deve ser depois do início');
     const eq = { ...valid(), starts_at: '2026-09-10T12:00', ends_at: '2026-09-10T12:00' };
-    expect(validateForm(eq)!.schedule).toBe('End must be after start');
+    expect(validateForm(eq)!.schedule).toBe('O término deve ser depois do início');
     const ok = { ...valid(), starts_at: '2026-09-10T12:00', ends_at: '2026-09-10T13:00' };
     expect(validateForm(ok)?.schedule).toBeUndefined();
   });
@@ -184,19 +184,19 @@ describe('validateForm', () => {
   it('limites de tamanho', () => {
     const f = valid();
     f.pages[0].title = 'x'.repeat(121);
-    expect(validateForm(f)!.pages[0].title).toBe('Max 120 characters');
+    expect(validateForm(f)!.pages[0].title).toBe('Máximo de 120 caracteres');
     const g = { ...valid(), cta_label: 'x'.repeat(41), cta_url: '/x' };
-    expect(validateForm(g)!.cta).toBe('CTA label max 40 characters');
+    expect(validateForm(g)!.cta).toBe('Rótulo do CTA: máximo de 40 caracteres');
     const h = valid();
     h.pages[0].eyebrow = 'x'.repeat(61);
-    expect(validateForm(h)!.pages[0]).toEqual({ eyebrow: 'Max 60 characters' });
+    expect(validateForm(h)!.pages[0]).toEqual({ eyebrow: 'Máximo de 60 caracteres' });
     const b = valid();
     b.pages[0].body = 'x'.repeat(2001);
-    expect(validateForm(b)!.pages[0].body).toBe('Max 2000 characters');
+    expect(validateForm(b)!.pages[0].body).toBe('Máximo de 2000 caracteres');
     const u = { ...valid(), cta_label: 'Ver', cta_url: '/' + 'x'.repeat(2048) };
-    expect(validateForm(u)!.cta).toBe('CTA URL max 2048 characters');
+    expect(validateForm(u)!.cta).toBe('URL do CTA: máximo de 2048 caracteres');
     const s = { ...valid(), secondary_label: 'x'.repeat(41) };
-    expect(validateForm(s)!.cta).toBe('Secondary label max 40 characters');
+    expect(validateForm(s)!.cta).toBe('Rótulo secundário: máximo de 40 caracteres');
   });
 });
 

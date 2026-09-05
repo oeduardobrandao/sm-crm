@@ -4,17 +4,17 @@ import { statusMeta } from '../lib/subscription';
 
 export const PAYING_WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'workspace_name', label: 'Workspace' },
-  { key: 'owner_name', label: 'Owner Name' },
-  { key: 'owner_email', label: 'Owner Email' },
-  { key: 'owner_telefone', label: 'Owner Phone' },
-  { key: 'owner_marketing_opt_in', label: 'Owner Marketing Opt-in' },
-  { key: 'plan_name', label: 'Plan' },
+  { key: 'owner_name', label: 'Nome do dono' },
+  { key: 'owner_email', label: 'E-mail do dono' },
+  { key: 'owner_telefone', label: 'Telefone do dono' },
+  { key: 'owner_marketing_opt_in', label: 'Aceita marketing' },
+  { key: 'plan_name', label: 'Plano' },
   { key: 'status', label: 'Status' },
-  { key: 'interval', label: 'Billing Interval' },
-  { key: 'monthly_amount_brl', label: 'Monthly Amount (R$)' },
-  { key: 'discount_label', label: 'Discount' },
-  { key: 'amount_source', label: 'Amount Source' },
-  { key: 'last_activity_at', label: 'Last Activity' },
+  { key: 'interval', label: 'Intervalo' },
+  { key: 'monthly_amount_brl', label: 'Valor mensal (R$)' },
+  { key: 'discount_label', label: 'Desconto' },
+  { key: 'amount_source', label: 'Origem do valor' },
+  { key: 'last_activity_at', label: 'Última atividade' },
 ];
 
 export function buildPayingWorkspaceExportRows(
@@ -25,7 +25,7 @@ export function buildPayingWorkspaceExportRows(
     owner_name: ws.owner_name ?? '',
     owner_email: ws.owner_email ?? '',
     owner_telefone: ws.owner_telefone ?? '',
-    owner_marketing_opt_in: ws.owner_marketing_opt_in ? 'yes' : 'no',
+    owner_marketing_opt_in: ws.owner_marketing_opt_in ? 'sim' : 'não',
     plan_name: ws.plan_name ?? '',
     status: statusMeta(ws.status).label,
     interval: ws.interval ?? '',
@@ -38,15 +38,15 @@ export function buildPayingWorkspaceExportRows(
 
 export const TRIAL_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'workspace_name', label: 'Workspace' },
-  { key: 'owner_name', label: 'Owner Name' },
-  { key: 'owner_email', label: 'Owner Email' },
-  { key: 'owner_telefone', label: 'Owner Phone' },
-  { key: 'owner_marketing_opt_in', label: 'Owner Marketing Opt-in' },
-  { key: 'plan_name', label: 'Plan' },
-  { key: 'interval', label: 'Billing Interval' },
-  { key: 'trial_ends_at', label: 'Trial Ends' },
-  { key: 'monthly_amount_brl', label: 'Expected Monthly Amount (R$)' },
-  { key: 'last_activity_at', label: 'Last Activity' },
+  { key: 'owner_name', label: 'Nome do dono' },
+  { key: 'owner_email', label: 'E-mail do dono' },
+  { key: 'owner_telefone', label: 'Telefone do dono' },
+  { key: 'owner_marketing_opt_in', label: 'Aceita marketing' },
+  { key: 'plan_name', label: 'Plano' },
+  { key: 'interval', label: 'Intervalo' },
+  { key: 'trial_ends_at', label: 'Fim do teste' },
+  { key: 'monthly_amount_brl', label: 'MRR mensal (R$)' },
+  { key: 'last_activity_at', label: 'Última atividade' },
 ];
 
 export function buildTrialExportRows(trials: TrialWorkspace[]): Record<string, string | number>[] {
@@ -55,7 +55,7 @@ export function buildTrialExportRows(trials: TrialWorkspace[]): Record<string, s
     owner_name: t.owner_name ?? '',
     owner_email: t.owner_email ?? '',
     owner_telefone: t.owner_telefone ?? '',
-    owner_marketing_opt_in: t.owner_marketing_opt_in ? 'yes' : 'no',
+    owner_marketing_opt_in: t.owner_marketing_opt_in ? 'sim' : 'não',
     plan_name: t.plan_name ?? '',
     interval: t.interval ?? '',
     trial_ends_at: isoDate(t.trial_ends_at),
