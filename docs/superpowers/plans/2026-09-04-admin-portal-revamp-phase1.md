@@ -540,6 +540,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 --   p_sort           name | plan | client_count | member_count | created_at | last_activity_at
 --                    (anything else falls back to created_at)
 --   p_dir            asc | desc (anything else = desc). Tiebreaker always id ASC.
+--                    Compared with IS DISTINCT FROM so a literal NULL still sorts desc.
 --                    last_activity_at sorts NULLS FIRST on asc and NULLS LAST on desc, so
 --                    "least active first" puts never-active workspaces on top.
 --
@@ -681,16 +682,16 @@ page AS (
     ORDER BY
       CASE WHEN p_dir = 'asc' THEN (CASE p_sort WHEN 'client_count' THEN f.client_count
                                                 WHEN 'member_count' THEN f.member_count END) END ASC  NULLS LAST,
-      CASE WHEN p_dir <> 'asc' THEN (CASE p_sort WHEN 'client_count' THEN f.client_count
+      CASE WHEN p_dir IS DISTINCT FROM 'asc' THEN (CASE p_sort WHEN 'client_count' THEN f.client_count
                                                  WHEN 'member_count' THEN f.member_count END) END DESC NULLS LAST,
       CASE WHEN p_dir = 'asc' THEN (CASE p_sort WHEN 'name' THEN lower(f.name)
                                                 WHEN 'plan' THEN lower(f.plan_name) END) END ASC  NULLS LAST,
-      CASE WHEN p_dir <> 'asc' THEN (CASE p_sort WHEN 'name' THEN lower(f.name)
+      CASE WHEN p_dir IS DISTINCT FROM 'asc' THEN (CASE p_sort WHEN 'name' THEN lower(f.name)
                                                  WHEN 'plan' THEN lower(f.plan_name) END) END DESC NULLS LAST,
       -- NULLS FIRST on asc: "least active first" must surface never-active workspaces.
       CASE WHEN p_dir = 'asc' THEN (CASE p_sort WHEN 'created_at'       THEN f.created_at
                                                 WHEN 'last_activity_at' THEN f.last_activity_at END) END ASC  NULLS FIRST,
-      CASE WHEN p_dir <> 'asc' THEN (CASE p_sort WHEN 'created_at'       THEN f.created_at
+      CASE WHEN p_dir IS DISTINCT FROM 'asc' THEN (CASE p_sort WHEN 'created_at'       THEN f.created_at
                                                  WHEN 'last_activity_at' THEN f.last_activity_at END) END DESC NULLS LAST,
       f.created_at DESC,
       f.id ASC
@@ -850,8 +851,7 @@ export async function handleListWorkspaces(
 ) {
   const {
     search, plan_id, offset = 0, limit = 20, as_of,
-    status, has_overrides, activity, created_since,
-    sort = "created_at", dir = "desc",
+    status, has_overrides, activity, created_since, sort, dir,
   } = body;
   const { data, error } = await svc.rpc("admin_list_workspaces", {
     p_search: search ?? null,
@@ -863,8 +863,9 @@ export async function handleListWorkspaces(
     p_has_overrides: has_overrides ?? null,
     p_activity: activity ?? null,
     p_created_since: created_since ?? null,
-    p_sort: sort,
-    p_dir: dir,
+    // `??` (not a destructuring default) so an explicit JSON null also falls back.
+    p_sort: sort ?? "created_at",
+    p_dir: dir ?? "desc",
   });
 ```
 
