@@ -146,18 +146,3 @@ export function formatMoney(cents: number | null | undefined, currency?: string 
   const cur = (currency ?? 'brl').toUpperCase();
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: cur });
 }
-
-/** Kept for WorkspaceDetailPage until Phase 2 migrates it to <Badge>. New code uses Badge. */
-/** Tailwind classes for a status pill, by tone. */
-export function toneBadgeClass(tone: StatusTone): string {
-  switch (tone) {
-    case 'success':
-      return 'text-success bg-success/10';
-    case 'warning':
-      return 'text-warning bg-warning/10';
-    case 'danger':
-      return 'text-destructive bg-destructive/10';
-    default:
-      return 'text-muted-foreground bg-muted-foreground/10';
-  }
-}
