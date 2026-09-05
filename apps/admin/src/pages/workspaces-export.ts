@@ -1,6 +1,6 @@
 import type { WorkspaceSummary } from '../lib/api';
 import { centsToReais, isoDate, toMonthlyCents, type CsvColumn } from '../lib/csv-export';
-import { statusMeta, hasSubscription } from '../lib/subscription';
+import { statusMeta, hasSubscription, providerLabel } from '../lib/subscription';
 
 export const WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'workspace_name', label: 'Workspace' },
@@ -10,6 +10,7 @@ export const WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'owner_marketing_opt_in', label: 'Aceita marketing' },
   { key: 'plan_name', label: 'Plano' },
   { key: 'subscription_status', label: 'Status da assinatura' },
+  { key: 'provider', label: 'Provedor' },
   { key: 'billing_interval', label: 'Intervalo' },
   { key: 'subscription_amount_brl', label: 'Valor da assinatura (R$)' },
   { key: 'monthly_amount_brl', label: 'Valor mensal (R$)' },
@@ -36,6 +37,7 @@ export function buildWorkspaceExportRows(
       owner_marketing_opt_in: ws.owner?.marketing_opt_in ? 'sim' : 'não',
       plan_name: ws.plan_name ?? '',
       subscription_status: hasSub ? statusMeta(sub.status).label : '',
+      provider: hasSub && sub.provider ? providerLabel(sub.provider) : '',
       billing_interval: hasSub ? (sub.interval ?? '') : '',
       subscription_amount_brl: hasSub ? centsToReais(sub.amount_cents ?? null) : '',
       monthly_amount_brl: hasSub

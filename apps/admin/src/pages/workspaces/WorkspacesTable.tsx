@@ -1,7 +1,13 @@
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react';
 import type { SortDir, WorkspaceSortKey, WorkspaceSummary } from '../../lib/api';
 import { getPlanColor } from '../../lib/plan-colors';
-import { formatMoney, hasSubscription, intervalSuffix, statusMeta } from '../../lib/subscription';
+import {
+  formatMoney,
+  hasSubscription,
+  intervalSuffix,
+  providerLabel,
+  statusMeta,
+} from '../../lib/subscription';
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
 import {
@@ -63,6 +69,11 @@ function SubscriptionCell({ ws }: { ws: WorkspaceSummary }) {
         {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
         {intervalSuffix(ws.subscription.interval)}
       </span>
+      {ws.subscription.provider && (
+        <span className="whitespace-nowrap text-[0.65rem] uppercase tracking-wider text-dim-foreground">
+          {providerLabel(ws.subscription.provider)}
+        </span>
+      )}
     </span>
   );
 }
