@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
   ADMIN_MCP_ALLOWED_SCOPES,
+  ADMIN_MCP_READ_PRESET,
   adminScopesFromClaim,
   validateAdminScopes,
 } from "../_shared/mcp-admin-scopes.ts";
@@ -118,6 +119,29 @@ Deno.test("resolveAdminCtx: token com scopes MCP do admin limita o grant (inters
   // deno-lint-ignore no-explicit-any
   const ctx = await resolveAdminCtx(db as any, makeJwt({ client_id: "c1", scope: "openid kb:read" }));
   assertEquals(ctx?.scopes, ["kb:read"]);
+});
+
+// Guarda de sincronia (revisão externa): apps/crm/src/lib/mcp-scopes.ts documenta um espelho
+// manual de ADMIN_MCP_ALLOWED_SCOPES/ADMIN_MCP_READ_PRESET (comentário na linha 28-29 do
+// arquivo CRM) mas nada verificava que o espelho estava correto -- um escopo adicionado só do
+// lado Deno ficaria invisível na UI de consentimento sem nenhum teste quebrar.
+Deno.test("ADMIN_SCOPE_OPTIONS/ADMIN_READ_PRESET do CRM espelham _shared/mcp-admin-scopes.ts", async () => {
+  const src = await Deno.readTextFile(new URL("../../../apps/crm/src/lib/mcp-scopes.ts", import.meta.url));
+
+  const optionsStart = src.indexOf("export const ADMIN_SCOPE_OPTIONS");
+  assert(optionsStart >= 0, "ADMIN_SCOPE_OPTIONS not found in apps/crm/src/lib/mcp-scopes.ts");
+  const optionsEnd = src.indexOf("] as const;", optionsStart);
+  const optionsBlock = src.slice(optionsStart, optionsEnd);
+  const optionValues = [...optionsBlock.matchAll(/value:\s*'([^']+)'/g)].map((m) => m[1]);
+
+  const presetStart = src.indexOf("export const ADMIN_READ_PRESET");
+  assert(presetStart >= 0, "ADMIN_READ_PRESET not found in apps/crm/src/lib/mcp-scopes.ts");
+  const presetEnd = src.indexOf("];", presetStart);
+  const presetBlock = src.slice(presetStart, presetEnd);
+  const presetValues = [...presetBlock.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+
+  assertEquals(optionValues, [...ADMIN_MCP_ALLOWED_SCOPES]);
+  assertEquals(presetValues, ADMIN_MCP_READ_PRESET);
 });
 
 Deno.test("requireAdminScope: lança McpScopeError com o escopo faltante", () => {
