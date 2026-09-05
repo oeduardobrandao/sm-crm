@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
+import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -112,6 +113,9 @@ export default function RelatoriosTab() {
       return;
     }
     setSplashUploading(true);
+    // The upload and the record update that follows are one unit of work: a silent
+    // version swap must not land between them.
+    const release = holdUnsavedWork();
     try {
       const blob = await downscaleImage(file);
       const path = `workspaces/${workspace.id}/report-splash.jpg`;
@@ -132,6 +136,7 @@ export default function RelatoriosTab() {
       console.error('report splash upload failed', err);
       toast.error('Não foi possível enviar a arte. Tente novamente.');
     } finally {
+      release();
       setSplashUploading(false);
     }
   };

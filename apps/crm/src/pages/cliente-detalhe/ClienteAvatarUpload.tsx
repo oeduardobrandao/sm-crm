@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Camera, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { trackUnsavedWork } from '@mesaas/app-lifecycle';
+import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,12 +53,15 @@ export function ClienteAvatarUpload({
       return;
     }
     setUploading(true);
+    // The upload and the record update that follows are one unit of work: a silent
+    // version swap must not land between them.
+    const release = holdUnsavedWork();
     try {
       const blob = await resizeClientePhoto(file);
       const path = `clientes/${clienteId}/${crypto.randomUUID()}.png`;
-      const { error: upErr } = await trackUnsavedWork(
-        supabase.storage.from('avatars').upload(path, blob, { contentType: 'image/png' }),
-      );
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { contentType: 'image/png' });
       if (upErr) throw upErr;
 
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
@@ -69,6 +72,7 @@ export function ClienteAvatarUpload({
     } catch {
       toast.error('Erro ao enviar foto.');
     } finally {
+      release();
       setUploading(false);
     }
   }
