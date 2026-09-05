@@ -137,6 +137,15 @@ describe('DashboardPage per-card loading', () => {
     expect(kpiCard('MRR total').textContent).toContain('—');
     expect(kpiCard('Em risco').textContent).toContain('—');
   });
+
+  it('recent workspace names are real links to the detail page', async () => {
+    renderPage();
+    const links = await screen.findAllByRole('link', { name: 'A' });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toHaveAttribute('href', '/admin/workspaces/a');
+    }
+  });
 });
 
 describe('DashboardPage at-risk card', () => {
