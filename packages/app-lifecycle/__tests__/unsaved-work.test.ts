@@ -42,6 +42,16 @@ describe('holdUnsavedWork', () => {
     b();
     expect(hasUnsavedWork()).toBe(false);
   });
+
+  it('does not go negative when a stale release fires after a reset', () => {
+    const stale = holdUnsavedWork();
+    resetUnsavedWorkForTests();
+    stale();
+    const live = holdUnsavedWork();
+    expect(hasUnsavedWork()).toBe(true);
+    live();
+    expect(hasUnsavedWork()).toBe(false);
+  });
 });
 
 describe('trackUnsavedWork', () => {
@@ -68,6 +78,19 @@ describe('trackUnsavedWork', () => {
       trackUnsavedWork(new Promise<never>(() => {}), 1_000);
       expect(hasUnsavedWork()).toBe(true);
       vi.advanceTimersByTime(1_000);
+      expect(hasUnsavedWork()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defaults the ceiling to 30 minutes', () => {
+    vi.useFakeTimers();
+    try {
+      trackUnsavedWork(new Promise<never>(() => {}));
+      vi.advanceTimersByTime(30 * 60_000 - 1);
+      expect(hasUnsavedWork()).toBe(true);
+      vi.advanceTimersByTime(1);
       expect(hasUnsavedWork()).toBe(false);
     } finally {
       vi.useRealTimers();
@@ -128,5 +151,10 @@ describe('isDocumentBusy', () => {
   it('ignores an empty contenteditable', () => {
     document.body.innerHTML = '<div contenteditable="true"><p></p></div>';
     expect(isDocumentBusy()).toBe(false);
+  });
+
+  it('is true with a bare contenteditable that has content', () => {
+    document.body.innerHTML = '<div contenteditable><p>Legenda</p></div>';
+    expect(isDocumentBusy()).toBe(true);
   });
 });

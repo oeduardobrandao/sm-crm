@@ -11,3 +11,4 @@ export {
   isDocumentBusy,
   trackUnsavedWork,
 } from './src/unsaved-work';
+export { useUnsavedWork } from './src/use-unsaved-work';

@@ -18,7 +18,7 @@ export function holdUnsavedWork(): () => void {
   return () => {
     if (released) return;
     released = true;
-    holds -= 1;
+    holds = Math.max(0, holds - 1);
   };
 }
 
@@ -33,6 +33,8 @@ const TRACK_MAX_MS = 30 * 60_000;
  * Hold the registry until `work` settles, resolving or rejecting exactly like it. The hold
  * is capped at `maxMs`: a request that never settles (an XHR without a timeout on a stalled
  * connection) must not disable the passive reload triggers for the rest of the tab's life.
+ * Takes a real Promise: wrap a builder-style thenable (supabase-js query builders) in
+ * Promise.resolve(...) first.
  */
 export function trackUnsavedWork<T>(work: Promise<T>, maxMs = TRACK_MAX_MS): Promise<T> {
   const release = holdUnsavedWork();
@@ -46,11 +48,12 @@ export function trackUnsavedWork<T>(work: Promise<T>, maxMs = TRACK_MAX_MS): Pro
 const TEXT_INPUT_TYPES = new Set(['text', 'search', 'email', 'url', 'tel', 'number', 'password']);
 
 function isContentEditable(el: Element): boolean {
-  // jsdom does not implement `isContentEditable`; the attribute is what TipTap sets anyway.
-  return (
-    el instanceof HTMLElement &&
-    (el.isContentEditable === true || el.getAttribute('contenteditable') === 'true')
-  );
+  if (!(el instanceof HTMLElement)) return false;
+  // jsdom does not implement `isContentEditable`; per HTML, a bare `contenteditable` or an
+  // empty value also means editable. TipTap sets "true".
+  if (el.isContentEditable === true) return true;
+  const attr = el.getAttribute('contenteditable');
+  return attr !== null && attr.toLowerCase() !== 'false';
 }
 
 function isEditable(el: Element | null): boolean {
@@ -71,7 +74,7 @@ export function isDocumentBusy(doc: Document = document): boolean {
   for (const el of doc.querySelectorAll('textarea')) {
     if (el.value.trim() !== '') return true;
   }
-  for (const el of doc.querySelectorAll('[contenteditable="true"]')) {
+  for (const el of doc.querySelectorAll('[contenteditable]:not([contenteditable="false"])')) {
     if ((el.textContent ?? '').trim() !== '') return true;
   }
   return false;
