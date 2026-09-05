@@ -3,6 +3,13 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { RESOURCE_COLUMNS, FEATURE_COLUMNS, RATE_COLUMNS } from "../_shared/entitlements.ts";
 import { buildAmountColumns, fetchStripeAmount } from "../_shared/stripe-amount.ts";
 import { loadStripe } from "../_shared/stripe-loader.ts";
+import {
+  buildPagarmeLive,
+  createPagarmeDetailGateway,
+  pagarmeDashboardUrl,
+  type PagarmeDetailGateway,
+  type PagarmeLive,
+} from "./pagarme-detail.ts";
 
 type PlanRow = Record<string, unknown>;
 
@@ -24,11 +31,20 @@ export function extractFeatures(plan: PlanRow): Record<string, boolean> {
 
 // ─── Workspaces ────────────────────────────────────────────────
 
+export interface SubscriptionDetailOpts {
+  /** Skips every outbound provider call and the Stripe write-back (mcp-admin's platform:read). */
+  readOnly?: boolean;
+  /** Injected in tests; defaults to the real GET /subscriptions/{id} port. */
+  pagarme?: PagarmeDetailGateway;
+  /** Injected in tests; `undefined` means read PAGARME_DASHBOARD_BASE from the env. */
+  pagarmeDashboardBase?: string | null;
+}
+
 export async function handleGetWorkspace(
   svc: SupabaseClient,
   body: { workspace_id: string },
   headers: Record<string, string>,
-  opts: { readOnly?: boolean } = {},
+  opts: SubscriptionDetailOpts = {},
 ) {
   const { workspace_id } = body;
   if (!workspace_id) {
@@ -152,7 +168,7 @@ export function stripeDashboardUrl(livemode: boolean, kind: string, id: string):
 export async function buildSubscriptionDetail(
   svc: SupabaseClient,
   workspaceId: string,
-  opts: { readOnly?: boolean } = {},
+  opts: SubscriptionDetailOpts = {},
 ) {
   const { data: row } = await svc
     .from("workspace_subscriptions")
@@ -190,11 +206,15 @@ export async function buildSubscriptionDetail(
     discount_label: null as string | null,
     amount_source: null as "stripe" | "pagarme" | "catalog" | null,
     stripe_dashboard_url: null as string | null,
+    pagarme_dashboard_url: null as string | null,
+    pagarme_live: null as PagarmeLive | null,
+    pagarme_live_error: false,
   };
 
-  // A Pagar.me-owned row reads ONLY the mirror (written synchronously at checkout). Never a
-  // Stripe live-fetch (its stripe_subscription_id, if present, is a dead pre-switch leftover
-  // whose price would clobber the mirror on write-back) and no dashboard URL in v1.
+  // A Pagar.me-owned row prices from the mirror (written synchronously at checkout), never
+  // from a Stripe live-fetch: its stripe_subscription_id, if present, is a dead pre-switch
+  // leftover whose price would clobber the mirror on write-back. The live Pagar.me read below
+  // is DISPLAY ONLY: it never writes to workspace_subscriptions (spec §2 step 5).
   if (provider === "pagarme") {
     if (row.amount_cents != null) {
       info.amount_cents = row.amount_cents as number;
@@ -203,9 +223,18 @@ export async function buildSubscriptionDetail(
       info.interval = (row.amount_interval as string | null) ?? row.billing_interval ?? null;
       info.discount_label = (row.discount_label as string | null) ?? null;
       info.amount_source = "pagarme";
-      return info;
+    } else {
+      await applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
     }
-    return applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
+    return attachPagarmeLive(
+      info,
+      {
+        pagarme_subscription_id: (row.pagarme_subscription_id as string | null) ?? null,
+        status: row.status ?? null,
+        current_period_end: row.current_period_end ?? null,
+      },
+      opts,
+    );
   }
 
   if (!opts.readOnly && row.stripe_subscription_id) {
@@ -255,6 +284,49 @@ export async function buildSubscriptionDetail(
   }
 
   return applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
+}
+
+/**
+ * Dashboard link + display-only live read for a Pagar.me row. Skipped entirely under
+ * `readOnly` (mcp-admin) and for rows not yet bound to a Pagar.me subscription. The link does
+ * not depend on the read succeeding, so it still works when the API is down. Errors are
+ * logged internally and surfaced to the client only as `pagarme_live_error: true`.
+ */
+async function attachPagarmeLive<
+  T extends {
+    pagarme_dashboard_url: string | null;
+    pagarme_live: PagarmeLive | null;
+    pagarme_live_error: boolean;
+  },
+>(
+  info: T,
+  row: {
+    pagarme_subscription_id: string | null;
+    status: string | null;
+    current_period_end: string | null;
+  },
+  opts: SubscriptionDetailOpts,
+): Promise<T> {
+  const subId = row.pagarme_subscription_id;
+  if (opts.readOnly || !subId) return info;
+
+  const base = opts.pagarmeDashboardBase !== undefined
+    ? opts.pagarmeDashboardBase
+    : (Deno.env.get("PAGARME_DASHBOARD_BASE") ?? null);
+  info.pagarme_dashboard_url = pagarmeDashboardUrl(base, subId);
+
+  const gateway = opts.pagarme ?? createPagarmeDetailGateway();
+  try {
+    const remote = await gateway.fetchSubscription(subId);
+    info.pagarme_live = buildPagarmeLive(remote, {
+      status: row.status,
+      current_period_end: row.current_period_end,
+    });
+  } catch (err) {
+    info.pagarme_live_error = true;
+    console.error("[platform-admin] pagarme fetch failed:", (err as Error).message);
+  }
+  return info;
 }
 
 /** Fills amount from the plan's list price when neither mirror nor live fetch produced one. */
