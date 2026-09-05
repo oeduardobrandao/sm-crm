@@ -4,7 +4,7 @@ import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { listWorkspaces, listPlans, getMrr, getTrials } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
-import { formatMoney, intervalLabel, statusMeta } from '../lib/subscription';
+import { formatMoney, intervalLabel, statusMeta, STATUS_BADGE_VARIANT } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
 import { describeActivity, ACTIVITY_TONE_CLASS } from './workspace-activity';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
@@ -19,13 +19,6 @@ import {
   TRIAL_EXPORT_COLUMNS,
   buildTrialExportRows,
 } from './dashboard-export';
-
-const STATUS_VARIANT = {
-  success: 'success',
-  warning: 'warning',
-  danger: 'danger',
-  muted: 'neutral',
-} as const;
 
 function PlanBadge({ name }: { name: string | null }) {
   if (!name) return <span className="text-dim-foreground">—</span>;
@@ -271,7 +264,7 @@ export default function DashboardPage() {
                       {ws.plan_name && <PlanBadge name={ws.plan_name} />}
                       <span>{intervalLabel(ws.interval) || '—'}</span>
                       {ws.status !== 'active' && (
-                        <Badge variant={STATUS_VARIANT[meta.tone]}>{meta.label}</Badge>
+                        <Badge variant={STATUS_BADGE_VARIANT[meta.tone]}>{meta.label}</Badge>
                       )}
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -293,7 +286,7 @@ export default function DashboardPage() {
                   <span className="text-foreground font-medium text-sm truncate">{ws.name}</span>
                   {ws.status !== 'active' && (
                     <Badge
-                      variant={STATUS_VARIANT[meta.tone]}
+                      variant={STATUS_BADGE_VARIANT[meta.tone]}
                       className="shrink-0 whitespace-nowrap"
                     >
                       {meta.label}
@@ -443,7 +436,7 @@ export default function DashboardPage() {
                 <span className="hidden md:flex items-center gap-2 text-sm min-w-0">
                   <span className="text-muted-foreground truncate">{endLabel}</span>
                   {daysLabel && (
-                    <Badge variant={STATUS_VARIANT[daysTone]} className="shrink-0">
+                    <Badge variant={STATUS_BADGE_VARIANT[daysTone]} className="shrink-0">
                       {daysLabel}
                     </Badge>
                   )}

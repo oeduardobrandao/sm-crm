@@ -51,6 +51,14 @@ export interface StatusMeta {
   tone: StatusTone;
 }
 
+/** Badge variant for a subscription status tone. Shared by Dashboard, Workspaces and Workspace detail. */
+export const STATUS_BADGE_VARIANT = {
+  success: 'success',
+  warning: 'warning',
+  danger: 'danger',
+  muted: 'neutral',
+} as const satisfies Record<StatusTone, 'success' | 'warning' | 'danger' | 'neutral'>;
+
 const STATUS_META: Record<string, StatusMeta> = {
   active: { label: 'Ativo', tone: 'success' },
   trialing: { label: 'Teste', tone: 'success' },

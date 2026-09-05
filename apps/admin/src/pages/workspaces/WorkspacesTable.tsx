@@ -1,7 +1,13 @@
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react';
 import type { SortDir, WorkspaceSortKey, WorkspaceSummary } from '../../lib/api';
 import { getPlanColor } from '../../lib/plan-colors';
-import { formatMoney, hasSubscription, intervalSuffix, statusMeta } from '../../lib/subscription';
+import {
+  formatMoney,
+  hasSubscription,
+  intervalSuffix,
+  statusMeta,
+  STATUS_BADGE_VARIANT,
+} from '../../lib/subscription';
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
 import {
@@ -30,13 +36,6 @@ interface WorkspacesTableProps {
   busy?: boolean;
 }
 
-const STATUS_VARIANT = {
-  success: 'success',
-  warning: 'warning',
-  danger: 'danger',
-  muted: 'neutral',
-} as const;
-
 const DATE_FMT = new Intl.DateTimeFormat('pt-BR', {
   day: '2-digit',
   month: 'short',
@@ -58,7 +57,7 @@ function SubscriptionCell({ ws }: { ws: WorkspaceSummary }) {
   const meta = statusMeta(ws.subscription.status);
   return (
     <span className="flex min-w-0 items-center gap-2">
-      <Badge variant={STATUS_VARIANT[meta.tone]}>{meta.label}</Badge>
+      <Badge variant={STATUS_BADGE_VARIANT[meta.tone]}>{meta.label}</Badge>
       <span className="whitespace-nowrap text-xs text-muted-foreground">
         {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
         {intervalSuffix(ws.subscription.interval)}
