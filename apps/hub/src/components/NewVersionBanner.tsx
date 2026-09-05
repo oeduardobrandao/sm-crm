@@ -13,7 +13,10 @@ export function NewVersionBanner() {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
 
-  useEffect(() => watchForNewVersion({ onNewVersion: () => setVisible(true) }), []);
+  useEffect(() => {
+    const watcher = watchForNewVersion({ onNewVersion: () => setVisible(true) });
+    return watcher.stop;
+  }, []);
 
   if (!visible) return null;
 

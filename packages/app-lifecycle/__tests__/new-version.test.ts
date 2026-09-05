@@ -11,9 +11,9 @@ const HTML = (hash: string) =>
 const stops: Array<() => void> = [];
 
 function watch(onNewVersion: () => void) {
-  const stop = watchForNewVersion({ documentUrl: '/app.html', intervalMs: 5, onNewVersion });
-  stops.push(stop);
-  return stop;
+  const watcher = watchForNewVersion({ documentUrl: '/app.html', intervalMs: 5, onNewVersion });
+  stops.push(watcher.stop);
+  return watcher;
 }
 
 afterEach(() => {
@@ -92,12 +92,56 @@ describe('watchForNewVersion', () => {
   it('stops polling when stopped', async () => {
     const fetchSpy = mockFetch([HTML('aaa')]);
 
-    const stop = watch(vi.fn());
+    const { stop } = watch(vi.fn());
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalled());
     stop();
 
     const callsAtStop = fetchSpy.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(fetchSpy.mock.calls.length).toBe(callsAtStop);
+  });
+
+  function setVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+  }
+
+  afterEach(() => {
+    // Back to jsdom's own getter.
+    delete (document as unknown as { visibilityState?: string }).visibilityState;
+  });
+
+  it('check() runs with the tab hidden while the interval does not', async () => {
+    setVisibility('hidden');
+    const fetchSpy = mockFetch([HTML('aaa')]);
+    const watcher = watch(vi.fn());
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    await expect(watcher.check()).resolves.toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('check() resolves true on a comparison and false on a failure', async () => {
+    mockFetch([HTML('aaa'), HTML('aaa'), new Error('offline')]);
+    const watcher = watchForNewVersion({
+      documentUrl: '/app.html',
+      intervalMs: 60_000,
+      onNewVersion: vi.fn(),
+    });
+    stops.push(watcher.stop);
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    // Let the install-time check settle so the explicit ones below are calls 2 and 3.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(watcher.check()).resolves.toBe(true);
+    await expect(watcher.check()).resolves.toBe(false);
+  });
+
+  it('check() resolves false once stopped', async () => {
+    mockFetch([HTML('aaa')]);
+    const watcher = watch(vi.fn());
+    watcher.stop();
+    await expect(watcher.check()).resolves.toBe(false);
   });
 });

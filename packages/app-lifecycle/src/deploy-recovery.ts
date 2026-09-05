@@ -11,7 +11,7 @@
  * hashes, and the user carries on where they were.
  */
 
-const RELOAD_STAMP_KEY = 'mesaas:deploy-reload-at';
+export const RELOAD_STAMP_KEY = 'mesaas:deploy-reload-at';
 
 /** Two recovery reloads inside this window means reloading is not fixing it. */
 const RELOAD_COOLDOWN_MS = 15_000;

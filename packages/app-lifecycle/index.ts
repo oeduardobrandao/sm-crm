@@ -2,9 +2,10 @@ export {
   installDeployRecovery,
   isModuleLoadError,
   reloadForNewDeploy,
+  RELOAD_STAMP_KEY,
 } from './src/deploy-recovery';
 export { extractBuildFingerprint, watchForNewVersion } from './src/new-version';
-export type { WatchForNewVersionOptions } from './src/new-version';
+export type { NewVersionWatcher, WatchForNewVersionOptions } from './src/new-version';
 export {
   hasUnsavedWork,
   holdUnsavedWork,

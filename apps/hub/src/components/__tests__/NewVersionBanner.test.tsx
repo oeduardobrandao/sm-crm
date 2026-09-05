@@ -8,7 +8,7 @@ let fire: (() => void) | undefined;
 vi.mock('@mesaas/app-lifecycle', () => ({
   watchForNewVersion: ({ onNewVersion }: { onNewVersion: () => void }) => {
     fire = onNewVersion;
-    return stop;
+    return { stop, check: () => Promise.resolve(true) };
   },
 }));
 
