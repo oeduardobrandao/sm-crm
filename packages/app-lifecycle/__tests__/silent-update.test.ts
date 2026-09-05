@@ -238,6 +238,23 @@ describe('installSilentUpdate: navigation', () => {
     expect(router.navigate({ pathname: '/equipe' })).toBe(false);
     expect(assign).toHaveBeenCalledTimes(1);
   });
+
+  it('gives up the swap after a bounded number of holdWhile re-arms', async () => {
+    const router = new FakeRouter();
+    mockFetch([HTML('aaa'), HTML('bbb')]);
+    let mutating = false;
+    install(router, { holdWhile: () => mutating });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    router.navigate({ pathname: '/clientes' });
+    mutating = true;
+    // swapWatchdogMs: 2_000 from the helper: 1 initial fire plus 3 re-arms is 4 periods.
+    await vi.advanceTimersByTimeAsync(2_000 * 3);
+    expect(router.proceed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(router.proceed).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('installSilentUpdate: hidden tab', () => {
@@ -253,6 +270,20 @@ describe('installSilentUpdate: hidden tab', () => {
     expect(reload).not.toHaveBeenCalled();
     // The timer fires at 5 s; the extra ticks flush the check() and the reload that follow it.
     await vi.advanceTimersByTimeAsync(50);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('arms the hidden timer for a tab that starts out hidden, and re-arms while it stays hidden', async () => {
+    const router = new FakeRouter();
+    visibility = 'hidden';
+    mockFetch([HTML('aaa'), HTML('bbb')]);
+    install(router, { intervalMs: 60_000 });
+    await vi.advanceTimersByTimeAsync(5_050);
+    // First fire: forced check sets the baseline; nothing pending yet.
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5_050);
+    // Second fire: the deploy is now visible to check(); reload while hidden.
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
@@ -312,6 +343,23 @@ describe('installSilentUpdate: idle', () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(reload).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(6_000);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reload when input arrives while the idle tick is asking the server', async () => {
+    const router = new FakeRouter();
+    await reachPending(router);
+    let answer!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    await vi.advanceTimersByTimeAsync(10_000);
+    window.dispatchEvent(new Event('keydown'));
+    answer(new Response(HTML('bbb'), { status: 200 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload).not.toHaveBeenCalled();
+    // The idle tick samples on a fixed grid (every 10 s from install), not from the last
+    // input: the next tick after the input (still only 8.5 s of quiet) also declines, so the
+    // reload only lands on the tick after that, once a full idleAfterMs has actually passed.
+    await vi.advanceTimersByTimeAsync(19_000);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 

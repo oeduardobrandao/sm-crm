@@ -25,6 +25,8 @@ const DEFAULT_HIDDEN_AFTER_MS = 5 * 60_000;
 const DEFAULT_IDLE_AFTER_MS = 10 * 60_000;
 /** A full navigation that has not unloaded the page by then is treated as failed. */
 const DEFAULT_SWAP_WATCHDOG_MS = 8_000;
+/** A mutation that outlasts this many watchdog periods gives up the swap anyway. */
+const MAX_SWAP_WATCHDOG_REARMS = 3;
 const IDLE_TICK_MS = 30_000;
 const INPUT_EVENTS = ['pointerdown', 'keydown', 'wheel', 'scroll', 'touchstart'] as const;
 
@@ -110,6 +112,7 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
   let lastInputAt = Date.now();
   let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
+  let swapRearms = 0;
 
   const watcher = watchForNewVersion({
     documentUrl,
@@ -129,11 +132,18 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     return !hasUnsavedWork() && !isDocumentBusy() && !holdWhile();
   }
 
-  /** Passive reload: registry, DOM heuristic, app busy signal, then a live server answer. */
-  async function reloadIfQuiet(alreadyAnswered = false): Promise<void> {
+  /**
+   * Passive reload: registry, DOM heuristic, app busy signal, then a live server answer.
+   * `stillQuiet` is re-checked after that await too, for a condition `quiet()` cannot see on
+   * its own (idle: input that arrived while the request was in flight).
+   */
+  async function reloadIfQuiet(
+    alreadyAnswered = false,
+    stillQuiet: () => boolean = () => true,
+  ): Promise<void> {
     if (!pending || reloading || !quiet()) return;
     if (!alreadyAnswered && !(await serverAnswers(documentUrl))) return;
-    if (!pending || reloading || !quiet()) return;
+    if (!pending || reloading || !quiet() || !stillQuiet()) return;
     reloadNow();
   }
 
@@ -158,13 +168,16 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     const { pathname, search, hash } = blocker.location;
     stampReload();
     const giveUpSwap = () => {
-      if (holdWhile()) {
+      if (holdWhile() && swapRearms < MAX_SWAP_WATCHDOG_REARMS) {
         // A mutation started while the document request hung; stopping the page's loads now
-        // could cut it. Look again in a moment.
+        // could cut it. Look again in a moment, up to a bounded number of times: a mutation
+        // that never settles must not keep this watchdog re-arming forever.
+        swapRearms += 1;
         watchdog = setTimeout(giveUpSwap, swapWatchdogMs);
         return;
       }
-      // Still here: the document request did not replace this page. Stop it (the browser's
+      // Still here, or the re-arm budget ran out: the document request did not replace this
+      // page (or the app has been busy for too long to keep waiting). Stop it (the browser's
       // Stop button, so a slow response cannot land later as a second transition) and let
       // the navigation the user asked for go on client-side. The passive triggers keep the
       // swap alive.
@@ -180,25 +193,33 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
       if (typeof window.stop === 'function') window.stop();
       blocker.proceed?.();
     };
+    swapRearms = 0;
     watchdog = setTimeout(giveUpSwap, swapWatchdogMs);
     window.location.assign(pathname + search + hash);
   });
 
   // Hidden tab.
+  function armHiddenTimer(): void {
+    if (hiddenTimer !== null) clearTimeout(hiddenTimer);
+    hiddenTimer = setTimeout(() => {
+      hiddenTimer = null;
+      void (async () => {
+        if (document.visibilityState !== 'hidden') return;
+        // The interval pauses while hidden, so ask now; a comparison doubles as proof
+        // that the server answers.
+        const answered = await watcher.check();
+        if (document.visibilityState !== 'hidden') return;
+        await reloadIfQuiet(answered);
+        // Still hidden and the swap did not happen (busy, no new version yet, no server
+        // answer): keep checking at the same cadence instead of going dark until the tab
+        // becomes visible again.
+        if (!reloading && document.visibilityState === 'hidden') armHiddenTimer();
+      })();
+    }, hiddenAfterMs);
+  }
   function onVisibilityChange(): void {
     if (document.visibilityState === 'hidden') {
-      if (hiddenTimer !== null) clearTimeout(hiddenTimer);
-      hiddenTimer = setTimeout(() => {
-        hiddenTimer = null;
-        void (async () => {
-          if (document.visibilityState !== 'hidden') return;
-          // The interval pauses while hidden, so ask now; a comparison doubles as proof
-          // that the server answers.
-          const answered = await watcher.check();
-          if (document.visibilityState !== 'hidden') return;
-          await reloadIfQuiet(answered);
-        })();
-      }, hiddenAfterMs);
+      armHiddenTimer();
     } else {
       if (hiddenTimer !== null) {
         clearTimeout(hiddenTimer);
@@ -223,10 +244,14 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
     () => {
       if (document.visibilityState !== 'visible') return;
       if (Date.now() - lastInputAt < idleAfterMs) return;
-      void reloadIfQuiet();
+      void reloadIfQuiet(false, () => Date.now() - lastInputAt >= idleAfterMs);
     },
     Math.min(IDLE_TICK_MS, idleAfterMs),
   );
+
+  // A tab that opens already hidden (background tab, prerender) must arm the hidden timer
+  // now: `visibilitychange` never fires for the state the document started in.
+  onVisibilityChange();
 
   return function uninstall() {
     stopEditTracking();
