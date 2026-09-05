@@ -35,6 +35,7 @@ function ws(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
       discount_label: null,
       failed_payment_count: 3,
       current_period_end: null,
+      provider: 'stripe',
     },
     ...overrides,
   };
@@ -129,5 +130,55 @@ describe('WorkspacesTable', () => {
   it('skeleton renders the requested rows for the visible columns', () => {
     render(<WorkspacesTableSkeleton visible={['name', 'plan']} rows={3} />);
     expect(screen.getAllByRole('row')).toHaveLength(4); // header + 3
+  });
+
+  it('captions the subscription cell with the billing provider', () => {
+    renderTable({
+      workspaces: [
+        ws({
+          subscription: {
+            status: 'active',
+            plan_name: 'Max',
+            billing_interval: 'year',
+            amount_cents: 113880,
+            currency: 'brl',
+            interval: 'year',
+            discount_label: null,
+            failed_payment_count: 0,
+            current_period_end: '2027-10-03T00:00:00Z',
+            provider: 'pagarme',
+          },
+        }),
+      ],
+      visible: ['name', 'subscription'],
+    });
+    // The subscription cell renders once in the desktop table (per `visible`)
+    // and again, unconditionally, in the mobile card -- see the "mobile card
+    // ignores column visibility" test above. getAllByText, not getByText.
+    expect(screen.getAllByText('Pagar.me').length).toBeGreaterThan(0);
+  });
+
+  it('shows no provider caption when the payload predates the provider key', () => {
+    renderTable({
+      workspaces: [
+        ws({
+          subscription: {
+            status: 'active',
+            plan_name: 'Max',
+            billing_interval: 'month',
+            amount_cents: 19700,
+            currency: 'brl',
+            interval: 'month',
+            discount_label: null,
+            failed_payment_count: 0,
+            current_period_end: null,
+            provider: null,
+          },
+        }),
+      ],
+      visible: ['name', 'subscription'],
+    });
+    expect(screen.queryByText('Stripe')).toBeNull();
+    expect(screen.queryByText('Pagar.me')).toBeNull();
   });
 });

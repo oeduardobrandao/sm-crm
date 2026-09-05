@@ -5,6 +5,7 @@ import {
   formatMoney,
   hasSubscription,
   intervalSuffix,
+  providerLabel,
   statusMeta,
   STATUS_BADGE_VARIANT,
 } from '../../lib/subscription';
@@ -64,6 +65,11 @@ function SubscriptionCell({ ws }: { ws: WorkspaceSummary }) {
         {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
         {intervalSuffix(ws.subscription.interval)}
       </span>
+      {ws.subscription.provider && (
+        <span className="whitespace-nowrap text-[0.65rem] uppercase tracking-wider text-dim-foreground">
+          {providerLabel(ws.subscription.provider)}
+        </span>
+      )}
     </span>
   );
 }

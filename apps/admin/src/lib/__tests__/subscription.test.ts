@@ -8,6 +8,7 @@ import {
   statusGroup,
   isStatusGroup,
   STATUS_GROUPS,
+  providerLabel,
 } from '../subscription';
 
 describe('subscription helpers', () => {
@@ -83,6 +84,18 @@ describe('subscription helpers', () => {
       expect(isStatusGroup('pendente')).toBe(true);
       expect(isStatusGroup('xyz')).toBe(false);
       expect(STATUS_GROUPS).toHaveLength(5);
+    });
+  });
+
+  describe('providerLabel', () => {
+    it('names both billing providers', () => {
+      expect(providerLabel('stripe')).toBe('Stripe');
+      expect(providerLabel('pagarme')).toBe('Pagar.me');
+    });
+    it('falls back to Stripe, the column default, for null or unknown', () => {
+      expect(providerLabel(null)).toBe('Stripe');
+      expect(providerLabel(undefined)).toBe('Stripe');
+      expect(providerLabel('other' as never)).toBe('Stripe');
     });
   });
 });

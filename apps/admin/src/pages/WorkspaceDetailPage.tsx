@@ -10,6 +10,8 @@ import {
   intervalLabel,
   intervalSuffix,
   formatMoney,
+  providerLabel,
+  type SubscriptionInfo,
 } from '../lib/subscription';
 import {
   getWorkspace,
@@ -33,6 +35,7 @@ import {
 } from '../lib/api';
 import { sanitizeExternalUrl } from '../lib/security';
 import { computeOverridesPayload } from './workspace-overrides';
+import { describeDrift, formatCard, formatLongDay } from './workspace-subscription';
 import WorkspaceInvitesCard from './WorkspaceInvitesCard';
 import WorkspaceEventsCard from './WorkspaceEventsCard';
 import { ErrorState } from '../components/ErrorState';
@@ -324,6 +327,16 @@ export default function WorkspaceDetailPage() {
               Abrir no Stripe <ExternalLink size={14} />
             </a>
           )}
+          {data.subscription?.pagarme_dashboard_url && (
+            <a
+              href={sanitizeExternalUrl(data.subscription.pagarme_dashboard_url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 text-sm text-primary hover:underline"
+            >
+              Abrir no Pagar.me <ExternalLink size={14} />
+            </a>
+          )}
         </CardHeader>
         <CardContent>
           {hasSubscription(data.subscription) ? (
@@ -366,13 +379,10 @@ export default function WorkspaceDetailPage() {
                 </Field>
                 <Field label={data.subscription.cancel_at_period_end ? 'Cancela em' : 'Renova em'}>
                   <span className="text-sm">
-                    {data.subscription.current_period_end
-                      ? new Date(data.subscription.current_period_end).toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: 'long',
-                          year: 'numeric',
-                        })
-                      : '—'}
+                    {formatLongDay(
+                      data.subscription.current_period_end,
+                      data.subscription.provider === 'pagarme',
+                    )}
                   </span>
                 </Field>
                 {data.subscription.failed_payment_count > 0 && (
@@ -382,16 +392,33 @@ export default function WorkspaceDetailPage() {
                     </span>
                   </Field>
                 )}
+                {data.subscription.provider === 'pagarme' && data.subscription.pagarme_live && (
+                  <>
+                    <Field label="Cartão">
+                      <span className="text-sm">
+                        {formatCard(data.subscription.pagarme_live.card)}
+                      </span>
+                    </Field>
+                    <Field label="Próxima cobrança">
+                      <span className="text-sm">
+                        {formatLongDay(data.subscription.pagarme_live.next_billing_at, true)}
+                      </span>
+                    </Field>
+                  </>
+                )}
               </div>
+              {data.subscription.provider === 'pagarme' && (
+                <PagarmeLiveNotes subscription={data.subscription} />
+              )}
               {data.workspace.plan_source === 'manual' && (
                 <p className="mt-4 text-xs text-muted-foreground">
                   O plano efetivo foi ajustado manualmente (comp). Os dados acima refletem a
-                  assinatura real do cliente no Stripe.
+                  assinatura real do cliente no {providerLabel(data.subscription.provider)}.
                 </p>
               )}
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">Sem assinatura Stripe.</p>
+            <p className="text-sm text-muted-foreground">Sem assinatura.</p>
           )}
         </CardContent>
       </Card>
@@ -705,6 +732,30 @@ export default function WorkspaceDetailPage() {
       <WorkspaceInvitesCard workspaceId={id!} />
       <WorkspaceEventsCard workspaceId={id!} />
     </div>
+  );
+}
+
+/** Drift warning + live-read failure note for a Pagar.me subscription (display only). */
+function PagarmeLiveNotes({ subscription }: { subscription: SubscriptionInfo }) {
+  const lines = describeDrift(subscription.pagarme_live?.drift);
+  return (
+    <>
+      {lines.length > 0 && (
+        <div className="mt-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+          <div className="font-semibold">Espelho desatualizado</div>
+          <ul className="mt-1 list-disc pl-4">
+            {lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {subscription.pagarme_live_error && (
+        <p className="mt-4 text-xs text-muted-foreground">
+          Sem resposta do Pagar.me, exibindo o espelho local.
+        </p>
+      )}
+    </>
   );
 }
 

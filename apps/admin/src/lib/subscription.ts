@@ -4,6 +4,9 @@
  * formatting logic can be unit-tested.
  */
 
+/** Which billing provider owns a subscription row (workspace_subscriptions.provider). */
+export type BillingProvider = 'stripe' | 'pagarme';
+
 /** Compact summary shown in the workspaces list (mirror + the amount the customer pays). */
 export interface SubscriptionSummary {
   status: string | null;
@@ -17,12 +20,39 @@ export interface SubscriptionSummary {
   failed_payment_count: number;
   /** End of the current billing period / trial (ISO), null when unknown. */
   current_period_end: string | null;
+  /** From the list RPC (migration 20260910000001); null on an older payload → no caption. */
+  provider: BillingProvider | null;
+}
+
+/** Card on file at Pagar.me, from the live read. */
+export interface PagarmeLiveCard {
+  brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+}
+
+/** Fields where the live Pagar.me read disagrees with the local mirror. */
+export interface PagarmeDrift {
+  status: { mirror: string | null; live: string } | null;
+  period: { mirror: string | null; live: string } | null;
+}
+
+/** Display-only live read of a Pagar.me subscription (never written back to the mirror). */
+export interface PagarmeLive {
+  status: 'trialing' | 'active' | 'canceled' | null;
+  remote_status: string;
+  next_billing_at: string | null;
+  start_at: string | null;
+  canceled_at: string | null;
+  card: PagarmeLiveCard | null;
+  drift: PagarmeDrift | null;
 }
 
 /** Full subscription view shown on the workspace detail (mirror + live Stripe amount). */
 export interface SubscriptionInfo {
   /** Which billing provider owns this subscription row. */
-  provider: 'stripe' | 'pagarme';
+  provider: BillingProvider;
   status: string | null;
   plan_id: string | null;
   plan_name: string | null;
@@ -43,6 +73,12 @@ export interface SubscriptionInfo {
   discount_label: string | null;
   amount_source: 'stripe' | 'pagarme' | 'catalog' | null;
   stripe_dashboard_url: string | null;
+  /** "Abrir no Pagar.me" target; null when PAGARME_DASHBOARD_BASE is unset or the row is not Pagar.me. */
+  pagarme_dashboard_url: string | null;
+  /** Live read; null when skipped (Stripe row, read-only caller, unbound row) or when it failed. */
+  pagarme_live: PagarmeLive | null;
+  /** True when the live read was attempted and failed; the mirror fields are still authoritative. */
+  pagarme_live_error: boolean;
 }
 
 export type StatusTone = 'success' | 'warning' | 'danger' | 'muted';
@@ -73,6 +109,13 @@ const STATUS_META: Record<string, StatusMeta> = {
 export function statusMeta(status: string | null | undefined): StatusMeta {
   if (!status) return { label: '—', tone: 'muted' };
   return STATUS_META[status] ?? { label: status, tone: 'muted' };
+}
+
+const PROVIDER_LABELS: Record<BillingProvider, string> = { stripe: 'Stripe', pagarme: 'Pagar.me' };
+
+/** Human label for a billing provider. Unknown/null reads as Stripe, the column's DB default. */
+export function providerLabel(provider: BillingProvider | null | undefined): string {
+  return (provider && PROVIDER_LABELS[provider]) || PROVIDER_LABELS.stripe;
 }
 
 /**

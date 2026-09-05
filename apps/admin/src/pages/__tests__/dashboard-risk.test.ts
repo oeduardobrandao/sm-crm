@@ -43,26 +43,40 @@ describe('trialDeadlineLabel', () => {
 
 describe('pendingLabel', () => {
   it('prefers the retry count', () => {
-    expect(pendingLabel({ failed_payment_count: 3, current_period_end: at(DAY) }, NOW)).toBe(
-      '3ª tentativa',
-    );
-    expect(pendingLabel({ failed_payment_count: 1, current_period_end: null }, NOW)).toBe(
-      '1ª tentativa',
-    );
+    expect(
+      pendingLabel(
+        { failed_payment_count: 3, provider: 'stripe', current_period_end: at(DAY) },
+        NOW,
+      ),
+    ).toBe('3ª tentativa');
+    expect(
+      pendingLabel({ failed_payment_count: 1, provider: 'stripe', current_period_end: null }, NOW),
+    ).toBe('1ª tentativa');
   });
   it('falls back to the period end', () => {
-    expect(pendingLabel({ failed_payment_count: 0, current_period_end: at(5 * DAY) }, NOW)).toBe(
-      'vence em 5 dias',
-    );
-    expect(pendingLabel({ failed_payment_count: 0, current_period_end: at(3_600_000) }, NOW)).toBe(
-      'vence hoje',
-    );
-    expect(pendingLabel({ failed_payment_count: 0, current_period_end: at(-2 * DAY) }, NOW)).toBe(
-      'venceu há 2 dias',
-    );
+    expect(
+      pendingLabel(
+        { failed_payment_count: 0, provider: 'stripe', current_period_end: at(5 * DAY) },
+        NOW,
+      ),
+    ).toBe('vence em 5 dias');
+    expect(
+      pendingLabel(
+        { failed_payment_count: 0, provider: 'stripe', current_period_end: at(3_600_000) },
+        NOW,
+      ),
+    ).toBe('vence hoje');
+    expect(
+      pendingLabel(
+        { failed_payment_count: 0, provider: 'stripe', current_period_end: at(-2 * DAY) },
+        NOW,
+      ),
+    ).toBe('venceu há 2 dias');
   });
   it('renders a dash when nothing is known', () => {
-    expect(pendingLabel({ failed_payment_count: 0, current_period_end: null }, NOW)).toBe('—');
+    expect(
+      pendingLabel({ failed_payment_count: 0, provider: 'stripe', current_period_end: null }, NOW),
+    ).toBe('—');
     expect(pendingLabel(null, NOW)).toBe('—');
   });
 
@@ -70,7 +84,10 @@ describe('pendingLabel', () => {
     const nowLocal = new Date(2026, 8, 4, 21, 0, 0);
     const laterToday = new Date(2026, 8, 4, 23, 30, 0).toISOString();
     expect(
-      pendingLabel({ failed_payment_count: 0, current_period_end: laterToday }, nowLocal),
+      pendingLabel(
+        { failed_payment_count: 0, provider: 'stripe', current_period_end: laterToday },
+        nowLocal,
+      ),
     ).toBe('vence hoje');
   });
 });
