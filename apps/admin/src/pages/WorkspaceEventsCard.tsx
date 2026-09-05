@@ -27,6 +27,25 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { listWorkspaceEvents } from '../lib/api';
 import { eventMeta, eventDescription, FILTERABLE_TYPES } from './workspace-events';
+import { EmptyState } from '../components/EmptyState';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Skeleton } from '../components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table';
 
 const ICON_MAP: Record<string, LucideIcon> = {
   UserPlus,
@@ -51,6 +70,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
 const PAGE_SIZE = 15;
 
+/** Radix Select rejects '' as an item value; this sentinel stands for "Todos os eventos". */
+const ALL = '__all__';
+const HEAD_CLASS = 'text-[0.7rem] uppercase tracking-wider';
+
 export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: string }) {
   const [page, setPage] = useState(0);
   const [filterType, setFilterType] = useState('');
@@ -73,116 +96,139 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  const rows = events.map((evt) => ({
+    evt,
+    meta: eventMeta(evt.action),
+    desc: eventDescription(evt),
+    timeAgo: formatDistanceToNow(new Date(evt.created_at), { addSuffix: true, locale: ptBR }),
+  }));
+
   return (
-    <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mt-6">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <h2 className="font-semibold">Histórico de eventos ({total})</h2>
-        <select
-          value={filterType}
-          onChange={(e) => {
-            setFilterType(e.target.value);
+    <Card className="mt-6 min-w-0">
+      <CardHeader>
+        <CardTitle>Histórico de eventos ({total})</CardTitle>
+        <Select
+          value={filterType === '' ? ALL : filterType}
+          onValueChange={(v) => {
+            setFilterType(v === ALL ? '' : v);
             setPage(0);
           }}
-          className="rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
         >
-          <option value="">Todos os eventos</option>
-          {FILTERABLE_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </div>
+          <SelectTrigger aria-label="Tipo de evento" className="h-8 w-auto gap-2 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todos os eventos</SelectItem>
+            {FILTERABLE_TYPES.map((t) => (
+              <SelectItem key={t.value} value={t.value}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </CardHeader>
 
       {isLoading ? (
-        <p className="text-sm text-dim-foreground py-4">Carregando…</p>
+        <CardContent className="flex flex-col gap-3">
+          <Skeleton className="h-4 w-72" />
+          <Skeleton className="h-4 w-64" />
+          <Skeleton className="h-4 w-60" />
+        </CardContent>
       ) : events.length === 0 ? (
-        <p className="text-sm text-dim-foreground py-4">Nenhum evento encontrado.</p>
+        <EmptyState icon={Activity} title="Nenhum evento encontrado" />
       ) : (
         <>
-          {/* Desktop header */}
-          <div className="hidden md:grid grid-cols-[1fr_1.4fr_1.2fr_1.4fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-            <span>Quando</span>
-            <span>Evento</span>
-            <span>Autor</span>
-            <span>Detalhes</span>
-          </div>
+          <Table className="hidden md:table">
+            <TableHeader>
+              <TableRow>
+                <TableHead className={HEAD_CLASS}>Quando</TableHead>
+                <TableHead className={HEAD_CLASS}>Evento</TableHead>
+                <TableHead className={HEAD_CLASS}>Autor</TableHead>
+                <TableHead className={HEAD_CLASS}>Detalhes</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map(({ evt, meta, desc, timeAgo }) => {
+                const Icon = ICON_MAP[meta.icon] ?? Activity;
+                return (
+                  <TableRow key={evt.id}>
+                    <TableCell
+                      className="text-sm text-muted-foreground"
+                      title={new Date(evt.created_at).toLocaleString('pt-BR')}
+                    >
+                      {timeAgo}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Icon size={14} className="shrink-0 text-muted-foreground" />
+                        <span className="truncate">{meta.label}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {evt.actor_name ?? evt.actor_email ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-sm text-dim-foreground">{desc || '—'}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
 
-          {events.map((evt) => {
-            const meta = eventMeta(evt.action);
-            const Icon = ICON_MAP[meta.icon] ?? Activity;
-            const desc = eventDescription(evt);
-            const timeAgo = formatDistanceToNow(new Date(evt.created_at), {
-              addSuffix: true,
-              locale: ptBR,
-            });
-
-            return (
-              <div key={evt.id} className="border-b border-border/50 py-2.5">
-                {/* Mobile card */}
-                <div className="flex items-start gap-3 md:hidden">
-                  <Icon size={16} className="shrink-0 mt-0.5 text-muted-foreground" />
+          <ul className="flex flex-col md:hidden">
+            {rows.map(({ evt, meta, desc, timeAgo }) => {
+              const Icon = ICON_MAP[meta.icon] ?? Activity;
+              return (
+                <li
+                  key={evt.id}
+                  className="flex items-start gap-3 border-b border-border/50 px-5 py-2.5 last:border-0"
+                >
+                  <Icon size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium truncate">{meta.label}</span>
+                      <span className="truncate text-sm font-medium">{meta.label}</span>
                       <span className="shrink-0 text-[0.7rem] text-muted-foreground">
                         {timeAgo}
                       </span>
                     </div>
                     {(evt.actor_name || evt.actor_email) && (
-                      <p className="text-xs text-muted-foreground truncate">
+                      <p className="truncate text-xs text-muted-foreground">
                         {evt.actor_name ?? evt.actor_email}
                       </p>
                     )}
-                    {desc && <p className="text-xs text-dim-foreground truncate">{desc}</p>}
+                    {desc && <p className="truncate text-xs text-dim-foreground">{desc}</p>}
                   </div>
-                </div>
+                </li>
+              );
+            })}
+          </ul>
 
-                {/* Desktop row */}
-                <div className="hidden md:grid grid-cols-[1fr_1.4fr_1.2fr_1.4fr] gap-2 items-center">
-                  <span
-                    className="text-sm text-muted-foreground truncate"
-                    title={new Date(evt.created_at).toLocaleString('pt-BR')}
-                  >
-                    {timeAgo}
-                  </span>
-                  <span className="flex items-center gap-2 text-sm min-w-0">
-                    <Icon size={14} className="shrink-0 text-muted-foreground" />
-                    <span className="truncate">{meta.label}</span>
-                  </span>
-                  <span className="text-sm text-muted-foreground truncate">
-                    {evt.actor_name ?? evt.actor_email ?? '—'}
-                  </span>
-                  <span className="text-sm text-dim-foreground truncate">{desc || '—'}</span>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4">
-              <button
+            <div className="flex items-center justify-between px-5 py-4">
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
-                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
               >
-                <ChevronLeft size={16} /> Anterior
-              </button>
+                <ChevronLeft />
+                Anterior
+              </Button>
               <span className="text-xs text-muted-foreground">
                 {page + 1} de {totalPages}
               </span>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}
-                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
               >
-                Próximo <ChevronRight size={16} />
-              </button>
+                Próximo
+                <ChevronRight />
+              </Button>
             </div>
           )}
         </>
       )}
-    </div>
+    </Card>
   );
 }
