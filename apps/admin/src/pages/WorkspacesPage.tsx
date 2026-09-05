@@ -34,8 +34,11 @@ export default function WorkspacesPage() {
   const [prefs, setPrefs] = useState<ColumnPrefs>(() => readColumnPrefs());
   const [exporting, setExporting] = useState(false);
 
-  // One clock per render: the activity labels and the created_since cutoff agree.
-  const now = useMemo(() => new Date(), [params]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The clock is pinned when the "criado" preset changes, not on every params change:
+  // paging or sorting must not move the created_since cutoff, or a signup mid-browse
+  // shifts every rank and the offset window skips or repeats a row. It stays fixed until
+  // the user picks a preset again (the same freeze the CSV export gets from as_of).
+  const now = useMemo(() => new Date(), [params.criado]); // eslint-disable-line react-hooks/exhaustive-deps
   const request = useMemo(() => toListWorkspacesRequest(params, now), [params, now]);
 
   const list = useQuery({
