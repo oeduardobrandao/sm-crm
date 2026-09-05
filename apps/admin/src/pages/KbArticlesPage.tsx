@@ -9,10 +9,14 @@ import {
 } from '../lib/kb-categories';
 
 const STATUSES = ['draft', 'published'] as const;
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'Rascunho',
+  published: 'Publicado',
+};
 
 function getStatusBadge(status: string) {
-  if (status === 'published') return { label: 'PUBLISHED', cls: 'text-success bg-success/15' };
-  return { label: 'DRAFT', cls: 'text-muted-foreground bg-secondary' };
+  if (status === 'published') return { label: 'PUBLICADO', cls: 'text-success bg-success/15' };
+  return { label: 'RASCUNHO', cls: 'text-muted-foreground bg-secondary' };
 }
 
 export default function KbArticlesPage() {
@@ -38,21 +42,21 @@ export default function KbArticlesPage() {
     <div>
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div>
-          <h1 className="font-sf text-2xl font-bold mb-1">Knowledge Base</h1>
-          <p className="text-sm text-muted-foreground">Manage help articles for CRM users</p>
+          <h1 className="font-sf text-2xl font-bold mb-1">Base de conhecimento</h1>
+          <p className="text-sm text-muted-foreground">Gerencie os artigos de ajuda do CRM</p>
         </div>
         <button
           onClick={() => navigate('/admin/kb-articles/new')}
           className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors"
         >
-          <Plus size={16} /> New Article
+          <Plus size={16} /> Novo artigo
         </button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <input
           type="text"
-          placeholder="Search articles..."
+          placeholder="Buscar artigos…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
@@ -62,7 +66,7 @@ export default function KbArticlesPage() {
           onChange={(e) => setCategoryFilter(e.target.value)}
           className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground focus:outline-none focus:border-primary"
         >
-          <option value="">All Categories</option>
+          <option value="">Todas as categorias</option>
           {ALL_CATEGORIES.map((c) => (
             <option key={c} value={c}>
               {CATEGORIES[c]}
@@ -74,10 +78,10 @@ export default function KbArticlesPage() {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground focus:outline-none focus:border-primary"
         >
-          <option value="">All Statuses</option>
+          <option value="">Todos os status</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {STATUS_LABELS[s]}
             </option>
           ))}
         </select>
@@ -85,17 +89,17 @@ export default function KbArticlesPage() {
 
       <div className="bg-card border border-border rounded-2xl p-5">
         <div className="hidden md:grid grid-cols-[2fr_1fr_0.7fr_0.7fr_0.5fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Title</span>
-          <span>Category</span>
+          <span>Título</span>
+          <span>Categoria</span>
           <span>Status</span>
-          <span>Order</span>
+          <span>Ordem</span>
           <span></span>
         </div>
 
         {isLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Loading...</p>
+          <p className="text-sm text-dim-foreground py-4">Carregando…</p>
         ) : articles.length === 0 ? (
-          <p className="text-sm text-dim-foreground py-4">No articles found.</p>
+          <p className="text-sm text-dim-foreground py-4">Nenhum artigo encontrado.</p>
         ) : (
           articles.map((a) => {
             const badge = getStatusBadge(a.status);

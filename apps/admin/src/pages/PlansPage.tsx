@@ -39,7 +39,7 @@ export default function PlansPage() {
     mutationFn: () => createPlan(formToPayload(form)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] });
-      toast.success('Plan created');
+      toast.success('Plano criado');
       closeForm();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -49,7 +49,7 @@ export default function PlansPage() {
     mutationFn: () => updatePlan({ plan_id: editingPlan!.id, ...formToPayload(form) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] });
-      toast.success('Plan updated');
+      toast.success('Plano atualizado');
       closeForm();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -59,7 +59,7 @@ export default function PlansPage() {
     mutationFn: (planId: string) => deletePlan(planId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] });
-      toast.success('Plan deleted');
+      toast.success('Plano excluído');
       closeForm();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -92,19 +92,19 @@ export default function PlansPage() {
     <div>
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div>
-          <h1 className="font-sf text-2xl font-bold mb-1">Plans</h1>
-          <p className="text-sm text-muted-foreground">Manage plan templates</p>
+          <h1 className="font-sf text-2xl font-bold mb-1">Planos</h1>
+          <p className="text-sm text-muted-foreground">Gerencie os planos</p>
         </div>
         <button
           onClick={openCreate}
           className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors"
         >
-          <Plus size={16} /> New Plan
+          <Plus size={16} /> Novo plano
         </button>
       </div>
 
       {isLoading ? (
-        <p className="text-dim-foreground">Loading...</p>
+        <p className="text-dim-foreground">Carregando…</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {(data?.plans || []).map((plan) => (
@@ -123,14 +123,14 @@ export default function PlansPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="font-sf text-lg font-bold mb-6">
-              {editingPlan ? `Edit: ${editingPlan.name}` : 'New Plan'}
+              {editingPlan ? `Editar: ${editingPlan.name}` : 'Novo plano'}
             </h2>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Name
+                    Nome
                   </label>
                   <input
                     type="text"
@@ -148,7 +148,7 @@ export default function PlansPage() {
                       onChange={(e) => setForm((f) => ({ ...f, is_default: e.target.checked }))}
                       className="rounded"
                     />
-                    Default
+                    Padrão
                   </label>
                   <label className="flex items-center gap-2 text-sm text-muted-foreground">
                     <input
@@ -157,7 +157,7 @@ export default function PlansPage() {
                       onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
                       className="rounded"
                     />
-                    Active
+                    Ativo
                   </label>
                   <label className="flex items-center gap-2 text-sm text-muted-foreground">
                     <input
@@ -176,7 +176,7 @@ export default function PlansPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Monthly price (R$)
+                    Preço mensal (R$)
                   </label>
                   <input
                     type="text"
@@ -189,7 +189,7 @@ export default function PlansPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Annual price (R$)
+                    Preço anual (R$)
                   </label>
                   <input
                     type="text"
@@ -204,7 +204,7 @@ export default function PlansPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Sort order
+                    Ordem
                   </label>
                   <input
                     type="number"
@@ -223,7 +223,7 @@ export default function PlansPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Stripe Product ID
+                    ID do produto Stripe
                   </label>
                   <input
                     type="text"
@@ -235,7 +235,7 @@ export default function PlansPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Stripe Price ID (monthly)
+                    ID do preço Stripe (mensal)
                   </label>
                   <input
                     type="text"
@@ -247,7 +247,7 @@ export default function PlansPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Stripe Price ID (annual)
+                    ID do preço Stripe (anual)
                   </label>
                   <input
                     type="text"
@@ -261,7 +261,7 @@ export default function PlansPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Pagar.me plan ID (annual)
+                    ID do plano Pagar.me (anual)
                   </label>
                   <input
                     type="text"
@@ -291,7 +291,7 @@ export default function PlansPage() {
               </div>
 
               <NumberFieldGroup
-                title="Resource Limits"
+                title="Limites de recursos"
                 keys={RESOURCE_LIMIT_KEYS as unknown as string[]}
                 labels={RESOURCE_LIMIT_LABELS}
                 values={form.resources}
@@ -302,7 +302,7 @@ export default function PlansPage() {
 
               <div>
                 <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                  Feature Flags
+                  Funcionalidades
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {FEATURE_FLAG_KEYS.map((key) => (
@@ -323,7 +323,7 @@ export default function PlansPage() {
                         }
                         className={`text-xs font-medium ${form.features[key] ? 'text-success' : 'text-destructive'}`}
                       >
-                        {form.features[key] ? 'ON' : 'OFF'}
+                        {form.features[key] ? 'ATIVO' : 'INATIVO'}
                       </button>
                     </div>
                   ))}
@@ -331,7 +331,7 @@ export default function PlansPage() {
               </div>
 
               <NumberFieldGroup
-                title="Rate Limits"
+                title="Limites de taxa"
                 keys={RATE_LIMIT_KEYS as unknown as string[]}
                 labels={RATE_LIMIT_LABELS}
                 values={form.rates}
@@ -346,14 +346,14 @@ export default function PlansPage() {
                   disabled={createMutation.isPending || updateMutation.isPending}
                   className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
                 >
-                  {editingPlan ? 'Update' : 'Create'}
+                  {editingPlan ? 'Atualizar' : 'Criar'}
                 </button>
                 <button
                   type="button"
                   onClick={closeForm}
                   className="px-4 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors"
                 >
-                  Cancel
+                  Cancelar
                 </button>
                 {editingPlan && editingPlan.workspace_count === 0 && (
                   <button
@@ -389,12 +389,12 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
         <div className="flex items-center gap-2">
           {plan.is_default && (
             <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-success/15 text-success">
-              DEFAULT
+              PADRÃO
             </span>
           )}
           {!plan.is_active && (
             <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-destructive/15 text-destructive">
-              INACTIVE
+              INATIVO
             </span>
           )}
           <button
@@ -408,32 +408,32 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
 
       {plan.price_brl != null && (
         <p className="text-sm text-muted-foreground mb-3">
-          R$ {(plan.price_brl / 100).toFixed(2)}/mo
+          R$ {(plan.price_brl / 100).toFixed(2)}/mês
           {plan.price_brl_annual != null && (
             <span className="text-dim-foreground">
               {' '}
-              · R$ {(plan.price_brl_annual / 100).toFixed(2)}/yr
+              · R$ {(plan.price_brl_annual / 100).toFixed(2)}/ano
             </span>
           )}
         </p>
       )}
 
       <p className="text-[0.75rem] text-muted-foreground uppercase tracking-wider mb-2">
-        Key Limits
+        Limites principais
       </p>
       <div className="flex flex-col gap-0.5 mb-3 text-sm text-muted-foreground">
         <div>
-          Clients: <span className="text-foreground font-sf">{plan.max_clients ?? '∞'}</span>
+          Clientes: <span className="text-foreground font-sf">{plan.max_clients ?? '∞'}</span>
         </div>
         <div>
-          Members: <span className="text-foreground font-sf">{plan.max_team_members ?? '∞'}</span>
+          Membros: <span className="text-foreground font-sf">{plan.max_team_members ?? '∞'}</span>
         </div>
         <div>
           Instagram:{' '}
           <span className="text-foreground font-sf">{plan.max_instagram_accounts ?? '∞'}</span>
         </div>
         <div>
-          Storage:{' '}
+          Armazenamento:{' '}
           <span className="text-foreground font-sf">
             {plan.storage_quota_bytes != null
               ? `${Math.round(plan.storage_quota_bytes / 1048576)} MB`
@@ -443,7 +443,7 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
       </div>
 
       <p className="text-[0.75rem] text-muted-foreground uppercase tracking-wider mb-2">
-        Features ({enabledFeatures.length}/{FEATURE_FLAG_KEYS.length})
+        Funcionalidades ({enabledFeatures.length}/{FEATURE_FLAG_KEYS.length})
       </p>
       <div className="flex flex-wrap gap-1 mb-4">
         {enabledFeatures.map((k) => (
@@ -452,7 +452,7 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
           </span>
         ))}
         {enabledFeatures.length === 0 && (
-          <span className="text-[0.65rem] text-dim-foreground">None</span>
+          <span className="text-[0.65rem] text-dim-foreground">Nenhum</span>
         )}
       </div>
 

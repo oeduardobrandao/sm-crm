@@ -22,12 +22,12 @@ import { useLiquidGlassContext } from '../liquidglass/LiquidGlassProvider';
 const NAV_ITEMS = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/admin/workspaces', icon: Building2, label: 'Workspaces' },
-  { to: '/admin/plans', icon: Package, label: 'Plans' },
+  { to: '/admin/plans', icon: Package, label: 'Planos' },
   { to: '/admin/admins', icon: Users, label: 'Admins' },
   { to: '/admin/integrations', icon: Plug, label: 'Integrations' },
   { to: '/admin/banners', icon: Megaphone, label: 'Banners' },
   { to: '/admin/popups', icon: AppWindow, label: 'Popups' },
-  { to: '/admin/kb-articles', icon: BookOpen, label: 'Articles' },
+  { to: '/admin/kb-articles', icon: BookOpen, label: 'Artigos' },
 ];
 
 export default function AdminLayout() {
@@ -175,7 +175,7 @@ export default function AdminLayout() {
                 <button
                   onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
                   className="p-1.5 rounded-lg text-[#9ca3af] hover:text-[#eab308] hover:bg-[#1e2430] transition-colors"
-                  title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                  title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
                 >
                   {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
                 </button>
@@ -185,8 +185,8 @@ export default function AdminLayout() {
                 className={`p-1.5 rounded-lg transition-colors ${glassEnabled ? 'text-[#eab308]' : 'text-[#9ca3af]'} hover:bg-[#1e2430]`}
                 title={
                   glassEnabled
-                    ? 'Liquid Glass: ON (click to disable)'
-                    : 'Liquid Glass: OFF (click to enable)'
+                    ? 'Liquid Glass: ativado (clique para desativar)'
+                    : 'Liquid Glass: desativado (clique para ativar)'
                 }
               >
                 <Sparkles size={14} />

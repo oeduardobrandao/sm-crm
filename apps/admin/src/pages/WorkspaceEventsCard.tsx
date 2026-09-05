@@ -76,7 +76,7 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
   return (
     <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mt-6">
       <div className="flex items-center justify-between gap-3 mb-4">
-        <h2 className="font-semibold">Event History ({total})</h2>
+        <h2 className="font-semibold">Histórico de eventos ({total})</h2>
         <select
           value={filterType}
           onChange={(e) => {
@@ -85,7 +85,7 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
           }}
           className="rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
         >
-          <option value="">All events</option>
+          <option value="">Todos os eventos</option>
           {FILTERABLE_TYPES.map((t) => (
             <option key={t.value} value={t.value}>
               {t.label}
@@ -95,17 +95,17 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-dim-foreground py-4">Loading...</p>
+        <p className="text-sm text-dim-foreground py-4">Carregando…</p>
       ) : events.length === 0 ? (
-        <p className="text-sm text-dim-foreground py-4">No events found.</p>
+        <p className="text-sm text-dim-foreground py-4">Nenhum evento encontrado.</p>
       ) : (
         <>
           {/* Desktop header */}
           <div className="hidden md:grid grid-cols-[1fr_1.4fr_1.2fr_1.4fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-            <span>When</span>
-            <span>Event</span>
-            <span>Actor</span>
-            <span>Details</span>
+            <span>Quando</span>
+            <span>Evento</span>
+            <span>Autor</span>
+            <span>Detalhes</span>
           </div>
 
           {events.map((evt) => {
@@ -167,17 +167,17 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
                 disabled={page === 0}
                 className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
               >
-                <ChevronLeft size={16} /> Previous
+                <ChevronLeft size={16} /> Anterior
               </button>
               <span className="text-xs text-muted-foreground">
-                {page + 1} of {totalPages}
+                {page + 1} de {totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}
                 className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
               >
-                Next <ChevronRight size={16} />
+                Próximo <ChevronRight size={16} />
               </button>
             </div>
           )}

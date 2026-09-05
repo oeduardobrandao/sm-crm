@@ -63,7 +63,7 @@ describe('WorkspaceInvitesCard', () => {
       total: 1,
     });
     renderCard();
-    expect(await screen.findByText('Sent')).toBeTruthy(); // header column (finding 8)
+    expect(await screen.findByText('Enviado')).toBeTruthy(); // header column (finding 8)
     expect(screen.getByRole('button', { name: /resend/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /cancel/i })).toBeTruthy();
   });
@@ -164,7 +164,7 @@ describe('WorkspaceInvitesCard', () => {
   it('reveals the create form only after clicking + Invite', async () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     renderCard();
-    expect(await screen.findByText(/no invites/i)).toBeTruthy();
+    expect(await screen.findByText(/nenhum convite/i)).toBeTruthy();
     expect(screen.queryByLabelText(/email/i)).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /\+ invite/i }));

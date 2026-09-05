@@ -43,14 +43,14 @@ export default function AdminsPage() {
   return (
     <div>
       <h1 className="font-sf text-2xl font-bold mb-1">Admins</h1>
-      <p className="text-sm text-muted-foreground mb-6">Platform administrators</p>
+      <p className="text-sm text-muted-foreground mb-6">Administradores da plataforma</p>
 
       <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3 mb-8">
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email do novo admin..."
+          placeholder="E-mail do novo admin…"
           required
           className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
         />
@@ -67,14 +67,14 @@ export default function AdminsPage() {
       <div className="bg-card border border-border rounded-2xl p-5">
         {/* Desktop table header */}
         <div className="hidden md:grid grid-cols-[2fr_2fr_1.5fr_0.5fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Email</span>
-          <span>Invited By</span>
-          <span>Added</span>
+          <span>E-mail</span>
+          <span>Convidado por</span>
+          <span>Adicionado em</span>
           <span></span>
         </div>
 
         {isLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Loading...</p>
+          <p className="text-sm text-dim-foreground py-4">Carregando…</p>
         ) : (
           (data?.admins || []).map((admin) => {
             const isSelf = admin.user_id === user?.id;
@@ -88,7 +88,7 @@ export default function AdminsPage() {
                   <div className="flex flex-col gap-0.5">
                     <span className="text-sm text-foreground">{admin.email}</span>
                     <span className="text-xs text-muted-foreground">
-                      {admin.invited_by_email ? `By ${admin.invited_by_email}` : '—'} ·{' '}
+                      {admin.invited_by_email ? `Por ${admin.invited_by_email}` : '—'} ·{' '}
                       {new Date(admin.created_at).toLocaleDateString('pt-BR')}
                     </span>
                   </div>

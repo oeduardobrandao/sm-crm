@@ -48,6 +48,11 @@ import {
 } from './popup-form';
 
 const STATUSES = ['draft', 'active', 'archived'] as const;
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'Rascunho',
+  active: 'Ativo',
+  archived: 'Arquivado',
+};
 const INPUT =
   'w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary';
 const LABEL = 'block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5';
@@ -117,20 +122,21 @@ export default function PopupsPage() {
     p.status === 'active' && p.ends_at && new Date(p.ends_at) < new Date();
 
   const badge = (p: GlobalPopup) => {
-    if (isExpired(p)) return { label: 'EXPIRED', cls: 'text-dim-foreground bg-secondary' };
-    if (p.status === 'active') return { label: 'ACTIVE', cls: 'text-success bg-success/15' };
-    if (p.status === 'draft') return { label: 'DRAFT', cls: 'text-muted-foreground bg-secondary' };
-    return { label: 'ARCHIVED', cls: 'text-dim-foreground bg-secondary' };
+    if (isExpired(p)) return { label: 'EXPIRADO', cls: 'text-dim-foreground bg-secondary' };
+    if (p.status === 'active') return { label: 'ATIVO', cls: 'text-success bg-success/15' };
+    if (p.status === 'draft')
+      return { label: 'RASCUNHO', cls: 'text-muted-foreground bg-secondary' };
+    return { label: 'ARQUIVADO', cls: 'text-dim-foreground bg-secondary' };
   };
 
   const schedule = (p: GlobalPopup) => {
     const fmt = (s: string) =>
       new Date(s).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-    return `${p.starts_at ? fmt(p.starts_at) : 'Now'} → ${p.ends_at ? fmt(p.ends_at) : '∞'}`;
+    return `${p.starts_at ? fmt(p.starts_at) : 'Agora'} → ${p.ends_at ? fmt(p.ends_at) : '∞'}`;
   };
 
   const targetLabel = (p: GlobalPopup) => {
-    if (p.target_mode === 'all') return 'All workspaces';
+    if (p.target_mode === 'all') return 'Todos os workspaces';
     if (p.target_mode === 'plan') {
       return (p.target_plan_ids || [])
         .map((id) => plansData?.plans?.find((pl) => pl.id === id)?.name || id)
@@ -148,7 +154,7 @@ export default function PopupsPage() {
         <div>
           <h1 className="font-sf text-2xl font-bold mb-1">Popups</h1>
           <p className="text-sm text-muted-foreground">
-            Modal announcements shown at most once per session inside the CRM
+            Avisos em modal exibidos no máximo uma vez por sessão dentro do CRM
           </p>
         </div>
         <button
@@ -165,7 +171,7 @@ export default function PopupsPage() {
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <input
           type="text"
-          placeholder="Search popups..."
+          placeholder="Buscar popups…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
@@ -175,10 +181,10 @@ export default function PopupsPage() {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground focus:outline-none focus:border-primary"
         >
-          <option value="">All Statuses</option>
+          <option value="">Todos os status</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {STATUS_LABELS[s]}
             </option>
           ))}
         </select>
@@ -186,18 +192,18 @@ export default function PopupsPage() {
 
       <div className="bg-card border border-border rounded-2xl p-5">
         <div className="hidden md:grid grid-cols-[2fr_0.8fr_1fr_1fr_0.7fr_0.4fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Title</span>
-          <span>Frequency</span>
-          <span>Target</span>
-          <span>Schedule</span>
+          <span>Título</span>
+          <span>Frequência</span>
+          <span>Público</span>
+          <span>Agendamento</span>
           <span>Status</span>
           <span></span>
         </div>
 
         {isLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Loading...</p>
+          <p className="text-sm text-dim-foreground py-4">Carregando…</p>
         ) : popups.length === 0 ? (
-          <p className="text-sm text-dim-foreground py-4">No popups found.</p>
+          <p className="text-sm text-dim-foreground py-4">Nenhum popup encontrado.</p>
         ) : (
           popups.map((p) => {
             const b = badge(p);
@@ -644,7 +650,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                 />
               </div>
               <div>
-                <label className={LABEL}>CTA style</label>
+                <label className={LABEL}>Estilo do CTA</label>
                 <div className="flex rounded-lg border border-border overflow-hidden text-xs">
                   {(['ink', 'brand'] as const).map((s) => (
                     <button
@@ -661,7 +667,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
             </div>
 
             <div>
-              <label className={LABEL}>Frequency</label>
+              <label className={LABEL}>Frequência</label>
               <div className="flex gap-4 text-sm text-muted-foreground">
                 <label className="flex items-center gap-2">
                   <input
@@ -766,7 +772,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
           {/* ── Coluna do preview ── */}
           <div className="bg-secondary/40 p-5 md:p-7 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <span className={LABEL}>Live preview</span>
+              <span className={LABEL}>Prévia ao vivo</span>
               <div className="flex rounded-lg border border-border overflow-hidden text-xs">
                 {(['light', 'dark'] as const).map((t) => (
                   <button

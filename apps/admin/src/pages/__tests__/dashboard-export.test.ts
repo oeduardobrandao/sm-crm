@@ -47,7 +47,7 @@ describe('buildPayingWorkspaceExportRows', () => {
     expect(rows[0].owner_name).toBe('Ana');
     expect(rows[0].owner_email).toBe('ana@example.com');
     expect(rows[0].owner_telefone).toBe('11999999999');
-    expect(rows[0].owner_marketing_opt_in).toBe('yes');
+    expect(rows[0].owner_marketing_opt_in).toBe('sim');
     expect(rows[0].monthly_amount_brl).toBe(99);
     expect(rows[0].last_activity_at).toBe('2026-08-20');
   });
@@ -69,7 +69,7 @@ describe('buildTrialExportRows', () => {
     expect(rows[0].owner_name).toBe('Bruno');
     expect(rows[0].owner_email).toBe('bruno@example.com');
     expect(rows[0].owner_telefone).toBe('');
-    expect(rows[0].owner_marketing_opt_in).toBe('no');
+    expect(rows[0].owner_marketing_opt_in).toBe('não');
     expect(rows[0].trial_ends_at).toBe('2026-09-05');
     expect(rows[0].monthly_amount_brl).toBe(82.5);
     expect(rows[0].last_activity_at).toBe(''); // null activity exports as blank, not "Nunca"

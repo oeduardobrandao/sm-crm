@@ -72,7 +72,7 @@ export function TargetPicker({ value, plans, workspaces, onChange }: TargetPicke
   return (
     <div>
       <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-        Target
+        Público
       </label>
       <div className="flex gap-3 mb-3">
         {TARGET_MODES.map((m) => (
