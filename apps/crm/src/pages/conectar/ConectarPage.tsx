@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Instagram, CircleAlert, CircleCheck } from 'lucide-react';
+import { Instagram, CircleAlert, CircleCheck, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { resolveIgError } from '../../lib/instagram-oauth-errors';
@@ -206,6 +206,10 @@ export default function ConectarPage() {
       <Button className="w-full" onClick={handleConnect} disabled={starting}>
         {starting ? t('connect.connecting') : t('connect.cta')}
       </Button>
+      <p className="mt-3 flex items-start justify-center gap-1.5 text-left text-xs text-muted-foreground">
+        <Lock className="mt-0.5 h-3.5 w-3.5 flex-none" aria-hidden="true" />
+        <span>{t('connect.trustLine')}</span>
+      </p>
     </>,
   );
 }

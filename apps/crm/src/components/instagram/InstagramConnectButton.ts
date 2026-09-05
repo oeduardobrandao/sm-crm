@@ -22,6 +22,10 @@ export function renderInstagramConnectButton(container: HTMLElement, clientId: n
       <button id="btn-ig-connect" class="btn-primary" style="background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); color: white; border: none;">
         <i class="fa-brands fa-instagram"></i> ${escapeHTML(t('instagram.connectButton'))}
       </button>
+      <p class="instagram-connect__trust" style="display: flex; align-items: center; justify-content: center; gap: 0.375rem; margin: 0.75rem 0 0; color: var(--text-muted); font-size: 0.75rem;">
+        <i class="ph ph-lock" aria-hidden="true"></i>
+        <span>${escapeHTML(t('instagram.connectTrust'))}</span>
+      </p>
     </div>
   `;
 
