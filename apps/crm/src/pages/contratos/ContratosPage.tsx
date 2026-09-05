@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
@@ -120,6 +121,7 @@ export default function ContratosPage() {
   const [editing, setEditing] = useState<Contrato | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  useUnsavedWork(saving);
 
   const form = useForm<ContratoFormValues>({
     resolver: zodResolver(contratoSchema),

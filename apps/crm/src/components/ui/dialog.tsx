@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +72,9 @@ const DialogContent = React.forwardRef<
 
     // Guard is active only when the caller says there are unsaved changes
     const isDirty = confirmClose === true;
+
+    // A silent version swap must never run over an open, dirty form.
+    useUnsavedWork(isDirty);
 
     const handleConfirmTrigger = React.useCallback(
       (e: { preventDefault: () => void }) => {

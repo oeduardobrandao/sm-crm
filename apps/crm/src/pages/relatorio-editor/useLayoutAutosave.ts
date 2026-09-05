@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { updateReportDoc } from '../../services/reportDocs';
 
 const LAYOUT_DEBOUNCE_MS = 1500;
@@ -230,6 +231,10 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
+
+  // A save in flight must finish before any silent version swap. Text still inside the
+  // debounce window is covered by the DOM heuristic (the editor is contenteditable with content).
+  useUnsavedWork(saving);
 
   return { layout, applyLayout, title, setTitle, saving };
 }

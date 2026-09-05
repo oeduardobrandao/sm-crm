@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   X,
   Plus,
@@ -176,6 +177,7 @@ export function WorkflowDrawer({
   const [isSending, setIsSending] = useState(false);
   const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+  useUnsavedWork(savingIds.size > 0);
   const [pendingEditPost, setPendingEditPost] = useState<WorkflowPost | null>(null);
   const [pendingEditData, setPendingEditData] = useState<{
     json: Record<string, unknown>;
