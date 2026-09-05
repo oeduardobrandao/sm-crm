@@ -206,4 +206,16 @@ describe('DashboardPage at-risk card', () => {
     renderPage();
     expect(await screen.findByText(/Tudo em ordem/)).toBeInTheDocument();
   });
+
+  it('keeps the Em risco KPI on the placeholder when a source fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(getTrials).mockRejectedValue(new Error('boom'));
+    renderPage();
+    await waitFor(() =>
+      expect(kpiCard('Em risco').textContent).toContain('Não foi possível carregar'),
+    );
+    expect(kpiCard('Em risco').textContent).toContain('—');
+    expect(kpiCard('Em risco').textContent).not.toMatch(/\b0 testes vencendo/);
+    consoleErrorSpy.mockRestore();
+  });
 });

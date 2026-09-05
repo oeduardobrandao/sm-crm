@@ -90,6 +90,9 @@ export default function DashboardPage() {
   const now = new Date();
   const endingSoonCount = trialsData ? selectTrialsEndingSoon(trialsData.trials, now).length : 0;
   const pendingCount = pendingQuery.data?.total ?? 0;
+  // The RiskCard below already shows per-group ErrorState — the KPI tile must not contradict it
+  // by falling back to 0 and rendering a false all-clear during an outage.
+  const riskUnavailable = trialsQuery.isError || pendingQuery.isError;
 
   function exportPayingWorkspacesCsv() {
     const workspaces = mrrData?.workspaces ?? [];
@@ -158,10 +161,12 @@ export default function DashboardPage() {
     },
     {
       label: 'Em risco',
-      value: endingSoonCount + pendingCount,
-      sub: `${endingSoonCount} ${endingSoonCount === 1 ? 'teste vencendo' : 'testes vencendo'} · ${pendingCount} ${pendingCount === 1 ? 'pendente' : 'pendentes'}`,
+      value: riskUnavailable ? '—' : endingSoonCount + pendingCount,
+      sub: riskUnavailable
+        ? 'Não foi possível carregar'
+        : `${endingSoonCount} ${endingSoonCount === 1 ? 'teste vencendo' : 'testes vencendo'} · ${pendingCount} ${pendingCount === 1 ? 'pendente' : 'pendentes'}`,
       loading: trialsLoading || pendingQuery.isPending,
-      tone: endingSoonCount + pendingCount > 0 ? 'warning' : undefined,
+      tone: !riskUnavailable && endingSoonCount + pendingCount > 0 ? 'warning' : undefined,
     },
     {
       label: 'MRR total',
