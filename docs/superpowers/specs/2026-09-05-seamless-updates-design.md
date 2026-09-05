@@ -35,8 +35,8 @@ Fora de escopo:
 | Manter a aba antiga viva pré-buscando os chunks para o cache HTTP | Assets são `immutable` por um ano; uma aba antiga encontra tudo localmente mesmo depois que a Vercel parou de servir aquele build. Custo: cerca de 1 MB gzip extra em idle por build novo no CRM, e só os chunks que mudaram nos builds seguintes |
 | Pré-busca só para usuário autenticado | Landing e páginas de SEO não pagam nada |
 | Três gatilhos de troca: navegação, aba oculta, inatividade | Cobrem, respectivamente, o uso ativo, a pausa e quem passa o dia numa tela só |
-| POP (botão voltar) não troca de versão | Navegação completa no POP duplicaria a entrada de histórico |
-| Trabalho não salvo é um registro explícito; sem registro a tela é limpa | Recarregar nunca pode disparar diálogo de `beforeunload`, então a decisão tem que ser tomada antes, com dado confiável |
+| Só PUSH com mudança de `pathname` troca de versão | REPLACE é usado para limpar query (`useOpenParam` abre o diálogo e remove `?novo=1` no mesmo tick; 17 ocorrências de `replace: true`) e PUSH sem mudança de pathname é filtro, aba ou drawer por query (10 `setSearchParams`). Uma navegação completa nesses casos perderia o estado em memória que a URL não carrega. POP duplicaria a entrada de histórico |
+| Trabalho não salvo é um registro explícito, e os gatilhos passivos ainda checam o DOM | Recarregar nunca pode disparar diálogo de `beforeunload`, então a decisão tem que ser tomada antes. O registro cobre o que conhecemos; a heurística de DOM (diálogo aberto, editável focado, textarea ou contenteditable com conteúdo) cobre o que o registro não conhece, para que um editor novo sem hook falhe fechado nos gatilhos que recarregam sem ação do usuário |
 | Polling continua em 5 minutos | Com a pré-busca, detectar o deploy mais cedo deixou de ser urgente |
 | Recarregamento silencioso não depende de `sessionStorage` | O gatilho é um mismatch verificado de fingerprint, não um erro; não há risco de loop. Quando o storage existe, o carimbo de cooldown do deploy-recovery é gravado mesmo assim |
 
@@ -73,11 +73,24 @@ referências a `/assets/` do HTML, resposta sem referências é ignorada.
 
 ```ts
 export function holdUnsavedWork(): () => void; // devolve release, idempotente
-export function hasUnsavedWork(): boolean;
+export function hasUnsavedWork(): boolean;    // registro explícito
+export function isDocumentBusy(doc?: Document): boolean; // heurística de DOM
 export function useUnsavedWork(active: boolean): void; // segura enquanto montado e active
 ```
 
-Contador simples. Sem nenhum hold, a tela é considerada limpa.
+`hasUnsavedWork` é um contador. `isDocumentBusy` é a rede para o que ninguém registrou e
+retorna `true` quando qualquer um vale:
+
+- existe `[role="dialog"]` ou `[role="alertdialog"]` no documento (Dialog, Sheet e
+  AlertDialog do Radix; cobre qualquer formulário modal);
+- `document.activeElement` é `textarea`, `input` de texto (`text`, `search`, `email`,
+  `url`, `tel`, `number`, `password`) ou `isContentEditable`;
+- existe `textarea` com `value` não vazio, ou `[contenteditable="true"]` com
+  `textContent` não vazio (editores TipTap).
+
+A heurística é deliberadamente conservadora: um drawer aberto o dia inteiro adia a troca
+até ser fechado ou até a próxima navegação. Um editor novo sem `useUnsavedWork` falha
+fechado nos gatilhos passivos.
 
 Pontos de registro, todos via `useUnsavedWork`:
 
@@ -114,13 +127,16 @@ export function installSilentUpdate(options: {
 ```
 
 Estados: `idle` → `pending` (o watcher viu build novo) → reload. Todo gatilho exige
-`pending` e `hasUnsavedWork() === false`.
+`pending` e `hasUnsavedWork() === false`. Os gatilhos de aba oculta e inatividade exigem
+também `isDocumentBusy() === false`, porque recarregam sem ação do usuário. O gatilho de
+navegação não consulta a heurística: sair de um editor sem registro por navegação já
+descarta o conteúdo hoje, então a troca de versão não muda o resultado.
 
 | Gatilho | Condição | Ação |
 |---|---|---|
-| Navegação | Bloqueador `silent-update` registrado com `router.getBlocker`; retorna `true` para PUSH e REPLACE quando pendente e limpo | Ao ver o bloqueador em `blocked` via `router.subscribe`, navegação completa para o mesmo destino: `location.assign` no PUSH, `location.replace` no REPLACE |
-| Aba oculta | `visibilitychange` para `hidden` arma um timer de `hiddenAfterMs`; `visible` desarma | Ao disparar, chama `check()` do watcher (o polling estava pausado) e recarrega se ficou pendente |
-| Inatividade | `pointerdown`, `keydown`, `wheel`, `scroll` e `touchstart` passivos atualizam `lastInputAt`, no máximo uma vez por segundo. Tick a cada 30 s | Se visível e `now - lastInputAt >= idleAfterMs`, recarrega |
+| Navegação | Bloqueador `silent-update` registrado com `router.getBlocker`; retorna `true` só para PUSH em que `nextLocation.pathname !== currentLocation.pathname`, quando pendente e sem registro de trabalho não salvo | Ao ver o bloqueador em `blocked` via `router.subscribe`, `window.location.assign(pathname + search + hash)` do destino |
+| Aba oculta | `visibilitychange` para `hidden` arma um timer de `hiddenAfterMs`; `visible` desarma | Ao disparar, chama `check()` do watcher (o polling estava pausado) e recarrega se ficou pendente e `isDocumentBusy()` é falso |
+| Inatividade | `pointerdown`, `keydown`, `wheel`, `scroll` e `touchstart` passivos atualizam `lastInputAt`, no máximo uma vez por segundo. Tick a cada 30 s | Se visível, `now - lastInputAt >= idleAfterMs` e `isDocumentBusy()` é falso, recarrega |
 
 Recarregar é `window.location.reload()`, precedido do carimbo de cooldown do
 deploy-recovery quando `sessionStorage` existe. Depois do reload, o documento novo vira a
@@ -146,10 +162,14 @@ CRM e Admin passam a gerar o manifest do Vite com `build.manifest: 'build-manife
 
 1. Pula se `navigator.connection.saveData` for `true` ou `effectiveType` for 2g ou 3g.
 2. Busca o manifest com `cache: 'no-store'`.
-3. Confere que o `file` da entrada `isEntry` é o `src` do `<script type="module">` do
-   documento. Se não bater, um deploy aconteceu entre o HTML e o manifest: aborta.
-4. Coleta os `file` e `css[]` de todas as entradas, ignora os que o documento já referencia
-   e busca o resto com três em paralelo e `priority: 'low'`.
+3. Todo `file` e `css[]` do manifest é relativo ao `outDir`, sem o `base` do Vite
+   (`assets/index-XXXX.js`, nunca `/admin/assets/...`). Cada um vira URL absoluta com
+   `new URL(file, new URL(manifestUrl, location.origin))`, que devolve `/assets/...` no CRM
+   e `/admin/assets/...` no Admin. Confere que a URL da entrada `isEntry` é o `src` do
+   `<script type="module">` do documento, comparando `pathname`. Se não bater, um deploy
+   aconteceu entre o HTML e o manifest: aborta.
+4. Coleta as URLs de todas as entradas, ignora as que o documento já referencia em
+   `script[src]` ou `link[href]` e busca o resto com três em paralelo e `priority: 'low'`.
 5. Erro em um arquivo é ignorado e a fila continua. Erro no manifest encerra em silêncio.
 
 Ponto de chamada: CRM no `App.tsx`, uma vez por carregamento, quando `user` do
@@ -184,17 +204,20 @@ migration nem edge function envolvida.
 Vitest em `packages/app-lifecycle/__tests__`, com timers falsos e `fetch` mockado:
 
 - `unsaved-work`: hold e release, release idempotente, contagem com múltiplos holds, hook
-  segura e libera conforme `active` e desmontagem.
+  segura e libera conforme `active` e desmontagem; `isDocumentBusy` com diálogo aberto,
+  textarea focada, textarea com conteúdo, contenteditable com conteúdo, e documento limpo.
 - `new-version`: os testes atuais adaptados ao retorno `{ stop, check }`; `check()` ignora a
   trava de aba oculta, o intervalo não.
-- `silent-update`: nada acontece antes de pendente; navegação PUSH e REPLACE viram
-  `assign`/`replace` no destino certo; POP passa; trabalho não salvo bloqueia os três
-  gatilhos; aba oculta arma e desarma o timer e chama `check()` antes de recarregar;
-  inatividade só conta com a aba visível e input reinicia a contagem; desinstalar remove
-  listeners e bloqueador.
-- `prefetch-build`: pula em `saveData` e em conexão lenta; aborta em mismatch de entry;
-  ignora arquivos já referenciados; respeita a concorrência; erro em um arquivo não
-  interrompe; cancelar aborta.
+- `silent-update`: nada acontece antes de pendente; PUSH com pathname novo vira `assign`
+  no destino certo com search e hash; PUSH sem mudar pathname, REPLACE e POP passam;
+  registro de trabalho não salvo bloqueia os três gatilhos; documento ocupado bloqueia
+  aba oculta e inatividade mas não a navegação; aba oculta arma e desarma o timer e chama
+  `check()` antes de recarregar; inatividade só conta com a aba visível e input reinicia a
+  contagem; desinstalar remove listeners e bloqueador.
+- `prefetch-build`: pula em `saveData` e em conexão lenta; resolve URLs relativas ao
+  manifest com `base` `/` e `/admin/`; aborta em mismatch de entry; ignora arquivos já
+  referenciados; respeita a concorrência; erro em um arquivo não interrompe; cancelar
+  aborta.
 - `dialog.tsx`: teste existente ganha o caso "segura trabalho não salvo enquanto
   `confirmClose`".
 
