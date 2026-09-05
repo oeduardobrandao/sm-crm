@@ -177,6 +177,11 @@ Monorepo with npm workspaces:
 - `PAGARME_WEBHOOK_BASIC` -- `user:password` pair configured in the Pagar.me dashboard webhook
   "Habilitar autenticação" toggle, verified timing-safe on every delivery. REQUIRED by
   pagarme-webhook, no default -- throws at module load
+- `PAGARME_DASHBOARD_BASE` -- Pagar.me dashboard prefix up to the account, e.g.
+  `https://dash.pagar.me/merch_xxx/acc_yyy`. platform-admin appends
+  `/subscriptions/{id}/info` to build the "Abrir no Pagar.me" link on the workspace
+  detail. Optional, no default: unset or not `https://` means no link (everything else
+  still works). Differs per environment (live account in prod, sandbox account in staging)
 - `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` -- TikTok Login Kit OAuth (tiktok-integration)
 - `TIKTOK_APP_AUDITED` -- unset until TikTok's Content Posting audit passes; while unset, scheduling enforces SELF_ONLY privacy
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)
