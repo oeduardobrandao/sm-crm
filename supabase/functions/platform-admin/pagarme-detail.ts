@@ -1,8 +1,8 @@
 // Pure view-model helpers for the Pagar.me branch of the admin workspace detail. No network,
 // env or Supabase access in the helpers (same discipline as pricing.ts and
 // _shared/pagarme-logic.ts) so the drift rules are unit-testable in isolation. The gateway port
-// at the bottom is the only thing that touches the network, and buildSubscriptionDetail takes it
-// by injection so tests substitute a fake.
+// at the bottom is the only thing that touches the network, and the caller (`buildSubscriptionDetail`
+// in `workspace-detail.ts`) takes it by injection so tests substitute a fake.
 //
 // Spec: docs/superpowers/specs/2026-09-05-pagarme-admin-parity-design.md §1.
 
@@ -53,7 +53,7 @@ export interface PagarmeLive {
   /** Normalized with the webhook's table; null when the remote status is unknown to us. */
   status: PagarmeLiveStatus | null;
   remote_status: string;
-  /** active: next_billing_at ?? current_cycle.billing_at; future: start_at; otherwise null. */
+  /** active: next_billing_at ?? current_cycle.billing_at ?? current_cycle.end_at; future: start_at; otherwise null. */
   next_billing_at: string | null;
   start_at: string | null;
   canceled_at: string | null;
@@ -119,9 +119,18 @@ export function periodDiffers(mirror: string | null, live: string | null): boole
   return Math.abs(a - b) > PERIOD_TOLERANCE_MS;
 }
 
+/**
+ * active: the documented top-level next_billing_at, then the cycle's billing_at (documented
+ * only in the boleto example), then the cycle's end_at, the one cycle field every sibling
+ * module in this repo has actually observed in sandbox (prepaid: the next charge is at the
+ * cycle boundary). future: start_at. Otherwise null.
+ */
 function nextBilling(remote: PagarmeRemoteSubscription): string | null {
   if (remote.status === "active") {
-    return remote.next_billing_at ?? remote.current_cycle?.billing_at ?? null;
+    return remote.next_billing_at ??
+      remote.current_cycle?.billing_at ??
+      remote.current_cycle?.end_at ??
+      null;
   }
   if (remote.status === "future") return remote.start_at ?? null;
   return null;

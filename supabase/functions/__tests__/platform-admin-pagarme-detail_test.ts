@@ -123,6 +123,14 @@ Deno.test("buildPagarmeLive: active prefers next_billing_at, falls back to curre
   );
   assertEquals(b.next_billing_at, "2027-10-02T00:00:00Z");
   assertEquals(b.drift, null);
+
+  // Only the sandbox-observed cycle shape ({ end_at }): the next charge is the cycle boundary.
+  const c = buildPagarmeLive(
+    remote({ status: "active", next_billing_at: null, current_cycle: { end_at: "2027-10-03T00:00:00Z" } }),
+    mirror,
+  );
+  assertEquals(c.next_billing_at, "2027-10-03T00:00:00Z");
+  assertEquals(c.drift, null);
 });
 
 Deno.test("buildPagarmeLive: canceled and failed → canceled, next charge null, canceled_at kept", () => {
