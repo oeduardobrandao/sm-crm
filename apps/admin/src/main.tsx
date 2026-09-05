@@ -4,8 +4,7 @@ import { RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Analytics } from '@vercel/analytics/react';
 import { Toaster } from 'sonner';
-import { installDeployRecovery, watchForNewVersion } from '@mesaas/app-lifecycle';
-import { showNewVersionToast } from './lib/new-version-toast';
+import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';
 import { AdminAuthProvider } from './context/AdminAuthContext';
 import { LiquidGlassProvider } from './liquidglass/LiquidGlassProvider';
 import { TooltipProvider } from './components/ui/tooltip';
@@ -15,13 +14,16 @@ import './liquidglass/glass.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();
-watchForNewVersion({ onNewVersion: showNewVersionToast });
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
 });
+
+// A deploy while this tab is open: move to the new build at the next route change, or once
+// the tab has been hidden or idle for a while, never over unsaved work or an in-flight mutation.
+installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

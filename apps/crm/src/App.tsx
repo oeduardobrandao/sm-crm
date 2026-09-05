@@ -79,7 +79,7 @@ const SecaoPage = lazy(() => import('./pages/ajuda/SecaoPage'));
 const ArtigoPage = lazy(() => import('./pages/ajuda/ArtigoPage'));
 const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage'));
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },

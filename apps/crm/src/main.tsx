@@ -1,10 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { installDeployRecovery, watchForNewVersion } from '@mesaas/app-lifecycle';
+import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';
 import { initSentry } from '@/lib/sentry';
 import { initAnalytics } from './lib/analytics';
-import { showNewVersionToast } from './lib/new-version-toast';
 import { initI18n } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
@@ -22,12 +21,11 @@ import ptBrand from '../../../packages/i18n/locales/pt/brand.json';
 import enBrand from '../../../packages/i18n/locales/en/brand.json';
 import ptAutomations from '../../../packages/i18n/locales/pt/automations.json';
 import enAutomations from '../../../packages/i18n/locales/en/automations.json';
-import App from './App';
+import App, { queryClient } from './App';
 import '../style.css';
 
 // Before anything else: a tab open across a deploy loads chunks that no longer exist.
 installDeployRecovery();
-watchForNewVersion({ onNewVersion: showNewVersionToast });
 
 initSentry();
 
@@ -66,9 +64,13 @@ initI18n({
 
 // Minimal DATA router (single splat route; App keeps its own descendant <Routes>). It was
 // introduced because `useBlocker` needs data-router context, for the Estúdio autosave's
-// dirty-navigation blocker; Estúdio is retired and nothing uses `useBlocker` today, but the
-// data router is kept because swapping back to <BrowserRouter> is a behaviour change for no
-// benefit. Route matching/links are unchanged: every internal link navigates by absolute path.
+// dirty-navigation blocker. Estúdio is retired; today the data router is what lets
+// `installSilentUpdate` register its navigation blocker. Route matching/links are unchanged:
+// every internal link navigates by absolute path.
 const router = createBrowserRouter([{ path: '*', element: <App /> }]);
+
+// A deploy while this tab is open: move to the new build at the next route change, or once
+// the tab has been hidden or idle for a while, never over unsaved work or an in-flight mutation.
+installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />);
