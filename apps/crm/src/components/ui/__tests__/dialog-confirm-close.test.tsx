@@ -72,4 +72,17 @@ describe('DialogContent close confirmation', () => {
     );
     expect(hasUnsavedWork()).toBe(false);
   });
+
+  it('does not hold the registry while the dialog is closed, even with confirmClose set', () => {
+    render(
+      <Dialog open={false} onOpenChange={() => {}}>
+        <DialogContent confirmClose onConfirmClose={() => {}}>
+          <DialogHeader>
+            <DialogTitle>Título</DialogTitle>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>,
+    );
+    expect(hasUnsavedWork()).toBe(false);
+  });
 });
