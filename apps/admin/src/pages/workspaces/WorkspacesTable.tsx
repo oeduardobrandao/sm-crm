@@ -9,6 +9,7 @@ import {
   STATUS_BADGE_VARIANT,
 } from '../../lib/subscription';
 import { Badge } from '../../components/ui/badge';
+import { RowLink } from '../../components/RowLink';
 import { Skeleton } from '../../components/ui/skeleton';
 import {
   Table,
@@ -22,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/too
 import { ACTIVITY_TONE_CLASS, describeActivity } from '../workspace-activity';
 import { WORKSPACE_COLUMNS, type Density, type WorkspaceColumnKey } from '../workspaces-columns';
 import { cn } from '../../lib/utils';
+import { workspaceDetailPath } from '../../lib/routes';
 
 interface WorkspacesTableProps {
   workspaces: WorkspaceSummary[];
@@ -84,7 +86,7 @@ function cellFor(key: WorkspaceColumnKey, ws: WorkspaceSummary, now: Date) {
     case 'name':
       return (
         <span className="flex items-center gap-2">
-          <span className="font-medium text-foreground">{ws.name}</span>
+          <RowLink to={workspaceDetailPath(ws.id)}>{ws.name}</RowLink>
           {ws.has_overrides ? (
             <Badge variant="warning" size="sm">
               overrides
@@ -210,7 +212,7 @@ export function WorkspacesTable({
             className="cursor-pointer border-b border-border/50 px-5 py-3 last:border-0 hover:bg-secondary/30"
           >
             <div className="flex items-center gap-2">
-              <span className="font-medium text-foreground">{ws.name}</span>
+              <RowLink to={workspaceDetailPath(ws.id)}>{ws.name}</RowLink>
               {ws.has_overrides ? (
                 <Badge variant="warning" size="sm">
                   overrides

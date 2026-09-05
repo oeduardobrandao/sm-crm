@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import type { WorkspaceSummary } from '../../lib/api';
 import { WorkspacesTable, WorkspacesTableSkeleton } from '../workspaces/WorkspacesTable';
@@ -43,18 +44,20 @@ function renderTable(props: Partial<Parameters<typeof WorkspacesTable>[0]> = {})
   const onSort = vi.fn();
   const onOpen = vi.fn();
   render(
-    <TooltipProvider>
-      <WorkspacesTable
-        workspaces={[ws()]}
-        visible={DEFAULT_COLUMN_PREFS.visible}
-        density="confortavel"
-        sort={{ ord: 'created_at', dir: 'desc' }}
-        onSort={onSort}
-        onOpen={onOpen}
-        now={NOW}
-        {...props}
-      />
-    </TooltipProvider>,
+    <MemoryRouter>
+      <TooltipProvider>
+        <WorkspacesTable
+          workspaces={[ws()]}
+          visible={DEFAULT_COLUMN_PREFS.visible}
+          density="confortavel"
+          sort={{ ord: 'created_at', dir: 'desc' }}
+          onSort={onSort}
+          onOpen={onOpen}
+          now={NOW}
+          {...props}
+        />
+      </TooltipProvider>
+    </MemoryRouter>,
   );
   return { onSort, onOpen };
 }
@@ -97,10 +100,25 @@ describe('WorkspacesTable', () => {
     expect(screen.getAllByText('42').length).toBeGreaterThan(0);
   });
 
-  it('navigates when a row is clicked', () => {
+  it('navigates when a row is clicked outside the name link', () => {
     const { onOpen } = renderTable();
-    fireEvent.click(screen.getAllByText('Agência Norte')[0]);
+    const table = within(screen.getByRole('table'));
+    fireEvent.click(table.getByText('42'));
     expect(onOpen).toHaveBeenCalledWith('ws-1');
+  });
+
+  it('the name cell is a real link to the detail page and does not double-fire the row click', () => {
+    const { onOpen } = renderTable();
+    const table = within(screen.getByRole('table'));
+    const link = table.getByRole('link', { name: 'Agência Norte' });
+    expect(link).toHaveAttribute('href', '/admin/workspaces/ws-1');
+    fireEvent.click(link);
+    expect(onOpen).not.toHaveBeenCalled();
+    const card = within(screen.getByRole('list'));
+    expect(card.getByRole('link', { name: 'Agência Norte' })).toHaveAttribute(
+      'href',
+      '/admin/workspaces/ws-1',
+    );
   });
 
   it('marks the table busy while refetching', () => {
