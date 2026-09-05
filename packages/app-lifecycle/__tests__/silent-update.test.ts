@@ -224,9 +224,12 @@ describe('installSilentUpdate: navigation', () => {
 
     router.navigate({ pathname: '/clientes' });
     expect(assign).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.getItem('mesaas:deploy-reload-at')).not.toBeNull();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(stop).toHaveBeenCalledTimes(1);
     expect(router.proceed).toHaveBeenCalledTimes(1);
+    // A swap that did not happen must not leave deploy-recovery's cooldown behind.
+    expect(window.sessionStorage.getItem('mesaas:deploy-reload-at')).toBeNull();
 
     router.state.blockers.clear();
     expect(router.navigate({ pathname: '/equipe' })).toBe(false);
@@ -349,6 +352,20 @@ describe('installSilentUpdate: idle', () => {
 
     await vi.advanceTimersByTimeAsync(10_500);
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('restarts the idle countdown when the tab becomes visible again', async () => {
+    const router = new FakeRouter();
+    await reachPending(router);
+
+    setVisibility('hidden');
+    await vi.advanceTimersByTimeAsync(3_000);
+    setVisibility('visible');
+    // Idle is counted from the moment the tab came back, not from the last input before hiding.
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
 

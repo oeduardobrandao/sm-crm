@@ -169,6 +169,13 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
       // swap alive.
       watchdog = null;
       reloading = false;
+      // The stamp taken before assign() kept deploy-recovery from reloading over the
+      // navigation in flight; a swap that did not happen must not leave it behind.
+      try {
+        window.sessionStorage.removeItem(RELOAD_STAMP_KEY);
+      } catch {
+        // No storage: nothing was stamped either.
+      }
       if (typeof window.stop === 'function') window.stop();
       blocker.proceed?.();
     };
@@ -191,9 +198,14 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
           await reloadIfQuiet(answered);
         })();
       }, hiddenAfterMs);
-    } else if (hiddenTimer !== null) {
-      clearTimeout(hiddenTimer);
-      hiddenTimer = null;
+    } else {
+      if (hiddenTimer !== null) {
+        clearTimeout(hiddenTimer);
+        hiddenTimer = null;
+      }
+      // Idle is counted from the moment the tab came back: after hours hidden, the first
+      // tick must not reload while the user is looking at the page.
+      lastInputAt = Date.now();
     }
   }
   document.addEventListener('visibilitychange', onVisibilityChange);
