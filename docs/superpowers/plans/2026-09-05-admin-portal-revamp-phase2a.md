@@ -458,7 +458,7 @@ function ListSkeleton() {
 }
 ```
 
-Trocar cada `<p className="text-sm text-dim-foreground py-4">Carregando…</p>` das três listas (MRR, trials pendentes, recentes) por `<ListSkeleton />`, e os dois `<p className="text-sm text-dim-foreground py-4">Nenhum … ainda.</p>` por `<EmptyState title="Nenhum workspace pagante ainda" />` e `<EmptyState title="Nenhum teste em andamento" />` respectivamente (mantendo o texto que cada `<p>` tem hoje, sem o ponto final). O KPI grid e o `RiskCard` não mudam.
+Trocar cada `<p className="text-sm text-dim-foreground py-4">Carregando…</p>` das três listas (MRR, trials pendentes, recentes) por `<ListSkeleton />`, e os dois `<p className="text-sm text-dim-foreground py-4">Nenhum … ainda.</p>` por `<EmptyState title="Nenhum workspace pagante ainda" />` e `<EmptyState title="Nenhum workspace em teste no momento" />` respectivamente (mantendo o texto que cada `<p>` tem hoje, sem o ponto final). O KPI grid e o `RiskCard` não mudam.
 
 - [ ] **Step 5: Rodar e ver passar**
 
