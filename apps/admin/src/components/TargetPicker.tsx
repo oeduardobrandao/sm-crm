@@ -8,9 +8,9 @@ export interface TargetValue {
 
 const TARGET_MODES: TargetMode[] = ['all', 'plan', 'workspace'];
 const MODE_LABEL: Record<TargetMode, string> = {
-  all: 'All',
-  plan: 'By Plan',
-  workspace: 'By Workspace',
+  all: 'Todos',
+  plan: 'Por plano',
+  workspace: 'Por workspace',
 };
 
 interface Option {
@@ -67,7 +67,7 @@ function Chips({
   );
 }
 
-/** Radios All / By Plan / By Workspace + chips. Compartilhado entre Banners e Popups. */
+/** Radios Todos / Por plano / Por workspace + chips. Compartilhado entre Banners e Popups. */
 export function TargetPicker({ value, plans, workspaces, onChange }: TargetPickerProps) {
   return (
     <div>

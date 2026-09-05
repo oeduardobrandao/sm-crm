@@ -24,7 +24,7 @@ describe('TargetPicker', () => {
       target_plan_ids: ['pro'],
       target_workspace_ids: [],
     });
-    fireEvent.click(screen.getByLabelText('By Workspace'));
+    fireEvent.click(screen.getByLabelText('Por workspace'));
     expect(onChange).toHaveBeenCalledWith({
       target_mode: 'workspace',
       target_plan_ids: [],

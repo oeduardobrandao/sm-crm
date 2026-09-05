@@ -81,8 +81,8 @@ describe('PopupsPage lista', () => {
   it('mostra título da primeira página, badge de páginas, frequência com ack e métricas', async () => {
     renderPage();
     expect(await screen.findByText('Analytics de Stories')).toBeInTheDocument();
-    expect(screen.getByText('2 pages')).toBeInTheDocument();
-    expect(screen.getByText('Once · ack')).toBeInTheDocument();
+    expect(screen.getByText('2 páginas')).toBeInTheDocument();
+    expect(screen.getByText('Uma vez · confirmação')).toBeInTheDocument();
     expect(screen.getByText(/seen 312/)).toBeInTheDocument();
     expect(screen.getByText(/cta 87/)).toBeInTheDocument();
   });
@@ -92,10 +92,10 @@ describe('PopupsPage editor', () => {
   it('New Popup abre com uma aba; submit vazio mostra erros inline e não chama a API', async () => {
     renderPage();
     await screen.findByText('Analytics de Stories');
-    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
-    expect(screen.getByRole('heading', { name: 'New Popup' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    expect(screen.getByRole('heading', { name: 'Novo popup' })).toBeInTheDocument();
     expect(screen.getAllByRole('tab')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
     expect(await screen.findByText('Title is required')).toBeInTheDocument();
     expect(createPopup).not.toHaveBeenCalled();
   });
@@ -103,19 +103,19 @@ describe('PopupsPage editor', () => {
   it('adiciona página, preenche, envia payload com pages e sem key; require ack desabilita frequência', async () => {
     renderPage();
     await screen.findByText('Analytics de Stories');
-    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
 
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Página 1' } });
-    fireEvent.change(screen.getByLabelText('Body (Markdown)'), { target: { value: 'corpo 1' } });
-    fireEvent.click(screen.getByRole('button', { name: '+ Page' }));
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Página 1' } });
+    fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'corpo 1' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Página' }));
     expect(screen.getAllByRole('tab')).toHaveLength(2);
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Página 2' } });
-    fireEvent.change(screen.getByLabelText('Body (Markdown)'), { target: { value: 'corpo 2' } });
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Página 2' } });
+    fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'corpo 2' } });
 
-    fireEvent.click(screen.getByLabelText(/Require acknowledgement/));
-    expect(screen.getByLabelText('Every session until CTA')).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/Exigir confirmação/));
+    expect(screen.getByLabelText('Toda sessão até clicar no CTA')).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
     await waitFor(() => expect(createPopup).toHaveBeenCalledTimes(1));
     const payload = vi.mocked(createPopup).mock.calls[0][0];
     expect(payload.pages).toEqual([
@@ -144,15 +144,17 @@ describe('PopupsPage editor', () => {
   it('CTA por página vai no payload da página, não no global', async () => {
     renderPage();
     await screen.findByText('Analytics de Stories');
-    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'P1' } });
-    fireEvent.change(screen.getByLabelText('Body (Markdown)'), { target: { value: 'b' } });
-    fireEvent.change(screen.getByLabelText('Page CTA label'), {
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'P1' } });
+    fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'b' } });
+    fireEvent.change(screen.getByLabelText('Rótulo do CTA da página'), {
       target: { value: 'Ver só aqui' },
     });
-    fireEvent.change(screen.getByLabelText('Page CTA URL'), { target: { value: '/so-aqui' } });
+    fireEvent.change(screen.getByLabelText('URL do CTA da página'), {
+      target: { value: '/so-aqui' },
+    });
     expect(screen.getByRole('button', { name: 'Ver só aqui' })).toBeInTheDocument(); // preview
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
     await waitFor(() => expect(createPopup).toHaveBeenCalledTimes(1));
     const payload = vi.mocked(createPopup).mock.calls[0][0] as {
       pages: Array<Record<string, unknown>>;
@@ -166,16 +168,18 @@ describe('PopupsPage editor', () => {
   it('default do secundário segue o CTA efetivo da última página: "Agora não" com CTA só na página, sem CTA global', async () => {
     renderPage();
     await screen.findByText('Analytics de Stories');
-    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
-    fireEvent.change(screen.getByLabelText('Page CTA label'), { target: { value: 'Ver' } });
-    fireEvent.change(screen.getByLabelText('Page CTA URL'), { target: { value: '/x' } });
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    fireEvent.change(screen.getByLabelText('Rótulo do CTA da página'), {
+      target: { value: 'Ver' },
+    });
+    fireEvent.change(screen.getByLabelText('URL do CTA da página'), { target: { value: '/x' } });
     expect(screen.getByRole('button', { name: 'Agora não' })).toBeInTheDocument();
   });
 
   it('preview segue a aba selecionada', async () => {
     renderPage();
     fireEvent.click(await screen.findByText('Analytics de Stories'));
-    expect(screen.getByRole('heading', { name: 'Edit Popup' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Editar popup' })).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('tab')[1]);
     expect(screen.getByRole('heading', { level: 2, name: 'Segunda' })).toBeInTheDocument();
   });
@@ -183,8 +187,8 @@ describe('PopupsPage editor', () => {
   it('preview sanitiza links do markdown como o CRM: //host vira #, caminho interno passa', async () => {
     renderPage();
     await screen.findByText('Analytics de Stories');
-    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
-    fireEvent.change(screen.getByLabelText('Body (Markdown)'), {
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), {
       target: {
         value: '[a](//evil.com) [b](/ajuda) [c](https://x.y) [d](/\\evil.com) [e](</\t/evil.com>)',
       },
@@ -199,10 +203,10 @@ describe('PopupsPage editor', () => {
   it('editar a página limpa o erro inline', async () => {
     renderPage();
     await screen.findByText('Analytics de Stories');
-    fireEvent.click(screen.getByRole('button', { name: /New Popup/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
     expect(await screen.findByText('Title is required')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Ok' } });
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Ok' } });
     expect(screen.queryByText('Title is required')).toBeNull();
   });
 });

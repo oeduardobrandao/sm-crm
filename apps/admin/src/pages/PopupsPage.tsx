@@ -146,7 +146,7 @@ export default function PopupsPage() {
   };
 
   const frequencyLabel = (p: GlobalPopup) =>
-    `${p.frequency === 'once' ? 'Once' : 'Until CTA'}${p.require_ack ? ' · ack' : ''}`;
+    `${p.frequency === 'once' ? 'Uma vez' : 'Até o CTA'}${p.require_ack ? ' · confirmação' : ''}`;
 
   return (
     <div>
@@ -164,7 +164,7 @@ export default function PopupsPage() {
           }}
           className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors"
         >
-          <Plus size={16} /> New Popup
+          <Plus size={16} /> Novo popup
         </button>
       </div>
 
@@ -225,7 +225,7 @@ export default function PopupsPage() {
                       <span className="truncate">{first?.title}</span>
                       {p.pages.length > 1 && (
                         <span className="text-[0.65rem] font-semibold px-1.5 py-0.5 rounded-sm bg-secondary text-muted-foreground shrink-0">
-                          {p.pages.length} pages
+                          {p.pages.length} {p.pages.length === 1 ? 'página' : 'páginas'}
                         </span>
                       )}
                     </div>
@@ -322,7 +322,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
   const createMut = useMutation({
     mutationFn: () => createPopup(formToPayload(form)),
     onSuccess: () => {
-      toast.success('Popup created');
+      toast.success('Popup criado');
       onSaved();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -330,7 +330,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
   const updateMut = useMutation({
     mutationFn: () => updatePopup({ popup_id: popup!.id, ...formToPayload(form) }),
     onSuccess: () => {
-      toast.success('Popup updated');
+      toast.success('Popup atualizado');
       onSaved();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -338,7 +338,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
   const deleteMut = useMutation({
     mutationFn: () => deletePopup(popup!.id),
     onSuccess: () => {
-      toast.success('Popup deleted');
+      toast.success('Popup excluído');
       onSaved();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -371,7 +371,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
       const r = await uploadInlineImage(file);
       updatePage({ image_key: r.r2Key });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
+      toast.error(err instanceof Error ? err.message : 'Falha ao enviar');
     } finally {
       setUploading(false);
     }
@@ -379,7 +379,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
 
   const handleRemovePage = (index: number) => {
     if (form.pages.length <= 1) return;
-    if (pageHasContent(form.pages[index]) && !window.confirm('Remove this page and its content?'))
+    if (pageHasContent(form.pages[index]) && !window.confirm('Remover esta página e seu conteúdo?'))
       return;
     setForm((f) => removePage(f, index));
     setSelected((s) => (index < s ? s - 1 : Math.min(s, form.pages.length - 2)));
@@ -425,7 +425,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-[1.15fr_0.85fr]">
           {/* ── Coluna do formulário ── */}
           <div className="p-5 md:p-7 flex flex-col gap-5 md:border-r border-border">
-            <h2 className="font-sf text-lg font-bold">{popup ? 'Edit Popup' : 'New Popup'}</h2>
+            <h2 className="font-sf text-lg font-bold">{popup ? 'Editar popup' : 'Novo popup'}</h2>
 
             <div>
               <DndContext
@@ -439,7 +439,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                 >
                   <div
                     role="tablist"
-                    aria-label="Pages"
+                    aria-label="Páginas"
                     className="flex flex-wrap items-center gap-1.5"
                   >
                     {form.pages.map((p, i) => (
@@ -464,7 +464,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                         }}
                         className="text-xs px-3 py-1.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary"
                       >
-                        + Page
+                        + Página
                       </button>
                     )}
                   </div>
@@ -475,7 +475,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="popup-title" className={LABEL}>
-                  Title
+                  Título
                 </label>
                 <input
                   id="popup-title"
@@ -490,7 +490,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
               </div>
               <div>
                 <label htmlFor="popup-eyebrow" className={LABEL}>
-                  Eyebrow (optional)
+                  Sobretítulo (opcional)
                 </label>
                 <input
                   id="popup-eyebrow"
@@ -506,7 +506,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
             </div>
 
             <div>
-              <label className={LABEL}>Image (optional, 16:9 recommended, up to 10 MB)</label>
+              <label className={LABEL}>Imagem (opcional, 16:9 recomendado, até 10 MB)</label>
               <div className="flex items-center gap-3 border border-dashed border-border rounded-lg px-3 py-2">
                 <div className="w-16 h-10 rounded bg-secondary overflow-hidden shrink-0">
                   {page.image_key && imageUrls?.[page.image_key] && (
@@ -539,7 +539,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                   ) : (
                     <Upload size={14} />
                   )}
-                  {uploading ? 'Uploading...' : page.image_key ? 'Replace' : 'Upload'}
+                  {uploading ? 'Enviando…' : page.image_key ? 'Substituir' : 'Enviar'}
                 </button>
                 {page.image_key && (
                   <button
@@ -547,7 +547,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                     onClick={() => updatePage({ image_key: '' })}
                     className="text-xs text-muted-foreground hover:text-destructive"
                   >
-                    Remove
+                    Remover
                   </button>
                 )}
               </div>
@@ -555,7 +555,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
 
             <div>
               <label htmlFor="popup-body" className={LABEL}>
-                Body (Markdown)
+                Corpo (Markdown)
               </label>
               <textarea
                 id="popup-body"
@@ -573,7 +573,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="popup-page-cta-label" className={LABEL}>
-                  Page CTA label
+                  Rótulo do CTA da página
                 </label>
                 <input
                   id="popup-page-cta-label"
@@ -585,7 +585,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
               </div>
               <div>
                 <label htmlFor="popup-page-cta-url" className={LABEL}>
-                  Page CTA URL
+                  URL do CTA da página
                 </label>
                 <input
                   id="popup-page-cta-url"
@@ -597,20 +597,20 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
               </div>
             </div>
             <p className="text-xs text-muted-foreground -mt-3">
-              Overrides the popup CTA on this page.
+              Sobrescreve o CTA do popup nesta página.
             </p>
             {errors?.pages[pageIndex]?.cta && (
               <p className="text-xs text-destructive -mt-3">{errors.pages[pageIndex].cta}</p>
             )}
 
             <div className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground border-t border-border pt-4">
-              Popup settings (apply to all pages)
+              Configurações do popup (valem para todas as páginas)
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="popup-cta-label" className={LABEL}>
-                  CTA label
+                  Rótulo do CTA
                 </label>
                 <input
                   id="popup-cta-label"
@@ -622,7 +622,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
               </div>
               <div>
                 <label htmlFor="popup-cta-url" className={LABEL}>
-                  CTA URL
+                  URL do CTA
                 </label>
                 <input
                   id="popup-cta-url"
@@ -638,7 +638,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="popup-secondary" className={LABEL}>
-                  Secondary label
+                  Rótulo secundário
                 </label>
                 <input
                   id="popup-secondary"
@@ -659,7 +659,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                       onClick={() => setForm((f) => ({ ...f, cta_style: s }))}
                       className={`flex-1 px-3 py-2 ${form.cta_style === s ? 'bg-card font-semibold text-foreground' : 'text-muted-foreground'}`}
                     >
-                      {s === 'ink' ? 'Ink' : 'Brand yellow'}
+                      {s === 'ink' ? 'Tinta' : 'Amarelo da marca'}
                     </button>
                   ))}
                 </div>
@@ -676,7 +676,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                     checked={form.frequency === 'once'}
                     onChange={() => setForm((f) => ({ ...f, frequency: 'once' }))}
                   />
-                  Once per user
+                  Uma vez por usuário
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -686,7 +686,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                     disabled={form.require_ack}
                     onChange={() => setForm((f) => ({ ...f, frequency: 'until_cta' }))}
                   />
-                  Every session until CTA
+                  Toda sessão até clicar no CTA
                 </label>
               </div>
               {errors?.frequency && (
@@ -701,7 +701,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                 onChange={(e) => setForm((f) => withRequireAck(f, e.target.checked))}
                 className="rounded"
               />
-              Require acknowledgement (no X, no click-outside, no Esc)
+              Exigir confirmação (sem X, sem clique fora, sem Esc)
             </label>
 
             <div>
@@ -721,7 +721,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="popup-starts" className={LABEL}>
-                  Starts at (optional)
+                  Começa em (opcional)
                 </label>
                 <input
                   id="popup-starts"
@@ -733,7 +733,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
               </div>
               <div>
                 <label htmlFor="popup-ends" className={LABEL}>
-                  Ends at (optional)
+                  Termina em (opcional)
                 </label>
                 <input
                   id="popup-ends"
@@ -762,7 +762,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                    {STATUS_LABELS[s]}
                   </option>
                 ))}
               </select>
@@ -781,7 +781,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                     onClick={() => setTheme(t)}
                     className={`px-3 py-1 ${theme === t ? 'bg-card font-semibold text-foreground' : 'text-muted-foreground'}`}
                   >
-                    {t === 'light' ? 'Light' : 'Dark'}
+                    {t === 'light' ? 'Claro' : 'Escuro'}
                   </button>
                 ))}
               </div>
@@ -796,9 +796,9 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
             >
               <PopupCard
                 pages={form.pages.map((p) => ({
-                  title: p.title || 'Title',
+                  title: p.title || 'Título',
                   eyebrow: p.eyebrow || null,
-                  body: p.body || 'Body preview...',
+                  body: p.body || 'Prévia do corpo…',
                   imageUrl: p.image_key ? (imageUrls?.[p.image_key] ?? null) : null,
                   ctaLabel: p.cta_label.trim() && p.cta_url.trim() ? p.cta_label.trim() : null,
                 }))}
@@ -817,7 +817,7 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Exact CRM component. Navigating here selects the page tab.
+              Componente exato do CRM. Navegar aqui seleciona a aba da página.
             </p>
           </div>
 
@@ -827,21 +827,21 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
               disabled={pending}
               className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
             >
-              {popup ? 'Update' : 'Create'}
+              {popup ? 'Atualizar' : 'Criar'}
             </button>
             <button
               type="button"
               onClick={onClose}
               className="px-4 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors"
             >
-              Cancel
+              Cancelar
             </button>
             {popup && popup.status === 'draft' && (
               <button
                 type="button"
                 onClick={() => deleteMut.mutate()}
                 disabled={deleteMut.isPending}
-                aria-label="Delete"
+                aria-label="Excluir"
                 className="px-4 py-2.5 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
               >
                 <Trash2 size={16} />
@@ -879,7 +879,7 @@ function PageTab({
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
-  const label = page.title.trim() ? page.title.trim().slice(0, 18) : 'Untitled';
+  const label = page.title.trim() ? page.title.trim().slice(0, 18) : 'Sem título';
   const tone = active
     ? 'bg-card text-foreground font-semibold'
     : 'bg-secondary text-muted-foreground';
@@ -896,7 +896,7 @@ function PageTab({
         {...attributes}
         {...listeners}
         className="cursor-grab text-dim-foreground"
-        aria-label={`Reorder page ${index + 1}`}
+        aria-label={`Reordenar página ${index + 1}`}
       >
         <GripVertical size={12} />
       </span>
@@ -907,7 +907,7 @@ function PageTab({
         <button
           type="button"
           onClick={onRemove}
-          aria-label={`Remove page ${index + 1}`}
+          aria-label={`Remover página ${index + 1}`}
           className="text-dim-foreground hover:text-destructive"
         >
           <X size={12} />

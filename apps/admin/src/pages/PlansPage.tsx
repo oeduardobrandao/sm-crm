@@ -457,7 +457,7 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
       </div>
 
       <div className="pt-3 border-t border-border text-dim-foreground text-sm">
-        {plan.workspace_count} workspaces
+        {plan.workspace_count} {plan.workspace_count === 1 ? 'workspace' : 'workspaces'}
       </div>
     </div>
   );
