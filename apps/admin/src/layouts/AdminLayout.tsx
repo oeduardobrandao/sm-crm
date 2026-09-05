@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { to: '/admin/workspaces', icon: Building2, label: 'Workspaces' },
   { to: '/admin/plans', icon: Package, label: 'Planos' },
   { to: '/admin/admins', icon: Users, label: 'Admins' },
-  { to: '/admin/integrations', icon: Plug, label: 'Integrations' },
+  { to: '/admin/integrations', icon: Plug, label: 'Integrações' },
   { to: '/admin/banners', icon: Megaphone, label: 'Banners' },
   { to: '/admin/popups', icon: AppWindow, label: 'Popups' },
   { to: '/admin/kb-articles', icon: BookOpen, label: 'Artigos' },

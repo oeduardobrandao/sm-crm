@@ -47,7 +47,7 @@ export default function IntegrationsPage() {
 
   return (
     <div>
-      <h1 className="font-sf text-2xl font-bold mb-1">Integrations</h1>
+      <h1 className="font-sf text-2xl font-bold mb-1">Integrações</h1>
       <p className="text-sm text-muted-foreground mb-6">
         Conector MCP do Admin da plataforma e conexões OAuth autorizadas.
       </p>
