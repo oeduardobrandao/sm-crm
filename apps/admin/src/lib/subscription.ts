@@ -13,6 +13,10 @@ export interface SubscriptionSummary {
   currency: string | null;
   interval: string | null;
   discount_label: string | null;
+  /** Consecutive failed charges on the current invoice (0 when healthy). */
+  failed_payment_count: number;
+  /** End of the current billing period / trial (ISO), null when unknown. */
+  current_period_end: string | null;
 }
 
 /** Full subscription view shown on the workspace detail (mirror + live Stripe amount). */
@@ -64,6 +68,49 @@ export function statusMeta(status: string | null | undefined): StatusMeta {
 }
 
 /**
+ * Coarse status groups used by the Workspaces list filter and the Dashboard at-risk card.
+ * MUST stay in sync with the CASE on p_status inside admin_list_workspaces
+ * (supabase/migrations/20260907000030_admin_list_workspaces_filters_sort.sql).
+ */
+export type WorkspaceStatusGroup = 'ativo' | 'teste' | 'pendente' | 'cancelado' | 'sem_assinatura';
+
+export const STATUS_GROUPS: readonly WorkspaceStatusGroup[] = [
+  'ativo',
+  'teste',
+  'pendente',
+  'cancelado',
+  'sem_assinatura',
+];
+
+export const STATUS_GROUP_LABELS: Record<WorkspaceStatusGroup, string> = {
+  ativo: 'Ativo',
+  teste: 'Teste',
+  pendente: 'Pagamento pendente',
+  cancelado: 'Cancelado',
+  sem_assinatura: 'Sem assinatura',
+};
+
+const STATUS_TO_GROUP: Record<string, WorkspaceStatusGroup> = {
+  active: 'ativo',
+  trialing: 'teste',
+  past_due: 'pendente',
+  unpaid: 'pendente',
+  incomplete: 'pendente',
+  canceled: 'cancelado',
+  incomplete_expired: 'cancelado',
+  paused: 'cancelado',
+};
+
+export function statusGroup(status: string | null | undefined): WorkspaceStatusGroup {
+  if (!status) return 'sem_assinatura';
+  return STATUS_TO_GROUP[status] ?? 'sem_assinatura';
+}
+
+export function isStatusGroup(value: string): value is WorkspaceStatusGroup {
+  return (STATUS_GROUPS as readonly string[]).includes(value);
+}
+
+/**
  * A mirror row with a status is a real subscription; a bare customer row (no status)
  * is not. Generic so it narrows away null while preserving the input's other fields.
  */
@@ -92,6 +139,7 @@ export function formatMoney(cents: number | null | undefined, currency?: string 
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: cur });
 }
 
+/** Kept for WorkspaceDetailPage until Phase 2 migrates it to <Badge>. New code uses Badge. */
 /** Tailwind classes for a status pill, by tone. */
 export function toneBadgeClass(tone: StatusTone): string {
   switch (tone) {

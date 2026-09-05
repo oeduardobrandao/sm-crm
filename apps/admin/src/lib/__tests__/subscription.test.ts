@@ -6,6 +6,9 @@ import {
   intervalSuffix,
   formatMoney,
   toneBadgeClass,
+  statusGroup,
+  isStatusGroup,
+  STATUS_GROUPS,
 } from '../subscription';
 
 describe('subscription helpers', () => {
@@ -67,6 +70,29 @@ describe('subscription helpers', () => {
       expect(toneBadgeClass('warning')).toContain('text-warning');
       expect(toneBadgeClass('danger')).toContain('text-destructive');
       expect(toneBadgeClass('muted')).toContain('text-muted-foreground');
+    });
+  });
+
+  describe('statusGroup', () => {
+    it('maps every known status to its group', () => {
+      expect(statusGroup('active')).toBe('ativo');
+      expect(statusGroup('trialing')).toBe('teste');
+      expect(statusGroup('past_due')).toBe('pendente');
+      expect(statusGroup('unpaid')).toBe('pendente');
+      expect(statusGroup('incomplete')).toBe('pendente');
+      expect(statusGroup('canceled')).toBe('cancelado');
+      expect(statusGroup('incomplete_expired')).toBe('cancelado');
+      expect(statusGroup('paused')).toBe('cancelado');
+    });
+    it('treats null, undefined and unknown statuses as no subscription', () => {
+      expect(statusGroup(null)).toBe('sem_assinatura');
+      expect(statusGroup(undefined)).toBe('sem_assinatura');
+      expect(statusGroup('weird')).toBe('sem_assinatura');
+    });
+    it('isStatusGroup guards URL values', () => {
+      expect(isStatusGroup('pendente')).toBe(true);
+      expect(isStatusGroup('xyz')).toBe(false);
+      expect(STATUS_GROUPS).toHaveLength(5);
     });
   });
 });

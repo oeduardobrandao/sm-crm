@@ -27,6 +27,8 @@ function baseWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
       currency: 'brl',
       interval: 'month',
       discount_label: null,
+      failed_payment_count: 0,
+      current_period_end: null,
     },
     ...overrides,
   };
@@ -44,6 +46,8 @@ describe('buildWorkspaceExportRows', () => {
           currency: 'brl',
           interval: 'year',
           discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
         },
       }),
     ]);
@@ -67,6 +71,8 @@ describe('buildWorkspaceExportRows', () => {
           currency: 'brl',
           interval: 'year',
           discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
         },
       }),
     ]);
@@ -112,6 +118,8 @@ describe('buildWorkspaceExportRows', () => {
           currency: null,
           interval: null,
           discount_label: null,
+          failed_payment_count: 0,
+          current_period_end: null,
         },
       }),
     ]);
