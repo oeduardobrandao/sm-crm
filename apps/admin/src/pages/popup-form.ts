@@ -9,6 +9,14 @@ const MAX_LABEL = 40;
 const MAX_URL = 2048;
 const CTA_URL_RE = /^(\/(?![/\\])|https?:\/\/)/; // `//host` é protocol-relative, não caminho interno, nem `/\host`
 
+/** Regra única da URL de CTA (global e por página), espelhando o servidor. */
+function ctaUrlError(url: string): string | null {
+  if (/[\t\r\n]/.test(url) || !CTA_URL_RE.test(url))
+    return 'CTA URL must start with / or http(s)://';
+  if (url.length > MAX_URL) return `CTA URL max ${MAX_URL} characters`;
+  return null;
+}
+
 export interface PageForm {
   /** Identidade estável para o dnd-kit e o React. Nunca vai para o payload. */
   key: string;
@@ -16,6 +24,8 @@ export interface PageForm {
   eyebrow: string;
   body: string;
   image_key: string;
+  cta_label: string;
+  cta_url: string;
 }
 
 export interface PopupFormState {
@@ -35,7 +45,7 @@ export interface PopupFormState {
 }
 
 export interface PopupFormErrors {
-  pages: Record<number, { title?: string; eyebrow?: string; body?: string }>;
+  pages: Record<number, { title?: string; eyebrow?: string; body?: string; cta?: string }>;
   cta?: string;
   frequency?: string;
   target?: string;
@@ -46,7 +56,15 @@ let pageKeyCounter = 0;
 
 export function newPage(): PageForm {
   pageKeyCounter += 1;
-  return { key: `page-${pageKeyCounter}`, title: '', eyebrow: '', body: '', image_key: '' };
+  return {
+    key: `page-${pageKeyCounter}`,
+    title: '',
+    eyebrow: '',
+    body: '',
+    image_key: '',
+    cta_label: '',
+    cta_url: '',
+  };
 }
 
 export function emptyForm(): PopupFormState {
@@ -75,6 +93,8 @@ export function popupToForm(p: GlobalPopup): PopupFormState {
       eyebrow: pg.eyebrow ?? '',
       body: pg.body,
       image_key: pg.image_key ?? '',
+      cta_label: pg.cta_label ?? '',
+      cta_url: pg.cta_url ?? '',
     })),
     cta_label: p.cta_label ?? '',
     cta_url: p.cta_url ?? '',
@@ -103,6 +123,8 @@ export function formToPayload(f: PopupFormState): Record<string, unknown> {
       eyebrow: orNull(pg.eyebrow),
       body: pg.body.trim(),
       image_key: orNull(pg.image_key),
+      cta_label: orNull(pg.cta_label),
+      cta_url: orNull(pg.cta_url),
     })),
     cta_label: orNull(f.cta_label),
     cta_url: orNull(f.cta_url),
@@ -124,13 +146,19 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
   let any = false;
 
   f.pages.forEach((pg, i) => {
-    const e: { title?: string; eyebrow?: string; body?: string } = {};
+    const e: { title?: string; eyebrow?: string; body?: string; cta?: string } = {};
     if (!pg.title.trim()) e.title = 'Title is required';
     else if (pg.title.trim().length > MAX_TITLE) e.title = `Max ${MAX_TITLE} characters`;
     if (!pg.body.trim()) e.body = 'Body is required';
     else if (pg.body.trim().length > MAX_BODY) e.body = `Max ${MAX_BODY} characters`;
     if (pg.eyebrow.trim().length > MAX_EYEBROW) e.eyebrow = `Max ${MAX_EYEBROW} characters`;
-    if (e.title || e.body || e.eyebrow) {
+    const pl = pg.cta_label.trim();
+    const pu = pg.cta_url.trim();
+    const puErr = pu ? ctaUrlError(pu) : null;
+    if ((pl === '') !== (pu === '')) e.cta = 'CTA needs both a label and a URL';
+    else if (pl.length > MAX_LABEL) e.cta = `CTA label max ${MAX_LABEL} characters`;
+    else if (puErr) e.cta = puErr;
+    if (e.title || e.body || e.eyebrow || e.cta) {
       errors.pages[i] = e;
       any = true;
     }
@@ -138,19 +166,18 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
 
   const label = f.cta_label.trim();
   const url = f.cta_url.trim();
+  const urlErr = url ? ctaUrlError(url) : null;
   if ((label === '') !== (url === '')) errors.cta = 'CTA needs both a label and a URL';
   else if (label.length > MAX_LABEL) errors.cta = `CTA label max ${MAX_LABEL} characters`;
-  else if (url && /[\t\r\n]/.test(url)) {
-    errors.cta = 'CTA URL must start with / or http(s)://';
-  } else if (url && !CTA_URL_RE.test(url)) errors.cta = 'CTA URL must start with / or http(s)://';
-  else if (url.length > MAX_URL) errors.cta = `CTA URL max ${MAX_URL} characters`;
+  else if (urlErr) errors.cta = urlErr;
   else if (f.secondary_label.trim().length > MAX_LABEL) {
     errors.cta = `Secondary label max ${MAX_LABEL} characters`;
   }
   if (errors.cta) any = true;
 
-  if (f.frequency === 'until_cta' && !url) {
-    errors.frequency = '"Until CTA" needs a CTA';
+  const anyPageCta = f.pages.some((pg) => pg.cta_url.trim());
+  if (f.frequency === 'until_cta' && !url && !anyPageCta) {
+    errors.frequency = '"Until CTA" needs a CTA on the popup or on at least one page';
     any = true;
   }
 
@@ -195,5 +222,12 @@ export function movePage(f: PopupFormState, from: number, to: number): PopupForm
 }
 
 export function pageHasContent(p: PageForm): boolean {
-  return Boolean(p.title.trim() || p.eyebrow.trim() || p.body.trim() || p.image_key);
+  return Boolean(
+    p.title.trim() ||
+    p.eyebrow.trim() ||
+    p.body.trim() ||
+    p.image_key ||
+    p.cta_label.trim() ||
+    p.cta_url.trim(),
+  );
 }

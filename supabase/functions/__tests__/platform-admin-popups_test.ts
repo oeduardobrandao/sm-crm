@@ -14,7 +14,9 @@ const IMG = "contas/11111111-1111-1111-1111-111111111111/files/abc.png";
 Deno.test("validatePages: aceita 1 página mínima e normaliza opcionais para null", () => {
   const r = validatePages([{ title: " Olá ", body: "corpo" }]);
   assert(r.ok, "esperava ok");
-  assertEquals(r.pages, [{ title: "Olá", eyebrow: null, body: "corpo", image_key: null }]);
+  assertEquals(r.pages, [
+    { title: "Olá", eyebrow: null, body: "corpo", image_key: null, cta_label: null, cta_url: null },
+  ]);
 });
 
 Deno.test("validatePages: aceita eyebrow e image_key válidos", () => {
@@ -90,6 +92,33 @@ Deno.test("validatePopupFields: par de CTA, until_cta, require_ack, tamanhos e f
   assert(validatePopupFields({ ...base, status: "pubished" }) !== null, "status inválido");
 });
 
+Deno.test("validatePages: CTA por página normaliza, exige par e aplica as regras de URL", () => {
+  const ok = validatePages([{ title: "T", body: "B", cta_label: " Ver ", cta_url: "/x" }]);
+  assert(ok.ok);
+  assertEquals(ok.pages[0].cta_label, "Ver");
+  assertEquals(ok.pages[0].cta_url, "/x");
+  const none = validatePages([{ title: "T", body: "B", cta_label: "", cta_url: "" }]);
+  assert(none.ok);
+  assertEquals(none.pages[0].cta_label, null);
+  assertEquals(none.pages[0].cta_url, null);
+  assertEquals(validatePages([{ title: "T", body: "B", cta_label: "Ver" }]).ok, false);
+  assertEquals(validatePages([{ title: "T", body: "B", cta_url: "/x" }]).ok, false);
+  assertEquals(validatePages([{ title: "T", body: "B", cta_label: "x".repeat(41), cta_url: "/x" }]).ok, false);
+  assertEquals(validatePages([{ title: "T", body: "B", cta_label: "Ver", cta_url: "javascript:alert(1)" }]).ok, false);
+  assertEquals(validatePages([{ title: "T", body: "B", cta_label: "Ver", cta_url: "//evil.com" }]).ok, false);
+  assertEquals(validatePages([{ title: "T", body: "B", cta_label: "Ver", cta_url: "/\\evil.com" }]).ok, false);
+  assertEquals(validatePages([{ title: "T", body: "B", cta_label: "Ver", cta_url: "/\t/evil.com" }]).ok, false);
+});
+
+Deno.test("validatePopupFields: until_cta aceita CTA só em página", () => {
+  const base = { cta_label: null, cta_url: null, secondary_label: null, frequency: "until_cta", require_ack: false, target_mode: "all" };
+  const withPageCta = [{ title: "T", eyebrow: null, body: "B", image_key: null, cta_label: "Ver", cta_url: "/x" }];
+  const noCta = [{ title: "T", eyebrow: null, body: "B", image_key: null, cta_label: null, cta_url: null }];
+  assertEquals(validatePopupFields({ ...base, pages: withPageCta }), null);
+  assert(validatePopupFields({ ...base, pages: noCta }) !== null, "until_cta sem CTA algum");
+  assert(validatePopupFields({ ...base }) !== null, "until_cta sem pages nem CTA");
+});
+
 type Resp = { data: unknown; error: unknown };
 type Call = { table: string; method: string; args: unknown[] };
 
@@ -123,7 +152,8 @@ function lastPayload(calls: Call[], table: string, method: string): Record<strin
 const H = { "Content-Type": "application/json" };
 const PAGES = [{ title: "T", body: "B" }];
 const ROW = {
-  id: "p1", pages: [{ title: "T", eyebrow: null, body: "B", image_key: null }],
+  id: "p1",
+  pages: [{ title: "T", eyebrow: null, body: "B", image_key: null, cta_label: null, cta_url: null }],
   cta_label: null, cta_url: null, cta_style: "ink", secondary_label: null,
   frequency: "once", require_ack: false, target_mode: "all", status: "draft",
 };

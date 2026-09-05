@@ -135,15 +135,30 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
     setOpen(false);
   }, [popup, record]);
 
-  const handleCta = useCallback(() => {
-    if (!popup || !popup.cta_url) return;
-    record(popup.id, 'cta');
-    captureEvent('popup_cta', { popup_id: popup.id });
-    setOpen(false);
-    const safe = sanitizeUrl(popup.cta_url);
-    if (safe.startsWith('/')) navigate(safe);
-    else openExternalUrl(popup.cta_url); // null (no-op) quando a URL é rejeitada
-  }, [popup, record, navigate]);
+  const effectiveCtaUrl = useCallback(
+    (pageIndex: number): string | null => {
+      if (!popup) return null;
+      const pg = popup.pages[pageIndex];
+      const own = pg?.cta_label && pg?.cta_url ? pg.cta_url : null;
+      if (own) return own;
+      return pageIndex === popup.pages.length - 1 ? (popup.cta_url ?? null) : null;
+    },
+    [popup],
+  );
+
+  const handleCta = useCallback(
+    (pageIndex: number) => {
+      const url = effectiveCtaUrl(pageIndex);
+      if (!popup || !url) return;
+      record(popup.id, 'cta');
+      captureEvent('popup_cta', { popup_id: popup.id, page: pageIndex });
+      setOpen(false);
+      const safe = sanitizeUrl(url);
+      if (safe.startsWith('/')) navigate(safe);
+      else openExternalUrl(url); // null (no-op) quando a URL é rejeitada
+    },
+    [popup, effectiveCtaUrl, record, navigate],
+  );
 
   const handlePageChange = useCallback(
     (next: number) => {
@@ -157,8 +172,10 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
   if (!popup) return null;
 
   const hasCta = Boolean(popup.cta_label && popup.cta_url);
+  const anyCta = hasCta || popup.pages.some((p) => p.cta_label && p.cta_url);
   const requireAck = popup.require_ack;
-  const secondaryLabel = popup.secondary_label ?? defaultSecondaryLabel(requireAck, hasCta);
+  const lastHasCta = effectiveCtaUrl(popup.pages.length - 1) !== null;
+  const secondaryLabel = popup.secondary_label ?? defaultSecondaryLabel(requireAck, lastHasCta);
 
   return (
     <Dialog
@@ -196,6 +213,7 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
               eyebrow: p.eyebrow,
               body: p.body,
               imageUrl: p.image_key ? (decision?.images[p.image_key] ?? null) : null,
+              ctaLabel: p.cta_label && p.cta_url ? p.cta_label : null,
             }))}
             page={page}
             onPageChange={handlePageChange}
@@ -204,7 +222,7 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
             secondaryLabel={secondaryLabel}
             requireAck={requireAck}
             sanitizeHref={sanitizeUrl}
-            onCta={hasCta ? handleCta : undefined}
+            onCta={anyCta ? handleCta : undefined}
             onSecondary={requireAck ? handleAck : handleClose}
             onClose={handleClose}
             titleId={titleId}

@@ -6,7 +6,8 @@
 --       mesmo predicado dos banners.
 --   (b) popup_interactions: cada usuario le e insere so as proprias linhas.
 --   (c) popup_interaction_counts: invisivel para authenticated.
---   (d) CHECKs: pages vazio, action invalida, require_ack + until_cta.
+--   (d) CHECKs: pages vazio, action invalida, require_ack + until_cta,
+--       CTA por pagina (migration 20260907000020_popups_page_cta.sql).
 
 begin;
 select et_grant_hosted_parity();
@@ -135,6 +136,40 @@ begin
     v_rejected := true;
   end;
   assert v_rejected, 'require_ack + until_cta foi aceito';
+
+  -- CTA por pagina: until_cta sem CTA global mas com CTA em alguma pagina e aceito
+  insert into global_popups (pages, target_mode, frequency)
+    values ('[{"title":"T","body":"B","cta_label":"Ver","cta_url":"/x"}]'::jsonb, 'all', 'until_cta');
+
+  -- ... e sem CTA em lugar nenhum continua rejeitado
+  v_rejected := false;
+  begin
+    insert into global_popups (pages, target_mode, frequency)
+      values ('[{"title":"T","body":"B","cta_url":null}]'::jsonb, 'all', 'until_cta');
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'until_cta sem CTA global nem de pagina foi aceito';
+
+  -- forma legada de pagina (sem a chave cta_url): tambem rejeitado
+  v_rejected := false;
+  begin
+    insert into global_popups (pages, target_mode, frequency)
+      values (v_pages, 'all', 'until_cta');
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'until_cta com paginas sem chave cta_url foi aceito';
+
+  -- pagina com cta_url mas sem cta_label: CTA incompleto, tambem rejeitado
+  v_rejected := false;
+  begin
+    insert into global_popups (pages, target_mode, frequency)
+      values ('[{"title":"T","body":"B","cta_url":"/x"}]'::jsonb, 'all', 'until_cta');
+  exception when check_violation then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'until_cta com cta_url sem cta_label na pagina foi aceito';
 
   v_rejected := false;
   begin

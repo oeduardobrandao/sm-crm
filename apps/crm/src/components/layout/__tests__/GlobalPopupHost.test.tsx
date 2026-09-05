@@ -124,8 +124,77 @@ describe('GlobalPopupHost', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver' }));
     // `record` passa pelo mutate do TanStack: chega ao store no microtask seguinte.
     await waitFor(() => expect(recordPopupInteractionMock).toHaveBeenCalledWith('p1', 'cta'));
-    expect(captureEventMock).toHaveBeenCalledWith('popup_cta', { popup_id: 'p1' });
+    expect(captureEventMock).toHaveBeenCalledWith('popup_cta', { popup_id: 'p1', page: 1 });
     expect(navigateMock).toHaveBeenCalledWith('/ajuda/x');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('CTA próprio da página do meio navega para a URL da página e grava cta com o índice', async () => {
+    getActivePopupsMock.mockResolvedValue([
+      {
+        ...popup,
+        pages: [{ ...popup.pages[0], cta_label: 'Ver um', cta_url: '/pagina-um' }, popup.pages[1]],
+      },
+    ]);
+    renderHost();
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver um' }));
+    await waitFor(() => expect(recordPopupInteractionMock).toHaveBeenCalledWith('p1', 'cta'));
+    expect(captureEventMock).toHaveBeenCalledWith('popup_cta', { popup_id: 'p1', page: 0 });
+    expect(navigateMock).toHaveBeenCalledWith('/pagina-um');
+  });
+
+  it('última página com CTA próprio usa a URL da página, não a global', async () => {
+    getActivePopupsMock.mockResolvedValue([
+      {
+        ...popup,
+        pages: [
+          popup.pages[0],
+          { ...popup.pages[1], cta_label: 'Ver dois', cta_url: '/pagina-dois' },
+        ],
+      },
+    ]);
+    renderHost();
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver dois' }));
+    expect(navigateMock).toHaveBeenCalledWith('/pagina-dois');
+    expect(navigateMock).not.toHaveBeenCalledWith('/ajuda/x');
+  });
+
+  it('sem CTA global e com CTA só na última página, o secundário mostra "Agora não"', async () => {
+    getActivePopupsMock.mockResolvedValue([
+      {
+        ...popup,
+        cta_label: null,
+        cta_url: null,
+        pages: [
+          popup.pages[0],
+          { ...popup.pages[1], cta_label: 'Ver dois', cta_url: '/pagina-dois' },
+        ],
+      },
+    ]);
+    renderHost();
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+    expect(screen.getByRole('button', { name: 'Agora não' })).toBeInTheDocument();
+  });
+
+  it('until_cta com CTA só em página: o botão existe, grava cta e o popup some para sempre', async () => {
+    getActivePopupsMock.mockResolvedValue([
+      {
+        ...popup,
+        cta_label: null,
+        cta_url: null,
+        frequency: 'until_cta',
+        pages: [{ ...popup.pages[0], cta_label: 'Ver um', cta_url: '/pagina-um' }, popup.pages[1]],
+      },
+    ]);
+    renderHost();
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver um' }));
+    await waitFor(() => expect(recordPopupInteractionMock).toHaveBeenCalledWith('p1', 'cta'));
+    expect(navigateMock).toHaveBeenCalledWith('/pagina-um');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
