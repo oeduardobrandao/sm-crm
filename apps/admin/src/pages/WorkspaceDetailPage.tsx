@@ -177,7 +177,7 @@ export default function WorkspaceDetailPage() {
     mutationFn: () => unsetWorkspacePlan(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Comp removido — workspace volta à cobrança normal');
+      toast.success('Comp removido. Workspace volta à cobrança normal');
     },
     onError: (err: Error) => toast.error(err.message),
   });

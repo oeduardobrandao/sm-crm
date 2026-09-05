@@ -89,6 +89,11 @@ export function RiskCard({ trials, pending, now }: RiskCardProps) {
   const bothLoaded = !trials.loading && !pending.loading && !trials.error && !pending.error;
   const allClear = bothLoaded && endingSoon.length === 0 && pendingTotal === 0;
 
+  // A settled-looking "0" next to a skeleton (or an error) reads as an answer. Until the
+  // group's own source resolves, the badge says nothing.
+  const trialsCount = trials.loading || trials.error ? '…' : endingSoon.length;
+  const pendingCount = pending.loading || pending.error ? '…' : pendingTotal;
+
   const showTrials = view !== 'pendentes';
   const showPending = view !== 'testes';
 
@@ -126,7 +131,7 @@ export function RiskCard({ trials, pending, now }: RiskCardProps) {
           {showTrials ? (
             <section className="p-5">
               <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold">
-                <Badge variant="warning">{endingSoon.length}</Badge>
+                <Badge variant="warning">{trialsCount}</Badge>
                 Testes terminando em até {TRIAL_ENDING_SOON_DAYS} dias
                 <Link
                   to="/admin/workspaces?status=teste"
@@ -168,7 +173,7 @@ export function RiskCard({ trials, pending, now }: RiskCardProps) {
           {showPending ? (
             <section className="p-5">
               <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold">
-                <Badge variant="danger">{pendingTotal}</Badge>
+                <Badge variant="danger">{pendingCount}</Badge>
                 Pagamento pendente
                 <Link
                   to="/admin/workspaces?status=pendente"

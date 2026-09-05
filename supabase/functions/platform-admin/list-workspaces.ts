@@ -27,20 +27,20 @@ export async function handleListWorkspaces(
   headers: Record<string, string>,
 ) {
   const {
-    search, plan_id, offset = 0, limit = 20, as_of,
+    search, plan_id, offset, limit, as_of,
     status, has_overrides, activity, created_since, sort, dir,
   } = body;
   const { data, error } = await svc.rpc("admin_list_workspaces", {
     p_search: search ?? null,
     p_plan_id: plan_id ?? null,
-    p_offset: offset,
-    p_limit: limit,
+    // `??` (not a destructuring default) so an explicit JSON null also falls back.
+    p_offset: offset ?? 0,
+    p_limit: limit ?? 20,
     p_as_of: as_of ?? null,
     p_status: status ?? null,
     p_has_overrides: has_overrides ?? null,
     p_activity: activity ?? null,
     p_created_since: created_since ?? null,
-    // `??` (not a destructuring default) so an explicit JSON null also falls back.
     p_sort: sort ?? "created_at",
     p_dir: dir ?? "desc",
   });

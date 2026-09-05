@@ -85,7 +85,9 @@ export default function WorkspacesPage() {
           `Exportados os primeiros ${EXPORT_MAX_ROWS} de ${total} workspaces. Refine os filtros para exportar o restante.`,
         );
       }
-    } catch {
+    } catch (err) {
+      // The toast stays generic; the console line is what makes a failed export diagnosable.
+      console.error('[admin] export CSV failed', err);
       toast.error('Falha ao exportar');
     } finally {
       setExporting(false);
@@ -171,10 +173,7 @@ export default function WorkspacesPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Workspaces"
-        description={headerDescription}
-      />
+      <PageHeader title="Workspaces" description={headerDescription} />
       <WorkspacesToolbar
         params={params}
         plans={plans}

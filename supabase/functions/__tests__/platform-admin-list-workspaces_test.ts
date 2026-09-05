@@ -79,9 +79,16 @@ Deno.test("list-workspaces forwards as_of as the RPC's snapshot timestamp", asyn
   });
 });
 
+// An explicit JSON null is not `undefined`, so a destructuring default would leave it as null
+// and the RPC would receive p_offset/p_limit NULL -- an empty page. `??` is what makes the
+// fallback hold for both shapes.
 Deno.test("list-workspaces defaults offset 0 / limit 20 and null filters", async () => {
   const { db, rpcCalls } = makeFakeRpcDb({ total: 0, workspaces: [] });
-  const res = await handleListWorkspaces(db as unknown as SupabaseClient, {}, HEADERS);
+  const res = await handleListWorkspaces(
+    db as unknown as SupabaseClient,
+    { offset: null, limit: null } as unknown as { offset?: number; limit?: number },
+    HEADERS,
+  );
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body, {

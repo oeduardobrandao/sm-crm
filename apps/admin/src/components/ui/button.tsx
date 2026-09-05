@@ -9,7 +9,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: 'bg-primary text-primary-foreground shadow hover:bg-primary/90',
-        /** Alias of default since --primary became ink (black/white). Kept for existing call sites. */
+        /**
+         * Not an alias of `default`: the comment copied from the CRM said so because the CRM's
+         * --primary is ink (black/white). The Admin's --primary is gold, so `ink` is a distinct,
+         * higher-contrast CTA -- foreground on background rather than gold.
+         */
         ink: 'bg-foreground text-background shadow hover:bg-foreground/85',
         destructive: 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
         outline:

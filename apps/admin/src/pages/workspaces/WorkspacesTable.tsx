@@ -254,6 +254,9 @@ export function WorkspacesTableSkeleton({
               {col.label}
             </TableHead>
           ))}
+          {/* Mirrors the loaded table's trailing chevron column, so the columns do not
+              shift sideways the moment the data lands. */}
+          <TableHead className="w-8" />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -264,6 +267,7 @@ export function WorkspacesTableSkeleton({
                 <Skeleton className={cn('h-3', col.key === 'name' ? 'w-36' : 'w-20')} />
               </TableCell>
             ))}
+            <TableCell className="py-3" />
           </TableRow>
         ))}
       </TableBody>

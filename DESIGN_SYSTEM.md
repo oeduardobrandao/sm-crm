@@ -163,7 +163,7 @@ admin does not load `apps/crm/style.css`) and `card.tsx`. They import `cn` from
 other by hand; nothing enforces parity. Composition components (`EmptyState`, `ErrorState`,
 `PageHeader`) live in `apps/admin/src/components/`.
 
-As of this branch, the Admin's copy is Portuguese throughout.
+The Admin's copy is Portuguese throughout.
 
 ## Shared
 
