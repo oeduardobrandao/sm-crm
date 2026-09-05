@@ -49,6 +49,8 @@ begin
   v_p1 := admin_list_workspaces(p_search := 'ET sort', p_offset := 2, p_limit := 2, p_sort := 'name', p_dir := 'asc');
   assert jsonb_array_length(v_p0 -> 'workspaces') = 2 and jsonb_array_length(v_p1 -> 'workspaces') = 1,
     'pages must hold 2 + 1 rows';
+  select array_agg((w ->> 'id')::uuid) into ids from jsonb_array_elements(v_p0 -> 'workspaces') w;
+  assert ids = array[v_b, v_c], format('page 0 (name asc, limit 2) must be [Alpha, Mid], got %s', ids);
   assert (v_p1 -> 'workspaces' -> 0 ->> 'id')::uuid = v_a, 'last page must hold the last-sorted row';
   assert (v_p0 ->> 'total')::int = 3 and (v_p1 ->> 'total')::int = 3, 'total is page-independent';
 
