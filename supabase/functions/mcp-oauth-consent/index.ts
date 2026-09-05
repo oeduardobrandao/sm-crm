@@ -18,6 +18,7 @@ import {
 } from "../_shared/mcp-oauth.ts";
 import { adminScopesFromClaim } from "../_shared/mcp-admin-scopes.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
+import { listAdminMcpGrants, revokeAdminMcpGrant } from "../_shared/admin-mcp-grants.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -286,36 +287,13 @@ Deno.serve(async (req) => {
     if (action === "list-admin-grants" || action === "revoke-admin-grant") {
       if (!(await isPlatformAdmin(svc, user.id))) return json({ error: "Insufficient permissions" }, 403);
       if (action === "list-admin-grants") {
-        const { data: grants } = await svc
-          .from("admin_mcp_oauth_grants")
-          .select("id, user_id, client_id, scopes, created_at, revoked_at")
-          .order("created_at", { ascending: false });
-        const rows = (grants ?? []) as any[];
-        const userIds = [...new Set(rows.map((g) => g.user_id as string))];
-        const { data: admins } = userIds.length
-          ? await svc.from("platform_admins").select("user_id, email").in("user_id", userIds)
-          : { data: [] as any[] };
-        const emailByUser = new Map((admins ?? []).map((a: any) => [a.user_id, a.email]));
-        return json({ grants: rows.map((g) => ({ ...g, email: emailByUser.get(g.user_id) ?? null })) });
+        const grants = await listAdminMcpGrants(svc);
+        return json({ grants });
       }
       const grantId = typeof body.grant_id === "string" ? body.grant_id : "";
       if (!grantId) return json({ error: "grant_id required" }, 400);
-      const { data, error } = await svc
-        .from("admin_mcp_oauth_grants")
-        .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
-        .eq("id", grantId)
-        .is("revoked_at", null)
-        .select("id, client_id, user_id")
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) return json({ error: "not found" }, 404);
-      await insertAuditLog(svc, {
-        actor_user_id: user.id,
-        action: "mcp_admin.oauth.revoke",
-        resource_type: "admin_mcp_oauth_grant",
-        resource_id: data.client_id as string,
-        metadata: { grant_user_id: data.user_id },
-      });
+      const result = await revokeAdminMcpGrant(svc, grantId, user.id);
+      if (!result.ok) return json({ error: "not found" }, 404);
       return json({ ok: true });
     }
 
