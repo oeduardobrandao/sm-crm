@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Mail } from 'lucide-react';
 import {
   getWorkspaceInvites,
   adminCancelInvite,
@@ -10,6 +11,20 @@ import {
   type InviteInfo,
 } from '../lib/api';
 import { authStateLabel, statusTags, canActOnInvite } from './workspace-invites';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState } from '../components/ErrorState';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Skeleton } from '../components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 
 const CANCEL_WARNING =
   'Isso exclui o convite e, se a pessoa nunca terminou o onboarding, também exclui a conta dela, removendo-a de TODOS os workspaces. Continuar?';
@@ -108,102 +123,99 @@ export default function WorkspaceInvitesCard({ workspaceId }: { workspaceId: str
   const total = data?.total ?? invites.length;
 
   return (
-    <div className="min-w-0 overflow-hidden bg-card border border-border rounded-2xl p-5 mt-6 mb-6">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="font-semibold">Convites ({total})</h2>
+    <Card className="mb-6 mt-6 min-w-0 overflow-hidden">
+      <CardHeader>
+        <CardTitle>Convites ({total})</CardTitle>
         <div className="flex items-center gap-3">
           {total > invites.length && (
             <span className="text-xs text-muted-foreground">
               mostrando {invites.length} de {total}
             </span>
           )}
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary"
             onClick={() => (formOpen ? closeForm() : setFormOpen(true))}
-            className="text-xs font-medium text-primary hover:underline"
           >
             + Convidar
-          </button>
+          </Button>
         </div>
-      </div>
+      </CardHeader>
 
-      {formOpen && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            createMutation.mutate(false); // unconfirmed; the gate may ask
-          }}
-          className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center"
-        >
-          <input
-            aria-label="E-mail"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="person@example.com"
-            className="min-w-0 flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
-          />
-          <select
-            aria-label="Papel"
-            value={role}
-            onChange={(e) => setRole(e.target.value as 'admin' | 'agent')}
-            className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground focus:outline-none focus:border-primary transition-colors"
+      <CardContent className="flex flex-col gap-4">
+        {formOpen && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              createMutation.mutate(false); // unconfirmed; the gate may ask
+            }}
+            className="flex flex-col gap-3 sm:flex-row sm:items-center"
           >
-            <option value="agent">Agente</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button
-            type="submit"
-            disabled={createMutation.isPending}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
-          >
-            Enviar
-          </button>
-          <button
-            type="button"
-            onClick={closeForm}
-            className="text-xs font-medium text-muted-foreground hover:underline"
-          >
-            Descartar
-          </button>
-        </form>
-      )}
+            <Input
+              aria-label="E-mail"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="pessoa@exemplo.com"
+              className="min-w-0 flex-1"
+            />
+            <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'agent')}>
+              <SelectTrigger aria-label="Papel" className="w-full sm:w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="agent">Agente</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button type="submit" disabled={createMutation.isPending}>
+              Enviar
+            </Button>
+            <Button type="button" variant="ghost" onClick={closeForm}>
+              Descartar
+            </Button>
+          </form>
+        )}
 
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
-      ) : isError ? (
-        <button onClick={() => refetch()} className="text-sm text-destructive hover:underline">
-          Falha ao carregar convites. Tentar novamente
-        </button>
-      ) : invites.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhum convite.</p>
-      ) : (
-        <>
-          {/* Desktop header row (finding 8) */}
-          <div className="hidden md:grid grid-cols-[2fr_0.7fr_1fr_1.1fr_1.6fr_1fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-2 border-b border-border">
-            <span>E-mail</span>
-            <span>Papel</span>
-            <span>Status</span>
-            <span>Enviado</span>
-            <span>Estado de autenticação</span>
-            <span>Ações</span>
+        {isLoading ? (
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-4 w-72" />
+            <Skeleton className="h-4 w-64" />
           </div>
-          <div className="flex flex-col gap-2">
-            {invites.map((it) => (
-              <InviteRow
-                key={it.id}
-                invite={it}
-                busy={busyId === it.id}
-                onResend={() => resendMutation.mutate({ inviteId: it.id, confirm: false })}
-                onCancel={() => {
-                  if (window.confirm(CANCEL_WARNING)) cancelMutation.mutate(it.id);
-                }}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+        ) : isError ? (
+          <ErrorState message="Falha ao carregar convites." onRetry={() => refetch()} />
+        ) : invites.length === 0 ? (
+          <EmptyState icon={Mail} title="Nenhum convite" />
+        ) : (
+          <>
+            {/* Desktop header row (finding 8) */}
+            <div className="hidden border-b border-border pb-2 text-[0.7rem] uppercase tracking-wider text-muted-foreground md:grid md:grid-cols-[2fr_0.7fr_1fr_1.1fr_1.6fr_1fr] md:gap-2">
+              <span>E-mail</span>
+              <span>Papel</span>
+              <span>Status</span>
+              <span>Enviado</span>
+              <span>Estado de autenticação</span>
+              <span>Ações</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {invites.map((it) => (
+                <InviteRow
+                  key={it.id}
+                  invite={it}
+                  busy={busyId === it.id}
+                  onResend={() => resendMutation.mutate({ inviteId: it.id, confirm: false })}
+                  onCancel={() => {
+                    if (window.confirm(CANCEL_WARNING)) cancelMutation.mutate(it.id);
+                  }}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -230,12 +242,9 @@ function InviteRow({
       <div className="min-w-0">
         <span className="block truncate text-sm">{invite.email}</span>
         {tags.map((t) => (
-          <span
-            key={t}
-            className="mt-0.5 mr-1 inline-block text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-warning/10 text-warning"
-          >
+          <Badge key={t} variant="warning" size="sm" className="mr-1 mt-0.5">
             {t}
-          </span>
+          </Badge>
         ))}
       </div>
       {/* Mobile: same nodes, laid out as a wrapped meta line instead of a hidden grid column
@@ -243,27 +252,43 @@ function InviteRow({
           is duplicated and the desktop grid is unaffected). */}
       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 md:mt-0 md:contents">
         <span className="text-xs text-muted-foreground">{invite.role}</span>
-        <span className="text-xs text-muted-foreground">{invite.status}</span>
+        <Badge
+          variant={
+            invite.status === 'accepted'
+              ? 'success'
+              : invite.status === 'expired'
+                ? 'neutral'
+                : 'warning'
+          }
+          size="sm"
+          className="w-fit"
+        >
+          {invite.status}
+        </Badge>
         <span className="text-xs text-muted-foreground">{formatSent(invite.created_at)}</span>
         <span className="text-xs text-muted-foreground">{authStateLabel(invite.auth_state)}</span>
       </div>
-      <div className="mt-2 flex shrink-0 gap-3 md:mt-0">
+      <div className="mt-2 flex shrink-0 gap-1 md:mt-0">
         {actable && (
           <>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-primary"
               onClick={onResend}
               disabled={busy}
-              className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
             >
               Reenviar
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
               onClick={onCancel}
               disabled={busy}
-              className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
             >
               Cancelar
-            </button>
+            </Button>
           </>
         )}
       </div>
