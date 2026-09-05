@@ -127,6 +127,11 @@ na linha.
 
 ## 4. Páginas migradas
 
+"Todas" abaixo são as quatro páginas desta seção (§4.1 a §4.6). O `DashboardPage` não
+está aqui: além dos links da §3, ele só troca os `<p>Carregando…</p>` e os
+`<p>Nenhum … ainda.</p>` das três listas por `Skeleton` e `EmptyState`, sem mexer no
+resto.
+
 Todas: `<h1>` + parágrafo viram `PageHeader` (com `actions` quando houver);
 "Carregando…" em `<p>` vira `Skeleton` com o número de linhas do caso vazio-típico
 (3); erros viram `ErrorState` com `onRetry={refetch}`; listas vazias viram
@@ -142,8 +147,8 @@ Todas: `<h1>` + parágrafo viram `PageHeader` (com `actions` quando houver);
   padrão da `WorkspacesTable`.
 - Botão remover: `Button variant="ghost" size="icon" aria-label="Remover admin"`,
   oculto para o próprio usuário como hoje.
-- Estados: `Skeleton` no carregamento; `EmptyState` "Nenhum admin além de você"
-  quando a lista só tem o próprio usuário; `ErrorState` se a query falhar (hoje não
+- Estados: `Skeleton` no carregamento; `EmptyState` "Nenhum admin cadastrado" só
+  quando a API devolve zero admins (a própria linha continua visível); `ErrorState` se a query falhar (hoje não
   há tratamento de erro; passa a haver).
 
 ### 4.2 `pages/IntegrationsPage.tsx`
@@ -154,8 +159,10 @@ autorizadas`) vira `Card` com `CardHeader`/`CardTitle`/`CardContent`.
 - URL do conector: `Input readOnly` + `Button variant="outline"` copiar, com
   `aria-label="Copiar URL"` e o feedback "Copiado" existente.
 - Escopos em `Permissões`: `Badge variant="neutral"` por escopo.
-- Conexões autorizadas: `Table` (cliente, escopos, criado em, última atividade,
-  ação) com `Button variant="ghost" size="icon" aria-label="Revogar conexão"`.
+- Conexões autorizadas: `Table` com as mesmas colunas de hoje (e-mail, cliente,
+  escopos, criado em, status Ativa/Revogada em `Badge`, ação). `AdminMcpGrant` não
+  tem "última atividade"; nada de coluna nova. Ação: `Button variant="ghost" size="sm"`
+  com ícone e texto "Revogar" (só na conexão ativa).
 - Estados: `Skeleton`, `ErrorState` (substitui o botão "tentar novamente" à mão),
   `EmptyState` "Nenhuma conexão autorizada".
 - `pages/__tests__/IntegrationsPage.test.tsx` é atualizado onde roles ou rótulos
@@ -182,7 +189,8 @@ autorizadas`) vira `Card` com `CardHeader`/`CardTitle`/`CardContent`.
   existente no Dashboard (movido para `lib/subscription.ts` e exportado);
   `toneBadgeClass()` é **removida** de `lib/subscription.ts` junto com o bloco `describe
 ('toneBadgeClass')` de `lib/__tests__/subscription.test.ts`.
-- Plano: `Select` (mesma composição) + `Button` "Salvar plano".
+- Plano: `Select` (mesma composição). Hoje o `<select>` salva no `onChange`; o
+  `Select` faz o mesmo no `onValueChange`. Sem botão novo.
 - Limites de recursos e de taxa: `Input type="number"` por linha, `Label` associado
   por `htmlFor`.
 - Funcionalidades: `Switch` com `aria-label={FEATURE_FLAG_LABELS[key]}` no lugar do
@@ -191,8 +199,10 @@ autorizadas`) vira `Card` com `CardHeader`/`CardTitle`/`CardContent`.
 - Chaves de API e conexões OAuth do MCP: `Table` dentro de `Card`, botões de ação
   como `Button variant="ghost" size="icon"` com `aria-label` ("Revogar chave",
   "Revogar conexão").
-- Notas: `Textarea` + `Button` "Salvar notas" / `Button variant="outline"` "Descartar".
-- Membros: `Table` (nome, e-mail, papel, entrou em) dentro de `Card`.
+- Notas: `Textarea`. Continuam sendo salvas pelo botão "Salvar overrides" já
+  existente (vira `Button`); "Restaurar padrões do plano" vira `Button variant="outline"`.
+- Membros: `Table` com as mesmas colunas de hoje (nome, e-mail, telefone com o
+  badge "MKT" de opt-in de marketing, papel, entrou em) dentro de `Card`.
 - Carregamento: `Skeleton` no lugar do `<p>`; erro da query principal:
   `ErrorState` (hoje inexistente).
 
@@ -207,13 +217,16 @@ autorizadas`) vira `Card` com `CardHeader`/`CardTitle`/`CardContent`.
 
 - `Card`; formulário com `Input aria-label="E-mail"`, `Select aria-label="Papel"`,
   `Button` "Convidar" e `Button variant="ghost"` "Cancelar".
-- Lista em `Table` com `Badge` para papel e status do convite; ações em
+- Linhas mantêm o grid atual (`md:contents` reaproveita os nós no mobile), com
+  `Badge` para as tags e o status do convite; ações em
   `Button variant="ghost" size="sm"` ("Reenviar", "Revogar").
 - `ErrorState` no lugar do botão de refetch à mão.
 - `pages/__tests__/WorkspaceInvitesCard.test.tsx` é atualizado onde roles ou rótulos
-  mudarem. O `Select` do Radix não abre em jsdom: asserções que dependem de escolher
-  um papel passam a usar o valor inicial ou o `onValueChange` exposto, como a Fase 1
-  fez na toolbar.
+  mudarem. O `Select` do Radix abre em jsdom com `fireEvent.click` no `combobox` e
+  `findByRole('option')`, desde que o teste defina
+  `Element.prototype.scrollIntoView = vi.fn()` (padrão já usado em
+  `apps/crm/src/pages/equipe/__tests__/EquipePage.test.tsx`). As asserções de papel
+  passam a escolher a opção assim e a ler o texto do trigger.
 
 ### 4.7 Passada de português
 
@@ -221,8 +234,18 @@ Varredura nos arquivos desta fase (`AdminLayout`, `LoginPage`, `AdminsPage`,
 `IntegrationsPage`, `KbArticlesPage`, `WorkspaceDetailPage`, `WorkspaceEventsCard`,
 `WorkspaceInvitesCard`, `WorkspacesTable`, `DashboardPage`, linhas de `BannersPage` e
 `PopupsPage`) por strings visíveis, `aria-label`, `title` e `placeholder` em inglês.
-Um `grep` inicial não encontrou nenhuma; a varredura confirma. Regra da casa: sem
-travessão na copy voltada ao usuário (ponto, dois-pontos ou "·").
+Regra da casa: sem travessão na copy voltada ao usuário (ponto, dois-pontos ou "·").
+
+Dois achados já conhecidos, ambos dentro desta fase:
+
+- `lib/api.ts` exporta `RESOURCE_LIMIT_LABELS`, `RATE_LIMIT_LABELS` e
+  `FEATURE_FLAG_LABELS` (cerca de 30 rótulos) em inglês ("Max Clients", "Hub Portal",
+  "CSV Import"...). São copy visível nos cartões de limites e funcionalidades do
+  Detalhe do workspace (e também em `PlansPage`, da 2b). Traduzir os três mapas nesta
+  fase; nenhum teste referencia os valores.
+- `PopupsPage.tsx` monta a linha de métricas como
+  `seen N · closed N · cta N · ack N`. Vira `vistos N · fechados N · cta N ·
+confirmados N`; o teste de `PopupsPage` que lê `/seen 312/` acompanha.
 
 ## 5. Testes
 
