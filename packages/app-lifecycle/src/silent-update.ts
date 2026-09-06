@@ -14,6 +14,13 @@
  * and the app's `holdWhile` (in-flight mutations: a full navigation aborts requests that a
  * client-side route change would let finish). The two passive triggers also wait for the
  * server to answer, since nobody is there to notice a network error page.
+ *
+ * The watchdog's `window.stop()` aborts every in-flight request of the page, not only the
+ * pending document navigation; it only runs after the swap already failed and `holdWhile()`
+ * reported no mutation, so what it can cut is a query (retried) or a fire-and-forget write on
+ * an already broken network. Never register another blocker (`useBlocker`) in the apps: React
+ * Router honours only the last one registered, and a second one silently disables this swap
+ * while it is mounted.
  */
 
 import { suppressDeployRecovery } from './deploy-recovery';
