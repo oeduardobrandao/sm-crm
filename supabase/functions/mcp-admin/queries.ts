@@ -3,8 +3,8 @@
 import { McpInputError } from "../_shared/mcp-token.ts";
 import { normalizeBanner, pickBannerColumns, validateBanner } from "../_shared/admin-banners.ts";
 import {
-  adminContaId, newImageKeys, normalizePopupText, pagesHaveImages, persistedImageKeys,
-  pickPopupColumns, validatePages, validatePopupFields,
+  adminContaId, newImageKeys, normalizePopupText, normalizePopupTrigger, pagesHaveImages,
+  persistedImageKeys, pickPopupColumns, validatePages, validatePopupFields,
 } from "../_shared/admin-popups.ts";
 import {
   collectR2Keys, contentNeedsOwnership, coverNeedsOwnership, isUniqueViolation, normalizeKb, pickKbColumns,
@@ -142,7 +142,9 @@ async function preparePages(d: Deps, pages: unknown, persisted: Set<string>) {
 export async function createPopup(d: Deps, args: Record<string, unknown>) {
   if (args.pages === undefined) throw new McpInputError("pages é obrigatório.");
   const pages = await preparePages(d, args.pages, new Set());
-  const insert = normalizePopupText({ ...pickPopupColumns(args), pages, created_by: d.ctx.admin_id });
+  const insert = normalizePopupTrigger(
+    normalizePopupText({ ...pickPopupColumns(args), pages, created_by: d.ctx.admin_id }),
+  );
   const err = validatePopupFields(insert);
   if (err) throw new McpInputError(err);
   const { data, error } = await d.db.from("global_popups").insert(insert).select("id, status").single();
@@ -160,9 +162,10 @@ export async function updatePopup(d: Deps, args: Record<string, unknown>) {
   if (update.pages !== undefined) {
     update.pages = await preparePages(d, update.pages, persistedImageKeys((current as Record<string, unknown>).pages));
   }
-  const err = validatePopupFields({ ...(current as Record<string, unknown>), ...update });
+  const patch = normalizePopupTrigger(update, current as Record<string, unknown>);
+  const err = validatePopupFields({ ...(current as Record<string, unknown>), ...patch });
   if (err) throw new McpInputError(err);
-  const { data, error } = await d.db.from("global_popups").update(update).eq("id", id).select("id, status").single();
+  const { data, error } = await d.db.from("global_popups").update(patch).eq("id", id).select("id, status").single();
   if (error) throw error;
   return { id: data.id as string, status: data.status as string };
 }

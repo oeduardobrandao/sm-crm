@@ -2,8 +2,8 @@
 // _shared/admin-popups.ts, compartilhado com mcp-admin.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
-  adminContaId, normalizePopupText, pagesHaveImages, persistedImageKeys, pickPopupColumns,
-  validatePages, validatePopupFields,
+  adminContaId, normalizePopupText, normalizePopupTrigger, pagesHaveImages, persistedImageKeys,
+  pickPopupColumns, validatePages, validatePopupFields,
 } from "../_shared/admin-popups.ts";
 export { validatePages, validatePopupFields } from "../_shared/admin-popups.ts";
 
@@ -66,7 +66,9 @@ export async function handleCreatePopup(
     console.error("[popups] create rejected:", pages.error);
     return json({ error: "Invalid popup" }, 400, headers);
   }
-  const insert = normalizePopupText({ ...pickPopupColumns(body), pages: pages.pages, created_by: actor.adminId });
+  const insert = normalizePopupTrigger(
+    normalizePopupText({ ...pickPopupColumns(body), pages: pages.pages, created_by: actor.adminId }),
+  );
   const fieldError = validatePopupFields(insert);
   if (fieldError) {
     console.error("[popups] create rejected:", fieldError);
@@ -118,14 +120,17 @@ export async function handleUpdatePopup(
     update.pages = pages.pages;
   }
 
-  const fieldError = validatePopupFields({ ...(current as Record<string, unknown>), ...update });
+  // Regras cruzadas valem sobre a linha resultante, nao so sobre o patch. A normalizacao
+  // do gatilho tambem: ela le a linha mesclada e so emite trigger_days quando muda.
+  const patch = normalizePopupTrigger(update, current as Record<string, unknown>);
+  const fieldError = validatePopupFields({ ...(current as Record<string, unknown>), ...patch });
   if (fieldError) {
     console.error("[popups] update rejected:", fieldError);
     return json({ error: "Invalid popup" }, 400, headers);
   }
 
   const { data, error } = await svc
-    .from("global_popups").update(update).eq("id", popupId).select().single();
+    .from("global_popups").update(patch).eq("id", popupId).select().single();
   if (error) throw error;
   return json({ popup: data }, 200, headers);
 }

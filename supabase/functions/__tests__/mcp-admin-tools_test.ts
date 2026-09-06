@@ -1,3 +1,4 @@
+import { z } from "npm:zod@3";
 import { assert, assertEquals } from "./assert.ts";
 import { registerTools } from "../mcp-admin/tools.ts";
 import { CTX, makeDeps, makeFakeDb } from "./mcp-admin-helpers.ts";
@@ -61,4 +62,27 @@ Deno.test("McpInputError → isError com a mensagem; erro interno → 'Internal 
   const boom = captureTools(makeDeps(makeFakeDb({ global_banners: [{ data: null, error: { message: "db down" } }] }).db));
   const r2 = await boom.get("get_banner")!.run({ banner_id: "b1" });
   assertEquals(JSON.parse(r2.content[0].text), { error: "Internal error." });
+});
+
+/** Servidor fake que guarda o shape zod de cada tool (o captureTools acima descarta). */
+function captureShapes(deps: ReturnType<typeof makeDeps>) {
+  const shapes = new Map<string, z.ZodRawShape>();
+  const server = { tool: (name: string, _desc: string, shape: z.ZodRawShape, _cb: unknown) => shapes.set(name, shape) };
+  registerTools(server, deps);
+  return shapes;
+}
+
+Deno.test("create_popup/update_popup: schema aceita trigger, trigger_days e frequency daily; rejeita fora do enum e da faixa", () => {
+  const shapes = captureShapes(makeDeps(makeFakeDb({}).db));
+  const create = z.object(shapes.get("create_popup")!);
+  const pages = [{ title: "T", body: "B" }];
+  assertEquals(create.safeParse({ pages, target_mode: "all", trigger: "trial_ending", trigger_days: 3, frequency: "daily" }).success, true);
+  assertEquals(create.safeParse({ pages, target_mode: "all", trigger: null, trigger_days: null }).success, true);
+  assertEquals(create.safeParse({ pages, target_mode: "all", trigger: "bogus" }).success, false);
+  assertEquals(create.safeParse({ pages, target_mode: "all", trigger_days: 61 }).success, false);
+  assertEquals(create.safeParse({ pages, target_mode: "all", trigger_days: 0 }).success, false);
+  assertEquals(create.safeParse({ pages, target_mode: "all", trigger_days: 2.5 }).success, false);
+  assertEquals(create.safeParse({ pages, target_mode: "all", frequency: "weekly" }).success, false);
+  const update = z.object(shapes.get("update_popup")!);
+  assertEquals(update.safeParse({ popup_id: "11111111-1111-1111-1111-111111111111", trigger: "payment_pending" }).success, true);
 });

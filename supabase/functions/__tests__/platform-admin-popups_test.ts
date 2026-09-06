@@ -363,3 +363,71 @@ Deno.test("validatePages: alreadyAllowedKeys libera chave de outra conta ja pers
   assertEquals(validatePages([{ title: "T", body: "B", image_key: theirs }], CONTA, new Set([theirs])).ok, true);
   assertEquals(validatePages([{ title: "T", body: "B", image_key: theirs }], CONTA, new Set()).ok, false);
 });
+
+Deno.test("create-popup: persiste trigger; dias fora de trial_ending ou trial_ending sem dias são 400", async () => {
+  const { db, calls } = makeFakeDb({ global_popups: [{ data: ROW, error: null }] });
+  const r = await handleCreatePopup(
+    db,
+    { action: "create-popup", pages: PAGES, target_mode: "all", trigger: "payment_pending", trigger_days: null, frequency: "daily" },
+    { adminId: "adm", userId: "u1" },
+    H,
+  );
+  assertEquals(r.status, 201);
+  const payload = lastPayload(calls, "global_popups", "insert")!;
+  assertEquals(payload.trigger, "payment_pending");
+  assertEquals(payload.trigger_days, null);
+  assertEquals(payload.frequency, "daily");
+
+  // Nenhum destes pode virar popup sem gatilho em silencio.
+  for (const body of [
+    { trigger: "trial_ending" },
+    { trigger: "payment_pending", trigger_days: 3 },
+    { trigger_days: 5 },
+  ]) {
+    const bad = await handleCreatePopup(
+      makeFakeDb({}).db,
+      { action: "create-popup", pages: PAGES, target_mode: "all", ...body },
+      { adminId: "adm", userId: "u1" },
+      H,
+    );
+    assertEquals(bad.status, 400, JSON.stringify(body));
+    assertEquals((await bad.json()).error, "Invalid popup");
+  }
+});
+
+Deno.test("update-popup: edição que não toca no gatilho não injeta trigger_days; troca de gatilho zera os dias", async () => {
+  const current = { ...ROW, trigger: "trial_ending", trigger_days: 5 };
+  const { db, calls } = makeFakeDb({
+    global_popups: [{ data: current, error: null }, { data: { ...current, cta_label: "Ver", cta_url: "/x" }, error: null }],
+  });
+  let r = await handleUpdatePopup(
+    db, { action: "update-popup", popup_id: "p1", cta_label: "Ver", cta_url: "/x" }, { userId: "u1" }, H,
+  );
+  assertEquals(r.status, 200);
+  const edit = lastPayload(calls, "global_popups", "update")!;
+  assertEquals("trigger_days" in edit, false);
+  assertEquals("trigger" in edit, false);
+
+  const { db: db2, calls: calls2 } = makeFakeDb({
+    global_popups: [{ data: current, error: null }, { data: { ...current, trigger: "payment_pending", trigger_days: null }, error: null }],
+  });
+  r = await handleUpdatePopup(db2, { action: "update-popup", popup_id: "p1", trigger: "payment_pending" }, { userId: "u1" }, H);
+  assertEquals(r.status, 200);
+  const swap = lastPayload(calls2, "global_popups", "update")!;
+  assertEquals(swap.trigger, "payment_pending");
+  assertEquals(swap.trigger_days, null);
+
+  // trial_ending sem dias sobre popup sem gatilho: 400, nao 500
+  r = await handleUpdatePopup(
+    makeFakeDb({ global_popups: [{ data: ROW, error: null }] }).db,
+    { action: "update-popup", popup_id: "p1", trigger: "trial_ending" }, { userId: "u1" }, H,
+  );
+  assertEquals(r.status, 400);
+
+  // dias enviados no patch num popup payment_pending: 400, nao apagados em silencio
+  r = await handleUpdatePopup(
+    makeFakeDb({ global_popups: [{ data: { ...ROW, trigger: "payment_pending", trigger_days: null }, error: null }] }).db,
+    { action: "update-popup", popup_id: "p1", trigger_days: 7 }, { userId: "u1" }, H,
+  );
+  assertEquals(r.status, 400);
+});
