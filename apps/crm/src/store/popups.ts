@@ -9,6 +9,8 @@ export interface PopupPage {
   cta_url?: string | null;
 }
 
+export type PopupTrigger = 'payment_pending' | 'trial_ending' | 'plan_downgraded';
+
 export interface GlobalPopup {
   id: string;
   pages: PopupPage[];
@@ -16,8 +18,10 @@ export interface GlobalPopup {
   cta_url: string | null;
   cta_style: 'ink' | 'brand';
   secondary_label: string | null;
-  frequency: 'once' | 'until_cta';
+  frequency: 'once' | 'until_cta' | 'daily';
   require_ack: boolean;
+  /** A RLS já aplicou a condição; aqui só serve para prioridade e analytics. */
+  trigger: PopupTrigger | null;
   created_at: string;
 }
 
@@ -26,10 +30,12 @@ export type PopupAction = 'seen' | 'closed' | 'cta' | 'ack';
 export interface PopupInteraction {
   popup_id: string;
   action: PopupAction;
+  /** ISO; a regra "uma vez por dia" lê o dia-calendário local daqui. */
+  created_at: string;
 }
 
 const COLUMNS =
-  'id, pages, cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, created_at';
+  'id, pages, cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, trigger, created_at';
 
 /** A RLS já filtra ativo + janela + targeting. Só o platform-admin escreve `pages`,
  * mas um dado inesperado nunca pode derrubar o shell: linha malformada é descartada. */
@@ -52,7 +58,7 @@ export async function getMyPopupInteractions(): Promise<PopupInteraction[]> {
   if (!user) return [];
   const { data, error } = await supabase
     .from('popup_interactions')
-    .select('popup_id, action')
+    .select('popup_id, action, created_at')
     .eq('user_id', user.id);
   if (error) throw error;
   return (data || []) as PopupInteraction[];
