@@ -26,7 +26,7 @@ export const FREQUENCY_LABEL: Record<PopupFrequency, string> = {
 export function triggerChipLabel(trigger: PopupTrigger | null, days: number | null): string | null {
   if (!trigger) return null;
   if (trigger === 'trial_ending') return `Teste em ${days ?? '?'} ${days === 1 ? 'dia' : 'dias'}`;
-  return trigger === 'payment_pending' ? 'Pagamento pendente' : 'Plano rebaixado';
+  return trigger === 'payment_pending' ? TRIGGER_LABEL.payment_pending : 'Plano rebaixado';
 }
 
 /** Regra única da URL de CTA (global e por página), espelhando o servidor. */
