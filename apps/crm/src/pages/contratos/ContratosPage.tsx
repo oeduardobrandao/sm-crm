@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { holdUnsavedWork, useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
@@ -120,6 +121,7 @@ export default function ContratosPage() {
   const [editing, setEditing] = useState<Contrato | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  useUnsavedWork(saving);
 
   const form = useForm<ContratoFormValues>({
     resolver: zodResolver(contratoSchema),
@@ -230,28 +232,35 @@ export default function ContratosPage() {
     openCSVSelector(
       async (rows) => {
         let count = 0;
-        for (const row of rows) {
-          if (!row.titulo || !row.data_inicio || !row.data_fim || !row.valor_total) continue;
-          try {
-            const clienteMatch = row.cliente_nome
-              ? clientes.find((c) => c.nome.toLowerCase() === row.cliente_nome.toLowerCase())
-              : null;
-            const status = (
-              ['vigente', 'a_assinar', 'encerrado'].includes(row.status) ? row.status : 'a_assinar'
-            ) as Contrato['status'];
-            await addContrato({
-              titulo: row.titulo,
-              cliente_id: clienteMatch?.id ?? null,
-              cliente_nome: row.cliente_nome || '',
-              data_inicio: row.data_inicio,
-              data_fim: row.data_fim,
-              valor_total: Number(row.valor_total),
-              status,
-            });
-            count++;
-          } catch {
-            /* skip row */
+        const release = holdUnsavedWork();
+        try {
+          for (const row of rows) {
+            if (!row.titulo || !row.data_inicio || !row.data_fim || !row.valor_total) continue;
+            try {
+              const clienteMatch = row.cliente_nome
+                ? clientes.find((c) => c.nome.toLowerCase() === row.cliente_nome.toLowerCase())
+                : null;
+              const status = (
+                ['vigente', 'a_assinar', 'encerrado'].includes(row.status)
+                  ? row.status
+                  : 'a_assinar'
+              ) as Contrato['status'];
+              await addContrato({
+                titulo: row.titulo,
+                cliente_id: clienteMatch?.id ?? null,
+                cliente_nome: row.cliente_nome || '',
+                data_inicio: row.data_inicio,
+                data_fim: row.data_fim,
+                valor_total: Number(row.valor_total),
+                status,
+              });
+              count++;
+            } catch {
+              /* skip row */
+            }
           }
+        } finally {
+          release();
         }
         toast.success(
           `${count} contrato${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} com sucesso!`,

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   Palette,
   Droplet,
@@ -763,6 +764,9 @@ export default function HubTab() {
       return;
     }
     setLogoUploading(true);
+    // The upload and the record update that follows are one unit of work: a silent
+    // version swap must not land between them.
+    const release = holdUnsavedWork();
     try {
       const bitmap = await createImageBitmap(file);
       // Bound the longest side at 512px, keeping the source aspect ratio: this
@@ -799,6 +803,7 @@ export default function HubTab() {
       console.error('hub dark logo upload failed', err);
       toast.error('Não foi possível enviar a logo. Tente novamente.');
     } finally {
+      release();
       setLogoUploading(false);
     }
   };

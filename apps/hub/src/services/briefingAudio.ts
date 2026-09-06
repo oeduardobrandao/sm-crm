@@ -1,3 +1,4 @@
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { finalizeBriefingAudio, presignBriefingAudio } from '../api';
 import type { BriefingAudioResponse } from '../types';
 import { putToR2 } from './ideiaMedia';
@@ -81,7 +82,14 @@ export function describeAudioError(e: unknown, fallback: string): string {
 
 export type UploadPhase = 'uploading' | 'transcribing';
 
-export async function uploadBriefingAudio(args: {
+/** Holds the unsaved-work registry for the whole upload: a silent version swap must not abort it. */
+export function uploadBriefingAudio(
+  ...args: Parameters<typeof uploadBriefingAudioUnguarded>
+): ReturnType<typeof uploadBriefingAudioUnguarded> {
+  return trackUnsavedWork(uploadBriefingAudioUnguarded(...args));
+}
+
+async function uploadBriefingAudioUnguarded(args: {
   token: string;
   questionId: string;
   blob: Blob;

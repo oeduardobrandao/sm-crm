@@ -17,5 +17,6 @@ export default defineConfig(({ command }) => ({
   base: command === 'serve' ? '/' : '/admin/',
   build: {
     outDir: '../../dist/admin',
+    manifest: 'build-manifest.json',
   },
 }));

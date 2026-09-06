@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
+import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -65,6 +66,9 @@ export default function WorkspaceTab() {
       return;
     }
     setWsLogoLoading(true);
+    // The upload and the record update that follows are one unit of work: a silent
+    // version swap must not land between them.
+    const release = holdUnsavedWork();
     try {
       const bitmap = await createImageBitmap(file);
       const canvas = document.createElement('canvas');
@@ -90,6 +94,7 @@ export default function WorkspaceTab() {
     } catch (err: unknown) {
       toast.error('Erro ao enviar logo: ' + (err as Error).message);
     } finally {
+      release();
       setWsLogoLoading(false);
     }
   };

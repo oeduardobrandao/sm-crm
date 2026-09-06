@@ -1,4 +1,5 @@
 // apps/crm/src/services/fileService.ts
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
 import type {
   Folder,
@@ -140,7 +141,14 @@ export async function getFolderInfo(folderId: number): Promise<FolderInfo> {
 
 // ─── FILE OPERATIONS ────────────────────────────────────────────
 
-export async function uploadFile(args: {
+/** Holds the unsaved-work registry for the whole upload: a silent version swap must not abort it. */
+export function uploadFile(
+  ...args: Parameters<typeof uploadFileUnguarded>
+): ReturnType<typeof uploadFileUnguarded> {
+  return trackUnsavedWork(uploadFileUnguarded(...args));
+}
+
+async function uploadFileUnguarded(args: {
   file: File;
   folderId: number | null;
   thumbnail?: File;

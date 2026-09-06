@@ -27,6 +27,7 @@ vi.mock('../../../lib/supabase', () => ({
   },
 }));
 
+import { hasUnsavedWork } from '@mesaas/app-lifecycle';
 import { resizeClientePhoto } from '../clienteFoto';
 import { updateCliente } from '../../../store';
 import { ClienteAvatarUpload } from '../ClienteAvatarUpload';
@@ -112,6 +113,26 @@ describe('ClienteAvatarUpload', () => {
     );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['cliente', 1] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });
+  });
+
+  it('holds the unsaved-work registry from the upload through the record update', async () => {
+    const seen: boolean[] = [];
+    mockUpload.mockImplementationOnce(async () => {
+      seen.push(hasUnsavedWork());
+      return { error: null };
+    });
+    mockedUpdateCliente.mockImplementationOnce(async () => {
+      seen.push(hasUnsavedWork());
+    });
+    const { container } = renderIt();
+    const file = new File(['x'], 'foto.png', { type: 'image/png' });
+
+    const input = getFileInput(container);
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hasUnsavedWork()).toBe(false));
+    expect(seen).toEqual([true, true]);
   });
 
   it('uploads two files to two different random paths', async () => {

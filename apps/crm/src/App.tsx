@@ -6,6 +6,7 @@ import { getCachedProfile } from './lib/supabase';
 import * as Sentry from '@sentry/react';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
+import { BuildPrefetch } from './components/BuildPrefetch';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -79,7 +80,7 @@ const SecaoPage = lazy(() => import('./pages/ajuda/SecaoPage'));
 const ArtigoPage = lazy(() => import('./pages/ajuda/ArtigoPage'));
 const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage'));
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
@@ -120,6 +121,7 @@ export default function App() {
     >
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <BuildPrefetch />
           <Toaster />
           <Suspense fallback={PageFallback}>
             <Routes>

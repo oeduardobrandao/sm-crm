@@ -16,6 +16,7 @@ import {
   Plug,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
+import { BuildPrefetch } from '../components/BuildPrefetch';
 import { LiquidBackdrop } from '../liquidglass/LiquidBackdrop';
 import { useLiquidGlassContext } from '../liquidglass/LiquidGlassProvider';
 import { Button } from '../components/ui/button';
@@ -53,6 +54,7 @@ export default function AdminLayout() {
 
   return (
     <div className="flex min-h-screen">
+      <BuildPrefetch />
       <LiquidBackdrop />
       {/* Mobile hamburger */}
       <Button

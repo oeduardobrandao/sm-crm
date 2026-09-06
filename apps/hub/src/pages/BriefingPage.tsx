@@ -8,6 +8,7 @@ import {
   submitBriefingAnswer,
 } from '../api';
 import { describeAudioError, uploadBriefingAudio } from '../services/briefingAudio';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import {
   AudioRecorder,
@@ -174,6 +175,9 @@ function QuestionItem({
   // let the server overwrite the user's unsaved edit with a stale value.
   const pendingRef = useRef<{ value: string; dirty: boolean }>({ value: answer, dirty: false });
   const locked = phase !== 'idle' || busyAction !== null;
+  // Typed text not yet saved, a save in flight, or an audio upload / transcription in
+  // progress: a silent version swap must wait.
+  useUnsavedWork(answer !== (question.answer ?? '') || status === 'saving' || locked);
 
   // The server is the source of truth for audio: a background refetch (e.g.
   // triggered by onAudioChanged after another tab removed it, or after this

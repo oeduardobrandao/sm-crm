@@ -3,6 +3,7 @@ import {
   installDeployRecovery,
   isModuleLoadError,
   reloadForNewDeploy,
+  suppressDeployRecovery,
 } from '../src/deploy-recovery';
 
 const reload = vi.fn();
@@ -70,6 +71,15 @@ describe('reloadForNewDeploy', () => {
     });
     expect(reloadForNewDeploy()).toBe(false);
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('declines while a swap suppresses it, and reloads again once released', () => {
+    const release = suppressDeployRecovery();
+    expect(reloadForNewDeploy()).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    release();
+    expect(reloadForNewDeploy()).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
 
