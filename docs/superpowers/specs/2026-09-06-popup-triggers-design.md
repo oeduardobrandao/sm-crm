@@ -193,14 +193,17 @@ interação num popup com gatilho.
 - `normalizePopupTrigger(update, current?)`: novo. Recebe o patch (já passado por
   `pickPopupColumns`) e, no update, a linha atual; decide sobre a linha **mesclada**
   (`{ ...current, ...update }`) e devolve o patch com no máximo duas mudanças:
-  `trigger: ""` vira `null`, e `trigger_days: null` é emitido **somente** quando a
-  linha mesclada tem gatilho diferente de `trial_ending` e `trigger_days` preenchido.
+  `trigger: ""` vira `null`, e `trigger_days: null` é emitido **somente** quando o patch
+  não mandou `trigger_days` e a linha mesclada ficou com gatilho diferente de
+  `trial_ending` mas dias persistidos (a troca de gatilho num popup `trial_ending`).
   Um patch que não toca no gatilho (editar o título de um popup `trial_ending`) sai
   intacto: emitir `trigger_days: null` nele deixaria `trigger = 'trial_ending'` com
-  dias nulos e cairia no CHECK como 500 em toda edição trivial. Já um update que troca
-  `trial_ending` por `payment_pending` sem mandar dias recebe `trigger_days: null` e
-  passa. Chamado antes de `validatePopupFields`, nos mesmos dois pontos (no create,
-  sem `current`).
+  dias nulos e cairia no CHECK como 500 em toda edição trivial. Dias **enviados** no
+  patch sem `trial_ending` (create com `trigger_days: 5` e sem `trigger`, ou com
+  `payment_pending`) não são apagados: é erro do chamador, e `validatePopupFields`
+  devolve 400 ("trigger_days only applies to trial_ending") em vez de criar em
+  silêncio um popup sem a restrição pretendida. Chamado antes de
+  `validatePopupFields`, nos mesmos dois pontos (no create, sem `current`).
 
 ### `platform-admin/popups.ts`
 
@@ -374,11 +377,13 @@ A suíte 77 não muda.
 ### Deno
 
 - `admin-popups_test.ts`: `validatePopupFields` com os casos acima do gatilho e dos
-  dias; `normalizePopupTrigger` zera dias fora de `trial_ending` e converte `""` em
-  `null`; `daily` aceito; `daily` + `require_ack` aceito.
-- `platform-admin-popups_test.ts`: create persiste `trigger` e `trigger_days`; update
-  que troca `trial_ending` por `payment_pending` sem mandar dias persiste
-  `trigger_days = null`.
+  dias; `normalizePopupTrigger` zera só dias persistidos ao trocar o gatilho, mantém
+  dias enviados no patch (que a validação rejeita) e converte `""` em `null`; `daily`
+  aceito; `daily` + `require_ack` aceito.
+- `platform-admin-popups_test.ts`: create persiste `trigger` e `trigger_days`; create
+  com dias sem `trial_ending` (com ou sem outro gatilho) é 400; update que troca
+  `trial_ending` por `payment_pending` sem mandar dias persiste `trigger_days = null`;
+  update que manda dias num popup `payment_pending` é 400.
 - `mcp-admin-popups_test.ts`: `create_popup` aceita os campos novos e rejeita
   `trigger_days` fora de 1..60 no schema.
 - `npm run check:functions` cobre os tipos.

@@ -465,25 +465,51 @@ Deno.test("validatePopupFields: frequency daily, com e sem require_ack; until_ct
   );
 });
 
-Deno.test("normalizePopupTrigger: decide sobre a linha mesclada e só emite o que muda", () => {
-  // create (sem current)
-  assertEquals(normalizePopupTrigger({ trigger: "payment_pending", trigger_days: 3 }), { trigger: "payment_pending", trigger_days: null });
-  assertEquals(normalizePopupTrigger({ trigger: "trial_ending", trigger_days: 3 }), { trigger: "trial_ending", trigger_days: 3 });
+Deno.test("normalizePopupTrigger: decide sobre a linha mesclada e só zera dias que vieram da linha atual", () => {
+  // create (sem current): "" vira null; dias enviados no patch ficam para a validação rejeitar
   assertEquals(normalizePopupTrigger({ trigger: "" }), { trigger: null });
+  assertEquals(normalizePopupTrigger({ trigger: "trial_ending", trigger_days: 3 }), { trigger: "trial_ending", trigger_days: 3 });
+  assertEquals(normalizePopupTrigger({ trigger: "payment_pending", trigger_days: 3 }), { trigger: "payment_pending", trigger_days: 3 });
+  assertEquals(normalizePopupTrigger({ trigger_days: 5 }), { trigger_days: 5 });
   assertEquals(normalizePopupTrigger({ cta_label: "x" }), { cta_label: "x" });
   assertEquals(normalizePopupTrigger({}), {});
   // update: patch que nao toca no gatilho sai intacto (senao a CHECK derruba a edicao)
   const current = { id: "p1", trigger: "trial_ending", trigger_days: 5 };
   assertEquals(normalizePopupTrigger({ cta_label: "novo" }, current), { cta_label: "novo" });
   assertEquals(normalizePopupTrigger({ status: "active" }, current), { status: "active" });
-  // update: troca de gatilho sem mandar dias zera os dias persistidos
+  // update: troca de gatilho sem mandar dias zera os dias PERSISTIDOS
   assertEquals(normalizePopupTrigger({ trigger: "payment_pending" }, current), { trigger: "payment_pending", trigger_days: null });
   assertEquals(normalizePopupTrigger({ trigger: null }, current), { trigger: null, trigger_days: null });
   assertEquals(normalizePopupTrigger({ trigger: "" }, current), { trigger: null, trigger_days: null });
   // update: dias novos com trial_ending mantido passam
   assertEquals(normalizePopupTrigger({ trigger_days: 7 }, current), { trigger_days: 7 });
+  // update: dias ENVIADOS no patch sem trial_ending nao sao apagados (a validacao rejeita)
+  assertEquals(
+    normalizePopupTrigger({ trigger_days: 7 }, { trigger: "payment_pending", trigger_days: null }),
+    { trigger_days: 7 },
+  );
+  assertEquals(
+    normalizePopupTrigger({ trigger: "payment_pending", trigger_days: 7 }, current),
+    { trigger: "payment_pending", trigger_days: 7 },
+  );
   // update em popup sem gatilho: nada a emitir
   assertEquals(normalizePopupTrigger({ cta_label: "x" }, { trigger: null, trigger_days: null }), { cta_label: "x" });
+});
+
+Deno.test("normalizePopupTrigger + validatePopupFields: dias no patch sem trial_ending viram erro, não coerção silenciosa", () => {
+  assert(validatePopupFields({ ...BASE, ...normalizePopupTrigger({ trigger_days: 5 }) }) !== null, "dias sem gatilho no create");
+  assert(
+    validatePopupFields({ ...BASE, ...normalizePopupTrigger({ trigger: "payment_pending", trigger_days: 5 }) }) !== null,
+    "dias com payment_pending no create",
+  );
+  const current = { ...BASE, trigger: "trial_ending", trigger_days: 5 };
+  assertEquals(validatePopupFields({ ...current, ...normalizePopupTrigger({ trigger: "payment_pending" }, current) }), null);
+  assert(
+    validatePopupFields({ ...current, ...normalizePopupTrigger({ trigger_days: null }, current) }) !== null,
+    "apagar dias mantendo trial_ending",
+  );
+  const paying = { ...BASE, trigger: "payment_pending", trigger_days: null };
+  assert(validatePopupFields({ ...paying, ...normalizePopupTrigger({ trigger_days: 7 }, paying) }) !== null, "dias num popup payment_pending");
 });
 ```
 
@@ -542,20 +568,25 @@ Função nova, logo depois de `normalizePopupText`:
 
 ```ts
 /** Decide sobre a linha MESCLADA (atual + patch) e devolve o patch com no maximo duas
- * mudancas: `trigger: ""` vira null; `trigger_days: null` e emitido SOMENTE quando a
- * linha mesclada tem gatilho diferente de trial_ending e dias preenchidos. Um patch que
- * nao toca no gatilho sai intacto: injetar trigger_days = null numa edicao de titulo de
- * um popup trial_ending cairia no CHECK global_popups_trigger_days_check como 500. */
+ * mudancas: `trigger: ""` vira null; `trigger_days: null` e emitido SOMENTE quando o patch
+ * NAO mandou trigger_days e a linha mesclada ficou com gatilho diferente de trial_ending
+ * mas dias persistidos (troca de gatilho num popup trial_ending). Um patch que nao toca no
+ * gatilho sai intacto: injetar trigger_days = null numa edicao de titulo de um popup
+ * trial_ending cairia no CHECK global_popups_trigger_days_check como 500. Dias ENVIADOS
+ * no patch sem trial_ending nao sao apagados: e erro do chamador, e validatePopupFields
+ * devolve 400 em vez de criar em silencio um popup sem a restricao pretendida. */
 export function normalizePopupTrigger(
   update: Record<string, unknown>,
   current?: Record<string, unknown>,
 ): Record<string, unknown> {
   const out = { ...update };
   if (out.trigger === "") out.trigger = null;
-  const merged = { ...(current ?? {}), ...out };
-  const trigger = merged.trigger ?? null;
-  const days = merged.trigger_days ?? null;
-  if (trigger !== "trial_ending" && days !== null) out.trigger_days = null;
+  if (out.trigger_days === undefined) {
+    const merged = { ...(current ?? {}), ...out };
+    if ((merged.trigger ?? null) !== "trial_ending" && (merged.trigger_days ?? null) !== null) {
+      out.trigger_days = null;
+    }
+  }
   return out;
 }
 ```
@@ -567,7 +598,7 @@ deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-ne
 git checkout deno.lock
 ```
 
-Expected: PASS (4 testes).
+Expected: PASS (5 testes).
 
 - [ ] **Step 5: Commit**
 
@@ -601,11 +632,11 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 Acrescente ao final de `supabase/functions/__tests__/platform-admin-popups_test.ts`:
 
 ```ts
-Deno.test("create-popup: persiste trigger e zera trigger_days fora de trial_ending; trial_ending sem dias é 400", async () => {
+Deno.test("create-popup: persiste trigger; dias fora de trial_ending ou trial_ending sem dias são 400", async () => {
   const { db, calls } = makeFakeDb({ global_popups: [{ data: ROW, error: null }] });
   const r = await handleCreatePopup(
     db,
-    { action: "create-popup", pages: PAGES, target_mode: "all", trigger: "payment_pending", trigger_days: 3, frequency: "daily" },
+    { action: "create-popup", pages: PAGES, target_mode: "all", trigger: "payment_pending", trigger_days: null, frequency: "daily" },
     { adminId: "adm", userId: "u1" },
     H,
   );
@@ -615,14 +646,21 @@ Deno.test("create-popup: persiste trigger e zera trigger_days fora de trial_endi
   assertEquals(payload.trigger_days, null);
   assertEquals(payload.frequency, "daily");
 
-  const bad = await handleCreatePopup(
-    makeFakeDb({}).db,
-    { action: "create-popup", pages: PAGES, target_mode: "all", trigger: "trial_ending" },
-    { adminId: "adm", userId: "u1" },
-    H,
-  );
-  assertEquals(bad.status, 400);
-  assertEquals((await bad.json()).error, "Invalid popup");
+  // Nenhum destes pode virar popup sem gatilho em silencio.
+  for (const body of [
+    { trigger: "trial_ending" },
+    { trigger: "payment_pending", trigger_days: 3 },
+    { trigger_days: 5 },
+  ]) {
+    const bad = await handleCreatePopup(
+      makeFakeDb({}).db,
+      { action: "create-popup", pages: PAGES, target_mode: "all", ...body },
+      { adminId: "adm", userId: "u1" },
+      H,
+    );
+    assertEquals(bad.status, 400, JSON.stringify(body));
+    assertEquals((await bad.json()).error, "Invalid popup");
+  }
 });
 
 Deno.test("update-popup: edição que não toca no gatilho não injeta trigger_days; troca de gatilho zera os dias", async () => {
@@ -653,6 +691,13 @@ Deno.test("update-popup: edição que não toca no gatilho não injeta trigger_d
     { action: "update-popup", popup_id: "p1", trigger: "trial_ending" }, { userId: "u1" }, H,
   );
   assertEquals(r.status, 400);
+
+  // dias enviados no patch num popup payment_pending: 400, nao apagados em silencio
+  r = await handleUpdatePopup(
+    makeFakeDb({ global_popups: [{ data: { ...ROW, trigger: "payment_pending", trigger_days: null }, error: null }] }).db,
+    { action: "update-popup", popup_id: "p1", trigger_days: 7 }, { userId: "u1" }, H,
+  );
+  assertEquals(r.status, 400);
 });
 ```
 
@@ -672,6 +717,11 @@ Deno.test("createPopup/updatePopup: gatilho passa pela allowlist e pela normaliz
   assertEquals(ins.frequency, "daily");
   await expectInputError(
     () => createPopup(makeDeps(db), { pages: [{ title: "T", body: "B" }], target_mode: "all", trigger: "trial_ending" }),
+    "trigger_days",
+  );
+  // dias sem gatilho: erro, nao um popup sem restricao criado em silencio
+  await expectInputError(
+    () => createPopup(makeDeps(db), { pages: [{ title: "T", body: "B" }], target_mode: "all", trigger_days: 5 }),
     "trigger_days",
   );
 
@@ -723,7 +773,7 @@ Deno.test("create_popup/update_popup: schema aceita trigger, trigger_days e freq
 deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/platform-admin-popups_test.ts supabase/functions/__tests__/mcp-admin-popups_test.ts supabase/functions/__tests__/mcp-admin-tools_test.ts
 ```
 
-Expected: FAIL nos testes novos (`trigger_days` chega como 3 no insert; schema recusa `trigger`).
+Expected: FAIL nos testes novos (create com `trigger_days` sem `trial_ending` devolve 201 em vez de 400; schema recusa `trigger`).
 
 - [ ] **Step 4: Implementar no platform-admin**
 
