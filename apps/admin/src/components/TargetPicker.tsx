@@ -85,6 +85,7 @@ function SearchableList({
   onClear,
   placeholder,
   emptyLabel,
+  orphanLabel,
 }: {
   options: Option[];
   selected: string[];
@@ -92,12 +93,20 @@ function SearchableList({
   onClear: () => void;
   placeholder: string;
   emptyLabel: string;
+  orphanLabel: (id: string) => string;
 }) {
   const [query, setQuery] = useState('');
 
-  const selectedOptions = useMemo(
-    () => options.filter((o) => selected.includes(o.id)),
-    [options, selected],
+  // Um id selecionado pode não estar em `options`: o workspace foi apagado, ou a lista
+  // veio truncada pelo limite da query. Ele ganha um chip mesmo assim, senão o rodapé
+  // conta uma seleção que ninguém consegue ver nem tirar.
+  const selectedChips = useMemo(
+    () =>
+      selected.map((id) => {
+        const option = options.find((o) => o.id === id);
+        return option ? { ...option, orphan: false } : { id, name: orphanLabel(id), orphan: true };
+      }),
+    [options, selected, orphanLabel],
   );
 
   const filtered = useMemo(() => {
@@ -108,19 +117,23 @@ function SearchableList({
 
   return (
     <div className="space-y-2">
-      {selectedOptions.length > 0 && (
+      {selectedChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {selectedOptions.map((o) => (
+          {selectedChips.map((o) => (
             <span
               key={o.id}
-              className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg text-xs font-medium bg-primary/20 text-foreground border border-primary/50"
+              className={`inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg text-xs font-medium ${
+                o.orphan
+                  ? 'bg-secondary text-muted-foreground border border-dashed border-border'
+                  : 'bg-primary/20 text-foreground border border-primary/50'
+              }`}
             >
               {o.name}
               <button
                 type="button"
                 onClick={() => onToggle(o.id)}
                 aria-label={`Remover ${o.name}`}
-                className="rounded p-0.5 hover:bg-primary/20 transition-colors"
+                className="rounded p-0.5 hover:bg-foreground/10 transition-colors"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -229,6 +242,7 @@ export function TargetPicker({ value, plans, workspaces, onChange }: TargetPicke
           onClear={() => onChange({ ...value, target_workspace_ids: [] })}
           placeholder="Buscar workspace"
           emptyLabel="Nenhum workspace encontrado"
+          orphanLabel={(id) => `Workspace fora da lista (${id.slice(0, 8)})`}
         />
       )}
     </div>

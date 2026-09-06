@@ -123,4 +123,36 @@ describe('TargetPicker', () => {
       target_workspace_ids: [],
     });
   });
+
+  it('id selecionado que não está na lista ainda pode ser removido', () => {
+    // Workspace apagado, ou lista truncada pelo limite da query: o chip aparece
+    // mesmo assim, senão o rodapé conta uma seleção invisível e sem como tirar.
+    const onChange = setup({
+      target_mode: 'workspace',
+      target_plan_ids: [],
+      target_workspace_ids: ['w1', 'sumiu-01-abcdef'],
+    });
+    expect(screen.getByText('2 selecionados')).toBeTruthy();
+    const orphan = screen.getByLabelText('Remover Workspace fora da lista (sumiu-01)');
+    fireEvent.click(orphan);
+    expect(onChange).toHaveBeenCalledWith({
+      target_mode: 'workspace',
+      target_plan_ids: [],
+      target_workspace_ids: ['w1'],
+    });
+  });
+
+  it('"Limpar" aparece mesmo quando nenhum selecionado está na lista', () => {
+    const onChange = setup({
+      target_mode: 'workspace',
+      target_plan_ids: [],
+      target_workspace_ids: ['sumiu-01-abcdef'],
+    });
+    fireEvent.click(screen.getByText('Limpar'));
+    expect(onChange).toHaveBeenCalledWith({
+      target_mode: 'workspace',
+      target_plan_ids: [],
+      target_workspace_ids: [],
+    });
+  });
 });
