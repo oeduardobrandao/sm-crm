@@ -130,9 +130,22 @@ describe('DashboardPage per-card loading', () => {
     expect(kpiCard('Com overrides').textContent).toContain('4');
   });
 
+  it('shows the paying-workspace count and its share of all workspaces once MRR resolves', async () => {
+    vi.mocked(getMrr).mockResolvedValue({
+      mrr_cents: 94334,
+      paying_count: 2,
+      currency: 'brl',
+      workspaces: [],
+    } as never);
+    renderPage();
+    await waitFor(() => expect(kpiCard('Pagantes').textContent).toContain('2'));
+    expect(kpiCard('Pagantes').textContent).toContain('29% dos workspaces');
+  });
+
   it('keeps the MRR-dependent cards on their placeholder while pending', async () => {
     renderPage();
     await waitFor(() => expect(kpiCard('Workspaces').textContent).toContain('7'));
+    expect(kpiCard('Pagantes').textContent).toContain('—');
     expect(kpiCard('MRR').textContent).toContain('—');
     expect(kpiCard('Testes').textContent).toContain('—');
     expect(kpiCard('MRR total').textContent).toContain('—');
