@@ -570,6 +570,9 @@ export function deleteBanner(banner_id: string) {
 
 // ─── Popups ─────────────────────────────────────────────────
 
+export type PopupTrigger = 'payment_pending' | 'trial_ending' | 'plan_downgraded';
+export type PopupFrequency = 'once' | 'until_cta' | 'daily';
+
 export interface PopupPage {
   title: string;
   eyebrow: string | null;
@@ -586,8 +589,12 @@ export interface GlobalPopup {
   cta_url: string | null;
   cta_style: 'ink' | 'brand';
   secondary_label: string | null;
-  frequency: 'once' | 'until_cta';
+  frequency: PopupFrequency;
   require_ack: boolean;
+  /** Gatilho por situação de cobrança (spec 2026-09-06). Nulo = popup comum. */
+  trigger: PopupTrigger | null;
+  /** Só com trial_ending: dias antes do fim do teste (1 a 60). */
+  trigger_days: number | null;
   target_mode: 'all' | 'plan' | 'workspace';
   target_plan_ids: string[] | null;
   target_workspace_ids: string[] | null;
