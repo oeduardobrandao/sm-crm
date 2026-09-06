@@ -155,6 +155,15 @@ export default function DashboardPage() {
     { label: 'Planos ativos', value: activePlans, loading: plansLoading },
     { label: 'Com overrides', value: withOverrides, loading: wsLoading },
     {
+      label: 'Pagantes',
+      value: mrrData?.paying_count ?? '—',
+      sub:
+        mrrData && totalWorkspaces > 0
+          ? `${Math.round((mrrData.paying_count / totalWorkspaces) * 100)}% dos workspaces`
+          : undefined,
+      loading: mrrLoading,
+    },
+    {
       label: 'MRR',
       value: kpiMoney(mrrData?.mrr_cents ?? null),
       sub: mrrData ? `${mrrData.paying_count} pagantes` : undefined,
