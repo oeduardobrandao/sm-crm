@@ -190,18 +190,24 @@ interação num popup com gatilho.
   - `trigger_days`: com `trial_ending`, inteiro de 1 a 60 obrigatório
     (`"trial_ending needs trigger_days between 1 and 60"`); com outro gatilho ou sem
     gatilho, precisa ser nulo depois da normalização abaixo.
-- `normalizePopupTrigger(row)`: novo, aplicado junto de `normalizePopupText` na linha
-  mesclada de create e de update. Quando `trigger !== "trial_ending"`, força
-  `trigger_days = null`. Motivo: um update que troca o gatilho de `trial_ending` para
-  `payment_pending` sem mandar `trigger_days` deixaria os dias velhos na linha
-  mesclada e cairia no CHECK do banco como 500 em vez de 400. Também converte
-  `trigger: ""` em `null` (o Admin manda `null`, mas a MCP pode mandar string vazia).
+- `normalizePopupTrigger(update, current?)`: novo. Recebe o patch (já passado por
+  `pickPopupColumns`) e, no update, a linha atual; decide sobre a linha **mesclada**
+  (`{ ...current, ...update }`) e devolve o patch com no máximo duas mudanças:
+  `trigger: ""` vira `null`, e `trigger_days: null` é emitido **somente** quando a
+  linha mesclada tem gatilho diferente de `trial_ending` e `trigger_days` preenchido.
+  Um patch que não toca no gatilho (editar o título de um popup `trial_ending`) sai
+  intacto: emitir `trigger_days: null` nele deixaria `trigger = 'trial_ending'` com
+  dias nulos e cairia no CHECK como 500 em toda edição trivial. Já um update que troca
+  `trial_ending` por `payment_pending` sem mandar dias recebe `trigger_days: null` e
+  passa. Chamado antes de `validatePopupFields`, nos mesmos dois pontos (no create,
+  sem `current`).
 
 ### `platform-admin/popups.ts`
 
 Nenhuma lógica nova: `pickPopupColumns` passa as colunas, a validação compartilhada
-decide, `list-popups` já faz `select *`. Só o ponto onde `normalizePopupTrigger` é
-chamado, em create e em update (sobre `{ ...current, ...update }`).
+decide, `list-popups` já faz `select *`. Só as duas chamadas novas, antes de
+`validatePopupFields`: `normalizePopupTrigger(insert)` no create e
+`normalizePopupTrigger(update, current)` no update.
 
 ### `mcp-admin/tools.ts`
 
@@ -216,7 +222,7 @@ trigger_days: z.number().int().min(1).max(60).nullable().optional()
 ```
 
 `mcp-admin/queries.ts` já passa por `pickPopupColumns` + `validatePopupFields`; ganha
-a chamada a `normalizePopupTrigger` nos mesmos dois pontos.
+as mesmas duas chamadas a `normalizePopupTrigger` (create sem `current`, update com).
 
 ## Parte 3: Admin (`apps/admin`)
 
