@@ -164,10 +164,10 @@ describe('isDocumentBusy: edits', () => {
     expect(isDocumentBusy()).toBe(true);
   });
 
-  it('ignores input events from a checkbox', () => {
+  it('counts an input event on a checkbox too (real browsers fire input then change)', () => {
     document.body.innerHTML = '<input type="checkbox" />';
     document.querySelector('input')!.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(isDocumentBusy()).toBe(false);
+    expect(isDocumentBusy()).toBe(true);
   });
 
   it('records nothing once stopped', () => {
@@ -176,5 +176,33 @@ describe('isDocumentBusy: edits', () => {
     document.querySelector('textarea')!.dispatchEvent(new Event('input', { bubbles: true }));
     expect(isDocumentBusy()).toBe(false);
     stop = trackDocumentEdits();
+  });
+
+  it('is true after the user changes a select or a checkbox, until it leaves the DOM', () => {
+    document.body.innerHTML =
+      '<select><option>a</option><option>b</option></select><input type="checkbox" />';
+    const select = document.querySelector('select')!;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(isDocumentBusy()).toBe(true);
+    select.remove();
+    expect(isDocumentBusy()).toBe(false);
+
+    const checkbox = document.querySelector('input')!;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(isDocumentBusy()).toBe(true);
+  });
+
+  it('is true after the user picks a colour or a radio', () => {
+    document.body.innerHTML = '<input type="color" /><input type="radio" name="r" />';
+    document.querySelector('[type="color"]')!.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(isDocumentBusy()).toBe(true);
+  });
+
+  it('ignores change events from a file input and from buttons', () => {
+    document.body.innerHTML = '<input type="file" /><input type="submit" /><button>Ok</button>';
+    for (const el of document.querySelectorAll('input, button')) {
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    expect(isDocumentBusy()).toBe(false);
   });
 });

@@ -91,8 +91,9 @@ para o que ninguém registrou e retorna `true` quando qualquer um vale:
   AlertDialog do Radix; cobre qualquer formulário modal);
 - `document.activeElement` é `textarea`, `input` de texto (`text`, `search`, `email`,
   `url`, `tel`, `number`, `password`) ou `isContentEditable`;
-- algum campo editável recebeu um evento `input` do usuário nesta sessão e ainda está no
-  DOM (conteúdo pré-preenchido não conta; uma edição real segura até o editor desmontar).
+- algum controle de formulário (texto, select, checkbox, radio, cor, contenteditable) recebeu
+  `input` ou `change` do usuário nesta sessão e ainda está no DOM (conteúdo pré-preenchido não
+  conta; uma alteração real segura até o controle desmontar).
 
 A heurística é deliberadamente conservadora: um drawer aberto o dia inteiro adia a troca
 até ser fechado. Um editor novo sem `useUnsavedWork` falha fechado nos três gatilhos.
