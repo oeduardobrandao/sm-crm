@@ -51,6 +51,7 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleDirty = useRef(false);
   const [titleDirtyState, setTitleDirtyState] = useState(false);
+  const [titleSaving, setTitleSaving] = useState(false);
   const pendingLayout = useRef<ReportLayout | null>(null);
   const docIdRef = useRef(docId);
   const titleRef = useRef(title);
@@ -183,7 +184,10 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     titleTimer.current = setTimeout(() => {
       titleTimer.current = null;
       appendToDocChain(docIdRef.current, async () => {
-        if (!titleDirty.current) return;
+        if (!titleDirty.current) {
+          setTitleSaving(false);
+          return;
+        }
         setTitleDirty(false);
         const toSave = titleRef.current;
         try {
@@ -193,6 +197,7 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
             old ? { ...(old as object), title: toSave } : old,
           );
           titleRetryCount.current = 0;
+          setTitleSaving(false);
         } catch (err) {
           console.error('[relatorio-editor] save de título falhou:', err);
           toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
@@ -203,6 +208,10 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
           if (delay !== undefined) {
             titleRetryCount.current += 1;
             scheduleTitleFlush(delay);
+          } else {
+            // Esgotado: para de tentar, mas a dirty flag continua true e segura o
+            // registro sozinha até uma edição nova ou o unmount.
+            setTitleSaving(false);
           }
         }
       });
@@ -221,6 +230,7 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
   function setTitle(next: string) {
     setTitleState(next);
     setTitleDirty(true);
+    setTitleSaving(true);
     titleRetryCount.current = 0;
     scheduleTitleFlush(TITLE_DEBOUNCE_MS);
   }
@@ -240,9 +250,9 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
-  // A pending layout, a pending title or a save in flight must all finish before any silent
-  // version swap: the same condition as the beforeunload guard above.
-  useUnsavedWork(saving || titleDirtyState);
+  // A pending layout, a pending or in-flight title, or a layout save in flight must all
+  // finish before any silent version swap.
+  useUnsavedWork(saving || titleDirtyState || titleSaving);
 
   return { layout, applyLayout, title, setTitle, saving };
 }

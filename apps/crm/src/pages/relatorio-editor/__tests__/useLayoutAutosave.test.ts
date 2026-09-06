@@ -160,6 +160,28 @@ describe('useLayoutAutosave', () => {
     expect(hasUnsavedWork()).toBe(false);
   });
 
+  it('título em voo segura o registro até o request assentar', async () => {
+    let settle!: () => void;
+    updateMock.mockImplementationOnce(() => new Promise<void>((resolve) => (settle = resolve)));
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    act(() => result.current.setTitle('Relatório de Julho'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(hasUnsavedWork()).toBe(true);
+    await act(async () => {
+      settle();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
   it('falha no save de título mantém o registro seguro até o retry dar certo', async () => {
     updateMock.mockRejectedValueOnce(new Error('offline'));
     const { result } = renderHook(
