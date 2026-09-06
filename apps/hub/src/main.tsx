@@ -21,7 +21,7 @@ initI18n({
 const queryClient = new QueryClient();
 
 // A deploy while this tab is open: move to the new build at the next route change, or once
-// the tab has been hidden or idle for a while, never over unsaved work or an in-flight mutation.
+// the tab has been hidden or idle for a while, never starting over unsaved work or an in-flight mutation.
 installSilentUpdate({ router, holdWhile: () => queryClient.isMutating() > 0 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

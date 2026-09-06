@@ -240,7 +240,7 @@ describe('installSilentUpdate: navigation', () => {
     expect(assign).toHaveBeenCalledTimes(1);
   });
 
-  it('gives up the swap after a bounded number of holdWhile re-arms', async () => {
+  it('gives up the swap after a bounded number of holdWhile re-arms, without stopping loads while a mutation is still in flight', async () => {
     const router = new FakeRouter();
     mockFetch([HTML('aaa'), HTML('bbb')]);
     let mutating = false;
@@ -252,6 +252,22 @@ describe('installSilentUpdate: navigation', () => {
     // swapWatchdogMs: 2_000 from the helper: 1 initial fire plus 3 re-arms is 4 periods.
     await vi.advanceTimersByTimeAsync(2_000 * 3);
     expect(router.proceed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(stop).not.toHaveBeenCalled();
+    expect(router.proceed).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops loads at the cap once the mutation has finished', async () => {
+    const router = new FakeRouter();
+    mockFetch([HTML('aaa'), HTML('bbb')]);
+    let mutating = false;
+    install(router, { holdWhile: () => mutating });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    router.navigate({ pathname: '/clientes' });
+    mutating = true;
+    await vi.advanceTimersByTimeAsync(2_000 * 2);
+    mutating = false;
     await vi.advanceTimersByTimeAsync(2_000);
     expect(stop).toHaveBeenCalledTimes(1);
     expect(router.proceed).toHaveBeenCalledTimes(1);

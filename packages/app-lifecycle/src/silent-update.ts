@@ -17,10 +17,10 @@
  *
  * The watchdog's `window.stop()` aborts every in-flight request of the page, not only the
  * pending document navigation; it only runs after the swap already failed and `holdWhile()`
- * reported no mutation, so what it can cut is a query (retried) or a fire-and-forget write on
- * an already broken network. Never register another blocker (`useBlocker`) in the apps: React
- * Router honours only the last one registered, and a second one silently disables this swap
- * while it is mounted.
+ * reports no mutation at that moment. Past the re-arm cap with a mutation still in flight, the
+ * click is handed back without stopping loads. Never register another blocker (`useBlocker`) in
+ * the apps: React Router honours only the last one registered, and a second one silently
+ * disables this swap while it is mounted.
  */
 
 import { suppressDeployRecovery } from './deploy-recovery';
@@ -188,7 +188,9 @@ export function installSilentUpdate(options: InstallSilentUpdateOptions): () => 
       // did not happen must not leave it held forever.
       releaseRecovery?.();
       releaseRecovery = null;
-      if (typeof window.stop === 'function') window.stop();
+      // Past the cap with a mutation still in flight: hand the click back without stopping
+      // the page's loads. A late second transition is better than an aborted request.
+      if (!holdWhile() && typeof window.stop === 'function') window.stop();
       blocker.proceed?.();
     };
     swapRearms = 0;
