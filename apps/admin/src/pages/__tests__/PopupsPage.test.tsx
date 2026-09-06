@@ -46,6 +46,8 @@ const popup = {
   secondary_label: null,
   frequency: 'once',
   require_ack: true,
+  trigger: null,
+  trigger_days: null,
   target_mode: 'all',
   target_plan_ids: null,
   target_workspace_ids: null,
@@ -92,6 +94,32 @@ describe('PopupsPage lista', () => {
     const buttons = await screen.findAllByRole('button', { name: 'Analytics de Stories' });
     fireEvent.click(buttons[0]);
     expect(await screen.findByRole('heading', { name: 'Editar popup' })).toBeInTheDocument();
+  });
+
+  it('mostra "Uma vez por dia" e o chip do gatilho ao lado do público', async () => {
+    vi.mocked(listPopups).mockResolvedValue({
+      popups: [
+        {
+          ...popup,
+          frequency: 'daily',
+          require_ack: false,
+          trigger: 'payment_pending',
+          trigger_days: null,
+        },
+        {
+          ...popup,
+          id: 'p2',
+          frequency: 'once',
+          require_ack: false,
+          trigger: 'trial_ending',
+          trigger_days: 3,
+        },
+      ],
+    } as never);
+    renderPage();
+    expect(await screen.findByText('Uma vez por dia')).toBeInTheDocument();
+    expect(screen.getByText('Pagamento pendente')).toBeInTheDocument();
+    expect(screen.getByText('Teste em 3 dias')).toBeInTheDocument();
   });
 });
 
@@ -215,5 +243,55 @@ describe('PopupsPage editor', () => {
     expect(await screen.findByText('Título é obrigatório')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Ok' } });
     expect(screen.queryByText('Título é obrigatório')).toBeNull();
+  });
+
+  it('gatilho: select, campo de dias só com "Teste terminando", erro inline e payload', async () => {
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'P' } });
+    fireEvent.change(screen.getByLabelText('Corpo (Markdown)'), { target: { value: 'c' } });
+
+    expect(screen.getByLabelText('Gatilho')).toHaveValue('');
+    expect(screen.queryByLabelText('Dias antes do fim do teste')).toBeNull();
+    expect(
+      screen.getByText(
+        'Com gatilho, só o dono do workspace vê o popup, e só enquanto a condição valer.',
+      ),
+    ).toBeInTheDocument();
+
+    // O campo de dias só existe com "Teste terminando"; trocar o gatilho o esconde.
+    fireEvent.change(screen.getByLabelText('Gatilho'), { target: { value: 'trial_ending' } });
+    expect(screen.getByLabelText('Dias antes do fim do teste')).toHaveValue(3);
+    fireEvent.change(screen.getByLabelText('Gatilho'), { target: { value: 'payment_pending' } });
+    expect(screen.queryByLabelText('Dias antes do fim do teste')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Gatilho'), { target: { value: 'trial_ending' } });
+
+    const days = screen.getByLabelText('Dias antes do fim do teste');
+    fireEvent.change(days, { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
+    expect(await screen.findByText('Informe de 1 a 60 dias')).toBeInTheDocument();
+    expect(createPopup).not.toHaveBeenCalled();
+
+    // O editor fecha ao criar com sucesso: nada mais é lido do formulário depois daqui.
+    fireEvent.change(days, { target: { value: '7' } });
+    fireEvent.click(screen.getByLabelText('Uma vez por dia'));
+    fireEvent.click(screen.getByRole('button', { name: 'Criar' }));
+    await waitFor(() => expect(createPopup).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(createPopup).mock.calls[0][0];
+    expect(payload.trigger).toBe('trial_ending');
+    expect(payload.trigger_days).toBe(7);
+    expect(payload.frequency).toBe('daily');
+  });
+
+  it('confirmação obrigatória mantém "Uma vez por dia" e só desabilita "Até o CTA"', async () => {
+    renderPage();
+    await screen.findByText('Analytics de Stories');
+    fireEvent.click(screen.getByRole('button', { name: /Novo popup/ }));
+    fireEvent.click(screen.getByLabelText('Uma vez por dia'));
+    fireEvent.click(screen.getByLabelText(/Exigir confirmação/));
+    expect(screen.getByLabelText('Toda sessão até clicar no CTA')).toBeDisabled();
+    expect(screen.getByLabelText('Uma vez por dia')).toBeChecked();
+    expect(screen.getByLabelText('Uma vez por dia')).not.toBeDisabled();
   });
 });
