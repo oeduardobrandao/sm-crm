@@ -31,6 +31,7 @@ import {
 import { uploadInlineImage, resolveInlineImageUrls } from '../lib/inline-image';
 import { sanitizeExternalUrl } from '../lib/security';
 import { TargetPicker } from '../components/TargetPicker';
+import { RowButton } from '../components/RowLink';
 import {
   MAX_PAGES,
   addPage,
@@ -208,21 +209,24 @@ export default function PopupsPage() {
           popups.map((p) => {
             const b = badge(p);
             const first = p.pages[0];
-            const metrics = `seen ${p.counts.seen} · closed ${p.counts.closed} · cta ${p.counts.cta} · ack ${p.counts.ack}`;
+            const metrics = `vistos ${p.counts.seen} · fechados ${p.counts.closed} · cta ${p.counts.cta} · confirmados ${p.counts.ack}`;
+            const open = () => {
+              setEditing(p);
+              setShowForm(true);
+            };
             return (
               <div
                 key={p.id}
-                onClick={() => {
-                  setEditing(p);
-                  setShowForm(true);
-                }}
+                onClick={open}
                 className={`cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 min-w-0 md:grid md:grid-cols-[2fr_0.8fr_1fr_1fr_0.7fr_0.4fr] md:gap-2 md:items-center ${p.status === 'draft' ? 'opacity-50' : ''}`}
               >
                 <div className="min-w-0 flex items-center gap-3">
                   <PageThumb imageKey={first?.image_key ?? null} />
                   <div className="min-w-0">
                     <div className="text-sm font-medium truncate flex items-center gap-2">
-                      <span className="truncate">{first?.title}</span>
+                      <RowButton onClick={open} className="truncate text-sm">
+                        {first?.title ?? 'Popup sem título'}
+                      </RowButton>
                       {p.pages.length > 1 && (
                         <span className="text-[0.65rem] font-semibold px-1.5 py-0.5 rounded-sm bg-secondary text-muted-foreground shrink-0">
                           {p.pages.length} {p.pages.length === 1 ? 'página' : 'páginas'}

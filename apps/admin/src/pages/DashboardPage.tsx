@@ -4,13 +4,17 @@ import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { listWorkspaces, listPlans, getMrr, getTrials } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
-import { formatMoney, intervalLabel, statusMeta } from '../lib/subscription';
+import { formatMoney, intervalLabel, statusMeta, STATUS_BADGE_VARIANT } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
 import { describeActivity, ACTIVITY_TONE_CLASS } from './workspace-activity';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
 import { Badge } from '../components/ui/badge';
 import { PageHeader } from '../components/PageHeader';
+import { RowLink } from '../components/RowLink';
+import { Skeleton } from '../components/ui/skeleton';
+import { EmptyState } from '../components/EmptyState';
 import { cn } from '../lib/utils';
+import { workspaceDetailPath } from '../lib/routes';
 import { RiskCard } from './dashboard/RiskCard';
 import { selectTrialsEndingSoon } from './dashboard-risk';
 import {
@@ -19,13 +23,6 @@ import {
   TRIAL_EXPORT_COLUMNS,
   buildTrialExportRows,
 } from './dashboard-export';
-
-const STATUS_VARIANT = {
-  success: 'success',
-  warning: 'warning',
-  danger: 'danger',
-  muted: 'neutral',
-} as const;
 
 function PlanBadge({ name }: { name: string | null }) {
   if (!name) return <span className="text-dim-foreground">—</span>;
@@ -41,6 +38,16 @@ function PlanBadge({ name }: { name: string | null }) {
 // that branch on the cooling tone in the unlikely case the workspace row wasn't found.
 const activity = (ws: { last_activity_at: string | null; created_at: string | null }) =>
   describeActivity(ws.last_activity_at, ws.created_at ?? new Date().toISOString(), new Date());
+
+function ListSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 py-4">
+      <Skeleton className="h-4 w-72" />
+      <Skeleton className="h-4 w-64" />
+      <Skeleton className="h-4 w-60" />
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -251,27 +258,29 @@ export default function DashboardPage() {
         </div>
 
         {mrrLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Carregando…</p>
+          <ListSkeleton />
         ) : (mrrData?.workspaces?.length ?? 0) === 0 ? (
-          <p className="text-sm text-dim-foreground py-4">Nenhum workspace pagante ainda.</p>
+          <EmptyState title="Nenhum workspace pagante ainda" />
         ) : (
           (mrrData?.workspaces || []).map((ws) => {
             const meta = statusMeta(ws.status);
             return (
               <div
                 key={ws.workspace_id}
-                onClick={() => navigate(`/admin/workspaces/${ws.workspace_id}`)}
+                onClick={() => navigate(workspaceDetailPath(ws.workspace_id))}
                 className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr_1fr] md:gap-2 md:items-center"
               >
                 {/* Mobile card layout */}
                 <div className="md:hidden flex items-center justify-between gap-3">
                   <div className="flex flex-col gap-1 min-w-0">
-                    <span className="text-foreground font-medium truncate">{ws.name}</span>
+                    <RowLink to={workspaceDetailPath(ws.workspace_id)} className="block truncate">
+                      {ws.name}
+                    </RowLink>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       {ws.plan_name && <PlanBadge name={ws.plan_name} />}
                       <span>{intervalLabel(ws.interval) || '—'}</span>
                       {ws.status !== 'active' && (
-                        <Badge variant={STATUS_VARIANT[meta.tone]}>{meta.label}</Badge>
+                        <Badge variant={STATUS_BADGE_VARIANT[meta.tone]}>{meta.label}</Badge>
                       )}
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -290,10 +299,15 @@ export default function DashboardPage() {
 
                 {/* Desktop row */}
                 <span className="hidden md:flex items-center gap-2 min-w-0">
-                  <span className="text-foreground font-medium text-sm truncate">{ws.name}</span>
+                  <RowLink
+                    to={workspaceDetailPath(ws.workspace_id)}
+                    className="block truncate text-sm"
+                  >
+                    {ws.name}
+                  </RowLink>
                   {ws.status !== 'active' && (
                     <Badge
-                      variant={STATUS_VARIANT[meta.tone]}
+                      variant={STATUS_BADGE_VARIANT[meta.tone]}
                       className="shrink-0 whitespace-nowrap"
                     >
                       {meta.label}
@@ -361,9 +375,9 @@ export default function DashboardPage() {
         </div>
 
         {trialsLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Carregando…</p>
+          <ListSkeleton />
         ) : (trialsData?.trials?.length ?? 0) === 0 ? (
-          <p className="text-sm text-dim-foreground py-4">Nenhum workspace em teste no momento.</p>
+          <EmptyState title="Nenhum workspace em teste no momento" />
         ) : (
           (trialsData?.trials || []).map((ws) => {
             const end = ws.trial_ends_at ? new Date(ws.trial_ends_at) : null;
@@ -402,13 +416,15 @@ export default function DashboardPage() {
             return (
               <div
                 key={ws.workspace_id}
-                onClick={() => navigate(`/admin/workspaces/${ws.workspace_id}`)}
+                onClick={() => navigate(workspaceDetailPath(ws.workspace_id))}
                 className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr_1fr] md:gap-2 md:items-center"
               >
                 {/* Mobile card layout */}
                 <div className="md:hidden flex items-center justify-between gap-3">
                   <div className="flex flex-col gap-1 min-w-0">
-                    <span className="text-foreground font-medium truncate">{ws.name}</span>
+                    <RowLink to={workspaceDetailPath(ws.workspace_id)} className="block truncate">
+                      {ws.name}
+                    </RowLink>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       {ws.plan_name && <PlanBadge name={ws.plan_name} />}
                       <span>{intervalLabel(ws.interval) || '—'}</span>
@@ -434,16 +450,19 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Desktop row */}
-                <span className="hidden md:inline text-foreground font-medium text-sm truncate">
+                <RowLink
+                  to={workspaceDetailPath(ws.workspace_id)}
+                  className="hidden truncate text-sm md:inline"
+                >
                   {ws.name}
-                </span>
+                </RowLink>
                 <span className="hidden md:inline text-sm">
                   <PlanBadge name={ws.plan_name} />
                 </span>
                 <span className="hidden md:flex items-center gap-2 text-sm min-w-0">
                   <span className="text-muted-foreground truncate">{endLabel}</span>
                   {daysLabel && (
-                    <Badge variant={STATUS_VARIANT[daysTone]} className="shrink-0">
+                    <Badge variant={STATUS_BADGE_VARIANT[daysTone]} className="shrink-0">
                       {daysLabel}
                     </Badge>
                   )}
@@ -482,17 +501,17 @@ export default function DashboardPage() {
         </div>
 
         {wsLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Carregando…</p>
+          <ListSkeleton />
         ) : (
           (workspacesData?.workspaces || []).map((ws) => (
             <div
               key={ws.id}
-              onClick={() => navigate(`/admin/workspaces/${ws.id}`)}
+              onClick={() => navigate(workspaceDetailPath(ws.id))}
               className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1.5fr_1fr_1fr_0.75fr] md:gap-2 md:items-center"
             >
               {/* Mobile card layout */}
               <div className="md:hidden flex flex-col gap-1">
-                <span className="text-foreground font-medium">{ws.name}</span>
+                <RowLink to={workspaceDetailPath(ws.id)}>{ws.name}</RowLink>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>{ws.owner?.name || '—'}</span>
                   <span>·</span>
@@ -506,9 +525,9 @@ export default function DashboardPage() {
                 </div>
               </div>
               {/* Desktop row */}
-              <span className="hidden md:inline text-foreground font-medium text-sm">
+              <RowLink to={workspaceDetailPath(ws.id)} className="hidden text-sm md:inline">
                 {ws.name}
-              </span>
+              </RowLink>
               <span className="hidden md:inline text-muted-foreground text-sm">
                 {ws.owner?.name || '—'}
               </span>

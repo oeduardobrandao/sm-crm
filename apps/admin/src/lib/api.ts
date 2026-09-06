@@ -197,18 +197,18 @@ export const RESOURCE_LIMIT_KEYS = [
 ] as const;
 
 export const RESOURCE_LIMIT_LABELS: Record<string, string> = {
-  max_clients: 'Max Clients',
-  max_team_members: 'Max Team Members',
-  max_workflow_templates: 'Max Workflow Templates',
-  max_active_workflows_per_client: 'Max Workflows/Client',
-  max_instagram_accounts: 'Max Instagram Accounts',
-  max_leads: 'Max Leads',
-  max_hub_tokens: 'Max Hub Tokens',
-  storage_quota_bytes: 'Storage (bytes)',
-  max_custom_properties_per_template: 'Max Custom Props/Template',
-  max_posts_per_workflow: 'Max Posts/Workflow',
-  max_workspaces_per_user: 'Max Workspaces/User',
-  max_mcp_keys: 'Max MCP Keys',
+  max_clients: 'Máx. de clientes',
+  max_team_members: 'Máx. de membros da equipe',
+  max_workflow_templates: 'Máx. de modelos de fluxo',
+  max_active_workflows_per_client: 'Máx. de fluxos por cliente',
+  max_instagram_accounts: 'Máx. de contas Instagram',
+  max_leads: 'Máx. de leads',
+  max_hub_tokens: 'Máx. de tokens do Hub',
+  storage_quota_bytes: 'Armazenamento (bytes)',
+  max_custom_properties_per_template: 'Máx. de propriedades por modelo',
+  max_posts_per_workflow: 'Máx. de posts por fluxo',
+  max_workspaces_per_user: 'Máx. de workspaces por usuário',
+  max_mcp_keys: 'Máx. de chaves MCP',
 };
 
 export const FEATURE_FLAG_KEYS = [
@@ -239,27 +239,27 @@ export const FEATURE_FLAG_KEYS = [
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_instagram: 'Instagram',
-  feature_instagram_ai: 'Instagram AI',
-  feature_analytics_reports: 'Analytics Reports',
-  feature_best_times: 'Best Times',
-  feature_audience_demographics: 'Audience Demographics',
-  feature_hub_portal: 'Hub Portal',
+  feature_instagram_ai: 'IA do Instagram',
+  feature_analytics_reports: 'Relatórios de analytics',
+  feature_best_times: 'Melhores horários',
+  feature_audience_demographics: 'Demografia do público',
+  feature_hub_portal: 'Portal do Hub',
   feature_leads: 'Leads',
-  feature_financial: 'Financial',
-  feature_contracts: 'Contracts',
-  feature_ideas: 'Ideas',
-  feature_workflow_gantt: 'Workflow Gantt',
-  feature_workflow_recurrence: 'Workflow Recurrence',
-  feature_csv_import: 'CSV Import',
-  feature_custom_properties: 'Custom Properties',
-  feature_post_scheduling: 'Post Scheduling',
-  feature_auto_sync_cron: 'Auto Sync Cron',
-  feature_post_tagging: 'Post Tagging',
-  feature_brand_customization: 'Brand Customization',
+  feature_financial: 'Financeiro',
+  feature_contracts: 'Contratos',
+  feature_ideas: 'Ideias',
+  feature_workflow_gantt: 'Gantt de fluxos',
+  feature_workflow_recurrence: 'Recorrência de fluxos',
+  feature_csv_import: 'Importação CSV',
+  feature_custom_properties: 'Propriedades personalizadas',
+  feature_post_scheduling: 'Agendamento de posts',
+  feature_auto_sync_cron: 'Sincronização automática',
+  feature_post_tagging: 'Marcação de posts',
+  feature_brand_customization: 'Personalização de marca',
   feature_mcp: 'MCP (Claude)',
   feature_tiktok: 'TikTok',
   feature_mensagens: 'Mensagens',
-  feature_instagram_automation: 'Instagram Automation',
+  feature_instagram_automation: 'Automação do Instagram',
   feature_briefing_audio: 'Briefing por áudio',
 };
 
@@ -270,9 +270,9 @@ export const RATE_LIMIT_KEYS = [
 ] as const;
 
 export const RATE_LIMIT_LABELS: Record<string, string> = {
-  rate_instagram_syncs_per_day: 'Instagram Syncs/Day',
-  rate_ai_analyses_per_month: 'AI Analyses/Month',
-  rate_report_generations_per_month: 'Report Generations/Month',
+  rate_instagram_syncs_per_day: 'Sincronizações do Instagram por dia',
+  rate_ai_analyses_per_month: 'Análises de IA por mês',
+  rate_report_generations_per_month: 'Relatórios gerados por mês',
 };
 
 // ─── API Call ─────────────────────────────────────────────────

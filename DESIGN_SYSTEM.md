@@ -156,12 +156,14 @@ fixed/sticky chrome.
 ### Primitives
 
 `apps/admin/src/components/ui/` holds **copies** of the CRM's shadcn primitives (button, input,
-select, table, dropdown-menu, checkbox, skeleton, tabs, label, separator, tooltip), plus an
-admin-only `badge.tsx` (same API as the CRM Badge, implemented on Tailwind tokens because the
-admin does not load `apps/crm/style.css`) and `card.tsx`. They import `cn` from
-`../../lib/utils`, never `@/lib/utils`. A fix to a primitive on one side must be mirrored on the
-other by hand; nothing enforces parity. Composition components (`EmptyState`, `ErrorState`,
-`PageHeader`) live in `apps/admin/src/components/`.
+textarea, select, switch, table, dropdown-menu, checkbox, skeleton, tabs, label, separator,
+tooltip), plus an admin-only `badge.tsx` (same API as the CRM Badge, implemented on Tailwind
+tokens because the admin does not load `apps/crm/style.css`) and `card.tsx`. They import `cn`
+from `../../lib/utils`, never `@/lib/utils`. A fix to a primitive on one side must be mirrored
+on the other by hand; nothing enforces parity. Composition components (`EmptyState`,
+`ErrorState`, `PageHeader`) live in `apps/admin/src/components/`. Clickable rows use
+`RowLink`/`RowButton` from `apps/admin/src/components/RowLink.tsx` so the primary cell is a
+real link or button.
 
 The Admin's copy is Portuguese throughout.
 

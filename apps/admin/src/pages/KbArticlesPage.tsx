@@ -1,12 +1,30 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Pencil } from 'lucide-react';
-import { listKbArticles, type KbArticle } from '../lib/api';
+import { Link, useNavigate } from 'react-router-dom';
+import { BookOpen, Pencil, Plus, Search } from 'lucide-react';
+import { listKbArticles } from '../lib/api';
 import {
   KB_CATEGORIES as CATEGORIES,
   ALL_KB_CATEGORIES as ALL_CATEGORIES,
 } from '../lib/kb-categories';
+import { kbArticleEditPath, kbArticleNewPath } from '../lib/routes';
+import { cn } from '../lib/utils';
+import { PageHeader } from '../components/PageHeader';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState } from '../components/ErrorState';
+import { RowLink } from '../components/RowLink';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Skeleton } from '../components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 
 const STATUSES = ['draft', 'published'] as const;
 const STATUS_LABELS: Record<string, string> = {
@@ -14,9 +32,12 @@ const STATUS_LABELS: Record<string, string> = {
   published: 'Publicado',
 };
 
-function getStatusBadge(status: string) {
-  if (status === 'published') return { label: 'PUBLICADO', cls: 'text-success bg-success/15' };
-  return { label: 'RASCUNHO', cls: 'text-muted-foreground bg-secondary' };
+/** Radix Select rejects '' as an item value; this sentinel stands for "no filter". */
+const ALL = '__all__';
+
+function statusBadge(status: string): { label: string; variant: 'success' | 'neutral' } {
+  if (status === 'published') return { label: 'Publicado', variant: 'success' };
+  return { label: 'Rascunho', variant: 'neutral' };
 }
 
 export default function KbArticlesPage() {
@@ -25,7 +46,7 @@ export default function KbArticlesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'kb-articles', statusFilter, categoryFilter],
     queryFn: () =>
       listKbArticles({
@@ -37,58 +58,93 @@ export default function KbArticlesPage() {
   const articles = (data?.articles || []).filter(
     (a) => !search || a.title.toLowerCase().includes(search.toLowerCase()),
   );
+  const hasFilters = search !== '' || statusFilter !== '' || categoryFilter !== '';
+  const clearFilters = () => {
+    setSearch('');
+    setStatusFilter('');
+    setCategoryFilter('');
+  };
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-        <div>
-          <h1 className="font-sf text-2xl font-bold mb-1">Base de conhecimento</h1>
-          <p className="text-sm text-muted-foreground">Gerencie os artigos de ajuda do CRM</p>
+      <PageHeader
+        title="Base de conhecimento"
+        description="Gerencie os artigos de ajuda do CRM"
+        actions={
+          <Button asChild>
+            <Link to={kbArticleNewPath()}>
+              <Plus />
+              Novo artigo
+            </Link>
+          </Button>
+        }
+      />
+
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+        <div className="relative flex-1">
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            type="search"
+            placeholder="Buscar artigos…"
+            aria-label="Buscar artigos"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
         </div>
-        <button
-          onClick={() => navigate('/admin/kb-articles/new')}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors"
+        <span id="kb-category-label" className="sr-only">
+          Categoria
+        </span>
+        <Select
+          value={categoryFilter === '' ? ALL : categoryFilter}
+          onValueChange={(v) => setCategoryFilter(v === ALL ? '' : v)}
         >
-          <Plus size={16} /> Novo artigo
-        </button>
+          <SelectTrigger
+            id="kb-category-trigger"
+            aria-labelledby="kb-category-label kb-category-trigger"
+            className="w-auto gap-2"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todas as categorias</SelectItem>
+            {ALL_CATEGORIES.map((c) => (
+              <SelectItem key={c} value={c}>
+                {CATEGORIES[c]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span id="kb-status-label" className="sr-only">
+          Status
+        </span>
+        <Select
+          value={statusFilter === '' ? ALL : statusFilter}
+          onValueChange={(v) => setStatusFilter(v === ALL ? '' : v)}
+        >
+          <SelectTrigger
+            id="kb-status-trigger"
+            aria-labelledby="kb-status-label kb-status-trigger"
+            className="w-auto gap-2"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todos os status</SelectItem>
+            {STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <input
-          type="text"
-          placeholder="Buscar artigos…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
-        />
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground focus:outline-none focus:border-primary"
-        >
-          <option value="">Todas as categorias</option>
-          {ALL_CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {CATEGORIES[c]}
-            </option>
-          ))}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground focus:outline-none focus:border-primary"
-        >
-          <option value="">Todos os status</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="bg-card border border-border rounded-2xl p-5">
-        <div className="hidden md:grid grid-cols-[2fr_1fr_0.7fr_0.7fr_0.5fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
+      <Card className="p-5">
+        <div className="hidden border-b border-border pb-3 text-[0.7rem] uppercase tracking-wider text-muted-foreground md:grid md:grid-cols-[2fr_1fr_0.7fr_0.7fr_0.5fr] md:gap-2">
           <span>Título</span>
           <span>Categoria</span>
           <span>Status</span>
@@ -97,41 +153,63 @@ export default function KbArticlesPage() {
         </div>
 
         {isLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Carregando…</p>
+          <div className="flex flex-col gap-3 py-4">
+            <Skeleton className="h-4 w-72" />
+            <Skeleton className="h-4 w-64" />
+            <Skeleton className="h-4 w-60" />
+          </div>
+        ) : isError ? (
+          <ErrorState message="Não foi possível carregar os artigos." onRetry={() => refetch()} />
         ) : articles.length === 0 ? (
-          <p className="text-sm text-dim-foreground py-4">Nenhum artigo encontrado.</p>
+          <EmptyState
+            icon={BookOpen}
+            title="Nenhum artigo encontrado"
+            description={hasFilters ? 'Nenhum artigo bate com os filtros atuais.' : undefined}
+            action={
+              hasFilters ? (
+                <Button variant="outline" size="sm" onClick={clearFilters}>
+                  Limpar filtros
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           articles.map((a) => {
-            const badge = getStatusBadge(a.status);
+            const badge = statusBadge(a.status);
             const catLabel = CATEGORIES[a.category] ?? a.category;
+            const to = kbArticleEditPath(a.id);
             return (
               <div
                 key={a.id}
-                onClick={() => navigate(`/admin/kb-articles/${a.id}/edit`)}
-                className={`cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 ${a.status === 'draft' ? 'opacity-50' : ''}`}
+                onClick={() => navigate(to)}
+                className={cn(
+                  '-mx-5 cursor-pointer border-b border-border/50 px-5 py-3 transition-colors hover:bg-secondary/30',
+                  a.status === 'draft' && 'opacity-50',
+                )}
               >
-                <div className="md:hidden flex flex-col gap-1.5">
-                  <span className="text-sm font-medium truncate">{a.title}</span>
+                {/* The whole row is a mouse target; the title link below is the keyboard/AT target. */}
+                <div className="flex flex-col gap-1.5 md:hidden">
+                  <RowLink to={to} className="truncate text-sm">
+                    {a.title}
+                  </RowLink>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>{catLabel}</span>
-                    <span
-                      className={`text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm ${badge.cls}`}
-                    >
+                    <Badge variant={badge.variant} size="sm">
                       {badge.label}
-                    </span>
+                    </Badge>
                   </div>
                 </div>
-                <div className="hidden md:grid grid-cols-[2fr_1fr_0.7fr_0.7fr_0.5fr] gap-2 items-center">
-                  <div>
-                    <div className="text-sm font-medium truncate">{a.title}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">/{a.slug}</div>
+                <div className="hidden items-center gap-2 md:grid md:grid-cols-[2fr_1fr_0.7fr_0.7fr_0.5fr]">
+                  <div className="min-w-0">
+                    <RowLink to={to} className="block truncate text-sm">
+                      {a.title}
+                    </RowLink>
+                    <div className="mt-0.5 text-xs text-muted-foreground">/{a.slug}</div>
                   </div>
                   <span className="text-sm text-muted-foreground">{catLabel}</span>
-                  <span
-                    className={`text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm w-fit ${badge.cls}`}
-                  >
+                  <Badge variant={badge.variant} size="sm" className="w-fit">
                     {badge.label}
-                  </span>
+                  </Badge>
                   <span className="text-sm text-muted-foreground">{a.display_order}</span>
                   <span className="text-muted-foreground hover:text-primary">
                     <Pencil size={14} />
@@ -141,7 +219,7 @@ export default function KbArticlesPage() {
             );
           })
         )}
-      </div>
+      </Card>
     </div>
   );
 }

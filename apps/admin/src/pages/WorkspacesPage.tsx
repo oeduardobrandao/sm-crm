@@ -24,6 +24,7 @@ import { readColumnPrefs, writeColumnPrefs, type ColumnPrefs } from './workspace
 import { WORKSPACE_EXPORT_COLUMNS, buildWorkspaceExportRows } from './workspaces-export';
 import { hasActiveFilters, nextSort, toListWorkspacesRequest } from './workspaces-params';
 import { WorkspacesToolbar } from './workspaces/WorkspacesToolbar';
+import { workspaceDetailPath } from '../lib/routes';
 
 const EXPORT_PAGE_SIZE = 200;
 const EXPORT_MAX_ROWS = 2000;
@@ -162,7 +163,7 @@ export default function WorkspacesPage() {
           density={prefs.density}
           sort={{ ord: params.ord, dir: params.dir }}
           onSort={onSort}
-          onOpen={(id) => navigate(`/admin/workspaces/${id}`)}
+          onOpen={(id) => navigate(workspaceDetailPath(id))}
           now={displayNow}
           busy={list.isFetching}
         />

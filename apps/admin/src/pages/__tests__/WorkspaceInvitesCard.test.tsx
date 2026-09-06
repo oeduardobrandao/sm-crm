@@ -19,6 +19,15 @@ import {
 } from '../../lib/api';
 import { toast } from 'sonner';
 
+// jsdom has no scrollIntoView; Radix's Select calls it when committing a selection.
+Element.prototype.scrollIntoView = vi.fn();
+
+/** Opens the Radix role select and picks an option by its visible label. */
+async function pickRole(label: string) {
+  fireEvent.click(screen.getByRole('combobox', { name: /papel/i }));
+  fireEvent.click(await screen.findByRole('option', { name: label }));
+}
+
 const inv = (o: Partial<InviteInfo>): InviteInfo => ({
   id: 'i1',
   email: 'a@x.com',
@@ -134,6 +143,7 @@ describe('WorkspaceInvitesCard', () => {
     (getWorkspaceInvites as any).mockRejectedValue(new Error('boom'));
     renderCard();
     expect(await screen.findByText(/falha ao carregar convites/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeTruthy();
   });
 
   it('disables Resend and Cancel while a resend is in flight', async () => {
@@ -175,11 +185,11 @@ describe('WorkspaceInvitesCard', () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     renderCard();
     fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
-
-    const roleSelect = screen.getByLabelText(/papel/i) as HTMLSelectElement;
-    const values = Array.from(roleSelect.options).map((o) => o.value);
-    expect(values).toEqual(['agent', 'admin']);
-    expect(roleSelect.value).toBe('agent'); // defaults to the lower-privilege role
+    const trigger = screen.getByRole('combobox', { name: /papel/i });
+    expect(trigger).toHaveTextContent('Agente'); // defaults to the lower-privilege role
+    fireEvent.click(trigger);
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['Agente', 'Admin']);
     expect(screen.queryByRole('option', { name: /owner/i })).toBeNull();
   });
 
@@ -195,7 +205,7 @@ describe('WorkspaceInvitesCard', () => {
     fireEvent.change(screen.getByLabelText(/e-mail/i), {
       target: { value: 'iara41.ai@gmail.com' },
     });
-    fireEvent.change(screen.getByLabelText(/papel/i), { target: { value: 'admin' } });
+    await pickRole('Admin');
     fireEvent.click(screen.getByRole('button', { name: /^enviar$/i }));
 
     await waitFor(() =>
@@ -344,12 +354,12 @@ describe('WorkspaceInvitesCard', () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     renderCard();
     fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
-    fireEvent.change(screen.getByLabelText(/papel/i), { target: { value: 'admin' } });
-    expect((screen.getByLabelText(/papel/i) as HTMLSelectElement).value).toBe('admin');
+    await pickRole('Admin');
+    expect(screen.getByRole('combobox', { name: /papel/i })).toHaveTextContent('Admin');
 
     fireEvent.click(screen.getByRole('button', { name: /descartar/i }));
     fireEvent.click(screen.getByRole('button', { name: /\+ convidar/i }));
-    expect((screen.getByLabelText(/papel/i) as HTMLSelectElement).value).toBe('agent');
+    expect(screen.getByRole('combobox', { name: /papel/i })).toHaveTextContent('Agente');
   });
 
   it('collapsing via the header + Invite toggle resets the role back to the lower-privilege default', async () => {
@@ -358,11 +368,11 @@ describe('WorkspaceInvitesCard', () => {
     (getWorkspaceInvites as any).mockResolvedValue({ invites: [], total: 0 });
     renderCard();
     fireEvent.click(await screen.findByRole('button', { name: /\+ convidar/i }));
-    fireEvent.change(screen.getByLabelText(/papel/i), { target: { value: 'admin' } });
-    expect((screen.getByLabelText(/papel/i) as HTMLSelectElement).value).toBe('admin');
+    await pickRole('Admin');
+    expect(screen.getByRole('combobox', { name: /papel/i })).toHaveTextContent('Admin');
 
     fireEvent.click(screen.getByRole('button', { name: /\+ convidar/i })); // collapse
     fireEvent.click(screen.getByRole('button', { name: /\+ convidar/i })); // reopen
-    expect((screen.getByLabelText(/papel/i) as HTMLSelectElement).value).toBe('agent');
+    expect(screen.getByRole('combobox', { name: /papel/i })).toHaveTextContent('Agente');
   });
 });

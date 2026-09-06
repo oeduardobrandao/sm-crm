@@ -87,6 +87,14 @@ export interface StatusMeta {
   tone: StatusTone;
 }
 
+/** Badge variant for a subscription status tone. Shared by Dashboard, Workspaces and Workspace detail. */
+export const STATUS_BADGE_VARIANT = {
+  success: 'success',
+  warning: 'warning',
+  danger: 'danger',
+  muted: 'neutral',
+} as const satisfies Record<StatusTone, 'success' | 'warning' | 'danger' | 'neutral'>;
+
 const STATUS_META: Record<string, StatusMeta> = {
   active: { label: 'Ativo', tone: 'success' },
   trialing: { label: 'Teste', tone: 'success' },
@@ -180,19 +188,4 @@ export function formatMoney(cents: number | null | undefined, currency?: string 
   if (cents == null) return '—';
   const cur = (currency ?? 'brl').toUpperCase();
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: cur });
-}
-
-/** Kept for WorkspaceDetailPage until Phase 2 migrates it to <Badge>. New code uses Badge. */
-/** Tailwind classes for a status pill, by tone. */
-export function toneBadgeClass(tone: StatusTone): string {
-  switch (tone) {
-    case 'success':
-      return 'text-success bg-success/10';
-    case 'warning':
-      return 'text-warning bg-warning/10';
-    case 'danger':
-      return 'text-destructive bg-destructive/10';
-    default:
-      return 'text-muted-foreground bg-muted-foreground/10';
-  }
 }

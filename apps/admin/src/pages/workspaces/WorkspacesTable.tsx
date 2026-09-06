@@ -7,8 +7,10 @@ import {
   intervalSuffix,
   providerLabel,
   statusMeta,
+  STATUS_BADGE_VARIANT,
 } from '../../lib/subscription';
 import { Badge } from '../../components/ui/badge';
+import { RowLink } from '../../components/RowLink';
 import { Skeleton } from '../../components/ui/skeleton';
 import {
   Table,
@@ -22,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/too
 import { ACTIVITY_TONE_CLASS, describeActivity } from '../workspace-activity';
 import { WORKSPACE_COLUMNS, type Density, type WorkspaceColumnKey } from '../workspaces-columns';
 import { cn } from '../../lib/utils';
+import { workspaceDetailPath } from '../../lib/routes';
 
 interface WorkspacesTableProps {
   workspaces: WorkspaceSummary[];
@@ -35,13 +38,6 @@ interface WorkspacesTableProps {
   /** True while a refetch is in flight; dims the previous rows instead of unmounting them. */
   busy?: boolean;
 }
-
-const STATUS_VARIANT = {
-  success: 'success',
-  warning: 'warning',
-  danger: 'danger',
-  muted: 'neutral',
-} as const;
 
 const DATE_FMT = new Intl.DateTimeFormat('pt-BR', {
   day: '2-digit',
@@ -64,7 +60,7 @@ function SubscriptionCell({ ws }: { ws: WorkspaceSummary }) {
   const meta = statusMeta(ws.subscription.status);
   return (
     <span className="flex min-w-0 items-center gap-2">
-      <Badge variant={STATUS_VARIANT[meta.tone]}>{meta.label}</Badge>
+      <Badge variant={STATUS_BADGE_VARIANT[meta.tone]}>{meta.label}</Badge>
       <span className="whitespace-nowrap text-xs text-muted-foreground">
         {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
         {intervalSuffix(ws.subscription.interval)}
@@ -96,7 +92,7 @@ function cellFor(key: WorkspaceColumnKey, ws: WorkspaceSummary, now: Date) {
     case 'name':
       return (
         <span className="flex items-center gap-2">
-          <span className="font-medium text-foreground">{ws.name}</span>
+          <RowLink to={workspaceDetailPath(ws.id)}>{ws.name}</RowLink>
           {ws.has_overrides ? (
             <Badge variant="warning" size="sm">
               overrides
@@ -222,7 +218,7 @@ export function WorkspacesTable({
             className="cursor-pointer border-b border-border/50 px-5 py-3 last:border-0 hover:bg-secondary/30"
           >
             <div className="flex items-center gap-2">
-              <span className="font-medium text-foreground">{ws.name}</span>
+              <RowLink to={workspaceDetailPath(ws.id)}>{ws.name}</RowLink>
               {ws.has_overrides ? (
                 <Badge variant="warning" size="sm">
                   overrides

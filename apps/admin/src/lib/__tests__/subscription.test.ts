@@ -5,7 +5,6 @@ import {
   intervalLabel,
   intervalSuffix,
   formatMoney,
-  toneBadgeClass,
   statusGroup,
   isStatusGroup,
   STATUS_GROUPS,
@@ -62,15 +61,6 @@ describe('subscription helpers', () => {
     it('returns a dash for null', () => {
       expect(formatMoney(null)).toBe('—');
       expect(formatMoney(undefined)).toBe('—');
-    });
-  });
-
-  describe('toneBadgeClass', () => {
-    it('maps each tone to classes', () => {
-      expect(toneBadgeClass('success')).toContain('text-success');
-      expect(toneBadgeClass('warning')).toContain('text-warning');
-      expect(toneBadgeClass('danger')).toContain('text-destructive');
-      expect(toneBadgeClass('muted')).toContain('text-muted-foreground');
     });
   });
 

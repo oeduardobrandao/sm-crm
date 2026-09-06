@@ -83,8 +83,15 @@ describe('PopupsPage lista', () => {
     expect(await screen.findByText('Analytics de Stories')).toBeInTheDocument();
     expect(screen.getByText('2 páginas')).toBeInTheDocument();
     expect(screen.getByText('Uma vez · confirmação')).toBeInTheDocument();
-    expect(screen.getByText(/seen 312/)).toBeInTheDocument();
+    expect(screen.getByText(/vistos 312/)).toBeInTheDocument();
     expect(screen.getByText(/cta 87/)).toBeInTheDocument();
+  });
+
+  it('the popup title is a real button that opens the editor', async () => {
+    renderPage();
+    const buttons = await screen.findAllByRole('button', { name: 'Analytics de Stories' });
+    fireEvent.click(buttons[0]);
+    expect(await screen.findByRole('heading', { name: 'Editar popup' })).toBeInTheDocument();
   });
 });
 

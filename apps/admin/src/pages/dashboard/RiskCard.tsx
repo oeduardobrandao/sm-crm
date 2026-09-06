@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Skeleton } from '../../components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { ErrorState } from '../../components/ErrorState';
+import { RowLink } from '../../components/RowLink';
+import { workspaceDetailPath } from '../../lib/routes';
 import {
   pendingLabel,
   selectTrialsEndingSoon,
@@ -42,12 +44,14 @@ function Row({
   meta,
   right,
   tone,
+  to,
   onClick,
 }: {
   name: string;
   meta: string;
   right: string;
   tone: 'warning' | 'danger';
+  to: string;
   onClick: () => void;
 }) {
   return (
@@ -56,7 +60,11 @@ function Row({
       className="flex cursor-pointer items-center justify-between gap-3 py-2 hover:bg-secondary/30"
     >
       <div className="min-w-0">
-        <div className="truncate text-sm font-medium text-foreground">{name}</div>
+        <div className="text-sm font-medium text-foreground">
+          <RowLink to={to} className="block truncate">
+            {name}
+          </RowLink>
+        </div>
         <div className="truncate text-xs text-muted-foreground">{meta}</div>
       </div>
       <span
@@ -157,7 +165,8 @@ export function RiskCard({ trials, pending, now }: RiskCardProps) {
                       meta={`${t.plan_name ?? 'Sem plano'} · ${formatMoney(t.monthly_cents)}/mês · ${describeActivity(t.last_activity_at, t.created_at ?? now.toISOString(), now).label}`}
                       right={trialDeadlineLabel(t.trial_ends_at!, now)}
                       tone="warning"
-                      onClick={() => navigate(`/admin/workspaces/${t.workspace_id}`)}
+                      to={workspaceDetailPath(t.workspace_id)}
+                      onClick={() => navigate(workspaceDetailPath(t.workspace_id))}
                     />
                   ))}
                   {endingSoon.length > MAX_ROWS ? (
@@ -200,7 +209,8 @@ export function RiskCard({ trials, pending, now }: RiskCardProps) {
                       meta={`${ws.plan_name ?? 'Sem plano'} · ${formatMoney(ws.subscription?.amount_cents, ws.subscription?.currency)}${intervalSuffix(ws.subscription?.interval)} · ${describeActivity(ws.last_activity_at, ws.created_at, now).label}`}
                       right={pendingLabel(ws.subscription, now)}
                       tone="danger"
-                      onClick={() => navigate(`/admin/workspaces/${ws.id}`)}
+                      to={workspaceDetailPath(ws.id)}
+                      onClick={() => navigate(workspaceDetailPath(ws.id))}
                     />
                   ))}
                   {pendingTotal > pendingRows.length ? (

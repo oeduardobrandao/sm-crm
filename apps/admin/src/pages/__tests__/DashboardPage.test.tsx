@@ -138,6 +138,15 @@ describe('DashboardPage per-card loading', () => {
     expect(kpiCard('MRR total').textContent).toContain('—');
     expect(kpiCard('Em risco').textContent).toContain('—');
   });
+
+  it('recent workspace names are real links to the detail page', async () => {
+    renderPage();
+    const links = await screen.findAllByRole('link', { name: 'A' });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toHaveAttribute('href', '/admin/workspaces/a');
+    }
+  });
 });
 
 describe('DashboardPage at-risk card', () => {
@@ -191,6 +200,47 @@ describe('DashboardPage at-risk card', () => {
     expect(riskCard.getByText('Agência Norte')).toBeInTheDocument();
     expect(riskCard.getByText('3ª tentativa')).toBeInTheDocument();
     expect(riskCard.getByText('+5 workspaces')).toBeInTheDocument();
+  });
+
+  it('exposes a keyboard-reachable link on each risk row to the workspace detail page', async () => {
+    vi.mocked(getTrials).mockResolvedValue({
+      trial_count: 3,
+      trial_mrr_cents: 0,
+      currency: 'brl',
+      trials: [
+        {
+          workspace_id: 't1',
+          name: 'Nova Onda',
+          plan_name: 'Pro',
+          interval: 'month',
+          trial_ends_at: soon(1),
+          monthly_cents: 19700,
+          owner_name: null,
+          owner_email: null,
+          owner_telefone: null,
+          owner_marketing_opt_in: false,
+          created_at: soon(-5),
+          last_activity_at: soon(-1),
+        },
+      ],
+    } as never);
+    renderPage();
+
+    const riskCard = within(await screen.findByTestId('risk-card'));
+    await riskCard.findByText('Nova Onda');
+    const links = riskCard.getAllByRole('link');
+    expect(links.length).toBeGreaterThan(0);
+    expect(links.some((link) => link.getAttribute('href')?.startsWith('/admin/workspaces/'))).toBe(
+      true,
+    );
+    expect(riskCard.getByRole('link', { name: 'Nova Onda' })).toHaveAttribute(
+      'href',
+      '/admin/workspaces/t1',
+    );
+    expect(riskCard.getByRole('link', { name: 'Agência Norte' })).toHaveAttribute(
+      'href',
+      '/admin/workspaces/p1',
+    );
   });
 
   it('shows "Tudo em ordem" when both groups are empty', async () => {
