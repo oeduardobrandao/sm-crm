@@ -182,6 +182,45 @@ describe('useLayoutAutosave', () => {
     expect(hasUnsavedWork()).toBe(false);
   });
 
+  it('segunda edição do título durante o request em voo mantém o registro seguro até o segundo save', async () => {
+    let settleFirst!: () => void;
+    let settleSecond!: () => void;
+    updateMock
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (settleFirst = resolve)))
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (settleSecond = resolve)));
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    act(() => result.current.setTitle('Relatório de Agosto'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    // Second edit while the first request is in flight.
+    act(() => result.current.setTitle('Relatório de Agosto v2'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    // First request settles; the queued second flush starts its own request.
+    await act(async () => {
+      settleFirst();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(hasUnsavedWork()).toBe(true);
+    await act(async () => {
+      settleSecond();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
   it('falha no save de título mantém o registro seguro até o retry dar certo', async () => {
     updateMock.mockRejectedValueOnce(new Error('offline'));
     const { result } = renderHook(

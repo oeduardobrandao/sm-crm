@@ -197,7 +197,8 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
             old ? { ...(old as object), title: toSave } : old,
           );
           titleRetryCount.current = 0;
-          setTitleSaving(false);
+          // A newer edit is queued behind this request: stay held until its own flush settles.
+          if (!titleDirty.current) setTitleSaving(false);
         } catch (err) {
           console.error('[relatorio-editor] save de título falhou:', err);
           toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
@@ -211,7 +212,8 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
           } else {
             // Esgotado: para de tentar, mas a dirty flag continua true e segura o
             // registro sozinha até uma edição nova ou o unmount.
-            setTitleSaving(false);
+            // A newer edit is queued behind this request: stay held until its own flush settles.
+            if (!titleDirty.current) setTitleSaving(false);
           }
         }
       });
