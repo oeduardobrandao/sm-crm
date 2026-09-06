@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { GlobalPopup } from '../../lib/api';
 import {
+  DEFAULT_TRIGGER_DAYS,
+  FREQUENCY_LABEL,
   MAX_PAGES,
   addPage,
   emptyForm,
@@ -10,6 +12,7 @@ import {
   pageHasContent,
   popupToForm,
   removePage,
+  triggerChipLabel,
   validateForm,
   withRequireAck,
 } from '../popup-form';
@@ -33,6 +36,8 @@ const popup: GlobalPopup = {
   secondary_label: null,
   frequency: 'until_cta',
   require_ack: false,
+  trigger: null,
+  trigger_days: null,
   target_mode: 'plan',
   target_plan_ids: ['pro'],
   target_workspace_ids: null,
@@ -240,5 +245,76 @@ describe('páginas', () => {
     expect(movePage(f, 0, 9)).toBe(f);
     expect(movePage(f, 1, 1)).toBe(f);
     expect(movePage(f, 0, 1).pages.every(Boolean)).toBe(true);
+  });
+});
+
+describe('gatilho e frequência diária', () => {
+  it('payload: sem gatilho manda null/null; trial_ending manda os dias como número; outros zeram os dias', () => {
+    const f = emptyForm();
+    expect(formToPayload(f)).toMatchObject({ trigger: null, trigger_days: null });
+    expect(formToPayload({ ...f, trigger: 'trial_ending', trigger_days: '7' })).toMatchObject({
+      trigger: 'trial_ending',
+      trigger_days: 7,
+    });
+    expect(formToPayload({ ...f, trigger: 'payment_pending', trigger_days: '7' })).toMatchObject({
+      trigger: 'payment_pending',
+      trigger_days: null,
+    });
+    expect(formToPayload({ ...f, frequency: 'daily' }).frequency).toBe('daily');
+  });
+
+  it('popupToForm carrega gatilho e dias; sem dias usa o padrão', () => {
+    expect(popupToForm({ ...popup, trigger: 'trial_ending', trigger_days: 10 })).toMatchObject({
+      trigger: 'trial_ending',
+      trigger_days: '10',
+    });
+    expect(popupToForm(popup)).toMatchObject({ trigger: '', trigger_days: DEFAULT_TRIGGER_DAYS });
+    expect(popupToForm({ ...popup, frequency: 'daily' }).frequency).toBe('daily');
+  });
+
+  it('validateForm exige 1..60 dias inteiros só com trial_ending', () => {
+    const base = { ...emptyForm(), pages: [{ ...newPage(), title: 'T', body: 'B' }] };
+    expect(validateForm({ ...base, trigger: 'trial_ending', trigger_days: '3' })).toBeNull();
+    expect(validateForm({ ...base, trigger: 'trial_ending', trigger_days: '60' })).toBeNull();
+    expect(validateForm({ ...base, trigger: 'trial_ending', trigger_days: '0' })?.trigger).toBe(
+      'Informe de 1 a 60 dias',
+    );
+    expect(
+      validateForm({ ...base, trigger: 'trial_ending', trigger_days: '61' })?.trigger,
+    ).toBeDefined();
+    expect(
+      validateForm({ ...base, trigger: 'trial_ending', trigger_days: 'abc' })?.trigger,
+    ).toBeDefined();
+    expect(
+      validateForm({ ...base, trigger: 'trial_ending', trigger_days: '2.5' })?.trigger,
+    ).toBeDefined();
+    expect(
+      validateForm({ ...base, trigger: 'trial_ending', trigger_days: '' })?.trigger,
+    ).toBeDefined();
+    expect(validateForm({ ...base, trigger: 'payment_pending', trigger_days: 'abc' })).toBeNull();
+    expect(validateForm({ ...base, trigger: '', trigger_days: 'abc' })).toBeNull();
+  });
+
+  it('withRequireAck converte until_cta em once e preserva daily', () => {
+    const f = emptyForm();
+    expect(withRequireAck({ ...f, frequency: 'until_cta' }, true).frequency).toBe('once');
+    expect(withRequireAck({ ...f, frequency: 'daily' }, true).frequency).toBe('daily');
+    expect(withRequireAck({ ...f, frequency: 'once' }, true).frequency).toBe('once');
+    expect(withRequireAck({ ...f, frequency: 'daily' }, false).frequency).toBe('daily');
+    expect(withRequireAck({ ...f, frequency: 'until_cta' }, false).frequency).toBe('until_cta');
+  });
+
+  it('rótulos da lista', () => {
+    expect(triggerChipLabel(null, null)).toBeNull();
+    expect(triggerChipLabel('payment_pending', null)).toBe('Pagamento pendente');
+    expect(triggerChipLabel('trial_ending', 1)).toBe('Teste em 1 dia');
+    expect(triggerChipLabel('trial_ending', 3)).toBe('Teste em 3 dias');
+    expect(triggerChipLabel('trial_ending', null)).toBe('Teste em ? dias');
+    expect(triggerChipLabel('plan_downgraded', null)).toBe('Plano rebaixado');
+    expect(FREQUENCY_LABEL).toEqual({
+      once: 'Uma vez',
+      until_cta: 'Até o CTA',
+      daily: 'Uma vez por dia',
+    });
   });
 });

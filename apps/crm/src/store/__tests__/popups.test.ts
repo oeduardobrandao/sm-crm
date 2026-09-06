@@ -29,6 +29,7 @@ const good = {
   secondary_label: null,
   frequency: 'once',
   require_ack: false,
+  trigger: null,
   created_at: '2026-09-01T00:00:00Z',
 };
 
@@ -62,5 +63,23 @@ describe('store/popups', () => {
     await recordPopupInteraction('p1', 'cta');
     expect(fromMock).toHaveBeenCalledWith('popup_interactions');
     expect(insert).toHaveBeenCalledWith({ popup_id: 'p1', user_id: 'u1', action: 'cta' });
+  });
+
+  it('getActivePopups seleciona trigger', async () => {
+    const chain = selectReturning([good]);
+    fromMock.mockReturnValue(chain);
+    await getActivePopups();
+    expect(chain.select).toHaveBeenCalledWith(expect.stringContaining('trigger'));
+  });
+
+  it('getMyPopupInteractions seleciona created_at', async () => {
+    const chain = selectReturning([
+      { popup_id: 'p1', action: 'seen', created_at: '2026-09-06T12:00:00Z' },
+    ]);
+    fromMock.mockReturnValue(chain);
+    expect(await getMyPopupInteractions()).toEqual([
+      { popup_id: 'p1', action: 'seen', created_at: '2026-09-06T12:00:00Z' },
+    ]);
+    expect(chain.select).toHaveBeenCalledWith('popup_id, action, created_at');
   });
 });

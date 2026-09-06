@@ -4,6 +4,7 @@ import { insertAuditLog } from "../_shared/audit.ts";
 import { McpInputError, McpScopeError } from "../_shared/mcp-token.ts";
 import { requireAdminScope } from "../_shared/mcp-admin-auth.ts";
 import { KB_CATEGORIES } from "../_shared/admin-kb.ts";
+import { MAX_TRIGGER_DAYS, POPUP_TRIGGERS } from "../_shared/admin-popups.ts";
 import type { Deps } from "./deps.ts";
 import {
   createBanner, createKbArticle, createPopup, getBanner, getDashboard, getKbArticle, getPopup, getWorkspace,
@@ -83,6 +84,8 @@ const BANNER_FIELDS = {
   status: STATUS3.optional(),
 };
 
+const POPUP_TRIGGER = z.enum(POPUP_TRIGGERS);
+
 const POPUP_PAGE = z.object({
   title: z.string().max(120),
   eyebrow: z.string().max(60).nullable().optional(),
@@ -97,7 +100,12 @@ const POPUP_FIELDS = {
   cta_url: z.string().nullable().optional(),
   cta_style: z.enum(["ink", "brand"]).optional(),
   secondary_label: z.string().max(40).nullable().optional(),
-  frequency: z.enum(["once", "until_cta"]).optional(),
+  frequency: z.enum(["once", "until_cta", "daily"]).optional()
+    .describe("once = some após fechar; until_cta = volta toda sessão até o CTA; daily = no máximo uma vez por dia enquanto elegível"),
+  trigger: POPUP_TRIGGER.nullable().optional()
+    .describe("Gatilho por situação de cobrança: só o dono do workspace vê, e só enquanto a condição valer. payment_pending = assinatura em past_due; trial_ending = teste terminando em trigger_days dias; plan_downgraded = assinatura unpaid (plano voltou ao padrão). null remove"),
+  trigger_days: z.number().int().min(1).max(MAX_TRIGGER_DAYS).nullable().optional()
+    .describe("Dias antes do fim do teste. Obrigatório com trial_ending, nulo nos demais"),
   require_ack: z.boolean().optional(),
   target_mode: TARGET.optional(),
   target_plan_ids: z.array(z.string()).nullable().optional(),

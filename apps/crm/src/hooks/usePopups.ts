@@ -35,7 +35,7 @@ export function usePopups() {
       await queryClient.cancelQueries({ queryKey: POPUP_INTERACTIONS_KEY });
       queryClient.setQueryData<PopupInteraction[]>(POPUP_INTERACTIONS_KEY, (old) => [
         ...(old || []),
-        { popup_id: popupId, action },
+        { popup_id: popupId, action, created_at: new Date().toISOString() },
       ]);
     },
     onError: (err) => {

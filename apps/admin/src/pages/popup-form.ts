@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import type { GlobalPopup } from '../lib/api';
+import type { GlobalPopup, PopupFrequency, PopupTrigger } from '../lib/api';
 
 export const MAX_PAGES = 6;
 const MAX_TITLE = 120;
@@ -8,6 +8,26 @@ const MAX_BODY = 2000;
 const MAX_LABEL = 40;
 const MAX_URL = 2048;
 const CTA_URL_RE = /^(\/(?![/\\])|https?:\/\/)/; // `//host` é protocol-relative, não caminho interno, nem `/\host`
+
+export const MAX_TRIGGER_DAYS = 60;
+export const DEFAULT_TRIGGER_DAYS = '3';
+export const TRIGGER_LABEL: Record<PopupTrigger, string> = {
+  payment_pending: 'Pagamento pendente',
+  trial_ending: 'Teste terminando',
+  plan_downgraded: 'Plano rebaixado por inadimplência',
+};
+export const FREQUENCY_LABEL: Record<PopupFrequency, string> = {
+  once: 'Uma vez',
+  until_cta: 'Até o CTA',
+  daily: 'Uma vez por dia',
+};
+
+/** Chip da lista ao lado do público. Nulo sem gatilho. */
+export function triggerChipLabel(trigger: PopupTrigger | null, days: number | null): string | null {
+  if (!trigger) return null;
+  if (trigger === 'trial_ending') return `Teste em ${days ?? '?'} ${days === 1 ? 'dia' : 'dias'}`;
+  return trigger === 'payment_pending' ? TRIGGER_LABEL.payment_pending : 'Plano rebaixado';
+}
 
 /** Regra única da URL de CTA (global e por página), espelhando o servidor. */
 function ctaUrlError(url: string): string | null {
@@ -34,8 +54,12 @@ export interface PopupFormState {
   cta_url: string;
   secondary_label: string;
   cta_style: 'ink' | 'brand';
-  frequency: 'once' | 'until_cta';
+  frequency: PopupFrequency;
   require_ack: boolean;
+  /** '' = sem gatilho. */
+  trigger: '' | PopupTrigger;
+  /** Valor cru do input numérico; só vai ao payload com trial_ending. */
+  trigger_days: string;
   target_mode: 'all' | 'plan' | 'workspace';
   target_plan_ids: string[];
   target_workspace_ids: string[];
@@ -48,6 +72,7 @@ export interface PopupFormErrors {
   pages: Record<number, { title?: string; eyebrow?: string; body?: string; cta?: string }>;
   cta?: string;
   frequency?: string;
+  trigger?: string;
   target?: string;
   schedule?: string;
 }
@@ -76,6 +101,8 @@ export function emptyForm(): PopupFormState {
     cta_style: 'ink',
     frequency: 'once',
     require_ack: false,
+    trigger: '',
+    trigger_days: DEFAULT_TRIGGER_DAYS,
     target_mode: 'all',
     target_plan_ids: [],
     target_workspace_ids: [],
@@ -102,6 +129,8 @@ export function popupToForm(p: GlobalPopup): PopupFormState {
     cta_style: p.cta_style,
     frequency: p.frequency,
     require_ack: p.require_ack,
+    trigger: p.trigger ?? '',
+    trigger_days: p.trigger_days != null ? String(p.trigger_days) : DEFAULT_TRIGGER_DAYS,
     target_mode: p.target_mode,
     target_plan_ids: p.target_plan_ids ?? [],
     target_workspace_ids: p.target_workspace_ids ?? [],
@@ -132,6 +161,8 @@ export function formToPayload(f: PopupFormState): Record<string, unknown> {
     cta_style: f.cta_style,
     frequency: f.frequency,
     require_ack: f.require_ack,
+    trigger: f.trigger || null,
+    trigger_days: f.trigger === 'trial_ending' ? parseInt(f.trigger_days, 10) : null,
     target_mode: f.target_mode,
     target_plan_ids: f.target_mode === 'plan' ? f.target_plan_ids : null,
     target_workspace_ids: f.target_mode === 'workspace' ? f.target_workspace_ids : null,
@@ -182,6 +213,15 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
     any = true;
   }
 
+  if (f.trigger === 'trial_ending') {
+    const raw = f.trigger_days.trim();
+    const days = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
+    if (!Number.isInteger(days) || days < 1 || days > MAX_TRIGGER_DAYS) {
+      errors.trigger = `Informe de 1 a ${MAX_TRIGGER_DAYS} dias`;
+      any = true;
+    }
+  }
+
   if (f.target_mode === 'plan' && f.target_plan_ids.length === 0) {
     errors.target = 'Selecione ao menos um plano';
     any = true;
@@ -200,7 +240,12 @@ export function validateForm(f: PopupFormState): PopupFormErrors | null {
 
 /** Confirmação obrigatória implica frequência "once" (spec, Parte 1). */
 export function withRequireAck(f: PopupFormState, on: boolean): PopupFormState {
-  return { ...f, require_ack: on, frequency: on ? 'once' : f.frequency };
+  return {
+    ...f,
+    require_ack: on,
+    // Só "Até o CTA" é incompatível com confirmação obrigatória; "Uma vez por dia" fica.
+    frequency: on && f.frequency === 'until_cta' ? 'once' : f.frequency,
+  };
 }
 
 export function addPage(f: PopupFormState): PopupFormState {

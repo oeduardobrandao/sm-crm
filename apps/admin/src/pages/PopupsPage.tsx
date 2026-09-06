@@ -27,13 +27,17 @@ import {
   listPlans,
   listWorkspaces,
   type GlobalPopup,
+  type PopupTrigger,
 } from '../lib/api';
 import { uploadInlineImage, resolveInlineImageUrls } from '../lib/inline-image';
 import { sanitizeExternalUrl } from '../lib/security';
 import { TargetPicker } from '../components/TargetPicker';
 import { RowButton } from '../components/RowLink';
 import {
+  FREQUENCY_LABEL,
   MAX_PAGES,
+  MAX_TRIGGER_DAYS,
+  TRIGGER_LABEL,
   addPage,
   emptyForm,
   formToPayload,
@@ -41,6 +45,7 @@ import {
   pageHasContent,
   popupToForm,
   removePage,
+  triggerChipLabel,
   validateForm,
   withRequireAck,
   type PageForm,
@@ -147,7 +152,7 @@ export default function PopupsPage() {
   };
 
   const frequencyLabel = (p: GlobalPopup) =>
-    `${p.frequency === 'once' ? 'Uma vez' : 'Até o CTA'}${p.require_ack ? ' · confirmação' : ''}`;
+    `${FREQUENCY_LABEL[p.frequency] ?? p.frequency}${p.require_ack ? ' · confirmação' : ''}`;
 
   return (
     <div>
@@ -240,7 +245,14 @@ export default function PopupsPage() {
                     span à sua coluna do grid no desktop, sem duplicar texto algum. */}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground md:mt-0 md:contents">
                   <span className="md:text-sm">{frequencyLabel(p)}</span>
-                  <span className="md:text-sm md:truncate">{targetLabel(p)}</span>
+                  <span className="md:text-sm md:truncate">
+                    {targetLabel(p)}
+                    {triggerChipLabel(p.trigger, p.trigger_days) && (
+                      <span className="ml-1.5 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded-sm bg-warning/15 text-warning whitespace-nowrap">
+                        {triggerChipLabel(p.trigger, p.trigger_days)}
+                      </span>
+                    )}
+                  </span>
                   <span className="hidden md:block md:text-sm">{schedule(p)}</span>
                   <span
                     className={`text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm w-fit ${b.cls}`}
@@ -426,7 +438,13 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
         className="bg-card border border-border rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto mx-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-[1.15fr_0.85fr]">
+        {/* noValidate: a validação é toda nossa (validateForm). Sem isso o min/max do campo de dias
+            faz o browser bloquear o submit com a bolha nativa em vez de mostrar o erro inline. */}
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="grid grid-cols-1 md:grid-cols-[1.15fr_0.85fr]"
+        >
           {/* ── Coluna do formulário ── */}
           <div className="p-5 md:p-7 flex flex-col gap-5 md:border-r border-border">
             <h2 className="font-sf text-lg font-bold">{popup ? 'Editar popup' : 'Novo popup'}</h2>
@@ -692,7 +710,19 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                   />
                   Toda sessão até clicar no CTA
                 </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="frequency"
+                    checked={form.frequency === 'daily'}
+                    onChange={() => setForm((f) => ({ ...f, frequency: 'daily' }))}
+                  />
+                  Uma vez por dia
+                </label>
               </div>
+              <p className="text-xs text-dim-foreground mt-1">
+                Uma vez por dia: abre no máximo uma vez por dia enquanto o popup estiver elegível.
+              </p>
               {errors?.frequency && (
                 <p className="text-xs text-destructive mt-1">{errors.frequency}</p>
               )}
@@ -720,6 +750,53 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
                 onChange={(next) => setForm((f) => ({ ...f, ...next }))}
               />
               {errors?.target && <p className="text-xs text-destructive mt-1">{errors.target}</p>}
+            </div>
+
+            <div>
+              <label htmlFor="popup-trigger" className={LABEL}>
+                Gatilho
+              </label>
+              <select
+                id="popup-trigger"
+                className={INPUT}
+                value={form.trigger}
+                onChange={(e) => {
+                  const trigger = e.target.value as PopupFormState['trigger'];
+                  setForm((f) => ({ ...f, trigger }));
+                  setErrors(null);
+                }}
+              >
+                <option value="">Nenhum</option>
+                {(Object.keys(TRIGGER_LABEL) as PopupTrigger[]).map((t) => (
+                  <option key={t} value={t}>
+                    {TRIGGER_LABEL[t]}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-dim-foreground mt-1">
+                Com gatilho, só o dono do workspace vê o popup, e só enquanto a condição valer.
+              </p>
+              {form.trigger === 'trial_ending' && (
+                <div className="mt-3">
+                  <label htmlFor="popup-trigger-days" className={LABEL}>
+                    Dias antes do fim do teste
+                  </label>
+                  <input
+                    id="popup-trigger-days"
+                    type="number"
+                    min={1}
+                    max={MAX_TRIGGER_DAYS}
+                    className={INPUT}
+                    value={form.trigger_days}
+                    onChange={(e) => {
+                      const trigger_days = e.target.value;
+                      setForm((f) => ({ ...f, trigger_days }));
+                      setErrors(null);
+                    }}
+                  />
+                </div>
+              )}
+              {errors?.trigger && <p className="text-xs text-destructive mt-1">{errors.trigger}</p>}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

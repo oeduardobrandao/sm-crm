@@ -64,3 +64,36 @@ Deno.test("updatePopup: image_key já persistida passa sem profiles/headObject; 
   await expectInputError(() => updatePopup(makeDeps(makeFakeDb({ global_popups: [{ data: ROW, error: null }] }).db), { popup_id: "p1", frequency: "until_cta" }), "until_cta");
   await expectInputError(() => updatePopup(makeDeps(makeFakeDb({ global_popups: [{ data: null, error: null }] }).db), { popup_id: "zz", status: "active" }), "não encontrado");
 });
+
+Deno.test("createPopup/updatePopup: gatilho passa pela allowlist e pela normalização dos dias", async () => {
+  const { db, calls } = makeFakeDb({ global_popups: [{ data: { id: "p9", status: "draft" }, error: null }] });
+  await createPopup(makeDeps(db), {
+    pages: [{ title: "T", body: "B" }], target_mode: "all", trigger: "trial_ending", trigger_days: 3, frequency: "daily",
+  });
+  const ins = insertPayload(calls, "global_popups")!;
+  assertEquals(ins.trigger, "trial_ending");
+  assertEquals(ins.trigger_days, 3);
+  assertEquals(ins.frequency, "daily");
+  await expectInputError(
+    () => createPopup(makeDeps(db), { pages: [{ title: "T", body: "B" }], target_mode: "all", trigger: "trial_ending" }),
+    "trigger_days",
+  );
+  // dias sem gatilho: erro, nao um popup sem restricao criado em silencio
+  await expectInputError(
+    () => createPopup(makeDeps(db), { pages: [{ title: "T", body: "B" }], target_mode: "all", trigger_days: 5 }),
+    "trigger_days",
+  );
+
+  const current = { ...ROW, trigger: "trial_ending", trigger_days: 5 };
+  const { db: db2, calls: calls2 } = makeFakeDb({
+    global_popups: [{ data: current, error: null }, { data: { id: "p1", status: "draft" }, error: null }],
+  });
+  await updatePopup(makeDeps(db2), { popup_id: "p1", trigger: "payment_pending" });
+  assertEquals(updatePayload(calls2, "global_popups")!.trigger_days, null);
+
+  const { db: db3, calls: calls3 } = makeFakeDb({
+    global_popups: [{ data: current, error: null }, { data: { id: "p1", status: "draft" }, error: null }],
+  });
+  await updatePopup(makeDeps(db3), { popup_id: "p1", cta_label: "Ver", cta_url: "/x" });
+  assertEquals("trigger_days" in updatePayload(calls3, "global_popups")!, false);
+});
