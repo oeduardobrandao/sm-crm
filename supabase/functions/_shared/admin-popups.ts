@@ -6,8 +6,12 @@ import { isSafeHref } from "./safe-href.ts";
 export const POPUP_COLUMNS = [
   "pages", "cta_label", "cta_url", "cta_style", "secondary_label", "frequency",
   "require_ack", "target_mode", "target_plan_ids", "target_workspace_ids",
-  "starts_at", "ends_at", "status",
+  "starts_at", "ends_at", "status", "trigger", "trigger_days",
 ] as const;
+
+export const POPUP_TRIGGERS = ["payment_pending", "trial_ending", "plan_downgraded"] as const;
+export type PopupTrigger = (typeof POPUP_TRIGGERS)[number];
+export const MAX_TRIGGER_DAYS = 60;
 
 export interface PopupPage {
   title: string;
@@ -119,7 +123,7 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
   if (!secondary.ok) return "secondary_label max 40";
 
   const frequency = row.frequency ?? "once";
-  if (frequency !== "once" && frequency !== "until_cta") return "invalid frequency";
+  if (frequency !== "once" && frequency !== "until_cta" && frequency !== "daily") return "invalid frequency";
   if (frequency === "until_cta" && ctaUrl.value === null && !pagesHaveCta(row.pages)) {
     return "until_cta requires a CTA";
   }
@@ -131,6 +135,20 @@ export function validatePopupFields(row: Record<string, unknown>): string | null
 
   const status = row.status ?? "draft";
   if (status !== "draft" && status !== "active" && status !== "archived") return "invalid status";
+
+  // Gatilho (spec 2026-09-06): enum ou nulo; trigger_days so com trial_ending, inteiro 1..60.
+  // Chega aqui ja normalizado por normalizePopupTrigger ("" -> null, dias zerados fora
+  // de trial_ending); o que sobrar de errado e erro do chamador, 400.
+  const trigger = row.trigger ?? null;
+  if (trigger !== null && !(POPUP_TRIGGERS as readonly unknown[]).includes(trigger)) return "invalid trigger";
+  const days = row.trigger_days ?? null;
+  if (trigger === "trial_ending") {
+    if (typeof days !== "number" || !Number.isInteger(days) || days < 1 || days > MAX_TRIGGER_DAYS) {
+      return `trial_ending needs trigger_days between 1 and ${MAX_TRIGGER_DAYS}`;
+    }
+  } else if (days !== null) {
+    return "trigger_days only applies to trial_ending";
+  }
 
   // Targeting: array_length('{}') é NULL no Postgres, então o CHECK do banco só
   // barra NULL. Array vazio precisa ser barrado aqui, senão o popup nasce
@@ -176,6 +194,29 @@ export function normalizePopupText(row: Record<string, unknown>): Record<string,
     if (typeof out[col] === "string") {
       const t = (out[col] as string).trim();
       out[col] = t.length > 0 ? t : null;
+    }
+  }
+  return out;
+}
+
+/** Decide sobre a linha MESCLADA (atual + patch) e devolve o patch com no maximo duas
+ * mudancas: `trigger: ""` vira null; `trigger_days: null` e emitido SOMENTE quando o patch
+ * NAO mandou trigger_days e a linha mesclada ficou com gatilho diferente de trial_ending
+ * mas dias persistidos (troca de gatilho num popup trial_ending). Um patch que nao toca no
+ * gatilho sai intacto: injetar trigger_days = null numa edicao de titulo de um popup
+ * trial_ending cairia no CHECK global_popups_trigger_days_check como 500. Dias ENVIADOS
+ * no patch sem trial_ending nao sao apagados: e erro do chamador, e validatePopupFields
+ * devolve 400 em vez de criar em silencio um popup sem a restricao pretendida. */
+export function normalizePopupTrigger(
+  update: Record<string, unknown>,
+  current?: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...update };
+  if (out.trigger === "") out.trigger = null;
+  if (out.trigger_days === undefined) {
+    const merged = { ...(current ?? {}), ...out };
+    if ((merged.trigger ?? null) !== "trial_ending" && (merged.trigger_days ?? null) !== null) {
+      out.trigger_days = null;
     }
   }
   return out;
