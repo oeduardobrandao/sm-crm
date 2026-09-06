@@ -10,7 +10,7 @@ import { resolveInlineImageUrls } from '@/services/inlineImage';
 import { openExternalUrl, sanitizeUrl } from '@/utils/security';
 import type { GlobalPopup } from '@/store/popups';
 import { usePopups } from '@/hooks/usePopups';
-import { pickPopup } from '@/hooks/pickPopup';
+import { pickPopup, sameLocalDay } from '@/hooks/pickPopup';
 import {
   markPopupClosed,
   markPopupShown,
@@ -112,9 +112,21 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
       setPage(0);
       setOpen(true);
       markPopupShown(chosen.id);
-      const alreadySeen = interactions.some((i) => i.popup_id === chosen.id && i.action === 'seen');
-      if (!alreadySeen) record(chosen.id, 'seen');
-      captureEvent('popup_shown', { popup_id: chosen.id, pages: chosen.pages.length });
+      // once/until_cta: um seen para sempre (métrica de usuários distintos). daily: um
+      // seen por dia-calendário local, é ele que segura o popup até amanhã.
+      const now = new Date();
+      const seenAlready = interactions.some(
+        (i) =>
+          i.popup_id === chosen.id &&
+          i.action === 'seen' &&
+          (chosen.frequency !== 'daily' || sameLocalDay(new Date(i.created_at), now)),
+      );
+      if (!seenAlready) record(chosen.id, 'seen');
+      captureEvent('popup_shown', {
+        popup_id: chosen.id,
+        pages: chosen.pages.length,
+        trigger: chosen.trigger,
+      });
     })();
   }, [ready, openDelayMs, record]);
 

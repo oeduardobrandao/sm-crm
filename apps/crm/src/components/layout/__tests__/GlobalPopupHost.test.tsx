@@ -53,6 +53,7 @@ const popup = {
   secondary_label: null,
   frequency: 'once',
   require_ack: false,
+  trigger: null,
   created_at: '2026-09-01T00:00:00Z',
 };
 
@@ -90,12 +91,18 @@ describe('GlobalPopupHost', () => {
     );
     expect(resolveInlineImageUrlsMock).toHaveBeenCalledWith(['contas/x/files/a.png']);
     await waitFor(() => expect(recordPopupInteractionMock).toHaveBeenCalledWith('p1', 'seen'));
-    expect(captureEventMock).toHaveBeenCalledWith('popup_shown', { popup_id: 'p1', pages: 2 });
+    expect(captureEventMock).toHaveBeenCalledWith('popup_shown', {
+      popup_id: 'p1',
+      pages: 2,
+      trigger: null,
+    });
     expect(sessionStorage.getItem('mesaas_popup_shown')).toBe('p1');
   });
 
   it('não grava seen de novo quando já existe', async () => {
-    getMyPopupInteractionsMock.mockResolvedValue([{ popup_id: 'p1', action: 'seen' }]);
+    getMyPopupInteractionsMock.mockResolvedValue([
+      { popup_id: 'p1', action: 'seen', created_at: '2026-01-01T00:00:00Z' },
+    ]);
     renderHost();
     await screen.findByRole('dialog');
     await waitFor(() =>
@@ -305,5 +312,58 @@ describe('GlobalPopupHost', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(sessionStorage.getItem('mesaas_popup_skipped')).toBe('1');
+  });
+
+  it('daily: seen de ontem não bloqueia, grava seen de novo e popup_shown leva o trigger', async () => {
+    getActivePopupsMock.mockResolvedValue([
+      { ...popup, id: 'd1', frequency: 'daily', trigger: 'payment_pending' },
+    ]);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    getMyPopupInteractionsMock.mockResolvedValue([
+      { popup_id: 'd1', action: 'seen', created_at: yesterday.toISOString() },
+      { popup_id: 'd1', action: 'closed', created_at: yesterday.toISOString() },
+    ]);
+    renderHost();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    await waitFor(() => expect(recordPopupInteractionMock).toHaveBeenCalledWith('d1', 'seen'));
+    expect(captureEventMock).toHaveBeenCalledWith('popup_shown', {
+      popup_id: 'd1',
+      pages: 2,
+      trigger: 'payment_pending',
+    });
+  });
+
+  it('daily já visto hoje: não abre nem grava', async () => {
+    getActivePopupsMock.mockResolvedValue([{ ...popup, id: 'd1', frequency: 'daily' }]);
+    getMyPopupInteractionsMock.mockResolvedValue([
+      { popup_id: 'd1', action: 'seen', created_at: new Date().toISOString() },
+    ]);
+    renderHost();
+    await act(async () => {});
+    await waitFor(() => expect(getMyPopupInteractionsMock).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(recordPopupInteractionMock).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('mesaas_popup_shown')).toBeNull();
+  });
+
+  it('popup com gatilho vence o comum mais recente na mesma sessão', async () => {
+    getActivePopupsMock.mockResolvedValue([
+      { ...popup, id: 'plain', created_at: '2026-09-05T00:00:00Z' },
+      {
+        ...popup,
+        id: 'trig',
+        created_at: '2026-08-01T00:00:00Z',
+        trigger: 'trial_ending',
+        pages: [{ title: 'Seu teste termina em breve', eyebrow: null, body: 'b', image_key: null }],
+      },
+    ]);
+    renderHost();
+    await screen.findByRole('dialog');
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Seu teste termina em breve' }),
+    ).toBeInTheDocument();
+    expect(sessionStorage.getItem('mesaas_popup_shown')).toBe('trig');
   });
 });
