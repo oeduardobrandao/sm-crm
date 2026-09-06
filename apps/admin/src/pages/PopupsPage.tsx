@@ -438,6 +438,8 @@ function PopupEditor({ popup, plans, workspaces, onClose, onSaved }: EditorProps
         className="bg-card border border-border rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto mx-4"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* noValidate: a validação é toda nossa (validateForm). Sem isso o min/max do campo de dias
+            faz o browser bloquear o submit com a bolha nativa em vez de mostrar o erro inline. */}
         <form
           onSubmit={handleSubmit}
           noValidate

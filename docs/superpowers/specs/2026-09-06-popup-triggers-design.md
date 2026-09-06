@@ -123,7 +123,7 @@ as $$
   end
 $$;
 
-revoke all on function popup_trigger_matches(text, int) from public;
+revoke all on function popup_trigger_matches(text, int) from public, anon;
 grant execute on function popup_trigger_matches(text, int) to authenticated;
 ```
 
@@ -143,6 +143,9 @@ Pontos de desenho:
   devolver NULL, que a policy trataria como "não visível" de qualquer forma).
 - `stable` + `security definer` + `set search_path = public`, como manda a regra
   para funções usadas em policy.
+- O `revoke` inclui `anon` explicitamente: o ACL padrão do Supabase concede EXECUTE
+  direto ao `anon`, e `from public` sozinho não o remove (a suíte psql 80 prova com
+  `set local role anon`).
 
 ### Semântica de cada gatilho
 

@@ -120,8 +120,7 @@ export async function handleUpdatePopup(
     update.pages = pages.pages;
   }
 
-  // Regras cruzadas valem sobre a linha resultante, nao so sobre o patch. A normalizacao
-  // do gatilho tambem: ela le a linha mesclada e so emite trigger_days quando muda.
+  // A normalizacao do gatilho le a linha mesclada e so emite trigger_days quando muda.
   const patch = normalizePopupTrigger(update, current as Record<string, unknown>);
   const fieldError = validatePopupFields({ ...(current as Record<string, unknown>), ...patch });
   if (fieldError) {

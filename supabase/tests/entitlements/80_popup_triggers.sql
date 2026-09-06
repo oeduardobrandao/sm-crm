@@ -3,7 +3,8 @@
 
 -- Gatilhos de popup (migration 20260911000001_popup_triggers.sql, spec 2026-09-06):
 --   (a) popup_trigger_matches + policy: so o DONO do workspace, e so enquanto a
---       assinatura estiver na situacao do gatilho; popup sem gatilho segue para todos.
+--       assinatura estiver na situacao do gatilho; popup sem gatilho segue para todos,
+--       inclusive dono sem assinatura (nenhuma linha em workspace_subscriptions).
 --   (b) trial_ending respeita a janela de N dias e some com o teste vencido.
 --   (c) popup_interactions: agente nao insere em popup com gatilho que nao ve.
 --   (d) a funcao nao e executavel por anon.
@@ -19,6 +20,8 @@ declare
   v_owner_a  uuid := gen_random_uuid();
   v_agent_a  uuid := gen_random_uuid();
   v_owner_b  uuid := gen_random_uuid();
+  v_ws_c     uuid;
+  v_owner_c  uuid := gen_random_uuid();
   v_p_plain  uuid;
   v_p_pay    uuid;
   v_p_trial3 uuid;
@@ -99,6 +102,23 @@ begin
   assert not (v_p_pay = any(v_ids)), 'dono B (active) ve payment_pending';
   assert not (v_p_trial3 = any(v_ids)), 'dono B (active) ve trial_ending';
   assert not (v_p_down = any(v_ids)), 'dono B (active) ve plan_downgraded';
+  execute 'reset role';
+
+  -- ---- (a) dono C, sem linha em workspace_subscriptions ----
+  v_ws_c := et_make_workspace('start');
+  insert into auth.users (id) values (v_owner_c);
+  insert into workspace_members (user_id, workspace_id, role) values (v_owner_c, v_ws_c, 'owner');
+  update profiles set conta_id = v_ws_c, active_workspace_id = v_ws_c where id = v_owner_c;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner_c, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  select coalesce(array_agg(id), '{}') into v_ids from global_popups;
+  assert v_p_plain = any(v_ids), 'dono sem assinatura nao ve popup sem gatilho';
+  assert not (v_p_pay = any(v_ids)), 'dono sem assinatura ve payment_pending';
+  assert not (v_p_trial3 = any(v_ids)), 'dono sem assinatura ve trial_ending';
+  assert not (v_p_down = any(v_ids)), 'dono sem assinatura ve plan_downgraded';
+  select popup_trigger_matches('payment_pending', null) into v_match;
+  assert not v_match, 'dono sem assinatura recebeu true';
   execute 'reset role';
 
   -- ---- (b) dono A em teste terminando em 2 dias ----
@@ -198,6 +218,9 @@ begin
     v_rejected := true;
   end;
   assert v_rejected, 'trial_ending com 61 dias foi aceito';
+
+  -- 60 e o teto: aceito
+  insert into global_popups (pages, target_mode, trigger, trigger_days) values (v_pages, 'all', 'trial_ending', 60);
 
   -- daily aceito, com e sem confirmacao obrigatoria
   insert into global_popups (pages, target_mode, frequency) values (v_pages, 'all', 'daily');

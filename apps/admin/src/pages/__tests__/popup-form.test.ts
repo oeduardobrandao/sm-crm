@@ -309,6 +309,7 @@ describe('gatilho e frequência diária', () => {
     expect(triggerChipLabel('payment_pending', null)).toBe('Pagamento pendente');
     expect(triggerChipLabel('trial_ending', 1)).toBe('Teste em 1 dia');
     expect(triggerChipLabel('trial_ending', 3)).toBe('Teste em 3 dias');
+    expect(triggerChipLabel('trial_ending', null)).toBe('Teste em ? dias');
     expect(triggerChipLabel('plan_downgraded', null)).toBe('Plano rebaixado');
     expect(FREQUENCY_LABEL).toEqual({
       once: 'Uma vez',
