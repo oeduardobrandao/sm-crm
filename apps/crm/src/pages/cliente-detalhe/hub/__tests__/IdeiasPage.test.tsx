@@ -56,10 +56,10 @@ function OutletContextProvider({ cliente }: { cliente: Cliente }) {
   );
 }
 
-function renderPage(cliente: Cliente = CLIENTE) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPage(cliente: Cliente = CLIENTE, queryClient?: QueryClient) {
+  const client = queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>
           <Route element={<OutletContextProvider cliente={cliente} />}>
@@ -69,6 +69,20 @@ function renderPage(cliente: Cliente = CLIENTE) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+const NOW = '2026-08-01T12:00:00Z';
+
+// Seeds the QueryClient cache directly (same technique BriefingPage.test.tsx uses for
+// renderBriefing) instead of relying on the mocked queryFn resolving on a later tick --
+// this is what lets the brief's own test bodies use plain screen.getByTestId(...) with
+// no await/findBy right after calling renderIdeias. Fixtures are intentionally loose
+// (Record<string, unknown>, cast at the boundary) so callers can pass only the fields
+// IdeiasPage actually reads, matching the brief's test snippets verbatim.
+function renderIdeias(ideias: Array<Record<string, unknown>>) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryData(['hub-ideias-crm', CLIENTE.id], ideias);
+  return renderPage(CLIENTE, queryClient);
 }
 
 describe('IdeiasPage', () => {
@@ -98,5 +112,30 @@ describe('IdeiasPage', () => {
         'O gerenciamento do Hub do Cliente está disponível apenas para proprietários e administradores do workspace.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('mostra a contagem por estado nos chips', () => {
+    renderIdeias([
+      { id: 1, status: 'nova', titulo: 'A', descricao: 'd', ideia_reactions: [], created_at: NOW },
+      { id: 2, status: 'nova', titulo: 'B', descricao: 'd', ideia_reactions: [], created_at: NOW },
+      {
+        id: 3,
+        status: 'aprovada',
+        titulo: 'C',
+        descricao: 'd',
+        ideia_reactions: [],
+        created_at: NOW,
+      },
+    ]);
+    expect(screen.getByTestId('chip-nova')).toHaveTextContent('2');
+    expect(screen.getByTestId('chip-aprovada')).toHaveTextContent('1');
+    expect(screen.getByTestId('chip-todas')).toHaveTextContent('3');
+  });
+
+  it('não renderiza chip de estado sem nenhuma ideia', () => {
+    renderIdeias([
+      { id: 1, status: 'nova', titulo: 'A', descricao: 'd', ideia_reactions: [], created_at: NOW },
+    ]);
+    expect(screen.queryByTestId('chip-descartada')).not.toBeInTheDocument();
   });
 });

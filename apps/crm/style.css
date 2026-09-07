@@ -10970,8 +10970,8 @@ a.hub-fill__row-inner:hover {
   gap: 0.5rem;
 }
 
-/* Filter chips (same look as .today-chip) + progress bar, always over the whole
-   briefing -- the filter only decides what the grid below renders. */
+/* Filters row (chips + progress bar), always over the whole briefing -- the filter
+   only decides what the grid below renders. */
 .hub-briefing__filters {
   display: flex;
   flex-wrap: wrap;
@@ -10980,11 +10980,17 @@ a.hub-fill__row-inner:hover {
   gap: 1rem;
   margin-bottom: 1rem;
 }
+/* Filter chips (same look as .today-chip). Shared by Briefing's per-answer filter
+   and Ideias' per-status filter -- one CSS block backs both the `.hub-filter-chip*`
+   names (Ideias) and the `.hub-briefing__chip*` names (Briefing) instead of a
+   near-duplicate per screen. */
+.hub-filter-chips,
 .hub-briefing__chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+.hub-filter-chip,
 .hub-briefing__chip {
   display: inline-flex;
   align-items: center;
@@ -11002,10 +11008,12 @@ a.hub-fill__row-inner:hover {
     color 0.15s ease,
     border-color 0.15s ease;
 }
+.hub-filter-chip__count,
 .hub-briefing__chip-count {
   font-variant-numeric: tabular-nums;
   opacity: 0.85;
 }
+.hub-filter-chip[aria-pressed='true'],
 .hub-briefing__chip[aria-pressed='true'] {
   background: var(--text-main);
   color: var(--card-bg);
@@ -11083,6 +11091,74 @@ a.hub-fill__row-inner:hover {
   .hub-briefing__cell--actions {
     justify-content: flex-start;
   }
+}
+
+/* Ideias: two-up card grid. auto-fill (not a hard 2-col rule) so a card never gets
+   squeezed once the viewport drops below the static sidebar's 1101px breakpoint --
+   it reflows to one column on its own once 2*320px + gap no longer fits. */
+.hub-ideias__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 0.75rem;
+}
+.hub-ideia-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-main);
+}
+.hub-ideia-card__body {
+  display: block;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.hub-ideia-card__body:hover {
+  background: var(--surface-hover);
+}
+/* Sibling of .hub-ideia-card__body, not nested inside it -- a <button> can't
+   contain other <button>s, and "Responder"/"Virar tarefa" are shortcuts into the
+   same IdeiaDrawer the card body itself opens, not a separate interaction. */
+.hub-ideia-card__actions {
+  display: flex;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border-color);
+  padding: 0.6rem 1rem;
+}
+.hub-ideia-card__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.hub-ideia-card__action:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+.hub-ideia-card__action--primary {
+  border-color: var(--primary-color);
+  color: var(--primary-hover);
+}
+.hub-ideia-card__action--primary:hover {
+  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
+  color: var(--primary-hover);
 }
 
 .cliente-finance-empty {
