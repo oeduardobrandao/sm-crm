@@ -66,7 +66,7 @@ function PathProbe() {
   return <span data-testid="path">{location.pathname + location.search}</span>;
 }
 
-function renderAt(path: string) {
+function renderAt(path: string, { hubHasIndex = true }: { hubHasIndex?: boolean } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
   const utils = render(
@@ -81,7 +81,12 @@ function renderAt(path: string) {
             <Route path="redes-sociais" element={<div>conteudo redes-sociais</div>} />
             <Route path="relatorios" element={<div>conteudo relatorios</div>} />
             <Route path="hub">
-              <Route index element={<Navigate to="acesso" replace />} />
+              {/* hubHasIndex=false: exercises the harness App.tsx actually ships without
+                  (see task-2-report.md "Fix round 1") — without an index child here, the
+                  ONLY thing that can produce "conteudo acesso" from bare /hub is
+                  ClienteDetalhePage's own `current === 'hub'` guard, resolved before the
+                  Outlet mounts at all. */}
+              {hubHasIndex && <Route index element={<Navigate to="acesso" replace />} />}
               <Route path="acesso" element={<div>conteudo acesso</div>} />
               <Route path="marca" element={<div>conteudo marca</div>} />
             </Route>
@@ -219,7 +224,13 @@ describe('ClienteDetalhePage', () => {
 
     it('redireciona /hub para /hub/acesso mesmo sem a rota index', async () => {
       setAuth('owner');
-      renderAt('/clientes/42/hub');
+      // No `index` child under `hub` in this harness — the only thing that can produce
+      // "conteudo acesso" from bare /hub here is ClienteDetalhePage's own `current ===
+      // 'hub'` guard (ClienteDetalhePage.tsx), not App.tsx's index route (which the real
+      // app does register, but which never gets a chance to run: the guard resolves
+      // before the Outlet mounts either way). This pins that guard specifically, instead
+      // of duplicating the test above it.
+      renderAt('/clientes/42/hub', { hubHasIndex: false });
       expect(await screen.findByText('conteudo acesso')).toBeInTheDocument();
     });
   });

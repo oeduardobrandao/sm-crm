@@ -15,15 +15,19 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { getHubPages, upsertHubPage, removeHubPage, type HubPageRow } from '@/store';
-import { HubRoleGate } from './HubRoleGate';
+import { HubRoleGate, useHubRoleRestricted } from './HubRoleGate';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 export default function PaginasPage() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const qc = useQueryClient();
+  const isRestricted = useHubRoleRestricted();
+  // An agent never sees the pages data (HubRoleGate below withholds it) — don't fetch it
+  // just to discard it at render.
   const { data: pages } = useQuery({
     queryKey: ['hub-pages-crm', clienteId],
     queryFn: () => getHubPages(clienteId),
+    enabled: !isRestricted,
   });
 
   if (!cliente.conta_id) return null;

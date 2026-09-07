@@ -88,4 +88,16 @@ describe('MarcaPage', () => {
       'md:grid-cols-2',
     );
   });
+
+  // Regression guard: the hub-brand-crm useQuery call sits above <HubRoleGate> in the
+  // component body, so without `enabled: !isRestricted` it fires for every role — an
+  // agent would fetch brand data that HubRoleGate exists to withhold, even though it
+  // never reaches the screen.
+  it('does not fire the hub-brand-crm query for an agent', async () => {
+    setAuth('agent');
+    renderPage();
+
+    await screen.findByText('Hub do Cliente');
+    expect(hubStore.getHubBrand).not.toHaveBeenCalled();
+  });
 });

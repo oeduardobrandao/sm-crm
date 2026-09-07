@@ -12,15 +12,19 @@ import { ColorPicker } from '@/components/shared/ColorPicker';
 import { useFileUrl } from '@/hooks/useFileUrl';
 import { uploadFile } from '@/services/fileService';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
-import { HubRoleGate } from './HubRoleGate';
+import { HubRoleGate, useHubRoleRestricted } from './HubRoleGate';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 export default function MarcaPage() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const qc = useQueryClient();
+  const isRestricted = useHubRoleRestricted();
+  // An agent never sees the brand data (HubRoleGate below withholds it) — don't fetch it
+  // just to discard it at render.
   const { data: brandData } = useQuery({
     queryKey: ['hub-brand-crm', clienteId],
     queryFn: () => getHubBrand(clienteId),
+    enabled: !isRestricted,
   });
 
   if (!cliente.conta_id) return null;

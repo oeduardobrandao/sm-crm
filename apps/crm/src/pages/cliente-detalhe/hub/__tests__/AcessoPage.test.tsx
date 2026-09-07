@@ -283,7 +283,13 @@ describe('AcessoPage', () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
     renderPage();
     await waitFor(() => screen.getByText(/Expira em/));
-    expect(document.querySelector('.hub-access__url')).not.toBeNull();
+    const urlEl = document.querySelector('.hub-access__url');
+    expect(urlEl).not.toBeNull();
+    // Regression guard for the old HubClienteTab.test.tsx assertion that the workspace
+    // slug reaches URL construction (dropped, not superseded, in the split — see
+    // task-2-report.md "Fix round 1"). hubUrl gained a `tokenData && workspaceSlug`
+    // condition during the split (see AcessoPage.tsx above), so this is live logic.
+    expect(urlEl).toHaveTextContent(/\/dk-marketing-medico\/hub\/tok-1$/);
     expect(document.querySelector('.hub-access__secondary-actions')).not.toBeNull();
     expect(document.querySelector('.hub-access__primary-actions')).not.toBeNull();
   });
@@ -310,5 +316,35 @@ describe('AcessoPage', () => {
       .getAll()
       .map((q) => q.queryKey[0]);
     expect(new Set(keys)).toEqual(new Set(['hub-token', 'workspace-slug']));
+  });
+
+  // Regression guard: before the split, HubClienteTab returned RoleRestrictionNotice
+  // before HubTab (and hub-token) ever mounted, so an agent never issued the request.
+  // The split moved the useQuery calls above <HubRoleGate>, so without `enabled:
+  // !isRestricted` on both queries this fires again — landing the portal bearer token
+  // in an agent's React Query cache and network log even though RoleRestrictionNotice
+  // hides it from the screen.
+  it('does not fire the hub-token or workspace-slug queries for an agent', async () => {
+    setAuth('agent');
+    renderPage();
+
+    await screen.findByText('Hub do Cliente');
+    expect(hubStore.getHubToken).not.toHaveBeenCalled();
+    expect(hubStore.getWorkspaceSlug).not.toHaveBeenCalled();
+  });
+
+  // AcessoPage had no agent-role test at all before this fix — the deleted
+  // HubClienteTab.test.tsx covered "agent sees no hub content" for the whole Hub,
+  // Acesso included, but that assertion did not survive the split.
+  it('shows the restriction notice, not Acesso do Cliente, for an agent', async () => {
+    setAuth('agent');
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        'O gerenciamento do Hub do Cliente está disponível apenas para proprietários e administradores do workspace.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Acesso do Cliente')).not.toBeInTheDocument();
   });
 });

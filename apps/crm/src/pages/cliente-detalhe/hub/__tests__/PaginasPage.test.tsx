@@ -80,4 +80,16 @@ describe('PaginasPage', () => {
     expect(dialog.querySelector('.hub-page-editor__input')).toHaveClass('w-full', 'md:w-1/2');
     expect(dialog.querySelector('.hub-page-editor__preview')).toHaveClass('w-full', 'md:w-1/2');
   });
+
+  // Regression guard: the hub-pages-crm useQuery call sits above <HubRoleGate> in the
+  // component body, so without `enabled: !isRestricted` it fires for every role — an
+  // agent would fetch pages data that HubRoleGate exists to withhold, even though it
+  // never reaches the screen.
+  it('does not fire the hub-pages-crm query for an agent', async () => {
+    setAuth('agent');
+    renderPage();
+
+    await screen.findByText('Hub do Cliente');
+    expect(hubStore.getHubPages).not.toHaveBeenCalled();
+  });
 });

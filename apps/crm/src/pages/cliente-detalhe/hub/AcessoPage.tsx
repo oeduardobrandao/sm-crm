@@ -39,7 +39,7 @@ import {
 import { captureEvent } from '@/lib/analytics';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
-import { HubRoleGate } from './HubRoleGate';
+import { HubRoleGate, useHubRoleRestricted } from './HubRoleGate';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 // Raw Postgres error text must never reach the user.
@@ -61,17 +61,26 @@ export default function AcessoPage() {
   const { hasFeature } = useEntitlements();
   const hubPortalEnabled = hasFeature('feature_hub_portal');
 
+  const isRestricted = useHubRoleRestricted();
+
+  // An agent never sees the token (HubRoleGate below withholds it) — don't fetch the
+  // portal bearer token just to discard it at render. Before the split, HubClienteTab
+  // returned RoleRestrictionNotice before HubTab (and this query) ever mounted; disabling
+  // it here restores that.
   const { data: tokenData } = useQuery({
     queryKey: ['hub-token', clienteId],
     queryFn: () => getHubToken(clienteId),
+    enabled: !isRestricted,
   });
 
   // Ported from HubClienteTab.tsx (see git history at d30adeea), where this was a
   // page-wide query — this is the only one of the five portal screens that builds
   // the portal URL, so it is the only one that still needs the workspace slug.
+  // Same reasoning as hub-token above: an agent never needs it.
   const { data: workspaceSlug } = useQuery({
     queryKey: ['workspace-slug'],
     queryFn: getWorkspaceSlug,
+    enabled: !isRestricted,
   });
 
   const hubUrl =
@@ -135,7 +144,13 @@ export default function AcessoPage() {
     }
   }
 
-  if (!contaId || !workspaceSlug) return null;
+  if (!contaId) return null;
+
+  // For an allowed role, also wait for workspaceSlug before rendering (avoids a flash of
+  // "Nenhum link gerado ainda." before the slug resolves). A restricted agent skips this:
+  // workspaceSlug's query is disabled above and never resolves, but HubRoleGate below shows
+  // the notice regardless, so it must not be blocked on a query that never fires for it.
+  if (!isRestricted && !workspaceSlug) return null;
 
   return (
     <div className="hub-page">
