@@ -1,11 +1,23 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { Cliente } from '@/store';
+import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
+
+// AcessoPage is the split-out "Acesso" screen of the pre-existing HubTab.tsx
+// (see git history at d30adeea) — this suite is HubTab.test.tsx's "HubTab —
+// Acesso" describe block, ported to render the route directly instead of a
+// `<HubTab>` prop-driven component, plus the workspace-slug-specific
+// assertions that used to live in tabs/__tests__/HubClienteTab.test.tsx
+// (workspace-slug moved here because Acesso is the only screen that builds
+// the portal URL — see clienteTabs.model.ts / task-2-brief.md).
 
 // Radix AlertDialog relies on portals/focus-trap plumbing that's overkill to exercise
 // here — mirrors the simplified context-driven mock already used by ClientesPage.test.tsx,
-// extended with Trigger/Description since HubTab drives the dialog via an uncontrolled trigger.
+// extended with Trigger/Description since AcessoPage drives the dialog via an uncontrolled
+// trigger.
 vi.mock('@/components/ui/alert-dialog', async () => {
   const ReactModule = await vi.importActual<typeof import('react')>('react');
 
@@ -116,10 +128,15 @@ vi.mock('@/hooks/useEntitlements', () => ({
   useEntitlements: () => mockEntitlements,
 }));
 
-import { HubTab } from '../HubTab';
-import * as hubStore from '../../../store/hub';
+vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 
-vi.mock('../../../store/hub');
+vi.mock('@/store/hub');
+
+import { useAuth } from '@/context/AuthContext';
+import AcessoPage from '../AcessoPage';
+import * as hubStore from '@/store/hub';
+
+const mockedUseAuth = vi.mocked(useAuth);
 
 // Fail-open by default (matches useEntitlements while the plan is still loading).
 let mockEntitlements: { hasFeature: (flag: string) => boolean } = { hasFeature: () => true };
@@ -132,73 +149,67 @@ const token = (expiresInDays: number) => ({
   expires_at: new Date(Date.now() + expiresInDays * DAY).toISOString(),
 });
 
-let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
-let scrollToDescriptor: PropertyDescriptor | undefined;
+const CLIENTE: Cliente = {
+  id: 15,
+  nome: 'Aurora Estética',
+  sigla: 'AE',
+  cor: '#ffbf30',
+  plano: 'Plano Ouro',
+  email: 'contato@aurora.com.br',
+  telefone: '(85) 99999-0000',
+  status: 'ativo',
+  valor_mensal: 1500,
+  conta_id: 'ws-1',
+};
 
-function setGeometry(
-  element: Element,
-  geometry: Partial<Record<'offsetLeft' | 'offsetWidth' | 'clientWidth' | 'scrollWidth', number>>,
-) {
-  for (const [property, value] of Object.entries(geometry)) {
-    Object.defineProperty(element, property, { configurable: true, value });
-  }
+function setAuth(workspaceRole: 'owner' | 'admin' | 'agent' | null) {
+  mockedUseAuth.mockReturnValue({ workspaceRole } as never);
 }
 
-function renderTab() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <HubTab clienteId={15} contaId="ws-1" workspaceSlug="dk-marketing-medico" />
-    </QueryClientProvider>,
+function OutletContextProvider({ cliente }: { cliente: Cliente }) {
+  return (
+    <Outlet context={{ clienteId: cliente.id!, cliente } satisfies ClienteDetalheOutletContext} />
   );
 }
 
-describe('HubTab — Acesso', () => {
+function renderPage(cliente: Cliente = CLIENTE) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const utils = render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route element={<OutletContextProvider cliente={cliente} />}>
+            <Route path="/" element={<AcessoPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return { ...utils, queryClient };
+}
+
+describe('AcessoPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockEntitlements = { hasFeature: () => true };
-    scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
-    scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
-    Object.defineProperty(Element.prototype, 'scrollIntoView', {
-      configurable: true,
-      writable: true,
-      value: vi.fn(),
-    });
-    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
-      configurable: true,
-      writable: true,
-      value: vi.fn(),
-    });
-    // These queries always mount (independent of the active tab) — stub them so
-    // TanStack Query doesn't warn about an undefined resolution unrelated to this suite.
-    vi.mocked(hubStore.getHubBrand).mockResolvedValue({ brand: null, files: [] });
-    vi.mocked(hubStore.getHubPages).mockResolvedValue([]);
+    setAuth('owner');
+    vi.mocked(hubStore.getWorkspaceSlug).mockResolvedValue('dk-marketing-medico');
   });
 
   afterEach(() => {
     cleanup();
-    if (scrollIntoViewDescriptor) {
-      Object.defineProperty(Element.prototype, 'scrollIntoView', scrollIntoViewDescriptor);
-    } else {
-      delete (Element.prototype as Partial<Element>).scrollIntoView;
-    }
-    if (scrollToDescriptor) {
-      Object.defineProperty(HTMLElement.prototype, 'scrollTo', scrollToDescriptor);
-    } else {
-      delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
-    }
   });
 
   it('shows a healthy link with no Estender button', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
-    renderTab();
+    renderPage();
     await waitFor(() => expect(screen.getByText(/Expira em/)).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /Estender/ })).not.toBeInTheDocument();
   });
 
   it('shows Estender when the link is near expiry', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(12));
-    renderTab();
+    renderPage();
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Estender/ })).toBeInTheDocument(),
     );
@@ -206,7 +217,7 @@ describe('HubTab — Acesso', () => {
 
   it('shows the Expirado badge and Estender when lapsed', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(-1));
-    renderTab();
+    renderPage();
     await waitFor(() => expect(screen.getByText('Expirado')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Estender/ })).toBeInTheDocument();
   });
@@ -220,14 +231,14 @@ describe('HubTab — Acesso', () => {
       is_active: true,
       expires_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     });
-    renderTab();
+    renderPage();
     await waitFor(() => expect(screen.getByText('Expirado')).toBeInTheDocument());
     expect(screen.queryByText(/Expira em 0 dias/)).not.toBeInTheDocument();
   });
 
   it('offers to generate a link when the plan includes the hub portal', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(null);
-    renderTab();
+    renderPage();
     await waitFor(() => expect(screen.getByText('Nenhum link gerado ainda.')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Gerar link/ })).toBeInTheDocument();
   });
@@ -235,7 +246,7 @@ describe('HubTab — Acesso', () => {
   it('prompts for an upgrade instead of generating when feature_hub_portal is off', async () => {
     mockEntitlements = { hasFeature: (flag) => flag !== 'feature_hub_portal' };
     vi.mocked(hubStore.getHubToken).mockResolvedValue(null);
-    renderTab();
+    renderPage();
 
     await waitFor(() =>
       expect(
@@ -253,7 +264,7 @@ describe('HubTab — Acesso', () => {
       token: 'tok-2',
       expires_at: new Date(Date.now() + 365 * DAY).toISOString(),
     });
-    renderTab();
+    renderPage();
     await waitFor(() => screen.getByRole('button', { name: /Gerar novo link/ }));
 
     fireEvent.click(screen.getByRole('button', { name: /Gerar novo link/ }));
@@ -263,69 +274,41 @@ describe('HubTab — Acesso', () => {
     await waitFor(() => expect(hubStore.rotateHubToken).toHaveBeenCalledWith('t1'));
   });
 
-  it('renders all tabs inside the horizontal Hub tab list', async () => {
+  // Ported from HubTab.test.tsx's "scrolls the selected tab into view and groups
+  // access actions" — the scroll-into-view half tested the pill-tab strip, which
+  // no longer exists now that Acesso/Briefing/Marca/Páginas/Ideias are separate
+  // routes (see ClienteDetalheNav.test.tsx for the nav-link equivalent). Only the
+  // "groups access actions" half still applies to this screen.
+  it('groups access actions into secondary/primary containers', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
-    renderTab();
+    renderPage();
     await waitFor(() => screen.getByText(/Expira em/));
-    expect(screen.getByRole('tablist')).toHaveClass('hub-tabs__list');
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Acesso',
-      'Briefing',
-      'Marca',
-      'Páginas',
-      'Ideias',
-    ]);
-  });
-
-  it('scrolls the selected tab into view and groups access actions', async () => {
-    vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
-    renderTab();
-    await waitFor(() => screen.getByText(/Expira em/));
-    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
-    expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
-
-    const ideias = await screen.findByRole('tab', { name: 'Ideias' });
-    const tabList = screen.getByRole('tablist');
-    setGeometry(tabList, { clientWidth: 240, scrollWidth: 600 });
-    setGeometry(ideias, { offsetLeft: 420, offsetWidth: 100 });
-    fireEvent.mouseDown(ideias);
-    await waitFor(() =>
-      expect(tabList.scrollTo).toHaveBeenCalledWith({
-        behavior: 'smooth',
-        left: 350,
-      }),
-    );
-    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Acesso' }));
     expect(document.querySelector('.hub-access__url')).not.toBeNull();
     expect(document.querySelector('.hub-access__secondary-actions')).not.toBeNull();
     expect(document.querySelector('.hub-access__primary-actions')).not.toBeNull();
   });
 
-  it('stacks the brand editor fields until the tablet breakpoint', async () => {
+  // Ported from tabs/__tests__/HubClienteTab.test.tsx, which tested this at the
+  // old wrapper level (the wrapper waited on workspaceSlug before rendering
+  // HubTab at all). Now that AcessoPage owns the workspace-slug query directly,
+  // it is the one that must not render until the slug resolves.
+  it('does not render until workspaceSlug resolves, for an owner', () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
-    renderTab();
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Marca' }));
+    vi.mocked(hubStore.getWorkspaceSlug).mockReturnValue(new Promise(() => {})); // never resolves
+    renderPage();
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Marca' })).toBeInTheDocument());
-    expect(document.querySelector('.hub-brand-editor__grid')).toHaveClass(
-      'grid-cols-1',
-      'md:grid-cols-2',
-    );
+    expect(screen.queryByText('Acesso do Cliente')).not.toBeInTheDocument();
   });
 
-  it('stacks the page editor and preview until the tablet breakpoint', async () => {
+  it('fires only the hub-token and workspace-slug queries — nothing from Marca/Páginas/Briefing', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
-    renderTab();
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Páginas' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Nova página' }));
+    const { queryClient } = renderPage();
+    await waitFor(() => screen.getByText(/Expira em/));
 
-    const dialog = await screen.findByRole('dialog', { name: 'Nova página' });
-    expect(dialog.querySelector('.hub-page-editor__workspace')).toHaveClass(
-      'flex-col',
-      'md:flex-row',
-    );
-    expect(dialog.querySelector('.hub-page-editor__input')).toHaveClass('w-full', 'md:w-1/2');
-    expect(dialog.querySelector('.hub-page-editor__preview')).toHaveClass('w-full', 'md:w-1/2');
+    const keys = queryClient
+      .getQueryCache()
+      .getAll()
+      .map((q) => q.queryKey[0]);
+    expect(new Set(keys)).toEqual(new Set(['hub-token', 'workspace-slug']));
   });
 });

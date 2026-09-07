@@ -110,7 +110,14 @@ export default function ClienteDetalhePage() {
   // under /clientes/:id and renders a blank content pane.
   const current = pathname.replace(/^\/clientes\/[^/]+\/?/, '').replace(/\/+$/, '');
 
-  // Unknown segment: not one of the seven registered tabs (and not the empty
+  // `hub` deixou de ser aba própria (virou o grupo do nav, cf. clienteTabs.model),
+  // então cai na checagem de segmento desconhecido abaixo e iria para visao-geral.
+  // A rota `index` de App.tsx não salva: o guard resolve ANTES do Outlet montar.
+  if (current === 'hub') {
+    return <Navigate to={`/clientes/${clienteId}/hub/acesso`} replace />;
+  }
+
+  // Unknown segment: not one of the eleven registered tabs (and not the empty
   // index segment, which has its own route/component).
   if (current && !CLIENTE_TABS.some((tab) => tab.key === current)) {
     return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;

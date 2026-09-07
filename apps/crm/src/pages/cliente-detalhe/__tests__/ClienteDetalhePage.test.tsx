@@ -1,5 +1,5 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -80,7 +80,11 @@ function renderAt(path: string) {
             <Route path="entregas" element={<div>conteudo entregas</div>} />
             <Route path="redes-sociais" element={<div>conteudo redes-sociais</div>} />
             <Route path="relatorios" element={<div>conteudo relatorios</div>} />
-            <Route path="hub" element={<div>conteudo hub</div>} />
+            <Route path="hub">
+              <Route index element={<Navigate to="acesso" replace />} />
+              <Route path="acesso" element={<div>conteudo acesso</div>} />
+              <Route path="marca" element={<div>conteudo marca</div>} />
+            </Route>
             <Route path="arquivos" element={<div>conteudo arquivos</div>} />
             <Route path="financeiro" element={<div>conteudo financeiro</div>} />
             <Route path="*" element={null} />
@@ -124,7 +128,7 @@ describe('ClienteDetalhePage', () => {
     expect(await screen.findByText('Cliente não encontrado')).toBeInTheDocument();
   });
 
-  it('renders the seven tabs grouped and in order for an owner', async () => {
+  it('renders the eleven tabs grouped and in order for an owner', async () => {
     setAuth('owner');
     renderAt('/clientes/42/visao-geral');
     await screen.findByText('conteudo visao-geral');
@@ -133,7 +137,11 @@ describe('ClienteDetalhePage', () => {
       'Entregas',
       'Redes sociais',
       'Relatórios',
-      'Hub',
+      'Acesso',
+      'Briefing',
+      'Marca',
+      'Páginas',
+      'Ideias',
       'Arquivos',
       'Financeiro',
     ]);
@@ -187,6 +195,32 @@ describe('ClienteDetalhePage', () => {
       renderAt('/clientes/42/visao-geral/extra');
       await screen.findByText('conteudo visao-geral');
       expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/visao-geral');
+    });
+  });
+
+  describe('sub-abas do portal', () => {
+    it('redireciona /hub para /hub/acesso', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/hub');
+      expect(await screen.findByText('conteudo acesso')).toBeInTheDocument();
+    });
+
+    it('renderiza uma sub-aba diretamente pela URL', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/hub/marca');
+      expect(await screen.findByText('conteudo marca')).toBeInTheDocument();
+    });
+
+    it('redireciona sub-aba desconhecida para visao-geral', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/hub/bogus');
+      expect(await screen.findByText('conteudo visao-geral')).toBeInTheDocument();
+    });
+
+    it('redireciona /hub para /hub/acesso mesmo sem a rota index', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/hub');
+      expect(await screen.findByText('conteudo acesso')).toBeInTheDocument();
     });
   });
 

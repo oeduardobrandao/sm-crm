@@ -39,7 +39,7 @@ describe('guideContent', () => {
     expect(ig.action!.to({ latestClienteId: 7 })).toBe('/clientes/7/redes-sociais');
     expect(ig.action!.to({ latestClienteId: null })).toBe('/clientes');
     const hub = pages.find((p) => p.id === 't1p4')!;
-    expect(hub.action!.to({ latestClienteId: 7 })).toBe('/clientes/7/hub');
+    expect(hub.action!.to({ latestClienteId: 7 })).toBe('/clientes/7/hub/acesso');
   });
 
   it('cópia visível não usa em-dash', () => {
