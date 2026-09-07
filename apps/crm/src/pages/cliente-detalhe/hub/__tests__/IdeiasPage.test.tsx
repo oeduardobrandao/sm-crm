@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
@@ -79,8 +79,15 @@ const NOW = '2026-08-01T12:00:00Z';
 // no await/findBy right after calling renderIdeias. Fixtures are intentionally loose
 // (Record<string, unknown>, cast at the boundary) so callers can pass only the fields
 // IdeiasPage actually reads, matching the brief's test snippets verbatim.
+//
+// staleTime: Infinity keeps these seeded fixtures from being silently replaced. beforeEach
+// leaves the mocked getIdeias resolving `[]`, and with the default staleTime (0) the query
+// is refetched on mount; that refetch resolves on a later microtask, so any test that
+// awaits/findBy after this call would see the fixtures wiped out from under it.
 function renderIdeias(ideias: Array<Record<string, unknown>>) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
   queryClient.setQueryData(['hub-ideias-crm', CLIENTE.id], ideias);
   return renderPage(CLIENTE, queryClient);
 }
@@ -127,9 +134,11 @@ describe('IdeiasPage', () => {
         created_at: NOW,
       },
     ]);
-    expect(screen.getByTestId('chip-nova')).toHaveTextContent('2');
-    expect(screen.getByTestId('chip-aprovada')).toHaveTextContent('1');
-    expect(screen.getByTestId('chip-todas')).toHaveTextContent('3');
+    // Regex (not a substring match): `toHaveTextContent('2')` would also accept "12", and
+    // would keep passing even if the chip's onClick set the wrong status.
+    expect(screen.getByTestId('chip-nova')).toHaveTextContent(/^Nova\s*2$/);
+    expect(screen.getByTestId('chip-aprovada')).toHaveTextContent(/^Aprovada\s*1$/);
+    expect(screen.getByTestId('chip-todas')).toHaveTextContent(/^Todas\s*3$/);
   });
 
   it('não renderiza chip de estado sem nenhuma ideia', () => {
@@ -137,5 +146,33 @@ describe('IdeiasPage', () => {
       { id: 1, status: 'nova', titulo: 'A', descricao: 'd', ideia_reactions: [], created_at: NOW },
     ]);
     expect(screen.queryByTestId('chip-descartada')).not.toBeInTheDocument();
+  });
+
+  it('filtra a lista ao clicar num chip, sem afetar a contagem dos demais chips', () => {
+    renderIdeias([
+      { id: 1, status: 'nova', titulo: 'A', descricao: 'd', ideia_reactions: [], created_at: NOW },
+      { id: 2, status: 'nova', titulo: 'B', descricao: 'd', ideia_reactions: [], created_at: NOW },
+      {
+        id: 3,
+        status: 'aprovada',
+        titulo: 'C',
+        descricao: 'd',
+        ideia_reactions: [],
+        created_at: NOW,
+      },
+    ]);
+
+    fireEvent.click(screen.getByTestId('chip-aprovada'));
+
+    expect(screen.getByText('C')).toBeInTheDocument();
+    expect(screen.queryByText('A')).not.toBeInTheDocument();
+    expect(screen.queryByText('B')).not.toBeInTheDocument();
+
+    expect(screen.getByTestId('chip-aprovada')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('chip-nova')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('chip-todas')).toHaveAttribute('aria-pressed', 'false');
+    // The chip a user didn't click keeps reading its own full count, unaffected by the
+    // now-filtered list below it.
+    expect(screen.getByTestId('chip-nova')).toHaveTextContent(/^Nova\s*2$/);
   });
 });

@@ -11112,6 +11112,7 @@ a.hub-fill__row-inner:hover {
 .hub-ideia-card__body {
   display: block;
   width: 100%;
+  flex: 1;
   padding: 0.9rem 1rem;
   border: none;
   background: transparent;
@@ -11154,11 +11155,11 @@ a.hub-fill__row-inner:hover {
 }
 .hub-ideia-card__action--primary {
   border-color: var(--primary-color);
-  color: var(--primary-hover);
+  color: var(--text-main);
 }
 .hub-ideia-card__action--primary:hover {
   background: color-mix(in srgb, var(--primary-color) 16%, transparent);
-  color: var(--primary-hover);
+  color: var(--text-main);
 }
 
 .cliente-finance-empty {

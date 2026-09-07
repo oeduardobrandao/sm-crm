@@ -97,12 +97,21 @@ vi.mock('@/pages/tarefas/components/TarefaFormDialog', () => ({
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { IdeiaDrawer } from '../IdeiaDrawer';
 
-function renderDrawer(ideia: Record<string, unknown>, client?: QueryClient) {
+function renderDrawer(
+  ideia: Record<string, unknown>,
+  client?: QueryClient,
+  initialAction?: 'responder' | 'converter',
+) {
   const qc = client ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <IdeiaDrawer ideia={ideia as never} queryKey={['x']} onClose={() => {}} />
+        <IdeiaDrawer
+          ideia={ideia as never}
+          queryKey={['x']}
+          onClose={() => {}}
+          initialAction={initialAction}
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -159,6 +168,43 @@ describe('IdeiaDrawer conversion UI', () => {
     expect(combobox).toBeInTheDocument();
     expect(combobox).toHaveTextContent('Selecionar status...');
     expect(combobox).not.toHaveTextContent('Nova');
+  });
+});
+
+describe('IdeiaDrawer initialAction shortcut', () => {
+  it('does not change behavior when initialAction is omitted (existing call sites)', () => {
+    renderDrawer({ ...BASE, tipo: 'solicitacao', status: 'nova', tarefa_id: null });
+    expect(
+      screen.queryByPlaceholderText('Escreva uma resposta para o cliente...'),
+    ).not.toHaveFocus();
+    expect(screen.queryByTestId('tarefa-form-dialog-stub')).not.toBeInTheDocument();
+  });
+
+  it('focuses the agency-response field on mount for initialAction="responder"', () => {
+    renderDrawer(
+      { ...BASE, tipo: 'ideia', status: 'nova', tarefa_id: null },
+      undefined,
+      'responder',
+    );
+    expect(screen.getByPlaceholderText('Escreva uma resposta para o cliente...')).toHaveFocus();
+  });
+
+  it('opens the convert flow on mount for initialAction="converter" on an eligible solicitacao', () => {
+    renderDrawer(
+      { ...BASE, tipo: 'solicitacao', status: 'nova', tarefa_id: null },
+      undefined,
+      'converter',
+    );
+    expect(screen.getByTestId('tarefa-form-dialog-stub')).toBeInTheDocument();
+  });
+
+  it('ignores initialAction="converter" when the idea is not convertible', () => {
+    renderDrawer(
+      { ...BASE, tipo: 'ideia', status: 'nova', tarefa_id: null },
+      undefined,
+      'converter',
+    );
+    expect(screen.queryByTestId('tarefa-form-dialog-stub')).not.toBeInTheDocument();
   });
 });
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MessageSquare, ListChecks } from 'lucide-react';
@@ -62,6 +62,9 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
   });
 
   const [selectedIdeia, setSelectedIdeia] = useState<Ideia | null>(null);
+  const [initialAction, setInitialAction] = useState<'responder' | 'converter' | undefined>(
+    undefined,
+  );
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   // Contagem derivada da lista já carregada -- nenhuma query nova. Uma contagem que
@@ -76,6 +79,25 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
 
   const filtered =
     statusFilter === 'all' ? ideias : ideias.filter((i) => i.status === statusFilter);
+
+  // O chip ativo pode desaparecer sob o próprio filtro (última ideia "nova" convertida,
+  // por exemplo): a lista some sem nenhum chip pressionado e sem causa visível. Volta pra
+  // "Todas" assim que a contagem do filtro ativo zera.
+  useEffect(() => {
+    if (statusFilter === 'all') return;
+    if ((statusCounts.get(statusFilter) ?? 0) > 0) return;
+    setStatusFilter('all');
+  }, [statusFilter, statusCounts]);
+
+  function openDrawer(ideia: Ideia, action?: 'responder' | 'converter') {
+    setSelectedIdeia(ideia);
+    setInitialAction(action);
+  }
+
+  function closeDrawer() {
+    setSelectedIdeia(null);
+    setInitialAction(undefined);
+  }
 
   if (isLoading) {
     return (
@@ -124,7 +146,7 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
             <div key={ideia.id} className="hub-ideia-card">
               <button
                 type="button"
-                onClick={() => setSelectedIdeia(ideia)}
+                onClick={() => openDrawer(ideia)}
                 className="hub-ideia-card__body"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -150,14 +172,15 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
                   </span>
                 </div>
               </button>
-              {/* Atalhos para o IdeiaDrawer -- ele continua sendo onde a interação
-                  acontece (responder de fato, converter de fato); os botões aqui só
-                  abrem o mesmo drawer que clicar no card já abre. */}
+              {/* Atalhos para o IdeiaDrawer -- abrem o mesmo drawer que clicar no card já
+                  abre, mas com `initialAction` levando direto para a resposta ou para o
+                  fluxo de conversão em vez de largar o usuário no topo do drawer. */}
               <div className="hub-ideia-card__actions">
                 <button
                   type="button"
                   className="hub-ideia-card__action"
-                  onClick={() => setSelectedIdeia(ideia)}
+                  onClick={() => openDrawer(ideia, 'responder')}
+                  aria-label={`Responder a ${ideia.titulo}`}
                 >
                   <MessageSquare size={13} />
                   Responder
@@ -166,7 +189,8 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
                   <button
                     type="button"
                     className="hub-ideia-card__action hub-ideia-card__action--primary"
-                    onClick={() => setSelectedIdeia(ideia)}
+                    onClick={() => openDrawer(ideia, 'converter')}
+                    aria-label={`Virar tarefa: ${ideia.titulo}`}
                   >
                     <ListChecks size={13} />
                     Virar tarefa
@@ -188,7 +212,8 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
             <IdeiaDrawer
               ideia={current}
               queryKey={queryKey}
-              onClose={() => setSelectedIdeia(null)}
+              onClose={closeDrawer}
+              initialAction={initialAction}
             />
           );
         })()}
