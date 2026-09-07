@@ -92,10 +92,10 @@ Deno.test("getDashboard: só agregados — nenhuma chave owner_* ou lista de wor
   const { db } = makeFakeDb(
     { plans: [{ data: [{ id: "a" }, { id: "b" }], error: null }], workspaces: [{ data: null, error: null, count: 1 } as never, { data: null, error: null, count: 1 } as never],
       workspace_subscriptions: [{ data: [], error: null }, { data: [], error: null }] },
-    { admin_list_workspaces: [{ data: { workspaces: [WS], total: 12, total_members: 30, total_clients: 70, total_with_overrides: 2 }, error: null }] },
+    { admin_list_workspaces: [{ data: { workspaces: [WS], total: 12, total_members: 30, total_clients: 70, total_with_overrides: 2, total_instagram_accounts: 9, total_instagram_accounts_active: 8 }, error: null }] },
   );
   const r = await getDashboard(makeDeps(db));
-  assertEquals(r, { totals: { workspaces: 12, members: 30, clients: 70, with_overrides: 2, active_plans: 2 }, mrr: { mrr_cents: 0, paying_count: 0 }, trials: { trial_mrr_cents: 0, trial_count: 0 } });
+  assertEquals(r, { totals: { workspaces: 12, members: 30, clients: 70, with_overrides: 2, instagram_accounts: 9, instagram_accounts_active: 8, active_plans: 2 }, mrr: { mrr_cents: 0, paying_count: 0 }, trials: { trial_mrr_cents: 0, trial_count: 0 } });
   assert(!JSON.stringify(r).includes("owner_"));
 });
 

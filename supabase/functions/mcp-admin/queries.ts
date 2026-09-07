@@ -322,6 +322,7 @@ export async function listWorkspaces(d: Deps, args: { search?: string; plan_id?:
   const body = await handlerJson(res, "Workspace");
   return { ...body, workspaces: ((body.workspaces ?? []) as Array<Record<string, unknown>>).map(stripPii) } as {
     workspaces: Array<Record<string, unknown>>; total: number; total_members: number; total_clients: number; total_with_overrides: number;
+    total_instagram_accounts: number; total_instagram_accounts_active: number;
   };
 }
 
@@ -365,6 +366,8 @@ export async function getDashboard(d: Deps) {
       members: Number(ws.total_members ?? 0),
       clients: Number(ws.total_clients ?? 0),
       with_overrides: Number(ws.total_with_overrides ?? 0),
+      instagram_accounts: Number(ws.total_instagram_accounts ?? 0),
+      instagram_accounts_active: Number(ws.total_instagram_accounts_active ?? 0),
       active_plans: ((plans.plans ?? []) as unknown[]).length,
     },
     mrr: { mrr_cents: Number(mrr.mrr_cents ?? 0), paying_count: Number(mrr.paying_count ?? 0) },

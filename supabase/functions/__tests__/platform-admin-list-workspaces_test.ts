@@ -97,6 +97,8 @@ Deno.test("list-workspaces defaults offset 0 / limit 20 and null filters", async
     total_members: 0,
     total_clients: 0,
     total_with_overrides: 0,
+    total_instagram_accounts: 0,
+    total_instagram_accounts_active: 0,
   });
   assertEquals(rpcCalls[0].params, {
     p_search: null,
@@ -124,6 +126,8 @@ Deno.test("list-workspaces tolerates a null RPC payload", async () => {
     total_members: 0,
     total_clients: 0,
     total_with_overrides: 0,
+    total_instagram_accounts: 0,
+    total_instagram_accounts_active: 0,
   });
 });
 

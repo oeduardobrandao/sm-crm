@@ -6,18 +6,11 @@ import { TooltipProvider } from '../../components/ui/tooltip';
 
 vi.mock('../../lib/api', () => ({
   listWorkspaces: vi.fn(),
-  listPlans: vi.fn(),
   getMrr: vi.fn(),
   getTrials: vi.fn(),
 }));
 
-import {
-  getMrr,
-  getTrials,
-  listPlans,
-  listWorkspaces,
-  type ListWorkspacesParams,
-} from '../../lib/api';
+import { getMrr, getTrials, listWorkspaces, type ListWorkspacesParams } from '../../lib/api';
 import DashboardPage from '../DashboardPage';
 
 const DAY = 86_400_000;
@@ -28,6 +21,8 @@ const RECENT = {
   total_members: 12,
   total_clients: 31,
   total_with_overrides: 4,
+  total_instagram_accounts: 18,
+  total_instagram_accounts_active: 15,
   workspaces: [
     {
       id: 'a',
@@ -63,6 +58,8 @@ const PENDING = {
   total_members: 0,
   total_clients: 0,
   total_with_overrides: 0,
+  total_instagram_accounts: 0,
+  total_instagram_accounts_active: 0,
   workspaces: [
     {
       id: 'p1',
@@ -96,7 +93,6 @@ const PENDING = {
 beforeEach(() => {
   vi.mocked(listWorkspaces).mockImplementation(((params?: ListWorkspacesParams) =>
     Promise.resolve(params?.status === 'pendente' ? PENDING : RECENT)) as never);
-  vi.mocked(listPlans).mockResolvedValue({ plans: [{ id: 'p1' }, { id: 'p2' }] } as never);
   // The Stripe-backed queries never resolve by default: the other cards must not wait for them.
   vi.mocked(getMrr).mockReturnValue(new Promise(() => {}) as never);
   vi.mocked(getTrials).mockReturnValue(new Promise(() => {}) as never);
@@ -121,13 +117,41 @@ function kpiCard(label: string): HTMLElement {
 }
 
 describe('DashboardPage per-card loading', () => {
-  it('shows workspace and plan KPIs while the Stripe-backed queries are still loading', async () => {
+  it('shows the workspace KPIs while the Stripe-backed queries are still loading', async () => {
     renderPage();
     await waitFor(() => expect(kpiCard('Workspaces').textContent).toContain('7'));
     expect(kpiCard('Usuários').textContent).toContain('12');
-    expect(kpiCard('Clientes').textContent).toContain('31');
-    expect(kpiCard('Planos ativos').textContent).toContain('2');
-    expect(kpiCard('Com overrides').textContent).toContain('4');
+    expect(kpiCard('Contas do Instagram').textContent).toContain('18');
+    expect(kpiCard('Contas do Instagram').textContent).toContain('3 precisam reconectar');
+  });
+
+  it('shows no reconnect caption when every Instagram link is still authorized', async () => {
+    vi.mocked(listWorkspaces).mockImplementation(((params?: ListWorkspacesParams) =>
+      Promise.resolve(
+        params?.status === 'pendente'
+          ? PENDING
+          : { ...RECENT, total_instagram_accounts_active: 18 },
+      )) as never);
+    renderPage();
+    await waitFor(() => expect(kpiCard('Contas do Instagram').textContent).toContain('18'));
+    expect(kpiCard('Contas do Instagram').textContent).not.toMatch(/reconectar/);
+  });
+
+  // The Instagram totals arrive only from admin_list_workspaces v7 on: an admin deployed
+  // against an older database must show the placeholder, not a false zero.
+  it('falls back to the placeholder when the RPC returns no Instagram totals', async () => {
+    vi.mocked(listWorkspaces).mockImplementation(((params?: ListWorkspacesParams) => {
+      if (params?.status === 'pendente') return Promise.resolve(PENDING);
+      const {
+        total_instagram_accounts: _a,
+        total_instagram_accounts_active: _b,
+        ...legacy
+      } = RECENT;
+      return Promise.resolve(legacy);
+    }) as never);
+    renderPage();
+    await waitFor(() => expect(kpiCard('Workspaces').textContent).toContain('7'));
+    expect(kpiCard('Contas do Instagram').textContent).toContain('—');
   });
 
   it('shows the paying-workspace count and its share of all workspaces once MRR resolves', async () => {
@@ -148,7 +172,7 @@ describe('DashboardPage per-card loading', () => {
     expect(kpiCard('Pagantes').textContent).toContain('—');
     expect(kpiCard('MRR').textContent).toContain('—');
     expect(kpiCard('Testes').textContent).toContain('—');
-    expect(kpiCard('MRR total').textContent).toContain('—');
+    expect(kpiCard('MRR projetado').textContent).toContain('—');
     expect(kpiCard('Em risco').textContent).toContain('—');
   });
 
