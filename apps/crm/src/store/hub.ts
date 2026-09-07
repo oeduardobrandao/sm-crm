@@ -227,6 +227,63 @@ export async function getWorkspaceSlug(): Promise<string | null> {
   return (conta as { slug: string | null } | null)?.slug ?? null;
 }
 
+export interface PortalFill {
+  briefingTotal: number;
+  briefingAnswered: number;
+  brandFiles: number;
+  hasBrand: boolean;
+  pages: number;
+  newIdeasWithoutReply: number;
+}
+
+/**
+ * Powers the "O que o cliente vê" panel on AcessoPage: one count per portal
+ * section, so the CRM can show how filled-in the client's portal actually is.
+ * Counts use `head: true` -- no rows travel over the wire, just the header
+ * with the count.
+ *
+ * RLS already scopes every one of these tables by `conta_id`; adding that
+ * filter here would be redundant, not an extra safety net.
+ *
+ * Throws on any failed count instead of coercing it to zero. A failed count
+ * has to leave the panel inconclusive (a dash), never "vazia" -- "vazia" is a
+ * specific claim that the section is empty, and asserting that off a request
+ * that never resolved would be wrong more often than it's convenient.
+ */
+export async function getPortalFill(clienteId: number): Promise<PortalFill> {
+  const countOf = async (table: string, apply: (q: any) => any = (q) => q): Promise<number> => {
+    const { count, error } = await apply(
+      supabase.from(table).select('id', { count: 'exact', head: true }).eq('cliente_id', clienteId),
+    );
+    if (error) throw error;
+    return count ?? 0;
+  };
+
+  const [briefingTotal, briefingAnswered, brandFiles, pages, newIdeasWithoutReply, brand] =
+    await Promise.all([
+      countOf('hub_briefing_questions'),
+      countOf('hub_briefing_questions', (q) => q.not('answer', 'is', null).neq('answer', '')),
+      countOf('hub_brand_files'),
+      countOf('hub_pages'),
+      countOf('ideias', (q) => q.eq('status', 'nova').is('comentario_agencia', null)),
+      supabase.from('hub_brand').select('id').eq('cliente_id', clienteId).maybeSingle(),
+    ]);
+
+  // brand isn't routed through countOf (it needs the row, not just a count, to tell
+  // "no brand configured" from "brand configured with blank colors") -- same throw
+  // rule still applies so a failed lookup can't read as hasBrand: false.
+  if (brand.error) throw brand.error;
+
+  return {
+    briefingTotal,
+    briefingAnswered,
+    brandFiles,
+    pages,
+    newIdeasWithoutReply,
+    hasBrand: brand.data != null,
+  };
+}
+
 export async function getHubBriefingQuestions(
   clienteId: number,
 ): Promise<HubBriefingQuestionRow[]> {

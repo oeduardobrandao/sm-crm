@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, type ReactNode } from 'react';
+import { useOutletContext, Link } from 'react-router-dom';
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import {
   Copy,
   Eye,
@@ -10,6 +10,7 @@ import {
   CalendarClock,
   RefreshCw,
   Lock,
+  Lightbulb,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { differenceInCalendarDays, format } from 'date-fns';
@@ -35,11 +36,13 @@ import {
   rotateHubToken,
   invalidateHubTokenQueries,
   getWorkspaceSlug,
+  type PortalFill,
 } from '@/store';
 import { captureEvent } from '@/lib/analytics';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { HubRoleGate, useHubRoleRestricted } from './HubRoleGate';
+import { usePortalFill } from './usePortalFill';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 // Raw Postgres error text must never reach the user.
@@ -82,6 +85,10 @@ export default function AcessoPage() {
     queryFn: getWorkspaceSlug,
     enabled: !isRestricted,
   });
+
+  // Backs the "O que o cliente vê" panel. Same gating as the two queries above:
+  // usePortalFill withholds the fetch itself for a restricted agent.
+  const fillQuery = usePortalFill(clienteId);
 
   const hubUrl =
     tokenData && workspaceSlug
@@ -163,149 +170,282 @@ export default function AcessoPage() {
         </div>
       </header>
       <HubRoleGate>
-        <section>
-          <h3 className="font-semibold mb-3">Acesso do Cliente</h3>
-          {tokenData ? (
-            <>
-              <div className="hub-access">
-                <code className="hub-access__url text-xs bg-muted px-3 py-2 rounded-lg truncate">
-                  {hubUrl}
-                </code>
-                <div className="hub-access__actions">
-                  <div className="hub-access__secondary-actions">
-                    <Button size="sm" variant="outline" onClick={copyLink}>
-                      <Copy size={14} className="mr-1.5" /> Copiar
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
-                      <Eye size={14} className="mr-1.5" /> Preview
-                    </Button>
-                  </div>
-                  <div className="hub-access__primary-actions">
-                    <Button
-                      size="sm"
-                      variant={tokenData.is_active ? 'destructive' : 'default'}
-                      onClick={toggleActive}
+        <div className="hub-acesso__grid">
+          <div className="hub-acesso__main">
+            <section>
+              <h3 className="font-semibold mb-3">Acesso do Cliente</h3>
+              {tokenData ? (
+                <div className="hub-access">
+                  <div className="hub-access__status">
+                    <span
+                      className={
+                        tokenData.is_active
+                          ? 'hub-access__chip hub-access__chip--active'
+                          : 'hub-access__chip hub-access__chip--inactive'
+                      }
                     >
-                      {tokenData.is_active ? (
-                        <>
-                          <ToggleRight size={14} className="mr-1.5" /> Desativar
-                        </>
-                      ) : (
-                        <>
-                          <ToggleLeft size={14} className="mr-1.5" /> Ativar
-                        </>
-                      )}
-                    </Button>
+                      {tokenData.is_active ? 'Ativo' : 'Inativo'}
+                    </span>
+                    {expiresAt && (
+                      <span
+                        className={
+                          isExpired
+                            ? 'text-xs font-medium text-destructive'
+                            : isNearExpiry
+                              ? 'text-xs font-medium text-amber-600'
+                              : 'text-xs text-muted-foreground'
+                        }
+                      >
+                        <CalendarClock size={12} className="mr-1 inline" />
+                        {isExpired ? (
+                          <>
+                            <span className="mr-1.5 rounded bg-destructive/10 px-1.5 py-0.5 uppercase">
+                              Expirado
+                            </span>
+                            Expirou em {format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}
+                          </>
+                        ) : isNearExpiry ? (
+                          <>
+                            Expira em {daysLeft} dias (
+                            {format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })})
+                          </>
+                        ) : (
+                          <>Expira em {format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}</>
+                        )}
+                      </span>
+                    )}
+                  </div>
 
-                    {showRescue && (
+                  <code className="hub-access__url text-xs bg-muted px-3 py-2 rounded-lg truncate">
+                    {hubUrl}
+                  </code>
+
+                  <div className="hub-access__actions">
+                    <div className="hub-access__secondary-actions">
+                      <Button size="sm" variant="outline" onClick={copyLink}>
+                        <Copy size={14} className="mr-1.5" /> Copiar
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
+                        <Eye size={14} className="mr-1.5" /> Preview
+                      </Button>
+                    </div>
+                    <div className="hub-access__primary-actions">
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={handleExtend}
-                        disabled={extending}
+                        variant={tokenData.is_active ? 'destructive' : 'default'}
+                        onClick={toggleActive}
                       >
-                        <CalendarClock size={14} className="mr-1.5" /> Estender +1 ano
+                        {tokenData.is_active ? (
+                          <>
+                            <ToggleRight size={14} className="mr-1.5" /> Desativar
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft size={14} className="mr-1.5" /> Ativar
+                          </>
+                        )}
                       </Button>
-                    )}
 
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="sm" variant="destructive" disabled={rotating}>
-                          <RefreshCw size={14} className="mr-1.5" /> Gerar novo link
+                      {showRescue && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleExtend}
+                          disabled={extending}
+                        >
+                          <CalendarClock size={14} className="mr-1.5" /> Estender +1 ano
                         </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Gerar um novo link?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            O link atual para de funcionar imediatamente. O cliente perde o acesso
-                            até você enviar o novo link. Esta ação não pode ser desfeita.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={handleRotate}>Confirmar</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                      )}
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button size="sm" variant="destructive" disabled={rotating}>
+                            <RefreshCw size={14} className="mr-1.5" /> Gerar novo link
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Gerar um novo link?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              O link atual para de funcionar imediatamente. O cliente perde o acesso
+                              até você enviar o novo link. Esta ação não pode ser desfeita.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleRotate}>Confirmar</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              {expiresAt && (
-                <p
-                  className={
-                    isExpired
-                      ? 'w-full text-xs font-medium text-destructive mt-2'
-                      : isNearExpiry
-                        ? 'w-full text-xs font-medium text-amber-600 mt-2'
-                        : 'w-full text-xs text-muted-foreground mt-2'
-                  }
-                >
-                  <CalendarClock size={12} className="mr-1 inline" />
-                  {isExpired ? (
-                    <>
-                      <span className="mr-1.5 rounded bg-destructive/10 px-1.5 py-0.5 uppercase">
-                        Expirado
-                      </span>
-                      Expirou em {format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}
-                    </>
-                  ) : isNearExpiry ? (
-                    <>
-                      Expira em {daysLeft} dias ({format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}
-                      )
-                    </>
-                  ) : (
-                    <>Expira em {format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}</>
-                  )}
-                </p>
+              ) : !hubPortalEnabled ? (
+                <div className="hub-access__upgrade rounded-xl border border-dashed border-border p-6 text-center">
+                  <Lock size={18} className="mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm font-medium text-foreground">
+                    O Portal do Cliente faz parte dos planos pagos.
+                  </p>
+                  <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                    Faça upgrade para gerar um link de acesso e entregar aprovações, briefing,
+                    postagens e ideias em um portal com a sua marca.
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => {
+                      captureEvent('hub_upgrade_prompt_clicked', { cliente_id: clienteId });
+                      window.location.href = '/configuracao/cobranca';
+                    }}
+                  >
+                    Ver planos
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <p className="text-sm text-muted-foreground">Nenhum link gerado ainda.</p>
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await createHubToken(clienteId, contaId);
+                        invalidateHubTokenQueries(qc, clienteId);
+                        toast.success('Link gerado!');
+                      } catch (e: any) {
+                        // Entitlements can go stale between load and click — fall back to the
+                        // upgrade toast rather than leaking the raw Postgres message.
+                        if (!handleEntitlementMutationError(e, contaId ?? null))
+                          toast.error(mapTokenError(e));
+                      }
+                    }}
+                  >
+                    <Plus size={14} className="mr-1.5" /> Gerar link
+                  </Button>
+                </div>
               )}
-            </>
-          ) : !hubPortalEnabled ? (
-            <div className="hub-access__upgrade rounded-xl border border-dashed border-border p-6 text-center">
-              <Lock size={18} className="mx-auto mb-2 text-muted-foreground" />
-              <p className="text-sm font-medium text-foreground">
-                O Portal do Cliente faz parte dos planos pagos.
-              </p>
-              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Faça upgrade para gerar um link de acesso e entregar aprovações, briefing, postagens
-                e ideias em um portal com a sua marca.
-              </p>
-              <Button
-                size="sm"
-                className="mt-3"
-                onClick={() => {
-                  captureEvent('hub_upgrade_prompt_clicked', { cliente_id: clienteId });
-                  window.location.href = '/configuracao/cobranca';
-                }}
-              >
-                Ver planos
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <p className="text-sm text-muted-foreground">Nenhum link gerado ainda.</p>
-              <Button
-                size="sm"
-                onClick={async () => {
-                  try {
-                    await createHubToken(clienteId, contaId);
-                    invalidateHubTokenQueries(qc, clienteId);
-                    toast.success('Link gerado!');
-                  } catch (e: any) {
-                    // Entitlements can go stale between load and click — fall back to the
-                    // upgrade toast rather than leaking the raw Postgres message.
-                    if (!handleEntitlementMutationError(e, contaId ?? null))
-                      toast.error(mapTokenError(e));
-                  }
-                }}
-              >
-                <Plus size={14} className="mr-1.5" /> Gerar link
-              </Button>
-            </div>
-          )}
-        </section>
+            </section>
+
+            <NewIdeasRow query={fillQuery} />
+          </div>
+
+          <aside className="hub-acesso__panel">
+            <h3 className="font-semibold mb-3">O que o cliente vê</h3>
+            <FillRow testId="fill-briefing" label="Briefing" to="../briefing" query={fillQuery}>
+              <FillValue query={fillQuery}>
+                {fillQuery.data &&
+                  (fillQuery.data.briefingTotal === 0 ? (
+                    <span className="hub-fill__empty">vazia</span>
+                  ) : (
+                    `${fillQuery.data.briefingAnswered} de ${fillQuery.data.briefingTotal} respondidas`
+                  ))}
+              </FillValue>
+            </FillRow>
+            <FillRow testId="fill-marca" label="Marca" to="../marca" query={fillQuery}>
+              <FillValue query={fillQuery}>
+                {fillQuery.data &&
+                  (!fillQuery.data.hasBrand && fillQuery.data.brandFiles === 0 ? (
+                    <span className="hub-fill__empty">vazia</span>
+                  ) : fillQuery.data.brandFiles > 0 ? (
+                    `${fillQuery.data.brandFiles} ${fillQuery.data.brandFiles === 1 ? 'arquivo' : 'arquivos'}`
+                  ) : (
+                    'Marca configurada'
+                  ))}
+              </FillValue>
+            </FillRow>
+            <FillRow testId="fill-paginas" label="Páginas" to="../paginas" query={fillQuery}>
+              <FillValue query={fillQuery}>
+                {fillQuery.data &&
+                  (fillQuery.data.pages === 0 ? (
+                    <span className="hub-fill__empty">vazia</span>
+                  ) : (
+                    `${fillQuery.data.pages} ${fillQuery.data.pages === 1 ? 'página' : 'páginas'}`
+                  ))}
+              </FillValue>
+            </FillRow>
+          </aside>
+        </div>
       </HubRoleGate>
     </div>
+  );
+}
+
+/** Dash while the count is still loading OR failed to load. Never "vazia" for either --
+ * that word asserts the section is empty, which is only true once the count resolves. */
+function FillValue({
+  query,
+  children,
+}: {
+  query: UseQueryResult<PortalFill>;
+  children: ReactNode;
+}) {
+  if (query.isLoading || query.isError) return <span className="hub-fill__pending">—</span>;
+  return <>{children}</>;
+}
+
+/**
+ * One row of the "O que o cliente vê" panel. A pending value (still loading, or the
+ * count failed) doesn't become a Link — there's nothing conclusive to click through to
+ * yet, and for the error case specifically, turning a failed request into a normal-looking
+ * navigable row would hide the failure.
+ */
+function FillRow({
+  testId,
+  label,
+  to,
+  query,
+  children,
+}: {
+  testId: string;
+  label: string;
+  to: string;
+  query: UseQueryResult<PortalFill>;
+  children: ReactNode;
+}) {
+  const pending = query.isLoading || query.isError;
+  const content = (
+    <>
+      <span className="hub-fill__label">{label}</span>
+      <span className="hub-fill__value">{children}</span>
+    </>
+  );
+  return (
+    <div className="hub-fill__row" data-testid={testId}>
+      {pending ? (
+        <span className="hub-fill__row-inner">{content}</span>
+      ) : (
+        <Link to={to} relative="path" className="hub-fill__row-inner">
+          {content}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Ideias novas sem resposta: a call-to-action row under the link card, not one of the
+ * panel's "seções" (it has no dedicated portal tab of its own the way Briefing/Marca/
+ * Páginas do — it points at the Ideias tab's unanswered slice). Hidden once resolved to
+ * zero: unlike the panel's rows, there's nothing to review, so a persistent "0" line
+ * would just be noise. */
+function NewIdeasRow({ query }: { query: UseQueryResult<PortalFill> }) {
+  if (query.isLoading || query.isError) {
+    return (
+      <p className="hub-acesso__ideas mt-1 text-sm text-muted-foreground">
+        Ideias novas sem resposta: <span className="hub-fill__pending">—</span>
+      </p>
+    );
+  }
+
+  const count = query.data?.newIdeasWithoutReply ?? 0;
+  if (count === 0) return null;
+
+  return (
+    <Link
+      to="../ideias"
+      relative="path"
+      className="hub-acesso__ideas hub-acesso__ideas--alert mt-1"
+    >
+      <Lightbulb size={14} className="mr-1.5 inline" />
+      {count} {count === 1 ? 'ideia nova' : 'ideias novas'} sem resposta
+    </Link>
   );
 }

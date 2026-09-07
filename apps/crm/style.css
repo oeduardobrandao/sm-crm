@@ -10629,6 +10629,32 @@ body.landing-page #root {
   padding: 1rem 1.25rem;
 }
 
+/* Shared head/title/sub for the five routed Hub sub-pages (Acesso, Briefing, Marca,
+   Páginas, Ideias) -- left unstyled by Task 2, since none of those pages needed a
+   two-column body until this one did. */
+.hub-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.hub-page__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.hub-page__title {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.hub-page__sub {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 .hub-tabs {
   min-width: 0;
 }
@@ -10655,6 +10681,122 @@ body.landing-page #root {
 .hub-access__secondary-actions,
 .hub-access__primary-actions {
   display: contents;
+}
+
+/* Ativo/Inativo chip + expiry, the link card's first line. */
+.hub-access__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.hub-access__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.hub-access__chip--active {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+.hub-access__chip--inactive {
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  color: var(--text-muted);
+}
+
+/* Acesso screen: link card + ideas callout on the left, "O que o cliente vê" fill
+   panel on the right. Single column below 900px -- the static sidebar is already
+   gone by then (see DESIGN_SYSTEM.md breakpoints), so the left column would
+   otherwise be squeezed under the fixed 300px right panel. */
+.hub-acesso__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
+  gap: 1.5rem;
+}
+.hub-acesso__main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.hub-acesso__panel {
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-main);
+  padding: 1rem 1.25rem;
+}
+@media (max-width: 900px) {
+  .hub-acesso__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* "O que o cliente vê" panel rows. */
+.hub-fill__row + .hub-fill__row {
+  border-top: 1px solid var(--border-color);
+}
+.hub-fill__row-inner {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+  color: inherit;
+  text-decoration: none;
+}
+a.hub-fill__row-inner:hover {
+  color: var(--primary-hover);
+}
+.hub-fill__label {
+  min-width: 0;
+  color: var(--text-main);
+  font-size: 0.85rem;
+}
+.hub-fill__value {
+  flex-shrink: 0;
+  max-width: 60%;
+  overflow: hidden;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hub-fill__pending {
+  color: var(--text-light);
+  font-weight: 400;
+}
+.hub-fill__empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* Ideias novas sem resposta, under the link card. */
+.hub-acesso__ideas {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+.hub-acesso__ideas--alert {
+  color: var(--warning);
+  font-weight: 600;
+}
+.hub-acesso__ideas--alert:hover {
+  text-decoration: underline;
 }
 
 .cliente-finance-empty {

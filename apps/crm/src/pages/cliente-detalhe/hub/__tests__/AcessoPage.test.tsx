@@ -132,11 +132,31 @@ vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 
 vi.mock('@/store/hub');
 
+// The "O que o cliente vê" panel tests drive usePortalFill's return value directly
+// (data/isLoading/isError), the same way the rest of this suite drives hubStore's
+// mocked promises -- this hook is the one exception, mocked as a whole rather than
+// through its underlying getPortalFill, so the loading/error/zero predicates can be
+// asserted without wiring up a real react-query cache for them. usePortalFill's own
+// gating (enabled: !isRestricted) is covered by usePortalFill.test.tsx instead.
+vi.mock('../usePortalFill');
+
 import { useAuth } from '@/context/AuthContext';
 import AcessoPage from '../AcessoPage';
 import * as hubStore from '@/store/hub';
+import { usePortalFill } from '../usePortalFill';
+import type { PortalFill } from '@/store';
 
 const mockedUseAuth = vi.mocked(useAuth);
+const mockedUsePortalFill = vi.mocked(usePortalFill);
+
+const ZERO_FILL: PortalFill = {
+  briefingTotal: 0,
+  briefingAnswered: 0,
+  brandFiles: 0,
+  hasBrand: false,
+  pages: 0,
+  newIdeasWithoutReply: 0,
+};
 
 // Fail-open by default (matches useEntitlements while the plan is still loading).
 let mockEntitlements: { hasFeature: (flag: string) => boolean } = { hasFeature: () => true };
@@ -194,6 +214,11 @@ describe('AcessoPage', () => {
     mockEntitlements = { hasFeature: () => true };
     setAuth('owner');
     vi.mocked(hubStore.getWorkspaceSlug).mockResolvedValue('dk-marketing-medico');
+    mockedUsePortalFill.mockReturnValue({
+      data: ZERO_FILL,
+      isLoading: false,
+      isError: false,
+    } as never);
   });
 
   afterEach(() => {
@@ -346,5 +371,54 @@ describe('AcessoPage', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('Acesso do Cliente')).not.toBeInTheDocument();
+  });
+
+  // "O que o cliente vê" panel: the three predicates fixed in task-3-brief.md — a
+  // dash (never zero) while pending, "vazia" only for a resolved-zero count, and no
+  // Link wrapping a row whose count failed to load. usePortalFill is mocked as a
+  // whole (see the vi.mock above), so these drive its return value directly instead
+  // of a real query lifecycle.
+  describe('painel "O que o cliente vê"', () => {
+    beforeEach(() => {
+      vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+    });
+
+    it('mostra traço, não zero, enquanto carrega', async () => {
+      mockedUsePortalFill.mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        isError: false,
+      } as never);
+      renderPage();
+      await waitFor(() => screen.getByText(/Expira em/));
+
+      expect(screen.getByTestId('fill-paginas')).toHaveTextContent('—');
+      expect(screen.queryByText('vazia')).not.toBeInTheDocument();
+    });
+
+    it('mostra "vazia" só quando a contagem resolvida é zero', async () => {
+      mockedUsePortalFill.mockReturnValue({
+        data: { ...ZERO_FILL, pages: 0, briefingTotal: 12, briefingAnswered: 8 },
+        isLoading: false,
+        isError: false,
+      } as never);
+      renderPage();
+      await waitFor(() => screen.getByText(/Expira em/));
+
+      expect(screen.getByTestId('fill-paginas')).toHaveTextContent('vazia');
+      expect(screen.getByTestId('fill-briefing')).toHaveTextContent('8 de 12 respondidas');
+    });
+
+    it('não vira link quando a query falha', async () => {
+      mockedUsePortalFill.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+      } as never);
+      renderPage();
+      await waitFor(() => screen.getByText(/Expira em/));
+
+      expect(screen.getByTestId('fill-paginas').querySelector('a')).toBeNull();
+    });
   });
 });
