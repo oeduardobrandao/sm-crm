@@ -1010,6 +1010,12 @@ Deno.serve(async (req) => {
         });
         return await handlePublishedMedia(req, {
           svc: serviceClient, userId: user!.id, corsHeaders, decryptToken, verifyClientOwnership,
+          // Fecha sobre o `serviceClient` real: `checkRateLimit` (importado no
+          // topo deste arquivo) e tipado pra `SupabaseClient`, que nao bate
+          // com o `Svc` estrutural que `published-media.ts` usa pro resto do
+          // deps -- por isso a assinatura fina em vez do import direto la.
+          checkRateLimit: (key, maxRequests, windowSeconds) =>
+            checkRateLimit(serviceClient, key, maxRequests, windowSeconds),
         });
     }
 

@@ -15,13 +15,28 @@ import { makeBoundedFetch } from "../_shared/bounded-fetch.ts";
 // deno-lint-ignore no-explicit-any
 type Svc = { from: (t: string) => any; rpc: (n: string, p: Record<string, unknown>) => any };
 
+// Prazo default da chamada a Graph API. Injetavel via `Deps.graphTimeoutMs`
+// (so pra teste: precisa de um prazo pequeno de verdade pra exercitar
+// makeBoundedFetch sem o teste levar 10s de verdade). Producao nunca passa
+// esse campo, entao fica sempre neste valor.
+export const GRAPH_TIMEOUT_MS = 10_000;
+const DEFAULT_LIMIT = 25;
+const MAX_LIMIT = 50;
+
 export type Deps = {
   svc: Svc;
   userId: string;
   corsHeaders: Record<string, string>;
   decryptToken: (encryptedBase64: string) => Promise<string>;
   verifyClientOwnership: (svc: Svc, clientId: string, contaId: string) => Promise<boolean>;
+  // Injetado, nunca importado direto de `_shared/rate-limit.ts` aqui: o
+  // helper de la e tipado pra `SupabaseClient` (nao pro `Svc` estrutural
+  // deste arquivo). O index.ts fecha sobre o `serviceClient` real e repassa
+  // so a assinatura fina que este handler precisa -- mesma tatica de
+  // `verifyClientOwnership`/`decryptToken` acima.
+  checkRateLimit: (key: string, maxRequests: number, windowSeconds: number) => Promise<boolean>;
   fetchImpl?: typeof fetch;
+  graphTimeoutMs?: number;
 };
 
 export type PublishedMediaItem = {
@@ -32,10 +47,6 @@ export type PublishedMediaItem = {
   permalink: string;
   timestamp: string;
 };
-
-const GRAPH_TIMEOUT_MS = 10_000;
-const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 50;
 
 export async function handlePublishedMedia(req: Request, deps: Deps): Promise<Response> {
   const json = (b: unknown, s = 200) =>
@@ -69,19 +80,40 @@ export async function handlePublishedMedia(req: Request, deps: Deps): Promise<Re
     return json({ error: true, message: "Forbidden" }, 403);
   }
 
-  // 5. Conta e status.
+  // 4.1 Rate limit -- mesmo padrao do POST /sync (index.ts, rota 3), so que
+  // mais generoso: paginacao interativa faz varias chamadas curtas em
+  // sequencia, enquanto o /sync e uma operacao pesada (5 chamadas / 5 min,
+  // varias idas na Graph por invocacao). A quota da Graph e POR APP,
+  // compartilhada entre todas as workspaces: sem limite aqui, um unico
+  // membro com automacoes:editar iterando `limit=50` em loop degrada a Graph
+  // pra TODOS os tenants, nao so pro dele.
+  const rateLimitAllowed = await deps.checkRateLimit(`ig-published-media:${contaId}:${clientId}`, 30, 60);
+  if (!rateLimitAllowed) {
+    return json({ error: "Rate limit exceeded" }, 429);
+  }
+
+  // 5. Conta e status. Token nulo com conta 'active' (registro incompleto)
+  // cai no MESMO 409 de "nao autorizada": nao ha credencial pra
+  // descriptografar, entao nao e um 404 de "conta inexistente" nem algo que
+  // deva estourar antes do try mais abaixo.
   const { data: account } = await deps.svc.from("instagram_accounts")
     .select("id, encrypted_access_token, authorization_status").eq("client_id", clientId).single();
   if (!account) return json({ error: true, message: "Not found" }, 404);
-  if (account.authorization_status !== "active") {
+  if (account.authorization_status !== "active" || !account.encrypted_access_token) {
     return json({ error: true, code: "instagram_not_authorized", message: "Conta do Instagram nao autorizada" }, 409);
   }
 
-  // 6. Descriptografia com o helper COMPARTILHADO, nao a copia local do index.ts.
+  // 6. Corpo ANTES do decrypt: um corpo JSON valido igual a `null` (o
+  // `.catch()` abaixo so pega JSON invalido, nao um `null` bem formado) ou
+  // qualquer outro corpo nao-objeto falha rapido aqui, sem nunca ter tocado
+  // na credencial -- defesa em profundidade de graca.
+  const rawBody = await req.json().catch(() => ({}));
+  const body: Record<string, unknown> = rawBody && typeof rawBody === "object" ? rawBody as Record<string, unknown> : {};
+  const limit = Math.floor(Math.min(MAX_LIMIT, Math.max(1, Number(body.limit) || DEFAULT_LIMIT)));
+
+  // 7. Descriptografia com o helper COMPARTILHADO, nao a copia local do index.ts.
   const token = await deps.decryptToken(account.encrypted_access_token);
 
-  const body = await req.json().catch(() => ({}));
-  const limit = Math.min(MAX_LIMIT, Math.max(1, Number(body.limit) || DEFAULT_LIMIT));
   const params = new URLSearchParams({
     fields: "id,caption,media_type,thumbnail_url,permalink,timestamp",
     limit: String(limit),
@@ -89,13 +121,13 @@ export async function handlePublishedMedia(req: Request, deps: Deps): Promise<Re
   });
   if (typeof body.cursor === "string" && body.cursor) params.set("after", body.cursor);
 
-  // 7. Prazo explicito: sem AbortSignal o handler pendura ate o runtime matar.
-  const doFetch = deps.fetchImpl ?? makeBoundedFetch(GRAPH_TIMEOUT_MS);
+  // 8. Prazo explicito: sem AbortSignal o handler pendura ate o runtime matar.
+  const doFetch = deps.fetchImpl ?? makeBoundedFetch(deps.graphTimeoutMs ?? GRAPH_TIMEOUT_MS);
   try {
     const res = await doFetch(`https://graph.instagram.com/me/media?${params}`);
     const payload = await res.json();
     if (!res.ok || payload.error) {
-      // 8. Token rejeitado: carimba o status como as rotas existentes ja fazem.
+      // 9. Token rejeitado: carimba o status como as rotas existentes ja fazem.
       // Espelha o mapeamento que /refresh ja usa (index.ts:886-891): 190 =
       // token expirado, 10 = permissao revogada. Sem o ramo do 10 a conta fica
       // 'active' e cada nova tentativa de re-mirar descriptografa e repete uma
@@ -117,7 +149,17 @@ export async function handlePublishedMedia(req: Request, deps: Deps): Promise<Re
       next_cursor: payload.paging?.cursors?.after ?? null,
     });
   } catch (err) {
-    console.error("[published-media] fetch falhou:", err instanceof Error ? err.message : String(err));
+    // NUNCA logar `err.message` aqui. Em Deno, falha de transporte (connection
+    // refused, reset, TLS, DNS) produz um erro cuja `.message` inclui a URL
+    // INTEIRA da requisicao -- e essa URL carrega o access_token
+    // descriptografado em claro (ver `params` acima, campo `access_token`).
+    // Um `AbortSignal.timeout` nao vaza (`DOMException: "Signal timed out."`),
+    // mas connection refused/reset/DNS sim. `err.name` (TypeError,
+    // TimeoutError, AbortError, ...) mais esta mensagem propria ja bastam pra
+    // diagnosticar em producao, sem depender de redacao por regex como unica
+    // defesa contra um vazamento deste tipo.
+    const kind = err instanceof Error ? err.name : typeof err;
+    console.error("[published-media] fetch falhou:", kind);
     return json({ error: true, message: "Nao foi possivel listar as midias" }, 502);
   }
 }
