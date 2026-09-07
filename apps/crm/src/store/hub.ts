@@ -269,7 +269,15 @@ export async function getPortalFill(clienteId: number): Promise<PortalFill> {
   const [briefingTotal, briefingAnswered, brandFiles, pages, newIdeasWithoutReply, brand] =
     await Promise.all([
       countOf('hub_briefing_questions'),
-      countOf('hub_briefing_questions', (q) => q.not('answer', 'is', null).neq('answer', '')),
+      // "Respondida" tem que bater com isAnswered() em
+      // hub/BriefingPage.tsx (answer != null && answer.trim() !== '') -- os dois
+      // alimentam painéis diferentes ("O que o cliente vê" aqui, o próprio
+      // Briefing lá) da mesma contagem, e não podem divergir. PostgREST não
+      // roda trim() num filtro, mas negar um match regex de "só espaço em
+      // branco (ou vazio)" expressa o mesmo predicado -- e o NULL do Postgres
+      // para essa comparação em resposta nula já resulta em `false` dentro de
+      // um WHERE/filter, então não precisa de um `.not(..., 'is', null)` à parte.
+      countOf('hub_briefing_questions', (q) => q.not('answer', 'match', '^[[:space:]]*$')),
       countOf('hub_brand_files'),
       countOf('hub_pages'),
       countOf('ideias', (q) => q.eq('status', 'nova').is('comentario_agencia', null)),

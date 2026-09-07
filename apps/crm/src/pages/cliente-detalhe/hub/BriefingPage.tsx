@@ -73,7 +73,15 @@ import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 type BriefingFilter = 'todas' | 'sem-resposta' | 'respondidas';
 
-/** Resposta vazia é resposta ausente: o cliente pode salvar string vazia pelo portal. */
+/**
+ * Resposta vazia (ou só espaço em branco) é resposta ausente: o cliente pode
+ * salvar string vazia pelo portal, e o textarea com auto-save deixa `'   '`
+ * para trás quando ele apaga uma resposta digitada. Esse critério tem que
+ * bater com o count `briefingAnswered` de `getPortalFill()` em
+ * `store/hub.ts` -- os dois alimentam painéis diferentes da mesma contagem
+ * ("O que o cliente vê" na aba Acesso vs. esta aba Briefing) e não podem
+ * divergir.
+ */
 export function isAnswered(q: { answer: string | null }): boolean {
   return q.answer != null && q.answer.trim() !== '';
 }
@@ -1004,19 +1012,41 @@ function BriefingEditor({
                           </div>
                         ) : (
                           <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                            <button
-                              type="button"
-                              id={sectionAnchorId(s.name)}
-                              onClick={() => toggleSection(s.name)}
-                              aria-expanded={!isCollapsed}
-                              className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                              <span className="truncate">{s.name}</span>
-                              <span className="font-normal normal-case opacity-60">
-                                ({s.questions.length})
-                              </span>
-                            </button>
+                            {/* Filtro ativo (!= 'todas') já força a seção aberta -- ver isCollapsed
+                                acima. Nesse caso o toggle não muda nada visível, então vira um
+                                cabeçalho não interativo em vez de um botão que finge funcionar. */}
+                            {filter === 'todas' ? (
+                              <button
+                                type="button"
+                                id={sectionAnchorId(s.name)}
+                                data-testid={`secao-toggle-${s.name}`}
+                                onClick={() => toggleSection(s.name)}
+                                aria-expanded={!isCollapsed}
+                                className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                {isCollapsed ? (
+                                  <ChevronRight size={14} />
+                                ) : (
+                                  <ChevronDown size={14} />
+                                )}
+                                <span className="truncate">{s.name}</span>
+                                <span className="font-normal normal-case opacity-60">
+                                  ({s.questions.length})
+                                </span>
+                              </button>
+                            ) : (
+                              <div
+                                id={sectionAnchorId(s.name)}
+                                data-testid={`secao-toggle-${s.name}`}
+                                className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                              >
+                                <ChevronDown size={14} />
+                                <span className="truncate">{s.name}</span>
+                                <span className="font-normal normal-case opacity-60">
+                                  ({s.questions.length})
+                                </span>
+                              </div>
+                            )}
                             <Button
                               size="sm"
                               variant="ghost"

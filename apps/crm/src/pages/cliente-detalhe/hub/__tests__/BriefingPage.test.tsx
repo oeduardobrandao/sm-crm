@@ -194,6 +194,29 @@ describe('BriefingPage', () => {
       renderBriefing(QUESTIONS);
       expect(screen.getByTestId('secao-Negócio')).toHaveTextContent('1/2');
     });
+
+    it('clicar no cabeçalho de uma seção com um filtro ativo não muda o estado de expandida/colapsada', () => {
+      renderBriefing(QUESTIONS);
+
+      // Estado inicial: filtro 'todas', seções vêm colapsadas por padrão -- P1
+      // (dentro de "Negócio") não deveria estar visível.
+      expect(screen.queryByText('P1')).not.toBeInTheDocument();
+
+      // Ativa um filtro diferente de 'todas': isso já força toda seção a
+      // renderizar seu conteúdo (ver isCollapsed em BriefingPage.tsx), então o
+      // cabeçalho da seção deixa de ser um botão de toggle funcional.
+      fireEvent.click(screen.getByTestId('chip-sem-resposta'));
+
+      // "Clicar" no cabeçalho da seção enquanto o filtro está ativo não pode
+      // mutar expandedSections -- o cabeçalho não é mais um toggle interativo.
+      fireEvent.click(screen.getByTestId('secao-toggle-Negócio'));
+
+      // Volta para 'todas': se o clique acima tivesse mutado expandedSections
+      // (o bug original), "Negócio" apareceria expandida aqui mesmo sem o
+      // usuário nunca ter clicado nela enquanto o filtro era 'todas'.
+      fireEvent.click(screen.getByTestId('chip-todas'));
+      expect(screen.queryByText('P1')).not.toBeInTheDocument();
+    });
   });
 
   describe('player de áudio', () => {

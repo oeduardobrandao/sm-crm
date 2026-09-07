@@ -94,13 +94,17 @@ describe('getPortalFill', () => {
     });
   });
 
-  it('chains .not("answer", "is", null) then .neq("answer", "") for the answered-briefing count', async () => {
+  // Must agree with isAnswered() in hub/BriefingPage.tsx (trims before checking
+  // emptiness), or the "O que o cliente vê" panel (this count) and the Briefing
+  // tab (isAnswered) disagree on the same data. PostgREST can't call trim() in
+  // a filter, so this negates a whitespace-only regex match instead -- see the
+  // whitespace-only case below and the comment mirrored at both call sites.
+  it('chains .not("answer", "match", <whitespace-only regex>) for the answered-briefing count', async () => {
     const builders = queueLegs(okLegs());
     await getPortalFill(1);
 
     const answeredBuilder = builders[1];
-    expect(answeredBuilder.not).toHaveBeenCalledWith('answer', 'is', null);
-    expect(answeredBuilder.neq).toHaveBeenCalledWith('answer', '');
+    expect(answeredBuilder.not).toHaveBeenCalledWith('answer', 'match', '^[[:space:]]*$');
   });
 
   it('chains .eq("status", "nova") and .is("comentario_agencia", null) for the new-ideas count', async () => {
