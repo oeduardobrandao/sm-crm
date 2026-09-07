@@ -163,6 +163,18 @@ Monorepo with npm workspaces:
 - `ALLOWED_ORIGINS` -- Comma-separated allowed CORS origins
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` -- Cloudflare R2
 - `CRON_SECRET` -- Shared secret for cron function authentication
+- `SYNC_BATCH_LIMIT` / `SYNC_CONCURRENCY` / `BACKFILL_BATCH_LIMIT` -- throughput dials
+  for instagram-sync-cron (defaults 25 / 5 / 3). These, not the customer count, set the
+  platform's Instagram capacity: the cron runs hourly, so it performs
+  `24 * SYNC_BATCH_LIMIT` account-syncs per day, and the 6h per-account staleness window
+  needs 4 of those per account -- **`6 * SYNC_BATCH_LIMIT` connected accounts** before
+  metrics start aging past the window (150 at the default 25). Raise both dials together:
+  the run is `SYNC_BATCH_LIMIT / SYNC_CONCURRENCY` waves of ~4-8s, so 100/5 is a ~160s
+  run while 100/10 keeps it near 40-80s for the same 4x capacity. Batch size is safe to
+  raise on the failure side -- the per-account callback swallows its own errors, so
+  `runPool`'s abort-on-first-error path is unreachable, and `last_sync_attempt_at` is
+  stamped for the whole batch BEFORE any work, so a dead account can never re-claim the
+  queue head. Both are plain edge-function secrets: changing them needs no deploy
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
 - `REPORT_PRINT_BASE` -- origem pública que serve a página de print do relatório
   de blocos (ex.: https://mesaas.com.br). Usada por report-docs POST /:id/pdf
