@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Alvo orfao (migration 20260913000001): a reconciliacao carimba automacao cujo
+-- Alvo orfao (migration 20260914000001): a reconciliacao carimba automacao cujo
 -- post alvo virou 'postado' sem instagram_media_id, limpa quando nao vale mais,
 -- e o resolver limpa na hora em qualquer troca de alvo dirigida pelo usuario.
 

@@ -23,7 +23,7 @@ Vitest, `deno test`, psql (suíte de entitlements).
 - **Copy em português, sem travessão.** Use ponto, dois-pontos ou "·". Travessão foi
   rejeitado pelo usuário como "cara de AI slop".
 - **Migration:** o tail de `origin/main` hoje é `20260912000002`. Use
-  `20260913000001_ica_target_unlinked.sql`. **Reconfira o tail com
+  `20260914000001_ica_target_unlinked.sql`. **Reconfira o tail com
   `git ls-tree --name-only origin/main supabase/migrations/ | tail -5` antes de abrir o
   PR** e renumere se algo tiver entrado acima. Prefixo duplicado faz o Supabase pular a
   segunda migration em silêncio.
@@ -49,7 +49,7 @@ Vitest, `deno test`, psql (suíte de entitlements).
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `supabase/migrations/20260913000001_ica_target_unlinked.sql` | coluna, RPC de reconciliação, edição do resolver, grants |
+| `supabase/migrations/20260914000001_ica_target_unlinked.sql` | coluna, RPC de reconciliação, edição do resolver, grants |
 | `supabase/tests/entitlements/81_ica_target_unlinked.sql` | suíte psql da RPC e do resolver |
 | `supabase/functions/instagram-integration/published-media.ts` | handler isolado da rota nova, testável sem subir a função inteira |
 | `supabase/functions/__tests__/instagram-integration-published-media_test.ts` | testes da rota |
@@ -78,7 +78,7 @@ está grande demais, e um handler separado dá para testar direto.
 ### Task 1: Migration (coluna, reconciliação, resolver)
 
 **Files:**
-- Create: `supabase/migrations/20260913000001_ica_target_unlinked.sql`
+- Create: `supabase/migrations/20260914000001_ica_target_unlinked.sql`
 - Test: `supabase/tests/entitlements/81_ica_target_unlinked.sql`
 
 **Interfaces:**
@@ -104,7 +104,7 @@ Colunas obrigatórias sem default, para os fixtures:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Alvo orfao (migration 20260913000001): a reconciliacao carimba automacao cujo
+-- Alvo orfao (migration 20260914000001): a reconciliacao carimba automacao cujo
 -- post alvo virou 'postado' sem instagram_media_id, limpa quando nao vale mais,
 -- e o resolver limpa na hora em qualquer troca de alvo dirigida pelo usuario.
 
@@ -255,7 +255,7 @@ worktree em vez de matar o container alheio.
 
 - [ ] **Step 3: Escrever a migration**
 
-Crie `supabase/migrations/20260913000001_ica_target_unlinked.sql`:
+Crie `supabase/migrations/20260914000001_ica_target_unlinked.sql`:
 
 ```sql
 -- Alvo orfao: automacao mirada em post em producao que foi marcado como
@@ -365,7 +365,7 @@ Expected: PASS, todas as asserções de `81_ica_target_unlinked`
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260913000001_ica_target_unlinked.sql supabase/tests/entitlements/81_ica_target_unlinked.sql
+git add supabase/migrations/20260914000001_ica_target_unlinked.sql supabase/tests/entitlements/81_ica_target_unlinked.sql
 git commit -m "feat(automacoes): marca de alvo orfao e reconciliacao idempotente
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
