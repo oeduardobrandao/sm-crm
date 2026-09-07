@@ -99,6 +99,27 @@ Deno.test("pageContentToMarkdown renders block types", () => {
   assertEquals(pageContentToMarkdown([{ type: "callout", content: "nota" }]), "nota");
 });
 
+Deno.test("pageContentToMarkdown serializa um bloco richtext", () => {
+  const md = pageContentToMarkdown([
+    {
+      type: "richtext",
+      doc: {
+        type: "doc",
+        content: [
+          { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Prazos" }] },
+          { type: "paragraph", content: [{ type: "text", text: "Até 2 dias úteis." }] },
+        ],
+      },
+    },
+  ]);
+  assertEquals(md, "## Prazos\n\nAté 2 dias úteis.");
+});
+
+Deno.test("pageContentToMarkdown ignora richtext malformado sem lançar", () => {
+  assertEquals(pageContentToMarkdown([{ type: "richtext" }]), "");
+  assertEquals(pageContentToMarkdown([{ type: "richtext", doc: null }]), "");
+});
+
 Deno.test("pageContentToMarkdown fails closed on bad input", () => {
   // empty / non-array top-level
   assertEquals(pageContentToMarkdown([]), "");

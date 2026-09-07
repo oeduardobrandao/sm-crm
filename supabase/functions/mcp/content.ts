@@ -195,7 +195,10 @@ export function allowlistMember(row: Record<string, unknown>): Record<string, un
  * trusts neither the top-level value nor the shape of any block, and fails closed
  * (returns "") on anything malformed. Unknown block types fall back to rendering
  * their text as a paragraph, mirroring the Hub page renderer's default case
- * (apps/hub/src/pages/PaginaPage.tsx).
+ * (apps/hub/src/pages/PaginaPage.tsx). A `richtext` block (the TipTap editor's
+ * output, see apps/hub/src/types.ts HubRichTextBlock) carries its payload in
+ * `doc` instead of `content` and is serialized via `proseMirrorToMarkdown`; a
+ * missing, null, or non-object `doc` produces no output, never a throw.
  */
 export function pageContentToMarkdown(content: unknown): string {
   if (!Array.isArray(content)) return "";
@@ -207,6 +210,13 @@ export function pageContentToMarkdown(content: unknown): string {
     const text = typeof b.content === "string" ? b.content : "";
     const href = typeof b.href === "string" ? b.href : "";
     switch (type) {
+      case "richtext": {
+        const doc = b.doc;
+        if (typeof doc !== "object" || doc === null) break;
+        const rendered = proseMirrorToMarkdown(doc as Record<string, unknown>);
+        if (rendered) parts.push(rendered);
+        break;
+      }
       case "markdown":
       case "paragraph":
         if (text) parts.push(text);
@@ -230,6 +240,69 @@ export function pageContentToMarkdown(content: unknown): string {
     }
   }
   return parts.join("\n\n").trim();
+}
+
+/**
+ * Minimal serialization of a ProseMirror document (the `richtext` block's `doc`)
+ * to markdown, for agent consumption. Covers only the node/mark set the Páginas
+ * editor can persist (StarterKit, Underline, TextStyle, Color, Highlight, Link,
+ * Placeholder, Callout, per the editor spec); an unrecognized node renders its
+ * children's text instead of dropping content, and this never throws on
+ * malformed input (called only after the caller confirms `doc` is a non-null
+ * object; every field below is read defensively regardless).
+ */
+function proseMirrorToMarkdown(doc: Record<string, unknown>): string {
+  const blocks: string[] = [];
+
+  function inline(node: any): string {
+    if (typeof node?.text === "string") {
+      let out = node.text;
+      for (const m of Array.isArray(node.marks) ? node.marks : []) {
+        if (m?.type === "bold") out = `**${out}**`;
+        else if (m?.type === "italic") out = `*${out}*`;
+        else if (m?.type === "code") out = `\`${out}\``;
+        else if (m?.type === "link" && typeof m?.attrs?.href === "string") {
+          out = `[${out}](${m.attrs.href})`;
+        }
+      }
+      return out;
+    }
+    return (Array.isArray(node?.content) ? node.content : []).map(inline).join("");
+  }
+
+  function walk(node: any) {
+    const kids: any[] = Array.isArray(node?.content) ? node.content : [];
+    switch (node?.type) {
+      case "heading": {
+        const lvl = Math.min(6, Math.max(1, Math.trunc(Number(node?.attrs?.level)) || 1));
+        blocks.push(`${"#".repeat(lvl)} ${inline(node)}`);
+        break;
+      }
+      case "paragraph":
+      case "callout": {
+        const t = inline(node);
+        if (t) blocks.push(t);
+        break;
+      }
+      case "blockquote":
+        for (const k of kids) {
+          const t = inline(k);
+          if (t) blocks.push(`> ${t}`);
+        }
+        break;
+      case "bulletList":
+        kids.forEach((li) => blocks.push(`- ${inline(li)}`));
+        break;
+      case "orderedList":
+        kids.forEach((li, i) => blocks.push(`${i + 1}. ${inline(li)}`));
+        break;
+      default:
+        kids.forEach(walk);
+    }
+  }
+
+  walk(doc);
+  return blocks.join("\n\n");
 }
 
 // ---- post feedback (list_post_feedback) -------------------------------------
