@@ -10,13 +10,19 @@ type DbClient = { from: (table: string) => any; rpc: (name: string, params: Reco
 export type AutomationFailureReason =
   | "token_expired"
   | "subscription_lost"
-  | "duplicate_account_conflict";
+  | "duplicate_account_conflict"
+  | "target_never_published";
 
 const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export async function notifyAutomationFailure(
   svc: DbClient,
-  args: { contaId: string; clientId: number; reason: AutomationFailureReason },
+  args: {
+    contaId: string;
+    clientId: number;
+    reason: AutomationFailureReason;
+    extraMetadata?: Record<string, unknown>;
+  },
 ): Promise<void> {
   try {
     const cutoff = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
@@ -46,7 +52,7 @@ export async function notifyAutomationFailure(
       p_user_ids: userIds,
       p_type: "instagram_automation_failed",
       p_link: "/automacoes",
-      p_metadata: { client_id: args.clientId, reason: args.reason },
+      p_metadata: { client_id: args.clientId, reason: args.reason, ...args.extraMetadata },
     });
     if (insertErr) throw insertErr;
   } catch (err) {
