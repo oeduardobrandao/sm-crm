@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
-import { richTextExtensions } from '../RichTextContent';
+import { render, screen } from '@testing-library/react';
+import { richTextExtensions, RichTextContent } from '../RichTextContent';
 
 // The hub reads post `conteudo` (TipTap JSON) by feeding it into an editor built from
 // `richTextExtensions`. If that schema is missing a mark/node type present in the JSON,
@@ -72,5 +73,31 @@ describe('hub rich-text schema (richTextExtensions)', () => {
     // `conteudo` is stored -- ProseMirror JSON, not HTML), proving parseHTML/renderHTML
     // aren't the only fidelity path and the JSON schema itself preserves every attr.
     expect(found).toEqual(mentionAttrs);
+  });
+});
+
+describe('RichTextContent read-only mount', () => {
+  // This is the regression test for the bug fixed in 813ac18e: `editorProps: editable ?
+  // {...} : undefined` overrode Tiptap's own `{}` default during option merging, and
+  // `Editor.createView()` crashed on every read-only mount. `EditorErrorBoundary` swallowed
+  // the crash, so the component silently rendered `fallbackText` instead of the real
+  // document -- invisible in production because every caller always passes
+  // `fallbackText={post.conteudo_plain}`, so it just looked like plain text. A schema-level
+  // test (like the ones above) can never catch this: the crash only happens once TipTap
+  // actually builds an editor view, which schema-only assertions never do. Rendering a
+  // read-only instance WITH a fallbackText and asserting the rich doc wins is exactly the
+  // assertion that would have caught the 3.5-month-old regression.
+  it('renders the rich document, not the fallback, when mounted read-only', async () => {
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Conteúdo rico do post' }] }],
+    };
+
+    render(
+      <RichTextContent content={doc} editable={false} fallbackText="Texto simples de fallback" />,
+    );
+
+    expect(await screen.findByText('Conteúdo rico do post')).toBeInTheDocument();
+    expect(screen.queryByText('Texto simples de fallback')).not.toBeInTheDocument();
   });
 });
