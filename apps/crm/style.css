@@ -7710,6 +7710,43 @@ body.role-agent input[name='valor_total'] {
   text-decoration: underline;
   cursor: pointer;
 }
+/* h2/h3/blockquote: sem consumidor de UI antes do editor de Páginas (Task 9) --
+   PostEditor/ArticleEditor não expõem botão de título/citação, então nunca
+   precisaram de estilo aqui. Ficam genéricas em .post-editor-content porque um
+   parseHTML/input-rule do StarterKit pode produzi-las em qualquer instância
+   via colar/atalho de markdown, mesmo sem o botão correspondente. */
+.post-editor-content .ProseMirror h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0.9em 0 0.4em;
+}
+.post-editor-content .ProseMirror h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0.9em 0 0.4em;
+}
+.post-editor-content .ProseMirror h3 {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0.75em 0 0.3em;
+}
+.post-editor-content .ProseMirror blockquote {
+  margin: 0.5em 0;
+  padding: 0.1em 0 0.1em 0.85em;
+  border-left: 3px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+/* Editor de Páginas do portal do cliente (Task 9 do plano de layout do
+   portal): mesma superfície do .post-editor, mas o conteúdo é uma página
+   inteira, não um post curto -- a área de edição precisa de bem mais altura
+   que os 80px padrão. */
+.post-editor--pagina .post-editor-content .ProseMirror {
+  min-height: 360px;
+}
 
 /* @-mention chip. Rendered by MentionNode inside the TipTap editor (span[data-mention])
    AND by the standalone MentionChip component used outside the editor (comment/task text,
