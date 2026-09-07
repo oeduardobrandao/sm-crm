@@ -191,23 +191,51 @@ export async function deleteObject(key: string): Promise<void> {
   }
 }
 
-export async function listOrphanKeys(prefix: string, olderThanMs: number): Promise<string[]> {
+export interface OrphanKeyPage {
+  /** Aged keys from THIS page only. R2 returns at most 1000 objects per page,
+   * so this array is bounded no matter how large the prefix is. */
+  keys: string[];
+  /** Token to pass back for the next page; null once the prefix is exhausted. */
+  nextToken: string | null;
+}
+
+/**
+ * ONE page of a prefix listing, filtered to objects older than `olderThanMs`.
+ *
+ * Deliberately not a loop. The previous `listOrphanKeys()` paged the ENTIRE
+ * prefix into one array before returning, which grew with the bucket and not
+ * with the workload: on prod it died with WORKER_RESOURCE_LIMIT (2026-08-13),
+ * killing the cron stages queued behind it. Callers now spend a fixed page
+ * budget per run and persist `nextToken` (see cron_scan_state) to resume.
+ *
+ * An empty `keys` with a non-null `nextToken` is normal and NOT a stop
+ * condition — it just means every object on that page was younger than the
+ * cutoff. Only `nextToken === null` ends the sweep.
+ */
+export async function listOrphanKeyPage(
+  prefix: string,
+  olderThanMs: number,
+  token?: string | null,
+): Promise<OrphanKeyPage> {
   const cutoff = Date.now() - olderThanMs;
-  const out: string[] = [];
-  let token: string | undefined;
-  do {
-    // Belt for the same edge-runtime hang class as deleteObject above: bound each
-    // page fetch so a stalled listing fails the run instead of freezing it.
-    const res = await getR2().send(
-      new ListObjectsV2Command({ Bucket: getBucket(), Prefix: prefix, ContinuationToken: token }),
-      { abortSignal: AbortSignal.timeout(30_000) },
-    );
-    for (const obj of res.Contents ?? []) {
-      if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) out.push(obj.Key);
-    }
-    token = res.IsTruncated ? res.NextContinuationToken : undefined;
-  } while (token);
-  return out;
+  // Belt for the same edge-runtime hang class as deleteObject above: bound the
+  // page fetch so a stalled listing fails the run instead of freezing it.
+  const res = await getR2().send(
+    new ListObjectsV2Command({
+      Bucket: getBucket(),
+      Prefix: prefix,
+      ContinuationToken: token ?? undefined,
+    }),
+    { abortSignal: AbortSignal.timeout(30_000) },
+  );
+  const keys: string[] = [];
+  for (const obj of res.Contents ?? []) {
+    if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) keys.push(obj.Key);
+  }
+  return {
+    keys,
+    nextToken: res.IsTruncated ? (res.NextContinuationToken ?? null) : null,
+  };
 }
 
 export async function copyObject(sourceKey: string, destKey: string): Promise<void> {

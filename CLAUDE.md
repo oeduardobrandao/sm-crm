@@ -163,6 +163,13 @@ Monorepo with npm workspaces:
 - `ALLOWED_ORIGINS` -- Comma-separated allowed CORS origins
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` -- Cloudflare R2
 - `CRON_SECRET` -- Shared secret for cron function authentication
+- `ORPHAN_SCAN_PAGES_PER_RUN` -- listing pages the post-media-cleanup-cron orphan scan
+  consumes per prefix per run (default 10, ~1000 keys each). The scan is checkpointed in
+  `cron_scan_state`, so this bounds ONE run's memory and wall clock, not how much of the
+  bucket eventually gets swept -- a full sweep just spans several runs. It does NOT make
+  the cron reap faster either: `MAX_TRASH_PER_RUN` caps removals at 50 per prefix per run
+  regardless. Raise it only when `cron_scan_state.cycle_started_at` shows a sweep taking
+  too long
 - `SYNC_BATCH_LIMIT` / `SYNC_CONCURRENCY` / `BACKFILL_BATCH_LIMIT` -- throughput dials
   for instagram-sync-cron (defaults 25 / 5 / 3). These, not the customer count, set the
   platform's Instagram capacity: the cron runs hourly, so it performs
