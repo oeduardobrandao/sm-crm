@@ -52,13 +52,14 @@ const RETRY_LIMIT = 25;
 const SUBSCRIPTION_STALE_MS = 24 * 60 * 60 * 1000;
 const PURGE_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const UNLINKED_GRACE_MS = 15 * 60 * 1000;
-// Teto por tick, no padrão de SWEEP_LIMIT/RETRY_LIMIT: a migration da Task 1
-// carimba target_unlinked_at = COALESCE(published_at, updated_at, now()) para
-// TODO o backlog de posts históricos publicados na mão -- no primeiro tick
-// depois do deploy essa fase pegaria o backlog inteiro de uma vez, com até 3
-// round-trips por linha em série. Ordenar pela marca mais antiga primeiro
-// (abaixo) garante que o backlog drena, um pedaço por tick, em vez de travar
-// indefinidamente no mesmo lote.
+// Teto por tick, no padrão de SWEEP_LIMIT/RETRY_LIMIT. O select é ORDER BY
+// target_unlinked_at ASC LIMIT 50 sem cursor nem offset: o mesmo lote das 50
+// mais antigas volta em todo tick, e as posições 51+ não são sequer selecionadas
+// enquanto as primeiras 50 não forem resolvidas por ação humana (re-mirar) ou o
+// post deixar de ser órfão. O teto existe para o handler não estourar o wall
+// clock no backfill do primeiro tick depois do deploy, e a ordenação prioriza
+// quem espera há mais tempo. Um backlog maior que o teto avança conforme as
+// automações mais antigas forem resolvidas.
 const UNLINKED_LIMIT = 50;
 
 export interface InstagramAutomationCronDeps {
@@ -200,7 +201,7 @@ export function createInstagramAutomationCronHandler(deps: InstagramAutomationCr
 
     // 4. Alvo orfao: reconcilia a marca e notifica depois da carencia.
     try {
-      await runUnlinkedPhase(svc, new Date());
+      await runUnlinkedPhase(svc, nowDate);
     } catch (err) {
       console.error(`[${CRON_NAME}] fase de alvo orfao falhou:`, errMessage(err));
       failed++;
