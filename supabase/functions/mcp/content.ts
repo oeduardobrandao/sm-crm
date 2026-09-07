@@ -281,23 +281,94 @@ function proseMirrorToMarkdown(doc: Record<string, unknown>): string {
       .join("");
   }
 
-  // Render one bulletList/orderedList at `depth` (0 = not nested) into a flat
-  // array of already-indented, already-marked lines: one line per non-list
-  // child block of each listItem, plus (recursively, indented two spaces
-  // deeper) the lines of any nested list. An item with no renderable text
-  // contributes no line at all, rather than a bare marker.
-  function listLines(list: any, ordered: boolean, depth: number): string[] {
+  // Serialize a run of block-level nodes (used for a blockquote's children and
+  // for a list item's non-paragraph block children) into individual output
+  // lines, unprefixed and unindented: the caller applies its own "> " or
+  // content-column indent to each line afterward. Unlike the top-level
+  // `blocks` array (joined with a blank line between entries), these lines are
+  // joined tightly with a single newline, matching the pre-existing flat
+  // layout for a blockquote's paragraphs and a list item's continuation text.
+  // heading/codeBlock/blockquote/list children keep their own markdown syntax
+  // (heading "#", code fences, nested "> ", list markers) instead of being
+  // flattened through `inline()`; anything else falls back to its inline text.
+  function blockChildLines(kids: any[], depth: number): string[] {
     if (depth > MAX_DEPTH) return [];
-    const indent = "  ".repeat(depth);
+    const lines: string[] = [];
+    for (const k of kids) {
+      switch (k?.type) {
+        case "heading": {
+          const t = inline(k, depth + 1);
+          if (!t) break;
+          const lvl = Math.min(6, Math.max(1, Math.trunc(Number(k?.attrs?.level)) || 1));
+          lines.push(`${"#".repeat(lvl)} ${t}`);
+          break;
+        }
+        case "codeBlock": {
+          const t = inline(k, depth + 1);
+          if (!t) break;
+          const lang = typeof k?.attrs?.language === "string" ? k.attrs.language : "";
+          lines.push(...("```" + lang + "\n" + t + "\n```").split("\n"));
+          break;
+        }
+        case "blockquote": {
+          const inner = blockChildLines(Array.isArray(k?.content) ? k.content : [], depth + 1);
+          if (inner.length) lines.push(...inner.map((l) => `> ${l}`));
+          break;
+        }
+        case "bulletList":
+        case "orderedList": {
+          lines.push(...listLines(k, k.type === "orderedList", "", depth + 1));
+          break;
+        }
+        default: {
+          const t = inline(k, depth + 1);
+          if (t) lines.push(t);
+          break;
+        }
+      }
+    }
+    return lines;
+  }
+
+  // Render one bulletList/orderedList into a flat array of already-indented,
+  // already-marked lines. `indent` is the accumulated content-column prefix
+  // from every ancestor list item (its exact width, not a fixed two spaces
+  // per level -- an ordered marker like "1. " is 3 characters, and indenting
+  // a nested list by only 2 spaces falls below CommonMark's content-indent
+  // threshold and detaches it as a sibling instead of nesting it). `depth` is
+  // a plain recursion counter for the fail-closed guard, independent of the
+  // indent string's width. One line per non-list child block of each
+  // listItem: a nested list's lines are indented under this item's own marker
+  // width, and a heading/codeBlock/blockquote child is serialized as its own
+  // block (keeping its markdown syntax) and indented to the item's content
+  // column rather than inlined. An item with no renderable text contributes
+  // no line at all, rather than a bare marker.
+  function listLines(list: any, ordered: boolean, indent: string, depth: number): string[] {
+    if (depth > MAX_DEPTH) return [];
     const items: any[] = Array.isArray(list?.content) ? list.content : [];
     const lines: string[] = [];
     items.forEach((li, i) => {
       const marker = ordered ? `${i + 1}. ` : "- ";
+      const contIndent = indent + " ".repeat(marker.length);
       const kids: any[] = Array.isArray(li?.content) ? li.content : [];
       let first = true;
       for (const kid of kids) {
-        if (kid?.type === "bulletList" || kid?.type === "orderedList") {
-          lines.push(...listLines(kid, kid.type === "orderedList", depth + 1));
+        const kt = kid?.type;
+        if (kt === "bulletList" || kt === "orderedList") {
+          lines.push(...listLines(kid, kt === "orderedList", contIndent, depth + 1));
+          continue;
+        }
+        if (kt === "heading" || kt === "codeBlock" || kt === "blockquote") {
+          const blockLines = blockChildLines([kid], depth + 1);
+          if (!blockLines.length) continue;
+          blockLines.forEach((l) => {
+            if (first) {
+              lines.push(`${indent}${marker}${l}`);
+              first = false;
+            } else {
+              lines.push(`${contIndent}${l}`);
+            }
+          });
           continue;
         }
         const t = inline(kid);
@@ -306,7 +377,7 @@ function proseMirrorToMarkdown(doc: Record<string, unknown>): string {
           lines.push(`${indent}${marker}${t}`);
           first = false;
         } else {
-          lines.push(`${indent}${" ".repeat(marker.length)}${t}`);
+          lines.push(`${contIndent}${t}`);
         }
       }
     });
@@ -338,18 +409,18 @@ function proseMirrorToMarkdown(doc: Record<string, unknown>): string {
         break;
       }
       case "blockquote": {
-        const lines: string[] = [];
-        for (const k of kids) {
-          const t = inline(k, depth + 1);
-          if (t) lines.push(t);
-        }
-        // One quoted block, not one per child paragraph.
+        // Block-aware: each child (paragraph, heading, codeBlock, list, nested
+        // blockquote, ...) is serialized as its own block, keeping its own
+        // markdown syntax, and every resulting line gets a "> " prefix. One
+        // quoted block, not one per child paragraph -- and a block child (e.g.
+        // a bulletList) no longer welds into a single line.
+        const lines = blockChildLines(kids, depth + 1);
         if (lines.length) blocks.push(lines.map((l) => `> ${l}`).join("\n"));
         break;
       }
       case "bulletList":
       case "orderedList": {
-        const lines = listLines(node, node.type === "orderedList", 0);
+        const lines = listLines(node, node.type === "orderedList", "", 0);
         if (lines.length) blocks.push(lines.join("\n"));
         break;
       }
