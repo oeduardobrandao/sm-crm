@@ -10931,6 +10931,18 @@ a.hub-fill__row-inner:hover {
   background: var(--surface-2);
   color: var(--text-main);
 }
+/* Rail always lists every section (counts must cover the whole briefing), but a filter
+   can hide every question in a section from the grid below -- no anchor id is rendered
+   for it, so scrolling to it would silently do nothing. Disabled + visibly dimmed with
+   a "not-allowed" cursor communicates that this entry has nowhere to go right now. */
+.hub-briefing__section-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.hub-briefing__section-link:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
 .hub-briefing__section-link-name {
   min-width: 0;
   overflow: hidden;

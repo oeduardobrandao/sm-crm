@@ -195,6 +195,27 @@ describe('BriefingPage', () => {
       expect(screen.getByTestId('secao-Negócio')).toHaveTextContent('1/2');
     });
 
+    it('desabilita o link do rail quando o filtro ativo esconde todas as perguntas da seção', () => {
+      renderBriefing(QUESTIONS);
+
+      // Sem filtro os dois links do rail são clicáveis -- ambas as seções têm
+      // pelo menos uma pergunta renderizada na grade.
+      expect(screen.getByTestId('secao-Negócio')).not.toBeDisabled();
+      expect(screen.getByTestId('secao-Público')).not.toBeDisabled();
+
+      // Filtro "Respondidas": só 'a' (Negócio) passa. As duas perguntas de
+      // "Público" (answer '' e '   ') ficam de fora -- a seção some da grade
+      // e não existe mais âncora para o rail rolar até ela. O link do rail
+      // continua listado (a contagem cobre o briefing inteiro), mas precisa
+      // virar não-clicável em vez de rolar para lugar nenhum em silêncio.
+      fireEvent.click(screen.getByTestId('chip-respondidas'));
+
+      expect(screen.getByTestId('secao-Negócio')).not.toBeDisabled();
+      expect(screen.getByTestId('secao-Público')).toBeDisabled();
+      // A contagem no rail continua contando o briefing inteiro, filtro ou não.
+      expect(screen.getByTestId('secao-Público')).toHaveTextContent('0/2');
+    });
+
     it('clicar no cabeçalho de uma seção com um filtro ativo não muda o estado de expandida/colapsada', () => {
       renderBriefing(QUESTIONS);
 

@@ -760,13 +760,22 @@ function BriefingEditor({
             <p className="hub-briefing__section-index-label">Seções</p>
             {allNamedSections.map((s) => {
               const sectionAnswered = s.questions.filter(isAnswered).length;
+              // O rail lista TODAS as seções para a contagem cobrir o briefing inteiro
+              // (ver allNamedSections acima), mas a grade só renderiza uma seção com
+              // pelo menos uma pergunta batendo com o filtro ativo -- sem isso, não
+              // existe âncora na página e o clique não leva a lugar nenhum.
+              const hasTarget = namedSections.some((visible) => visible.name === s.name);
               return (
                 <button
                   key={s.name}
                   type="button"
                   data-testid={`secao-${s.name}`}
                   className="hub-briefing__section-link"
-                  onClick={() => scrollToSection(s.name)}
+                  disabled={!hasTarget}
+                  title={
+                    hasTarget ? undefined : 'Nenhuma pergunta desta seção bate com o filtro atual'
+                  }
+                  onClick={hasTarget ? () => scrollToSection(s.name) : undefined}
                 >
                   <span className="hub-briefing__section-link-name">{s.name}</span>
                   <span className="hub-briefing__section-link-count">
