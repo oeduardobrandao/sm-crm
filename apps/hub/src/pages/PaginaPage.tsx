@@ -99,7 +99,13 @@ const markdownComponents = {
 function renderBlock(block: HubContentBlock, i: number) {
   switch (block.type) {
     case 'richtext':
-      return <RichTextContent key={i} content={block.doc} className="hub-richtext" />;
+      return (
+        <RichTextContent
+          key={i}
+          content={block.doc}
+          className="hub-richtext text-[15px] hub-tx2 leading-relaxed"
+        />
+      );
     case 'heading':
       if (block.level === 1)
         return (

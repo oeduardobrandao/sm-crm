@@ -117,7 +117,18 @@ function RichTextEditor({
             : ''
         }
       >
-        <EditorContent editor={editor} className="post-editor-content" />
+        <EditorContent
+          editor={editor}
+          // `.post-editor-content` (apps/crm/style.css) is the CRM editing surface's own
+          // sizing: 0.875rem, 80px min-height, links in the CRM's yellow. It's shared here
+          // only because Tiptap's EditorContent needs a class to hang node CSS off. When
+          // read-only, `hub-rich-content` (apps/hub/index.html) out-specifies it so portal
+          // content reads at the surrounding Hub typography (font-size/line-height/color
+          // inherited from `className` above) with links in the client's own brand color,
+          // not the CRM editor's. Editable mode (inline edit-suggestion UI) keeps the CRM
+          // editor look on purpose -- it IS an editor in that state.
+          className={editable ? 'post-editor-content' : 'post-editor-content hub-rich-content'}
+        />
       </div>
     </div>
   );
