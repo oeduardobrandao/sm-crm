@@ -1,5 +1,5 @@
 -- =====================================================================
--- 20260912000001_cron_scan_state.sql
+-- 20260913000001_cron_scan_state.sql
 -- Checkpoint durável para varreduras paginadas de bucket. Service-role
 -- only, sem acesso de cliente.
 --
