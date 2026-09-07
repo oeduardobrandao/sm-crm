@@ -231,6 +231,14 @@ end $$;
 rollback;
 ```
 
+**Os fixtures de deriva não podem ser criados por INSERT direto.** O resolver
+`ica_a1` trata um INSERT com `workflow_post_id` como escrita dirigida pelo usuário e
+levanta `instagram automation target post not found in workspace` quando o
+`cliente_id` do post difere do `client_id` da automação
+(`20260830000002_avulso_claim_reorder_ica.sql:431` e `:438`). A suíte abortaria antes
+de chegar nas asserções. Crie a associação **válida** primeiro e só então induza a
+deriva por uma mudança de estado permitida.
+
 Se algum INSERT bater em NOT NULL ou CHECK que este bloco não cobre, leia a definição
 da tabela (`\d workflow_posts` no psql) e acrescente a coluna: não relaxe a asserção.
 
@@ -620,8 +628,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `hasPermissionFor(svc, userId, workspaceId, module, action)` de
   `_shared/permissions.ts`; `decryptToken(encryptedBase64)` de
   `_shared/instagram-publish-utils.ts`; `makeBoundedFetch(timeoutMs)` de
-  `_shared/bounded-fetch.ts`; `verifyClientOwnership(svc, clientId, contaId)` do
-  próprio `index.ts` (exporte-a se ainda for local).
+  `_shared/bounded-fetch.ts`; `verifyClientOwnership` **injetado via `deps`**, nunca
+  importado do `index.ts`.
 - Produces:
   `handlePublishedMedia(req, deps): Promise<Response>` com
   `deps: { svc, userId, corsHeaders, fetchImpl? }`; resposta
@@ -749,8 +757,32 @@ Expected: FAIL, módulo não existe
 
 - [ ] **Step 3: Implementar o handler**
 
-Crie `supabase/functions/instagram-integration/published-media.ts`. Ordem obrigatória,
-e a validação de tenant vem **antes** de qualquer descriptografia:
+Crie `supabase/functions/instagram-integration/published-media.ts`.
+
+**Não importe nada do `index.ts`.** Ele chama `Deno.serve(...)` no topo do módulo
+(linha 97), e `verifyClientOwnership` é uma função local dele (linha 82). Importar de
+lá cria dependência circular assim que o `index.ts` importar este handler para o
+despacho, e faz o teste unitário deste arquivo avaliar o `index.ts` inteiro: o
+processo de teste passaria a exigir env de produção e a abrir uma porta. Receba
+`verifyClientOwnership` pelo `deps`, e no `index.ts` passe a função local existente.
+
+O tipo das deps:
+
+```ts
+type Deps = {
+  svc: { from: (t: string) => any; rpc: (n: string, p: Record<string, unknown>) => any };
+  userId: string;
+  corsHeaders: Record<string, string>;
+  decryptToken: (encryptedBase64: string) => Promise<string>;
+  verifyClientOwnership: (svc: unknown, clientId: string, contaId: string) => Promise<boolean>;
+  fetchImpl?: typeof fetch;
+};
+```
+
+`svc` é tipado estruturalmente de propósito: `ReturnType<typeof createClient>` faz o
+`deno check` inferir `never` nas linhas de `.from(...)`.
+
+Ordem obrigatória, e a validação de tenant vem **antes** de qualquer descriptografia:
 
 ```ts
 const GRAPH_TIMEOUT_MS = 10_000;
@@ -785,7 +817,7 @@ export async function handlePublishedMedia(req: Request, deps: Deps): Promise<Re
   }
 
   // 4. Propriedade do cliente, ANTES de tocar em token.
-  if (!await verifyClientOwnership(deps.svc, clientId, contaId)) {
+  if (!await deps.verifyClientOwnership(deps.svc, clientId, contaId)) {
     return json({ error: true, message: "Forbidden" }, 403);
   }
 
@@ -861,7 +893,7 @@ No `index.ts`, despache antes do 404 final:
           global: { fetch: makeBoundedFetch() },
         });
         return await handlePublishedMedia(req, {
-          svc: serviceClient, userId: user!.id, corsHeaders, decryptToken,
+          svc: serviceClient, userId: user!.id, corsHeaders, decryptToken, verifyClientOwnership,
         });
     }
 ```
