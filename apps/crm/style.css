@@ -7941,7 +7941,12 @@ a.mention-chip:hover {
   border-radius: 4px;
   border: 1px solid var(--border-color);
   background: transparent;
-  color: var(--danger);
+  /* --danger is a fill/border colour, not an accessible text colour: 3.02:1 on
+     --surface-1 fails the 4.5:1 AA floor. Error copy uses --danger-text (5.94:1
+     here) instead -- see DESIGN_SYSTEM.md. Dark theme already cleared AA with
+     --danger (5.60:1); --danger-text also clears it there, so this is a one-line
+     fix for both themes. */
+  color: var(--danger-text);
   cursor: pointer;
 }
 
