@@ -190,11 +190,17 @@ export async function removeHubBrandFile(fileId: string) {
 }
 
 export async function getHubPages(clienteId: number) {
+  // Prod has 28 pages across 21 clients all still at display_order = 0 (nothing
+  // wrote it before this task). created_at breaks the tie so this reader and
+  // hub-pages/handler.ts (the client-facing side) show the SAME order for
+  // those rows -- without a shared tiebreaker the two would independently fall
+  // back to whatever Postgres happens to return, which need not agree.
   const { data } = await supabase
     .from('hub_pages')
     .select('*')
     .eq('cliente_id', clienteId)
-    .order('display_order');
+    .order('display_order')
+    .order('created_at');
   return (data ?? []) as HubPageRow[];
 }
 
@@ -208,10 +214,62 @@ export async function upsertHubPage(
   page: Partial<HubPageRow> & { cliente_id: number; conta_id: string },
 ) {
   if (page.id) {
-    await supabase.from('hub_pages').update(page).eq('id', page.id);
-  } else {
-    await supabase.from('hub_pages').insert(page);
+    // display_order é do fluxo de reordenação (reorderHubPages), nunca deste
+    // caminho: um form antigo de edição não pode reposicionar a página sem
+    // querer só por reenviar o valor que carregou.
+    const { display_order: _ignored, ...rest } = page;
+    // Must throw. O caller antigo descartava `error` em silêncio, que é como
+    // uma escrita recusada (RLS, trigger de entitlement) ainda mostrava
+    // "Página salva!" -- ver handleEntitlementMutationError em upsertHubBrand
+    // acima para o mesmo padrão.
+    const { error } = await supabase.from('hub_pages').update(rest).eq('id', page.id);
+    if (error) throw error;
+    return;
   }
+
+  const { data: last, error: maxError } = await supabase
+    .from('hub_pages')
+    .select('display_order')
+    .eq('cliente_id', page.cliente_id)
+    .order('display_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (maxError) throw maxError;
+
+  const next = last?.display_order == null ? 0 : last.display_order + 1;
+  const { error } = await supabase.from('hub_pages').insert({ ...page, display_order: next });
+  if (error) throw error;
+}
+
+/**
+ * Renumera 0..n-1 numa passada. `orderedIds` é a ordem final do rail (o drag
+ * de reordenação nasce em outra task -- esta é só a escrita).
+ *
+ * Feito com um update por linha (Promise.all), não `.upsert(..., {onConflict:
+ * 'id'})`: um upsert parcial manda só `{id, display_order}`, e o Postgres
+ * monta a linha candidata do INSERT (via json_populate_recordset, que não
+ * aplica o DEFAULT da coluna -- só usa o que veio no JSON, NULL pro resto)
+ * ANTES de descobrir se vai bater em conflito. Como `title`, `conta_id` e
+ * `cliente_id` são NOT NULL sem default, essa linha candidata violaria a
+ * constraint e o Postgres falha com "null value ... violates not-null
+ * constraint" -- mesmo a linha já existindo e o caminho real sendo um UPDATE.
+ * Ou seja: não é risco de zerar colunas em silêncio, é a reordenação inteira
+ * falhando toda vez. Update por linha evita os dois problemas.
+ */
+export async function reorderHubPages(clienteId: number, orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return;
+  await Promise.all(
+    orderedIds.map((id, display_order) =>
+      supabase
+        .from('hub_pages')
+        .update({ display_order })
+        .eq('id', id)
+        .eq('cliente_id', clienteId)
+        .then(({ error }) => {
+          if (error) throw error;
+        }),
+    ),
+  );
 }
 
 export async function removeHubPage(pageId: string) {

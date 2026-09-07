@@ -61,12 +61,17 @@ export function createHubPagesHandler(deps: HubPagesHandlerDeps) {
       return json({ page: pageData });
     }
 
+    // display_order alone doesn't order prod's existing rows (they're all still
+    // 0 -- nothing wrote it before this feature). created_at breaks the tie the
+    // same way the CRM's getHubPages does, so the agency and the client see the
+    // same order instead of two independent "whatever Postgres returns" results.
     const { data: rawPages } = await db
       .from("hub_pages")
       .select("id, title, display_order, created_at, clientes!inner(conta_id)")
       .eq("cliente_id", hubToken.cliente_id)
       .eq("clientes.conta_id", hubToken.conta_id)
-      .order("display_order");
+      .order("display_order")
+      .order("created_at");
     const pages = (rawPages ?? []).map(({ clientes: _, ...page }: Record<string, unknown>) => page);
     return json({ pages });
   };

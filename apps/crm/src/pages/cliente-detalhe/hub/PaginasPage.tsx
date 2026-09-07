@@ -174,6 +174,8 @@ function PagesEditor({
       toast.success('Página salva!');
       setEditingPage(null);
       onSaved();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Erro ao salvar página.');
     } finally {
       setSaving(false);
     }
