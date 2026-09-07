@@ -14,6 +14,26 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
   (() => { throw new Error("CRON_SECRET is required"); })();
+
+// Hard bound on how long this worker waits for the generator.
+//
+// Without it the worker waits forever and the edge runtime eventually kills the
+// isolate mid-await: the row stays in `generating`, no error is recorded, no
+// alert fires, and the only recovery is the 10-minute stale-lock re-claim —
+// which loops silently for as long as the generation keeps hanging.
+//
+// 5 minutes sits under both walls that matter. Under the platform wall clock,
+// so the timeout actually fires and the catch below gets to run its bookkeeping
+// instead of the isolate dying; and under the 10-minute stale-lock window, so
+// that bookkeeping always lands BEFORE another worker becomes eligible to
+// re-claim the same row — two workers never write over each other.
+//
+// An AbortError lands in the existing network-error catch: report marked
+// failed, retry_count incremented, and reportCronFailure on the third attempt.
+// That is the point — a generation that hangs three times becomes a visible
+// failure instead of an invisible loop.
+const GENERATOR_TIMEOUT_MS = 5 * 60 * 1000;
+
 const INTERNAL_FUNCTION_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET") ??
   (() => { throw new Error("INTERNAL_FUNCTION_SECRET is required"); })();
 
@@ -137,6 +157,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ reportId: claimed.id }),
+      signal: AbortSignal.timeout(GENERATOR_TIMEOUT_MS),
     });
   } catch (fetchErr: unknown) {
     const message = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);

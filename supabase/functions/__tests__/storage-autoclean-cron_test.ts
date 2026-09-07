@@ -9,14 +9,40 @@ import {
 /**
  * Fake of the two supabase-js surfaces the handler touches:
  *  - .from("workspaces").select("id").eq("storage_autoclean_enabled", true)
- *    .order("id") — the enabled-workspace listing (applies the eq filter for
- *    real so the test proves it is present AND correct).
+ *    .order(...) — the enabled-workspace listing. The fake applies the eq
+ *    filter AND the order keys for real, so the tests prove both are present
+ *    and correct. Ordering is what keeps the deadline-truncated tail rotating,
+ *    so a fake that ignored .order() would let that regress silently.
  *  - .rpc("storage_autoclean_run", { p_workspace }) — scripted per-workspace
  *    results (success payload, skip payload, or error).
  */
 interface FakeWorkspace {
   id: string;
   storage_autoclean_enabled: boolean;
+  /** Null/absent = never ran; sorts ahead of every stamped workspace. */
+  storage_autoclean_last_run_at?: string | null;
+}
+
+interface OrderKey {
+  column: string;
+  ascending: boolean;
+  nullsFirst?: boolean;
+}
+
+/** Mirrors PostgREST's multi-key ORDER BY over the fake rows. */
+function applyOrder(rows: FakeWorkspace[], keys: OrderKey[]): FakeWorkspace[] {
+  return [...rows].sort((a, b) => {
+    for (const key of keys) {
+      const av = (a as Record<string, unknown>)[key.column] ?? null;
+      const bv = (b as Record<string, unknown>)[key.column] ?? null;
+      if (av === bv) continue;
+      if (av === null) return key.nullsFirst ? -1 : 1;
+      if (bv === null) return key.nullsFirst ? 1 : -1;
+      const cmp = String(av) < String(bv) ? -1 : 1;
+      return key.ascending ? cmp : -cmp;
+    }
+    return 0;
+  });
 }
 
 function makeFakeDb(
@@ -28,8 +54,10 @@ function makeFakeDb(
   opts?: { listError?: { message: string } },
 ) {
   const rpcCalls: string[] = [];
+  const orderKeys: OrderKey[] = [];
   const db = {
     rpcCalls,
+    orderKeys,
     from(table: string) {
       assert(table === "workspaces", `unexpected table ${table}`);
       const filters: { eq: Record<string, unknown> } = { eq: {} };
@@ -38,7 +66,8 @@ function makeFakeDb(
           filters.eq[column] = value;
           return chain;
         },
-        order(_column: string, _opts: { ascending: boolean }) {
+        order(column: string, opts: { ascending: boolean; nullsFirst?: boolean }) {
+          orderKeys.push({ column, ...opts });
           return chain;
         },
         then(
@@ -50,13 +79,12 @@ function makeFakeDb(
           if (opts?.listError) {
             return Promise.resolve(onFulfilled({ data: null, error: opts.listError }));
           }
-          const data = workspaces
-            .filter((w) =>
-              Object.entries(filters.eq).every(
-                (entry) => w[entry[0] as keyof FakeWorkspace] === entry[1],
-              )
+          const filtered = workspaces.filter((w) =>
+            Object.entries(filters.eq).every(
+              (entry) => w[entry[0] as keyof FakeWorkspace] === entry[1],
             )
-            .map((w) => ({ id: w.id }));
+          );
+          const data = applyOrder(filtered, orderKeys).map((w) => ({ id: w.id }));
           return Promise.resolve(onFulfilled({ data, error: null }));
         },
       };
@@ -266,4 +294,69 @@ Deno.test("run: throws when the workspace listing fails", async () => {
   }
   assert(threw, "expected runStorageAutocleanCron to throw");
   assertEquals(db.rpcCalls.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Ordering: what keeps the deadline-truncated tail from starving
+// ---------------------------------------------------------------------------
+
+Deno.test("run: orders stalest-first with never-run workspaces ahead", async () => {
+  const db = makeFakeDb(
+    [
+      { id: "ws-a", storage_autoclean_enabled: true, storage_autoclean_last_run_at: "2026-09-06T02:30:00Z" },
+      { id: "ws-b", storage_autoclean_enabled: true, storage_autoclean_last_run_at: null },
+      { id: "ws-c", storage_autoclean_enabled: true, storage_autoclean_last_run_at: "2026-08-30T02:30:00Z" },
+      { id: "ws-d", storage_autoclean_enabled: true },
+    ],
+    {},
+  );
+
+  await runStorageAutocleanCron(makeDeps(db));
+
+  // Never-run (null) first, id-tiebroken; then the stamped ones oldest-first.
+  assertEquals(db.rpcCalls, ["ws-b", "ws-d", "ws-c", "ws-a"]);
+  // The id key must survive as the LAST order key: without it two workspaces
+  // stamped in the same run come back in an arbitrary order and the run stops
+  // being reproducible.
+  assertEquals(db.orderKeys, [
+    { column: "storage_autoclean_last_run_at", ascending: true, nullsFirst: true },
+    { column: "id", ascending: true },
+  ]);
+});
+
+Deno.test("run: the deadline tail rotates across runs instead of starving", async () => {
+  // Two workspaces, budget for one. Night 1 visits the stalest; night 2, with
+  // that one stamped, must visit the OTHER. Ordering by id (the original
+  // behaviour) would visit ws-early both nights and never clean ws-late.
+  const budgetForOne = () => {
+    let t = -40_000;
+    return () => {
+      t += 40_000;
+      return t;
+    };
+  };
+  const cleaned = { data: { files_deleted: 1, bytes_freed: 10 }, error: null };
+
+  const night1 = makeFakeDb(
+    [
+      { id: "ws-early", storage_autoclean_enabled: true, storage_autoclean_last_run_at: "2026-09-01T02:30:00Z" },
+      { id: "ws-late", storage_autoclean_enabled: true, storage_autoclean_last_run_at: "2026-09-05T02:30:00Z" },
+    ],
+    { "ws-early": cleaned, "ws-late": cleaned },
+  );
+  const r1 = await runStorageAutocleanCron(makeDeps(night1, { nowMs: budgetForOne() }));
+  assertEquals(night1.rpcCalls, ["ws-early"]);
+  assertEquals(r1.deadline_stopped, 1);
+
+  // ws-early's stamp advanced past ws-late's, so the queue head swaps.
+  const night2 = makeFakeDb(
+    [
+      { id: "ws-early", storage_autoclean_enabled: true, storage_autoclean_last_run_at: "2026-09-06T02:30:00Z" },
+      { id: "ws-late", storage_autoclean_enabled: true, storage_autoclean_last_run_at: "2026-09-05T02:30:00Z" },
+    ],
+    { "ws-early": cleaned, "ws-late": cleaned },
+  );
+  const r2 = await runStorageAutocleanCron(makeDeps(night2, { nowMs: budgetForOne() }));
+  assertEquals(night2.rpcCalls, ["ws-late"]);
+  assertEquals(r2.deadline_stopped, 1);
 });

@@ -11,8 +11,25 @@
  * accounting, audit_log, notification) lives in the `storage_autoclean_run`
  * SQL function -- one transaction per workspace. This loop only decides WHICH
  * workspaces to visit and aggregates results:
- *  - sequential, ordered by workspace id, so a partial run under the deadline
- *    is deterministic;
+ *  - sequential, ordered by `storage_autoclean_last_run_at` (nulls first, then
+ *    workspace id as a total-order tiebreak): the run is deterministic AND the
+ *    workspaces cut off by the deadline are different ones each night. Ordering
+ *    by `id` alone -- as this loop did originally -- starves the exact same
+ *    tail forever once the enabled set outgrows one run's budget, and since ids
+ *    are assigned at signup that tail is always the newest workspaces.
+ *
+ *    Known wrinkle, deliberately accepted: `storage_autoclean_run` returns its
+ *    `skipped` paths (disabled / no_quota / below_threshold) BEFORE stamping
+ *    `storage_autoclean_last_run_at`, so a workspace that is enabled but
+ *    permanently below its threshold keeps a stale (or null) timestamp and sits
+ *    at the head of this ordering on every run. That is affordable HERE and not
+ *    in instagram-sync-cron/select.ts, where the same shape is a documented
+ *    bug: a skip there burns a Graph API sync slot, while a skip here is a lock
+ *    + threshold read that returns in single-digit milliseconds. A permanent
+ *    head of skips costs a few seconds of the 60s budget, and every workspace
+ *    that does real work still rotates correctly. It stops being affordable at
+ *    roughly a few thousand enabled-but-skipping workspaces; the fix then is an
+ *    attempt-stamp column written on all RPC exit paths, not a different order;
  *  - a per-workspace RPC error is recorded and the loop CONTINUES -- one bad
  *    workspace must not starve the rest;
  *  - a soft wall-clock deadline bounds the run (edge isolates get killed, not
@@ -32,7 +49,10 @@ export interface EnabledWorkspaceRow {
 export interface WorkspacesFilterChain
   extends PromiseLike<{ data: EnabledWorkspaceRow[] | null; error: DbError | null }> {
   eq(column: string, value: boolean): WorkspacesFilterChain;
-  order(column: string, opts: { ascending: boolean }): WorkspacesFilterChain;
+  order(
+    column: string,
+    opts: { ascending: boolean; nullsFirst?: boolean },
+  ): WorkspacesFilterChain;
 }
 
 export interface StorageAutocleanRunResult {
@@ -101,6 +121,12 @@ export async function runStorageAutocleanCron(
     .from("workspaces")
     .select("id")
     .eq("storage_autoclean_enabled", true)
+    // Stalest first. `nullsFirst` puts never-run workspaces ahead of everyone,
+    // so a newly enabled workspace is picked up on the next run instead of
+    // waiting behind the whole rotation. The `id` key after it is what keeps
+    // the order total -- without it, ties (every null, and any two workspaces
+    // stamped in the same run) come back in whatever order Postgres chooses.
+    .order("storage_autoclean_last_run_at", { ascending: true, nullsFirst: true })
     .order("id", { ascending: true });
 
   if (listError) {
