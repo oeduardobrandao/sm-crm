@@ -9,7 +9,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
-import { createInstagramAutomationCronHandler } from "../instagram-automation-cron/handler.ts";
+import { createInstagramAutomationCronHandler, runUnlinkedPhase } from "../instagram-automation-cron/handler.ts";
 import type { InstagramAutomationCronDeps } from "../instagram-automation-cron/handler.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
@@ -66,14 +66,19 @@ function baseDeps(db: Db, overrides: Partial<InstagramAutomationCronDeps> = {}):
   };
 }
 
-// Fila padrão das 6 fases "vazias" (nada a fazer em nenhuma): usada pelo happy
-// path e como base para os testes que só sobrescrevem UMA fase.
+// Fila padrão das 7 fases "vazias" (nada a fazer em nenhuma): usada pelo happy
+// path e como base para os testes que só sobrescrevem UMA fase. `instagram_comment_automations:select`
+// é consultada por DUAS fases (4, alvo órfão, e 7, re-check de assinaturas) --
+// a fila é FIFO por chave `tabela:operação`, então precisa de uma entrada para
+// cada uma, NESSA ordem.
 function queueEmptyRun(db: Db) {
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
-  db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  db.queueRpc("reconcile_unlinked_automation_targets", { data: { marked: 0, cleared: 0 }, error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 4 (alvo órfão), vazia
+  db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
-  db.queue("instagram_comment_automations", "select", { data: [], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 7 (re-check), vazia
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
 }
 
@@ -156,6 +161,8 @@ Deno.test("instagram-automation-cron: happy path chama as fases na ordem e retor
   const expectedSequence = [
     "rpc:fail_ineligible_automation_sends",
     "rpc:sweep_pending_instagram_automation_links",
+    "rpc:reconcile_unlinked_automation_targets",
+    "instagram_comment_automations:select",
     "instagram_webhook_events:select",
     "rpc:claim_retryable_automation_sends",
     "instagram_comment_automations:select",
@@ -186,10 +193,12 @@ Deno.test("instagram-automation-cron: claim devolve 1 send -> executeSend é cha
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  // 1ª resposta: query da fase 4 (alvo órfão), vazia.
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [claimedSendFixture()], error: null });
-  // 1ª resposta: revalidação da automação dentro de executeSend (não achou -> skipped/automation_inactive).
+  // 2ª resposta: revalidação da automação dentro de executeSend (não achou -> skipped/automation_inactive).
   db.queue("instagram_comment_automations", "select", { data: null, error: null });
-  // 2ª resposta: query da fase 6 (re-check), vazia.
+  // 3ª resposta: query da fase 7 (re-check), vazia.
   db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queue("instagram_automation_sends", "update", { data: null, error: null });
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
@@ -205,13 +214,12 @@ Deno.test("instagram-automation-cron: claim devolve 1 send -> executeSend é cha
   assertEquals(await readJson(response), { ok: true, failed: 0 });
 
   // Prova que executeSend rodou com O send claimado: a revalidação lê
-  // exatamente o automation_id do fixture.
+  // exatamente o automation_id do fixture. (A fase 4, alvo órfão, e a fase 7,
+  // re-check, também consultam esta mesma tabela -- filtra pela modifier `eq
+  // id` para achar a chamada certa em vez de assumir um índice fixo.)
   const automationLookups = callsFor(db, "instagram_comment_automations", "select");
-  assert(automationLookups.length >= 1, "executeSend deveria ter consultado a automação");
-  assert(
-    hasModifier(automationLookups[0], "eq", ["id", AUTOMATION_ID]),
-    "revalidação deveria filtrar pelo automation_id do send claimado",
-  );
+  const revalidationLookup = automationLookups.find((c: QueryCall) => hasModifier(c, "eq", ["id", AUTOMATION_ID]));
+  assert(revalidationLookup, "executeSend deveria ter consultado a automação pelo id");
 
   // E que o efeito (skipped/automation_inactive, automação não encontrada)
   // foi gravado no send_id correto.
@@ -226,6 +234,8 @@ Deno.test("instagram-automation-cron: retries com 2 sends, 1 falha -> failed=1 e
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  // Fase 4 (alvo órfão), vazia.
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queueRpc("claim_retryable_automation_sends", {
     data: [claimedSendFixture({ send_id: "send-a" }), claimedSendFixture({ send_id: "send-b" })],
     error: null,
@@ -234,7 +244,7 @@ Deno.test("instagram-automation-cron: retries com 2 sends, 1 falha -> failed=1 e
   db.queue("instagram_comment_automations", "select", { data: null, error: { message: "db indisponível" } });
   // send-b: automação não encontrada -> skipped/automation_inactive (sucesso).
   db.queue("instagram_comment_automations", "select", { data: null, error: null });
-  // Fase 6 (recheck), vazia.
+  // Fase 7 (recheck), vazia.
   db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queue("instagram_automation_sends", "update", { data: null, error: null });
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
@@ -259,7 +269,10 @@ Deno.test("instagram-automation-cron: assinatura caiu (sem 'comments') -> commen
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  // Fase 4 (alvo órfão), vazia.
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
+  // Fase 7 (re-check): a MESMA tabela, automações ativas.
   db.queue("instagram_comment_automations", "select", {
     data: [{ client_id: CLIENT_ID, conta_id: CONTA_ID }],
     error: null,
@@ -305,7 +318,10 @@ Deno.test("instagram-automation-cron: assinatura confirmada ('comments' presente
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  // Fase 4 (alvo órfão), vazia.
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
+  // Fase 7 (re-check): a MESMA tabela, automações ativas.
   db.queue("instagram_comment_automations", "select", {
     data: [{ client_id: CLIENT_ID, conta_id: CONTA_ID }],
     error: null,
@@ -357,7 +373,10 @@ Deno.test("instagram-automation-cron: re-check filtra authorization_status='acti
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  // Fase 4 (alvo órfão), vazia.
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
+  // Fase 7 (re-check): a MESMA tabela, automações ativas.
   db.queue("instagram_comment_automations", "select", {
     data: [{ client_id: CLIENT_ID, conta_id: CONTA_ID }],
     error: null,
@@ -395,7 +414,10 @@ Deno.test("instagram-automation-cron: fail_ineligible_automation_sends com erro 
   db.queueRpc("fail_ineligible_automation_sends", { data: null, error: { message: "rpc indisponível" } });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  // Fase 4 (alvo órfão), vazia.
+  db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
+  // Fase 7 (re-check), vazia.
   db.queue("instagram_comment_automations", "select", { data: [], error: null });
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
   db.queue("cron_failures", "insert", { data: null, error: null });
@@ -426,6 +448,7 @@ Deno.test("instagram-automation-cron: retry claimado cujo media_id CASA o alvo e
   const db = createSupabaseQueryMock();
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 4 (alvo órfão), vazia
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("claim_retryable_automation_sends", {
     data: [claimedSendFixture({ media_id: MEDIA_ID })],
@@ -445,7 +468,7 @@ Deno.test("instagram-automation-cron: retry claimado cujo media_id CASA o alvo e
   db.queue("instagram_accounts", "select", { data: { id: ACCOUNT_ROW_ID }, error: null }); // aptidão
   db.queueRpc("mark_automation_dm_sent", { data: true, error: null });
   db.queue("instagram_automation_sends", "update", { data: null, error: null }); // fechamento
-  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 6 (re-check), vazia
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 7 (re-check), vazia
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
 
   const dmCalls: string[] = [];
@@ -498,8 +521,9 @@ Deno.test("instagram-automation-cron: sweep encontra evento órfão -> reprocess
   db.queue("instagram_accounts", "select", { data: [], error: null });
   db.queue("instagram_webhook_events", "update", { data: null, error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 4 (alvo órfão), vazia
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
-  db.queue("instagram_comment_automations", "select", { data: [], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 7 (re-check), vazia
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
 
   const handler = createInstagramAutomationCronHandler(baseDeps(db));
@@ -547,8 +571,9 @@ Deno.test("instagram-automation-cron: sweep de convergência chama a RPC de vín
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 3, error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 4 (alvo órfão), vazia
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
-  db.queue("instagram_comment_automations", "select", { data: [], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 7 (re-check), vazia
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
 
   const handler = createInstagramAutomationCronHandler(baseDeps(db));
@@ -568,8 +593,9 @@ Deno.test("instagram-automation-cron: sweep de convergência com erro não abort
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: null, error: { message: "rpc indisponível" } });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 4 (alvo órfão), vazia
   db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
-  db.queue("instagram_comment_automations", "select", { data: [], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 7 (re-check), vazia
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
   db.queue("cron_failures", "insert", { data: null, error: null });
 
@@ -594,6 +620,7 @@ Deno.test("instagram-automation-cron: retry claimado cuja automação trocou de 
   db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
   db.queue("instagram_webhook_events", "select", { data: [], error: null });
   db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 4 (alvo órfão), vazia
   // O send foi claimado com a mídia do comentário original; a automação, nesse
   // meio tempo, virou específica de OUTRO post.
   db.queueRpc("claim_retryable_automation_sends", {
@@ -611,7 +638,7 @@ Deno.test("instagram-automation-cron: retry claimado cuja automação trocou de 
     },
     error: null,
   });
-  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 6 (re-check), vazia
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 7 (re-check), vazia
   db.queue("instagram_automation_sends", "update", { data: null, error: null });
   db.queue("instagram_webhook_events", "delete", { data: null, error: null });
 
@@ -630,6 +657,102 @@ Deno.test("instagram-automation-cron: retry claimado cuja automação trocou de 
   assertEquals(sendUpdates.length, 1);
   assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "target_changed" });
   assert(hasModifier(sendUpdates[0], "eq", ["id", SEND_ID]));
+});
+
+// ══════════════════ Fase 4: alvo órfão (reconciliação + notificação) ═══════
+
+// Mock leve e DEDICADO a `runUnlinkedPhase`: diferente de `createSupabaseQueryMock`
+// (fila de respostas enlatadas, sem avaliar os modificadores), este aqui PRECISA
+// aplicar de verdade `eq`/`is`/`not`/`lt` sobre `rows` -- é o único jeito de provar,
+// num teste unitário, que a fase manda os filtros certos (ativo=true, sem mídia,
+// com marca, marca vencida) para o banco. `notified` captura o metadata que
+// `notifyAutomationFailure` de fato empacota em `insert_notification_batch`.
+function passesFilter(row: Record<string, unknown>, method: string, args: unknown[]): boolean {
+  const col = args[0] as string;
+  const val = row[col] ?? null;
+  if (method === "eq") return val === args[1];
+  if (method === "is") return val === args[1];
+  if (method === "not") {
+    const [, op, cmp] = args;
+    return op === "is" ? val !== cmp : true;
+  }
+  if (method === "lt") return typeof val === "string" && val < (args[1] as string);
+  return true;
+}
+
+function makeSvc(rows: Array<Record<string, unknown>>, notified: Record<string, unknown>[]): SupabaseClient {
+  const svc = {
+    rpc(name: string, params?: Record<string, unknown>) {
+      let resultPromise: Promise<{ data: unknown; error: unknown }>;
+      if (name === "reconcile_unlinked_automation_targets") {
+        resultPromise = Promise.resolve({ data: { marked: 0, cleared: 0 }, error: null });
+      } else if (name === "resolve_notification_targets") {
+        resultPromise = Promise.resolve({ data: ["user-1"], error: null });
+      } else if (name === "insert_notification_batch") {
+        const metadata = (params?.p_metadata ?? {}) as Record<string, unknown>;
+        notified.push({ clientId: metadata.client_id, reason: metadata.reason, ...metadata });
+        resultPromise = Promise.resolve({ data: null, error: null });
+      } else {
+        resultPromise = Promise.reject(new Error(`rpc não mapeado no teste: ${name}`));
+      }
+      return {
+        single: () => resultPromise,
+        then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => resultPromise.then(res, rej),
+      };
+    },
+    from(table: string) {
+      if (table === "instagram_comment_automations") {
+        const filters: Array<{ method: string; args: unknown[] }> = [];
+        // deno-lint-ignore no-explicit-any
+        const builder: any = {
+          select: () => builder,
+          eq: (...args: unknown[]) => (filters.push({ method: "eq", args }), builder),
+          is: (...args: unknown[]) => (filters.push({ method: "is", args }), builder),
+          not: (...args: unknown[]) => (filters.push({ method: "not", args }), builder),
+          lt: (...args: unknown[]) => (filters.push({ method: "lt", args }), builder),
+          then: (res: (v: unknown) => unknown) =>
+            res({ data: rows.filter((r) => filters.every((f) => passesFilter(r, f.method, f.args))), error: null }),
+        };
+        return builder;
+      }
+      if (table === "notifications") {
+        // Dedupe de 24h: sempre "nada encontrado" -> notificação sempre prossegue.
+        // deno-lint-ignore no-explicit-any
+        const builder: any = {
+          select: () => builder,
+          eq: () => builder,
+          gt: () => builder,
+          limit: () => Promise.resolve({ data: [], error: null }),
+        };
+        return builder;
+      }
+      throw new Error(`from não mapeado no teste: ${table}`);
+    },
+    // deno-lint-ignore no-explicit-any
+  } as any;
+  return svc as SupabaseClient;
+}
+
+Deno.test("cron notifica alvo orfao so depois da carencia de 15 min", async () => {
+  const notified: Record<string, unknown>[] = [];
+  const agora = new Date("2026-09-07T12:00:00Z");
+  const rows = [
+    // 20 min: passou da carencia, ativa -> notifica
+    { id: "a1", conta_id: "w1", client_id: 1, name: "Velha", ativo: true,
+      target_unlinked_at: "2026-09-07T11:40:00Z" },
+    // 5 min: dentro da carencia -> nao notifica
+    { id: "a2", conta_id: "w1", client_id: 2, name: "Nova", ativo: true,
+      target_unlinked_at: "2026-09-07T11:55:00Z" },
+    // 20 min mas desligada -> nao notifica
+    { id: "a3", conta_id: "w1", client_id: 3, name: "Desligada", ativo: false,
+      target_unlinked_at: "2026-09-07T11:40:00Z" },
+  ];
+
+  await runUnlinkedPhase(makeSvc(rows, notified), agora);
+
+  assertEquals(notified.length, 1);
+  assertEquals(notified[0].clientId, 1);
+  assertEquals(notified[0].reason, "target_never_published");
 });
 
 // ══════════════════════════════ Fase 7: purge ══════════════════════════════
