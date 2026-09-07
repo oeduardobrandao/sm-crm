@@ -216,7 +216,7 @@ export function getNotificationDisplay(
           icon: Instagram,
           tone: 'danger',
           title: 'Automação do Instagram com problema',
-          body: `${nome ? `${nome} · ` : ''}o post alvo foi marcado como postado sem passar pelo app, então não existe mídia para monitorar. Escolha o post publicado.`,
+          body: `${nome ? `${nome}. ` : ''}O post alvo foi marcado como postado sem passar pelo app, então não existe mídia para monitorar. Escolha o post publicado.`,
         };
       }
       return {

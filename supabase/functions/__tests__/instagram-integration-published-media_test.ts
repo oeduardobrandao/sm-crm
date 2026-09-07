@@ -264,7 +264,12 @@ Deno.test("published-media: 429 quando o rate limit estoura", async () => {
   );
   assertEquals(res.status, 429);
   const body = await res.json();
-  assertEquals(body.error, "Rate limit exceeded");
+  // Mesmo formato { error: true, code, message } que o 409 de
+  // "instagram_not_authorized" -- o cliente distingue os dois pelo `code`,
+  // nao adivinhando a partir do status HTTP sozinho.
+  assertEquals(body.error, true);
+  assertEquals(body.code, "rate_limited");
+  assertStringIncludes(body.message, "Aguarde");
 });
 
 Deno.test("published-media: chave do rate limit e por workspace + cliente, 30/60s", async () => {

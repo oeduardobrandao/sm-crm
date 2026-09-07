@@ -89,7 +89,12 @@ export async function handlePublishedMedia(req: Request, deps: Deps): Promise<Re
   // pra TODOS os tenants, nao so pro dele.
   const rateLimitAllowed = await deps.checkRateLimit(`ig-published-media:${contaId}:${clientId}`, 30, 60);
   if (!rateLimitAllowed) {
-    return json({ error: "Rate limit exceeded" }, 429);
+    // Mesmo formato { error: true, code, message } que o 409 abaixo -- nao
+    // deixar o cliente adivinhar o `code` a partir do `status` HTTP sozinho.
+    return json(
+      { error: true, code: "rate_limited", message: "Muitas requisicoes seguidas. Aguarde um minuto e tente novamente." },
+      429,
+    );
   }
 
   // 5. Conta e status. Token nulo com conta 'active' (registro incompleto)

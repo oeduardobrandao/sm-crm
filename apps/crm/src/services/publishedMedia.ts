@@ -46,14 +46,18 @@ export async function getPublishedMedia(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    // O 429 do handler não carrega `code` no corpo (so `{ error: "Rate limit
-    // exceeded" }`) -- so o status distingue esse caso do 409, que ja vem com
-    // `code: "instagram_not_authorized"`.
-    const code: string | undefined = res.status === 429 ? 'rate_limited' : data.code;
+    // O handler devolve `code` no corpo pra todo erro conhecido: 409 vem com
+    // `code: "instagram_not_authorized"`, 429 vem com `code: "rate_limited"`.
+    // O fallback por `res.status === 429` é só defesa em profundidade pro
+    // caso de uma camada de infra na frente (proxy, gateway, rate-limit de
+    // borda) devolver um 429 sem corpo reconhecível -- contra o handler real
+    // isso nunca deveria disparar, já que ele sempre inclui `code`.
+    const code: string | undefined = data.code ?? (res.status === 429 ? 'rate_limited' : undefined);
     const message: string =
-      res.status === 429
+      data.message ??
+      (res.status === 429
         ? 'Muitas requisições seguidas. Aguarde um minuto e tente novamente.'
-        : (data.message ?? 'Falha ao listar mídias publicadas');
+        : 'Falha ao listar mídias publicadas');
     const err = new Error(message) as PublishedMediaError;
     err.code = code;
     throw err;
