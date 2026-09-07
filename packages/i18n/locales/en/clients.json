@@ -202,12 +202,18 @@
       "redesSociais": "Social media",
       "relatorios": "Reports",
       "hub": "Hub",
+      "hubAcesso": "Access",
+      "hubBriefing": "Briefing",
+      "hubMarca": "Brand",
+      "hubPaginas": "Pages",
+      "hubIdeias": "Ideas",
       "arquivos": "Files",
       "financeiro": "Finance"
     },
     "tabGroups": {
       "cliente": "Client",
       "canais": "Channels & analytics",
+      "portal": "Client portal",
       "gestao": "Management"
     },
     "nav": {

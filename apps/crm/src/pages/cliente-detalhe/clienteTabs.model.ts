@@ -4,7 +4,11 @@ import {
   LayoutList,
   Share2,
   BarChart3,
-  Globe,
+  KeyRound,
+  ClipboardList,
+  Palette,
+  FileText,
+  Lightbulb,
   FolderOpen,
   Wallet,
 } from 'lucide-react';
@@ -16,11 +20,15 @@ export type ClienteTabKey =
   | 'entregas'
   | 'redes-sociais'
   | 'relatorios'
-  | 'hub'
+  | 'hub/acesso'
+  | 'hub/briefing'
+  | 'hub/marca'
+  | 'hub/paginas'
+  | 'hub/ideias'
   | 'arquivos'
   | 'financeiro';
 
-export type ClienteTabGroup = 'cliente' | 'canais' | 'gestao';
+export type ClienteTabGroup = 'cliente' | 'canais' | 'portal' | 'gestao';
 
 export type WorkspaceRole = 'owner' | 'admin' | 'agent';
 
@@ -90,7 +98,41 @@ export const CLIENTE_TABS: ClienteTab[] = [
     labelKey: 'detail.tabs.relatorios',
     roles: STAFF,
   },
-  { key: 'hub', group: 'gestao', icon: Globe, labelKey: 'detail.tabs.hub', roles: ALL },
+  {
+    key: 'hub/acesso',
+    group: 'portal',
+    icon: KeyRound,
+    labelKey: 'detail.tabs.hubAcesso',
+    roles: ALL,
+  },
+  {
+    key: 'hub/briefing',
+    group: 'portal',
+    icon: ClipboardList,
+    labelKey: 'detail.tabs.hubBriefing',
+    roles: ALL,
+  },
+  {
+    key: 'hub/marca',
+    group: 'portal',
+    icon: Palette,
+    labelKey: 'detail.tabs.hubMarca',
+    roles: ALL,
+  },
+  {
+    key: 'hub/paginas',
+    group: 'portal',
+    icon: FileText,
+    labelKey: 'detail.tabs.hubPaginas',
+    roles: ALL,
+  },
+  {
+    key: 'hub/ideias',
+    group: 'portal',
+    icon: Lightbulb,
+    labelKey: 'detail.tabs.hubIdeias',
+    roles: ALL,
+  },
   {
     key: 'arquivos',
     group: 'gestao',
@@ -111,6 +153,7 @@ export const CLIENTE_TABS: ClienteTab[] = [
 export const CLIENTE_TAB_GROUP_LABELS: Record<ClienteTabGroup, string> = {
   cliente: 'detail.tabGroups.cliente',
   canais: 'detail.tabGroups.canais',
+  portal: 'detail.tabGroups.portal',
   gestao: 'detail.tabGroups.gestao',
 };
 

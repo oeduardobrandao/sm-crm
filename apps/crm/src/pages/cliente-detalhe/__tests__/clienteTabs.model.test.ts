@@ -1,23 +1,40 @@
 import { describe, it, expect } from 'vitest';
 import {
   CLIENTE_TABS,
+  CLIENTE_TAB_GROUP_LABELS,
   canAccessClienteTab,
   canAccessClienteTabRole,
   visibleClienteTabs,
   financeiroTabGuardOutcome,
 } from '../clienteTabs.model';
+import pt from '../../../../../../packages/i18n/locales/pt/clients.json';
+import en from '../../../../../../packages/i18n/locales/en/clients.json';
+
+function lookup(bundle: unknown, dotted: string): unknown {
+  return dotted
+    .split('.')
+    .reduce<unknown>((acc, k) => (acc as Record<string, unknown> | undefined)?.[k], bundle);
+}
 
 describe('CLIENTE_TABS', () => {
-  it('declares the seven tabs, grouped Cliente / Canais e análise / Gestão, in order', () => {
+  it('declares the eleven tabs, grouped, in order', () => {
     expect(CLIENTE_TABS.map((t) => [t.key, t.group])).toEqual([
       ['visao-geral', 'cliente'],
       ['entregas', 'cliente'],
       ['redes-sociais', 'canais'],
       ['relatorios', 'canais'],
-      ['hub', 'gestao'],
+      ['hub/acesso', 'portal'],
+      ['hub/briefing', 'portal'],
+      ['hub/marca', 'portal'],
+      ['hub/paginas', 'portal'],
+      ['hub/ideias', 'portal'],
       ['arquivos', 'gestao'],
       ['financeiro', 'gestao'],
     ]);
+  });
+
+  it('no longer declares a bare hub tab', () => {
+    expect(CLIENTE_TABS.some((t) => t.key === 'hub')).toBe(false);
   });
 
   it('keeps tabs of the same group adjacent', () => {
@@ -35,14 +52,18 @@ describe('CLIENTE_TABS', () => {
 });
 
 describe('visibleClienteTabs', () => {
-  it('shows all seven tabs to an owner with financial access', () => {
+  it('shows all eleven tabs to an owner with financial access', () => {
     const keys = visibleClienteTabs('owner', true).map((t) => t.key);
     expect(keys).toEqual([
       'visao-geral',
       'entregas',
       'redes-sociais',
       'relatorios',
-      'hub',
+      'hub/acesso',
+      'hub/briefing',
+      'hub/marca',
+      'hub/paginas',
+      'hub/ideias',
       'arquivos',
       'financeiro',
     ]);
@@ -52,7 +73,7 @@ describe('visibleClienteTabs', () => {
     const keys = visibleClienteTabs('agent', false).map((t) => t.key);
     expect(keys).not.toContain('relatorios');
     expect(keys).not.toContain('financeiro');
-    expect(keys).toContain('hub');
+    expect(keys).toContain('hub/marca');
     expect(keys).toContain('redes-sociais');
   });
 
@@ -90,8 +111,18 @@ describe('canAccessClienteTab', () => {
     expect(canAccessClienteTab('financeiro', 'agent', true)).toBe(true); // role list is ALL by design; canSeeFinancials is the real gate
   });
 
-  it('allows visao-geral/entregas/redes-sociais/hub/arquivos to every role', () => {
-    for (const key of ['visao-geral', 'entregas', 'redes-sociais', 'hub', 'arquivos']) {
+  it('allows every non-restricted tab to every role, sub-abas do portal incluídas', () => {
+    for (const key of [
+      'visao-geral',
+      'entregas',
+      'redes-sociais',
+      'arquivos',
+      'hub/acesso',
+      'hub/briefing',
+      'hub/marca',
+      'hub/paginas',
+      'hub/ideias',
+    ]) {
       expect(canAccessClienteTab(key, 'agent', false)).toBe(true);
     }
   });
@@ -120,5 +151,18 @@ describe('financeiroTabGuardOutcome', () => {
 
   it('returns denied for a resolved false', () => {
     expect(financeiroTabGuardOutcome(false)).toBe('denied');
+  });
+});
+
+describe('i18n coverage', () => {
+  it('has a pt and en string for every tab label and group label', () => {
+    for (const tab of CLIENTE_TABS) {
+      expect(lookup(pt, tab.labelKey), `pt ${tab.labelKey}`).toBeTypeOf('string');
+      expect(lookup(en, tab.labelKey), `en ${tab.labelKey}`).toBeTypeOf('string');
+    }
+    for (const key of Object.values(CLIENTE_TAB_GROUP_LABELS)) {
+      expect(lookup(pt, key), `pt ${key}`).toBeTypeOf('string');
+      expect(lookup(en, key), `en ${key}`).toBeTypeOf('string');
+    }
   });
 });
