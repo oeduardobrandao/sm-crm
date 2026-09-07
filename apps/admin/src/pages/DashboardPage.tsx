@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
-import { listWorkspaces, listPlans, getMrr, getTrials } from '../lib/api';
+import { listWorkspaces, getMrr, getTrials } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
 import { formatMoney, intervalLabel, statusMeta, STATUS_BADGE_VARIANT } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
@@ -55,11 +55,6 @@ export default function DashboardPage() {
   const { data: workspacesData, isLoading: wsLoading } = useQuery({
     queryKey: ['admin', 'workspaces', { limit: 10 }],
     queryFn: () => listWorkspaces({ limit: 10 }),
-  });
-
-  const { data: plansData, isLoading: plansLoading } = useQuery({
-    queryKey: ['admin', 'plans'],
-    queryFn: listPlans,
   });
 
   // MRR is sourced from real Stripe subscriptions (workspace_subscriptions), not plan-assignment
@@ -122,14 +117,18 @@ export default function DashboardPage() {
   }
 
   const totalWorkspaces = workspacesData?.total ?? 0;
-  const activePlans = plansData?.plans?.length ?? 0;
   // Platform-wide counts from the RPC — deriving them from the fetched page would
   // under-count once there are more workspaces than the page size.
-  const withOverrides = workspacesData?.total_with_overrides ?? 0;
   const totalMembers = workspacesData?.total_members ?? 0;
-  const totalClients = workspacesData?.total_clients ?? 0;
+  // Instagram totals only exist from admin_list_workspaces v7 (20260912000001) on: undefined
+  // means "database not migrated yet", which the card shows as '—' rather than a false zero.
+  const igAccounts = workspacesData?.total_instagram_accounts;
+  const igActive = workspacesData?.total_instagram_accounts_active;
+  const igNeedingReauth =
+    igAccounts !== undefined && igActive !== undefined ? igAccounts - igActive : 0;
 
-  // Trials carry an *expected* MRR (what they convert to); the Total card sums realized + expected.
+  // Trials carry an *expected* MRR (what they convert to); the "MRR projetado" card sums
+  // realized + expected.
   const trialMrrCents = trialsData?.trial_mrr_cents ?? null;
   const totalMrrCents = (mrrData?.mrr_cents ?? 0) + (trialsData?.trial_mrr_cents ?? 0);
   const currency = mrrData?.currency ?? trialsData?.currency;
@@ -141,7 +140,7 @@ export default function DashboardPage() {
     formatMoney(cents, currency).replace(/[\u00A0\u202F]/g, ' ');
 
   // Each card gates on its own query only: the Stripe-backed MRR/Trials queries
-  // must not hold the instant workspace/plan counts hostage.
+  // must not hold the instant workspace counts hostage.
   const kpis: {
     label: string;
     value: string | number;
@@ -151,9 +150,15 @@ export default function DashboardPage() {
   }[] = [
     { label: 'Workspaces', value: totalWorkspaces, loading: wsLoading },
     { label: 'Usuários', value: totalMembers, loading: wsLoading },
-    { label: 'Clientes', value: totalClients, loading: wsLoading },
-    { label: 'Planos ativos', value: activePlans, loading: plansLoading },
-    { label: 'Com overrides', value: withOverrides, loading: wsLoading },
+    {
+      label: 'Contas do Instagram',
+      value: igAccounts ?? '—',
+      sub:
+        igNeedingReauth > 0
+          ? `${igNeedingReauth} ${igNeedingReauth === 1 ? 'precisa reconectar' : 'precisam reconectar'}`
+          : undefined,
+      loading: wsLoading,
+    },
     {
       label: 'Pagantes',
       value: mrrData?.paying_count ?? '—',
@@ -185,7 +190,7 @@ export default function DashboardPage() {
       tone: !riskUnavailable && endingSoonCount + pendingCount > 0 ? 'warning' : undefined,
     },
     {
-      label: 'MRR total',
+      label: 'MRR projetado',
       value: kpiMoney(totalMrrCents),
       sub: 'MRR + testes',
       loading: mrrLoading || trialsLoading,

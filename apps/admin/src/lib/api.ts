@@ -177,6 +177,14 @@ export interface ListWorkspacesResponse {
   total_clients: number;
   /** Workspaces with plan overrides across the whole filtered set, not just the page. */
   total_with_overrides: number;
+  /**
+   * Connected Instagram accounts across the whole filtered set. Counts every link, including
+   * revoked/expired ones — they still occupy a plan slot until removed. Optional: an admin
+   * deployed against a database still on admin_list_workspaces v6 gets no such key.
+   */
+  total_instagram_accounts?: number;
+  /** Subset of total_instagram_accounts whose authorization is still valid. */
+  total_instagram_accounts_active?: number;
 }
 
 // ─── Column definitions ─────────────────────────────────────
