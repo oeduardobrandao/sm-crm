@@ -1141,10 +1141,11 @@ Handler novo, ao lado de `selectPost` (linha 837). **Não** altere `selectPost`:
         ig_media_id: post.id,
         media_permalink: post.permalink,
         media_caption: post.caption ? truncate(post.caption, 300) : null,
-        workflow_post_id:
-          f.selectedPost?.kind === 'published' || f.selectedPost?.kind === 'production'
-            ? (f.selectedPost.workflow_post_id ?? null)
-            : null,
+        // Le o ponteiro do ORFAO EM EDICAO, nao o que estiver selecionado no
+        // momento: em modo re-mirar a aba "Em producao" segue ativa, e ler
+        // f.selectedPost deixaria o vinculo migrar em silencio se o usuario
+        // clicasse num post interno por engano antes de escolher a midia.
+        workflow_post_id: editing?.workflow_post_id ?? null,
       },
     }));
 ```
