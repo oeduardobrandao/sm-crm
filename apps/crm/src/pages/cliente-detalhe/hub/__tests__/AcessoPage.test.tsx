@@ -343,6 +343,28 @@ describe('AcessoPage', () => {
     expect(screen.queryByText('Acesso do Cliente')).not.toBeInTheDocument();
   });
 
+  // Regression guard for Finding 1 (task-9 fix round 1): `workspaces.slug` /
+  // `contas.slug` are nullable columns (trigger + one-time backfill, not a NOT
+  // NULL constraint), so a resolved `null` is reachable in production, not just
+  // "still loading". The old `!workspaceSlug` guard couldn't tell the two apart
+  // and returned `null` forever once the slug really was null -- a permanently
+  // blank tab, no header, no HubRoleGate, no way to manage the token at all.
+  it('renders the header and token actions when workspaceSlug resolves to null', async () => {
+    vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+    vi.mocked(hubStore.getWorkspaceSlug).mockResolvedValue(null);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Acesso do Cliente')).toBeInTheDocument());
+    expect(screen.getByTestId('hub-slug-missing')).toHaveTextContent(
+      /identificador do workspace ausente/,
+    );
+    // The URL can't be built without a slug, so Copiar/Preview are withheld --
+    // but the token itself is fine, so token-management actions stay available.
+    expect(screen.queryByRole('button', { name: /Copiar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Preview/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Desativar/ })).toBeInTheDocument();
+  });
+
   it('fires only the hub-token and workspace-slug queries — nothing from Marca/Páginas/Briefing', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
     const { queryClient } = renderPage();

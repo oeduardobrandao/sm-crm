@@ -83,11 +83,19 @@ export default function AcessoPage() {
   // page-wide query — this is the only one of the five portal screens that builds
   // the portal URL, so it is the only one that still needs the workspace slug.
   // Same reasoning as hub-token above: an agent never needs it.
-  const { data: workspaceSlug } = useQuery({
+  //
+  // `data` alone can't tell "still loading" apart from "resolved to null" -- both
+  // `workspaces.slug` and `contas.slug` are nullable columns (trigger + one-time
+  // backfill, not a NOT NULL constraint), so `null` is a legitimate resolved value,
+  // not just a loading placeholder. `isPending` is the query's own loading signal
+  // (stays true the whole time for a query that never resolves, flips to false the
+  // instant it settles, success or error) -- branch on that instead of on truthiness.
+  const workspaceSlugQuery = useQuery({
     queryKey: ['workspace-slug'],
     queryFn: getWorkspaceSlug,
     enabled: canLoadPortalData,
   });
+  const workspaceSlug = workspaceSlugQuery.data;
 
   // Backs the "O que o cliente vê" panel. Same gating as the two queries above:
   // usePortalFill withholds the fetch itself for a restricted agent.
@@ -156,12 +164,16 @@ export default function AcessoPage() {
 
   if (!contaId) return null;
 
-  // For an allowed role, also wait for workspaceSlug before rendering (avoids a flash of
-  // "Nenhum link gerado ainda." before the slug resolves). A restricted agent — and a
-  // viewer whose membership is still 'unknown' — skips this: workspaceSlug's query is
-  // disabled above and never resolves, but HubRoleGate below shows the notice (or the
-  // spinner) regardless, so it must not be blocked on a query that never fires for it.
-  if (canLoadPortalData && !workspaceSlug) return null;
+  // For an allowed role, also wait for workspaceSlug to settle before rendering (avoids
+  // a flash of "Nenhum link gerado ainda." before the slug resolves). A restricted agent
+  // — and a viewer whose membership is still 'unknown' — skips this: workspaceSlug's
+  // query is disabled above and never resolves, but HubRoleGate below shows the notice
+  // (or the spinner) regardless, so it must not be blocked on a query that never fires
+  // for it. `isPending` -- not the truthiness of `workspaceSlug` -- is what "still
+  // loading" means here: once the query settles (even to a resolved `null`), the page
+  // must render its header and everything that doesn't depend on the slug, rather than
+  // staying blank forever. See Finding 1 in task-9's fix round.
+  if (canLoadPortalData && workspaceSlugQuery.isPending) return null;
 
   return (
     <div className="hub-page">
@@ -220,18 +232,39 @@ export default function AcessoPage() {
                     )}
                   </div>
 
-                  <code className="hub-access__url text-xs bg-muted px-3 py-2 rounded-lg truncate">
-                    {hubUrl}
-                  </code>
+                  {workspaceSlug ? (
+                    <code className="hub-access__url text-xs bg-muted px-3 py-2 rounded-lg truncate">
+                      {hubUrl}
+                    </code>
+                  ) : (
+                    // workspaceSlug resolved to null (nullable column, no NOT NULL
+                    // constraint -- see Finding 1). The token itself is fine; only the
+                    // URL can't be assembled, so say that instead of hiding everything.
+                    <p
+                      className="text-xs font-medium text-destructive"
+                      data-testid="hub-slug-missing"
+                    >
+                      Não foi possível montar o link do portal: identificador do workspace ausente.
+                      Fale com o suporte.
+                    </p>
+                  )}
 
                   <div className="hub-access__actions">
                     <div className="hub-access__secondary-actions">
-                      <Button size="sm" variant="outline" onClick={copyLink}>
-                        <Copy size={14} className="mr-1.5" /> Copiar
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
-                        <Eye size={14} className="mr-1.5" /> Preview
-                      </Button>
+                      {workspaceSlug && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={copyLink}>
+                            <Copy size={14} className="mr-1.5" /> Copiar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openExternalUrl(hubUrl)}
+                          >
+                            <Eye size={14} className="mr-1.5" /> Preview
+                          </Button>
+                        </>
+                      )}
                     </div>
                     <div className="hub-access__primary-actions">
                       <Button
