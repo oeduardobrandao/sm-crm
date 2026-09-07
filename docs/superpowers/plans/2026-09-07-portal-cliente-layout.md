@@ -487,7 +487,7 @@ function renderAcesso(q: { fill?: PortalFill; isLoading?: boolean; isError?: boo
 describe('painel "O que o cliente vê"', () => {
   it('mostra traço, não zero, enquanto carrega', () => {
     renderAcesso({ fill: undefined, isLoading: true });
-    expect(screen.getByTestId('fill-paginas')).toHaveTextContent('—');
+    expect(screen.getByTestId('fill-paginas')).toHaveTextContent('–');
     expect(screen.queryByText('vazia')).not.toBeInTheDocument();
   });
 
@@ -567,7 +567,7 @@ Cada linha é `<Link to="../briefing" relative="path">` (as rotas são irmãs). 
 
 ```tsx
 function FillValue({ query, children }: { query: UseQueryResult<PortalFill>; children: ReactNode }) {
-  if (query.isLoading || query.isError) return <span className="hub-fill__pending">—</span>;
+  if (!query.isSuccess) return <span className="hub-fill__pending">–</span>;
   return <>{children}</>;
 }
 ```
