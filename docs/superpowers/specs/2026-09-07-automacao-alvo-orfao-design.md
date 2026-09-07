@@ -97,10 +97,38 @@ depois do deploy já é o backfill. O custo é até 5 minutos de latência, irre
 diante da carência de 15 minutos da notificação.
 
 Nada é adicionado ao `z3` nem ao `sweep_pending_instagram_automation_links`: a metade
-que limpa cobre o caso da mídia chegar tarde. O resolver
-`ica_a1_resolve_workflow_post_target` **é** editado, para limpar `target_unlinked_at`
-no mesmo bloco em que hoje limpa `pending_post_deleted_at`, de modo que a tela reaja na
-hora quando o usuário re-mira, sem esperar o próximo tick.
+que limpa cobre o caso da mídia chegar tarde.
+
+O resolver `ica_a1_resolve_workflow_post_target` **é** editado, para a tela reagir na
+hora quando o usuário re-mira, sem esperar o próximo tick. A limpeza entra como bloco
+**próprio**, não dentro do bloco do tombstone, porque a condição correta é mais larga
+que a dele, e antes do `RETURN NEW` que o resolver faz quando `workflow_post_id` é
+nulo:
+
+```sql
+IF TG_OP = 'UPDATE'
+   AND (NEW.ig_media_id IS DISTINCT FROM OLD.ig_media_id
+        OR NEW.workflow_post_id IS DISTINCT FROM OLD.workflow_post_id) THEN
+  NEW.target_unlinked_at := NULL;
+END IF;
+```
+
+Sem a guarda `(NEW.ig_media_id IS NOT NULL OR NEW.workflow_post_id IS NOT NULL)` que o
+bloco do tombstone tem: trocar um órfão para "Todos os posts" zera os dois campos e
+**também** precisa limpar a marca, senão a automação vira global carregando um aviso
+que não vale mais.
+
+Dois pontos que essa condição resolve e que não são óbvios:
+
+- **Re-mirar com o ponteiro interno preservado não trava a marca.** No fluxo da seção
+  5 o `OLD` é `(workflow_post_id = 4038, ig_media_id = NULL)` e o `NEW` é
+  `(workflow_post_id = 4038, ig_media_id = '1813…')`. O delta de `ig_media_id` satisfaz
+  a condição mesmo com `workflow_post_id` idêntico.
+- **Não é preciso acrescentar coluna ao `UPDATE OF` do trigger.** Ele já dispara em
+  `BEFORE INSERT OR UPDATE OF workflow_post_id, ig_media_id, ativo, client_id,
+  pending_post_deleted_at`, e os dois campos que a condição lê estão na lista. Como
+  `target_unlinked_at` fica **fora** dela, o `UPDATE` da reconciliação não reentra no
+  resolver: sem recursão e sem revalidação de alvo a cada tick.
 
 `target_unlinked_at` é independente do CHECK `ica_tombstone_inactive`: não força
 `ativo = false` e não participa da regra de reativação em dois passos.
@@ -208,24 +236,53 @@ recente é de 31/08: o post publicado em 04/09 não está lá. Se o seletor less
 espelho, o usuário ficaria sem saída justamente no cenário que o desenho existe para
 resolver.
 
-Rota nova em `automation-media`. **Não é uma cópia do gate existente**, é uma adição, e
-o handler de hoje precisa de três coisas que ele não tem:
+**Onde a rota mora: `instagram-integration`, não `automation-media`.** O
+`automation-media` é ciclo de vida de objeto no R2 e hoje não tem uma linha de acesso
+ao provedor: suas únicas ocorrências de "instagram" são o nome da flag
+`feature_instagram_automation` e a tabela `instagram_comment_automations`. Quem já é
+dono de `instagram_accounts`, da descriptografia de token e das transições de
+`authorization_status` (`active`, `expired`, `revoked`, `disconnected`) é o
+`instagram-integration`. Duplicar acesso ao provedor no `automation-media` criaria um
+segundo lugar para as duas coisas derivarem em auth e tratamento de erro. Há ainda um
+motivo de operação: o `automation-media` depende de `r2.ts`, que é justamente a
+vizinhança onde o bundler do `--use-api` já quebrou antes.
 
-- ele responde `405` a tudo que não é `POST` (`handler.ts:42`). Para não mexer nessa
-  guarda, a rota é `POST published-media` com corpo JSON, e não um `GET`;
-- ele **não** verifica propriedade de `client_id` em rota nenhuma, porque nenhuma rota
-  atual recebe um. Esta recebe, então valida que o `client_id` pertence à `conta_id`
-  do chamador **antes** de tocar em qualquer token;
-- o `assertPlanFeature` de hoje cobre só `presign`/`finalize`.
+Rota nova: `POST published-media` com corpo JSON. `POST` porque é o formato que o
+roteamento por ação da função já usa, e o corpo carrega `client_id`, que não deve
+viajar em query string.
+
+**Seleção de conta e falhas, explicitamente.** A rota:
+
+1. resolve `instagram_accounts` por `client_id` e **valida que o cliente pertence à
+   `conta_id` do chamador antes de tocar em qualquer token**;
+2. exige `authorization_status = 'active'`. Qualquer outro valor responde `409` com um
+   código estável (`instagram_not_authorized`) para a UI dizer "reconecte o Instagram
+   do cliente", em vez de tentar a chamada com credencial revogada;
+3. descriptografa com o `decryptToken` **compartilhado** de
+   `_shared/instagram-publish-utils.ts`, não com a cópia local que o
+   `instagram-integration` mantém na linha 64;
+4. faz a chamada à Graph API com `makeBoundedFetch` de `_shared/bounded-fetch.ts`, com
+   timeout explícito. Toda I/O de handler é limitada por prazo, pela mesma razão que
+   levou ao `presign` com fetch simples e `AbortSignal`: sem prazo, o handler pendura;
+5. quando a Graph API rejeita o token, carimba `authorization_status` para `expired` ou
+   `revoked` exatamente como o `instagram-integration` já faz nas linhas 674 e 890, em
+   vez de inventar um tratamento novo.
 
 **Permissão: `automacoes: 'editar'`, não owner/admin.** É a mesma que a RLS
 `ica_insert/update/delete` exige para escrever a automação, e a rota existe só para
-servir uma escrita dessas. O preset de `agent` tem `automacoes: 'editar'` desde a
-migração `20260904000002`, decisão deliberada da Task 11 documentada em
-`apps/crm/src/lib/permissions.ts` e no próprio handler; negar `agent` aqui seria uma
+servir uma escrita dessas. Duas migrações importam aqui e a implementação deve citar as
+duas, para que ninguém "corrija" isso de volta para owner/admin no meio do trabalho:
+`20260829000002` é onde `instagram_comment_automations` passou a dar escrita livre a
+qualquer membro, agente incluso, e `20260904000002` (Migração B) é onde o módulo
+`automacoes` foi remapeado e recebeu o nível `'editar'` no preset de agente,
+justamente para preservar aquela escrita byte a byte. Negar `agent` aqui seria uma
 regressão do modelo de permissões, não um endurecimento.
 
-**Sem gate de entitlement.** A regra documentada no handler é que
+O `instagram-integration` ainda não usa `hasPermissionFor` (é anterior às permissões
+granulares e faz checagem própria por `workspace_members`, linha 545). Esta rota
+introduz o gate granular lá, sem tocar nas rotas existentes.
+
+**Sem gate de entitlement.** A regra documentada no `automation-media` é que
 `feature_instagram_automation` é INSERT-only: "downgrade bloqueia alocar mídia NOVA,
 mas não impede ver ou apagar a que já existe". Re-mirar é um UPDATE de automação
 existente, então não passa por `assertPlanFeature`.
@@ -236,7 +293,7 @@ e não devolve total, enquanto o seletor de hoje é por offset com `total`
 Publicados neste modo troca a paginação numerada por "carregar mais":
 
 ```
-POST /automation-media/published-media
+POST /instagram-integration/published-media
 body:  { client_id: number, cursor?: string, limit?: number }   // limit default 25, teto 50
 200:   { posts: [{ id, caption, media_type, thumbnail_url, permalink, timestamp }],
          next_cursor: string | null }
@@ -271,6 +328,13 @@ API nunca vaza para o cliente: mensagem genérica fora, detalhe no log.
 - `POST published-media`: 401 sem token, 403 sem `automacoes: 'editar'`,
   **200 para `agent`** (que tem a permissão), 403 para `client_id` de outra workspace,
   200 com a lista mapeada e `next_cursor` repassado
+- `409 instagram_not_authorized` quando `authorization_status` não é `active`, sem
+  chamar a Graph API nem descriptografar token
+- token rejeitado pela Graph API carimba `authorization_status` para `expired` /
+  `revoked`, como as rotas existentes já fazem
+- a chamada usa `makeBoundedFetch`: Graph API pendurada devolve erro dentro do prazo
+  em vez de segurar o handler
+- a validação de tenant do `client_id` roda **antes** de qualquer descriptografia
 - segunda página com `cursor` chama a Graph API com o `after` certo
 - erro da Graph API vira mensagem genérica
 
@@ -288,7 +352,7 @@ API nunca vaza para o cliente: mensagem genérica fora, detalhe no log.
 ## Ordem de rollout
 
 1. Migration (coluna, RPC de reconciliação, edição do resolver).
-2. `instagram-automation-cron` e `automation-media`, com `--use-api --no-verify-jwt`.
+2. `instagram-automation-cron` e `instagram-integration`, com `--use-api --no-verify-jwt`.
 3. Frontend, por último, via merge.
 
 O acoplamento **duro** é um só: o frontend não pode expor a ação "Escolher post
