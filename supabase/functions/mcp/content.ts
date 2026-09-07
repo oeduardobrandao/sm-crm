@@ -249,12 +249,20 @@ export function pageContentToMarkdown(content: unknown): string {
  * Placeholder, Callout, per the editor spec); an unrecognized node renders its
  * children's text instead of dropping content, and this never throws on
  * malformed input (called only after the caller confirms `doc` is a non-null
- * object; every field below is read defensively regardless).
+ * object; every field below is read defensively regardless). A depth guard
+ * bounds recursion so pathologically deep or circular input fails closed
+ * (collapses toward "") instead of raising a stack overflow.
  */
 function proseMirrorToMarkdown(doc: Record<string, unknown>): string {
   const blocks: string[] = [];
+  const MAX_DEPTH = 100;
 
-  function inline(node: any): string {
+  // Inline (span-level) text extraction: text nodes keep their marks applied,
+  // hardBreak becomes a literal newline, and anything else is the concatenation
+  // of its children's inline text (adjacent inline nodes are meant to be flush
+  // against each other, so "" is the correct join here).
+  function inline(node: any, depth = 0): string {
+    if (depth > MAX_DEPTH) return "";
     if (typeof node?.text === "string") {
       let out = node.text;
       for (const m of Array.isArray(node.marks) ? node.marks : []) {
@@ -267,41 +275,100 @@ function proseMirrorToMarkdown(doc: Record<string, unknown>): string {
       }
       return out;
     }
-    return (Array.isArray(node?.content) ? node.content : []).map(inline).join("");
+    if (node?.type === "hardBreak") return "\n";
+    return (Array.isArray(node?.content) ? node.content : [])
+      .map((n: any) => inline(n, depth + 1))
+      .join("");
   }
 
-  function walk(node: any) {
+  // Render one bulletList/orderedList at `depth` (0 = not nested) into a flat
+  // array of already-indented, already-marked lines: one line per non-list
+  // child block of each listItem, plus (recursively, indented two spaces
+  // deeper) the lines of any nested list. An item with no renderable text
+  // contributes no line at all, rather than a bare marker.
+  function listLines(list: any, ordered: boolean, depth: number): string[] {
+    if (depth > MAX_DEPTH) return [];
+    const indent = "  ".repeat(depth);
+    const items: any[] = Array.isArray(list?.content) ? list.content : [];
+    const lines: string[] = [];
+    items.forEach((li, i) => {
+      const marker = ordered ? `${i + 1}. ` : "- ";
+      const kids: any[] = Array.isArray(li?.content) ? li.content : [];
+      let first = true;
+      for (const kid of kids) {
+        if (kid?.type === "bulletList" || kid?.type === "orderedList") {
+          lines.push(...listLines(kid, kid.type === "orderedList", depth + 1));
+          continue;
+        }
+        const t = inline(kid);
+        if (!t) continue;
+        if (first) {
+          lines.push(`${indent}${marker}${t}`);
+          first = false;
+        } else {
+          lines.push(`${indent}${" ".repeat(marker.length)}${t}`);
+        }
+      }
+    });
+    return lines;
+  }
+
+  function walk(node: any, depth: number) {
+    if (depth > MAX_DEPTH) return;
     const kids: any[] = Array.isArray(node?.content) ? node.content : [];
     switch (node?.type) {
       case "heading": {
+        const t = inline(node, depth + 1);
+        if (!t) break;
         const lvl = Math.min(6, Math.max(1, Math.trunc(Number(node?.attrs?.level)) || 1));
-        blocks.push(`${"#".repeat(lvl)} ${inline(node)}`);
+        blocks.push(`${"#".repeat(lvl)} ${t}`);
         break;
       }
       case "paragraph":
       case "callout": {
-        const t = inline(node);
+        const t = inline(node, depth + 1);
         if (t) blocks.push(t);
         break;
       }
-      case "blockquote":
+      case "codeBlock": {
+        const t = inline(node, depth + 1);
+        if (!t) break;
+        const lang = typeof node?.attrs?.language === "string" ? node.attrs.language : "";
+        blocks.push("```" + lang + "\n" + t + "\n```");
+        break;
+      }
+      case "blockquote": {
+        const lines: string[] = [];
         for (const k of kids) {
-          const t = inline(k);
-          if (t) blocks.push(`> ${t}`);
+          const t = inline(k, depth + 1);
+          if (t) lines.push(t);
         }
+        // One quoted block, not one per child paragraph.
+        if (lines.length) blocks.push(lines.map((l) => `> ${l}`).join("\n"));
         break;
+      }
       case "bulletList":
-        kids.forEach((li) => blocks.push(`- ${inline(li)}`));
+      case "orderedList": {
+        const lines = listLines(node, node.type === "orderedList", 0);
+        if (lines.length) blocks.push(lines.join("\n"));
         break;
-      case "orderedList":
-        kids.forEach((li, i) => blocks.push(`${i + 1}. ${inline(li)}`));
-        break;
-      default:
-        kids.forEach(walk);
+      }
+      default: {
+        // Try inline text first so a text node (or any node whose direct
+        // children are text nodes) doesn't lose its content; only recurse
+        // block-wise into children when there is no inline text to show.
+        const t = inline(node, depth + 1);
+        if (t) {
+          blocks.push(t);
+        } else {
+          kids.forEach((k) => walk(k, depth + 1));
+        }
+      }
     }
   }
 
-  walk(doc);
+  const rootKids: any[] = Array.isArray(doc?.content) ? doc.content : [];
+  rootKids.forEach((k) => walk(k, 0));
   return blocks.join("\n\n");
 }
 
