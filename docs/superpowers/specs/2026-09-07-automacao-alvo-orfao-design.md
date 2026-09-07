@@ -293,11 +293,23 @@ e não devolve total, enquanto o seletor de hoje é por offset com `total`
 Publicados neste modo troca a paginação numerada por "carregar mais":
 
 ```
-POST /instagram-integration/published-media
-body:  { client_id: number, cursor?: string, limit?: number }   // limit default 25, teto 50
+POST /instagram-integration/published-media/:clientId
+body:  { cursor?: string, limit?: number }                      // limit default 25, teto 50
 200:   { posts: [{ id, caption, media_type, thumbnail_url, permalink, timestamp }],
          next_cursor: string | null }
 ```
+
+O `clientId` vai no path, não em query string nem no corpo, porque é o formato que
+todas as rotas da função já usam (`/posts/:clientId`, `/sync/:clientId`,
+`/summary/:clientId`), com a mesma validação `/^\d+$/`.
+
+**Tenant pelo padrão novo, não pelo da função.** As rotas existentes do
+`instagram-integration` resolvem o tenant por `profiles.conta_id`. Esta rota usa
+`profiles.active_workspace_id` mais `workspace_members`, o padrão que o
+`automation-media` adotou deliberadamente e documenta: `conta_id` como fallback faria
+usuário multi-workspace operar na workspace errada e manteria acesso de membro
+removido. A propriedade do cliente continua sendo checada com o `verifyClientOwnership`
+que a função já tem.
 
 `next_cursor` é o `paging.cursors.after` da Graph API, repassado opaco. Erro da Graph
 API nunca vaza para o cliente: mensagem genérica fora, detalhe no log.
