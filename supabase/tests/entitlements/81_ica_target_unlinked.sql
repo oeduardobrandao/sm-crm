@@ -24,6 +24,10 @@ declare
   v_a_stories uuid;
   v_a_tiktok  uuid;
   v_a_deriva  uuid;
+  v_post_h   bigint;  -- media chega depois, isolado do resolver: ramo ig_media_id IS NULL
+  v_a_h      uuid;
+  v_post_i   bigint;  -- deriva para stories DEPOIS de ja carimbado: guarda de deriva do NOT EXISTS
+  v_a_i      uuid;
   v_marked   int;
   v_cleared  int;
   v_stamp    timestamptz;
@@ -147,7 +151,54 @@ begin
   assert (select target_unlinked_at is null from instagram_comment_automations where id = v_a_inativa),
          'resolver nao limpou a marca ao virar global';
 
-  -- (g) grants: checa proacl, NAO has_function_privilege. A regra da casa
+  -- (g) ramo `a.ig_media_id IS NULL` da metade que limpa: a midia chega
+  --     depois, isolada do resolver. Sem isolar, o UPDATE que o z3
+  --     (workflow_posts_z3_link_ig_automations, ja existente) faz em
+  --     ig_media_id passaria pelo trigger novo do resolver (secoes e/f acima)
+  --     e limparia a marca ALI MESMO -- o reconcile() nunca chegaria a
+  --     exercitar esse ramo da metade que limpa. Confirmado empiricamente:
+  --     com o resolver ATIVO, setar workflow_posts.instagram_media_id aqui
+  --     zera target_unlinked_at antes do reconcile() rodar (v_cleared = 0).
+  insert into workflow_posts (conta_id, cliente_id, titulo, status, tipo)
+    values (v_ws, v_cli, 'h', 'postado', 'carrossel') returning id into v_post_h;
+  insert into instagram_comment_automations (conta_id, client_id, name, keywords, dm_message, workflow_post_id, ativo)
+    values (v_ws, v_cli, 'h', array['x'], 'oi', v_post_h, true) returning id into v_a_h;
+  select marked into v_marked from reconcile_unlinked_automation_targets();
+  assert v_marked = 1, 'reconcile deveria carimbar a automacao h, carimbou ' || v_marked;
+
+  alter table instagram_comment_automations disable trigger ica_a1_resolve_workflow_post_target;
+  update workflow_posts set instagram_media_id = '17666666666666666' where id = v_post_h;
+  alter table instagram_comment_automations enable trigger ica_a1_resolve_workflow_post_target;
+
+  assert (select ig_media_id is not null from instagram_comment_automations where id = v_a_h),
+         'z3 deveria ter ligado ig_media_id mesmo com o resolver desabilitado';
+  assert (select target_unlinked_at is not null from instagram_comment_automations where id = v_a_h),
+         'com o resolver desabilitado a marca NAO pode ter sido limpa pelo trigger';
+
+  select cleared into v_cleared from reconcile_unlinked_automation_targets();
+  assert v_cleared = 1, 'reconcile deveria limpar a marca quando a midia chega (ramo ig_media_id), limpou ' || v_cleared;
+  assert (select target_unlinked_at is null from instagram_comment_automations where id = v_a_h),
+         'marca deveria ter sido limpa pelo reconcile quando a midia chegou';
+
+  -- (h) guarda de deriva dentro do NOT EXISTS: automacao ja carimbada cujo
+  --     post deriva para 'stories' deve ter a marca limpa. Mudar wp.tipo nao
+  --     aciona nenhum trigger em instagram_comment_automations -- sem essa
+  --     guarda dentro do NOT EXISTS a marca ficaria presa para sempre num
+  --     post que nao e mais um alvo valido.
+  insert into workflow_posts (conta_id, cliente_id, titulo, status, tipo)
+    values (v_ws, v_cli, 'i', 'postado', 'carrossel') returning id into v_post_i;
+  insert into instagram_comment_automations (conta_id, client_id, name, keywords, dm_message, workflow_post_id, ativo)
+    values (v_ws, v_cli, 'i', array['x'], 'oi', v_post_i, true) returning id into v_a_i;
+  select marked into v_marked from reconcile_unlinked_automation_targets();
+  assert v_marked = 1, 'reconcile deveria carimbar a automacao i, carimbou ' || v_marked;
+
+  update workflow_posts set tipo = 'stories' where id = v_post_i;
+  select cleared into v_cleared from reconcile_unlinked_automation_targets();
+  assert v_cleared = 1, 'reconcile deveria limpar a marca quando o post deriva para stories, limpou ' || v_cleared;
+  assert (select target_unlinked_at is null from instagram_comment_automations where id = v_a_i),
+         'marca deveria ter sido limpa quando o post derivou para stories';
+
+  -- (i) grants: checa proacl, NAO has_function_privilege. A regra da casa
   --     (AGENTS.md:111) existe porque has_function_privilege resolve via PUBLIC e
   --     esconde se o grant direto do papel foi mesmo revogado.
   assert (select array_to_string(proacl, ',') like '%service_role=X%'
@@ -162,5 +213,20 @@ begin
             from pg_proc p join pg_namespace n on n.oid = p.pronamespace
            where n.nspname = 'public' and p.proname = 'reconcile_unlinked_automation_targets'),
          'authenticated NAO pode ter EXECUTE na RPC';
+  -- PUBLIC (grantee 0 em aclexplode) e o que has_function_privilege(anon,...)
+  -- checaria por baixo dos panos e o que os LIKEs acima NAO pegam: um GRANT
+  -- via PUBLIC aparece no acl como a entrada bare '=X', que nao casa com
+  -- '%anon=X%' nem '%authenticated=X%'. Sem REVOKE ALL ... FROM PUBLIC na
+  -- migration, o acl fica so '=X/postgres,postgres=X/postgres,service_role=X/postgres'
+  -- e as tres assercoes acima passam verdes mesmo com anon/authenticated
+  -- conseguindo chamar a RPC via PUBLIC -- exatamente o cenario que este
+  -- assert precisa pegar.
+  assert not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace,
+         lateral aclexplode(p.proacl) a
+     where n.nspname = 'public'
+       and p.proname = 'reconcile_unlinked_automation_targets'
+       and a.grantee = 0 and a.privilege_type = 'EXECUTE'),
+    'PUBLIC NAO pode ter EXECUTE na RPC';
 end $$;
 rollback;

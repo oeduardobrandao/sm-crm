@@ -46,7 +46,6 @@ BEGIN
   -- nulo), onde o LEFT JOIN nao acha post nenhum.
   UPDATE instagram_comment_automations a
      SET target_unlinked_at = NULL
-    FROM (SELECT 1) AS _
    WHERE a.target_unlinked_at IS NOT NULL
      AND NOT EXISTS (
        SELECT 1 FROM workflow_posts wp
