@@ -12,6 +12,7 @@ const {
   mockGetInstagramPosts,
   mockGetClientePosts,
   mockGetPostCovers,
+  mockGetPublishedMedia,
   mockUseAuth,
   mockUploadMedia,
   mockDeleteMedia,
@@ -25,6 +26,7 @@ const {
   mockGetInstagramPosts: vi.fn(),
   mockGetClientePosts: vi.fn(),
   mockGetPostCovers: vi.fn(),
+  mockGetPublishedMedia: vi.fn(),
   mockUseAuth: vi.fn(),
   mockUploadMedia: vi.fn(),
   mockDeleteMedia: vi.fn(),
@@ -72,6 +74,16 @@ vi.mock('../../../services/postMedia', async () => {
   return {
     ...actual,
     getPostCovers: mockGetPostCovers,
+  };
+});
+
+vi.mock('../../../services/publishedMedia', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/publishedMedia')>(
+    '../../../services/publishedMedia',
+  );
+  return {
+    ...actual,
+    getPublishedMedia: mockGetPublishedMedia,
   };
 });
 
@@ -252,6 +264,7 @@ const EDITING_BASE: InstagramCommentAutomation = {
   media_permalink: null,
   media_caption: null,
   workflow_post_id: null,
+  target_unlinked_at: null,
   pending_post_deleted_at: null,
   keywords: ['preco'],
   dm_message: 'Segue o link!',
@@ -293,6 +306,7 @@ function renderDialog(
   initialTarget?: { clientId: number; target: SelectedTarget },
   elevated?: boolean,
   tour?: Omit<TourOverlayProps, 'onCta'>,
+  initialTab?: 'production' | 'published',
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
@@ -304,6 +318,7 @@ function renderDialog(
             open
             onOpenChange={vi.fn()}
             editing={editing}
+            initialTab={initialTab}
             initialTarget={initialTarget}
             elevated={elevated}
             onSaved={onSaved}
@@ -348,6 +363,7 @@ describe('AutomationFormDialog', () => {
     mockGetClientePosts.mockResolvedValue(PRODUCTION_POSTS);
     // No covers -> every production card falls back to titulo + tipo.
     mockGetPostCovers.mockResolvedValue(new Map());
+    mockGetPublishedMedia.mockResolvedValue({ posts: [], next_cursor: null });
     mockCreate.mockResolvedValue({ id: 'auto-new' });
     mockUpdate.mockResolvedValue({ id: 'auto-1' });
     mockUseAuth.mockReturnValue({
@@ -1093,6 +1109,103 @@ describe('AutomationFormDialog', () => {
       renderDialog();
       await screen.findByLabelText('form.nameLabel');
       expect(screen.queryByTestId('tour-overlay')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── re-mirar alvo órfão (seletor ao vivo, initialTab) ──────────────────────
+  describe('re-mirar alvo órfão (seletor ao vivo)', () => {
+    // ig_media_id nulo + target_unlinked_at setado: o post foi marcado como
+    // postado na mão, o trigger nunca preencheu ig_media_id, e o cron carimbou
+    // o alvo como orfao. workflow_post_id continua sendo o ponteiro interno.
+    const UNLINKED_AUTOMATION: InstagramCommentAutomation = {
+      ...EDITING_BASE,
+      workflow_post_id: 4038,
+      ig_media_id: null,
+      media_caption: 'Reels de setembro',
+      target_unlinked_at: '2026-08-31T23:55:44.000Z',
+    };
+
+    // Automação normal, já ligada a um post publicado -- não é o fluxo de
+    // re-mirar, então o seletor "Publicados" de sempre (instagram_posts) continua
+    // valendo, e selectPost() continua zerando workflow_post_id.
+    const LINKED_AUTOMATION: InstagramCommentAutomation = {
+      ...EDITING_BASE,
+      ig_media_id: '17900000000000009',
+      media_permalink: 'https://instagram.com/p/existente',
+      media_caption: 'Post existente',
+      workflow_post_id: null,
+      target_unlinked_at: null,
+    };
+
+    function liveItem(id: string, over: Record<string, unknown> = {}) {
+      return {
+        id,
+        caption: id,
+        media_type: 'IMAGE',
+        thumbnail_url: null,
+        permalink: `https://instagram.com/p/${id}`,
+        timestamp: '2026-08-31T23:52:49.000Z',
+        ...over,
+      };
+    }
+
+    it('abre na aba Publicados quando initialTab é published', async () => {
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      expect(
+        (await screen.findByRole('tab', { name: 'form.targetSourcePublished' })).getAttribute(
+          'aria-selected',
+        ),
+      ).toBe('true');
+    });
+
+    it('preserva workflow_post_id ao escolher pelo seletor ao vivo', async () => {
+      mockGetPublishedMedia.mockResolvedValueOnce({
+        posts: [liveItem('18130175596674741', { caption: 'Reels de 07/09' })],
+        next_cursor: null,
+      });
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      fireEvent.click(await screen.findByText('Reels de 07/09'));
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'auto-1',
+        expect.objectContaining({
+          ig_media_id: '18130175596674741',
+          workflow_post_id: 4038,
+        }),
+      );
+    });
+
+    it('selectPost normal continua zerando workflow_post_id', async () => {
+      renderDialog(vi.fn(), LINKED_AUTOMATION);
+
+      // Sem initialTab: fica no seletor "Publicados" normal (instagram_posts),
+      // não no seletor ao vivo. O tile não carrega texto acessível (caption
+      // sempre null nesse grid) -- mesma convenção usada no resto do arquivo.
+      const postButton = await screen.findByRole('button', { pressed: false });
+      fireEvent.click(postButton);
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'auto-1',
+        expect.objectContaining({ workflow_post_id: null }),
+      );
+    });
+
+    it('carregar mais concatena a página seguinte pelo next_cursor', async () => {
+      mockGetPublishedMedia
+        .mockResolvedValueOnce({ posts: [liveItem('a')], next_cursor: 'C2' })
+        .mockResolvedValueOnce({ posts: [liveItem('b')], next_cursor: null });
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      fireEvent.click(await screen.findByRole('button', { name: 'form.loadMore' }));
+
+      await waitFor(() => expect(mockGetPublishedMedia).toHaveBeenLastCalledWith(7, 'C2'));
+      expect(await screen.findByText('b')).toBeInTheDocument();
     });
   });
 });
