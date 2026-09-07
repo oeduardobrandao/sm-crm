@@ -119,7 +119,7 @@ function isTombstoneCheckViolation(err: unknown): boolean {
 
 export default function AutomacoesPage() {
   const { t, i18n } = useTranslation('automations');
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
   const qc = useQueryClient();
 
   const [clientFilter, setClientFilter] = useState<number | 'todos'>('todos');
@@ -127,6 +127,12 @@ export default function AutomacoesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<InstagramCommentAutomation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InstagramCommentAutomation | null>(null);
+  /** Overrides which tab `AutomationFormDialog` opens on -- only set by
+   * `openRetarget` below, to jump an orphaned-target automation straight into
+   * the "published" live media picker. Must be cleared whenever the dialog
+   * closes (both `closeForm` and `onSaved`), or the next NORMAL edit would
+   * inherit the "published" tab. */
+  const [retargetTab, setRetargetTab] = useState<'production' | 'published' | undefined>();
 
   const automationsQuery = useQuery({
     queryKey: AUTOMATIONS_KEY,
@@ -214,6 +220,21 @@ export default function AutomacoesPage() {
   const openEdit = (a: InstagramCommentAutomation) => {
     setEditing(a);
     setFormOpen(true);
+  };
+  /** Reuses `openEdit` (same setters, same dialog) and additionally forces
+   * the "published" tab -- `AutomationFormDialog` only turns that into its
+   * re-mirror mode (live Graph API picker) when the automation being edited
+   * also carries `target_unlinked_at`, so this is safe to call generically. */
+  const openRetarget = (a: InstagramCommentAutomation) => {
+    setRetargetTab('published');
+    openEdit(a);
+  };
+  /** `formOpen`'s only setter besides `onSaved` below -- both closing paths
+   * must clear `retargetTab`, or a retarget flow (published) followed by
+   * closing without saving would leak into the next normal edit. */
+  const closeForm = (open: boolean) => {
+    setFormOpen(open);
+    if (!open) setRetargetTab(undefined);
   };
   // Abre o formulário de criação e avança o tour quando o overlay do passo 1
   // (surface "page") está ativo. Usada por todo botão/CTA de "criar" que pode
@@ -455,12 +476,31 @@ export default function AutomacoesPage() {
                             </span>
                           )
                         ) : a.workflow_post_id ? (
-                          <span className="flex flex-wrap items-center gap-1.5">
-                            {truncate(a.media_caption ?? '', 40)}
-                            <Badge variant="info" size="sm">
-                              {t('pendingBadge')}
-                            </Badge>
-                          </span>
+                          a.target_unlinked_at ? (
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              {truncate(a.media_caption ?? '', 40)}
+                              <Badge variant="warning" size="sm" title={t('unlinkedTargetHint')}>
+                                {t('unlinkedTargetBadge')}
+                              </Badge>
+                              {can('automacoes', 'editar') === true && (
+                                <button
+                                  type="button"
+                                  className="text-xs underline"
+                                  style={{ color: 'var(--primary-color)' }}
+                                  onClick={() => openRetarget(a)}
+                                >
+                                  {t('unlinkedTargetAction')}
+                                </button>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              {truncate(a.media_caption ?? '', 40)}
+                              <Badge variant="info" size="sm">
+                                {t('pendingBadge')}
+                              </Badge>
+                            </span>
+                          )
                         ) : (
                           <Badge variant="neutral" size="sm">
                             {t('allPosts')}
@@ -575,8 +615,9 @@ export default function AutomacoesPage() {
 
       <AutomationFormDialog
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={closeForm}
         editing={editing}
+        initialTab={retargetTab}
         tour={
           tour.activeStep?.surface === 'dialog'
             ? {
@@ -592,6 +633,7 @@ export default function AutomacoesPage() {
         }
         onSaved={() => {
           setFormOpen(false);
+          setRetargetTab(undefined);
           invalidate();
         }}
       />
