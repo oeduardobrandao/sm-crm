@@ -143,7 +143,7 @@ export default function AcessoPage() {
     try {
       await rotateHubToken(tokenData.id);
       invalidateHubTokenQueries(qc, clienteId);
-      toast.success('Novo link gerado. Envie-o ao cliente — o anterior parou de funcionar.');
+      toast.success('Novo link gerado. Envie-o ao cliente. O anterior parou de funcionar.');
     } catch (e: any) {
       toast.error(mapTokenError(e));
     } finally {
@@ -378,7 +378,7 @@ function FillValue({
   query: UseQueryResult<PortalFill>;
   children: ReactNode;
 }) {
-  if (query.isLoading || query.isError) return <span className="hub-fill__pending">—</span>;
+  if (!query.isSuccess) return <span className="hub-fill__pending">–</span>;
   return <>{children}</>;
 }
 
@@ -401,7 +401,7 @@ function FillRow({
   query: UseQueryResult<PortalFill>;
   children: ReactNode;
 }) {
-  const pending = query.isLoading || query.isError;
+  const pending = !query.isSuccess;
   const content = (
     <>
       <span className="hub-fill__label">{label}</span>
@@ -430,7 +430,7 @@ function NewIdeasRow({ query }: { query: UseQueryResult<PortalFill> }) {
   if (query.isLoading || query.isError) {
     return (
       <p className="hub-acesso__ideas mt-1 text-sm text-muted-foreground">
-        Ideias novas sem resposta: <span className="hub-fill__pending">—</span>
+        Ideias novas sem resposta: <span className="hub-fill__pending">–</span>
       </p>
     );
   }

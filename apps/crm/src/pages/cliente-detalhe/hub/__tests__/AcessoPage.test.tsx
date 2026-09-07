@@ -218,6 +218,7 @@ describe('AcessoPage', () => {
       data: ZERO_FILL,
       isLoading: false,
       isError: false,
+      isSuccess: true,
     } as never);
   });
 
@@ -388,11 +389,29 @@ describe('AcessoPage', () => {
         data: undefined,
         isLoading: true,
         isError: false,
+        isSuccess: false,
       } as never);
       renderPage();
       await waitFor(() => screen.getByText(/Expira em/));
 
-      expect(screen.getByTestId('fill-paginas')).toHaveTextContent('—');
+      expect(screen.getByTestId('fill-paginas')).toHaveTextContent('–');
+      expect(screen.queryByText('vazia')).not.toBeInTheDocument();
+    });
+
+    it('mostra traço, não o valor zerado, com dado obsoleto durante um refetch', async () => {
+      // isSuccess stays false while the query refetches with `isLoading: true` even
+      // though `data` still holds the previous (successful) result — a bare `data &&`
+      // check would render the stale ZERO_FILL as "vazia" instead of the dash.
+      mockedUsePortalFill.mockReturnValue({
+        data: ZERO_FILL,
+        isLoading: true,
+        isError: false,
+        isSuccess: false,
+      } as never);
+      renderPage();
+      await waitFor(() => screen.getByText(/Expira em/));
+
+      expect(screen.getByTestId('fill-paginas')).toHaveTextContent('–');
       expect(screen.queryByText('vazia')).not.toBeInTheDocument();
     });
 
@@ -401,6 +420,7 @@ describe('AcessoPage', () => {
         data: { ...ZERO_FILL, pages: 0, briefingTotal: 12, briefingAnswered: 8 },
         isLoading: false,
         isError: false,
+        isSuccess: true,
       } as never);
       renderPage();
       await waitFor(() => screen.getByText(/Expira em/));
@@ -414,6 +434,7 @@ describe('AcessoPage', () => {
         data: undefined,
         isLoading: false,
         isError: true,
+        isSuccess: false,
       } as never);
       renderPage();
       await waitFor(() => screen.getByText(/Expira em/));
