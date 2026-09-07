@@ -24,6 +24,7 @@ export default function LiveMediaPicker({
   clientId,
   selectedId,
   onSelect,
+  enabled,
 }: {
   clientId: number;
   /** `ig_media_id` do alvo selecionado no momento, se já for do tipo
@@ -31,6 +32,13 @@ export default function LiveMediaPicker({
    * já carregada. */
   selectedId: string | null;
   onSelect: (post: PublishedMediaItem) => void;
+  /** Gate explícito da query, independente da montagem. Hoje o único call
+   * site só monta este componente dentro do ramo `retargetMode` de
+   * AutomationFormDialog, o que já implica isto -- mas sem um `enabled`
+   * próprio, o dia em que alguém passar a montar o picker fora desse ramo
+   * (por exemplo, sempre montado e só escondido por CSS) dispararia a Graph
+   * API à toa. */
+  enabled: boolean;
 }) {
   const { t } = useTranslation('automations');
 
@@ -39,6 +47,7 @@ export default function LiveMediaPicker({
     queryFn: ({ pageParam }) => getPublishedMedia(clientId, pageParam),
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     initialPageParam: undefined as string | undefined,
+    enabled: enabled && clientId != null,
   });
 
   if (query.isLoading) {

@@ -24,7 +24,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
@@ -493,7 +492,10 @@ export default function AutomationFormDialog({
   const postsQuery = useQuery({
     queryKey: ['instagram-posts-for-automation', form.clientId, postsPage],
     queryFn: () => getInstagramPosts(form.clientId as number, postsPage),
-    enabled: open && targetingPost && form.targetSource === 'published',
+    // retargetMode renders LiveMediaPicker instead of this grid -- fetching
+    // the synced-feed page here would be a request whose result never
+    // reaches the screen.
+    enabled: open && targetingPost && form.targetSource === 'published' && !retargetMode,
   });
   const hasMorePosts = postsPage * POSTS_PAGE_SIZE < (postsQuery.data?.total ?? 0);
 
@@ -675,10 +677,18 @@ export default function AutomationFormDialog({
       },
     }));
 
-  /** Re-mira um alvo órfão: o post interno É conhecido (é o próprio
-   *  workflow_post_id da automação), então diferente de `selectPost` este
-   *  handler PRESERVA o ponteiro, produzindo o estado "ligado" do modelo de 5
-   *  estados em vez de um "específico" solto. */
+  /** Re-mira um alvo órfão: o post interno É conhecido -- é o próprio
+   *  `editing.workflow_post_id`, o ponteiro da automação que está sendo
+   *  editada, e ele não muda durante o fluxo de re-mirar. Lê DAÍ, nunca de
+   *  `form.selectedPost`: esse é mutável durante a sessão (a aba "Em
+   *  produção" segue ativa em modo re-mirar, e um clique nela troca
+   *  `selectedPost` para o post que o usuário tocou por engano). Ler o form
+   *  faria o vínculo migrar em silêncio para esse post errado; ler
+   *  `editing` garante que só o alvo órfão que abriu este diálogo pode ser
+   *  o ponteiro salvo. Diferente de `selectPost`, que sempre zera
+   *  `workflow_post_id`, este handler PRESERVA o ponteiro, produzindo o
+   *  estado "ligado" do modelo de 5 estados em vez de um "específico"
+   *  solto. */
   const selectPublishedForUnlinkedTarget = (post: PublishedMediaItem) =>
     setForm((f) => ({
       ...f,
@@ -687,10 +697,7 @@ export default function AutomationFormDialog({
         ig_media_id: post.id,
         media_permalink: post.permalink,
         media_caption: post.caption ? truncate(post.caption, 300) : null,
-        workflow_post_id:
-          f.selectedPost?.kind === 'published' || f.selectedPost?.kind === 'production'
-            ? (f.selectedPost.workflow_post_id ?? null)
-            : null,
+        workflow_post_id: editing?.workflow_post_id ?? null,
       },
     }));
 
@@ -904,47 +911,28 @@ export default function AutomationFormDialog({
                   </p>
                 ) : (
                   <div style={{ marginTop: 8 }}>
-                    {retargetMode ? (
-                      // Abas de verdade (role="tab") só no fluxo de re-mirar: o
-                      // ToggleGroup normal usa role="radio" (ver abaixo), e os
-                      // dois precisam continuar distinguíveis pro seletor ao
-                      // vivo abrir na aba certa sem mexer no seletor comum.
-                      <Tabs
-                        value={form.targetSource}
-                        onValueChange={(v) =>
-                          setForm((f) => ({ ...f, targetSource: v as TargetSource }))
-                        }
-                        style={{ marginBottom: 8 }}
-                      >
-                        <TabsList aria-label={t('form.targetSourceLabel')}>
-                          <TabsTrigger value="production">
-                            {t('form.targetSourceProduction')}
-                          </TabsTrigger>
-                          <TabsTrigger value="published">
-                            {t('form.targetSourcePublished')}
-                          </TabsTrigger>
-                        </TabsList>
-                      </Tabs>
-                    ) : (
-                      <ToggleGroup
-                        type="single"
-                        aria-label={t('form.targetSourceLabel')}
-                        value={form.targetSource}
-                        onValueChange={(v) => {
-                          if (!v || v === form.targetSource) return;
-                          setForm((f) => ({ ...f, targetSource: v as TargetSource }));
-                        }}
-                        className="justify-start"
-                        style={{ marginBottom: 8 }}
-                      >
-                        <ToggleGroupItem value="production" size="sm">
-                          {t('form.targetSourceProduction')}
-                        </ToggleGroupItem>
-                        <ToggleGroupItem value="published" size="sm">
-                          {t('form.targetSourcePublished')}
-                        </ToggleGroupItem>
-                      </ToggleGroup>
-                    )}
+                    {/* Mesmo ToggleGroup nos dois casos (fluxo normal e
+                        re-mirar): é o mesmo controle, no mesmo lugar do mesmo
+                        diálogo, então precisa ter a mesma aparência
+                        independente do caminho de entrada. */}
+                    <ToggleGroup
+                      type="single"
+                      aria-label={t('form.targetSourceLabel')}
+                      value={form.targetSource}
+                      onValueChange={(v) => {
+                        if (!v || v === form.targetSource) return;
+                        setForm((f) => ({ ...f, targetSource: v as TargetSource }));
+                      }}
+                      className="justify-start"
+                      style={{ marginBottom: 8 }}
+                    >
+                      <ToggleGroupItem value="production" size="sm">
+                        {t('form.targetSourceProduction')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="published" size="sm">
+                        {t('form.targetSourcePublished')}
+                      </ToggleGroupItem>
+                    </ToggleGroup>
 
                     {form.targetSource === 'production' ? (
                       productionQuery.isLoading ? (
@@ -1050,6 +1038,7 @@ export default function AutomationFormDialog({
                             : null
                         }
                         onSelect={selectPublishedForUnlinkedTarget}
+                        enabled={retargetMode}
                       />
                     ) : postsQuery.isLoading ? (
                       <div className="flex justify-center p-4">

@@ -1125,15 +1125,18 @@ describe('AutomationFormDialog', () => {
       target_unlinked_at: '2026-08-31T23:55:44.000Z',
     };
 
-    // Automação normal, já ligada a um post publicado -- não é o fluxo de
-    // re-mirar, então o seletor "Publicados" de sempre (instagram_posts) continua
-    // valendo, e selectPost() continua zerando workflow_post_id.
+    // Automação normal, já no estado "ligado" de verdade -- ig_media_id E
+    // workflow_post_id setados (não null): não é o fluxo de re-mirar, então o
+    // seletor "Publicados" de sempre (instagram_posts) continua valendo, e
+    // selectPost() continua zerando workflow_post_id. Com workflow_post_id
+    // null de partida, zerar não seria observável -- null comparado com null
+    // sempre passa, mesmo se o zeramento parar de acontecer.
     const LINKED_AUTOMATION: InstagramCommentAutomation = {
       ...EDITING_BASE,
       ig_media_id: '17900000000000009',
       media_permalink: 'https://instagram.com/p/existente',
       media_caption: 'Post existente',
-      workflow_post_id: null,
+      workflow_post_id: 4038,
       target_unlinked_at: null,
     };
 
@@ -1152,9 +1155,13 @@ describe('AutomationFormDialog', () => {
     it('abre na aba Publicados quando initialTab é published', async () => {
       renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
 
+      // Mesmo ToggleGroup (role="radio") do fluxo normal -- decisão do dono
+      // da feature: um `Tabs` só neste modo faria o mesmo controle, no mesmo
+      // lugar do mesmo diálogo, mudar de aparência conforme o caminho de
+      // entrada.
       expect(
-        (await screen.findByRole('tab', { name: 'form.targetSourcePublished' })).getAttribute(
-          'aria-selected',
+        (await screen.findByRole('radio', { name: 'form.targetSourcePublished' })).getAttribute(
+          'aria-checked',
         ),
       ).toBe('true');
     });
@@ -1202,10 +1209,48 @@ describe('AutomationFormDialog', () => {
         .mockResolvedValueOnce({ posts: [liveItem('b')], next_cursor: null });
       renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
 
+      // Página 1 no ar antes do clique -- se a asserção final só checasse 'b',
+      // trocar `pages.flatMap(...)` por "só a última página" também passaria:
+      // 'a' precisa continuar visível depois do "carregar mais" pra provar
+      // que as páginas concatenam em vez de substituir.
+      expect(await screen.findByText('a')).toBeInTheDocument();
+
       fireEvent.click(await screen.findByRole('button', { name: 'form.loadMore' }));
 
       await waitFor(() => expect(mockGetPublishedMedia).toHaveBeenLastCalledWith(7, 'C2'));
       expect(await screen.findByText('b')).toBeInTheDocument();
+      expect(screen.getByText('a')).toBeInTheDocument();
+    });
+
+    it('preserva o ponteiro do órfão mesmo depois de tocar num post errado na aba "Em produção"', async () => {
+      // Cenário concreto da decisão do dono da feature: órfão com ponteiro
+      // 4038, usuário clica na aba "Em produção" (que segue ativa em modo
+      // re-mirar), clica sem querer no card do post 501 ("Carrossel de
+      // agosto"), volta pra "Publicados" e escolhe a mídia ao vivo. O
+      // workflow_post_id salvo tem que ser o do órfão (4038) -- lido de
+      // `editing`, que não muda durante o fluxo -- e nunca o do post 501,
+      // que só passou pelo `form.selectedPost` mutável.
+      mockGetPublishedMedia.mockResolvedValue({
+        posts: [liveItem('18130175596674741', { caption: 'Reels de 07/09' })],
+        next_cursor: null,
+      });
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      fireEvent.click(await screen.findByRole('radio', { name: 'form.targetSourceProduction' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Carrossel de agosto' }));
+
+      fireEvent.click(screen.getByRole('radio', { name: 'form.targetSourcePublished' }));
+      fireEvent.click(await screen.findByText('Reels de 07/09'));
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'auto-1',
+        expect.objectContaining({
+          ig_media_id: '18130175596674741',
+          workflow_post_id: 4038,
+        }),
+      );
     });
   });
 });
