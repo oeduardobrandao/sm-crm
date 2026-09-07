@@ -67,19 +67,27 @@ function RichTextEditor({
     extensions: richTextExtensions(editable),
     content,
     editable,
-    editorProps: editable
+    // Only include `editorProps` at all when editable: Tiptap's own default is `{}`, but an
+    // explicit `editorProps: undefined` key overrides that default during option merging and
+    // crashes `Editor.createView()` (`Cannot read properties of undefined (reading
+    // 'dispatchTransaction')`) the moment a read-only instance mounts. The crash is swallowed
+    // by `EditorErrorBoundary` below, so a viewer silently gets the plain-text fallback (or
+    // nothing, when no `fallbackText` is given) instead of the rich content.
+    ...(editable
       ? {
-          handlePaste: (_view, event) => {
-            const text = event.clipboardData?.getData('text/plain');
-            if (text) {
-              editor?.commands.insertContent(text);
-              return true;
-            }
-            return false;
+          editorProps: {
+            handlePaste: (_view, event) => {
+              const text = event.clipboardData?.getData('text/plain');
+              if (text) {
+                editor?.commands.insertContent(text);
+                return true;
+              }
+              return false;
+            },
+            handleDrop: () => true,
           },
-          handleDrop: () => true,
         }
-      : undefined,
+      : {}),
     onUpdate: editable
       ? ({ editor: ed }) => {
           onUpdateRef.current?.(ed.getJSON() as Record<string, unknown>, ed.getText());
