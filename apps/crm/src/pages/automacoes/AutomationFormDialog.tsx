@@ -481,7 +481,20 @@ export default function AutomationFormDialog({
    * listagem, Task 7) do seletor "Publicados" normal: as duas condições
    * precisam bater. Só `initialTab === 'published'` não bastaria -- um dia
    * outro chamador pode querer abrir na aba Publicados de uma automação
-   * comum, sem precisar do seletor ao vivo. */
+   * comum, sem precisar do seletor ao vivo.
+   *
+   * DELIBERADAMENTE não soma uma condição de "cliente ainda é o do órfão"
+   * (ao contrário de `selectPublishedForUnlinkedTarget`, que soma): o
+   * `LiveMediaPicker` busca por `form.clientId`, então continua funcionando
+   * corretamente para o cliente novo mesmo depois de uma troca -- é só uma
+   * fonte de dados diferente (Graph API ao vivo, paginação por cursor) do
+   * seletor "Publicados" comum (espelho sincronizado, paginação numerada),
+   * sem nenhuma cópia na tela que diga "re-mirando o órfão X". A correção
+   * real do bug de save (client mismatch) já está em
+   * `selectPublishedForUnlinkedTarget`; gatear isto aqui também deixaria
+   * aquele handler inalcançável pela UI assim que o cliente mudasse, o que
+   * tornaria seu próprio guard morto (e o teste de mutação da correção
+   * deixaria de detectar a regressão). */
   const retargetMode = initialTab === 'published' && editing?.target_unlinked_at != null;
 
   /** A dialog opened from a post belongs to that post's client: letting the
@@ -688,7 +701,17 @@ export default function AutomationFormDialog({
    *  o ponteiro salvo. Diferente de `selectPost`, que sempre zera
    *  `workflow_post_id`, este handler PRESERVA o ponteiro, produzindo o
    *  estado "ligado" do modelo de 5 estados em vez de um "específico"
-   *  solto. */
+   *  solto.
+   *
+   *  MAS só enquanto o cliente do formulário continuar sendo o do órfão: o
+   *  Select de cliente não trava durante a edição (`clientLocked` só vale na
+   *  criação, ver abaixo) e trocá-lo não limpa `editing`, que segue sendo a
+   *  automação órfã original. Preservar o ponteiro incondicionalmente aqui
+   *  gravaria `workflow_post_id` do cliente ANTIGO junto de um `client_id`
+   *  novo -- o resolver `ica_a1_resolve_workflow_post_target` rejeita essa
+   *  combinação (`wp.cliente_id = a.client_id`) e o save falha. Uma vez que
+   *  o cliente mudou, isto não é mais um re-mirar daquele órfão: é uma
+   *  edição normal, e o ponteiro deve zerar, como em `selectPost`. */
   const selectPublishedForUnlinkedTarget = (post: PublishedMediaItem) =>
     setForm((f) => ({
       ...f,
@@ -697,7 +720,10 @@ export default function AutomationFormDialog({
         ig_media_id: post.id,
         media_permalink: post.permalink,
         media_caption: post.caption ? truncate(post.caption, 300) : null,
-        workflow_post_id: editing?.workflow_post_id ?? null,
+        workflow_post_id:
+          editing != null && f.clientId === editing.client_id
+            ? (editing.workflow_post_id ?? null)
+            : null,
       },
     }));
 

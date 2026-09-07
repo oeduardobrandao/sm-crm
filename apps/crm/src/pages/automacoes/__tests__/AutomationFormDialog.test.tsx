@@ -1186,6 +1186,74 @@ describe('AutomationFormDialog', () => {
       );
     });
 
+    it('trocar de cliente no meio do re-mirar zera o ponteiro do orfao, nunca grava o do cliente antigo', async () => {
+      // Bug alcancavel: o Select de cliente NAO trava durante a edicao
+      // (clientLocked so vale na criacao), e trocar o cliente reseta
+      // targetMode/targetSource/selectedPost mas NAO mexe em `editing`, que
+      // continua sendo o orfao do cliente A. Sem a correcao,
+      // selectPublishedForUnlinkedTarget lia editing.workflow_post_id (4038,
+      // do cliente A) incondicionalmente e gravava esse ponteiro junto de um
+      // client_id de outro cliente -- o resolver
+      // ica_a1_resolve_workflow_post_target rejeita essa combinacao
+      // (wp.cliente_id != a.client_id) e o save falha.
+      const CLIENTE_B = { id: 9, nome: 'Clinica Y', sigla: 'CY', cor: '#f542c8' };
+      mockGetClientes.mockResolvedValue([...CLIENTES, CLIENTE_B]);
+      mockGetStatuses.mockResolvedValue(
+        new Map([
+          [7, { revoked: false, expired: false, canPublish: true, canAutomate: true }],
+          [9, { revoked: false, expired: false, canPublish: true, canAutomate: true }],
+        ]),
+      );
+      // Depende de qual cliente esta selecionado no momento da chamada (o
+      // LiveMediaPicker ja dispara uma busca pro cliente A assim que o
+      // dialog abre, antes de qualquer troca) -- uma unica mockResolvedValue
+      // fixa esconderia esse detalhe e deixaria o teste passar mesmo se a
+      // troca de cliente nao acionasse uma nova busca.
+      mockGetPublishedMedia.mockImplementation((clientId: number) =>
+        Promise.resolve(
+          clientId === 9
+            ? {
+                posts: [liveItem('18130175596674999', { caption: 'Reels da Clinica Y' })],
+                next_cursor: null,
+              }
+            : {
+                posts: [liveItem('18130175596670001', { caption: 'Reels da Clinica X' })],
+                next_cursor: null,
+              },
+        ),
+      );
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      // Confirma o estado de partida: o orfao (cliente A=7) ja abre com o
+      // seletor ao vivo mostrando a midia de A.
+      expect(await screen.findByText('Reels da Clinica X')).toBeInTheDocument();
+
+      // Troca o cliente A (7, dono do orfao) para B (9).
+      fireEvent.click(await screen.findByRole('button', { name: 'Clinica Y' }));
+
+      // A troca zerou targetMode/targetSource -- o usuario volta pra "post" >
+      // "Publicados" na mao, exatamente como no cenario relatado.
+      fireEvent.click(await screen.findByRole('radio', { name: 'form.targetPost' }));
+      fireEvent.click(await screen.findByRole('radio', { name: 'form.targetSourcePublished' }));
+
+      // retargetMode continua true (decisao deliberada: ver comentario em
+      // AutomationFormDialog.tsx sobre nao gatear retargetMode por cliente),
+      // entao o seletor ao vivo segue no ar -- agora buscando a midia do
+      // cliente novo.
+      fireEvent.click(await screen.findByText('Reels da Clinica Y'));
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'auto-1',
+        expect.objectContaining({
+          client_id: 9,
+          ig_media_id: '18130175596674999',
+          workflow_post_id: null,
+        }),
+      );
+    });
+
     it('selectPost normal continua zerando workflow_post_id', async () => {
       renderDialog(vi.fn(), LINKED_AUTOMATION);
 
