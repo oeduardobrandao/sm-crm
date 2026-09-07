@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { X, Trash2, Link2, Maximize2, Minimize2, CircleDashed } from 'lucide-react';
 import {
   AlertDialog,
@@ -104,7 +105,12 @@ export function StandalonePostDrawer({
     queryFn: () => getPostStatusEvents([postId]),
   });
 
-  const { user, role } = useAuth();
+  const { user, role, can } = useAuth();
+  // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
+  // -- AGENT_ROLE_PRESET.automacoes is 'editar' (lib/permissions.ts), so a
+  // legacy agent already gets full write on instagram_comment_automations
+  // everywhere else; only this drawer shortcut denied it.
+  const canManageAutomations = can('automacoes', 'editar') === true;
 
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
@@ -219,6 +225,7 @@ export function StandalonePostDrawer({
   // ── Content autosave (debounced, cloned from WorkflowDrawer's scheduleContentSave) ──
 
   const [isSaving, setIsSaving] = useState(false);
+  useUnsavedWork(isSaving);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmedEditRef = useRef(false);
   const [pendingEditData, setPendingEditData] = useState<{
@@ -497,6 +504,7 @@ export function StandalonePostDrawer({
               commentThreads={commentThreads}
               currentUserId={user?.id}
               currentUserRole={role}
+              canManageAutomations={canManageAutomations}
               workspaceUsers={workspaceUsers}
               hasInstagramAccount={hasInstagramAccount}
               igAccountStatus={igAccountStatus}

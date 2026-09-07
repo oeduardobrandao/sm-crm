@@ -128,16 +128,16 @@ export function formatEtapaPrazo(deadline: BoardCard['deadline']): {
 } {
   if (deadline.estourado) {
     const d = Math.abs(deadline.diasRestantes);
-    return { label: `${d}d atrasado`, shortLabel: `${d}d atr.`, color: '#ef4444' };
+    return { label: `${d}d atrasado`, shortLabel: `${d}d atr.`, color: 'var(--danger)' };
   }
   if (deadline.diasRestantes === 0) {
     const h = deadline.horasRestantes;
-    return { label: `${h}h restantes`, shortLabel: `${h}h`, color: '#eab308' };
+    return { label: `${h}h restantes`, shortLabel: `${h}h`, color: 'var(--warning)' };
   }
   const d = deadline.diasRestantes;
   return {
     label: `${d}d restantes`,
     shortLabel: `${d}d`,
-    color: deadline.urgente ? '#eab308' : 'var(--text-muted)',
+    color: deadline.urgente ? 'var(--warning)' : 'var(--text-muted)',
   };
 }

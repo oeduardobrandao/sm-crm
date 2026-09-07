@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 // Follows WorkflowDrawer.test.tsx's pattern: stub every heavy leaf component so
@@ -11,7 +12,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'user-1' }, role: 'owner', loading: false, profile: null }),
+  useAuth: () => ({
+    user: { id: 'user-1' },
+    role: 'owner',
+    loading: false,
+    profile: null,
+    can: makeCan(fakeMembership({ role: 'owner' })),
+  }),
 }));
 
 vi.mock('@/hooks/useWorkspaceLimits', () => ({

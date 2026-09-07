@@ -1,5 +1,6 @@
 import { supabase, getUserId, getContaId } from './core';
 import { resetApprovedPostsForNextCycle } from './posts';
+import { fetchAllPaged } from './paging';
 
 // =============================================
 // WORKFLOW TEMPLATES
@@ -92,6 +93,7 @@ export interface Workflow {
   template_id?: number | null;
   status: 'ativo' | 'concluido' | 'arquivado';
   etapa_atual: number;
+  concluido_em?: string | null;
   recorrente: boolean;
   modo_prazo?: 'padrao' | 'data_fixa' | 'data_entrega';
   link_notion?: string | null;
@@ -265,44 +267,20 @@ export async function getWorkflowEtapas(workflowId: number): Promise<WorkflowEta
 export async function getAllActiveEtapas(): Promise<
   (WorkflowEtapa & { workflow_titulo?: string; cliente_nome?: string; cliente_id?: number })[]
 > {
-  const { data, error } = await supabase
-    .from('workflow_etapas')
-    .select('*, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))')
-    .eq('workflows.status', 'ativo')
-    .order('ordem', { ascending: true });
-  if (error) throw error;
-  return (data || []).map((row: any) => ({
+  const rows = await fetchAllPaged(async (from, to) => {
+    const { data, error } = await supabase
+      .from('workflow_etapas')
+      .select('*, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))')
+      .eq('workflows.status', 'ativo')
+      .order('ordem', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return data || [];
+  });
+  return rows.map((row: any) => ({
     ...row,
     workflow_titulo: row.workflows?.titulo,
-    cliente_id: row.workflows?.cliente_id,
-    cliente_nome: row.workflows?.clientes?.nome,
-    workflows: undefined,
-  }));
-}
-
-export async function getAllEtapasWithWorkflow(): Promise<
-  (WorkflowEtapa & {
-    workflow_titulo?: string;
-    workflow_status?: string;
-    workflow_created_at?: string;
-    template_id?: number | null;
-    cliente_id?: number;
-    cliente_nome?: string;
-  })[]
-> {
-  const { data, error } = await supabase
-    .from('workflow_etapas')
-    .select(
-      '*, workflows!inner(titulo, status, created_at, template_id, cliente_id, clientes!inner(nome))',
-    )
-    .order('ordem', { ascending: true });
-  if (error) throw error;
-  return (data || []).map((row: any) => ({
-    ...row,
-    workflow_titulo: row.workflows?.titulo,
-    workflow_status: row.workflows?.status,
-    workflow_created_at: row.workflows?.created_at,
-    template_id: row.workflows?.template_id,
     cliente_id: row.workflows?.cliente_id,
     cliente_nome: row.workflows?.clientes?.nome,
     workflows: undefined,

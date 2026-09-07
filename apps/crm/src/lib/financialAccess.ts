@@ -1,4 +1,5 @@
 import type { MyMembership } from '@/store/workspace';
+import { derivePermission } from './permissions';
 
 /**
  * Whether the current user may see financial values.
@@ -14,23 +15,19 @@ export type FinancialAccess = boolean | 'unknown';
 export const MASKED_BRL = 'R$ •••••';
 
 /**
- * Mirror of the SQL predicate `public.can_see_financials()`. Keep the two in
- * step: this is the only place the role semantics are encoded client-side.
+ * Delegates to `derivePermission` (lib/permissions.ts) for the `financeiro`
+ * module's `ver` action — that file, not this one, is the single place the
+ * role/custom-permission semantics are encoded client-side now. Kept as its
+ * own named export because callers read as "can this user see financials",
+ * not "does this user have financeiro/ver".
  *
- * `can_see_financials` on the row is meaningful for admins ONLY. Owners always
- * see financials; agents never do, whatever the column says.
+ * `can_see_financials` on the row is meaningful for admins on the LEGACY
+ * (no custom role) path only. Owners always see financials; agents never do;
+ * a custom role overrides the legacy flag entirely once `role_id` is set —
+ * see `derivePermission`'s own docstring for the full precedence.
  */
 export function deriveFinancialAccess(membership: MyMembership | null): FinancialAccess {
-  if (!membership) return 'unknown';
-  switch (membership.role) {
-    case 'owner':
-      return true;
-    case 'admin':
-      return membership.can_see_financials;
-    default:
-      // Agents, and any role added later: deny rather than fall through.
-      return false;
-  }
+  return derivePermission(membership, 'financeiro', 'ver');
 }
 
 /**

@@ -36,8 +36,8 @@ interface ClienteDetalheNavProps {
  */
 export function ClienteDetalheNav({ clienteId }: ClienteDetalheNavProps) {
   const { t } = useTranslation('clients');
-  const { workspaceRole, canSeeFinancials } = useAuth();
-  const tabs = visibleClienteTabs(workspaceRole, canSeeFinancials);
+  const { can } = useAuth();
+  const tabs = visibleClienteTabs(can);
   const { pathname } = useLocation();
   const navRef = useRef<HTMLElement>(null);
   const tabLinkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});

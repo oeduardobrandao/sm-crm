@@ -15,6 +15,7 @@ vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/store/hub');
 
 import { useAuth } from '@/context/AuthContext';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 import BriefingPage from '../BriefingPage';
 import * as hubStore from '@/store/hub';
 
@@ -33,8 +34,18 @@ const CLIENTE: Cliente = {
   conta_id: 'ws-1',
 };
 
+/**
+ * O gate do portal (HubRoleGate) lê `can('configuracoes', 'editar')`, tri-estado,
+ * e nao mais o `workspaceRole` grosseiro. Derivar o `can` do papel via
+ * `makeCan`/`fakeMembership` faz estes testes exercitarem a MESMA tabela-verdade
+ * (`derivePermission`) que roda em producao. `null` produz 'unknown' em todos os
+ * modulos, espelhando um AuthContext ainda nao resolvido.
+ */
 function setAuth(workspaceRole: 'owner' | 'admin' | 'agent' | null) {
-  mockedUseAuth.mockReturnValue({ workspaceRole } as never);
+  mockedUseAuth.mockReturnValue({
+    workspaceRole,
+    can: makeCan(workspaceRole === null ? null : fakeMembership({ role: workspaceRole })),
+  } as never);
 }
 
 function OutletContextProvider({ cliente }: { cliente: Cliente }) {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { hasUnsavedWork } from '@mesaas/app-lifecycle';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../dialog';
 
 function renderDirty(onConfirmClose: () => void) {
@@ -50,5 +51,38 @@ describe('DialogContent close confirmation', () => {
     fireEvent.pointerDown(document.body);
     expect(screen.getByText('Fechar sem salvar?')).toBeTruthy();
     expect(onConfirmClose).not.toHaveBeenCalled();
+  });
+
+  it('holds the unsaved-work registry while confirmClose is set', () => {
+    const { unmount } = renderDirty(vi.fn());
+    expect(hasUnsavedWork()).toBe(true);
+    unmount();
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it('does not hold the registry for a clean dialog', () => {
+    render(
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Título</DialogTitle>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>,
+    );
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it('does not hold the registry while the dialog is closed, even with confirmClose set', () => {
+    render(
+      <Dialog open={false} onOpenChange={() => {}}>
+        <DialogContent confirmClose onConfirmClose={() => {}}>
+          <DialogHeader>
+            <DialogTitle>Título</DialogTitle>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>,
+    );
+    expect(hasUnsavedWork()).toBe(false);
   });
 });

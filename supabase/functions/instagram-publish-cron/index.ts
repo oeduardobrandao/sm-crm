@@ -416,8 +416,15 @@ Deno.serve(createPublishCronHandler({
               .select("id, nome, contas(nome)")
               .in("id", clientIds);
             if (clients) {
+              // `contas(nome)` is a many-to-one embed (an object at runtime); the
+              // schema-less client infers it as an array, so cast explicitly.
+              const clientRows = clients as unknown as Array<{
+                id: number;
+                nome: string;
+                contas: { nome: string } | null;
+              }>;
               const lookup = new Map(
-                clients.map((c: { id: number; nome: string; contas: { nome: string } | null }) => [
+                clientRows.map((c) => [
                   c.id,
                   { clientName: c.nome, workspaceName: c.contas?.nome },
                 ]),

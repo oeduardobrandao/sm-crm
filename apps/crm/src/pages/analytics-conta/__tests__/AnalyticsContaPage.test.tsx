@@ -636,6 +636,25 @@ describe('AnalyticsContaPage', () => {
     expect(screen.getByText('Publicar mais reels')).toBeTruthy();
   });
 
+  it('mostra o badge "Fora do plano" para relatório com status skipped', () => {
+    seedCommonAnalyticsData();
+    queryState['analytics-reports'] = {
+      data: [
+        {
+          id: 11,
+          report_month: '2026-05',
+          generated_at: null,
+          status: 'skipped',
+          report_url: null,
+        },
+      ],
+    };
+
+    render(<AnalyticsContaPage />);
+
+    expect(screen.getByText('Fora do plano')).toBeTruthy();
+  });
+
   it('renders the Baseline Instagram card and an ig_score badge', () => {
     const q = { p25: 0.01, p50: 0.02, p75: 0.03 };
     const bucket = {

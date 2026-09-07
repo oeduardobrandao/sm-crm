@@ -14,6 +14,7 @@ vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/store/hub');
 
 import { useAuth } from '@/context/AuthContext';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 import MarcaPage from '../MarcaPage';
 import * as hubStore from '@/store/hub';
 
@@ -32,8 +33,18 @@ const CLIENTE: Cliente = {
   conta_id: 'ws-1',
 };
 
+/**
+ * O gate do portal (HubRoleGate) lê `can('configuracoes', 'editar')`, tri-estado,
+ * e nao mais o `workspaceRole` grosseiro. Derivar o `can` do papel via
+ * `makeCan`/`fakeMembership` faz estes testes exercitarem a MESMA tabela-verdade
+ * (`derivePermission`) que roda em producao. `null` produz 'unknown' em todos os
+ * modulos, espelhando um AuthContext ainda nao resolvido.
+ */
 function setAuth(workspaceRole: 'owner' | 'admin' | 'agent' | null) {
-  mockedUseAuth.mockReturnValue({ workspaceRole } as never);
+  mockedUseAuth.mockReturnValue({
+    workspaceRole,
+    can: makeCan(workspaceRole === null ? null : fakeMembership({ role: workspaceRole })),
+  } as never);
 }
 
 function OutletContextProvider({ cliente }: { cliente: Cliente }) {
@@ -90,7 +101,7 @@ describe('MarcaPage', () => {
   });
 
   // Regression guard: the hub-brand-crm useQuery call sits above <HubRoleGate> in the
-  // component body, so without `enabled: !isRestricted` it fires for every role — an
+  // component body, so without `enabled: canLoadPortalData` it fires for every role — an
   // agent would fetch brand data that HubRoleGate exists to withhold, even though it
   // never reaches the screen.
   it('does not fire the hub-brand-crm query for an agent', async () => {

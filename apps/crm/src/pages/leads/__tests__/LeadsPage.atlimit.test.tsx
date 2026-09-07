@@ -49,7 +49,7 @@ vi.mock('@/components/usage/UsageMeter', () => ({
 }));
 
 vi.mock('../../../context/AuthContext', () => ({
-  useAuth: () => ({ canSeeFinancials: true }),
+  useAuth: () => ({ canSeeFinancials: true, can: () => true }),
 }));
 
 vi.mock('@/components/paywall/FeatureGate', () => ({

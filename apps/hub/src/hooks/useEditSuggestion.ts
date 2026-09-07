@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitEditSuggestion } from '../api';
 import type { HubPost, PendingEditSuggestion } from '../types';
 
@@ -15,6 +16,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   const suggestion = post.pending_suggestion;
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [hasPendingSuggestion, setHasPendingSuggestion] = useState(!!suggestion);
+  const [dirty, setDirty] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -33,6 +35,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
 
   const saveSuggestion = useCallback(
     (conteudo: Record<string, unknown> | null, conteudoPlain: string, igCaption: string | null) => {
+      setDirty(true);
       if (timerRef.current) clearTimeout(timerRef.current);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
 
@@ -48,9 +51,12 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
           );
           setHasPendingSuggestion(!!res.pending_suggestion);
           setSaveState('saved');
+          setDirty(false);
           savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
           onSaved();
         } catch {
+          // Swallowed on purpose (see saveState reset below), so `dirty` is the only
+          // signal left that the edit never made it to the server: it stays true here.
           setSaveState('idle');
         }
       }, 1500);
@@ -60,6 +66,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
 
   const approvalBlocked = saveState === 'saving' || hasPendingSuggestion;
   const wasRejected = !hasPendingSuggestion && !!post.suggestion_rejected_at;
+
+  useUnsavedWork(dirty || saveState === 'saving');
 
   return {
     isEditable,

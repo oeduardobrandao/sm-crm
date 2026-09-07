@@ -1,6 +1,8 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 
 // Regression test for the FIX 1(b) fetch-gate: getTransacoes returns raw
 // financial rows and MembroDetalhePage is not a financial route, so nothing
@@ -56,8 +58,13 @@ const membro = {
   data_pagamento: 5,
 };
 
-function setup(canSeeFinancials: boolean | 'unknown') {
-  useAuthMock.mockReturnValue({ role: 'admin', canSeeFinancials });
+function setup(
+  canSeeFinancials: boolean | 'unknown',
+  can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck = makeCan(
+    fakeMembership({ role: 'admin' }),
+  ),
+) {
+  useAuthMock.mockReturnValue({ canSeeFinancials, can });
   queryState.membros = { data: [membro], isLoading: false };
   queryState.transacoes = { data: [], isLoading: false };
   render(<MembroDetalhePage />);
@@ -90,5 +97,46 @@ describe('MembroDetalhePage financial query gate', () => {
 
     expect(screen.getByText('Descrição')).toBeTruthy();
     expect(screen.queryByText(/apenas para quem tem acesso financeiro liberado/i)).toBeNull();
+  });
+});
+
+/**
+ * Task 14: `isAgent = role === 'agent'` collapsed onto `canEditTeam =
+ * can('equipe', 'editar') === true`. `AGENT_ROLE_PRESET.equipe` is 'none' and
+ * admin resolves to `true` for every non-financial module, so the two legacy
+ * cases below reproduce the OLD isAgent gate byte-for-byte — only a CUSTOM
+ * role (role_id set) can diverge from its chassis role.
+ */
+describe('MembroDetalhePage — Editar button gated on equipe:editar', () => {
+  it('hides the Editar button for a legacy agent (equipe preset is none, matches the old isAgent gate)', () => {
+    setup(true, makeCan(fakeMembership({ role: 'agent' })));
+
+    expect(screen.queryByRole('button', { name: /Editar/ })).toBeNull();
+  });
+
+  it('shows the Editar button for a legacy admin (equipe preset resolves to true)', () => {
+    setup(true, makeCan(fakeMembership({ role: 'admin' })));
+
+    expect(screen.getByRole('button', { name: /Editar/ })).toBeTruthy();
+  });
+
+  it('hides the Editar button for a custom role with equipe:ver only', () => {
+    setup(
+      true,
+      makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'ver' } })),
+    );
+
+    expect(screen.queryByRole('button', { name: /Editar/ })).toBeNull();
+  });
+
+  it('shows the Editar button for a custom role with equipe:editar (the fix)', () => {
+    setup(
+      true,
+      makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+      ),
+    );
+
+    expect(screen.getByRole('button', { name: /Editar/ })).toBeTruthy();
   });
 });

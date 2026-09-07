@@ -61,6 +61,7 @@ import {
   type BriefingRow,
 } from '@/store';
 import { BriefingTemplatesModal } from '../BriefingTemplatesModal';
+import { BriefingAudioPlayer } from '../BriefingAudioPlayer';
 import { SortableQuestion, SortableSection, SECTION_PREFIX } from '../BriefingReorder';
 import {
   reorderQuestionWithinSection,
@@ -498,6 +499,7 @@ function BriefingEditor({
                             Sem resposta ainda
                           </p>
                         )}
+                        <BriefingAudioPlayer question={q} />
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <Button

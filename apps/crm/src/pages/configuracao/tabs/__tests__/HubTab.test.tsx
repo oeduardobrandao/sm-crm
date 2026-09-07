@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const { useAuthMock, storeMock } = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
@@ -268,7 +269,7 @@ function renderTab() {
 describe('HubTab — Personalizar Hub', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useAuthMock.mockReturnValue({ role: 'owner' });
+    useAuthMock.mockReturnValue({ role: 'owner', can: () => true });
     mockEntitlements = { hasFeature: () => true, isLoading: false };
     storeMock.getCurrentWorkspace.mockResolvedValue({
       id: 'ws-1',
@@ -511,5 +512,155 @@ describe('HubTab — Personalizar Hub', () => {
       createElementSpy.mockRestore();
       vi.unstubAllGlobals();
     }
+  });
+});
+
+/**
+ * Task 14: `isOwnerOrAdmin = role === 'owner' || role === 'admin'` collapsed
+ * onto `can('configuracoes', 'ver') === true`. `AGENT_ROLE_PRESET.
+ * configuracoes` is 'none' and admin resolves to `true` for every
+ * non-financial module (lib/permissions.ts), so the two legacy-preset cases
+ * below reproduce the OLD isOwnerOrAdmin gate byte-for-byte -- only a CUSTOM
+ * role (role_id set) can now diverge from its chassis role. `levelAllows`
+ * treats the 'ver' ACTION as satisfied by either the 'ver' OR 'editar'
+ * LEVEL, so any non-'none' `configuracoes` grant unblocks these queries.
+ */
+describe('HubTab — queries gated on configuracoes:ver', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEntitlements = { hasFeature: () => true, isLoading: false };
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: null,
+    });
+    storeMock.getHubBranding.mockResolvedValue({
+      brand_color: '#111111',
+      hub_surface_theme: 'neutral',
+      hub_font_display: 'fraunces',
+      hub_font_body: 'instrument-sans',
+      hub_radius: 'soft',
+      hub_card_style: 'filled',
+      hub_logo_style: 'round',
+      hub_logo_dark_url: null,
+      hub_hide_branding: false,
+      hub_default_appearance: 'light',
+    });
+  });
+
+  it('keeps a legacy agent blocked (configuracoes preset is none)', async () => {
+    useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'agent' })) });
+    renderTab();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storeMock.getCurrentWorkspace).not.toHaveBeenCalled();
+    expect(storeMock.getHubBranding).not.toHaveBeenCalled();
+  });
+
+  it('keeps a legacy admin unchanged (configuracoes preset resolves to true)', async () => {
+    useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'admin' })) });
+    renderTab();
+
+    await waitFor(() => {
+      expect(storeMock.getCurrentWorkspace).toHaveBeenCalled();
+      expect(storeMock.getHubBranding).toHaveBeenCalled();
+    });
+  });
+
+  it('blocks the queries for a custom role with no configuracoes grant at all', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+    });
+    renderTab();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storeMock.getCurrentWorkspace).not.toHaveBeenCalled();
+    expect(storeMock.getHubBranding).not.toHaveBeenCalled();
+  });
+
+  it('unblocks the queries for a custom role with configuracoes:editar (the fix)', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { configuracoes: 'editar' },
+        }),
+      ),
+    });
+    renderTab();
+
+    await waitFor(() => {
+      expect(storeMock.getCurrentWorkspace).toHaveBeenCalled();
+      expect(storeMock.getHubBranding).toHaveBeenCalled();
+    });
+  });
+});
+
+/**
+ * F4 (revisão externa, confirmado): a `configuracoes:ver`-only role reached
+ * this tab and got every branding control live. `updateHubBranding` writes to
+ * `workspaces`, whose RLS FILTERS the row out rather than raising, so the save
+ * came back 200/zero-rows and toasted success without saving. Controls now
+ * gate on `can('configuracoes','editar')`; the store call additionally throws
+ * on a zero-row result (see store/__tests__/hubBranding.test.ts).
+ */
+describe('HubTab — mutation controls gated on configuracoes:editar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEntitlements = { hasFeature: () => true, isLoading: false };
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: null,
+    });
+    storeMock.getHubBranding.mockResolvedValue({
+      brand_color: '#111111',
+      hub_surface_theme: 'neutral',
+      hub_font_display: 'fraunces',
+      hub_font_body: 'instrument-sans',
+      hub_radius: 'soft',
+      hub_card_style: 'filled',
+      hub_logo_style: 'round',
+      hub_logo_dark_url: null,
+      hub_hide_branding: false,
+      hub_default_appearance: 'light',
+    });
+  });
+
+  it('disables Salvar and shows "Somente leitura" for a ver-only custom role', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+      ),
+    });
+    renderTab();
+
+    expect(await screen.findByText('Somente leitura')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).toBeDisabled());
+  });
+
+  it('keeps Salvar enabled for configuracoes:editar', async () => {
+    useAuthMock.mockReturnValue({
+      can: makeCan(
+        fakeMembership({
+          role: 'agent',
+          role_id: 'role-1',
+          permissions: { configuracoes: 'editar' },
+        }),
+      ),
+    });
+    renderTab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).not.toBeDisabled());
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+
+  it('keeps Salvar enabled for a legacy admin (regression)', async () => {
+    useAuthMock.mockReturnValue({ can: makeCan(fakeMembership({ role: 'admin' })) });
+    renderTab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).not.toBeDisabled());
+    expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
   });
 });

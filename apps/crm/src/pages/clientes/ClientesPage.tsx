@@ -139,7 +139,8 @@ function NotionIcon() {
 export default function ClientesPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { canSeeFinancials } = useAuth();
+  const { canSeeFinancials, can } = useAuth();
+  const canEditClients = can('clientes', 'editar') === true;
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
   const isDesktop = useIsDesktop();
@@ -380,19 +381,23 @@ export default function ClientesPage() {
               style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
             />
           </span>
-          <FeatureGate flag="feature_csv_import" label="Importação CSV">
-            <Button variant="outline" onClick={handleCSVImport}>
-              <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
-              {tc('actions.importCsv')}
+          {canEditClients && (
+            <FeatureGate flag="feature_csv_import" label="Importação CSV">
+              <Button variant="outline" onClick={handleCSVImport}>
+                <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+                {tc('actions.importCsv')}
+              </Button>
+            </FeatureGate>
+          )}
+          {canEditClients && (
+            <Button
+              onClick={openAdd}
+              disabled={clientsAtLimit}
+              title={clientsAtLimit ? 'Limite do plano atingido' : undefined}
+            >
+              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newClient')}
             </Button>
-          </FeatureGate>
-          <Button
-            onClick={openAdd}
-            disabled={clientsAtLimit}
-            title={clientsAtLimit ? 'Limite do plano atingido' : undefined}
-          >
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newClient')}
-          </Button>
+          )}
         </div>
       </div>
 
@@ -487,7 +492,7 @@ export default function ClientesPage() {
                 <TableHead>{t('table.contact', 'Contato')}</TableHead>
                 <TableHead>{t('form.plan')}</TableHead>
                 <TableHead>{t('table.status', 'Status')}</TableHead>
-                <TableHead style={{ width: 56 }} />
+                {canEditClients && <TableHead style={{ width: 56 }} />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -584,43 +589,45 @@ export default function ClientesPage() {
                         {tc(`status.${c.status}`)}
                       </Badge>
                     </TableCell>
-                    <TableCell
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ paddingRight: '0.75rem', textAlign: 'right' }}
-                    >
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
-                            <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEdit(c)}>
-                            <Edit2 className="h-4 w-4 mr-2" />
-                            {tc('actions.edit')}
-                          </DropdownMenuItem>
-                          {c.id && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => setDeleteId(c.id!)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                {tc('actions.delete')}
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    {canEditClients && (
+                      <TableCell
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ paddingRight: '0.75rem', textAlign: 'right' }}
+                      >
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
+                              <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(c)}>
+                              <Edit2 className="h-4 w-4 mr-2" />
+                              {tc('actions.edit')}
+                            </DropdownMenuItem>
+                            {c.id && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => setDeleteId(c.id!)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  {tc('actions.delete')}
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
               {filtered.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={canEditClients ? 5 : 4}
                     style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
                   >
                     {t('emptyList', 'Nenhum cliente encontrado.')}
@@ -717,36 +724,38 @@ export default function ClientesPage() {
                     {c.plano && <div style={{ fontSize: '0.75rem', color: '#888' }}>{c.plano}</div>}
                   </div>
 
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 shrink-0"
-                        style={{ marginLeft: 'auto' }}
-                      >
-                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openEdit(c)}>
-                        <Edit2 className="h-4 w-4 mr-2" />
-                        {tc('actions.edit')}
-                      </DropdownMenuItem>
-                      {c.id && (
-                        <>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => setDeleteId(c.id!)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            {tc('actions.delete')}
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {canEditClients && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0"
+                          style={{ marginLeft: 'auto' }}
+                        >
+                          <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEdit(c)}>
+                          <Edit2 className="h-4 w-4 mr-2" />
+                          {tc('actions.edit')}
+                        </DropdownMenuItem>
+                        {c.id && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => setDeleteId(c.id!)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              {tc('actions.delete')}
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
             );

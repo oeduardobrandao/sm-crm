@@ -144,11 +144,11 @@ export default function KbArticleEditorPage() {
 
   const handleCoverUpload = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      toast.error('File must be an image');
+      toast.error('O arquivo precisa ser uma imagem');
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      toast.error('Image must be under 10 MB');
+      toast.error('A imagem precisa ter até 10 MB');
       return;
     }
     setCoverUploading(true);
@@ -156,7 +156,7 @@ export default function KbArticleEditorPage() {
       const result = await uploadInlineImage(file);
       setCoverUrl(result.r2Key);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
+      toast.error(err instanceof Error ? err.message : 'Falha no upload');
     } finally {
       setCoverUploading(false);
     }
@@ -205,7 +205,7 @@ export default function KbArticleEditorPage() {
     },
     onSuccess: (data) => {
       invalidate();
-      toast.success(isEdit ? 'Article updated' : 'Article created');
+      toast.success(isEdit ? 'Artigo atualizado' : 'Artigo criado');
       if (!isEdit && data.article) {
         navigate(`/admin/kb-articles/${data.article.id}/edit`, { replace: true });
       }
@@ -217,7 +217,7 @@ export default function KbArticleEditorPage() {
     mutationFn: () => deleteKbArticle(article!.id),
     onSuccess: () => {
       invalidate();
-      toast.success('Article deleted');
+      toast.success('Artigo excluído');
       navigate('/admin/kb-articles', { replace: true });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -229,9 +229,9 @@ export default function KbArticleEditorPage() {
       await upsertKbContextLink({ route_pattern: selectedRoute, article_id: article.id });
       setSelectedRoute('');
       refetchLinks();
-      toast.success('Context link added');
+      toast.success('Link de contexto adicionado');
     } catch {
-      toast.error('Failed to add context link');
+      toast.error('Falha ao adicionar link de contexto');
     }
   };
 
@@ -239,9 +239,9 @@ export default function KbArticleEditorPage() {
     try {
       await deleteKbContextLink(linkId);
       refetchLinks();
-      toast.success('Context link removed');
+      toast.success('Link de contexto removido');
     } catch {
-      toast.error('Failed to remove context link');
+      toast.error('Falha ao remover link de contexto');
     }
   };
 
@@ -250,13 +250,13 @@ export default function KbArticleEditorPage() {
   const slugError =
     slug &&
     (RESERVED_SLUGS.includes(slug)
-      ? 'Reserved slug'
+      ? 'Slug reservado'
       : !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)
-        ? 'Only lowercase letters, numbers, hyphens'
+        ? 'Apenas letras minúsculas, números e hifens'
         : null);
 
   if (isEdit && articleLoading) {
-    return <p className="text-sm text-dim-foreground py-8">Loading...</p>;
+    return <p className="text-sm text-dim-foreground py-8">Carregando…</p>;
   }
 
   return (
@@ -270,18 +270,18 @@ export default function KbArticleEditorPage() {
           >
             <ArrowLeft size={18} />
           </button>
-          <h1 className="font-sf text-xl font-bold">{isEdit ? 'Edit Article' : 'New Article'}</h1>
+          <h1 className="font-sf text-xl font-bold">{isEdit ? 'Editar artigo' : 'Novo artigo'}</h1>
         </div>
         <div className="flex items-center gap-2">
           {isEdit && (
             <button
               onClick={() => {
-                if (confirm('Delete this article permanently?')) deleteMut.mutate();
+                if (confirm('Excluir este artigo permanentemente?')) deleteMut.mutate();
               }}
               disabled={deleteMut.isPending}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
             >
-              <Trash2 size={14} /> Delete
+              <Trash2 size={14} /> Excluir
             </button>
           )}
           <button
@@ -289,7 +289,7 @@ export default function KbArticleEditorPage() {
             disabled={saveMut.isPending || !title || !slug || !category || !!slugError}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
           >
-            <Save size={14} /> {saveMut.isPending ? 'Saving...' : 'Save'}
+            <Save size={14} /> {saveMut.isPending ? 'Salvando…' : 'Salvar'}
           </button>
         </div>
       </div>
@@ -299,13 +299,13 @@ export default function KbArticleEditorPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              Title *
+              Título *
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="How to add a client"
+              placeholder="Como adicionar um cliente"
               className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
             />
           </div>
@@ -327,14 +327,14 @@ export default function KbArticleEditorPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              Category *
+              Categoria *
             </label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground focus:outline-none focus:border-primary"
             >
-              <option value="">Select category</option>
+              <option value="">Selecionar categoria</option>
               {ALL_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
                   {CATEGORIES[c]}
@@ -350,7 +350,7 @@ export default function KbArticleEditorPage() {
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="instagram, tutorial, basics"
+              placeholder="instagram, tutorial, básico"
               className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
             />
           </div>
@@ -358,12 +358,12 @@ export default function KbArticleEditorPage() {
 
         <div>
           <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-            Excerpt
+            Resumo
           </label>
           <textarea
             value={excerpt}
             onChange={(e) => setExcerpt(e.target.value)}
-            placeholder="Brief article description (max 200 chars)"
+            placeholder="Breve descrição do artigo (até 200 caracteres)"
             rows={2}
             maxLength={200}
             className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary resize-none"
@@ -372,7 +372,7 @@ export default function KbArticleEditorPage() {
 
         <div>
           <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-            Cover Image
+            Imagem de capa
           </label>
           <div className="flex items-start gap-3">
             <div className="flex-1 flex items-center gap-2">
@@ -380,7 +380,7 @@ export default function KbArticleEditorPage() {
                 type="text"
                 value={coverUrl}
                 onChange={(e) => setCoverUrl(e.target.value)}
-                placeholder="https://... or upload an image"
+                placeholder="https://... ou envie uma imagem"
                 className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
               />
               <input
@@ -405,14 +405,14 @@ export default function KbArticleEditorPage() {
                 ) : (
                   <Upload size={14} />
                 )}
-                {coverUploading ? 'Uploading...' : 'Upload'}
+                {coverUploading ? 'Enviando…' : 'Enviar'}
               </button>
               {coverUrl && (
                 <button
                   type="button"
                   onClick={() => setCoverUrl('')}
                   className="p-2 rounded-lg text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                  title="Remove cover"
+                  title="Remover capa"
                 >
                   <X size={14} />
                 </button>
@@ -423,7 +423,7 @@ export default function KbArticleEditorPage() {
             <div className="mt-2 rounded-xl overflow-hidden border border-border">
               <img
                 src={coverPreview}
-                alt="Cover preview"
+                alt="Prévia da capa"
                 className="w-full max-h-48 object-cover"
               />
             </div>
@@ -433,7 +433,7 @@ export default function KbArticleEditorPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              Display Order
+              Ordem de exibição
             </label>
             <input
               type="number"
@@ -452,8 +452,8 @@ export default function KbArticleEditorPage() {
               onChange={(e) => setStatus(e.target.value as 'draft' | 'published')}
               className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground focus:outline-none focus:border-primary"
             >
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
+              <option value="draft">Rascunho</option>
+              <option value="published">Publicado</option>
             </select>
           </div>
         </div>
@@ -463,11 +463,11 @@ export default function KbArticleEditorPage() {
       <div className="bg-card border border-border rounded-2xl overflow-hidden mb-6">
         <div className="px-5 pt-4 pb-2">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Content
+            Conteúdo
           </label>
         </div>
         {contentLoading ? (
-          <p className="text-sm text-dim-foreground py-8 px-5">Loading content...</p>
+          <p className="text-sm text-dim-foreground py-8 px-5">Carregando…</p>
         ) : (
           <ArticleEditor
             initialContent={isEdit ? resolvedContent : null}
@@ -481,10 +481,10 @@ export default function KbArticleEditorPage() {
       {isEdit && article && (
         <div className="bg-card border border-border rounded-2xl p-5 md:p-6">
           <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-            Context Links
+            Links de contexto
           </label>
           <p className="text-xs text-dim-foreground mb-3">
-            Select which CRM pages show this article as a help suggestion.
+            Selecione em quais páginas do CRM este artigo aparece como sugestão de ajuda.
           </p>
 
           {contextLinks.length > 0 && (
@@ -516,7 +516,7 @@ export default function KbArticleEditorPage() {
               onChange={(e) => setSelectedRoute(e.target.value)}
               className="px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground focus:outline-none focus:border-primary"
             >
-              <option value="">Select page</option>
+              <option value="">Selecionar página</option>
               {CRM_ROUTES.filter((r) => !usedRoutes.has(r.value)).map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
@@ -529,7 +529,7 @@ export default function KbArticleEditorPage() {
               disabled={!selectedRoute}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors disabled:opacity-50"
             >
-              <Plus size={14} /> Add
+              <Plus size={14} /> Adicionar
             </button>
           </div>
         </div>

@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../context/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  // BuildPrefetch reads the session through useAuth; a signed-out visitor keeps it inert.
+  useAuth: () => ({ user: null }),
 }));
 
 vi.mock('@/components/ui/sonner', () => ({

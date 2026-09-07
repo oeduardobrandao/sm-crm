@@ -7,7 +7,12 @@ import {
   recordOAuthGrant,
   type EligibleWorkspace,
 } from '@/services/mcp-oauth';
-import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
+import {
+  SCOPE_OPTIONS,
+  AGENT_PRESET,
+  ADMIN_SCOPE_OPTIONS,
+  ADMIN_READ_PRESET,
+} from '@/lib/mcp-scopes';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Spinner } from '@/components/ui/spinner';
@@ -21,6 +26,8 @@ interface AuthDetails {
 }
 
 type Phase = 'loading' | 'consent' | 'submitting' | 'redirecting' | 'error';
+
+const PLATFORM = '__platform__';
 
 function hostOf(uri: string): string {
   try {
@@ -40,6 +47,7 @@ export default function ConsentPage() {
   const [workspaces, setWorkspaces] = useState<EligibleWorkspace[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [scopes, setScopes] = useState<string[]>(AGENT_PRESET);
+  const [platformAdmin, setPlatformAdmin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,11 +83,18 @@ export default function ConsentPage() {
       setScopes(requested.length ? requested : AGENT_PRESET);
 
       try {
-        const ws = await listEligibleWorkspaces();
+        const { workspaces: ws, platform_admin } = await listEligibleWorkspaces();
         if (cancelled) return;
         setWorkspaces(ws);
-        // Preselect the first MCP-enabled workspace, else the first one.
-        setSelected((ws.find((w) => w.feature_mcp) ?? ws[0])?.id ?? null);
+        setPlatformAdmin(platform_admin);
+        // Preselect the first MCP-enabled workspace, else the first one, else platform admin.
+        const preselected =
+          (ws.find((w) => w.feature_mcp) ?? ws[0])?.id ?? (platform_admin ? PLATFORM : null);
+        setSelected(preselected);
+        // The scopes above default to the workspace preset — when the platform option is
+        // what actually got preselected (no eligible workspace), swap to the admin preset
+        // so the checklist and the submitted scopes match the `target: 'platform'` grant.
+        if (preselected === PLATFORM) setScopes(ADMIN_READ_PRESET);
       } catch {
         if (cancelled) return;
         setWorkspaces([]);
@@ -96,19 +111,29 @@ export default function ConsentPage() {
       checked ? [...new Set([...prev, value])] : prev.filter((s) => s !== value),
     );
 
+  const isPlatform = selected === PLATFORM;
+  const selectWorkspace = (id: string) => {
+    if (id === PLATFORM && !isPlatform) setScopes(ADMIN_READ_PRESET);
+    if (id !== PLATFORM && isPlatform) setScopes(AGENT_PRESET);
+    setSelected(id);
+  };
+  const scopeOptions = isPlatform ? ADMIN_SCOPE_OPTIONS : SCOPE_OPTIONS;
+
   const selectedWs = workspaces.find((w) => w.id === selected) ?? null;
   const canApprove =
-    phase === 'consent' && !!selectedWs && selectedWs.feature_mcp && scopes.length > 0;
+    phase === 'consent' &&
+    scopes.length > 0 &&
+    (isPlatform || (!!selectedWs && selectedWs.feature_mcp));
 
   const approve = async () => {
-    if (!details || !selectedWs) return;
+    if (!details || (!isPlatform && !selectedWs)) return;
     setPhase('submitting');
     try {
-      await recordOAuthGrant({
-        authorization_id: authorizationId,
-        conta_id: selectedWs.id,
-        scopes,
-      });
+      await recordOAuthGrant(
+        isPlatform
+          ? { authorization_id: authorizationId, target: 'platform', scopes }
+          : { authorization_id: authorizationId, conta_id: selectedWs!.id, scopes },
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       toast.error(
@@ -162,8 +187,9 @@ export default function ConsentPage() {
   }
 
   const client = details!.client;
-  const noEligible = workspaces.length === 0;
-  const noMcpWorkspace = !noEligible && !workspaces.some((w) => w.feature_mcp);
+  const noEligible = workspaces.length === 0 && !platformAdmin;
+  const noMcpWorkspace =
+    !noEligible && workspaces.length > 0 && !workspaces.some((w) => w.feature_mcp);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--background))] p-4">
@@ -191,9 +217,10 @@ export default function ConsentPage() {
         </div>
 
         <p className="mb-5 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{client.name || 'O aplicativo'}</span> está
-          solicitando acesso de <strong>leitura</strong> aos dados de um workspace no Mesaas.
-          Escolha o workspace e as permissões abaixo.
+          <span className="font-medium text-foreground">{client.name || 'O aplicativo'}</span>{' '}
+          {isPlatform
+            ? 'está solicitando acesso à administração da plataforma Mesaas. Escolha as permissões abaixo.'
+            : 'está solicitando acesso aos dados de um workspace no Mesaas. Escolha o workspace e as permissões abaixo.'}
         </p>
 
         {noEligible ? (
@@ -208,6 +235,26 @@ export default function ConsentPage() {
                 Workspace
               </p>
               <div className="space-y-2">
+                {platformAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => selectWorkspace(PLATFORM)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg border p-3 text-left text-sm transition hover:bg-[hsl(var(--accent))] ${
+                      isPlatform
+                        ? 'border-[hsl(var(--primary))] ring-1 ring-[hsl(var(--primary))]'
+                        : 'border-[hsl(var(--border))]'
+                    }`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">
+                        Administração da plataforma
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        Banners, popups, artigos de suporte e leitura de workspaces
+                      </span>
+                    </span>
+                  </button>
+                )}
                 {workspaces.map((w) => {
                   const isSel = w.id === selected;
                   return (
@@ -215,7 +262,7 @@ export default function ConsentPage() {
                       key={w.id}
                       type="button"
                       disabled={!w.feature_mcp}
-                      onClick={() => setSelected(w.id)}
+                      onClick={() => selectWorkspace(w.id)}
                       className={`flex w-full items-center justify-between gap-2 rounded-lg border p-3 text-left text-sm transition ${
                         isSel
                           ? 'border-[hsl(var(--primary))] ring-1 ring-[hsl(var(--primary))]'
@@ -249,7 +296,7 @@ export default function ConsentPage() {
                 Permissões
               </p>
               <div className="space-y-2">
-                {SCOPE_OPTIONS.map((s) => (
+                {scopeOptions.map((s) => (
                   <label key={s.value} className="flex items-center gap-2 text-sm">
                     <Checkbox
                       checked={scopes.includes(s.value)}

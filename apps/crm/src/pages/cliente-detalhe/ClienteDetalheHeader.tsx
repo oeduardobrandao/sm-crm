@@ -12,6 +12,11 @@ interface ClienteDetalheHeaderProps {
   status: string;
   imageUrl?: string | null;
   canEditPhoto: boolean;
+  /** `can('clientes', 'editar') === true`. Hides the "Editar" button (and,
+   * since it's the only trigger, the ClienteEditDialog it opens) when false
+   * -- a custom role with only `clientes:ver` reached this page but could
+   * still edit the client via this header button before this gate. */
+  canEdit: boolean;
   onBack: () => void;
   onEdit: () => void;
 }
@@ -60,9 +65,11 @@ export function ClienteDetalheHeader(props: ClienteDetalheHeaderProps) {
           </div>
         </div>
       </div>
-      <Button variant="outline" className="cliente-detalhe-header__edit" onClick={props.onEdit}>
-        <Edit2 className="h-4 w-4" /> {tc('actions.edit')}
-      </Button>
+      {props.canEdit && (
+        <Button variant="outline" className="cliente-detalhe-header__edit" onClick={props.onEdit}>
+          <Edit2 className="h-4 w-4" /> {tc('actions.edit')}
+        </Button>
+      )}
     </header>
   );
 }

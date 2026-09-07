@@ -137,10 +137,11 @@ vi.mock('@/store/hub');
 // mocked promises -- this hook is the one exception, mocked as a whole rather than
 // through its underlying getPortalFill, so the loading/error/zero predicates can be
 // asserted without wiring up a real react-query cache for them. usePortalFill's own
-// gating (enabled: !isRestricted) is covered by usePortalFill.test.tsx instead.
+// gating (enabled: canLoadPortalData) is covered by usePortalFill.test.tsx instead.
 vi.mock('../usePortalFill');
 
 import { useAuth } from '@/context/AuthContext';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 import AcessoPage from '../AcessoPage';
 import * as hubStore from '@/store/hub';
 import { usePortalFill } from '../usePortalFill';
@@ -182,8 +183,18 @@ const CLIENTE: Cliente = {
   conta_id: 'ws-1',
 };
 
+/**
+ * O gate do portal (HubRoleGate) lê `can('configuracoes', 'editar')`, tri-estado,
+ * e nao mais o `workspaceRole` grosseiro. Derivar o `can` do papel via
+ * `makeCan`/`fakeMembership` faz estes testes exercitarem a MESMA tabela-verdade
+ * (`derivePermission`) que roda em producao. `null` produz 'unknown' em todos os
+ * modulos, espelhando um AuthContext ainda nao resolvido.
+ */
 function setAuth(workspaceRole: 'owner' | 'admin' | 'agent' | null) {
-  mockedUseAuth.mockReturnValue({ workspaceRole } as never);
+  mockedUseAuth.mockReturnValue({
+    workspaceRole,
+    can: makeCan(workspaceRole === null ? null : fakeMembership({ role: workspaceRole })),
+  } as never);
 }
 
 function OutletContextProvider({ cliente }: { cliente: Cliente }) {
@@ -347,7 +358,7 @@ describe('AcessoPage', () => {
   // Regression guard: before the split, HubClienteTab returned RoleRestrictionNotice
   // before HubTab (and hub-token) ever mounted, so an agent never issued the request.
   // The split moved the useQuery calls above <HubRoleGate>, so without `enabled:
-  // !isRestricted` on both queries this fires again — landing the portal bearer token
+  // canLoadPortalData` on both queries this fires again — landing the portal bearer token
   // in an agent's React Query cache and network log even though RoleRestrictionNotice
   // hides it from the screen.
   it('does not fire the hub-token or workspace-slug queries for an agent', async () => {

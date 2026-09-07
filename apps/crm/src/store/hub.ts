@@ -43,6 +43,13 @@ export interface HubBriefingQuestionRow {
   section: string | null;
   display_order: number;
   created_at: string;
+  audio_r2_key?: string | null;
+  audio_mime?: string | null;
+  audio_size_bytes?: number | null;
+  audio_duration_seconds?: number | null;
+  audio_transcript?: string | null;
+  audio_transcription_status?: 'pending' | 'done' | 'failed' | null;
+  audio_recorded_at?: string | null;
 }
 
 export interface BriefingRow {

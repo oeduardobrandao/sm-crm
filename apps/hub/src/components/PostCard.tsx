@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, AlertCircle, ChevronDown, MessageSquare, Send } from 'lucide-react';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitApproval } from '../api';
 import type { HubPost, PostApproval, HubPostProperty, HubSelectOption } from '../types';
 import { PostMediaLightbox } from './PostMediaLightbox';
@@ -209,6 +210,7 @@ export function PostCard({
   const [sendingReply, setSendingReply] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  useUnsavedWork(comentario.trim() !== '' || submitting);
   const isPending = post.status === 'enviado_cliente';
 
   const {

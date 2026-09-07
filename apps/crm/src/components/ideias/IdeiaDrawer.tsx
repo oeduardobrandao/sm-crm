@@ -64,7 +64,13 @@ interface IdeiaDrawerProps {
 
 export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
   const qc = useQueryClient();
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
+  // IdeiasPage/IdeiaDrawer had NO role check at all before Task 14 -- any
+  // authenticated member could add or remove an idea's reference images.
+  // AGENT_ROLE_PRESET.ideias is 'editar' (lib/permissions.ts), so this
+  // preserves full access for every legacy chassis role byte-for-byte; only
+  // a CUSTOM role (role_id set) can now differ from full access.
+  const canEditIdeias = can('ideias', 'editar') === true;
 
   const { data: membros = [] } = useQuery({
     queryKey: ['membros'],
@@ -274,19 +280,21 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
                         className="h-16 w-16 rounded-md object-cover border border-border bg-muted"
                       />
                     </a>
-                    <button
-                      onClick={() => handleRemoveImage(img.file_id)}
-                      disabled={imgBusy}
-                      aria-label="Remover imagem"
-                      className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-foreground text-background opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
-                    >
-                      <X size={12} />
-                    </button>
+                    {canEditIdeias && (
+                      <button
+                        onClick={() => handleRemoveImage(img.file_id)}
+                        disabled={imgBusy}
+                        aria-label="Remover imagem"
+                        className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-foreground text-background opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
-            {images.length < MAX_IMAGES && (
+            {canEditIdeias && images.length < MAX_IMAGES && (
               <Button
                 type="button"
                 variant="outline"

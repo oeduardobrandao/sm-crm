@@ -1,0 +1,13 @@
+name = "transcribe"
+main = "src/index.ts"
+compatibility_date = "2024-05-12"
+
+[ai]
+binding = "AI"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "mesaas"
+
+# TRANSCRIBE_SECRET: `wrangler secret put TRANSCRIBE_SECRET` (mesmo valor no
+# Supabase como TRANSCRIBE_SECRET). Sem CORS: só a edge function chama.

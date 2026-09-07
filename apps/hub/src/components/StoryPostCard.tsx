@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { CheckCircle, AlertCircle } from 'lucide-react';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitApproval } from '../api';
 import { formatDate, PlatformBadge } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
@@ -33,6 +34,7 @@ export function StoryPostCard({
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  useUnsavedWork(comentario.trim() !== '' || submitting);
 
   const isPending = !readOnly && post.status === 'enviado_cliente';
   const media = post.media ?? [];

@@ -8,6 +8,8 @@ type DbClient = {
 interface SignR2UrlsDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
+  /** Client no contexto do usuário (anon key + Authorization do request): a RLS decide o que ele vê. */
+  createUserDb: (authHeader: string) => { from: (table: string) => any };
   signGetUrl: (key: string, expiresSeconds?: number) => Promise<string>;
   /** Raw object bytes for the GET proxy route (see below). */
   getObjectBytes: (key: string) => Promise<Uint8Array | null>;
@@ -31,7 +33,7 @@ function contentTypeForKey(key: string): string {
 async function resolveContaId(
   deps: SignR2UrlsDeps,
   req: Request,
-): Promise<{ contaId: string } | { errorStatus: 401 | 403; message: string }> {
+): Promise<{ contaId: string; userId: string } | { errorStatus: 401 | 403; message: string }> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return { errorStatus: 401, message: "Unauthorized" };
   const token = authHeader.replace("Bearer ", "");
@@ -43,7 +45,73 @@ async function resolveContaId(
   const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", user.id)
     .single();
   if (!profile?.conta_id) return { errorStatus: 403, message: "Profile not found" };
-  return { contaId: profile.conta_id };
+  return { contaId: profile.conta_id, userId: user.id };
+}
+
+const POPUP_LOOKUP_TIMEOUT_MS = 3_000;
+
+/**
+ * image_key das páginas de popups que a RLS de global_popups devolve para este usuário
+ * (ativo, dentro da janela, alvo do workspace). Isolado: qualquer falha ou timeout
+ * vira "nenhuma chave", nunca um 500, porque este endpoint também assina as ownKeys
+ * do editor de post, drawers e capas de artigo. try/catch sozinho não segura um I/O
+ * que trava; o AbortSignal é o que garante a resposta.
+ */
+async function visiblePopupImageKeys(deps: SignR2UrlsDeps, authHeader: string): Promise<Set<string>> {
+  const keys = new Set<string>();
+  try {
+    const userDb = deps.createUserDb(authHeader);
+    const { data, error } = await userDb
+      .from("global_popups")
+      .select("pages")
+      .abortSignal(AbortSignal.timeout(POPUP_LOOKUP_TIMEOUT_MS));
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ pages?: unknown }>) {
+      if (!Array.isArray(row.pages)) continue;
+      for (const page of row.pages as Array<{ image_key?: unknown }>) {
+        if (typeof page?.image_key === "string" && page.image_key) keys.add(page.image_key);
+      }
+    }
+  } catch (err) {
+    console.error("[sign-r2-urls] popup image lookup failed:", err);
+  }
+  return keys;
+}
+
+/**
+ * Para platform admins, qualquer image_key referenciada por QUALQUER popup (draft
+ * incluído) é assinável: a lista e o preview do editor precisam mostrar a imagem que
+ * outro admin subiu. A porta é a linha em platform_admins, não o app de origem: um
+ * platform admin recebe este conjunto de qualquer contexto, o que é aceitável porque
+ * admins já são totalmente confiáveis e o conteúdo é material de divulgação
+ * pré-publicação, não dado de tenant.
+ */
+async function adminPopupImageKeys(deps: SignR2UrlsDeps, svc: DbClient, userId: string): Promise<Set<string> | null> {
+  const keys = new Set<string>();
+  try {
+    const { data: admin } = await svc
+      .from("platform_admins")
+      .select("id")
+      .eq("user_id", userId)
+      .abortSignal(AbortSignal.timeout(POPUP_LOOKUP_TIMEOUT_MS))
+      .maybeSingle();
+    if (!admin) return null;
+    const { data, error } = await svc
+      .from("global_popups")
+      .select("pages")
+      .abortSignal(AbortSignal.timeout(POPUP_LOOKUP_TIMEOUT_MS));
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ pages?: unknown }>) {
+      if (!Array.isArray(row.pages)) continue;
+      for (const page of row.pages as Array<{ image_key?: unknown }>) {
+        if (typeof page?.image_key === "string" && page.image_key) keys.add(page.image_key);
+      }
+    }
+    return keys;
+  } catch (err) {
+    console.error("[sign-r2-urls] admin popup image lookup failed:", err);
+    return null;
+  }
 }
 
 export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
@@ -110,7 +178,17 @@ export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
       if (kbRows) kbKeys = kbRows.map((r: { cover_image_url: string }) => r.cover_image_url);
     }
 
-    const validKeys = [...ownKeys, ...kbKeys];
+    // Só consulta popups para o que a allowlist de artigos não resolveu: capas de
+    // artigo, editor de post e Estúdio não pagam as duas viagens extras.
+    let popupKeys: string[] = [];
+    const unresolved = otherKeys.filter((k) => !kbKeys.includes(k));
+    if (unresolved.length > 0) {
+      const adminKeys = await adminPopupImageKeys(deps, svc, resolved.userId);
+      const visible = adminKeys ?? await visiblePopupImageKeys(deps, req.headers.get("Authorization")!);
+      popupKeys = unresolved.filter((k) => visible.has(k));
+    }
+
+    const validKeys = [...ownKeys, ...kbKeys, ...popupKeys];
     const urls: Record<string, string> = {};
     await Promise.all(validKeys.map(async (key) => {
       urls[key] = await deps.signGetUrl(key, 3600);

@@ -6,6 +6,7 @@ import { getCachedProfile } from './lib/supabase';
 import * as Sentry from '@sentry/react';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
+import { BuildPrefetch } from './components/BuildPrefetch';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -58,6 +59,7 @@ const PerfilTab = lazy(() => import('./pages/configuracao/tabs/PerfilTab'));
 const NotificacoesTab = lazy(() => import('./pages/configuracao/tabs/NotificacoesTab'));
 const WorkspaceTab = lazy(() => import('./pages/configuracao/tabs/WorkspaceTab'));
 const MembrosTab = lazy(() => import('./pages/configuracao/tabs/MembrosTab'));
+const PapeisTab = lazy(() => import('./pages/configuracao/tabs/PapeisTab'));
 const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
 const StatusTab = lazy(() => import('./pages/configuracao/tabs/StatusTab'));
 const HubTab = lazy(() => import('./pages/configuracao/tabs/HubTab'));
@@ -82,7 +84,7 @@ const SecaoPage = lazy(() => import('./pages/ajuda/SecaoPage'));
 const ArtigoPage = lazy(() => import('./pages/ajuda/ArtigoPage'));
 const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage'));
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
@@ -123,6 +125,7 @@ export default function App() {
     >
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <BuildPrefetch />
           <Toaster />
           <Suspense fallback={PageFallback}>
             <Routes>
@@ -223,6 +226,7 @@ export default function App() {
                   <Route path="notificacoes" element={<NotificacoesTab />} />
                   <Route path="workspace" element={<WorkspaceTab />} />
                   <Route path="membros" element={<MembrosTab />} />
+                  <Route path="papeis" element={<PapeisTab />} />
                   <Route path="relatorios" element={<RelatoriosTab />} />
                   <Route path="status" element={<StatusTab />} />
                   <Route path="hub" element={<HubTab />} />

@@ -8,7 +8,7 @@ type DbClient = {
 
 interface HeadResult {
   contentLength: number;
-  contentType?: string;
+  contentType?: string | null;
 }
 
 interface FileUploadFinalizeDeps {

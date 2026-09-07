@@ -25,6 +25,7 @@ function makeApi(overrides: Partial<GuideApi> = {}): GuideApi {
     recordAutoOpen: vi.fn(),
     recordTrailCompleted: vi.fn(),
     isOpen: true,
+    autoOpen: 'no',
     currentPageId: null,
     latestClienteId: null,
     signalValues: {},

@@ -35,6 +35,7 @@ const FEATURE_LABELS: Record<string, string> = {
   feature_csv_import: 'Importação CSV',
   feature_tiktok: 'TikTok',
   feature_instagram_automation: 'Automações do Instagram',
+  feature_briefing_audio: 'Briefing por áudio',
 };
 
 /** Normalizes a DB-raised message or an edge-function JSON error into an EntitlementError, or null. */

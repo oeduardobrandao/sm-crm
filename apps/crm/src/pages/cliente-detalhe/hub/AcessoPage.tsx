@@ -41,7 +41,7 @@ import {
 import { captureEvent } from '@/lib/analytics';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
-import { HubRoleGate, useHubRoleRestricted } from './HubRoleGate';
+import { HubRoleGate, useHubPortalDataEnabled } from './HubRoleGate';
 import { usePortalFill } from './usePortalFill';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
@@ -64,7 +64,10 @@ export default function AcessoPage() {
   const { hasFeature } = useEntitlements();
   const hubPortalEnabled = hasFeature('feature_hub_portal');
 
-  const isRestricted = useHubRoleRestricted();
+  // Tri-state: só `can('configuracoes','editar') === true` libera a busca. Enquanto a
+  // membership não resolve ('unknown') as queries ficam desligadas — o viewer ainda pode
+  // vir a ser um agent, e o bearer token do portal não pode vazar para ele.
+  const canLoadPortalData = useHubPortalDataEnabled();
 
   // An agent never sees the token (HubRoleGate below withholds it) — don't fetch the
   // portal bearer token just to discard it at render. Before the split, HubClienteTab
@@ -73,7 +76,7 @@ export default function AcessoPage() {
   const { data: tokenData } = useQuery({
     queryKey: ['hub-token', clienteId],
     queryFn: () => getHubToken(clienteId),
-    enabled: !isRestricted,
+    enabled: canLoadPortalData,
   });
 
   // Ported from HubClienteTab.tsx (see git history at d30adeea), where this was a
@@ -83,7 +86,7 @@ export default function AcessoPage() {
   const { data: workspaceSlug } = useQuery({
     queryKey: ['workspace-slug'],
     queryFn: getWorkspaceSlug,
-    enabled: !isRestricted,
+    enabled: canLoadPortalData,
   });
 
   // Backs the "O que o cliente vê" panel. Same gating as the two queries above:
@@ -154,10 +157,11 @@ export default function AcessoPage() {
   if (!contaId) return null;
 
   // For an allowed role, also wait for workspaceSlug before rendering (avoids a flash of
-  // "Nenhum link gerado ainda." before the slug resolves). A restricted agent skips this:
-  // workspaceSlug's query is disabled above and never resolves, but HubRoleGate below shows
-  // the notice regardless, so it must not be blocked on a query that never fires for it.
-  if (!isRestricted && !workspaceSlug) return null;
+  // "Nenhum link gerado ainda." before the slug resolves). A restricted agent — and a
+  // viewer whose membership is still 'unknown' — skips this: workspaceSlug's query is
+  // disabled above and never resolves, but HubRoleGate below shows the notice (or the
+  // spinner) regardless, so it must not be blocked on a query that never fires for it.
+  if (canLoadPortalData && !workspaceSlug) return null;
 
   return (
     <div className="hub-page">

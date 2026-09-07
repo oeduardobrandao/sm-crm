@@ -301,6 +301,7 @@ export async function sendViaResend(
   idempotencyKey: string,
   from: string = LIFECYCLE_FROM,
   replyTo?: string,
+  headers?: Record<string, string>,
 ): Promise<void> {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
@@ -317,6 +318,7 @@ export async function sendViaResend(
       subject,
       html,
       ...(replyTo ? { reply_to: [replyTo] } : {}),
+      ...(headers ? { headers } : {}),
     }),
     signal: AbortSignal.timeout(10_000),
   });

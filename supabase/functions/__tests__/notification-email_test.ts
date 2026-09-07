@@ -32,6 +32,17 @@ Deno.test("resolveDigestItem: mention priority is last, uses actor + excerpt", (
   assertEquals(item.context, "Post A");
 });
 
+Deno.test("resolveDigestItem: post_approved vira boa notícia com prioridade 6", () => {
+  const item = resolveDigestItem({
+    type: "post_approved",
+    metadata: { client_name: "Clínica Haven", post_title: "Post X" },
+    link: "/entregas?post=1",
+  });
+  assertEquals(item.priority, 6);
+  assertEquals(item.heading, "Post aprovado pelo cliente");
+  assertEquals(item.context, "Clínica Haven · Post X");
+});
+
 Deno.test("resolveDigestItem: unknown/missing metadata degrades gracefully, no throw", () => {
   const item = resolveDigestItem({ type: "task_assigned", metadata: null, link: null });
   assertEquals(item.priority, 4);

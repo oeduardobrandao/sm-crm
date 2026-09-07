@@ -44,6 +44,7 @@ export interface FeatureFlags {
   feature_tiktok: boolean;
   feature_mensagens: boolean;
   feature_instagram_automation: boolean;
+  feature_briefing_audio: boolean;
 }
 
 interface WorkspaceLimitsResponse {

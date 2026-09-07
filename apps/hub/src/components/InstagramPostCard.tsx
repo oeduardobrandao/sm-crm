@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { CheckCircle, AlertCircle } from 'lucide-react';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitApproval } from '../api';
 import { formatDate, PlatformBadge } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
@@ -64,6 +65,7 @@ export function InstagramPostCard({
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [captionMode, setCaptionMode] = useState<'preview' | 'edit'>('preview');
   const [captionDraft, setCaptionDraft] = useState<string | null>(null);
+  useUnsavedWork(comentario.trim() !== '' || submitting);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({

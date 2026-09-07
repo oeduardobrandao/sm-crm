@@ -23,6 +23,9 @@ export default defineConfig(() => {
     },
     build: {
       outDir: '../../dist',
+      // Read at runtime by prefetchBuildAssets. Outside /assets/ on purpose: it must not be
+      // cached as immutable.
+      manifest: 'build-manifest.json',
     },
   };
 });

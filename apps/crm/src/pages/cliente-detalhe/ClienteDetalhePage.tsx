@@ -12,7 +12,7 @@ import { ClienteDetalheNav } from './ClienteDetalheNav';
 import { ClienteEditDialog } from './ClienteEditDialog';
 import {
   CLIENTE_TABS,
-  canAccessClienteTabRole,
+  canAccessClienteTab,
   financeiroTabGuardOutcome,
   type ClienteDetalheOutletContext,
 } from './clienteTabs.model';
@@ -36,7 +36,7 @@ export default function ClienteDetalhePage() {
   const { id: idParam } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, workspaceRole, membershipResolved, canSeeFinancials, loading } = useAuth();
+  const { user, workspaceRole, membershipResolved, canSeeFinancials, can, loading } = useAuth();
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
   const [editOpen, setEditOpen] = useState(false);
@@ -132,7 +132,7 @@ export default function ClienteDetalhePage() {
     if (outcome === 'denied') {
       return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
     }
-  } else if (current && !canAccessClienteTabRole(current, workspaceRole)) {
+  } else if (current && !canAccessClienteTab(current, can)) {
     return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
   }
 
@@ -151,6 +151,12 @@ export default function ClienteDetalhePage() {
     );
   }
 
+  // Shared by the photo-upload trigger and the header's "Editar" button
+  // (which opens ClienteEditDialog below) -- a custom role with only
+  // `clientes:ver` must not reach either mutation surface, even though it
+  // can view this page (Task 14, revisão externa round 4, P2).
+  const canEditClient = can('clientes', 'editar') === true;
+
   return (
     <div className="cliente-detalhe-page">
       <ClienteDetalheHeader
@@ -161,7 +167,8 @@ export default function ClienteDetalhePage() {
         plano={cliente.plano}
         status={cliente.status}
         imageUrl={cliente.foto_url}
-        canEditPhoto={workspaceRole === 'owner' || workspaceRole === 'admin'}
+        canEditPhoto={canEditClient}
+        canEdit={canEditClient}
         onBack={() => navigate('/clientes')}
         onEdit={() => setEditOpen(true)}
       />

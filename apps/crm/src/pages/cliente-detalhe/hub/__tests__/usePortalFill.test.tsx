@@ -7,7 +7,7 @@ import type { PortalFill } from '@/store';
 // usePortalFill backs the "O que o cliente vê" panel on AcessoPage. AcessoPage.test.tsx
 // mocks this hook as a whole to drive the panel's rendering predicates; this suite covers
 // what that mock hides: the hook's own gating. hub-token and workspace-slug next to it on
-// AcessoPage both use `enabled: !isRestricted` so a restricted agent never fetches them
+// AcessoPage both use `enabled: canLoadPortalData` so a restricted agent never fetches them
 // (a security finding on the previous task) — this hook has to do the same, and
 // HubRoleGate.tsx stays the one place that defines "restricted".
 
@@ -15,6 +15,7 @@ vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/store/hub');
 
 import { useAuth } from '@/context/AuthContext';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 import * as hubStore from '@/store/hub';
 import { usePortalFill } from '../usePortalFill';
 
@@ -29,8 +30,18 @@ const FILL: PortalFill = {
   newIdeasWithoutReply: 1,
 };
 
+/**
+ * O gate do portal (HubRoleGate) lê `can('configuracoes', 'editar')`, tri-estado,
+ * e nao mais o `workspaceRole` grosseiro. Derivar o `can` do papel via
+ * `makeCan`/`fakeMembership` faz estes testes exercitarem a MESMA tabela-verdade
+ * (`derivePermission`) que roda em producao. `null` produz 'unknown' em todos os
+ * modulos, espelhando um AuthContext ainda nao resolvido.
+ */
 function setAuth(workspaceRole: 'owner' | 'admin' | 'agent' | null) {
-  mockedUseAuth.mockReturnValue({ workspaceRole } as never);
+  mockedUseAuth.mockReturnValue({
+    workspaceRole,
+    can: makeCan(workspaceRole === null ? null : fakeMembership({ role: workspaceRole })),
+  } as never);
 }
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -62,7 +73,7 @@ describe('usePortalFill', () => {
     expect(hubStore.getPortalFill).toHaveBeenCalledWith(15);
   });
 
-  // The regression this guards against: without `enabled: !isRestricted`, this query
+  // The regression this guards against: without `enabled: canLoadPortalData`, this query
   // would fire for an agent even though HubRoleGate hides the panel that shows its
   // result — the fetch itself is the leak, not just the rendered value.
   it('does not fetch getPortalFill for an agent', async () => {
