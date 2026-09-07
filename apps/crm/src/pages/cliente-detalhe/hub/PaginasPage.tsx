@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { getHubPages, upsertHubPage, removeHubPage, type HubPageRow } from '@/store';
 import { HubRoleGate, useHubPortalDataEnabled } from './HubRoleGate';
+import { sanitizeUrl } from '@/utils/security';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 export default function PaginasPage() {
@@ -70,11 +71,22 @@ const mdComponents = {
   strong: (props: React.ComponentProps<'strong'>) => (
     <strong {...props} className="font-semibold text-foreground" />
   ),
+  // Conteúdo da página é escrito pela própria equipe da agência no editor acima, mas
+  // ainda é markdown de usuário renderizado como HTML -- href/src sempre passam por
+  // sanitizeUrl(), igual à regra de segurança do projeto (ver CLAUDE.md).
   a: (props: React.ComponentProps<'a'>) => (
-    <a {...props} className="text-primary underline underline-offset-2" />
+    <a
+      {...props}
+      href={sanitizeUrl(props.href)}
+      className="text-primary underline underline-offset-2"
+    />
   ),
   img: (props: React.ComponentProps<'img'>) => (
-    <img {...props} className="rounded-lg max-w-full my-3 border border-border" />
+    <img
+      {...props}
+      src={sanitizeUrl(props.src)}
+      className="rounded-lg max-w-full my-3 border border-border"
+    />
   ),
   ul: (props: React.ComponentProps<'ul'>) => (
     <ul {...props} className="list-disc pl-5 mb-3 text-sm text-muted-foreground leading-relaxed" />

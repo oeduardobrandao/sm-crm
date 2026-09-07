@@ -464,12 +464,17 @@ function BriefingEditor({
       return;
     }
 
+    // `section` vem de `namedSections` (lista FILTRADA -- ver linha 410 acima). Com um
+    // chip de filtro ativo, ela só carrega as perguntas que batem com o filtro; renomear
+    // com base nela deixaria as perguntas escondidas pelo filtro com o nome antigo,
+    // partindo a seção em duas silenciosamente. `allNamedSections` é a mesma seção sem
+    // o filtro -- é ela que decide quais perguntas realmente pertencem à seção.
+    const fullSection = allNamedSections.find((candidate) => candidate.name === section.name);
+    const questionIds = (fullSection ?? section).questions.map((question) => question.id);
+
     setSavingSectionName(true);
     try {
-      await renameHubBriefingSection(
-        section.questions.map((question) => question.id),
-        nextName,
-      );
+      await renameHubBriefingSection(questionIds, nextName);
       setExpandedSections((prev) => {
         if (!prev.has(section.name)) return prev;
         const next = new Set(prev);

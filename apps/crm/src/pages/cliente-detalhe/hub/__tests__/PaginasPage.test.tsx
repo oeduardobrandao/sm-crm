@@ -103,4 +103,22 @@ describe('PaginasPage', () => {
     await screen.findByText('Hub do Cliente');
     expect(hubStore.getHubPages).not.toHaveBeenCalled();
   });
+
+  // Regression guard: o `a`/`img` do markdown renderer (mdComponents) repassavam
+  // href/src crus para o DOM. Conteúdo de página é escrito pela equipe da agência,
+  // mas ainda é dado de usuário -- a regra de segurança do projeto exige sanitizeUrl()
+  // em qualquer href/src derivado de conteúdo externo/de usuário (ver CLAUDE.md).
+  it('sanitiza um href javascript: no preview de markdown', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Nova página' }));
+    await screen.findByRole('dialog', { name: 'Nova página' });
+
+    const textarea = screen.getByPlaceholderText('Escreva o conteúdo em markdown...');
+    fireEvent.change(textarea, {
+      target: { value: '[clique aqui](javascript:alert(1))' },
+    });
+
+    const link = await screen.findByRole('link', { name: 'clique aqui' });
+    expect(link).toHaveAttribute('href', '#');
+  });
 });

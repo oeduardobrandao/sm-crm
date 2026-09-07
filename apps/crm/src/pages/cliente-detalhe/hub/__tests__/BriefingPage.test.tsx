@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
@@ -216,6 +216,35 @@ describe('BriefingPage', () => {
       // usuário nunca ter clicado nela enquanto o filtro era 'todas'.
       fireEvent.click(screen.getByTestId('chip-todas'));
       expect(screen.queryByText('P1')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('renomear seção com filtro ativo', () => {
+    // Regressão: renomear lia `section.questions` da lista FILTRADA (namedSections),
+    // então com um chip diferente de "Todas" ativo a chamada ao store só levava os ids
+    // das perguntas visíveis pelo filtro. As demais perguntas da seção ficavam com o
+    // nome antigo -- uma seção virava duas silenciosamente, e isso grava no banco.
+    const QUESTIONS: QuestionFixture[] = [
+      { id: 'a', question: 'P1', answer: 'R1', section: 'Negócio', display_order: 0 },
+      { id: 'b', question: 'P2', answer: null, section: 'Negócio', display_order: 1 },
+    ];
+
+    it('renomeia TODAS as perguntas da seção, mesmo com o filtro "Respondidas" ativo', async () => {
+      renderBriefing(QUESTIONS);
+
+      // Ativa o filtro "Respondidas": só 'a' (respondida) passa a aparecer;
+      // 'b' (sem resposta) fica escondida, mas continua pertencendo à seção.
+      fireEvent.click(screen.getByTestId('chip-respondidas'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Renomear seção Negócio' }));
+      const input = screen.getByLabelText('Nome da seção');
+      fireEvent.change(input, { target: { value: 'Negócio (renomeada)' } });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar/ }));
+
+      await waitFor(() => expect(hubStore.renameHubBriefingSection).toHaveBeenCalledTimes(1));
+      const [calledIds, calledName] = vi.mocked(hubStore.renameHubBriefingSection).mock.calls[0];
+      expect([...calledIds].sort()).toEqual(['a', 'b']);
+      expect(calledName).toBe('Negócio (renomeada)');
     });
   });
 
