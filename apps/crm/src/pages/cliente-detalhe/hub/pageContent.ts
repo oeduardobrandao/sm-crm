@@ -1,27 +1,32 @@
-import { generateJSON as generateJSONBrowser } from '@tiptap/html';
-import { generateJSON as generateJSONServer } from '@tiptap/html/server';
+import { generateJSON } from '@tiptap/html';
 import { marked } from 'marked';
 import { pageEditorExtensions } from './pageEditorSchema';
 
 /**
- * `@tiptap/html`'s `exports` map has `"require": "./dist/index.cjs"` with
- * NO `node` condition -- a plain `require('@tiptap/html')` under CommonJS
- * always resolves to the browser build, which throws "generateJSON can
- * only be used in a browser environment" outside a real DOM. The `import`
- * condition (`node` vs `browser`) does resolve correctly under ESM in
- * Vite, vitest, plain `node`, and `tsx` with `apps/crm/tsconfig.json`,
- * `tsconfig.scripts.json`, or a CommonJS tsconfig -- verified empirically
- * in this session; the browser build only gets picked by forcing
- * `--conditions browser`. Rather than depend on some future caller's
- * module system resolving the bare `@tiptap/html` specifier correctly, we
- * sidestep the conditional-exports resolution entirely: import both
- * builds from their explicit subpaths and pick one at runtime by DOM
- * presence. That works the same whether this module ends up bundled into
- * the browser (Vite, the Task 9 editor) or run headless (a Node
- * migration script, Task 12).
+ * Import the bare `@tiptap/html` specifier only -- never `@tiptap/html/server`
+ * as a static import in this module.
+ *
+ * `@tiptap/html`'s `exports` map has `"require": "./dist/index.cjs"` with NO
+ * `node` condition, so a plain `require('@tiptap/html')` under CommonJS
+ * always resolves to the browser build, which throws "generateJSON can only
+ * be used in a browser environment" outside a real DOM. But the `import`
+ * condition (`node` vs `browser`) does resolve correctly under ESM in Vite,
+ * vitest, plain `node`, and `tsx` -- verified empirically with
+ * `apps/crm/tsconfig.json`, `tsconfig.scripts.json`, and a CommonJS tsconfig.
+ * This repo's scripts run through `tsx` as ESM, so the CJS hazard does not
+ * apply here. The bare specifier is correct and sufficient.
+ *
+ * A static import of `@tiptap/html/server` cannot be tree-shaken by a
+ * runtime `typeof window === 'undefined'` check -- Rollup still has to
+ * include it in the browser graph. `@tiptap/html/server` statically imports
+ * `happy-dom` (an undeclared peer dependency, ~17 MB), which breaks the CRM
+ * Vite build (Buffer not exported by the browser-external shim for
+ * `happy-dom/lib/file/Blob.js`). Do not reintroduce it as a static import
+ * here. If a Node-only caller ever needs the `/server` build, add a
+ * separate Node-only entry module that the browser graph never imports, or
+ * use a lazy `await import('@tiptap/html/server')` behind the runtime
+ * check -- not a static import in this file.
  */
-const generateJSON: typeof generateJSONBrowser =
-  typeof window === 'undefined' ? generateJSONServer : generateJSONBrowser;
 
 function emptyDoc(): Record<string, unknown> {
   // Novo objeto a cada chamada -- nunca reaproveitar um `content: []`
