@@ -224,10 +224,10 @@ git commit -m "feat(portal): sub-abas do hub como entradas do modelo de abas"
 Movimento mecânico: as cinco telas saem do arquivo de 1739 linhas **sem nenhuma mudança de comportamento**. O redesenho vem nas tasks seguintes. Manter as duas coisas separadas é o que torna o diff revisável.
 
 **Files:**
-- Modify: `apps/crm/src/App.tsx`, `apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx`
+- Modify: `apps/crm/src/App.tsx`, `apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx`, `apps/crm/src/components/guide/guideContent.tsx`
 - Create: `apps/crm/src/pages/cliente-detalhe/hub/{HubRoleGate,AcessoPage,BriefingPage,MarcaPage,PaginasPage,IdeiasPage}.tsx`
 - Delete: `apps/crm/src/pages/cliente-detalhe/HubTab.tsx`, `apps/crm/src/pages/cliente-detalhe/tabs/HubClienteTab.tsx`
-- Test: `apps/crm/src/pages/cliente-detalhe/__tests__/ClienteDetalhePage.test.tsx`, `.../ClienteDetalheNav.test.tsx`
+- Test: `apps/crm/src/pages/cliente-detalhe/__tests__/ClienteDetalhePage.test.tsx`, `.../ClienteDetalheNav.test.tsx`, `apps/crm/src/components/guide/__tests__/guideContent.test.ts`
 
 **Interfaces:**
 - Consumes: `CLIENTE_TABS` da Task 1
@@ -275,11 +275,45 @@ Em `ClienteDetalheNav.test.tsx`, o teste de links espera `'/clientes/42/hub'`. T
 Run: `npx vitest run apps/crm/src/pages/cliente-detalhe/__tests__/`
 Expected: FAIL — a rota `hub/marca` não existe.
 
-- [ ] **Step 3: Confirmar que o guard já cobre o caminho aninhado**
+- [ ] **Step 3: Corrigir o guard para o caminho `hub` puro**
 
-Leia `ClienteDetalhePage.tsx` em volta de `const current = pathname.replace(...)`. Ele já extrai o caminho **inteiro** (`hub/marca`) e compara com `CLIENTE_TABS.some((tab) => tab.key === current)`. Como a Task 1 pôs `'hub/marca'` como chave, **o guard funciona sem alteração**. Não mexa nele.
+Para os caminhos aninhados o guard já funciona: ele extrai o caminho **inteiro** (`hub/marca`) e compara com `CLIENTE_TABS.some((tab) => tab.key === current)`, e a Task 1 pôs `'hub/marca'` como chave.
 
-O único ajuste é o `financeiro`: a comparação `current === 'financeiro'` continua correta.
+**Mas `/clientes/:id/hub` sozinho quebra.** `current` vira `'hub'`, que não está mais em `CLIENTE_TABS`, então o guard devolve `<Navigate to=".../visao-geral">` **antes** do `<Outlet>` montar — a rota `index` com `<Navigate to="acesso">` nunca chega a rodar. Sem isto, o redirect prometido no spec não existe e links antigos param de levar ao portal.
+
+Adicione, **antes** da checagem de segmento desconhecido:
+
+```tsx
+  // `hub` deixou de ser aba própria (virou o grupo do nav, cf. clienteTabs.model),
+  // então cai na checagem de segmento desconhecido abaixo e iria para visao-geral.
+  // A rota `index` de App.tsx não salva: o guard resolve ANTES do Outlet montar.
+  if (current === 'hub') {
+    return <Navigate to={`/clientes/${clienteId}/hub/acesso`} replace />;
+  }
+```
+
+E atualize o comentário logo abaixo, que diz "not one of the seven registered tabs" — agora são onze.
+
+Teste, junto dos da Step 1:
+
+```tsx
+it('redireciona /hub para /hub/acesso mesmo sem a rota index', async () => {
+  renderAt('/clientes/42/hub');
+  expect(await screen.findByText('conteudo acesso')).toBeInTheDocument();
+});
+```
+
+O `financeiro` não muda: `current === 'financeiro'` continua correto.
+
+- [ ] **Step 3b: Consertar o CTA do guia de primeiros passos**
+
+`apps/crm/src/components/guide/guideContent.tsx:133` usa `clienteDeepLink('hub')` no CTA "Gere o link do Hub". Com o redirect da Step 3 ele volta a funcionar, mas passa a depender de um salto extra. Aponte direto:
+
+```tsx
+          to: clienteDeepLink('hub/acesso'),
+```
+
+E em `apps/crm/src/components/guide/__tests__/guideContent.test.ts:42`, a asserção afirma `'/clientes/7/hub'` e **continua passando** hoje — ou seja, a suíte não protege esse link. Atualize para `'/clientes/7/hub/acesso'`.
 
 - [ ] **Step 4: Criar o HubRoleGate**
 
