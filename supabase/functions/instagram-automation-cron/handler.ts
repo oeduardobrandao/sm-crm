@@ -52,6 +52,14 @@ const RETRY_LIMIT = 25;
 const SUBSCRIPTION_STALE_MS = 24 * 60 * 60 * 1000;
 const PURGE_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const UNLINKED_GRACE_MS = 15 * 60 * 1000;
+// Teto por tick, no padrão de SWEEP_LIMIT/RETRY_LIMIT: a migration da Task 1
+// carimba target_unlinked_at = COALESCE(published_at, updated_at, now()) para
+// TODO o backlog de posts históricos publicados na mão -- no primeiro tick
+// depois do deploy essa fase pegaria o backlog inteiro de uma vez, com até 3
+// round-trips por linha em série. Ordenar pela marca mais antiga primeiro
+// (abaixo) garante que o backlog drena, um pedaço por tick, em vez de travar
+// indefinidamente no mesmo lote.
+const UNLINKED_LIMIT = 50;
 
 export interface InstagramAutomationCronDeps {
   cronSecret: string;
@@ -112,7 +120,9 @@ export async function runUnlinkedPhase(svc: SupabaseClient, now: Date): Promise<
     .eq("ativo", true)
     .is("ig_media_id", null)
     .not("target_unlinked_at", "is", null)
-    .lt("target_unlinked_at", cutoff);
+    .lt("target_unlinked_at", cutoff)
+    .order("target_unlinked_at", { ascending: true })
+    .limit(UNLINKED_LIMIT);
   if (selErr) throw new Error(errMessage(selErr));
   const orfas = (orfasData ?? []) as UnlinkedAutomationRow[];
 

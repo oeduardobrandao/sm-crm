@@ -4,8 +4,8 @@
 // `instagram-webhook-process_test.ts`:
 // DI via InstagramAutomationCronDeps contra o supabaseMock compartilhado,
 // baseDeps com `unreachable` para asserção por omissão. `executeSend` e
-// `createProcessDelivery` são consumidos DIRETO (não mockados) — as fases 4 e
-// 5 são provadas observando as escritas que só eles produzem no mock de DB.
+// `createProcessDelivery` são consumidos DIRETO (não mockados) — as fases 5 e
+// 6 são provadas observando as escritas que só eles produzem no mock de DB.
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
@@ -259,7 +259,25 @@ Deno.test("instagram-automation-cron: retries com 2 sends, 1 falha -> failed=1 e
 
   assertEquals(response.status, 200);
   assertEquals(await readJson(response), { ok: true, failed: 1 });
-  assertEquals(callsFor(db, "cron_failures", "insert").length, 1);
+
+  // Amarra a falha à fase de retries (send-a via executeSend), não só à
+  // contagem agregada: `instagram_comment_automations` é consultada por MAIS
+  // de uma fase (alvo órfão, revalidação de retries, re-check) através da
+  // MESMA fila FIFO do mock -- se um erro futuro embaralhar essa fila e a
+  // falha migrar pra outra fase, `failed` continua batendo em 1 e este teste
+  // TEM que acusar mesmo assim.
+  const failureInserts = callsFor(db, "cron_failures", "insert");
+  assertEquals(failureInserts.length, 1);
+  const payload = failureInserts[0].payload as Record<string, unknown>;
+  assert(String(payload.error_message).includes("executeSend"));
+  const detail = payload.error_detail as { errors: Array<{ accountId?: string; error: string }> };
+  assertEquals(detail.errors.length, 1);
+  assertEquals(detail.errors[0].accountId, "send-a");
+  assert(detail.errors[0].error.includes("executeSend"));
+
+  // send-a morreu na revalidação antes de qualquer update; só send-b (skip)
+  // deveria ter chegado lá.
+  assertEquals(callsFor(db, "instagram_automation_sends", "update").length, 1);
 });
 
 // ══════════════════════════════ (d) Re-check de assinaturas ════════════════
@@ -500,7 +518,7 @@ Deno.test("instagram-automation-cron: retry claimado cujo media_id CASA o alvo e
   assertEquals(sendUpdates[0].payload, { status: "sent" });
 });
 
-// ═══════════════════ Fase 4: sweep de eventos órfãos ══════════════════════
+// ═══════════════════ Fase 5: sweep de eventos órfãos ══════════════════════
 
 Deno.test("instagram-automation-cron: sweep encontra evento órfão -> reprocessa via processDelivery (idempotente)", async () => {
   const db = createSupabaseQueryMock();
@@ -710,6 +728,11 @@ function makeSvc(rows: Array<Record<string, unknown>>, notified: Record<string, 
           is: (...args: unknown[]) => (filters.push({ method: "is", args }), builder),
           not: (...args: unknown[]) => (filters.push({ method: "not", args }), builder),
           lt: (...args: unknown[]) => (filters.push({ method: "lt", args }), builder),
+          // order/limit não filtram `rows` no mock (não há paginação real a
+          // testar aqui) -- só precisam existir pra não quebrar a chain do
+          // handler, que os chama depois do `lt`.
+          order: () => builder,
+          limit: () => builder,
           then: (res: (v: unknown) => unknown) =>
             res({ data: rows.filter((r) => filters.every((f) => passesFilter(r, f.method, f.args))), error: null }),
         };
@@ -733,7 +756,7 @@ function makeSvc(rows: Array<Record<string, unknown>>, notified: Record<string, 
   return svc as SupabaseClient;
 }
 
-Deno.test("cron notifica alvo orfao so depois da carencia de 15 min", async () => {
+Deno.test("instagram-automation-cron: alvo orfao notifica so depois da carencia de 15 min", async () => {
   const notified: Record<string, unknown>[] = [];
   const agora = new Date("2026-09-07T12:00:00Z");
   const rows = [
@@ -746,6 +769,11 @@ Deno.test("cron notifica alvo orfao so depois da carencia de 15 min", async () =
     // 20 min mas desligada -> nao notifica
     { id: "a3", conta_id: "w1", client_id: 3, name: "Desligada", ativo: false,
       target_unlinked_at: "2026-09-07T11:40:00Z" },
+    // 20 min, ativa, marca vencida, MAS ja tem ig_media_id preenchido -> nao
+    // deveria notificar. Prova o filtro `.is("ig_media_id", null)`: sem ele,
+    // esta row (que TEM a chave, ao contrario das a1-a3) passaria direto.
+    { id: "a4", conta_id: "w1", client_id: 4, name: "JaVinculada", ativo: true,
+      target_unlinked_at: "2026-09-07T11:40:00Z", ig_media_id: "media-x" },
   ];
 
   await runUnlinkedPhase(makeSvc(rows, notified), agora);
@@ -753,9 +781,112 @@ Deno.test("cron notifica alvo orfao so depois da carencia de 15 min", async () =
   assertEquals(notified.length, 1);
   assertEquals(notified[0].clientId, 1);
   assertEquals(notified[0].reason, "target_never_published");
+  // extraMetadata precisa chegar intacto em insert_notification_batch (Task 2).
+  assertEquals(notified[0].automation_id, "a1");
+  assertEquals(notified[0].automation_name, "Velha");
 });
 
-// ══════════════════════════════ Fase 7: purge ══════════════════════════════
+Deno.test("instagram-automation-cron: alvo orfao ordena por marca mais antiga e limita o backlog", async () => {
+  const db = createSupabaseQueryMock();
+  queueEmptyRun(db);
+
+  const handler = createInstagramAutomationCronHandler(baseDeps(db));
+  await handler(
+    new Request("https://example.test/instagram-automation-cron", {
+      headers: { "x-cron-secret": CRON_SECRET },
+    }),
+  );
+
+  // A fase 4 é a PRIMEIRA das duas chamadas a `instagram_comment_automations:select`
+  // (a fase 7/re-check é a outra) -- e é a única que filtra por `ig_media_id`.
+  const orfaCalls = callsFor(db, "instagram_comment_automations", "select");
+  const unlinkedCall = orfaCalls.find((c: QueryCall) => hasModifier(c, "is", ["ig_media_id", null]));
+  assert(unlinkedCall, "fase de alvo órfão deveria ter consultado com o filtro is ig_media_id null");
+  assert(
+    hasModifier(unlinkedCall, "order", ["target_unlinked_at", { ascending: true }]),
+    "sem ordenar pela marca mais antiga primeiro, o backlog do primeiro tick nunca drena",
+  );
+  assert(hasModifier(unlinkedCall, "limit", [50]), "sem limite, o primeiro tick pegaria o backfill inteiro de uma vez");
+});
+
+// Fase 4 (RPC de reconciliação) com erro: prova que uma RPC quebrada não
+// impede as fases seguintes de rodar, incrementa `failed`, e que o erro
+// empilhado nomeia a fase certa (não uma fase vizinha que também toca
+// `instagram_comment_automations`).
+Deno.test("instagram-automation-cron: reconcile_unlinked_automation_targets com erro não aborta as fases seguintes", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
+  db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  db.queueRpc("reconcile_unlinked_automation_targets", { data: null, error: { message: "rpc indisponível" } });
+  // A RPC lança ANTES do select da fase 4 -- só a fase 7 (re-check) consulta a
+  // tabela neste run, então só UMA entrada é enfileirada.
+  db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 7 (re-check), vazia
+  db.queue("instagram_webhook_events", "delete", { data: null, error: null });
+  db.queue("cron_failures", "insert", { data: null, error: null });
+
+  const handler = createInstagramAutomationCronHandler(baseDeps(db));
+  const response = await handler(
+    new Request("https://example.test/instagram-automation-cron", {
+      headers: { "x-cron-secret": CRON_SECRET },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.failed, 1);
+
+  // As fases seguintes rodaram mesmo com a RPC da fase 4 falhando.
+  assertEquals(rpcCallsFor(db, "claim_retryable_automation_sends").length, 1);
+  assertEquals(callsFor(db, "instagram_webhook_events", "delete").length, 1);
+
+  // O erro empilhado nomeia a fase certa.
+  const failureInserts = callsFor(db, "cron_failures", "insert");
+  assertEquals(failureInserts.length, 1);
+  const payload = failureInserts[0].payload as Record<string, unknown>;
+  assert(String(payload.error_message).includes("unlinked_phase"));
+});
+
+// Fase 4 (select do alvo órfão) com erro: mesmo contrato, mas o RPC dá certo
+// e é o `select` seguinte que quebra.
+Deno.test("instagram-automation-cron: select de alvo orfao com erro não aborta as fases seguintes", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
+  db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  db.queueRpc("reconcile_unlinked_automation_targets", { data: { marked: 0, cleared: 0 }, error: null });
+  // Fase 4: o select explode.
+  db.queue("instagram_comment_automations", "select", { data: null, error: { message: "select indisponível" } });
+  db.queueRpc("claim_retryable_automation_sends", { data: [], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 7 (re-check), vazia
+  db.queue("instagram_webhook_events", "delete", { data: null, error: null });
+  db.queue("cron_failures", "insert", { data: null, error: null });
+
+  const handler = createInstagramAutomationCronHandler(baseDeps(db));
+  const response = await handler(
+    new Request("https://example.test/instagram-automation-cron", {
+      headers: { "x-cron-secret": CRON_SECRET },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.failed, 1);
+
+  // As fases seguintes rodaram mesmo com o select da fase 4 falhando.
+  assertEquals(rpcCallsFor(db, "claim_retryable_automation_sends").length, 1);
+  assertEquals(callsFor(db, "instagram_webhook_events", "delete").length, 1);
+
+  const failureInserts = callsFor(db, "cron_failures", "insert");
+  assertEquals(failureInserts.length, 1);
+  const payload = failureInserts[0].payload as Record<string, unknown>;
+  assert(String(payload.error_message).includes("unlinked_phase"));
+});
+
+// ══════════════════════════════ Fase 8: purge ══════════════════════════════
 
 Deno.test("instagram-automation-cron: purge apaga processed_at IS NOT NULL e received_at < now - 30 dias", async () => {
   const db = createSupabaseQueryMock();
