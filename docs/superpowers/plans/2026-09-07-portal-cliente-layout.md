@@ -12,6 +12,26 @@ Spec: [`docs/superpowers/specs/2026-09-07-portal-cliente-layout-design.md`](../s
 
 ## Global Constraints
 
+> **Atualizado em 2026-09-07, após o merge de `origin/main` (43 commits).** O PR #442
+> trocou o modelo de acesso das abas e isso invalidou parte do texto original deste plano.
+> O que vale agora:
+>
+> - `clienteTabs.model.ts` usa `permission: { module, action } | null`, **não** `roles`.
+>   `WorkspaceRole`, `ALL` e `STAFF` não existem mais nesse arquivo, e `visibleClienteTabs`
+>   / `canAccessClienteTab` recebem uma `CanFn`.
+> - As cinco sub-abas do portal têm `permission: { module: 'configuracoes', action: 'editar' }`.
+> - **Nunca escreva `workspaceRole === 'agent'`.** O gate é `can('configuracoes','editar')`,
+>   e ele é **tri-estado**: `true` libera, `false` mostra o aviso, `'unknown'` (membership
+>   ainda não resolvida) mostra spinner. Tratar `'unknown'` como `false` pisca o aviso de
+>   restrição para todo viewer durante a hidratação — bug que uma revisão externa em `main`
+>   já pegou uma vez.
+> - `HubRoleGate.tsx` é o único lugar que define o gate. Ele exporta
+>   `useHubPortalDataEnabled()`, que é `=== true`: as queries do portal ficam desligadas
+>   também enquanto o acesso é `'unknown'`. Quatro call sites hoje: `AcessoPage`,
+>   `MarcaPage`, `PaginasPage` e `usePortalFill`.
+> - O `BriefingAudioPlayer` (#452) vive em `hub/BriefingPage.tsx`. Não o remova ao mexer
+>   na tela do Briefing.
+
 - **Nunca usar `useBlocker`.** React Router honra só o último blocker registrado; registrar um desliga em silêncio a troca de versão entre deploys. Há teste contra o `createMemoryRouter` real (`silent-update.router.test.ts`).
 - **`richTextExtensions()` do Hub tem que ser superconjunto do que o editor do CRM persiste.** Nó ou marca desconhecido faz o TipTap descartar o documento inteiro, logando aviso em vez de lançar erro — o cliente vê página em branco.
 - **Conjunto de extensões do editor de Páginas, fixo:** `StarterKit`, `UnderlineExt`, `TextStyle`, `Color`, `Highlight({ multicolor: true })`, `Link({ openOnClick: false, autolink: true })`, `Placeholder`, `CalloutExtension`. Fora: `MentionNode`, `CommentHighlight`, `InlineImage`, `Youtube`, `IframeExtension`.
