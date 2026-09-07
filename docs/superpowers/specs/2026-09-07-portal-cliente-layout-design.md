@@ -103,8 +103,26 @@ linha do card, a URL, e os botões abaixo. "Estender +1 ano" continua condiciona
 do que existe, e "vazia" em cinza quando não há nada. Cada linha é link para a aba
 correspondente.
 
-Abaixo do card do link, contadores acionáveis: aprovações aguardando o cliente e ideias novas
-sem resposta.
+#### Os predicados, definidos
+
+Contador sem predicado escrito vira número divergente. Cada linha do painel é exatamente
+isto, tudo escopado por `cliente_id` (o RLS já escopa `conta_id`):
+
+| Linha | Predicado | Fonte |
+|---|---|---|
+| Briefing | `count(*)` e `count(*) filter (where answer is not null and answer <> '')` | `hub_briefing_questions` |
+| Marca | `count(*)` de `hub_brand_files` + existe linha em `hub_brand` | leitura já feita hoje |
+| Páginas | `count(*)` | `hub_pages` |
+| Ideias novas sem resposta | `status = 'nova' and comentario_agencia is null` | `getIdeias({cliente_id})`, já carregado |
+
+Cada linha é link para a aba correspondente. Zero → "vazia" em cinza, que é o convite.
+Enquanto carrega, a linha mostra um traço, não zero — zero é uma afirmação, e afirmar
+"vazia" antes de saber é errado. Erro na query: traço e a linha não vira link.
+
+**"Aprovações aguardando o cliente" fica fora.** Aprovação deriva de post + status + regra de
+dupla aprovação, e existe um spec inteiro sobre isso (`dual_approval`). Definir o predicado
+aqui, por fora, é como o número diverge do que a página de Aprovações mostra. Volta quando
+houver uma fonte única para "aguardando o cliente".
 
 **"Última visita do cliente" fica fora deste spec.** A ideia era derivar de
 `expires_at − 365 dias`, mas o `hub_token_touch` só grava quando
@@ -135,12 +153,49 @@ exatamente como estão — o problema do Briefing nunca foi falta de recurso.
 
 O par markdown/preview sai. Entra um editor TipTap onde o texto é editado já com a aparência
 final: barra fixa no topo (negrito, itálico, sublinhado, H2/H3, listas, citação, link,
-imagem, destaque) e menu flutuante na seleção — o mesmo padrão do `PostEditor` e do
-`ArticleEditor` do Admin.
+destaque) e menu flutuante na seleção — o mesmo padrão do `PostEditor` e do `ArticleEditor`
+do Admin.
 
-O modal sai junto: rail de páginas à esquerda (com data e ordem, que é a ordem do menu no
-portal — `display_order` já existe e nunca teve interface), editor à direita. O aviso de
-alterações não salvas continua; muda de gatilho, de fechar o diálogo para sair da rota.
+**Sem botão de imagem.** Era uma assunção deste spec e está errada — ver "Perguntas
+resolvidas".
+
+O modal sai junto: rail de páginas à esquerda, editor à direita.
+
+#### Ordem: a coluna existe, o caminho de escrita não
+
+`display_order` existe e o rail promete controlá-la, mas hoje `upsertHubPage` **nunca
+escreve essa coluna** — toda página nasce com o default `0`. CRM e `hub-pages` ordenam só por
+ela, sem desempate, então a ordem atual é a que o Postgres devolver. Para o rail cumprir a
+promessa:
+
+- **Criação** grava `display_order = max(display_order) + 1` do cliente.
+- **Reordenação** por arrastar (dnd-kit, mesmo padrão do Briefing) grava a lista inteira
+  renumerada de 0..n-1 numa chamada.
+- **Desempate** por `created_at` na leitura, no CRM e no `hub-pages`, para as linhas antigas
+  empatadas em 0 terem ordem estável antes da primeira reordenação.
+
+#### Alterações não salvas: quais saídas bloqueiam
+
+O `isDirty` de hoje é `(editingPage.title ?? '') !== ''` — verdadeiro para qualquer página
+com título, mesmo intocada. Não é detecção de alteração, é detecção de título. Some.
+
+No lugar, comparação do documento serializado contra o carregado.
+
+**`useBlocker` está proibido neste projeto e não é opção aqui.** React Router honra só o
+último blocker registrado, e `getBlocker`/`deleteBlocker`/`subscribe` são `@private`:
+registrar um blocker nesta tela desliga em silêncio a troca de versão entre deploys. Existe
+teste contra o `createMemoryRouter` real guardando isso (`silent-update.router.test.ts`).
+
+Sem blocker, a estratégia é não depender de bloqueio:
+
+| Saída | Tratamento |
+|---|---|
+| Trocar de página no rail | Confirmação no próprio clique — é um handler nosso, não precisa do router |
+| Refresh / fechar aba | `beforeunload` |
+| Navegar para outra rota, voltar/avançar | **Não bloqueia.** Rascunho em `localStorage` por id de página, restaurado ao reabrir, com aviso "você tem alterações não salvas" e opção de descartar |
+
+O rascunho é melhor que o bloqueio de qualquer forma: não sequestra a navegação e sobrevive
+a fechar a aba. Chave `hub-page-draft:<pageId>`, limpa no salvamento bem-sucedido.
 
 #### Formato guardado
 
@@ -174,9 +229,25 @@ correspondente entra em `richTextExtensions()` no mesmo PR. Um teste garante iss
 
 | Onde | O que muda |
 |---|---|
+| `apps/hub/src/types.ts` | `HubContentBlock` é uma união fechada de cinco tipos com `content: string` **obrigatório**. `{ type: 'richtext', doc }` não compila. Vira união discriminada, com `richtext` carregando `doc` e sem `content` |
 | `apps/hub/src/pages/PaginaPage.tsx` | `renderBlock` ganha `case 'richtext'` delegando ao `RichTextContent` já existente |
 | `supabase/functions/mcp/content.ts` | `pageContentToMarkdown` lê `block.content` como **string**; um bloco rich text devolveria página vazia aos agentes. Ganha um caminho que serializa o doc do TipTap |
 | Editor no CRM | Converte markdown legado para TipTap ao abrir |
+
+#### O conjunto de extensões, fixado
+
+Não basta dizer "nasce do `PostEditor`": dois implementadores chegariam a documentos
+diferentes. O conjunto é exatamente este, e o teste de contrato compara contra ele:
+
+`StarterKit` · `UnderlineExt` · `TextStyle` · `Color` · `Highlight(multicolor)` ·
+`Link(openOnClick: false, autolink: true)` · `Placeholder` · `CalloutExtension`
+
+Fora, com motivo: `MentionNode` (conteúdo interno da agência, não faz sentido numa página
+que o cliente lê), `CommentHighlight` (o fluxo de comentários é de post, não de página),
+`InlineImage` (ver abaixo), `Youtube` e `IframeExtension` (o Hub não tem os nós).
+
+Todos os incluídos já têm contraparte em `richTextExtensions()` do Hub, então o schema fecha
+sem tocar no Hub. `CalloutReadonly` já existe lá.
 
 #### Conversão do legado: migração única, não preguiçosa
 
@@ -193,6 +264,16 @@ Então: script único em `scripts/`, reusando o mesmo módulo conversor do edito
 **depois** do deploy. Enquanto não roda, as páginas renderizam pelo caminho legado — que
 permanece no `renderBlock` (custo zero, e é a rede de segurança). Só os dois tipos observados
 precisam de conversão; os demais casos do `renderBlock` seguem intactos.
+
+O script roda com o editor já no ar, então existe uma janela em que alguém abre uma página,
+converte e salva antes do script chegar nela — e o script, escrevendo o que converteu do
+conteúdo que leu no início, apagaria essa edição. Três exigências, nenhuma opcional:
+
+1. **Update condicional.** Escreve com `WHERE id = $1 AND content = $2` (o conteúdo lido).
+   Linha alterada no meio do caminho = zero linhas afetadas = pula e registra.
+2. **Pula o que já é `richtext`.** Filtro no `SELECT` e recheque antes do `UPDATE`.
+3. **Backup antes.** Dump do `id` + `content` das 28 linhas em arquivo JSON. Com esse volume
+   o rollback é reaplicar o dump, e o script imprime ids convertidos, pulados e falhos.
 
 Os 46.858 caracteres são o caso de teste de performance do editor: um documento desse tamanho
 tem que abrir e digitar sem travar.
@@ -221,7 +302,12 @@ sendo onde a interação acontece.
 - `PaginaRichTextEditor.tsx` + o módulo conversor de markdown
 - `BriefingTemplatesModal.tsx` e `BriefingReorder.tsx` continuam onde estão
 
+**Traduções** — sem elas a UI mostra a chave crua
+- `packages/i18n/locales/pt/clients.json` e `.../en/clients.json` — cinco `detail.tabs.*`
+  novas e `detail.tabGroups.portal`, nos dois idiomas
+
 **Fora do CRM**
+- `apps/hub/src/types.ts` — `HubContentBlock` vira união discriminada
 - `apps/hub/src/pages/PaginaPage.tsx` — `case 'richtext'`
 - `supabase/functions/mcp/content.ts` — `pageContentToMarkdown`
 - `scripts/` — conversor único das 28 páginas
@@ -236,6 +322,16 @@ sendo onde a interação acontece.
   teste atual que proíbe `IntersectionObserver`/`scrollIntoView` continua passando.
 - **Conversor de markdown**: os dois tipos observados em produção; documento de ~47k
   caracteres; markdown malformado não derruba o editor.
+- **Script de conversão**: pula linha já em `richtext`; `UPDATE` condicional não escreve
+  quando o `content` mudou entre a leitura e a escrita (simula a corrida).
+- **Ordem das páginas**: página nova nasce com `max + 1`; reordenação persiste 0..n-1;
+  leitura desempata por `created_at` com todas as linhas em `display_order = 0`.
+- **Rascunho não salvo**: `beforeunload` arma com documento alterado e não arma sem alteração;
+  rascunho é restaurado ao reabrir e limpo após salvar. **E um teste que falha se
+  `useBlocker` aparecer nesta tela** — é a regressão que desligaria a troca silenciosa.
+- **i18n**: nenhuma `labelKey` de `CLIENTE_TABS` fica sem tradução em pt e en.
+- **Contadores do Acesso**: cada predicado da tabela; estado de carregamento mostra traço,
+  não zero.
 - **Contrato de schema**: teste que compara o conjunto de extensões do editor de Páginas com
   `richTextExtensions()` do Hub e falha se o editor puder persistir algo que o Hub não lê.
   É o teste que impede a página em branco.
@@ -263,20 +359,31 @@ estiver confirmada.
   Consulta em produção em 2026-09-07. Resolve a favor da migração única.
 - **Última visita do cliente é confiável?** Não pela derivação: `extend` e `rotate` produzem
   falso positivo. Sai do escopo, vira follow-up com `last_seen_at`.
+- **Imagem dentro da página entra aqui?** **Não.** A assunção anterior — "é só reusar
+  `uploadFile()`, e se mudar a decisão de cota é remover um botão" — estava errada. O
+  uploader em si é genérico (`uploadInlineImage` cria uma linha em `files` via
+  `file-upload-url`/`file-upload-finalize`, sem vínculo com post), mas o resto não fecha:
+  1. **O `src` guardado não é durável.** Inline image guarda `r2Key` e o `src` é reassinado na
+     leitura. O Hub faz isso em `hub-posts` (`extractR2Keys` + `injectSignedUrls`);
+     `hub-pages` não tem nada disso. Sem essa passagem, a imagem quebra no portal.
+  2. **Vazamento permanente de cota.** `storage_autoclean_candidates` só considera arquivos
+     que tenham linha em `post_file_links`. Imagem de página nunca teria — então nunca é
+     recolhida. Tirar a imagem da página ou apagar a página deixaria o objeto no R2 e na cota
+     para sempre, sem forma de reclamar.
+
+  Sai do escopo. Volta junto com a decisão de armazenamento do spec 2, que é onde o moodboard
+  enfrenta exatamente os mesmos dois problemas.
 
 ## Perguntas em aberto
 
-- **Imagem dentro da página entra aqui?** `InlineImageExtension` (CRM) e `InlineImageReadonly`
-  (Hub) já existem, então é tecnicamente barato. Mas o upload consome a mesma cota de
-  armazenamento do plano que o moodboard do spec 2 — as duas decisões são a mesma decisão.
-  **Assunção até haver resposta:** o botão de imagem entra na barra, usando `uploadFile()`
-  como o upload de logo já faz. Se a decisão de cota for outra, é remover um botão.
 - **Paginação/virtualização em Briefing e Ideias.** Nenhum cliente hoje tem volume que peça
   isso. Fica registrado para não ser redescoberto.
 
 ## Fora de escopo
 
 - Redesenho da Marca (spec 2).
+- Imagem dentro da página, e a passagem de assinatura de URL em `hub-pages` que ela exige.
 - `last_seen_at` e o painel de atividade do cliente.
+- "Aprovações aguardando o cliente" no painel do Acesso.
 - Qualquer mudança em templates de briefing, importação de CSV ou exportação.
 - Remoção do caminho legado do `renderBlock`.
