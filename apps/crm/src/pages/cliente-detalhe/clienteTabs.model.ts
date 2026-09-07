@@ -167,20 +167,53 @@ export const CLIENTE_TAB_GROUP_LABELS: Record<ClienteTabGroup, string> = {
 };
 
 /**
- * Full access check for a single tab, used both by the nav filter and the
- * route guard for direct URL access. `permission: null` means "no finer gate
- * than the parent route" -> always true.
+ * Resolves a tab's raw permission check: `'no-tab'` for an unregistered key,
+ * literal `true` for a `permission: null` tab (no finer gate than the parent
+ * route), otherwise whatever `can()` returns for that tab's module/action --
+ * including `'unknown'` while membership is still resolving. Shared by
+ * `canAccessClienteTab` (two-state, for the nav) and `clienteTabGuardOutcome`
+ * (three-state, for the route guard) so both read the exact same gate.
+ */
+function tabPermissionCheck(key: string, can: CanFn): PermissionCheck | 'no-tab' {
+  const tab = CLIENTE_TABS.find((t) => t.key === key);
+  if (!tab) return 'no-tab';
+  if (tab.permission === null) return true;
+  return can(tab.permission.module, tab.permission.action);
+}
+
+/**
+ * Full access check for a single tab, used both by the nav filter and (until
+ * `clienteTabGuardOutcome` below) the route guard. `permission: null` means
+ * "no finer gate than the parent route" -> always true. Collapses `'unknown'`
+ * to `false` on purpose: this is what `visibleClienteTabs` uses to decide nav
+ * visibility, where hiding a tab whose permission hasn't resolved yet is the
+ * correct fail-closed behaviour for a passive list. Do NOT reuse this for an
+ * ACTIVE route guard -- see `clienteTabGuardOutcome`, which fails neutral
+ * instead.
  */
 export function canAccessClienteTab(key: string, can: CanFn): boolean {
-  const tab = CLIENTE_TABS.find((t) => t.key === key);
-  if (!tab) return false;
-  if (tab.permission === null) return true;
-  return can(tab.permission.module, tab.permission.action) === true;
+  return tabPermissionCheck(key, can) === true;
 }
 
 /** Tabs to show in the nav for the current permission set, in display order. */
 export function visibleClienteTabs(can: CanFn): ClienteTab[] {
   return CLIENTE_TABS.filter((tab) => canAccessClienteTab(tab.key, can));
+}
+
+/**
+ * Three-state guard outcome for any permission-gated tab (mirrors
+ * `financeiroTabGuardOutcome`, generalized beyond `financeiro`): 'unknown'
+ * fails NEUTRAL (loading), not closed, so hydration -- or a transient
+ * membership-lookup hiccup -- never flashes a redirect at a member who is
+ * actually authorized. `ClienteDetalhePage`'s route guard must resolve this
+ * BEFORE the Outlet mounts, exactly like it already does for `financeiro`;
+ * an unregistered key denies rather than loads forever.
+ */
+export function clienteTabGuardOutcome(key: string, can: CanFn): 'content' | 'loading' | 'denied' {
+  const result = tabPermissionCheck(key, can);
+  if (result === true) return 'content';
+  if (result === 'unknown') return 'loading';
+  return 'denied';
 }
 
 /**

@@ -12,7 +12,7 @@ import { ClienteDetalheNav } from './ClienteDetalheNav';
 import { ClienteEditDialog } from './ClienteEditDialog';
 import {
   CLIENTE_TABS,
-  canAccessClienteTab,
+  clienteTabGuardOutcome,
   financeiroTabGuardOutcome,
   type ClienteDetalheOutletContext,
 } from './clienteTabs.model';
@@ -132,8 +132,17 @@ export default function ClienteDetalhePage() {
     if (outcome === 'denied') {
       return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
     }
-  } else if (current && !canAccessClienteTab(current, can)) {
-    return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
+  } else if (current) {
+    // Same three-state principle as financeiro above, generalized to every
+    // other permission-gated tab (the five `hub/*` portal routes and
+    // `relatorios`): 'unknown' must render a spinner, not bounce someone who
+    // is actually authorized just because their membership hasn't resolved
+    // yet. Resolved BEFORE the Outlet mounts, same reasoning as financeiro.
+    const outcome = clienteTabGuardOutcome(current, can);
+    if (outcome === 'loading') return <CenteredSpinner />;
+    if (outcome === 'denied') {
+      return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
+    }
   }
 
   if (loadingCliente) {

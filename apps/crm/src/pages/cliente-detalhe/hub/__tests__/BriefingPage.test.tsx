@@ -21,11 +21,17 @@ import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/store/hub');
+// BriefingAudioPlayer fires its own useQuery on mount for every question with an
+// audio_r2_key -- mocked so that test doesn't hit the real Supabase-backed
+// fetchBriefingAudio (no session in jsdom) and so the resolved player is
+// assertable deterministically.
+vi.mock('@/services/briefingAudio');
 
 import { useAuth } from '@/context/AuthContext';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 import BriefingPage from '../BriefingPage';
 import * as hubStore from '@/store/hub';
+import * as briefingAudioService from '@/services/briefingAudio';
 
 const mockedUseAuth = vi.mocked(useAuth);
 
@@ -81,7 +87,7 @@ const BRIEFING_ID = 'br-1';
 
 type QuestionFixture = Pick<
   HubBriefingQuestionRow,
-  'id' | 'question' | 'answer' | 'section' | 'display_order'
+  'id' | 'question' | 'answer' | 'section' | 'display_order' | 'audio_r2_key'
 >;
 
 /**
@@ -127,6 +133,13 @@ describe('BriefingPage', () => {
     vi.mocked(hubStore.getBriefings).mockResolvedValue([]);
     vi.mocked(hubStore.getHubBriefingQuestions).mockResolvedValue([]);
     vi.mocked(hubStore.getBriefingTemplates).mockResolvedValue([]);
+    vi.mocked(briefingAudioService.fetchBriefingAudio).mockResolvedValue({
+      url: 'https://example.com/audio.mp3',
+      mime: 'audio/mpeg',
+      duration_seconds: 12,
+      transcription_status: 'done',
+      recorded_at: '2026-01-01T00:00:00.000Z',
+    });
   });
 
   afterEach(() => {
@@ -157,12 +170,16 @@ describe('BriefingPage', () => {
       { id: 'a', question: 'P1', answer: 'R1', section: 'Negócio', display_order: 0 },
       { id: 'b', question: 'P2', answer: null, section: 'Negócio', display_order: 1 },
       { id: 'c', question: 'P3', answer: '', section: 'Público', display_order: 0 },
+      // Resposta só com espaços: sem o `.trim()` de isAnswered, `answer !== ''`
+      // sozinho já classificaria isso como respondida -- este fixture é o que
+      // pega essa regressão (as outras não dependem do trim).
+      { id: 'd', question: 'P4', answer: '   ', section: 'Público', display_order: 1 },
     ];
 
-    it('conta respondidas tratando string vazia como não respondida', () => {
+    it('conta respondidas tratando string vazia e string só com espaços como não respondidas', () => {
       renderBriefing(QUESTIONS);
-      expect(screen.getByTestId('chip-todas')).toHaveTextContent('3');
-      expect(screen.getByTestId('chip-sem-resposta')).toHaveTextContent('2');
+      expect(screen.getByTestId('chip-todas')).toHaveTextContent('4');
+      expect(screen.getByTestId('chip-sem-resposta')).toHaveTextContent('3');
       expect(screen.getByTestId('chip-respondidas')).toHaveTextContent('1');
     });
 
@@ -176,6 +193,28 @@ describe('BriefingPage', () => {
     it('mostra progresso por seção no rail', () => {
       renderBriefing(QUESTIONS);
       expect(screen.getByTestId('secao-Negócio')).toHaveTextContent('1/2');
+    });
+  });
+
+  describe('player de áudio', () => {
+    // BriefingAudioPlayer é a feature de produção mais em risco de um
+    // re-layout deste tipo (PR #452) -- nada garantia até aqui que ela
+    // continuasse aparecendo junto da resposta de uma pergunta com áudio.
+    // Fica sem seção (unsectioned) de propósito: seções nomeadas vêm
+    // colapsadas por padrão, e este teste não precisa expandir nenhuma para
+    // verificar que o player monta.
+    it('renderiza o player de áudio para uma pergunta com audio_r2_key', async () => {
+      renderBriefing([
+        {
+          id: 'e',
+          question: 'P5',
+          answer: 'Resposta gravada',
+          section: null,
+          display_order: 0,
+          audio_r2_key: 'r2/briefing/e.webm',
+        },
+      ]);
+      expect(await screen.findByRole('button', { name: /Resposta em áudio/ })).toBeInTheDocument();
     });
   });
 });

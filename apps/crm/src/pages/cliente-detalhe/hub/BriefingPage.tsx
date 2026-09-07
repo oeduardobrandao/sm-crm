@@ -18,6 +18,7 @@ import {
   HelpCircle,
   Pencil,
   ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -187,6 +188,11 @@ function BriefingEditor({
   // 2026-09-07). 'todas' é o padrão -- os chips e a barra de progresso sempre medem
   // o briefing inteiro, só a grade abaixo respeita o filtro.
   const [filter, setFilter] = useState<BriefingFilter>('todas');
+  // Seções vêm colapsadas por padrão: cada pergunta com áudio monta um
+  // BriefingAudioPlayer que dispara sozinho um fetch de URL assinada. Um
+  // briefing com dezenas de respostas em áudio não pode disparar todas essas
+  // chamadas só porque a página abriu -- só a seção que o usuário expandir.
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Default selection: first briefing once loaded (or when the selected one is deleted).
   useEffect(() => {
@@ -263,6 +269,7 @@ function BriefingEditor({
     setEditingId(null);
     setEditingSectionName(null);
     setFilter('todas');
+    setExpandedSections(new Set());
   }
 
   async function handleCreateBriefing() {
@@ -455,6 +462,13 @@ function BriefingEditor({
         section.questions.map((question) => question.id),
         nextName,
       );
+      setExpandedSections((prev) => {
+        if (!prev.has(section.name)) return prev;
+        const next = new Set(prev);
+        next.delete(section.name);
+        next.add(nextName);
+        return next;
+      });
       setNewQuestions((prev) => {
         if (!(section.name in prev)) return prev;
         const next = { ...prev, [nextName]: prev[section.name] };
@@ -477,6 +491,21 @@ function BriefingEditor({
     setNewSectionName('');
     setAddingSectionInput(false);
     setNewQuestions((prev) => ({ ...prev, [name]: '' }));
+  }
+
+  function toggleSection(name: string) {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  function toggleAllSections() {
+    const allExpanded =
+      namedSections.length > 0 && namedSections.every((s) => expandedSections.has(s.name));
+    setExpandedSections(allExpanded ? new Set() : new Set(namedSections.map((s) => s.name)));
   }
 
   if (isLoading)
@@ -631,6 +660,11 @@ function BriefingEditor({
   }
 
   function scrollToSection(name: string) {
+    // O rail lista TODAS as seções, colapsadas ou não (contagem sempre sobre o
+    // briefing inteiro -- ver allNamedSections acima). Clicar num link que
+    // aponta para uma seção ainda colapsada precisa expandi-la também, ou o
+    // scroll leva a um cabeçalho sem nada visível embaixo.
+    setExpandedSections((prev) => (prev.has(name) ? prev : new Set(prev).add(name)));
     document.getElementById(sectionAnchorId(name))?.scrollIntoView?.({
       behavior: 'smooth',
       block: 'start',
@@ -901,7 +935,24 @@ function BriefingEditor({
               <div className="mb-6">{renderQuestions(unsectioned?.questions ?? [], null)}</div>
             )}
 
-            {/* Named sections (drag to reorder) */}
+            {/* Expandir/recolher tudo -- seções vêm colapsadas por padrão. Um filtro
+                ativo (diferente de 'todas') já força toda seção aberta (ver isCollapsed
+                abaixo), então o controle só faz sentido enquanto o filtro é 'todas'. */}
+            {filter === 'todas' && namedSections.length > 1 && (
+              <div className="flex justify-end -mt-2 mb-2">
+                <button
+                  type="button"
+                  onClick={toggleAllSections}
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {namedSections.every((s) => expandedSections.has(s.name))
+                    ? 'Recolher tudo'
+                    : 'Expandir tudo'}
+                </button>
+              </div>
+            )}
+
+            {/* Named sections (collapsible, drag to reorder) */}
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -912,6 +963,10 @@ function BriefingEditor({
                 strategy={verticalListSortingStrategy}
               >
                 {namedSections.map((s) => {
+                  // Filtrar (diferente de 'todas') já é uma varredura explícita por
+                  // resultado -- o usuário não deveria precisar expandir cada seção
+                  // manualmente só para ver o que bateu com o filtro escolhido.
+                  const isCollapsed = filter === 'todas' && !expandedSections.has(s.name);
                   const isEditingSection = editingSectionName === s.name;
                   return (
                     <SortableSection
@@ -949,12 +1004,19 @@ function BriefingEditor({
                           </div>
                         ) : (
                           <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                            <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            <button
+                              type="button"
+                              id={sectionAnchorId(s.name)}
+                              onClick={() => toggleSection(s.name)}
+                              aria-expanded={!isCollapsed}
+                              className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                               <span className="truncate">{s.name}</span>
                               <span className="font-normal normal-case opacity-60">
                                 ({s.questions.length})
                               </span>
-                            </span>
+                            </button>
                             <Button
                               size="sm"
                               variant="ghost"
@@ -970,7 +1032,7 @@ function BriefingEditor({
                         )
                       }
                     >
-                      <div id={sectionAnchorId(s.name)}>{renderQuestions(s.questions, s.name)}</div>
+                      {!isCollapsed && renderQuestions(s.questions, s.name)}
                     </SortableSection>
                   );
                 })}

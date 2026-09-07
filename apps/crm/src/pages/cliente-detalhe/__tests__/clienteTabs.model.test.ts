@@ -5,6 +5,7 @@ import {
   canAccessClienteTab,
   visibleClienteTabs,
   financeiroTabGuardOutcome,
+  clienteTabGuardOutcome,
 } from '../clienteTabs.model';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 import pt from '../../../../../../packages/i18n/locales/pt/clients.json';
@@ -210,6 +211,59 @@ describe('financeiroTabGuardOutcome', () => {
 
   it('returns denied for a resolved false', () => {
     expect(financeiroTabGuardOutcome(false)).toBe('denied');
+  });
+});
+
+describe('clienteTabGuardOutcome', () => {
+  // The generalized route-guard outcome for every can()-gated tab (the
+  // portal tabs and relatorios) -- same three-state contract as
+  // financeiroTabGuardOutcome above, but reading can() instead of a
+  // dedicated canSeeFinancials input.
+  it('returns content for a resolved true', () => {
+    for (const key of PORTAL_KEYS) {
+      expect(clienteTabGuardOutcome(key, ownerCan), key).toBe('content');
+      expect(clienteTabGuardOutcome(key, adminCan), key).toBe('content');
+    }
+    expect(clienteTabGuardOutcome('relatorios', agentCan)).toBe('content');
+  });
+
+  it('returns loading (not denied) while membership is unresolved -- fails neutral, never flashes a redirect', () => {
+    for (const key of PORTAL_KEYS) {
+      expect(clienteTabGuardOutcome(key, unresolvedCan), key).toBe('loading');
+    }
+    expect(clienteTabGuardOutcome('relatorios', unresolvedCan)).toBe('loading');
+  });
+
+  it('returns denied for a resolved false', () => {
+    for (const key of PORTAL_KEYS) {
+      expect(clienteTabGuardOutcome(key, agentCan), key).toBe('denied');
+    }
+  });
+
+  it('returns content for a permission:null tab regardless of membership state', () => {
+    for (const can of [ownerCan, adminCan, restrictedAdminCan, agentCan, unresolvedCan]) {
+      expect(clienteTabGuardOutcome('visao-geral', can)).toBe('content');
+    }
+  });
+
+  it('returns denied for an unknown tab key', () => {
+    expect(clienteTabGuardOutcome('bogus', ownerCan)).toBe('denied');
+  });
+
+  // The same custom-role case canAccessClienteTab already covers: a chassis
+  // `workspaceRole` of 'agent' whose role_id permissions grant
+  // configuracoes:editar must resolve to content, not denied.
+  it('returns content for a custom role granting configuracoes:editar despite an agent chassis role', () => {
+    const customCan = makeCan(
+      fakeMembership({
+        role: 'agent',
+        role_id: 'role-1',
+        permissions: { configuracoes: 'editar' },
+      }),
+    );
+    for (const key of PORTAL_KEYS) {
+      expect(clienteTabGuardOutcome(key, customCan), key).toBe('content');
+    }
   });
 });
 

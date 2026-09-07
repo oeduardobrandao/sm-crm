@@ -353,6 +353,49 @@ describe('ClienteDetalhePage', () => {
       expect(screen.queryByText('conteudo relatorios')).not.toBeInTheDocument();
       expect(screen.queryByText('conteudo visao-geral')).not.toBeInTheDocument();
     });
+
+    /**
+     * Generalization of the financeiro case above to every OTHER
+     * permission-gated tab, via `clienteTabGuardOutcome` (clienteTabs.model.ts).
+     * Before this fix, `ClienteDetalhePage`'s `else if` branch collapsed
+     * `can()`'s 'unknown' to `false` (through `canAccessClienteTab`, which
+     * `=== true`-collapses on purpose for the nav) and redirected a
+     * still-hydrating, actually-authorized member off the tab before
+     * `HubRoleGate`'s own spinner ever got a chance to render.
+     * `workspaceRole` is kept non-null here (`'owner'`) so the earlier
+     * workspaceRole===null branches don't preempt this -- only `can()` itself
+     * is unresolved, exactly like a real membership fetch still in flight.
+     */
+    it('shows a loading state for a portal tab (not a redirect, not the tab) while can() is unknown', async () => {
+      setAuth('owner', { can: makeCan(null) });
+      const { container } = renderAt('/clientes/42/hub/marca');
+      await waitFor(() => expect(mockedGetCliente).toHaveBeenCalled());
+      expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/hub/marca');
+      expect(screen.queryByText('conteudo marca')).not.toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    });
+
+    it('shows a loading state for Relatórios (not a redirect, not the tab) while can() is unknown', async () => {
+      setAuth('owner', { can: makeCan(null) });
+      const { container } = renderAt('/clientes/42/relatorios');
+      await waitFor(() => expect(mockedGetCliente).toHaveBeenCalled());
+      expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/relatorios');
+      expect(screen.queryByText('conteudo relatorios')).not.toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    });
+
+    it('redirects a portal tab to Visão geral once can() resolves false', async () => {
+      setAuth('agent');
+      renderAt('/clientes/42/hub/marca');
+      await screen.findByText('conteudo visao-geral');
+      expect(screen.queryByText('conteudo marca')).not.toBeInTheDocument();
+    });
+
+    it('renders a portal tab once can() resolves true', async () => {
+      setAuth('admin');
+      renderAt('/clientes/42/hub/marca');
+      expect(await screen.findByText('conteudo marca')).toBeInTheDocument();
+    });
   });
 
   /**

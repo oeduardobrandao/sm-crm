@@ -31,7 +31,7 @@ export function SortableQuestion({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-start gap-2">
+    <div ref={setNodeRef} style={style} className="hub-briefing__row-wrap flex items-start gap-2">
       <button
         type="button"
         className="mt-3 shrink-0 cursor-grab touch-none text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-30"

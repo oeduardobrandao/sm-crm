@@ -11051,7 +11051,13 @@ a.hub-fill__row-inner:hover {
   gap: 0.75rem;
   padding: 0.65rem 0;
 }
-.hub-briefing__row + .hub-briefing__row {
+/* Each row is wrapped in its own SortableQuestion drag-handle div
+   (.hub-briefing__row-wrap in BriefingReorder.tsx: wrap > grip-button +
+   "min-w-0 flex-1" > .hub-briefing__row), so consecutive .hub-briefing__row
+   elements are never actual DOM siblings -- the adjacency has to be checked
+   one level up, on the wrapper, and .hub-briefing__row is a grandchild of
+   it, not a direct child. */
+.hub-briefing__row-wrap + .hub-briefing__row-wrap .hub-briefing__row {
   border-top: 1px solid var(--border-color);
 }
 .hub-briefing__cell--question,
