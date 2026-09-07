@@ -209,13 +209,23 @@ export function getNotificationDisplay(
         title: 'Falha na publicação',
         body: m.client_name ? `${client} · ${post}` : post,
       };
-    case 'instagram_automation_failed':
+    case 'instagram_automation_failed': {
+      const nome = typeof m.automation_name === 'string' ? m.automation_name : null;
+      if (m.reason === 'target_never_published') {
+        return {
+          icon: Instagram,
+          tone: 'danger',
+          title: 'Automação do Instagram com problema',
+          body: `${nome ? `${nome} · ` : ''}o post alvo foi marcado como postado sem passar pelo app, então não existe mídia para monitorar. Escolha o post publicado.`,
+        };
+      }
       return {
         icon: Instagram,
         tone: 'danger',
         title: 'Automação do Instagram com problema',
         body: 'Uma automação de comentários parou de enviar. Reconecte o Instagram do cliente para reativar.',
       };
+    }
     case 'storage_autoclean_report': {
       const filesCount = typeof m.files_count === 'number' ? m.files_count : 0;
       const bytesFreed = typeof m.bytes_freed === 'number' ? m.bytes_freed : 0;

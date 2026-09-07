@@ -27,7 +27,7 @@ function invalidateCache(clientId: number) {
   }
 }
 
-async function getAuthHeaders() {
+export async function getAuthHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
