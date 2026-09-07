@@ -381,6 +381,23 @@ describe('AutomacoesPage', () => {
     expect(within(row).queryByText('unlinkedTargetAction')).not.toBeInTheDocument();
   });
 
+  it('hides the retarget action while membership is still hydrating (can === "unknown"), but still shows the badge', async () => {
+    // `can()` returns 'unknown' (truthy) before the membership fetch settles
+    // -- `makeCan(null)` reproduces that exact state, same as a fresh
+    // AuthContext (see AppLayout.test.tsx and useIsWorkspaceOwner.test.tsx).
+    // This is the actual reason the row uses `=== true` and not a truthy
+    // check: a truthy check would let the action flash on screen for a user
+    // who turns out to lack the permission once hydration resolves.
+    setAuth({ can: makeCan(null) });
+    mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('unlinkedTargetAction')).not.toBeInTheDocument();
+  });
+
   it('shows the retarget action with automacoes:editar and opens the dialog on the "published" tab for that automation', async () => {
     mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
 
