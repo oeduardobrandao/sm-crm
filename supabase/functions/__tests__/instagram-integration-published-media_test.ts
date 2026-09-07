@@ -376,3 +376,85 @@ Deno.test("published-media: limit fracionario e inteirizado antes de ir pra Grap
   assertStringIncludes(urlUsada, "limit=30");
   assertEquals(urlUsada.includes("30.7"), false);
 });
+
+// --- Correcao 1: a Graph so preenche thumbnail_url para VIDEO --------------
+//
+// Pedir so `thumbnail_url` deixa o card sem imagem pra IMAGE e CAROUSEL_ALBUM
+// -- justamente o tipo do caso real de producao que motivou a feature. Este
+// teste fixa o `fields` enviado a Graph pra que uma futura mudanca nao volte
+// a tirar `media_url`/`children{media_url}` sem querer.
+Deno.test("published-media: pede media_url, thumbnail_url e children{media_url} numa unica chamada", async () => {
+  let urlUsada = "";
+  const res = await handlePublishedMedia(
+    req("42"),
+    makeDeps({ permission: true, onFetch: (u: string) => { urlUsada = u; } }),
+  );
+  assertEquals(res.status, 200);
+  const fields = new URL(urlUsada).searchParams.get("fields");
+  assertEquals(
+    fields,
+    "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{media_url}",
+  );
+});
+
+// --- Correcao 1: os tres fallbacks de thumbnail, um por tipo de midia ------
+
+Deno.test("published-media: VIDEO resolve o thumbnail por thumbnail_url", async () => {
+  const graph = {
+    data: [{
+      id: "1", caption: null, media_type: "VIDEO",
+      media_url: "https://cdn/video.mp4", thumbnail_url: "https://cdn/video-thumb.jpg",
+      permalink: "p", timestamp: "2026-09-07T12:00:00+0000",
+    }],
+    paging: {},
+  };
+  const res = await handlePublishedMedia(req("42"), makeDeps({ permission: true, graph }));
+  const body = await res.json();
+  assertEquals(body.posts[0].thumbnail_url, "https://cdn/video-thumb.jpg");
+});
+
+Deno.test("published-media: IMAGE resolve o thumbnail por media_url (sem thumbnail_url)", async () => {
+  const graph = {
+    data: [{
+      id: "2", caption: null, media_type: "IMAGE",
+      media_url: "https://cdn/image.jpg", thumbnail_url: null,
+      permalink: "p", timestamp: "2026-09-07T12:00:00+0000",
+    }],
+    paging: {},
+  };
+  const res = await handlePublishedMedia(req("42"), makeDeps({ permission: true, graph }));
+  const body = await res.json();
+  assertEquals(body.posts[0].thumbnail_url, "https://cdn/image.jpg");
+});
+
+Deno.test("published-media: CAROUSEL_ALBUM resolve o thumbnail pelo primeiro filho (sem thumbnail_url nem media_url proprios)", async () => {
+  // Caso real de producao que motivou a feature: 18133930105628236,
+  // "Calendario Setembro" -- um CAROUSEL_ALBUM, o tipo que nunca traz
+  // thumbnail_url no objeto pai.
+  const graph = {
+    data: [{
+      id: "18133930105628236", caption: "Calendario Setembro", media_type: "CAROUSEL_ALBUM",
+      media_url: null, thumbnail_url: null,
+      children: { data: [{ media_url: "https://cdn/child-1.jpg" }, { media_url: "https://cdn/child-2.jpg" }] },
+      permalink: "p", timestamp: "2026-09-07T12:00:00+0000",
+    }],
+    paging: {},
+  };
+  const res = await handlePublishedMedia(req("42"), makeDeps({ permission: true, graph }));
+  const body = await res.json();
+  assertEquals(body.posts[0].thumbnail_url, "https://cdn/child-1.jpg");
+});
+
+Deno.test("published-media: CAROUSEL_ALBUM sem children vira thumbnail null (nao quebra)", async () => {
+  const graph = {
+    data: [{
+      id: "3", caption: null, media_type: "CAROUSEL_ALBUM",
+      media_url: null, thumbnail_url: null,
+      permalink: "p", timestamp: "2026-09-07T12:00:00+0000",
+    }],
+    paging: {},
+  };
+  const res = await handlePublishedMedia(req("42"), makeDeps({ permission: true, graph }));
+  const body = await res.json();
+  assertEquals(body.posts[0].thumbnail_url, null);
+});

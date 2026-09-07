@@ -48,6 +48,21 @@ export type PublishedMediaItem = {
   timestamp: string;
 };
 
+// Formato bruto que a Graph devolve por item de `/me/media`. `media_url` e
+// `children` sao opcionais porque so vem preenchidos conforme o `media_type`
+// (ver comentario no fallback do mapeamento abaixo) -- por isso este tipo,
+// mais frouxo que `PublishedMediaItem`, em vez de `Record<string, string>`.
+type GraphMediaItem = {
+  id: string;
+  caption?: string | null;
+  media_type: string;
+  media_url?: string | null;
+  thumbnail_url?: string | null;
+  permalink: string;
+  timestamp: string;
+  children?: { data?: { media_url?: string | null }[] };
+};
+
 export async function handlePublishedMedia(req: Request, deps: Deps): Promise<Response> {
   const json = (b: unknown, s = 200) =>
     new Response(JSON.stringify(b), { status: s, headers: { ...deps.corsHeaders, "Content-Type": "application/json" } });
@@ -120,7 +135,12 @@ export async function handlePublishedMedia(req: Request, deps: Deps): Promise<Re
   const token = await deps.decryptToken(account.encrypted_access_token);
 
   const params = new URLSearchParams({
-    fields: "id,caption,media_type,thumbnail_url,permalink,timestamp",
+    // `thumbnail_url` so vem preenchido para VIDEO. IMAGE traz `media_url`, e
+    // CAROUSEL_ALBUM nao traz nenhum dos dois no proprio objeto -- e preciso
+    // o primeiro filho, que `children{media_url}` expande na MESMA resposta
+    // (sem o N+1 que o sync em index.ts faz pro carrossel). Ver fallback logo
+    // abaixo, no mapeamento de `payload.data`.
+    fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{media_url}",
     limit: String(limit),
     access_token: token,
   });
@@ -147,9 +167,12 @@ export async function handlePublishedMedia(req: Request, deps: Deps): Promise<Re
       return json({ error: true, message: "Nao foi possivel listar as midias" }, 502);
     }
     return json({
-      posts: (payload.data ?? []).map((m: Record<string, string>) => ({
+      posts: (payload.data ?? []).map((m: GraphMediaItem) => ({
         id: m.id, caption: m.caption ?? null, media_type: m.media_type,
-        thumbnail_url: m.thumbnail_url ?? null, permalink: m.permalink, timestamp: m.timestamp,
+        // VIDEO -> thumbnail_url; IMAGE -> media_url; CAROUSEL_ALBUM -> primeiro
+        // filho (nem thumbnail_url nem media_url vem no objeto pai pra esse tipo).
+        thumbnail_url: m.thumbnail_url ?? m.media_url ?? m.children?.data?.[0]?.media_url ?? null,
+        permalink: m.permalink, timestamp: m.timestamp,
       })),
       next_cursor: payload.paging?.cursors?.after ?? null,
     });
