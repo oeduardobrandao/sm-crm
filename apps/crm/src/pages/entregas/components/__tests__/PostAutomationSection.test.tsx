@@ -32,18 +32,23 @@ vi.mock('@/pages/automacoes/AutomationFormDialog', () => ({
     open,
     editing,
     initialTarget,
+    initialTab,
     elevated,
+    onSaved,
   }: {
     open: boolean;
     editing: InstagramCommentAutomation | null;
     initialTarget?: unknown;
+    initialTab?: 'production' | 'published';
     elevated?: boolean;
+    onSaved: () => void;
   }) =>
     open ? (
-      <div data-testid="automation-dialog">
+      <div data-testid="automation-dialog" data-initial-tab={initialTab ?? ''}>
         <span data-testid="dialog-editing">{editing?.id ?? 'none'}</span>
         <span data-testid="dialog-initial-target">{JSON.stringify(initialTarget ?? null)}</span>
         <span data-testid="dialog-elevated">{String(elevated ?? false)}</span>
+        <button onClick={onSaved}>salvar-mock</button>
       </div>
     ) : null,
 }));
@@ -334,5 +339,80 @@ describe('PostAutomationSection', () => {
     renderSection({ canManage: true });
 
     expect(await screen.findByRole('button', { name: 'postSection.createForPost' })).toBeTruthy();
+  });
+
+  it('mostra o alvo não vinculado e a ação de re-mirar no drawer', async () => {
+    mockGetAutomationsForPost.mockResolvedValue([
+      makeAutomation({
+        workflow_post_id: 4038,
+        ig_media_id: null,
+        target_unlinked_at: '2026-08-31T23:55:44.000Z',
+      }),
+    ]);
+    renderSection({ canManage: true });
+
+    expect(await screen.findByText('unlinkedTargetBadge')).toBeInTheDocument();
+    expect(screen.getByText('unlinkedTargetAction')).toBeInTheDocument();
+  });
+
+  it('hides the retarget action without canManage, but still shows the unlinked badge', async () => {
+    mockGetAutomationsForPost.mockResolvedValue([
+      makeAutomation({
+        workflow_post_id: 4038,
+        ig_media_id: null,
+        target_unlinked_at: '2026-08-31T23:55:44.000Z',
+      }),
+    ]);
+    renderSection({ canManage: false });
+
+    expect(await screen.findByText('unlinkedTargetBadge')).toBeInTheDocument();
+    expect(screen.queryByText('unlinkedTargetAction')).not.toBeInTheDocument();
+  });
+
+  it('opens the dialog on the "published" tab, editing that same automation, when retargeting', async () => {
+    mockGetAutomationsForPost.mockResolvedValue([
+      makeAutomation({
+        id: 'auto-unlinked',
+        workflow_post_id: 4038,
+        ig_media_id: null,
+        target_unlinked_at: '2026-08-31T23:55:44.000Z',
+      }),
+    ]);
+    renderSection({ canManage: true });
+
+    fireEvent.click(await screen.findByText('unlinkedTargetAction'));
+
+    const dialog = await screen.findByTestId('automation-dialog');
+    expect(dialog).toHaveAttribute('data-initial-tab', 'published');
+    expect(screen.getByTestId('dialog-editing').textContent).toBe('auto-unlinked');
+  });
+
+  it('clears the retarget tab once the dialog is saved, so a later normal edit does not inherit it', async () => {
+    mockGetAutomationsForPost.mockResolvedValue([
+      makeAutomation({
+        id: 'auto-unlinked',
+        workflow_post_id: 4038,
+        ig_media_id: null,
+        target_unlinked_at: '2026-08-31T23:55:44.000Z',
+      }),
+    ]);
+    renderSection({ canManage: true });
+
+    fireEvent.click(await screen.findByText('unlinkedTargetAction'));
+    expect(await screen.findByTestId('automation-dialog')).toHaveAttribute(
+      'data-initial-tab',
+      'published',
+    );
+
+    // Saving closes the dialog; a subsequent NORMAL edit on the same
+    // automation must not inherit the "published" tab from the retarget flow
+    // (state has to reset on close, same invariant as AutomacoesPage).
+    fireEvent.click(screen.getByText('salvar-mock'));
+    await waitFor(() => expect(screen.queryByTestId('automation-dialog')).not.toBeInTheDocument());
+
+    fireEvent.click(await screen.findByText('Promo de agosto'));
+
+    const secondDialog = await screen.findByTestId('automation-dialog');
+    expect(secondDialog).toHaveAttribute('data-initial-tab', '');
   });
 });

@@ -7,9 +7,7 @@ import { enUS, ptBR } from 'date-fns/locale';
 import {
   ChevronDown,
   ChevronRight,
-  ExternalLink,
   Info,
-  Instagram,
   Link2,
   MessageCircle,
   MoreVertical,
@@ -59,7 +57,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
-import { sanitizeUrl } from '@/utils/security';
 import { deleteAutomationMedia } from '../../services/automationMedia';
 import {
   getInstagramAutomations,
@@ -74,6 +71,7 @@ import {
   type Cliente,
 } from '../../store';
 import AutomationFormDialog from './AutomationFormDialog';
+import { AutomationTargetCell } from './AutomationTargetCell';
 import AutomacoesChecklist from './AutomacoesChecklist';
 import TourOverlay from './tour/TourOverlay';
 import { useAutomationTour } from './tour/useAutomationTour';
@@ -452,60 +450,11 @@ export default function AutomacoesPage() {
                         </div>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {a.pending_post_deleted_at ? (
-                          <Badge variant="neutral" size="sm">
-                            {t('deletedPostBadge')}
-                          </Badge>
-                        ) : a.ig_media_id ? (
-                          a.media_permalink ? (
-                            <a
-                              href={sanitizeUrl(a.media_permalink)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1"
-                              style={{ color: 'var(--primary-color)' }}
-                            >
-                              <Instagram className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
-                              {a.media_caption ? truncate(a.media_caption, 40) : t('viewPost')}
-                              <ExternalLink className="h-3 w-3" style={{ flexShrink: 0 }} />
-                            </a>
-                          ) : (
-                            <span className="flex items-center gap-1">
-                              <Instagram className="h-3.5 w-3.5" style={{ flexShrink: 0 }} />
-                              {a.media_caption ? truncate(a.media_caption, 40) : t('viewPost')}
-                            </span>
-                          )
-                        ) : a.workflow_post_id ? (
-                          a.target_unlinked_at ? (
-                            <span className="flex flex-wrap items-center gap-1.5">
-                              {truncate(a.media_caption ?? '', 40)}
-                              <Badge variant="warning" size="sm" title={t('unlinkedTargetHint')}>
-                                {t('unlinkedTargetBadge')}
-                              </Badge>
-                              {can('automacoes', 'editar') === true && (
-                                <button
-                                  type="button"
-                                  className="text-xs underline"
-                                  style={{ color: 'var(--primary-color)' }}
-                                  onClick={() => openRetarget(a)}
-                                >
-                                  {t('unlinkedTargetAction')}
-                                </button>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="flex flex-wrap items-center gap-1.5">
-                              {truncate(a.media_caption ?? '', 40)}
-                              <Badge variant="info" size="sm">
-                                {t('pendingBadge')}
-                              </Badge>
-                            </span>
-                          )
-                        ) : (
-                          <Badge variant="neutral" size="sm">
-                            {t('allPosts')}
-                          </Badge>
-                        )}
+                        <AutomationTargetCell
+                          automation={a}
+                          canEdit={can('automacoes', 'editar') === true}
+                          onRetarget={openRetarget}
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">

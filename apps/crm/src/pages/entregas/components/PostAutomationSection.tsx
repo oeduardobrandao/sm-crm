@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import type { SelectedTarget } from '@/pages/automacoes/AutomationFormDialog';
+import { AutomationTargetCell } from '@/pages/automacoes/AutomationTargetCell';
 import {
   getAutomationsForPost,
   type InstagramCommentAutomation,
@@ -27,13 +28,6 @@ const AutomationFormDialog = lazy(() => import('@/pages/automacoes/AutomationFor
 /** Same cap the dialog applies to a caption snapshot. */
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
-}
-
-/** Mirrors the Automações listing: a null `ig_media_id` means the target has not
- * published yet. A tombstoned automation never reaches this list -- its post is
- * gone, so this drawer does not exist either. */
-function isAwaitingPublication(a: InstagramCommentAutomation): boolean {
-  return a.workflow_post_id != null && a.ig_media_id == null;
 }
 
 export function PostAutomationSection({
@@ -61,6 +55,12 @@ export function PostAutomationSection({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<InstagramCommentAutomation | null>(null);
+  /** Only set by `openRetarget` below, to jump an orphaned-target automation
+   * straight into the "published" live media picker. Must be cleared whenever
+   * the dialog closes (both the close and the onSaved path), or a later
+   * NORMAL edit would inherit the "published" tab. Mirrors AutomacoesPage's
+   * identical `retargetTab`. */
+  const [retargetTab, setRetargetTab] = useState<'production' | 'published' | undefined>();
 
   // Comments only exist on an Instagram post that can still be commented on:
   // Stories expire, a TikTok-only post never gets an IG media id, and without a
@@ -126,19 +126,21 @@ export function PostAutomationSection({
     setEditing(a);
     setDialogOpen(true);
   };
-
-  const renderBadges = (a: InstagramCommentAutomation) => (
-    <>
-      <Badge variant={a.ativo ? 'success' : 'neutral'} size="sm">
-        {a.ativo ? t('status.active') : t('status.inactive')}
-      </Badge>
-      {isAwaitingPublication(a) && (
-        <Badge variant="info" size="sm">
-          {t('pendingBadge')}
-        </Badge>
-      )}
-    </>
-  );
+  /** Reuses `openEdit` (same setters) and additionally forces the
+   * "published" tab -- `AutomationFormDialog` only turns that into its
+   * re-mirror mode (live Graph API picker) when the automation being edited
+   * also carries `target_unlinked_at`, so this is safe to call generically. */
+  const openRetarget = (a: InstagramCommentAutomation) => {
+    setRetargetTab('published');
+    openEdit(a);
+  };
+  /** `dialogOpen`'s only setter besides `onSaved` below -- both closing
+   * paths must clear `retargetTab`, or a retarget flow (published) followed
+   * by closing without saving would leak into the next normal edit. */
+  const closeDialog = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) setRetargetTab(undefined);
+  };
 
   return (
     <div
@@ -169,38 +171,49 @@ export function PostAutomationSection({
         </p>
       ) : (
         <div className="flex flex-col gap-1">
-          {automations.map((a) =>
-            canManage ? (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => openEdit(a)}
-                className="flex flex-wrap items-center gap-1.5 text-xs rounded-md px-2 py-1.5 text-left"
-                style={{
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--surface-main)',
-                  color: 'var(--text-main)',
-                  cursor: 'pointer',
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>{a.name}</span>
-                {renderBadges(a)}
-              </button>
-            ) : (
-              <div
-                key={a.id}
-                className="flex flex-wrap items-center gap-1.5 text-xs rounded-md px-2 py-1.5"
-                style={{
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--surface-main)',
-                  color: 'var(--text-main)',
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>{a.name}</span>
-                {renderBadges(a)}
-              </div>
-            ),
-          )}
+          {automations.map((a) => (
+            <div
+              key={a.id}
+              className="flex flex-col gap-1 rounded-md px-2 py-1.5 text-xs"
+              style={{
+                border: '1px solid var(--border-color)',
+                background: 'var(--surface-main)',
+                color: 'var(--text-main)',
+              }}
+            >
+              {/* The name is its own button (not the whole row): the target
+                  cell below carries its own retarget button, and a button
+                  can't nest inside another button. */}
+              {canManage ? (
+                <button
+                  type="button"
+                  onClick={() => openEdit(a)}
+                  className="flex flex-wrap items-center gap-1.5 text-left"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    color: 'inherit',
+                    font: 'inherit',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ fontWeight: 600 }}>{a.name}</span>
+                  <Badge variant={a.ativo ? 'success' : 'neutral'} size="sm">
+                    {a.ativo ? t('status.active') : t('status.inactive')}
+                  </Badge>
+                </button>
+              ) : (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span style={{ fontWeight: 600 }}>{a.name}</span>
+                  <Badge variant={a.ativo ? 'success' : 'neutral'} size="sm">
+                    {a.ativo ? t('status.active') : t('status.inactive')}
+                  </Badge>
+                </div>
+              )}
+              <AutomationTargetCell automation={a} canEdit={canManage} onRetarget={openRetarget} />
+            </div>
+          ))}
         </div>
       )}
 
@@ -216,15 +229,21 @@ export function PostAutomationSection({
         <Suspense fallback={null}>
           <AutomationFormDialog
             open
-            onOpenChange={setDialogOpen}
+            onOpenChange={closeDialog}
             editing={editing}
             // An edit carries its own target; only a creation gets seeded.
             initialTarget={editing ? null : initialTarget}
+            // Only set by `openRetarget` -- jumps a re-mirror flow straight to
+            // the live media picker. `AutomationFormDialog` only turns this
+            // into its re-mirror mode when `editing` also carries
+            // `target_unlinked_at`, so it is a no-op for a normal edit.
+            initialTab={retargetTab}
             // This section lives inside the drawer panel, which out-stacks the
             // dialog's default z-50 and would swallow it whole.
             elevated
             onSaved={() => {
               setDialogOpen(false);
+              setRetargetTab(undefined);
               // Prefix match: covers this post's key whatever media id it carries.
               qc.invalidateQueries({ queryKey: ['post-automations', post.id] });
               // AUTOMATIONS_KEY, spelled out rather than imported: pulling it
