@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
+import type { HubBriefingQuestionRow, BriefingRow } from '@/store/hub';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
+
+// A brief para este teste (task-4-brief.md) pedia `await userEvent.click(...)`, mas
+// @testing-library/user-event NÃO está instalado neste repo (confirmado: ausente de
+// package.json/package-lock.json e de node_modules/@testing-library; outros arquivos
+// de teste já documentam essa mesma restrição, ex. RelatorioEditorPage.test.tsx:56).
+// fireEvent.click é o padrão da casa e suficiente aqui: um chip é um <button> simples,
+// não um listbox Radix que precise de pointer events reais.
 
 // BriefingPage is a pure move of HubTab.tsx's BriefingEditor (git history at
 // d30adeea), already local (its own `useQueryClient()` and queries never
@@ -54,10 +62,10 @@ function OutletContextProvider({ cliente }: { cliente: Cliente }) {
   );
 }
 
-function renderPage(cliente: Cliente = CLIENTE) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPage(cliente: Cliente = CLIENTE, queryClient?: QueryClient) {
+  const client = queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>
           <Route element={<OutletContextProvider cliente={cliente} />}>
@@ -67,6 +75,49 @@ function renderPage(cliente: Cliente = CLIENTE) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+const BRIEFING_ID = 'br-1';
+
+type QuestionFixture = Pick<
+  HubBriefingQuestionRow,
+  'id' | 'question' | 'answer' | 'section' | 'display_order'
+>;
+
+/**
+ * Renders BriefingPage with a single briefing already selected and its questions
+ * already loaded -- seeded straight into the QueryClient's cache (not just mocked
+ * as the queryFn) so the very first render already reflects the final data. That
+ * matters here: the effect that defaults `selectedId` to the first briefing, and
+ * the derived filter/section computations, must already show their settled values
+ * by the time `render()` returns, since the brief's own test cases assert on them
+ * with a plain `screen.getByTestId(...)` (no `await`/`findBy`).
+ */
+function renderBriefing(questions: QuestionFixture[]) {
+  const briefing: BriefingRow = {
+    id: BRIEFING_ID,
+    cliente_id: CLIENTE.id!,
+    conta_id: CLIENTE.conta_id!,
+    title: 'Briefing principal',
+    display_order: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+  };
+  const fullQuestions: HubBriefingQuestionRow[] = questions.map((q) => ({
+    ...q,
+    cliente_id: CLIENTE.id!,
+    conta_id: CLIENTE.conta_id!,
+    briefing_id: BRIEFING_ID,
+    created_at: '2026-01-01T00:00:00.000Z',
+  }));
+
+  vi.mocked(hubStore.getBriefings).mockResolvedValue([briefing]);
+  vi.mocked(hubStore.getHubBriefingQuestions).mockResolvedValue(fullQuestions);
+
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryData(['briefings', CLIENTE.id], [briefing]);
+  queryClient.setQueryData(['hub-briefing-questions', CLIENTE.id], fullQuestions);
+
+  return renderPage(CLIENTE, queryClient);
 }
 
 describe('BriefingPage', () => {
@@ -99,5 +150,32 @@ describe('BriefingPage', () => {
         'O gerenciamento do Hub do Cliente está disponível apenas para proprietários e administradores do workspace.',
       ),
     ).toBeInTheDocument();
+  });
+
+  describe('filtro e progresso', () => {
+    const QUESTIONS: QuestionFixture[] = [
+      { id: 'a', question: 'P1', answer: 'R1', section: 'Negócio', display_order: 0 },
+      { id: 'b', question: 'P2', answer: null, section: 'Negócio', display_order: 1 },
+      { id: 'c', question: 'P3', answer: '', section: 'Público', display_order: 0 },
+    ];
+
+    it('conta respondidas tratando string vazia como não respondida', () => {
+      renderBriefing(QUESTIONS);
+      expect(screen.getByTestId('chip-todas')).toHaveTextContent('3');
+      expect(screen.getByTestId('chip-sem-resposta')).toHaveTextContent('2');
+      expect(screen.getByTestId('chip-respondidas')).toHaveTextContent('1');
+    });
+
+    it('filtra para as não respondidas ao clicar no chip', () => {
+      renderBriefing(QUESTIONS);
+      fireEvent.click(screen.getByTestId('chip-sem-resposta'));
+      expect(screen.getByText('P2')).toBeInTheDocument();
+      expect(screen.queryByText('P1')).not.toBeInTheDocument();
+    });
+
+    it('mostra progresso por seção no rail', () => {
+      renderBriefing(QUESTIONS);
+      expect(screen.getByTestId('secao-Negócio')).toHaveTextContent('1/2');
+    });
   });
 });
