@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { getSchema } from '@tiptap/core';
 import { pageEditorExtensions } from '../pageEditorSchema';
 import { richTextExtensions } from '../../../../../../hub/src/components/RichTextContent';
 
@@ -7,24 +8,34 @@ import { richTextExtensions } from '../../../../../../hub/src/components/RichTex
  * TipTap descarta o DOCUMENTO INTEIRO ao ler — o cliente abre a página do
  * portal e vê branco, sem erro em lugar nenhum. Este teste é a única coisa
  * entre esse bug e produção.
+ *
+ * Compara os SCHEMAS resolvidos (`getSchema`), não os nomes das extensões:
+ * `starterKit` é um único nome de extensão que expande para ~12 nós e
+ * marcas (heading, codeBlock, bulletList, bold, ...), então comparar nomes
+ * de extensão não pega o Hub configurando `StarterKit.configure({
+ * codeBlock: false })` -- os nomes continuam batendo enquanto o schema do
+ * Hub perde o nó de verdade. `getSchema` expande cada extensão nos nós e
+ * marcas que ela realmente registra, então essa divergência aparece como
+ * `node:codeBlock` faltando.
  */
 describe('contrato de schema entre o editor de Páginas e o leitor do Hub', () => {
   it('todo nó/marca que o editor persiste é conhecido pelo Hub', () => {
-    const names = (exts: { name: string }[]) => new Set(exts.map((e) => e.name));
-    const editor = names(pageEditorExtensions() as { name: string }[]);
-    const hub = names(richTextExtensions() as { name: string }[]);
+    const editorSchema = getSchema(pageEditorExtensions());
+    const hubSchema = getSchema(richTextExtensions());
 
-    // `placeholder` (@tiptap/extension-placeholder) só registra um plugin
-    // ProseMirror de decoração (addProseMirrorPlugins) -- não define node
-    // nem mark e não tem addAttributes/addGlobalAttributes. Não existe forma
-    // de `editor.getJSON()` conter um nó/marca "placeholder": o texto de
-    // placeholder é uma Decoration calculada ao vivo pela view, nunca parte
-    // do documento persistido. Por isso sua ausência no Hub não é o bug de
-    // página em branco que este teste existe para pegar -- confirmado lendo
-    // node_modules/@tiptap/extensions/src/placeholder/placeholder.ts.
-    const NEVER_PERSISTED = new Set(['placeholder']);
+    const missing = [
+      ...Object.keys(editorSchema.nodes)
+        .filter((n) => !(n in hubSchema.nodes))
+        .map((n) => `node:${n}`),
+      ...Object.keys(editorSchema.marks)
+        .filter((m) => !(m in hubSchema.marks))
+        .map((m) => `mark:${m}`),
+    ];
 
-    const missing = [...editor].filter((n) => !hub.has(n) && !NEVER_PERSISTED.has(n));
+    // Sem lista de exclusão: `Placeholder` (a única extensão do editor que o
+    // Hub não registra) não define node nem mark -- só um plugin
+    // ProseMirror de decoração -- então nunca aparece em
+    // `editorSchema.nodes`/`marks` e nunca precisaria ser filtrado aqui.
     expect(missing, `Hub não conhece: ${missing.join(', ')}`).toEqual([]);
   });
 
