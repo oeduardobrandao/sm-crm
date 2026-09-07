@@ -16,7 +16,12 @@ import { CalloutExtension } from '@/pages/entregas/components/CalloutExtension';
  */
 export function pageEditorExtensions(): AnyExtension[] {
   return [
-    StarterKit,
+    // StarterKit v3 already bundles Link and Underline. Without `link: false` /
+    // `underline: false` both register twice -- TipTap logs "Duplicate extension
+    // names found: ['link','underline']" and keeps BOTH Link instances live, so
+    // StarterKit's own `openOnClick: true` handler fires alongside the `openOnClick:
+    // false` one configured below, and clicking a link while editing navigates away.
+    StarterKit.configure({ link: false, underline: false }),
     UnderlineExt,
     TextStyle,
     Color,

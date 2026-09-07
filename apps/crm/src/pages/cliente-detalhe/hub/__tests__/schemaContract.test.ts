@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import { pageEditorExtensions } from '../pageEditorSchema';
 import { richTextExtensions } from '../../../../../../hub/src/components/RichTextContent';
@@ -44,5 +44,23 @@ describe('contrato de schema entre o editor de Páginas e o leitor do Hub', () =
     for (const banned of ['mention', 'commentHighlight', 'inlineImage', 'youtube', 'iframe']) {
       expect(names.has(banned), `${banned} não pode estar no editor de Páginas`).toBe(false);
     }
+  });
+
+  // Regression guard for Finding 2 (task-9 fix round 1): StarterKit v3 already bundles
+  // Link and Underline. Both editors register `UnderlineExt`/`Link.configure(...)` again
+  // on top -- without `StarterKit.configure({ link: false, underline: false })` that left
+  // TWO Link extensions live with conflicting `openOnClick` options, so clicking a link
+  // while editing navigated the tab away instead of doing nothing.
+  it('não registra as extensões link/underline em duplicidade', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    getSchema(pageEditorExtensions());
+    getSchema(richTextExtensions());
+
+    const duplicateWarning = warnSpy.mock.calls.find((call) =>
+      String(call[0]).includes('Duplicate extension names found'),
+    );
+    expect(duplicateWarning).toBeUndefined();
+    warnSpy.mockRestore();
   });
 });

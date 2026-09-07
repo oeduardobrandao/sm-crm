@@ -19,7 +19,13 @@ import { MentionReadonly } from './MentionReadonly';
  */
 export function richTextExtensions(editable = false) {
   return [
-    StarterKit,
+    // StarterKit v3 already bundles Link and Underline. Without `link: false` /
+    // `underline: false` both register twice -- TipTap logs "Duplicate extension
+    // names found: ['link','underline']" and keeps BOTH Link instances live, so
+    // StarterKit's own `openOnClick: true` handler fires alongside the one configured
+    // below. `openOnClick: !editable` further down is deliberate (portal links should
+    // open in the read-only view) -- this only removes the duplicate registration.
+    StarterKit.configure({ link: false, underline: false }),
     UnderlineExt,
     TextStyle,
     Color,

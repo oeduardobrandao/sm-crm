@@ -28,7 +28,7 @@ import { CommentHighlight } from './CommentHighlight';
 import { MentionNode } from '@/components/mentions/MentionNode';
 import { mentionHref } from '@/components/mentions/mentionHref';
 import { MentionSuggestion } from '@/components/mentions/mentionSuggestion';
-import { useMentionSearch } from '@/components/mentions/useMentionSearch';
+import { useMentionSearch, type MentionSection } from '@/components/mentions/useMentionSearch';
 import { MentionTextarea } from '@/components/mentions/MentionTextarea';
 import type { MentionEntityType } from '@/components/mentions/types';
 import { createInlineImageExtension } from './InlineImageExtension';
@@ -47,6 +47,45 @@ const TEXT_COLORS = [
   { name: 'Roxo', color: '#9065B0' },
   { name: 'Rosa', color: '#C14C8A' },
 ] as const;
+
+/**
+ * Extracted from `useEditor`'s inline array so the schema can be asserted on directly
+ * (see `__tests__/postEditorExtensions.test.ts`) without mounting the full editor --
+ * PostEditor needs live TanStack Query data (useMentionSearch) and a Router, which makes
+ * a full render expensive to set up just to check the extension set. Mirrors the same
+ * export-for-testability pattern already used by `readOnlyTipTapExtensions`
+ * (ReadOnlyTipTap.tsx) and `pageEditorExtensions` (cliente-detalhe/hub/pageEditorSchema.ts).
+ */
+export function postEditorExtensions({
+  mentionSearch,
+  onUploadInlineImage,
+}: {
+  mentionSearch: (query: string) => Promise<MentionSection[]>;
+  onUploadInlineImage?: InlineImageUploadFn;
+}) {
+  return [
+    // StarterKit v3 already bundles Link and Underline. Without `link: false` /
+    // `underline: false` both register twice -- TipTap logs "Duplicate extension
+    // names found: ['link','underline']" and keeps BOTH Link instances live, so
+    // StarterKit's own `openOnClick: true` handler fires alongside the `openOnClick:
+    // false` one configured below, and clicking a link while editing navigates away.
+    StarterKit.configure({ link: false, underline: false }),
+    UnderlineExt,
+    TextStyle,
+    Color,
+    Highlight.configure({
+      multicolor: true,
+      HTMLAttributes: {},
+    }),
+    Link.configure({ openOnClick: false, autolink: true }),
+    Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
+    CalloutExtension,
+    CommentHighlight,
+    MentionNode,
+    MentionSuggestion.configure({ search: mentionSearch }),
+    ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
+  ];
+}
 
 const HIGHLIGHT_COLORS = [
   { name: 'Nenhum', color: null, cssColor: 'transparent' },
@@ -130,23 +169,7 @@ export function PostEditor({
   const mentionSearchFn = useRef((query: string) => mentionSearchRef.current(query)).current;
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      UnderlineExt,
-      TextStyle,
-      Color,
-      Highlight.configure({
-        multicolor: true,
-        HTMLAttributes: {},
-      }),
-      Link.configure({ openOnClick: false, autolink: true }),
-      Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
-      CalloutExtension,
-      CommentHighlight,
-      MentionNode,
-      MentionSuggestion.configure({ search: mentionSearchFn }),
-      ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
-    ],
+    extensions: postEditorExtensions({ mentionSearch: mentionSearchFn, onUploadInlineImage }),
     content: initialContent ?? undefined,
     editable: !disabled,
     onCreate: () => {
