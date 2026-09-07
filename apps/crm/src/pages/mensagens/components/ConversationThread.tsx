@@ -173,7 +173,7 @@ export function ConversationThread({
             return (
               <div
                 key={feedItemKey(m)}
-                className="flex items-center gap-2 self-center text-xs text-[var(--text-muted)]"
+                className="flex items-center gap-2 self-start text-xs text-[var(--text-muted)]"
               >
                 {m.source === 'edit_suggestion' ? (
                   <FilePen size={13} />
