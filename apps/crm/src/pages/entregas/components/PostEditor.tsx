@@ -250,7 +250,7 @@ export function PostEditor({
             'aria-multiline': 'true',
           },
         }
-      : undefined,
+      : {},
   });
 
   const handleImageSelection = useCallback(
