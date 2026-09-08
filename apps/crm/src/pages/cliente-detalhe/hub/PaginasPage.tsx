@@ -404,6 +404,16 @@ function PageEditorPane({
   const titleRef = useRef(title);
   titleRef.current = title;
   const draftTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // A MESMA função `saveDraft` que `scheduleDraftSave` fechou ao agendar o debounce
+  // pendente -- nunca a mais recente. `draftKey` (e por tabela a identidade de
+  // `saveDraft`, vinda de `usePageDraft`) muda sempre que a prop `page` muda, e isso
+  // acontece SEM desmontar este componente: excluir a página faz `currentPage` virar
+  // `null` num re-render antes do `key` do painel (lá em cima, em `selectedId`) ser
+  // atualizado, então este mesmo componente segue vivo com `draftKey` agora apontando
+  // pra `new-<clienteId>`. Se o flush de desmontagem dependesse de `saveDraft` "atual"
+  // (como antes), ele gravaria o rascunho pendente sob a chave ERRADA -- a de "Nova
+  // página" -- em vez da chave sob a qual foi agendado (Finding 2, fix round 3).
+  const pendingSaveRef = useRef<typeof saveDraft | null>(null);
 
   const isDirty =
     title !== (page?.title ?? '') || JSON.stringify(doc) !== JSON.stringify(loaded.doc);
@@ -434,14 +444,24 @@ function PageEditorPane({
   // cancelar (como antes) perdia o título/corpo mais recentes sempre que a troca
   // acontecia dentro da janela de 400ms, contradizendo o diálogo de confirmação, que
   // promete que as alterações ficam guardadas no navegador (Finding 2).
+  //
+  // Deps `[]` de propósito (fix round 3): `saveDraft` muda de identidade toda vez que
+  // `draftKey` muda, o que acontece a cada re-render em que a prop `page` muda -- não
+  // só ao desmontar de verdade. Depender de `[saveDraft]` reexecutava esta limpeza a
+  // cada troca de página/prop, cada vez chamando a versão de `saveDraft` do momento em
+  // vez da que estava em vigor quando o debounce foi agendado -- gravando o rascunho
+  // pendente sob a chave ERRADA. `pendingSaveRef` (atualizado só em
+  // `scheduleDraftSave`, nunca em todo render) fixa o alvo correto, e a limpeza roda
+  // uma única vez, no desmonte de verdade.
   useEffect(
     () => () => {
       if (draftTimeoutRef.current) {
         clearTimeout(draftTimeoutRef.current);
-        saveDraft(titleRef.current, docRef.current);
+        draftTimeoutRef.current = undefined;
+        pendingSaveRef.current?.(titleRef.current, docRef.current);
       }
     },
-    [saveDraft],
+    [],
   );
 
   // Grava o rascunho (título + doc, sempre os dois juntos) com um pequeno debounce
@@ -452,7 +472,16 @@ function PageEditorPane({
   // enquanto o título voltava do servidor).
   function scheduleDraftSave() {
     if (draftTimeoutRef.current) clearTimeout(draftTimeoutRef.current);
+    pendingSaveRef.current = saveDraft;
     draftTimeoutRef.current = setTimeout(() => {
+      // Zera ANTES de gravar, não depois de agendar: sem isto, `draftTimeoutRef.current`
+      // ficava com o id do timer já disparado para sempre (só era limpo em
+      // `handleSave`), então o flush de desmontagem acima achava que havia um debounce
+      // PENDENTE muito depois de ele já ter gravado -- a causa raiz do Finding 2 (fix
+      // round 3): editar uma página e excluí-la ressuscitava o rascunho já apagado por
+      // `clearDraft()`, e ainda vazava o conteúdo apagado para o rascunho de "Nova
+      // página" do mesmo cliente.
+      draftTimeoutRef.current = undefined;
       saveDraft(titleRef.current, docRef.current);
     }, 400);
   }
@@ -475,6 +504,7 @@ function PageEditorPane({
     if (draftTimeoutRef.current) {
       clearTimeout(draftTimeoutRef.current);
       draftTimeoutRef.current = undefined;
+      pendingSaveRef.current = null;
     }
     const wasCreate = !page;
     setSaving(true);
@@ -499,6 +529,15 @@ function PageEditorPane({
   async function handleDelete() {
     if (!page) return;
     if (!window.confirm('Remover esta página? Essa ação não pode ser desfeita.')) return;
+    // Cancela qualquer debounce pendente ANTES de excluir -- sem isto, um
+    // `scheduleDraftSave` dos últimos 400ms ainda dispararia depois do
+    // `clearDraft()` abaixo, ressuscitando o rascunho da página que acabou de ser
+    // apagada (Finding 2, fix round 3).
+    if (draftTimeoutRef.current) {
+      clearTimeout(draftTimeoutRef.current);
+      draftTimeoutRef.current = undefined;
+      pendingSaveRef.current = null;
+    }
     try {
       await removeHubPage(page.id);
       clearDraft();

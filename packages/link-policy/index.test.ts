@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAllowedRichTextLinkUrl } from './index';
+import { isAllowedRichTextLinkUrl, isAllowedRichTextAutolinkUrl } from './index';
 
 // Unit coverage for the policy itself (see index.ts for the full rationale). The
 // integration-level assertions -- that this function is actually WIRED into both the
@@ -52,5 +52,56 @@ describe('isAllowedRichTextLinkUrl', () => {
     // isto não é um bypass (o resultado é um http comum, já permitido de qualquer jeito),
     // só confirma que o parsing não quebra nem deixa a credencial escapar da checagem.
     expect(isAllowedRichTextLinkUrl('http:\t//evil.com')).toBe(true);
+  });
+});
+
+// Unit coverage for the autolink-aware wrapper (Finding 1, task-11 fix round 3). The
+// integration-level assertions -- that autolink actually produces a link while TYPING,
+// not just that this function returns true in isolation -- live in
+// PaginaRichTextEditor.test.tsx and postEditorAutolink.test.ts: that distinction is
+// exactly what let the previous round's regression (isAllowedRichTextLinkUrl wired
+// straight into `isAllowedUri` on an `autolink: true` extension) slip through.
+describe('isAllowedRichTextAutolinkUrl', () => {
+  it.each([
+    'contato@exemplo.com',
+    'contato+tag@exemplo.com.br',
+    'www.exemplo.com',
+    'exemplo.com',
+    'exemplo.com/pagina?x=1',
+  ])('permite o candidato sem esquema %s (resolve para mailto:/http: antes de testar)', (url) => {
+    expect(isAllowedRichTextAutolinkUrl(url)).toBe(true);
+  });
+
+  it.each(['https://exemplo.com', 'mailto:contato@exemplo.com', 'tel:+5511999999999'])(
+    'permite um candidato que já tem esquema %s, testado como está',
+    (url) => {
+      expect(isAllowedRichTextAutolinkUrl(url)).toBe(true);
+    },
+  );
+
+  it.each([
+    [null],
+    [undefined],
+    [''],
+    ['   '],
+    ['/pagina-interna'],
+    ['#ancora'],
+    ['./relativo'],
+    ['../relativo'],
+    ['//evil.com'],
+    ['palavra-sem-ponto'],
+    ['javascript:alert(1)'],
+    ['ftp://exemplo.com/arquivo'],
+    ['https://user:pass@exemplo.com'],
+  ])('recusa %s', (url) => {
+    expect(isAllowedRichTextAutolinkUrl(url as string | null | undefined)).toBe(false);
+  });
+
+  it('usa o defaultProtocol do contexto do TipTap ao resolver um domínio nu', () => {
+    expect(isAllowedRichTextAutolinkUrl('exemplo.com', { defaultProtocol: 'https' })).toBe(true);
+  });
+
+  it('cai para http quando o contexto não vem (mesmo default do TipTap)', () => {
+    expect(isAllowedRichTextAutolinkUrl('exemplo.com')).toBe(true);
   });
 });

@@ -6,7 +6,7 @@ import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { isAllowedRichTextLinkUrl } from '@mesaas/link-policy';
+import { isAllowedRichTextAutolinkUrl } from '@mesaas/link-policy';
 import { CalloutExtension } from '@/pages/entregas/components/CalloutExtension';
 
 /**
@@ -27,17 +27,23 @@ export function pageEditorExtensions(): AnyExtension[] {
     TextStyle,
     Color,
     Highlight.configure({ multicolor: true }),
-    // isAllowedRichTextLinkUrl (@mesaas/link-policy) is the same policy the Hub's reader
-    // enforces (RichTextContent.tsx): http/https/mailto/tel allowed, everything else
-    // (including relative/anchor-only URLs) rejected. Applying it here too -- not just on
-    // the read side -- closes the gap where this editor could persist a link the Hub then
-    // silently refuses to render (dead `href=""`, no feedback on either side). mailto/tel
-    // being allowed on both sides is what makes `autolink: true` safe to keep: an agency
-    // typing a contact email address no longer produces a link that dies in the portal.
+    // isAllowedRichTextAutolinkUrl (@mesaas/link-policy) is the autolink-aware form of
+    // the same policy the Hub's reader enforces (RichTextContent.tsx): http/https/
+    // mailto/tel allowed, everything else (including relative/anchor-only URLs)
+    // rejected. Applying it here too -- not just on the read side -- closes the gap
+    // where this editor could persist a link the Hub then silently refuses to render
+    // (dead `href=""`, no feedback on either side). It resolves a schemeless autolink
+    // candidate (TipTap validates the RAW TYPED TEXT, e.g. "contato@exemplo.com", not
+    // the `mailto:`/`http:` href it is about to assign) to that href before testing it
+    // -- the plain strict policy would reject every such candidate outright, silently
+    // disabling autolink for email addresses and bare domains instead of keeping them
+    // alive. mailto/tel being allowed on both sides is what makes `autolink: true` safe
+    // to keep: an agency typing a contact email address produces a working `mailto:`
+    // link, not one that dies in the portal.
     Link.configure({
       openOnClick: false,
       autolink: true,
-      isAllowedUri: (url) => isAllowedRichTextLinkUrl(url),
+      isAllowedUri: (url, ctx) => isAllowedRichTextAutolinkUrl(url, ctx),
     }),
     Placeholder.configure({ placeholder: 'Escreva o conteúdo da página…' }),
     CalloutExtension,

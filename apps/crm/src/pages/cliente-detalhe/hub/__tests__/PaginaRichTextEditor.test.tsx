@@ -147,3 +147,48 @@ describe('política de link do editor (Finding 1, fix round 2)', () => {
     expect(textbox.querySelector('a')).toBeNull();
   });
 });
+
+describe('autolink ao digitar (Finding 1, fix round 3)', () => {
+  // Regressão do fix round 2: TipTap's autolink plugin valida o TEXTO DIGITADO CRU do
+  // candidato a link, nunca o href que ele está prestes a atribuir à marca
+  // (@tiptap/extension-link's `autolink()` helper filtra em `link.value`, só usa
+  // `link.href` ao criar a marca). Passar `isAllowedRichTextLinkUrl` direto como
+  // `isAllowedUri` rejeitava todo candidato sem esquema -- "contato@exemplo.com" e
+  // "www.exemplo.com" nunca chegavam nem perto da lista de esquemas permitidos --
+  // trocando "link morto" por "nenhum link", exatamente o cenário que a política
+  // deveria evitar. Estes testes digitam de verdade (não chamam a política isolada)
+  // porque foi assim que a regressão escapou da rodada anterior.
+  it('digitar um e-mail seguido de espaço vira link mailto: de verdade', async () => {
+    render(<PaginaRichTextEditor doc={{ type: 'doc', content: [] }} onChange={vi.fn()} />);
+    const textbox = screen.getByRole('textbox');
+    await userEvent.click(textbox);
+    await userEvent.type(textbox, 'contato@exemplo.com ');
+    expect(textbox.querySelector('a[href="mailto:contato@exemplo.com"]')).not.toBeNull();
+  });
+
+  it('digitar um domínio nu seguido de espaço vira link http(s) de verdade', async () => {
+    render(<PaginaRichTextEditor doc={{ type: 'doc', content: [] }} onChange={vi.fn()} />);
+    const textbox = screen.getByRole('textbox');
+    await userEvent.click(textbox);
+    await userEvent.type(textbox, 'www.exemplo.com ');
+    const anchor = textbox.querySelector('a');
+    expect(anchor).not.toBeNull();
+    expect(anchor?.getAttribute('href')).toBe('http://www.exemplo.com');
+  });
+
+  it('digitar uma URL completa com esquema continua virando link (baseline preservado)', async () => {
+    render(<PaginaRichTextEditor doc={{ type: 'doc', content: [] }} onChange={vi.fn()} />);
+    const textbox = screen.getByRole('textbox');
+    await userEvent.click(textbox);
+    await userEvent.type(textbox, 'https://exemplo.com ');
+    expect(textbox.querySelector('a[href="https://exemplo.com"]')).not.toBeNull();
+  });
+
+  it('digitar um caminho relativo seguido de espaço não vira link', async () => {
+    render(<PaginaRichTextEditor doc={{ type: 'doc', content: [] }} onChange={vi.fn()} />);
+    const textbox = screen.getByRole('textbox');
+    await userEvent.click(textbox);
+    await userEvent.type(textbox, '/pagina-interna ');
+    expect(textbox.querySelector('a')).toBeNull();
+  });
+});

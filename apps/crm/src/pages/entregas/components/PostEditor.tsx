@@ -10,6 +10,7 @@ import Link from '@tiptap/extension-link';
 import Color from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
+import { isAllowedRichTextAutolinkUrl } from '@mesaas/link-policy';
 import {
   Bold,
   Italic,
@@ -77,7 +78,19 @@ export function postEditorExtensions({
       multicolor: true,
       HTMLAttributes: {},
     }),
-    Link.configure({ openOnClick: false, autolink: true }),
+    // isAllowedRichTextAutolinkUrl (@mesaas/link-policy) -- same policy and same
+    // autolink-aware resolution as the CRM's page editor (pageEditorSchema.ts):
+    // http/https/mailto/tel allowed, everything else (including relative/anchor-only
+    // and credentialed URLs) rejected. This Link extension had no `isAllowedUri` at
+    // all before, so an `ftp:`, credentialed, or relative URL typed into a post
+    // caption persisted here and then rendered as a dead `href=""` in the Hub, which
+    // enforces this same policy on read (RichTextContent.tsx, `autolink: false` there
+    // -- it only ever validates an already-resolved href, never raw typed text).
+    Link.configure({
+      openOnClick: false,
+      autolink: true,
+      isAllowedUri: (url, ctx) => isAllowedRichTextAutolinkUrl(url, ctx),
+    }),
     Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
     CalloutExtension,
     CommentHighlight,

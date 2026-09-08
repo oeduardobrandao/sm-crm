@@ -166,6 +166,34 @@ function renderPaginas({
   );
 }
 
+/**
+ * Variante de `renderPaginas` com um mock de `getHubPages`/`removeHubPage` com
+ * ESTADO -- necessária para os testes de exclusão (Finding 2, fix round 3):
+ * `renderPaginas` devolve sempre a MESMA lista fixa a cada refetch (`removeHubPage`
+ * mockado não afeta o que uma busca seguinte traz), então nada nesses testes jamais
+ * veria `currentPage` virar `null` depois de excluir -- o `invalidateQueries` do
+ * `onSaved` traria de volta a página "removida" inalterada.
+ */
+function renderPaginasDeletable(initialPages: HubPageRow[]) {
+  let current = initialPages.map((p) => ({ ...p }));
+  vi.mocked(hubStore.getHubPages).mockImplementation(async () => current.map((p) => ({ ...p })));
+  vi.mocked(hubStore.removeHubPage).mockImplementation(async (id: string) => {
+    current = current.filter((p) => p.id !== id);
+  });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route element={<OutletContextProvider cliente={CLIENTE} />}>
+            <Route path="/" element={<PaginasPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 // A tela tem DOIS elementos com role implícito "textbox": o <Input> de título e o
 // ProseMirror do editor. screen.findByRole('textbox') sozinho é ambíguo aqui (ao
 // contrário de PaginaRichTextEditor.test.tsx, isolado, onde só o editor existe) --
@@ -464,6 +492,80 @@ describe('PaginasPage', () => {
     await waitFor(() =>
       expect(localStorage.getItem(`hub-page-draft:new-${CLIENTE.id}`)).toBeNull(),
     );
+  });
+
+  // Finding 2 (fix round 3): `draftTimeoutRef.current` só era zerado em `handleSave` --
+  // nunca quando o PRÓPRIO timer disparava -- então o flush de desmontagem sempre achava
+  // que havia um debounce pendente, mesmo muito depois dele já ter gravado. Excluir a
+  // página faz `currentPage` virar `null` (a query refaz sem a linha removida) num
+  // re-render em que o painel ainda não trocou de `key` -- o MESMO componente segue
+  // montado, só que agora com `draftKey` apontando pra "new-<clienteId>" -- e o flush,
+  // que dependia de `[saveDraft]`, rodava com qualquer que fosse a versão de `saveDraft`
+  // do momento, gravando o conteúdo já excluído sob a chave da próxima "Nova página".
+  it('excluir uma página editada não ressuscita o rascunho nem vaza para "Nova página" (Finding 2, fix round 3)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPaginasDeletable([PAGE]);
+    await findEditor();
+
+    const titleInput = screen.getByPlaceholderText('Título da página');
+    await userEvent.clear(titleInput);
+    await userEvent.type(titleInput, 'Página um editado');
+    await typeInEditor(' corpo editado');
+
+    // Espera o debounce de fato gravar o rascunho antes de excluir -- é essa janela
+    // (debounce já disparado, `draftTimeoutRef.current` ainda "verdadeiro" por nunca
+    // ter sido zerado) que reproduz o bug relatado.
+    await waitFor(
+      () => {
+        const raw = localStorage.getItem('hub-page-draft:p1');
+        expect(raw).not.toBeNull();
+        expect(JSON.parse(raw as string).title).toBe('Página um editado');
+      },
+      { timeout: 2000 },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remover página' }));
+    await waitFor(() => expect(hubStore.removeHubPage).toHaveBeenCalledWith('p1'));
+
+    // Sem página nenhuma sobrando, o painel cai para o modo "Nova página" -- em branco.
+    await waitFor(() => expect(screen.getByPlaceholderText('Título da página')).toHaveValue(''), {
+      timeout: 3000,
+    });
+
+    expect(localStorage.getItem('hub-page-draft:p1')).toBeNull();
+    expect(localStorage.getItem(`hub-page-draft:new-${CLIENTE.id}`)).toBeNull();
+
+    // Digitar em "Nova página" agora tem que partir de verdade em branco, não pré-cheio
+    // com o título/corpo da página que acabou de ser excluída.
+    const newTitleInput = screen.getByPlaceholderText('Título da página');
+    expect(newTitleInput).toHaveValue('');
+    const editor = document.body.querySelector('[contenteditable="true"]') as HTMLElement;
+    expect(editor.textContent ?? '').not.toContain('corpo editado');
+  });
+
+  it('excluir uma página editada DENTRO da janela do debounce (ainda não gravado) também não ressuscita nada', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPaginasDeletable([PAGE]);
+    await findEditor();
+
+    const titleInput = screen.getByPlaceholderText('Título da página');
+    await userEvent.clear(titleInput);
+    await userEvent.type(titleInput, 'Editado rápido');
+    await typeInEditor(' corpo rápido');
+
+    // Exclui IMEDIATAMENTE, sem esperar os 400ms do debounce -- o caso em que
+    // `handleDelete` precisa cancelar o timer pendente, não só o já disparado.
+    await userEvent.click(screen.getByRole('button', { name: 'Remover página' }));
+    await waitFor(() => expect(hubStore.removeHubPage).toHaveBeenCalledWith('p1'));
+    await waitFor(() => expect(screen.getByPlaceholderText('Título da página')).toHaveValue(''), {
+      timeout: 3000,
+    });
+
+    // Dá tempo do debounce (se não tivesse sido cancelado) disparar.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    expect(localStorage.getItem('hub-page-draft:p1')).toBeNull();
+    expect(localStorage.getItem(`hub-page-draft:new-${CLIENTE.id}`)).toBeNull();
   });
 
   it('não usa useBlocker', async () => {

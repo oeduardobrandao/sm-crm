@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { Cliente } from '@/store';
+import type { Cliente, HubBrandRow } from '@/store';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 
 // MarcaPage is a pure move of HubTab.tsx's BrandEditor (git history at
@@ -110,5 +110,64 @@ describe('MarcaPage', () => {
 
     await screen.findByText('Hub do Cliente');
     expect(hubStore.getHubBrand).not.toHaveBeenCalled();
+  });
+
+  // Finding 3 (task-11, fix round 3): `useEffect(() => { if (brand) setForm(brand); },
+  // [brand])` never cleared the form when `brand` resolved to `null` -- switching from a
+  // client WITH a hub_brand row to one WITHOUT kept the previous client's logo/cores/
+  // fontes on screen, and "Salvar" upserted them under the NEW clienteId, copying one
+  // client's branding onto another. Pre-existing (identical code at 947f418b), but live
+  // and data-corrupting, so covered here.
+  //
+  // `rerender` with a DIFFERENT `cliente` in the outlet context, on the SAME rendered
+  // tree, is what actually exercises the bug: it's exactly what a route param change
+  // (`/clientes/15/hub/marca` -> `/clientes/99/hub/marca`) does WITHOUT remounting
+  // `MarcaPage` -- nothing in the router keys this subtree by `clienteId`.
+  it('limpa o formulário ao trocar para um cliente sem marca (Finding 3, fix round 3)', async () => {
+    const CLIENTE_COM_MARCA = CLIENTE;
+    const CLIENTE_SEM_MARCA: Cliente = { ...CLIENTE, id: 99, conta_id: 'ws-2' };
+    const BRAND_AURORA: HubBrandRow = {
+      id: 'b1',
+      cliente_id: 15,
+      logo_url: 'https://aurora.com.br/logo.png',
+      primary_color: '#ff0000',
+      secondary_color: '#00ff00',
+      font_primary: 'Georgia',
+      font_secondary: 'Georgia Sans',
+    };
+    vi.mocked(hubStore.getHubBrand).mockImplementation(async (clienteId: number) =>
+      clienteId === CLIENTE_COM_MARCA.id
+        ? { brand: BRAND_AURORA, files: [] }
+        : { brand: null, files: [] },
+    );
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (cliente: Cliente) => (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<OutletContextProvider cliente={cliente} />}>
+              <Route path="/" element={<MarcaPage />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const { rerender } = render(tree(CLIENTE_COM_MARCA));
+
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText('https://...')).toHaveValue(
+        'https://aurora.com.br/logo.png',
+      ),
+    );
+    expect(screen.getByPlaceholderText('Inter')).toHaveValue('Georgia');
+
+    rerender(tree(CLIENTE_SEM_MARCA));
+
+    await waitFor(() => expect(hubStore.getHubBrand).toHaveBeenCalledWith(CLIENTE_SEM_MARCA.id));
+    await waitFor(() => expect(screen.getByPlaceholderText('https://...')).toHaveValue(''));
+    expect(screen.getByPlaceholderText('Inter')).toHaveValue('');
+    expect(screen.getByPlaceholderText('Playfair Display')).toHaveValue('');
   });
 });

@@ -40,7 +40,16 @@ export default function MarcaPage() {
         </div>
       </header>
       <HubRoleGate>
+        {/* `key={clienteId}` força um remount inteiro ao trocar de cliente (Finding 3):
+            sem ele, navegar de um cliente com `hub_brand` para um sem faz `brand` virar
+            `null`, mas o estado local (`form`, `saving`, `uploadingLogo`) do componente
+            ANTERIOR sobrevive -- e `save()` grava a logo/cores/fontes do cliente de
+            origem sob o `clienteId` do destino. O reset de `form` no efeito abaixo já
+            cobre o mesmo caso; o `key` é a segunda camada, e a que não depende de
+            lembrar de manter os dois sincronizados se um novo campo de estado local for
+            adicionado no futuro. */}
         <BrandEditor
+          key={clienteId}
           clienteId={clienteId}
           contaId={cliente.conta_id}
           brand={brandData?.brand ?? null}
@@ -71,8 +80,13 @@ function BrandEditor({
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const logoPreview = useFileUrl(brand?.logo_file_id ?? null);
 
+  // Sincroniza SEMPRE com `brand`, mesmo quando ele resolve para `null` (Finding 3):
+  // o guard antigo (`if (brand) setForm(brand)`) nunca limpava o formulário ao trocar
+  // para um cliente sem `hub_brand` -- o form ficava com a logo/cores/fontes do
+  // cliente ANTERIOR, e `save()` gravava esses valores sob o `clienteId` novo,
+  // copiando a marca de um cliente para outro.
   useEffect(() => {
-    if (brand) setForm(brand);
+    setForm(brand ?? {});
   }, [brand]);
 
   async function save() {
