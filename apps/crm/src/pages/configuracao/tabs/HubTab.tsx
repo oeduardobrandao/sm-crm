@@ -883,7 +883,7 @@ export default function HubTab() {
           result before touching any controls below. Configurações → Hub is
           workspace-level, not per-client, so there is no token to build a real "Ver
           hub" link from here either; every hub URL is per-client (see
-          pages/cliente-detalhe/HubTab.tsx). We deliberately don't invent a tokenless
+          pages/cliente-detalhe/hub/AcessoPage.tsx). We deliberately don't invent a tokenless
           workspace route; the per-client tab is still the place to copy/open a
           client's actual link. HubPreview owns its own "Pré-visualização ao vivo"
           caption + toggles header. */}

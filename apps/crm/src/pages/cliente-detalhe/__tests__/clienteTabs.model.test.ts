@@ -270,12 +270,12 @@ describe('clienteTabGuardOutcome', () => {
 describe('i18n coverage', () => {
   it('has a pt and en string for every tab label and group label', () => {
     for (const tab of CLIENTE_TABS) {
-      expect(lookup(pt, tab.labelKey), `pt ${tab.labelKey}`).toBeTypeOf('string');
-      expect(lookup(en, tab.labelKey), `en ${tab.labelKey}`).toBeTypeOf('string');
+      expect(lookup(pt, tab.labelKey), `pt ${tab.labelKey}`).toBeTruthy();
+      expect(lookup(en, tab.labelKey), `en ${tab.labelKey}`).toBeTruthy();
     }
     for (const key of Object.values(CLIENTE_TAB_GROUP_LABELS)) {
-      expect(lookup(pt, key), `pt ${key}`).toBeTypeOf('string');
-      expect(lookup(en, key), `en ${key}`).toBeTypeOf('string');
+      expect(lookup(pt, key), `pt ${key}`).toBeTruthy();
+      expect(lookup(en, key), `en ${key}`).toBeTruthy();
     }
   });
 });

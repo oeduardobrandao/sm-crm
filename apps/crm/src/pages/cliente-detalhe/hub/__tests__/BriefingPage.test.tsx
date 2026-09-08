@@ -165,6 +165,67 @@ describe('BriefingPage', () => {
     ).toBeInTheDocument();
   });
 
+  // Finding (revisão externa, cross-client leak): mesma classe já corrigida em
+  // MarcaPage.tsx (`key={clienteId}` no BrandEditor, Finding 3) e em PaginasPage.tsx,
+  // nunca propagada para aqui. ClienteDetalhePage NÃO desmonta o Outlet ao trocar de
+  // cliente na mesma sub-aba quando o destino já está em cache (`isLoading` fica
+  // `false`) -- sem `key={clienteId}` em `BriefingEditor`, texto digitado e ainda não
+  // salvo (aqui, o campo "Nova pergunta...") sobrevivia à troca de cliente. `rerender`
+  // com um `cliente` DIFERENTE no MESMO contexto de Outlet, sem desmontar a árvore, é
+  // exatamente o que uma troca de rota faz sem essa key.
+  it('limpa o texto de "Nova pergunta" ao trocar de cliente sem salvar (cross-client leak)', async () => {
+    const CLIENTE_B: Cliente = { ...CLIENTE, id: 99, conta_id: 'ws-2' };
+    const BRIEFING_A: BriefingRow = {
+      id: 'br-a',
+      cliente_id: CLIENTE.id!,
+      conta_id: CLIENTE.conta_id!,
+      title: 'Briefing A',
+      display_order: 0,
+      created_at: '2026-01-01T00:00:00.000Z',
+    };
+    const BRIEFING_B: BriefingRow = {
+      id: 'br-b',
+      cliente_id: CLIENTE_B.id!,
+      conta_id: CLIENTE_B.conta_id!,
+      title: 'Briefing B',
+      display_order: 0,
+      created_at: '2026-01-01T00:00:00.000Z',
+    };
+    vi.mocked(hubStore.getBriefings).mockImplementation(async (clienteId: number) =>
+      clienteId === CLIENTE.id ? [BRIEFING_A] : [BRIEFING_B],
+    );
+    vi.mocked(hubStore.getHubBriefingQuestions).mockResolvedValue([]);
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (cliente: Cliente) => (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<OutletContextProvider cliente={cliente} />}>
+              <Route path="/" element={<BriefingPage />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const { rerender } = render(tree(CLIENTE));
+    const newQuestionInput = await screen.findByPlaceholderText('Nova pergunta...');
+    fireEvent.change(newQuestionInput, { target: { value: 'Pergunta vazando do cliente A' } });
+    expect(newQuestionInput).toHaveValue('Pergunta vazando do cliente A');
+
+    rerender(tree(CLIENTE_B));
+
+    await waitFor(() => expect(hubStore.getBriefings).toHaveBeenCalledWith(CLIENTE_B.id));
+    // "Briefing B" aparece duas vezes na tela (aba do rail + título da seção principal),
+    // então `getByRole('tab', ...)` mira só a aba, evitando o "multiple elements" de
+    // um `getByText` ambíguo.
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Briefing B' })).toBeInTheDocument(),
+    );
+    expect(screen.getByPlaceholderText('Nova pergunta...')).toHaveValue('');
+  });
+
   describe('filtro e progresso', () => {
     const QUESTIONS: QuestionFixture[] = [
       { id: 'a', question: 'P1', answer: 'R1', section: 'Negócio', display_order: 0 },
@@ -237,6 +298,42 @@ describe('BriefingPage', () => {
       // usuário nunca ter clicado nela enquanto o filtro era 'todas'.
       fireEvent.click(screen.getByTestId('chip-todas'));
       expect(screen.queryByText('P1')).not.toBeInTheDocument();
+    });
+  });
+
+  // Finding (minor, levantado três vezes de forma independente na revisão): duas
+  // seções cujos nomes só diferem em acento/caixa normalizavam para o MESMO id de
+  // âncora -- `document.getElementById` sempre resolvia a primeira, e o rail nunca
+  // conseguia rolar até a segunda. A âncora agora é indexada por posição
+  // (`hub-briefing-section-<i>`), não derivada do nome.
+  describe('âncoras de seção não colidem com nomes que normalizam igual', () => {
+    const QUESTIONS: QuestionFixture[] = [
+      { id: 'a', question: 'P1', answer: 'R1', section: 'Café', display_order: 0 },
+      { id: 'b', question: 'P2', answer: null, section: 'Cafe', display_order: 0 },
+    ];
+
+    it('dá ids distintos aos cabeçalhos e rola para a seção certa ao clicar no rail', () => {
+      const scrollSpy = vi.fn();
+      const originalScrollIntoView = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = scrollSpy;
+      try {
+        renderBriefing(QUESTIONS);
+
+        const headerCafe = screen.getByTestId('secao-toggle-Café');
+        const headerCafeSemAcento = screen.getByTestId('secao-toggle-Cafe');
+        expect(headerCafe.id).not.toBe('');
+        expect(headerCafeSemAcento.id).not.toBe('');
+        expect(headerCafe.id).not.toBe(headerCafeSemAcento.id);
+
+        // Clicar no link do rail da SEGUNDA seção ("Cafe") tem que rolar até o
+        // cabeçalho dela, não até o da primeira ("Café") -- o bug original sempre
+        // resolvia a primeira, porque as duas normalizavam para o mesmo id.
+        fireEvent.click(screen.getByTestId('secao-Cafe'));
+        expect(scrollSpy).toHaveBeenCalledTimes(1);
+        expect(scrollSpy.mock.contexts[0]).toBe(headerCafeSemAcento);
+      } finally {
+        Element.prototype.scrollIntoView = originalScrollIntoView;
+      }
     });
   });
 

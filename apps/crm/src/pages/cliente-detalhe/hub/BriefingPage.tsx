@@ -89,13 +89,16 @@ export function isAnswered(q: { answer: string | null }): boolean {
 /**
  * Âncora estável para o "clicar na seção rola até ela" do rail -- só precisa ser um id
  * de elemento HTML válido. Nenhum teste depende deste valor (o rail usa `data-testid`).
+ *
+ * Indexada pela posição da seção em `allNamedSections`, não derivada do NOME dela:
+ * uma versão anterior normalizava o nome (removendo acento/caixa) para montar o id, e
+ * duas seções cujos nomes só diferem em acento ou espaçamento ("Café"/"Cafe",
+ * "Público-alvo"/"Público alvo") colidiam no MESMO id -- `document.getElementById`
+ * sempre resolvia a primeira, e `scrollToSection` nunca alcançava a segunda (achado
+ * levantado três vezes de forma independente na revisão externa).
  */
-function sectionAnchorId(name: string): string {
-  return `hub-briefing-section-${name
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .toLowerCase()}`;
+function sectionAnchorId(index: number): string {
+  return `hub-briefing-section-${index}`;
 }
 
 /** Agrupa por `section` (chave '' = sem seção), preservando a ordem de primeira
@@ -144,7 +147,14 @@ export default function BriefingPage() {
         </div>
       </header>
       <HubRoleGate>
+        {/* `key={clienteId}` força um remount inteiro ao trocar de cliente -- mesma
+            lógica do Finding 3 de MarcaPage.tsx: o Outlet de ClienteDetalhePage NÃO
+            desmonta ao trocar de cliente na mesma sub-aba quando o cliente de destino
+            já está em cache (`isLoading` fica `false`), então sem este `key` o estado
+            local de `BriefingEditor` (seleção, edição em andamento, filtro, seções
+            expandidas) sobrevive à troca de cliente. */}
         <BriefingEditor
+          key={clienteId}
           clienteId={clienteId}
           contaId={cliente.conta_id}
           onSaved={() => qc.invalidateQueries({ queryKey: ['hub-briefing-questions', clienteId] })}
@@ -672,13 +682,15 @@ function BriefingEditor({
     toast.success('CSV exportado!');
   }
 
-  function scrollToSection(name: string) {
+  function scrollToSection(name: string, index: number) {
     // O rail lista TODAS as seções, colapsadas ou não (contagem sempre sobre o
     // briefing inteiro -- ver allNamedSections acima). Clicar num link que
     // aponta para uma seção ainda colapsada precisa expandi-la também, ou o
-    // scroll leva a um cabeçalho sem nada visível embaixo.
+    // scroll leva a um cabeçalho sem nada visível embaixo. `index` é a posição
+    // da seção em `allNamedSections` -- o mesmo índice usado para montar o id
+    // do cabeçalho (ver sectionAnchorId acima), não o nome.
     setExpandedSections((prev) => (prev.has(name) ? prev : new Set(prev).add(name)));
-    document.getElementById(sectionAnchorId(name))?.scrollIntoView?.({
+    document.getElementById(sectionAnchorId(index))?.scrollIntoView?.({
       behavior: 'smooth',
       block: 'start',
     });
@@ -758,7 +770,7 @@ function BriefingEditor({
         {allNamedSections.length > 0 && (
           <nav className="hub-briefing__section-index" aria-label="Seções do briefing">
             <p className="hub-briefing__section-index-label">Seções</p>
-            {allNamedSections.map((s) => {
+            {allNamedSections.map((s, sectionIndex) => {
               const sectionAnswered = s.questions.filter(isAnswered).length;
               // O rail lista TODAS as seções para a contagem cobrir o briefing inteiro
               // (ver allNamedSections acima), mas a grade só renderiza uma seção com
@@ -775,7 +787,7 @@ function BriefingEditor({
                   title={
                     hasTarget ? undefined : 'Nenhuma pergunta desta seção bate com o filtro atual'
                   }
-                  onClick={hasTarget ? () => scrollToSection(s.name) : undefined}
+                  onClick={hasTarget ? () => scrollToSection(s.name, sectionIndex) : undefined}
                 >
                   <span className="hub-briefing__section-link-name">{s.name}</span>
                   <span className="hub-briefing__section-link-count">
@@ -990,6 +1002,10 @@ function BriefingEditor({
                   // manualmente só para ver o que bateu com o filtro escolhido.
                   const isCollapsed = filter === 'todas' && !expandedSections.has(s.name);
                   const isEditingSection = editingSectionName === s.name;
+                  // Mesmo índice usado pelo link do rail acima (allNamedSections.map) --
+                  // `namedSections` é a versão FILTRADA de `allNamedSections`, então o
+                  // índice tem que vir de lá, não da posição dentro desta lista filtrada.
+                  const sectionIndex = allNamedSections.findIndex((a) => a.name === s.name);
                   return (
                     <SortableSection
                       key={s.name}
@@ -1032,7 +1048,7 @@ function BriefingEditor({
                             {filter === 'todas' ? (
                               <button
                                 type="button"
-                                id={sectionAnchorId(s.name)}
+                                id={sectionAnchorId(sectionIndex)}
                                 data-testid={`secao-toggle-${s.name}`}
                                 onClick={() => toggleSection(s.name)}
                                 aria-expanded={!isCollapsed}
@@ -1050,7 +1066,7 @@ function BriefingEditor({
                               </button>
                             ) : (
                               <div
-                                id={sectionAnchorId(s.name)}
+                                id={sectionAnchorId(sectionIndex)}
                                 data-testid={`secao-toggle-${s.name}`}
                                 className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                               >

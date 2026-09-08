@@ -87,7 +87,15 @@ export default function PaginasPage() {
         </div>
       </header>
       <HubRoleGate>
+        {/* `key={clienteId}` força um remount inteiro ao trocar de cliente -- mesma
+            lógica do Finding 3 de MarcaPage.tsx: o Outlet de ClienteDetalhePage NÃO
+            desmonta ao trocar de cliente na mesma sub-aba quando o cliente de destino
+            já está em cache (`isLoading` fica `false`), então sem este `key` o estado
+            local de `PagesEditor` (e o `PageEditorPane` por baixo) sobrevive à troca --
+            e "Salvar" grava a composição em andamento do cliente A sob o `cliente_id`
+            do cliente B. */}
         <PagesEditor
+          key={clienteId}
           clienteId={clienteId}
           contaId={cliente.conta_id}
           pages={pages ?? []}
@@ -332,7 +340,11 @@ function PagesEditor({
           </div>
         ) : (
           <PageEditorPane
-            key={selectedId ?? `new-${newDraftNonce}`}
+            // `clienteId` entra na key como segunda camada -- `PagesEditor` já é
+            // remontado por inteiro ao trocar de cliente (key acima, em PaginasPage),
+            // mas isto não depende de lembrar de manter os dois sincronizados se algum
+            // dia `PageEditorPane` passar a ser usado sem esse ancestral.
+            key={`${clienteId}:${selectedId ?? `new-${newDraftNonce}`}`}
             clienteId={clienteId}
             contaId={contaId}
             page={currentPage}
@@ -398,6 +410,18 @@ function PageEditorPane({
   const [title, setTitle] = useState(draft?.title ?? page?.title ?? '');
   const [doc, setDoc] = useState<Record<string, unknown>>(draft?.doc ?? loaded.doc);
   const [saving, setSaving] = useState(false);
+  // `draft` já existia no localStorage quando este painel montou -- fixado uma única
+  // vez (não recalculado a cada render) para orientar o aviso "Rascunho restaurado"
+  // abaixo. Continua `true` mesmo depois de `draft` (memoizado em `draftKey`, estável
+  // durante a vida desta instância -- ver key do painel em PagesEditor) já ter sido
+  // limpo do storage; quem decide se o aviso some é `discardedDraft`, não este valor.
+  const [hadStoredDraft] = useState(draft != null);
+  const [discardedDraft, setDiscardedDraft] = useState(false);
+  // Bump força `PaginaRichTextEditor` a remontar com um `doc` novo -- `useEditor`
+  // congela `content` no primeiro mount (ver PaginaRichTextEditor.tsx), então trocar
+  // o estado `doc` sozinho (como faz "Descartar rascunho") não é visto pelo
+  // ProseMirror já em pé.
+  const [editorResetNonce, setEditorResetNonce] = useState(0);
 
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -496,6 +520,26 @@ function PageEditorPane({
     scheduleDraftSave();
   }
 
+  // Volta para a versão do servidor e apaga o rascunho local -- a única saída de um
+  // rascunho restaurado que ninguém mais consegue enxergar (spec: "aviso... e opção de
+  // descartar"). Sem isto, um rascunho de um dispositivo mais antigo esconde
+  // permanentemente uma versão mais nova salva por outra pessoa: reabrir a página
+  // sempre reidrata o rascunho local, e "Salvar" sobrescreveria o trabalho alheio.
+  function handleDiscardDraft() {
+    if (draftTimeoutRef.current) {
+      clearTimeout(draftTimeoutRef.current);
+      draftTimeoutRef.current = undefined;
+      pendingSaveRef.current = null;
+    }
+    clearDraft();
+    setTitle(page?.title ?? '');
+    setDoc(loaded.doc);
+    // Remonta o ProseMirror com o doc do servidor -- só trocar `doc` não bastaria
+    // (useEditor congela `content` no primeiro mount).
+    setEditorResetNonce((n) => n + 1);
+    setDiscardedDraft(true);
+  }
+
   async function handleSave() {
     if (!title.trim()) {
       toast.error('Dê um título para a página.');
@@ -561,6 +605,17 @@ function PageEditorPane({
           antes de salvar.
         </p>
       )}
+      {hadStoredDraft && !discardedDraft && (
+        <p className="hub-paginas__legacy-note hub-paginas__legacy-note--warn hub-paginas__draft-notice">
+          <span>
+            Rascunho restaurado neste navegador. Pode haver uma versão mais recente salva por outra
+            pessoa.
+          </span>
+          <button type="button" className="hub-paginas__discard-draft" onClick={handleDiscardDraft}>
+            Descartar rascunho
+          </button>
+        </p>
+      )}
 
       <div className="hub-paginas__toolbar-row">
         <Input
@@ -582,7 +637,7 @@ function PageEditorPane({
         </div>
       </div>
 
-      <PaginaRichTextEditor doc={doc} onChange={handleEditorChange} />
+      <PaginaRichTextEditor key={editorResetNonce} doc={doc} onChange={handleEditorChange} />
     </div>
   );
 }

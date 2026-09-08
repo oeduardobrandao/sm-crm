@@ -4,9 +4,13 @@
  * see `apps/hub/src/types.ts` `HubLegacyBlock`) to the single `richtext`
  * TipTap block introduced by this plan.
  *
- * Runs against PRODUCTION data (29 rows across 21 clients as of 2026-09-07),
- * with the editor already live, so it must not lose data and must not clobber
- * a page someone else is editing at the same moment. Safety properties:
+ * Runs against PRODUCTION data (a few dozen rows across a couple dozen clients as of
+ * writing this script; the editor stays live between now and whenever this actually
+ * runs, so treat any row count you see quoted elsewhere as a moment-in-time snapshot,
+ * not a target -- the dry run's own "Read N row(s) from hub_pages" line, printed
+ * below in `main()`, is the authoritative count at run time), with the editor already
+ * live, so it must not lose data and must not clobber a page someone else is editing
+ * at the same moment. Safety properties:
  *
  *   - Dry run by default. Nothing is written unless you pass `--apply`.
  *   - A JSON backup of every row's `id` + `content`, exactly as read, is

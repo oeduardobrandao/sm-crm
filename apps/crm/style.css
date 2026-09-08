@@ -6313,67 +6313,6 @@ body.role-agent input[name='valor_total'] {
 }
 
 /* ============================================================
-   SCROLLABLE TAB STRIP (components/shared/ScrollableTabs.tsx)
-   Gradient fade + chevron buttons on the overflowing side, so a
-   horizontally scrollable tab row reads as scrollable.
-   ============================================================ */
-.scrollable-tabs {
-  position: relative;
-}
-.scrollable-tabs-fade {
-  position: absolute;
-  top: 0;
-  bottom: 1px;
-  width: 56px;
-  pointer-events: none;
-  z-index: 1;
-}
-.scrollable-tabs-fade-left {
-  left: 0;
-  background: linear-gradient(to right, var(--card-bg) 30%, transparent);
-}
-.scrollable-tabs-fade-right {
-  right: 0;
-  background: linear-gradient(to left, var(--card-bg) 30%, transparent);
-}
-.scrollable-tabs-arrow {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 9999px;
-  border: 1px solid var(--border-color);
-  background-color: var(--card-bg);
-  color: var(--text-muted);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-.scrollable-tabs-arrow:hover {
-  color: var(--text-main);
-  border-color: var(--primary-color);
-}
-.scrollable-tabs-arrow-left {
-  left: 0;
-}
-.scrollable-tabs-arrow-right {
-  right: 0;
-}
-/* Roomy pointer devices only — on phones the strip is too narrow to give up
-   ~52px to chevrons, and swiping is the natural gesture anyway. */
-@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
-  .scrollable-tabs-arrow {
-    display: flex;
-  }
-}
-
-/* ============================================================
    WORKFLOW DRAWER
    ============================================================ */
 .drawer-overlay {
@@ -10726,12 +10665,6 @@ body.landing-page #root {
   font-size: 0.85rem;
 }
 
-.hub-tabs {
-  min-width: 0;
-}
-.hub-tabs__list {
-  max-width: 100%;
-}
 .hub-access {
   display: grid;
   gap: 0.75rem;
@@ -11270,6 +11203,24 @@ a.hub-fill__row-inner:hover {
   background: color-mix(in srgb, var(--warning) 14%, transparent);
   color: var(--warning);
 }
+.hub-paginas__draft-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+}
+.hub-paginas__discard-draft {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .hub-paginas__toolbar-row {
   display: flex;
   flex-wrap: wrap;
@@ -11524,25 +11475,6 @@ a.hub-fill__row-inner:hover {
     min-height: 44px;
   }
 
-  .hub-tabs__list {
-    display: flex;
-    width: 100%;
-    height: auto;
-    justify-content: flex-start;
-    overflow-x: auto;
-    padding: 0.25rem;
-    scroll-padding-inline: 0.25rem;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .hub-tabs__list::-webkit-scrollbar {
-    display: none;
-  }
-  .hub-tabs__list [role='tab'] {
-    flex: 0 0 auto;
-    min-height: 44px;
-  }
   /* .hub-access__actions is a flex row on desktop; these two groups become real
      boxes again here (overriding the desktop `display: contents`), so re-assert
      full width -- flex items don't stretch on the main axis by default the way

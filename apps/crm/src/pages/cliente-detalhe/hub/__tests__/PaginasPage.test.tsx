@@ -328,6 +328,43 @@ describe('PaginasPage', () => {
     expect(editor.textContent).toContain('Rascunho salvo antes');
   });
 
+  // Finding (revisão externa): um rascunho restaurado não tinha como ser descartado --
+  // a spec (docs/superpowers/specs/2026-09-07-portal-cliente-layout-design.md, "Alterações
+  // não salvas") pede aviso + opção de descartar, mas só o aviso tinha sido implementado.
+  // Sem uma saída, um rascunho de um dispositivo mais velho esconde para sempre uma
+  // versão mais nova salva por outra pessoa, e "Salvar" sobrescreveria o trabalho alheio.
+  it('descarta o rascunho restaurado e volta para o conteúdo do servidor', async () => {
+    const docAlterado = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Rascunho salvo antes' }] }],
+    };
+    localStorage.setItem(
+      'hub-page-draft:p1',
+      JSON.stringify({ version: 1, title: 'Título do rascunho', doc: docAlterado }),
+    );
+
+    renderPaginas({ page: PAGE });
+    expect(await screen.findByText(/rascunho restaurado/i)).toBeInTheDocument();
+    const editor = await findEditor();
+    expect(editor.textContent).toContain('Rascunho salvo antes');
+    expect(screen.getByDisplayValue('Título do rascunho')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Descartar rascunho' }));
+
+    // O aviso some, o par título/corpo volta ao que está salvo no servidor (PAGE), e o
+    // rascunho some do localStorage -- reabrir a página não pode ressuscitá-lo.
+    expect(screen.queryByText(/rascunho restaurado/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByDisplayValue('Página um')).toBeInTheDocument());
+    await waitFor(() => {
+      const el = document.body.querySelector('[contenteditable="true"]') as HTMLElement;
+      expect(el.textContent).toContain('Conteúdo original');
+      expect(el.textContent).not.toContain('Rascunho salvo antes');
+    });
+    expect(localStorage.getItem('hub-page-draft:p1')).toBeNull();
+    // De volta ao conteúdo do servidor não sobra alteração pendente nenhuma.
+    expect(screen.queryByText(/alterações não salvas/i)).not.toBeInTheDocument();
+  });
+
   it('limpa o rascunho depois de salvar', async () => {
     renderPaginas({ page: PAGE });
     await typeInEditor('x');
@@ -566,6 +603,47 @@ describe('PaginasPage', () => {
 
     expect(localStorage.getItem('hub-page-draft:p1')).toBeNull();
     expect(localStorage.getItem(`hub-page-draft:new-${CLIENTE.id}`)).toBeNull();
+  });
+
+  // Finding (revisão externa, cross-client leak): igual ao Finding 3 já corrigido em
+  // MarcaPage.tsx (`key={clienteId}` no BrandEditor), mas nunca propagado para
+  // PaginasPage. ClienteDetalhePage NÃO desmonta o Outlet ao trocar de cliente na mesma
+  // sub-aba quando o cliente de destino já está em cache (`isLoading` fica `false`) --
+  // sem `key={clienteId}` em `PagesEditor`, uma composição de "Nova página" em
+  // andamento (selectedId === null nos dois clientes, então a key de PageEditorPane
+  // nem muda) sobrevivia à troca, e "Salvar" gravaria o conteúdo do cliente A sob o
+  // `cliente_id` do cliente B. `rerender` com um `cliente` DIFERENTE no MESMO contexto
+  // de Outlet, sem desmontar a árvore, é exatamente o que uma troca de rota faz sem
+  // essa key.
+  it('limpa a composição de "Nova página" ao trocar de cliente sem salvar (cross-client leak)', async () => {
+    const CLIENTE_B: Cliente = { ...CLIENTE, id: 99, conta_id: 'ws-2' };
+    vi.mocked(hubStore.getHubPages).mockImplementation(async () => []);
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (cliente: Cliente) => (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<OutletContextProvider cliente={cliente} />}>
+              <Route path="/" element={<PaginasPage />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const { rerender } = render(tree(CLIENTE));
+    const titleInput = await screen.findByPlaceholderText('Título da página');
+    await userEvent.type(titleInput, 'Vazamento do cliente A');
+    await typeIntoNewEditor('Corpo do cliente A');
+    await waitFor(() => expect(titleInput).toHaveValue('Vazamento do cliente A'));
+
+    rerender(tree(CLIENTE_B));
+
+    await waitFor(() => expect(hubStore.getHubPages).toHaveBeenCalledWith(CLIENTE_B.id));
+    await waitFor(() => expect(screen.getByPlaceholderText('Título da página')).toHaveValue(''));
+    const editor = document.body.querySelector('[contenteditable="true"]') as HTMLElement | null;
+    expect(editor?.textContent ?? '').not.toContain('Corpo do cliente A');
   });
 
   it('não usa useBlocker', async () => {
