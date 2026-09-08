@@ -6,6 +6,10 @@ function fakeDb(rows: PageRow[]) {
     updates: [] as { id: string; content: any }[],
     onUpdate: undefined as undefined | (() => { rowsAffected: number }),
     selectPages: async () => rows,
+    // Returns the row's content exactly as passed to fakeDb() -- these tests are
+    // about convert()'s own branching, not the re-read guard, so nothing "changes"
+    // out from under them unless a test explicitly overrides this.
+    readContent: async (id: string) => rows.find((r) => r.id === id)?.content,
     updateIfUnchanged: async (id: string, _expected: unknown, next: any) => {
       const forced = db.onUpdate?.();
       if (forced) return forced;

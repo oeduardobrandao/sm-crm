@@ -17,6 +17,7 @@ function fakeDb(rows: PageRow[]) {
   const db = {
     updates: [] as { id: string; content: any }[],
     selectPages: async () => rows,
+    readContent: async (id: string) => rows.find((r) => r.id === id)?.content,
     updateIfUnchanged: async (id: string, _expected: unknown, next: any) => {
       db.updates.push({ id, content: next });
       return { rowsAffected: 1 };

@@ -30,6 +30,29 @@
  *     converted and saved it by hand) is never overwritten -- it lands in `raced`, not silently
  *     clobbered, and is left for a second pass. Do not restore the `content = $2` form; it reads as
  *     more literal but never matches a single row.
+ *   - Before that conditional UPDATE, `convert()` re-reads the row's current content
+ *     (`Db.readContent()`) and compares it structurally against the exact snapshot the conversion
+ *     was computed from (`jsonDeepEqual()` below -- not `JSON.stringify` equality, because two reads
+ *     of the same jsonb value are not guaranteed to serialize their keys in the same order). This is
+ *     what actually catches a LEGACY writer: a browser still holding a pre-deploy CRM bundle that
+ *     saves `[{markdown}]`-shaped content never trips the server-side "does this row already contain
+ *     a richtext block" filter above, because it still doesn't contain one -- without this re-read
+ *     the migration would silently overwrite that person's edit with its own conversion of the
+ *     stale snapshot it read minutes or hours earlier. A mismatch here is recorded in `raced` and not
+ *     written, same as the server-side guard's mismatch.
+ *
+ *     BE HONEST ABOUT WHAT THIS DOES NOT CLOSE. `selectPages()` reads all rows up front and the loop
+ *     in `convert()` then writes them one at a time, so before this change the exposure for the last
+ *     row in a large batch spanned the whole run. The re-read narrows that down to one round trip --
+ *     the gap between this re-read and the UPDATE that follows it -- but does not eliminate it. A
+ *     legacy save that lands in THAT window is still silently clobbered: no error, no `raced` entry,
+ *     because from this script's point of view the row still matched everything it checked. Closing
+ *     that last window for real needs a server-side RPC doing an atomic
+ *     `UPDATE ... WHERE id = $1 AND content = $2`, which needs a migration -- deliberately not part
+ *     of this plan (no migration was in scope for this fix). The practical mitigation for that
+ *     remaining sliver is the JSON backup this script always writes, plus running the real migration
+ *     when the agency is not actively working in the editor (off-hours), not a claim that the race is
+ *     gone.
  *   - A row that already holds a `richtext` block is skipped, not touched. A row that holds a
  *     `richtext` block MIXED with legacy block(s) is a hard failure, not a silent partial
  *     conversion (see the guard in `convert()` below).
@@ -136,13 +159,33 @@ export interface PageRow {
 export interface Db {
   selectPages(): Promise<PageRow[]>;
   /**
+   * Re-reads a single row's current `content`, immediately before `convert()` writes
+   * it. This is the first of two independent guards against overwriting a page someone
+   * else touched after `selectPages()` took its snapshot (see the header comment) --
+   * `convert()` compares the result against the exact snapshot the conversion was
+   * computed from, structurally (see `jsonDeepEqual()`), and skips the write into
+   * `raced` on any mismatch. It catches a LEGACY writer specifically: a save that
+   * produces `[{markdown}]`-shaped content, which never trips `updateIfUnchanged()`'s
+   * server-side "does this row already contain a richtext block" filter below, because
+   * it still doesn't contain one. Returns `undefined` if the row no longer exists.
+   */
+  readContent(id: string): Promise<unknown>;
+  /**
    * Conceptually `UPDATE ... SET content = $3 WHERE id = $1 AND content = $2`, i.e.
    * "only write if the row still holds the exact content we read." `expected` carries
    * that intent for callers and for the fake `Db` used in tests. The real
    * (`createSupabaseDb`) implementation cannot do a literal `content = $2` equality
    * check -- see its comment -- and instead checks "the row does not yet contain a
-   * richtext block", which is equivalent given the only write the live editor can
-   * make. Returns rows affected.
+   * richtext block", which is equivalent given the only write the NEW editor can make.
+   * It does NOT cover a legacy writer's `[{markdown}]` save -- that race is handled one
+   * layer up, in `convert()`, by re-reading the row (`readContent()` above) and
+   * comparing it against `expected` before this method is even called. The two guards
+   * are deliberately independent: this one is atomic (a real `WHERE` clause evaluated
+   * server-side, at the instant of the UPDATE) but coarse (blind to a legacy writer);
+   * the `readContent()` comparison is precise (catches any change, from either writer)
+   * but not atomic (a row can still change in the round trip between that re-read and
+   * this call's UPDATE actually committing -- see the header comment's "residual"
+   * paragraph). Returns rows affected.
    */
   updateIfUnchanged(
     id: string,
@@ -176,11 +219,65 @@ function hasRichtextBlock(content: unknown): boolean {
 }
 
 /**
+ * Structural equality for two parsed-JSON values, used by `convert()` to compare a
+ * freshly re-read `content` against the exact snapshot a conversion was computed from.
+ *
+ * Deliberately NOT `JSON.stringify(a) === JSON.stringify(b)`: both values here came
+ * back from PostgREST as independently parsed JSON (once when `selectPages()` first
+ * read the row, once again from `readContent()`'s re-read), and object key order is
+ * not guaranteed to survive a round trip through Postgres's jsonb storage -- two reads
+ * of the identical row can serialize their keys in different orders. A naive string
+ * comparison would then report "changed" for a row nobody touched, which sends a
+ * perfectly convertible row to `raced` for no reason (a false positive costs a
+ * re-run -- annoying, not dangerous). The failure mode this function actually has to
+ * avoid is the opposite one: a false "unchanged" verdict is the exact bug this whole
+ * re-read exists to fix, so it walks into every object and array rather than trusting
+ * a shortcut.
+ *
+ * Arrays ARE compared positionally (index order matters -- `content` is an ordered
+ * list of blocks, and a reordering is a real change). Objects are compared by key set
+ * plus recursive value equality, independent of the order the keys were enumerated in.
+ */
+function jsonDeepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (typeof a !== 'object' || typeof b !== 'object') return false;
+  const aIsArray = Array.isArray(a);
+  const bIsArray = Array.isArray(b);
+  if (aIsArray !== bIsArray) return false;
+  if (aIsArray && bIsArray) {
+    if (a.length !== b.length) return false;
+    return a.every((item, i) => jsonDeepEqual(item, b[i]));
+  }
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const aKeys = Object.keys(aObj);
+  const bKeys = Object.keys(bObj);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(
+    (key) => Object.prototype.hasOwnProperty.call(bObj, key) && jsonDeepEqual(aObj[key], bObj[key]),
+  );
+}
+
+/**
  * Runs with the editor already live, so someone can open, convert and save a
- * page in the window between our read and our write. The UPDATE is
- * conditioned on the exact `content` read for that row: a row that changed in
- * the meantime is never written, it is recorded in `raced` and left for a
- * second pass.
+ * page in the window between our read and our write -- from either the NEW editor
+ * (writes a `richtext` block) or a LEGACY one still cached in someone's browser
+ * (writes `[{markdown}]`-shaped content). Two independent guards protect against that,
+ * covering different parts of the race:
+ *
+ *   1. Immediately before writing, this function re-reads the row (`db.readContent()`)
+ *      and compares it structurally against the exact snapshot the conversion was
+ *      computed from. Any mismatch -- from either kind of writer -- is recorded in
+ *      `raced` and left unwritten. This is precise but not atomic: a change landing in
+ *      the round trip between this re-read and the write right after it is not caught.
+ *   2. `db.updateIfUnchanged()`'s own server-side condition (see its doc) is atomic --
+ *      a real `WHERE` clause evaluated at the instant of the UPDATE -- but only catches
+ *      the NEW editor's write (a row that already contains a richtext block).
+ *
+ * Together they shrink the exposure from "the whole run" (see the header comment) down
+ * to a small residual window that only the legacy writer can still land in; that
+ * residual is not eliminated by this script, only narrowed -- see the header comment.
  *
  * A row that fails to convert (`readPageDocResult().converted === false`) is
  * a hard failure, not a silent write of the raw-text fallback.
@@ -225,7 +322,24 @@ export async function convert(db: Db, opts: { dryRun: boolean }): Promise<Report
         report.converted.push(row.id);
         continue;
       }
-      const { rowsAffected } = await db.updateIfUnchanged(row.id, row.content, next);
+
+      // Re-read immediately before writing, and compare against the exact snapshot
+      // this conversion was computed from (`expected`). This is the JS-side guard --
+      // see `Db.readContent()`'s doc and the header comment -- and it is what actually
+      // catches a LEGACY writer, which the server-side `not.cs` filter inside
+      // `updateIfUnchanged()` cannot see. It narrows the exposure from "the whole run"
+      // (selectPages() reads every row up front; this loop then writes them one at a
+      // time) down to "the one round trip between this re-read and the write below" --
+      // it does not close that last round trip. See the header comment's "residual"
+      // paragraph for what still isn't covered and why.
+      const expected = row.content;
+      const current = await db.readContent(row.id);
+      if (!jsonDeepEqual(current, expected)) {
+        report.raced.push(row.id);
+        continue;
+      }
+
+      const { rowsAffected } = await db.updateIfUnchanged(row.id, expected, next);
       (rowsAffected === 1 ? report.converted : report.raced).push(row.id);
     } catch (e) {
       report.failed.push({ id: row.id, error: e instanceof Error ? e.message : String(e) });
@@ -377,6 +491,20 @@ export function createSupabaseDb(client: SupabaseClient): Db {
       if (error) throw new Error(`selectPages failed: ${error.message}`);
       return (data ?? []) as PageRow[];
     },
+    // Re-read used by `convert()`'s JS-side race guard -- see `Db.readContent()`'s doc.
+    // `.maybeSingle()` (not `.single()`) so a row deleted between `selectPages()` and
+    // this call comes back as `undefined` content rather than throwing: `convert()`
+    // then correctly treats "row is gone" as "content changed", same as any other
+    // mismatch, and records it in `raced` instead of crashing the whole run.
+    async readContent(id) {
+      const { data, error } = await client
+        .from('hub_pages')
+        .select('content')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) throw new Error(`readContent failed for id ${id}: ${error.message}`);
+      return (data as { content?: unknown } | null)?.content;
+    },
     // `expected` (the Db interface's optimistic-concurrency argument) is
     // intentionally unused here -- see the header comment. A literal
     // `.eq('content', expected)` cannot work: postgrest-js serializes an eq
@@ -384,9 +512,12 @@ export function createSupabaseDb(client: SupabaseClient): Db {
     // stringifies to `[object Object]`, not JSON, and every row fails against
     // the jsonb column. `JSON.stringify()`-ing it is not a fix either -- some
     // rows exceed the 16 KB URL length Cloudflare allows. Instead this checks
-    // the one write the live editor can make (`[{type:"richtext", doc}]`, see
+    // the one write the NEW editor can make (`[{type:"richtext", doc}]`, see
     // `writePageContent`): the row is updated only if it does NOT already
-    // contain a richtext block, i.e. nobody converted it since we read it.
+    // contain a richtext block, i.e. nobody converted it since we read it. The
+    // actual "is this still the exact content we read" comparison against
+    // `expected` happens one layer up, in `convert()`, via `readContent()`
+    // above -- that's what catches a legacy writer, which this filter cannot.
     async updateIfUnchanged(id, _expected, next) {
       const { data, error } = await client
         .from('hub_pages')
@@ -556,6 +687,7 @@ async function main() {
 
   const snapshotDb: Db = {
     selectPages: async () => rows,
+    readContent: (id) => db.readContent(id),
     updateIfUnchanged: (id, expected, next) => db.updateIfUnchanged(id, expected, next),
   };
 
