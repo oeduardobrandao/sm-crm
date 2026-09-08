@@ -7,6 +7,7 @@ import { useHub } from '../HubContext';
 import { fetchPage } from '../api';
 import type { HubContentBlock } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
+import { RichTextContent } from '../components/RichTextContent';
 
 const markdownComponents = {
   h1: (props: React.ComponentProps<'h1'>) => (
@@ -97,6 +98,14 @@ const markdownComponents = {
 
 function renderBlock(block: HubContentBlock, i: number) {
   switch (block.type) {
+    case 'richtext':
+      return (
+        <RichTextContent
+          key={i}
+          content={block.doc}
+          className="hub-richtext text-[15px] hub-tx2 leading-relaxed"
+        />
+      );
     case 'heading':
       if (block.level === 1)
         return (

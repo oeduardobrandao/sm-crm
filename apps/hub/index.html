@@ -202,6 +202,32 @@
           font-size: 16px;
         }
       }
+      /* Read-only rich text (RichTextContent.tsx: post bodies in PostCard/TextPostCard,
+         page blocks in PaginaPage). It shares the `.post-editor-content` class with the
+         CRM's PostEditor -- the Hub imports the whole CRM stylesheet -- so without this,
+         portal content rendered at CRM editor sizing (0.875rem, 80px min-height) with
+         links in the CRM's yellow (--primary-color) instead of the client's own brand
+         color. `hub-rich-content` is only added when RichTextContent renders read-only
+         (never in the inline edit-suggestion UI, which keeps the CRM editor look on
+         purpose), and every selector below out-specifies the CRM rule it overrides
+         (4 classes vs. 2) so this wins regardless of stylesheet load order. */
+      .hub-root .hub-rich-content.post-editor-content {
+        padding: 0;
+      }
+      .hub-root .hub-rich-content.post-editor-content .ProseMirror {
+        min-height: 0;
+        font-size: inherit;
+        line-height: inherit;
+        color: inherit;
+      }
+      .hub-root .hub-rich-content.post-editor-content .ProseMirror a {
+        color: var(--hub-acc);
+      }
+      /* Block-level spacing for a richtext page block (PaginaPage.tsx), matching the
+         `mb-4` (1rem) the legacy `paragraph`/`markdown` blocks use between page blocks. */
+      .hub-root .hub-richtext {
+        margin-bottom: 1rem;
+      }
     </style>
   </head>
   <body>

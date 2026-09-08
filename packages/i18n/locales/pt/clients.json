@@ -203,12 +203,18 @@
       "redesSociais": "Redes sociais",
       "relatorios": "Relatórios",
       "hub": "Hub",
+      "hubAcesso": "Acesso",
+      "hubBriefing": "Briefing",
+      "hubMarca": "Marca",
+      "hubPaginas": "Páginas",
+      "hubIdeias": "Ideias",
       "arquivos": "Arquivos",
       "financeiro": "Financeiro"
     },
     "tabGroups": {
       "cliente": "Cliente",
       "canais": "Canais e análise",
+      "portal": "Portal do cliente",
       "gestao": "Gestão"
     },
     "nav": {

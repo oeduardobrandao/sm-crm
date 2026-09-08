@@ -1103,6 +1103,33 @@ Deno.test("hub-pages lists client pages and strips joined workspace metadata", a
   assertEquals(body.pages, [{ id: "page-1", title: "Boas-vindas", display_order: 0 }]);
 });
 
+Deno.test("hub-pages orders by display_order and breaks ties by created_at", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { id: 14 }, error: null });
+  db.queue("hub_pages", "select", {
+    data: [{ id: "page-1", title: "Boas-vindas", display_order: 0, clientes: { conta_id: "conta-1" } }],
+    error: null,
+  });
+
+  const handler = createHubPagesHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    rateLimit: async () => true,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-pages?token=hub-123"));
+  assertEquals(response.status, 200);
+
+  const listCall = db.calls.find((c) => c.table === "hub_pages" && c.operation === "select");
+  const orderArgs = listCall?.modifiers.filter((m) => m.method === "order").map((m) => m.args[0]);
+  assertEquals(orderArgs, ["display_order", "created_at"]);
+});
+
 Deno.test("hub-pages returns 404 when a requested page does not exist", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {

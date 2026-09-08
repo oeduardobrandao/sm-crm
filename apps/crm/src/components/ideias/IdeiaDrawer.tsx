@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Save, Loader2, ImagePlus, ListChecks, X } from 'lucide-react';
 import {
@@ -60,9 +60,14 @@ interface IdeiaDrawerProps {
   ideia: Ideia;
   queryKey: unknown[];
   onClose: () => void;
+  // Shortcut from the card list: opens the drawer already focused on the action the user
+  // asked for instead of dropping them at the top. Optional -- every other call site keeps
+  // opening on the description with no initial focus/dialog, exactly as before this prop
+  // existed.
+  initialAction?: 'responder' | 'converter';
 }
 
-export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
+export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDrawerProps) {
   const qc = useQueryClient();
   const { profile, can } = useAuth();
   // IdeiasPage/IdeiaDrawer had NO role check at all before Task 14 -- any
@@ -85,6 +90,23 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
   const isConverted = ideia.status === 'convertida' || ideia.status === 'concluida';
   const statusLocked = isConverted && ideia.tarefa_id != null;
   const canConvert = ideia.tipo === 'solicitacao' && CONVERSIBLE_STATUSES.includes(ideia.status);
+
+  const comentarioRef = useRef<HTMLTextAreaElement>(null);
+
+  // Runs once per mount -- a drawer instance lives for exactly one open/close cycle (the
+  // Sheet overlay blocks the card grid behind it, so there's no way to swap `ideia` on a
+  // still-mounted drawer through the UI). Intentionally not keyed on `canConvert`/`ideia`.
+  // The 'responder' focus shortcut is handled separately via SheetContent's
+  // onOpenAutoFocus below -- Radix's FocusScope grabs focus onto the first tabbable
+  // element in its own mount effect, which (via an internal ref-callback-driven
+  // re-render) resolves after a plain useEffect here would have already run, so a
+  // .focus() call from this effect loses the race and gets overridden right back.
+  useEffect(() => {
+    if (initialAction === 'converter' && canConvert) {
+      setConvertOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleConvertCreate(payload: TarefaFormPayload, tagIds: number[]) {
     // A RPC e o commit da conversao; tags sao best-effort depois dela.
@@ -223,7 +245,16 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
         if (!o) onClose();
       }}
     >
-      <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0 gap-0">
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-lg flex flex-col p-0 gap-0"
+        onOpenAutoFocus={(event) => {
+          if (initialAction === 'responder') {
+            event.preventDefault();
+            comentarioRef.current?.focus();
+          }
+        }}
+      >
         <SheetHeader className="px-6 py-5 border-b border-border space-y-1.5">
           <div className="mb-1.5 flex gap-1.5">
             <IdeiaStatusBadge status={ideia.status} />
@@ -403,6 +434,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
               )}
             </p>
             <Textarea
+              ref={comentarioRef}
               value={comentario}
               onChange={(e) => setComentario(e.target.value)}
               placeholder="Escreva uma resposta para o cliente..."

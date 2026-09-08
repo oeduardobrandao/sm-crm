@@ -42,7 +42,11 @@ const ClienteVisaoGeralTab = lazy(() => import('./pages/cliente-detalhe/tabs/Vis
 const ClienteEntregasTab = lazy(() => import('./pages/cliente-detalhe/tabs/EntregasTab'));
 const ClienteRedesSociaisTab = lazy(() => import('./pages/cliente-detalhe/tabs/RedesSociaisTab'));
 const ClienteRelatoriosTab = lazy(() => import('./pages/cliente-detalhe/tabs/RelatoriosTab'));
-const ClienteHubTab = lazy(() => import('./pages/cliente-detalhe/tabs/HubClienteTab'));
+const ClienteHubAcesso = lazy(() => import('./pages/cliente-detalhe/hub/AcessoPage'));
+const ClienteHubBriefing = lazy(() => import('./pages/cliente-detalhe/hub/BriefingPage'));
+const ClienteHubMarca = lazy(() => import('./pages/cliente-detalhe/hub/MarcaPage'));
+const ClienteHubPaginas = lazy(() => import('./pages/cliente-detalhe/hub/PaginasPage'));
+const ClienteHubIdeias = lazy(() => import('./pages/cliente-detalhe/hub/IdeiasPage'));
 const ClienteArquivosTab = lazy(() => import('./pages/cliente-detalhe/tabs/ArquivosTab'));
 const ClienteFinanceiroTab = lazy(() => import('./pages/cliente-detalhe/tabs/FinanceiroTab'));
 const FinanceiroPage = lazy(() => import('./pages/financeiro/FinanceiroPage'));
@@ -194,7 +198,14 @@ export default function App() {
                   <Route path="entregas" element={<ClienteEntregasTab />} />
                   <Route path="redes-sociais" element={<ClienteRedesSociaisTab />} />
                   <Route path="relatorios" element={<ClienteRelatoriosTab />} />
-                  <Route path="hub" element={<ClienteHubTab />} />
+                  <Route path="hub">
+                    <Route index element={<Navigate to="acesso" replace />} />
+                    <Route path="acesso" element={<ClienteHubAcesso />} />
+                    <Route path="briefing" element={<ClienteHubBriefing />} />
+                    <Route path="marca" element={<ClienteHubMarca />} />
+                    <Route path="paginas" element={<ClienteHubPaginas />} />
+                    <Route path="ideias" element={<ClienteHubIdeias />} />
+                  </Route>
                   <Route path="arquivos" element={<ClienteArquivosTab />} />
                   <Route path="financeiro" element={<ClienteFinanceiroTab />} />
                   {/* Unregistered sub-path: ClienteDetalhePage's own guard parses the

@@ -166,12 +166,20 @@ export interface HubPageFull extends HubPage {
   content: HubContentBlock[];
 }
 
-export interface HubContentBlock {
+export interface HubLegacyBlock {
   type: 'paragraph' | 'heading' | 'image' | 'link' | 'markdown';
   content: string;
   href?: string;
   level?: 1 | 2 | 3;
 }
+
+export interface HubRichTextBlock {
+  type: 'richtext';
+  /** Documento ProseMirror do TipTap. Lido por `RichTextContent`. */
+  doc: Record<string, unknown>;
+}
+
+export type HubContentBlock = HubLegacyBlock | HubRichTextBlock;
 
 export interface BriefingAudio {
   url: string;

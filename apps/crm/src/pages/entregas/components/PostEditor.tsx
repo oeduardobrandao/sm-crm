@@ -10,6 +10,8 @@ import Link from '@tiptap/extension-link';
 import Color from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
+import { toast } from 'sonner';
+import { isAllowedRichTextAutolinkUrl, normalizeRichTextLinkUrl } from '@mesaas/link-policy';
 import {
   Bold,
   Italic,
@@ -28,13 +30,20 @@ import { CommentHighlight } from './CommentHighlight';
 import { MentionNode } from '@/components/mentions/MentionNode';
 import { mentionHref } from '@/components/mentions/mentionHref';
 import { MentionSuggestion } from '@/components/mentions/mentionSuggestion';
-import { useMentionSearch } from '@/components/mentions/useMentionSearch';
+import { useMentionSearch, type MentionSection } from '@/components/mentions/useMentionSearch';
 import { MentionTextarea } from '@/components/mentions/MentionTextarea';
 import type { MentionEntityType } from '@/components/mentions/types';
 import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
 import PostCommentPopover from './PostCommentPopover';
 import type { CommentThreadWithComments, Membro } from '@/store';
+
+// Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
+// (@mesaas/link-policy) -- sem isso o popover simplesmente fechava e a marca nunca
+// era aplicada, sem qualquer explicação (ver PaginaRichTextEditor.tsx para a mesma
+// checagem no editor de páginas do Hub).
+const LINK_REJECTED_MESSAGE =
+  'Não foi possível aplicar o link. Use um endereço válido (http, https, e-mail ou telefone).';
 
 const TEXT_COLORS = [
   { name: 'Padrão', color: null },
@@ -47,6 +56,57 @@ const TEXT_COLORS = [
   { name: 'Roxo', color: '#9065B0' },
   { name: 'Rosa', color: '#C14C8A' },
 ] as const;
+
+/**
+ * Extracted from `useEditor`'s inline array so the schema can be asserted on directly
+ * (see `__tests__/postEditorExtensions.test.ts`) without mounting the full editor --
+ * PostEditor needs live TanStack Query data (useMentionSearch) and a Router, which makes
+ * a full render expensive to set up just to check the extension set. Mirrors the same
+ * export-for-testability pattern already used by `readOnlyTipTapExtensions`
+ * (ReadOnlyTipTap.tsx) and `pageEditorExtensions` (cliente-detalhe/hub/pageEditorSchema.ts).
+ */
+export function postEditorExtensions({
+  mentionSearch,
+  onUploadInlineImage,
+}: {
+  mentionSearch: (query: string) => Promise<MentionSection[]>;
+  onUploadInlineImage?: InlineImageUploadFn;
+}) {
+  return [
+    // StarterKit v3 already bundles Link and Underline. Without `link: false` /
+    // `underline: false` both register twice -- TipTap logs "Duplicate extension
+    // names found: ['link','underline']" and keeps BOTH Link instances live, so
+    // StarterKit's own `openOnClick: true` handler fires alongside the `openOnClick:
+    // false` one configured below, and clicking a link while editing navigates away.
+    StarterKit.configure({ link: false, underline: false }),
+    UnderlineExt,
+    TextStyle,
+    Color,
+    Highlight.configure({
+      multicolor: true,
+      HTMLAttributes: {},
+    }),
+    // isAllowedRichTextAutolinkUrl (@mesaas/link-policy) -- same policy and same
+    // autolink-aware resolution as the CRM's page editor (pageEditorSchema.ts):
+    // http/https/mailto/tel allowed, everything else (including relative/anchor-only
+    // and credentialed URLs) rejected. This Link extension had no `isAllowedUri` at
+    // all before, so an `ftp:`, credentialed, or relative URL typed into a post
+    // caption persisted here and then rendered as a dead `href=""` in the Hub, which
+    // enforces this same policy on read (RichTextContent.tsx, `autolink: false` there
+    // -- it only ever validates an already-resolved href, never raw typed text).
+    Link.configure({
+      openOnClick: false,
+      autolink: true,
+      isAllowedUri: (url, ctx) => isAllowedRichTextAutolinkUrl(url, ctx),
+    }),
+    Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
+    CalloutExtension,
+    CommentHighlight,
+    MentionNode,
+    MentionSuggestion.configure({ search: mentionSearch }),
+    ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
+  ];
+}
 
 const HIGHLIGHT_COLORS = [
   { name: 'Nenhum', color: null, cssColor: 'transparent' },
@@ -130,23 +190,7 @@ export function PostEditor({
   const mentionSearchFn = useRef((query: string) => mentionSearchRef.current(query)).current;
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      UnderlineExt,
-      TextStyle,
-      Color,
-      Highlight.configure({
-        multicolor: true,
-        HTMLAttributes: {},
-      }),
-      Link.configure({ openOnClick: false, autolink: true }),
-      Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
-      CalloutExtension,
-      CommentHighlight,
-      MentionNode,
-      MentionSuggestion.configure({ search: mentionSearchFn }),
-      ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
-    ],
+    extensions: postEditorExtensions({ mentionSearch: mentionSearchFn, onUploadInlineImage }),
     content: initialContent ?? undefined,
     editable: !disabled,
     onCreate: () => {
@@ -209,11 +253,24 @@ export function PostEditor({
   const applyLink = useCallback(() => {
     if (!editor) return;
     const url = linkInputValue.trim();
-    if (url) {
-      editor.chain().focus().setLink({ href: url }).run();
-    } else {
+    if (!url) {
       editor.chain().focus().unsetLink().run();
+      setLinkPopoverOpen(false);
+      return;
     }
+    // normalizeRichTextLinkUrl (@mesaas/link-policy) resolves a schemeless candidate
+    // ("mesaas.com.br", "contato@exemplo.com") to the href TipTap will actually store --
+    // `isAllowedUri` on the Link extension only decides yes/no on a resolved copy, it
+    // never rewrites what `setLink` persists. Passing the raw `url` through here is what
+    // let a schemeless href reach `setLink` unresolved and render dead (`href=""`) in the
+    // Hub. When nothing valid can be resolved, no link is applied and the popover stays
+    // open with an explanation instead of silently closing.
+    const normalized = normalizeRichTextLinkUrl(url);
+    if (!normalized) {
+      toast.error(LINK_REJECTED_MESSAGE);
+      return;
+    }
+    editor.chain().focus().setLink({ href: normalized }).run();
     setLinkPopoverOpen(false);
   }, [editor, linkInputValue]);
 
@@ -438,6 +495,7 @@ export function PostEditor({
                   className="post-editor-link-input"
                   type="url"
                   placeholder="https://..."
+                  aria-label="Endereço do link"
                   value={linkInputValue}
                   onChange={(e) => setLinkInputValue(e.target.value)}
                   onKeyDown={(e) => {
