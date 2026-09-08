@@ -10,12 +10,25 @@
  *
  *   - Dry run by default. Nothing is written unless you pass `--apply`.
  *   - A JSON backup of every row's `id` + `content`, exactly as read, is
- *     written under `scripts/backups/` before the first UPDATE is issued.
- *   - Every write is a conditional UPDATE (`WHERE id = $1 AND content = $2`).
- *     A row changed between our read and our write (someone opened, converted
- *     and saved it by hand) is never overwritten -- it lands in `raced`, not
- *     silently clobbered, and is left for a second pass.
- *   - A row that already holds a `richtext` block is skipped, not touched.
+ *     written under `scripts/backups/` on every run (dry run included), before
+ *     the first UPDATE is issued when `--apply` is passed.
+ *   - Every write is a conditional UPDATE (`WHERE id = $1 AND NOT content @> '[{"type":"richtext"}]'`).
+ *     This is a deliberate deviation from a literal `content = $2` equality check. postgrest-js
+ *     serializes an `.eq()` filter value with a template literal, so a JS array/object argument
+ *     stringifies to the literal text `[object Object]`, not JSON -- Postgres then rejects it
+ *     against a jsonb column (22P02) and EVERY row fails, turning the whole migration into a silent
+ *     no-op. `JSON.stringify()`-ing the full content is not a fix either: some rows serialize past
+ *     16 KB of URL once percent-encoded, which Cloudflare rejects with a 414 before the request
+ *     reaches Postgres. Instead of full-content equality, this encodes the actual threat model --
+ *     the only write the live editor can make to a page is `[{type: "richtext", doc}]` (see
+ *     `writePageContent` below) -- so "has this row changed since I read it" reduces to "does it
+ *     now contain a richtext block". A row changed between our read and our write (someone opened,
+ *     converted and saved it by hand) is never overwritten -- it lands in `raced`, not silently
+ *     clobbered, and is left for a second pass. Do not restore the `content = $2` form; it reads as
+ *     more literal but never matches a single row.
+ *   - A row that already holds a `richtext` block is skipped, not touched. A row that holds a
+ *     `richtext` block MIXED with legacy block(s) is a hard failure, not a silent partial
+ *     conversion (see the guard in `convert()` below).
  *   - A row whose markdown fails to convert is a hard failure, never a silent
  *     write of the degraded one-paragraph fallback. `readPageDocResult()`
  *     from Task 8's `pageContent.ts` returns `converted: false` for exactly
@@ -25,12 +38,33 @@
  *
  * Usage:
  *   npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts [--apply] [--staging]
+ *   npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts --restore <backup-file> [--staging]
  *
  * Connection:
  *   Preferred, and the only mode that reaches every workspace: set
- *   SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the environment before
- *   running. Service role bypasses RLS, which this migration needs -- production
- *   has rows across 21+ clients, not one workspace.
+ *   SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before running. Service role
+ *   bypasses RLS, which this migration needs -- production has rows across
+ *   21+ clients, not one workspace. `--apply` and `--restore` both refuse to
+ *   run against the RLS-scoped fallback below; they require service role.
+ *
+ *   NEVER pass the service role key as a literal `KEY=value npx tsx ...` CLI
+ *   argument -- it lands in shell history and in `ps` output for as long as
+ *   the process runs. Instead put it in a gitignored `.env.migration` file at
+ *   the repo root:
+ *
+ *     SUPABASE_URL=<prod-url>
+ *     SUPABASE_SERVICE_ROLE_KEY=<prod-service-role-key>
+ *
+ *   and source it into the shell before running, with nothing secret on the
+ *   command line:
+ *
+ *     set -a; . ./.env.migration; set +a
+ *     npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts --apply
+ *
+ *   `connect()` also reads SUPABASE_SERVICE_ROLE_KEY out of the `.env` /
+ *   `.env.staging` file it already parses for the RLS-scoped fallback below,
+ *   so the same two lines dropped into `.env` work too if you would rather
+ *   not source a separate file.
  *
  *   Fallback, RLS-scoped to a single workspace -- useful for a local or
  *   staging dry run, never a substitute for the real migration: with no
@@ -39,12 +73,23 @@
  *   `.env.staging` with `--staging`) and signs in as that user. RLS then
  *   limits `selectPages()` to that one workspace's hub_pages rows.
  *
- * Rollback: the backup file written under `scripts/backups/` is a JSON array
- * of `{ id, content }` exactly as read before the run. For any id that needs
- * reverting:
+ * Rollback: prefer replaying the backup through this same script -- it reuses
+ * the same client and reports success/failure per id:
  *
- *   UPDATE hub_pages SET content = '<that row's content from the backup file>'::jsonb
- *   WHERE id = '<id>';
+ *   npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts \
+ *     --restore scripts/backups/hub-pages-backup-<timestamp>.json
+ *
+ *   This OVERWRITES `content` unconditionally for every id in the backup file --
+ *   it clobbers any legitimate edit made to those pages after the migration ran.
+ *   Only run it to revert the whole migration, not to fix one row by hand.
+ *
+ *   Manual SQL fallback, only if the script itself is unavailable. Use dollar
+ *   quoting, never a single-quoted string literal: the backed-up `content` is
+ *   Portuguese client copy and WILL contain ASCII apostrophes, which break or
+ *   silently truncate a hand-pasted `'...'` literal.
+ *
+ *     UPDATE hub_pages SET content = $bkp$<that row's content from the backup file>$bkp$::jsonb
+ *     WHERE id = '<id>';
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -62,7 +107,15 @@ export interface PageRow {
 
 export interface Db {
   selectPages(): Promise<PageRow[]>;
-  /** UPDATE ... SET content = $3 WHERE id = $1 AND content = $2. Returns rows affected. */
+  /**
+   * Conceptually `UPDATE ... SET content = $3 WHERE id = $1 AND content = $2`, i.e.
+   * "only write if the row still holds the exact content we read." `expected` carries
+   * that intent for callers and for the fake `Db` used in tests. The real
+   * (`createSupabaseDb`) implementation cannot do a literal `content = $2` equality
+   * check -- see its comment -- and instead checks "the row does not yet contain a
+   * richtext block", which is equivalent given the only write the live editor can
+   * make. Returns rows affected.
+   */
   updateIfUnchanged(
     id: string,
     expected: unknown,
@@ -75,6 +128,23 @@ export interface Report {
   skipped: string[];
   raced: string[];
   failed: { id: string; error: string }[];
+}
+
+/**
+ * True when `content` is an array with at least one `richtext` block. Combined
+ * with `isLegacyContent()` (true when ANY block is non-`richtext`), this
+ * detects a mixed row like `[{richtext}, {markdown}]`: `isLegacyContent()`
+ * alone would let it through into `readPageDocResult()`, which returns just
+ * the first richtext block's doc with `converted: true`, silently dropping
+ * the markdown block instead of converting it.
+ */
+function hasRichtextBlock(content: unknown): boolean {
+  return (
+    Array.isArray(content) &&
+    content.some(
+      (b) => typeof b === 'object' && b !== null && (b as { type?: unknown }).type === 'richtext',
+    )
+  );
 }
 
 /**
@@ -94,6 +164,20 @@ export async function convert(db: Db, opts: { dryRun: boolean }): Promise<Report
   for (const row of rows) {
     if (!isLegacyContent(row.content)) {
       report.skipped.push(row.id);
+      continue;
+    }
+    if (hasRichtextBlock(row.content)) {
+      // Production has no such rows today, and the live editor cannot produce
+      // one -- `writePageContent()` always returns a single-element array --
+      // but refuse to guess rather than risk silently dropping the legacy
+      // block(s) if that ever changes.
+      report.failed.push({
+        id: row.id,
+        error:
+          'Row mixes a richtext block with legacy block(s). readPageDocResult() would return ' +
+          'only the richtext doc, silently dropping the legacy block(s). Not written -- needs a ' +
+          'manual look.',
+      });
       continue;
     }
     try {
@@ -145,7 +229,11 @@ async function connect(envFile: string): Promise<{ client: SupabaseClient; scope
     throw new Error(`No Supabase URL found. Set SUPABASE_URL, or VITE_SUPABASE_URL in ${envFile}.`);
   }
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Also falls back to fileEnv, like url/anon/email/password below, so an
+  // operator can put the service key in a gitignored env file instead of a
+  // literal `KEY=value` CLI argument (shell history, `ps` output). See the
+  // header comment for the recommended `.env.migration` + `set -a` invocation.
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || fileEnv.SUPABASE_SERVICE_ROLE_KEY;
   if (serviceKey) {
     return {
       client: createClient(url, serviceKey, { auth: { persistSession: false } }),
@@ -173,19 +261,29 @@ async function connect(envFile: string): Promise<{ client: SupabaseClient; scope
   return { client, scoped: true };
 }
 
-function createSupabaseDb(client: SupabaseClient): Db {
+export function createSupabaseDb(client: SupabaseClient): Db {
   return {
     async selectPages() {
       const { data, error } = await client.from('hub_pages').select('id, content');
       if (error) throw new Error(`selectPages failed: ${error.message}`);
       return (data ?? []) as PageRow[];
     },
-    async updateIfUnchanged(id, expected, next) {
+    // `expected` (the Db interface's optimistic-concurrency argument) is
+    // intentionally unused here -- see the header comment. A literal
+    // `.eq('content', expected)` cannot work: postgrest-js serializes an eq
+    // filter value with a template literal, so a JS array/object argument
+    // stringifies to `[object Object]`, not JSON, and every row fails against
+    // the jsonb column. `JSON.stringify()`-ing it is not a fix either -- some
+    // rows exceed the 16 KB URL length Cloudflare allows. Instead this checks
+    // the one write the live editor can make (`[{type:"richtext", doc}]`, see
+    // `writePageContent`): the row is updated only if it does NOT already
+    // contain a richtext block, i.e. nobody converted it since we read it.
+    async updateIfUnchanged(id, _expected, next) {
       const { data, error } = await client
         .from('hub_pages')
         .update({ content: next })
         .eq('id', id)
-        .eq('content', expected as never)
+        .not('content', 'cs', '[{"type":"richtext"}]')
         .select('id');
       if (error) throw new Error(`updateIfUnchanged failed for id ${id}: ${error.message}`);
       return { rowsAffected: (data ?? []).length };
@@ -198,8 +296,56 @@ function writeBackup(rows: PageRow[]): string {
   mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `hub-pages-backup-${stamp}.json`);
-  writeFileSync(file, JSON.stringify(rows, null, 2), 'utf8');
+  // mode 0o600: this file holds production client content, readable only by
+  // the operator running the migration.
+  writeFileSync(file, JSON.stringify(rows, null, 2), { encoding: 'utf8', mode: 0o600 });
   return file;
+}
+
+interface BackupRow {
+  id: string;
+  content: unknown;
+}
+
+/**
+ * Replays a backup file written by `writeBackup()` back onto `hub_pages`,
+ * unconditionally. This is the rollback path (see the header comment): it
+ * OVERWRITES `content` for every id in the file, clobbering any legitimate
+ * edit made to those pages after the migration ran. Only use it to revert the
+ * whole migration, not to fix a single row by hand.
+ */
+async function restoreBackup(client: SupabaseClient, backupFile: string): Promise<void> {
+  const raw = readFileSync(backupFile, 'utf8');
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Backup file ${backupFile} is not a JSON array.`);
+  }
+  console.warn(
+    `Restoring ${parsed.length} row(s) from ${backupFile}. This OVERWRITES the current content ` +
+      'unconditionally -- any edits made to these pages after the migration ran will be lost.',
+  );
+  let failures = 0;
+  for (const row of parsed as BackupRow[]) {
+    if (typeof row?.id !== 'string') {
+      console.error(`Skipping malformed backup entry: ${JSON.stringify(row)}`);
+      failures++;
+      continue;
+    }
+    const { error } = await client
+      .from('hub_pages')
+      .update({ content: row.content })
+      .eq('id', row.id);
+    if (error) {
+      console.error(`Restore failed for id ${row.id}: ${error.message}`);
+      failures++;
+      continue;
+    }
+    console.log(`Restored ${row.id}`);
+  }
+  if (failures > 0) {
+    console.error(`\n${failures} row(s) failed to restore. See errors above.`);
+    process.exitCode = 1;
+  }
 }
 
 function printReport(report: Report): void {
@@ -216,9 +362,31 @@ async function main() {
   const apply = args.includes('--apply');
   const envFile = args.includes('--staging') ? '.env.staging' : '.env';
 
+  const restoreIdx = args.indexOf('--restore');
+  if (restoreIdx !== -1) {
+    const backupFile = args[restoreIdx + 1];
+    if (!backupFile) {
+      throw new Error(
+        '--restore requires a path to a backup file, e.g. ' +
+          '--restore scripts/backups/hub-pages-backup-<timestamp>.json',
+      );
+    }
+    const { client, scoped } = await connect(envFile);
+    if (scoped) {
+      throw new Error(
+        '--restore requires SUPABASE_SERVICE_ROLE_KEY. RLS-scoped mode is read-only.',
+      );
+    }
+    await restoreBackup(client, backupFile);
+    return;
+  }
+
   console.log(apply ? 'LIVE RUN. Rows will be written.' : 'DRY RUN. No writes will occur.');
 
   const { client, scoped } = await connect(envFile);
+  if (apply && scoped) {
+    throw new Error('--apply requires SUPABASE_SERVICE_ROLE_KEY. RLS-scoped mode is read-only.');
+  }
   const db = createSupabaseDb(client);
 
   // selectPages() runs exactly once here. Its result is the snapshot that
@@ -227,10 +395,11 @@ async function main() {
   const rows = await db.selectPages();
   console.log(`Read ${rows.length} row(s) from hub_pages${scoped ? ' (RLS-scoped)' : ''}.`);
 
-  if (apply) {
-    const backupFile = writeBackup(rows);
-    console.log(`Backup written to ${backupFile} before any write.`);
-  }
+  // Written on both dry run and --apply: it costs one line, lets the operator
+  // inspect the pre-flight snapshot while still deciding whether to --apply,
+  // and keeps the backup off the safety-critical (apply-only) branch.
+  const backupFile = writeBackup(rows);
+  console.log(`Backup written to ${backupFile}${apply ? ' before any write.' : ' (dry run).'}`);
 
   const snapshotDb: Db = {
     selectPages: async () => rows,

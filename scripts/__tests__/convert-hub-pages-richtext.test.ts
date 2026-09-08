@@ -65,4 +65,25 @@ describe('convert', () => {
     expect(r.converted).toEqual([]);
     expect(r.raced).toEqual([]);
   });
+
+  it('registra falha (não converte parcial) quando a linha mistura richtext com bloco legado', async () => {
+    // isLegacyContent() é true (há um bloco não-richtext), mas readPageDocResult()
+    // devolveria só o doc do primeiro bloco richtext, descartando o bloco de
+    // markdown em silêncio. Isso tem que virar failed, nunca converted.
+    const db = fakeDb([
+      {
+        id: 'p1',
+        content: [
+          { type: 'richtext', doc: { type: 'doc', content: [] } },
+          { type: 'markdown', content: '# A' },
+        ],
+      },
+    ]);
+    const r = await convert(db, { dryRun: false });
+    expect(r.failed).toHaveLength(1);
+    expect(r.failed[0].id).toBe('p1');
+    expect(r.converted).toEqual([]);
+    expect(r.skipped).toEqual([]);
+    expect(db.updates).toHaveLength(0);
+  });
 });

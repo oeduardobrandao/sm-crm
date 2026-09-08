@@ -229,3 +229,218 @@ alguém force uma escrita nelas depois.
 `tsconfig.scripts.json`, `vitest.config.ts` e `.gitignore`
 (`scripts/backups/` adicionado -- os backups contêm conteúdo de cliente e
 nunca devem ser versionados).
+
+## Fix round 1 (revisão externa)
+
+Seis achados de uma revisão externa (nível CRITICAL a Minor). Todos corrigidos
+em `scripts/convert-hub-pages-richtext.ts`, `scripts/__tests__/`, `.gitignore`.
+
+### 1. [CRITICAL] `.eq('content', expected as never)` era um no-op silencioso
+
+Confirmado: `postgrest-js` serializa o valor de `.eq()` com template literal.
+`expected` é um array de objetos JS, então vira o texto literal
+`[object Object]`, não JSON -- Postgres rejeita contra a coluna `jsonb`
+(22P02, HTTP 400). `updateIfUnchanged` lançava, `convert()` capturava, e as
+29 linhas de produção cairiam todas em `failed`, sem nada escrito. E o dry
+run nunca chega a chamar `updateIfUnchanged`, então nunca revelaria isso.
+
+`JSON.stringify(expected)` também não resolve: até ~46.858 caracteres,
+~70-110 KB de URL após percent-encoding -- Cloudflare corta em 16 KB (414
+antes de chegar no Postgres).
+
+**Fix aplicado** -- trocado por uma checagem que codifica a ameaça real (a
+única escrita que o editor ao vivo pode fazer é `[{type:"richtext", doc}]`,
+ver `writePageContent`), não igualdade de conteúdo completo:
+
+```ts
+.eq('id', id)
+.not('content', 'cs', '[{"type":"richtext"}]')
+```
+
+Removido o `as never` (o compilador estava certo -- não era um operando de
+filtro representável). `createSupabaseDb` agora é exportado. Documentado o
+desvio no comentário de topo do arquivo, no JSDoc de `Db.updateIfUnchanged`
+e inline em `createSupabaseDb`, explicando por que `content = $2` nunca
+funcionaria (serialização + limite de URL) para que ninguém "restaure" a
+versão quebrada depois.
+
+**Teste novo** (pedido explicitamente pela task): `scripts/__tests__/convert-hub-pages-richtext.db.test.ts`
+monta um `SupabaseClient` real via `createClient()` com `fetch` stubado,
+chama `createSupabaseDb(client).updateIfUnchanged(...)` e inspeciona a URL
+que o postgrest-js realmente monta -- não um mock da interface `Db`. Isso é
+exatamente o que teria pego o bug original: os 6 testes existentes mockavam
+`Db` inteiro e nunca olhavam para a requisição real.
+
+URL construída pelo request de teste (path + query, decodificada):
+
+```
+/rest/v1/hub_pages?id=eq.p1&content=not.cs.[{"type":"richtext"}]&select=id
+```
+
+O teste também afirma que `[object Object]` (codificado ou não) nunca
+aparece na URL, e que o comprimento fica bem abaixo de qualquer limite são.
+
+### 2. [Important] `--apply` não era bloqueado em modo RLS-scoped
+
+Fix em `main()`, logo após `connect()`:
+
+```ts
+if (apply && scoped) {
+  throw new Error('--apply requires SUPABASE_SERVICE_ROLE_KEY. RLS-scoped mode is read-only.');
+}
+```
+
+O novo modo `--restore` (item 4) recebeu a mesma trava.
+
+### 3. [Important] Rollout documentado colocava a service-role key na linha de comando
+
+`connect()` agora também lê `SUPABASE_SERVICE_ROLE_KEY` de `fileEnv` (o mesmo
+arquivo `.env`/`.env.staging` já usado para url/anon/email/password no
+fallback RLS-scoped), não só de `process.env`. O comentário de topo do
+arquivo documenta o novo fluxo recomendado: um `.env.migration` gitignorado
+na raiz do repo, fonteado via `set -a; . ./.env.migration; set +a` antes de
+rodar o script -- nada de segredo na linha de comando. `.env.migration`
+adicionado a `.gitignore`.
+
+### 4. [Important] Rollback documentado não era executável
+
+`UPDATE hub_pages SET content = '<...>'::jsonb` com aspas simples quebra ou
+trunca silenciosamente contra copy em PT-BR com apóstrofos ASCII.
+
+**Fix**: novo modo `--restore <backup-file>`, que relê o JSON do backup e
+reaplica via o mesmo client (`restoreBackup()`), com um aviso explícito de
+que a restauração é incondicional e sobrescreve qualquer edição legítima
+feita depois da migração. O fallback manual em SQL na documentação agora usa
+dollar-quoting:
+
+```sql
+UPDATE hub_pages SET content = $bkp$<content daquele id, do arquivo de backup>$bkp$::jsonb
+WHERE id = '<id>';
+```
+
+### 5. [Minor] Backup só em `--apply`
+
+`writeBackup()` agora roda em toda execução (dry run incluído), antes de
+qualquer tentativa de escrita, e com `mode: 0o600` (o arquivo contém
+conteúdo de cliente de produção).
+
+### 6. [Minor] Linhas com bloco misto perdiam a metade legada em silêncio
+
+`isLegacyContent()` é `true` se QUALQUER bloco não for `richtext`, mas
+`readPageDocResult()` devolve o doc do PRIMEIRO bloco `richtext` encontrado
+com `converted: true` -- então `[{richtext}, {markdown}]` converteria só o
+richtext, descartando o markdown sem cair em `failed`. Produção não tem
+nenhuma linha assim hoje e o editor ao vivo não consegue produzir uma
+(`writePageContent` sempre devolve array de um elemento), mas adicionada uma
+guarda em `convert()` antes de tentar `readPageDocResult()`: uma linha legada
+que já contém um bloco `richtext` cai em `failed`, nunca é escrita
+parcialmente. Teste novo cobrindo o caso em
+`convert-hub-pages-richtext.test.ts`.
+
+## Verificação (fix round 1)
+
+```
+npx vitest run scripts/
+ Test Files  7 passed (7)
+      Tests  21 passed (21)
+```
+(as 19 pré-existentes + 1 teste novo do achado 6 + 1 arquivo novo com 1
+teste do achado 1 -- `convert-hub-pages-richtext.db.test.ts`.)
+
+```
+npx tsc -p tsconfig.scripts.json
+```
+Limpo, sem output.
+
+```
+npm run lint
+```
+0 erros, 85 warnings -- todos pré-existentes em arquivos não tocados por
+esta rodada (confirmado rodando eslint isolado nos 4 arquivos tocados:
+zero saída).
+
+```
+npx prettier --check scripts/convert-hub-pages-richtext.ts \
+  scripts/__tests__/convert-hub-pages-richtext.test.ts \
+  scripts/__tests__/convert-hub-pages-richtext.db.test.ts \
+  scripts/__tests__/convert-hub-pages-richtext.fallback.test.ts
+```
+OK (um `--write` necessário na primeira passada do arquivo principal, por
+causa da formatação do novo `hasRichtextBlock`).
+
+`grep -rnP '\x{2014}'` (em dash) nos arquivos tocados + `.gitignore`: nenhuma
+ocorrência.
+
+### Dry run contra dado real -- NÃO executado nesta rodada
+
+Diferente da rodada anterior desta task, não rodei o script contra staging
+ou produção desta vez. Dois motivos:
+
+1. **Sem credenciais de prod neste worktree**: não há `SUPABASE_SERVICE_ROLE_KEY`
+   no ambiente, nem um arquivo `.env` (só existe `.env.staging`, que aponta
+   para staging -- e staging não tem nenhuma linha em `hub_pages`, conforme
+   já confirmado na rodada anterior). Não busquei nem solicitei a
+   service-role key de produção para este fix.
+2. **Um dry run não exerceria o código corrigido de qualquer forma**: o
+   próprio Finding 1 é sobre isso -- `convert()` em `dryRun: true` nunca
+   chama `db.updateIfUnchanged`, então nunca emite a requisição UPDATE
+   corrigida contra um Postgrest de verdade. A única forma de exercitar a
+   URL construída contra o Postgres real seria com `--apply`, que a task
+   proíbe explicitamente.
+
+A prova de que a URL construída está correta veio do teste com `fetch`
+stubado (seção do achado 1 acima), que inspeciona a requisição real que o
+`postgrest-js` monta -- não uma suposição sobre o formato.
+
+## Rollout -- comando corrigido para a migração real
+
+```bash
+# 1. Credenciais em arquivo gitignorado, nunca na linha de comando:
+cat > .env.migration << 'ENV'
+SUPABASE_URL=<prod-url>
+SUPABASE_SERVICE_ROLE_KEY=<prod-service-role-key>
+ENV
+
+# 2. Fontear no shell (nada de segredo aparece no histórico nem em `ps`):
+set -a; . ./.env.migration; set +a
+
+# 3. Dry run (sempre primeiro):
+npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts
+
+# 4. Conferir o relatório (as 4 listas). Se "failed" não estiver vazio, parar
+#    e investigar antes de aplicar.
+
+# 5. Aplicar:
+npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts --apply
+
+# 6. Conferir o backup gerado em scripts/backups/hub-pages-backup-<timestamp>.json
+#    (agora também existe um backup do dry run do passo 3, para inspeção).
+
+# 7. Se "raced" não estiver vazio, rodar de novo (só essas linhas mudaram de
+#    content entre leitura e escrita).
+
+# 8. Ao final, remover .env.migration ou garantir que fica fora do repo
+#    (já está no .gitignore, mas convém não deixar a chave em disco além do
+#    necessário).
+```
+
+## Rollback -- comando corrigido
+
+```bash
+set -a; . ./.env.migration; set +a
+npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts \
+  --restore scripts/backups/hub-pages-backup-<timestamp>.json
+```
+
+Isso sobrescreve `content` incondicionalmente para cada id do arquivo de
+backup -- só usar para reverter a migração inteira, nunca para corrigir uma
+linha à mão. Fallback manual (só se o script estiver indisponível), com
+dollar-quoting em vez de aspas simples:
+
+```sql
+UPDATE hub_pages SET content = $bkp$<content daquele id, do arquivo de backup>$bkp$::jsonb
+WHERE id = '<id>';
+```
+
+Nenhum comando com `--apply` ou `--restore` foi executado contra dado real
+nesta rodada, por instrução explícita da task.
