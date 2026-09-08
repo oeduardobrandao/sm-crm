@@ -11147,6 +11147,152 @@ a.hub-fill__row-inner:hover {
   }
 }
 
+/* ─── Páginas screen (Task 11): 250px rail (dnd-kit reorder) + rich text editor ──
+   Same 250px-rail shape as .hub-briefing__shell, same 900px breakpoint -- the static
+   sidebar is already gone by then, so the rail would otherwise be squeezed under the
+   main column's width. */
+.hub-paginas__split {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  align-items: start;
+  gap: 1.5rem;
+}
+@media (max-width: 900px) {
+  .hub-paginas__split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.hub-paginas__rail {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.hub-paginas__rail-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.hub-paginas__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.5rem;
+}
+.hub-paginas__row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.hub-paginas__drag-handle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  color: var(--text-light);
+  cursor: grab;
+  touch-action: none;
+}
+.hub-paginas__drag-handle:hover {
+  color: var(--text-muted);
+}
+.hub-paginas__list-item {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.625rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: left;
+}
+.hub-paginas__list-item:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+.hub-paginas__list-item[data-active='true'] {
+  background: var(--surface-main);
+  border-color: var(--border-color);
+  color: var(--text-main);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+[data-theme='dark'] .hub-paginas__list-item[data-active='true'] {
+  background: var(--surface-3);
+}
+.hub-paginas__list-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Badge on a page still stored as a legacy block (markdown/paragraph/heading/link/image)
+   -- readPageDoc converts it for display, but saving is what actually migrates the row to
+   `[{ type: 'richtext', doc }]`. */
+.hub-paginas__badge {
+  flex-shrink: 0;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-light);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.hub-paginas__main {
+  min-width: 0;
+}
+.hub-paginas__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.hub-paginas__legacy-note {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.hub-paginas__legacy-note--warn {
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+}
+.hub-paginas__toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.hub-paginas__title-input {
+  min-width: 200px;
+  flex: 1 1 auto;
+}
+.hub-paginas__toolbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+.hub-paginas__dirty-badge {
+  color: var(--warning);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* Ideias: two-up card grid. auto-fill (not a hard 2-col rule) so a card never gets
    squeezed once the viewport drops below the static sidebar's 1101px breakpoint --
    it reflows to one column on its own once 2*320px + gap no longer fits. */

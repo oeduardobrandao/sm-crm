@@ -1,22 +1,50 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Pencil } from 'lucide-react';
+import { Plus, Trash2, Save, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { getHubPages, upsertHubPage, removeHubPage, type HubPageRow } from '@/store';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  getHubPages,
+  upsertHubPage,
+  removeHubPage,
+  reorderHubPages,
+  type HubPageRow,
+} from '@/store';
 import { HubRoleGate, useHubPortalDataEnabled } from './HubRoleGate';
-import { sanitizeUrl } from '@/utils/security';
+import { PaginaRichTextEditor } from './PaginaRichTextEditor';
+import { readPageDocResult, writePageContent, isLegacyContent } from './pageContent';
+import { usePageDraft } from './usePageDraft';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 export default function PaginasPage() {
@@ -27,10 +55,18 @@ export default function PaginasPage() {
   const canLoadPortalData = useHubPortalDataEnabled();
   // An agent never sees the pages data (HubRoleGate below withholds it) — don't fetch it
   // just to discard it at render.
-  const { data: pages } = useQuery({
+  const { data: pages, isLoading } = useQuery({
     queryKey: ['hub-pages-crm', clienteId],
     queryFn: () => getHubPages(clienteId),
     enabled: canLoadPortalData,
+    // `structuralSharing` (padrão true) preservaria a MESMA referência de `data` depois de
+    // um refetch cujo conteúdo bate byte a byte com o cache antigo -- exatamente o caso de
+    // uma reordenação rejeitada (o servidor devolve a ordem original, igual à já em cache).
+    // PagesEditor ressincroniza seu estado local de arrasto num efeito que depende dessa
+    // referência (`[pages]`); sem desligar o structural sharing aqui, esse efeito nunca
+    // dispararia de novo depois de uma rejeição parcial de reorderHubPages, e a ordem
+    // otimista ficaria pendurada na tela mesmo o banco nunca tendo mudado.
+    structuralSharing: false,
   });
 
   if (!cliente.conta_id) return null;
@@ -48,6 +84,7 @@ export default function PaginasPage() {
           clienteId={clienteId}
           contaId={cliente.conta_id}
           pages={pages ?? []}
+          isLoading={isLoading}
           onSaved={() => qc.invalidateQueries({ queryKey: ['hub-pages-crm', clienteId] })}
         />
       </HubRoleGate>
@@ -55,125 +92,337 @@ export default function PaginasPage() {
   );
 }
 
-const mdComponents = {
-  h1: (props: React.ComponentProps<'h1'>) => (
-    <h1 {...props} className="text-2xl font-semibold text-foreground mt-6 mb-2" />
-  ),
-  h2: (props: React.ComponentProps<'h2'>) => (
-    <h2 {...props} className="text-xl font-semibold text-foreground mt-5 mb-2" />
-  ),
-  h3: (props: React.ComponentProps<'h3'>) => (
-    <h3 {...props} className="text-lg font-semibold text-foreground mt-4 mb-1.5" />
-  ),
-  p: (props: React.ComponentProps<'p'>) => (
-    <p {...props} className="text-sm text-muted-foreground leading-relaxed mb-3" />
-  ),
-  strong: (props: React.ComponentProps<'strong'>) => (
-    <strong {...props} className="font-semibold text-foreground" />
-  ),
-  // Conteúdo da página é escrito pela própria equipe da agência no editor acima, mas
-  // ainda é markdown de usuário renderizado como HTML -- href/src sempre passam por
-  // sanitizeUrl(), igual à regra de segurança do projeto (ver CLAUDE.md).
-  a: (props: React.ComponentProps<'a'>) => (
-    <a
-      {...props}
-      href={sanitizeUrl(props.href)}
-      className="text-primary underline underline-offset-2"
-    />
-  ),
-  img: (props: React.ComponentProps<'img'>) => (
-    <img
-      {...props}
-      src={sanitizeUrl(props.src)}
-      className="rounded-lg max-w-full my-3 border border-border"
-    />
-  ),
-  ul: (props: React.ComponentProps<'ul'>) => (
-    <ul {...props} className="list-disc pl-5 mb-3 text-sm text-muted-foreground leading-relaxed" />
-  ),
-  ol: (props: React.ComponentProps<'ol'>) => (
-    <ol
-      {...props}
-      className="list-decimal pl-5 mb-3 text-sm text-muted-foreground leading-relaxed"
-    />
-  ),
-  li: (props: React.ComponentProps<'li'>) => <li {...props} className="mb-0.5" />,
-  blockquote: (props: React.ComponentProps<'blockquote'>) => (
-    <blockquote
-      {...props}
-      className="border-l-4 border-border pl-3 my-3 text-muted-foreground italic text-sm"
-    />
-  ),
-  code: ({ className, children, ...props }: React.ComponentProps<'code'>) => {
-    const isBlock = className?.includes('language-');
-    return isBlock ? (
-      <code
-        {...props}
-        className={`${className ?? ''} block bg-muted text-foreground rounded-lg p-3 my-3 text-xs overflow-x-auto`}
+/** Rail item: drag handle (dnd-kit) + botão de seleção, com badge quando o
+ * conteúdo ainda é markdown/bloco legado (será migrado para richtext ao salvar). */
+function SortablePageRow({
+  page,
+  active,
+  onSelect,
+}: {
+  page: HubPageRow;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: page.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  const legacy = isLegacyContent(page.content);
+
+  return (
+    <div ref={setNodeRef} style={style} className="hub-paginas__row">
+      <button
+        type="button"
+        className="hub-paginas__drag-handle"
+        aria-label="Reordenar página"
+        {...attributes}
+        {...listeners}
       >
-        {children}
-      </code>
-    ) : (
-      <code {...props} className="bg-muted text-foreground rounded px-1 py-0.5 text-xs">
-        {children}
-      </code>
-    );
-  },
-  pre: (props: React.ComponentProps<'pre'>) => (
-    <pre
-      {...props}
-      className="bg-muted text-foreground rounded-lg p-3 my-3 text-xs overflow-x-auto"
-    />
-  ),
-  hr: (props: React.ComponentProps<'hr'>) => <hr {...props} className="my-5 border-border" />,
-  table: (props: React.ComponentProps<'table'>) => (
-    <div className="overflow-x-auto my-3">
-      <table {...props} className="w-full text-sm text-muted-foreground border-collapse" />
+        <GripVertical size={14} />
+      </button>
+      <button
+        type="button"
+        className="hub-paginas__list-item"
+        data-active={active}
+        onClick={onSelect}
+      >
+        <span className="hub-paginas__list-item-title">
+          {page.title || <span className="italic opacity-60">Sem título</span>}
+        </span>
+        {legacy && <span className="hub-paginas__badge">Markdown</span>}
+      </button>
     </div>
-  ),
-  th: (props: React.ComponentProps<'th'>) => (
-    <th
-      {...props}
-      className="border border-border px-2 py-1.5 bg-muted font-semibold text-left text-xs text-foreground"
-    />
-  ),
-  td: (props: React.ComponentProps<'td'>) => (
-    <td {...props} className="border border-border px-2 py-1.5 text-xs" />
-  ),
-};
+  );
+}
 
 function PagesEditor({
   clienteId,
   contaId,
   pages,
+  isLoading,
   onSaved,
 }: {
   clienteId: number;
   contaId: string;
   pages: HubPageRow[];
+  isLoading: boolean;
   onSaved: () => void;
 }) {
-  const [editingPage, setEditingPage] = useState<Partial<HubPageRow> | null>(null);
+  // `null` tem dois significados possíveis aqui: "ainda não escolhemos nada" (antes da
+  // 1ª carga) e "o usuário está compondo uma página nova". O ref de inicialização abaixo
+  // decide qual dos dois é, e só decide UMA vez -- depois disso, `null` sempre quer dizer
+  // "página nova" e nunca é sobrescrito pelo efeito de seleção padrão.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const initializedRef = useRef(false);
+  const [dirty, setDirty] = useState(false);
+  const [pendingTarget, setPendingTarget] = useState<{ target: string | null } | null>(null);
+  // Incrementado a cada página nova criada com sucesso -- entra na `key` do painel
+  // para forçar remount (título/doc voltam a ficar em branco) sem precisar do id
+  // da linha recém-inserida, que `upsertHubPage` não devolve.
+  const [newDraftNonce, setNewDraftNonce] = useState(0);
+
+  // Seleção inicial: primeira página assim que a lista carrega. Só roda uma vez --
+  // depois disso, `selectedId === null` é sempre uma escolha deliberada (nova página).
+  useEffect(() => {
+    if (isLoading || initializedRef.current) return;
+    initializedRef.current = true;
+    if (pages.length > 0) setSelectedId(pages[0].id);
+  }, [isLoading, pages]);
+
+  // A página selecionada sumiu (removida nesta sessão ou em outra aba) -- cai para a
+  // primeira que sobrou, ou para o modo "nova" se não sobrou nenhuma.
+  useEffect(() => {
+    if (isLoading || selectedId === null) return;
+    if (!pages.some((p) => p.id === selectedId)) {
+      setSelectedId(pages[0]?.id ?? null);
+    }
+  }, [isLoading, pages, selectedId]);
+
+  function requestSwitch(target: string | null) {
+    if (target === selectedId) return;
+    if (dirty) {
+      setPendingTarget({ target });
+    } else {
+      setSelectedId(target);
+    }
+  }
+
+  function confirmSwitch() {
+    if (pendingTarget) setSelectedId(pendingTarget.target);
+    setPendingTarget(null);
+  }
+
+  const handleDirtyChange = useCallback((next: boolean) => setDirty(next), []);
+
+  const handleChildSaved = useCallback(
+    (wasCreate: boolean) => {
+      if (wasCreate) setNewDraftNonce((n) => n + 1);
+      onSaved();
+    },
+    [onSaved],
+  );
+
+  // ── Reordenação (dnd-kit) ──────────────────────────────────────────────────
+  // Estado local só para o feedback visual imediato do arrasto -- a fonte da
+  // verdade continua sendo `pages` (a query). Depois de toda tentativa de
+  // reordenar, sucesso ou falha, `onSaved()` invalida a query; quando a lista
+  // fresca chega, este efeito resincroniza `orderedPages` com o que o banco
+  // realmente tem, então uma ordem otimista nunca fica "pendurada" após uma
+  // rejeição parcial do Promise.all em reorderHubPages.
+  const [orderedPages, setOrderedPages] = useState<HubPageRow[]>(pages);
+  useEffect(() => {
+    setOrderedPages(pages);
+  }, [pages]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = orderedPages.findIndex((p) => p.id === active.id);
+    const newIndex = orderedPages.findIndex((p) => p.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const next = arrayMove(orderedPages, oldIndex, newIndex);
+    setOrderedPages(next);
+    try {
+      await reorderHubPages(
+        clienteId,
+        next.map((p) => p.id),
+      );
+    } catch {
+      toast.error('Erro ao reordenar páginas.');
+    } finally {
+      // Sempre busca de novo, dê certo ou errado: um update por linha
+      // (Promise.all) pode ter renumerado só parte da lista, e o que a tela
+      // mostra precisa ser sempre o que o banco tem, nunca a ordem otimista.
+      onSaved();
+    }
+  }
+
+  const currentPage = selectedId ? (pages.find((p) => p.id === selectedId) ?? null) : null;
+
+  return (
+    <div className="hub-paginas__split">
+      <aside className="hub-paginas__rail">
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full justify-start"
+          onClick={() => requestSwitch(null)}
+        >
+          <Plus size={14} className="mr-1.5" /> Nova página
+        </Button>
+
+        {isLoading ? (
+          <div className="py-6 flex justify-center">
+            <Spinner size="sm" />
+          </div>
+        ) : pages.length === 0 ? (
+          <p className="hub-paginas__rail-empty">Nenhuma página ainda.</p>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={orderedPages.map((p) => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="hub-paginas__list">
+                {orderedPages.map((p) => (
+                  <SortablePageRow
+                    key={p.id}
+                    page={p}
+                    active={selectedId === p.id}
+                    onSelect={() => requestSwitch(p.id)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
+      </aside>
+
+      <div className="hub-paginas__main">
+        {isLoading ? (
+          <div className="py-8 flex justify-center">
+            <Spinner size="md" />
+          </div>
+        ) : (
+          <PageEditorPane
+            key={selectedId ?? `new-${newDraftNonce}`}
+            clienteId={clienteId}
+            contaId={contaId}
+            page={currentPage}
+            onSaved={handleChildSaved}
+            onDeleted={onSaved}
+            onDirtyChange={handleDirtyChange}
+          />
+        )}
+      </div>
+
+      <AlertDialog
+        open={pendingTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Trocar de página sem salvar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você tem alterações não salvas nesta página. Elas ficam guardadas neste navegador e
+              você pode continuar depois, mas ainda não foram enviadas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSwitch}>Trocar mesmo assim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function PageEditorPane({
+  clienteId,
+  contaId,
+  page,
+  onSaved,
+  onDeleted,
+  onDirtyChange,
+}: {
+  clienteId: number;
+  contaId: string;
+  page: HubPageRow | null;
+  onSaved: (wasCreate: boolean) => void;
+  onDeleted: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
+  const loaded = useMemo(() => readPageDocResult(page?.content), [page?.content]);
+  const legacy = useMemo(() => isLegacyContent(page?.content), [page?.content]);
+  const { draft, saveDraft, clearDraft } = usePageDraft(page?.id ?? null);
+
+  const [title, setTitle] = useState(page?.title ?? '');
+  const [doc, setDoc] = useState<Record<string, unknown>>(draft ?? loaded.doc);
   const [saving, setSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
 
-  const contentText =
-    (editingPage?.content as Array<{ content: string }> | undefined)?.[0]?.content ?? '';
-  const isDirty = editingPage != null && (editingPage.title ?? '') !== '';
+  const docRef = useRef(doc);
+  docRef.current = doc;
+  const draftTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  async function savePage() {
-    if (!editingPage?.title) return;
+  const isDirty =
+    title !== (page?.title ?? '') || JSON.stringify(doc) !== JSON.stringify(loaded.doc);
+
+  useEffect(() => {
+    onDirtyChange(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  // Sobrevive a fechar a aba/navegar para fora do app -- navegação DENTRO da SPA é
+  // deliberadamente livre (o blocker de navegação do React Router é proibido neste
+  // projeto; ver usePageDraft.ts), o rascunho no localStorage é quem protege esse caso.
+  useEffect(() => {
+    if (!isDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [isDirty]);
+
+  // Segura a troca silenciosa de versão entre deploys enquanto há edição ou salvamento
+  // em andamento -- mecanismo independente do beforeunload acima (ver @mesaas/app-lifecycle).
+  useUnsavedWork(isDirty || saving);
+
+  useEffect(
+    () => () => {
+      if (draftTimeoutRef.current) clearTimeout(draftTimeoutRef.current);
+    },
+    [],
+  );
+
+  function handleEditorChange(next: Record<string, unknown>) {
+    setDoc(next);
+    // Grava o rascunho com um pequeno debounce -- uma página grande gera um JSON
+    // grande, e regravar o localStorage a cada tecla pode travar a digitação.
+    if (draftTimeoutRef.current) clearTimeout(draftTimeoutRef.current);
+    draftTimeoutRef.current = setTimeout(() => {
+      saveDraft(docRef.current);
+    }, 400);
+  }
+
+  async function handleSave() {
+    if (!title.trim()) {
+      toast.error('Dê um título para a página.');
+      return;
+    }
+    if (draftTimeoutRef.current) {
+      clearTimeout(draftTimeoutRef.current);
+      draftTimeoutRef.current = undefined;
+    }
+    const wasCreate = !page;
     setSaving(true);
     try {
       await upsertHubPage({
-        ...editingPage,
+        ...(page?.id ? { id: page.id } : {}),
         cliente_id: clienteId,
         conta_id: contaId,
-        content: editingPage.content ?? [],
+        title: title.trim(),
+        content: writePageContent(doc),
       });
+      clearDraft();
       toast.success('Página salva!');
-      setEditingPage(null);
-      onSaved();
+      onSaved(wasCreate);
     } catch (e: any) {
       toast.error(e?.message ?? 'Erro ao salvar página.');
     } finally {
@@ -181,122 +430,54 @@ function PagesEditor({
     }
   }
 
-  async function deletePage(id: string) {
+  async function handleDelete() {
+    if (!page) return;
+    if (!window.confirm('Remover esta página? Essa ação não pode ser desfeita.')) return;
     try {
-      await removeHubPage(id);
+      await removeHubPage(page.id);
+      clearDraft();
       toast.success('Página removida.');
-      onSaved();
+      onDeleted();
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao remover página.');
+      toast.error(e?.message ?? 'Erro ao remover página.');
     }
   }
 
-  function closeEditor() {
-    setEditingPage(null);
-  }
-
   return (
-    <section>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">Páginas</h3>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setEditingPage({ title: '', content: [] })}
-        >
-          <Plus size={14} className="mr-1.5" /> Nova página
-        </Button>
+    <div className="hub-paginas__editor">
+      {legacy && (
+        <p className="hub-paginas__legacy-note">
+          Conteúdo em markdown. Será convertido para o novo formato ao salvar.
+        </p>
+      )}
+      {!loaded.converted && (
+        <p className="hub-paginas__legacy-note hub-paginas__legacy-note--warn">
+          Não foi possível converter automaticamente todo o conteúdo antigo. Revise o texto abaixo
+          antes de salvar.
+        </p>
+      )}
+
+      <div className="hub-paginas__toolbar-row">
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Título da página"
+          className="hub-paginas__title-input"
+        />
+        <div className="hub-paginas__toolbar-actions">
+          {isDirty && <span className="hub-paginas__dirty-badge">Alterações não salvas</span>}
+          {page && (
+            <Button size="sm" variant="ghost" onClick={handleDelete} aria-label="Remover página">
+              <Trash2 size={14} />
+            </Button>
+          )}
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            <Save size={14} className="mr-1.5" /> Salvar
+          </Button>
+        </div>
       </div>
 
-      <div className="space-y-2">
-        {pages.map((p) => (
-          <div key={p.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
-            <span className="text-sm font-medium">{p.title}</span>
-            <div className="flex gap-1">
-              <Button size="sm" variant="ghost" onClick={() => setEditingPage(p)}>
-                <Pencil size={14} className="mr-1" /> Editar
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => deletePage(p.id)}>
-                <Trash2 size={14} />
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <Dialog
-        open={editingPage != null}
-        onOpenChange={(open) => {
-          if (!open) closeEditor();
-        }}
-      >
-        <DialogContent
-          className="max-w-5xl w-[95vw] h-[85vh] flex flex-col"
-          confirmClose={isDirty}
-          onConfirmClose={closeEditor}
-          aria-describedby={undefined}
-        >
-          <DialogHeader>
-            <DialogTitle>{editingPage?.id ? 'Editar página' : 'Nova página'}</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3 flex-1 flex flex-col min-h-0">
-            <Input
-              value={editingPage?.title ?? ''}
-              onChange={(e) => setEditingPage((p) => ({ ...p!, title: e.target.value }))}
-              placeholder="Título da página"
-            />
-
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Markdown</span>
-              <button
-                type="button"
-                className={`px-2 py-0.5 rounded text-xs transition-colors ${showPreview ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
-                onClick={() => setShowPreview((v) => !v)}
-              >
-                {showPreview ? 'Preview on' : 'Preview off'}
-              </button>
-            </div>
-
-            <div className="hub-page-editor__workspace flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
-              <textarea
-                className={`hub-page-editor__input min-h-[12rem] flex-1 resize-none rounded-lg border border-border bg-background p-3 font-mono text-sm leading-relaxed text-foreground focus:outline-none focus:ring-2 focus:ring-ring ${showPreview ? 'w-full md:w-1/2' : 'w-full'}`}
-                style={{ height: '100%' }}
-                value={contentText}
-                onChange={(e) =>
-                  setEditingPage((p) => ({
-                    ...p!,
-                    content: [{ type: 'markdown', content: e.target.value }],
-                  }))
-                }
-                placeholder="Escreva o conteúdo em markdown..."
-              />
-              {showPreview && (
-                <div className="hub-page-editor__preview min-h-[12rem] w-full flex-1 overflow-y-auto rounded-lg border bg-muted/30 p-4 md:w-1/2">
-                  {contentText ? (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-                      {contentText}
-                    </ReactMarkdown>
-                  ) : (
-                    <p className="text-sm text-muted-foreground italic">
-                      Preview aparecerá aqui...
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={closeEditor}>
-              Cancelar
-            </Button>
-            <Button onClick={savePage} disabled={saving || !editingPage?.title}>
-              <Save size={14} className="mr-1.5" /> Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </section>
+      <PaginaRichTextEditor doc={doc} onChange={handleEditorChange} />
+    </div>
   );
 }

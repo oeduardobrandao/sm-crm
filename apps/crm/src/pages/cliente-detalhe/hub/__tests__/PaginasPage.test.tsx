@@ -1,17 +1,63 @@
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import nodePath from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type { Cliente } from '@/store';
+import type { HubPageRow } from '@/store/hub';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 
-// PaginasPage is a pure move of HubTab.tsx's PagesEditor + mdComponents (git
-// history at d30adeea) plus the `hub-pages-crm` query that used to live at
-// the top of HubTab. This suite carries over HubTab.test.tsx's "stacks the
-// page editor and preview" assertion.
+// PaginasPage agora usa o editor rich text (PaginaRichTextEditor/pageEditorSchema, Task 9)
+// e o conversor de conteúdo (pageContent, Task 8) em vez do par markdown/preview antigo.
+// Esta suíte substitui inteiramente a versão pré-Task-11 (dialog + textarea + ReactMarkdown).
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/store/hub');
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+
+// Mock de dnd-kit: sem isto, useSortable (de @dnd-kit/sortable) precisa de um DndContext
+// de verdade por trás, que não existe depois de substituir DndContext por um passthrough.
+// Captura `onDragEnd` para disparar reordenações sem simular ponteiro/toque em jsdom --
+// mesmo padrão de WorkflowCalendarView.test.tsx e WorkflowDrawer.test.tsx.
+const dndHandlers = vi.hoisted(() => ({
+  onDragEnd: undefined as ((e: unknown) => void) | undefined,
+}));
+vi.mock('@dnd-kit/core', () => ({
+  DndContext: ({ children, onDragEnd }: any) => {
+    dndHandlers.onDragEnd = onDragEnd;
+    return <>{children}</>;
+  },
+  PointerSensor: class {},
+  KeyboardSensor: class {},
+  closestCenter: () => null,
+  useSensor: () => ({}),
+  useSensors: (...sensors: unknown[]) => sensors,
+}));
+vi.mock('@dnd-kit/sortable', () => ({
+  SortableContext: ({ children }: any) => <>{children}</>,
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: () => {},
+    transform: null,
+    transition: undefined,
+    isDragging: false,
+  }),
+  verticalListSortingStrategy: () => null,
+  sortableKeyboardCoordinates: () => null,
+  // Reimplementação fiel do arrayMove real -- os testes de reordenação precisam da
+  // ordem de verdade para conferir o array mandado a reorderHubPages.
+  arrayMove: <T,>(arr: T[], from: number, to: number): T[] => {
+    const copy = arr.slice();
+    const [item] = copy.splice(from, 1);
+    copy.splice(to, 0, item);
+    return copy;
+  },
+}));
 
 import { useAuth } from '@/context/AuthContext';
 import { makeCan, fakeMembership } from '@/test/makeCan';
@@ -33,12 +79,55 @@ const CLIENTE: Cliente = {
   conta_id: 'ws-1',
 };
 
+const RICHTEXT_DOC = {
+  type: 'doc',
+  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Conteúdo original' }] }],
+};
+
+const PAGE: HubPageRow = {
+  id: 'p1',
+  conta_id: 'ws-1',
+  cliente_id: 15,
+  title: 'Página um',
+  content: [{ type: 'richtext', doc: RICHTEXT_DOC }],
+  display_order: 0,
+  created_at: '2026-01-01T00:00:00.000Z',
+};
+
+const OUTRA: HubPageRow = {
+  id: 'p2',
+  conta_id: 'ws-1',
+  cliente_id: 15,
+  title: 'Outra página',
+  content: [{ type: 'richtext', doc: { type: 'doc', content: [] } }],
+  display_order: 1,
+  created_at: '2026-01-02T00:00:00.000Z',
+};
+
+const LEGACY_MARKDOWN: HubPageRow = {
+  id: 'p3',
+  conta_id: 'ws-1',
+  cliente_id: 15,
+  title: 'Página markdown',
+  content: [{ type: 'markdown', content: '## Título\n\nTexto em markdown legado.' }],
+  display_order: 0,
+  created_at: '2026-01-01T00:00:00.000Z',
+};
+
+const LEGACY_PARAGRAPH: HubPageRow = {
+  id: 'p4',
+  conta_id: 'ws-1',
+  cliente_id: 15,
+  title: 'Página parágrafo',
+  content: [{ type: 'paragraph', content: 'Texto solto legado' }],
+  display_order: 0,
+  created_at: '2026-01-01T00:00:00.000Z',
+};
+
 /**
- * O gate do portal (HubRoleGate) lê `can('configuracoes', 'editar')`, tri-estado,
- * e nao mais o `workspaceRole` grosseiro. Derivar o `can` do papel via
- * `makeCan`/`fakeMembership` faz estes testes exercitarem a MESMA tabela-verdade
- * (`derivePermission`) que roda em producao. `null` produz 'unknown' em todos os
- * modulos, espelhando um AuthContext ainda nao resolvido.
+ * Tri-state: `HubRoleGate` lê `can('configuracoes', 'editar')`, não mais o
+ * `workspaceRole` grosseiro. Derivar via `makeCan`/`fakeMembership` exercita a
+ * MESMA tabela-verdade (`derivePermission`) que roda em produção.
  */
 function setAuth(workspaceRole: 'owner' | 'admin' | 'agent' | null) {
   mockedUseAuth.mockReturnValue({
@@ -53,7 +142,16 @@ function OutletContextProvider({ cliente }: { cliente: Cliente }) {
   );
 }
 
-function renderPage(cliente: Cliente = CLIENTE) {
+function renderPaginas({
+  page,
+  pages,
+  cliente = CLIENTE,
+}: { page?: HubPageRow; pages?: HubPageRow[]; cliente?: Cliente } = {}) {
+  const list = pages ?? (page ? [page] : []);
+  // Um novo array a cada chamada -- como o Supabase real faz -- em vez de
+  // `mockResolvedValue` (mesma referência sempre): PagesEditor desliga o
+  // structural sharing da query bem por causa disso (ver PaginasPage.tsx).
+  vi.mocked(hubStore.getHubPages).mockImplementation(async () => list.map((p) => ({ ...p })));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -68,57 +166,190 @@ function renderPage(cliente: Cliente = CLIENTE) {
   );
 }
 
+// A tela tem DOIS elementos com role implícito "textbox": o <Input> de título e o
+// ProseMirror do editor. screen.findByRole('textbox') sozinho é ambíguo aqui (ao
+// contrário de PaginaRichTextEditor.test.tsx, isolado, onde só o editor existe) --
+// o corpo do editor é o único elemento `[contenteditable="true"]` da tela.
+async function findEditor(): Promise<HTMLElement> {
+  return waitFor(() => {
+    const el = document.body.querySelector('[contenteditable="true"]');
+    // O elemento existe assim que o ProseMirror monta, mas hidrata o doc inicial
+    // (mesmo um doc vazio normaliza para um <p> vazio) num passo seguinte -- sem
+    // childNodes ainda não dá pra confiar no textContent.
+    if (!el || el.childNodes.length === 0) throw new Error('editor ainda não montado');
+    return el as HTMLElement;
+  });
+}
+
+async function typeInEditor(text: string) {
+  const editor = await findEditor();
+  await userEvent.click(editor);
+  await userEvent.type(editor, text);
+}
+
+function fireBeforeUnload(): Event {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event;
+}
+
+function railTitles(container: HTMLElement): (string | null)[] {
+  return Array.from(container.querySelectorAll('.hub-paginas__list-item-title')).map(
+    (el) => el.textContent,
+  );
+}
+
 describe('PaginasPage', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
+    localStorage.clear();
     setAuth('owner');
     vi.mocked(hubStore.getHubPages).mockResolvedValue([]);
+    vi.mocked(hubStore.upsertHubPage).mockResolvedValue(undefined);
+    vi.mocked(hubStore.removeHubPage).mockResolvedValue(undefined as never);
+    vi.mocked(hubStore.reorderHubPages).mockResolvedValue(undefined);
+    dndHandlers.onDragEnd = undefined;
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it('stacks the page editor and preview until the tablet breakpoint', async () => {
-    renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Nova página' }));
-
-    const dialog = await screen.findByRole('dialog', { name: 'Nova página' });
-    expect(dialog.querySelector('.hub-page-editor__workspace')).toHaveClass(
-      'flex-col',
-      'md:flex-row',
-    );
-    expect(dialog.querySelector('.hub-page-editor__input')).toHaveClass('w-full', 'md:w-1/2');
-    expect(dialog.querySelector('.hub-page-editor__preview')).toHaveClass('w-full', 'md:w-1/2');
-  });
-
-  // Regression guard: the hub-pages-crm useQuery call sits above <HubRoleGate> in the
-  // component body, so without `enabled: canLoadPortalData` it fires for every role — an
-  // agent would fetch pages data that HubRoleGate exists to withhold, even though it
-  // never reaches the screen.
   it('does not fire the hub-pages-crm query for an agent', async () => {
     setAuth('agent');
-    renderPage();
+    renderPaginas();
 
     await screen.findByText('Hub do Cliente');
     expect(hubStore.getHubPages).not.toHaveBeenCalled();
   });
 
-  // Regression guard: o `a`/`img` do markdown renderer (mdComponents) repassavam
-  // href/src crus para o DOM. Conteúdo de página é escrito pela equipe da agência,
-  // mas ainda é dado de usuário -- a regra de segurança do projeto exige sanitizeUrl()
-  // em qualquer href/src derivado de conteúdo externo/de usuário (ver CLAUDE.md).
-  it('sanitiza um href javascript: no preview de markdown', async () => {
-    renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Nova página' }));
-    await screen.findByRole('dialog', { name: 'Nova página' });
+  // Regression guard (revisor externo): uma página já salva como
+  // `[{ type: 'richtext', doc }]` não pode ler `content[0].content` (que não existe
+  // nesse formato) e mostrar um editor vazio -- tem que usar readPageDoc.
+  it('abre uma página já em richtext sem perder o conteúdo', async () => {
+    renderPaginas({ page: PAGE });
+    const editor = await findEditor();
+    expect(editor.textContent).toContain('Conteúdo original');
+  });
 
-    const textarea = screen.getByPlaceholderText('Escreva o conteúdo em markdown...');
-    fireEvent.change(textarea, {
-      target: { value: '[clique aqui](javascript:alert(1))' },
+  it('abre uma página legada em bloco markdown convertendo o texto', async () => {
+    renderPaginas({ page: LEGACY_MARKDOWN });
+    const editor = await findEditor();
+    expect(editor.textContent).toContain('Texto em markdown legado');
+    expect(await screen.findByText('Markdown')).toBeInTheDocument();
+  });
+
+  it('abre uma página legada em bloco paragraph convertendo o texto', async () => {
+    renderPaginas({ page: LEGACY_PARAGRAPH });
+    const editor = await findEditor();
+    expect(editor.textContent).toContain('Texto solto legado');
+  });
+
+  // Regression guard: salvar uma página richtext editada não pode substituir o
+  // ProseMirror doc por um bloco `{ type: 'markdown', content }` legado.
+  it('salva o richtext editado sem substituir por um bloco markdown', async () => {
+    renderPaginas({ page: PAGE });
+    await typeInEditor(' extra');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(hubStore.upsertHubPage).toHaveBeenCalled());
+    const saved = vi.mocked(hubStore.upsertHubPage).mock.calls[0][0] as any;
+    expect(saved.content).toHaveLength(1);
+    expect(saved.content[0].type).toBe('richtext');
+    expect(saved.content[0].doc.type).toBe('doc');
+  });
+
+  it('arma o beforeunload só com alteração real', async () => {
+    renderPaginas({ page: PAGE });
+    await findEditor();
+    expect(fireBeforeUnload().defaultPrevented).toBe(false);
+
+    await typeInEditor('novo texto');
+    expect(fireBeforeUnload().defaultPrevented).toBe(true);
+  });
+
+  it('pede confirmação ao trocar de página no rail com alteração pendente', async () => {
+    renderPaginas({ pages: [PAGE, OUTRA] });
+    await screen.findByText('Página um');
+    await typeInEditor('x');
+
+    await userEvent.click(screen.getByText('Outra página'));
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+  });
+
+  it('troca de página de fato ao confirmar o diálogo', async () => {
+    renderPaginas({ pages: [PAGE, OUTRA] });
+    await screen.findByText('Página um');
+    await typeInEditor('x');
+    await userEvent.click(screen.getByText('Outra página'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Trocar mesmo assim' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Outra página')).toBeInTheDocument());
+  });
+
+  it('restaura o rascunho ao reabrir a página', async () => {
+    const docAlterado = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Rascunho salvo antes' }] }],
+    };
+    localStorage.setItem('hub-page-draft:p1', JSON.stringify(docAlterado));
+
+    renderPaginas({ page: PAGE });
+    expect(await screen.findByText(/alterações não salvas/i)).toBeInTheDocument();
+    const editor = await findEditor();
+    expect(editor.textContent).toContain('Rascunho salvo antes');
+  });
+
+  it('limpa o rascunho depois de salvar', async () => {
+    renderPaginas({ page: PAGE });
+    await typeInEditor('x');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(localStorage.getItem('hub-page-draft:p1')).toBeNull());
+  });
+
+  it('não usa useBlocker', async () => {
+    // useBlocker desliga a troca silenciosa entre deploys: React Router honra só o
+    // último blocker registrado. Ver silent-update.router.test.ts.
+    // jsdom shadows the global `URL` with its own implementation, and Node's fs
+    // internals reject a non-Node URL instance with 'The URL must be of scheme
+    // file' -- fileURLToPath + a plain string path sidesteps that entirely.
+    const here = fileURLToPath(import.meta.url);
+    const target = nodePath.join(nodePath.dirname(here), '../PaginasPage.tsx');
+    const src = await readFile(target, 'utf8');
+    expect(src).not.toMatch(/useBlocker/);
+  });
+
+  describe('reordenação', () => {
+    it('reordena e chama reorderHubPages com a nova ordem, refazendo a busca', async () => {
+      renderPaginas({ pages: [PAGE, OUTRA] });
+      await screen.findByText('Página um');
+
+      await act(async () => {
+        dndHandlers.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p2' } });
+      });
+
+      await waitFor(() =>
+        expect(hubStore.reorderHubPages).toHaveBeenCalledWith(CLIENTE.id, ['p2', 'p1']),
+      );
+      await waitFor(() => expect(hubStore.getHubPages).toHaveBeenCalledTimes(2));
     });
 
-    const link = await screen.findByRole('link', { name: 'clique aqui' });
-    expect(link).toHaveAttribute('href', '#');
+    it('refaz a busca e desfaz a ordem otimista quando reorderHubPages falha', async () => {
+      vi.mocked(hubStore.reorderHubPages).mockRejectedValue(new Error('boom'));
+      const { container } = renderPaginas({ pages: [PAGE, OUTRA] });
+      await screen.findByText('Página um');
+      expect(railTitles(container)).toEqual(['Página um', 'Outra página']);
+
+      await act(async () => {
+        dndHandlers.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p2' } });
+      });
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao reordenar páginas.'));
+      await waitFor(() => expect(hubStore.getHubPages).toHaveBeenCalledTimes(2));
+      // A busca depois da falha devolve a MESMA ordem do servidor (mock inalterado) --
+      // nenhuma ordem otimista pode ficar pendurada na tela depois da rejeição.
+      await waitFor(() => expect(railTitles(container)).toEqual(['Página um', 'Outra página']));
+    });
   });
 });
