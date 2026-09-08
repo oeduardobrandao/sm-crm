@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isAllowedRichTextLinkUrl, isAllowedRichTextAutolinkUrl } from './index';
+import {
+  isAllowedRichTextLinkUrl,
+  isAllowedRichTextAutolinkUrl,
+  normalizeRichTextLinkUrl,
+} from './index';
 
 // Unit coverage for the policy itself (see index.ts for the full rationale). The
 // integration-level assertions -- that this function is actually WIRED into both the
@@ -103,5 +107,47 @@ describe('isAllowedRichTextAutolinkUrl', () => {
 
   it('cai para http quando o contexto não vem (mesmo default do TipTap)', () => {
     expect(isAllowedRichTextAutolinkUrl('exemplo.com')).toBe(true);
+  });
+});
+
+// Unit coverage for the imperative-apply normalizer (Finding, task-11 fix round 4).
+// isAllowedRichTextAutolinkUrl (above) makes `isAllowedUri` say "yes" to a schemeless
+// candidate by resolving it ONLY for the purposes of that yes/no check -- it never
+// changes what gets stored. A toolbar's `setLink({ href: 'exemplo.com' })` sails past
+// that check and then persists the raw, unresolved "exemplo.com" as the mark's href,
+// which is exactly the dead-link shape (`href=""`) the whole policy exists to prevent.
+// `normalizeRichTextLinkUrl` is what a caller must run FIRST and use the return value
+// of, instead of the raw typed value, when calling `setLink`/`toggleLink` -- see
+// PaginaRichTextEditor.tsx and PostEditor.tsx for the wiring; the integration-level
+// assertion that the ANCHOR ELEMENT ends up with the resolved href (not just that this
+// function returns the right string in isolation) lives in those components' own tests.
+describe('normalizeRichTextLinkUrl', () => {
+  it.each([
+    ['mesaas.com.br', 'https://mesaas.com.br'],
+    ['www.exemplo.com', 'https://www.exemplo.com'],
+    ['exemplo.com/pagina', 'https://exemplo.com/pagina'],
+    ['contato@exemplo.com', 'mailto:contato@exemplo.com'],
+    ['https://exemplo.com', 'https://exemplo.com'],
+    ['mailto:contato@exemplo.com', 'mailto:contato@exemplo.com'],
+    ['tel:+5511999999999', 'tel:+5511999999999'],
+  ])('resolve %s para %s', (input, expected) => {
+    expect(normalizeRichTextLinkUrl(input)).toBe(expected);
+  });
+
+  it.each([
+    [null],
+    [undefined],
+    [''],
+    ['   '],
+    ['javascript:alert(1)'],
+    ['data:text/html,<script>alert(1)</script>'],
+    ['ftp://exemplo.com/arquivo'],
+    ['https://user:pass@exemplo.com'],
+    ['/pagina-interna'],
+    ['#ancora'],
+    ['./relativo'],
+    ['palavra-sem-ponto'],
+  ])('recusa %s (não há href para aplicar)', (url) => {
+    expect(normalizeRichTextLinkUrl(url as string | null | undefined)).toBeNull();
   });
 });

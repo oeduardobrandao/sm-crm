@@ -10,7 +10,8 @@ import Link from '@tiptap/extension-link';
 import Color from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
-import { isAllowedRichTextAutolinkUrl } from '@mesaas/link-policy';
+import { toast } from 'sonner';
+import { isAllowedRichTextAutolinkUrl, normalizeRichTextLinkUrl } from '@mesaas/link-policy';
 import {
   Bold,
   Italic,
@@ -36,6 +37,13 @@ import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
 import PostCommentPopover from './PostCommentPopover';
 import type { CommentThreadWithComments, Membro } from '@/store';
+
+// Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
+// (@mesaas/link-policy) -- sem isso o popover simplesmente fechava e a marca nunca
+// era aplicada, sem qualquer explicação (ver PaginaRichTextEditor.tsx para a mesma
+// checagem no editor de páginas do Hub).
+const LINK_REJECTED_MESSAGE =
+  'Não foi possível aplicar o link. Use um endereço válido (http, https, e-mail ou telefone).';
 
 const TEXT_COLORS = [
   { name: 'Padrão', color: null },
@@ -245,11 +253,24 @@ export function PostEditor({
   const applyLink = useCallback(() => {
     if (!editor) return;
     const url = linkInputValue.trim();
-    if (url) {
-      editor.chain().focus().setLink({ href: url }).run();
-    } else {
+    if (!url) {
       editor.chain().focus().unsetLink().run();
+      setLinkPopoverOpen(false);
+      return;
     }
+    // normalizeRichTextLinkUrl (@mesaas/link-policy) resolves a schemeless candidate
+    // ("mesaas.com.br", "contato@exemplo.com") to the href TipTap will actually store --
+    // `isAllowedUri` on the Link extension only decides yes/no on a resolved copy, it
+    // never rewrites what `setLink` persists. Passing the raw `url` through here is what
+    // let a schemeless href reach `setLink` unresolved and render dead (`href=""`) in the
+    // Hub. When nothing valid can be resolved, no link is applied and the popover stays
+    // open with an explanation instead of silently closing.
+    const normalized = normalizeRichTextLinkUrl(url);
+    if (!normalized) {
+      toast.error(LINK_REJECTED_MESSAGE);
+      return;
+    }
+    editor.chain().focus().setLink({ href: normalized }).run();
     setLinkPopoverOpen(false);
   }, [editor, linkInputValue]);
 
@@ -474,6 +495,7 @@ export function PostEditor({
                   className="post-editor-link-input"
                   type="url"
                   placeholder="https://..."
+                  aria-label="Endereço do link"
                   value={linkInputValue}
                   onChange={(e) => setLinkInputValue(e.target.value)}
                   onKeyDown={(e) => {

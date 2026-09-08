@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditor, useEditorState, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import type { Editor } from '@tiptap/core';
+import { toast } from 'sonner';
 import {
   Bold,
   Italic,
@@ -26,7 +27,15 @@ import {
   Link as LinkIcon,
   Highlighter,
 } from 'lucide-react';
+import { normalizeRichTextLinkUrl } from '@mesaas/link-policy';
 import { pageEditorExtensions } from './pageEditorSchema';
+
+// Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
+// (@mesaas/link-policy) -- sem isso o popover simplesmente fechava e a marca nunca
+// era aplicada, sem qualquer explicação (ver PostEditor.tsx para a mesma checagem no
+// editor de legendas de post).
+const LINK_REJECTED_MESSAGE =
+  'Não foi possível aplicar o link. Use um endereço válido (http, https, e-mail ou telefone).';
 
 interface ToolbarButtonProps {
   label: string;
@@ -88,11 +97,24 @@ function LinkButton({ editor, active, label }: { editor: Editor; active: boolean
 
   const apply = useCallback(() => {
     const url = value.trim();
-    if (url) {
-      editor.chain().focus().setLink({ href: url }).run();
-    } else {
+    if (!url) {
       editor.chain().focus().unsetLink().run();
+      setOpen(false);
+      return;
     }
+    // normalizeRichTextLinkUrl (@mesaas/link-policy) resolves a schemeless candidate
+    // ("mesaas.com.br", "contato@exemplo.com") to the href TipTap will actually store --
+    // `isAllowedUri` on the Link extension only decides yes/no on a resolved copy, it
+    // never rewrites what `setLink` persists. Passing the raw `url` through here is what
+    // let a schemeless href reach `setLink` unresolved and render dead (`href=""`) in the
+    // Hub. When nothing valid can be resolved, no link is applied and the popover stays
+    // open with an explanation instead of silently closing.
+    const normalized = normalizeRichTextLinkUrl(url);
+    if (!normalized) {
+      toast.error(LINK_REJECTED_MESSAGE);
+      return;
+    }
+    editor.chain().focus().setLink({ href: normalized }).run();
     setOpen(false);
   }, [editor, value]);
 

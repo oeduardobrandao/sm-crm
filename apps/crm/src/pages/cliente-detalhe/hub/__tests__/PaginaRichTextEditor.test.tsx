@@ -1,7 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
+import { isAllowedRichTextLinkUrl } from '@mesaas/link-policy';
 import { PaginaRichTextEditor } from '../PaginaRichTextEditor';
+
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+import { toast } from 'sonner';
+
+afterEach(() => vi.clearAllMocks());
 
 describe('PaginaRichTextEditor', () => {
   it('emite o documento a cada edição', async () => {
@@ -97,6 +103,32 @@ describe('PaginaRichTextEditor', () => {
   });
 });
 
+// Compartilhado entre os blocos de política de link abaixo: abre o popover de link
+// pela barra fixa, digita `href` e confirma com Enter -- exatamente o fluxo real do
+// usuário, não a política isolada.
+async function applyLinkViaToolbar(href: string) {
+  render(
+    <PaginaRichTextEditor
+      doc={{
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'abc' }] }],
+      }}
+      onChange={vi.fn()}
+    />,
+  );
+  const textbox = screen.getByRole('textbox');
+  await userEvent.click(textbox);
+  await userEvent.keyboard('{Control>}a{/Control}');
+  const toolbar = screen.getByRole('toolbar', { name: 'Formatação do texto' });
+  await userEvent.click(
+    screen.getAllByRole('button', { name: 'Link' }).find((b) => toolbar.contains(b))!,
+  );
+  const input = screen.getByLabelText('Endereço do link');
+  await userEvent.type(input, href);
+  await userEvent.keyboard('{Enter}');
+  return textbox;
+}
+
 describe('política de link do editor (Finding 1, fix round 2)', () => {
   // A mesma política que o Hub aplica na leitura (isAllowedRichTextLinkUrl,
   // @mesaas/link-policy) agora também roda aqui na escrita -- sem isso este editor
@@ -104,29 +136,6 @@ describe('política de link do editor (Finding 1, fix round 2)', () => {
   // silencioso. TipTap's `setLink` command já checa `isAllowedUri` e vira NO-OP
   // (marca não aplicada) quando ela recusa -- diferente do lado de leitura, que
   // aplica a marca e só esvazia o `href` ao renderizar.
-  async function applyLinkViaToolbar(href: string) {
-    render(
-      <PaginaRichTextEditor
-        doc={{
-          type: 'doc',
-          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'abc' }] }],
-        }}
-        onChange={vi.fn()}
-      />,
-    );
-    const textbox = screen.getByRole('textbox');
-    await userEvent.click(textbox);
-    await userEvent.keyboard('{Control>}a{/Control}');
-    const toolbar = screen.getByRole('toolbar', { name: 'Formatação do texto' });
-    await userEvent.click(
-      screen.getAllByRole('button', { name: 'Link' }).find((b) => toolbar.contains(b))!,
-    );
-    const input = screen.getByLabelText('Endereço do link');
-    await userEvent.type(input, href);
-    await userEvent.keyboard('{Enter}');
-    return textbox;
-  }
-
   it.each([['mailto:contato@exemplo.com'], ['tel:+5511999999999']])(
     'aplica o link %s (autolink de e-mail digitado não pode virar link morto no Hub)',
     async (href) => {
@@ -145,6 +154,48 @@ describe('política de link do editor (Finding 1, fix round 2)', () => {
   ])('recusa o link %s -- nenhuma marca é aplicada', async (href) => {
     const textbox = await applyLinkViaToolbar(href);
     expect(textbox.querySelector('a')).toBeNull();
+  });
+});
+
+describe('normalização de href do popover de link (Finding, fix round 4)', () => {
+  // Round 3 fez a política resolver o candidato sem esquema APENAS para decidir
+  // sim/não (isAllowedUri) -- ela nunca reescrevia o que `setLink` de fato persiste.
+  // Digitar "mesaas.com.br" no popover e confirmar aplicava a marca (a checagem
+  // passava, porque internamente resolvia para https:// só pra validar) mas gravava
+  // o href CRU "mesaas.com.br", que o Hub recusa a renderizar (`href=""`). Estes
+  // testes dirigem o popover de verdade e leem o `href` do `<a>` resultante --
+  // exatamente a classe de regressão que passaria batido numa checagem só da função
+  // de política isolada.
+  it.each([
+    ['mesaas.com.br', 'https://mesaas.com.br'],
+    ['www.exemplo.com', 'https://www.exemplo.com'],
+    ['exemplo.com/pagina', 'https://exemplo.com/pagina'],
+    ['contato@exemplo.com', 'mailto:contato@exemplo.com'],
+    ['https://exemplo.com', 'https://exemplo.com'],
+  ])(
+    'digitar %s no popover grava o href normalizado %s, e esse href sobrevive à política de leitura do Hub',
+    async (typed, expectedHref) => {
+      const textbox = await applyLinkViaToolbar(typed);
+      const anchor = textbox.querySelector('a');
+      expect(anchor).not.toBeNull();
+      expect(anchor?.getAttribute('href')).toBe(expectedHref);
+      expect(isAllowedRichTextLinkUrl(anchor!.getAttribute('href'))).toBe(true);
+    },
+  );
+
+  it.each([
+    ['javascript:alert(1)'],
+    ['data:text/html,<script>alert(1)</script>'],
+    ['ftp://exemplo.com/segredo'],
+    ['https://user:pass@exemplo.com'],
+    ['/pagina-interna'],
+    ['#ancora'],
+  ])('recusa %s pelo popover e avisa o usuário (não fica em silêncio)', async (typed) => {
+    const textbox = await applyLinkViaToolbar(typed);
+    expect(textbox.querySelector('a')).toBeNull();
+    expect(toast.error).toHaveBeenCalledWith(
+      'Não foi possível aplicar o link. Use um endereço válido (http, https, e-mail ou telefone).',
+    );
   });
 });
 
