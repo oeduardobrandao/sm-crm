@@ -37,8 +37,30 @@
  *     the flag. This script checks it and refuses to write.
  *
  * Usage:
- *   npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts [--apply] [--staging]
- *   npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts --restore <backup-file> [--staging]
+ *   npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts [--apply] [--staging] [--confirm-production]
+ *   npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts --restore <backup-file> [--staging] [--confirm-production]
+ *
+ * Safety checks before any write (dry run included):
+ *
+ *   - The resolved SUPABASE_URL is always echoed first, so the operator can
+ *     see which database is about to be touched before anything is read or
+ *     written.
+ *   - `--staging` refuses to run if that resolved URL is not actually the
+ *     staging project. This matters because `process.env.SUPABASE_URL`
+ *     always outranks the file value (see `connect()` below): a shell that
+ *     still has production exported from an earlier `set -a; . ./.env.migration;
+ *     set +a` would otherwise let `--staging --apply` run against production
+ *     with a service-role key, completely silently -- the RLS-scoped
+ *     fallback never engages, because the key really is service role.
+ *   - `--apply` and `--restore` refuse to run against the known production
+ *     project unless `--confirm-production` is also passed (this check is
+ *     skipped once `--staging` has passed its own check above). This is the
+ *     symmetric case: it catches forgetting `--staging` entirely, or a stale
+ *     production URL left in the shell, from turning into an unintended
+ *     production write. It costs one extra flag on the documented, expected
+ *     production run below, in exchange for making a real production write
+ *     a deliberate, separate step rather than whatever `process.env` happens
+ *     to resolve to.
  *
  * Connection:
  *   Preferred, and the only mode that reaches every workspace: set
@@ -74,10 +96,12 @@
  *   limits `selectPages()` to that one workspace's hub_pages rows.
  *
  * Rollback: prefer replaying the backup through this same script -- it reuses
- * the same client and reports success/failure per id:
+ * the same client and reports restored/failed per id (a row the UPDATE
+ * matched zero times, e.g. because it was deleted after the backup was taken,
+ * is reported as failed, never as restored):
  *
  *   npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts \
- *     --restore scripts/backups/hub-pages-backup-<timestamp>.json
+ *     --restore scripts/backups/hub-pages-backup-<timestamp>.json --confirm-production
  *
  *   This OVERWRITES `content` unconditionally for every id in the backup file --
  *   it clobbers any legitimate edit made to those pages after the migration ran.
@@ -221,12 +245,92 @@ function parseEnvFile(contents: string): Record<string, string> {
   return env;
 }
 
-async function connect(envFile: string): Promise<{ client: SupabaseClient; scoped: boolean }> {
+// Known project refs (see CLAUDE.md "Supabase project refs (prod vs
+// staging)"). Used only as a fallback when a ref can't be read directly out
+// of an env file -- `connect()` prefers the actual file contents so this
+// never has to be the single source of truth.
+const STAGING_PROJECT_REF = 'wlyzhyfondykzpsiqsce';
+const PRODUCTION_PROJECT_REF = 'skjzpekeqefvlojenfsw';
+
+/**
+ * Extracts the project ref (the subdomain) from a Supabase URL, e.g.
+ * `https://wlyzhyfondykzpsiqsce.supabase.co` -> `wlyzhyfondykzpsiqsce`.
+ * Returns null for anything that doesn't parse as a URL, or isn't a
+ * `*.supabase.co` host (a local/self-hosted Supabase, for instance) --
+ * callers treat that as "not a known project", never as an accidental match.
+ */
+function projectRef(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const host = new URL(url).hostname;
+    const dot = host.indexOf('.');
+    if (dot === -1) return null;
+    return host.slice(dot + 1) === 'supabase.co' ? host.slice(0, dot) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Symmetric with the `--staging` guard inside `connect()`: refuses a write
+ * (`--apply` or `--restore`) against the known production project unless
+ * `--confirm-production` was also passed. `staging` is exempt because
+ * `connect()` already proved the resolved URL is genuinely staging or threw.
+ * This exists to catch the mirror-image mistake -- forgetting `--staging`
+ * entirely, or a stale production URL left exported in the shell -- from
+ * turning into a silent production write. See the header comment.
+ */
+function assertProductionWriteConfirmed(
+  url: string,
+  opts: { staging: boolean; confirmed: boolean },
+): void {
+  if (opts.staging) return;
+  if (projectRef(url) !== PRODUCTION_PROJECT_REF) return;
+  if (opts.confirmed) return;
+  throw new Error(
+    `Refusing to write: SUPABASE_URL (${url}) resolves to the known production project and ` +
+      '--confirm-production was not passed. Passing --confirm-production is the documented, ' +
+      'expected way to run the real migration or its rollback -- re-run with it if that is ' +
+      'really the intent.',
+  );
+}
+
+export async function connect(
+  envFile: string,
+  opts: { staging: boolean },
+): Promise<{ client: SupabaseClient; scoped: boolean; url: string }> {
   const fileEnv = existsSync(envFile) ? parseEnvFile(readFileSync(envFile, 'utf8')) : {};
 
   const url = process.env.SUPABASE_URL || fileEnv.VITE_SUPABASE_URL;
   if (!url) {
     throw new Error(`No Supabase URL found. Set SUPABASE_URL, or VITE_SUPABASE_URL in ${envFile}.`);
+  }
+
+  // Echoed before anything is read or written, on every path -- dry run,
+  // --apply and --restore alike -- so the operator can see which database is
+  // about to be touched. This is the signal that was missing when a
+  // `--staging` run silently connected to production: see the guard below.
+  console.log(`Connecting to ${url}`);
+
+  if (opts.staging) {
+    // `envFile` is always `.env.staging` whenever `opts.staging` is true (see
+    // `main()`), so `fileEnv` already holds that file's own URL -- the actual
+    // staging project, independent of whatever `process.env.SUPABASE_URL`
+    // says. If a shell still has production's URL exported (e.g. left over
+    // from an earlier `set -a; . ./.env.migration; set +a`), that wins the
+    // `||` above, and without this check `--staging` would silently run
+    // against production with a service-role key -- the RLS-scoped fallback
+    // never engages, because the key really is service role.
+    const stagingUrl = fileEnv.SUPABASE_URL || fileEnv.VITE_SUPABASE_URL;
+    const stagingRef = projectRef(stagingUrl) ?? STAGING_PROJECT_REF;
+    if (projectRef(url) !== stagingRef) {
+      throw new Error(
+        `--staging was passed but the resolved SUPABASE_URL (${url}) is not the staging project ` +
+          `(expected ref ${stagingRef}). This is almost always process.env.SUPABASE_URL left over ` +
+          'in the shell from a production .env.migration. Unset SUPABASE_URL and ' +
+          'SUPABASE_SERVICE_ROLE_KEY, or open a fresh shell, before running with --staging.',
+      );
+    }
   }
 
   // Also falls back to fileEnv, like url/anon/email/password below, so an
@@ -238,6 +342,7 @@ async function connect(envFile: string): Promise<{ client: SupabaseClient; scope
     return {
       client: createClient(url, serviceKey, { auth: { persistSession: false } }),
       scoped: false,
+      url,
     };
   }
 
@@ -258,7 +363,7 @@ async function connect(envFile: string): Promise<{ client: SupabaseClient; scope
       'which sees only that workspace, not the full hub_pages table. Use this only for a ' +
       'local or staging check, never as the real migration.',
   );
-  return { client, scoped: true };
+  return { client, scoped: true, url };
 }
 
 export function createSupabaseDb(client: SupabaseClient): Db {
@@ -307,14 +412,31 @@ interface BackupRow {
   content: unknown;
 }
 
+export interface RestoreReport {
+  restored: string[];
+  failed: { id: string; error: string }[];
+}
+
 /**
  * Replays a backup file written by `writeBackup()` back onto `hub_pages`,
  * unconditionally. This is the rollback path (see the header comment): it
  * OVERWRITES `content` for every id in the file, clobbering any legitimate
  * edit made to those pages after the migration ran. Only use it to revert the
  * whole migration, not to fix a single row by hand.
+ *
+ * The UPDATE carries `.select('id')` specifically so a zero-row match is
+ * visible: without it, postgrest-js sends `Prefer: return=minimal` and a
+ * request that matches nothing still comes back `{ data: null, error: null,
+ * status: 204 }` -- indistinguishable from success. That happens whenever a
+ * row named in the backup was deleted (or its id changed) after the backup
+ * was taken, which is exactly the kind of thing that can happen between an
+ * incident and its rollback. Such a row is reported in `failed`, never in
+ * `restored`.
  */
-async function restoreBackup(client: SupabaseClient, backupFile: string): Promise<void> {
+export async function restoreBackup(
+  client: SupabaseClient,
+  backupFile: string,
+): Promise<RestoreReport> {
   const raw = readFileSync(backupFile, 'utf8');
   const parsed: unknown = JSON.parse(raw);
   if (!Array.isArray(parsed)) {
@@ -324,28 +446,49 @@ async function restoreBackup(client: SupabaseClient, backupFile: string): Promis
     `Restoring ${parsed.length} row(s) from ${backupFile}. This OVERWRITES the current content ` +
       'unconditionally -- any edits made to these pages after the migration ran will be lost.',
   );
-  let failures = 0;
+  const report: RestoreReport = { restored: [], failed: [] };
   for (const row of parsed as BackupRow[]) {
     if (typeof row?.id !== 'string') {
+      report.failed.push({
+        id: '<missing id>',
+        error: `Malformed backup entry, id is not a string: ${JSON.stringify(row)}`,
+      });
       console.error(`Skipping malformed backup entry: ${JSON.stringify(row)}`);
-      failures++;
       continue;
     }
-    const { error } = await client
+    const { data, error } = await client
       .from('hub_pages')
       .update({ content: row.content })
-      .eq('id', row.id);
+      .eq('id', row.id)
+      .select('id');
     if (error) {
+      report.failed.push({ id: row.id, error: error.message });
       console.error(`Restore failed for id ${row.id}: ${error.message}`);
-      failures++;
       continue;
     }
+    if ((data ?? []).length === 0) {
+      report.failed.push({
+        id: row.id,
+        error:
+          'UPDATE matched zero rows -- the row may have been deleted (or its id changed) since ' +
+          'the backup was taken. Not restored.',
+      });
+      console.error(`Restore failed for id ${row.id}: matched zero rows, nothing was restored.`);
+      continue;
+    }
+    report.restored.push(row.id);
     console.log(`Restored ${row.id}`);
   }
-  if (failures > 0) {
-    console.error(`\n${failures} row(s) failed to restore. See errors above.`);
+  if (report.failed.length > 0) {
+    console.error(
+      `\n${report.failed.length} row(s) failed to restore. See errors above. Restored ` +
+        `${report.restored.length}/${parsed.length}.`,
+    );
     process.exitCode = 1;
+  } else {
+    console.log(`\nAll ${report.restored.length} row(s) restored successfully.`);
   }
+  return report;
 }
 
 function printReport(report: Report): void {
@@ -360,7 +503,9 @@ function printReport(report: Report): void {
 async function main() {
   const args = process.argv.slice(2);
   const apply = args.includes('--apply');
-  const envFile = args.includes('--staging') ? '.env.staging' : '.env';
+  const staging = args.includes('--staging');
+  const confirmProduction = args.includes('--confirm-production');
+  const envFile = staging ? '.env.staging' : '.env';
 
   const restoreIdx = args.indexOf('--restore');
   if (restoreIdx !== -1) {
@@ -371,21 +516,25 @@ async function main() {
           '--restore scripts/backups/hub-pages-backup-<timestamp>.json',
       );
     }
-    const { client, scoped } = await connect(envFile);
+    const { client, scoped, url } = await connect(envFile, { staging });
     if (scoped) {
       throw new Error(
         '--restore requires SUPABASE_SERVICE_ROLE_KEY. RLS-scoped mode is read-only.',
       );
     }
+    assertProductionWriteConfirmed(url, { staging, confirmed: confirmProduction });
     await restoreBackup(client, backupFile);
     return;
   }
 
   console.log(apply ? 'LIVE RUN. Rows will be written.' : 'DRY RUN. No writes will occur.');
 
-  const { client, scoped } = await connect(envFile);
+  const { client, scoped, url } = await connect(envFile, { staging });
   if (apply && scoped) {
     throw new Error('--apply requires SUPABASE_SERVICE_ROLE_KEY. RLS-scoped mode is read-only.');
+  }
+  if (apply) {
+    assertProductionWriteConfirmed(url, { staging, confirmed: confirmProduction });
   }
   const db = createSupabaseDb(client);
 

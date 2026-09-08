@@ -25,6 +25,8 @@
     "scripts/convert-hub-pages-richtext.ts",
     "scripts/__tests__/convert-hub-pages-richtext.test.ts",
     "scripts/__tests__/convert-hub-pages-richtext.fallback.test.ts",
+    "scripts/__tests__/convert-hub-pages-richtext.connect.test.ts",
+    "scripts/__tests__/convert-hub-pages-richtext.restore.test.ts",
     "apps/crm/src/content/**/*.ts",
     "apps/crm/src/content/**/*.tsx",
     "apps/crm/src/pages/politica-privacidade/**/*.tsx",

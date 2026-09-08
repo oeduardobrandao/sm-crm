@@ -444,3 +444,225 @@ WHERE id = '<id>';
 
 Nenhum comando com `--apply` ou `--restore` foi executado contra dado real
 nesta rodada, por instrução explícita da task.
+
+## Fix round 2
+
+Dois achados operacionais novos, ambos na superfície que o operador humano
+dirige (não na lógica de conversão em si).
+
+### Achado 1 [Important] Um run `--staging` podia escrever em PRODUÇÃO, em silêncio
+
+`connect()` resolvia `process.env.SUPABASE_URL || fileEnv.VITE_SUPABASE_URL`
+(e o mesmo padrão para `SUPABASE_SERVICE_ROLE_KEY`) -- `process.env` sempre
+ganha. A recomendação da rodada anterior (`set -a; . ./.env.migration;
+set +a`, colocando URL e chave de produção no shell) cria exatamente o cenário
+perigoso: nesse mesmo shell, um `--staging --apply` posterior lê
+`.env.staging` para o valor de arquivo, mas `process.env` continua ganhando,
+então o script conectava em produção com uma chave service-role. A guarda
+RLS-scoped nunca disparava, porque a chave era mesmo service-role de verdade.
+E `main()` nunca ecoava a que host tinha se conectado -- nenhum sinal, o run
+parecia normal.
+
+**Fix, duas partes:**
+
+1. `connect()` agora ecoa `Connecting to <url>` logo após resolver a URL, em
+   todo caminho -- dry run, `--apply` e `--restore`, service-role e
+   RLS-scoped -- antes de qualquer leitura ou escrita.
+2. `connect()` agora recebe `opts: { staging: boolean }`. Quando `staging` é
+   `true`, `envFile` já é `.env.staging` (ver `main()`), então `fileEnv` já
+   contém a URL real de staging -- comparada contra a URL efetivamente
+   resolvida via um novo helper `projectRef()` (extrai o ref, o subdomínio de
+   um host `*.supabase.co`). Se não baterem, lança e nada é conectado.
+   `projectRef()` cai para as constantes `STAGING_PROJECT_REF` /
+   `PRODUCTION_PROJECT_REF` só quando o arquivo não tem uma URL para comparar
+   -- a fonte preferida é sempre o arquivo, não a constante hardcoded.
+
+**Guarda simétrica -- decisão:** a task pediu para considerar recusar
+`--apply` (e por extensão `--restore`, igualmente destrutivo) contra produção
+sem uma flag explícita. Implementei: `assertProductionWriteConfirmed()` exige
+`--confirm-production` sempre que a URL resolvida bate com o ref de produção
+conhecido e `--staging` não foi passado (quando `--staging` foi passado, a
+checagem acima já provou -- ou lançou -- que o alvo é staging de verdade, então
+fica isento). Escolhi implementar porque:
+
+- O problema do achado 1 era justamente ausência de sinal; a guarda simétrica
+  fecha o lado oposto do mesmo buraco -- esquecer `--staging` de vez, ou uma
+  `SUPABASE_URL` de produção esquecida no shell, sem digitar `--staging`
+  nenhuma vez.
+- O script já trata produção com um cuidado incomum (dry run por padrão,
+  backup em toda execução, UPDATE condicional) -- uma flag a mais no comando
+  documentado de produção é um custo pequeno perto do que evita.
+- Isso muda o comando de rollout/rollback documentado (agora inclui
+  `--confirm-production`); atualizei o comentário de cabeçalho do script e as
+  seções de Rollout/Rollback abaixo.
+
+**Testes novos** (`convert-hub-pages-richtext.connect.test.ts`, 4 casos):
+chamam `connect()` de verdade contra um arquivo de env temporário, sem stub de
+fetch -- a recusa (ou o retorno antecipado do branch service-role) acontece
+antes de qualquer request de rede:
+
+- `--staging` com `process.env.SUPABASE_URL` de produção exportado -> lança,
+  mensagem cita "staging" e o ref de produção.
+- mesmo caso mas `.env.staging` sem nenhuma URL própria -> cai no fallback de
+  constante e ainda assim lança.
+- `--staging` com a URL resolvida batendo com staging de verdade -> não lança,
+  devolve `url` correto.
+- sem `--staging` -> guarda não entra em ação, comportamento inalterado.
+
+### Achado 2 [Important] `--restore` reportava sucesso para linhas que não restaurou
+
+`restoreBackup()` fazia `.update({ content }).eq('id', row.id)` sem
+`.select()`. Verificado com fetch stubado: um match de zero linhas volta
+`{ data: null, error: null, status: 204 }` -- `Prefer: return=minimal`, o
+default do postgrest-js sem `.select()`. O loop então logava `Restored <id>`
+e não incrementava nenhum contador de falha. Um backup reaplicado depois que
+algumas linhas foram apagadas reportava rollback 100% bem-sucedido tendo
+restaurado menos linhas do que afirmou -- durante um incidente, que é a pior
+hora possível para ser enganado.
+
+**Fix:** `.select('id')` adicionado ao update. `restoreBackup()` agora
+devolve um `RestoreReport { restored: string[]; failed: { id, error }[] }`,
+no mesmo espírito do `Report` de `convert()`: um match de zero linhas
+(`(data ?? []).length === 0`) vira `failed` com uma mensagem explícita
+("UPDATE matched zero rows..."), nunca `restored`. `main()` só usa o retorno
+para não quebrar o fluxo existente, mas o relatório completo (`restored` e
+`failed` com ids) agora existe para quem chamar `restoreBackup()`
+programaticamente. `restoreBackup()` e o novo tipo `RestoreReport` foram
+exportados para o teste.
+
+**Teste novo** (`convert-hub-pages-richtext.restore.test.ts`, 3 casos), no
+mesmo estilo do `.db.test.ts` já existente -- `SupabaseClient` real com
+`fetch` stubado, afirmando a requisição de verdade que o postgrest-js monta:
+
+- match de zero linhas (fetch stubado devolve `[]`, 200) -> URL carrega
+  `select=id` e `Prefer: return=representation`; `restored` fica vazio,
+  `failed` tem 1 entrada citando "zero rows", e `process.exitCode` vira `1`.
+- match de uma linha (fetch stubado devolve `[{id}]`) -> vai para `restored`,
+  não para `failed`; `process.exitCode` não é `1`.
+- mistura de uma linha que bate e uma que não bate -> `restored` e `failed`
+  reportam ids corretos e separados.
+
+`process.exitCode` é salvo e restaurado em `afterEach` nos três casos --
+`restoreBackup()` seta `process.exitCode = 1` como efeito colateral real no
+processo Node, e sem isso o teste vazaria esse valor para o restante do run
+do vitest.
+
+## Verificação (fix round 2)
+
+```
+npx vitest run scripts/
+ Test Files  9 passed (9)
+      Tests  28 passed (28)
+```
+(as 21 pré-existentes da rodada 1 + 4 testes novos de `connect()` + 3 testes
+novos de `restoreBackup()`, em dois arquivos novos:
+`convert-hub-pages-richtext.connect.test.ts` e
+`convert-hub-pages-richtext.restore.test.ts`.)
+
+```
+npx tsc -p tsconfig.scripts.json
+```
+Limpo, sem output. Os dois arquivos de teste novos foram adicionados ao
+`include` de `tsconfig.scripts.json` (mesmo padrão de `.test.ts` e
+`.fallback.test.ts`; `.db.test.ts` já não estava incluído antes desta rodada
+e não mexi nisso, fora do escopo dos dois achados).
+
+```
+npm run lint
+```
+0 erros, 85 warnings -- todos pré-existentes em arquivos não tocados por esta
+rodada (confirmado rodando eslint isolado nos 6 arquivos tocados: zero
+saída).
+
+```
+npx prettier --check scripts/convert-hub-pages-richtext.ts \
+  scripts/__tests__/convert-hub-pages-richtext.test.ts \
+  scripts/__tests__/convert-hub-pages-richtext.db.test.ts \
+  scripts/__tests__/convert-hub-pages-richtext.fallback.test.ts \
+  scripts/__tests__/convert-hub-pages-richtext.connect.test.ts \
+  scripts/__tests__/convert-hub-pages-richtext.restore.test.ts \
+  tsconfig.scripts.json
+```
+OK (um `--write` necessário nos dois arquivos de teste novos, na primeira
+passada, por quebra de linha).
+
+`grep -rnP '\x{2014}'` (em dash) nos arquivos tocados: nenhuma ocorrência.
+
+O teste pinado que guarda o achado Critical da rodada 1
+(`convert-hub-pages-richtext.db.test.ts`, a query string
+`not.cs.[{"type":"richtext"}]`) continua verde, intocado.
+
+Nenhum comando com `--apply` ou `--restore` foi executado contra dado real
+nesta rodada, por instrução explícita da task -- os dois achados foram
+verificados só com fetch stubado e com `connect()` chamado diretamente contra
+arquivos de env temporários.
+
+## Rollout -- comando final corrigido
+
+```bash
+# 1. Credenciais em arquivo gitignorado, nunca na linha de comando:
+cat > .env.migration << 'ENV'
+SUPABASE_URL=<prod-url>
+SUPABASE_SERVICE_ROLE_KEY=<prod-service-role-key>
+ENV
+
+# 2. Fontear no shell (nada de segredo aparece no histórico nem em `ps`):
+set -a; . ./.env.migration; set +a
+
+# 3. Dry run (sempre primeiro). O host resolvido é ecoado antes de qualquer
+#    leitura ou escrita -- conferir que é mesmo produção:
+npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts
+
+# 4. Conferir o relatório (as 4 listas). Se "failed" não estiver vazio, parar
+#    e investigar antes de aplicar.
+
+# 5. Aplicar. Produção exige --confirm-production explicitamente:
+npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts \
+  --apply --confirm-production
+
+# 6. Conferir o backup gerado em scripts/backups/hub-pages-backup-<timestamp>.json
+#    (agora também existe um backup do dry run do passo 3, para inspeção).
+
+# 7. Se "raced" não estiver vazio, rodar de novo (só essas linhas mudaram de
+#    content entre leitura e escrita).
+
+# 8. Ao final, remover .env.migration ou garantir que fica fora do repo
+#    (já está no .gitignore, mas convém não deixar a chave em disco além do
+#    necessário).
+```
+
+Para um dry run contra staging no mesmo shell (por exemplo, para comparar
+comportamento), abrir um shell novo sem `.env.migration` fonteado, ou rodar
+`unset SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY` antes de:
+
+```bash
+npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts --staging
+```
+
+Se `SUPABASE_URL` de produção ainda estiver exportado nesse shell, o comando
+acima agora recusa a rodar (é exatamente o achado 1) em vez de conectar em
+produção silenciosamente.
+
+## Rollback -- comando final corrigido
+
+```bash
+set -a; . ./.env.migration; set +a
+npx tsx --tsconfig tsconfig.scripts.json scripts/convert-hub-pages-richtext.ts \
+  --restore scripts/backups/hub-pages-backup-<timestamp>.json --confirm-production
+```
+
+Isso sobrescreve `content` incondicionalmente para cada id do arquivo de
+backup -- só usar para reverter a migração inteira, nunca para corrigir uma
+linha à mão. O relatório final agora separa `restored` de `failed`: uma linha
+cujo UPDATE bateu zero vezes (por exemplo, apagada depois do backup) aparece
+em `failed`, nunca é contada como restaurada em silêncio. Fallback manual (só
+se o script estiver indisponível), com dollar-quoting em vez de aspas
+simples:
+
+```sql
+UPDATE hub_pages SET content = $bkp$<content daquele id, do arquivo de backup>$bkp$::jsonb
+WHERE id = '<id>';
+```
+
+Nenhum comando com `--apply` ou `--restore` foi executado contra dado real
+nesta rodada, por instrução explícita da task.
