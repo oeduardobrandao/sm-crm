@@ -7,6 +7,7 @@ import {
   resolveMcpKey,
   validateScopes,
 } from "./mcp-token.ts";
+import { validateAdminScopes } from "./mcp-admin-scopes.ts";
 
 /**
  * The public origin to advertise in OAuth discovery URLs. `req.url` carries Supabase's internal
@@ -23,15 +24,17 @@ export function publicOrigin(reqUrl: string, forwardedProto: string | null): str
 
 export interface ConsentPayload {
   authorization_id: string;
-  conta_id: string;
+  target: "workspace" | "platform";
+  conta_id: string | null;
   scopes: string[];
 }
 
 /**
  * Pure validation of the consent edge function's `approve` body. The OAuth client_id is NOT taken
  * from the body — the function derives it server-side from the verified authorization_id (so the
- * browser can't bind a grant to an arbitrary client). conta_id is the chosen workspace; scopes is
- * the user's non-empty subset of the MCP allowlist (further bounded server-side by the request).
+ * browser can't bind a grant to an arbitrary client). `target` picks the grant table: "workspace"
+ * (default, for the old contract) needs conta_id + a workspace-scope subset; "platform" (Admin da
+ * plataforma MCP) needs no conta_id and validates against the admin scope allowlist instead.
  */
 export function validateConsentPayload(
   body: Record<string, unknown>,
@@ -39,11 +42,17 @@ export function validateConsentPayload(
   const authorization_id = typeof body.authorization_id === "string"
     ? body.authorization_id.trim()
     : "";
-  const conta_id = typeof body.conta_id === "string" ? body.conta_id.trim() : "";
   if (!authorization_id) return { ok: false, error: "authorization_id required" };
+  const target = body.target === undefined ? "workspace" : body.target;
+  if (target !== "workspace" && target !== "platform") return { ok: false, error: "invalid target" };
+  if (target === "platform") {
+    if (!validateAdminScopes(body.scopes)) return { ok: false, error: "invalid scopes" };
+    return { ok: true, value: { authorization_id, target, conta_id: null, scopes: body.scopes as string[] } };
+  }
+  const conta_id = typeof body.conta_id === "string" ? body.conta_id.trim() : "";
   if (!conta_id) return { ok: false, error: "conta_id required" };
   if (!validateScopes(body.scopes)) return { ok: false, error: "invalid scopes" };
-  return { ok: true, value: { authorization_id, conta_id, scopes: body.scopes as string[] } };
+  return { ok: true, value: { authorization_id, target, conta_id, scopes: body.scopes as string[] } };
 }
 
 /**

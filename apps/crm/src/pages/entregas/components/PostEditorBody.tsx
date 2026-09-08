@@ -92,6 +92,11 @@ export interface PostEditorBodyProps {
   commentThreads: CommentThreadWithComments[];
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
+  /** `can('automacoes', 'editar') === true` -- computed by the caller
+   * (WorkflowDrawer/StandalonePostDrawer), threaded down to
+   * PostAutomationSection. See its own prop doc for why this replaced a
+   * `currentUserRole === 'owner' || 'admin'` check. */
+  canManageAutomations: boolean;
   workspaceUsers: { id: string; nome: string; avatar_url: string }[];
   hasInstagramAccount: boolean;
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
@@ -128,6 +133,7 @@ export function PostEditorBody({
   commentThreads,
   currentUserId,
   currentUserRole,
+  canManageAutomations,
   workspaceUsers,
   hasInstagramAccount,
   igAccountStatus,
@@ -560,7 +566,7 @@ export function PostEditorBody({
       <PostAutomationSection
         post={post}
         clienteId={clienteId}
-        currentUserRole={currentUserRole}
+        canManage={canManageAutomations}
         hasInstagramAccount={hasInstagramAccount}
       />
 

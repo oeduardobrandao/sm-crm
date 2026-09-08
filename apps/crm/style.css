@@ -1301,6 +1301,35 @@ body {
   color: var(--text-muted);
 }
 
+/* Clickable KPI cards (Visão geral cockpit) */
+button.kpi-card--clickable {
+  cursor: pointer;
+  text-align: inherit;
+  font: inherit;
+  transition: background 0.15s ease;
+}
+button.kpi-card--clickable:hover {
+  background: var(--surface-hover);
+}
+button.kpi-card--clickable:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+.kpi-card[data-active='true'] {
+  box-shadow: inset 0 0 0 2px var(--primary-color);
+}
+/* Beats .kpi-grid > .kpi-card:hover (0,3,0 vs 0,2,0) so the active ring survives hover inside a grid */
+.kpi-grid > .kpi-card[data-active='true']:hover {
+  box-shadow: inset 0 0 0 2px var(--primary-color);
+}
+/* data-good overrides direction-based delta colors (invertDelta support) */
+.kpi-delta[data-good='true'] {
+  color: var(--success);
+}
+.kpi-delta[data-good='false'] {
+  color: var(--danger);
+}
+
 .kpi-footnote {
   display: flex;
   align-items: center;
@@ -6284,67 +6313,6 @@ body.role-agent input[name='valor_total'] {
 }
 
 /* ============================================================
-   SCROLLABLE TAB STRIP (components/shared/ScrollableTabs.tsx)
-   Gradient fade + chevron buttons on the overflowing side, so a
-   horizontally scrollable tab row reads as scrollable.
-   ============================================================ */
-.scrollable-tabs {
-  position: relative;
-}
-.scrollable-tabs-fade {
-  position: absolute;
-  top: 0;
-  bottom: 1px;
-  width: 56px;
-  pointer-events: none;
-  z-index: 1;
-}
-.scrollable-tabs-fade-left {
-  left: 0;
-  background: linear-gradient(to right, var(--card-bg) 30%, transparent);
-}
-.scrollable-tabs-fade-right {
-  right: 0;
-  background: linear-gradient(to left, var(--card-bg) 30%, transparent);
-}
-.scrollable-tabs-arrow {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 9999px;
-  border: 1px solid var(--border-color);
-  background-color: var(--card-bg);
-  color: var(--text-muted);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-.scrollable-tabs-arrow:hover {
-  color: var(--text-main);
-  border-color: var(--primary-color);
-}
-.scrollable-tabs-arrow-left {
-  left: 0;
-}
-.scrollable-tabs-arrow-right {
-  right: 0;
-}
-/* Roomy pointer devices only — on phones the strip is too narrow to give up
-   ~52px to chevrons, and swiping is the natural gesture anyway. */
-@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
-  .scrollable-tabs-arrow {
-    display: flex;
-  }
-}
-
-/* ============================================================
    WORKFLOW DRAWER
    ============================================================ */
 .drawer-overlay {
@@ -7681,6 +7649,43 @@ body.role-agent input[name='valor_total'] {
   text-decoration: underline;
   cursor: pointer;
 }
+/* h2/h3/blockquote: sem consumidor de UI antes do editor de Páginas (Task 9) --
+   PostEditor/ArticleEditor não expõem botão de título/citação, então nunca
+   precisaram de estilo aqui. Ficam genéricas em .post-editor-content porque um
+   parseHTML/input-rule do StarterKit pode produzi-las em qualquer instância
+   via colar/atalho de markdown, mesmo sem o botão correspondente. */
+.post-editor-content .ProseMirror h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0.9em 0 0.4em;
+}
+.post-editor-content .ProseMirror h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0.9em 0 0.4em;
+}
+.post-editor-content .ProseMirror h3 {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0.75em 0 0.3em;
+}
+.post-editor-content .ProseMirror blockquote {
+  margin: 0.5em 0;
+  padding: 0.1em 0 0.1em 0.85em;
+  border-left: 3px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+/* Editor de Páginas do portal do cliente (Task 9 do plano de layout do
+   portal): mesma superfície do .post-editor, mas o conteúdo é uma página
+   inteira, não um post curto -- a área de edição precisa de bem mais altura
+   que os 80px padrão. */
+.post-editor--pagina .post-editor-content .ProseMirror {
+  min-height: 360px;
+}
 
 /* @-mention chip. Rendered by MentionNode inside the TipTap editor (span[data-mention])
    AND by the standalone MentionChip component used outside the editor (comment/task text,
@@ -7875,7 +7880,12 @@ a.mention-chip:hover {
   border-radius: 4px;
   border: 1px solid var(--border-color);
   background: transparent;
-  color: var(--danger);
+  /* --danger is a fill/border colour, not an accessible text colour: 3.02:1 on
+     --surface-1 fails the 4.5:1 AA floor. Error copy uses --danger-text (5.94:1
+     here) instead -- see DESIGN_SYSTEM.md. Dark theme already cleared AA with
+     --danger (5.60:1); --danger-text also clears it there, so this is a one-line
+     fix for both themes. */
+  color: var(--danger-text);
   cursor: pointer;
 }
 
@@ -10629,12 +10639,32 @@ body.landing-page #root {
   padding: 1rem 1.25rem;
 }
 
-.hub-tabs {
-  min-width: 0;
+/* Shared head/title/sub for the five routed Hub sub-pages (Acesso, Briefing, Marca,
+   Páginas, Ideias) -- left unstyled by Task 2, since none of those pages needed a
+   two-column body until this one did. */
+.hub-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
-.hub-tabs__list {
-  max-width: 100%;
+.hub-page__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
 }
+.hub-page__title {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.hub-page__sub {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 .hub-access {
   display: grid;
   gap: 0.75rem;
@@ -10655,6 +10685,632 @@ body.landing-page #root {
 .hub-access__secondary-actions,
 .hub-access__primary-actions {
   display: contents;
+}
+
+/* Ativo/Inativo chip + expiry, the link card's first line. */
+.hub-access__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.hub-access__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.hub-access__chip--active {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+.hub-access__chip--inactive {
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  color: var(--text-muted);
+}
+
+/* Acesso screen: link card + ideas callout on the left, "O que o cliente vê" fill
+   panel on the right. Single column below 900px -- the static sidebar is already
+   gone by then (see DESIGN_SYSTEM.md breakpoints), so the left column would
+   otherwise be squeezed under the fixed 300px right panel. */
+.hub-acesso__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
+  gap: 1.5rem;
+}
+.hub-acesso__main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.hub-acesso__panel {
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-main);
+  padding: 1rem 1.25rem;
+}
+@media (max-width: 900px) {
+  .hub-acesso__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* "O que o cliente vê" panel rows. */
+.hub-fill__row + .hub-fill__row {
+  border-top: 1px solid var(--border-color);
+}
+.hub-fill__row-inner {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+  color: inherit;
+  text-decoration: none;
+}
+a.hub-fill__row-inner:hover {
+  color: var(--primary-hover);
+}
+.hub-fill__label {
+  min-width: 0;
+  color: var(--text-main);
+  font-size: 0.85rem;
+}
+.hub-fill__value {
+  flex-shrink: 0;
+  max-width: 60%;
+  overflow: hidden;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hub-fill__pending {
+  color: var(--text-light);
+  font-weight: 400;
+}
+.hub-fill__empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* Ideias novas sem resposta, under the link card. */
+.hub-acesso__ideas {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+.hub-acesso__ideas--alert {
+  color: var(--warning);
+  font-weight: 600;
+}
+.hub-acesso__ideas--alert:hover {
+  text-decoration: underline;
+}
+
+/* ─── Briefing screen: 250px rail (briefings + section index) + main grid ────
+   Single column below 900px, matching .hub-acesso__grid's breakpoint -- the
+   static sidebar is already gone by then (see DESIGN_SYSTEM.md breakpoints),
+   so the rail would otherwise be squeezed under the main content's width. */
+.hub-briefing__shell {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  align-items: start;
+  gap: 1.5rem;
+}
+@media (max-width: 900px) {
+  .hub-briefing__shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.hub-briefing__rail {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.hub-briefing__rail-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hub-briefing__rail-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Briefing list: vertical, in place of the old horizontal ScrollableTabs ribbon. */
+.hub-briefing__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.5rem;
+}
+.hub-briefing__list-item {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.625rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: left;
+}
+.hub-briefing__list-item:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+.hub-briefing__list-item[data-active='true'] {
+  background: var(--surface-main);
+  border-color: var(--border-color);
+  color: var(--text-main);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+[data-theme='dark'] .hub-briefing__list-item[data-active='true'] {
+  background: var(--surface-3);
+}
+
+/* Section index: respondidas/total per section, click scrolls the main grid to it. */
+.hub-briefing__section-index {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.5rem;
+}
+.hub-briefing__section-index-label {
+  margin: 0 0 0.15rem;
+  padding: 0 0.625rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-light);
+}
+.hub-briefing__section-link {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.625rem;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: left;
+}
+.hub-briefing__section-link:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+/* Rail always lists every section (counts must cover the whole briefing), but a filter
+   can hide every question in a section from the grid below -- no anchor id is rendered
+   for it, so scrolling to it would silently do nothing. Disabled + visibly dimmed with
+   a "not-allowed" cursor communicates that this entry has nowhere to go right now. */
+.hub-briefing__section-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.hub-briefing__section-link:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+.hub-briefing__section-link-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hub-briefing__section-link-count {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-light);
+}
+
+.hub-briefing__main {
+  min-width: 0;
+}
+
+.hub-briefing__main-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.hub-briefing__main-title {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+.hub-briefing__main-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Filters row (chips + progress bar), always over the whole briefing -- the filter
+   only decides what the grid below renders. */
+.hub-briefing__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+/* Filter chips (same look as .today-chip). Shared by Briefing's per-answer filter
+   and Ideias' per-status filter -- one CSS block backs both the `.hub-filter-chip*`
+   names (Ideias) and the `.hub-briefing__chip*` names (Briefing) instead of a
+   near-duplicate per screen. */
+.hub-filter-chips,
+.hub-briefing__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.hub-filter-chip,
+.hub-briefing__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.hub-filter-chip__count,
+.hub-briefing__chip-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.hub-filter-chip[aria-pressed='true'],
+.hub-briefing__chip[aria-pressed='true'] {
+  background: var(--text-main);
+  color: var(--card-bg);
+  border-color: var(--text-main);
+}
+.hub-briefing__progress-wrap {
+  display: flex;
+  min-width: 220px;
+  max-width: 360px;
+  flex: 1 1 220px;
+  align-items: center;
+  gap: 0.6rem;
+}
+.hub-briefing__progress {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.hub-briefing__progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--success);
+  transition: width 0.2s ease;
+}
+.hub-briefing__progress-label {
+  flex-shrink: 0;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* Question rows: pergunta (250px) · resposta (flexível) · ações (78px). Collapses
+   to a single stacked column at 640px -- narrower than .hub-briefing__shell's own
+   900px break because the rail has already dropped above the main column by then,
+   leaving the grid comfortably wide down to a much narrower viewport. */
+.hub-briefing__row {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 78px;
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+}
+/* Each row is wrapped in its own SortableQuestion drag-handle div
+   (.hub-briefing__row-wrap in BriefingReorder.tsx: wrap > grip-button +
+   "min-w-0 flex-1" > .hub-briefing__row), so consecutive .hub-briefing__row
+   elements are never actual DOM siblings -- the adjacency has to be checked
+   one level up, on the wrapper, and .hub-briefing__row is a grandchild of
+   it, not a direct child. */
+.hub-briefing__row-wrap + .hub-briefing__row-wrap .hub-briefing__row {
+  border-top: 1px solid var(--border-color);
+}
+.hub-briefing__cell--question,
+.hub-briefing__cell--answer {
+  min-width: 0;
+}
+.hub-briefing__cell--actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.15rem;
+}
+.hub-briefing__edit {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+@media (max-width: 640px) {
+  .hub-briefing__row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.35rem;
+  }
+  .hub-briefing__cell--actions {
+    justify-content: flex-start;
+  }
+}
+
+/* ─── Páginas screen (Task 11): 250px rail (dnd-kit reorder) + rich text editor ──
+   Same 250px-rail shape as .hub-briefing__shell, same 900px breakpoint -- the static
+   sidebar is already gone by then, so the rail would otherwise be squeezed under the
+   main column's width. */
+.hub-paginas__split {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  align-items: start;
+  gap: 1.5rem;
+}
+@media (max-width: 900px) {
+  .hub-paginas__split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.hub-paginas__rail {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.hub-paginas__rail-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.hub-paginas__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.5rem;
+}
+.hub-paginas__row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.hub-paginas__drag-handle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  color: var(--text-light);
+  cursor: grab;
+  touch-action: none;
+}
+.hub-paginas__drag-handle:hover {
+  color: var(--text-muted);
+}
+.hub-paginas__list-item {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.625rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: left;
+}
+.hub-paginas__list-item:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+.hub-paginas__list-item[data-active='true'] {
+  background: var(--surface-main);
+  border-color: var(--border-color);
+  color: var(--text-main);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+[data-theme='dark'] .hub-paginas__list-item[data-active='true'] {
+  background: var(--surface-3);
+}
+.hub-paginas__list-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Badge on a page still stored as a legacy block (markdown/paragraph/heading/link/image)
+   -- readPageDoc converts it for display, but saving is what actually migrates the row to
+   `[{ type: 'richtext', doc }]`. */
+.hub-paginas__badge {
+  flex-shrink: 0;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-light);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.hub-paginas__main {
+  min-width: 0;
+}
+.hub-paginas__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.hub-paginas__legacy-note {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.hub-paginas__legacy-note--warn {
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+}
+.hub-paginas__draft-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+}
+.hub-paginas__discard-draft {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.hub-paginas__toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.hub-paginas__title-input {
+  min-width: 200px;
+  flex: 1 1 auto;
+}
+.hub-paginas__toolbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+.hub-paginas__dirty-badge {
+  color: var(--warning);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Ideias: two-up card grid. auto-fill (not a hard 2-col rule) so a card never gets
+   squeezed once the viewport drops below the static sidebar's 1101px breakpoint --
+   it reflows to one column on its own once 2*320px + gap no longer fits. */
+.hub-ideias__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 0.75rem;
+}
+.hub-ideia-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-main);
+}
+.hub-ideia-card__body {
+  display: block;
+  width: 100%;
+  flex: 1;
+  padding: 0.9rem 1rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.hub-ideia-card__body:hover {
+  background: var(--surface-hover);
+}
+/* Sibling of .hub-ideia-card__body, not nested inside it -- a <button> can't
+   contain other <button>s, and "Responder"/"Virar tarefa" are shortcuts into the
+   same IdeiaDrawer the card body itself opens, not a separate interaction. */
+.hub-ideia-card__actions {
+  display: flex;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border-color);
+  padding: 0.6rem 1rem;
+}
+.hub-ideia-card__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.hub-ideia-card__action:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+.hub-ideia-card__action--primary {
+  border-color: var(--primary-color);
+  color: var(--text-main);
+}
+.hub-ideia-card__action--primary:hover {
+  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
+  color: var(--text-main);
 }
 
 .cliente-finance-empty {
@@ -10819,25 +11475,6 @@ body.landing-page #root {
     min-height: 44px;
   }
 
-  .hub-tabs__list {
-    display: flex;
-    width: 100%;
-    height: auto;
-    justify-content: flex-start;
-    overflow-x: auto;
-    padding: 0.25rem;
-    scroll-padding-inline: 0.25rem;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .hub-tabs__list::-webkit-scrollbar {
-    display: none;
-  }
-  .hub-tabs__list [role='tab'] {
-    flex: 0 0 auto;
-    min-height: 44px;
-  }
   /* .hub-access__actions is a flex row on desktop; these two groups become real
      boxes again here (overriding the desktop `display: contents`), so re-assert
      full width -- flex items don't stretch on the main axis by default the way
@@ -12294,4 +12931,64 @@ body.landing-page #root {
   color: var(--text-main);
   font-size: 0.8rem;
   cursor: pointer;
+}
+
+/*
+ * The filter echo is the toolbar's replacement on paper. It lives in the DOM at
+ * all times (the print rule below only flips its display), so this default
+ * hide has to sit OUTSIDE the media query or the line would show on screen too.
+ */
+.analytics-fluxos-page .print-only {
+  display: none;
+}
+
+/*
+ * Print layout for Analytics de Fluxos ("Imprimir" no cabeçalho da página).
+ *
+ * The app chrome carries no information on paper and the toolbar's controls
+ * print as dead widgets, so both are dropped and the content reclaims the
+ * sidebar's 260px inset. The toolbar is where the applied filters live, so
+ * `.print-only` brings them back as a plain line: a sheet that cannot name its
+ * own period is a sheet nobody can check.
+ *
+ * The chrome lives OUTSIDE the page wrapper, so hiding it needs a selector that
+ * reaches up: `body:has(.analytics-fluxos-page)`. That keeps every rule here
+ * scoped to this one page instead of silently restyling `Ctrl+P` on all of them
+ * (the report builder has its own dedicated print route and must not be touched).
+ */
+@media print {
+  body:has(.analytics-fluxos-page) .sidebar,
+  body:has(.analytics-fluxos-page) .topbar,
+  /* The phone nav is `.mobile-nav-glass` (see MobileNav.tsx); there is no
+     `.bottom-nav` in this codebase. `.mobile-more-sheet` and its
+     `.mobile-more-overlay` are the "Mais" sheet, which can be open when the
+     user hits print. */
+  body:has(.analytics-fluxos-page) .mobile-nav-glass,
+  body:has(.analytics-fluxos-page) .mobile-more-sheet,
+  body:has(.analytics-fluxos-page) .mobile-more-overlay,
+  .analytics-fluxos-page .analytics-fluxos-actions,
+  .analytics-fluxos-page .analytics-fluxos-toolbar {
+    display: none !important;
+  }
+
+  body:has(.analytics-fluxos-page) .main-content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+
+  .analytics-fluxos-page .print-only {
+    display: block !important;
+  }
+
+  .analytics-fluxos-page .analytics-fluxos-print-echo {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  .analytics-fluxos-page .card,
+  .analytics-fluxos-page .kpi-grid {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
 }

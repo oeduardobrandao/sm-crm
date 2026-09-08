@@ -1,5 +1,5 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -17,6 +17,10 @@ import { useAuth } from '../../../context/AuthContext';
 import { getCliente, updateCliente, type Cliente } from '../../../store';
 import ClienteDetalhePage from '../ClienteDetalhePage';
 import ClienteDetalheIndexRedirect from '../ClienteDetalheIndexRedirect';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
+
+type CanFn = (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedGetCliente = vi.mocked(getCliente);
@@ -41,11 +45,20 @@ function setAuth(
     signedIn = true,
     canSeeFinancials = true as boolean | 'unknown',
     membershipResolved = true as boolean | 'error',
+    can,
   }: {
     loading?: boolean;
     signedIn?: boolean;
     canSeeFinancials?: boolean | 'unknown';
     membershipResolved?: boolean | 'error';
+    /**
+     * Override for a custom-role scenario. Defaults to a real
+     * derivePermission-backed `can` for a LEGACY membership of
+     * `workspaceRole` (`null` -> unresolved membership, 'unknown' for every
+     * module — matching the fact that `membership` and `workspaceRole` are
+     * always set together in the real AuthContext).
+     */
+    can?: CanFn;
   } = {},
 ) {
   mockedUseAuth.mockReturnValue({
@@ -55,6 +68,13 @@ function setAuth(
     workspaceRole,
     membershipResolved,
     canSeeFinancials,
+    can:
+      can ??
+      makeCan(
+        workspaceRole === null
+          ? null
+          : fakeMembership({ role: workspaceRole, can_see_financials: canSeeFinancials === true }),
+      ),
     loading,
     signOut: vi.fn(),
     refetchProfile: vi.fn(),
@@ -66,7 +86,7 @@ function PathProbe() {
   return <span data-testid="path">{location.pathname + location.search}</span>;
 }
 
-function renderAt(path: string) {
+function renderAt(path: string, { hubHasIndex = true }: { hubHasIndex?: boolean } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
   const utils = render(
@@ -80,7 +100,16 @@ function renderAt(path: string) {
             <Route path="entregas" element={<div>conteudo entregas</div>} />
             <Route path="redes-sociais" element={<div>conteudo redes-sociais</div>} />
             <Route path="relatorios" element={<div>conteudo relatorios</div>} />
-            <Route path="hub" element={<div>conteudo hub</div>} />
+            <Route path="hub">
+              {/* hubHasIndex=false: exercises the harness App.tsx actually ships without
+                  (see task-2-report.md "Fix round 1") — without an index child here, the
+                  ONLY thing that can produce "conteudo acesso" from bare /hub is
+                  ClienteDetalhePage's own `current === 'hub'` guard, resolved before the
+                  Outlet mounts at all. */}
+              {hubHasIndex && <Route index element={<Navigate to="acesso" replace />} />}
+              <Route path="acesso" element={<div>conteudo acesso</div>} />
+              <Route path="marca" element={<div>conteudo marca</div>} />
+            </Route>
             <Route path="arquivos" element={<div>conteudo arquivos</div>} />
             <Route path="financeiro" element={<div>conteudo financeiro</div>} />
             <Route path="*" element={null} />
@@ -124,7 +153,7 @@ describe('ClienteDetalhePage', () => {
     expect(await screen.findByText('Cliente não encontrado')).toBeInTheDocument();
   });
 
-  it('renders the seven tabs grouped and in order for an owner', async () => {
+  it('renders the eleven tabs grouped and in order for an owner', async () => {
     setAuth('owner');
     renderAt('/clientes/42/visao-geral');
     await screen.findByText('conteudo visao-geral');
@@ -133,7 +162,11 @@ describe('ClienteDetalhePage', () => {
       'Entregas',
       'Redes sociais',
       'Relatórios',
-      'Hub',
+      'Acesso',
+      'Briefing',
+      'Marca',
+      'Páginas',
+      'Ideias',
       'Arquivos',
       'Financeiro',
     ]);
@@ -190,9 +223,56 @@ describe('ClienteDetalhePage', () => {
     });
   });
 
+  describe('sub-abas do portal', () => {
+    it('redireciona /hub para /hub/acesso', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/hub');
+      expect(await screen.findByText('conteudo acesso')).toBeInTheDocument();
+    });
+
+    it('renderiza uma sub-aba diretamente pela URL', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/hub/marca');
+      expect(await screen.findByText('conteudo marca')).toBeInTheDocument();
+    });
+
+    it('redireciona sub-aba desconhecida para visao-geral', async () => {
+      setAuth('owner');
+      renderAt('/clientes/42/hub/bogus');
+      expect(await screen.findByText('conteudo visao-geral')).toBeInTheDocument();
+    });
+
+    it('redireciona /hub para /hub/acesso mesmo sem a rota index', async () => {
+      setAuth('owner');
+      // No `index` child under `hub` in this harness — the only thing that can produce
+      // "conteudo acesso" from bare /hub here is ClienteDetalhePage's own `current ===
+      // 'hub'` guard (ClienteDetalhePage.tsx), not App.tsx's index route (which the real
+      // app does register, but which never gets a chance to run: the guard resolves
+      // before the Outlet mounts either way). This pins that guard specifically, instead
+      // of duplicating the test above it.
+      renderAt('/clientes/42/hub', { hubHasIndex: false });
+      expect(await screen.findByText('conteudo acesso')).toBeInTheDocument();
+    });
+  });
+
   describe('per-tab permission gating', () => {
-    it('redirects an agent away from Relatórios to Visão geral', async () => {
+    // Task 12: `relatorios` maps to {analytics,ver}, which the legacy agent
+    // preset already grants (it did before this task too, for the top-level
+    // /analytics route) — an agent visiting Relatórios directly now renders
+    // it instead of bouncing. See clienteTabs.model.test.ts for the full
+    // truth table this divergence is drawn from.
+    it('renders Relatórios directly for an agent, who has analytics:ver via the legacy preset', async () => {
       setAuth('agent', { canSeeFinancials: false });
+      renderAt('/clientes/42/relatorios');
+      expect(await screen.findByText('conteudo relatorios')).toBeInTheDocument();
+      expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/relatorios');
+    });
+
+    it('redirects a custom role without analytics access away from Relatórios to Visão geral', async () => {
+      setAuth('agent', {
+        canSeeFinancials: false,
+        can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+      });
       renderAt('/clientes/42/relatorios');
       await screen.findByText('conteudo visao-geral');
       expect(screen.queryByText('conteudo relatorios')).not.toBeInTheDocument();
@@ -203,6 +283,42 @@ describe('ClienteDetalhePage', () => {
       renderAt('/clientes/42/relatorios');
       expect(await screen.findByText('conteudo relatorios')).toBeInTheDocument();
       expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/relatorios');
+    });
+
+    // Task 12: `hub` maps to {configuracoes,editar}, which the legacy agent
+    // preset has always lacked ('none') — an agent visiting Hub directly now
+    // bounces, where it used to render an internal RoleRestrictionNotice
+    // (HubClienteTab.tsx) instead.
+    it('redirects an agent away from Hub to Visão geral', async () => {
+      setAuth('agent');
+      renderAt('/clientes/42/hub');
+      await screen.findByText('conteudo visao-geral');
+      expect(screen.queryByText('conteudo hub')).not.toBeInTheDocument();
+    });
+
+    it('renders a portal sub-tab directly for an admin (configuracoes:editar, unconditional for admin outside financeiro/contratos)', async () => {
+      setAuth('admin');
+      renderAt('/clientes/42/hub/marca');
+      expect(await screen.findByText('conteudo marca')).toBeInTheDocument();
+    });
+
+    // The custom-role case the coarse chassis check used to get wrong: the
+    // chassis `workspaceRole` reads 'agent', but the role_id permissions
+    // grant configuracoes:editar, so the guard must let this member through
+    // to the portal. HubRoleGate reads the same can(), so the screen inside
+    // never contradicts this.
+    it('lets a custom role with configuracoes:editar reach the portal despite an agent chassis role', async () => {
+      setAuth('agent', {
+        can: makeCan(
+          fakeMembership({
+            role: 'agent',
+            role_id: 'role-1',
+            permissions: { configuracoes: 'editar' },
+          }),
+        ),
+      });
+      renderAt('/clientes/42/hub/marca');
+      expect(await screen.findByText('conteudo marca')).toBeInTheDocument();
     });
 
     it('redirects a restricted admin away from Financeiro to Visão geral', async () => {
@@ -237,9 +353,61 @@ describe('ClienteDetalhePage', () => {
       expect(screen.queryByText('conteudo relatorios')).not.toBeInTheDocument();
       expect(screen.queryByText('conteudo visao-geral')).not.toBeInTheDocument();
     });
+
+    /**
+     * Generalization of the financeiro case above to every OTHER
+     * permission-gated tab, via `clienteTabGuardOutcome` (clienteTabs.model.ts).
+     * Before this fix, `ClienteDetalhePage`'s `else if` branch collapsed
+     * `can()`'s 'unknown' to `false` (through `canAccessClienteTab`, which
+     * `=== true`-collapses on purpose for the nav) and redirected a
+     * still-hydrating, actually-authorized member off the tab before
+     * `HubRoleGate`'s own spinner ever got a chance to render.
+     * `workspaceRole` is kept non-null here (`'owner'`) so the earlier
+     * workspaceRole===null branches don't preempt this -- only `can()` itself
+     * is unresolved, exactly like a real membership fetch still in flight.
+     */
+    it('shows a loading state for a portal tab (not a redirect, not the tab) while can() is unknown', async () => {
+      setAuth('owner', { can: makeCan(null) });
+      const { container } = renderAt('/clientes/42/hub/marca');
+      await waitFor(() => expect(mockedGetCliente).toHaveBeenCalled());
+      expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/hub/marca');
+      expect(screen.queryByText('conteudo marca')).not.toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    });
+
+    it('shows a loading state for Relatórios (not a redirect, not the tab) while can() is unknown', async () => {
+      setAuth('owner', { can: makeCan(null) });
+      const { container } = renderAt('/clientes/42/relatorios');
+      await waitFor(() => expect(mockedGetCliente).toHaveBeenCalled());
+      expect(screen.getByTestId('path')).toHaveTextContent('/clientes/42/relatorios');
+      expect(screen.queryByText('conteudo relatorios')).not.toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    });
+
+    it('redirects a portal tab to Visão geral once can() resolves false', async () => {
+      setAuth('agent');
+      renderAt('/clientes/42/hub/marca');
+      await screen.findByText('conteudo visao-geral');
+      expect(screen.queryByText('conteudo marca')).not.toBeInTheDocument();
+    });
+
+    it('renders a portal tab once can() resolves true', async () => {
+      setAuth('admin');
+      renderAt('/clientes/42/hub/marca');
+      expect(await screen.findByText('conteudo marca')).toBeInTheDocument();
+    });
   });
 
-  it('shows the photo-upload control for an owner but not for an agent', async () => {
+  /**
+   * Task 14: `canEditPhoto = workspaceRole === 'owner' || workspaceRole ===
+   * 'admin'` collapsed onto `can('clientes', 'editar') === true`.
+   * `AGENT_ROLE_PRESET.clientes` is 'editar' (lib/permissions.ts, same
+   * preset ClientesPage's own mutation buttons rely on), so a LEGACY agent
+   * now sees the control too — this is a deliberate widening that brings the
+   * photo control in line with the rest of the clientes module, not a
+   * regression. Only a CUSTOM role can still be denied it.
+   */
+  it('shows the photo-upload control for an owner and for a legacy agent (clientes preset is editar)', async () => {
     setAuth('owner');
     mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
     const ownerRender = renderAt('/clientes/42/visao-geral');
@@ -248,9 +416,63 @@ describe('ClienteDetalhePage', () => {
 
     setAuth('agent');
     mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
+    const agentRender = renderAt('/clientes/42/visao-geral');
+    expect(await screen.findByLabelText('Alterar foto do cliente')).toBeInTheDocument();
+    agentRender.unmount();
+  });
+
+  it('hides the photo-upload control for a custom role with clientes:ver only', async () => {
+    setAuth('agent', {
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'ver' } }),
+      ),
+    });
+    mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
     renderAt('/clientes/42/visao-geral');
     await screen.findByText('conteudo visao-geral');
     expect(screen.queryByLabelText('Alterar foto do cliente')).not.toBeInTheDocument();
+  });
+
+  it('shows the photo-upload control for a custom role with clientes:editar', async () => {
+    setAuth('agent', {
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'editar' } }),
+      ),
+    });
+    mockedGetCliente.mockResolvedValue({ ...CLIENTE, foto_url: null });
+    renderAt('/clientes/42/visao-geral');
+    expect(await screen.findByLabelText('Alterar foto do cliente')).toBeInTheDocument();
+  });
+
+  /**
+   * Task 14, revisão externa round 4 (P2): the header's "Editar" button
+   * (opens ClienteEditDialog) used to render unconditionally regardless of
+   * role -- a custom role with only `clientes:ver` reached this page and
+   * could still open the edit dialog, even though `canEditPhoto` was
+   * already gated on `can('clientes','editar')`. Both flags now share the
+   * same derived `canEditClient` in ClienteDetalhePage.tsx.
+   */
+  it('hides the header Editar button for a custom role with clientes:ver only', async () => {
+    setAuth('agent', {
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { clientes: 'ver' } }),
+      ),
+    });
+    renderAt('/clientes/42/visao-geral');
+    await screen.findByText('conteudo visao-geral');
+    expect(screen.queryByRole('button', { name: /editar/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the header Editar button for a legacy agent (clientes preset is editar — unchanged)', async () => {
+    setAuth('agent');
+    renderAt('/clientes/42/visao-geral');
+    expect(await screen.findByRole('button', { name: /editar/i })).toBeInTheDocument();
+  });
+
+  it('keeps the header Editar button for a legacy admin (unchanged)', async () => {
+    setAuth('admin');
+    renderAt('/clientes/42/visao-geral');
+    expect(await screen.findByRole('button', { name: /editar/i })).toBeInTheDocument();
   });
 
   describe('client edit', () => {

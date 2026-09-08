@@ -1,3 +1,4 @@
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
 import { generateImageThumbnail, generateBlurDataUrl, probeImage } from './postMedia';
 
@@ -70,7 +71,14 @@ export async function listIdeiaImages(ideiaId: string): Promise<CrmIdeiaImage[]>
   return images;
 }
 
-export async function uploadIdeiaImage(
+/** Holds the unsaved-work registry for the whole upload: a silent version swap must not abort it. */
+export function uploadIdeiaImage(
+  ...args: Parameters<typeof uploadIdeiaImageUnguarded>
+): ReturnType<typeof uploadIdeiaImageUnguarded> {
+  return trackUnsavedWork(uploadIdeiaImageUnguarded(...args));
+}
+
+async function uploadIdeiaImageUnguarded(
   ideiaId: string,
   file: File,
   sortOrder?: number,

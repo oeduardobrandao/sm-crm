@@ -1,5 +1,6 @@
 export * from './core';
 export * from './workspace';
+export * from './roles';
 export * from './clients';
 export * from './finance';
 export * from './team';
@@ -18,6 +19,7 @@ export * from './notificationPrefs';
 export * from './tarefas';
 export * from './mensagens';
 export * from './banners';
+export * from './popups';
 export * from './computed';
 export * from './kb';
 export * from './mentions';

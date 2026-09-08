@@ -36,23 +36,34 @@ export interface Notification {
   created_at: string;
 }
 
-export async function getNotifications(limit = 50, offset = 0): Promise<Notification[]> {
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('*')
-    .is('dismissed_at', null)
+/** Applies a NOT IN filter on `type` when excludeTypes is non-empty. No-op otherwise. */
+function withoutTypes<T>(query: T, excludeTypes: string[]): T {
+  if (!excludeTypes.length) return query;
+  const list = `(${excludeTypes.map((t) => `"${t}"`).join(',')})`;
+  // @ts-expect-error postgrest builder chain
+  return query.not('type', 'in', list);
+}
+
+export async function getNotifications(
+  limit = 50,
+  offset = 0,
+  excludeTypes: string[] = [],
+): Promise<Notification[]> {
+  const base = supabase.from('notifications').select('*').is('dismissed_at', null);
+  const { data, error } = await withoutTypes(base, excludeTypes)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
   if (error) throw error;
   return (data ?? []) as Notification[];
 }
 
-export async function getUnreadNotificationCount(): Promise<number> {
-  const { count, error } = await supabase
+export async function getUnreadNotificationCount(excludeTypes: string[] = []): Promise<number> {
+  const base = supabase
     .from('notifications')
     .select('id', { count: 'exact', head: true })
     .is('read_at', null)
     .is('dismissed_at', null);
+  const { count, error } = await withoutTypes(base, excludeTypes);
   if (error) throw error;
   return count ?? 0;
 }
@@ -65,12 +76,13 @@ export async function markNotificationAsRead(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function markAllNotificationsAsRead(): Promise<void> {
-  const { error } = await supabase
+export async function markAllNotificationsAsRead(excludeTypes: string[] = []): Promise<void> {
+  const base = supabase
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
     .is('read_at', null)
     .is('dismissed_at', null);
+  const { error } = await withoutTypes(base, excludeTypes);
   if (error) throw error;
 }
 

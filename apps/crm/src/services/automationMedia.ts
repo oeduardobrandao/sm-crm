@@ -4,6 +4,7 @@
 // presign devolve a key TMP (automation-media-tmp/...); finalize recebe essa
 // mesma key tmp e devolve dm_media com a key FINAL (automation-media/...) já
 // verificada -- é a key final que a automação salva, nunca a tmp.
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '@/lib/supabase';
 import type { DmMedia } from '../store/instagramAutomations';
 import { probeImage, putWithProgress, type UploadProgress } from './postMedia';
@@ -36,7 +37,14 @@ export function validateAutomationMediaFile(file: File): string | null {
   return null;
 }
 
-export async function uploadAutomationMedia(
+/** Holds the unsaved-work registry for the whole upload: a silent version swap must not abort it. */
+export function uploadAutomationMedia(
+  ...args: Parameters<typeof uploadAutomationMediaUnguarded>
+): ReturnType<typeof uploadAutomationMediaUnguarded> {
+  return trackUnsavedWork(uploadAutomationMediaUnguarded(...args));
+}
+
+async function uploadAutomationMediaUnguarded(
   file: File,
   onProgress?: (p: UploadProgress) => void,
 ): Promise<DmMedia> {

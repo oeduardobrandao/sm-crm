@@ -12,7 +12,7 @@ import { ClienteDetalheNav } from './ClienteDetalheNav';
 import { ClienteEditDialog } from './ClienteEditDialog';
 import {
   CLIENTE_TABS,
-  canAccessClienteTabRole,
+  clienteTabGuardOutcome,
   financeiroTabGuardOutcome,
   type ClienteDetalheOutletContext,
 } from './clienteTabs.model';
@@ -36,7 +36,7 @@ export default function ClienteDetalhePage() {
   const { id: idParam } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, workspaceRole, membershipResolved, canSeeFinancials, loading } = useAuth();
+  const { user, workspaceRole, membershipResolved, canSeeFinancials, can, loading } = useAuth();
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
   const [editOpen, setEditOpen] = useState(false);
@@ -110,7 +110,14 @@ export default function ClienteDetalhePage() {
   // under /clientes/:id and renders a blank content pane.
   const current = pathname.replace(/^\/clientes\/[^/]+\/?/, '').replace(/\/+$/, '');
 
-  // Unknown segment: not one of the seven registered tabs (and not the empty
+  // `hub` deixou de ser aba própria (virou o grupo do nav, cf. clienteTabs.model),
+  // então cai na checagem de segmento desconhecido abaixo e iria para visao-geral.
+  // A rota `index` de App.tsx não salva: o guard resolve ANTES do Outlet montar.
+  if (current === 'hub') {
+    return <Navigate to={`/clientes/${clienteId}/hub/acesso`} replace />;
+  }
+
+  // Unknown segment: not one of the eleven registered tabs (and not the empty
   // index segment, which has its own route/component).
   if (current && !CLIENTE_TABS.some((tab) => tab.key === current)) {
     return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
@@ -125,8 +132,17 @@ export default function ClienteDetalhePage() {
     if (outcome === 'denied') {
       return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
     }
-  } else if (current && !canAccessClienteTabRole(current, workspaceRole)) {
-    return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
+  } else if (current) {
+    // Same three-state principle as financeiro above, generalized to every
+    // other permission-gated tab (the five `hub/*` portal routes and
+    // `relatorios`): 'unknown' must render a spinner, not bounce someone who
+    // is actually authorized just because their membership hasn't resolved
+    // yet. Resolved BEFORE the Outlet mounts, same reasoning as financeiro.
+    const outcome = clienteTabGuardOutcome(current, can);
+    if (outcome === 'loading') return <CenteredSpinner />;
+    if (outcome === 'denied') {
+      return <Navigate to={`/clientes/${clienteId}/visao-geral`} replace />;
+    }
   }
 
   if (loadingCliente) {
@@ -144,6 +160,12 @@ export default function ClienteDetalhePage() {
     );
   }
 
+  // Shared by the photo-upload trigger and the header's "Editar" button
+  // (which opens ClienteEditDialog below) -- a custom role with only
+  // `clientes:ver` must not reach either mutation surface, even though it
+  // can view this page (Task 14, revisão externa round 4, P2).
+  const canEditClient = can('clientes', 'editar') === true;
+
   return (
     <div className="cliente-detalhe-page">
       <ClienteDetalheHeader
@@ -154,7 +176,8 @@ export default function ClienteDetalhePage() {
         plano={cliente.plano}
         status={cliente.status}
         imageUrl={cliente.foto_url}
-        canEditPhoto={workspaceRole === 'owner' || workspaceRole === 'admin'}
+        canEditPhoto={canEditClient}
+        canEdit={canEditClient}
         onBack={() => navigate('/clientes')}
         onEdit={() => setEditOpen(true)}
       />

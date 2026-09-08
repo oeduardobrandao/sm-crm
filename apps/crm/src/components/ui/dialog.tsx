@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +43,16 @@ export const CONFIRM_CLOSE_MSG = 'Você tem alterações não salvas. Deseja fec
 export const CONFIRM_CLOSE_TITLE = 'Fechar sem salvar?';
 export const CONFIRM_CLOSE_KEEP_EDITING = 'Continuar editando';
 export const CONFIRM_CLOSE_DISCARD = 'Fechar mesmo assim';
+
+/**
+ * Holds the unsaved-work registry while a dirty dialog is on screen. Rendered inside the
+ * Radix content on purpose: the DialogContent wrapper itself stays mounted (and keeps
+ * rendering) while the dialog is closed, so a hook there would hold over an invisible form.
+ */
+function UnsavedWorkHold({ active }: { active: boolean }) {
+  useUnsavedWork(active);
+  return null;
+}
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
@@ -116,6 +127,7 @@ const DialogContent = React.forwardRef<
             }}
             {...props}
           >
+            <UnsavedWorkHold active={isDirty} />
             {/*
              * `relative` is otherwise a no-op here (no top/left/right/bottom
              * is ever set on this div itself) -- it exists purely to make

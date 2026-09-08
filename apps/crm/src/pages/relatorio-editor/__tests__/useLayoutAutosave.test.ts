@@ -12,6 +12,7 @@ vi.mock('sonner', () => ({ toast: { error: toastErrorMock, success: vi.fn() } })
 
 import { useLayoutAutosave } from '../useLayoutAutosave';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { hasUnsavedWork } from '@mesaas/app-lifecycle';
 
 const baseLayout: ReportLayout = {
   version: 1,
@@ -141,6 +142,105 @@ describe('useLayoutAutosave', () => {
       await Promise.resolve();
     });
     expect(updateMock).toHaveBeenCalledWith('doc-1', { title: 'Relatório de Abril' });
+  });
+
+  it('título pendente segura o registro de trabalho não salvo até o save concluir', async () => {
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    expect(hasUnsavedWork()).toBe(false);
+    act(() => result.current.setTitle('Relatório de Abril'));
+    expect(hasUnsavedWork()).toBe(true);
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledWith('doc-1', { title: 'Relatório de Abril' });
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it('título em voo segura o registro até o request assentar', async () => {
+    let settle!: () => void;
+    updateMock.mockImplementationOnce(() => new Promise<void>((resolve) => (settle = resolve)));
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    act(() => result.current.setTitle('Relatório de Julho'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(hasUnsavedWork()).toBe(true);
+    await act(async () => {
+      settle();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it('segunda edição do título durante o request em voo mantém o registro seguro até o segundo save', async () => {
+    let settleFirst!: () => void;
+    let settleSecond!: () => void;
+    updateMock
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (settleFirst = resolve)))
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (settleSecond = resolve)));
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    act(() => result.current.setTitle('Relatório de Agosto'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    // Second edit while the first request is in flight.
+    act(() => result.current.setTitle('Relatório de Agosto v2'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    // First request settles; the queued second flush starts its own request.
+    await act(async () => {
+      settleFirst();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(hasUnsavedWork()).toBe(true);
+    await act(async () => {
+      settleSecond();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it('falha no save de título mantém o registro seguro até o retry dar certo', async () => {
+    updateMock.mockRejectedValueOnce(new Error('offline'));
+    const { result } = renderHook(
+      () => useLayoutAutosave('doc-1', { layout: baseLayout, title: 'T' }),
+      { wrapper },
+    );
+    act(() => result.current.setTitle('Relatório de Maio'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(hasUnsavedWork()).toBe(true);
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(hasUnsavedWork()).toBe(false);
   });
 
   it('terceira edição durante request em voo mantém saving true', async () => {

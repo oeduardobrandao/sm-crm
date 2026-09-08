@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Bell, CheckCheck, Filter } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import type { Notification } from '../../store';
 import NotificationList from './NotificationList';
 
 export interface NotificationPopoverProps {
   notifications: Notification[];
+  isLoading: boolean;
   onMarkAsRead: (id: string) => void;
   onMarkAllAsRead: () => void;
   onDismiss: (id: string) => void;
@@ -16,6 +18,7 @@ type FilterMode = 'all' | 'unread';
 
 export default function NotificationPopover({
   notifications,
+  isLoading,
   onMarkAsRead,
   onMarkAllAsRead,
   onDismiss,
@@ -78,7 +81,15 @@ export default function NotificationPopover({
         </span>
       </header>
 
-      {visible.length === 0 ? (
+      {isLoading ? (
+        <div
+          role="status"
+          aria-label="Carregando notificações"
+          style={{ padding: '2rem 1rem', display: 'flex', justifyContent: 'center' }}
+        >
+          <Spinner />
+        </div>
+      ) : visible.length === 0 ? (
         <EmptyState />
       ) : (
         <NotificationList

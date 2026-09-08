@@ -11,6 +11,13 @@ interface BulkActionBarProps {
   isCopying?: boolean;
   isDeleting?: boolean;
   isZipping?: boolean;
+  /** `can('arquivos', 'editar') === true`. Required (not defaulted) so
+   * ArquivosPage.tsx (this component's only caller) makes the decision
+   * explicitly -- a forgotten wire-up must fail closed, not open. Hides
+   * Mover/Copiar/Excluir when false (Task 14, revisão externa round 3, P2:
+   * Mover/Copiar mutate placement/create copies just like Excluir, so all
+   * three share this gate). ZIP stays visible -- it only reads/downloads. */
+  canEdit: boolean;
 }
 
 export function BulkActionBar({
@@ -24,6 +31,7 @@ export function BulkActionBar({
   isCopying,
   isDeleting,
   isZipping,
+  canEdit,
 }: BulkActionBarProps) {
   if (count === 0) return null;
 
@@ -37,23 +45,27 @@ export function BulkActionBar({
 
       <div className="w-px h-5 bg-[var(--border-color)]" />
 
-      <button
-        onClick={onMove}
-        disabled={busy}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[var(--surface-hover)] hover:bg-[var(--surface-darker)] transition-colors disabled:opacity-40"
-      >
-        <ArrowRight className="h-3.5 w-3.5" />
-        Mover
-      </button>
+      {canEdit && (
+        <button
+          onClick={onMove}
+          disabled={busy}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[var(--surface-hover)] hover:bg-[var(--surface-darker)] transition-colors disabled:opacity-40"
+        >
+          <ArrowRight className="h-3.5 w-3.5" />
+          Mover
+        </button>
+      )}
 
-      <button
-        onClick={onCopy}
-        disabled={busy}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[var(--surface-hover)] hover:bg-[var(--surface-darker)] transition-colors disabled:opacity-40"
-      >
-        <Copy className="h-3.5 w-3.5" />
-        Copiar
-      </button>
+      {canEdit && (
+        <button
+          onClick={onCopy}
+          disabled={busy}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[var(--surface-hover)] hover:bg-[var(--surface-darker)] transition-colors disabled:opacity-40"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Copiar
+        </button>
+      )}
 
       <button
         onClick={onZip}
@@ -64,14 +76,16 @@ export function BulkActionBar({
         ZIP
       </button>
 
-      <button
-        onClick={onDelete}
-        disabled={busy}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[rgba(245,90,66,0.1)] text-[var(--danger)] hover:bg-[rgba(245,90,66,0.2)] transition-colors disabled:opacity-40"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-        Excluir
-      </button>
+      {canEdit && (
+        <button
+          onClick={onDelete}
+          disabled={busy}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[rgba(245,90,66,0.1)] text-[var(--danger)] hover:bg-[rgba(245,90,66,0.2)] transition-colors disabled:opacity-40"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Excluir
+        </button>
+      )}
 
       <div className="w-px h-5 bg-[var(--border-color)]" />
 

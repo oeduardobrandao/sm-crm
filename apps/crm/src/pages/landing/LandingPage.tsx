@@ -7,18 +7,14 @@ import { usePageMeta } from '@/lib/usePageMeta';
 
 import {
   AgentVisual,
-  CalendarVisual,
+  AutomacaoVisual,
   Calendar as CalendarIcon,
-  CircleDollarSign,
-  FinanceVisual,
-  HeroDemo,
-  HubVisual,
+  FeatureShot,
+  HeroDevices,
   IconSquare,
-  InstagramVisual,
   Instagram as InstagramIcon,
-  KanbanVisual,
   LayoutGrid,
-  SchedulingVisual,
+  MessageCircle,
   Send,
   Users,
 } from './landing-visuals';
@@ -71,6 +67,23 @@ export default function LandingPage() {
     const id = window.location.hash.slice(1);
     if (!id) return;
     document.getElementById(id)?.scrollIntoView();
+  }, []);
+
+  // Chromium never lazy-loads an <img> whose box was hidden when the lazy
+  // observer first saw it, so the dark screenshot variants would stay blank
+  // after a theme toggle. Promote them to eager the moment dark mode turns on.
+  useEffect(() => {
+    const root = document.documentElement;
+    const promote = () => {
+      if (root.getAttribute('data-theme') !== 'dark') return;
+      document
+        .querySelectorAll<HTMLImageElement>('img.hd-dark[loading="lazy"]')
+        .forEach((img) => (img.loading = 'eager'));
+    };
+    promote();
+    const observer = new MutationObserver(promote);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
   }, []);
 
   return (
@@ -128,7 +141,6 @@ function Hero() {
       <div className="lp-container">
         <div className="hero-grid">
           <div>
-            <span className="eyebrow-pill">{LANDING.hero.eyebrow}</span>
             <h1 className="hero-title">
               {LANDING.hero.titleBefore}
               <em>{LANDING.hero.titleEm}</em>
@@ -138,11 +150,11 @@ function Hero() {
             <div className="hero-ctas">
               {!loading &&
                 (user ? (
-                  <a href="/dashboard" className="lp-btn lp-btn-primary lg">
+                  <a href="/dashboard" className="lp-btn lp-btn-cta lg">
                     Acessar painel <ArrowRight size={16} />
                   </a>
                 ) : (
-                  <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
+                  <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
                     Começar teste grátis <ArrowRight size={16} />
                   </a>
                 ))}
@@ -150,9 +162,10 @@ function Hero() {
                 Ver como funciona
               </button>
             </div>
+            <p className="hero-note">{LANDING.hero.note}</p>
           </div>
           <div className="hero-stage">
-            <HeroDemo />
+            <HeroDevices />
           </div>
         </div>
       </div>
@@ -177,12 +190,77 @@ function Ticker() {
 }
 
 const FEATURE_VISUALS: { icon: ReactNode; color: string; visual: ReactNode }[] = [
-  { icon: <LayoutGrid size={22} />, color: '#FFBF30', visual: <KanbanVisual /> },
-  { icon: <Send size={22} />, color: '#3984FF', visual: <SchedulingVisual /> },
-  { icon: <InstagramIcon size={22} />, color: '#f542c8', visual: <InstagramVisual /> },
-  { icon: <Users size={22} />, color: '#42c8f5', visual: <HubVisual /> },
-  { icon: <CalendarIcon size={22} />, color: '#3ecf8e', visual: <CalendarVisual /> },
-  { icon: <CircleDollarSign size={22} />, color: '#6b7280', visual: <FinanceVisual /> },
+  {
+    icon: <LayoutGrid size={22} />,
+    color: '#FFBF30',
+    visual: (
+      <FeatureShot
+        src="/landing/feat-entregas.webp"
+        srcDark="/landing/feat-entregas-dark.webp"
+        width={1400}
+        height={1095}
+        alt="Kanban de entregas do Mesaas com fluxos por etapa"
+        url="mesaas.com.br/entregas"
+      />
+    ),
+  },
+  {
+    icon: <Send size={22} />,
+    color: '#3984FF',
+    visual: (
+      <FeatureShot
+        src="/landing/feat-agendamento.webp"
+        srcDark="/landing/feat-agendamento-dark.webp"
+        width={1400}
+        height={1095}
+        alt="Agendamento de post no Instagram dentro do Mesaas"
+        url="mesaas.com.br/post-express"
+      />
+    ),
+  },
+  {
+    icon: <InstagramIcon size={22} />,
+    color: '#f542c8',
+    visual: (
+      <FeatureShot
+        src="/landing/feat-analytics.webp"
+        srcDark="/landing/feat-analytics-dark.webp"
+        width={1400}
+        height={1095}
+        alt="Métricas do Instagram no Mesaas: seguidores, alcance e engajamento"
+        url="mesaas.com.br/analytics"
+      />
+    ),
+  },
+  {
+    icon: <Users size={22} />,
+    color: '#42c8f5',
+    visual: (
+      <FeatureShot
+        src="/landing/feat-hub.webp"
+        srcDark="/landing/feat-hub-dark.webp"
+        width={1400}
+        height={1050}
+        alt="Portal do cliente do Mesaas com aprovações por link"
+        url="cliente.mesaas.com.br"
+      />
+    ),
+  },
+  {
+    icon: <CalendarIcon size={22} />,
+    color: '#3ecf8e',
+    visual: (
+      <FeatureShot
+        src="/landing/feat-calendario.webp"
+        srcDark="/landing/feat-calendario-dark.webp"
+        width={1400}
+        height={1095}
+        alt="Calendário editorial mensal do Mesaas"
+        url="mesaas.com.br/calendario"
+      />
+    ),
+  },
+  { icon: <MessageCircle size={22} />, color: '#f5a342', visual: <AutomacaoVisual /> },
 ];
 
 function Features() {
@@ -190,7 +268,6 @@ function Features() {
     <section className="lp-pad" id="features">
       <div className="lp-container">
         <div className="section-head reveal">
-          <span className="eyebrow-pill">Funcionalidades</span>
           <h2>{LANDING.featuresTitle}</h2>
           <p>{LANDING.featuresSub}</p>
         </div>
@@ -230,7 +307,7 @@ function AgentSection() {
       <div className="lp-container">
         <div className="agent-grid reveal">
           <div className="agent-copy">
-            <span className="agent-eyebrow">
+            <span className="agent-label">
               <Sparkles size={14} /> Novo · Agente de IA
             </span>
             <h2>{LANDING.agente.title}</h2>
@@ -263,14 +340,13 @@ function HowItWorks() {
     <section className="lp-pad lp-pad-alt" id="how">
       <div className="lp-container">
         <div className="section-head reveal">
-          <span className="eyebrow-pill">Do zero em 5 minutos</span>
           <h2>{LANDING.how.title}</h2>
+          <p>Do zero em 5 minutos.</p>
         </div>
         <div className="how-grid">
           {LANDING.how.steps.map((s, i) => (
             <div key={i} className="how-step reveal">
               <span className="how-num">{s.n}</span>
-              <span className="eyebrow-micro">Passo {s.n}</span>
               <h3>{s.title}</h3>
               <p>{s.description}</p>
             </div>

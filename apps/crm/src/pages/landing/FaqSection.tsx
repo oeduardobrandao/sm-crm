@@ -8,7 +8,6 @@ export function FaqSection({ items }: { items: Array<{ q: string; a: string }> }
     <section className="lp-pad lp-pad-alt" id="faq">
       <div className="lp-container">
         <div className="section-head reveal">
-          <span className="eyebrow-pill">FAQ</span>
           <h2>Perguntas frequentes</h2>
         </div>
         <div className="faqs">

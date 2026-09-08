@@ -25,6 +25,11 @@ export interface HubBootstrap {
   is_active: boolean;
   cliente_id: number;
   feature_mensagens: boolean;
+  /**
+   * Gravação de áudio no briefing (planos Pro e Max). Optional porque um bundle
+   * novo pode falar com um hub-bootstrap ainda antigo: ausente = desligado.
+   */
+  feature_briefing_audio?: boolean;
   /** Absent on a stale/pre-migration bootstrap response — treat as neutral (no customization). */
   hub_theme?: HubThemeInfo;
 }
@@ -161,11 +166,27 @@ export interface HubPageFull extends HubPage {
   content: HubContentBlock[];
 }
 
-export interface HubContentBlock {
+export interface HubLegacyBlock {
   type: 'paragraph' | 'heading' | 'image' | 'link' | 'markdown';
   content: string;
   href?: string;
   level?: 1 | 2 | 3;
+}
+
+export interface HubRichTextBlock {
+  type: 'richtext';
+  /** Documento ProseMirror do TipTap. Lido por `RichTextContent`. */
+  doc: Record<string, unknown>;
+}
+
+export type HubContentBlock = HubLegacyBlock | HubRichTextBlock;
+
+export interface BriefingAudio {
+  url: string;
+  mime: string;
+  duration_seconds: number | null;
+  transcription_status: 'pending' | 'done' | 'failed' | null;
+  recorded_at: string | null;
 }
 
 export interface BriefingQuestion {
@@ -174,6 +195,14 @@ export interface BriefingQuestion {
   answer: string | null;
   section: string | null;
   display_order: number;
+  audio: BriefingAudio | null;
+}
+
+export interface BriefingAudioResponse {
+  ok: boolean;
+  answer: string | null;
+  transcript: string | null;
+  audio: BriefingAudio | null;
 }
 
 export interface Briefing {

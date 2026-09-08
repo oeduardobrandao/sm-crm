@@ -3,7 +3,7 @@ import { buildConnectUrl, connectLinkLive, connectLinkStatus, isValidEmail } fro
 import { buildScopeParam } from "../_shared/instagram-scopes.ts";
 
 // deno-lint-ignore no-explicit-any
-type DbClient = { from: (table: string) => any; rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> };
+type DbClient = { from: (table: string) => any; rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }> };
 
 const TTL_DAYS = 30;
 const EMAIL_MAX_PER_HOUR = 5;

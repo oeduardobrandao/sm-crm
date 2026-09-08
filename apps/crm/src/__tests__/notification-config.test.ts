@@ -100,6 +100,24 @@ describe('getNotificationDisplay', () => {
     expect(display.icon).toBeDefined();
   });
 
+  it('renders instagram_automation_failed with target_never_published reason', () => {
+    const display = getNotificationDisplay('instagram_automation_failed', {
+      reason: 'target_never_published',
+      automation_name: 'Calendário Setembro',
+    });
+    expect(display.title).toBe('Automação do Instagram com problema');
+    expect(display.body).toContain('Calendário Setembro');
+    expect(display.body).toContain('Escolha o post publicado');
+    expect(display.body).not.toContain('Reconecte');
+  });
+
+  it('keeps the reconnect copy for the other reasons', () => {
+    const display = getNotificationDisplay('instagram_automation_failed', {
+      reason: 'token_expired',
+    });
+    expect(display.body).toContain('Reconecte');
+  });
+
   it('still falls back to default for unknown types', () => {
     const display = getNotificationDisplay('future_unknown_type' as any, {});
 

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Spinner } from '@/components/ui/spinner';
 import { getFolderContents } from '@/services/fileService';
 import { FileGrid } from '@/pages/arquivos/components/FileGrid';
+import { useAuth } from '@/context/AuthContext';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 /**
@@ -25,6 +26,13 @@ export default function ArquivosTab() {
   const { clienteId } = useOutletContext<ClienteDetalheOutletContext>();
   const { t } = useTranslation('clients');
   const navigate = useNavigate();
+  const { can } = useAuth();
+  // FileContextMenu's Renomear/Excluir call services/fileService directly
+  // (rename/delete a file or folder for real), independent of this preview
+  // widget's own onFileAction/onActionComplete no-ops -- so this tiny
+  // 12-item preview is a real mutation surface too, not just a read-only
+  // shortcut to /arquivos. Same gate as the standalone ArquivosPage.tsx.
+  const canEditFiles = can('arquivos', 'editar') === true;
 
   const { data: folderData } = useQuery({
     queryKey: ['client-folder', clienteId],
@@ -82,6 +90,7 @@ export default function ArquivosTab() {
             onFileAction={() => {}}
             onActionComplete={() => {}}
             viewMode="grid"
+            canEdit={canEditFiles}
           />
           {totalFiles > 12 && (
             <button

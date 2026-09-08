@@ -99,6 +99,398 @@ Deno.test("pageContentToMarkdown renders block types", () => {
   assertEquals(pageContentToMarkdown([{ type: "callout", content: "nota" }]), "nota");
 });
 
+Deno.test("pageContentToMarkdown serializa um bloco richtext", () => {
+  const md = pageContentToMarkdown([
+    {
+      type: "richtext",
+      doc: {
+        type: "doc",
+        content: [
+          { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Prazos" }] },
+          { type: "paragraph", content: [{ type: "text", text: "Até 2 dias úteis." }] },
+        ],
+      },
+    },
+  ]);
+  assertEquals(md, "## Prazos\n\nAté 2 dias úteis.");
+});
+
+Deno.test("pageContentToMarkdown ignora richtext malformado sem lançar", () => {
+  assertEquals(pageContentToMarkdown([{ type: "richtext" }]), "");
+  assertEquals(pageContentToMarkdown([{ type: "richtext", doc: null }]), "");
+});
+
+// Helper: wrap a ProseMirror doc's `content` array in the `richtext` block shape
+// pageContentToMarkdown expects, since proseMirrorToMarkdown itself is not exported.
+function richtext(docContent: unknown): string {
+  return pageContentToMarkdown([{ type: "richtext", doc: { type: "doc", content: docContent } }]);
+}
+
+Deno.test("proseMirrorToMarkdown: hardBreak becomes a real newline, not a weld", () => {
+  // Regression for the corrupting bug: hardBreak fell into the generic content
+  // recursion (which has no text of its own) and vanished, welding the two
+  // text runs together into "linha umlinha dois".
+  assertEquals(
+    richtext([
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "linha um" },
+          { type: "hardBreak" },
+          { type: "text", text: "linha dois" },
+        ],
+      },
+    ]),
+    "linha um\nlinha dois",
+  );
+});
+
+Deno.test("proseMirrorToMarkdown: nested bulletList indents instead of welding", () => {
+  // Regression for the corrupting bug: calling inline() on the whole <li> flattened
+  // a nested list into "- PaiFilho AFilho B" with the parent and child text welded.
+  const md = richtext([
+    {
+      type: "bulletList",
+      content: [
+        {
+          type: "listItem",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Pai" }] },
+            {
+              type: "bulletList",
+              content: [
+                { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "Filho A" }] }] },
+                { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "Filho B" }] }] },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  assertEquals(md, "- Pai\n  - Filho A\n  - Filho B");
+});
+
+Deno.test("proseMirrorToMarkdown: nested list under an ordered parent keeps its nesting", () => {
+  // Regression: listLines indented nesting with a flat "  ".repeat(depth) (2
+  // spaces per level) regardless of the parent marker's actual width. An
+  // ordered marker ("1. ") is 3 characters, so 2 spaces falls below
+  // CommonMark's content-indent threshold and the nested list detaches into a
+  // sibling instead of nesting inside the <li> (verified against marked@15.0.12:
+  // "1. Pai\n  - x" parses as sibling <ol><li>Pai</li></ol><ul>..., while
+  // "1. Pai\n   - x" -- 3 spaces -- nests correctly).
+  const md = richtext([
+    {
+      type: "orderedList",
+      content: [
+        {
+          type: "listItem",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Pai" }] },
+            {
+              type: "bulletList",
+              content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "Filho" }] }] }],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  assertEquals(md, "1. Pai\n   - Filho");
+});
+
+Deno.test("proseMirrorToMarkdown: ordered list nested 3 levels deep keeps every level nested", () => {
+  // Each level's indent must accumulate the actual marker width of every
+  // ancestor ("1. " = 3 chars), not a fixed 2-per-depth -- otherwise 2 levels
+  // of ordered nesting flatten into a single 4-item list (measured against
+  // marked@15.0.12).
+  const md = richtext([
+    {
+      type: "orderedList",
+      content: [
+        {
+          type: "listItem",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "A" }] },
+            {
+              type: "orderedList",
+              content: [
+                {
+                  type: "listItem",
+                  content: [
+                    { type: "paragraph", content: [{ type: "text", text: "B" }] },
+                    {
+                      type: "orderedList",
+                      content: [
+                        { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "C" }] }] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  assertEquals(md, "1. A\n   1. B\n      1. C");
+});
+
+Deno.test("proseMirrorToMarkdown: listItem with two paragraphs does not weld them", () => {
+  // Regression: "- um\ndois" (buggy output was "- umdois").
+  const md = richtext([
+    {
+      type: "bulletList",
+      content: [
+        {
+          type: "listItem",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "um" }] },
+            { type: "paragraph", content: [{ type: "text", text: "dois" }] },
+          ],
+        },
+      ],
+    },
+  ]);
+  assertEquals(md, "- um\n  dois");
+});
+
+Deno.test("proseMirrorToMarkdown: orderedList numbers items and skips empty ones", () => {
+  const md = richtext([
+    {
+      type: "orderedList",
+      content: [
+        { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "primeiro" }] }] },
+        { type: "listItem", content: [{ type: "paragraph" }] }, // empty -> no bare "2. "
+        { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "terceiro" }] }] },
+      ],
+    },
+  ]);
+  // The empty item is skipped entirely; the third item keeps its real ordinal
+  // (3), not a renumbered count of only the rendered items.
+  assertEquals(md, "1. primeiro\n3. terceiro");
+});
+
+Deno.test("proseMirrorToMarkdown: empty heading is skipped, not rendered as a bare marker", () => {
+  // Regression: an empty heading (TipTap creates one on Enter) used to render "##".
+  assertEquals(richtext([{ type: "heading", attrs: { level: 2 } }]), "");
+  // ...and it must not leave stray whitespace ahead of a following block either
+  // (buggy output was "## \n\nx").
+  assertEquals(
+    richtext([
+      { type: "heading", attrs: { level: 2 } },
+      { type: "paragraph", content: [{ type: "text", text: "x" }] },
+    ]),
+    "x",
+  );
+});
+
+Deno.test("proseMirrorToMarkdown: codeBlock renders as a fenced block instead of dropping its text", () => {
+  // Regression: any node whose direct children are text nodes (codeBlock had no
+  // explicit case) fell into `default`, which recursed with walk() instead of
+  // inline(), and a text node reaching walk()'s default has no .content -> "".
+  assertEquals(
+    richtext([{ type: "codeBlock", attrs: { language: "ts" }, content: [{ type: "text", text: "const x = 1;" }] }]),
+    "```ts\nconst x = 1;\n```",
+  );
+  // Missing/non-string language -> bare fence, no throw.
+  assertEquals(
+    richtext([{ type: "codeBlock", content: [{ type: "text", text: "x" }] }]),
+    "```\nx\n```",
+  );
+  // Empty code block -> no output at all, not a bare "```\n\n```".
+  assertEquals(richtext([{ type: "codeBlock", content: [] }]), "");
+});
+
+Deno.test("proseMirrorToMarkdown: listItem with a codeBlock child keeps its fences and indent", () => {
+  // Regression: listLines called inline(kid) on every child, dropping the
+  // fences entirely ("- c" instead of a fenced block). The fence lines must
+  // land at the item's content column (2 spaces for a "- " marker) so the
+  // code block still parses as part of the list item, not a sibling.
+  const md = richtext([
+    {
+      type: "bulletList",
+      content: [
+        {
+          type: "listItem",
+          content: [
+            { type: "codeBlock", attrs: { language: "ts" }, content: [{ type: "text", text: "const x = 1;" }] },
+          ],
+        },
+      ],
+    },
+  ]);
+  assertEquals(md, "- ```ts\n  const x = 1;\n  ```");
+});
+
+Deno.test("proseMirrorToMarkdown: listItem with a heading child keeps its heading marker", () => {
+  // Regression: listLines called inline(kid) on every child, which returns a
+  // heading's raw text with the "#" marker dropped ("- H" instead of "- ## H").
+  const md = richtext([
+    {
+      type: "bulletList",
+      content: [
+        {
+          type: "listItem",
+          content: [{ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "H" }] }],
+        },
+      ],
+    },
+  ]);
+  assertEquals(md, "- ## H");
+});
+
+Deno.test("proseMirrorToMarkdown: blockquote with multiple paragraphs is one quoted block", () => {
+  // Regression: each paragraph used to become its own "> " block, joined with the
+  // outer "\n\n" separator, rendering as two visually separate quotes.
+  assertEquals(
+    richtext([
+      {
+        type: "blockquote",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "a" }] },
+          { type: "paragraph", content: [{ type: "text", text: "b" }] },
+        ],
+      },
+    ]),
+    "> a\n> b",
+  );
+});
+
+Deno.test("proseMirrorToMarkdown: blockquote containing a list nests the list instead of welding it", () => {
+  // Regression: the blockquote branch called inline() per child regardless of
+  // type, so a bulletList child welded into one line ("> umdois"). Each list
+  // line must now come out as its own "> "-prefixed line.
+  const md = richtext([
+    {
+      type: "blockquote",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "um" }] }] },
+            { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "dois" }] }] },
+          ],
+        },
+      ],
+    },
+  ]);
+  assertEquals(md, "> - um\n> - dois");
+});
+
+Deno.test("proseMirrorToMarkdown: nested blockquotes accumulate '> ' per level instead of welding", () => {
+  // Regression: 50 nested blockquotes used to weld into one line ("B2B3B4...")
+  // because inline() flattened every descendant's text with no separator.
+  const md = richtext([
+    {
+      type: "blockquote",
+      content: [
+        {
+          type: "blockquote",
+          content: [
+            { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "deep" }] }] },
+          ],
+        },
+      ],
+    },
+  ]);
+  assertEquals(md, "> > > deep");
+});
+
+Deno.test("proseMirrorToMarkdown: unbounded/circular nesting fails closed instead of throwing", () => {
+  // 500 nested blockquotes: well past the ~100 depth guard. Must not throw, and
+  // must not return partial garbage -> the whole richtext block collapses to "".
+  let deep: unknown = { type: "paragraph", content: [{ type: "text", text: "bottom" }] };
+  for (let i = 0; i < 500; i++) {
+    deep = { type: "blockquote", content: [deep] };
+  }
+  assertEquals(richtext([deep]), "");
+
+  // A genuinely circular doc (not producible by JSON, but not impossible for a
+  // caller to hand in) must also fail closed rather than raising RangeError.
+  const cyclic: Record<string, unknown> = { type: "blockquote" };
+  cyclic.content = [cyclic];
+  assertEquals(richtext([cyclic]), "");
+});
+
+Deno.test("proseMirrorToMarkdown: a pathological block collapses to \"\" but its siblings still render", () => {
+  // The depth guard must fail closed on the offending block alone, not on the
+  // whole richtext output -- a normal sibling block must still serialize.
+  let deep: unknown = { type: "paragraph", content: [{ type: "text", text: "bottom" }] };
+  for (let i = 0; i < 500; i++) {
+    deep = { type: "blockquote", content: [deep] };
+  }
+  const md = richtext([deep, { type: "paragraph", content: [{ type: "text", text: "hi" }] }]);
+  assertEquals(md, "hi");
+});
+
+Deno.test("proseMirrorToMarkdown covers the node/mark set the Páginas editor can persist", () => {
+  const cases: Array<[string, unknown, string]> = [
+    // Marks with real markdown syntax.
+    ["bold", [{ type: "paragraph", content: [{ type: "text", text: "b", marks: [{ type: "bold" }] }] }], "**b**"],
+    ["italic", [{ type: "paragraph", content: [{ type: "text", text: "i", marks: [{ type: "italic" }] }] }], "*i*"],
+    ["code mark", [{ type: "paragraph", content: [{ type: "text", text: "c", marks: [{ type: "code" }] }] }], "`c`"],
+    [
+      "link mark",
+      [{ type: "paragraph", content: [{ type: "text", text: "l", marks: [{ type: "link", attrs: { href: "https://x" } }] }] }],
+      "[l](https://x)",
+    ],
+    // Marks with no markdown equivalent: pass through as plain text. Not one of
+    // the measured defects; this pins the actual current behavior so it stays
+    // visible instead of silently shipping unpinned like the rest were.
+    [
+      "underline mark (no markdown syntax, passes through as plain text)",
+      [{ type: "paragraph", content: [{ type: "text", text: "u", marks: [{ type: "underline" }] }] }],
+      "u",
+    ],
+    [
+      "strike mark (StarterKit, no markdown syntax, passes through as plain text)",
+      [{ type: "paragraph", content: [{ type: "text", text: "s", marks: [{ type: "strike" }] }] }],
+      "s",
+    ],
+    [
+      "textStyle+color marks (no markdown syntax, passes through as plain text)",
+      [{ type: "paragraph", content: [{ type: "text", text: "t", marks: [{ type: "textStyle" }, { type: "color", attrs: { color: "#f00" } }] }] }],
+      "t",
+    ],
+    [
+      "highlight mark (no markdown syntax, passes through as plain text)",
+      [{ type: "paragraph", content: [{ type: "text", text: "h", marks: [{ type: "highlight" }] }] }],
+      "h",
+    ],
+    // Nodes.
+    ["callout renders like a paragraph", [{ type: "callout", content: [{ type: "text", text: "aviso" }] }], "aviso"],
+    [
+      "blockquote: single paragraph",
+      [{ type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "a" }] }] }],
+      "> a",
+    ],
+    ["blockquote: empty -> no output", [{ type: "blockquote", content: [] }], ""],
+    [
+      "bulletList: simple, two items",
+      [
+        {
+          type: "bulletList",
+          content: [
+            { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "um" }] }] },
+            { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "dois" }] }] },
+          ],
+        },
+      ],
+      "- um\n- dois",
+    ],
+    // HorizontalRule (StarterKit) is a void node with no text content: it
+    // renders as no output rather than a dropped-content bug (there is no
+    // content to drop), which is not one of the measured defects.
+    ["horizontalRule: void node, no output", [{ type: "horizontalRule" }], ""],
+  ];
+
+  for (const [name, content, expected] of cases) {
+    assertEquals(richtext(content), expected, `case: ${name}`);
+  }
+});
+
 Deno.test("pageContentToMarkdown fails closed on bad input", () => {
   // empty / non-array top-level
   assertEquals(pageContentToMarkdown([]), "");

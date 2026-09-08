@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // jsdom has no scrollIntoView; Radix's Select calls it when committing a
 // selection, which otherwise throws inside a passive effect.
@@ -94,10 +95,8 @@ describe('EquipePage — onSubmit invite orchestration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseAuth.mockReturnValue({
-      role: 'owner',
       canSeeFinancials: true,
-      workspaceRole: 'owner',
-      membershipResolved: true,
+      can: makeCan(fakeMembership({ role: 'owner' })),
       profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
     });
     mockUseWorkspaceLimits.mockReturnValue({
@@ -221,6 +220,85 @@ describe('EquipePage — onSubmit invite orchestration', () => {
 
     await waitFor(() => {
       expect(toastSuccessMock).toHaveBeenCalledWith('Membro atualizado');
+    });
+  });
+});
+
+/**
+ * Task 14: `isAgent = role === 'agent'` / `canManageWorkspace = owner||admin`
+ * both collapsed onto `canEditTeam = can('equipe', 'editar') === true`.
+ * `AGENT_ROLE_PRESET.equipe` is 'none' and admin resolves to `true` for every
+ * non-financial module (lib/permissions.ts), so the two legacy-preset cases
+ * below must reproduce the OLD isAgent/canManageWorkspace behaviour
+ * byte-for-byte — only a CUSTOM role (role_id set) can now diverge from its
+ * chassis role.
+ */
+describe('EquipePage — mutation buttons gated on equipe:editar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockedGetMembros.mockResolvedValue([]);
+    mockedGetWorkspaceUsers.mockResolvedValue([]);
+  });
+
+  function renderWithCan(can: ReturnType<typeof makeCan>) {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can,
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    return renderPage();
+  }
+
+  it('keeps a legacy agent blocked (equipe preset is none, matches the old isAgent gate)', async () => {
+    renderWithCan(makeCan(fakeMembership({ role: 'agent' })));
+
+    await screen.findByText('Equipe');
+    expect(screen.queryByRole('button', { name: 'Adicionar Membro' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar CSV' })).not.toBeInTheDocument();
+    expect(mockedGetWorkspaceUsers).not.toHaveBeenCalled();
+  });
+
+  it('keeps a legacy admin unchanged (equipe preset resolves to true, matches the old canManageWorkspace gate)', async () => {
+    renderWithCan(makeCan(fakeMembership({ role: 'admin' })));
+
+    await screen.findByText('Equipe');
+    expect(screen.getByRole('button', { name: 'Adicionar Membro' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockedGetWorkspaceUsers).toHaveBeenCalled();
+    });
+  });
+
+  it('blocks Adicionar Membro/Importar CSV for a custom role with equipe:ver only', async () => {
+    renderWithCan(
+      makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'ver' } })),
+    );
+
+    await screen.findByText('Equipe');
+    expect(screen.queryByRole('button', { name: 'Adicionar Membro' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar CSV' })).not.toBeInTheDocument();
+    expect(mockedGetWorkspaceUsers).not.toHaveBeenCalled();
+  });
+
+  it('unblocks Adicionar Membro/Importar CSV for a custom role with equipe:editar (the fix)', async () => {
+    renderWithCan(
+      makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+      ),
+    );
+
+    await screen.findByText('Equipe');
+    expect(screen.getByRole('button', { name: 'Adicionar Membro' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockedGetWorkspaceUsers).toHaveBeenCalled();
     });
   });
 });

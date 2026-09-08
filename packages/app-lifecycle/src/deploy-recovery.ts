@@ -11,7 +11,7 @@
  * hashes, and the user carries on where they were.
  */
 
-const RELOAD_STAMP_KEY = 'mesaas:deploy-reload-at';
+export const RELOAD_STAMP_KEY = 'mesaas:deploy-reload-at';
 
 /** Two recovery reloads inside this window means reloading is not fixing it. */
 const RELOAD_COOLDOWN_MS = 15_000;
@@ -25,6 +25,21 @@ export function isModuleLoadError(error: unknown): boolean {
   return MODULE_LOAD_ERROR.test(message);
 }
 
+let suppressed = false;
+
+/**
+ * Hold off recovery reloads while a silent version swap has a document navigation in flight:
+ * a chunk 404 on the old page must not turn into a reload that cancels that navigation. The
+ * flag lives in module memory on purpose, so the destination page starts with recovery armed.
+ * Returns the release.
+ */
+export function suppressDeployRecovery(): () => void {
+  suppressed = true;
+  return () => {
+    suppressed = false;
+  };
+}
+
 /**
  * Reload once to pick up the current deploy. Returns false when it declined,
  * so callers can let the original error through to the error boundary.
@@ -36,6 +51,7 @@ export function isModuleLoadError(error: unknown): boolean {
  * button.
  */
 export function reloadForNewDeploy(): boolean {
+  if (suppressed) return false;
   const now = Date.now();
   let previous = 0;
 

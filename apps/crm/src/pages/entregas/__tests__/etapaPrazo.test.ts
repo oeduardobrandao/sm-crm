@@ -147,10 +147,10 @@ describe('formatEtapaPrazo', () => {
   it('formats overdue, hours-remaining and days-remaining with urgency colors', () => {
     expect(
       formatEtapaPrazo({ estourado: true, urgente: false, diasRestantes: -3, horasRestantes: 0 }),
-    ).toEqual({ label: '3d atrasado', shortLabel: '3d atr.', color: '#ef4444' });
+    ).toEqual({ label: '3d atrasado', shortLabel: '3d atr.', color: 'var(--danger)' });
     expect(
       formatEtapaPrazo({ estourado: false, urgente: true, diasRestantes: 0, horasRestantes: 5 }),
-    ).toEqual({ label: '5h restantes', shortLabel: '5h', color: '#eab308' });
+    ).toEqual({ label: '5h restantes', shortLabel: '5h', color: 'var(--warning)' });
     expect(
       formatEtapaPrazo({ estourado: false, urgente: false, diasRestantes: 4, horasRestantes: 2 }),
     ).toEqual({ label: '4d restantes', shortLabel: '4d', color: 'var(--text-muted)' });

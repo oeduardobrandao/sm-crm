@@ -86,6 +86,11 @@ class QueryBuilder {
     return this;
   }
 
+  neq(...args: unknown[]) {
+    this.modifiers.push({ method: 'neq', args });
+    return this;
+  }
+
   gt(...args: unknown[]) {
     this.modifiers.push({ method: 'gt', args });
     return this;

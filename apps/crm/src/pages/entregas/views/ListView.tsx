@@ -1,5 +1,6 @@
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { DEADLINE_STATUS, classifyDeadline } from '../deadlineStatus';
 
 interface ListViewProps {
   cards: BoardCard[];
@@ -18,11 +19,10 @@ const COLUMNS: Column[] = [
   { key: 'status', label: 'Status' },
 ];
 
+/** Same three buckets the board, the Visão geral and the filters use. */
 function getStatusBadge(card: BoardCard) {
-  const dl = card.deadline;
-  if (dl.estourado) return { label: 'Atrasado', color: '#ef4444' };
-  if (dl.urgente) return { label: 'Urgente', color: '#eab308' };
-  return { label: 'Em dia', color: '#3ecf8e' };
+  const { label, cssVar } = DEADLINE_STATUS[classifyDeadline(card.deadline)];
+  return { label, color: `var(${cssVar})` };
 }
 
 function sortCards(cards: BoardCard[], column: string, direction: 'asc' | 'desc'): BoardCard[] {
@@ -142,7 +142,7 @@ export function ListView({ cards, sort, onSortChange, onCardClick }: ListViewPro
                     style={{
                       padding: '0.2rem 0.6rem',
                       borderRadius: 12,
-                      background: badge.color + '22',
+                      background: `color-mix(in srgb, ${badge.color} 13%, transparent)`,
                       color: badge.color,
                       fontSize: '0.75rem',
                       fontWeight: 600,

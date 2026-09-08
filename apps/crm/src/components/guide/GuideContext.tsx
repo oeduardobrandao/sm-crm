@@ -15,7 +15,7 @@ import { useEntitlements } from '../../hooks/useEntitlements';
 import { captureEvent } from '../../lib/analytics';
 import { useGuideSignals, type GuideSignals } from './useGuideSignals';
 import { useGuideProgress, type GuideView } from './useGuideProgress';
-import { shouldAutoOpenGuide } from './guideGating';
+import { shouldAutoOpenGuide, guideAutoOpenState, type GuideAutoOpenState } from './guideGating';
 import { requiredSignals } from './guideContent';
 import { loadGuideProgress } from './guideStorage';
 
@@ -23,6 +23,8 @@ export type GuideOpenSource = 'auto' | 'pill' | 'sidebar' | 'mobile_nav';
 
 export interface GuideApi extends GuideView {
   isOpen: boolean;
+  /** Decisão de auto-abertura para quem precisa esperar por ela (GlobalPopupHost). */
+  autoOpen: GuideAutoOpenState;
   /** null = tela inicial (trilhas). */
   currentPageId: string | null;
   latestClienteId: number | null;
@@ -156,9 +158,19 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     Boolean(view.progress.dismissedAt) ||
     Boolean(view.progress.lastPageId);
 
+  const autoOpen = guideAutoOpenState({
+    authLoading: loading,
+    isOwner,
+    opened: isOpen,
+    progress: view.progress,
+    clientes: signals.clientes,
+    workflows: signals.workflows,
+  });
+
   const api: GuideApi = {
     ...view,
     isOpen,
+    autoOpen,
     currentPageId,
     latestClienteId: signals.latestClienteId,
     signalValues: signals.values,

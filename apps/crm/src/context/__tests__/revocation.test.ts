@@ -25,19 +25,23 @@ vi.mock('../../store/core', () => ({
 }));
 
 import * as supabaseModule from '../../lib/supabase';
-import { AuthProvider, useAuth, FINANCIAL_QUERY_KEYS } from '../AuthContext';
+import { AuthProvider, useAuth, FINANCIAL_QUERY_KEYS, MODULE_QUERY_KEYS } from '../AuthContext';
+
+type SubscriptionFilter = {
+  event: string;
+  schema: string;
+  table: string;
+  filter: string;
+};
 
 type MockedSupabaseModule = typeof supabaseModule & {
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
   __setCurrentUser: (user: { id: string } | null) => void;
   __emitWorkspaceMemberUpdate: (newRow: Record<string, unknown>) => void;
-  __getWorkspaceMemberSubscription: () => {
-    event: string;
-    schema: string;
-    table: string;
-    filter: string;
-  } | null;
+  __getWorkspaceMemberSubscription: () => SubscriptionFilter | null;
+  __emitWorkspaceRolesUpdate: (newRow: Record<string, unknown>) => void;
+  __getWorkspaceRolesSubscription: () => SubscriptionFilter | null;
 };
 
 const mockedSupabase = supabaseModule as MockedSupabaseModule;
@@ -141,6 +145,7 @@ describe('live revocation handler', () => {
         workspace_id: 'conta-7',
         role: 'admin',
         can_see_financials: false,
+        role_id: null,
       });
     });
 
@@ -206,6 +211,7 @@ describe('live revocation handler', () => {
         workspace_id: 'conta-8',
         role: 'owner',
         can_see_financials: false,
+        role_id: null,
       });
     });
 
@@ -258,6 +264,7 @@ describe('live revocation handler', () => {
         workspace_id: 'conta-OTHER',
         role: 'agent',
         can_see_financials: false,
+        role_id: null,
       });
     });
 
@@ -400,6 +407,7 @@ describe('live revocation handler', () => {
           workspace_id: 'conta-20',
           role: 'admin',
           can_see_financials: false,
+          role_id: null,
         });
       });
 
@@ -411,7 +419,20 @@ describe('live revocation handler', () => {
         expect(queryClient.getQueryData([key])).toBeUndefined();
         expect(removeSpy).toHaveBeenCalledWith({ queryKey: [key] });
       }
-      expect(invalidateSpy).not.toHaveBeenCalled();
+      // Financeiro/contratos themselves must still be removed, never
+      // invalidated, on this transition — pinned on the two keys that belong
+      // EXCLUSIVELY to those modules (not 'cliente'/'clientes'/'membros',
+      // which FINANCIAL_QUERY_KEYS also covers for a DIFFERENT reason —
+      // masked columns inside those rows — and which this SAME event also
+      // legitimately invalidates via the generalized per-module purge
+      // (computePermissionTransitions), because this admin's 'clientes' and
+      // 'equipe' modules resolve 'unknown' -> true right alongside
+      // financeiro/contratos resolving 'unknown' -> false. That parallel
+      // invalidation is real and intended, not a regression of what this
+      // test actually pins).
+      for (const key of ['transacoes', 'dashboardStats', 'contratos']) {
+        expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: [key] });
+      }
 
       removeSpy.mockRestore();
       invalidateSpy.mockRestore();
@@ -514,6 +535,7 @@ describe('live revocation handler', () => {
         workspace_id: 'conta-30',
         role: 'admin',
         can_see_financials: true,
+        role_id: null,
       });
     });
 
@@ -613,11 +635,13 @@ describe('live revocation handler', () => {
           workspace_id: 'conta-41',
           role: 'admin',
           can_see_financials: true, // grant
+          role_id: null,
         });
         mockedSupabase.__emitWorkspaceMemberUpdate({
           workspace_id: 'conta-41',
           role: 'admin',
           can_see_financials: false, // revoke, same tick, right behind the grant
+          role_id: null,
         });
       });
 
@@ -691,6 +715,7 @@ describe('live revocation handler', () => {
           workspace_id: 'conta-31',
           role: 'admin',
           can_see_financials: true,
+          role_id: null,
         });
       });
 
@@ -788,4 +813,801 @@ describe('live revocation handler', () => {
       }
     },
   );
+});
+
+// Coverage for the role_id-transition branch added alongside can(): a
+// realtime UPDATE payload never carries the workspace_roles.permissions
+// embed, so any transition INVOLVING a custom role (assigned, or just
+// removed) must fall back to a fresh getMyMembership() round trip instead of
+// applying the raw payload — see the comment on that branch in
+// AuthContext.tsx. None of the tests above ever set `role_id` on an emitted
+// payload, so this branch had zero coverage before this describe block.
+describe('live revocation handler — role_id-transition refetch branch', () => {
+  it('a payload with a non-null role_id triggers a getMyMembership() refetch and applies ITS permissions, not the raw payload', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-50' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-50',
+      nome: 'Admin com Papel Novo',
+      role: 'admin',
+      conta_id: 'conta-50',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-50' } } });
+    mockGetContaId.mockResolvedValue('conta-50');
+    // Hydration: legacy admin, financials restricted.
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { role: 'admin', can_see_financials: false, role_id: null, workspace_roles: null },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
+
+    // The refetch's OWN getMyMembership() response: a custom role granting
+    // financeiro/ver — the OPPOSITE of what the raw payload's
+    // can_see_financials (false) would produce if it were applied directly.
+    // The assertion below can only pass if the refetched permissions embed,
+    // not the raw emitted row, was what actually got applied.
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-financeiro-ver',
+        workspace_roles: { permissions: { financeiro: 'ver' } },
+      },
+      error: null,
+    });
+
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-50',
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-financeiro-ver',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('agent');
+  });
+
+  it('a role_id transition from custom back to null (legacy) also refetches, rather than trusting the raw payload', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-51' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-51',
+      nome: 'Papel Removido',
+      role: 'admin',
+      conta_id: 'conta-51',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-51' } } });
+    mockGetContaId.mockResolvedValue('conta-51');
+    // Hydration: custom role, empty permissions — denies financeiro
+    // regardless of the legacy can_see_financials flag (TT-16 semantics).
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: {
+        role: 'agent',
+        can_see_financials: true,
+        role_id: 'role-1',
+        workspace_roles: { permissions: {} },
+      },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
+
+    // The emitted payload's own can_see_financials is `true` — if the
+    // custom -> null transition were (incorrectly) applied directly instead
+    // of refetched, canSeeFinancials would flip to `true` right here. The
+    // refetch's OWN queued response below deliberately disagrees (`false`),
+    // so the assertion can only pass if getMyMembership() was actually
+    // called again for this transition, not the raw payload trusted.
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { role: 'admin', can_see_financials: false, role_id: null, workspace_roles: null },
+      error: null,
+    });
+
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-51',
+        role: 'admin',
+        can_see_financials: true,
+        role_id: null,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspaceRole')).toHaveTextContent('admin');
+    });
+    // Must reflect the REFETCH's answer (false), not the raw payload's
+    // can_see_financials (true).
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+  });
+
+  it('a rejected refetch leaves canSeeFinancials/workspaceRole untouched (no partial state on failure)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-52' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-52',
+      nome: 'Admin Estável',
+      role: 'admin',
+      conta_id: 'conta-52',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-52' } } });
+    mockGetContaId.mockResolvedValue('conta-52');
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { role: 'admin', can_see_financials: true, role_id: null, workspace_roles: null },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
+
+    // getMyMembership() throws on a query error (store/workspace.ts) — the
+    // refetch this role_id transition triggers will reject.
+    mockMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'boom' } });
+
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-52',
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-broken',
+      });
+    });
+
+    // fetchAndApplyMembership()'s `.catch(() => {})` swallows the rejection
+    // BEFORE applyMembership ever runs — state must be exactly what
+    // hydration left it at, not a partial/blank application.
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('admin');
+  });
+
+  it('an older refetch resolving after a newer one does not overwrite the newer state (membershipFetchSeq ordering guard)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-60' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-60',
+      nome: 'Admin com Corridas',
+      role: 'admin',
+      conta_id: 'conta-60',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-60' } } });
+    mockGetContaId.mockResolvedValue('conta-60');
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { role: 'admin', can_see_financials: false, role_id: null, workspace_roles: null },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
+
+    let resolveOlder!: (v: { data: unknown; error: null }) => void;
+    let resolveNewer!: (v: { data: unknown; error: null }) => void;
+    mockMaybeSingle.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOlder = resolve;
+      }),
+    );
+    mockMaybeSingle.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveNewer = resolve;
+      }),
+    );
+
+    // Two role_id transitions back to back, no render/await between them —
+    // both start their own getMyMembership() refetch while the PREVIOUS
+    // one is still pending (same synchronous-batch technique as the
+    // ref-lag race test above).
+    act(() => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-60',
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-older',
+      });
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-60',
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-newer',
+      });
+    });
+
+    // Resolve the NEWER request first, then the OLDER one — the exact
+    // out-of-order network race membershipFetchSeq exists to guard against.
+    await act(async () => {
+      resolveNewer({
+        data: {
+          role: 'agent',
+          can_see_financials: false,
+          role_id: 'role-newer',
+          workspace_roles: { permissions: { financeiro: 'ver' } },
+        },
+        error: null,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+
+    await act(async () => {
+      resolveOlder({
+        data: {
+          role: 'agent',
+          can_see_financials: false,
+          role_id: 'role-older',
+          workspace_roles: { permissions: { financeiro: 'none' } },
+        },
+        error: null,
+      });
+    });
+
+    // The stale (older) response must be dropped — state must still reflect
+    // the newer, already-applied result, not regress to the older one.
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+  });
+
+  it('a wm: direct-apply (role_id unchanged) also bumps membershipFetchSeq, so an earlier in-flight role_id-transition refetch cannot overwrite it when it resolves late (Task 13 review finding 3)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-61' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-61',
+      nome: 'Admin com Corrida Mista',
+      role: 'admin',
+      conta_id: 'conta-61',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-61' } } });
+    mockGetContaId.mockResolvedValue('conta-61');
+    // Hydration: legacy admin, role_id null, financials restricted.
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { role: 'admin', can_see_financials: false, role_id: null, workspace_roles: null },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('false');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
+
+    // First event: a role_id transition (null -> 'role-x') starts a
+    // getMyMembership() refetch through fetchAndApplyMembership() — left
+    // PENDING to model it losing the race against the direct-apply event
+    // below.
+    let resolvePending!: (v: { data: unknown; error: null }) => void;
+    mockMaybeSingle.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePending = resolve;
+      }),
+    );
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-61',
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-x',
+      });
+    });
+
+    // Second event, while the first is still in flight: role_id stays null
+    // (membershipRef.current?.role_id is STILL null — the pending fetch
+    // above never resolved, so it never applied) — the plain legacy path,
+    // applied DIRECTLY from the payload without going through
+    // fetchAndApplyMembership().
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-61',
+        role: 'admin',
+        can_see_financials: true,
+        role_id: null,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('admin');
+
+    // The FIRST (now stale) refetch resolves late, with a payload that would
+    // flip both fields back if it were allowed to reach applyMembership() —
+    // it can only be allowed through if the direct-apply above failed to
+    // bump membershipFetchSeq.
+    await act(async () => {
+      resolvePending({
+        data: {
+          role: 'agent',
+          can_see_financials: false,
+          role_id: 'role-x',
+          workspace_roles: { permissions: {} },
+        },
+        error: null,
+      });
+    });
+
+    // Must still reflect the direct-apply's values — the seq bump
+    // immediately before that direct applyMembership() call is what makes
+    // the late resolution's captured `seq` stale.
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    expect(screen.getByTestId('workspaceRole')).toHaveTextContent('admin');
+  });
+
+  it('a refetch resolving after this effect tears down (unmount) never reaches applyMembership (no late purge/invalidate)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-62' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-62',
+      nome: 'Admin Desmontado',
+      role: 'admin',
+      conta_id: 'conta-62',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-62' } } });
+    mockGetContaId.mockResolvedValue('conta-62');
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { role: 'admin', can_see_financials: true, role_id: null, workspace_roles: null },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceMemberSubscription()).not.toBeNull();
+    });
+
+    let resolvePending!: (v: { data: unknown; error: null }) => void;
+    mockMaybeSingle.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePending = resolve;
+      }),
+    );
+
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceMemberUpdate({
+        workspace_id: 'conta-62',
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-in-flight',
+      });
+    });
+
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    // Tear down the effect (and every channel/poll/closure it owns) while
+    // the refetch it started is still in flight.
+    view.unmount();
+
+    // The stale refetch resolves AFTER teardown, with a payload that — had
+    // it reached applyMembership() — would flip canSeeFinancials true ->
+    // false and purge every FINANCIAL_QUERY_KEYS entry via removeQueries().
+    await act(async () => {
+      resolvePending({
+        data: {
+          role: 'agent',
+          can_see_financials: false,
+          role_id: 'role-in-flight',
+          workspace_roles: { permissions: { financeiro: 'none' } },
+        },
+        error: null,
+      });
+    });
+
+    // Neither call fired: the teardown guard (membershipFetchSeq bumped in
+    // this effect's own cleanup) dropped the resolution before it ever
+    // reached applyMembership(), so no purge/invalidate happened on behalf
+    // of an effect instance that no longer exists.
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(invalidateSpy).not.toHaveBeenCalled();
+
+    removeSpy.mockRestore();
+    invalidateSpy.mockRestore();
+  });
+});
+
+// Generalized per-module purge (computePermissionTransitions +
+// MODULE_QUERY_KEYS), and the workspace_roles realtime channel that feeds it
+// for the one case the workspace_members channel structurally cannot see: a
+// CUSTOM ROLE's `permissions` JSONB changing while the member's `role_id`
+// itself stays exactly the same. That edit writes a row in workspace_roles,
+// not workspace_members — the existing wm: channel (filtered on
+// `workspace_members`) never fires for it, so this is real, previously-dead
+// coverage, not a duplicate of the role_id-transition tests above (those
+// exercise `role_id` itself changing on the workspace_members row).
+describe('generalized per-module purge — workspace_roles channel', () => {
+  it('registers the workspace_roles subscription with the expected table/event/filter', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-70' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-70',
+      nome: 'Membro com Papel',
+      role: 'agent',
+      conta_id: 'conta-70',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-70' } } });
+    mockGetContaId.mockResolvedValue('conta-70');
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-1',
+        workspace_roles: { permissions: { clientes: 'editar' } },
+      },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspaceRole')).toHaveTextContent('agent');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceRolesSubscription()).not.toBeNull();
+    });
+
+    const subscription = mockedSupabase.__getWorkspaceRolesSubscription();
+    expect(subscription).toMatchObject({
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'workspace_roles',
+    });
+    expect(subscription?.filter).toBe('conta_id=eq.conta-70');
+  });
+
+  it("a workspace_roles UPDATE triggers a seq-guarded getMyMembership() refetch and removes the downgraded module's cache keys (leads dropped from the papel)", async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-71' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-71',
+      nome: 'Membro com Papel',
+      role: 'agent',
+      conta_id: 'conta-71',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-71' } } });
+    mockGetContaId.mockResolvedValue('conta-71');
+    // Hydration: custom papel with leads AND clientes granted.
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-1',
+        workspace_roles: { permissions: { leads: 'editar', clientes: 'editar' } },
+      },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(['leads'], ['cached-leads']);
+    queryClient.setQueryData(['clientes'], ['cached-clientes']);
+
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspaceRole')).toHaveTextContent('agent');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceRolesSubscription()).not.toBeNull();
+    });
+
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    // The OWNER edits the papel in Configurações -> Papéis, dropping `leads`
+    // but keeping `clientes`. This writes workspace_roles, NOT
+    // workspace_members — role_id itself never changes on this member's row.
+    // The channel's own payload is irrelevant (the handler always refetches
+    // through getMyMembership() — it has no way to know from a
+    // workspace_roles row alone whether THIS member even holds the role that
+    // changed), so the queued getMyMembership() response below is what
+    // actually drives the assertion.
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-1',
+        workspace_roles: { permissions: { clientes: 'editar' } },
+      },
+      error: null,
+    });
+
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceRolesUpdate({
+        id: 'role-1',
+        conta_id: 'conta-71',
+        permissions: { clientes: 'editar' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(removeSpy).toHaveBeenCalledWith({ queryKey: ['leads'] });
+    });
+    // clientes stayed granted across the edit -- no transition, no purge.
+    expect(queryClient.getQueryData(['clientes'])).toEqual(['cached-clientes']);
+    expect(removeSpy).not.toHaveBeenCalledWith({ queryKey: ['clientes'] });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['clientes'] });
+    expect(queryClient.getQueryData(['leads'])).toBeUndefined();
+
+    removeSpy.mockRestore();
+    invalidateSpy.mockRestore();
+  });
+
+  it('a workspace_roles UPDATE invalidates (never removes) a module the papel just GAINED (ideias added)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-72' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-72',
+      nome: 'Membro com Papel',
+      role: 'agent',
+      conta_id: 'conta-72',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-72' } } });
+    mockGetContaId.mockResolvedValue('conta-72');
+    // Hydration: custom papel with only clientes granted.
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-2',
+        workspace_roles: { permissions: { clientes: 'editar' } },
+      },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspaceRole')).toHaveTextContent('agent');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceRolesSubscription()).not.toBeNull();
+    });
+
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    // The papel gains `ideias`.
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-2',
+        workspace_roles: { permissions: { clientes: 'editar', ideias: 'ver' } },
+      },
+      error: null,
+    });
+
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceRolesUpdate({
+        id: 'role-2',
+        conta_id: 'conta-72',
+        permissions: { clientes: 'editar', ideias: 'ver' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['ideias'] });
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['hub-ideias-all'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['ideia-images'] });
+    expect(removeSpy).not.toHaveBeenCalled();
+
+    removeSpy.mockRestore();
+    invalidateSpy.mockRestore();
+  });
+
+  it('an edit to a role this member does NOT hold triggers a harmless refetch that resolves to the same membership (no purge, no invalidate)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-73' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-73',
+      nome: 'Membro com Papel',
+      role: 'agent',
+      conta_id: 'conta-73',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-73' } } });
+    mockGetContaId.mockResolvedValue('conta-73');
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-3',
+        workspace_roles: { permissions: { clientes: 'editar' } },
+      },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspaceRole')).toHaveTextContent('agent');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceRolesSubscription()).not.toBeNull();
+    });
+
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    await act(async () => {
+      mockedSupabase.__emitWorkspaceRolesUpdate({
+        id: 'some-other-role',
+        conta_id: 'conta-73',
+        permissions: { financeiro: 'editar' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockMaybeSingle).toHaveBeenCalledTimes(2);
+    });
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(invalidateSpy).not.toHaveBeenCalled();
+
+    removeSpy.mockRestore();
+    invalidateSpy.mockRestore();
+  });
+
+  it('an older workspace_roles refetch resolving after a newer one does not overwrite the newer state (shares the membershipFetchSeq guard with the wm: channel and the poll)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-74' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-74',
+      nome: 'Membro com Papel',
+      role: 'agent',
+      conta_id: 'conta-74',
+    });
+    mockMembershipGetUser.mockResolvedValue({ data: { user: { id: 'user-74' } } });
+    mockGetContaId.mockResolvedValue('conta-74');
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: {
+        role: 'agent',
+        can_see_financials: false,
+        role_id: 'role-4',
+        workspace_roles: { permissions: {} },
+      },
+      error: null,
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderWithAuth(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspaceRole')).toHaveTextContent('agent');
+    });
+    await waitFor(() => {
+      expect(mockedSupabase.__getWorkspaceRolesSubscription()).not.toBeNull();
+    });
+
+    let resolveOlder!: (v: { data: unknown; error: null }) => void;
+    let resolveNewer!: (v: { data: unknown; error: null }) => void;
+    mockMaybeSingle.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOlder = resolve;
+      }),
+    );
+    mockMaybeSingle.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveNewer = resolve;
+      }),
+    );
+
+    // Two edits to the same papel, back to back, no render/await between them.
+    act(() => {
+      mockedSupabase.__emitWorkspaceRolesUpdate({ id: 'role-4', conta_id: 'conta-74' });
+      mockedSupabase.__emitWorkspaceRolesUpdate({ id: 'role-4', conta_id: 'conta-74' });
+    });
+
+    // Resolve the NEWER request first — it grants financeiro, the OPPOSITE of
+    // what the (still pending) older request will resolve to. canSeeFinancials
+    // is the observable proxy here (the Probe component exposes it, unlike
+    // the raw permissions object).
+    await act(async () => {
+      resolveNewer({
+        data: {
+          role: 'agent',
+          can_see_financials: false,
+          role_id: 'role-4',
+          workspace_roles: { permissions: { financeiro: 'ver' } },
+        },
+        error: null,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+    });
+
+    await act(async () => {
+      resolveOlder({
+        data: {
+          role: 'agent',
+          can_see_financials: false,
+          role_id: 'role-4',
+          workspace_roles: { permissions: {} },
+        },
+        error: null,
+      });
+    });
+
+    // The stale (older) response must be dropped — state must still reflect
+    // the newer, already-applied result (financeiro granted), not regress to
+    // the older one (financeiro absent). Same guard as the equivalent wm:
+    // channel test above, exercised here through the wr: channel instead.
+    expect(screen.getByTestId('canSeeFinancials')).toHaveTextContent('true');
+  });
+});
+
+// MODULE_QUERY_KEYS itself — a real key must appear for every module that
+// legitimately holds cacheable query data, and the map may never contain a
+// key that matches nothing in the app (the original task brief's placeholder
+// map, e.g. a literal 'workflow' or 'posts' key, would have been exactly
+// that: TanStack Query matches by exact positional array-segment equality, so
+// a key that is merely a *substring* of a real one never matches anything and
+// silently no-ops).
+describe('MODULE_QUERY_KEYS', () => {
+  it('covers every PermissionModule with an array (possibly empty)', () => {
+    for (const module of Object.keys(MODULE_QUERY_KEYS)) {
+      expect(Array.isArray(MODULE_QUERY_KEYS[module as keyof typeof MODULE_QUERY_KEYS])).toBe(true);
+    }
+  });
+
+  it('financeiro/contratos/equipe match the brief exactly (facts-override sign-off)', () => {
+    expect(MODULE_QUERY_KEYS.financeiro).toEqual(['transacoes', 'dashboardStats']);
+    expect(MODULE_QUERY_KEYS.contratos).toEqual(['contratos']);
+    expect(MODULE_QUERY_KEYS.equipe).toEqual(['membros', 'workspace-users', 'invites']);
+  });
+
+  // Task 13 review finding 4: the original map missed the two biggest
+  // entregas caches (every post-with-props list and every per-workflow post
+  // count) and the two biggest clientes-scoped caches (a client's own post
+  // list and its "datas" section) — all four verified against real
+  // queryKey usages (grep) before being added, same discipline as the rest
+  // of this map.
+  it('clientes and entregas cover the caches added in the review fix', () => {
+    expect(MODULE_QUERY_KEYS.clientes).toEqual(
+      expect.arrayContaining(['cliente', 'clientes', 'clientePosts', 'clienteDatas']),
+    );
+    expect(MODULE_QUERY_KEYS.entregas).toEqual(
+      expect.arrayContaining(['workflow-posts-with-props', 'workflow-posts-counts']),
+    );
+  });
 });

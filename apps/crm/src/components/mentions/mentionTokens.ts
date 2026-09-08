@@ -7,12 +7,19 @@ import type { MentionEntityType, MentionRef } from './types';
  * mentionHref.ts, which renders the chip unlinked in that case). This regex is fixed
  * by the spec -- do not change its shape without updating the spec.
  *
- * Note: `[^\]]+` means a label containing `]` cannot be represented by this syntax.
- * A token with such a label simply fails to match and falls through as plain text
- * (see parseMentionTokens's "label containing ]" test) -- not a crash, a known
- * limitation of the fixed token grammar.
+ * The label group is a lazy scan ended by the first `](tipo:id)` tail, NOT the old
+ * `[^\]]+` character class: labels are real entity titles, and a title like
+ * `Carrossel - [AUTOMAÇÃO] ...` contains `]`, which the class rejected -- the token
+ * the write side (formatMentionToken) had happily produced then fell through as
+ * unclickable plain text. The `(?!@\[)` guard keeps a literal, tail-less `@[...`
+ * fragment earlier in the line from being swallowed into a later token's label.
+ *
+ * Still unrepresentable, by construction: a label containing `@[` or a line
+ * terminator (formatMentionToken normalizes the latter away). Such a token falls
+ * through as plain text -- not a crash, a known limitation of the token grammar.
  */
-export const MENTION_TOKEN_RE = /@\[([^\]]+)\]\((membro|post|cliente|tarefa):(\d+)(?::(\d+))?\)/g;
+export const MENTION_TOKEN_RE =
+  /@\[((?:(?!@\[).)+?)\]\((membro|post|cliente|tarefa):(\d+)(?::(\d+))?\)/g;
 
 export type MentionTokenSegment =
   | { kind: 'text'; value: string }
@@ -103,10 +110,15 @@ export function parseMentionTokens(text: string): MentionTokenSegment[] {
  * `post`, so a stray value on another entity type is never meaningful).
  */
 export function formatMentionToken(ref: MentionRef): string {
+  // MENTION_TOKEN_RE's label group is `.`-based and never crosses a line terminator,
+  // so a label carrying one would serialize into a token the parser can't read back.
+  // Entity titles are single-line in practice; collapse any stray terminator to a
+  // space instead of emitting an unparseable token.
+  const label = ref.label.replace(/[\r\n\u2028\u2029]+/g, ' ');
   if (ref.entityType === 'post' && ref.parentId != null) {
-    return `@[${ref.label}](post:${ref.id}:${ref.parentId})`;
+    return `@[${label}](post:${ref.id}:${ref.parentId})`;
   }
-  return `@[${ref.label}](${ref.entityType}:${ref.id})`;
+  return `@[${label}](${ref.entityType}:${ref.id})`;
 }
 
 /** Dedupes by `entityType:id`, keeping the first occurrence. */

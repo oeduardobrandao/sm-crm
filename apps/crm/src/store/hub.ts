@@ -43,6 +43,13 @@ export interface HubBriefingQuestionRow {
   section: string | null;
   display_order: number;
   created_at: string;
+  audio_r2_key?: string | null;
+  audio_mime?: string | null;
+  audio_size_bytes?: number | null;
+  audio_duration_seconds?: number | null;
+  audio_transcript?: string | null;
+  audio_transcription_status?: 'pending' | 'done' | 'failed' | null;
+  audio_recorded_at?: string | null;
 }
 
 export interface BriefingRow {
@@ -183,11 +190,17 @@ export async function removeHubBrandFile(fileId: string) {
 }
 
 export async function getHubPages(clienteId: number) {
+  // Prod has 28 pages across 21 clients all still at display_order = 0 (nothing
+  // wrote it before this task). created_at breaks the tie so this reader and
+  // hub-pages/handler.ts (the client-facing side) show the SAME order for
+  // those rows -- without a shared tiebreaker the two would independently fall
+  // back to whatever Postgres happens to return, which need not agree.
   const { data } = await supabase
     .from('hub_pages')
     .select('*')
     .eq('cliente_id', clienteId)
-    .order('display_order');
+    .order('display_order')
+    .order('created_at');
   return (data ?? []) as HubPageRow[];
 }
 
@@ -201,14 +214,70 @@ export async function upsertHubPage(
   page: Partial<HubPageRow> & { cliente_id: number; conta_id: string },
 ) {
   if (page.id) {
-    await supabase.from('hub_pages').update(page).eq('id', page.id);
-  } else {
-    await supabase.from('hub_pages').insert(page);
+    // display_order é do fluxo de reordenação (reorderHubPages), nunca deste
+    // caminho: um form antigo de edição não pode reposicionar a página sem
+    // querer só por reenviar o valor que carregou.
+    const { display_order: _ignored, ...rest } = page;
+    // Must throw. O caller antigo descartava `error` em silêncio, que é como
+    // uma escrita recusada (RLS, trigger de entitlement) ainda mostrava
+    // "Página salva!" -- ver handleEntitlementMutationError em upsertHubBrand
+    // acima para o mesmo padrão.
+    const { error } = await supabase.from('hub_pages').update(rest).eq('id', page.id);
+    if (error) throw error;
+    return;
   }
+
+  const { data: last, error: maxError } = await supabase
+    .from('hub_pages')
+    .select('display_order')
+    .eq('cliente_id', page.cliente_id)
+    .order('display_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (maxError) throw maxError;
+
+  const next = last?.display_order == null ? 0 : last.display_order + 1;
+  const { error } = await supabase.from('hub_pages').insert({ ...page, display_order: next });
+  if (error) throw error;
+}
+
+/**
+ * Renumera 0..n-1 numa passada. `orderedIds` é a ordem final do rail (o drag
+ * de reordenação nasce em outra task -- esta é só a escrita).
+ *
+ * Feito com um update por linha (Promise.all), não `.upsert(..., {onConflict:
+ * 'id'})`: um upsert parcial manda só `{id, display_order}`, e o Postgres
+ * monta a linha candidata do INSERT (via json_populate_recordset, que não
+ * aplica o DEFAULT da coluna -- só usa o que veio no JSON, NULL pro resto)
+ * ANTES de descobrir se vai bater em conflito. Como `title`, `conta_id` e
+ * `cliente_id` são NOT NULL sem default, essa linha candidata violaria a
+ * constraint e o Postgres falha com "null value ... violates not-null
+ * constraint" -- mesmo a linha já existindo e o caminho real sendo um UPDATE.
+ * Ou seja: não é risco de zerar colunas em silêncio, é a reordenação inteira
+ * falhando toda vez. Update por linha evita os dois problemas.
+ */
+export async function reorderHubPages(clienteId: number, orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return;
+  await Promise.all(
+    orderedIds.map((id, display_order) =>
+      supabase
+        .from('hub_pages')
+        .update({ display_order })
+        .eq('id', id)
+        .eq('cliente_id', clienteId)
+        .then(({ error }) => {
+          if (error) throw error;
+        }),
+    ),
+  );
 }
 
 export async function removeHubPage(pageId: string) {
-  await supabase.from('hub_pages').delete().eq('id', pageId);
+  // Must throw. Mesmo padrão de upsertHubPage acima: uma exclusão recusada por RLS
+  // ou por um trigger ainda mostrava "Página removida." com a linha intacta no banco,
+  // porque o `error` do Supabase era descartado em silêncio.
+  const { error } = await supabase.from('hub_pages').delete().eq('id', pageId);
+  if (error) throw error;
 }
 
 export async function getWorkspaceSlug(): Promise<string | null> {
@@ -225,6 +294,71 @@ export async function getWorkspaceSlug(): Promise<string | null> {
     .eq('id', conta_id)
     .maybeSingle();
   return (conta as { slug: string | null } | null)?.slug ?? null;
+}
+
+export interface PortalFill {
+  briefingTotal: number;
+  briefingAnswered: number;
+  brandFiles: number;
+  hasBrand: boolean;
+  pages: number;
+  newIdeasWithoutReply: number;
+}
+
+/**
+ * Powers the "O que o cliente vê" panel on AcessoPage: one count per portal
+ * section, so the CRM can show how filled-in the client's portal actually is.
+ * Counts use `head: true` -- no rows travel over the wire, just the header
+ * with the count.
+ *
+ * RLS already scopes every one of these tables by `conta_id`; adding that
+ * filter here would be redundant, not an extra safety net.
+ *
+ * Throws on any failed count instead of coercing it to zero. A failed count
+ * has to leave the panel inconclusive (a dash), never "vazia" -- "vazia" is a
+ * specific claim that the section is empty, and asserting that off a request
+ * that never resolved would be wrong more often than it's convenient.
+ */
+export async function getPortalFill(clienteId: number): Promise<PortalFill> {
+  const countOf = async (table: string, apply: (q: any) => any = (q) => q): Promise<number> => {
+    const { count, error } = await apply(
+      supabase.from(table).select('id', { count: 'exact', head: true }).eq('cliente_id', clienteId),
+    );
+    if (error) throw error;
+    return count ?? 0;
+  };
+
+  const [briefingTotal, briefingAnswered, brandFiles, pages, newIdeasWithoutReply, brand] =
+    await Promise.all([
+      countOf('hub_briefing_questions'),
+      // "Respondida" tem que bater com isAnswered() em
+      // hub/BriefingPage.tsx (answer != null && answer.trim() !== '') -- os dois
+      // alimentam painéis diferentes ("O que o cliente vê" aqui, o próprio
+      // Briefing lá) da mesma contagem, e não podem divergir. PostgREST não
+      // roda trim() num filtro, mas negar um match regex de "só espaço em
+      // branco (ou vazio)" expressa o mesmo predicado -- e o NULL do Postgres
+      // para essa comparação em resposta nula já resulta em `false` dentro de
+      // um WHERE/filter, então não precisa de um `.not(..., 'is', null)` à parte.
+      countOf('hub_briefing_questions', (q) => q.not('answer', 'match', '^[[:space:]]*$')),
+      countOf('hub_brand_files'),
+      countOf('hub_pages'),
+      countOf('ideias', (q) => q.eq('status', 'nova').is('comentario_agencia', null)),
+      supabase.from('hub_brand').select('id').eq('cliente_id', clienteId).maybeSingle(),
+    ]);
+
+  // brand isn't routed through countOf (it needs the row, not just a count, to tell
+  // "no brand configured" from "brand configured with blank colors") -- same throw
+  // rule still applies so a failed lookup can't read as hasBrand: false.
+  if (brand.error) throw brand.error;
+
+  return {
+    briefingTotal,
+    briefingAnswered,
+    brandFiles,
+    pages,
+    newIdeasWithoutReply,
+    hasBrand: brand.data != null,
+  };
 }
 
 export async function getHubBriefingQuestions(

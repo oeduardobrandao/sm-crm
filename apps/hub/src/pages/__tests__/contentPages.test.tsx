@@ -304,6 +304,7 @@ describe('hub content pages', () => {
               answer: null,
               section: 'Marca',
               display_order: 1,
+              audio: null,
             },
           ],
         },
@@ -335,6 +336,7 @@ describe('hub content pages', () => {
               answer: 'Acolhedora',
               section: 'Marca',
               display_order: 1,
+              audio: null,
             },
             {
               id: 'q2',
@@ -342,6 +344,7 @@ describe('hub content pages', () => {
               answer: null,
               section: 'Geral',
               display_order: 2,
+              audio: null,
             },
           ],
         },
@@ -364,7 +367,7 @@ describe('hub content pages', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Geral' }));
     expect(screen.getByText('Qual o principal objetivo?')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText('Digite sua resposta…'), {
+    fireEvent.change(screen.getByPlaceholderText('Digite sua resposta ou grave um áudio…'), {
       target: { value: 'Gerar mais leads qualificados' },
     });
 

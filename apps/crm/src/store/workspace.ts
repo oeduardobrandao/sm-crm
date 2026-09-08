@@ -5,16 +5,46 @@ export async function getWorkspaceUsers(): Promise<any[]> {
   const { data, error } = await supabase
     .from('workspace_members')
     .select(
-      'user_id, role, joined_at, can_see_financials, profiles!inner(id, nome, avatar_url, created_at)',
+      'user_id, role, role_id, joined_at, can_see_financials, workspace_roles(nome), profiles!inner(id, nome, avatar_url, created_at)',
     )
     .eq('workspace_id', conta_id)
     .order('joined_at', { ascending: true });
-  if (error) throw error;
+  if (error) {
+    if (!isMissingRolesSchemaError(error)) throw error;
+    // Same pre-migration degradation as getMyMembership() below (hotfix
+    // #439): a database that predates the roles migration 400s on the
+    // enriched select (role_id / workspace_roles unknown to PostgREST's
+    // schema cache). Falling through to `throw error` here left MembrosTab's
+    // roster query rejected -- an EMPTY list, not a loud failure, because the
+    // caller (`useQuery`) just renders `wsUsers ?? []` on error. Re-run with
+    // the legacy columns instead, same fields every row would carry
+    // pre-migration.
+    const { data: legacy, error: legacyError } = await supabase
+      .from('workspace_members')
+      .select(
+        'user_id, role, joined_at, can_see_financials, profiles!inner(id, nome, avatar_url, created_at)',
+      )
+      .eq('workspace_id', conta_id)
+      .order('joined_at', { ascending: true });
+    if (legacyError) throw legacyError;
+    return (legacy || []).map((m: any) => ({
+      id: m.profiles.id,
+      nome: m.profiles.nome,
+      role: m.role,
+      role_id: null,
+      papel_nome: null,
+      can_see_financials: m.can_see_financials,
+      avatar_url: m.profiles.avatar_url,
+      created_at: m.profiles.created_at,
+    }));
+  }
   // Flatten the join result to match the expected shape
   return (data || []).map((m: any) => ({
     id: m.profiles.id,
     nome: m.profiles.nome,
     role: m.role,
+    role_id: m.role_id ?? null,
+    papel_nome: m.workspace_roles?.nome ?? null,
     can_see_financials: m.can_see_financials,
     avatar_url: m.profiles.avatar_url,
     created_at: m.profiles.created_at,
@@ -55,12 +85,32 @@ export async function getCurrentWorkspace(): Promise<{
   return data;
 }
 
+/**
+ * RLS on `workspaces` FILTERS a forbidden row out of an UPDATE instead of
+ * raising: PostgREST answers 200 with zero rows affected, so `error` is null
+ * and the caller toasts success for a save that never happened (F4, revisão
+ * externa). Every workspace update below therefore asks for the affected ids
+ * back with `.select('id')` and treats an empty result as a denial. The UI
+ * gates on `configuracoes:editar` are the primary fix; this is the backstop
+ * that keeps a missed gate from lying to the user.
+ */
+function assertWorkspaceRowAffected(rows: { id: string }[] | null): void {
+  if (!rows || rows.length === 0) {
+    throw new Error('workspace_update_forbidden');
+  }
+}
+
 export async function updateWorkspace(
   workspaceId: string,
   updates: { name?: string; logo_url?: string | null; report_splash_url?: string | null },
 ): Promise<void> {
-  const { error } = await supabase.from('workspaces').update(updates).eq('id', workspaceId);
+  const { data, error } = await supabase
+    .from('workspaces')
+    .update(updates)
+    .eq('id', workspaceId)
+    .select('id');
   if (error) throw error;
+  assertWorkspaceRowAffected(data);
 }
 
 // Report v2 whitelabel surface: a single accent colour (shared with the client
@@ -73,21 +123,33 @@ export async function getWorkspaceBranding(): Promise<{
   brand_color: string;
   report_splash_url: string | null;
   send_report_email: boolean;
+  // Central de Notificações, Fase 2 (spec 2026-09-02): master switch for the
+  // "Pendências do Hub" digest, read by SeusClientesSection alongside the
+  // per-client clientes.send_event_email column.
+  send_client_event_emails: boolean;
 }> {
   const contaId = await getContaId();
   const { data, error } = await supabase
     .from('workspaces')
-    .select('brand_color, report_splash_url, send_report_email')
+    .select('brand_color, report_splash_url, send_report_email, send_client_event_emails')
     .eq('id', contaId)
     .single();
   if (error) throw error;
   return data;
 }
 
-export async function updateWorkspaceBranding(fields: { send_report_email?: boolean }) {
+export async function updateWorkspaceBranding(fields: {
+  send_report_email?: boolean;
+  send_client_event_emails?: boolean;
+}) {
   const contaId = await getContaId();
-  const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
+  const { data, error } = await supabase
+    .from('workspaces')
+    .update(fields)
+    .eq('id', contaId)
+    .select('id');
   if (error) throw error;
+  assertWorkspaceRowAffected(data);
 }
 
 // Hub white-label surface (Personalizar Hub, Configurações → Hub). `brand_color` lives
@@ -125,8 +187,13 @@ export async function getHubBranding(): Promise<HubBranding> {
 
 export async function updateHubBranding(fields: Partial<HubBranding>): Promise<void> {
   const contaId = await getContaId();
-  const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
+  const { data, error } = await supabase
+    .from('workspaces')
+    .update(fields)
+    .eq('id', contaId)
+    .select('id');
   if (error) throw error;
+  assertWorkspaceRowAffected(data);
 }
 
 // Auto-limpeza de armazenamento (Configurações → Armazenamento). Owner-only:
@@ -205,8 +272,11 @@ export async function callManageWorkspaceUser(
     throw new Error(result.error || result.message || `Erro HTTP ${response.status}`);
 }
 
-export async function updateWorkspaceUserRole(userId: string, role: string): Promise<void> {
-  await callManageWorkspaceUser('update-role', userId, { role });
+export async function updateWorkspaceUserRole(
+  userId: string,
+  value: { role: 'admin' | 'agent' } | { roleId: string },
+): Promise<void> {
+  await callManageWorkspaceUser('update-role', userId, value);
 }
 
 export async function removeWorkspaceUser(userId: string): Promise<void> {
@@ -223,6 +293,9 @@ export async function setWorkspaceUserFinancialAccess(
 export interface MyMembership {
   role: 'owner' | 'admin' | 'agent';
   can_see_financials: boolean;
+  role_id: string | null;
+  /** permissions do papel custom; null quando role_id é null (fallback legado). */
+  permissions: Record<string, string> | null;
 }
 
 /**
@@ -236,6 +309,31 @@ export interface MyMembership {
  * (null) from "could not determine" (throw), because those resolve to different
  * capability states.
  */
+/**
+ * True when the error says the ROLES SCHEMA itself is missing — `role_id` /
+ * `workspace_roles` not present in the database this client is talking to —
+ * as opposed to a network/RLS failure.
+ *
+ * Exists because the frontend and migrations deploy independently: Vercel
+ * ships a bundle on merge while `20260903000002_workspace_roles_a_additive`
+ * reaches each database by a manual push. In that window the enriched select
+ * below 400s for EVERY member, AuthContext resolves membership to 'error',
+ * and the whole app collapses to "Não foi possível confirmar seu acesso"
+ * (2026-09-02 incident). A pre-migration database must degrade to the legacy
+ * lookup, not take the workspace down.
+ *
+ * Codes: 42703 undefined column (`role_id`), 42P01 undefined table,
+ * PGRST200 embed relationship not in PostgREST's schema cache — plus a
+ * message probe for the same two identifiers, because the schema-cache
+ * phrasing has shifted across PostgREST versions. A transport error
+ * ("Failed to fetch") matches none of these and still throws.
+ */
+function isMissingRolesSchemaError(error: { code?: string; message?: string }): boolean {
+  if (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST200') return true;
+  const message = error.message ?? '';
+  return message.includes('workspace_roles') || message.includes('role_id');
+}
+
 export async function getMyMembership(): Promise<MyMembership | null> {
   const {
     data: { user },
@@ -249,11 +347,47 @@ export async function getMyMembership(): Promise<MyMembership | null> {
 
   const { data, error } = await supabase
     .from('workspace_members')
-    .select('role, can_see_financials')
+    .select('role, can_see_financials, role_id, workspace_roles(permissions)')
     .eq('user_id', user.id)
     .eq('workspace_id', conta_id)
     .maybeSingle();
 
-  if (error) throw error;
-  return (data as MyMembership | null) ?? null;
+  if (error) {
+    if (!isMissingRolesSchemaError(error)) throw error;
+    // Database predates the roles migration — resolve membership through the
+    // legacy columns instead of failing the whole session. `role_id: null`
+    // is exactly what every row would hold pre-migration, so derivePermission
+    // takes its legacy fallback and behaviour matches the old bundle.
+    const { data: legacy, error: legacyError } = await supabase
+      .from('workspace_members')
+      .select('role, can_see_financials')
+      .eq('user_id', user.id)
+      .eq('workspace_id', conta_id)
+      .maybeSingle();
+    if (legacyError) throw legacyError;
+    if (!legacy) return null;
+    const legacyRow = legacy as unknown as {
+      role: MyMembership['role'];
+      can_see_financials: boolean;
+    };
+    return {
+      role: legacyRow.role,
+      can_see_financials: legacyRow.can_see_financials,
+      role_id: null,
+      permissions: null,
+    };
+  }
+  if (!data) return null;
+  const row = data as unknown as {
+    role: MyMembership['role'];
+    can_see_financials: boolean;
+    role_id: string | null;
+    workspace_roles: { permissions: Record<string, string> } | null;
+  };
+  return {
+    role: row.role,
+    can_see_financials: row.can_see_financials,
+    role_id: row.role_id ?? null,
+    permissions: row.workspace_roles?.permissions ?? null,
+  };
 }

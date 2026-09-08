@@ -13,6 +13,7 @@ export default defineConfig(({ command }) => ({
       '@mesaas/ui': path.resolve(__dirname, '../../packages/ui'),
       '@mesaas/report-blocks': path.resolve(__dirname, '../../packages/report-blocks'),
       '@mesaas/app-lifecycle': path.resolve(__dirname, '../../packages/app-lifecycle/index.ts'),
+      '@mesaas/link-policy': path.resolve(__dirname, '../../packages/link-policy/index.ts'),
     },
   },
   base: command === 'serve' ? '/' : '/hub/',
