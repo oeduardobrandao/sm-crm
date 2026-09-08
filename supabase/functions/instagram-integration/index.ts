@@ -14,6 +14,8 @@ import { appBaseUrl } from "../_shared/app-url.ts";
 import { buildScopeParam, IG_BASE_SCOPES } from "../_shared/instagram-scopes.ts";
 import { resolveGrantedPermissions } from "../_shared/instagram-permissions.ts";
 import { subscribeToComments, fetchSubscribedFields } from "../_shared/instagram-messaging.ts";
+import { makeBoundedFetch } from "../_shared/bounded-fetch.ts";
+import { handlePublishedMedia } from "./published-media.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -995,6 +997,27 @@ Deno.serve(async (req) => {
          return new Response(JSON.stringify({ posts: data, total: count }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // 7. POST /published-media/:clientId — busca AO VIVO na Graph API (nunca a
+    // tabela espelho `instagram_posts`), para re-mirar uma automacao orfa num
+    // post ja publicado mesmo quando o feed sincronizado ainda nao o tem.
+    if (req.method === 'POST' && path.startsWith('/published-media/')) {
+        // Cliente com fetch limitado por prazo: este handler MUTA estado
+        // (authorization_status), e um kill do runtime edge pula o catch sem
+        // logar nada. Mesmo idioma de hub-briefing/index.ts:18,
+        // briefing-audio/index.ts:17 e automation-media/index.ts:17.
+        const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+          global: { fetch: makeBoundedFetch() },
+        });
+        return await handlePublishedMedia(req, {
+          svc: serviceClient, userId: user!.id, corsHeaders, decryptToken, verifyClientOwnership,
+          // Fecha sobre o `serviceClient` real: `checkRateLimit` (importado no
+          // topo deste arquivo) e tipado pra `SupabaseClient`, que nao bate
+          // com o `Svc` estrutural que `published-media.ts` usa pro resto do
+          // deps -- por isso a assinatura fina em vez do import direto la.
+          checkRateLimit: (key, maxRequests, windowSeconds) =>
+            checkRateLimit(serviceClient, key, maxRequests, windowSeconds),
+        });
+    }
 
     return new Response(JSON.stringify({ error: true, message: `Not Found - method: ${req.method}, path: "${path}"` }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 

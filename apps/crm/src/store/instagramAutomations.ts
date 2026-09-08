@@ -40,6 +40,11 @@ export interface InstagramCommentAutomation {
    * published yet. A DB trigger fills `ig_media_id` in once it publishes, so the
    * "linked" state carries both. */
   workflow_post_id: number | null;
+  /** Set when the targeted post was marked "postado" by hand (outside the app),
+   * so it never got an `ig_media_id` and never will. Kept by the cron's
+   * `reconcile_unlinked_automation_targets()` reconciliation; the resolver
+   * clears it the instant the user re-targets the automation. */
+  target_unlinked_at: string | null;
   /** Tombstone: set when the targeted production post was deleted before it ever
    * published. The DB forces `ativo = false` alongside it and refuses to clear it
    * unless the same write supplies a new target. Detect a tombstone by THIS field
