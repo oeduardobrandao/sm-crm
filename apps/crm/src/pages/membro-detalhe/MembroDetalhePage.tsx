@@ -1,28 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Edit2, Wallet, CheckCircle2, Clock } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   Table,
   TableBody,
@@ -31,18 +14,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  getMembros,
-  getTransacoes,
-  formatDate,
-  getInitials,
-  updateMembro,
-  type Membro,
-} from '../../store';
+import { getMembros, getTransacoes, formatDate, getInitials } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
-import { formatFinancialBRL, stripFinancialFields } from '@/lib/financialAccess';
+import { formatFinancialBRL } from '@/lib/financialAccess';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
+import { MembroFormDialog } from '../equipe/MembroFormDialog';
 
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
@@ -55,21 +32,7 @@ export default function MembroDetalhePage() {
   const canEditTeam = can('equipe', 'editar') === true;
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [fNome, setFNome] = useState('');
-  const [fCargo, setFCargo] = useState('');
-  const [fTipo, setFTipo] = useState<Membro['tipo']>('clt');
-  const [fCusto, setFCusto] = useState('');
-  const [fDiaPag, setFDiaPag] = useState('');
-
-  // The edit modal can hold a custo_mensal value in its form state. On live
-  // revocation, close it rather than let the value linger on screen.
-  useEffect(() => {
-    if (canSeeFinancials !== true) setModalOpen(false);
-  }, [canSeeFinancials]);
 
   const { data: membros = [], isLoading: loadingMembros } = useQuery({
     queryKey: ['membros'],
@@ -112,41 +75,7 @@ export default function MembroDetalhePage() {
 
   const openEdit = () => {
     if (!membro) return;
-    setFNome(membro.nome);
-    setFCargo(membro.cargo || '');
-    setFTipo(membro.tipo);
-    setFCusto(membro.custo_mensal ? String(membro.custo_mensal) : '');
-    setFDiaPag(membro.data_pagamento ? String(membro.data_pagamento) : '');
     setModalOpen(true);
-  };
-
-  const handleSave = async () => {
-    const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
-    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
-      toast.error('Dia de pagamento deve ser entre 1 e 31.');
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        nome: fNome,
-        cargo: fCargo,
-        tipo: fTipo,
-        custo_mensal: fCusto ? Number(fCusto) : null,
-        data_pagamento: diaPag,
-      } as Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>;
-      await updateMembro(
-        Number(id),
-        stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']),
-      );
-      toast.success('Membro atualizado');
-      qc.invalidateQueries({ queryKey: ['membros'] });
-      setModalOpen(false);
-    } catch {
-      toast.error('Erro ao salvar');
-    } finally {
-      setSaving(false);
-    }
   };
 
   const avatarClass = avatarColorClass(membro?.id ?? membro?.nome);
@@ -293,66 +222,7 @@ export default function MembroDetalhePage() {
         </>
       )}
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent onConfirmClose={() => setModalOpen(false)}>
-          <DialogHeader>
-            <DialogTitle>Editar Membro</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Nome *</Label>
-              <Input value={fNome} onChange={(e) => setFNome(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Cargo *</Label>
-              <Input value={fCargo} onChange={(e) => setFCargo(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Tipo</Label>
-              <Select value={fTipo} onValueChange={(v) => setFTipo(v as Membro['tipo'])}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="clt">CLT</SelectItem>
-                  <SelectItem value="freelancer_mensal">Freelancer Mensal</SelectItem>
-                  <SelectItem value="freelancer_demanda">Freelancer Demanda</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {canSeeFinancials === true && (
-              <div className="space-y-1">
-                <Label>Custo Mensal (R$)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={fCusto}
-                  onChange={(e) => setFCusto(e.target.value)}
-                />
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label>Dia de Pagamento (1-31)</Label>
-              <Input
-                type="number"
-                min={1}
-                max={31}
-                value={fDiaPag}
-                onChange={(e) => setFDiaPag(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Spinner size="sm" />} Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MembroFormDialog open={modalOpen} membro={membro ?? null} onOpenChange={setModalOpen} />
     </div>
   );
 }
