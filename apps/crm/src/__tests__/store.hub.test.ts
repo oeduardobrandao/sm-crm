@@ -254,6 +254,17 @@ describe('store hub and ideias helpers', () => {
     ).rejects.toThrow('refused');
   });
 
+  it('propagates a refused hub page delete instead of resolving silently', async () => {
+    // Same class of bug upsertHubPage was already fixed for: a delete refused by
+    // RLS or a trigger must not resolve as if the row were gone.
+    mockedSupabase.__queueSupabaseResult('hub_pages', 'delete', {
+      data: null,
+      error: { message: 'refused' },
+    });
+
+    await expect(store.removeHubPage('page-1')).rejects.toThrow('refused');
+  });
+
   it('renumbers pages 0..n-1 with one update per row when reordering', async () => {
     mockedSupabase.__queueSupabaseResult(
       'hub_pages',

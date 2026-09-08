@@ -273,7 +273,11 @@ export async function reorderHubPages(clienteId: number, orderedIds: string[]): 
 }
 
 export async function removeHubPage(pageId: string) {
-  await supabase.from('hub_pages').delete().eq('id', pageId);
+  // Must throw. Mesmo padrão de upsertHubPage acima: uma exclusão recusada por RLS
+  // ou por um trigger ainda mostrava "Página removida." com a linha intacta no banco,
+  // porque o `error` do Supabase era descartado em silêncio.
+  const { error } = await supabase.from('hub_pages').delete().eq('id', pageId);
+  if (error) throw error;
 }
 
 export async function getWorkspaceSlug(): Promise<string | null> {

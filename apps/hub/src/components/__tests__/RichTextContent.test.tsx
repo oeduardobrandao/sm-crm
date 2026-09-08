@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { richTextExtensions, RichTextContent } from '../RichTextContent';
 
 // The hub reads post `conteudo` (TipTap JSON) by feeding it into an editor built from
@@ -99,5 +99,51 @@ describe('RichTextContent read-only mount', () => {
 
     expect(await screen.findByText('Conteúdo rico do post')).toBeInTheDocument();
     expect(screen.queryByText('Texto simples de fallback')).not.toBeInTheDocument();
+  });
+});
+
+describe('RichTextContent link URL policy (Finding 4, fix round 1)', () => {
+  // TipTap's default Link `isAllowedUri` already blocks `javascript:` (kept here as a
+  // baseline), but its allowlist still includes `ftp:`/`ftps:` and never inspects
+  // userinfo -- so `ftp://` links and `https://user:pass@host` links rendered straight
+  // through by default. The Hub's legacy block renderer (PaginaPage's `link`/`markdown`
+  // blocks) already rejects both via `sanitizeExternalUrl`; richtext links must follow
+  // the SAME policy, or the portal enforces two different rules depending on which
+  // block shape a page happens to be stored in.
+  function docWithLink(href: string) {
+    return {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'clique aqui', marks: [{ type: 'link', attrs: { href } }] },
+          ],
+        },
+      ],
+    };
+  }
+
+  it.each([
+    ['javascript:alert(1)'],
+    ['ftp://example.com/segredo'],
+    ['https://user:senha@example.com'],
+  ])('não deixa o href %s sobreviver na âncora renderizada', async (href) => {
+    const { container } = render(<RichTextContent content={docWithLink(href)} editable={false} />);
+
+    await waitFor(() => expect(container.querySelector('a')).not.toBeNull());
+    const anchor = container.querySelector('a') as HTMLAnchorElement;
+    expect(anchor.getAttribute('href')).not.toBe(href);
+    expect(anchor.getAttribute('href') ?? '').not.toMatch(/^(javascript|ftp):/i);
+    expect(anchor.getAttribute('href') ?? '').not.toContain('user:senha@');
+  });
+
+  it('mantém um link https comum intacto', async () => {
+    const href = 'https://exemplo.com.br/pagina';
+    const { container } = render(<RichTextContent content={docWithLink(href)} editable={false} />);
+
+    await waitFor(() => expect(container.querySelector('a')).not.toBeNull());
+    const anchor = container.querySelector('a') as HTMLAnchorElement;
+    expect(anchor.getAttribute('href')).toBe(href);
   });
 });

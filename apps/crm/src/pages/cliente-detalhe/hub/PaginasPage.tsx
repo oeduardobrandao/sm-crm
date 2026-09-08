@@ -47,6 +47,13 @@ import { readPageDocResult, writePageContent, isLegacyContent } from './pageCont
 import { usePageDraft } from './usePageDraft';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
+/** Chave compartilhada entre a query de `PaginasPage` e o resync direto que
+ *  `PagesEditor` faz no cache depois de uma reordenação (ver handleDragEnd) --
+ *  as duas têm que apontar pra a MESMA entrada do cache. */
+function hubPagesQueryKey(clienteId: number) {
+  return ['hub-pages-crm', clienteId] as const;
+}
+
 export default function PaginasPage() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const qc = useQueryClient();
@@ -56,7 +63,7 @@ export default function PaginasPage() {
   // An agent never sees the pages data (HubRoleGate below withholds it) — don't fetch it
   // just to discard it at render.
   const { data: pages, isLoading } = useQuery({
-    queryKey: ['hub-pages-crm', clienteId],
+    queryKey: hubPagesQueryKey(clienteId),
     queryFn: () => getHubPages(clienteId),
     enabled: canLoadPortalData,
     // `structuralSharing` (padrão true) preservaria a MESMA referência de `data` depois de
@@ -85,7 +92,7 @@ export default function PaginasPage() {
           contaId={cliente.conta_id}
           pages={pages ?? []}
           isLoading={isLoading}
-          onSaved={() => qc.invalidateQueries({ queryKey: ['hub-pages-crm', clienteId] })}
+          onSaved={() => qc.invalidateQueries({ queryKey: hubPagesQueryKey(clienteId) })}
         />
       </HubRoleGate>
     </div>
@@ -97,14 +104,17 @@ export default function PaginasPage() {
 function SortablePageRow({
   page,
   active,
+  dragDisabled,
   onSelect,
 }: {
   page: HubPageRow;
   active: boolean;
+  dragDisabled: boolean;
   onSelect: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: page.id,
+    disabled: dragDisabled,
   });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -152,6 +162,7 @@ function PagesEditor({
   isLoading: boolean;
   onSaved: () => void;
 }) {
+  const qc = useQueryClient();
   // `null` tem dois significados possíveis aqui: "ainda não escolhemos nada" (antes da
   // 1ª carga) e "o usuário está compondo uma página nova". O ref de inicialização abaixo
   // decide qual dos dois é, e só decide UMA vez -- depois disso, `null` sempre quer dizer
@@ -209,14 +220,22 @@ function PagesEditor({
   // ── Reordenação (dnd-kit) ──────────────────────────────────────────────────
   // Estado local só para o feedback visual imediato do arrasto -- a fonte da
   // verdade continua sendo `pages` (a query). Depois de toda tentativa de
-  // reordenar, sucesso ou falha, `onSaved()` invalida a query; quando a lista
-  // fresca chega, este efeito resincroniza `orderedPages` com o que o banco
-  // realmente tem, então uma ordem otimista nunca fica "pendurada" após uma
-  // rejeição parcial do Promise.all em reorderHubPages.
+  // reordenar, sucesso ou falha, `handleDragEnd` invalida a query; quando a
+  // lista fresca chega, este efeito resincroniza `orderedPages` com o que o
+  // banco realmente tem. `handleDragEnd` também força esse resync direto do
+  // cache no seu `finally` (ver comentário lá) -- este efeito continua
+  // existindo pra cobrir qualquer outra causa de refetch (ex: outra aba).
   const [orderedPages, setOrderedPages] = useState<HubPageRow[]>(pages);
   useEffect(() => {
     setOrderedPages(pages);
   }, [pages]);
+
+  // Trava contra um segundo drag correndo com o primeiro (Finding 3, fix round 1):
+  // sem isto, dois `reorderHubPages` concorrentes podiam pisar um no outro, e não
+  // tinha nada impedindo o usuário de largar uma segunda peça enquanto a primeira
+  // reordenação ainda estava em voo. Também desabilita o handle de arrasto
+  // (useSortable `disabled`) enquanto `true`, então o gesto nem começa.
+  const [reordering, setReordering] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -224,6 +243,7 @@ function PagesEditor({
   );
 
   async function handleDragEnd(event: DragEndEvent) {
+    if (reordering) return; // backstop -- os handles já estão `disabled` nesse estado
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = orderedPages.findIndex((p) => p.id === active.id);
@@ -231,6 +251,7 @@ function PagesEditor({
     if (oldIndex === -1 || newIndex === -1) return;
     const next = arrayMove(orderedPages, oldIndex, newIndex);
     setOrderedPages(next);
+    setReordering(true);
     try {
       await reorderHubPages(
         clienteId,
@@ -242,7 +263,19 @@ function PagesEditor({
       // Sempre busca de novo, dê certo ou errado: um update por linha
       // (Promise.all) pode ter renumerado só parte da lista, e o que a tela
       // mostra precisa ser sempre o que o banco tem, nunca a ordem otimista.
-      onSaved();
+      //
+      // `await` aqui (e não fire-and-forget como antes) é o que garante isso: o
+      // efeito reativo acima (`[pages]`) só resincroniza `orderedPages` quando a
+      // prop `pages` MUDA DE REFERÊNCIA -- e um refetch que FALHA devolve os
+      // MESMOS dados de antes (mesma referência), então o efeito nunca dispara de
+      // novo e a ordem otimista local ficaria pendurada na tela para sempre. Ler
+      // `qc.getQueryData` direto do cache depois do invalidate resolver (sucesso
+      // OU falha) e forçar `setOrderedPages` com o que quer que esteja lá agora
+      // não depende dessa reatividade.
+      await qc.invalidateQueries({ queryKey: hubPagesQueryKey(clienteId) });
+      const cached = qc.getQueryData<HubPageRow[]>(hubPagesQueryKey(clienteId));
+      setOrderedPages(cached ?? pages);
+      setReordering(false);
     }
   }
 
@@ -282,6 +315,7 @@ function PagesEditor({
                     key={p.id}
                     page={p}
                     active={selectedId === p.id}
+                    dragDisabled={reordering}
                     onSelect={() => requestSwitch(p.id)}
                   />
                 ))}
@@ -352,12 +386,17 @@ function PageEditorPane({
   const legacy = useMemo(() => isLegacyContent(page?.content), [page?.content]);
   const { draft, saveDraft, clearDraft } = usePageDraft(page?.id ?? null);
 
-  const [title, setTitle] = useState(page?.title ?? '');
-  const [doc, setDoc] = useState<Record<string, unknown>>(draft ?? loaded.doc);
+  // `draft?.title` é `undefined` tanto para "sem rascunho" quanto para um rascunho
+  // gravado no formato antigo (doc-only, sem título) -- os dois casos devem cair
+  // pro título do servidor, não pra string vazia.
+  const [title, setTitle] = useState(draft?.title ?? page?.title ?? '');
+  const [doc, setDoc] = useState<Record<string, unknown>>(draft?.doc ?? loaded.doc);
   const [saving, setSaving] = useState(false);
 
   const docRef = useRef(doc);
   docRef.current = doc;
+  const titleRef = useRef(title);
+  titleRef.current = title;
   const draftTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const isDirty =
@@ -391,14 +430,27 @@ function PageEditorPane({
     [],
   );
 
-  function handleEditorChange(next: Record<string, unknown>) {
-    setDoc(next);
-    // Grava o rascunho com um pequeno debounce -- uma página grande gera um JSON
-    // grande, e regravar o localStorage a cada tecla pode travar a digitação.
+  // Grava o rascunho (título + doc, sempre os dois juntos) com um pequeno debounce
+  // -- uma página grande gera um JSON grande, e regravar o localStorage a cada
+  // tecla pode travar a digitação. Título e corpo compartilham o MESMO debounce:
+  // gravar cada um separado é o que produzia o par título/corpo incoerente do
+  // Finding 1 (editar os dois, trocar de página, e o corpo voltar do rascunho
+  // enquanto o título voltava do servidor).
+  function scheduleDraftSave() {
     if (draftTimeoutRef.current) clearTimeout(draftTimeoutRef.current);
     draftTimeoutRef.current = setTimeout(() => {
-      saveDraft(docRef.current);
+      saveDraft(titleRef.current, docRef.current);
     }, 400);
+  }
+
+  function handleEditorChange(next: Record<string, unknown>) {
+    setDoc(next);
+    scheduleDraftSave();
+  }
+
+  function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setTitle(e.target.value);
+    scheduleDraftSave();
   }
 
   async function handleSave() {
@@ -460,7 +512,7 @@ function PageEditorPane({
       <div className="hub-paginas__toolbar-row">
         <Input
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={handleTitleChange}
           placeholder="Título da página"
           className="hub-paginas__title-input"
         />

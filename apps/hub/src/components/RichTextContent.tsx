@@ -10,6 +10,7 @@ import { CalloutReadonly } from './CalloutReadonly';
 import { InlineImageReadonly } from './InlineImageReadonly';
 import { CommentHighlightReadonly } from './CommentHighlightReadonly';
 import { MentionReadonly } from './MentionReadonly';
+import { sanitizeExternalUrl } from '../lib/security';
 
 /**
  * The TipTap extension set used to read post `conteudo` in the hub. This must stay a
@@ -30,7 +31,17 @@ export function richTextExtensions(editable = false) {
     TextStyle,
     Color,
     Highlight.configure({ multicolor: true }),
-    Link.configure({ openOnClick: !editable, autolink: false }),
+    Link.configure({
+      openOnClick: !editable,
+      autolink: false,
+      // TipTap's own default `isAllowedUri` blocks `javascript:` but still allows
+      // `ftp:`/`ftps:` and doesn't reject credential-bearing URLs
+      // (`https://user:pass@host`) -- both slip a link block's legacy sibling
+      // (`sanitizeExternalUrl`, used by PaginaPage's markdown/legacy-block paths)
+      // already rejects. Reusing that SAME helper here closes the gap instead of
+      // maintaining a second URL policy that could drift from the first.
+      isAllowedUri: (url) => sanitizeExternalUrl(url) !== '#',
+    }),
     CalloutReadonly,
     InlineImageReadonly,
     CommentHighlightReadonly,

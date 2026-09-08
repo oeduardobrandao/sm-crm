@@ -308,6 +308,65 @@ describe('PaginasPage', () => {
     await waitFor(() => expect(localStorage.getItem('hub-page-draft:p1')).toBeNull());
   });
 
+  // Finding 1 (fix round 1): um edit só no título não gravava rascunho nenhum -- o
+  // diálogo de troca de página prometia guardar a alteração, mas `saveDraft` só era
+  // chamado a partir de `handleEditorChange` (o corpo), nunca do `onChange` do título.
+  it('grava o rascunho ao editar só o título', async () => {
+    renderPaginas({ page: PAGE });
+    await findEditor();
+
+    const titleInput = screen.getByPlaceholderText('Título da página');
+    await userEvent.clear(titleInput);
+    await userEvent.type(titleInput, 'Título novo');
+
+    await waitFor(
+      () => {
+        const raw = localStorage.getItem('hub-page-draft:p1');
+        expect(raw).not.toBeNull();
+        const parsed = JSON.parse(raw as string);
+        expect(parsed.title).toBe('Título novo');
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  // Finding 1 (fix round 1), pior caso: editar título E corpo, trocar de página e
+  // voltar não pode devolver um par incoerente (corpo do rascunho + título do
+  // servidor) -- os dois têm que restaurar juntos, do mesmo rascunho.
+  it('restaura título e corpo juntos ao trocar de página e voltar (par não pode ficar incoerente)', async () => {
+    renderPaginas({ pages: [PAGE, OUTRA] });
+    await findEditor();
+
+    const titleInput = screen.getByPlaceholderText('Título da página');
+    await userEvent.clear(titleInput);
+    await userEvent.type(titleInput, 'Título editado');
+    await typeInEditor(' corpo editado');
+
+    // Espera o debounce gravar o par completo antes de trocar de página --
+    // trocar antes disso testaria só o beforeunload/blocker, não o rascunho.
+    await waitFor(
+      () => {
+        const raw = localStorage.getItem('hub-page-draft:p1');
+        expect(raw).not.toBeNull();
+        const parsed = JSON.parse(raw as string);
+        expect(parsed.title).toBe('Título editado');
+      },
+      { timeout: 2000 },
+    );
+
+    await userEvent.click(screen.getByText('Outra página'));
+    await userEvent.click(screen.getByRole('button', { name: 'Trocar mesmo assim' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Outra página')).toBeInTheDocument());
+
+    // O rail mostra o título do SERVIDOR ('Página um'), não o rascunho local --
+    // é assim que se seleciona a página de volta.
+    await userEvent.click(screen.getByText('Página um'));
+
+    await waitFor(() => expect(screen.getByDisplayValue('Título editado')).toBeInTheDocument());
+    const editor = await findEditor();
+    expect(editor.textContent).toContain('corpo editado');
+  });
+
   it('não usa useBlocker', async () => {
     // useBlocker desliga a troca silenciosa entre deploys: React Router honra só o
     // último blocker registrado. Ver silent-update.router.test.ts.
@@ -350,6 +409,39 @@ describe('PaginasPage', () => {
       // A busca depois da falha devolve a MESMA ordem do servidor (mock inalterado) --
       // nenhuma ordem otimista pode ficar pendurada na tela depois da rejeição.
       await waitFor(() => expect(railTitles(container)).toEqual(['Página um', 'Outra página']));
+    });
+
+    // Finding 3 (fix round 1): nada impedia um segundo drag de correr junto com o
+    // primeiro `reorderHubPages` ainda pendente. Controla a resolução manualmente
+    // pra forçar essa janela: dispara o primeiro drag, espera o handle ficar
+    // desabilitado (reordering === true propagado a um novo render), dispara um
+    // segundo drag nessa janela, e confirma que ele foi ignorado.
+    it('ignora um segundo drag enquanto o primeiro ainda está em voo', async () => {
+      let resolveReorder: (() => void) | undefined;
+      vi.mocked(hubStore.reorderHubPages).mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveReorder = resolve;
+          }),
+      );
+      renderPaginas({ pages: [PAGE, OUTRA] });
+      await screen.findByText('Página um');
+
+      act(() => {
+        dndHandlers.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p2' } });
+      });
+      await waitFor(() => expect(hubStore.reorderHubPages).toHaveBeenCalledTimes(1));
+
+      // Segundo drag chega enquanto o primeiro `reorderHubPages` ainda não resolveu.
+      act(() => {
+        dndHandlers.onDragEnd?.({ active: { id: 'p2' }, over: { id: 'p1' } });
+      });
+      expect(hubStore.reorderHubPages).toHaveBeenCalledTimes(1);
+
+      resolveReorder?.();
+      await waitFor(() => expect(hubStore.getHubPages).toHaveBeenCalledTimes(2));
+      // Ainda só a UMA chamada -- o segundo drag nunca chegou a chamar reorderHubPages.
+      expect(hubStore.reorderHubPages).toHaveBeenCalledTimes(1);
     });
   });
 });
