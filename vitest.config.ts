@@ -34,6 +34,7 @@ export default defineConfig({
       'packages/**/*.{test,spec}.{ts,tsx}',
       'test/**/*.{test,spec}.{ts,tsx}',
       'scripts/**/*.test.mjs',
+      'scripts/**/*.test.ts',
       // Scoped to e2e/screenshots/__tests__ today (safety.ts unit tests).
       // Correct as-is, but this glob is repo-wide under e2e/** -- if a future
       // __tests__ dir appears elsewhere under e2e/ (e.g. alongside actual
