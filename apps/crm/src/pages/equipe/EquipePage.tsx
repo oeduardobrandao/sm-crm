@@ -1,6 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -41,13 +39,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -64,25 +55,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChevronDown } from 'lucide-react';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import {
-  getMembros,
-  addMembro,
-  updateMembro,
-  removeMembro,
-  getWorkspaceUsers,
-  setMembroCrmUser,
-  getInitials,
-  type Membro,
-} from '../../store';
+import { addMembro, getMembros, removeMembro, getInitials, type Membro } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { avatarColorClass } from '@/lib/avatarColor';
 import {
@@ -90,15 +63,10 @@ import {
   formatFinancialBRL,
   stripFinancialFields,
 } from '@/lib/financialAccess';
-import { membroSchema, MEMBRO_FORM_DEFAULTS, type MembroFormValues } from './membroForm';
-import { InviteSection } from './InviteSection';
-import { computeSeatState, derivePendingInvites, membroInviteErrorMessage } from './inviteSupport';
-import { inviteUser } from '../../services/invite';
-import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { derivePendingInvites } from './inviteSupport';
 import { useOpenParam } from '../../hooks/useOpenParam';
-import { inviteSuccessMessage } from '../configuracao/inviteHelpers';
 import { supabase } from '../../lib/supabase';
-import { captureEvent } from '@/lib/analytics';
+import { MembroFormDialog } from './MembroFormDialog';
 
 type FilterTipo = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
 type SortKey = 'nome' | 'custo_maior' | 'custo_menor';
@@ -113,7 +81,7 @@ export default function EquipePage() {
   const qc = useQueryClient();
   const isDesktop = useIsDesktop();
   const navigate = useNavigate();
-  const { canSeeFinancials, can, profile, workspaceRole } = useAuth();
+  const { canSeeFinancials, can, profile } = useAuth();
   // Legacy chassis-role checks (agent-vs-not, owner-or-admin) both collapsed
   // onto the real authorization boundary: `manage-workspace-user`/
   // `invite-user` already enforce `equipe:editar` server-side (Task 11). A
@@ -122,12 +90,6 @@ export default function EquipePage() {
   // it even though the server would have allowed the write.
   const canEditTeam = can('equipe', 'editar') === true;
   const canManageWorkspace = canEditTeam;
-  // CHASSIS check, on top of equipe:editar. invite-user requires the caller to
-  // be a legacy owner/admin before it will accept role='admin' or any role_id
-  // ("atribuição segue dono e admin"), so a custom equipe:editar actor must
-  // not be offered those options -- the invite would only fail on submit.
-  // Mirrors MembrosTab's `canAssignRoles`.
-  const canAssignRoles = workspaceRole === 'owner' || workspaceRole === 'admin';
 
   const [filter, setFilter] = useState<FilterTipo>('todos');
   const [search, setSearch] = useState('');
@@ -135,23 +97,11 @@ export default function EquipePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Membro | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const form = useForm<MembroFormValues>({
-    resolver: zodResolver(membroSchema),
-    defaultValues: MEMBRO_FORM_DEFAULTS,
-  });
 
   const { data: membros = [], isLoading } = useQuery({
     queryKey: ['membros'],
     queryFn: getMembros,
   });
-  const { data: workspaceUsers = [] } = useQuery({
-    queryKey: ['workspace-users'],
-    queryFn: getWorkspaceUsers,
-    enabled: canEditTeam,
-  });
-  const { limits, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
   const { data: pendingInviteRows = [] } = useQuery({
     queryKey: ['invites', 'equipe-pending', profile?.conta_id],
     queryFn: async () => {
@@ -165,27 +115,14 @@ export default function EquipePage() {
     },
     enabled: canManageWorkspace && !!profile?.conta_id,
   });
-  const { display: pendingInvites, seatCount: pendingSeatCount } = useMemo(
+  const { display: pendingInvites } = useMemo(
     () => derivePendingInvites(pendingInviteRows),
     [pendingInviteRows],
   );
   const pendingByMembroId = new Map(
     pendingInvites.filter((i) => i.membro_id != null).map((i) => [i.membro_id as number, i]),
   );
-  const seat = computeSeatState({
-    isLoading: limitsLoading,
-    isUnlimited,
-    maxTeamMembers: limits === null ? undefined : limits.max_team_members,
-    membersCount: workspaceUsers.length,
-    pendingCount: pendingSeatCount,
-  });
   const totalCost = membros.reduce((s, m) => s + (m.custo_mensal ?? 0), 0);
-
-  // The edit/add modal can hold a custo_mensal value in its form state. On
-  // live revocation, close it rather than let the value linger on screen.
-  useEffect(() => {
-    if (canSeeFinancials !== true) setModalOpen(false);
-  }, [canSeeFinancials]);
 
   const filtered = membros
     .filter((m) => filter === 'todos' || m.tipo === filter)
@@ -203,7 +140,6 @@ export default function EquipePage() {
 
   const openAdd = () => {
     setEditing(null);
-    form.reset(MEMBRO_FORM_DEFAULTS);
     setModalOpen(true);
   };
 
@@ -211,88 +147,7 @@ export default function EquipePage() {
 
   const openEdit = (m: Membro) => {
     setEditing(m);
-    form.reset({
-      ...MEMBRO_FORM_DEFAULTS,
-      nome: m.nome,
-      cargo: m.cargo || '',
-      tipo: m.tipo,
-      custo: m.custo_mensal ? String(m.custo_mensal) : '',
-      diaPag: m.data_pagamento ? String(m.data_pagamento) : '',
-      crmUserId: m.crm_user_id ?? '',
-    });
     setModalOpen(true);
-  };
-
-  const onSubmit = async (values: MembroFormValues) => {
-    const diaPag = values.diaPag ? parseInt(values.diaPag, 10) : undefined;
-    setSaving(true);
-    try {
-      const payload: Omit<Membro, 'id' | 'user_id' | 'conta_id'> = {
-        nome: values.nome,
-        cargo: values.cargo,
-        tipo: values.tipo,
-        custo_mensal: values.custo ? Number(values.custo) : null,
-        avatar_url: '',
-        data_pagamento: diaPag,
-      };
-      const safePayload = stripFinancialFields(payload, canSeeFinancials, ['custo_mensal']);
-      const desiredCrmUser =
-        values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
-      let membroId: number | undefined;
-      if (editing?.id) {
-        const currentCrmUser = editing.crm_user_id ?? null;
-        if (desiredCrmUser !== currentCrmUser) {
-          await setMembroCrmUser(editing.id, desiredCrmUser);
-        }
-        await updateMembro(editing.id, safePayload);
-        membroId = editing.id;
-      } else {
-        const created = await addMembro(safePayload as Omit<Membro, 'id' | 'user_id' | 'conta_id'>);
-        membroId = created.id;
-      }
-
-      // The invite is a second, non-atomic operation: a failure here must not
-      // roll back or hide the saved membro. Guard on desiredCrmUser (the value
-      // just submitted), not editing?.crm_user_id (a stale prop) — otherwise
-      // selecting an existing user in Conta CRM and enabling the invite switch
-      // in the same submission would still fire an invite the server rejects
-      // as already-linked.
-      const wantsInvite =
-        values.inviteEnabled && canManageWorkspace && membroId != null && desiredCrmUser === null;
-      if (wantsInvite) {
-        try {
-          // Decode the 'admin' | 'agent' | 'custom:<uuid>' select encoding:
-          // a custom papel always invites with the underlying 'agent' chassis
-          // role plus its roleId (mirrors manage-workspace-user's own
-          // role/roleId split — the server never sees the encoding itself).
-          const encoded = values.inviteRole;
-          const isCustom = encoded.startsWith('custom:');
-          const role = isCustom ? 'agent' : (encoded as 'admin' | 'agent');
-          // Omit the 4th argument entirely for a preset role rather than
-          // passing an explicit `undefined` — inviteUser's own `roleId != null`
-          // check treats both the same, but this keeps the arg list exactly
-          // 3-long for the common (non-custom) case.
-          const result = isCustom
-            ? await inviteUser(values.inviteEmail.trim(), role, membroId, encoded.slice(7))
-            : await inviteUser(values.inviteEmail.trim(), role, membroId);
-          toast.success(inviteSuccessMessage(result));
-          captureEvent('invite_sent', { source: 'equipe' });
-        } catch (err) {
-          toast.error(membroInviteErrorMessage(err));
-        }
-      } else {
-        toast.success(editing?.id ? 'Membro atualizado' : 'Membro adicionado');
-      }
-
-      qc.invalidateQueries({ queryKey: ['membros'] });
-      qc.invalidateQueries({ queryKey: ['workspace-users'] });
-      qc.invalidateQueries({ queryKey: ['invites'] });
-      setModalOpen(false);
-    } catch {
-      toast.error('Erro ao salvar');
-    } finally {
-      setSaving(false);
-    }
   };
 
   const handleDelete = async () => {
@@ -689,147 +544,7 @@ export default function EquipePage() {
         </div>
       )}
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent onConfirmClose={() => setModalOpen(false)}>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Editar Membro' : 'Adicionar Membro'}</DialogTitle>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="nome"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nome *</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="cargo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cargo *</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="tipo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tipo</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="clt">CLT</SelectItem>
-                        <SelectItem value="freelancer_mensal">Freelancer Mensal</SelectItem>
-                        <SelectItem value="freelancer_demanda">Freelancer Demanda</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {canSeeFinancials === true && (
-                <FormField
-                  control={form.control}
-                  name="custo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Custo Mensal (R$)</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={0} step={0.01} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-              <FormField
-                control={form.control}
-                name="diaPag"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dia de Pagamento (1-31)</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={1} max={31} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {canManageWorkspace && !!editing && (
-                <FormField
-                  control={form.control}
-                  name="crmUserId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Conta CRM</FormLabel>
-                      <Select
-                        value={field.value ? field.value : '__none__'}
-                        onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Não vinculado" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="__none__">Não vinculado</SelectItem>
-                          {workspaceUsers.map((u: { id: string; nome?: string }) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              {u.nome || u.id}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        Vincular um membro a um usuário do workspace permite que ele acesse o CRM e
-                        veja suas atribuições.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-              {canManageWorkspace && !editing?.crm_user_id && (
-                <InviteSection
-                  form={form}
-                  seat={seat}
-                  pendingInvite={editing?.id ? (pendingByMembroId.get(editing.id) ?? null) : null}
-                  canManageWorkspace={canManageWorkspace}
-                  canAssignRoles={canAssignRoles}
-                />
-              )}
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving && <Spinner size="sm" />}{' '}
-                  {form.watch('inviteEnabled') && !form.watch('crmUserId')
-                    ? 'Salvar e convidar'
-                    : 'Salvar'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      <MembroFormDialog open={modalOpen} membro={editing} onOpenChange={setModalOpen} />
 
       <AlertDialog
         open={deleteId != null}
