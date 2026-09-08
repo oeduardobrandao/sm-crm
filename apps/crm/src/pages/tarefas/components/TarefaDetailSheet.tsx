@@ -29,7 +29,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { avatarColorClass } from '@/lib/avatarColor';
-import { MentionText } from '@/components/mentions/MentionText';
 import {
   addSubtarefa,
   deleteSubtarefa,
@@ -43,6 +42,7 @@ import {
 } from '../../../store';
 import { dueBadge, parseDateOnly, STATUS_LABELS, STATUS_ORDER } from '../tarefasLogic';
 import { TagPill } from './TagPicker';
+import { TarefaDescriptionContent } from './TarefaDescriptionContent';
 
 interface TarefaDetailSheetProps {
   tarefa: TarefaWithRelations;
@@ -304,14 +304,17 @@ export function TarefaDetailSheet({
             )}
           </div>
 
-          {tarefa.descricao && (
+          {(tarefa.descricao_rich || tarefa.descricao) && (
             <div>
               <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
                 Descrição
               </div>
-              <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-main)' }}>
-                <MentionText text={tarefa.descricao} />
-              </p>
+              <div className="text-sm" style={{ color: 'var(--text-main)' }}>
+                <TarefaDescriptionContent
+                  richContent={tarefa.descricao_rich}
+                  plainText={tarefa.descricao}
+                />
+              </div>
             </div>
           )}
 

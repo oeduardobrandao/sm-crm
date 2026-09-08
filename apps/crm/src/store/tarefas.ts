@@ -1,9 +1,12 @@
 import { supabase, getUserId, getContaId } from './core';
-import { extractMentionsFromText } from '@/components/mentions/mentionTokens';
+import {
+  extractMentionsFromDoc,
+  extractMentionsFromText,
+} from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
 
-function membroMentionIds(text: string): number[] {
-  return extractMentionsFromText(text)
+function membroMentionIds(text: string, richDoc?: Record<string, unknown> | null): number[] {
+  return (richDoc ? extractMentionsFromDoc(richDoc) : extractMentionsFromText(text))
     .filter((ref) => ref.entityType === 'membro')
     .map((ref) => ref.id);
 }
@@ -16,6 +19,7 @@ export interface Tarefa {
   conta_id?: string;
   titulo: string;
   descricao?: string | null;
+  descricao_rich?: Record<string, unknown> | null;
   status: TarefaStatus;
   responsavel_id?: number | null;
   cliente_id?: number | null;
@@ -99,7 +103,7 @@ export async function addTarefa(
       .insert(tagIds.map((tag_id) => ({ tarefa_id: data.id, tag_id, conta_id })));
     if (linkError) throw linkError;
   }
-  await syncMentions('tarefa', data.id, membroMentionIds(t.descricao ?? ''));
+  await syncMentions('tarefa', data.id, membroMentionIds(t.descricao ?? '', t.descricao_rich));
   return data;
 }
 
@@ -114,8 +118,8 @@ export async function updateTarefa(
     .select()
     .single();
   if (error) throw error;
-  if ('descricao' in patch) {
-    await syncMentions('tarefa', id, membroMentionIds(patch.descricao ?? ''));
+  if ('descricao' in patch || 'descricao_rich' in patch) {
+    await syncMentions('tarefa', id, membroMentionIds(patch.descricao ?? '', patch.descricao_rich));
   }
   return data;
 }

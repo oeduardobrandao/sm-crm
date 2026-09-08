@@ -1,5 +1,8 @@
 import { supabase } from './core';
-import { extractMentionsFromText } from '@/components/mentions/mentionTokens';
+import {
+  extractMentionsFromDoc,
+  extractMentionsFromText,
+} from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
 
 export interface IdeiaReaction {
@@ -107,6 +110,7 @@ export async function convertSolicitacaoEmTarefa(args: {
   ideiaId: string;
   titulo: string;
   descricao: string | null;
+  descricaoRich?: Record<string, unknown> | null;
   responsavelId: number | null;
   dataLimite: string | null;
 }): Promise<number> {
@@ -114,15 +118,17 @@ export async function convertSolicitacaoEmTarefa(args: {
     p_ideia_id: args.ideiaId,
     p_titulo: args.titulo,
     p_descricao: args.descricao,
+    p_descricao_rich: args.descricaoRich ?? null,
     p_responsavel_id: args.responsavelId,
     p_data_limite: args.dataLimite,
   });
   if (error) throw new Error(error.message);
   const tarefaId = data as number;
-  if (args.descricao) {
-    const membroIds = extractMentionsFromText(args.descricao)
-      .filter((ref) => ref.entityType === 'membro')
-      .map((ref) => ref.id);
+  if (args.descricao || args.descricaoRich) {
+    const refs = args.descricaoRich
+      ? extractMentionsFromDoc(args.descricaoRich)
+      : extractMentionsFromText(args.descricao ?? '');
+    const membroIds = refs.filter((ref) => ref.entityType === 'membro').map((ref) => ref.id);
     await syncMentions('tarefa', tarefaId, membroIds);
   }
   return tarefaId;

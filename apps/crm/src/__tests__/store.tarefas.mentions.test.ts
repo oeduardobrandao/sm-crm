@@ -61,6 +61,38 @@ describe('tarefas mention sync', () => {
     expect(call.payload).toEqual({ p_host_type: 'tarefa', p_host_id: 10, p_membro_ids: [5] });
   });
 
+  it('addTarefa syncs mentions from the rich document when plain text has no token metadata', async () => {
+    mockedSupabase.__queueSupabaseResult('tarefas', 'insert', {
+      data: { id: 12, titulo: 'Nova tarefa', descricao: '@Ana confere' },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
+
+    await store.addTarefa({
+      titulo: 'Nova tarefa',
+      descricao: '@Ana confere',
+      descricao_rich: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              {
+                type: 'mention',
+                attrs: { entityType: 'membro', id: 5, label: 'Ana', parentId: null },
+              },
+              { type: 'text', text: ' confere' },
+            ],
+          },
+        ],
+      },
+      status: 'pendente',
+    });
+
+    const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({ p_host_type: 'tarefa', p_host_id: 12, p_membro_ids: [5] });
+  });
+
   it('addTarefa syncs an empty array when descricao is omitted', async () => {
     mockedSupabase.__queueSupabaseResult('tarefas', 'insert', {
       data: { id: 11, titulo: 'Sem descricao' },
