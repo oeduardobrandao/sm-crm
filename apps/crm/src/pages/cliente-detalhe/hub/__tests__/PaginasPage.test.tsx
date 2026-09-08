@@ -367,6 +367,105 @@ describe('PaginasPage', () => {
     expect(editor.textContent).toContain('corpo editado');
   });
 
+  // Finding 2 (fix round 2): o debounce de 400ms era só cancelado (nunca gravado) ao
+  // desmontar -- confirmar a troca de página DENTRO dessa janela perdia o título/corpo
+  // mais recentes, contradizendo o diálogo, que promete guardar as alterações no
+  // navegador. Confirma a troca logo em seguida de editar, sem esperar o debounce.
+  it('não perde o rascunho ao confirmar a troca de página dentro da janela do debounce', async () => {
+    renderPaginas({ pages: [PAGE, OUTRA] });
+    await findEditor();
+
+    const titleInput = screen.getByPlaceholderText('Título da página');
+    await userEvent.clear(titleInput);
+    await userEvent.type(titleInput, 'Editado na janela');
+    await typeInEditor(' corpo na janela');
+
+    // Sem esperar o debounce: confirma a troca imediatamente, testando exatamente a
+    // janela em que o timer ainda não gravou nada no localStorage.
+    await userEvent.click(screen.getByText('Outra página'));
+    await userEvent.click(screen.getByRole('button', { name: 'Trocar mesmo assim' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Outra página')).toBeInTheDocument());
+
+    const raw = localStorage.getItem('hub-page-draft:p1');
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw as string).title).toBe('Editado na janela');
+
+    await userEvent.click(screen.getByText('Página um'));
+    await waitFor(() => expect(screen.getByDisplayValue('Editado na janela')).toBeInTheDocument());
+    const editor = await findEditor();
+    expect(editor.textContent).toContain('corpo na janela');
+  });
+
+  // Finding 3 (fix round 2): para uma página nova (`page === null`), `usePageDraft(null)`
+  // virava no-op -- digitar em "Nova página" e confirmar uma troca perdia tudo. A chave
+  // agora é escopada por cliente (`new-<clienteId>`), então o rascunho sobrevive a
+  // trocar de página e voltar, igual já acontecia para páginas existentes.
+  //
+  // Usa `typeIntoNewEditor` em vez de `typeInEditor`/`findEditor`: uma página nova
+  // parte de `{ type: 'doc', content: [] }`, e diferente do que o comentário de
+  // `findEditor` supõe, o ProseMirror NÃO normaliza um doc vazio pra um `<p>` vazio só
+  // por montar (`errorOnInvalidContent` é `false` por padrão) -- o contenteditable fica
+  // com 0 childNodes até a primeira tecla, então esperar childNodes > 0 antes de digitar
+  // trava para sempre. Clicar e digitar direto no elemento funciona normalmente mesmo
+  // partindo de 0 childNodes.
+  async function typeIntoNewEditor(text: string) {
+    const el = document.body.querySelector('[contenteditable="true"]') as HTMLElement;
+    await userEvent.click(el);
+    await userEvent.type(el, text);
+  }
+
+  it('mantém o rascunho de uma página nova ao trocar de página e voltar', async () => {
+    renderPaginas({ pages: [PAGE] });
+    await screen.findByText('Página um');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nova página' }));
+    const titleInput = await screen.findByPlaceholderText('Título da página');
+    await userEvent.type(titleInput, 'Sobre nós');
+    await typeIntoNewEditor('Texto da página nova');
+
+    await waitFor(
+      () => {
+        const raw = localStorage.getItem(`hub-page-draft:new-${CLIENTE.id}`);
+        expect(raw).not.toBeNull();
+        expect(JSON.parse(raw as string).title).toBe('Sobre nós');
+      },
+      { timeout: 2000 },
+    );
+
+    await userEvent.click(screen.getByText('Página um'));
+    await userEvent.click(screen.getByRole('button', { name: 'Trocar mesmo assim' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Página um')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nova página' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Sobre nós')).toBeInTheDocument());
+    // O rascunho restaurado já tem conteúdo real (não é mais o doc vazio inicial), então
+    // `findEditor` (que espera childNodes > 0) funciona normalmente aqui.
+    const editor = await findEditor();
+    expect(editor.textContent).toContain('Texto da página nova');
+  });
+
+  // Finding 3 (fix round 2), a outra metade: depois que a página nova é criada de
+  // verdade, o rascunho "new-<clienteId>" tem que sumir -- senão a PRÓXIMA composição de
+  // "Nova página" reabriria com conteúdo de uma criação já concluída.
+  it('limpa o rascunho de página nova depois de criar, sem reaparecer numa composição futura', async () => {
+    renderPaginas({ pages: [] });
+    const titleInput = await screen.findByPlaceholderText('Título da página');
+    await userEvent.type(titleInput, 'Primeira página');
+    await typeIntoNewEditor('Conteúdo inicial');
+
+    await waitFor(
+      () => expect(localStorage.getItem(`hub-page-draft:new-${CLIENTE.id}`)).not.toBeNull(),
+      { timeout: 2000 },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(hubStore.upsertHubPage).toHaveBeenCalled());
+
+    await waitFor(() =>
+      expect(localStorage.getItem(`hub-page-draft:new-${CLIENTE.id}`)).toBeNull(),
+    );
+  });
+
   it('não usa useBlocker', async () => {
     // useBlocker desliga a troca silenciosa entre deploys: React Router honra só o
     // último blocker registrado. Ver silent-update.router.test.ts.

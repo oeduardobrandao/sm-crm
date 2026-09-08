@@ -10,7 +10,7 @@ import { CalloutReadonly } from './CalloutReadonly';
 import { InlineImageReadonly } from './InlineImageReadonly';
 import { CommentHighlightReadonly } from './CommentHighlightReadonly';
 import { MentionReadonly } from './MentionReadonly';
-import { sanitizeExternalUrl } from '../lib/security';
+import { isAllowedRichTextLinkUrl } from '@mesaas/link-policy';
 
 /**
  * The TipTap extension set used to read post `conteudo` in the hub. This must stay a
@@ -36,11 +36,13 @@ export function richTextExtensions(editable = false) {
       autolink: false,
       // TipTap's own default `isAllowedUri` blocks `javascript:` but still allows
       // `ftp:`/`ftps:` and doesn't reject credential-bearing URLs
-      // (`https://user:pass@host`) -- both slip a link block's legacy sibling
-      // (`sanitizeExternalUrl`, used by PaginaPage's markdown/legacy-block paths)
-      // already rejects. Reusing that SAME helper here closes the gap instead of
-      // maintaining a second URL policy that could drift from the first.
-      isAllowedUri: (url) => sanitizeExternalUrl(url) !== '#',
+      // (`https://user:pass@host`). `isAllowedRichTextLinkUrl` (@mesaas/link-policy) is
+      // the single shared policy for this: http/https/mailto/tel allowed, everything
+      // else (including relative/anchor-only URLs) rejected. It is shared with the CRM's
+      // page editor (pageEditorSchema.ts) so the write side and this read side can't
+      // drift -- a scheme one side allows and the other rejects is a link that persists
+      // but silently renders dead here.
+      isAllowedUri: (url) => isAllowedRichTextLinkUrl(url),
     }),
     CalloutReadonly,
     InlineImageReadonly,

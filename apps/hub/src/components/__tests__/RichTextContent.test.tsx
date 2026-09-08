@@ -102,6 +102,20 @@ describe('RichTextContent read-only mount', () => {
   });
 });
 
+function docWithLink(href: string) {
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'clique aqui', marks: [{ type: 'link', attrs: { href } }] },
+        ],
+      },
+    ],
+  };
+}
+
 describe('RichTextContent link URL policy (Finding 4, fix round 1)', () => {
   // TipTap's default Link `isAllowedUri` already blocks `javascript:` (kept here as a
   // baseline), but its allowlist still includes `ftp:`/`ftps:` and never inspects
@@ -110,20 +124,6 @@ describe('RichTextContent link URL policy (Finding 4, fix round 1)', () => {
   // blocks) already rejects both via `sanitizeExternalUrl`; richtext links must follow
   // the SAME policy, or the portal enforces two different rules depending on which
   // block shape a page happens to be stored in.
-  function docWithLink(href: string) {
-    return {
-      type: 'doc',
-      content: [
-        {
-          type: 'paragraph',
-          content: [
-            { type: 'text', text: 'clique aqui', marks: [{ type: 'link', attrs: { href } }] },
-          ],
-        },
-      ],
-    };
-  }
-
   it.each([
     ['javascript:alert(1)'],
     ['ftp://example.com/segredo'],
@@ -145,5 +145,42 @@ describe('RichTextContent link URL policy (Finding 4, fix round 1)', () => {
     await waitFor(() => expect(container.querySelector('a')).not.toBeNull());
     const anchor = container.querySelector('a') as HTMLAnchorElement;
     expect(anchor.getAttribute('href')).toBe(href);
+  });
+});
+
+describe('RichTextContent link URL policy (Finding 1, fix round 2)', () => {
+  // Fix round 1 (above) closed the javascript:/ftp:/credentials hole by reusing
+  // `sanitizeExternalUrl` -- but that helper is http/https-only, so it ALSO killed
+  // `mailto:`, `tel:`, and in-portal relative/anchor links (measured `href=""` on all
+  // of them post-fix). `isAllowedRichTextLinkUrl` (@mesaas/link-policy) is the
+  // corrected, single shared policy: http/https/mailto/tel allowed, everything else
+  // (including relative/anchor-only URLs) rejected -- and it's the SAME function the
+  // CRM page editor applies on write (pageEditorSchema.ts), so a link that persists
+  // can't come out dead here.
+  it.each([['mailto:contato@exemplo.com'], ['tel:+5511999999999']])(
+    'mantém o link %s intacto e clicável',
+    async (href) => {
+      const { container } = render(
+        <RichTextContent content={docWithLink(href)} editable={false} />,
+      );
+
+      await waitFor(() => expect(container.querySelector('a')).not.toBeNull());
+      const anchor = container.querySelector('a') as HTMLAnchorElement;
+      expect(anchor.getAttribute('href')).toBe(href);
+    },
+  );
+
+  it.each([
+    ['data:text/html,<script>alert(1)</script>'],
+    ['/pagina-interna'],
+    ['#ancora'],
+    ['//evil.com'],
+  ])('não deixa o href %s sobreviver na âncora renderizada', async (href) => {
+    const { container } = render(<RichTextContent content={docWithLink(href)} editable={false} />);
+
+    await waitFor(() => expect(container.querySelector('a')).not.toBeNull());
+    const anchor = container.querySelector('a') as HTMLAnchorElement;
+    expect(anchor.getAttribute('href')).not.toBe(href);
+    expect(anchor.getAttribute('href')).toBe('');
   });
 });

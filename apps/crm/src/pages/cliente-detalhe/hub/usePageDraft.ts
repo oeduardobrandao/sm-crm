@@ -60,8 +60,11 @@ function parseStoredDraft(raw: string): PageDraft | null {
  * rascunho sobrevive a navegar para fora E a fechar a aba, que é mais proteção
  * do que um blocker daria.
  *
- * `pageId` é `null` para uma página nova ainda sem id (a criação em si nunca
- * teve um rascunho local para restaurar) -- todo método vira no-op nesse caso.
+ * `pageId` só é `null` se o chamador passar `null` explicitamente -- todo método vira
+ * no-op nesse caso, sem lançar. `PaginasPage` passa uma chave estável (`new-<clienteId>`)
+ * mesmo para a página ainda sem id (fix round 2, Finding 3): passar `null` ali fazia o
+ * rascunho da composição de "Nova página" virar no-op silencioso, perdendo tudo que fosse
+ * digitado antes de salvar.
  */
 export function usePageDraft(pageId: string | null) {
   const draft = useMemo(() => {

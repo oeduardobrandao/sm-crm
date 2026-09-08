@@ -384,7 +384,13 @@ function PageEditorPane({
 }) {
   const loaded = useMemo(() => readPageDocResult(page?.content), [page?.content]);
   const legacy = useMemo(() => isLegacyContent(page?.content), [page?.content]);
-  const { draft, saveDraft, clearDraft } = usePageDraft(page?.id ?? null);
+  // Página nova (`page === null`) ainda não tem id -- sem uma chave própria,
+  // `usePageDraft(null)` vira no-op e tudo que for digitado em "Nova página" some ao
+  // trocar de página (Finding 3). A chave é escopada por cliente (não por sessão) para
+  // sobreviver a trocar de aba e voltar, e `handleSave` chama `clearDraft()` no sucesso da
+  // criação para não deixar esse rascunho "novo" reaparecer numa composição futura.
+  const draftKey = page?.id ?? `new-${clienteId}`;
+  const { draft, saveDraft, clearDraft } = usePageDraft(draftKey);
 
   // `draft?.title` é `undefined` tanto para "sem rascunho" quanto para um rascunho
   // gravado no formato antigo (doc-only, sem título) -- os dois casos devem cair
@@ -423,11 +429,19 @@ function PageEditorPane({
   // em andamento -- mecanismo independente do beforeunload acima (ver @mesaas/app-lifecycle).
   useUnsavedWork(isDirty || saving);
 
+  // Ao desmontar (troca de página confirmada, remount por `newDraftNonce`, ou sair da
+  // aba) com um debounce pendente, GRAVA o rascunho antes de cancelar o timer -- só
+  // cancelar (como antes) perdia o título/corpo mais recentes sempre que a troca
+  // acontecia dentro da janela de 400ms, contradizendo o diálogo de confirmação, que
+  // promete que as alterações ficam guardadas no navegador (Finding 2).
   useEffect(
     () => () => {
-      if (draftTimeoutRef.current) clearTimeout(draftTimeoutRef.current);
+      if (draftTimeoutRef.current) {
+        clearTimeout(draftTimeoutRef.current);
+        saveDraft(titleRef.current, docRef.current);
+      }
     },
-    [],
+    [saveDraft],
   );
 
   // Grava o rascunho (título + doc, sempre os dois juntos) com um pequeno debounce

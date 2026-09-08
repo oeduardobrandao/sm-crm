@@ -96,3 +96,54 @@ describe('PaginaRichTextEditor', () => {
     expect(textbox.querySelector('a[href="https://mesaas.com.br"]')).not.toBeNull();
   });
 });
+
+describe('política de link do editor (Finding 1, fix round 2)', () => {
+  // A mesma política que o Hub aplica na leitura (isAllowedRichTextLinkUrl,
+  // @mesaas/link-policy) agora também roda aqui na escrita -- sem isso este editor
+  // podia persistir um link que o Hub recusa a renderizar, um beco sem saída
+  // silencioso. TipTap's `setLink` command já checa `isAllowedUri` e vira NO-OP
+  // (marca não aplicada) quando ela recusa -- diferente do lado de leitura, que
+  // aplica a marca e só esvazia o `href` ao renderizar.
+  async function applyLinkViaToolbar(href: string) {
+    render(
+      <PaginaRichTextEditor
+        doc={{
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'abc' }] }],
+        }}
+        onChange={vi.fn()}
+      />,
+    );
+    const textbox = screen.getByRole('textbox');
+    await userEvent.click(textbox);
+    await userEvent.keyboard('{Control>}a{/Control}');
+    const toolbar = screen.getByRole('toolbar', { name: 'Formatação do texto' });
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Link' }).find((b) => toolbar.contains(b))!,
+    );
+    const input = screen.getByLabelText('Endereço do link');
+    await userEvent.type(input, href);
+    await userEvent.keyboard('{Enter}');
+    return textbox;
+  }
+
+  it.each([['mailto:contato@exemplo.com'], ['tel:+5511999999999']])(
+    'aplica o link %s (autolink de e-mail digitado não pode virar link morto no Hub)',
+    async (href) => {
+      const textbox = await applyLinkViaToolbar(href);
+      expect(textbox.querySelector(`a[href="${href}"]`)).not.toBeNull();
+    },
+  );
+
+  it.each([
+    ['javascript:alert(1)'],
+    ['data:text/html,<script>alert(1)</script>'],
+    ['ftp://example.com/segredo'],
+    ['https://user:senha@example.com'],
+    ['/pagina-interna'],
+    ['#ancora'],
+  ])('recusa o link %s -- nenhuma marca é aplicada', async (href) => {
+    const textbox = await applyLinkViaToolbar(href);
+    expect(textbox.querySelector('a')).toBeNull();
+  });
+});

@@ -12,6 +12,7 @@ export default defineConfig({
       '@mesaas/report-blocks': path.resolve(__dirname, 'packages/report-blocks'),
       '@mesaas/import-parsers': path.resolve(__dirname, 'packages/import-parsers/index.ts'),
       '@mesaas/app-lifecycle': path.resolve(__dirname, 'packages/app-lifecycle/index.ts'),
+      '@mesaas/link-policy': path.resolve(__dirname, 'packages/link-policy/index.ts'),
       '@shared': path.resolve(__dirname, 'supabase/functions/_shared'),
     },
   },
