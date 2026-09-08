@@ -114,6 +114,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDr
       ideiaId: ideia.id,
       titulo: payload.titulo,
       descricao: payload.descricao,
+      descricaoRich: payload.descricao_rich,
       responsavelId: payload.responsavel_id,
       dataLimite: payload.data_limite,
     });

@@ -24,6 +24,8 @@ import {
   Check,
   Lightbulb,
   MessageSquare,
+  ImagePlus,
+  Loader2,
 } from 'lucide-react';
 import { CalloutExtension } from './CalloutExtension';
 import { CommentHighlight } from './CommentHighlight';
@@ -68,9 +70,15 @@ const TEXT_COLORS = [
 export function postEditorExtensions({
   mentionSearch,
   onUploadInlineImage,
+  placeholder = 'Escreva o conteúdo do post...',
+  onUploadStart,
+  onUploadEnd,
 }: {
   mentionSearch: (query: string) => Promise<MentionSection[]>;
   onUploadInlineImage?: InlineImageUploadFn;
+  placeholder?: string;
+  onUploadStart?: () => void;
+  onUploadEnd?: () => void;
 }) {
   return [
     // StarterKit v3 already bundles Link and Underline. Without `link: false` /
@@ -99,12 +107,14 @@ export function postEditorExtensions({
       autolink: true,
       isAllowedUri: (url, ctx) => isAllowedRichTextAutolinkUrl(url, ctx),
     }),
-    Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
+    Placeholder.configure({ placeholder }),
     CalloutExtension,
     CommentHighlight,
     MentionNode,
     MentionSuggestion.configure({ search: mentionSearch }),
-    ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
+    ...(onUploadInlineImage
+      ? [createInlineImageExtension(onUploadInlineImage, onUploadStart, onUploadEnd)]
+      : []),
   ];
 }
 
@@ -136,6 +146,10 @@ interface PostEditorProps {
   onEditComment?: (commentId: number, content: string) => Promise<void>;
   onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
   onUploadInlineImage?: InlineImageUploadFn;
+  placeholder?: string;
+  ariaLabel?: string;
+  showCharacterCount?: boolean;
+  onUploadStateChange?: (uploading: boolean) => void;
 }
 
 export function PostEditor({
@@ -154,6 +168,10 @@ export function PostEditor({
   onEditComment,
   onDeleteComment,
   onUploadInlineImage,
+  placeholder = 'Escreva o conteúdo do post...',
+  ariaLabel,
+  showCharacterCount = true,
+  onUploadStateChange,
 }: PostEditorProps) {
   const navigate = useNavigate();
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
@@ -176,6 +194,24 @@ export function PostEditor({
   const commentAddRef = useRef<HTMLDivElement>(null);
   const commentAddWrapperRef = useRef<HTMLDivElement>(null);
   const commentPopoverRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const pendingUploadsRef = useRef(0);
+  const uploadStateChangeRef = useRef(onUploadStateChange);
+  useEffect(() => {
+    uploadStateChangeRef.current = onUploadStateChange;
+  }, [onUploadStateChange]);
+  const beginUpload = useRef(() => {
+    pendingUploadsRef.current += 1;
+    setImageUploading(true);
+    uploadStateChangeRef.current?.(true);
+  }).current;
+  const endUpload = useRef(() => {
+    pendingUploadsRef.current = Math.max(0, pendingUploadsRef.current - 1);
+    const uploading = pendingUploadsRef.current > 0;
+    setImageUploading(uploading);
+    uploadStateChangeRef.current?.(uploading);
+  }).current;
 
   // Editor extensions are frozen at first render (useEditor is called with no deps
   // array below), so MentionSuggestion.configure() must receive a STABLE function --
@@ -190,7 +226,13 @@ export function PostEditor({
   const mentionSearchFn = useRef((query: string) => mentionSearchRef.current(query)).current;
 
   const editor = useEditor({
-    extensions: postEditorExtensions({ mentionSearch: mentionSearchFn, onUploadInlineImage }),
+    extensions: postEditorExtensions({
+      mentionSearch: mentionSearchFn,
+      onUploadInlineImage,
+      placeholder,
+      onUploadStart: beginUpload,
+      onUploadEnd: endUpload,
+    }),
     content: initialContent ?? undefined,
     editable: !disabled,
     onCreate: () => {
@@ -200,7 +242,34 @@ export function PostEditor({
       if (!isInitialized.current) return;
       onUpdate(ed.getJSON() as Record<string, unknown>, ed.getText());
     },
+    editorProps: ariaLabel
+      ? {
+          attributes: {
+            role: 'textbox',
+            'aria-label': ariaLabel,
+            'aria-multiline': 'true',
+          },
+        }
+      : {},
   });
+
+  const handleImageSelection = useCallback(
+    async (file: File | undefined) => {
+      if (!file || !editor || !onUploadInlineImage) return;
+      beginUpload();
+      try {
+        const uploaded = await onUploadInlineImage(file);
+        editor.chain().focus().insertInlineImage(uploaded).run();
+        onUpdate(editor.getJSON() as Record<string, unknown>, editor.getText());
+      } catch {
+        // The caller owns the user-facing error message.
+      } finally {
+        endUpload();
+        if (imageInputRef.current) imageInputRef.current.value = '';
+      }
+    },
+    [beginUpload, editor, endUpload, onUpdate, onUploadInlineImage],
+  );
 
   useEffect(() => {
     if (editor) editor.setEditable(!disabled);
@@ -423,6 +492,34 @@ export function PostEditor({
             <ListOrdered className="h-3.5 w-3.5" />
           </button>
           <div className="post-editor-divider" />
+          {onUploadInlineImage && (
+            <>
+              <button
+                type="button"
+                className="post-editor-btn"
+                aria-label="Inserir imagem"
+                disabled={imageUploading}
+                onClick={() => imageInputRef.current?.click()}
+                data-tooltip="Inserir imagem"
+              >
+                {imageUploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ImagePlus className="h-3.5 w-3.5" />
+                )}
+              </button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="sr-only"
+                aria-hidden="true"
+                tabIndex={-1}
+                onChange={(event) => void handleImageSelection(event.target.files?.[0])}
+              />
+              <div className="post-editor-divider" />
+            </>
+          )}
           <button
             type="button"
             className={`post-editor-btn${editor?.isActive('callout') ? ' active' : ''}`}
@@ -434,9 +531,12 @@ export function PostEditor({
           >
             <Lightbulb className="h-3.5 w-3.5" />
           </button>
-          <div className="post-editor-char-count">
-            {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} / 2200
-          </div>
+          {showCharacterCount && (
+            <div className="post-editor-char-count">
+              {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} /
+              2200
+            </div>
+          )}
         </div>
       )}
 
@@ -624,28 +724,30 @@ export function PostEditor({
           <div className="post-editor-divider" />
 
           {/* Comment button */}
-          <div className="comment-add-wrapper" ref={commentAddWrapperRef}>
-            <button
-              ref={commentBtnRef}
-              type="button"
-              className="post-editor-btn"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                if (!commentAddOpen && commentBtnRef.current) {
-                  const rect = commentBtnRef.current.getBoundingClientRect();
-                  const left = Math.min(rect.left, window.innerWidth - 280 - 16);
-                  setCommentAddPos({ top: rect.bottom + 6, left });
-                }
-                setCommentAddOpen((v) => !v);
-                setTextColorOpen(false);
-                setHighlightOpen(false);
-                setLinkPopoverOpen(false);
-              }}
-              data-tooltip="Comentar"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          {onCreateComment && (
+            <div className="comment-add-wrapper" ref={commentAddWrapperRef}>
+              <button
+                ref={commentBtnRef}
+                type="button"
+                className="post-editor-btn"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (!commentAddOpen && commentBtnRef.current) {
+                    const rect = commentBtnRef.current.getBoundingClientRect();
+                    const left = Math.min(rect.left, window.innerWidth - 280 - 16);
+                    setCommentAddPos({ top: rect.bottom + 6, left });
+                  }
+                  setCommentAddOpen((v) => !v);
+                  setTextColorOpen(false);
+                  setHighlightOpen(false);
+                  setLinkPopoverOpen(false);
+                }}
+                data-tooltip="Comentar"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </BubbleMenu>
       )}
 

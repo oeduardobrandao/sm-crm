@@ -22,7 +22,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { MentionTextarea } from '@/components/mentions/MentionTextarea';
 import {
   Select,
   SelectContent,
@@ -42,6 +41,13 @@ import {
 } from '../../../store';
 import { parseDateOnly, toDateOnlyString, STATUS_LABELS, STATUS_ORDER } from '../tarefasLogic';
 import { TagPicker } from './TagPicker';
+import { TarefaDescriptionEditor } from './TarefaDescriptionEditor';
+import {
+  isTarefaDescriptionEmpty,
+  plainTextToTarefaDescriptionDoc,
+  sanitizeTarefaDescriptionDoc,
+  type TarefaDescriptionDoc,
+} from '../tarefaDescription';
 
 const tarefaSchema = z.object({
   titulo: z.string().trim().min(1, 'Informe o título da tarefa'),
@@ -66,6 +72,7 @@ const BLANK: TarefaFormValues = {
 export type TarefaFormPayload = {
   titulo: string;
   descricao: string | null;
+  descricao_rich: TarefaDescriptionDoc | null;
   status: 'pendente' | 'em_andamento' | 'concluida';
   responsavel_id: number | null;
   cliente_id: number | null;
@@ -104,7 +111,15 @@ export function TarefaFormDialog({
   onCreate,
 }: TarefaFormDialogProps) {
   const [saving, setSaving] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
   const [tagIds, setTagIds] = useState<number[]>([]);
+  const [descriptionDoc, setDescriptionDoc] = useState<TarefaDescriptionDoc>(() =>
+    plainTextToTarefaDescriptionDoc(''),
+  );
+  const [editorInitialContent, setEditorInitialContent] = useState<TarefaDescriptionDoc>(() =>
+    plainTextToTarefaDescriptionDoc(''),
+  );
+  const [editorRevision, setEditorRevision] = useState(0);
 
   const form = useForm<TarefaFormValues>({
     resolver: zodResolver(tarefaSchema),
@@ -121,6 +136,8 @@ export function TarefaFormDialog({
   useEffect(() => {
     if (!open) return;
     if (editing) {
+      const richDescription =
+        editing.descricao_rich ?? plainTextToTarefaDescriptionDoc(editing.descricao ?? '');
       form.reset({
         titulo: editing.titulo,
         descricao: editing.descricao ?? '',
@@ -129,14 +146,23 @@ export function TarefaFormDialog({
         data_limite: editing.data_limite ? parseDateOnly(editing.data_limite) : undefined,
         status: editing.status,
       });
+      setDescriptionDoc(richDescription);
+      setEditorInitialContent(richDescription);
+      setEditorRevision((value) => value + 1);
+      setImageUploading(false);
       setTagIds(editing.tags.map((t) => t.id!).filter((id) => id != null));
     } else {
+      const richDescription = plainTextToTarefaDescriptionDoc(initialDescricao ?? '');
       form.reset({
         ...BLANK,
         titulo: initialTitulo ?? '',
         descricao: initialDescricao ?? '',
         cliente_id: initialClienteId != null ? String(initialClienteId) : 'none',
       });
+      setDescriptionDoc(richDescription);
+      setEditorInitialContent(richDescription);
+      setEditorRevision((value) => value + 1);
+      setImageUploading(false);
       setTagIds([]);
     }
   }, [open, editing, initialTitulo, initialDescricao, initialClienteId, form]);
@@ -150,10 +176,13 @@ export function TarefaFormDialog({
   const sortedMembros = [...membros].sort((a, b) => a.nome.localeCompare(b.nome));
 
   const onSubmit = async (values: TarefaFormValues) => {
+    if (imageUploading) return;
     setSaving(true);
+    const sanitizedDescription = sanitizeTarefaDescriptionDoc(descriptionDoc);
     const payload = {
       titulo: values.titulo.trim(),
       descricao: values.descricao.trim() || null,
+      descricao_rich: isTarefaDescriptionEmpty(sanitizedDescription) ? null : sanitizedDescription,
       status: values.status,
       responsavel_id: values.responsavel_id === 'none' ? null : parseInt(values.responsavel_id, 10),
       cliente_id: values.cliente_id === 'none' ? null : parseInt(values.cliente_id, 10),
@@ -183,8 +212,8 @@ export function TarefaFormDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[480px]">
+    <Dialog open={open} onOpenChange={(o) => !o && !saving && !imageUploading && onClose()}>
+      <DialogContent className="sm:max-w-[640px]">
         <DialogHeader>
           <DialogTitle>
             {editing ? 'Editar tarefa' : onCreate ? 'Converter em tarefa' : 'Nova tarefa'}
@@ -218,18 +247,15 @@ export function TarefaFormDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Descrição</FormLabel>
-                  <FormControl>
-                    <MentionTextarea
-                      rows={3}
-                      placeholder="Detalhes, contexto, links..."
-                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                      name={field.name}
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    />
-                  </FormControl>
+                  <TarefaDescriptionEditor
+                    key={editorRevision}
+                    initialContent={editorInitialContent}
+                    onUpdate={(doc, plainText) => {
+                      setDescriptionDoc(sanitizeTarefaDescriptionDoc(doc));
+                      field.onChange(plainText);
+                    }}
+                    onUploadStateChange={setImageUploading}
+                  />
                   <FormMessage />
                 </FormItem>
               )}
@@ -349,11 +375,22 @@ export function TarefaFormDialog({
               />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={saving || imageUploading}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? 'Salvando...' : editing ? 'Salvar' : 'Criar tarefa'}
+              <Button type="submit" disabled={saving || imageUploading}>
+                {imageUploading
+                  ? 'Enviando imagem...'
+                  : saving
+                    ? 'Salvando...'
+                    : editing
+                      ? 'Salvar'
+                      : 'Criar tarefa'}
               </Button>
             </DialogFooter>
           </form>

@@ -880,7 +880,12 @@ export async function updateTask(
   // null limpa, omitido preserva (Object.hasOwn distingue os dois).
   const payload: Record<string, unknown> = {};
   if (Object.hasOwn(args, "titulo")) payload.titulo = args.titulo;
-  if (Object.hasOwn(args, "descricao")) payload.descricao = args.descricao;
+  if (Object.hasOwn(args, "descricao")) {
+    payload.descricao = args.descricao;
+    // MCP descriptions are plain text. Clear any previous TipTap document so the
+    // CRM does not prefer stale rich content over this update.
+    payload.descricao_rich = null;
+  }
   if (Object.hasOwn(args, "status")) payload.status = args.status; // concluida_em: trigger do banco
   if (Object.hasOwn(args, "responsavel_id")) payload.responsavel_id = args.responsavel_id;
   if (Object.hasOwn(args, "data_limite")) payload.data_limite = args.data_limite;
