@@ -694,3 +694,75 @@ Deno.test("tiktok-publish publish-now: TikTok validation failure -> 422, no stat
   assertEquals(body.details, ["Post precisa de pelo menos uma mídia."]);
   assertEquals(rpcCalls(db, "record_post_status_change").length, 0);
 });
+
+for (const outcome of ["replaced", "invalid", "read-error"] as const) {
+  Deno.test(`tiktok-publish publish-now: media changes before claiming (${outcome})`, async () => {
+    const db = createSupabaseQueryMock();
+    db.withAuth({ id: "actor-1" });
+    db.queue("workflow_posts", "select", { data: basePost(), error: null });
+    db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+    gateOn(db);
+
+    let mediaReplaced = false;
+    let publishingClaimed = false;
+    // The replacement transaction wins the workflow_posts row lock after preflight
+    // validation, immediately before publish-now transitions the post to agendado.
+    db.queueRpc("record_post_status_change", () => {
+      mediaReplaced = true;
+      return { data: null, error: null };
+    });
+    db.queue("workflow_posts", "update", () => {
+      publishingClaimed = true;
+      return { data: null, error: null };
+    });
+    db.queue("tiktok_accounts", "select", { data: { username: "creator" }, error: null });
+
+    const { fn: tiktokFetchStub, calls: fetchCalls } = stubTiktokFetch();
+    const handler = createPublishHandler(makeDeps(db, {
+      validateForTikTokScheduling: (() => {
+        if (!mediaReplaced) return Promise.resolve(okTikTokValidation());
+        assert(publishingClaimed, "the fresh media read must happen after the publishing claim");
+        if (outcome === "read-error") throw new Error("private database read details");
+        if (outcome === "invalid") {
+          return Promise.resolve(okTikTokValidation({
+            ok: false,
+            errors: ["Post precisa de pelo menos uma mídia."],
+            media: [],
+          }));
+        }
+        const replacement = okTikTokValidation();
+        replacement.media![0].r2_key = "img/replacement.jpg";
+        return Promise.resolve(replacement);
+      }) as never,
+      getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
+      tiktokFetch: tiktokFetchStub,
+      buildTikTokMediaUrl,
+      sleep: noopSleep,
+    }));
+
+    const res = await handler(tiktokRequest("publish-now", 1));
+    const body = await res.json();
+    if (outcome === "replaced") {
+      assertEquals(res.status, 200);
+      const init = fetchCalls.find((call) => call.path === "/post/publish/content/init/");
+      assert(init);
+      const photoUrl = (init.body as { source_info: { photo_images: string[] } }).source_info.photo_images[0];
+      assertEquals(
+        await verifyTikTokMediaToken(photoUrl.slice(MEDIA_URL_PREFIX.length)),
+        "img/replacement.jpg",
+        "TikTok must receive the replacement file, even though the old R2 object still exists",
+      );
+    } else {
+      assertEquals(res.status, outcome === "invalid" ? 422 : 500);
+      assertEquals(fetchCalls.length, 0, "invalid or unreadable replacement must never reach TikTok");
+      if (outcome === "invalid") assertEquals(body.details, ["Post precisa de pelo menos uma mídia."]);
+      assert(!JSON.stringify(body).includes("private database read details"));
+      const failure = callsFor(db, "workflow_posts", "update").at(-1)!.payload as Record<string, unknown>;
+      assertEquals(failure.tiktok_publish_status, "failed");
+      assertEquals(failure.tiktok_publish_processing_at, null);
+      assert(!String(failure.tiktok_publish_error).includes("private database read details"));
+      const transition = rpcCalls(db, "record_post_status_change").at(-1)!.payload as Record<string, unknown>;
+      assertEquals(transition.p_new_status, "falha_publicacao");
+    }
+  });
+}

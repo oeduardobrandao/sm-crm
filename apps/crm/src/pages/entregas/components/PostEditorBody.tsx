@@ -420,6 +420,16 @@ export function PostEditorBody({
 
       <PostMediaGallery
         postId={post.id!}
+        forStories={isStoryPost}
+        targetsInstagram={post.platform !== 'tiktok'}
+        adjustmentDisabled={
+          post.status === 'agendado' ||
+          post.status === 'postado' ||
+          !!post.published_at ||
+          !!post.instagram_media_id ||
+          !!post.instagram_container_id ||
+          ['initiated', 'processing', 'published'].includes(post.tiktok_publish_status ?? '')
+        }
         mediaAutocleanedAt={post.media_autocleaned_at}
         instagramPermalink={post.instagram_permalink}
         tiktokPostUrl={post.tiktok_post_url}

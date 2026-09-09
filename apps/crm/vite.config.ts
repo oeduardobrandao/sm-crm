@@ -19,6 +19,9 @@ export default defineConfig(() => {
         '@mesaas/link-policy': path.resolve(__dirname, '../../packages/link-policy/index.ts'),
       },
     },
+    // The FFmpeg wrapper resolves its worker relative to its module URL.
+    // Prebundling relocates that URL without copying worker.js.
+    optimizeDeps: { exclude: ['@ffmpeg/ffmpeg'] },
     server: {
       allowedHosts: ['.trycloudflare.com'],
     },
