@@ -19,11 +19,15 @@ async function callFn<T>(
   body?: unknown,
   query?: Record<string, string>,
   pathSuffix = '',
+  signal?: AbortSignal,
 ): Promise<T> {
+  signal?.throwIfAborted();
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
+  signal?.throwIfAborted();
+  const requestSignal = AbortSignal.any([AbortSignal.timeout(30_000), ...(signal ? [signal] : [])]);
   const url = new URL(`${SUPABASE_URL}/functions/v1/${name}${pathSuffix}`);
   if (query) Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString(), {
@@ -34,6 +38,12 @@ async function callFn<T>(
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : undefined,
+    signal: requestSignal,
+  }).catch((error: unknown) => {
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      throw new DOMException('O servidor demorou demais. Tente novamente.', 'TimeoutError');
+    }
+    throw error;
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -46,20 +56,42 @@ function putWithProgress(
   url: string,
   file: File,
   onProgress?: (p: UploadProgress) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     const xhr = new XMLHttpRequest();
+    const cleanup = () => signal?.removeEventListener('abort', abort);
+    const fail = (error: unknown) => {
+      cleanup();
+      reject(error);
+    };
+    const abort = () => {
+      xhr.abort();
+      fail(signal?.reason ?? new DOMException('Upload cancelado.', 'AbortError'));
+    };
     xhr.open('PUT', url);
+    xhr.timeout = 5 * 60_000;
     xhr.setRequestHeader('Content-Type', file.type);
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && onProgress) onProgress({ loaded: e.loaded, total: e.total });
+      if (!signal?.aborted && e.lengthComputable && onProgress)
+        onProgress({ loaded: e.loaded, total: e.total });
     };
-    xhr.onload = () =>
-      xhr.status >= 200 && xhr.status < 300
-        ? resolve()
-        : reject(new Error(`Upload failed: ${xhr.status}`));
-    xhr.onerror = () => reject(new Error('Network error during upload'));
-    xhr.send(file);
+    xhr.onload = () => {
+      cleanup();
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`Upload failed: ${xhr.status}`));
+    };
+    xhr.onerror = () => fail(new Error('Network error during upload'));
+    xhr.onabort = () => fail(signal?.reason ?? new DOMException('Upload cancelado.', 'AbortError'));
+    xhr.ontimeout = () =>
+      fail(new DOMException('O envio demorou demais. Tente novamente.', 'TimeoutError'));
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      xhr.send(file);
+    } catch (error) {
+      fail(error);
+    }
   });
 }
 
@@ -154,20 +186,16 @@ async function uploadFileUnguarded(args: {
   thumbnail?: File;
   onProgress?: (p: UploadProgress) => void;
   postId?: number;
+  signal?: AbortSignal;
 }): Promise<FileRecord> {
-  const { file, folderId, thumbnail, onProgress, postId } = args;
+  const { file, folderId, thumbnail, onProgress, postId, signal } = args;
+  signal?.throwIfAborted();
 
   const kind = file.type.startsWith('image/')
     ? 'image'
     : file.type.startsWith('video/')
       ? 'video'
       : 'document';
-
-  // For images: probe dimensions in parallel with URL request
-  let dimensionPromise: Promise<{ width: number; height: number }> | undefined;
-  if (kind === 'image') {
-    dimensionPromise = probeImage(file);
-  }
 
   const signed = await callFn<{
     file_id: string;
@@ -176,54 +204,85 @@ async function uploadFileUnguarded(args: {
     kind: string;
     thumbnail_upload_url?: string;
     thumbnail_r2_key?: string;
-  }>('file-upload-url', 'POST', {
-    folder_id: folderId,
-    filename: file.name,
-    mime_type: file.type,
-    size_bytes: file.size,
-    thumbnail: thumbnail ? { mime_type: thumbnail.type, size_bytes: thumbnail.size } : undefined,
-  });
+  }>(
+    'file-upload-url',
+    'POST',
+    {
+      folder_id: folderId,
+      filename: file.name,
+      mime_type: file.type,
+      size_bytes: file.size,
+      thumbnail: thumbnail ? { mime_type: thumbnail.type, size_bytes: thumbnail.size } : undefined,
+    },
+    undefined,
+    '',
+    signal,
+  );
 
-  const uploads: Promise<void>[] = [putWithProgress(signed.upload_url, file, onProgress)];
+  signal?.throwIfAborted();
+  const transfers = new AbortController();
+  const transferSignal = AbortSignal.any([transfers.signal, ...(signal ? [signal] : [])]);
+  const uploads: Promise<void>[] = [
+    putWithProgress(signed.upload_url, file, onProgress, transferSignal),
+  ];
   if (thumbnail && signed.thumbnail_upload_url) {
-    uploads.push(putWithProgress(signed.thumbnail_upload_url, thumbnail));
+    uploads.push(
+      putWithProgress(signed.thumbnail_upload_url, thumbnail, undefined, transferSignal),
+    );
   }
-  await Promise.all(uploads);
+  try {
+    await Promise.all(uploads);
+  } catch (error) {
+    transfers.abort();
+    throw error;
+  }
+  signal?.throwIfAborted();
 
   let width: number | undefined;
   let height: number | undefined;
   let duration_seconds: number | undefined;
 
-  if (kind === 'image' && dimensionPromise) {
-    const dims = await dimensionPromise;
+  if (kind === 'image') {
+    const dims = await probeImage(file, signal);
     width = dims.width;
     height = dims.height;
   } else if (kind === 'video') {
-    const dims = await probeVideo(file);
+    const dims = await probeVideo(file, signal);
     width = dims.width;
     height = dims.height;
     duration_seconds = dims.duration_seconds;
   }
 
-  const record = await callFn<FileRecord>('file-upload-finalize', 'POST', {
-    file_id: signed.file_id,
-    r2_key: signed.r2_key,
-    thumbnail_r2_key: signed.thumbnail_r2_key,
-    kind: signed.kind,
-    mime_type: file.type,
-    size_bytes: file.size,
-    name: file.name,
-    folder_id: folderId,
-    width,
-    height,
-    duration_seconds,
-    post_id: postId,
-  });
+  signal?.throwIfAborted();
+  const record = await callFn<FileRecord>(
+    'file-upload-finalize',
+    'POST',
+    {
+      file_id: signed.file_id,
+      r2_key: signed.r2_key,
+      thumbnail_r2_key: signed.thumbnail_r2_key,
+      kind: signed.kind,
+      mime_type: file.type,
+      size_bytes: file.size,
+      name: file.name,
+      folder_id: folderId,
+      width,
+      height,
+      duration_seconds,
+      post_id: postId,
+    },
+    undefined,
+    '',
+    signal,
+  );
 
   // Generate and PATCH blur hash in background (non-blocking)
+  signal?.throwIfAborted();
   if (kind === 'image') {
     generateBlurDataUrl(file)
-      .then((blur) => patchFileBlurHash(record.id, blur))
+      .then((blur) => {
+        if (!signal?.aborted) return patchFileBlurHash(record.id, blur);
+      })
       .catch(() => {});
   }
 
@@ -364,16 +423,33 @@ export async function getPostLinks(postId: number) {
 
 // ─── MEDIA HELPERS (reused from postMedia.ts) ───────────────────
 
-function probeImage(file: File): Promise<{ width: number; height: number }> {
+function probeImage(file: File, signal?: AbortSignal): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => {
+    const abort = () => {
+      cleanup();
+      reject(signal?.reason ?? new DOMException('Leitura cancelada.', 'AbortError'));
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new DOMException('Não foi possível ler a mídia a tempo.', 'TimeoutError'));
+    }, 30_000);
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      img.onload = null;
+      img.onerror = null;
       URL.revokeObjectURL(url);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    img.onload = () => {
+      cleanup();
       resolve({ width: img.naturalWidth, height: img.naturalHeight });
     };
     img.onerror = (e) => {
-      URL.revokeObjectURL(url);
+      cleanup();
       reject(e);
     };
     img.src = url;
@@ -382,13 +458,31 @@ function probeImage(file: File): Promise<{ width: number; height: number }> {
 
 function probeVideo(
   file: File,
+  signal?: AbortSignal,
 ): Promise<{ width: number; height: number; duration_seconds: number }> {
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     const url = URL.createObjectURL(file);
     const vid = document.createElement('video');
+    const abort = () => {
+      cleanup();
+      reject(signal?.reason ?? new DOMException('Leitura cancelada.', 'AbortError'));
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new DOMException('Não foi possível ler a mídia a tempo.', 'TimeoutError'));
+    }, 30_000);
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      vid.onloadedmetadata = null;
+      vid.onerror = null;
+      URL.revokeObjectURL(url);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     vid.preload = 'metadata';
     vid.onloadedmetadata = () => {
-      URL.revokeObjectURL(url);
+      cleanup();
       resolve({
         width: vid.videoWidth,
         height: vid.videoHeight,
@@ -396,7 +490,7 @@ function probeVideo(
       });
     };
     vid.onerror = (e) => {
-      URL.revokeObjectURL(url);
+      cleanup();
       reject(e);
     };
     vid.src = url;

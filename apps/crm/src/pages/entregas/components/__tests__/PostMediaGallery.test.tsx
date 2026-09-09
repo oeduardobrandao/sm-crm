@@ -442,3 +442,85 @@ describe('PostMediaGallery permanently lost media', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 });
+
+vi.mock('../MediaAdjustmentDialog', () => ({
+  MediaAdjustmentDialog: ({
+    media,
+    onUpdated,
+    onClose,
+  }: {
+    media: PostMedia;
+    onUpdated: () => void;
+    onClose: () => void;
+  }) => (
+    <div role="dialog">
+      Editando {media.original_filename}
+      <button
+        onClick={() => {
+          onUpdated();
+          onClose();
+        }}
+      >
+        Simular ajuste salvo
+      </button>
+    </div>
+  ),
+}));
+
+describe('PostMediaGallery adjustment entry points', () => {
+  const image = {
+    id: 44,
+    post_id: 42,
+    kind: 'image',
+    mime_type: 'image/jpeg',
+    original_filename: 'portrait.jpg',
+    url: 'https://example.test/portrait.jpg',
+    width: 1080,
+    height: 1920,
+    size_bytes: 1024,
+    duration_seconds: null,
+    is_cover: false,
+  } as PostMedia;
+  it('identifies the invalid file and opens its adjustment editor', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([image]);
+    renderGallery();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ajustar proporção de portrait.jpg' }),
+    );
+    expect(await screen.findByRole('dialog')).toHaveTextContent('portrait.jpg');
+  });
+  it('does not warn about a supported 3:4 feed image', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([{ ...image, height: 1440 }]);
+    renderGallery();
+    await screen.findByText('Adicionar');
+    expect(screen.queryByText(/precisa de ajuste/)).not.toBeInTheDocument();
+    expect(screen.getByTitle('Ajustar proporção')).toBeInTheDocument();
+  });
+});
+
+it('does not apply the carousel item warning to sequential Stories', async () => {
+  vi.mocked(listPostMedia).mockResolvedValue(makeMedia(11));
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <PostMediaGallery postId={1} forStories />
+    </QueryClientProvider>,
+  );
+  await screen.findByText('Adicionar');
+  expect(screen.queryByText(/máximo de 10/i)).not.toBeInTheDocument();
+});
+
+it('revalidates the gallery and refreshes visible cover caches after adjustment', async () => {
+  const invalid = { ...makeMedia(1)[0], height: 1920 };
+  vi.mocked(listPostMedia)
+    .mockResolvedValueOnce([invalid])
+    .mockResolvedValue([{ ...invalid, height: 1440 }]);
+  const { invalidateSpy } = renderGallery();
+  fireEvent.click(await screen.findByRole('button', { name: 'Ajustar proporção de img0.jpg' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Simular ajuste salvo' }));
+  await waitFor(() =>
+    expect(screen.queryByText('1 arquivo precisa de ajuste')).not.toBeInTheDocument(),
+  );
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-grid'] });
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-covers'] });
+});

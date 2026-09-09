@@ -371,7 +371,24 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         .eq("id", postId);
       if (lockErr) return internalServerError(json, "tiktok-publish:publish-now", lockErr);
 
+      let validationFailure: Response | null = null;
       try {
+        // A media replacement can commit after preflight while this request waits for
+        // the workflow_posts row lock. Once processing is claimed, replacements are
+        // blocked; read and validate that committed media before building provider URLs.
+        try {
+          validation = await validateTikTok(svcDb as never, postId, { skipDateCheck: true });
+        } catch (e) {
+          console.error("[TIKTOK-PUBLISH-NOW] claimed validation error:", (e as Error)?.message);
+          // Validator infrastructure errors can contain private DB details. Only the
+          // generic error may be persisted by the publishing failure cleanup below.
+          throw new Error("Erro ao validar post para publicação no TikTok.");
+        }
+        if (!validation.ok) {
+          validationFailure = json({ error: "Validação falhou", details: validation.errors }, 422);
+          throw new Error("Validação do post para publicação no TikTok falhou.");
+        }
+
         const account = validation.account!;
         const { accessToken } = await getFreshToken(svcDb as never, account.id);
 
@@ -512,7 +529,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
           );
         }
 
-        return internalServerError(json, "tiktok-publish:publish-now", err);
+        return validationFailure ?? internalServerError(json, "tiktok-publish:publish-now", err);
       }
     }
 
