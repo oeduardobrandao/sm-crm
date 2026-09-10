@@ -115,6 +115,7 @@ describe('columnKey / parseColumnKey', () => {
     expect(parseColumnKey('Copy → Design::1')).toEqual({ rowKey: 'Copy → Design', ordem: 1 });
     expect(parseColumnKey('sem-separador')).toBeNull();
     expect(parseColumnKey('template:7::x')).toBeNull();
+    expect(parseColumnKey('template:7::')).toBeNull();
   });
 });
 

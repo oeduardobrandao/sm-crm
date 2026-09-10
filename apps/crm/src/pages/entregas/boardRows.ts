@@ -29,8 +29,9 @@ export function columnKey(rowKey: string, ordem: number): string {
 export function parseColumnKey(key: string): { rowKey: string; ordem: number } | null {
   const idx = key.lastIndexOf(KEY_SEP);
   if (idx === -1) return null;
-  const ordem = Number(key.slice(idx + KEY_SEP.length));
-  if (!Number.isInteger(ordem)) return null;
+  const tail = key.slice(idx + KEY_SEP.length);
+  if (!/^-?\d+$/.test(tail)) return null; // Number('') === 0: exige dígitos explícitos
+  const ordem = Number(tail);
   return { rowKey: key.slice(0, idx), ordem };
 }
 

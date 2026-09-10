@@ -472,6 +472,7 @@ export function KanbanView({
         // Between-column move: a coluna alvo precisa existir na sequência de
         // etapas do PRÓPRIO fluxo arrastado (linhas por template aceitam
         // fluxos com listas divergentes; ver isValidDropTarget).
+        if (targetRow.key !== activeLocation.row.key) return; // troca de linha por drag fica bloqueada (spec §4.2)
         if (
           !isValidDropTarget(draggedCard.allEtapas, draggedCard.etapa.ordem, targetColumn.ordem)
         ) {
