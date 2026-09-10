@@ -234,7 +234,9 @@ Monorepo with npm workspaces:
   (Workers AI, Whisper turbo) that transcribes Hub briefing audio answers. Both
   optional, no default: when unset, hub-briefing still stores the audio and marks
   the transcription `failed` (the client sees "Tentar novamente"). The secret must
-  match the one set on the worker with `wrangler secret put TRANSCRIBE_SECRET`
+  match the one set on the worker with `wrangler secret put TRANSCRIBE_SECRET`.
+  Also read by `hub-ideias` and `ideia-media-manage` for ideia audio; the worker's
+  key allowlist covers `briefing-audio/` and `ideia-audio/`
 - `IG_AUTOMATION_SCOPES_LIVE` -- optional, default off (unset/`false`). While off, the
   Instagram OAuth URL only requests the approved trio of base scopes; flipping it to
   `true` adds the optional `instagram_business_manage_comments` AND

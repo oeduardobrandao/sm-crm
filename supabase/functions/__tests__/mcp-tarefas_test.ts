@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "./assert.ts";
-import { createTask, listTasks, updateTask } from "../mcp/queries.ts";
+import { createTask, listIdeas, listTasks, updateTask } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import { registerTools } from "../mcp/tools.ts";
 import { McpInputError, type McpKeyContext } from "../_shared/mcp-token.ts";
@@ -187,4 +187,15 @@ Deno.test("mcp-tarefas: create_task audit row carries task_id via the extended e
   await server.handlers["create_task"]({ titulo: "Nova tarefa", responsavel_id: 3 });
   const auditRow = insertPayload(calls, "audit_log")! as Record<string, any>;
   assertEquals(auditRow.resource_id, "8", "resource_id from task_id");
+});
+
+Deno.test("mcp-ideias: listIdeas selects origem, visivel_no_hub and audio_transcript", async () => {
+  const { db, calls } = makeFakeDb({ ideias: [{ data: [], error: null }] });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  await listIdeas(deps, {});
+  const sel = calls.find((c) => c.table === "ideias" && c.method === "select");
+  const str = String(sel?.args[0] ?? "");
+  assert(str.includes("origem"));
+  assert(str.includes("visivel_no_hub"));
+  assert(str.includes("audio_transcript"));
 });

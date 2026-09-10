@@ -41,6 +41,14 @@ describe('transcribe worker', () => {
     expect((await handleTranscribe(req({ key: 'briefing-audio/../x' }), makeEnv())).status).toBe(400);
   });
 
+  it('accepts ideia-audio/ keys and still rejects other prefixes', async () => {
+    const env = makeEnv();
+    const res = await handleTranscribe(req({ key: 'ideia-audio/conta/ideia/a.webm' }), env);
+    expect(res.status).toBe(200);
+    expect((await handleTranscribe(req({ key: 'ideia-audio/../x' }), makeEnv())).status).toBe(400);
+    expect((await handleTranscribe(req({ key: 'automation-media/x.webm' }), makeEnv())).status).toBe(400);
+  });
+
   it('404 when the object is missing, 413 when too large', async () => {
     expect((await handleTranscribe(req({ key: KEY }), makeEnv({ object: null }))).status).toBe(404);
     const big = makeEnv();

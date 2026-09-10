@@ -172,7 +172,7 @@ Deno.test("orphan-scan: MAX_TRASH_PER_RUN caps removals and reports the deferred
   assertEquals(result.trashed, MAX_TRASH_PER_RUN);
   assertEquals(result.capped, 30);
   assertEquals(trashed.length, MAX_TRASH_PER_RUN);
-  assertEquals(result.targets.map((t) => t.prefix), ["contas/", "briefing-audio/"]);
+  assertEquals(result.targets.map((t) => t.prefix), ["contas/", "briefing-audio/", "ideia-audio/"]);
   assertEquals(result.targets[0], {
     prefix: "contas/", candidates: MAX_TRASH_PER_RUN + 30, trashed: MAX_TRASH_PER_RUN, capped: 30,
     aborted: null, pages: 1, resumed: false,
@@ -183,9 +183,13 @@ Deno.test("orphan-scan: MAX_TRASH_PER_RUN caps removals and reports the deferred
     prefix: "briefing-audio/", candidates: 0, trashed: 0, capped: 0, aborted: null,
     pages: 1, resumed: false, cycleCompleted: true,
   });
+  assertEquals(result.targets[2], {
+    prefix: "ideia-audio/", candidates: 0, trashed: 0, capped: 0, aborted: null,
+    pages: 1, resumed: false, cycleCompleted: true,
+  });
 });
 
-Deno.test("orphan-scan: scans both contas/ and briefing-audio/ prefixes, once each", async () => {
+Deno.test("orphan-scan: scans contas/, briefing-audio/ and ideia-audio/ prefixes, once each", async () => {
   const calledPrefixes: string[] = [];
   const { db } = makeDb(() => ({ data: [], error: null }));
   const result = await runOrphanScan({
@@ -197,7 +201,7 @@ Deno.test("orphan-scan: scans both contas/ and briefing-audio/ prefixes, once ea
     }),
     trashObject: async () => {},
   });
-  assertEquals(calledPrefixes, ["contas/", "briefing-audio/"]);
+  assertEquals(calledPrefixes, ["contas/", "briefing-audio/", "ideia-audio/"]);
   assertEquals(result.aborted, null);
 });
 
@@ -240,6 +244,30 @@ Deno.test("orphan-scan: an unreferenced briefing-audio/ key is trashed", async (
   assertEquals(result.trashed, 1);
 });
 
+Deno.test("orphan-scan: an ideia-audio/ key referenced in ideias.audio_r2_key is not trashed; an unreferenced one is", async () => {
+  const referenced = "ideia-audio/c/i/x.webm";
+  const orphan = "ideia-audio/c/i/orphan.webm";
+  const { db } = makeDb((table, column, batch) => ({
+    data: table === "ideias" && column === "audio_r2_key"
+      ? batch.filter((k) => k === referenced).map((k) => ({ audio_r2_key: k }))
+      : [],
+    error: null,
+  }));
+  const deleted: string[] = [];
+  const result = await runOrphanScan({
+    ...noCheckpoint(),
+    db,
+    listOrphanKeyPage: singlePage((prefix) => (prefix === "ideia-audio/" ? [referenced, orphan] : [])),
+    trashObject: async (k) => {
+      deleted.push(k);
+    },
+  });
+  assertEquals(result.aborted, null);
+  assertEquals(deleted, [orphan]);
+  assertEquals(result.targets[2].prefix, "ideia-audio/");
+  assertEquals(result.targets[2].trashed, 1);
+});
+
 Deno.test("orphan-scan: a hub_briefing_questions query error aborts only the briefing-audio/ target — contas/ still scans", async () => {
   const contasOrphan = "contas/w/files/orphan.png";
   const briefingKey = "briefing-audio/c/q/x.webm";
@@ -252,7 +280,9 @@ Deno.test("orphan-scan: a hub_briefing_questions query error aborts only the bri
   const result = await runOrphanScan({
     ...noCheckpoint(),
     db,
-    listOrphanKeyPage: singlePage((prefix) => (prefix === "contas/" ? [contasOrphan] : [briefingKey])),
+    listOrphanKeyPage: singlePage((prefix) =>
+      prefix === "contas/" ? [contasOrphan] : prefix === "briefing-audio/" ? [briefingKey] : []
+    ),
     trashObject: async (k) => {
       deleted.push(k);
     },
@@ -275,7 +305,9 @@ Deno.test("orphan-scan: a contas/ query error aborts only that target — briefi
   const result = await runOrphanScan({
     ...noCheckpoint(),
     db,
-    listOrphanKeyPage: singlePage((prefix) => (prefix === "contas/" ? ["contas/w/files/whatever.png"] : [briefingOrphan])),
+    listOrphanKeyPage: singlePage((prefix) =>
+      prefix === "contas/" ? ["contas/w/files/whatever.png"] : prefix === "briefing-audio/" ? [briefingOrphan] : []
+    ),
     trashObject: async (k) => {
       deleted.push(k);
     },
@@ -300,7 +332,9 @@ Deno.test("orphan-scan: MAX_TRASH_PER_RUN is a budget PER target, not one shared
   const result = await runOrphanScan({
     ...noCheckpoint(),
     db,
-    listOrphanKeyPage: singlePage((prefix) => (prefix === "contas/" ? contasOrphans : briefingOrphans)),
+    listOrphanKeyPage: singlePage((prefix) =>
+      prefix === "contas/" ? contasOrphans : prefix === "briefing-audio/" ? briefingOrphans : []
+    ),
     trashObject: async (k) => {
       trashed.push(k);
     },
@@ -312,6 +346,10 @@ Deno.test("orphan-scan: MAX_TRASH_PER_RUN is a budget PER target, not one shared
   });
   assertEquals(result.targets[1], {
     prefix: "briefing-audio/", candidates: 3, trashed: 3, capped: 0, aborted: null,
+    pages: 1, resumed: false, cycleCompleted: true,
+  });
+  assertEquals(result.targets[2], {
+    prefix: "ideia-audio/", candidates: 0, trashed: 0, capped: 0, aborted: null,
     pages: 1, resumed: false, cycleCompleted: true,
   });
   // Top-level numbers stay the sums.
@@ -331,7 +369,9 @@ Deno.test("orphan-scan: an abort in briefing-audio/ is reported even when contas
   const result = await runOrphanScan({
     ...noCheckpoint(),
     db,
-    listOrphanKeyPage: singlePage((prefix) => (prefix === "contas/" ? ["contas/w/files/a.png"] : ["briefing-audio/c/q/b.webm"])),
+    listOrphanKeyPage: singlePage((prefix) =>
+      prefix === "contas/" ? ["contas/w/files/a.png"] : prefix === "briefing-audio/" ? ["briefing-audio/c/q/b.webm"] : []
+    ),
     trashObject: async (k) => {
       deleted.push(k);
     },

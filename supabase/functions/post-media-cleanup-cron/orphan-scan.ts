@@ -66,7 +66,7 @@ interface DbError {
   message: string;
 }
 
-export type ScanTable = "post_media" | "files" | "hub_briefing_questions";
+export type ScanTable = "post_media" | "files" | "hub_briefing_questions" | "ideias";
 
 export type ScanTarget = {
   prefix: string;
@@ -87,6 +87,11 @@ export const SCAN_TARGETS: ScanTarget[] = [
   {
     prefix: "briefing-audio/",
     refs: [{ table: "hub_briefing_questions", columns: ["audio_r2_key"] }],
+  },
+  // Áudio das ideias: mesmo motivo do briefing (fora de contas/).
+  {
+    prefix: "ideia-audio/",
+    refs: [{ table: "ideias", columns: ["audio_r2_key"] }],
   },
 ];
 
