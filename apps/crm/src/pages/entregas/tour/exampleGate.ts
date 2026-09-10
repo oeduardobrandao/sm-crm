@@ -1,8 +1,10 @@
 /**
  * O quadro de exemplo (e o tour que ele ancora) só faz sentido num quadro de
- * Fluxos sem NENHUM card ativo. `activeBoardCount` conta todo tipo de card que
- * o quadro renderiza: hoje só fluxos; a feature de posts individuais soma os
- * processos ativos aqui, e em nenhum outro lugar.
+ * Fluxos sem NENHUMA entidade ativa. `activeBoardCount` conta as entidades
+ * ativas do quadro: hoje só fluxos ativos (um fluxo sem etapas conta e não
+ * renderiza card, comportamento herdado). A feature de posts individuais soma
+ * os processos ativos em `activeBoardCount`, em `EntregasPage`, e em nenhum
+ * outro lugar.
  */
 export function shouldShowExample(i: {
   activeBoardCount: number;

@@ -28,4 +28,13 @@ describe('shouldShowExample', () => {
       false,
     );
   });
+
+  it('replay antes do tour concluído segue a regra do contador', () => {
+    expect(shouldShowExample({ activeBoardCount: 0, tourDone: false, replayActive: true })).toBe(
+      true,
+    );
+    expect(shouldShowExample({ activeBoardCount: 3, tourDone: false, replayActive: true })).toBe(
+      false,
+    );
+  });
 });
