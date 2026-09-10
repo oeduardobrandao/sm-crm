@@ -16,6 +16,17 @@
 -- workflows, em migrate_workflow_template e propagate_*). O UPDATE do editor
 -- de templates do CRM pega FOR NO KEY UPDATE, que conflita com este FOR SHARE
 -- e no maximo faz uma das duas esperar, sem ciclo.
+--
+-- FIX ROUND 1. workflow_templates.etapas e jsonb livre, sem CHECK na escrita
+-- (a UI aceita 'prazo_dias: 2.5' num input sem step). Antes deste fix round
+-- um template assim estourava erro cru no INSERT (22P02 no cast de
+-- prazo_dias, 23514 no CHECK de tipo/tipo_prazo de post_process_steps).
+-- Codigo novo: template_invalid, levantado por uma validacao de forma sobre
+-- cada elemento de etapas (nome, tipo, tipo_prazo, prazo_dias,
+-- responsavel_id), logo depois de template_empty e antes de qualquer INSERT.
+-- Tambem deste fix round: a chave de p_step_overrides so aceita digitos sem
+-- zero a esquerda (regex mais estrito) com o cast protegido por EXCEPTION,
+-- no mesmo padrao de detach_posts_keeping_process.
 
 CREATE OR REPLACE FUNCTION public.apply_post_process(
   p_post_id              bigint,
@@ -33,13 +44,17 @@ DECLARE
   v_post       record;
   v_tmpl       record;
   v_n          int;
+  v_etapa      jsonb;
   v_key        text;
   v_val        jsonb;
   v_chave      text;
+  v_ordem      integer;
   v_resp       bigint;
   v_assinatura text;
   v_board      integer;
   v_proc       bigint;
+  v_revisao    integer;
+  v_estado     text;
   v_steps      jsonb;
 BEGIN
   IF NOT effective_plan_feature(v_conta, 'feature_post_processes') THEN
@@ -75,6 +90,43 @@ BEGIN
      OR jsonb_array_length(v_tmpl.etapas) = 0 THEN
     RAISE EXCEPTION 'template_empty' USING ERRCODE = 'P0001';
   END IF;
+
+  -- FIX ROUND 1 (F1): etapas e jsonb livre, sem CHECK na escrita. VALIDA em
+  -- vez de coagir, para nao divergir de post_process_assinatura(), que le o
+  -- mesmo jsonb sem normalizar prazo_dias nem responsavel_id. Roda antes de
+  -- qualquer INSERT: template invalido nao cria linha nenhuma.
+  FOR v_etapa IN SELECT e.val FROM jsonb_array_elements(v_tmpl.etapas) AS e(val) LOOP
+    IF coalesce(v_etapa ->> 'nome', '') = '' THEN
+      RAISE EXCEPTION 'template_invalid' USING ERRCODE = 'P0001';
+    END IF;
+    IF nullif(v_etapa ->> 'tipo', '') IS NOT NULL
+       AND nullif(v_etapa ->> 'tipo', '') NOT IN ('padrao', 'aprovacao_cliente') THEN
+      RAISE EXCEPTION 'template_invalid' USING ERRCODE = 'P0001';
+    END IF;
+    IF nullif(v_etapa ->> 'tipo_prazo', '') IS NOT NULL
+       AND nullif(v_etapa ->> 'tipo_prazo', '') NOT IN ('uteis', 'corridos') THEN
+      RAISE EXCEPTION 'template_invalid' USING ERRCODE = 'P0001';
+    END IF;
+    -- jsonb_typeof(NULL) e NULL quando a chave esta ausente (operador ->
+    -- devolve SQL NULL); quando presente com valor JSON null, devolve 'null'.
+    -- So os dois casos pulam a checagem; qualquer outro tipo que nao seja
+    -- number, ou um number com casas decimais/sinal, e template_invalid.
+    IF jsonb_typeof(v_etapa -> 'prazo_dias') IS NOT NULL
+       AND jsonb_typeof(v_etapa -> 'prazo_dias') <> 'null' THEN
+      IF jsonb_typeof(v_etapa -> 'prazo_dias') <> 'number'
+         OR (v_etapa -> 'prazo_dias') #>> '{}' !~ '^[0-9]+$' THEN
+        RAISE EXCEPTION 'template_invalid' USING ERRCODE = 'P0001';
+      END IF;
+    END IF;
+    IF jsonb_typeof(v_etapa -> 'responsavel_id') IS NOT NULL
+       AND jsonb_typeof(v_etapa -> 'responsavel_id') <> 'null' THEN
+      IF jsonb_typeof(v_etapa -> 'responsavel_id') <> 'number'
+         OR (v_etapa -> 'responsavel_id') #>> '{}' !~ '^-?[0-9]+$' THEN
+        RAISE EXCEPTION 'template_invalid' USING ERRCODE = 'P0001';
+      END IF;
+    END IF;
+  END LOOP;
+
   IF public.template_fingerprint(p_template_id) IS DISTINCT FROM p_template_fingerprint THEN
     RAISE EXCEPTION 'template_changed' USING ERRCODE = 'P0001';
   END IF;
@@ -109,7 +161,19 @@ BEGIN
       RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
     END IF;
     FOR v_key, v_val IN SELECT key, value FROM jsonb_each(p_step_overrides) LOOP
-      IF v_key !~ '^[0-9]+$' OR v_key::integer >= v_n OR v_key::integer < p_start_ordem THEN
+      -- FIX ROUND 1 (F2): sem zero a esquerda e ate 9 digitos, o que cabe com
+      -- folga em integer. Cast protegido como em detach_posts_keeping_process
+      -- (20260919000003): mesmo com a regex apertada, uma chave sem
+      -- correspondencia cai aqui em vez de estourar erro cru.
+      IF v_key !~ '^(0|[1-9][0-9]{0,8})$' THEN
+        RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
+      END IF;
+      BEGIN
+        v_ordem := v_key::integer;
+      EXCEPTION WHEN numeric_value_out_of_range OR invalid_text_representation THEN
+        RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
+      END;
+      IF v_ordem >= v_n OR v_ordem < p_start_ordem THEN
         RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
       END IF;
       IF jsonb_typeof(v_val) <> 'object' THEN
@@ -163,7 +227,7 @@ BEGIN
   VALUES
     (v_conta, p_post_id, p_template_id, v_tmpl.nome, v_assinatura, 'ativo', p_start_ordem,
      coalesce(v_tmpl.modo_prazo, 'padrao'), v_board, auth.uid())
-  RETURNING id INTO v_proc;
+  RETURNING id, revisao, estado INTO v_proc, v_revisao, v_estado;
 
   -- responsavel_id: override vence; senao o do template, mas so se ainda
   -- resolver para um membro da conta (um template pode carregar id de membro
@@ -205,9 +269,9 @@ BEGIN
     'ok', true,
     'process_id', v_proc,
     'post_id', p_post_id,
-    'estado', 'ativo',
+    'estado', v_estado,
     'etapa_atual', p_start_ordem,
-    'revisao', 1,
+    'revisao', v_revisao,
     'assinatura', v_assinatura,
     'template_id', p_template_id,
     'template_nome', v_tmpl.nome,

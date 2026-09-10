@@ -139,6 +139,28 @@ begin
   end;
   assert v_raised, 'override de etapa anterior a inicial deve ser rejeitado';
 
+  -- fix round 1 (F2): chave fora do range de integer e chave com zero a
+  -- esquerda sao ambas invalid_step_overrides, nao erro cru de cast.
+  v_raised := false;
+  begin
+    perform apply_post_process(e.post, e.tmpl, v_fp, 0, jsonb_build_object(
+      '999999999999999999999', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_step_overrides', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'chave de override fora do range de integer deve ser rejeitada';
+
+  v_raised := false;
+  begin
+    perform apply_post_process(e.post, e.tmpl, v_fp, 0, jsonb_build_object(
+      '01', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_step_overrides', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'chave de override com zero a esquerda deve ser rejeitada';
+
   v_raised := false;
   begin
     perform apply_post_process(e.post, e.tmpl, v_fp, 0, jsonb_build_object(
@@ -241,6 +263,55 @@ begin
   execute 'reset role';
   assert v_raised, 'template sem etapas deve levantar template_empty';
   raise notice 'PASS 88.4 template invalido';
+end $$;
+rollback;
+
+-- 88.4b (fix round 1, F1): etapas do template fora do formato exigido.
+-- workflow_templates.etapas e jsonb livre, sem CHECK -- um prazo_dias
+-- fracionario ou um tipo fora do dominio precisam ser rejeitados por
+-- apply_post_process com template_invalid, antes de qualquer INSERT, em vez
+-- de estourar erro cru no cast (22P02) ou no CHECK do INSERT (23514).
+begin;
+do $$
+declare e record; v_tmpl bigint; v_fp text; v_raised boolean := false;
+begin
+  select * into e from pg_temp.et_ap_env();
+
+  insert into workflow_templates (user_id, conta_id, nome, etapas) values (e.usr, e.ws, 'Fracionado', jsonb_build_array(
+    jsonb_build_object('nome', 'Copy', 'prazo_dias', 2.5, 'tipo_prazo', 'corridos')
+  )) returning id into v_tmpl;
+  v_fp := template_fingerprint(v_tmpl);
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform apply_post_process(e.post, v_tmpl, v_fp, 0, jsonb_build_object(
+      '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'template_invalid', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'prazo_dias fracionario deve levantar template_invalid';
+  assert not exists (select 1 from post_processes), 'nada pode ter sido criado';
+
+  v_raised := false;
+  insert into workflow_templates (user_id, conta_id, nome, etapas) values (e.usr, e.ws, 'TipoInvalido', jsonb_build_array(
+    jsonb_build_object('nome', 'Copy', 'tipo', 'x')
+  )) returning id into v_tmpl;
+  v_fp := template_fingerprint(v_tmpl);
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform apply_post_process(e.post, v_tmpl, v_fp, 0, jsonb_build_object(
+      '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'template_invalid', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'tipo fora do dominio deve levantar template_invalid';
+  assert not exists (select 1 from post_processes), 'nada pode ter sido criado em nenhum dos dois casos';
+  raise notice 'PASS 88.4b template com etapas malformadas';
 end $$;
 rollback;
 
