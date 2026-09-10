@@ -7,17 +7,24 @@ import type { HubPostsResponse } from '../types';
  * promise "aprovar = agendar" during an earlier approval cycle.
  *
  * workflowId is `number | null` because a post avulso (fora de fluxo) has no
- * workflow at all, so it can never appear in the suspended-ids array (every
- * entry there is a workflow id) — it reads as "not suspended" here, same as
- * hub-approve's own isFinalApprovalCycle early return for a null workflow_id.
+ * workflow at all, so it can never appear in the workflow suspended-ids array.
+ * For an avulso post, the guard instead falls back to `postId`: an avulso can
+ * have its own individual process with another client-approval etapa ahead,
+ * mirrored server-side by hub-approve's suspended-post-ids check. Old
+ * backends that do not send `autoPublishSuspendedPostIds` read as "not
+ * suspended" (compatible default).
  */
 export function isAutoPublishActive(
   data:
-    | Pick<HubPostsResponse, 'autoPublishOnApproval' | 'autoPublishSuspendedWorkflowIds'>
+    | Pick<
+        HubPostsResponse,
+        'autoPublishOnApproval' | 'autoPublishSuspendedWorkflowIds' | 'autoPublishSuspendedPostIds'
+      >
     | undefined,
   workflowId: number | null,
+  postId: number,
 ): boolean {
   if (!data?.autoPublishOnApproval) return false;
-  if (workflowId == null) return true;
+  if (workflowId == null) return !(data.autoPublishSuspendedPostIds ?? []).includes(postId);
   return !(data.autoPublishSuspendedWorkflowIds ?? []).includes(workflowId);
 }

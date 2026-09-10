@@ -120,7 +120,7 @@ export function AprovacoesPage() {
                       onToggleSelect={handleToggleSelect}
                       onApprovalSubmitted={handleInvalidate}
                       priority={i === 0}
-                      autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id)}
+                      autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id, post.id)}
                     />
                   </div>
                 ))}
