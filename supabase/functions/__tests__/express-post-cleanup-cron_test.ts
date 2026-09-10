@@ -134,6 +134,7 @@ interface Seed {
   workflows?: Row[];
   post_file_links?: Row[];
   files?: Row[];
+  post_processes?: Row[];
 }
 
 function makeFakeDb(seed: Seed, errorOn?: ErrorHook) {
@@ -142,6 +143,7 @@ function makeFakeDb(seed: Seed, errorOn?: ErrorHook) {
     workflows: seed.workflows ?? [],
     post_file_links: seed.post_file_links ?? [],
     files: seed.files ?? [],
+    post_processes: seed.post_processes ?? [],
   };
 
   const db: ExpressPostCleanupDb = {
@@ -384,6 +386,33 @@ Deno.test("pass3: leaves a parented express draft untouched (workflow_id set, no
   assertEquals(result.avulso_deleted, 0);
   assertEquals(result.deleted, 0, "not title-prefixed, so pass 2 does not touch it either");
   assertEquals(tables.workflow_posts.length, 1);
+});
+
+Deno.test("pass 3 poupa rascunho express avulso com processo individual ativo", async () => {
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 1, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+      { id: 2, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    post_processes: [{ id: 10, post_id: 2, estado: "ativo" }],
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 1);
+  assertEquals(result.avulso_skipped_with_process, 1);
+  assertEquals(tables.workflow_posts.map((p) => p.id), [2]);
+});
+
+Deno.test("pass3: apaga rascunho avulso cujo processo individual nao esta ativo (concluido)", async () => {
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 3, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    post_processes: [{ id: 11, post_id: 3, estado: "concluido" }],
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 1);
+  assertEquals(result.avulso_skipped_with_process, 0);
+  assertEquals(tables.workflow_posts.length, 0);
 });
 
 // ---------------------------------------------------------------------------

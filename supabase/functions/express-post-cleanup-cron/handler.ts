@@ -71,6 +71,7 @@ export interface ExpressPostCleanupCronResult {
   concluded: number;
   avulso_deleted: number;
   avulso_failed: number;
+  avulso_skipped_with_process: number;
 }
 
 /**
@@ -246,23 +247,40 @@ export async function runExpressPostCleanupCron(
 
   const avulsoPostIds = (avulsoDrafts ?? []).map((p: { id: number }) => p.id);
 
+  // Rascunho com processo individual ativo nao e abandono: alguem esta
+  // produzindo nele. A RLS nao protege aqui (service_role), entao o filtro
+  // e do handler (spec 2026-09-10-posts-individuais, secao 10, Limpeza).
+  let avulsoSkippedWithProcess = 0;
+  let deletableAvulsoIds = avulsoPostIds;
   if (avulsoPostIds.length > 0) {
+    const { data: protectedRows, error: protectedErr } = await db
+      .from("post_processes")
+      .select("post_id")
+      .in("post_id", avulsoPostIds)
+      .eq("estado", "ativo");
+    if (protectedErr) throw protectedErr;
+    const protectedIds = new Set((protectedRows ?? []).map((r: { post_id: number }) => r.post_id));
+    deletableAvulsoIds = avulsoPostIds.filter((id) => !protectedIds.has(id));
+    avulsoSkippedWithProcess = avulsoPostIds.length - deletableAvulsoIds.length;
+  }
+
+  if (deletableAvulsoIds.length > 0) {
     const { data: links } = await db
       .from("post_file_links")
       .select("file_id")
-      .in("post_id", avulsoPostIds);
+      .in("post_id", deletableAvulsoIds);
     const fileIds = [...new Set((links ?? []).map((l: { file_id: number }) => l.file_id))];
 
     const { error: delErr } = await db
       .from("workflow_posts")
       .delete()
-      .in("id", avulsoPostIds);
+      .in("id", deletableAvulsoIds);
 
     if (delErr) {
       console.error("Failed to delete avulso express drafts:", delErr.message);
-      avulsoFailed = avulsoPostIds.length;
+      avulsoFailed = deletableAvulsoIds.length;
     } else {
-      avulsoDeleted = avulsoPostIds.length;
+      avulsoDeleted = deletableAvulsoIds.length;
       if (fileIds.length > 0) {
         await deleteOrphanFiles(db, fileIds);
       }
@@ -276,5 +294,6 @@ export async function runExpressPostCleanupCron(
     concluded,
     avulso_deleted: avulsoDeleted,
     avulso_failed: avulsoFailed,
+    avulso_skipped_with_process: avulsoSkippedWithProcess,
   };
 }
