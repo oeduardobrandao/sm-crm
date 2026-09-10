@@ -1921,7 +1921,9 @@ begin
   insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo) values (usr, ws, 'Modelo', jsonb_build_array(
     jsonb_build_object('nome', 'Copy', 'prazo_dias', 2, 'tipo_prazo', 'corridos'),
     jsonb_build_object('nome', 'Design', 'prazo_dias', 3, 'tipo_prazo', 'corridos'),
-    jsonb_build_object('nome', 'Aprovacao', 'prazo_dias', 1, 'tipo_prazo', 'uteis', 'tipo', 'aprovacao_cliente')
+    -- A etapa 2 nasce com responsavel no template para o 88.0 provar que o
+    -- override {"responsavel_id": null} LIMPA (ausencia da chave herdaria).
+    jsonb_build_object('nome', 'Aprovacao', 'prazo_dias', 1, 'tipo_prazo', 'uteis', 'tipo', 'aprovacao_cliente', 'responsavel_id', membro)
   ), 'padrao') returning id into tmpl;
 end $$;
 
@@ -1936,7 +1938,7 @@ begin
   execute 'set local role authenticated';
   v_res := apply_post_process(e.post, e.tmpl, v_fp, 1, jsonb_build_object(
     '1', jsonb_build_object('responsavel_id', e.membro, 'prazo_efetivo', '2026-09-15T02:59:59.000Z'),
-    '2', jsonb_build_object('prazo_efetivo', '2026-09-18T02:59:59.000Z')));
+    '2', jsonb_build_object('prazo_efetivo', '2026-09-18T02:59:59.000Z', 'responsavel_id', null)));
   execute 'reset role';
 
   v_proc := (v_res ->> 'process_id')::bigint;
@@ -1955,8 +1957,9 @@ begin
     and responsavel_id = e.membro and prazo_efetivo = timestamptz '2026-09-15T02:59:59.000Z' and iniciado_em is not null;
   assert found, 'etapa inicial ativa com responsavel e prazo do override';
   perform 1 from post_process_steps where process_id = v_proc and ordem = 2 and estado = 'pendente'
-    and tipo = 'aprovacao_cliente' and prazo_efetivo = timestamptz '2026-09-18T02:59:59.000Z';
-  assert found, 'etapa futura pendente com o prazo enviado';
+    and tipo = 'aprovacao_cliente' and prazo_efetivo = timestamptz '2026-09-18T02:59:59.000Z'
+    and responsavel_id is null;
+  assert found, 'etapa futura pendente com o prazo enviado e responsavel limpo pelo override nulo';
 
   select status into v_status from workflow_posts where id = e.post;
   assert v_status = 'aprovado_cliente', 'aplicar processo nao altera status do post';
@@ -2481,10 +2484,13 @@ BEGIN
     v_conta, v_proc, (e.ord - 1)::integer,
     coalesce(e.val ->> 'nome', ''),
     coalesce(nullif(e.val ->> 'tipo', ''), 'padrao'),
-    coalesce(
-      (p_step_overrides -> (e.ord - 1)::text ->> 'responsavel_id')::bigint,
-      (SELECT m.id FROM membros m
-        WHERE m.id = (e.val ->> 'responsavel_id')::bigint AND m.conta_id = v_conta)),
+    -- Override presente vence sempre, inclusive {"responsavel_id": null} para
+    -- limpar o responsavel do template; so a AUSENCIA da chave herda do template.
+    CASE WHEN (p_step_overrides -> (e.ord - 1)::text) ? 'responsavel_id'
+         THEN (p_step_overrides -> (e.ord - 1)::text ->> 'responsavel_id')::bigint
+         ELSE (SELECT m.id FROM membros m
+                WHERE m.id = (e.val ->> 'responsavel_id')::bigint AND m.conta_id = v_conta)
+    END,
     (e.val ->> 'prazo_dias')::integer,
     nullif(e.val ->> 'tipo_prazo', ''),
     (p_step_overrides -> (e.ord - 1)::text ->> 'prazo_efetivo')::timestamptz,
