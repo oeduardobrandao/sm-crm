@@ -6,16 +6,26 @@
 -- fase 2. Nenhum backfill: nada cria processos para posts existentes.
 
 -- ------------------------------------------------------------------
+-- 0. FKs compostas de tenant para os alvos externos (template, fluxo de
+-- origem, responsavel). Sem isso um RPC poderia ligar um processo da
+-- conta A a um recurso da conta B (precedente: clientes_id_conta_uq,
+-- 20260815000002; ideias_tarefa_fk, 20260730000009).
+-- ------------------------------------------------------------------
+ALTER TABLE public.workflow_templates ADD CONSTRAINT workflow_templates_id_conta_uq UNIQUE (id, conta_id);
+ALTER TABLE public.workflows          ADD CONSTRAINT workflows_id_conta_uq          UNIQUE (id, conta_id);
+ALTER TABLE public.membros            ADD CONSTRAINT membros_id_conta_uq            UNIQUE (id, conta_id);
+
+-- ------------------------------------------------------------------
 -- 1. post_processes: a execucao individual
 -- ------------------------------------------------------------------
 CREATE TABLE public.post_processes (
   id                  bigserial PRIMARY KEY,
   conta_id            uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
   post_id             bigint NOT NULL,
-  template_id         bigint REFERENCES public.workflow_templates(id) ON DELETE SET NULL,
+  template_id         bigint,
   template_nome       text,
   assinatura          text NOT NULL,
-  origem_workflow_id  bigint REFERENCES public.workflows(id) ON DELETE SET NULL,
+  origem_workflow_id  bigint,
   origem_descricao    text,
   estado              text NOT NULL DEFAULT 'ativo'
                         CHECK (estado IN ('ativo', 'concluido', 'encerrado')),
@@ -29,14 +39,23 @@ CREATE TABLE public.post_processes (
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
   concluido_em        timestamptz,
-  -- Alvo de FK composta de tenant para steps e events.
+  -- Alvo de FK composta (id, conta_id) para steps.
   CONSTRAINT post_processes_id_conta_uq UNIQUE (id, conta_id),
+  -- Alvo de FK composta (id, conta_id, post_id) para events: garante que um
+  -- evento nao possa apontar para o post A e para um processo do post B.
+  CONSTRAINT post_processes_id_conta_post_uq UNIQUE (id, conta_id, post_id),
   -- O post precisa ser da mesma conta (workflow_posts_id_conta_uq, 20260820000002).
   CONSTRAINT post_processes_post_same_tenant
     FOREIGN KEY (post_id, conta_id) REFERENCES public.workflow_posts (id, conta_id) ON DELETE CASCADE,
   -- encerrado <=> motivo presente
   CONSTRAINT post_processes_encerrado_motivo
-    CHECK ((estado = 'encerrado') = (motivo_encerramento IS NOT NULL))
+    CHECK ((estado = 'encerrado') = (motivo_encerramento IS NOT NULL)),
+  -- MATCH SIMPLE ignora a FK quando a coluna e NULL: template_id e
+  -- origem_workflow_id seguem opcionais.
+  CONSTRAINT post_processes_template_same_tenant
+    FOREIGN KEY (template_id, conta_id) REFERENCES public.workflow_templates (id, conta_id) ON DELETE SET NULL (template_id),
+  CONSTRAINT post_processes_origem_same_tenant
+    FOREIGN KEY (origem_workflow_id, conta_id) REFERENCES public.workflows (id, conta_id) ON DELETE SET NULL (origem_workflow_id)
 );
 
 -- Um so processo vigente por post; encerrados podem se acumular.
@@ -55,7 +74,7 @@ CREATE TABLE public.post_process_steps (
   ordem               integer NOT NULL,
   nome                text NOT NULL,
   tipo                text NOT NULL DEFAULT 'padrao' CHECK (tipo IN ('padrao', 'aprovacao_cliente')),
-  responsavel_id      bigint REFERENCES public.membros(id) ON DELETE SET NULL,
+  responsavel_id      bigint,
   prazo_dias          integer,
   tipo_prazo          text CHECK (tipo_prazo IN ('uteis', 'corridos')),
   prazo_efetivo       timestamptz,
@@ -71,10 +90,15 @@ CREATE TABLE public.post_process_steps (
   CONSTRAINT post_process_steps_id_conta_uq UNIQUE (id, conta_id),
   CONSTRAINT post_process_steps_process_same_tenant
     FOREIGN KEY (process_id, conta_id) REFERENCES public.post_processes (id, conta_id) ON DELETE CASCADE,
-  CONSTRAINT post_process_steps_ordem_uq UNIQUE (process_id, ordem)
+  CONSTRAINT post_process_steps_ordem_uq UNIQUE (process_id, ordem),
+  -- MATCH SIMPLE ignora a FK quando responsavel_id e NULL: campo opcional.
+  CONSTRAINT post_process_steps_responsavel_same_tenant
+    FOREIGN KEY (responsavel_id, conta_id) REFERENCES public.membros (id, conta_id) ON DELETE SET NULL (responsavel_id)
 );
 CREATE UNIQUE INDEX post_process_steps_one_active
   ON public.post_process_steps (process_id) WHERE estado = 'ativo';
+-- A FK de tenant de membros dispara SET NULL nesse caminho quando um membro sai.
+CREATE INDEX idx_post_process_steps_responsavel ON public.post_process_steps (responsavel_id);
 
 -- ------------------------------------------------------------------
 -- 3. post_process_events: historico
@@ -95,11 +119,17 @@ CREATE TABLE public.post_process_events (
   created_at     timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT post_process_events_post_same_tenant
     FOREIGN KEY (post_id, conta_id) REFERENCES public.workflow_posts (id, conta_id) ON DELETE CASCADE,
-  CONSTRAINT post_process_events_process_same_tenant
-    FOREIGN KEY (process_id, conta_id) REFERENCES public.post_processes (id, conta_id) ON DELETE CASCADE
+  -- O processo precisa apontar para o MESMO post do evento, nao so para a
+  -- mesma conta: sem isso um evento podia citar o post A e o processo de um
+  -- post B da mesma conta.
+  CONSTRAINT post_process_events_process_same_post
+    FOREIGN KEY (process_id, conta_id, post_id) REFERENCES public.post_processes (id, conta_id, post_id) ON DELETE CASCADE
 );
 -- Empates de now() na mesma transacao desempatam por id.
 CREATE INDEX idx_post_process_events_post ON public.post_process_events (post_id, created_at, id);
+-- Lidera o cascade de delete de processo (express-post-cleanup-cron apaga
+-- rascunhos avulsos em lote); sem indice, o DELETE varre a tabela toda.
+CREATE INDEX idx_post_process_events_process ON public.post_process_events (process_id);
 
 -- ------------------------------------------------------------------
 -- 4. post_process_batch_requests: idempotencia do desmembrar em lote
