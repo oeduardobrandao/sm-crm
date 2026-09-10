@@ -39,7 +39,13 @@ import {
   sendPostsToCliente,
 } from '../../../store';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
-import { buildBoardRows, columnKey, parseColumnKey, findCardColumn } from '../boardRows';
+import {
+  buildBoardRows,
+  columnKey,
+  parseColumnKey,
+  findCardColumn,
+  isValidDropTarget,
+} from '../boardRows';
 import type { BoardRow, BoardColumn } from '../boardRows';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
@@ -355,7 +361,11 @@ export function KanbanView({
         setDropSlot(null);
         return;
       }
-      const valid = Math.abs(targetColumn.ordem - draggedCard.etapa.ordem) === 1;
+      const valid = isValidDropTarget(
+        draggedCard.allEtapas,
+        draggedCard.etapa.ordem,
+        targetColumn.ordem,
+      );
       if (!valid) {
         setDropSlot(null);
         return;
@@ -459,12 +469,16 @@ export function KanbanView({
           toast.error('Erro ao salvar ordem dos cartões');
         }
       } else {
-        // Between-column move — check adjacency by ordem
-        const diff = targetColumn.ordem - draggedCard.etapa.ordem;
-        if (Math.abs(diff) !== 1) {
+        // Between-column move: a coluna alvo precisa existir na sequência de
+        // etapas do PRÓPRIO fluxo arrastado (linhas por template aceitam
+        // fluxos com listas divergentes; ver isValidDropTarget).
+        if (
+          !isValidDropTarget(draggedCard.allEtapas, draggedCard.etapa.ordem, targetColumn.ordem)
+        ) {
           toast.error('Só é possível mover para a etapa adjacente');
           return;
         }
+        const diff = targetColumn.ordem - draggedCard.etapa.ordem;
 
         // Capture where in the target column the card was dropped, so the
         // advance/revert (possibly behind a confirm dialog) can land it there

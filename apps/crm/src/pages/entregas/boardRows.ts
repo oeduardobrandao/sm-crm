@@ -75,6 +75,20 @@ export function buildBoardRows(cards: BoardCard[], templates: WorkflowTemplate[]
   return rows;
 }
 
+/** Um card só pode ser solto numa coluna adjacente que exista na SUA própria
+ *  sequência de etapas. Linhas por template aceitam fluxos com listas
+ *  divergentes; a coluna de ordem 3 de outro fluxo não é alvo válido para um
+ *  fluxo que só tem ordens 0..2. */
+export function isValidDropTarget(
+  allEtapas: { ordem: number }[],
+  activeOrdem: number,
+  targetOrdem: number,
+): boolean {
+  return (
+    Math.abs(targetOrdem - activeOrdem) === 1 && allEtapas.some((e) => e.ordem === targetOrdem)
+  );
+}
+
 export function findCardColumn(
   cardId: string,
   rows: BoardRow[],

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildBoardRows, columnKey, findCardColumn, parseColumnKey } from '../boardRows';
+import {
+  buildBoardRows,
+  columnKey,
+  findCardColumn,
+  isValidDropTarget,
+  parseColumnKey,
+} from '../boardRows';
 import type { BoardCard } from '../hooks/useEntregasData';
 
 type EtapaLike = { id: number; ordem: number; nome: string; tipo?: 'padrao' | 'aprovacao_cliente' };
@@ -118,5 +124,20 @@ describe('findCardColumn', () => {
     const hit = findCardColumn('1', rows);
     expect(hit?.column.ordem).toBe(3);
     expect(findCardColumn('99', rows)).toBeNull();
+  });
+});
+
+describe('isValidDropTarget', () => {
+  const etapas = [{ ordem: 0 }, { ordem: 1 }, { ordem: 2 }];
+  it('aceita a adjacente que existe no fluxo', () => {
+    expect(isValidDropTarget(etapas, 1, 2)).toBe(true);
+    expect(isValidDropTarget(etapas, 1, 0)).toBe(true);
+  });
+  it('rejeita salto de mais de uma etapa', () => {
+    expect(isValidDropTarget(etapas, 0, 2)).toBe(false);
+  });
+  it('rejeita coluna adjacente que o fluxo arrastado não tem', () => {
+    // fluxo com 0..2 na ordem 2; a coluna 3 veio de outro fluxo da mesma linha
+    expect(isValidDropTarget(etapas, 2, 3)).toBe(false);
   });
 });
