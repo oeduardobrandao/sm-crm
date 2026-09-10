@@ -264,6 +264,11 @@ export default function EntregasPage() {
      *  novo aparecer após o refetch -- sem esse marcador, o card ainda inexistente
      *  seria lido como "fluxo não encontrado" e a espera seria cancelada cedo demais. */
     fromUrl?: boolean;
+    /** Definido junto com `fromDrawerFallback`: o `workflow_id` que já falhou no
+     *  quadro. Se o post continuar apontando para ESTE fluxo na segunda consulta,
+     *  é terminal -- mas se ele foi movido para outro fluxo (recurso "mover posts
+     *  para outro fluxo"), vale mais uma tentativa nesse fluxo novo. */
+    failedWorkflowId?: number;
   } | null>(null);
   const drawerParam = searchParams.get('drawer');
   const postParam = searchParams.get('post');
@@ -348,10 +353,23 @@ export default function EntregasPage() {
     // final -- nem carregando, nem em refetch em background (isLoading fica
     // false com cache stale, e `cards` ainda reflete o snapshot antigo).
     if (isLoading || isFetching) return;
+    if (pendingDeepLink.fromDrawerFallback) {
+      // Segunda tentativa (o post apontou para outro fluxo e ele também não está
+      // no quadro): parar aqui.
+      toast.error('Este post está em um fluxo que não aparece mais no quadro.');
+      setPendingDeepLink(null);
+      return;
+    }
     // Fluxo concluído, arquivado, excluído, ou post desmembrado depois que o
     // link foi compartilhado. Com post no link, o post é o que interessa.
     if (postId != null) {
-      setPendingDeepLink({ workflowId: null, postId, fromDrawerFallback: true, fromUrl: true });
+      setPendingDeepLink({
+        workflowId: null,
+        postId,
+        fromUrl: true,
+        fromDrawerFallback: true,
+        failedWorkflowId: workflowId,
+      });
       return;
     }
     toast.error('Fluxo não encontrado');
@@ -384,17 +402,28 @@ export default function EntregasPage() {
           setDrawerInitialPostId(null);
           setStandalonePostId(post.id!);
           setPendingDeepLink(null);
-        } else if (pendingDeepLink.fromDrawerFallback) {
-          // Já tentamos o quadro e o fluxo não está lá: parar aqui.
+        } else if (
+          pendingDeepLink.fromDrawerFallback &&
+          post.workflow_id === pendingDeepLink.failedWorkflowId
+        ) {
+          // O post continua no fluxo que já não casou com o quadro: parar aqui.
           toast.error('Este post está em um fluxo que não aparece mais no quadro.');
           setPendingDeepLink(null);
         } else {
-          // Attached after all (e.g. re-attached since the link was shared) --
-          // hand off to the card-lookup resolver above. `fromUrl: true`: this
-          // state only exists because the original target came from `?drawer=`/
-          // `?post=`, so the card resolver should still fall back to a toast if
-          // the reattached workflow itself never turns up on the board.
-          setPendingDeepLink({ workflowId: post.workflow_id, postId, fromUrl: true });
+          // Reanexado (e.g. re-attached since the link was shared) ou movido para
+          // outro fluxo -- hand off to the card-lookup resolver above for one more
+          // attempt. `fromUrl: true`: this state only exists because the original
+          // target came from `?drawer=`/`?post=`. `fromDrawerFallback` segue
+          // marcado (quando já vinha marcado) para que essa tentativa seja a
+          // última -- evita loop se o post for movido de novo para outro fluxo
+          // que também não está no quadro.
+          setPendingDeepLink({
+            workflowId: post.workflow_id,
+            postId,
+            fromUrl: true,
+            fromDrawerFallback: pendingDeepLink.fromDrawerFallback,
+            failedWorkflowId: pendingDeepLink.failedWorkflowId,
+          });
         }
       })
       .catch(() => {

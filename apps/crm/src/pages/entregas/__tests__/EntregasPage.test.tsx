@@ -1058,6 +1058,28 @@ describe('EntregasPage', () => {
       expect(screen.queryByText(/Workflow drawer/)).not.toBeInTheDocument();
     });
 
+    it('abre o novo fluxo quando o post foi movido para um fluxo que está no quadro', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 5, workflow_id: 1 } as never);
+      renderWithBoard('/entregas?drawer=99&post=5');
+      expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+      expect(mockedGetStandalonePost).toHaveBeenCalledTimes(1);
+      expect(mockedToast.error).not.toHaveBeenCalled();
+    });
+
+    it('avisa uma única vez quando o post foi movido para outro fluxo que também não está no quadro', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 5, workflow_id: 42 } as never);
+      renderWithBoard('/entregas?drawer=99&post=5');
+      await waitFor(() =>
+        expect(mockedToast.error).toHaveBeenCalledWith(
+          'Este post está em um fluxo que não aparece mais no quadro.',
+        ),
+      );
+      expect(mockedToast.error).toHaveBeenCalledTimes(1);
+      expect(mockedGetStandalonePost).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/Workflow drawer/)).not.toBeInTheDocument();
+    });
+
     it('avisa quando só o fluxo foi pedido e ele não existe', async () => {
       renderWithBoard('/entregas?drawer=99');
       await waitFor(() => expect(mockedToast.error).toHaveBeenCalledWith('Fluxo não encontrado'));
