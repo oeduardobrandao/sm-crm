@@ -386,7 +386,7 @@ export default function EntregasPage() {
           setPendingDeepLink(null);
         } else if (pendingDeepLink.fromDrawerFallback) {
           // Já tentamos o quadro e o fluxo não está lá: parar aqui.
-          toast.error('Este post está em um fluxo que não aparece no quadro. Veja em Concluídas.');
+          toast.error('Este post está em um fluxo que não aparece mais no quadro.');
           setPendingDeepLink(null);
         } else {
           // Attached after all (e.g. re-attached since the link was shared) --

@@ -1046,7 +1046,7 @@ describe('EntregasPage', () => {
       renderWithBoard('/entregas?drawer=99&post=5');
       await waitFor(() =>
         expect(mockedToast.error).toHaveBeenCalledWith(
-          'Este post está em um fluxo que não aparece no quadro. Veja em Concluídas.',
+          'Este post está em um fluxo que não aparece mais no quadro.',
         ),
       );
       expect(mockedGetStandalonePost).toHaveBeenCalledTimes(1);
