@@ -27,6 +27,14 @@
 -- Tambem deste fix round: a chave de p_step_overrides so aceita digitos sem
 -- zero a esquerda (regex mais estrito) com o cast protegido por EXCEPTION,
 -- no mesmo padrao de detach_posts_keeping_process.
+--
+-- FIX ROUND 2 (F3). A validacao de forma de prazo_dias e responsavel_id
+-- passou a exigir tambem que o valor caiba no tipo de destino (integer e
+-- bigint), nao so que seja um inteiro nao negativo: regex '^[0-9]{1,9}$' e
+-- '^[0-9]{1,18}$' respectivamente, em vez do '+' sem limite de digitos.
+-- Um prazo_dias de 10 digitos (por exemplo 2147483648) passava na forma e
+-- estourava 22003 cru no cast do INSERT; agora e template_invalid, antes de
+-- qualquer INSERT.
 
 CREATE OR REPLACE FUNCTION public.apply_post_process(
   p_post_id              bigint,
@@ -111,17 +119,22 @@ BEGIN
     -- devolve SQL NULL); quando presente com valor JSON null, devolve 'null'.
     -- So os dois casos pulam a checagem; qualquer outro tipo que nao seja
     -- number, ou um number com casas decimais/sinal, e template_invalid.
+    -- FIX ROUND 2 (F3): alem de inteiro nao negativo, o valor precisa caber no
+    -- tipo da coluna de destino, senao o cast do INSERT (linhas abaixo)
+    -- estoura 22003 cru. Regex com limite de digitos garante isso sem
+    -- precisar de cast protegido: 9 digitos cabe com folga em integer, 18 em
+    -- bigint.
     IF jsonb_typeof(v_etapa -> 'prazo_dias') IS NOT NULL
        AND jsonb_typeof(v_etapa -> 'prazo_dias') <> 'null' THEN
       IF jsonb_typeof(v_etapa -> 'prazo_dias') <> 'number'
-         OR (v_etapa -> 'prazo_dias') #>> '{}' !~ '^[0-9]+$' THEN
+         OR (v_etapa -> 'prazo_dias') #>> '{}' !~ '^[0-9]{1,9}$' THEN
         RAISE EXCEPTION 'template_invalid' USING ERRCODE = 'P0001';
       END IF;
     END IF;
     IF jsonb_typeof(v_etapa -> 'responsavel_id') IS NOT NULL
        AND jsonb_typeof(v_etapa -> 'responsavel_id') <> 'null' THEN
       IF jsonb_typeof(v_etapa -> 'responsavel_id') <> 'number'
-         OR (v_etapa -> 'responsavel_id') #>> '{}' !~ '^-?[0-9]+$' THEN
+         OR (v_etapa -> 'responsavel_id') #>> '{}' !~ '^[0-9]{1,18}$' THEN
         RAISE EXCEPTION 'template_invalid' USING ERRCODE = 'P0001';
       END IF;
     END IF;

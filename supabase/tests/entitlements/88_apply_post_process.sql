@@ -311,6 +311,26 @@ begin
   execute 'reset role';
   assert v_raised, 'tipo fora do dominio deve levantar template_invalid';
   assert not exists (select 1 from post_processes), 'nada pode ter sido criado em nenhum dos dois casos';
+
+  -- FIX ROUND 2 (F3): prazo_dias de 10 digitos passa na forma antiga
+  -- ('^[0-9]+$') e estoura o cast de integer no INSERT (22003 cru).
+  v_raised := false;
+  insert into workflow_templates (user_id, conta_id, nome, etapas) values (e.usr, e.ws, 'PrazoEstourado', jsonb_build_array(
+    jsonb_build_object('nome', 'Copy', 'prazo_dias', 2147483648, 'tipo_prazo', 'corridos')
+  )) returning id into v_tmpl;
+  v_fp := template_fingerprint(v_tmpl);
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform apply_post_process(e.post, v_tmpl, v_fp, 0, jsonb_build_object(
+      '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'template_invalid', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'prazo_dias fora do range de integer deve levantar template_invalid';
+  assert not exists (select 1 from post_processes), 'nada pode ter sido criado em nenhum dos tres casos';
   raise notice 'PASS 88.4b template com etapas malformadas';
 end $$;
 rollback;
