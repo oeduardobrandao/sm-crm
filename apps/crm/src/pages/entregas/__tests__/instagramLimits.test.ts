@@ -106,8 +106,9 @@ describe('publishing requirements', () => {
     expect(front.validateMedia([image])).toEqual([]);
     expect(front.validateMedia([{ ...image, height: 1441 }])).toHaveLength(1);
   });
-  it('requires JPEG conversion, but lets Instagram normalize image width', () => {
-    expect(front.validateMedia([{ ...image, mime_type: 'image/png' }])).toHaveLength(1);
+  it('accepts PNG alongside JPEG, but lets Instagram normalize image width', () => {
+    expect(front.validateMedia([{ ...image, mime_type: 'image/png' }])).toEqual([]);
+    expect(front.validateMedia([{ ...image, mime_type: 'image/webp' }])).toHaveLength(1);
     expect(front.validateMedia([{ ...image, width: 300, height: 300 }])).toEqual([]);
   });
   it('accepts landscape Reels up to 300 MB and 15 minutes', () => {
