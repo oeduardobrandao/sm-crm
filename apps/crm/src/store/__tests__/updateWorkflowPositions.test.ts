@@ -22,6 +22,8 @@ describe('updateWorkflowPositions', () => {
       { id: 20, position: 2 },
     ]);
     const calls = __getSupabaseCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls.some((c) => c.table === 'workflows')).toBe(false);
     const rpcCall = calls.find((c) => c.table === 'rpc:reorder_workflow_positions');
     expect(rpcCall).toBeDefined();
     expect(rpcCall?.payload).toEqual({
