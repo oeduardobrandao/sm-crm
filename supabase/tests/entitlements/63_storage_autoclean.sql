@@ -40,6 +40,13 @@ declare
   v_used0    bigint;
   v_raised   boolean;
 begin
+  -- Fixture inserts below run as the equivalent of the service role (as a
+  -- backend job/RPC would). Since 20260917000001_ideias_agencia_audio.sql,
+  -- the ideias guard trigger reads this GUC to decide whether an INSERT may
+  -- default origem to 'cliente'; the later role-impersonation blocks further
+  -- down set/reset their own claim and are unaffected by this default.
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
   -- ================= fixture =================
   -- 'max' (unlimited seats) + a 100MB storage override: the free plan's
   -- max_team_members=1 would block the 4-member fixture, and the threshold
