@@ -48,17 +48,39 @@ stay above `origin/main`'s tail at PR-open time; re-check then).
 ```sql
 ALTER TABLE ideias ADD COLUMN origem text NOT NULL DEFAULT 'cliente';
 ALTER TABLE ideias ADD CONSTRAINT ideias_origem_check CHECK (origem IN ('cliente','agencia'));
-ALTER TABLE ideias ADD COLUMN autor_membro_id integer REFERENCES membros(id) ON DELETE SET NULL;
 ALTER TABLE ideias ADD COLUMN visivel_no_hub boolean NOT NULL DEFAULT true;
 ALTER TABLE ideias ADD CONSTRAINT ideias_cliente_visivel_check CHECK (origem <> 'cliente' OR visivel_no_hub);
 CREATE INDEX ideias_cliente_visivel_idx ON ideias (cliente_id) WHERE visivel_no_hub;
+
+-- Tenant pin: the client must belong to the ideia's workspace. Until now the CRM could
+-- insert any cliente_id (RLS only checks workspace_id) and the Hub GET, running as
+-- service role and filtering by cliente_id, would show that row to another tenant's client.
+-- clientes_id_conta_uq already exists (20260815000002).
+ALTER TABLE ideias ADD CONSTRAINT ideias_cliente_workspace_fk
+  FOREIGN KEY (cliente_id, workspace_id) REFERENCES clientes (id, conta_id) ON DELETE CASCADE;
+
+ALTER TABLE membros ADD CONSTRAINT membros_id_conta_uq UNIQUE (id, conta_id);
+ALTER TABLE ideias ADD COLUMN autor_membro_id integer;
+ALTER TABLE ideias ADD CONSTRAINT ideias_autor_fk
+  FOREIGN KEY (autor_membro_id, workspace_id) REFERENCES membros (id, conta_id)
+  ON DELETE SET NULL (autor_membro_id);
 ```
 
 - Existing rows, Hub inserts and the data-import RPC (`20260729000004`, inserts without `origem`)
-  all read as `cliente` + visible. Nothing changes for them.
+  all read as `cliente` + visible. Nothing changes for them. The composite client FK is
+  validated against existing rows; a pre-existing cross-tenant row would make the migration
+  fail loudly, which is the right outcome.
 - The CHECK makes "client-created implies visible" a database invariant.
-- `autor_membro_id` is set by the CRM on insert (the current member's `membros.id`, same lookup
-  the drawer uses for `comentario_autor_id`). Nullable; NULL on client-created rows.
+- **`origem` is immutable and authenticated inserts are agency-only**, enforced in the
+  `ideia_audio_guard` trigger (1.3): on UPDATE, any change to `origem` raises `forbidden`
+  for every role; on INSERT by a role other than `service_role`, `origem` must be `'agencia'`.
+  Without this a CRM member could flip a client row to `agencia`, hide it, and defeat the CHECK.
+- `autor_membro_id` is set by the CRM on insert to the current member's `membros.id`, resolved
+  through `membros.crm_user_id = auth user id` (the `useCurrentMembro` hook). The drawer's
+  existing `membros.user_id === profile.id` lookup is wrong (that column is the record creator)
+  and is corrected in the same change. Nullable; NULL on client-created rows. The composite FK
+  pins the author to the ideia's workspace.
+- The Hub GET also adds `.eq("workspace_id", conta_id)` from the token as defense in depth.
 
 ### 1.2 Notification trigger
 
@@ -89,7 +111,9 @@ Triggers, copied from the briefing migration with the table swapped:
 - `ideia_audio_guard()` BEFORE INSERT OR UPDATE, SECURITY DEFINER: any change to any `audio_*`
   column by a role other than `service_role` raises `forbidden` (ERRCODE 42501). Needed because
   the CRM writes `ideias` through PostgREST under RLS with no column allowlist (status, comment,
-  and now `visivel_no_hub`, `origem`, `autor_membro_id` on insert).
+  and now `visivel_no_hub`, `origem`, `autor_membro_id` on insert). The same trigger enforces
+  the `origem` rules from 1.1: immutable on UPDATE (all roles), `'agencia'` required on
+  non-service-role INSERT.
 - `ideia_audio_after_change()` AFTER UPDATE OF `audio_r2_key` OR DELETE: enqueues
   `OLD.audio_r2_key` into `post_media_deletions` and decrements `workspaces.storage_used_bytes`
   by `OLD.audio_size_bytes`. Sole decrement point. Deleting an ideia (Hub, CRM, or client
@@ -228,8 +252,10 @@ Auth and workspace resolution exactly as the existing routes in this function. `
   and the rest typed but unused by the UI).
 - `getIdeias` select adds those columns and `autor:membros!autor_membro_id(nome)`.
 - New `createIdeia({ cliente_id, titulo, descricao, links, visivel_no_hub, autor_membro_id })`
-  → inserts with `origem: 'agencia'`, `tipo: 'ideia'`, `status: 'nova'`, returns the row id.
-  Direct Supabase insert; RLS insert policy and the `feature_ideas` plan trigger already apply.
+  → inserts `{ workspace_id: await getContaId(), origem: 'agencia', tipo: 'ideia', status: 'nova', ...fields }`
+  and returns the row id. `workspace_id` is NOT NULL with no default, so the store resolves it
+  from the profile like the tarefas store does. Direct Supabase insert; RLS insert policy, the
+  `feature_ideas` plan trigger and the new composite FKs apply.
 - New `updateIdeiaVisibilidade(ideiaId, visivel)` → `update({ visivel_no_hub })`.
 
 ### 3.2 Service (`apps/crm/src/services/ideiaAudio.ts`, new)
@@ -237,14 +263,28 @@ Auth and workspace resolution exactly as the existing routes in this function. `
 Mirrors `apps/hub/src/services/briefingAudio.ts` against `ideia-media-manage`:
 `fetchIdeiaAudio(ideiaId)`, `uploadIdeiaAudio({ ideiaId, blob, mime, durationSeconds, onPhase })`
 (presign → PUT → finalize), `retryIdeiaTranscription(ideiaId)`, `deleteIdeiaAudio(ideiaId)`.
-Reuses `putToR2` from `services/ideiaMedia.ts` (exported there) and the mime/size validation +
-`describeAudioError` table, which move to a small shared module `packages/ui/audio/validation.ts`
-so both apps import one copy.
+The CRM's `services/ideiaMedia.ts` has a private `putToR2(url, file: File)`; it becomes
+`export function putToR2(url: string, body: Blob, contentType: string)` (the image callers pass
+`file.type`), matching the Hub's exported helper. Mime/size validation, `pickRecorderMime`,
+`MAX_AUDIO_SECONDS`, `MAX_AUDIO_BYTES` and `describeAudioError` move to a shared module
+`packages/ui/audio/validation.ts` (pure TypeScript, no `@/` imports) so both apps and the shared
+recorder import one copy. `describeAudioError` gains the `ideia_not_found` / "Ideia não
+encontrada." mapping → "Esta ideia não está mais disponível. Recarregue a página.".
 
 ### 3.3 Shared recorder (`packages/ui/AudioRecorder/index.tsx`, moved from the Hub)
 
 The Hub's `AudioRecorder` moves to `packages/ui` next to `AudioPlayer`, keeping its props
-(`phase`, `disabled`, `onRecorded`) and behaviour. Hub-only classes are replaced by the same
+(`phase`, `disabled`, `onRecorded`) and behaviour. Its imports of `MAX_AUDIO_SECONDS` and
+`pickRecorderMime` from the Hub service are re-pointed at `packages/ui/audio/validation.ts`, and
+`AudioPlayer` is imported relatively (`../AudioPlayer`).
+
+**Hand-off contract (unchanged from today):** the recorder owns record → preview; `onRecorded`
+fires only when the user confirms the preview, and the recorder then resets to idle. Two new
+optional props: `sendLabel` (default "Enviar") and `hint` (default "Até 5:00 por resposta."). The
+create dialogs pass `sendLabel="Usar este áudio"`, resolve `onRecorded` immediately by holding
+`{ blob, mime, durationSeconds }` in their own state, and render their own held state (player +
+"Gravar novamente" + "Descartar") while the recorder sits idle. The Hub briefing page keeps the
+defaults and its upload-in-`onRecorded` behaviour. Hub-only classes are replaced by the same
 CSS-variable contract the player uses, extended with variables for the buttons and text:
 `--audio-btn-bg`, `--audio-btn-fg` (primary, already used by the player),
 `--audio-btn2-bg`, `--audio-btn2-fg`, `--audio-btn2-bd` (secondary), `--audio-track`,
@@ -252,8 +292,7 @@ CSS-variable contract the player uses, extended with variables for the buttons a
 `CRM_AUDIO_VARS` are extended to cover them. The Hub's briefing page and its tests import from
 the new path; `apps/hub/src/components/AudioRecorder.tsx` is deleted.
 
-Copy changes: the hint "Até 5:00 por resposta." becomes a `hint` prop with that string as the
-default, so ideias can pass "Até 5:00.".
+Ideias pass `hint="Até 5:00."`.
 
 ### 3.4 Ideias page (`pages/ideias/IdeiasPage.tsx`)
 
@@ -269,11 +308,15 @@ default, so ideias can pass "Até 5:00.".
 shadcn `Dialog`, `react-hook-form` + `zod`:
 
 - Fields: cliente (Select, required, sorted pt-BR), título (required, max 200), descrição
-  (required), links (repeatable, each `sanitizeUrl`-validated, empty rows dropped).
+  (required), links (repeatable; empty rows dropped; each remaining value must parse as an
+  absolute `http:` or `https:` URL, else the row shows "Informe um link completo, começando
+  com https://" and blocks submit). The Hub renders links with `sanitizeExternalUrl`, which
+  rejects relative URLs, so only absolute HTTP(S) links are stored.
 - "Visível no Hub do cliente" `Switch`, default off, with the two-state hint from the mockup.
-- Áudio block: `AudioRecorder` with `phase` driven locally. On `onRecorded` the dialog stores
-  `{ blob, mime, durationSeconds }` in state and shows the preview player with "Usar este áudio"
-  / "Descartar". Hidden when `!isRecordingSupported()` or the workspace lacks
+- Áudio block: `AudioRecorder` with `sendLabel="Usar este áudio"`, `hint="Até 5:00."`. On
+  `onRecorded` the dialog stores `{ blob, mime, durationSeconds }` in state (resolving at once)
+  and renders its held state: `AudioPlayer` on an object URL, "Gravar novamente" (shows the
+  recorder again) and "Descartar". Hidden when `!isRecordingSupported()` or the workspace lacks
   `feature_briefing_audio` (from `useWorkspaceLimits`).
 - Submit: `createIdeia` → if a recording is held, `uploadIdeiaAudio` with phase feedback on the
   button ("Enviando áudio…", "Transcrevendo…"). Audio failure after a successful create shows a
@@ -322,8 +365,10 @@ not get a create button in this iteration.
 - `audioEnabled = bootstrap.feature_briefing_audio === true`.
 - `isMutable(ideia)` additionally requires `ideia.origem === 'cliente'`.
 - Create modal: Áudio block below Descrição (mockup), rendered when
-  `audioEnabled && isRecordingSupported()`. Recording is held locally; after `createIdeia`
-  succeeds, `uploadIdeiaAudio` runs with phase feedback on the submit button. Failure after
+  `audioEnabled && isRecordingSupported()`, using the same held-state contract as the CRM dialog
+  (`sendLabel="Usar este áudio"`, blob kept in modal state, player + "Gravar novamente" +
+  "Descartar"). After `createIdeia` succeeds, `uploadIdeiaAudio` runs with phase feedback on
+  the submit button. Failure after
   create: toast "Ideia enviada, mas o áudio falhou. Tente de novo no card." and close.
 - Card:
   - Agency rows: chip "Sugestão da agência"; no Editar / Excluir.
@@ -404,6 +449,20 @@ Worker: `workers/transcribe/src/index.test.ts` gains prefix allowlist cases (run
 6. Smoke: create an agency ideia hidden from the Hub, confirm it is absent from the client's
    portal; flip visibility, confirm it appears read-only; record audio on both sides and confirm
    the transcript; delete the ideia and confirm a `post_media_deletions` row for its key.
+
+### Rollback
+
+The migration is additive and stays in place on any rollback; only the edge functions and the
+frontends are reverted. Reverted functions have no audio routes, so no new objects land under
+`ideia-audio/`, and objects already uploaded remain referenced by `ideias.audio_r2_key`, which
+keeps the orphan scan from touching them and keeps `storage_used_bytes` consistent. If the
+columns ever have to be dropped, run first, as service role:
+`UPDATE ideias SET audio_r2_key = NULL, audio_size_bytes = NULL, audio_mime = NULL,
+audio_duration_seconds = NULL, audio_transcript = NULL, audio_transcription_status = NULL,
+audio_recorded_at = NULL WHERE audio_r2_key IS NOT NULL;` so the after-change trigger queues
+every key into `post_media_deletions` and refunds the quota, then drop the columns. A rollout
+that stops after step 2 (schema applied, functions not deployed) is safe for the same reason:
+nothing can upload, and the Hub still serves the old function.
 
 Until step 3 is done, ideia recordings save with status `failed` and retry succeeds after the
 worker deploy. Until step 4, the CRM and Hub bundles hit old functions: the create dialog works
