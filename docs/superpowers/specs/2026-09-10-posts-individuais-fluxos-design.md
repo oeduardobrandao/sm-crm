@@ -29,6 +29,8 @@ A revisão 1 foi conferida contra o código atual. As mudanças abaixo corrigem 
 
 Ajustes da revisão 2.1, após review externo da rev 2: a aprovação do cliente no Hub não avança a etapa individual (§6.2); a idempotência do desmembrar em lote usa um registro de operação em vez de `request_id` nos eventos (§8.1, §9.4); `apply_post_process` reconstrói o snapshot do template no servidor e só aceita responsável e prazo por etapa do cliente (§5.2, §9.1); a seção Sem processo ordena por id (§4.3); a leitura de processo via MCP sai da v1 (§2, §10); os fingerprints de fluxo e template são serializações canônicas em texto, sem hash, com o mesmo formato definido para SQL e TS (§9.4).
 
+Ajustes da revisão 2.2 (2026-09-10), após review final da fase 1 (backend), para que o documento volte a bater com o SQL implantado: a decisão sobre FKs compostas passa para o que a migration `20260918000002` de fato faz, `workflows`, `workflow_templates` e `membros` ganham `UNIQUE (id, conta_id)` e `template_id`/`origem_workflow_id`/`responsavel_id` usam FK composta com `SET NULL` por coluna (§8.1); a FK do processo em `post_process_events` é tripla, `(process_id, conta_id, post_id)`, não CASCADE simples (§8.1); o guard de criação e reabertura via a trigger `post_processes_requires_avulso` fica descrito (§8.1); o guard do UPDATE direto de `workflow_id` é a trigger `post_a1_process_guard`, sem GUC de escape (§9.3); a ordem de locks ganha a regra do advisory lock `:post_move` antes do INSERT/UPDATE em `post_processes` (§9.5); a limpeza de Express passa a apagar pela RPC atômica `express_cleanup_delete_avulso_drafts` (§10); e o passo de migrações do rollout da fase 1 ganha a ordem obrigatória migrations → functions → merge, com `platform-admin` incluído (§11).
+
 ## 1. Problema e decisão
 
 Hoje um fluxo reúne duas responsabilidades: agrupar publicações e executar um processo de produção. As etapas pertencem ao fluxo; os status pertencem ao post. Desmembrar um post remove `workflow_id` e, por consequência, seu contexto de etapa, responsável e prazo de produção. Ele continua em Publicações, mas desaparece do quadro de Fluxos.
@@ -285,7 +287,7 @@ Campos reais da etapa: `prazo_dias`, `tipo_prazo` (`uteis` ou `corridos`; dias �
 - Quem calcula `prazo_efetivo` é o CRM, com `computeDeadlineDate`, e as RPCs só armazenam o valor recebido: `detach_posts_keeping_process` recebe `p_active_deadline` (prazo congelado da etapa ativa), `apply_post_process` recebe o `prazo_efetivo` de cada etapa em `p_step_overrides`, e `transition_post_process` recebe `p_next_deadline` para a etapa que será ativada. Isso evita reimplementar dias úteis em SQL. A RPC valida só que o valor é um `timestamptz` não nulo quando a etapa tem prazo relativo.
 - Início da etapa individual = instante do desmembrar ou da aplicação. Tempo de produção individual não inclui o período no fluxo.
 - Voltar uma etapa reabre a anterior preservando seu `iniciado_em` original (como `revertEtapa`) e o último `prazo_efetivo`, inclusive vencido, até edição explícita.
-- `responsavel_id` das etapas individuais referencia `membros(id)` com `ON DELETE SET NULL`, a política atual. Remoção de membro é um `DELETE` físico e não pode passar a falhar por causa das tabelas novas. A UI mostra "Sem responsável".
+- `responsavel_id` das etapas individuais referencia `membros (id, conta_id)` com `ON DELETE SET NULL (responsavel_id)`, a política atual. Remoção de membro é um `DELETE` físico e não pode passar a falhar por causa das tabelas novas. A UI mostra "Sem responsável".
 
 ## 8. Modelo de dados
 
@@ -300,10 +302,10 @@ Evolução aditiva. `workflow_id` não muda de significado e `workflows` não vi
 | `id` | bigserial | |
 | `conta_id` | uuid not null → `workspaces` | |
 | `post_id` | bigint not null | FK composta `(post_id, conta_id) → workflow_posts(id, conta_id) ON DELETE CASCADE` |
-| `template_id` | bigint null → `workflow_templates` `ON DELETE SET NULL` | validado na RPC como da mesma conta |
+| `template_id` | bigint null → `workflow_templates (id, conta_id)` `ON DELETE SET NULL (template_id)` | FK composta de tenant (migration 20260918000002) |
 | `template_nome` | text | snapshot |
 | `assinatura` | text | assinatura ordenada `(ordem, nome, tipo)` |
-| `origem_workflow_id` | bigint null → `workflows` `ON DELETE SET NULL` | |
+| `origem_workflow_id` | bigint null → `workflows (id, conta_id)` `ON DELETE SET NULL (origem_workflow_id)` | FK composta de tenant |
 | `origem_descricao` | text | "Conteúdo de setembro, etapa Design" |
 | `estado` | text check `ativo, concluido, encerrado` | |
 | `motivo_encerramento` | text null check `removido, vinculado` | |
@@ -322,7 +324,7 @@ Unicidade parcial: um `post_id` com `estado IN ('ativo','concluido')`. Unicidade
 | `id`, `conta_id`, `process_id` (FK composta `(process_id, conta_id) → post_processes(id, conta_id) ON DELETE CASCADE`) | |
 | `ordem` integer, unique `(process_id, ordem)` | |
 | `nome`, `tipo` check `padrao, aprovacao_cliente` | |
-| `responsavel_id` bigint null → `membros(id) ON DELETE SET NULL` | validado na RPC como da mesma conta |
+| `responsavel_id` bigint null → `membros (id, conta_id) ON DELETE SET NULL (responsavel_id)` | FK composta de tenant |
 | `prazo_dias` integer null, `tipo_prazo` check `uteis, corridos` | |
 | `prazo_efetivo` timestamptz null | |
 | `estado` check `pendente, ativo, concluido, herdado, ignorado, interrompido` | |
@@ -333,7 +335,8 @@ Unicidade parcial: um `post_id` com `estado IN ('ativo','concluido')`. Unicidade
 
 | Coluna | Tipo |
 | --- | --- |
-| `id`, `conta_id`, `post_id`, `process_id` (FKs compostas com CASCADE no post e no processo) | |
+| `id`, `conta_id`, `post_id` (FK composta `(post_id, conta_id) → workflow_posts(id, conta_id) ON DELETE CASCADE`) | |
+| `process_id` (FK composta tripla `(process_id, conta_id, post_id) → post_processes(id, conta_id, post_id) ON DELETE CASCADE`, alvo `post_processes_id_conta_post_uq`) | impede evento apontando para o processo de outro post |
 | `evento` text | `desmembrado, aplicado, avancou, voltou, concluido, reaberto, removido, vinculado, etapa_editada` |
 | `actor_user_id` uuid null, `actor_name` text | nome em snapshot, como `workflow_events` |
 | `origem` text check `workspace_user, system` | |
@@ -353,7 +356,9 @@ Uma linha por operação de desmembrar em lote, gravada na mesma transação dos
 
 Invariantes mantidas por constraints e pela RPC: processo `ativo` tem exatamente uma etapa `ativo` na ordem de `etapa_atual`; `concluido` e `encerrado` não têm etapa ativa; encerrar um processo ativo marca a etapa ativa como `interrompido` com timestamp e deixa as futuras `pendente`. `herdado` e `ignorado` não contam como produção individual.
 
-Decisão sobre FKs compostas: só `workflow_posts` e as tabelas novas expõem `UNIQUE (id, conta_id)`. `workflows`, `workflow_templates` e `membros` não expõem, e `workflow_etapas` nem tem `conta_id`. Não alterar essas tabelas centrais; template, origem e responsável usam FK simples com `SET NULL`, `conta_id` na linha e validação de conta dentro da RPC.
+Decisão sobre FKs compostas: `workflows`, `workflow_templates` e `membros` ganham `UNIQUE (id, conta_id)` (`workflows_id_conta_uq`, `workflow_templates_id_conta_uq`, `membros_id_conta_uq`, precedente `clientes_id_conta_uq`). `template_id`, `origem_workflow_id` e `responsavel_id` usam FK composta `(coluna, conta_id) → tabela (id, conta_id) ON DELETE SET NULL (<coluna>)` (PG 15+, precedente `20260730000009`), não FK simples com validação só na RPC. Motivo: isolamento de tenant garantido no banco para todo escritor, não só nas RPCs que a fase 2 escreve.
+
+Guard de criação e reabertura: a trigger `post_processes_requires_avulso` (`BEFORE INSERT OR UPDATE OF estado, post_id, conta_id`) só age quando o resultado é vigente (`ativo` ou `concluido`) e, no UPDATE, quando reabre um processo `encerrado` ou muda de post/conta. Ela faz `SELECT ... FOR SHARE` na linha do post em `workflow_posts` e levanta `post_in_workflow` se `workflow_id` não for nulo, garantindo que um processo só nasce ou reabre para um post avulso.
 
 Exclusão: apagar o post apaga suas execuções, etapas e eventos, seguindo a política de todos os filhos de `workflow_posts`. Apagar fluxo ou template de origem só anula a referência. Remover um processo nunca apaga o post.
 
@@ -402,6 +407,8 @@ Quatro RPCs colocam um post num fluxo: `attach_posts_to_flow`, `move_posts_to_ne
 
 O guard contra UPDATE direto de `workflow_id` e `cliente_id` é o trigger `post_a0_sync_cliente`, desarmado pelo GUC transacional `app.allow_post_move`. As RPCs novas ligam o GUC imediatamente antes do UPDATE de `workflow_id` e desligam logo depois (`set_config(..., 'off', true)`), para não deixar o guard aberto no resto da transação.
 
+Além dele existe a trigger `post_a1_process_guard` (`BEFORE UPDATE OF workflow_id` em `workflow_posts`), sem GUC de escape: ela levanta `post_has_active_process` quando o post ganha `workflow_id` tendo um processo vigente, e cobre `attach_posts_to_flow`, `move_posts_to_new_flow`, `move_posts_to_existing_flow` e qualquer UPDATE direto, GUC ligado ou não. Consequência para a fase 2: `attach_post_closing_process` precisa encerrar o processo (`estado = 'encerrado'`, `motivo_encerramento = 'vinculado'`) ANTES do UPDATE de `workflow_id`, na mesma transação, para não cair no próprio guard.
+
 ### 9.4 Concorrência, versão e idempotência
 
 - `workflows` e `workflow_etapas` não têm `updated_at` nem versão. O fingerprint é uma **serialização canônica em texto, sem hash**, para que browser e Postgres produzam byte a byte o mesmo valor (um `md5(jsonb::text)` no servidor nunca casaria com um hash calculado no cliente, porque a serialização de `jsonb` é própria do Postgres). Formato: linhas unidas por `\n`, uma por etapa em ordem crescente de `ordem`, cada linha `ordem|nome|tipo|status|responsavel_id|prazo_dias|tipo_prazo|data_limite|iniciado_em`, com nulos como string vazia, `tipo` nulo como `padrao`, `data_limite` como `YYYY-MM-DD` e `iniciado_em` como ISO 8601 em UTC com milissegundos (`to_char(x at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')` no SQL, `toISOString()` no TS); a primeira linha é `etapa_atual=<n>`. O fingerprint do template usa o mesmo formato com as colunas `ordem|nome|tipo|prazo_dias|tipo_prazo` sobre o jsonb de `workflow_templates.etapas`. Uma função SQL `workflow_fingerprint(p_workflow_id)` e outra `template_fingerprint(p_template_id)` produzem o valor no servidor; a função TS `buildFingerprint` produz o mesmo no CRM, e um teste Vitest e um bloco SQL de entitlements verificam o mesmo fixture dos dois lados. A UI calcula com os dados que exibe; a RPC recalcula sob lock e falha com `workflow_changed`/`template_changed` se diferir. Editar uma etapa da origem muda o fingerprint mesmo sem mudar `etapa_atual`. O valor tem poucas centenas de bytes; não há motivo para comprimi-lo.
@@ -412,6 +419,10 @@ O guard contra UPDATE direto de `workflow_id` e `cliente_id` é o trigger `post_
 ### 9.5 Ordem de locks
 
 A família detach/attach/move segue: todo `pg_advisory_xact_lock` antes de qualquer row lock; ordem `:post_move` → `:max_active_workflows_per_client` → `:max_posts_per_workflow`; `:max_posts_per_workflow` antes do `FOR UPDATE` no fluxo. As RPCs novas seguem a mesma ordem, e `attach_post_closing_process` toma `:post_move` e `:max_posts_per_workflow` antes de travar fluxo e post. Arquivar fluxo vazio reaproveita a checagem sob lock de `detach_posts_from_flow`, com a mesma ressalva: a serialização contra INSERT concorrente depende do `FOR SHARE` do trigger na linha do fluxo.
+
+(a) A serialização entre criar um processo e fazer attach vem do `FOR SHARE` que `post_processes_requires_avulso` toma na linha do post, contra o `FOR NO KEY UPDATE` que o attach/move segura na mesma linha ao atualizar `workflow_id`.
+
+(b) Regra obrigatória para a fase 2: toda RPC que insere ou reabre em `post_processes` toma `pg_advisory_xact_lock(hashtext(conta || ':post_move'))` ANTES do INSERT/UPDATE. Sem isso, a FK composta em `origem_workflow_id` pega `FOR KEY SHARE` em `workflows` e pode fechar ciclo com o `FOR UPDATE` que o attach segura na linha do fluxo alvo, um deadlock detectado pelo Postgres, não um travamento, mas evitável tomando o lock antes.
 
 ### 9.6 UI
 
@@ -425,7 +436,7 @@ Movimento otimista com rollback em falha, refetch em `workflow_changed`/`process
 | Aprovações | Nenhum reset por desmembrar, aplicar ou vincular; comandos explícitos respeitam ciclos e estados protegidos |
 | Links | `/entregas?post=<id>` resolve todos os modos. `?drawer=<wf>&post=<id>` cai no resolvedor de `?post=` quando o fluxo não casa (pré-requisito 3) |
 | Pastas, mídia, capas, comentários | Chaveados por `post_id`; nada é copiado. A pasta é reparentada pelo trigger `folder_sync_post` em qualquer mudança de `workflow_id` |
-| Limpeza de Express | A única GC de avulsos é o passo 3 de `express-post-cleanup-cron`: `is_express AND workflow_id IS NULL AND status = 'rascunho' AND created_at < cutoff`, `DELETE` em lote por `service_role`. RLS não protege. O handler exclui posts com execução `ativo` por uma consulta prévia a `post_processes`, e o contador `avulsoSkippedWithProcess` é somado ao resumo do cron. Como Express não ganha processo automaticamente, a interseção é rara, mas o guard fica |
+| Limpeza de Express | A única GC de avulsos é o passo 3 de `express-post-cleanup-cron`: candidatos `is_express AND workflow_id IS NULL AND status = 'rascunho' AND created_at < cutoff`. O handler pré-filtra por `post_processes` (otimização, e já dá a maior parte da contagem `avulso_skipped_with_process`) e apaga pela RPC `express_cleanup_delete_avulso_drafts(bigint[])` (SECURITY DEFINER, só `service_role`, migration `20260918000004`): `FOR UPDATE` ordenado nas linhas candidatas, depois um `DELETE ... NOT EXISTS (processo ativo)` numa instrução nova, reconferindo os predicados de rascunho avulso express, e devolvendo os ids apagados. RLS não protege; é a RPC, não o pré-filtro, que garante que nenhum rascunho com processo criado entre a leitura e o delete seja apagado |
 | Recorrência | `duplicateWorkflow` copia só etapas, nunca posts. Nada a fazer |
 | MCP | Sem mudança na v1. Não existe attach via MCP: `update_post` não escreve `workflow_id` e `create_post` só define no INSERT, então nenhum guard é necessário. Campos de leitura do processo em `get_post`/`list_posts` e a correção da descrição de `create_workflow` ficam para uma entrega posterior (§13) |
 | Notificações | Fluxos mantêm seu comportamento; eventos individuais não disparam automações de fluxo |
@@ -438,10 +449,12 @@ Flag: coluna `plans.feature_post_processes boolean not null default false`, lig�
 Ordem:
 
 1. Pré-requisitos (§2) mergeados.
-2. Migrações: tabelas, índices, RLS, RPCs, guard nas quatro RPCs de attach, coluna da flag. Sem backfill.
-3. Edge functions: `hub-approve`, `hub-posts`, `express-post-cleanup-cron`. Deploy com `--use-api` e `--no-verify-jwt` onde a função já exige.
-4. CRM capaz de ler e gerenciar processos, com a flag desligada.
+2. Migrações, na ordem obrigatória `20260918000001` → `000002` → `000003` → `000004`: coluna da flag, tabelas, índices, RLS, guards por trigger (`post_processes_requires_avulso` e `post_a1_process_guard` em `workflow_posts`, que cobre os quatro caminhos de attach sem editar as RPCs), RPC atômica de limpeza. Sem backfill.
+3. Edge functions, só depois das quatro migrações: `hub-approve`, `hub-posts`, `express-post-cleanup-cron`, `workspace-limits`, `platform-admin`. Deploy com `--use-api` e `--no-verify-jwt` onde a função já exige.
+4. Merge (frontend): CRM capaz de ler e gerenciar processos, com a flag desligada; Vercel deploya Hub e Admin.
 5. Ligar em workspace de validação, rodar a matriz de aceitação, ampliar.
+
+A ordem migrations → functions → merge é obrigatória, não só recomendada: `hub-approve` falha fechado sem a tabela `post_processes` (nenhum avulso autoagenda), `hub-posts` marca todos os avulsos como suspensos e `express-post-cleanup-cron` responde 500 até a migração 2 existir.
 
 Rollback não remove tabelas com histórico nem converte processos em avulsos. Guards de attach, `hub-approve` e limpeza permanecem. Reversão destrutiva só antes da primeira execução persistida.
 
@@ -476,7 +489,7 @@ Rollback não remove tabelas com histórico nem converte processos em avulsos. G
 ### Validação
 
 - Vitest: `BoardEntity` e composição do quadro misto, `approvalAdvance.ts`, filtro de entidade e `viewQuery`, `etapaDeadlineDateOf` com `prazo_efetivo`, diálogos, rollback e mapeamento de erros.
-- SQL em `supabase/tests/entitlements`: invariantes, RLS com duas contas usando `et_grant_hosted_parity`, guard das quatro RPCs, fingerprint, revisão, `request_id`, exclusão de origem, rollback de lote, limite do fluxo, permissão por papel.
+- SQL em `supabase/tests/entitlements`: invariantes, RLS com duas contas usando `et_grant_hosted_parity`, guard de attach por trigger nos quatro caminhos, fingerprint, revisão, `request_id`, exclusão de origem, rollback de lote, limite do fluxo, permissão por papel.
 - Deno: `hub-approve` com processo individual, `hub-posts` com o novo array, `express-post-cleanup-cron` com o guard.
 - E2E: desmembrar mantendo etapas → mover individualmente → conferir fluxo e status → vincular; aplicação, conclusão e reabertura; modo antigo sem etapas.
 - Antes de integrar: os quatro typechecks do CI, `npm run test`, `npm run test:functions`, `npm run lint`, `npm run format:check`, `migration-version-guard`, entitlements e E2E aplicáveis.

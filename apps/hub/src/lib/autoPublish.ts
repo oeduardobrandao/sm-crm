@@ -9,10 +9,12 @@ import type { HubPostsResponse } from '../types';
  * workflowId is `number | null` because a post avulso (fora de fluxo) has no
  * workflow at all, so it can never appear in the workflow suspended-ids array.
  * For an avulso post, the guard instead falls back to `postId`: an avulso can
- * have its own individual process with another client-approval etapa ahead,
- * mirrored server-side by hub-approve's suspended-post-ids check. Old
- * backends that do not send `autoPublishSuspendedPostIds` read as "not
- * suspended" (compatible default).
+ * have its own individual process with another client-approval etapa ahead.
+ * hub-approve does not consume this list, it queries `post_processes` and
+ * `post_process_steps` directly with the same rule (two or more open
+ * aprovacao_cliente steps); `autoPublishSuspendedPostIds` is published by
+ * hub-posts only for this client-side check. Old backends that do not send
+ * `autoPublishSuspendedPostIds` read as "not suspended" (compatible default).
  */
 export function isAutoPublishActive(
   data:

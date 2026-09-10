@@ -1196,24 +1196,25 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Migrations em staging**
 
-`cat supabase/.temp/project-ref` deve ser `wlyzhyfondykzpsiqsce`. `npx supabase db push --linked --dry-run`; se recusar por drift (`LegacyDbPushMissingLocalError`), aplicar as três migrations fora da banda, em ordem, com `npx supabase db query --linked --file <arquivo + insert into supabase_migrations.schema_migrations (version, name) values (...) on conflict do nothing>`. Confirmar:
+`cat supabase/.temp/project-ref` deve ser `wlyzhyfondykzpsiqsce`. `npx supabase db push --linked --dry-run`; se recusar por drift (`LegacyDbPushMissingLocalError`), aplicar as quatro migrations fora da banda, em ordem, com `npx supabase db query --linked --file <arquivo + insert into supabase_migrations.schema_migrations (version, name) values (...) on conflict do nothing>`. Confirmar:
 
 ```sql
 select count(*) from pg_tables where tablename in ('post_processes','post_process_steps','post_process_events','post_process_batch_requests');
 select tgname from pg_trigger where tgname in ('post_a1_process_guard','trg_feature_post_processes','post_processes_requires_avulso');
 select column_name from information_schema.columns where table_name = 'plans' and column_name = 'feature_post_processes';
+select proname from pg_proc where proname = 'express_cleanup_delete_avulso_drafts';
 ```
 
 - [ ] **Step 2: Functions em staging**
 
 ```bash
 BIN=$(ls ~/.npm/_npx/*/node_modules/@supabase/cli-darwin-arm64/bin/supabase | head -1)
-for fn in hub-approve hub-posts express-post-cleanup-cron workspace-limits; do
+for fn in hub-approve hub-posts express-post-cleanup-cron workspace-limits platform-admin; do
   $BIN functions deploy $fn --project-ref wlyzhyfondykzpsiqsce --no-verify-jwt --use-api
 done
 ```
 
-Smoke: abrir o Hub de um cliente do seed em staging (`npm run dev:hub:staging`) e confirmar que a lista carrega e a resposta de `hub-posts` traz `autoPublishSuspendedPostIds: []` (aba Network ou `read_page`). Nenhum processo existe, então o comportamento é idêntico.
+Smoke: abrir o Hub de um cliente do seed em staging (`npm run dev:hub:staging`) e confirmar que a lista carrega e a resposta de `hub-posts` traz `autoPublishSuspendedPostIds: []` (aba Network ou `read_page`). Nenhum processo existe, então o comportamento é idêntico. Fazer também uma aprovação de um post avulso Express no Hub de staging com `auto_publish_on_approval` ligado, esperando `scheduled: true` na resposta de `hub-approve`, não só a lista vazia de `hub-posts`.
 
 - [ ] **Step 3: Gate completo**
 
@@ -1230,17 +1231,17 @@ Fase 1 de `docs/superpowers/specs/2026-09-10-posts-individuais-fluxos-design.md`
 
 ## Mudanças
 - `plans.feature_post_processes` (default false) + `FEATURE_COLUMNS`.
-- Tabelas `post_processes`, `post_process_steps`, `post_process_events`, `post_process_batch_requests` com unicidade parcial (um vigente por post), uma etapa ativa por processo, FKs compostas de tenant com `workflow_posts`, trigger `post_in_workflow`, gate de plano em INSERT, `concluido_em`/`updated_at` por trigger, RLS com escrita negada para `authenticated`.
-- Trigger `post_a1_process_guard` em `workflow_posts`: nenhum caminho dá `workflow_id` a um post com execução vigente (`post_has_active_process`).
+- Tabelas `post_processes`, `post_process_steps`, `post_process_events`, `post_process_batch_requests` com unicidade parcial (um vigente por post), uma etapa ativa por processo, FKs compostas de tenant com `workflow_posts`/`workflows`/`workflow_templates`/`membros` (as três últimas ganham `UNIQUE (id, conta_id)`), FK tripla de `post_process_events` para `post_processes (id, conta_id, post_id)`, trigger de guard de criação/reabertura `post_processes_requires_avulso` (`FOR SHARE` na linha do post), gate de plano em INSERT, `concluido_em`/`updated_at` por trigger, RLS com escrita negada para `authenticated`.
+- Trigger `post_a1_process_guard` em `workflow_posts` (`BEFORE UPDATE OF workflow_id`, sem GUC de escape): nenhum caminho dá `workflow_id` a um post com execução vigente (`post_has_active_process`).
 - `hub-approve`: avulso com processo ativo e outra etapa de aprovação adiante não autoagenda. `hub-posts`: `autoPublishSuspendedPostIds` (aditivo). Hub frontend: `isAutoPublishActive(data, workflowId, postId)`.
-- `express-post-cleanup-cron`: passo 3 poupa rascunhos com processo ativo (`avulso_skipped_with_process`).
+- `express-post-cleanup-cron`: passo 3 pré-filtra por `post_processes` (`avulso_skipped_with_process`) e apaga via a RPC atômica `express_cleanup_delete_avulso_drafts` (`FOR UPDATE` + reconfere `post_processes` antes do DELETE).
 
 ## Rollout
-Migrations aplicadas em staging; functions `hub-approve`, `hub-posts`, `express-post-cleanup-cron`, `workspace-limits` deployadas em staging. **Prod antes do merge**: as três migrations e as mesmas quatro functions (o Hub frontend novo passa `postId`; o backend antigo ignora e continua compatível, mas a ordem correta é backend primeiro).
+Migrations aplicadas em staging; functions `hub-approve`, `hub-posts`, `express-post-cleanup-cron`, `workspace-limits`, `platform-admin` deployadas em staging. **Prod antes do merge, na ordem obrigatória**: as quatro migrations (`20260918000001` → `000004`), depois as mesmas cinco functions, só então o merge (Vercel deploya Hub/Admin). Sem a migração 2 no ar, `hub-approve` falha fechado e nenhum avulso autoagenda, `hub-posts` marca todos os avulsos como suspensos, e `express-post-cleanup-cron` responde 500.
 
 ## Verificação
-- SQL: suítes 83 (schema, 7 blocos) e 84 (guard, 4 blocos) no job `entitlement-tests`.
-- Deno: 3 testes em hub-approve, 2 em hub-posts, 1 no cron, 1 em entitlements.
+- SQL: suítes 83 (schema, 12 blocos), 84 (guard, 4 blocos) e `supabase/tests/express_cleanup_delete_avulso_drafts.sql` (5 blocos) no job `entitlement-tests`.
+- Deno: 3 + 1 testes em hub-approve, 2 em hub-posts, 4 no cron, 1 em entitlements.
 - Vitest Hub: 3 testes em `autoPublish`.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
@@ -1248,7 +1249,7 @@ EOF
 )"
 ```
 
-Aguardar o review externo e responder. Antes do merge: aplicar as migrations e deployar as quatro functions em prod (`--project-ref skjzpekeqefvlojenfsw`).
+Aguardar o review externo e responder. Antes do merge: aplicar as quatro migrations, em ordem, e deployar as cinco functions (`hub-approve`, `hub-posts`, `express-post-cleanup-cron`, `workspace-limits`, `platform-admin`) em prod (`--project-ref skjzpekeqefvlojenfsw`).
 
 ---
 
@@ -1257,3 +1258,14 @@ Aguardar o review externo e responder. Antes do merge: aplicar as migrations e d
 - Fase 2: `detach_posts_keeping_process`, `apply_post_process`, `transition_post_process`, `update_post_process_step`, `remove_post_process`, `attach_post_closing_process`, `reorder_fluxos_board`, `workflow_fingerprint`/`template_fingerprint`, idempotência via `post_process_batch_requests`, `has_permission_for('entregas','editar')` em toda RPC, ordem de advisory locks (§9.5). Depende desta fase.
 - Fase 3: `BoardEntity`, quadro misto, Sem processo, drawer, Concluídas, links, tipos TS do store. Depende dos PRs #478 a #481 e da fase 2 para leitura real.
 - Fase 4: diálogos e comandos no CRM, flag ligada em workspace de validação, matriz de aceitação (§12).
+
+## Execução (2026-09-10)
+
+O que foi implementado diverge do texto das tasks acima nos pontos abaixo, todos motivados pelo review interno e pelo review externo (Codex) sobre a rev 2 da spec, não por mudança de escopo:
+
+- Task 1 ganhou um item 1b: `platform-admin` também bundla `_shared/entitlements.ts` e precisa entrar no rollout de functions, junto com `workspace-limits`.
+- Task 2 foi além do texto original: `workflows`, `workflow_templates` e `membros` ganharam `UNIQUE (id, conta_id)` e as FKs de `template_id`/`origem_workflow_id`/`responsavel_id` são compostas com `SET NULL` por coluna, não FK simples com validação só na RPC. A FK de `post_process_events` para `post_processes` é tripla `(process_id, conta_id, post_id)`, não CASCADE simples. Ambas fecham brechas de tenant que o review externo apontou como P1.
+- O guard de criação/reabertura (`post_processes_requires_avulso`) passou a agir também no UPDATE (reabrir um `encerrado`, ou mudar de post/conta), não só no INSERT, e toma `FOR SHARE` na linha do post para serializar com attach/move.
+- O guard de attach (`post_a1_process_guard`) é uma trigger em `workflow_posts`, não uma edição em cada uma das quatro RPCs de attach: menos superfície para esquecer o guard numa RPC nova.
+- A limpeza de Express (`express-post-cleanup-cron`) não faz mais o DELETE em lote direto: o passo 3 chama a RPC atômica `express_cleanup_delete_avulso_drafts`, com `FOR UPDATE` e reconferência de `post_processes` na mesma transação, para fechar a janela entre pré-filtro e delete.
+- Ver as quatro migrations `supabase/migrations/20260918000001..4_*.sql` para o SQL exato de cada ponto acima.
