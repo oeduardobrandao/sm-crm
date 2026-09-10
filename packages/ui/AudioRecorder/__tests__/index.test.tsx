@@ -312,4 +312,11 @@ describe('AudioRecorder', () => {
     const { container } = render(<AudioRecorder phase="idle" onRecorded={async () => {}} />);
     expect(container.querySelector('[class*="hub-"]')).toBeNull();
   });
+
+  it('themes the idle record button through --audio-btn2-bg and keeps hover feedback', () => {
+    render(<AudioRecorder phase="idle" onRecorded={async () => {}} />);
+    const btn = screen.getByRole('button', { name: /gravar áudio/i });
+    expect(btn.style.background).toBe('var(--audio-btn2-bg, transparent)');
+    expect(btn.className).toContain('hover:bg-[var(--audio-btn2-hover');
+  });
 });

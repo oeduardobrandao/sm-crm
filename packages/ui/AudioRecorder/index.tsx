@@ -22,6 +22,13 @@ export function formatDuration(seconds: number): string {
 }
 
 const WARN_AT_SECONDS = 270;
+
+/**
+ * CSS variables read (set by the host app, e.g. HUB_AUDIO_VARS / CRM_AUDIO_VARS):
+ * `--audio-btn-bg`, `--audio-btn-fg`, `--audio-btn2-bg`, `--audio-btn2-fg`,
+ * `--audio-btn2-bd`, `--audio-btn2-hover`, `--audio-track`, `--audio-fill`,
+ * `--audio-muted`, `--audio-radius`.
+ */
 const BTN_BASE: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -197,7 +204,7 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
           <button
             type="button"
             style={BTN_SECONDARY}
-            className="disabled:opacity-50"
+            className="hover:bg-[var(--audio-btn2-hover,rgba(0,0,0,.05))] transition-colors disabled:opacity-50"
             disabled={disabled || busy || starting}
             onClick={() => void start()}
           >
@@ -225,7 +232,7 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
             <button
               type="button"
               style={BTN_PRIMARY}
-              className="disabled:opacity-50"
+              className="hover:opacity-90 transition-opacity disabled:opacity-50"
               onClick={stop}
               aria-label="Parar gravação"
             >
@@ -271,7 +278,7 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
           <button
             type="button"
             style={BTN_PRIMARY}
-            className="disabled:opacity-50"
+            className="hover:opacity-90 transition-opacity disabled:opacity-50"
             disabled={disabled || busy || sending}
             onClick={() => void send()}
           >
@@ -284,7 +291,7 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
           <button
             type="button"
             style={BTN_SECONDARY}
-            className="disabled:opacity-50"
+            className="hover:bg-[var(--audio-btn2-hover,rgba(0,0,0,.05))] transition-colors disabled:opacity-50"
             disabled={disabled || busy || sending}
             onClick={discard}
           >

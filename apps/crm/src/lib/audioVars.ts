@@ -7,6 +7,7 @@ export const CRM_AUDIO_VARS = {
   '--audio-btn2-bg': 'var(--card-bg)',
   '--audio-btn2-fg': 'var(--text-main)',
   '--audio-btn2-bd': 'var(--border-color)',
+  '--audio-btn2-hover': 'var(--surface-hover)',
   '--audio-track': 'var(--surface-2)',
   '--audio-fill': 'var(--text-main)',
   '--audio-muted': 'var(--text-muted)',

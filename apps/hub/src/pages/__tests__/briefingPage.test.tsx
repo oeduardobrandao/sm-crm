@@ -24,7 +24,6 @@ vi.mock('@mesaas/ui/AudioPlayer', () => ({
 }));
 vi.mock('@mesaas/ui/AudioRecorder', () => ({
   isRecordingSupported: () => true,
-  HUB_AUDIO_VARS: {},
   AudioRecorder: ({
     onRecorded,
     phase,
