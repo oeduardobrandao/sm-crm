@@ -1,0 +1,220 @@
+-- supabase/migrations/20260919000004_apply_post_process.sql
+-- Aplicar um template de processo a um post avulso (spec secoes 5.2, 7, 12.13a).
+--
+-- A SEQUENCIA VEM DO SERVIDOR. nome, tipo, ordem, prazo_dias e tipo_prazo sao
+-- reconstruidos do jsonb do template sob FOR SHARE. Do cliente entra so
+-- p_step_overrides, por ordem, com no maximo as chaves responsavel_id e
+-- prazo_efetivo. Isso e o que impede o cliente de inventar uma sequencia que
+-- nunca existiu num template.
+--
+-- ORDEM DE LOCKS: advisory ':post_move' antes de tudo (a RPC INSERE em
+-- post_processes), depois post FOR UPDATE, depois template FOR SHARE. O
+-- template nao participa de nenhum ciclo com attach/move, entao vem por
+-- ultimo; o post vem antes por ser a linha que o attach concorrente disputa.
+-- Essa ordem post -> template e DELIBERADA e nenhum caminho da casa toma
+-- template antes de post: nenhuma RPC existente trava workflow_templates (so
+-- workflows, em migrate_workflow_template e propagate_*). O UPDATE do editor
+-- de templates do CRM pega FOR NO KEY UPDATE, que conflita com este FOR SHARE
+-- e no maximo faz uma das duas esperar, sem ciclo.
+
+CREATE OR REPLACE FUNCTION public.apply_post_process(
+  p_post_id              bigint,
+  p_template_id          bigint,
+  p_template_fingerprint text,
+  p_start_ordem          integer,
+  p_step_overrides       jsonb DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_conta      uuid := public.post_process_require_editor();
+  v_post       record;
+  v_tmpl       record;
+  v_n          int;
+  v_key        text;
+  v_val        jsonb;
+  v_chave      text;
+  v_resp       bigint;
+  v_assinatura text;
+  v_board      integer;
+  v_proc       bigint;
+  v_steps      jsonb;
+BEGIN
+  IF NOT effective_plan_feature(v_conta, 'feature_post_processes') THEN
+    RAISE EXCEPTION 'feature_disabled:feature_post_processes' USING ERRCODE = 'P0001';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
+
+  SELECT wp.id, wp.workflow_id INTO v_post
+    FROM workflow_posts wp
+   WHERE wp.id = p_post_id AND wp.conta_id = v_conta
+     FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'post_not_found' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_post.workflow_id IS NOT NULL THEN
+    RAISE EXCEPTION 'post_in_workflow' USING ERRCODE = 'P0001';
+  END IF;
+  IF EXISTS (SELECT 1 FROM post_processes pp
+              WHERE pp.post_id = p_post_id AND pp.conta_id = v_conta
+                AND pp.estado IN ('ativo', 'concluido')) THEN
+    RAISE EXCEPTION 'post_has_active_process' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT t.id, t.nome, t.etapas, t.modo_prazo INTO v_tmpl
+    FROM workflow_templates t
+   WHERE t.id = p_template_id AND t.conta_id = v_conta
+     FOR SHARE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'template_not_found' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_tmpl.etapas IS NULL OR jsonb_typeof(v_tmpl.etapas) <> 'array'
+     OR jsonb_array_length(v_tmpl.etapas) = 0 THEN
+    RAISE EXCEPTION 'template_empty' USING ERRCODE = 'P0001';
+  END IF;
+  IF public.template_fingerprint(p_template_id) IS DISTINCT FROM p_template_fingerprint THEN
+    RAISE EXCEPTION 'template_changed' USING ERRCODE = 'P0001';
+  END IF;
+
+  v_n := jsonb_array_length(v_tmpl.etapas);
+  IF p_start_ordem IS NULL OR p_start_ordem < 0 OR p_start_ordem >= v_n THEN
+    RAISE EXCEPTION 'invalid_start_ordem' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Exigencia estrutural do modo data_entrega (spec secao 7, Decisao 18): a
+  -- sequencia a partir da inicial precisa ter ao menos uma etapa
+  -- aprovacao_cliente. E checagem de FORMA, nao de data: le so 'tipo' do jsonb
+  -- do template e nao reimplementa dias uteis nem clientes.dia_entrega em SQL,
+  -- o que a secao 7 proibe. Vem depois de invalid_start_ordem, porque a regra e
+  -- relativa a ordem inicial, e antes da validacao de p_step_overrides e de
+  -- qualquer INSERT: template invalido nao cria linha nenhuma. Os demais modos
+  -- ('padrao', 'data_fixa') ignoram a regra.
+  IF coalesce(v_tmpl.modo_prazo, 'padrao') = 'data_entrega'
+     AND NOT EXISTS (
+       SELECT 1
+         FROM jsonb_array_elements(v_tmpl.etapas) WITH ORDINALITY AS e(val, ord)
+        WHERE (e.ord - 1) >= p_start_ordem
+          AND coalesce(nullif(e.val ->> 'tipo', ''), 'padrao') = 'aprovacao_cliente') THEN
+    RAISE EXCEPTION 'data_entrega_requires_approval_step' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Validacao de p_step_overrides: objeto de objetos, chaves numericas dentro
+  -- da sequencia e nao anteriores a inicial, e no maximo responsavel_id e
+  -- prazo_efetivo dentro de cada uma.
+  IF p_step_overrides IS NOT NULL THEN
+    IF jsonb_typeof(p_step_overrides) <> 'object' THEN
+      RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
+    END IF;
+    FOR v_key, v_val IN SELECT key, value FROM jsonb_each(p_step_overrides) LOOP
+      IF v_key !~ '^[0-9]+$' OR v_key::integer >= v_n OR v_key::integer < p_start_ordem THEN
+        RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
+      END IF;
+      IF jsonb_typeof(v_val) <> 'object' THEN
+        RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
+      END IF;
+      FOR v_chave IN SELECT jsonb_object_keys(v_val) LOOP
+        IF v_chave NOT IN ('responsavel_id', 'prazo_efetivo') THEN
+          RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
+        END IF;
+      END LOOP;
+      IF (v_val ->> 'prazo_efetivo') IS NOT NULL THEN
+        BEGIN
+          PERFORM (v_val ->> 'prazo_efetivo')::timestamptz;
+        EXCEPTION WHEN others THEN
+          RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
+        END;
+      END IF;
+      IF (v_val ->> 'responsavel_id') IS NOT NULL THEN
+        BEGIN
+          v_resp := (v_val ->> 'responsavel_id')::bigint;
+        EXCEPTION WHEN others THEN
+          RAISE EXCEPTION 'invalid_step_overrides' USING ERRCODE = 'P0001';
+        END;
+        IF NOT EXISTS (SELECT 1 FROM membros m WHERE m.id = v_resp AND m.conta_id = v_conta) THEN
+          RAISE EXCEPTION 'membro_not_found' USING ERRCODE = 'P0001';
+        END IF;
+      END IF;
+    END LOOP;
+  END IF;
+
+  -- A etapa inicial e a unica que precisa de prazo agora: e ela que fica ativa.
+  IF (p_step_overrides -> p_start_ordem::text ->> 'prazo_efetivo') IS NULL THEN
+    RAISE EXCEPTION 'start_deadline_required' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT string_agg((e.ord - 1)::text || '|' || coalesce(e.val ->> 'nome', '')
+                    || '|' || coalesce(nullif(e.val ->> 'tipo', ''), 'padrao'),
+                    chr(10) ORDER BY e.ord)
+    INTO v_assinatura
+    FROM jsonb_array_elements(v_tmpl.etapas) WITH ORDINALITY AS e(val, ord);
+
+  -- Ativos e concluidos: sao os dois estados que aparecem no quadro. So os
+  -- ativos deixaria um concluido reaberto colidindo com um processo novo na
+  -- mesma posicao (Decisao 19). Encerrado nao aparece e nao entra no max.
+  SELECT coalesce(max(pp.board_position), -1) + 1 INTO v_board
+    FROM post_processes pp WHERE pp.conta_id = v_conta AND pp.estado IN ('ativo', 'concluido');
+
+  INSERT INTO post_processes
+    (conta_id, post_id, template_id, template_nome, assinatura, estado, etapa_atual,
+     modo_prazo, board_position, created_by)
+  VALUES
+    (v_conta, p_post_id, p_template_id, v_tmpl.nome, v_assinatura, 'ativo', p_start_ordem,
+     coalesce(v_tmpl.modo_prazo, 'padrao'), v_board, auth.uid())
+  RETURNING id INTO v_proc;
+
+  -- responsavel_id: override vence; senao o do template, mas so se ainda
+  -- resolver para um membro da conta (um template pode carregar id de membro
+  -- ja removido, e a FK composta derrubaria a operacao inteira).
+  INSERT INTO post_process_steps
+    (conta_id, process_id, ordem, nome, tipo, responsavel_id, prazo_dias, tipo_prazo,
+     prazo_efetivo, estado, iniciado_em)
+  SELECT
+    v_conta, v_proc, (e.ord - 1)::integer,
+    coalesce(e.val ->> 'nome', ''),
+    coalesce(nullif(e.val ->> 'tipo', ''), 'padrao'),
+    -- Override presente vence sempre, inclusive {"responsavel_id": null} para
+    -- limpar o responsavel do template; so a AUSENCIA da chave herda do template.
+    CASE WHEN (p_step_overrides -> (e.ord - 1)::text) ? 'responsavel_id'
+         THEN (p_step_overrides -> (e.ord - 1)::text ->> 'responsavel_id')::bigint
+         ELSE (SELECT m.id FROM membros m
+                WHERE m.id = (e.val ->> 'responsavel_id')::bigint AND m.conta_id = v_conta)
+    END,
+    (e.val ->> 'prazo_dias')::integer,
+    nullif(e.val ->> 'tipo_prazo', ''),
+    (p_step_overrides -> (e.ord - 1)::text ->> 'prazo_efetivo')::timestamptz,
+    CASE WHEN (e.ord - 1) < p_start_ordem THEN 'ignorado'
+         WHEN (e.ord - 1) = p_start_ordem THEN 'ativo'
+         ELSE 'pendente' END,
+    CASE WHEN (e.ord - 1) = p_start_ordem THEN now() ELSE NULL END
+    FROM jsonb_array_elements(v_tmpl.etapas) WITH ORDINALITY AS e(val, ord);
+
+  PERFORM public.post_process_log_event(
+    v_conta, p_post_id, v_proc, 'aplicado', NULL,
+    jsonb_build_object('template_id', p_template_id, 'template_nome', v_tmpl.nome,
+                       'start_ordem', p_start_ordem, 'etapa_atual', p_start_ordem));
+
+  SELECT jsonb_agg(to_jsonb(y) ORDER BY y.ordem) INTO v_steps FROM (
+    SELECT s.process_id, s.ordem, s.nome, s.tipo, s.estado, s.responsavel_id,
+           s.prazo_dias, s.tipo_prazo, s.prazo_efetivo, s.iniciado_em
+      FROM post_process_steps s WHERE s.process_id = v_proc) y;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'process_id', v_proc,
+    'post_id', p_post_id,
+    'estado', 'ativo',
+    'etapa_atual', p_start_ordem,
+    'revisao', 1,
+    'assinatura', v_assinatura,
+    'template_id', p_template_id,
+    'template_nome', v_tmpl.nome,
+    'steps', coalesce(v_steps, '[]'::jsonb));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.apply_post_process(bigint, bigint, text, integer, jsonb) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.apply_post_process(bigint, bigint, text, integer, jsonb)
+  TO authenticated, service_role;
