@@ -131,6 +131,25 @@ export function fullColumnOrder(
   return ordered.map((c) => c.workflow.id!);
 }
 
+// Aplica os overlays otimistas (etapa e position pendentes de um drag ainda
+// nao refletido pelo refetch) a um card. Compartilhada por localCards (lista
+// visivel) e localAllCards (base do fullColumnOrder): sem isso, um segundo
+// drag antes do primeiro onRefresh() reconstruiria a coluna inteira a partir
+// dos cards sem overlay e reverteria as posicoes ja persistidas dos ocultos.
+function applyOverlays(
+  card: BoardCard,
+  pendingEtapas: Map<number, WorkflowEtapa>,
+  pendingPositions: Map<number, number>,
+): BoardCard {
+  let out = card;
+  const pe = pendingEtapas.get(card.workflow.id!);
+  if (pe && pe.id !== card.etapa.id) out = { ...out, etapa: pe, etapaIdx: pe.ordem };
+  const pp = pendingPositions.get(card.workflow.id!);
+  if (pp !== undefined && pp !== card.workflow.position)
+    out = { ...out, workflow: { ...out.workflow, position: pp } };
+  return out;
+}
+
 // Droppable column body — registers the column as a drop target so empty columns can receive drops
 function DroppableColumnBody({
   id,
@@ -323,16 +342,17 @@ export function KanbanView({
 
   const localCards = useMemo(() => {
     if (pendingEtapas.size === 0 && pendingPositions.size === 0) return cards;
-    return cards.map((c) => {
-      let out = c;
-      const pe = pendingEtapas.get(c.workflow.id!);
-      if (pe && pe.id !== c.etapa.id) out = { ...out, etapa: pe, etapaIdx: pe.ordem };
-      const pp = pendingPositions.get(c.workflow.id!);
-      if (pp !== undefined && pp !== c.workflow.position)
-        out = { ...out, workflow: { ...out.workflow, position: pp } };
-      return out;
-    });
+    return cards.map((c) => applyOverlays(c, pendingEtapas, pendingPositions));
   }, [cards, pendingEtapas, pendingPositions]);
+
+  // Mesmo overlay otimista aplicado a allCards (a coluna INTEIRA, sem o filtro
+  // da pagina): fullColumnOrder precisa enxergar as posicoes ja persistidas
+  // por um drag anterior, nao so os cards visiveis em localCards.
+  const localAllCards = useMemo(() => {
+    if (!allCards) return undefined;
+    if (pendingEtapas.size === 0 && pendingPositions.size === 0) return allCards;
+    return allCards.map((c) => applyOverlays(c, pendingEtapas, pendingPositions));
+  }, [allCards, pendingEtapas, pendingPositions]);
 
   const boardRows = buildBoardRows(localCards, templates);
 
@@ -478,7 +498,7 @@ export function KanbanView({
         // na ordem completa antes de persistir.
         const colOrdem = activeLocation.column.ordem;
         const full = fullColumnOrder(
-          allCards,
+          localAllCards,
           activeLocation.column.cards,
           activeLocation.row.key,
           colOrdem,
@@ -543,7 +563,7 @@ export function KanbanView({
                 ? beforePos + 1
                 : 0;
         const targetFull = fullColumnOrder(
-          allCards,
+          localAllCards,
           targetColumn.cards,
           targetRow.key,
           targetColumn.ordem,
@@ -574,7 +594,7 @@ export function KanbanView({
     },
     [
       localCards,
-      allCards,
+      localAllCards,
       dropSlot,
       onRefresh,
       onRecurring,

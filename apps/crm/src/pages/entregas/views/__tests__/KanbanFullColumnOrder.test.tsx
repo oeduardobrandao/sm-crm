@@ -82,4 +82,18 @@ describe('fullColumnOrder', () => {
     const visible = [card(3, 0), card(1, 1)];
     expect(fullColumnOrder(undefined, visible, 'template:7', 1, [], 'manual')).toEqual([3, 1]);
   });
+
+  it('honra positions ja sobrepostas pelo overlay otimista de um drag anterior', () => {
+    // Servidor ainda reporta [1→0, 2→1, 3→2] (refetch do 1o drag nao chegou),
+    // mas o chamador (localAllCards) ja aplicou o overlay otimista do 1o
+    // drag: card 3 movido para o topo (position -1). fullColumnOrder é pura
+    // e so ordena o que recebe, entao ela precisa refletir esse overlay.
+    const all = [
+      card(1, 0),
+      card(2, 1),
+      { ...card(3, 2), workflow: { ...card(3, 2).workflow, position: -1 } },
+    ];
+    const visible = all;
+    expect(fullColumnOrder(all, visible, 'template:7', 1, [], 'manual')).toEqual([3, 1, 2]);
+  });
 });
