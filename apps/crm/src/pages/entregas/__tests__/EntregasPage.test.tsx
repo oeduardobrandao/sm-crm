@@ -1019,6 +1019,70 @@ describe('EntregasPage', () => {
     });
   });
 
+  describe('deep link ?drawer= quando o fluxo não está no quadro', () => {
+    function renderWithBoard(entry: string) {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [wfFixture],
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      return renderPage(entry);
+    }
+
+    it('abre o post avulso quando o post foi desmembrado do fluxo do link', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 5, workflow_id: null } as never);
+      renderWithBoard('/entregas?drawer=99&post=5');
+      expect(await screen.findByText('Standalone drawer: 5')).toBeInTheDocument();
+      expect(mockedGetStandalonePost).toHaveBeenCalledWith(5);
+      expect(screen.getByTestId('current-path')).toHaveTextContent('/entregas');
+    });
+
+    it('avisa quando o post continua em um fluxo fora do quadro, sem entrar em loop', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 5, workflow_id: 99 } as never);
+      renderWithBoard('/entregas?drawer=99&post=5');
+      await waitFor(() =>
+        expect(mockedToast.error).toHaveBeenCalledWith(
+          'Este post está em um fluxo que não aparece no quadro. Veja em Concluídas.',
+        ),
+      );
+      expect(mockedGetStandalonePost).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/Standalone drawer/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Workflow drawer/)).not.toBeInTheDocument();
+    });
+
+    it('avisa quando só o fluxo foi pedido e ele não existe', async () => {
+      renderWithBoard('/entregas?drawer=99');
+      await waitFor(() => expect(mockedToast.error).toHaveBeenCalledWith('Fluxo não encontrado'));
+      expect(mockedGetStandalonePost).not.toHaveBeenCalled();
+    });
+
+    it('espera o carregamento antes de decidir que o fluxo não existe', async () => {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [],
+        isLoading: true,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?drawer=99');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockedToast.error).not.toHaveBeenCalled();
+    });
+
+    it('continua abrindo o drawer do fluxo quando o card existe', async () => {
+      renderWithBoard('/entregas?drawer=1&post=5');
+      expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
+      expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
+      expect(mockedGetStandalonePost).not.toHaveBeenCalled();
+    });
+  });
+
   it('duplicates recurring workflows and refreshes on success', async () => {
     const refresh = vi.fn();
     mockedDuplicateWorkflow.mockResolvedValue(undefined as never);

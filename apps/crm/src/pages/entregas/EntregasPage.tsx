@@ -254,6 +254,15 @@ export default function EntregasPage() {
   const [pendingDeepLink, setPendingDeepLink] = useState<{
     workflowId: number | null;
     postId: number | null;
+    /** Chegou aqui porque o `?drawer=` não casou com nenhum card. Se o post ainda
+     *  estiver em um fluxo, não devolver ao resolvedor de cards (evita loop). */
+    fromDrawerFallback?: boolean;
+    /** Verdadeiro quando o alvo veio de um link real (`?drawer=`/`?post=`), direto ou
+     *  via handoff do resolvedor de post. `onOpenWorkflow` ("mover posts para outro
+     *  fluxo", abaixo) reaproveita este mesmo estado só para esperar o card do fluxo
+     *  novo aparecer após o refetch -- sem esse marcador, o card ainda inexistente
+     *  seria lido como "fluxo não encontrado" e a espera seria cancelada cedo demais. */
+    fromUrl?: boolean;
   } | null>(null);
   const drawerParam = searchParams.get('drawer');
   const postParam = searchParams.get('post');
@@ -275,7 +284,11 @@ export default function EntregasPage() {
       const parsed = parseInt(drawerParam, 10);
       if (!isNaN(parsed)) {
         const parsedPost = postParam ? parseInt(postParam, 10) : NaN;
-        setPendingDeepLink({ workflowId: parsed, postId: isNaN(parsedPost) ? null : parsedPost });
+        setPendingDeepLink({
+          workflowId: parsed,
+          postId: isNaN(parsedPost) ? null : parsedPost,
+          fromUrl: true,
+        });
         consumeParams();
       }
     } else if (postParam) {
@@ -284,7 +297,7 @@ export default function EntregasPage() {
       // asynchronously below via getStandalonePost.
       const parsedPost = parseInt(postParam, 10);
       if (!isNaN(parsedPost)) {
-        setPendingDeepLink({ workflowId: null, postId: parsedPost });
+        setPendingDeepLink({ workflowId: null, postId: parsedPost, fromUrl: true });
         consumeParams();
       }
     }
@@ -316,19 +329,31 @@ export default function EntregasPage() {
   }, [activeView, activeMode, contaId]);
 
   useEffect(() => {
-    if (pendingDeepLink === null || pendingDeepLink.workflowId == null || cards.length === 0)
-      return;
-    const { workflowId, postId } = pendingDeepLink;
+    if (pendingDeepLink === null || pendingDeepLink.workflowId == null) return;
+    const { workflowId, postId, fromUrl } = pendingDeepLink;
     const match = cards.find((c) => c.workflow.id === workflowId);
-    // An unmatched target is kept, not dropped: `cards` arrives asynchronously, so a link
-    // that lands before the board has loaded resolves on a later pass.
     if (match) {
       setPendingDeepLink(null);
       setStandalonePostId(null);
       setDrawerInitialPostId(postId);
       setDrawerCard(match);
+      return;
     }
-  }, [cards, pendingDeepLink]);
+    // `onOpenWorkflow` (mover posts, abaixo) reaproveita este mesmo estado para
+    // esperar o card do fluxo recém-criado aparecer após o refetch -- sem
+    // `fromUrl`, essa espera é legítima e deve continuar indefinidamente.
+    if (!fromUrl) return;
+    // `cards` chega assíncrono: só decidir que o fluxo não existe depois do load.
+    if (isLoading) return;
+    // Fluxo concluído, arquivado, excluído, ou post desmembrado depois que o
+    // link foi compartilhado. Com post no link, o post é o que interessa.
+    if (postId != null) {
+      setPendingDeepLink({ workflowId: null, postId, fromDrawerFallback: true });
+      return;
+    }
+    toast.error('Fluxo não encontrado');
+    setPendingDeepLink(null);
+  }, [cards, isLoading, pendingDeepLink]);
 
   // Resolves a `?post=` deep link that arrived with no `?drawer=` (workflowId
   // still null above): looks the post up directly since only its own row says
@@ -356,10 +381,17 @@ export default function EntregasPage() {
           setDrawerInitialPostId(null);
           setStandalonePostId(post.id!);
           setPendingDeepLink(null);
+        } else if (pendingDeepLink.fromDrawerFallback) {
+          // Já tentamos o quadro e o fluxo não está lá: parar aqui.
+          toast.error('Este post está em um fluxo que não aparece no quadro. Veja em Concluídas.');
+          setPendingDeepLink(null);
         } else {
           // Attached after all (e.g. re-attached since the link was shared) --
-          // hand off to the card-lookup resolver above.
-          setPendingDeepLink({ workflowId: post.workflow_id, postId });
+          // hand off to the card-lookup resolver above. `fromUrl: true`: this
+          // state only exists because the original target came from `?drawer=`/
+          // `?post=`, so the card resolver should still fall back to a toast if
+          // the reattached workflow itself never turns up on the board.
+          setPendingDeepLink({ workflowId: post.workflow_id, postId, fromUrl: true });
         }
       })
       .catch(() => {
