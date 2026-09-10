@@ -2296,3 +2296,81 @@ Deno.test("hub-edit-suggestion accepts a suggestion for an avulso post (workflow
     p_suggested_ig_caption: null,
   });
 });
+
+Deno.test("hub-approve não autoagenda avulso com processo individual que ainda tem outra aprovação adiante", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: { id: 5 }, error: null });
+  db.queue("post_process_steps", "select", {
+    data: [
+      { tipo: "padrao", estado: "concluido" },
+      { tipo: "aprovacao_cliente", estado: "ativo" },
+      { tipo: "padrao", estado: "pendente" },
+      { tipo: "aprovacao_cliente", estado: "pendente" },
+    ],
+    error: null,
+  });
+  queueValidateForScheduling(db, {
+    id: 99, scheduled_at: "2030-01-01T10:00:00.000Z", ig_caption: "legenda", workflow_id: null, cliente_id: 14, tipo: "feed",
+  });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.scheduled, false);
+  assertEquals(db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change"), undefined);
+});
+
+Deno.test("hub-approve autoagenda avulso com processo individual na última aprovação", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: { id: 5 }, error: null });
+  db.queue("post_process_steps", "select", {
+    data: [
+      { tipo: "aprovacao_cliente", estado: "herdado" },
+      { tipo: "padrao", estado: "concluido" },
+      { tipo: "aprovacao_cliente", estado: "ativo" },
+    ],
+    error: null,
+  });
+  queueValidateForScheduling(db, {
+    id: 99, scheduled_at: "2030-01-01T10:00:00.000Z", ig_caption: "legenda", workflow_id: null, cliente_id: 14, tipo: "feed",
+  });
+  db.queueRpc("record_post_status_change", { data: true, error: null });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  const body = await readJson(response);
+  assertEquals(body.scheduled, true);
+});
+
+Deno.test("hub-approve falha fechado quando a consulta do processo individual erra", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: null, error: { message: "db offline" } });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.scheduled, false);
+});
