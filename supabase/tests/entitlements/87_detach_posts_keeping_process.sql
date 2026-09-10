@@ -370,6 +370,18 @@ begin
   end;
   assert v_raised, 'valor nao-timestamptz deve levantar invalid_step_deadlines';
 
+  -- Chave com zero a esquerda: nao canonica, some do INSERT (que le por
+  -- e.ordem::text) e a etapa ficaria sem prazo em silencio.
+  v_raised := false;
+  begin
+    perform detach_posts_keeping_process(array[e.p1], e.wf, v_fp, v_prazo, gen_random_uuid(),
+      jsonb_build_object('07', '2026-09-20T02:59:59.000Z'));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_step_deadlines', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'chave com zero a esquerda deve levantar invalid_step_deadlines';
+
   -- NULL dentro do lote: antes era descartado em silencio e devolvia ok.
   v_raised := false;
   begin

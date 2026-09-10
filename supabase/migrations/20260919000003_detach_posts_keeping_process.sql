@@ -16,8 +16,13 @@
 -- ordem porque o CRM edita workflow_etapas direto, sem travar a linha do fluxo:
 -- sem trava-las aqui, uma edicao commitada entre o calculo do fingerprint e o
 -- snapshot entraria no snapshot com um fingerprint que ja nao descreve as
--- etapas copiadas. A edicao direta de etapa trava so a propria linha e nao
--- toma nada depois, entao nao ha ciclo; attach/move nao travam etapas.
+-- etapas copiadas. O lock do fluxo no PASSO 2 e FOR NO KEY UPDATE, nao FOR
+-- UPDATE: o UPDATE direto de workflow_etapas pelo CRM dispara o trigger
+-- workflow_etapas_updated_event, que insere em workflow_events, cuja FK pega
+-- FOR KEY SHARE na linha do fluxo, e FOR UPDATE aqui fechava ciclo com isso
+-- (40P01, janela sub-ms). FOR NO KEY UPDATE nao conflita com FOR KEY SHARE e
+-- continua conflitando com o FOR UPDATE de attach/move e de outro detach, entao
+-- a serializacao entre RPCs nao se perde; attach/move nao travam etapas.
 --
 -- IDEMPOTENCIA. p_request_id e consultado DEPOIS do advisory: duas chamadas
 -- simultaneas com o mesmo id serializam no advisory, a segunda encontra o
@@ -139,7 +144,7 @@ BEGIN
     INTO v_wf
     FROM workflows w
    WHERE w.id = p_workflow_id AND w.conta_id = v_conta
-     FOR UPDATE;
+     FOR NO KEY UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'workflow_not_found' USING ERRCODE = 'P0001';
   END IF;
@@ -186,7 +191,7 @@ BEGIN
       RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
     END IF;
     FOR v_key, v_val IN SELECT key, value FROM jsonb_each_text(p_step_deadlines) LOOP
-      IF v_key !~ '^[0-9]+$' THEN
+      IF v_key !~ '^(0|[1-9][0-9]{0,8})$' THEN
         RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
       END IF;
       -- A regex aceita qualquer sequencia de digitos, inclusive uma que nao
