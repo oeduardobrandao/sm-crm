@@ -10,12 +10,8 @@ import {
 import { describeAudioError, uploadBriefingAudio } from '../services/briefingAudio';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
-import {
-  AudioRecorder,
-  HUB_AUDIO_VARS,
-  isRecordingSupported,
-  type RecorderPhase,
-} from '../components/AudioRecorder';
+import { AudioRecorder, isRecordingSupported, type RecorderPhase } from '@mesaas/ui/AudioRecorder';
+import { HUB_AUDIO_VARS } from '../lib/audioVars';
 import { PageHeader } from '../components/PageHeader';
 import { ScrollableTabs } from '../components/ScrollableTabs';
 import type { BriefingAudio, BriefingAudioResponse, BriefingQuestion } from '../types';
@@ -392,7 +388,9 @@ function QuestionItem({
       )}
 
       {audioEnabled && isRecordingSupported() && (
-        <AudioRecorder phase={phase} disabled={busyAction !== null} onRecorded={handleRecorded} />
+        <div style={HUB_AUDIO_VARS}>
+          <AudioRecorder phase={phase} disabled={busyAction !== null} onRecorded={handleRecorded} />
+        </div>
       )}
       {audioError && <p className="text-xs text-red-500">{audioError}</p>}
     </div>

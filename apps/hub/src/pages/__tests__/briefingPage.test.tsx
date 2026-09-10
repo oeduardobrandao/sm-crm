@@ -22,7 +22,7 @@ vi.mock('@mesaas/ui/AudioPlayer', () => ({
     <div data-testid="audio-player">{`player ${durationSeconds ?? 0}s`}</div>
   ),
 }));
-vi.mock('../../components/AudioRecorder', () => ({
+vi.mock('@mesaas/ui/AudioRecorder', () => ({
   isRecordingSupported: () => true,
   HUB_AUDIO_VARS: {},
   AudioRecorder: ({

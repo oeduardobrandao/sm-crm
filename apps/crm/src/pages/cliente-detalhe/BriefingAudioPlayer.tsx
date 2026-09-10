@@ -1,17 +1,9 @@
-import type { CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import { Badge } from '@/components/ui/badge';
+import { CRM_AUDIO_VARS } from '@/lib/audioVars';
 import { fetchBriefingAudio } from '@/services/briefingAudio';
 import type { HubBriefingQuestionRow } from '@/store/hub';
-
-/** CRM tokens for the shared player: ink CTA button, subtle track. */
-const CRM_AUDIO_VARS = {
-  '--audio-btn-bg': 'var(--cta-bg)',
-  '--audio-btn-fg': 'var(--cta-fg)',
-  '--audio-track': 'var(--surface-2)',
-  '--audio-fill': 'var(--text-main)',
-} as CSSProperties;
 
 const STATUS: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' }> = {
   done: { label: 'Transcrito', variant: 'success' },

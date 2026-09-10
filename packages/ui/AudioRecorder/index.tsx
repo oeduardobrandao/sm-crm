@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Mic } from 'lucide-react';
-import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
-import { MAX_AUDIO_SECONDS, pickRecorderMime } from '../services/briefingAudio';
-
-/** Hub tokens for the shared player (whitelabel-aware). */
-export const HUB_AUDIO_VARS = {
-  '--audio-btn-bg': 'var(--hub-primary)',
-  '--audio-btn-fg': 'var(--hub-primary-fg)',
-  '--audio-track': 'var(--hub-bd)',
-  '--audio-fill': 'var(--hub-txt)',
-} as CSSProperties;
+import { AudioPlayer } from '../AudioPlayer';
+import { MAX_AUDIO_SECONDS, pickRecorderMime } from '../audio/validation';
 
 export type RecorderPhase = 'idle' | 'uploading' | 'transcribing';
 
@@ -30,18 +22,43 @@ export function formatDuration(seconds: number): string {
 }
 
 const WARN_AT_SECONDS = 270;
-const BTN =
-  'inline-flex items-center gap-2 px-3.5 py-2 text-[13px] font-semibold rounded-[var(--hub-r-ctl)] disabled:opacity-50';
+const BTN_BASE: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '8px 14px',
+  fontSize: 13,
+  fontWeight: 600,
+  borderRadius: 'var(--audio-radius, 10px)',
+  border: '1px solid transparent',
+  cursor: 'pointer',
+};
+const BTN_PRIMARY: CSSProperties = {
+  ...BTN_BASE,
+  background: 'var(--audio-btn-bg, currentColor)',
+  color: 'var(--audio-btn-fg, #fff)',
+};
+const BTN_SECONDARY: CSSProperties = {
+  ...BTN_BASE,
+  background: 'var(--audio-btn2-bg, transparent)',
+  color: 'var(--audio-btn2-fg, currentColor)',
+  borderColor: 'var(--audio-btn2-bd, rgba(0,0,0,.2))',
+};
+const MUTED: CSSProperties = { color: 'var(--audio-muted, currentColor)', opacity: 0.8 };
 
 interface Props {
   phase: RecorderPhase;
   disabled?: boolean;
   onRecorded: (blob: Blob, mime: string, durationSeconds: number) => Promise<void>;
+  /** Label of the confirm button in the preview state. Default "Enviar". */
+  sendLabel?: string;
+  /** Helper text next to the record button. Default "Até 5:00 por resposta.". */
+  hint?: string;
 }
 
 type Mode = 'idle' | 'recording' | 'preview';
 
-export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
+export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar', hint }: Props) {
   const [mode, setMode] = useState<Mode>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -179,7 +196,8 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            className={`${BTN} hub-btn-secondary`}
+            style={BTN_SECONDARY}
+            className="disabled:opacity-50"
             disabled={disabled || busy || starting}
             onClick={() => void start()}
           >
@@ -187,8 +205,8 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
             {busy ? (phase === 'uploading' ? 'Enviando áudio…' : 'Transcrevendo…') : 'Gravar áudio'}
           </button>
           {!busy && (
-            <span className="text-xs hub-tx3">
-              Até {formatDuration(MAX_AUDIO_SECONDS)} por resposta.
+            <span className="text-xs" style={MUTED}>
+              {hint ?? `Até ${formatDuration(MAX_AUDIO_SECONDS)} por resposta.`}
             </span>
           )}
         </div>
@@ -201,12 +219,13 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
               className="inline-block h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse"
               aria-hidden
             />
-            <span className="text-[13px] tabular-nums hub-txt">
+            <span className="text-[13px] tabular-nums">
               {formatDuration(elapsed)} / {formatDuration(MAX_AUDIO_SECONDS)}
             </span>
             <button
               type="button"
-              className={`${BTN} hub-btn-primary`}
+              style={BTN_PRIMARY}
+              className="disabled:opacity-50"
               onClick={stop}
               aria-label="Parar gravação"
             >
@@ -225,13 +244,17 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
             aria-valuemin={0}
             aria-valuemax={MAX_AUDIO_SECONDS}
             aria-valuenow={elapsed}
-            className="h-1 w-full max-w-[420px] overflow-hidden rounded-full bg-[var(--hub-bd)]"
+            className="h-1 w-full max-w-[420px] overflow-hidden rounded-full"
+            style={{ background: 'var(--audio-track, rgba(0,0,0,.1))' }}
           >
             <div
               className={`h-full rounded-full transition-[width] duration-200 ${
-                nearLimit ? 'bg-amber-500' : 'bg-[var(--hub-txt)]'
+                nearLimit ? 'bg-amber-500' : ''
               }`}
-              style={{ width: `${Math.min(100, (elapsed / MAX_AUDIO_SECONDS) * 100)}%` }}
+              style={{
+                width: `${Math.min(100, (elapsed / MAX_AUDIO_SECONDS) * 100)}%`,
+                background: nearLimit ? undefined : 'var(--audio-fill, currentColor)',
+              }}
             />
           </div>
         </div>
@@ -243,12 +266,12 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
             src={previewUrl}
             durationSeconds={elapsed}
             label="Prévia"
-            className="hub-txt w-full max-w-[360px]"
-            style={HUB_AUDIO_VARS}
+            className="w-full max-w-[360px]"
           />
           <button
             type="button"
-            className={`${BTN} hub-btn-primary`}
+            style={BTN_PRIMARY}
+            className="disabled:opacity-50"
             disabled={disabled || busy || sending}
             onClick={() => void send()}
           >
@@ -256,11 +279,12 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
               ? 'Enviando…'
               : phase === 'transcribing'
                 ? 'Transcrevendo…'
-                : 'Enviar'}
+                : sendLabel}
           </button>
           <button
             type="button"
-            className={`${BTN} hub-btn-secondary`}
+            style={BTN_SECONDARY}
+            className="disabled:opacity-50"
             disabled={disabled || busy || sending}
             onClick={discard}
           >
