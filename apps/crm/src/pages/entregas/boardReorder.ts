@@ -22,6 +22,9 @@ export function insertIntoFullOrder(
   movedId: number,
 ): number[] {
   const base = fullOrder.filter((id) => id !== movedId);
+  // Quando o slot cai depois do ultimo card visivel, anchor fica undefined e o
+  // card movido vai para o FIM da coluna INTEIRA — depois de quaisquer cards
+  // ocultos que porventura fechem a lista, nao so depois do ultimo visivel.
   const anchor = visibleOrder.filter((id) => id !== movedId)[slotIndex];
   const at = anchor === undefined ? base.length : base.indexOf(anchor);
   const out = [...base];

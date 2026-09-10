@@ -96,4 +96,20 @@ describe('fullColumnOrder', () => {
     const visible = all;
     expect(fullColumnOrder(all, visible, 'template:7', 1, [], 'manual')).toEqual([3, 1, 2]);
   });
+
+  it('em modo prazo ordena a coluna inteira por prazo, incluindo ocultos', () => {
+    // sortCardsByPrazo (etapaPrazo.ts) ordena por prazo mais curto primeiro
+    // (Infinity para quem nao tem data_limite), entao 2026 < 2099 < sem prazo.
+    const withDataLimite = (id: number, position: number, data_limite: string | null) => {
+      const c = card(id, position);
+      return { ...c, etapa: { ...c.etapa, data_limite } } as BoardCard;
+    };
+    const all = [
+      withDataLimite(1, 0, '2099-01-01'),
+      withDataLimite(2, 1, '2026-01-01'),
+      withDataLimite(3, 2, null),
+    ];
+    const visible = [all[0], all[2]]; // card 2 (2026) oculto pelo filtro
+    expect(fullColumnOrder(all, visible, 'template:7', 1, [], 'prazo')).toEqual([2, 1, 3]);
+  });
 });

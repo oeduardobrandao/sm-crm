@@ -135,3 +135,27 @@ begin
   raise notice 'PASS 82.4 ACL';
 end $$;
 rollback;
+
+-- 5. argumentos invalidos: NULL dentro de p_positions
+begin;
+do $$
+declare v_ws uuid; v_user uuid := gen_random_uuid(); v_raised boolean := false;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform reorder_workflow_positions(array[1]::bigint[], array[null]::integer[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_arguments', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'NULL em p_positions deve levantar invalid_arguments';
+  raise notice 'PASS 82.5 invalid_arguments (NULL em p_positions)';
+end $$;
+rollback;

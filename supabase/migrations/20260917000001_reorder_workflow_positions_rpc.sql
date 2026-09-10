@@ -30,12 +30,16 @@ begin
      or array_length(p_workflow_ids, 1) is distinct from array_length(p_positions, 1) then
     raise exception 'invalid_arguments' using errcode = 'P0001';
   end if;
+  if array_position(p_positions, null) is not null then
+    raise exception 'invalid_arguments' using errcode = 'P0001';
+  end if;
 
   perform 1 from workflows
    where id = any(p_workflow_ids) and conta_id = v_conta
    order by id
    for update;
 
+  -- Ids duplicados no array tambem caem aqui: o count nunca alcanca array_length com duplicatas.
   select count(*) into v_count
     from workflows
    where id = any(p_workflow_ids) and conta_id = v_conta;

@@ -318,7 +318,7 @@ export function KanbanView({
   useEffect(() => {
     if (pendingEtapas.size === 0 && pendingPositions.size === 0) return;
     const movedCaughtUp = new Set<number>();
-    for (const c of cards) {
+    for (const c of allCards ?? cards) {
       const pe = pendingEtapas.get(c.workflow.id!);
       if (pe && pe.id === c.etapa.id) movedCaughtUp.add(c.workflow.id!);
     }
@@ -331,14 +331,14 @@ export function KanbanView({
     setPendingPositions((prev) => {
       if (prev.size === 0) return prev;
       const next = new Map(prev);
-      for (const c of cards) {
+      for (const c of allCards ?? cards) {
         const pp = next.get(c.workflow.id!);
         if (pp !== undefined && (c.workflow.position === pp || movedCaughtUp.has(c.workflow.id!)))
           next.delete(c.workflow.id!);
       }
       return next.size === prev.size ? prev : next;
     });
-  }, [cards, pendingEtapas, pendingPositions]);
+  }, [cards, allCards, pendingEtapas, pendingPositions]);
 
   const localCards = useMemo(() => {
     if (pendingEtapas.size === 0 && pendingPositions.size === 0) return cards;
@@ -634,8 +634,10 @@ export function KanbanView({
           pendingInsertRef.current = null;
           try {
             await updateWorkflowPositions(insert.ids.map((id, i) => ({ id, position: i })));
-          } catch {
-            // Position is best-effort: the etapa advance itself already stuck.
+          } catch (err) {
+            // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
+            // (migration não aplicada) isto é o único sinal.
+            console.warn('[entregas] falha ao gravar posição após mover etapa', err);
           }
         }
         onRefresh();
@@ -737,8 +739,10 @@ export function KanbanView({
         pendingInsertRef.current = null;
         try {
           await updateWorkflowPositions(insert.ids.map((id, i) => ({ id, position: i })));
-        } catch {
-          // Position is best-effort: the revert itself already stuck.
+        } catch (err) {
+          // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
+          // (migration não aplicada) isto é o único sinal.
+          console.warn('[entregas] falha ao gravar posição após mover etapa', err);
         }
       }
       onRefresh();
