@@ -23,7 +23,16 @@ function makeCard(
   }));
   const etapa = all.find((e) => e.ordem === ativaOrdem)!;
   return {
-    workflow: { id: wfId, cliente_id: 1, titulo: `WF ${wfId}`, status: 'ativo', etapa_atual: ativaOrdem, recorrente: false, template_id: templateId, position },
+    workflow: {
+      id: wfId,
+      cliente_id: 1,
+      titulo: `WF ${wfId}`,
+      status: 'ativo',
+      etapa_atual: ativaOrdem,
+      recorrente: false,
+      template_id: templateId,
+      position,
+    },
     etapa,
     cliente: undefined,
     membro: undefined,
@@ -46,14 +55,24 @@ describe('buildBoardRows', () => {
     const rows = buildBoardRows([makeCard(1, 7, DUP, 1), makeCard(2, 7, DUP, 3)], []);
     expect(rows).toHaveLength(1);
     expect(rows[0].columns.map((c) => c.ordem)).toEqual([0, 1, 2, 3]);
-    expect(rows[0].columns.map((c) => c.nome)).toEqual(['Copy', 'Aprovação', 'Design', 'Aprovação']);
+    expect(rows[0].columns.map((c) => c.nome)).toEqual([
+      'Copy',
+      'Aprovação',
+      'Design',
+      'Aprovação',
+    ]);
     expect(rows[0].columns[1].cards.map((c) => c.workflow.id)).toEqual([1]);
     expect(rows[0].columns[3].cards.map((c) => c.workflow.id)).toEqual([2]);
   });
 
   it('marca o tipo da coluna a partir da etapa', () => {
     const rows = buildBoardRows([makeCard(1, 7, DUP, 0)], []);
-    expect(rows[0].columns.map((c) => c.tipo)).toEqual(['padrao', 'aprovacao_cliente', 'padrao', 'aprovacao_cliente']);
+    expect(rows[0].columns.map((c) => c.tipo)).toEqual([
+      'padrao',
+      'aprovacao_cliente',
+      'padrao',
+      'aprovacao_cliente',
+    ]);
   });
 
   it('usa o rótulo do template quando existe e ordena cards por position', () => {

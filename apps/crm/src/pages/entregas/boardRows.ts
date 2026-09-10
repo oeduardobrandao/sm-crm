@@ -35,7 +35,10 @@ export function parseColumnKey(key: string): { rowKey: string; ordem: number } |
 }
 
 export function buildBoardRows(cards: BoardCard[], templates: WorkflowTemplate[]): BoardRow[] {
-  const rowMap = new Map<string, { key: string; label: string; columns: Map<number, BoardColumn> }>();
+  const rowMap = new Map<
+    string,
+    { key: string; label: string; columns: Map<number, BoardColumn> }
+  >();
   for (const card of cards) {
     const sorted = [...card.allEtapas].sort((a, b) => a.ordem - b.ordem);
     const key =
@@ -51,7 +54,12 @@ export function buildBoardRows(cards: BoardCard[], templates: WorkflowTemplate[]
     // ter uma etapa a mais). O nome e o tipo vêm do primeiro card que trouxe a ordem.
     for (const e of sorted) {
       if (!row.columns.has(e.ordem)) {
-        row.columns.set(e.ordem, { ordem: e.ordem, nome: e.nome, tipo: e.tipo ?? 'padrao', cards: [] });
+        row.columns.set(e.ordem, {
+          ordem: e.ordem,
+          nome: e.nome,
+          tipo: e.tipo ?? 'padrao',
+          cards: [],
+        });
       }
     }
     row.columns.get(card.etapa.ordem)?.cards.push(card);

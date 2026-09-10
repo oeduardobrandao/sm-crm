@@ -336,7 +336,9 @@ export function KanbanView({
       if (overId.startsWith(COL_PREFIX)) {
         const parsed = parseColumnKey(overId.slice(COL_PREFIX.length));
         targetRow = parsed ? rows.find((r) => r.key === parsed.rowKey) : undefined;
-        targetColumn = parsed ? targetRow?.columns.find((c) => c.ordem === parsed.ordem) : undefined;
+        targetColumn = parsed
+          ? targetRow?.columns.find((c) => c.ordem === parsed.ordem)
+          : undefined;
       } else {
         const overLocation = findCardColumn(overId, rows);
         targetRow = overLocation?.row;
@@ -415,7 +417,10 @@ export function KanbanView({
         targetColumn = overLocation.column;
       }
 
-      if (targetColumn.ordem === activeLocation.column.ordem && targetRow.key === activeLocation.row.key) {
+      if (
+        targetColumn.ordem === activeLocation.column.ordem &&
+        targetRow.key === activeLocation.row.key
+      ) {
         // Within-column reorder — sobre a lista EXIBIDA: no modo prazo o drop
         // materializa a ordem visual em positions e a coluna vira 'manual'.
         const colKeyStr = columnKey(activeLocation.row.key, activeLocation.column.ordem);
