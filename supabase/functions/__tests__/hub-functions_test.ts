@@ -753,6 +753,10 @@ Deno.test("hub-approve approves an avulso post (workflow_id null) via cliente_id
     error: null,
   });
   db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // No active process: this is the only branch that runs in production today
+  // (phase 2 writes no post_processes rows yet), so it must be exercised
+  // explicitly rather than falling through the mock's unqueued-select default.
+  db.queue("post_processes", "select", { data: null, error: null });
   // Same skipDateCheck express fixture as the attached-post case above; an avulso
   // post has no workflow_id but authorizes and auto-publishes identically.
   queueValidateForScheduling(db, {
@@ -2373,4 +2377,24 @@ Deno.test("hub-approve falha fechado quando a consulta do processo individual er
   const body = await readJson(response);
   assertEquals(body.ok, true);
   assertEquals(body.scheduled, false);
+});
+
+Deno.test("hub-approve falha fechado quando a consulta das etapas do processo individual erra", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: { id: 5 }, error: null });
+  db.queue("post_process_steps", "select", { data: null, error: { message: "db offline" } });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.scheduled, false);
+  assertEquals(db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change"), undefined);
 });
