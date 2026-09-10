@@ -12,7 +12,12 @@
 -- processo e inserido com origem_workflow_id, e isso fecha ciclo com o FOR
 -- UPDATE que attach_posts_to_flow segura na linha do fluxo alvo. Com o
 -- advisory, as duas RPCs nunca interleiam na mesma conta. Locks de linha
--- depois, sempre fluxo -> post -> processo.
+-- depois, sempre fluxo -> etapas -> posts -> processos. As etapas entram nessa
+-- ordem porque o CRM edita workflow_etapas direto, sem travar a linha do fluxo:
+-- sem trava-las aqui, uma edicao commitada entre o calculo do fingerprint e o
+-- snapshot entraria no snapshot com um fingerprint que ja nao descreve as
+-- etapas copiadas. A edicao direta de etapa trava so a propria linha e nao
+-- toma nada depois, entao nao ha ciclo; attach/move nao travam etapas.
 --
 -- IDEMPOTENCIA. p_request_id e consultado DEPOIS do advisory: duas chamadas
 -- simultaneas com o mesmo id serializam no advisory, a segunda encontra o
@@ -69,6 +74,7 @@ DECLARE
   v_board       integer;
   v_key         text;
   v_val         text;
+  v_ordem       integer;
   v_post_id     bigint;
   v_proc        bigint;
   v_proc_ids    bigint[] := '{}';
@@ -86,6 +92,13 @@ BEGIN
   END IF;
   IF p_active_deadline IS NULL THEN
     RAISE EXCEPTION 'active_deadline_required' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Um NULL no lote seria descartado pelo agregado em silencio: o digest
+  -- ficaria igual ao do mesmo lote sem ele e o chamador que perdeu um id por
+  -- bug de front receberia 'ok'. Recusar em vez de aceitar menos do que veio.
+  IF array_position(p_post_ids, NULL) IS NOT NULL THEN
+    RAISE EXCEPTION 'post_ids_required' USING ERRCODE = 'P0001';
   END IF;
 
   SELECT coalesce(array_agg(DISTINCT x ORDER BY x), '{}') INTO v_ids
@@ -130,9 +143,19 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'workflow_not_found' USING ERRCODE = 'P0001';
   END IF;
-  IF v_wf.status <> 'ativo' THEN
+  -- IS DISTINCT FROM porque workflows.status e nullable: com <> um fluxo de
+  -- status nulo passaria como ativo.
+  IF v_wf.status IS DISTINCT FROM 'ativo' THEN
     RAISE EXCEPTION 'workflow_not_active' USING ERRCODE = 'P0001';
   END IF;
+
+  -- PASSO 2b: etapas da origem travadas antes do fingerprint. Ver ORDEM DE
+  -- LOCKS no cabecalho: sem isto, uma edicao de etapa commitada entre o
+  -- PASSO 3 e o PASSO 9 entraria no snapshot com fingerprint 'valido'.
+  PERFORM 1 FROM workflow_etapas e
+   WHERE e.workflow_id = p_workflow_id
+   ORDER BY e.id
+     FOR UPDATE;
 
   -- PASSO 3: fingerprint recalculado sob lock.
   IF public.workflow_fingerprint(p_workflow_id) IS DISTINCT FROM p_fingerprint THEN
@@ -145,6 +168,15 @@ BEGIN
   IF v_n_ativas <> 1 THEN
     RAISE EXCEPTION 'workflow_etapas_inconsistent' USING ERRCODE = 'P0001';
   END IF;
+  -- workflow_etapas nao tem UNIQUE (workflow_id, ordem) e o fingerprint tolera
+  -- ordem repetida por desenho. Sem esta checagem, um fluxo com ordens 0,1,1
+  -- passa daqui e estoura 23505 cru em post_process_steps_ordem_uq, sem codigo
+  -- que o CRM saiba traduzir.
+  IF EXISTS (SELECT 1 FROM workflow_etapas e
+              WHERE e.workflow_id = p_workflow_id
+              GROUP BY e.ordem HAVING count(*) > 1) THEN
+    RAISE EXCEPTION 'workflow_etapas_inconsistent' USING ERRCODE = 'P0001';
+  END IF;
   SELECT e.ordem, e.nome INTO v_ativa FROM workflow_etapas e
    WHERE e.workflow_id = p_workflow_id AND e.status = 'ativo';
 
@@ -154,11 +186,28 @@ BEGIN
       RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
     END IF;
     FOR v_key, v_val IN SELECT key, value FROM jsonb_each_text(p_step_deadlines) LOOP
-      IF v_key !~ '^[0-9]+$' OR v_key::integer <= v_ativa.ordem THEN
+      IF v_key !~ '^[0-9]+$' THEN
+        RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
+      END IF;
+      -- A regex aceita qualquer sequencia de digitos, inclusive uma que nao
+      -- cabe em integer ('999999999999999999999'): o cast cru levantaria 22003
+      -- cru. Protegido, vira o mesmo invalid_step_deadlines dos demais casos.
+      BEGIN
+        v_ordem := v_key::integer;
+      EXCEPTION WHEN numeric_value_out_of_range OR invalid_text_representation THEN
+        RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
+      END;
+      IF v_ordem <= v_ativa.ordem THEN
         RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
       END IF;
       IF NOT EXISTS (SELECT 1 FROM workflow_etapas e
-                      WHERE e.workflow_id = p_workflow_id AND e.ordem = v_key::integer) THEN
+                      WHERE e.workflow_id = p_workflow_id AND e.ordem = v_ordem) THEN
+        RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
+      END IF;
+      -- Valor JSON null chega aqui como v_val NULL e o cast nao levantaria: a
+      -- etapa futura ficaria sem prazo em silencio, com o CRM achando que
+      -- mandou um. Mapa de prazos so aceita prazo.
+      IF v_val IS NULL THEN
         RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
       END IF;
       BEGIN

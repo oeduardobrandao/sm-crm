@@ -13,6 +13,7 @@
 -- 87.7 responsavel herdado que nao resolve para membro da conta vira nulo
 -- 87.8 mesmo request_id com outro lote, ou com a mesma selecao e outra flag de
 --      arquivamento -> request_mismatch; entradas iguais -> replay
+-- 87.9 ordem duplicada nas etapas da origem -> workflow_etapas_inconsistent
 --
 -- IMPORTANTE. workflow_fingerprint e SECURITY INVOKER (Decisao 11) e o
 -- argumento e avaliado no contexto do CHAMADOR, nao dentro da RPC. Sob
@@ -334,6 +335,51 @@ begin
     v_raised := true;
   end;
   assert v_raised, 'prazo para etapa anterior a ativa deve levantar invalid_step_deadlines';
+
+  -- Chave numerica que nao cabe em integer: passa na regex, e o cast cru
+  -- levantaria 22003 sem codigo mapeavel.
+  v_raised := false;
+  begin
+    perform detach_posts_keeping_process(array[e.p1], e.wf, v_fp, v_prazo, gen_random_uuid(),
+      jsonb_build_object('999999999999999999999', '2026-09-20T02:59:59.000Z'));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_step_deadlines', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'chave numerica fora do range de integer deve levantar invalid_step_deadlines';
+
+  -- Valor JSON null: o cast nao levanta e a etapa ficaria sem prazo em silencio.
+  v_raised := false;
+  begin
+    perform detach_posts_keeping_process(array[e.p1], e.wf, v_fp, v_prazo, gen_random_uuid(),
+      '{"2": null}'::jsonb);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_step_deadlines', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'valor JSON null no mapa de prazos deve levantar invalid_step_deadlines';
+
+  -- Valor que nao e timestamptz.
+  v_raised := false;
+  begin
+    perform detach_posts_keeping_process(array[e.p1], e.wf, v_fp, v_prazo, gen_random_uuid(),
+      jsonb_build_object('2', 'ontem de manha'));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_step_deadlines', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'valor nao-timestamptz deve levantar invalid_step_deadlines';
+
+  -- NULL dentro do lote: antes era descartado em silencio e devolvia ok.
+  v_raised := false;
+  begin
+    perform detach_posts_keeping_process(array[e.p1, null]::bigint[], e.wf, v_fp,
+      v_prazo, gen_random_uuid());
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'post_ids_required', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'NULL dentro de p_post_ids deve levantar post_ids_required';
   execute 'reset role';
 
   -- fluxo arquivado: a checagem vem antes do fingerprint, entao v_fp serve
@@ -453,5 +499,40 @@ begin
   select count(*) into v_n from post_process_batch_requests where request_id = v_req and conta_id = e.ws;
   assert v_n = 1, 'um recibo por request_id';
   raise notice 'PASS 87.8 request_id reusado com entradas diferentes';
+end $$;
+rollback;
+
+-- 87.9
+begin;
+do $$
+declare e record; v_fp text; v_raised boolean := false; v_n int;
+begin
+  select * into e from pg_temp.et_dt_env();
+  -- workflow_etapas nao tem UNIQUE (workflow_id, ordem): duas abas que somam
+  -- etapa ao mesmo tempo, ou uma importacao antiga, deixam ordem repetida. O
+  -- fluxo continua com exatamente uma etapa ativa e o fingerprint tolera a
+  -- repeticao, entao sem a checagem o lote so morreria no INSERT, com o
+  -- 23505 cru de post_process_steps_ordem_uq.
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (e.wf, 2, 'Aprovacao (duplicada)', 1, 'uteis', 'padrao', 'pendente');
+  v_fp := workflow_fingerprint(e.wf);
+
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform detach_posts_keeping_process(array[e.p1], e.wf, v_fp,
+      timestamptz '2026-09-06 02:59:59+00', gen_random_uuid());
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'workflow_etapas_inconsistent', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+
+  assert v_raised, 'ordem duplicada nas etapas deve levantar workflow_etapas_inconsistent';
+  select count(*) into v_n from post_processes where post_id = e.p1;
+  assert v_n = 0, 'nada pode ter sido criado';
+  select count(*) into v_n from workflow_posts where id = e.p1 and workflow_id = e.wf;
+  assert v_n = 1, 'o post continua no fluxo';
+  raise notice 'PASS 87.9 ordem duplicada nas etapas da origem';
 end $$;
 rollback;
