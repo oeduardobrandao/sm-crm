@@ -1,11 +1,34 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, ExternalLink, X, Loader2, ImagePlus } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  ExternalLink,
+  X,
+  Loader2,
+  ImagePlus,
+  Mic,
+  RotateCcw,
+} from 'lucide-react';
 import { useHub } from '../HubContext';
 import { PageHeader } from '../components/PageHeader';
-import { fetchIdeias, createIdeia, updateIdeia, deleteIdeia, deleteIdeiaImage } from '../api';
+import {
+  fetchIdeias,
+  createIdeia,
+  updateIdeia,
+  deleteIdeia,
+  deleteIdeiaImage,
+  deleteIdeiaAudio,
+  retryIdeiaTranscription,
+} from '../api';
 import { uploadIdeiaImage } from '../services/ideiaMedia';
+import { uploadIdeiaAudio } from '../services/ideiaAudio';
+import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
+import { AudioRecorder, isRecordingSupported, type RecorderPhase } from '@mesaas/ui/AudioRecorder';
+import { describeAudioError } from '@mesaas/ui/audio/validation';
+import { HUB_AUDIO_VARS } from '../lib/audioVars';
 import type { HubIdeia, IdeiaImage } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
 
@@ -29,11 +52,18 @@ const STATUS_COLOR: Record<HubIdeia['status'], string> = {
 
 function isMutable(ideia: HubIdeia): boolean {
   return (
+    ideia.origem === 'cliente' &&
     ideia.status === 'nova' &&
     ideia.comentario_agencia === null &&
     ideia.ideia_reactions.length === 0
   );
 }
+
+const AUDIO_STATUS_LABEL: Record<'pending' | 'done' | 'failed', string> = {
+  pending: 'Transcrição pendente',
+  done: 'Transcrito',
+  failed: 'Falha na transcrição',
+};
 
 const MAX_IMAGES = 10;
 
@@ -162,7 +192,8 @@ function IdeiaImages({
 }
 
 export function IdeiasPage() {
-  const { token } = useHub();
+  const { token, bootstrap } = useHub();
+  const audioEnabled = bootstrap.feature_briefing_audio === true;
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<HubIdeia | null>(null);
@@ -242,6 +273,7 @@ export function IdeiasPage() {
               key={ideia.id}
               ideia={ideia}
               token={token}
+              audioEnabled={audioEnabled}
               onChanged={() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] })}
               onEdit={() => openEdit(ideia)}
               onDelete={() => {
@@ -258,6 +290,7 @@ export function IdeiasPage() {
         <IdeiaModal
           token={token}
           editing={editing}
+          audioEnabled={audioEnabled}
           onClose={() => setModalOpen(false)}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
@@ -269,15 +302,153 @@ export function IdeiasPage() {
   );
 }
 
+function IdeiaAudioBlock({
+  token,
+  ideia,
+  canWrite,
+  audioEnabled,
+  onChanged,
+}: {
+  token: string;
+  ideia: HubIdeia;
+  canWrite: boolean;
+  audioEnabled: boolean;
+  onChanged: () => void;
+}) {
+  const [phase, setPhase] = useState<RecorderPhase>('idle');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const audio = ideia.audio;
+  const showRecorder = canWrite && audioEnabled && isRecordingSupported();
+  if (!audio && !showRecorder) return null;
+
+  async function handleRecorded(blob: Blob, mime: string, seconds: number) {
+    setErr(null);
+    try {
+      await uploadIdeiaAudio({
+        token,
+        ideiaId: ideia.id,
+        blob,
+        mime,
+        durationSeconds: seconds,
+        onPhase: setPhase,
+      });
+      setRecording(false);
+      onChanged();
+    } catch (e) {
+      setErr(describeAudioError(e, 'O envio do áudio falhou. Tente de novo.'));
+      throw e;
+    } finally {
+      setPhase('idle');
+    }
+  }
+
+  async function retry() {
+    setErr(null);
+    setBusy(true);
+    try {
+      await retryIdeiaTranscription(token, ideia.id);
+      onChanged();
+    } catch (e) {
+      setErr(describeAudioError(e, 'Não foi possível transcrever agora.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setErr(null);
+    setBusy(true);
+    try {
+      await deleteIdeiaAudio(token, ideia.id);
+      onChanged();
+    } catch (e) {
+      setErr(describeAudioError(e, 'Não foi possível remover o áudio.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2" style={HUB_AUDIO_VARS}>
+      {audio && (
+        <>
+          <p className="text-[12px] hub-tx3 font-medium">
+            Áudio
+            {audio.transcription_status
+              ? ` · ${AUDIO_STATUS_LABEL[audio.transcription_status]}`
+              : ''}
+          </p>
+          <AudioPlayer
+            src={audio.url}
+            durationSeconds={audio.duration_seconds}
+            label="Áudio da ideia"
+            className="hub-txt w-full max-w-[360px]"
+          />
+          {audio.transcript && (
+            <div className="rounded-lg hub-bg-soft px-3 py-2">
+              <p className="text-[11px] hub-tx3 font-semibold uppercase tracking-wide mb-1">
+                Transcrição
+              </p>
+              <p className="text-sm hub-tx2 whitespace-pre-wrap">{audio.transcript}</p>
+            </div>
+          )}
+        </>
+      )}
+      {(showRecorder || (audio?.transcription_status === 'failed' && audioEnabled && canWrite)) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {audio?.transcription_status === 'failed' && audioEnabled && canWrite && (
+            <button
+              type="button"
+              onClick={retry}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 underline underline-offset-2 disabled:opacity-50"
+            >
+              <RotateCcw size={12} /> Tentar novamente
+            </button>
+          )}
+          {showRecorder && audio && !recording && (
+            <button
+              type="button"
+              onClick={() => setRecording(true)}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 underline underline-offset-2 disabled:opacity-50"
+            >
+              <Mic size={12} /> Gravar novamente
+            </button>
+          )}
+          {showRecorder && audio && (
+            <button
+              type="button"
+              onClick={remove}
+              disabled={busy}
+              className="text-[12px] hub-tx3 underline underline-offset-2 hover:text-red-600 disabled:opacity-50"
+            >
+              Remover áudio
+            </button>
+          )}
+        </div>
+      )}
+      {showRecorder && (!audio || recording) && (
+        <AudioRecorder phase={phase} disabled={busy} onRecorded={handleRecorded} hint="Até 5:00." />
+      )}
+      {err && <p className="text-xs text-red-500">{err}</p>}
+    </div>
+  );
+}
+
 function IdeiaCard({
   ideia,
   token,
+  audioEnabled,
   onChanged,
   onEdit,
   onDelete,
 }: {
   ideia: HubIdeia;
   token: string;
+  audioEnabled: boolean;
   onChanged: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -307,6 +478,11 @@ function IdeiaCard({
               Solicitação
             </span>
           )}
+          {ideia.origem === 'agencia' && (
+            <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 hub-btn-primary">
+              Sugestão da agência
+            </span>
+          )}
           <h3 className="font-display text-[17px] font-semibold hub-txt leading-snug">
             {ideia.titulo}
           </h3>
@@ -316,12 +492,14 @@ function IdeiaCard({
           <div className="flex gap-1 shrink-0">
             <button
               onClick={onEdit}
+              aria-label="Editar"
               className="hub-icon-btn p-1.5 rounded-md hub-tx3 transition-colors"
             >
               <Pencil size={15} />
             </button>
             <button
               onClick={onDelete}
+              aria-label="Excluir"
               className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-500/10 hub-tx3 hover:text-red-600 transition-colors"
             >
               <Trash2 size={15} />
@@ -348,8 +526,48 @@ function IdeiaCard({
         </div>
       )}
 
-      {/* Images (not lock-gated — always manageable) */}
-      <IdeiaImages token={token} ideiaId={ideia.id} images={ideia.images} onChanged={onChanged} />
+      {/* Images: full manage UI for the client's own ideias (not lock-gated);
+          agency-suggested ideias show the images read-only, with no upload/remove controls. */}
+      {ideia.origem === 'cliente' ? (
+        <IdeiaImages token={token} ideiaId={ideia.id} images={ideia.images} onChanged={onChanged} />
+      ) : (
+        ideia.images.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {ideia.images.map((img) => (
+              <a
+                key={img.file_id}
+                href={sanitizeExternalUrl(img.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img
+                  src={img.thumbnail_url ?? img.url}
+                  alt=""
+                  width={64}
+                  height={64}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-16 w-16 rounded-lg object-cover border hub-border hub-bg-soft"
+                  style={
+                    img.blur_data_url
+                      ? { backgroundImage: `url(${img.blur_data_url})`, backgroundSize: 'cover' }
+                      : undefined
+                  }
+                />
+              </a>
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Audio */}
+      <IdeiaAudioBlock
+        token={token}
+        ideia={ideia}
+        canWrite={mutable}
+        audioEnabled={audioEnabled}
+        onChanged={onChanged}
+      />
 
       {/* Reactions */}
       {reactionMap.size > 0 && (
@@ -387,11 +605,12 @@ function IdeiaCard({
 interface ModalProps {
   token: string;
   editing: HubIdeia | null;
+  audioEnabled: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
+function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalProps) {
   const qc = useQueryClient();
   const [titulo, setTitulo] = useState(editing?.titulo ?? '');
   const [descricao, setDescricao] = useState(editing?.descricao ?? '');
@@ -401,6 +620,32 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
   const [errors, setErrors] = useState<{ titulo?: string; descricao?: string }>({});
   // The idea this modal is editing: the existing one, or the one we just created.
   const [current, setCurrent] = useState<HubIdeia | null>(editing);
+
+  // Audio recorded before the ideia exists: held locally (preview + discard),
+  // uploaded right after create succeeds, same single-step pattern as images.
+  const audioSupported = audioEnabled && isRecordingSupported();
+  const [pendingAudio, setPendingAudio] = useState<{
+    blob: Blob;
+    mime: string;
+    durationSeconds: number;
+    url: string;
+  } | null>(null);
+  const [rerecord, setRerecord] = useState(false);
+  const [audioPhase, setAudioPhase] = useState<RecorderPhase>('idle');
+  const pendingAudioRef = useRef(pendingAudio);
+  pendingAudioRef.current = pendingAudio;
+  useEffect(
+    () => () => {
+      if (pendingAudioRef.current) URL.revokeObjectURL(pendingAudioRef.current.url);
+    },
+    [],
+  );
+
+  function discardPendingAudio() {
+    if (pendingAudio) URL.revokeObjectURL(pendingAudio.url);
+    setPendingAudio(null);
+    setRerecord(false);
+  }
 
   // Images picked before the ideia exists: held locally, uploaded right after
   // the create call so saving is a single step for the client.
@@ -484,6 +729,24 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           links: cleanLinks,
           tipo,
         });
+        if (pendingAudio) {
+          try {
+            await uploadIdeiaAudio({
+              token,
+              ideiaId: ideia.id,
+              blob: pendingAudio.blob,
+              mime: pendingAudio.mime,
+              durationSeconds: pendingAudio.durationSeconds,
+              onPhase: setAudioPhase,
+            });
+          } catch (e) {
+            alert(
+              describeAudioError(e, 'Ideia enviada, mas o áudio falhou. Tente de novo no card.'),
+            );
+          } finally {
+            setAudioPhase('idle');
+          }
+        }
         // Single-step save: upload any locally queued images right after create.
         const failed = await flushPendingFiles(ideia.id, 0);
         qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
@@ -596,6 +859,62 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             {errors.descricao && <p className="text-xs text-red-500 mt-0.5">{errors.descricao}</p>}
           </div>
 
+          {audioSupported && !current && (
+            <div
+              className="rounded-xl border hub-border hub-bg-soft p-3 space-y-2"
+              style={HUB_AUDIO_VARS}
+            >
+              <label className="text-[12.5px] font-semibold hub-tx2 block">
+                Áudio <span className="hub-tx3 font-normal">· opcional</span>
+              </label>
+              {pendingAudio && !rerecord ? (
+                <div className="space-y-2">
+                  <AudioPlayer
+                    src={pendingAudio.url}
+                    durationSeconds={pendingAudio.durationSeconds}
+                    label="Prévia"
+                    className="hub-txt w-full max-w-[360px]"
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setRerecord(true)}
+                      className="text-[12px] hub-tx3 underline underline-offset-2"
+                    >
+                      Gravar novamente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={discardPendingAudio}
+                      className="text-[12px] hub-tx3 underline underline-offset-2"
+                    >
+                      Descartar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <AudioRecorder
+                  phase={audioPhase}
+                  onRecorded={async (blob, mime, durationSeconds) => {
+                    if (pendingAudio) URL.revokeObjectURL(pendingAudio.url);
+                    setPendingAudio({
+                      blob,
+                      mime,
+                      durationSeconds,
+                      url: URL.createObjectURL(blob),
+                    });
+                    setRerecord(false);
+                  }}
+                  sendLabel="Usar este áudio"
+                  hint="Até 5:00."
+                />
+              )}
+              <p className="text-[11.5px] hub-tx3">
+                A transcrição aparece na ideia logo depois de enviar.
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
               Links de referência{' '}
@@ -697,7 +1016,17 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold disabled:opacity-50 transition-colors"
           >
             {saving && <Loader2 size={15} className="animate-spin" />}
-            {current ? 'Salvar alterações' : 'Salvar'}
+            {saving
+              ? audioPhase === 'uploading'
+                ? 'Enviando áudio…'
+                : audioPhase === 'transcribing'
+                  ? 'Transcrevendo…'
+                  : current
+                    ? 'Salvar alterações'
+                    : 'Salvar'
+              : current
+                ? 'Salvar alterações'
+                : 'Salvar'}
           </button>
           <button
             onClick={() => {

@@ -10,6 +10,29 @@ vi.mock('../../api', () => ({
   createIdeia: vi.fn(),
   updateIdeia: vi.fn(),
   deleteIdeia: vi.fn(),
+  retryIdeiaTranscription: vi.fn(),
+  deleteIdeiaAudio: vi.fn(),
+}));
+vi.mock('../../services/ideiaAudio', () => ({ uploadIdeiaAudio: vi.fn() }));
+vi.mock('@mesaas/ui/AudioRecorder', () => ({
+  isRecordingSupported: () => true,
+  AudioRecorder: ({
+    onRecorded,
+    sendLabel,
+  }: {
+    onRecorded: (b: Blob, m: string, s: number) => Promise<void>;
+    sendLabel?: string;
+  }) => (
+    <button
+      type="button"
+      onClick={() => void onRecorded(new Blob(['abc'], { type: 'audio/webm' }), 'audio/webm', 4)}
+    >
+      {`fake-recorder:${sendLabel ?? 'Enviar'}`}
+    </button>
+  ),
+}));
+vi.mock('@mesaas/ui/AudioPlayer', () => ({
+  AudioPlayer: ({ src }: { src: string }) => <div data-testid="audio-player">{src}</div>,
 }));
 
 import { createIdeia, deleteIdeia, fetchIdeias, updateIdeia } from '../../api';
@@ -31,6 +54,7 @@ const hubValue = {
     is_active: true,
     cliente_id: 14,
     feature_mensagens: true,
+    feature_briefing_audio: true,
   },
   token: 'token-publico',
   workspace: 'mesaas',
@@ -119,6 +143,9 @@ describe('IdeiasPage', () => {
     mockedCreateIdeia.mockReset();
     mockedUpdateIdeia.mockReset();
     mockedDeleteIdeia.mockReset();
+    // jsdom doesn't implement these; the modal's pending-audio preview needs them.
+    URL.createObjectURL = vi.fn(() => 'blob:mock-audio');
+    URL.revokeObjectURL = vi.fn();
   });
 
   afterEach(() => {
@@ -293,8 +320,9 @@ describe('IdeiasPage', () => {
     const mutableHeading = await screen.findByRole('heading', { name: 'Ideia mutável' });
     const mutableCard = mutableHeading.closest('.hub-card');
     expect(mutableCard).not.toBeNull();
-    // Mutable card: edit + delete (text controls) plus the always-available image-add button.
-    expect(within(mutableCard as HTMLElement).getAllByRole('button')).toHaveLength(3);
+    // Mutable card: edit + delete (text controls), the always-available image-add
+    // button, and the audio recorder (no audio yet, so it's shown ready to record).
+    expect(within(mutableCard as HTMLElement).getAllByRole('button')).toHaveLength(4);
 
     const immutableHeading = screen.getByRole('heading', { name: 'Ideia travada' });
     const immutableCard = immutableHeading.closest('.hub-card');
@@ -405,5 +433,118 @@ describe('IdeiasPage', () => {
 
     expect(await screen.findByText('Em andamento')).toBeInTheDocument();
     expect(screen.getByText('Solicitação')).toBeInTheDocument();
+  });
+
+  it('renders an agency ideia read-only with the "Sugestão da agência" chip', async () => {
+    mockedFetchIdeias.mockResolvedValue({
+      ideias: [makeIdeia({ id: 'ag', titulo: 'Da agência', origem: 'agencia' })],
+    } as never);
+    renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+    );
+    expect(await screen.findByText('Da agência')).toBeInTheDocument();
+    expect(screen.getByText('Sugestão da agência')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Excluir' })).toBeNull();
+    expect(screen.queryByText(/adicionar imagem/i)).toBeNull();
+  });
+
+  it('holds a recording in the modal and uploads it right after create', async () => {
+    mockedFetchIdeias.mockResolvedValue({ ideias: [] } as never);
+    mockedCreateIdeia.mockResolvedValue({ ideia: makeIdeia({ id: 'new-1' }) } as never);
+    const { uploadIdeiaAudio } = await import('../../services/ideiaAudio');
+    vi.mocked(uploadIdeiaAudio).mockResolvedValue({ ok: true, transcript: 'oi', audio: null });
+
+    renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+    );
+    await screen.findByText('Nenhuma ideia ainda');
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar ideia' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'fake-recorder:Usar este áudio' }));
+    expect(await screen.findByTestId('audio-player')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Descartar' })).toBeInTheDocument();
+    expect(uploadIdeiaAudio).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText('Ex: Reel mostrando os bastidores...'), {
+      target: { value: 'T' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Descreva sua ideia com detalhes...'), {
+      target: { value: 'D' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(mockedCreateIdeia).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(uploadIdeiaAudio).toHaveBeenCalledWith(
+        expect.objectContaining({
+          token: 'token-publico',
+          ideiaId: 'new-1',
+          mime: 'audio/webm',
+          durationSeconds: 4,
+        }),
+      ),
+    );
+  });
+
+  it('shows player, transcript, retry and remove on a mutable client ideia with audio', async () => {
+    mockedFetchIdeias.mockResolvedValue({
+      ideias: [
+        makeIdeia({
+          id: 'a1',
+          audio: {
+            url: 'https://get/a.webm',
+            mime: 'audio/webm',
+            duration_seconds: 9,
+            transcription_status: 'failed',
+            recorded_at: '2026-09-10T00:00:00Z',
+            transcript: null,
+          },
+        }),
+      ],
+    } as never);
+    renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+    );
+    expect(await screen.findByTestId('audio-player')).toHaveTextContent('https://get/a.webm');
+    expect(screen.getByText(/falha na transcrição/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remover áudio' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /fake-recorder/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Gravar novamente' }));
+    expect(await screen.findByRole('button', { name: 'fake-recorder:Enviar' })).toBeInTheDocument();
+  });
+
+  it('hides recorder, retry and remove when the ideia is locked or the plan lacks audio', async () => {
+    mockedFetchIdeias.mockResolvedValue({
+      ideias: [
+        makeIdeia({
+          id: 'l1',
+          status: 'em_analise',
+          audio: {
+            url: 'https://get/b.webm',
+            mime: 'audio/webm',
+            duration_seconds: 9,
+            transcription_status: 'done',
+            recorded_at: null,
+            transcript: 'Texto transcrito',
+          },
+        }),
+      ],
+    } as never);
+    renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+    );
+    expect(await screen.findByText('Texto transcrito')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remover áudio' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /fake-recorder/ })).toBeNull();
   });
 });
