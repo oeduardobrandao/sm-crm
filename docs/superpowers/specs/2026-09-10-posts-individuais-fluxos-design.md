@@ -27,6 +27,8 @@ A revisão 1 foi conferida contra o código atual. As mudanças abaixo corrigem 
 | Sem processo | Paginado | Cache de Publicações com limite; paginação fora da v1 |
 | Reabrir processo | "Como hoje, preserva prazo" | `reopenWorkflow` reinicia o prazo. O caminho individual preserva, e isso é divergência declarada |
 
+Ajustes da revisão 2.1, após review externo da rev 2: a aprovação do cliente no Hub não avança a etapa individual (§6.2); a idempotência do desmembrar em lote usa um registro de operação em vez de `request_id` nos eventos (§8.1, §9.4); `apply_post_process` reconstrói o snapshot do template no servidor e só aceita responsável e prazo por etapa do cliente (§5.2, §9.1); a seção Sem processo ordena por id (§4.3); a leitura de processo via MCP sai da v1 (§2, §10).
+
 ## 1. Problema e decisão
 
 Hoje um fluxo reúne duas responsabilidades: agrupar publicações e executar um processo de produção. As etapas pertencem ao fluxo; os status pertencem ao post. Desmembrar um post remove `workflow_id` e, por consequência, seu contexto de etapa, responsável e prazo de produção. Ele continua em Publicações, mas desaparece do quadro de Fluxos.
@@ -86,7 +88,7 @@ Quatro defeitos existentes no quadro de Fluxos ficam expostos pelo novo tipo de 
 - Editor de templates novo, propagação de alterações de template para processos já criados ou troca de template em processo em andamento.
 - Paginação da seção Sem processo (usa o cache de Publicações com limite).
 - Migração das preferências de ordenação guardadas no navegador.
-- Comandos de produção via MCP. Só leitura.
+- Qualquer mudança no MCP, inclusive campos de leitura do processo em `get_post` e `list_posts`. Entrega posterior.
 - Novas propriedades customizadas para avulsos, métricas conjuntas de produtividade ou alteração de preços e planos.
 - Recriar o calendário de Fluxos ou o gráfico de Fluxos para aceitar novos tipos de entidade.
 
@@ -146,7 +148,7 @@ Uma seção abaixo das linhas de etapas mostra avulsos sem processo vigente e a 
 
 - Aparece em Todos e Posts individuais; não aparece em Fluxos.
 - Fonte de dados: o cache `['active-posts']` de Publicações, filtrado por `workflow_id IS NULL` e sem execução vigente. Isso liga `useActivePosts` no modo Fluxos, que hoje só roda em Publicações; o poll de 15 s permanece condicionado a haver publicação em andamento.
-- A seção mostra no máximo 12 cards, ordenados por atualização, com o link "Ver todos em Publicações". Paginação fica fora da v1.
+- A seção mostra no máximo 12 cards, os mais recentes primeiro por `id` (a consulta de `getActivePosts` não expõe `updated_at` nem `created_at`, e o id é serial), com o link "Ver todos em Publicações". Paginação fica fora da v1.
 - Aplica busca e cliente, que existem na barra do modo Fluxos. Os filtros de formato e status do post só existem na barra de Publicações e não são adicionados ao modo Fluxos nesta entrega. Filtros de etapa, template, responsável da etapa e prazo não se aplicam à seção; quando algum está ativo, exibir "Filtros de produção não se aplicam aos posts sem processo" em vez de esconder a seção.
 - Posts com processo concluído não pertencem a Sem processo.
 
@@ -194,6 +196,8 @@ Etapas anteriores à atual ficam **herdadas**, com referência textual à origem
 Disponível no drawer do post, no menu da publicação em Publicações e na seção Sem processo. O diálogo escolhe template e etapa inicial (padrão: primeira) e mostra responsáveis e prazos previstos antes de confirmar. Template vazio ou de outra conta é inválido.
 
 Regras de prazo no diálogo (§7): modo `padrao` calcula a partir de agora; modo `data_fixa` exige data para cada etapa a partir da inicial; modo `data_entrega` exige uma etapa `aprovacao_cliente` na sequência e o mês de entrega, e usa `clientes.dia_entrega`. Sem esses dados, o botão de confirmar fica desabilitado com o motivo.
+
+A sequência do processo vem do template, nunca do cliente. A RPC `apply_post_process` trava a linha do template (`FOR SHARE`), confere que pertence à conta e que `workflow_templates.etapas` não está vazio, compara `md5(etapas::text)` com o `p_template_fingerprint` que a UI viu (divergência falha com `template_changed`), e constrói `nome`, `tipo`, `ordem`, `prazo_dias` e `tipo_prazo` a partir do jsonb do template. Do cliente ela aceita só `p_step_overrides`: por `ordem`, `responsavel_id` (validado como membro da conta) e `prazo_efetivo` (obrigatório quando a etapa tem prazo relativo ou o modo exige data). Qualquer outra chave é rejeitada.
 
 Etapas anteriores à inicial ficam **ignoradas**. Status e conteúdo do post não mudam, mesmo aprovado, agendado ou publicado. Um processo não libera edição de campos bloqueados por agendamento.
 
@@ -253,7 +257,7 @@ A árvore de decisão dos fluxos está em três lugares (`KanbanView`, `Entregas
 | Avançar etapa `padrao` ou voltar | Move uma etapa | Preserva status e aprovações |
 | Chegar a uma etapa `aprovacao_cliente` | Ativa a etapa | Não envia ao Hub nem aprova |
 | Enviar ao cliente | Permanece na etapa | Só elegível com `status = 'aprovado_interno'`, a mesma regra de `sendPostsToCliente`. Com n=1, botão desabilitado com o motivo, em vez de sucesso com zero linhas |
-| Cliente aprova ou pede correção no Hub | Se a etapa ativa é `aprovacao_cliente` e o predicado `shouldAutoCompleteApproval` vale para o post, o drawer avança a etapa, como faz com fluxos | Transição, histórico e autoagendamento existentes |
+| Cliente aprova ou pede correção no Hub | Permanece na etapa, aguardando avanço manual. O auto-complete dos fluxos (`shouldAutoCompleteApproval`) só dispara quando o `WorkflowDrawer` aberto observa a transição entre duas listas em memória, e `hub-approve` só chama `record_client_approval`, que não conhece processos. Não criar transição server-side no caminho de aprovação na v1. O drawer individual mostra a dica "Cliente aprovou. Avançar etapa?" quando o post está `aprovado_cliente` e a etapa ativa é `aprovacao_cliente` | Transição, histórico e autoagendamento existentes |
 | Avançar aprovação com pendência | Diálogo de escolha: aprovar internamente e avançar, enviar ao cliente, avançar sem alterar | Ver linhas abaixo |
 | Aprovar internamente e avançar | Move | `status = 'aprovado_cliente'` se não estiver em `agendado`/`postado`, exatamente como `approvePostsInternally`, apesar do nome. O trigger z1 limpa `custom_status_id`, como hoje |
 | Avançar sem alterar post | Move ou conclui | Nunca modifica status, custom status ou aprovações |
@@ -271,14 +275,14 @@ Detalhes obrigatórios:
 
 ## 7. Prazos e atribuição
 
-Campos reais da etapa: `prazo_dias`, `tipo_prazo` (`uteis` ou `corridos`, dias úteis = segunda a sexta sem feriados), `responsavel_id`, `data_limite date`, `iniciado_em`, `concluido_em`. `data_fixa` e `data_entrega` são valores de `workflows.modo_prazo`, não da etapa. Não existe coluna de data de entrega: ela deriva de `clientes.dia_entrega` (1 a 31) e de um mês escolhido.
+Campos reais da etapa: `prazo_dias`, `tipo_prazo` (`uteis` ou `corridos`; dias úteis contam segunda a sexta e não há calendário de feriados, semântica atual que fica igual para processos individuais), `responsavel_id`, `data_limite date`, `iniciado_em`, `concluido_em`. `data_fixa` e `data_entrega` são valores de `workflows.modo_prazo`, não da etapa. Não existe coluna de data de entrega: ela deriva de `clientes.dia_entrega` (1 a 31) e de um mês escolhido.
 
 - Responsável do post (`workflow_posts.responsavel_id`) e responsável da etapa continuam distintos, com rótulos "Responsável do post" e "Responsável da etapa" nos filtros e no drawer.
 - A etapa individual tem `prazo_efetivo timestamptz`. Ao desmembrar, congelar o prazo efetivo da etapa ativa da origem: se ela tem `data_limite`, fim daquele dia no fuso do navegador que chamou (enviado como timestamptz); senão, `iniciado_em + prazo_dias` conforme `tipo_prazo`. Não reiniciar a contagem.
 - Etapas futuras com `data_limite` mantêm a data como `prazo_efetivo`. Etapas futuras relativas mantêm `prazo_dias` e `tipo_prazo` e calculam `prazo_efetivo` quando ativadas.
 - Modo `data_entrega`: a RPC exige uma etapa `aprovacao_cliente` na sequência a partir da inicial e a data de entrega já resolvida pelo cliente (dia do cliente + mês). Os prazos resultantes são materializados no snapshot. Calcular a data no fuso local, não com `toISOString().split('T')[0]`, que já produz o dia anterior no Brasil nas duas implementações existentes; a RPC recebe datas prontas e não repete o cálculo.
 - Comparação e ordenação no quadro misto usam uma única função, `etapaDeadlineDateOf`, estendida para aceitar `prazo_efetivo`. O badge do card individual deriva de `prazo_efetivo` por um adaptador que devolve o formato de `getDeadlineInfo`. Não criar uma terceira implementação de prazo.
-- Quem calcula `prazo_efetivo` é o CRM, com `computeDeadlineDate`, e as RPCs só armazenam o valor recebido: `detach_posts_keeping_process` recebe `p_active_deadline` (prazo congelado da etapa ativa), `apply_post_process` recebe cada etapa com seu `prazo_efetivo` já resolvido, e `transition_post_process` recebe `p_next_deadline` para a etapa que será ativada. Isso evita reimplementar dias úteis em SQL. A RPC valida só que o valor é um `timestamptz` não nulo quando a etapa tem prazo relativo.
+- Quem calcula `prazo_efetivo` é o CRM, com `computeDeadlineDate`, e as RPCs só armazenam o valor recebido: `detach_posts_keeping_process` recebe `p_active_deadline` (prazo congelado da etapa ativa), `apply_post_process` recebe o `prazo_efetivo` de cada etapa em `p_step_overrides`, e `transition_post_process` recebe `p_next_deadline` para a etapa que será ativada. Isso evita reimplementar dias úteis em SQL. A RPC valida só que o valor é um `timestamptz` não nulo quando a etapa tem prazo relativo.
 - Início da etapa individual = instante do desmembrar ou da aplicação. Tempo de produção individual não inclui o período no fluxo.
 - Voltar uma etapa reabre a anterior preservando seu `iniciado_em` original (como `revertEtapa`) e o último `prazo_efetivo`, inclusive vencido, até edição explícita.
 - `responsavel_id` das etapas individuais referencia `membros(id)` com `ON DELETE SET NULL`, a política atual. Remoção de membro é um `DELETE` físico e não pode passar a falhar por causa das tabelas novas. A UI mostra "Sem responsável".
@@ -334,9 +338,18 @@ Unicidade parcial: um `post_id` com `estado IN ('ativo','concluido')`. Unicidade
 | `actor_user_id` uuid null, `actor_name` text | nome em snapshot, como `workflow_events` |
 | `origem` text check `workspace_user, system` | |
 | `antes`, `depois` jsonb | |
-| `request_id` uuid null, unique parcial | idempotência do desmembrar em lote |
-| `resultado` jsonb null | resultado guardado para repetição idempotente |
 | `created_at` | |
+
+`post_process_batch_requests`
+
+| Coluna | Tipo |
+| --- | --- |
+| `request_id` uuid primary key | gerado pelo CRM por tentativa de desmembrar em lote |
+| `conta_id` uuid not null → `workspaces` | |
+| `resultado` jsonb not null | o retorno completo da RPC |
+| `created_at` | |
+
+Uma linha por operação de desmembrar em lote, gravada na mesma transação dos eventos. A repetição com o mesmo `request_id` localiza a linha (validando `conta_id`) e devolve `resultado` sem tocar em nada. O evento por post não carrega o id da requisição.
 
 Invariantes mantidas por constraints e pela RPC: processo `ativo` tem exatamente uma etapa `ativo` na ordem de `etapa_atual`; `concluido` e `encerrado` não têm etapa ativa; encerrar um processo ativo marca a etapa ativa como `interrompido` com timestamp e deixa as futuras `pendente`. `herdado` e `ignorado` não contam como produção individual.
 
@@ -365,7 +378,7 @@ Carregamento em lote por conta: `getActivePostProcesses(contaId)` devolve proces
 | RPC | Entrada | Resultado atômico |
 | --- | --- | --- |
 | `detach_posts_keeping_process(p_post_ids, p_workflow_id, p_fingerprint, p_active_deadline, p_archive_empty_flow, p_request_id)` | | desvinculação + snapshots + eventos + arquivamento opcional; retorna processos e etapas criados, como `move_posts_to_new_flow` retorna `workflow` e `etapas` |
-| `apply_post_process(p_post_id, p_template_id, p_start_ordem, p_steps jsonb)` | etapas já com responsáveis e `prazo_efetivo` resolvidos pela UI | execução + etapas + evento |
+| `apply_post_process(p_post_id, p_template_id, p_template_fingerprint, p_start_ordem, p_step_overrides jsonb)` | sequência reconstruída do template no servidor; do cliente só responsável e `prazo_efetivo` por etapa (§5.2) | execução + etapas + evento |
 | `transition_post_process(p_process_id, p_expected_revisao, p_command, p_approval_choice, p_expected_post_status, p_next_deadline)` | `avancar, voltar, concluir, reabrir` | etapas, ponteiro, estado, alteração permitida no post, re-arm, evento |
 | `update_post_process_step(p_process_id, p_expected_revisao, p_ordem, p_responsavel_id, p_prazo_efetivo)` | | dados validados + revisão + evento |
 | `remove_post_process(p_process_id, p_expected_revisao)` | | encerramento `removido` + evento |
@@ -393,7 +406,7 @@ O guard contra UPDATE direto de `workflow_id` e `cliente_id` é o trigger `post_
 
 - `workflows` e `workflow_etapas` não têm `updated_at` nem versão. O fingerprint de desmembrar é `md5` de `etapa_atual` + lista ordenada de `(ordem, nome, tipo, status, responsavel_id, prazo_dias, tipo_prazo, data_limite, iniciado_em)`. A UI calcula com os dados que exibe; a RPC recalcula sob lock e falha com `workflow_changed` se diferir. Editar uma etapa da origem muda o fingerprint mesmo sem mudar `etapa_atual`.
 - Processos individuais usam `revisao` como versão esperada. Comando com revisão velha falha com `process_changed`. Transições que alteram o post também recebem `p_expected_post_status` e falham com `post_changed`.
-- Idempotência só em `detach_posts_keeping_process`: `p_request_id` é gravado em `post_process_events.request_id` com o `resultado`; repetição devolve o resultado guardado. Os demais comandos são retry-safe pela revisão esperada. `callRpcWithDeadlockRetry` passa a reenviar o mesmo `request_id`.
+- Idempotência só em `detach_posts_keeping_process`: a RPC começa consultando `post_process_batch_requests` por `p_request_id` e conta; se existe, devolve `resultado` e encerra. Senão executa e insere a linha na mesma transação. Os demais comandos são retry-safe pela revisão esperada. `callRpcWithDeadlockRetry` passa a reenviar o mesmo `request_id`.
 - Duas operações simultâneas não podem criar dois processos (unicidade parcial), pular duas etapas (revisão), apagar a produção de outra aba (revisão) nem agendar e reiniciar aprovação no mesmo estado lógico (status esperado).
 
 ### 9.5 Ordem de locks
@@ -414,7 +427,7 @@ Movimento otimista com rollback em falha, refetch em `workflow_changed`/`process
 | Pastas, mídia, capas, comentários | Chaveados por `post_id`; nada é copiado. A pasta é reparentada pelo trigger `folder_sync_post` em qualquer mudança de `workflow_id` |
 | Limpeza de Express | A única GC de avulsos é o passo 3 de `express-post-cleanup-cron`: `is_express AND workflow_id IS NULL AND status = 'rascunho' AND created_at < cutoff`, `DELETE` em lote por `service_role`. RLS não protege. O handler exclui posts com execução `ativo` por uma consulta prévia a `post_processes`, e o contador `avulsoSkippedWithProcess` é somado ao resumo do cron. Como Express não ganha processo automaticamente, a interseção é rara, mas o guard fica |
 | Recorrência | `duplicateWorkflow` copia só etapas, nunca posts. Nada a fazer |
-| MCP | `get_post` e `list_posts` ganham `process: {estado, etapa_atual, etapa_nome, prazo_efetivo} \| null`. `list_workflows` não muda. Não existe attach via MCP; `update_post` não escreve `workflow_id` e `create_post` só define no INSERT. Atualizar a descrição de `create_workflow`, que ainda diz ser necessário para criar posts |
+| MCP | Sem mudança na v1. Não existe attach via MCP: `update_post` não escreve `workflow_id` e `create_post` só define no INSERT, então nenhum guard é necessário. Campos de leitura do processo em `get_post`/`list_posts` e a correção da descrição de `create_workflow` ficam para uma entrega posterior (§13) |
 | Notificações | Fluxos mantêm seu comportamento; eventos individuais não disparam automações de fluxo |
 | Analytics | Histórico herdado não conta tempo nem conclusões; execuções individuais ficam fora dos gráficos |
 
@@ -426,7 +439,7 @@ Ordem:
 
 1. Pré-requisitos (§2) mergeados.
 2. Migrações: tabelas, índices, RLS, RPCs, guard nas quatro RPCs de attach, coluna da flag. Sem backfill.
-3. Edge functions: `hub-approve`, `hub-posts`, `express-post-cleanup-cron`, `mcp` (leitura). Deploy com `--use-api` e `--no-verify-jwt` onde a função já exige.
+3. Edge functions: `hub-approve`, `hub-posts`, `express-post-cleanup-cron`. Deploy com `--use-api` e `--no-verify-jwt` onde a função já exige.
 4. CRM capaz de ler e gerenciar processos, com a flag desligada.
 5. Ligar em workspace de validação, rodar a matriz de aceitação, ampliar.
 
@@ -451,7 +464,8 @@ Rollback não remove tabelas com histórico nem converte processos em avulsos. G
 
 11. Um post desmembrado de um fluxo com duas etapas de aprovação, aprovado pelo cliente no Hub durante a primeira, **não** é autoagendado; `hub-posts` o lista em `autoPublishSuspendedPostIds`. Na segunda aprovação, é autoagendado conforme `auto_publish_on_approval`.
 12. Dois ciclos de aprovação reiniciam só o post elegível; `agendado`, `postado` e `falha_publicacao` não são reiniciados. "Avançar sem alterar post" preserva status, custom status e aprovações.
-13. Falha em um lote de desmembrar mantém todos os posts na origem. Repetir o mesmo `request_id` não cria novas execuções; um comando com revisão velha falha com `process_changed`.
+13. Falha em um lote de desmembrar mantém todos os posts na origem. Repetir o mesmo `request_id` devolve o resultado original sem criar novas execuções ou eventos; um comando com revisão velha falha com `process_changed`.
+13a. `apply_post_process` com `p_step_overrides` contendo nome, tipo ou ordem é rejeitado; com responsável de outra conta é rejeitado; com template editado depois de abrir o diálogo falha com `template_changed`.
 14. Editar uma etapa do fluxo de origem entre abrir o diálogo e confirmar falha com `workflow_changed`.
 15. IDs de post, template, fluxo, membro ou processo de outra conta são rejeitados; RLS bloqueia leituras cruzadas; escrita direta nas três tabelas por `authenticated` falha; workspace ativo nulo falha antes de mutar. Membro sem permissão `entregas.editar` recebe erro de permissão.
 16. `attach_posts_to_flow` e as duas RPCs de mover falham com `post_has_active_process` para post com execução vigente; `attach_post_closing_process` encerra e vincula respeitando o limite do fluxo.
@@ -463,13 +477,13 @@ Rollback não remove tabelas com histórico nem converte processos em avulsos. G
 
 - Vitest: `BoardEntity` e composição do quadro misto, `approvalAdvance.ts`, filtro de entidade e `viewQuery`, `etapaDeadlineDateOf` com `prazo_efetivo`, diálogos, rollback e mapeamento de erros.
 - SQL em `supabase/tests/entitlements`: invariantes, RLS com duas contas usando `et_grant_hosted_parity`, guard das quatro RPCs, fingerprint, revisão, `request_id`, exclusão de origem, rollback de lote, limite do fluxo, permissão por papel.
-- Deno: `hub-approve` com processo individual, `hub-posts` com o novo array, `express-post-cleanup-cron` com o guard, `mcp` com o campo de leitura.
+- Deno: `hub-approve` com processo individual, `hub-posts` com o novo array, `express-post-cleanup-cron` com o guard.
 - E2E: desmembrar mantendo etapas → mover individualmente → conferir fluxo e status → vincular; aplicação, conclusão e reabertura; modo antigo sem etapas.
 - Antes de integrar: os quatro typechecks do CI, `npm run test`, `npm run test:functions`, `npm run lint`, `npm run format:check`, `migration-version-guard`, entitlements e E2E aplicáveis.
 
 ## 13. Evolução posterior
 
-A segunda fase poderá permitir posts com etapas próprias dentro de um grupo organizacional. Exige definir agrupamento separadamente de `workflow_id`, revisar ações em lote, recorrência e conclusão do grupo, e mostrar distribuição ("3 em Copy, 2 em Design") sem inventar uma etapa única. Não acrescentar flags ou modos parciais dessa fase na v1. Follow-ups de UX registrados aqui: `TABS_THRESHOLD`, filtros de formato e status no modo Fluxos, paginação de Sem processo, sensor de teclado no drag.
+A segunda fase poderá permitir posts com etapas próprias dentro de um grupo organizacional. Exige definir agrupamento separadamente de `workflow_id`, revisar ações em lote, recorrência e conclusão do grupo, e mostrar distribuição ("3 em Copy, 2 em Design") sem inventar uma etapa única. Não acrescentar flags ou modos parciais dessa fase na v1. Follow-ups registrados aqui: `TABS_THRESHOLD`, filtros de formato e status no modo Fluxos, paginação de Sem processo, sensor de teclado no drag, campos de leitura do processo no MCP (`get_post`/`list_posts`) e a descrição desatualizada de `create_workflow`, e uma transição server-side da etapa de aprovação quando o cliente aprova no Hub, se o avanço manual se mostrar oneroso.
 
 ## 14. Referências
 
