@@ -201,6 +201,7 @@ public.reorder_fluxos_board(
 | `step_not_editable` | update_step |
 | `no_next_step` | transition (`avancar`) |
 | `no_previous_step` | transition (`voltar`) |
+| `pending_steps_remaining` | transition (`concluir` com etapa de `ordem` maior que a ativa ainda `pendente`) |
 | `request_id_required` | detach |
 | `request_not_found` | detach (`request_id` de outra conta) |
 | `request_mismatch` | detach (mesmo `request_id` com entradas diferentes) |
@@ -1088,7 +1089,7 @@ Regras fixadas (spec §5.1, §7, §9.4, §9.5):
 
 - Advisory `:post_move` no topo, antes de qualquer lock de linha e antes do INSERT em `post_processes`.
 - Idempotência por `p_request_id` consultada **depois** do advisory: duas chamadas simultâneas com o mesmo id serializam, a segunda encontra o recibo.
-- O recibo guarda um digest canônico das entradas em `resultado -> 'input_hash'` (`md5` de fluxo, ids ordenados e fingerprint). O replay só devolve o resultado guardado quando o digest confere; entradas diferentes sob o mesmo `p_request_id` respondem `request_mismatch` (Decisão 28). A chave é removida da resposta, então o formato de retorno não muda.
+- O recibo guarda um digest canônico das entradas em `resultado -> 'input_hash'` (`md5` de fluxo, ids ordenados, fingerprint e `p_archive_empty_flow`). O replay só devolve o resultado guardado quando o digest confere; entradas diferentes sob o mesmo `p_request_id` respondem `request_mismatch` (Decisão 28). A chave é removida da resposta, então o formato de retorno não muda.
 - Lote atômico: um id inexistente, de outra conta ou fora do fluxo declarado derruba a transação inteira.
 - A origem precisa estar `ativo` e ter exatamente uma etapa `ativo`.
 - Etapas anteriores à ativa viram `herdado`; a ativa vira `ativo` com `iniciado_em = now()` e `prazo_efetivo = p_active_deadline`; as posteriores viram `pendente`, com `prazo_efetivo` só quando `p_step_deadlines` traz a data daquela ordem.
@@ -1112,7 +1113,8 @@ Regras fixadas (spec §5.1, §7, §9.4, §9.5):
 -- 87.5 arquivamento do fluxo esvaziado e prazos de etapas futuras
 -- 87.6 erros de argumento e de pre-condicao, agrupados num bloco so
 -- 87.7 responsavel herdado que nao resolve para membro da conta vira nulo
--- 87.8 mesmo request_id com outro lote -> request_mismatch; entradas iguais -> replay
+-- 87.8 mesmo request_id com outro lote, ou com a mesma selecao e outra flag de
+--      arquivamento -> request_mismatch; entradas iguais -> replay
 --
 -- IMPORTANTE. workflow_fingerprint e SECURITY INVOKER (Decisao 11) e o
 -- argumento e avaliado no contexto do CHAMADOR, nao dentro da RPC. Sob
@@ -1507,7 +1509,8 @@ rollback;
 begin;
 do $$
 declare e record; v_req uuid := gen_random_uuid(); v_fp text;
-        v_a jsonb; v_b jsonb; v_raised boolean := false; v_n int;
+        v_a jsonb; v_b jsonb; v_raised boolean := false;
+        v_raised_flag boolean := false; v_n int;
 begin
   select * into e from pg_temp.et_dt_env();
   v_fp := workflow_fingerprint(e.wf);
@@ -1526,12 +1529,23 @@ begin
     v_raised := true;
   end;
 
+  -- Mesmo recibo, MESMO lote, so a flag de arquivamento diferente. Ela e uma
+  -- escolha do usuario no dialogo, entra no digest e tambem recusa (Decisao 28).
+  begin
+    perform detach_posts_keeping_process(array[e.p1], e.wf, v_fp,
+      timestamptz '2026-09-06 02:59:59+00', v_req, null, true);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'request_mismatch', format('wrong msg: %s', sqlerrm);
+    v_raised_flag := true;
+  end;
+
   -- Entradas iguais: replay puro, mesmo resultado e nenhum efeito novo.
   v_b := detach_posts_keeping_process(array[e.p1], e.wf, v_fp,
     timestamptz '2026-09-06 02:59:59+00', v_req);
   execute 'reset role';
 
   assert v_raised, 'mesmo request_id com outro lote deve levantar request_mismatch';
+  assert v_raised_flag, 'mesmo request_id com outra flag de arquivamento deve levantar request_mismatch';
   assert v_a = v_b, 'entradas iguais devolvem o resultado guardado';
   assert v_a ->> 'input_hash' is null, 'o digest fica no recibo, fora da resposta';
   select count(*) into v_n from post_processes where post_id in (e.p1, e.p2);
@@ -1576,11 +1590,15 @@ Expected: FAIL com `function detach_posts_keeping_process(...) does not exist`.
 --
 -- DIGEST DAS ENTRADAS. O recibo nao guarda so o resultado: guarda tambem
 -- 'input_hash', o md5 de p_workflow_id, dos ids do lote ja deduplicados e
--- ORDENADOS, e de p_fingerprint. Sem ele, reusar um request_id com outro lote
--- devolveria o resultado do lote antigo com 'ok': true e o CRM daria por feito
--- um desmembrar que nunca aconteceu. Com ele, entrada divergente responde
--- request_mismatch. A chave e adicionada ao gravar e removida ao devolver, de
--- modo que o formato de retorno da secao Interfaces nao muda.
+-- ORDENADOS, de p_fingerprint e de p_archive_empty_flow. Sem ele, reusar um
+-- request_id com outro lote devolveria o resultado do lote antigo com
+-- 'ok': true e o CRM daria por feito um desmembrar que nunca aconteceu. Com
+-- ele, entrada divergente responde request_mismatch. p_archive_empty_flow
+-- entra no digest por ser ESCOLHA do usuario (o checkbox do dialogo): a mesma
+-- selecao com ele marcado e outro comando, nao a mesma requisicao repetida.
+-- Os dois prazos ficam de fora pelo motivo oposto, ver PRAZOS abaixo. A chave
+-- e adicionada ao gravar e removida ao devolver, de modo que o formato de
+-- retorno da secao Interfaces nao muda.
 --
 -- PRAZOS. Quem calcula prazo efetivo e o CRM (computeDeadlineDate), com o fuso
 -- do navegador; a RPC so armazena. p_active_deadline e o prazo congelado da
@@ -1646,12 +1664,13 @@ BEGIN
   END IF;
   v_requested := array_length(v_ids, 1);
 
-  -- Digest canonico das entradas que identificam o lote. v_ids ja esta
-  -- deduplicado e ordenado, entao a mesma chamada em outra ordem de ids da o
-  -- mesmo hash.
+  -- Digest canonico das entradas que identificam o lote e o comando. v_ids ja
+  -- esta deduplicado e ordenado, entao a mesma chamada em outra ordem de ids
+  -- da o mesmo hash. p_archive_empty_flow entra por ser escolha do usuario.
   v_hash := md5(coalesce(p_workflow_id::text, '') || '|' ||
                 array_to_string(v_ids, ',') || '|' ||
-                coalesce(p_fingerprint, ''));
+                coalesce(p_fingerprint, '') || '|' ||
+                coalesce(p_archive_empty_flow::text, 'false'));
 
   -- PASSO 0: advisory por conta, antes de tudo.
   PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
@@ -2556,14 +2575,14 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Consumes: os três helpers (Task 2).
 - Produces: `public.transition_post_process(bigint, integer, text, text, text, timestamptz) RETURNS jsonb`.
 
-Esta é a maior task do plano (uma função de ~215 linhas e uma suíte de ~300). Se o executor for um subagente com review, ela pode ser despachada em duas metades **na mesma migration**: 5a com a mecânica de ponteiro (`avancar`/`voltar`/`concluir`/`reabrir` sobre etapa `padrao`, blocos 89.0, 89.1, 89.4, 89.5 e 89.7) e 5b com o ramo `aprovacao_cliente`, o re-arm e o `concluir` sobre aprovação (blocos 89.2, 89.3 e 89.6). As demais tasks estão bem dimensionadas para um despacho só.
+Esta é a maior task do plano (uma função de ~215 linhas e uma suíte de ~300). Se o executor for um subagente com review, ela pode ser despachada em duas metades **na mesma migration**: 5a com a mecânica de ponteiro (`avancar`/`voltar`/`concluir`/`reabrir` sobre etapa `padrao`, blocos 89.0, 89.1, 89.4, 89.5, 89.7 e 89.8) e 5b com o ramo `aprovacao_cliente`, o re-arm e o `concluir` sobre aprovação (blocos 89.2, 89.3 e 89.6). As demais tasks estão bem dimensionadas para um despacho só.
 
 Regras fixadas (spec §5.5, §6.2, §7, §9.4):
 
 - `avancar`: conclui a etapa ativa e ativa a próxima `pendente` de maior proximidade. Sem próxima `pendente`, erro `no_next_step` (concluir o processo é o comando `concluir`).
 - Sobre etapa `aprovacao_cliente`, `p_expected_post_status` é obrigatório e divergência falha com `post_changed`. Se o post não está liberado (`aprovado_cliente, agendado, postado, falha_publicacao`), `p_approval_choice` é obrigatório: `aprovar_interno` grava `status = 'aprovado_cliente'` fora de `agendado`/`postado` (exatamente o que `approvePostsInternally` faz), `sem_alterar` não toca o post. Se está liberado e existe outra etapa `aprovacao_cliente` `pendente` adiante, o post volta de `aprovado_cliente` para `rascunho` (re-arm), na mesma transação.
 - `voltar`: a etapa ativa volta a `pendente` com `iniciado_em` nulo; a etapa de maior `ordem` menor que a atual volta a `ativo` preservando `iniciado_em` e `prazo_efetivo`, com `concluido_em` nulo. Mesma semântica de `revertEtapa`, incluindo prazo vencido preservado.
-- `concluir`: a etapa ativa vira `concluido` e o processo vira `concluido`, com `concluido_em` saindo do trigger. `etapa_atual` passa a apontar para a etapa que acabou de ser concluída (a que estava `ativo`) e não para o valor lido do processo, para que `reabrir` reative exatamente ela mesmo se os dois tiverem divergido. Quando essa etapa é `aprovacao_cliente`, `concluir` passa pela **mesma** árvore de aprovação de `avancar` (spec §5.5, primeiro bullet: "se a última etapa é `aprovacao_cliente` com pendência, abre o mesmo diálogo de escolha dos fluxos"): `p_expected_post_status` obrigatório, divergência falha com `post_changed`, post não liberado exige `p_approval_choice`. A única diferença é o re-arm, que não existe em `concluir`: não há próximo ciclo quando se conclui. Fora desse ramo, o post não é tocado.
+- `concluir`: só é aceito quando nenhuma etapa de `ordem` maior que a ativa está `pendente`; havendo alguma, erro `pending_steps_remaining` antes de qualquer escrita e antes da árvore de aprovação (spec §5.5: "Concluir a última etapa marca só o processo como concluido"). Passada a pré-condição, a etapa ativa vira `concluido` e o processo vira `concluido`, com `concluido_em` saindo do trigger. `etapa_atual` passa a apontar para a etapa que acabou de ser concluída (a que estava `ativo`) e não para o valor lido do processo, para que `reabrir` reative exatamente ela mesmo se os dois tiverem divergido. Quando essa etapa é `aprovacao_cliente`, `concluir` passa pela **mesma** árvore de aprovação de `avancar` (spec §5.5, primeiro bullet: "se a última etapa é `aprovacao_cliente` com pendência, abre o mesmo diálogo de escolha dos fluxos"): `p_expected_post_status` obrigatório, divergência falha com `post_changed`, post não liberado exige `p_approval_choice`. A única diferença é o re-arm, que não existe em `concluir`: não há próximo ciclo quando se conclui. Fora desse ramo, o post não é tocado.
 - `reabrir`: só de `concluido`. Reativa a etapa de `etapa_atual` preservando `iniciado_em` e `prazo_efetivo` (divergência declarada em relação a `reopenWorkflow`, que reinicia). Toma `:post_move` antes do UPDATE.
 - Toda transição incrementa `revisao`; `p_expected_revisao` divergente falha com `process_changed` antes de qualquer escrita.
 
@@ -2581,8 +2600,9 @@ Regras fixadas (spec §5.5, §6.2, §7, §9.4):
 -- 89.3 re-arm: post liberado com outra aprovacao adiante volta a rascunho
 -- 89.4 concluir e reabrir preservam prazo vencido e nao tocam o post
 -- 89.5 processo de outra conta -> process_not_found; reabrir de ativo -> process_not_concluded
--- 89.6 concluir sobre etapa aprovacao_cliente: mesmo dialogo do avancar, sem re-arm
+-- 89.6 concluir na ultima etapa aprovacao_cliente: mesmo dialogo do avancar
 -- 89.7 erros de argumento e de estado, agrupados num bloco so
+-- 89.8 concluir com etapa pendente adiante -> pending_steps_remaining
 
 create or replace function pg_temp.et_tr_env(
   out ws uuid, out usr uuid, out cli bigint, out post bigint, out proc bigint)
@@ -2878,23 +2898,25 @@ begin
   perform 1 from post_process_steps where process_id = e.proc and ordem = 2 and estado = 'concluido';
   assert found, 'a etapa de aprovacao ficou concluida';
 
-  -- concluir NAO re-arma: com o post liberado e outra aprovacao pendente
-  -- adiante, avancar voltaria o post a rascunho; concluir nao mexe.
+  -- concluir NAO re-arma. Depois da pre-checagem de pending_steps_remaining
+  -- nao existe aprovacao PENDENTE adiante num concluir, entao o re-arm e
+  -- provado impossivel: a ultima etapa, com o post ja liberado, sai concluida
+  -- e o post fica exatamente como estava (avancar o teria voltado a rascunho).
   select * into f from pg_temp.et_tr_env();
-  update post_process_steps set estado = 'concluido', concluido_em = now() where process_id = f.proc and ordem = 0;
-  update post_process_steps set estado = 'ativo', iniciado_em = now() where process_id = f.proc and ordem = 1;
-  update post_processes set etapa_atual = 1, revisao = 2 where id = f.proc;
+  update post_process_steps set estado = 'concluido', concluido_em = now() where process_id = f.proc and ordem in (0, 1);
+  update post_process_steps set estado = 'ativo', iniciado_em = now() where process_id = f.proc and ordem = 2;
+  update post_processes set etapa_atual = 2, revisao = 2 where id = f.proc;
   update workflow_posts set status = 'aprovado_cliente' where id = f.post;
 
   perform set_config('request.jwt.claims', json_build_object('sub', f.usr, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
-  perform transition_post_process(f.proc, 2, 'concluir', null, 'aprovado_cliente');
+  v_res := transition_post_process(f.proc, 2, 'concluir', null, 'aprovado_cliente');
   execute 'reset role';
+  assert v_res ->> 'estado' = 'concluido', 'a ultima etapa liberada conclui o processo';
+  assert not (v_res ->> 'post_status_changed')::boolean, 'concluir com o post liberado nao mexe no post';
   select status into v_status from workflow_posts where id = f.post;
   assert v_status = 'aprovado_cliente', format('concluir nao re-arma o proximo ciclo, obtido %s', v_status);
-  perform 1 from post_process_steps where process_id = f.proc and ordem = 2 and estado = 'pendente';
-  assert found, 'a aprovacao adiante continua pendente e o processo concluido';
-  raise notice 'PASS 89.6 concluir sobre etapa de aprovacao';
+  raise notice 'PASS 89.6 concluir na ultima etapa de aprovacao';
 end $$;
 rollback;
 
@@ -2969,6 +2991,43 @@ begin
   raise notice 'PASS 89.7 erros de argumento e de estado';
 end $$;
 rollback;
+
+-- 89.8
+begin;
+do $$
+declare e record; v_res jsonb; v_raised boolean := false; v_estado text; v_rev int;
+begin
+  select * into e from pg_temp.et_tr_env();
+  -- etapa ativa e a 0 ('Copy', padrao) e as etapas 1 e 2 continuam pendentes
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform transition_post_process(e.proc, 1, 'concluir');
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'pending_steps_remaining', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'concluir no meio do processo deve levantar pending_steps_remaining';
+  select estado, revisao into v_estado, v_rev from post_processes where id = e.proc;
+  assert v_estado = 'ativo' and v_rev = 1, format('a recusa nao mexe no processo, obtido %s/%s', v_estado, v_rev);
+  perform 1 from post_process_steps where process_id = e.proc and ordem = 0 and estado = 'ativo';
+  assert found, 'a etapa ativa continua ativa';
+  perform 1 from post_process_steps where process_id = e.proc and ordem = 2 and estado = 'pendente';
+  assert found, 'a etapa pendente adiante continua pendente';
+
+  -- so etapa PENDENTE bloqueia: com as duas adiante ignoradas, a etapa 0 passa
+  -- a ser a ultima que importa e concluir e aceito.
+  update post_process_steps set estado = 'ignorado' where process_id = e.proc and ordem in (1, 2);
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_res := transition_post_process(e.proc, 1, 'concluir');
+  execute 'reset role';
+  assert v_res ->> 'estado' = 'concluido', 'na ultima etapa que importa concluir e aceito';
+  assert (v_res ->> 'etapa_atual')::int = 0, 'o ponteiro fica na etapa que acabou de ser concluida';
+  raise notice 'PASS 89.8 concluir exige a ultima etapa pendente';
+end $$;
+rollback;
 ```
 
 - [ ] **Step 2: Rodar e ver falhar**
@@ -3011,6 +3070,14 @@ Expected: FAIL com `function transition_post_process(...) does not exist`.
 -- nunca agendado/postado/falha_publicacao. Etapas herdado, ignorado, concluido
 -- e interrompido nao contam como aprovacao adiante. Toda escrita de status
 -- passa pelo trigger z1 e pode zerar custom_status_id, como nos fluxos.
+--
+-- CONCLUIR (secao 5.5). "Concluir a ultima etapa marca so o processo como
+-- concluido": o comando so vale quando a etapa ativa e a ultima que importa.
+-- Etapa de ordem maior ainda PENDENTE responde pending_steps_remaining, antes
+-- de qualquer escrita e antes da arvore de aprovacao. Etapas adiante em
+-- herdado, ignorado, concluido ou interrompido nao bloqueiam: nenhuma delas
+-- espera ser feita. Como toda etapa que re-armaria o ciclo esta pendente, essa
+-- pre-checagem torna o re-arm impossivel por construcao dentro de 'concluir'.
 
 CREATE OR REPLACE FUNCTION public.transition_post_process(
   p_process_id           bigint,
@@ -3120,10 +3187,25 @@ BEGIN
       END IF;
     END IF;
 
+    -- PRE-CHECAGEM DE 'concluir' (Decisao 12, secao 5.5). Concluir e para a
+    -- ultima etapa que importa: etapa de ordem maior ainda pendente derruba o
+    -- comando antes de qualquer escrita e antes da arvore de aprovacao, para
+    -- que "ainda ha etapas pendentes" chegue ao usuario antes de qualquer
+    -- exigencia do dialogo. Estados herdado, ignorado, concluido e
+    -- interrompido nao bloqueiam.
+    IF p_command = 'concluir' AND EXISTS (
+         SELECT 1 FROM post_process_steps s
+          WHERE s.process_id = p_process_id AND s.ordem > v_atual.ordem
+            AND s.estado = 'pendente') THEN
+      RAISE EXCEPTION 'pending_steps_remaining' USING ERRCODE = 'P0001';
+    END IF;
+
     -- ARVORE DE APROVACAO, compartilhada por 'avancar' e 'concluir'. Ver a
     -- nota do topo: a 5.5 manda concluir sobre etapa aprovacao_cliente abrir o
-    -- mesmo dialogo do avancar. v_tem_adiante e falso em 'concluir', porque o
-    -- re-arm so faz sentido quando ha um proximo ciclo.
+    -- mesmo dialogo do avancar. v_tem_adiante e falso em 'concluir': o re-arm
+    -- so faz sentido com um proximo ciclo e, depois da pre-checagem acima, nao
+    -- existe etapa pendente adiante para re-armar. O ramo fica explicito por
+    -- defesa, nao porque seja alcancavel.
     IF p_command IN ('avancar', 'concluir') AND v_atual.tipo = 'aprovacao_cliente' THEN
       IF p_expected_post_status IS NULL THEN
         RAISE EXCEPTION 'expected_post_status_required' USING ERRCODE = 'P0001';
@@ -4613,7 +4695,7 @@ Fase 2 de `docs/superpowers/specs/2026-09-10-posts-individuais-fluxos-design.md`
 Só migrations, `20260919000001` a `20260919000008`, em ordem. Nenhuma edge function muda e nenhum deploy de function é necessário. Aplicar em prod antes do merge (regra da casa), sem ligar a flag em conta nenhuma.
 
 ## Verificação
-Suítes psql no job `entitlement-tests`: 85 (fingerprints, 6 blocos), 86 (endurecimento e helpers, 7 blocos), 87 (detach, 8), 88 (apply, 7), 89 (transition, 8), 90 (editar e remover, 6), 91 (vincular, 5), 92 (reordenar, 5), mais os blocos novos 83.12 e 83.13, a mudança de 83.3 (exclui as quatro tabelas de `et_grant_hosted_parity` e tolera `42501` no UPDATE) e o bloco E.2 de `supabase/tests/express_cleanup_delete_avulso_drafts.sql`, que passa a exigir que o processo `concluido` poupe o rascunho.
+Suítes psql no job `entitlement-tests`: 85 (fingerprints, 6 blocos), 86 (endurecimento e helpers, 7 blocos), 87 (detach, 9), 88 (apply, 7), 89 (transition, 9), 90 (editar e remover, 6), 91 (vincular, 5), 92 (reordenar, 5), mais os blocos novos 83.12 e 83.13, a mudança de 83.3 (exclui as quatro tabelas de `et_grant_hosted_parity` e tolera `42501` no UPDATE) e o bloco E.2 de `supabase/tests/express_cleanup_delete_avulso_drafts.sql`, que passa a exigir que o processo `concluido` poupe o rascunho.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -4631,7 +4713,7 @@ Aguardar o review externo e responder. Antes do merge: aplicar as oito migration
 - Transição server-side quando o cliente aprova no Hub: a spec §6.2 a coloca explicitamente fora da v1 e a §13 a registra como follow-up.
 - Campos de leitura do processo no MCP (`get_post` / `list_posts`): §10 e §13, entrega posterior.
 - O item que a fase 1 deixou no ledger (`progress.md`): `apps/crm/src/hooks/useWorkspaceLimits.ts` (`FeatureFlags`) e `apps/crm/src/lib/entitlement-errors.ts` (`FEATURE_LABELS`) ainda não conhecem `feature_post_processes`, e as RPCs desta fase passam a devolver `feature_disabled:feature_post_processes`. Nada quebra enquanto ninguém chama as RPCs, então isso vai junto da fase 3/4, com o mapeamento de erros por código em Sonner. Registrado aqui para não se perder de vez.
-- Correções de spec que estas decisões implicavam: §10 e §12.18 (Decisão 25), **já escritas** na revisão 2.3 da spec. As demais deixaram de ser necessárias com as decisões do PO de 2026-09-10: a §7 fica como está porque a Decisão 18 traz a regra estrutural do modo `data_entrega` para dentro de `apply_post_process`, e a §5.5 e a §6.2 ficam como estão porque a Decisão 12 foi aprovada como escrita, com `concluir` herdando o diálogo de aprovação.
+- Correções de spec que estas decisões implicavam: §10 e §12.18 (Decisão 25), **já escritas** na revisão 2.3 da spec. As demais deixaram de ser necessárias com as decisões do PO de 2026-09-10: a §7 fica como está porque a Decisão 18 traz a regra estrutural do modo `data_entrega` para dentro de `apply_post_process`, e a §5.5 e a §6.2 ficam como estão porque a Decisão 12 passou a seguir a §5.5 à letra: `concluir` só na última etapa que importa, herdando o diálogo de aprovação.
 
 ## Decisões tomadas ao planejar
 
@@ -4687,9 +4769,9 @@ A §9.1 diz "todas são SECURITY DEFINER", mas a frase se refere à tabela de RP
 
 **Aprovado pelo PO em 2026-09-10.**
 
-A spec descreve "Avançar sem alterar post: move **ou conclui**". Fundir os dois deixaria a UI sem como distinguir "avancei" de "terminei" e complicaria o evento. **Decisão: `avancar` sem próxima etapa `pendente` levanta `no_next_step`; concluir é o comando `concluir`**, que a §5.5 já descreve como ação própria do cabeçalho. `concluir` é aceito de qualquer etapa ativa, não só da última, e as etapas `pendente` restantes continuam `pendente`.
+A spec descreve "Avançar sem alterar post: move **ou conclui**". Fundir os dois deixaria a UI sem como distinguir "avancei" de "terminei" e complicaria o evento. **Decisão: `avancar` sem próxima etapa `pendente` levanta `no_next_step`; concluir é o comando `concluir`**, que a §5.5 já descreve como ação própria do cabeçalho. E `concluir` só é aceito quando a etapa ativa é a última que importa: existindo etapa de `ordem` maior ainda `pendente`, a resposta é `pending_steps_remaining`, porque a §5.5 diz "Concluir a última etapa marca só o processo como concluido" e nada ali autoriza pular o meio do processo. Etapa adiante em `herdado`, `ignorado`, `concluido` ou `interrompido` não bloqueia: nenhuma delas está esperando ser feita.
 
-Separar os dois comandos, porém, não pode tirar de `concluir` o único caminho que a spec dá para "aprovar internamente e concluir": a §5.5, primeiro bullet, diz que "se a última etapa é `aprovacao_cliente` com pendência, abre o mesmo diálogo de escolha dos fluxos (§6.2)". **Decisão: quando a etapa ativa é `aprovacao_cliente`, `concluir` passa exatamente pela mesma árvore de `avancar`** (`p_expected_post_status` obrigatório, `post_changed` na divergência, `p_approval_choice` obrigatório com post não liberado, `aprovar_interno` gravando `aprovado_cliente` fora de `agendado`/`postado`), **menos o re-arm**, que não faz sentido sem próximo ciclo. Ordem de checagem: as pré-condições de `avancar` (`no_next_step`, `next_deadline_required`) continuam vindo antes da árvore, para que "não há próxima etapa" siga sendo a primeira resposta de um avançar na última etapa.
+Separar os dois comandos, porém, não pode tirar de `concluir` o único caminho que a spec dá para "aprovar internamente e concluir": a §5.5, primeiro bullet, diz que "se a última etapa é `aprovacao_cliente` com pendência, abre o mesmo diálogo de escolha dos fluxos (§6.2)". **Decisão: quando a etapa ativa é `aprovacao_cliente`, `concluir` passa exatamente pela mesma árvore de `avancar`** (`p_expected_post_status` obrigatório, `post_changed` na divergência, `p_approval_choice` obrigatório com post não liberado, `aprovar_interno` gravando `aprovado_cliente` fora de `agendado`/`postado`), **menos o re-arm**, que não faz sentido sem próximo ciclo. Ordem de checagem: as pré-condições de cada comando (`no_next_step` e `next_deadline_required` no `avancar`, `pending_steps_remaining` no `concluir`) continuam vindo antes da árvore, para que "não há próxima etapa" siga sendo a primeira resposta de um avançar na última etapa e "ainda há etapas pendentes" a primeira de um concluir no meio, sem antes exigir o status esperado do post.
 
 Alternativa registrada e descartada: manter `concluir` puro e resolver na UI em dois passos (`approvePostsInternally` por PATCH e depois `concluir`), o que deixaria a operação não atômica e exigiria corrigir a §5.5 e a §6.2 da spec, que hoje descrevem um diálogo só.
 
@@ -4777,9 +4859,9 @@ A §5.1 diz "o histórico do fluxo continua no fluxo", o que é ambíguo: pode s
 
 ### 28. O recibo de idempotência guarda um digest das entradas
 
-O replay do `p_request_id` devolvia o `resultado` guardado sem olhar as entradas da chamada. Um `request_id` reaproveitado com outro lote (retry do CRM depois de o usuário mudar a seleção, ou um bug de reuso do uuid) receberia de volta `{"ok": true, ...}` descrevendo o lote anterior, e a UI daria por desmembrado um post que continua no fluxo. **Decisão: `resultado` ganha a chave `input_hash`, `md5(p_workflow_id || '|' || ids deduplicados e ordenados || '|' || p_fingerprint)`, gravada no recibo; no replay, digest divergente levanta `request_mismatch` (`P0001`) e só digest igual devolve o resultado.** A chave é removida na volta (`v_prev - 'input_hash'`), então o formato de retorno da seção Interfaces continua o mesmo e a fase 4 não precisa conhecê-la.
+O replay do `p_request_id` devolvia o `resultado` guardado sem olhar as entradas da chamada. Um `request_id` reaproveitado com outro lote (retry do CRM depois de o usuário mudar a seleção, ou um bug de reuso do uuid) receberia de volta `{"ok": true, ...}` descrevendo o lote anterior, e a UI daria por desmembrado um post que continua no fluxo. **Decisão: `resultado` ganha a chave `input_hash`, `md5(p_workflow_id || '|' || ids deduplicados e ordenados || '|' || p_fingerprint || '|' || coalesce(p_archive_empty_flow::text, 'false'))`, gravada no recibo; no replay, digest divergente levanta `request_mismatch` (`P0001`) e só digest igual devolve o resultado.** A chave é removida na volta (`v_prev - 'input_hash'`), então o formato de retorno da seção Interfaces continua o mesmo e a fase 4 não precisa conhecê-la.
 
-Fora do digest ficam `p_active_deadline`, `p_step_deadlines` e `p_archive_empty_flow`, de propósito: são valores derivados que o CRM recalcula a cada tentativa (`computeDeadlineDate` com o fuso do navegador), e uma diferença de milissegundos entre o envio e o reenvio do **mesmo** comando não pode virar erro. O que identifica o lote é fluxo, posts e fingerprint da origem. Complementa a Decisão 21: `request_id` de outra conta responde `request_not_found`, `request_id` da própria conta com outra entrada responde `request_mismatch`. Coberto pelo bloco 87.8.
+O corte é entre escolha do usuário e valor derivado. `p_archive_empty_flow` **entra no digest**: é o checkbox do diálogo, e a mesma seleção com ele marcado é um comando diferente, não a mesma requisição reenviada. Fora do digest ficam `p_active_deadline` e `p_step_deadlines`, de propósito: são valores derivados que o CRM recalcula a cada tentativa (`computeDeadlineDate` com o fuso do navegador), e uma diferença de milissegundos entre o envio e o reenvio do **mesmo** comando não pode virar erro. O que identifica o lote é fluxo, posts, fingerprint da origem e a escolha de arquivamento. Complementa a Decisão 21: `request_id` de outra conta responde `request_not_found`, `request_id` da própria conta com outra entrada responde `request_mismatch`. Coberto pelo bloco 87.8, que reenvia o mesmo `request_id` trocando o lote e depois trocando só a flag.
 
 ### 29. `attach_post_closing_process` responde `process_already_closed`, não `process_not_found`
 
@@ -4796,7 +4878,7 @@ A revisão anterior travava o processo com `estado IN ('ativo','concluido')`, en
 | §5.2 | aplicar template, sequência do servidor, etapas anteriores `ignorado`, `template_changed`, `post_has_active_process` / `post_in_workflow` | Task 4 |
 | §5.3 | criar post não muda | fora do escopo, nada a fazer |
 | §5.4 | editar responsável e prazo de etapas `pendente`/`ativo` | Task 6, `update_post_process_step` |
-| §5.5 | concluir, reabrir preservando prazo, remover, vincular | Tasks 5, 6 e 7; blocos 89.4 e 89.6 |
+| §5.5 | concluir **a última etapa**, reabrir preservando prazo, remover, vincular | Tasks 5, 6 e 7; Decisão 12; blocos 89.4, 89.6 e 89.8 |
 | §5.5 | concluir sobre etapa `aprovacao_cliente` abre o mesmo diálogo dos fluxos | Task 5; Decisão 12; bloco 89.6 |
 | §6.2 | árvore de decisão da aprovação, re-arm, liberado, aprovação adiante só `pendente`, transação única | Task 5 |
 | §6.2 | não criar transição server-side no Hub | Decisão 1 |
@@ -4830,9 +4912,9 @@ Nenhum `TODO`, `FIXME`, `...`, `<preencher>` ou corpo de função elidido. As do
 - As doze funções da seção Interfaces aparecem com a mesma assinatura na task que as cria, no `REVOKE`/`GRANT` da própria migration, na consulta de ACL da Task 9 e nas asserções `has_function_privilege` das suítes 86.5 e 92.3.
 - Prefixos de migration: `20260919000001` a `20260919000008`, um por task, sem repetição, todos acima de `20260918000004`.
 - Arquivos de suíte: 85 a 92, um por task, sem colisão com 83 e 84 da fase 1. A Task 2 também edita duas suítes existentes: `83_post_processes_schema.sql` (bloco 83.3, mais os novos 83.12 e 83.13) e `supabase/tests/express_cleanup_delete_avulso_drafts.sql` (bloco E.2), que roda no segundo laço de `scripts/test-entitlements.sh`, no mesmo job de CI.
-- Blocos por suíte, depois desta revisão: 85 tem 6 (85.0 a 85.5), 86 tem 7 (86.0 a 86.6), 87 tem 9 (87.0 a 87.8), 88 tem 7 (88.0 a 88.6, com o 88.6 em três transações), 89 tem 8 (89.0 a 89.7), 90 tem 6 (90.0 a 90.5), 91 tem 5 (91.0 a 91.4) e 92 tem 5 (92.0 a 92.4).
+- Blocos por suíte, depois desta revisão: 85 tem 6 (85.0 a 85.5), 86 tem 7 (86.0 a 86.6), 87 tem 9 (87.0 a 87.8), 88 tem 7 (88.0 a 88.6, com o 88.6 em três transações), 89 tem 9 (89.0 a 89.8), 90 tem 6 (90.0 a 90.5), 91 tem 5 (91.0 a 91.4) e 92 tem 5 (92.0 a 92.4).
 - Toda chamada de `workflow_fingerprint` / `template_fingerprint` nas suítes 87 e 88 acontece **antes** de `set local role authenticated`, numa variável. As duas são `SECURITY INVOKER` (Decisão 11) e o argumento é avaliado no contexto do chamador: sob `authenticated` e sem `et_grant_hosted_parity`, ler `workflows` ou `workflow_templates` levanta `permission denied` no banco local do CLI, e as duas suítes inteiras abortariam no primeiro bloco. O caminho público (chamada direta por `authenticated` sobre o próprio fluxo, que é o que a fase 3 vai usar) é provado no bloco 85.5, que chama `et_grant_hosted_parity()` e exercita a RLS de verdade nos dois sentidos.
-- Códigos de erro: a tabela da seção Interfaces tem **44 códigos**, com `request_mismatch` (Decisão 28) e `data_entrega_requires_approval_step` (Decisão 18) acrescentados nas duas últimas revisões. Com os blocos de erro de argumento (87.6, 88.5, 88.6, 89.6, 89.7, 90.5, 91.4 e 92.4) e o 87.8, **todos os 44 são levantados por pelo menos uma migration e checados por pelo menos um bloco de teste: zero códigos sem bloco.** `process_already_closed` agora tem bloco nos dois call sites, `remove` (90.5) e `attach` (91.4). O que continua parcial é a cobertura por *call site*, e a lista é exata, quatro linhas e nenhuma outra: `feature_disabled:feature_post_processes` tem bloco só em `detach` (87.4), não em `apply`; `post_not_found` tem bloco só em `detach` (87.6), não em `apply` nem em `attach`; `workflow_not_found` tem bloco em `detach` (87.6) e em `reorder` (92.1), não em `attach`; e `step_not_found` tem bloco só em `update_step` (90.1), porque o caminho homônimo de `transition` (nenhuma etapa `ativo`) é defensivo e o índice parcial `post_process_steps_one_active` o torna inalcançável com dado válido.
+- Códigos de erro: a tabela da seção Interfaces tem **45 códigos**, com `request_mismatch` (Decisão 28), `data_entrega_requires_approval_step` (Decisão 18) e `pending_steps_remaining` (Decisão 12) acrescentados nas três últimas revisões. Com os blocos de erro de argumento (87.6, 88.5, 88.6, 89.6, 89.7, 89.8, 90.5, 91.4 e 92.4) e o 87.8, **todos os 45 são levantados por pelo menos uma migration e checados por pelo menos um bloco de teste: zero códigos sem bloco.** `process_already_closed` agora tem bloco nos dois call sites, `remove` (90.5) e `attach` (91.4). O que continua parcial é a cobertura por *call site*, e a lista é exata, quatro linhas e nenhuma outra: `feature_disabled:feature_post_processes` tem bloco só em `detach` (87.4), não em `apply`; `post_not_found` tem bloco só em `detach` (87.6), não em `apply` nem em `attach`; `workflow_not_found` tem bloco em `detach` (87.6) e em `reorder` (92.1), não em `attach`; e `step_not_found` tem bloco só em `update_step` (90.1), porque o caminho homônimo de `transition` (nenhuma etapa `ativo`) é defensivo e o índice parcial `post_process_steps_one_active` o torna inalcançável com dado válido.
 - Nomes de coluna usados nas migrations conferem com `20260918000002`: `post_processes(assinatura, estado, motivo_encerramento, etapa_atual, modo_prazo, board_position, revisao, created_by, concluido_em)`, `post_process_steps(ordem, nome, tipo, responsavel_id, prazo_dias, tipo_prazo, prazo_efetivo, estado, iniciado_em, concluido_em, interrompido_em, origem_etapa_ordem, origem_etapa_nome)`, `post_process_events(evento, actor_user_id, actor_name, origem, antes, depois)`, `post_process_batch_requests(request_id, conta_id, resultado)`.
 - Colunas lidas de `workflow_etapas` (`ordem, nome, tipo, status, responsavel_id, prazo_dias, tipo_prazo, data_limite, iniciado_em, concluido_em`) e de `workflows` (`titulo, status, template_id, modo_prazo, etapa_atual, position`) conferem com o baseline mais `20260325` (`tipo`), `20260421000000` (`data_limite`, `modo_prazo`) e `20260326` (`position`).
 - `profiles.nome` é a fonte de `actor_name`, o mesmo que `record_workflow_event` usa.
