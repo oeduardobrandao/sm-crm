@@ -135,6 +135,59 @@ interface Seed {
   post_file_links?: Row[];
   files?: Row[];
   post_processes?: Row[];
+  /** `{ message }` to make the express_cleanup_delete_avulso_drafts RPC error out. */
+  rpcError?: DbError;
+  /**
+   * Hook run right before the RPC emulation reads `tables`, so a test can
+   * mutate state "between the handler's pre-filter and the RPC's own delete"
+   * -- e.g. insert an in-flight `post_processes` row -- to reproduce the race
+   * the RPC itself is meant to close.
+   */
+  beforeRpc?: () => void;
+}
+
+/**
+ * Emulates `express_cleanup_delete_avulso_drafts` (migration
+ * 20260918000004): removes from `workflow_posts` every id in `p_ids` that is
+ * still `is_express`, `workflow_id IS NULL`, `status = 'rascunho'` and has no
+ * `ativo` row in `post_processes`, reading `tables` fresh at call time (not
+ * the ids the handler pre-filtered), and returns the deleted ids.
+ */
+function makeRpc(
+  tables: Record<string, Row[]>,
+  seed: Pick<Seed, "rpcError" | "beforeRpc">,
+  calls: Array<{ name: string; args: Record<string, unknown> }>,
+) {
+  return (name: string, args: Record<string, unknown>) => {
+    calls.push({ name, args });
+    seed.beforeRpc?.();
+    if (name !== "express_cleanup_delete_avulso_drafts") {
+      return Promise.resolve({ data: null, error: { message: "unknown rpc" } });
+    }
+    if (seed.rpcError) {
+      return Promise.resolve({ data: null, error: seed.rpcError });
+    }
+    const ids = (args.p_ids as number[] | undefined) ?? [];
+    const wfPosts = tables.workflow_posts;
+    const deleted: number[] = [];
+    for (let i = wfPosts.length - 1; i >= 0; i--) {
+      const row = wfPosts[i];
+      const id = row.id as number;
+      if (!ids.includes(id)) continue;
+      const isDeletableAvulsoDraft = row.is_express === true &&
+        (row.workflow_id === null || row.workflow_id === undefined) &&
+        row.status === "rascunho";
+      if (!isDeletableAvulsoDraft) continue;
+      const hasActiveProcess = tables.post_processes.some(
+        (p) => p.post_id === id && p.estado === "ativo",
+      );
+      if (hasActiveProcess) continue;
+      deleted.push(id);
+      wfPosts.splice(i, 1);
+    }
+    deleted.sort((a, b) => a - b);
+    return Promise.resolve({ data: deleted, error: null });
+  };
 }
 
 function makeFakeDb(seed: Seed, errorOn?: ErrorHook) {
@@ -145,6 +198,7 @@ function makeFakeDb(seed: Seed, errorOn?: ErrorHook) {
     files: seed.files ?? [],
     post_processes: seed.post_processes ?? [],
   };
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
   const db: ExpressPostCleanupDb = {
     from(table: string) {
@@ -169,9 +223,10 @@ function makeFakeDb(seed: Seed, errorOn?: ErrorHook) {
         },
       };
     },
+    rpc: makeRpc(tables, seed, rpcCalls),
   };
 
-  return { db, tables };
+  return { db, tables, rpcCalls };
 }
 
 const CUTOFF = "2026-08-28T00:00:00.000Z";
@@ -330,17 +385,15 @@ Deno.test("pass3: keeps a file the avulso draft shared with something else", asy
   assertEquals(tables.files.length, 1);
 });
 
-Deno.test("pass3: counts avulso_failed and leaves the drafts + file in place when the bulk delete errors", async () => {
-  const { db, tables } = makeFakeDb(
-    {
-      workflow_posts: [
-        { id: 30, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
-      ],
-      post_file_links: [{ post_id: 30, file_id: 200 }],
-      files: [{ id: 200, reference_count: 0 }],
-    },
-    (table, op) => (table === "workflow_posts" && op === "delete" ? { message: "db down" } : null),
-  );
+Deno.test("pass3: counts avulso_failed and leaves the drafts + file in place when the bulk delete RPC errors", async () => {
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 30, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    post_file_links: [{ post_id: 30, file_id: 200 }],
+    files: [{ id: 200, reference_count: 0 }],
+    rpcError: { message: "db down" },
+  });
   const result = await runExpressPostCleanupCron(db, CUTOFF);
   assertEquals(result.avulso_deleted, 0);
   assertEquals(result.avulso_failed, 1);
@@ -413,6 +466,41 @@ Deno.test("pass3: apaga rascunho avulso cujo processo individual nao esta ativo 
   assertEquals(result.avulso_deleted, 1);
   assertEquals(result.avulso_skipped_with_process, 0);
   assertEquals(tables.workflow_posts.length, 0);
+});
+
+Deno.test("pass 3 conta como poupado o rascunho que ganhou processo entre o filtro e o delete", async () => {
+  // The handler's own post_processes pre-filter sees no active process (the
+  // seed starts empty), so it hands the draft to the RPC as deletable. The
+  // race the RPC itself must close is reproduced with `beforeRpc`: right
+  // before the fake RPC reads `post_processes`, a process is inserted for
+  // this post -- as if post_processes_requires_avulso had committed a brand
+  // new individual process in the window between the handler's pre-filter
+  // and the RPC's own delete. The RPC must re-check and spare the post.
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 4, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    beforeRpc: () => {
+      tables.post_processes.push({ id: 12, post_id: 4, estado: "ativo" });
+    },
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 0);
+  assertEquals(result.avulso_skipped_with_process, 1);
+  assertEquals(tables.workflow_posts.length, 1, "post that gained a process must survive");
+});
+
+Deno.test("pass3: marca falha quando a RPC atomica erra", async () => {
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 5, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    rpcError: { message: "boom" },
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 0);
+  assertEquals(result.avulso_failed, 1);
+  assertEquals(tables.workflow_posts.length, 1, "failed RPC must not remove the draft");
 });
 
 // ---------------------------------------------------------------------------

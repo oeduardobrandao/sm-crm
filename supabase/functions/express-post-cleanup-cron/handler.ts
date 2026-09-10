@@ -62,6 +62,10 @@ export interface ExpressPostCleanupDb {
     update(patch: Record<string, unknown>): MutationChain;
     delete(): MutationChain;
   };
+  rpc(
+    name: string,
+    params: Record<string, unknown>,
+  ): PromiseLike<{ data: unknown; error: DbError | null }>;
 }
 
 export interface ExpressPostCleanupCronResult {
@@ -250,6 +254,16 @@ export async function runExpressPostCleanupCron(
   // Rascunho com processo individual ativo nao e abandono: alguem esta
   // produzindo nele. A RLS nao protege aqui (service_role), entao o filtro
   // e do handler (spec 2026-09-10-posts-individuais, secao 10, Limpeza).
+  // Esse pre-filtro so evita chamar a RPC a toa e ja da a maior parte da
+  // contagem de avulso_skipped_with_process -- ele NAO e o que garante
+  // seguranca. Entre esta leitura e o delete, um processo individual pode
+  // nascer para um destes posts (trigger post_processes_requires_avulso
+  // segura FOR SHARE na linha do post ate commitar); filtrar e apagar em
+  // requisicoes separadas deixaria o cascade do DELETE levar um processo
+  // recem-criado. Por isso o delete em si vai para a RPC atomica
+  // express_cleanup_delete_avulso_drafts (SECURITY DEFINER, migration
+  // 20260918000004), que faz FOR UPDATE + reconfere post_processes dentro
+  // da mesma transacao antes de apagar.
   let avulsoSkippedWithProcess = 0;
   let deletableAvulsoIds = avulsoPostIds;
   if (avulsoPostIds.length > 0) {
@@ -271,19 +285,21 @@ export async function runExpressPostCleanupCron(
       .in("post_id", deletableAvulsoIds);
     const fileIds = [...new Set((links ?? []).map((l: { file_id: number }) => l.file_id))];
 
-    const { error: delErr } = await db
-      .from("workflow_posts")
-      .delete()
-      .in("id", deletableAvulsoIds);
-
+    const { data: deletedIds, error: delErr } = await db.rpc(
+      "express_cleanup_delete_avulso_drafts",
+      { p_ids: deletableAvulsoIds },
+    );
     if (delErr) {
       console.error("Failed to delete avulso express drafts:", delErr.message);
       avulsoFailed = deletableAvulsoIds.length;
     } else {
-      avulsoDeleted = deletableAvulsoIds.length;
-      if (fileIds.length > 0) {
-        await deleteOrphanFiles(db, fileIds);
-      }
+      const deletedList = (deletedIds ?? []) as number[];
+      avulsoDeleted = deletedList.length;
+      // Ids que a RPC poupou na hora do delete (processo criado depois do
+      // pre-filtro, ou post que deixou de ser rascunho avulso) contam como
+      // poupados, nao como falha.
+      avulsoSkippedWithProcess += deletableAvulsoIds.length - deletedList.length;
+      if (fileIds.length > 0) await deleteOrphanFiles(db, fileIds);
     }
   }
 
