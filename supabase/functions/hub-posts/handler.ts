@@ -351,6 +351,48 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       }
     }
 
+    // Avulsos com processo individual: a mesma promessa "aprovar = agendar"
+    // nao vale enquanto a execucao tiver outra etapa de aprovacao adiante
+    // (hub-approve.isFinalApprovalCycle, ramo sem fluxo). Chaveado por post,
+    // aditivo ao array de fluxos.
+    let autoPublishSuspendedPostIds: number[] = [];
+    const avulsoIds = flatPosts
+      .filter((post: { workflow_id: number | null }) => post.workflow_id == null)
+      .map((post: { id: number }) => post.id);
+    if (autoPublishOnApproval && avulsoIds.length > 0) {
+      const { data: procs, error: procsError } = await db
+        .from("post_processes")
+        .select("id, post_id")
+        .in("post_id", avulsoIds)
+        .eq("estado", "ativo");
+      if (procsError) {
+        console.error("[hub-posts] post_processes lookup failed:", procsError);
+        autoPublishSuspendedPostIds = avulsoIds;
+      } else {
+        const procRows = (procs ?? []) as { id: number; post_id: number }[];
+        if (procRows.length > 0) {
+          const { data: steps, error: stepsError } = await db
+            .from("post_process_steps")
+            .select("process_id, estado")
+            .in("process_id", procRows.map((p) => p.id))
+            .eq("tipo", "aprovacao_cliente");
+          if (stepsError) {
+            console.error("[hub-posts] post_process_steps lookup failed:", stepsError);
+            autoPublishSuspendedPostIds = procRows.map((p) => p.post_id);
+          } else {
+            const openByProcess = new Map<number, number>();
+            for (const s of (steps ?? []) as { process_id: number; estado?: string | null }[]) {
+              if (s.estado !== "pendente" && s.estado !== "ativo") continue;
+              openByProcess.set(s.process_id, (openByProcess.get(s.process_id) ?? 0) + 1);
+            }
+            autoPublishSuspendedPostIds = procRows
+              .filter((p) => (openByProcess.get(p.id) ?? 0) >= 2)
+              .map((p) => p.post_id);
+          }
+        }
+      }
+    }
+
     return json({
       posts: postsWithResolvedContent,
       postApprovals: postApprovals ?? [],
@@ -361,6 +403,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         : null,
       autoPublishOnApproval,
       autoPublishSuspendedWorkflowIds,
+      autoPublishSuspendedPostIds,
     });
   };
 }
