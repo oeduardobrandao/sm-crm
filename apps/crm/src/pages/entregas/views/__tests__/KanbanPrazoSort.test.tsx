@@ -135,7 +135,7 @@ describe('KanbanView per-column prazo sort', () => {
   it('a persisted manual pref keeps the position order for that column', () => {
     localStorage.setItem(
       'entregas_fluxos_sorts_conta-teste',
-      JSON.stringify({ 'Produção::Produção': 'manual' }),
+      JSON.stringify({ 'Produção::1': 'manual' }),
     );
     const { container } = render(<KanbanView {...boardProps(CARDS)} />);
     expect(renderedTitles(container)).toEqual(['Sem prazo', 'Futuro', 'Atrasado']);

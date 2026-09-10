@@ -9,7 +9,7 @@ const FLUXOS_COLUMN_SORTS: FluxosColumnSort[] = ['prazo', 'manual'];
 
 const fluxosSortsKey = (contaId: string) => `entregas_fluxos_sorts_${contaId}`;
 
-/** Sort escolhido por coluna do board de Fluxos (chave `${rowKey}::${etapa}`),
+/** Sort escolhido por coluna do board de Fluxos (chave `${rowKey}::${ordem}`),
  *  por conta. Valores desconhecidos sao descartados no load. */
 export function loadFluxosColumnSorts(contaId: string): Partial<Record<string, FluxosColumnSort>> {
   try {

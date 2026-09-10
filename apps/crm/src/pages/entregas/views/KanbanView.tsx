@@ -39,6 +39,8 @@ import {
   sendPostsToCliente,
 } from '../../../store';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
+import { buildBoardRows, columnKey, parseColumnKey, findCardColumn } from '../boardRows';
+import type { BoardRow, BoardColumn } from '../boardRows';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
@@ -79,50 +81,8 @@ type KanbanViewProps = KanbanViewBaseProps &
     | { showExample: boolean; onDismissExample: () => void }
   );
 
-interface BoardRow {
-  key: string;
-  label: string;
-  stepNames: string[];
-  columns: Map<string, BoardCard[]>;
-}
-
-function buildBoardRows(cards: BoardCard[], templates: WorkflowTemplate[]): BoardRow[] {
-  const rowMap = new Map<string, BoardRow>();
-  for (const card of cards) {
-    const sorted = [...card.allEtapas].sort((a, b) => a.ordem - b.ordem);
-    const stepNames = sorted.map((e) => e.nome);
-    const key =
-      card.workflow.template_id != null
-        ? `template:${card.workflow.template_id}`
-        : stepNames.join(' → ');
-    if (!rowMap.has(key)) {
-      const columns = new Map<string, BoardCard[]>();
-      for (const name of stepNames) columns.set(name, []);
-
-      const t = templates.find((t) => t.id === card.workflow.template_id);
-      const label = t ? t.nome.toUpperCase() : key.toUpperCase();
-
-      rowMap.set(key, { key, label, stepNames, columns });
-    }
-    const row = rowMap.get(key)!;
-    // Ensure all this card's step columns exist (templates may have evolved)
-    for (const name of stepNames) {
-      if (!row.columns.has(name)) row.columns.set(name, []);
-    }
-    const col = row.columns.get(card.etapa.nome);
-    if (col) col.push(card);
-  }
-  // Sort cards within each column by position ascending
-  for (const row of rowMap.values()) {
-    for (const col of row.columns.values()) {
-      col.sort((a, b) => (a.workflow.position ?? 0) - (b.workflow.position ?? 0));
-    }
-  }
-  return [...rowMap.values()].filter((r) => [...r.columns.values()].some((col) => col.length > 0));
-}
-
 function rowCardCount(row: BoardRow): number {
-  return [...row.columns.values()].reduce((sum, col) => sum + col.length, 0);
+  return row.columns.reduce((sum, col) => sum + col.cards.length, 0);
 }
 
 // Etapas are fully user-defined, so their color is keyed to the etapa NAME
@@ -274,12 +234,12 @@ export function KanbanView({
   );
   /** Cards da coluna na ordem EXIBIDA (prazo ou manual). */
   const displayCards = useCallback(
-    (rowKey: string, colName: string, cards: BoardCard[]): BoardCard[] =>
-      sortModeFor(`${rowKey}::${colName}`) === 'prazo' ? sortCardsByPrazo(cards) : cards,
+    (rowKey: string, ordem: number, cards: BoardCard[]): BoardCard[] =>
+      sortModeFor(columnKey(rowKey, ordem)) === 'prazo' ? sortCardsByPrazo(cards) : cards,
     [sortModeFor],
   );
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
-  // Valid adjacent column currently hovered during a drag ("rowKey::colName"),
+  // Valid adjacent column currently hovered during a drag ("rowKey::ordem"),
   // plus the dragged card's height so the slot opens exactly its size.
   const [dropSlot, setDropSlot] = useState<{ colKey: string; index: number } | null>(null);
   const [dragHeight, setDragHeight] = useState(120);
@@ -344,31 +304,9 @@ export function KanbanView({
 
   const boardRows = buildBoardRows(localCards, templates);
 
-  const approvalStepNames = useMemo(
-    () =>
-      new Set(
-        cards.flatMap((c) =>
-          c.allEtapas.filter((e) => e.tipo === 'aprovacao_cliente').map((e) => e.nome),
-        ),
-      ),
-    [cards],
-  );
-
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const findCard = (id: string) => localCards.find((c) => String(c.workflow.id) === id);
-
-  const findCardColumn = (
-    cardId: string,
-    rows: BoardRow[],
-  ): { row: BoardRow; colName: string } | null => {
-    for (const row of rows) {
-      for (const [colName, colCards] of row.columns) {
-        if (colCards.some((c) => String(c.workflow.id) === cardId)) return { row, colName };
-      }
-    }
-    return null;
-  };
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -394,31 +332,28 @@ export function KanbanView({
       const activeLocation = findCardColumn(String(active.id), rows);
 
       let targetRow: BoardRow | undefined;
-      let targetColName: string | undefined;
+      let targetColumn: BoardColumn | undefined;
       if (overId.startsWith(COL_PREFIX)) {
-        const colId = overId.slice(COL_PREFIX.length);
-        const [rowKey, ...colNameParts] = colId.split('::');
-        targetRow = rows.find((r) => r.key === rowKey);
-        targetColName = colNameParts.join('::');
+        const parsed = parseColumnKey(overId.slice(COL_PREFIX.length));
+        targetRow = parsed ? rows.find((r) => r.key === parsed.rowKey) : undefined;
+        targetColumn = parsed ? targetRow?.columns.find((c) => c.ordem === parsed.ordem) : undefined;
       } else {
         const overLocation = findCardColumn(overId, rows);
         targetRow = overLocation?.row;
-        targetColName = overLocation?.colName;
+        targetColumn = overLocation?.column;
       }
 
       if (
         !targetRow ||
-        !targetColName ||
+        !targetColumn ||
         !activeLocation ||
         targetRow.key !== activeLocation.row.key ||
-        targetColName === activeLocation.colName
+        targetColumn.ordem === activeLocation.column.ordem
       ) {
         setDropSlot(null);
         return;
       }
-      const targetOrdem = draggedCard.allEtapas.find((e) => e.nome === targetColName)?.ordem;
-      const valid =
-        targetOrdem !== undefined && Math.abs(targetOrdem - draggedCard.etapa.ordem) === 1;
+      const valid = Math.abs(targetColumn.ordem - draggedCard.etapa.ordem) === 1;
       if (!valid) {
         setDropSlot(null);
         return;
@@ -427,11 +362,7 @@ export function KanbanView({
       // Slot index: over a card, before or after it by vertical midpoint;
       // over the column body, at the end. Indices sao sobre a lista EXIBIDA
       // (modo prazo reordena a coluna).
-      const targetCards = displayCards(
-        targetRow.key,
-        targetColName,
-        targetRow.columns.get(targetColName) || [],
-      );
+      const targetCards = displayCards(targetRow.key, targetColumn.ordem, targetColumn.cards);
       let index = targetCards.length;
       if (!overId.startsWith(COL_PREFIX)) {
         const overIdx = targetCards.findIndex((c) => String(c.workflow.id) === overId);
@@ -441,7 +372,7 @@ export function KanbanView({
           index = after ? overIdx + 1 : overIdx;
         }
       }
-      const colKey = `${targetRow.key}::${targetColName}`;
+      const colKey = columnKey(targetRow.key, targetColumn.ordem);
       setDropSlot((prev) =>
         prev && prev.colKey === colKey && prev.index === index ? prev : { colKey, index },
       );
@@ -465,34 +396,33 @@ export function KanbanView({
       const activeLocation = findCardColumn(activeId, rows);
       if (!activeLocation) return;
 
-      // Resolve target column name: either from a card hover or a column droppable
-      let targetColName: string;
+      // Resolve target column: either from a card hover or a column droppable
+      let targetColumn: BoardColumn;
       let targetRow: BoardRow;
       if (overId.startsWith(COL_PREFIX)) {
         // Dropped onto a column droppable (e.g. empty column)
-        const colId = overId.slice(COL_PREFIX.length); // "rowKey::colName"
-        const [rowKey, ...colNameParts] = colId.split('::');
-        const colName = colNameParts.join('::');
-        const row = rows.find((r) => r.key === rowKey);
-        if (!row) return;
+        const parsed = parseColumnKey(overId.slice(COL_PREFIX.length));
+        const row = parsed ? rows.find((r) => r.key === parsed.rowKey) : undefined;
+        const col = parsed ? row?.columns.find((c) => c.ordem === parsed.ordem) : undefined;
+        if (!row || !col) return;
         targetRow = row;
-        targetColName = colName;
+        targetColumn = col;
       } else {
         // Dropped onto a card
         const overLocation = findCardColumn(overId, rows);
         if (!overLocation) return;
         targetRow = overLocation.row;
-        targetColName = overLocation.colName;
+        targetColumn = overLocation.column;
       }
 
-      if (targetColName === activeLocation.colName && targetRow.key === activeLocation.row.key) {
+      if (targetColumn.ordem === activeLocation.column.ordem && targetRow.key === activeLocation.row.key) {
         // Within-column reorder — sobre a lista EXIBIDA: no modo prazo o drop
         // materializa a ordem visual em positions e a coluna vira 'manual'.
-        const colKeyStr = `${activeLocation.row.key}::${activeLocation.colName}`;
+        const colKeyStr = columnKey(activeLocation.row.key, activeLocation.column.ordem);
         const col = displayCards(
           activeLocation.row.key,
-          activeLocation.colName,
-          activeLocation.row.columns.get(activeLocation.colName) || [],
+          activeLocation.column.ordem,
+          activeLocation.column.cards,
         );
         const oldIdx = col.findIndex((c) => String(c.workflow.id) === activeId);
         const newIdx = overId.startsWith(COL_PREFIX)
@@ -525,17 +455,7 @@ export function KanbanView({
         }
       } else {
         // Between-column move — check adjacency by ordem
-        const activeEtapaOrdem = draggedCard.etapa.ordem;
-
-        // Find target etapa ordem from any card in that column (or from the dragged card's allEtapas)
-        const targetColCards = targetRow.columns.get(targetColName) || [];
-        const targetOrdem =
-          targetColCards.length > 0
-            ? targetColCards[0].allEtapas.find((e) => e.nome === targetColName)?.ordem
-            : draggedCard.allEtapas.find((e) => e.nome === targetColName)?.ordem;
-
-        if (targetOrdem === undefined) return;
-        const diff = targetOrdem - activeEtapaOrdem;
+        const diff = targetColumn.ordem - draggedCard.etapa.ordem;
         if (Math.abs(diff) !== 1) {
           toast.error('Só é possível mover para a etapa adjacente');
           return;
@@ -545,8 +465,8 @@ export function KanbanView({
         // advance/revert (possibly behind a confirm dialog) can land it there
         // instead of at the bottom. Indices e vizinhos sobre a lista EXIBIDA
         // (dropSlot.index veio do handleDragOver, tambem sobre ela).
-        const targetDisplay = displayCards(targetRow.key, targetColName, targetColCards);
-        const colKey = `${targetRow.key}::${targetColName}`;
+        const targetDisplay = displayCards(targetRow.key, targetColumn.ordem, targetColumn.cards);
+        const colKey = columnKey(targetRow.key, targetColumn.ordem);
         const slotIndex =
           dropSlot && dropSlot.colKey === colKey
             ? Math.min(dropSlot.index, targetDisplay.length)
@@ -768,17 +688,18 @@ export function KanbanView({
 
   const renderRowBoard = (row: BoardRow) => (
     <div className="board-container">
-      {[...row.columns.entries()].map(([stepName, rawStepCards], colIdx) => {
+      {row.columns.map((column, colIdx) => {
+        const stepName = column.nome;
         const tint = columnTint(stepName);
-        const colKeyStr = `${row.key}::${stepName}`;
-        const stepCards = displayCards(row.key, stepName, rawStepCards);
+        const colKeyStr = columnKey(row.key, column.ordem);
+        const stepCards = displayCards(row.key, column.ordem, column.cards);
         const sortMode = sortModeFor(colKeyStr);
         return (
-          <div key={stepName} className="board-column" style={{ borderColor: `${tint}30` }}>
+          <div key={column.ordem} className="board-column" style={{ borderColor: `${tint}30` }}>
             <div
               className="board-column-header"
               style={{ background: `${tint}30`, borderBottomColor: `${tint}30` }}
-              {...(approvalStepNames.has(stepName) ? { 'data-tour': 'wf-col-aprovacao' } : {})}
+              {...(column.tipo === 'aprovacao_cliente' ? { 'data-tour': 'wf-col-aprovacao' } : {})}
             >
               <span
                 style={{
@@ -831,7 +752,7 @@ export function KanbanView({
                 {stepCards.length}
               </span>
             </div>
-            <DroppableColumnBody tint={tint} id={`${COL_PREFIX}${row.key}::${stepName}`}>
+            <DroppableColumnBody tint={tint} id={`${COL_PREFIX}${colKeyStr}`}>
               {colIdx === 0 && onAddWorkflow && (
                 <button
                   type="button"
@@ -851,19 +772,18 @@ export function KanbanView({
                 items={stepCards.map((c) => String(c.workflow.id))}
                 strategy={verticalListSortingStrategy}
               >
-                {stepCards.length === 0 && `${row.key}::${stepName}` !== dropSlot?.colKey ? (
+                {stepCards.length === 0 && colKeyStr !== dropSlot?.colKey ? (
                   <div className="board-empty">Nenhuma entrega</div>
                 ) : (
                   stepCards.map((card, cardIdx) => (
                     <Fragment key={card.workflow.id}>
-                      {`${row.key}::${stepName}` === dropSlot?.colKey &&
-                        dropSlot.index === cardIdx && (
-                          <div
-                            className="board-drop-slot"
-                            style={{ height: dragHeight }}
-                            aria-hidden="true"
-                          />
-                        )}
+                      {colKeyStr === dropSlot?.colKey && dropSlot.index === cardIdx && (
+                        <div
+                          className="board-drop-slot"
+                          style={{ height: dragHeight }}
+                          aria-hidden="true"
+                        />
+                      )}
                       <SortableCard
                         card={card}
                         onCardClick={onCardClick}
@@ -887,14 +807,13 @@ export function KanbanView({
                     </Fragment>
                   ))
                 )}
-                {`${row.key}::${stepName}` === dropSlot?.colKey &&
-                  dropSlot.index >= stepCards.length && (
-                    <div
-                      className="board-drop-slot"
-                      style={{ height: dragHeight }}
-                      aria-hidden="true"
-                    />
-                  )}
+                {colKeyStr === dropSlot?.colKey && dropSlot.index >= stepCards.length && (
+                  <div
+                    className="board-drop-slot"
+                    style={{ height: dragHeight }}
+                    aria-hidden="true"
+                  />
+                )}
               </SortableContext>
             </DroppableColumnBody>
           </div>
