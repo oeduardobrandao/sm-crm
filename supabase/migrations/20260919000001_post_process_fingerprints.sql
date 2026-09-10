@@ -9,15 +9,19 @@
 -- jsonb e propria do Postgres. O valor tem poucas centenas de bytes.
 --
 -- SECURITY INVOKER, nao DEFINER. Duas consequencias desejadas:
---   (a) chamada direta por authenticated (PostgREST) le so o que a RLS de
---       workflows/workflow_etapas ja permite: fluxo de outra conta produz
---       so a linha etapa_atual=, sem etapas;
---   (b) chamada de dentro das RPCs SECURITY DEFINER da fase 2 roda como o
---       dono (postgres), que ignora RLS, que e o que a RPC precisa depois de
---       ja ter validado conta_id por conta propria.
+--   (a) chamada direta por membro de outra conta devolve NULL (RLS de
+--       workflows): o SELECT nao encontra a linha, cai no IF NOT FOUND e a
+--       funcao retorna antes de montar qualquer parte do fingerprint;
+--   (b) dentro das RPCs SECURITY DEFINER da fase 2 a funcao roda como dona
+--       (postgres), que ignora RLS, e por isso as RPCs validam conta_id por
+--       conta propria ANTES de chamar workflow_fingerprint/template_fingerprint.
 --
 -- Fluxo/template inexistente devolve NULL: assim um fingerprint enviado pelo
 -- cliente nunca casa com uma origem apagada.
+--
+-- workflow_etapas nao tem UNIQUE (workflow_id, ordem); o desempate de ordem
+-- igual e por e.id (ORDER BY e.ordem, e.id). O espelho TS da fase 3
+-- (buildFingerprint) tem de usar o mesmo desempate por id.
 
 CREATE OR REPLACE FUNCTION public.workflow_fingerprint(p_workflow_id bigint)
 RETURNS text
@@ -45,12 +49,12 @@ BEGIN
              || '|' || coalesce(e.tipo_prazo, '')
              || '|' || coalesce(to_char(e.data_limite, 'YYYY-MM-DD'), '')
              || '|' || coalesce(to_char(e.iniciado_em AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), ''),
-           '' ORDER BY e.ordem), '')
+           '' ORDER BY e.ordem, e.id), '')
     INTO v_linhas
     FROM workflow_etapas e
    WHERE e.workflow_id = p_workflow_id;
 
-  RETURN 'etapa_atual=' || coalesce(v_etapa_atual, 0)::text || v_linhas;
+  RETURN 'etapa_atual=' || coalesce(v_etapa_atual::text, '') || v_linhas;
 END;
 $$;
 

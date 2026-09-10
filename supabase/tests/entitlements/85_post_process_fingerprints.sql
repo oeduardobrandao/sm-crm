@@ -9,6 +9,8 @@
 -- 85.4 template inexistente devolve NULL; etapas vazio devolve ''
 -- 85.5 RLS: SECURITY INVOKER. Membro de outra conta nao produz fingerprint
 --      nenhum; membro da propria conta le o fingerprint completo por PostgREST
+-- 85.6 etapa_atual NULL serializa como cabecalho vazio (etapa_atual=), nao
+--      como 0; difere do mesmo fluxo com etapa_atual = 0
 
 create or replace function pg_temp.et_fp_env(out ws uuid, out usr uuid, out cli bigint, out wf bigint)
 language plpgsql as $$
@@ -135,5 +137,25 @@ begin
   assert v_fp = v_esperado,
     format('membro da conta deve obter o fingerprint completo, obtido: %s', v_fp);
   raise notice 'PASS 85.5 SECURITY INVOKER respeita a RLS e serve o caminho publico';
+end $$;
+rollback;
+
+-- 85.6
+begin;
+do $$
+declare e record; v_null text; v_zero text;
+begin
+  select * into e from pg_temp.et_fp_env();
+  update workflows set etapa_atual = null where id = e.wf;
+  v_null := workflow_fingerprint(e.wf);
+  assert v_null = 'etapa_atual=',
+    format('etapa_atual NULL deve serializar cabecalho vazio, obtido: %s', v_null);
+  update workflows set etapa_atual = 0 where id = e.wf;
+  v_zero := workflow_fingerprint(e.wf);
+  assert v_zero = 'etapa_atual=0',
+    format('etapa_atual 0 deve serializar como 0, obtido: %s', v_zero);
+  assert v_null is distinct from v_zero,
+    'etapa_atual NULL e etapa_atual 0 devem produzir fingerprints diferentes';
+  raise notice 'PASS 85.6 etapa_atual NULL serializa vazio, distinto de 0';
 end $$;
 rollback;
