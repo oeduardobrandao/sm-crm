@@ -81,7 +81,7 @@ export function PostagemFocoPage() {
             instagramProfile={data?.instagramProfile ?? null}
             workspaceName={bootstrap.workspace.name}
             onApprovalSubmitted={onApprovalSubmitted}
-            autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id)}
+            autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id, post.id)}
           />
         )}
         {kind === 'story' && (

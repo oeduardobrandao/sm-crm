@@ -282,6 +282,9 @@ export interface HubPostsResponse {
   /** Workflows mid dual-approval: a later client-approval etapa is still open,
    * so approving now will NOT auto-schedule (mirrors hub-approve's guard). */
   autoPublishSuspendedWorkflowIds?: number[];
+  /** Posts avulsos com processo individual que ainda tem outra etapa de
+   * aprovação adiante: aprovar agora NÃO autoagenda (espelha hub-approve). */
+  autoPublishSuspendedPostIds?: number[];
 }
 
 export interface DashboardTopPost {

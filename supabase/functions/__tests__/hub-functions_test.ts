@@ -753,6 +753,10 @@ Deno.test("hub-approve approves an avulso post (workflow_id null) via cliente_id
     error: null,
   });
   db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // No active process: this is the only branch that runs in production today
+  // (phase 2 writes no post_processes rows yet), so it must be exercised
+  // explicitly rather than falling through the mock's unqueued-select default.
+  db.queue("post_processes", "select", { data: null, error: null });
   // Same skipDateCheck express fixture as the attached-post case above; an avulso
   // post has no workflow_id but authorizes and auto-publishes identically.
   queueValidateForScheduling(db, {
@@ -1031,6 +1035,56 @@ Deno.test("hub-posts skips the etapa lookup when auto-publish is off", async () 
   assertEquals(body.autoPublishSuspendedWorkflowIds, []);
   const etapaCall = db.calls.find((c: { table: string }) => c.table === "workflow_etapas");
   assertEquals(etapaCall, undefined);
+});
+
+Deno.test("hub-posts lista avulsos com processo individual suspenso por outra aprovação adiante", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: [
+      { id: 1, workflow_id: null, workflows: null },
+      { id: 2, workflow_id: null, workflows: null },
+      { id: 3, workflow_id: null, workflows: null },
+    ],
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: [{ id: 10, post_id: 1 }, { id: 11, post_id: 2 }], error: null });
+  db.queue("post_process_steps", "select", {
+    data: [
+      { process_id: 10, estado: "ativo" },
+      { process_id: 10, estado: "pendente" },
+      { process_id: 11, estado: "ativo" },
+      { process_id: 11, estado: "herdado" },
+    ],
+    error: null,
+  });
+  const handler = createHubPostsHandler({
+    buildCorsHeaders, createDb: () => db as never, now,
+    signGetUrl: async (key: string) => `https://cdn.test/${key}`, rateLimit: async () => true,
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+  assertEquals(body.autoPublishSuspendedWorkflowIds, []);
+  assertEquals(body.autoPublishSuspendedPostIds, [1]);
+});
+
+Deno.test("hub-posts suspende todos os avulsos com processo quando a consulta das etapas erra", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", { data: [{ id: 1, workflow_id: null, workflows: null }], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: [{ id: 10, post_id: 1 }], error: null });
+  db.queue("post_process_steps", "select", { data: null, error: { message: "db offline" } });
+  const handler = createHubPostsHandler({
+    buildCorsHeaders, createDb: () => db as never, now,
+    signGetUrl: async (key: string) => `https://cdn.test/${key}`, rateLimit: async () => true,
+  });
+  const body = await readJson(await handler(new Request("https://example.test/hub-posts?token=hub-123")));
+  assertEquals(body.autoPublishSuspendedPostIds, [1]);
 });
 
 Deno.test("hub-brand returns client brand assets from the same workspace", async () => {
@@ -2295,4 +2349,102 @@ Deno.test("hub-edit-suggestion accepts a suggestion for an avulso post (workflow
     p_suggested_conteudo_plain: "Legenda avulsa nova",
     p_suggested_ig_caption: null,
   });
+});
+
+Deno.test("hub-approve não autoagenda avulso com processo individual que ainda tem outra aprovação adiante", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: { id: 5 }, error: null });
+  db.queue("post_process_steps", "select", {
+    data: [
+      { tipo: "padrao", estado: "concluido" },
+      { tipo: "aprovacao_cliente", estado: "ativo" },
+      { tipo: "padrao", estado: "pendente" },
+      { tipo: "aprovacao_cliente", estado: "pendente" },
+    ],
+    error: null,
+  });
+  queueValidateForScheduling(db, {
+    id: 99, scheduled_at: "2030-01-01T10:00:00.000Z", ig_caption: "legenda", workflow_id: null, cliente_id: 14, tipo: "feed",
+  });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.scheduled, false);
+  assertEquals(db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change"), undefined);
+});
+
+Deno.test("hub-approve autoagenda avulso com processo individual na última aprovação", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: { id: 5 }, error: null });
+  db.queue("post_process_steps", "select", {
+    data: [
+      { tipo: "aprovacao_cliente", estado: "herdado" },
+      { tipo: "padrao", estado: "concluido" },
+      { tipo: "aprovacao_cliente", estado: "ativo" },
+    ],
+    error: null,
+  });
+  queueValidateForScheduling(db, {
+    id: 99, scheduled_at: "2030-01-01T10:00:00.000Z", ig_caption: "legenda", workflow_id: null, cliente_id: 14, tipo: "feed",
+  });
+  db.queueRpc("record_post_status_change", { data: true, error: null });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  const body = await readJson(response);
+  assertEquals(body.scheduled, true);
+});
+
+Deno.test("hub-approve falha fechado quando a consulta do processo individual erra", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: null, error: { message: "db offline" } });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.scheduled, false);
+});
+
+Deno.test("hub-approve falha fechado quando a consulta das etapas do processo individual erra", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: null, status: "enviado_cliente", is_express: false, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  db.queue("post_processes", "select", { data: { id: 5 }, error: null });
+  db.queue("post_process_steps", "select", { data: null, error: { message: "db offline" } });
+  const handler = createHubApproveHandler({ buildCorsHeaders, createDb: () => db as never, now, rateLimit: async () => true });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST", body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  const body = await readJson(response);
+  assertEquals(body.ok, true);
+  assertEquals(body.scheduled, false);
+  assertEquals(db.calls.find((c: { table: string }) => c.table === "rpc:record_post_status_change"), undefined);
 });
