@@ -184,6 +184,7 @@ public.reorder_fluxos_board(
 | `invalid_step_overrides` | apply |
 | `invalid_step_deadlines` | detach |
 | `start_deadline_required` | apply |
+| `data_entrega_requires_approval_step` | apply (modo `data_entrega` sem etapa `aprovacao_cliente` na sequência a partir da inicial) |
 | `active_deadline_required` | detach |
 | `next_deadline_required` | transition (`avancar`) |
 | `expected_post_status_required` | transition (`avancar`/`concluir` sobre `aprovacao_cliente`) |
@@ -1877,6 +1878,7 @@ Regras fixadas (spec §5.2, §7, §12.13a):
 
 - A sequência vem do template, reconstruída no servidor. Do cliente só entra `p_step_overrides`, mapa `{"<ordem>": {"responsavel_id": <n|null>, "prazo_efetivo": "<ISO|null>"}}`. Qualquer outra chave, ordem inexistente, ordem anterior à inicial ou responsável de outra conta é rejeitado.
 - `p_step_overrides` da etapa inicial precisa trazer `prazo_efetivo` não nulo (`start_deadline_required`). Etapas posteriores podem trazer ou não.
+- Template com `modo_prazo = 'data_entrega'`: a sequência a partir de `p_start_ordem` precisa conter ao menos uma etapa de tipo `aprovacao_cliente`, senão `data_entrega_requires_approval_step`. É a exigência estrutural da §7, e é checagem de **forma**, não de data: só olha `tipo` no jsonb do template, sem reimplementar dias úteis nem `clientes.dia_entrega` em SQL. Os demais modos ignoram a regra (Decisão 18).
 - Etapas anteriores a `p_start_ordem` ficam `ignorado`. Status, conteúdo e agendamento do post não mudam.
 - Um `responsavel_id` que veio do próprio template e não resolve mais para um membro da conta é gravado como nulo (a UI mostra "Sem responsável"); um `responsavel_id` vindo de override que não resolve é erro (`membro_not_found`).
 
@@ -1894,6 +1896,7 @@ Regras fixadas (spec §5.2, §7, §12.13a):
 -- 88.3 post ja em fluxo -> post_in_workflow; post com processo vigente -> post_has_active_process
 -- 88.4 template de outra conta -> template_not_found; template vazio -> template_empty
 -- 88.5 invalid_start_ordem: fora da sequencia, negativa e nula
+-- 88.6 modo data_entrega sem etapa aprovacao_cliente na sequencia -> erro
 --
 -- IMPORTANTE. template_fingerprint e SECURITY INVOKER (Decisao 11) e o
 -- argumento e avaliado no contexto do CHAMADOR. Sob 'set local role
@@ -2164,6 +2167,133 @@ begin
   raise notice 'PASS 88.5 invalid_start_ordem';
 end $$;
 rollback;
+
+-- 88.6
+begin;
+do $$
+declare e record; v_sem bigint; v_com bigint; v_fp text; v_raised boolean := false;
+begin
+  select * into e from pg_temp.et_ap_env();
+
+  -- Template em modo data_entrega SEM nenhuma etapa aprovacao_cliente.
+  insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo)
+    values (e.usr, e.ws, 'Entrega sem aprovacao', jsonb_build_array(
+      jsonb_build_object('nome', 'Copy', 'prazo_dias', 2, 'tipo_prazo', 'corridos'),
+      jsonb_build_object('nome', 'Design', 'prazo_dias', 3, 'tipo_prazo', 'corridos')
+    ), 'data_entrega') returning id into v_sem;
+  -- Mesmo modo, com a aprovacao NO MEIO: comecar depois dela deixa a sequencia
+  -- restante sem nenhuma aprovacao.
+  insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo)
+    values (e.usr, e.ws, 'Entrega com aprovacao no meio', jsonb_build_array(
+      jsonb_build_object('nome', 'Copy', 'prazo_dias', 2, 'tipo_prazo', 'corridos'),
+      jsonb_build_object('nome', 'Aprovacao', 'prazo_dias', 1, 'tipo_prazo', 'uteis', 'tipo', 'aprovacao_cliente'),
+      jsonb_build_object('nome', 'Design', 'prazo_dias', 3, 'tipo_prazo', 'corridos')
+    ), 'data_entrega') returning id into v_com;
+
+  v_fp := template_fingerprint(v_sem);
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform apply_post_process(e.post, v_sem, v_fp, 0, jsonb_build_object(
+      '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'data_entrega_requires_approval_step', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'data_entrega sem etapa de aprovacao deve ser rejeitado';
+  assert not exists (select 1 from post_processes), 'nada pode ter sido criado';
+
+  -- A regra e relativa a p_start_ordem, nao ao template inteiro: aqui o
+  -- template TEM uma etapa aprovacao_cliente (ordem 1), mas comecar em 2 deixa
+  -- a sequencia restante sem nenhuma.
+  v_fp := template_fingerprint(v_com);
+  v_raised := false;
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform apply_post_process(e.post, v_com, v_fp, 2, jsonb_build_object(
+      '2', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'data_entrega_requires_approval_step', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'comecar depois da unica aprovacao tambem deve ser rejeitado';
+  assert not exists (select 1 from post_processes), 'nada pode ter sido criado';
+
+  -- Comecar NA propria etapa de aprovacao passa: a sequencia a partir dela a
+  -- contem.
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  perform apply_post_process(e.post, v_com, v_fp, 1, jsonb_build_object(
+    '1', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  execute 'reset role';
+  assert exists (select 1 from post_processes where post_id = e.post), 'com aprovacao na sequencia, aplica';
+
+  raise notice 'PASS 88.6a data_entrega_requires_approval_step';
+end $$;
+rollback;
+
+begin;
+do $$
+declare e record; v_com bigint; v_fp text; v_res jsonb; v_n int;
+begin
+  select * into e from pg_temp.et_ap_env();
+  insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo)
+    values (e.usr, e.ws, 'Entrega com aprovacao no fim', jsonb_build_array(
+      jsonb_build_object('nome', 'Copy', 'prazo_dias', 2, 'tipo_prazo', 'corridos'),
+      jsonb_build_object('nome', 'Aprovacao', 'prazo_dias', 1, 'tipo_prazo', 'uteis', 'tipo', 'aprovacao_cliente')
+    ), 'data_entrega') returning id into v_com;
+  v_fp := template_fingerprint(v_com);
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_res := apply_post_process(e.post, v_com, v_fp, 0, jsonb_build_object(
+    '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  execute 'reset role';
+  assert (v_res ->> 'ok')::boolean, 'data_entrega com etapa de aprovacao aplica normalmente';
+  select count(*) into v_n from post_process_steps where process_id = (v_res ->> 'process_id')::bigint;
+  assert v_n = 2, format('duas etapas, obtidas %s', v_n);
+  perform 1 from post_processes where id = (v_res ->> 'process_id')::bigint and modo_prazo = 'data_entrega';
+  assert found, 'modo_prazo do template vai para o processo';
+  raise notice 'PASS 88.6b data_entrega com etapa de aprovacao';
+end $$;
+rollback;
+
+-- 88.6c: os demais modos ignoram a regra. O template da fixture e 'padrao' e
+-- tem etapa de aprovacao; aqui um 'padrao' SEM nenhuma aprovacao_cliente
+-- precisa aplicar sem erro, provando que a regra e so do data_entrega.
+begin;
+do $$
+declare e record; v_tmpl bigint; v_fp text; v_res jsonb;
+begin
+  select * into e from pg_temp.et_ap_env();
+  insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo)
+    values (e.usr, e.ws, 'Padrao sem aprovacao', jsonb_build_array(
+      jsonb_build_object('nome', 'Copy', 'prazo_dias', 2, 'tipo_prazo', 'corridos'),
+      jsonb_build_object('nome', 'Design', 'prazo_dias', 3, 'tipo_prazo', 'corridos')
+    ), 'padrao') returning id into v_tmpl;
+  v_fp := template_fingerprint(v_tmpl);
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_res := apply_post_process(e.post, v_tmpl, v_fp, 0, jsonb_build_object(
+    '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  execute 'reset role';
+  assert (v_res ->> 'ok')::boolean, 'modo padrao sem aprovacao aplica normalmente';
+
+  -- data_fixa tambem ignora a regra.
+  update workflow_templates set modo_prazo = 'data_fixa' where id = v_tmpl;
+  v_fp := template_fingerprint(v_tmpl);
+  delete from post_processes where post_id = e.post;
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_res := apply_post_process(e.post, v_tmpl, v_fp, 0, jsonb_build_object(
+    '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  execute 'reset role';
+  assert (v_res ->> 'ok')::boolean, 'modo data_fixa sem aprovacao aplica normalmente';
+  raise notice 'PASS 88.6c outros modos ignoram a regra';
+end $$;
+rollback;
 ```
 
 - [ ] **Step 2: Rodar e ver falhar**
@@ -2258,6 +2388,23 @@ BEGIN
   v_n := jsonb_array_length(v_tmpl.etapas);
   IF p_start_ordem IS NULL OR p_start_ordem < 0 OR p_start_ordem >= v_n THEN
     RAISE EXCEPTION 'invalid_start_ordem' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Exigencia estrutural do modo data_entrega (spec secao 7, Decisao 18): a
+  -- sequencia a partir da inicial precisa ter ao menos uma etapa
+  -- aprovacao_cliente. E checagem de FORMA, nao de data: le so 'tipo' do jsonb
+  -- do template e nao reimplementa dias uteis nem clientes.dia_entrega em SQL,
+  -- o que a secao 7 proibe. Vem depois de invalid_start_ordem, porque a regra e
+  -- relativa a ordem inicial, e antes da validacao de p_step_overrides e de
+  -- qualquer INSERT: template invalido nao cria linha nenhuma. Os demais modos
+  -- ('padrao', 'data_fixa') ignoram a regra.
+  IF coalesce(v_tmpl.modo_prazo, 'padrao') = 'data_entrega'
+     AND NOT EXISTS (
+       SELECT 1
+         FROM jsonb_array_elements(v_tmpl.etapas) WITH ORDINALITY AS e(val, ord)
+        WHERE (e.ord - 1) >= p_start_ordem
+          AND coalesce(nullif(e.val ->> 'tipo', ''), 'padrao') = 'aprovacao_cliente') THEN
+    RAISE EXCEPTION 'data_entrega_requires_approval_step' USING ERRCODE = 'P0001';
   END IF;
 
   -- Validacao de p_step_overrides: objeto de objetos, chaves numericas dentro
@@ -3990,6 +4137,7 @@ Regras fixadas (spec §4.2, §9.1):
 - Uma chamada grava a coluna inteira: `workflows.position` para os cards de fluxo e `post_processes.board_position` para os cards individuais, no mesmo espaço de índices. O CRM envia a ordem completa da coluna, incluindo os cards ocultos pelo filtro na posição em que estavam.
 - All-or-nothing na posse: um id de outra conta derruba tudo (`workflow_not_found` / `process_not_found`) e nada é gravado. A posse do processo é verificada só entre os estados que aparecem no quadro (`ativo` e `concluido`): um processo `encerrado` não é card nenhum, então mandar o id dele é erro de cliente e responde `process_not_found`.
 - Os dois lados são opcionais, mas não os dois ao mesmo tempo (`invalid_arguments`), e cada par de arrays precisa ter o mesmo comprimento.
+- Duplicata também é `invalid_arguments`, checada antes de qualquer UPDATE: id repetido dentro de `p_workflow_ids` ou dentro de `p_process_ids`, e posição repetida em `p_workflow_positions || p_process_positions`. Sem isso o `UPDATE ... FROM unnest(...)` junta uma linha a várias fontes e persiste uma ordem não determinística. Densidade continua não exigida (Decisão 19): a coluna pode ser esparsa, só não pode ter empate.
 - Molde: `reorder_workflow_positions(bigint[], integer[])` do PR #479 (`20260917000001`), que não está em `main` nem nesta branch. Esta RPC é autossuficiente e não a chama. Se #479 mergear antes, as duas convivem: a de lá continua servindo o caminho só-fluxos e a fase 3 decide se consolida.
 - Não incrementa `revisao`: ordenar o quadro não é mudança de estado do processo, e um drag de outra aba não deve invalidar um comando em edição. `board_position` também não está na lista de colunas de `post_processes_requires_avulso` (`UPDATE OF estado, post_id, conta_id`), então o trigger não dispara.
 
@@ -4005,6 +4153,7 @@ Regras fixadas (spec §4.2, §9.1):
 -- 92.1 all-or-nothing entre contas
 -- 92.2 argumentos invalidos (tamanhos diferentes, tudo vazio)
 -- 92.3 ACL e permissao por papel; revisao do processo intocada
+-- 92.4 duplicatas: id repetido e posicao repetida entre os dois arrays
 
 create or replace function pg_temp.et_rb_env(
   out ws uuid, out usr uuid, out cli bigint, out wa bigint, out wb bigint,
@@ -4142,6 +4291,80 @@ begin
   raise notice 'PASS 92.3 ACL, permissao e revisao intocada';
 end $$;
 rollback;
+
+-- 92.4
+begin;
+do $$
+declare e record; v_raised boolean := false; v int;
+begin
+  select * into e from pg_temp.et_rb_env();
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+
+  begin
+    perform reorder_fluxos_board(array[e.wa, e.wa], array[0, 1]::integer[], '{}'::bigint[], '{}'::integer[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_arguments', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'id de fluxo repetido e invalid_arguments';
+
+  v_raised := false;
+  begin
+    perform reorder_fluxos_board('{}'::bigint[], '{}'::integer[], array[e.proca, e.proca], array[0, 1]::integer[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_arguments', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'id de processo repetido e invalid_arguments';
+
+  -- Posicao e um espaco de indices SO por coluna: o empate e checado sobre os
+  -- dois arrays concatenados, nao dentro de cada um.
+  v_raised := false;
+  begin
+    perform reorder_fluxos_board(array[e.wa], array[1]::integer[], array[e.proca], array[1]::integer[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_arguments', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'posicao repetida entre fluxo e processo e invalid_arguments';
+
+  v_raised := false;
+  begin
+    perform reorder_fluxos_board(array[e.wa, e.wb], array[2, 2]::integer[], '{}'::bigint[], '{}'::integer[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_arguments', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'posicao repetida dentro do mesmo array e invalid_arguments';
+
+  -- Nulo em qualquer um dos quatro arrays cai no mesmo codigo, como no molde.
+  v_raised := false;
+  begin
+    perform reorder_fluxos_board(array[e.wa, e.wb], array[0, null]::integer[], '{}'::bigint[], '{}'::integer[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_arguments', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'posicao nula e invalid_arguments';
+  execute 'reset role';
+
+  select position into v from workflows where id = e.wa;      assert v = 0, 'nada foi gravado em wa';
+  select position into v from workflows where id = e.wb;      assert v = 1, 'nada foi gravado em wb';
+  select board_position into v from post_processes where id = e.proca; assert v = 2, 'nada foi gravado em proca';
+  select board_position into v from post_processes where id = e.procb; assert v = 3, 'nada foi gravado em procb';
+
+  -- Id de fluxo igual a id de processo NAO e duplicata: tabelas e sequences
+  -- diferentes. Esparso tambem passa: densidade nao e exigida (Decisao 19).
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  perform reorder_fluxos_board(array[e.wa], array[0]::integer[], array[e.proca], array[7]::integer[]);
+  execute 'reset role';
+  select position into v from workflows where id = e.wa;      assert v = 0, 'coluna esparsa e aceita (fluxo)';
+  select board_position into v from post_processes where id = e.proca; assert v = 7, 'coluna esparsa e aceita (processo)';
+  raise notice 'PASS 92.4 duplicatas de id e de posicao';
+end $$;
+rollback;
 ```
 
 - [ ] **Step 2: Rodar e ver falhar**
@@ -4190,6 +4413,31 @@ BEGIN
   IF v_nw IS DISTINCT FROM coalesce(array_length(p_workflow_positions, 1), 0)
      OR v_np IS DISTINCT FROM coalesce(array_length(p_process_positions, 1), 0)
      OR (v_nw = 0 AND v_np = 0) THEN
+    RAISE EXCEPTION 'invalid_arguments' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Duplicatas derrubam a chamada ANTES de qualquer UPDATE. Com o mesmo id
+  -- duas vezes num array, o UPDATE ... FROM unnest(...) junta a linha a duas
+  -- fontes e o Postgres nao define qual vence: a ordem persistida sairia nao
+  -- deterministica. Posicao repetida produz o mesmo sintoma na leitura, e como
+  -- workflows.position e post_processes.board_position sao UM espaco de indices
+  -- por coluna (secao 4.2), a checagem de posicao e sobre os dois arrays
+  -- concatenados. count(DISTINCT) ignora NULL, entao um id ou uma posicao nula
+  -- tambem cai aqui, o mesmo codigo que o molde reorder_workflow_positions usa
+  -- para comprimento e nulos.
+  --
+  -- NAO se compara id de fluxo com id de processo: sao tabelas e sequences
+  -- diferentes, e uma coluna legitima pode conter o fluxo 5 e o processo 5.
+  -- Densidade tambem nao e exigida: a coluna pode ser esparsa (Decisao 19), so
+  -- nao pode ter empate.
+  IF v_nw > 0 AND (SELECT count(DISTINCT x) FROM unnest(p_workflow_ids) x) IS DISTINCT FROM v_nw THEN
+    RAISE EXCEPTION 'invalid_arguments' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_np > 0 AND (SELECT count(DISTINCT x) FROM unnest(p_process_ids) x) IS DISTINCT FROM v_np THEN
+    RAISE EXCEPTION 'invalid_arguments' USING ERRCODE = 'P0001';
+  END IF;
+  IF (SELECT count(DISTINCT x) FROM unnest(p_workflow_positions || p_process_positions) x)
+     IS DISTINCT FROM (v_nw + v_np) THEN
     RAISE EXCEPTION 'invalid_arguments' USING ERRCODE = 'P0001';
   END IF;
 
@@ -4352,14 +4600,14 @@ Fase 2 de `docs/superpowers/specs/2026-09-10-posts-individuais-fluxos-design.md`
 - `workflow_fingerprint` / `template_fingerprint`: serialização canônica em texto, sem hash, `SECURITY INVOKER`, o mesmo formato que o CRM vai espelhar em `buildFingerprint` na fase 3.
 - Endurecimento da fase 1: índices `idx_post_processes_template` / `idx_post_processes_origem`, `concluido_em` limpo em toda transição para `ativo`, `REVOKE` de USAGE nas três sequences, e os helpers internos `post_process_require_editor` (`workspace_not_found` / `permission_denied`), `post_process_log_event` e `post_process_assinatura`, nenhum com EXECUTE para `anon`, `authenticated` nem `service_role`.
 - `express_cleanup_delete_avulso_drafts` recriada para poupar também o rascunho Express avulso cujo processo está `concluido`. É a fase 2 que cria o único caminho para chegar a `concluido`, e nenhum comando de processo tira o post de `rascunho`: sem isso o cron apagaria o post, o processo, as etapas e o histórico. Processo `encerrado` continua não poupando. Nenhuma edge function muda (o pré-filtro do handler segue `estado = 'ativo'` e os ids poupados a mais já entram em `avulso_skipped_with_process`).
-- Sete RPCs: `detach_posts_keeping_process` (lote atômico e idempotente por `request_id`), `apply_post_process` (sequência reconstruída do template no servidor), `transition_post_process` (avançar, voltar, concluir, reabrir, com `revisao`, status esperado do post e re-arm do próximo ciclo numa transação), `update_post_process_step`, `remove_post_process`, `attach_post_closing_process` (encerra antes do UPDATE de `workflow_id`, satisfazendo `post_a1_process_guard`) e `reorder_fluxos_board`.
+- Sete RPCs: `detach_posts_keeping_process` (lote atômico e idempotente por `request_id`), `apply_post_process` (sequência reconstruída do template no servidor, com a exigência estrutural do modo `data_entrega`), `transition_post_process` (avançar, voltar, concluir, reabrir, com `revisao`, status esperado do post e re-arm do próximo ciclo numa transação), `update_post_process_step`, `remove_post_process`, `attach_post_closing_process` (encerra antes do UPDATE de `workflow_id`, satisfazendo `post_a1_process_guard`) e `reorder_fluxos_board` (que rejeita id ou posição repetida antes de gravar).
 - Permissão por papel (`has_permission_for('entregas','editar')`) em toda mutação; gate de plano nas duas RPCs que criam execução; ordem de advisory locks `:post_move` → `:max_posts_per_workflow` e ordem de linhas fluxo → post → processo em toda a família.
 
 ## Rollout
 Só migrations, `20260919000001` a `20260919000008`, em ordem. Nenhuma edge function muda e nenhum deploy de function é necessário. Aplicar em prod antes do merge (regra da casa), sem ligar a flag em conta nenhuma.
 
 ## Verificação
-Suítes psql no job `entitlement-tests`: 85 (fingerprints, 6 blocos), 86 (endurecimento e helpers, 7 blocos), 87 (detach, 8), 88 (apply, 6), 89 (transition, 8), 90 (editar e remover, 6), 91 (vincular, 5), 92 (reordenar, 4), mais os blocos novos 83.12 e 83.13, a mudança de 83.3 (exclui as quatro tabelas de `et_grant_hosted_parity` e tolera `42501` no UPDATE) e o bloco E.2 de `supabase/tests/express_cleanup_delete_avulso_drafts.sql`, que passa a exigir que o processo `concluido` poupe o rascunho.
+Suítes psql no job `entitlement-tests`: 85 (fingerprints, 6 blocos), 86 (endurecimento e helpers, 7 blocos), 87 (detach, 8), 88 (apply, 7), 89 (transition, 8), 90 (editar e remover, 6), 91 (vincular, 5), 92 (reordenar, 5), mais os blocos novos 83.12 e 83.13, a mudança de 83.3 (exclui as quatro tabelas de `et_grant_hosted_parity` e tolera `42501` no UPDATE) e o bloco E.2 de `supabase/tests/express_cleanup_delete_avulso_drafts.sql`, que passa a exigir que o processo `concluido` poupe o rascunho.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -4377,7 +4625,7 @@ Aguardar o review externo e responder. Antes do merge: aplicar as oito migration
 - Transição server-side quando o cliente aprova no Hub: a spec §6.2 a coloca explicitamente fora da v1 e a §13 a registra como follow-up.
 - Campos de leitura do processo no MCP (`get_post` / `list_posts`): §10 e §13, entrega posterior.
 - O item que a fase 1 deixou no ledger (`progress.md`): `apps/crm/src/hooks/useWorkspaceLimits.ts` (`FeatureFlags`) e `apps/crm/src/lib/entitlement-errors.ts` (`FEATURE_LABELS`) ainda não conhecem `feature_post_processes`, e as RPCs desta fase passam a devolver `feature_disabled:feature_post_processes`. Nada quebra enquanto ninguém chama as RPCs, então isso vai junto da fase 3/4, com o mapeamento de erros por código em Sonner. Registrado aqui para não se perder de vez.
-- Correções de spec que estas decisões implicam e que precisam ser escritas na spec, não só aqui: §12.18 e §10 (Decisão 25), §7 se a validação do modo `data_entrega` ficar mesmo fora da RPC (Decisão 18), e §5.5/§6.2 se o PO preferir `concluir` puro em dois passos (Decisão 12).
+- Correções de spec que estas decisões implicavam: §10 e §12.18 (Decisão 25), **já escritas** na revisão 2.3 da spec. As demais deixaram de ser necessárias com as decisões do PO de 2026-09-10: a §7 fica como está porque a Decisão 18 traz a regra estrutural do modo `data_entrega` para dentro de `apply_post_process`, e a §5.5 e a §6.2 ficam como estão porque a Decisão 12 foi aprovada como escrita, com `concluir` herdando o diálogo de aprovação.
 
 ## Decisões tomadas ao planejar
 
@@ -4407,6 +4655,8 @@ A §7 diz que a RPC "valida só que o valor é um `timestamptz` não nulo quando
 
 A §9.1 propõe `(p_row_key, p_ordem, p_workflow_positions jsonb, p_process_positions jsonb)`. `p_row_key` e `p_ordem` identificam a coluna no cliente e o servidor não tem como validá-los (a identidade de linha é derivada de template mais assinatura, no front). **Decisão: `(p_workflow_ids bigint[], p_workflow_positions integer[], p_process_ids bigint[], p_process_positions integer[])`**, tipado, no molde exato de `reorder_workflow_positions`. Retorna `void`, como o molde.
 
+Achado externo dobrado nesta revisão (Codex P2, confirmado): as duplicatas são rejeitadas com `invalid_arguments`, o mesmo código que o molde usa para comprimento e nulos, antes de qualquer UPDATE. São duas checagens: id repetido dentro de `p_workflow_ids` ou dentro de `p_process_ids`, porque o `UPDATE ... FROM unnest(...)` juntaria uma linha a várias fontes e o Postgres não define qual vence, persistindo uma ordem não determinística; e posição repetida em `p_workflow_positions || p_process_positions`, porque as duas colunas são um espaço de índices só por coluna (§4.2). Id de fluxo igual a id de processo **não** é duplicata, e a checagem deliberadamente não os compara: são tabelas e sequences independentes, e uma coluna legítima pode ter o fluxo 5 e o processo 5 lado a lado. Densidade continua fora (Decisão 19): esparso passa, empate não. Coberto pelo bloco 92.4.
+
 ### 7. Código de permissão negada: `permission_denied`
 
 Não existe precedente de RPC que negue por `has_permission_for`: `has_permission_for` só tem EXECUTE para `service_role` e hoje é consumida por triggers e edge functions. Os vizinhos são `financial_access_denied` (identificador, P0001 implícito) e `forbidden` com `42501` em funções de outra família. **Decisão: `permission_denied` com `ERRCODE = 'P0001'`**, identificador, consistente com toda a família detach/attach/move que o CRM já mapeia por identificador em `getAttachErrorToast`.
@@ -4429,13 +4679,13 @@ A §9.1 diz "todas são SECURITY DEFINER", mas a frase se refere à tabela de RP
 
 ### 12. `avancar` nunca conclui o processo, e `concluir` herda o diálogo de aprovação
 
-**Precisa do PO.**
+**Aprovado pelo PO em 2026-09-10.**
 
 A spec descreve "Avançar sem alterar post: move **ou conclui**". Fundir os dois deixaria a UI sem como distinguir "avancei" de "terminei" e complicaria o evento. **Decisão: `avancar` sem próxima etapa `pendente` levanta `no_next_step`; concluir é o comando `concluir`**, que a §5.5 já descreve como ação própria do cabeçalho. `concluir` é aceito de qualquer etapa ativa, não só da última, e as etapas `pendente` restantes continuam `pendente`.
 
 Separar os dois comandos, porém, não pode tirar de `concluir` o único caminho que a spec dá para "aprovar internamente e concluir": a §5.5, primeiro bullet, diz que "se a última etapa é `aprovacao_cliente` com pendência, abre o mesmo diálogo de escolha dos fluxos (§6.2)". **Decisão: quando a etapa ativa é `aprovacao_cliente`, `concluir` passa exatamente pela mesma árvore de `avancar`** (`p_expected_post_status` obrigatório, `post_changed` na divergência, `p_approval_choice` obrigatório com post não liberado, `aprovar_interno` gravando `aprovado_cliente` fora de `agendado`/`postado`), **menos o re-arm**, que não faz sentido sem próximo ciclo. Ordem de checagem: as pré-condições de `avancar` (`no_next_step`, `next_deadline_required`) continuam vindo antes da árvore, para que "não há próxima etapa" siga sendo a primeira resposta de um avançar na última etapa.
 
-Alternativa para o PO: manter `concluir` puro e resolver na UI em dois passos (`approvePostsInternally` por PATCH e depois `concluir`), o que deixa a operação não atômica e **exige corrigir a §5.5 e a §6.2** da spec, porque hoje elas descrevem um diálogo só.
+Alternativa registrada e descartada: manter `concluir` puro e resolver na UI em dois passos (`approvePostsInternally` por PATCH e depois `concluir`), o que deixaria a operação não atômica e exigiria corrigir a §5.5 e a §6.2 da spec, que hoje descrevem um diálogo só.
 
 ### 13. "Enviar ao cliente" não é uma escolha de `transition_post_process`
 
@@ -4447,7 +4697,7 @@ A §9.1 o lista como parâmetro sem dizer quando é exigido. Sem ele, o re-arm e
 
 ### 15. `voltar` reabre a etapa imediatamente anterior por `ordem`, qualquer que seja o estado dela
 
-**Precisa do PO.** Alternativa: `voltar` pular as etapas `herdado` e `ignorado` e reabrir a última `concluido`, o que muda o que o usuário vê ao voltar num processo desmembrado no meio de um fluxo (as etapas anteriores nasceram `herdado`, então hoje é uma delas que reabre).
+**Aprovado pelo PO em 2026-09-10.** Alternativa registrada e descartada: `voltar` pular as etapas `herdado` e `ignorado` e reabrir a última `concluido`, o que mudaria o que o usuário vê ao voltar num processo desmembrado no meio de um fluxo (as etapas anteriores nasceram `herdado`, então é uma delas que reabre).
 
 A §5.4 diz que `concluido`, `herdado` e `ignorado` são informativas "até serem reabertas por Voltar etapa". **Decisão: a etapa anterior é a de maior `ordem` menor que a atual, independentemente do estado**, e ela volta a `ativo` preservando `iniciado_em` e `prazo_efetivo` (semântica de `revertEtapa`, incluindo prazo vencido). A etapa abandonada volta a `pendente` com `iniciado_em` nulo.
 
@@ -4461,11 +4711,15 @@ O jsonb de um template pode carregar `responsavel_id` de um membro já removido,
 
 A mesma regra vale no `detach_posts_keeping_process`, e por um motivo ainda mais concreto: `workflow_etapas.responsavel_id` é FK **simples** para `membros(id)` (`20260301_baseline_schema.sql`), sem checagem de tenant, enquanto `post_process_steps.responsavel_id` tem FK **composta** com `conta_id`. Um valor cross-tenant em `workflow_etapas` (dado velho, importação) derrubaria o lote inteiro com `foreign_key_violation` cru, sem código de erro nenhum para a UI mapear. **Decisão: o snapshot do desmembrar resolve `responsavel_id` pelo mesmo `(SELECT m.id FROM membros m WHERE m.id = e.responsavel_id AND m.conta_id = v_conta)`**, e a etapa nasce sem responsável quando não resolve. Coberto pelo bloco 87.7.
 
-### 18. `prazo_efetivo` obrigatório só na etapa inicial de `apply_post_process`
+### 18. `prazo_efetivo` obrigatório só na etapa inicial, mais a regra estrutural do modo `data_entrega`
 
-**Precisa do PO.** Alternativa: a RPC passar a validar também a exigência estrutural que a §7 descreve para o modo `data_entrega` ("a RPC exige uma etapa `aprovacao_cliente` na sequência a partir da inicial"), que é uma checagem de forma e não de data, portanto viável no servidor. Como está escrito abaixo, o plano abandona essa exigência sem dizer, e manter assim **exige corrigir a §7** da spec, não só registrar uma decisão de plano.
+**Aprovado pelo PO em 2026-09-10**, na alternativa. Alternativa registrada e descartada: deixar a exigência estrutural do modo `data_entrega` fora da RPC, o que abandonaria em silêncio o que a §7 promete e exigiria corrigir a §7 da spec.
 
-A §5.2 descreve exigências por modo de prazo (`data_fixa` exige data para cada etapa a partir da inicial), mas a §7 diz que a RPC "valida só que o valor é um `timestamptz` não nulo quando a etapa tem prazo relativo". As regras por modo são de diálogo. **Decisão: a RPC exige `prazo_efetivo` só para a etapa que vai ficar `ativo` (`start_deadline_required`); aceita para as posteriores; rejeita override de etapa anterior à inicial.** Validar as regras de modo no servidor exigiria reimplementar dias úteis e `clientes.dia_entrega` em SQL, que a §7 proíbe.
+A §5.2 descreve exigências por modo de prazo (`data_fixa` exige data para cada etapa a partir da inicial), mas a §7 diz que a RPC "valida só que o valor é um `timestamptz` não nulo quando a etapa tem prazo relativo". As regras de **data** por modo são de diálogo: validá-las no servidor exigiria reimplementar dias úteis e `clientes.dia_entrega` em SQL, que a §7 proíbe. A regra de **forma** do modo `data_entrega` é outra coisa, e cabe no servidor.
+
+**Decisão, em duas partes: (a) a RPC exige `prazo_efetivo` só para a etapa que vai ficar `ativo` (`start_deadline_required`), aceita para as posteriores e rejeita override de etapa anterior à inicial; (b) quando o `modo_prazo` do template é `data_entrega`, a RPC exige ao menos uma etapa de tipo `aprovacao_cliente` na sequência a partir de `p_start_ordem` e responde `data_entrega_requires_approval_step` (P0001) quando não há.**
+
+A parte (b) é literalmente o que a §7 já descreve ("a RPC exige uma etapa `aprovacao_cliente` na sequência a partir da inicial"), então a §7 fica **como está** e nenhuma correção de spec é necessária deste lado. Ela só lê `tipo` do jsonb do template que a própria RPC acabou de travar com `FOR SHARE`, sem tocar em data. É relativa à ordem inicial, não ao template inteiro: um template com aprovação na ordem 1 aplicado a partir da ordem 2 é rejeitado. Vem depois de `invalid_start_ordem` e antes da validação de `p_step_overrides` e de qualquer INSERT, então um template inválido nunca cria linha. `padrao`, `data_fixa` e qualquer outro modo ignoram a regra. Coberto pelo bloco 88.6.
 
 ### 19. `board_position` inicial é o topo da faixa dos processos ativos da conta
 
@@ -4497,7 +4751,7 @@ O minor M6 da fase 1 sugeria renomear o contador do `express-post-cleanup-cron`,
 
 ### 25. A limpeza de Express passa a poupar o rascunho avulso com processo `concluido`
 
-**Precisa do PO.** Muda a leitura do critério 12.18 e da §10, que hoje falam só em "execução ativa", e essas duas linhas da spec precisam ser corrigidas junto.
+**Aprovado pelo PO em 2026-09-10.** Alternativa registrada e descartada: manter a RPC poupando só `estado = 'ativo'`, aceitando a perda do post, do processo e do histórico. As duas linhas da spec que falavam em "execução ativa" foram corrigidas junto, na revisão 2.3: a §10 e o critério 12.18 agora dizem "execução vigente (`ativo` ou `concluido`)".
 
 `20260918000004` poupa só `pp.estado = 'ativo'`. O caminho de falha é concreto e nasce **nesta fase**: um post Express avulso ganha processo por `apply_post_process`, a agência produz tudo e clica em "Concluir processo" (`transition_post_process(..., 'concluir')`); por desenho da spec (§5.1, §5.2, §6.2 e critério 12.4) **nenhum comando de processo altera o status do post**, então ele continua `rascunho`. Passado o cutoff, o passo 3 do `express-post-cleanup-cron` o entrega à RPC, o `NOT EXISTS (estado='ativo')` não o poupa, e o `DELETE FROM workflow_posts` leva por CASCADE o `post_processes`, os `post_process_steps` e todo o `post_process_events`. O trabalho e o histórico somem sem log. Antes da fase 2 não havia caminho para chegar a `concluido`, então o defeito nasce aqui e é aqui que fecha.
 
@@ -4542,6 +4796,7 @@ A revisão anterior travava o processo com `estado IN ('ativo','concluido')`, en
 | §6.2 | não criar transição server-side no Hub | Decisão 1 |
 | §7 | prazo efetivo calculado pelo CRM, congelamento no desmembrar, preservação no voltar e no reabrir, responsável de etapa distinto do responsável do post | Tasks 3, 5, 6; Decisões 4, 5, 18 |
 | §7 | responsável removido do workspace vira "Sem responsável" em vez de derrubar a operação | Decisão 17; Tasks 3 e 4; bloco 87.7 |
+| §7 | modo `data_entrega` exige uma etapa `aprovacao_cliente` na sequência a partir da inicial | Task 4; Decisão 18; bloco 88.6 |
 | §9.1 | as sete RPCs, `SECURITY DEFINER`, `search_path`, REVOKE/GRANT | Tasks 3 a 8; Decisões 2, 3, 6 |
 | §9.2 | `get_my_conta_id`, `has_permission_for('entregas','editar')`, `conta_id` nunca do cliente, dado de outra conta responde `not_found` | Task 2 (`post_process_require_editor`), blocos 87.3, 88.4, 89.5, 90.4, 91.2, 92.1 |
 | §9.3 | `attach_post_closing_process` encerra antes do UPDATE; as três RPCs genéricas seguem barradas | Task 7, blocos 91.0, 91.3 e 91.4 |
@@ -4569,9 +4824,9 @@ Nenhum `TODO`, `FIXME`, `...`, `<preencher>` ou corpo de função elidido. As do
 - As doze funções da seção Interfaces aparecem com a mesma assinatura na task que as cria, no `REVOKE`/`GRANT` da própria migration, na consulta de ACL da Task 9 e nas asserções `has_function_privilege` das suítes 86.5 e 92.3.
 - Prefixos de migration: `20260919000001` a `20260919000008`, um por task, sem repetição, todos acima de `20260918000004`.
 - Arquivos de suíte: 85 a 92, um por task, sem colisão com 83 e 84 da fase 1. A Task 2 também edita duas suítes existentes: `83_post_processes_schema.sql` (bloco 83.3, mais os novos 83.12 e 83.13) e `supabase/tests/express_cleanup_delete_avulso_drafts.sql` (bloco E.2), que roda no segundo laço de `scripts/test-entitlements.sh`, no mesmo job de CI.
-- Blocos por suíte, depois desta revisão: 85 tem 6 (85.0 a 85.5), 86 tem 7 (86.0 a 86.6), 87 tem 9 (87.0 a 87.8), 88 tem 6 (88.0 a 88.5), 89 tem 8 (89.0 a 89.7), 90 tem 6 (90.0 a 90.5), 91 tem 5 (91.0 a 91.4) e 92 tem 4 (92.0 a 92.3).
+- Blocos por suíte, depois desta revisão: 85 tem 6 (85.0 a 85.5), 86 tem 7 (86.0 a 86.6), 87 tem 9 (87.0 a 87.8), 88 tem 7 (88.0 a 88.6, com o 88.6 em três transações), 89 tem 8 (89.0 a 89.7), 90 tem 6 (90.0 a 90.5), 91 tem 5 (91.0 a 91.4) e 92 tem 5 (92.0 a 92.4).
 - Toda chamada de `workflow_fingerprint` / `template_fingerprint` nas suítes 87 e 88 acontece **antes** de `set local role authenticated`, numa variável. As duas são `SECURITY INVOKER` (Decisão 11) e o argumento é avaliado no contexto do chamador: sob `authenticated` e sem `et_grant_hosted_parity`, ler `workflows` ou `workflow_templates` levanta `permission denied` no banco local do CLI, e as duas suítes inteiras abortariam no primeiro bloco. O caminho público (chamada direta por `authenticated` sobre o próprio fluxo, que é o que a fase 3 vai usar) é provado no bloco 85.5, que chama `et_grant_hosted_parity()` e exercita a RLS de verdade nos dois sentidos.
-- Códigos de erro: a tabela da seção Interfaces tem **43 códigos**, com `request_mismatch` acrescentado nesta revisão (Decisão 28). Com os blocos de erro de argumento (87.6, 88.5, 89.6, 89.7, 90.5 e 91.4) e o 87.8, **todos os 43 são levantados por pelo menos uma migration e checados por pelo menos um bloco de teste: zero códigos sem bloco.** `process_already_closed` agora tem bloco nos dois call sites, `remove` (90.5) e `attach` (91.4). O que continua parcial é a cobertura por *call site*, e a lista é exata, quatro linhas e nenhuma outra: `feature_disabled:feature_post_processes` tem bloco só em `detach` (87.4), não em `apply`; `post_not_found` tem bloco só em `detach` (87.6), não em `apply` nem em `attach`; `workflow_not_found` tem bloco em `detach` (87.6) e em `reorder` (92.1), não em `attach`; e `step_not_found` tem bloco só em `update_step` (90.1), porque o caminho homônimo de `transition` (nenhuma etapa `ativo`) é defensivo e o índice parcial `post_process_steps_one_active` o torna inalcançável com dado válido.
+- Códigos de erro: a tabela da seção Interfaces tem **44 códigos**, com `request_mismatch` (Decisão 28) e `data_entrega_requires_approval_step` (Decisão 18) acrescentados nas duas últimas revisões. Com os blocos de erro de argumento (87.6, 88.5, 88.6, 89.6, 89.7, 90.5, 91.4 e 92.4) e o 87.8, **todos os 44 são levantados por pelo menos uma migration e checados por pelo menos um bloco de teste: zero códigos sem bloco.** `process_already_closed` agora tem bloco nos dois call sites, `remove` (90.5) e `attach` (91.4). O que continua parcial é a cobertura por *call site*, e a lista é exata, quatro linhas e nenhuma outra: `feature_disabled:feature_post_processes` tem bloco só em `detach` (87.4), não em `apply`; `post_not_found` tem bloco só em `detach` (87.6), não em `apply` nem em `attach`; `workflow_not_found` tem bloco em `detach` (87.6) e em `reorder` (92.1), não em `attach`; e `step_not_found` tem bloco só em `update_step` (90.1), porque o caminho homônimo de `transition` (nenhuma etapa `ativo`) é defensivo e o índice parcial `post_process_steps_one_active` o torna inalcançável com dado válido.
 - Nomes de coluna usados nas migrations conferem com `20260918000002`: `post_processes(assinatura, estado, motivo_encerramento, etapa_atual, modo_prazo, board_position, revisao, created_by, concluido_em)`, `post_process_steps(ordem, nome, tipo, responsavel_id, prazo_dias, tipo_prazo, prazo_efetivo, estado, iniciado_em, concluido_em, interrompido_em, origem_etapa_ordem, origem_etapa_nome)`, `post_process_events(evento, actor_user_id, actor_name, origem, antes, depois)`, `post_process_batch_requests(request_id, conta_id, resultado)`.
 - Colunas lidas de `workflow_etapas` (`ordem, nome, tipo, status, responsavel_id, prazo_dias, tipo_prazo, data_limite, iniciado_em, concluido_em`) e de `workflows` (`titulo, status, template_id, modo_prazo, etapa_atual, position`) conferem com o baseline mais `20260325` (`tipo`), `20260421000000` (`data_limite`, `modo_prazo`) e `20260326` (`position`).
 - `profiles.nome` é a fonte de `actor_name`, o mesmo que `record_workflow_event` usa.
