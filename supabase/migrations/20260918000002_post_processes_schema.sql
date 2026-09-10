@@ -173,13 +173,26 @@ CREATE TRIGGER post_processes_set_concluido_em
   BEFORE UPDATE ON public.post_processes
   FOR EACH ROW EXECUTE FUNCTION public.set_post_process_concluido_em();
 
--- Um processo so nasce para post avulso (uma unica fonte de contexto de
--- producao, spec secao 1).
+-- Um processo so nasce, reabre ou muda de post para post avulso.
 CREATE OR REPLACE FUNCTION public.post_processes_requires_avulso()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_workflow_id bigint;
 BEGIN
+  -- Em UPDATE so interessa quando o processo passa a ser vigente (reabrir um
+  -- encerrado) ou muda de post/conta; transicoes ativo<->concluido e edicoes
+  -- de outras colunas nao relem o post.
+  IF TG_OP = 'UPDATE'
+     AND NOT (
+       (new.estado IN ('ativo', 'concluido') AND old.estado = 'encerrado')
+       OR new.post_id IS DISTINCT FROM old.post_id
+       OR new.conta_id IS DISTINCT FROM old.conta_id
+     ) THEN
+    RETURN new;
+  END IF;
+  IF new.estado NOT IN ('ativo', 'concluido') THEN
+    RETURN new;  -- inserir/atualizar ja encerrado nao precisa de post avulso
+  END IF;
   -- Lock compartilhado na linha do post: serializa com qualquer UPDATE de
   -- workflow_posts (attach/move fazem UPDATE, que pega FOR NO KEY UPDATE e
   -- conflita com FOR SHARE). Em READ COMMITTED a linha e relida depois da
@@ -196,8 +209,12 @@ BEGIN
   RETURN new;
 END;
 $$;
+-- Ordem alfabetica dos triggers BEFORE UPDATE em post_processes:
+-- post_processes_requires_avulso < post_processes_set_concluido_em <
+-- post_processes_set_updated_at; nenhum deles altera estado/post_id/conta_id,
+-- entao a ordem entre eles nao importa.
 CREATE TRIGGER post_processes_requires_avulso
-  BEFORE INSERT ON public.post_processes
+  BEFORE INSERT OR UPDATE OF estado, post_id, conta_id ON public.post_processes
   FOR EACH ROW EXECUTE FUNCTION public.post_processes_requires_avulso();
 
 -- Gate de plano, so em INSERT: desligar a flag bloqueia execucoes novas e

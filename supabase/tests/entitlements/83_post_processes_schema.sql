@@ -12,6 +12,8 @@
 -- 83.7 FK composta de events rejeita processo de OUTRO post da mesma conta
 -- 83.8 FK composta de tenant rejeita template/fluxo/responsavel de outra conta; SET NULL por coluna
 -- 83.9 checks de estado/motivo_encerramento
+-- 83.10 guard de avulso tambem no UPDATE: reabrir processo encerrado com o post em fluxo
+-- 83.11 insert de processo ja encerrado para post em fluxo nao levanta erro; ativo<->concluido continua sem reler (regressao 83.6)
 
 -- fixture comum: conta com plano max (flag ligada dentro da transacao)
 create or replace function pg_temp.et_pp_fixture(out ws uuid, out usr uuid, out cli bigint, out post bigint)
@@ -290,5 +292,63 @@ begin
   assert v_raised, 'estado ativo com motivo_encerramento preenchido deve violar post_processes_encerrado_motivo';
 
   raise notice 'PASS 83.9 check encerrado/motivo_encerramento';
+end $$;
+rollback;
+
+-- 83.10
+begin;
+do $$
+declare f record; v_wf bigint; v_proc bigint; v_raised boolean := false;
+begin
+  select * into f from pg_temp.et_pp_fixture();
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (f.usr, f.ws, f.cli, 'WF', 'ativo') returning id into v_wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias) values (v_wf, 0, 'Unica', 1);
+  insert into post_processes (conta_id, post_id, assinatura, estado, motivo_encerramento) values (f.ws, f.post, '0|Copy|padrao', 'encerrado', 'vinculado') returning id into v_proc;
+  perform set_config('app.allow_post_move', 'on', true);
+  update workflow_posts set workflow_id = v_wf where id = f.post;
+
+  begin
+    update post_processes set estado = 'ativo', motivo_encerramento = null where id = v_proc;
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'post_in_workflow', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  assert v_raised, 'reabrir processo encerrado com post em fluxo deve levantar post_in_workflow';
+  perform 1 from post_processes where id = v_proc and estado = 'encerrado';
+  assert found, 'processo deve continuar encerrado depois do UPDATE rejeitado';
+
+  -- post de volta a avulso: o mesmo UPDATE passa
+  update workflow_posts set workflow_id = null where id = f.post;
+  update post_processes set estado = 'ativo', motivo_encerramento = null where id = v_proc;
+  perform 1 from post_processes where id = v_proc and estado = 'ativo' and motivo_encerramento is null;
+  assert found, 'com o post avulso de novo, reabrir o processo deve passar';
+  raise notice 'PASS 83.10 guard de avulso tambem no UPDATE (reabrir)';
+end $$;
+rollback;
+
+-- 83.11
+begin;
+do $$
+declare f record; v_wf bigint; v_proc bigint; v_proc2 bigint; v_ts timestamptz;
+begin
+  select * into f from pg_temp.et_pp_fixture();
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (f.usr, f.ws, f.cli, 'WF', 'ativo') returning id into v_wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias) values (v_wf, 0, 'Unica', 1);
+  perform set_config('app.allow_post_move', 'on', true);
+  update workflow_posts set workflow_id = v_wf where id = f.post;
+
+  -- inserir ja encerrado para um post EM FLUXO nao levanta erro (o guard so exige avulso para vigente)
+  insert into post_processes (conta_id, post_id, assinatura, estado, motivo_encerramento) values (f.ws, f.post, '0|Copy|padrao', 'encerrado', 'removido') returning id into v_proc;
+
+  -- ativo<->concluido em processo de post avulso continua passando sem reler nada (regressao 83.6)
+  update workflow_posts set workflow_id = null where id = f.post;
+  insert into post_processes (conta_id, post_id, assinatura) values (f.ws, f.post, '0|Copy|padrao2') returning id into v_proc2;
+  update post_processes set estado = 'concluido' where id = v_proc2;
+  select concluido_em into v_ts from post_processes where id = v_proc2;
+  assert v_ts is not null, 'ativo->concluido deve continuar carimbando concluido_em (regressao 83.6)';
+  update post_processes set estado = 'ativo' where id = v_proc2;
+  select concluido_em into v_ts from post_processes where id = v_proc2;
+  assert v_ts is null, 'concluido->ativo deve continuar limpando concluido_em (regressao 83.6)';
+  raise notice 'PASS 83.11 insert encerrado com post em fluxo, e ativo<->concluido continuam passando';
 end $$;
 rollback;
