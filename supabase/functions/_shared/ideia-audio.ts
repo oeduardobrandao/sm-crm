@@ -179,6 +179,9 @@ export async function finalizeIdeiaAudio(a: TranscriptionArgs & {
     return { status: 400, body: { error: "content-type mismatch" } };
   }
 
+  const { data: own } = await scoped(a.db.from("ideias").select("id"), a).maybeSingle();
+  if (!own) return { status: 404, body: { error: "Ideia não encontrada." } };
+
   const { data, error } = await a.db.rpc("ideia_audio_finalize", {
     p_workspace_id: a.workspace_id,
     p_ideia_id: a.ideia_id,

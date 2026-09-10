@@ -70,12 +70,29 @@ Deno.test("finalize: prefixo errado 400, tamanho divergente 400, RPC ideia_not_f
   assertEquals((await finalizeIdeiaAudio({ ...base, r2_key: `${IDEIA_AUDIO_KEY_PREFIX}conta-1/${I}/../x.webm` })).status, 400);
   const badHead = async () => ({ contentLength: 1, contentType: "audio/webm" });
   assertEquals((await finalizeIdeiaAudio({ ...base, r2_key: KEY, headObject: badHead })).status, 400);
+  db.queue("ideias", "select", { data: { id: I }, error: null });
   db.queueRpc("ideia_audio_finalize", { data: null, error: { message: "ideia_not_found" } });
   assertEquals((await finalizeIdeiaAudio({ ...base, r2_key: KEY })).status, 404);
 });
 
+Deno.test("finalize: ideia fora do escopo do cliente/origem -> 404 antes da RPC", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("ideias", "select", { data: null, error: null });
+  const r = await finalizeIdeiaAudio({
+    db, workspace_id: "conta-1", ideia_id: I, origem: "cliente", cliente_id: 14,
+    r2_key: KEY, mime_type: "audio/webm", size_bytes: 5000, duration_seconds: 12,
+    headObject: headOk, signGetUrl, transcribe: null,
+  });
+  assertEquals(r.status, 404);
+  assertEquals(db.calls.some((c) => c.table === "rpc:ideia_audio_finalize"), false);
+  const sel = db.calls.find((c) => c.table === "ideias" && c.operation === "select");
+  assertEquals(sel?.modifiers.some((m) => m.method === "eq" && m.args[0] === "cliente_id" && m.args[1] === 14), true);
+  assertEquals(sel?.modifiers.some((m) => m.method === "eq" && m.args[0] === "origem" && m.args[1] === "cliente"), true);
+});
+
 Deno.test("finalize: sem transcriber grava failed e devolve audio + transcript null", async () => {
   const db = createSupabaseQueryMock();
+  db.queue("ideias", "select", { data: { id: I }, error: null });
   db.queueRpc("ideia_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
   db.queue("ideias", "select", { data: row, error: null });
   db.queue("ideias", "update", { data: null, error: null });
@@ -98,6 +115,7 @@ Deno.test("finalize: sem transcriber grava failed e devolve audio + transcript n
 
 Deno.test("finalize: transcriber ok chama ideia_audio_apply_transcript com p_key e devolve o transcript", async () => {
   const db = createSupabaseQueryMock();
+  db.queue("ideias", "select", { data: { id: I }, error: null });
   db.queueRpc("ideia_audio_finalize", { data: { reserved: true, previous_key: null }, error: null });
   db.queue("ideias", "select", { data: row, error: null });
   db.queueRpc("ideia_audio_apply_transcript", {
@@ -120,6 +138,7 @@ Deno.test("finalize: transcriber ok chama ideia_audio_apply_transcript com p_key
 
 Deno.test("finalize: reserved:false (retry) não re-transcreve linha done", async () => {
   const db = createSupabaseQueryMock();
+  db.queue("ideias", "select", { data: { id: I }, error: null });
   db.queueRpc("ideia_audio_finalize", { data: { reserved: false, previous_key: null }, error: null });
   db.queue("ideias", "select", { data: { ...row, audio_transcript: "Já", audio_transcription_status: "done" }, error: null });
   let calls = 0;
