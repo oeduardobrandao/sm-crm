@@ -12,6 +12,7 @@ import type {
   Briefing,
   BriefingAudioResponse,
   HubIdeia,
+  IdeiaAudioResponse,
   IdeiaImage,
   IdeiaReaction,
   InstagramFeedData,
@@ -264,6 +265,35 @@ export async function deleteIdeiaImage(token: string, ideiaId: string, fileId: n
     throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
   }
   return res.json() as Promise<{ ok: boolean }>;
+}
+
+export function presignIdeiaAudio(
+  token: string,
+  payload: { ideia_id: string; mime_type: string; size_bytes: number },
+) {
+  return post<{ upload_url: string; r2_key: string; mime_type: string }>(
+    'hub-ideias/audio-upload-url',
+    {
+      token,
+      ...payload,
+    },
+  );
+}
+
+export function finalizeIdeiaAudio(
+  token: string,
+  ideiaId: string,
+  payload: { r2_key: string; mime_type: string; size_bytes: number; duration_seconds: number },
+) {
+  return post<IdeiaAudioResponse>(`hub-ideias/${ideiaId}/audio`, { token, ...payload });
+}
+
+export function retryIdeiaTranscription(token: string, ideiaId: string) {
+  return post<IdeiaAudioResponse>(`hub-ideias/${ideiaId}/audio/transcribe`, { token });
+}
+
+export function deleteIdeiaAudio(token: string, ideiaId: string) {
+  return del<{ ok: boolean }>('hub-ideias', `${ideiaId}/audio`, token);
 }
 
 export function fetchDashboard(token: string, period: number) {

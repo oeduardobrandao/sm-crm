@@ -5,12 +5,16 @@ import {
   createIdeia,
   deleteBriefingAudio,
   deleteIdeia,
+  deleteIdeiaAudio,
   fetchBootstrap,
   fetchBriefing,
   fetchPosts,
   finalizeBriefingAudio,
+  finalizeIdeiaAudio,
   presignBriefingAudio,
+  presignIdeiaAudio,
   retryBriefingTranscription,
+  retryIdeiaTranscription,
   submitApproval,
   submitBriefingAnswer,
   submitEditSuggestion,
@@ -231,5 +235,41 @@ describe('hub api client', () => {
     await deleteBriefingAudio('tok', 'q1');
     expect(fetchHarness.calls[1].init?.method).toBe('DELETE');
     expect(String(fetchHarness.calls[1].input)).toContain('/hub-briefing/q1/audio?token=tok');
+  });
+
+  it('presigns, finalizes, retries and deletes ideia audio on the hub-ideias routes', async () => {
+    fetchHarness.queueResponse({
+      json: { upload_url: 'u', r2_key: 'k', mime_type: 'audio/webm' },
+    });
+    await presignIdeiaAudio('tok', { ideia_id: 'i1', mime_type: 'audio/webm', size_bytes: 3 });
+    expect(String(fetchHarness.calls[0].input)).toContain(
+      '/functions/v1/hub-ideias/audio-upload-url',
+    );
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      token: 'tok',
+      ideia_id: 'i1',
+      mime_type: 'audio/webm',
+      size_bytes: 3,
+    });
+
+    fetchHarness.queueResponse({ json: { ok: true, transcript: null, audio: null } });
+    await finalizeIdeiaAudio('tok', 'i1', {
+      r2_key: 'k',
+      mime_type: 'audio/webm',
+      size_bytes: 3,
+      duration_seconds: 2,
+    });
+    expect(String(fetchHarness.calls[1].input)).toContain('/functions/v1/hub-ideias/i1/audio');
+
+    fetchHarness.queueResponse({ json: { ok: true, transcript: null, audio: null } });
+    await retryIdeiaTranscription('tok', 'i1');
+    expect(String(fetchHarness.calls[2].input)).toContain(
+      '/functions/v1/hub-ideias/i1/audio/transcribe',
+    );
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await deleteIdeiaAudio('tok', 'i1');
+    expect(String(fetchHarness.calls[3].input)).toContain('/hub-ideias/i1/audio?token=tok');
+    expect(fetchHarness.calls[3].init?.method).toBe('DELETE');
   });
 });

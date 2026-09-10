@@ -88,6 +88,8 @@ function makeIdeia(
       emoji: string;
       membros: { nome: string };
     }>;
+    origem: 'cliente' | 'agencia';
+    audio: null;
   }> = {},
 ) {
   return {
@@ -105,6 +107,8 @@ function makeIdeia(
     updated_at: '2026-04-18T10:00:00.000Z',
     ideia_reactions: [],
     images: [],
+    origem: 'cliente' as const,
+    audio: null,
     ...overrides,
   };
 }
