@@ -55,7 +55,8 @@ Deno.test("instagram-limits: updated publishing boundaries", () => {
   assertEquals(validateMedia([vid({ duration_seconds: 901 })]).length, 1);
   assertEquals(validateMedia([vid({ size_bytes: 100 * 1024 * 1024, duration_seconds: 60 })], { forStories: true }), []);
   assertEquals(validateMedia([vid({ size_bytes: 100 * 1024 * 1024 + 1 })], { forStories: true }).length, 1);
-  assertEquals(validateMedia([img({ mime_type: "image/png" })]).length, 1);
+  assertEquals(validateMedia([img({ mime_type: "image/png" })]), []);
+  assertEquals(validateMedia([img({ mime_type: "image/webp" })]).length, 1);
   assertEquals(validateMedia([img({ width: 300, height: 300 })]), []);
   assertEquals(validateMedia([img({ height: 2200 })], { forStories: true }), []);
 });
