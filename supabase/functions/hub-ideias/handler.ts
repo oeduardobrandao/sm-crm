@@ -1,6 +1,16 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { presignIdeiaImage, finalizeIdeiaImage, removeIdeiaImage } from "../_shared/ideia-media.ts";
+import {
+  buildAudioViewForIdeia,
+  finalizeIdeiaAudio,
+  IDEIA_AUDIO_COLUMNS,
+  presignIdeiaAudio,
+  removeIdeiaAudio,
+  transcribeIdeiaAudio,
+  type Transcriber,
+} from "../_shared/ideia-audio.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
@@ -16,18 +26,30 @@ interface HubIdeiasHandlerDeps {
   signGetUrl: (key: string, expires?: number) => Promise<string>;
   headObject: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
   rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
+  transcribe: Transcriber | null;
+  randomUUID?: () => string;
 }
 
 const HUB_IDEIA_TIPOS = ["ideia", "solicitacao"];
+const AUDIO_WRITE_MAX = 20;
+const AUDIO_WRITE_WINDOW = 3600;
 
-async function checkLock(db: DbClient, ideiaId: string, clienteId: number): Promise<null | boolean> {
-  const { data: ideia } = await db
+/** Linha que o cliente pode ESCREVER: dele e criada por ele. Ideia da agência
+ * compartilhada no Hub é só leitura; devolver 404 (não 403) evita sondar
+ * ideias ocultas. */
+async function loadOwnIdeia(db: DbClient, ideiaId: string, clienteId: number) {
+  const { data } = await db
     .from("ideias")
-    .select("status, comentario_agencia")
+    .select("id, status, comentario_agencia, origem")
     .eq("id", ideiaId)
     .eq("cliente_id", clienteId)
+    .eq("origem", "cliente")
     .maybeSingle();
+  return data as { id: string; status: string; comentario_agencia: string | null } | null;
+}
 
+async function checkLock(db: DbClient, ideiaId: string, clienteId: number): Promise<null | boolean> {
+  const ideia = await loadOwnIdeia(db, ideiaId, clienteId);
   if (!ideia) return null;
   if (ideia.status !== "nova") return true;
   if (ideia.comentario_agencia !== null) return true;
@@ -41,6 +63,8 @@ async function checkLock(db: DbClient, ideiaId: string, clienteId: number): Prom
 }
 
 export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
+  const signGet = (key: string) => deps.signGetUrl(key, 3600);
+
   return async (req: Request): Promise<Response> => {
     const cors = deps.buildCorsHeaders(req);
     const json = createJsonResponder(cors);
@@ -57,6 +81,9 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
     const isFinalize = !!ideiaId && seg[1] === "files" && seg.length === 2;
     const isRemove = !!ideiaId && seg[1] === "files" && seg.length === 3;
     const removeFileId = isRemove ? Number(seg[2]) : NaN;
+    const isAudioPresign = seg.length === 1 && seg[0] === "audio-upload-url";
+    const isAudio = !!ideiaId && seg.length === 2 && seg[1] === "audio";
+    const isTranscribe = !!ideiaId && seg.length === 3 && seg[1] === "audio" && seg[2] === "transcribe";
 
     const db = deps.createDb();
 
@@ -76,9 +103,66 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
     const okRead = await deps.rateLimit(db, `hub-read:${workspaceId}:${clienteId}`, 300, 300);
     if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
+    // ── Áudio ─────────────────────────────────────────────────────
+    if (isAudioPresign || isAudio || isTranscribe) {
+      let body: Record<string, unknown> = {};
+      if (req.method === "POST") {
+        body = await req.json().catch(() => ({}));
+      } else if (req.method !== "DELETE" || !isAudio) {
+        return json({ error: "Method not allowed" }, 405);
+      }
+      const scope = { db: db as any, workspace_id: workspaceId, origem: "cliente" as const, cliente_id: clienteId };
+
+      // Só a ESCRITA de áudio é paga; DELETE fica fora para o cliente poder
+      // remover o que gravou depois de um downgrade.
+      if (req.method === "POST") {
+        const audioOn = await effectivePlanFeature(db as never, workspaceId, "feature_briefing_audio");
+        if (!audioOn) return json({ error: "Recurso indisponível no plano atual." }, 403);
+        const okWrite = await deps.rateLimit(
+          db, `hub-write:hub-ideias-audio:${workspaceId}:${clienteId}`, AUDIO_WRITE_MAX, AUDIO_WRITE_WINDOW,
+        );
+        if (!okWrite) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+      }
+
+      if (isAudioPresign) {
+        const ideia_id = typeof body.ideia_id === "string" ? body.ideia_id : "";
+        if (!ideia_id || typeof body.mime_type !== "string" || typeof body.size_bytes !== "number") {
+          return json({ error: "ideia_id, mime_type and size_bytes are required" }, 400);
+        }
+        const r = await presignIdeiaAudio({
+          ...scope, ideia_id, mime_type: body.mime_type, size_bytes: body.size_bytes,
+          signPutUrl: deps.signPutUrl, randomUUID: deps.randomUUID,
+        });
+        return json(r.body, r.status);
+      }
+
+      if (isAudio && req.method === "POST") {
+        if (typeof body.r2_key !== "string" || typeof body.mime_type !== "string" || typeof body.size_bytes !== "number") {
+          return json({ error: "r2_key, mime_type and size_bytes are required" }, 400);
+        }
+        const r = await finalizeIdeiaAudio({
+          ...scope, ideia_id: ideiaId!,
+          r2_key: body.r2_key, mime_type: body.mime_type, size_bytes: body.size_bytes,
+          duration_seconds: typeof body.duration_seconds === "number" ? body.duration_seconds : null,
+          headObject: deps.headObject, signGetUrl: signGet, transcribe: deps.transcribe,
+        });
+        return json(r.body, r.status);
+      }
+
+      if (isAudio && req.method === "DELETE") {
+        const r = await removeIdeiaAudio({ ...scope, ideia_id: ideiaId! });
+        return json(r.body, r.status);
+      }
+
+      const r = await transcribeIdeiaAudio({ ...scope, ideia_id: ideiaId!, signGetUrl: signGet, transcribe: deps.transcribe });
+      return json(r.body, r.status);
+    }
+
     // ── Image: presign ─────────────────────────────────────────────
     if (req.method === "POST" && isPresign) {
       const body = await req.json().catch(() => ({}));
+      const own = await loadOwnIdeia(db, String(body.ideia_id ?? ""), clienteId);
+      if (!own) return json({ error: "Ideia não encontrada." }, 404);
       const result = await presignIdeiaImage({
         db: db as any,
         conta_id: workspaceId,
@@ -96,8 +180,10 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       return json(result.body, result.status);
     }
 
-    // ── Image: finalize (NOT lock-gated) ───────────────────────────
+    // ── Image: finalize (NOT lock-gated, origin-gated) ─────────────
     if (req.method === "POST" && isFinalize) {
+      const own = await loadOwnIdeia(db, ideiaId!, clienteId);
+      if (!own) return json({ error: "Ideia não encontrada." }, 404);
       const body = await req.json().catch(() => ({}));
       const result = await finalizeIdeiaImage({
         db: db as any,
@@ -121,9 +207,11 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       return json(result.body, result.status);
     }
 
-    // ── Image: remove (NOT lock-gated) ─────────────────────────────
+    // ── Image: remove (NOT lock-gated, origin-gated) ───────────────
     if (req.method === "DELETE" && isRemove) {
       if (Number.isNaN(removeFileId)) return json({ error: "invalid file id" }, 400);
+      const own = await loadOwnIdeia(db, ideiaId!, clienteId);
+      if (!own) return json({ error: "Ideia não encontrada." }, 404);
       const result = await removeIdeiaImage({
         db: db as any,
         conta_id: workspaceId,
@@ -138,16 +226,19 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       const { data: ideias } = await db
         .from("ideias")
         .select(`
-        id, titulo, descricao, links, status, tipo, tarefa_id,
+        id, titulo, descricao, links, status, tipo, tarefa_id, origem,
         comentario_agencia, comentario_autor_id, comentario_at, created_at, updated_at,
+        audio_transcript, ${IDEIA_AUDIO_COLUMNS},
         comentario_autor:membros!comentario_autor_id(nome),
         ideia_reactions(id, membro_id, emoji, membros(nome)),
         ideia_files(id, file_id, sort_order, files(r2_key, thumbnail_r2_key, blur_data_url, width, height))
       `)
         .eq("cliente_id", clienteId)
+        .eq("workspace_id", workspaceId)
+        .eq("visivel_no_hub", true)
         .order("created_at", { ascending: false });
 
-      const withImages = [];
+      const out = [];
       for (const ideia of (ideias ?? []) as Array<Record<string, any>>) {
         const links = (ideia.ideia_files ?? [])
           .sort((x: any, y: any) => (x.sort_order - y.sort_order) || (x.id - y.id));
@@ -166,11 +257,21 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
             sort_order: row.sort_order ?? 0,
           });
         }
-        delete ideia.ideia_files;
-        withImages.push({ ...ideia, images });
+        // Assinar o áudio é I/O externo: falha em uma ideia custa só o player dela.
+        let audio = null;
+        try {
+          audio = await buildAudioViewForIdeia(ideia as any, signGet);
+        } catch (e) {
+          console.error("hub-ideias:sign-audio", ideia.id, (e as Error).message ?? e);
+        }
+        const {
+          ideia_files: _f, audio_transcript: _t, audio_r2_key: _k, audio_mime: _m, audio_size_bytes: _s,
+          audio_duration_seconds: _d, audio_transcription_status: _st, audio_recorded_at: _r, ...rest
+        } = ideia;
+        out.push({ ...rest, images, audio });
       }
 
-      return json({ ideias: withImages });
+      return json({ ideias: out });
     }
 
     if (req.method === "POST" && !hasId) {
@@ -190,6 +291,7 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       const tipo = body.tipo === undefined ? "ideia" : String(body.tipo);
       if (!HUB_IDEIA_TIPOS.includes(tipo)) return json({ error: "tipo inválido" }, 400);
 
+      // origem/visivel_no_hub/audio_* nunca vêm do cliente: defaults do banco.
       const { data, error } = await db
         .from("ideias")
         .insert({ workspace_id: workspaceId, cliente_id: clienteId, titulo, descricao, links, tipo, status: "nova" })
@@ -223,6 +325,7 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
         .update(patch)
         .eq("id", ideiaId!)
         .eq("cliente_id", clienteId)
+        .eq("origem", "cliente")
         .select()
         .single();
 
@@ -239,7 +342,8 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
         .from("ideias")
         .delete()
         .eq("id", ideiaId!)
-        .eq("cliente_id", clienteId);
+        .eq("cliente_id", clienteId)
+        .eq("origem", "cliente");
 
       if (error) return internalServerError(json, "hub-ideias:delete", error);
       return json({ ok: true });

@@ -1221,6 +1221,7 @@ Deno.test("hub-ideias creates a new idea with filtered links", async () => {
     createDb: () => db as never,
     now,
     rateLimit: async () => true,
+    transcribe: null,
   });
 
   const response = await handler(new Request("https://example.test/hub-ideias", {
@@ -1254,6 +1255,7 @@ Deno.test("hub-ideias blocks editing locked ideas", async () => {
     createDb: () => db as never,
     now,
     rateLimit: async () => true,
+    transcribe: null,
   });
 
   const response = await handler(new Request("https://example.test/hub-ideias/34a7c1ef-9a2e-4707-a833-cb8f871a0df8?token=hub-123", {
