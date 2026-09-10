@@ -177,11 +177,20 @@ CREATE TRIGGER post_processes_set_concluido_em
 -- producao, spec secao 1).
 CREATE OR REPLACE FUNCTION public.post_processes_requires_avulso()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  v_workflow_id bigint;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM workflow_posts wp
-     WHERE wp.id = new.post_id AND wp.conta_id = new.conta_id AND wp.workflow_id IS NOT NULL
-  ) THEN
+  -- Lock compartilhado na linha do post: serializa com qualquer UPDATE de
+  -- workflow_posts (attach/move fazem UPDATE, que pega FOR NO KEY UPDATE e
+  -- conflita com FOR SHARE). Em READ COMMITTED a linha e relida depois da
+  -- espera, entao a checagem abaixo ve o attach que acabou de commitar; e o
+  -- attach que esperar por nos roda post_a1_process_guard com snapshot novo
+  -- e ve o processo. Post inexistente/de outra conta cai na FK composta.
+  SELECT wp.workflow_id INTO v_workflow_id
+    FROM workflow_posts wp
+   WHERE wp.id = new.post_id AND wp.conta_id = new.conta_id
+     FOR SHARE;
+  IF v_workflow_id IS NOT NULL THEN
     RAISE EXCEPTION 'post_in_workflow' USING ERRCODE = 'P0001';
   END IF;
   RETURN new;

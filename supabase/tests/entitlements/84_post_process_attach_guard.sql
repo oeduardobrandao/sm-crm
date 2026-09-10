@@ -5,10 +5,10 @@
 -- nao entra em fluxo por nenhum dos caminhos sancionados.
 -- 84.0 attach_posts_to_flow -> post_has_active_process, nada muda
 -- 84.1 processo encerrado nao bloqueia
--- 84.2 move_posts_to_existing_flow com post que ganhou processo entre a
---      leitura e o lock (simulado: processo criado antes) -> mesmo erro
--- 84.3 UPDATE direto com o GUC ligado tambem cai no guard (o guard vale
+-- 84.2 UPDATE direto com o GUC ligado tambem cai no guard (o guard vale
 --      mesmo para quem contorna post_a0_sync_cliente)
+-- 84.3 sem processo, o UPDATE com GUC continua passando (nao regride
+--      detach/attach)
 
 create or replace function pg_temp.et_pp_ctx(out ws uuid, out usr uuid, out cli bigint, out post bigint, out wf bigint)
 language plpgsql as $$
