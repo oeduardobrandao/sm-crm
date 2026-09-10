@@ -461,8 +461,8 @@ function DeepLinkProbe() {
   );
 }
 
-function renderPage(initialEntry = '/entregas') {
-  return render(
+function pageTree(initialEntry: string) {
+  return (
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route
@@ -476,8 +476,12 @@ function renderPage(initialEntry = '/entregas') {
           }
         />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderPage(initialEntry = '/entregas') {
+  return render(pageTree(initialEntry));
 }
 
 function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[] }) {
@@ -1086,22 +1090,7 @@ describe('EntregasPage', () => {
         isFetching: false,
         refresh: vi.fn(),
       } as never);
-      rerender(
-        <MemoryRouter initialEntries={['/entregas?drawer=99']}>
-          <Routes>
-            <Route
-              path="/entregas"
-              element={
-                <>
-                  <EntregasPage />
-                  <PathProbe />
-                  <DeepLinkProbe />
-                </>
-              }
-            />
-          </Routes>
-        </MemoryRouter>,
-      );
+      rerender(pageTree('/entregas?drawer=99'));
       await waitFor(() => expect(mockedToast.error).toHaveBeenCalledWith('Fluxo não encontrado'));
     });
 
@@ -1126,6 +1115,29 @@ describe('EntregasPage', () => {
       expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
       expect(screen.getByTestId('drawer-initial-post')).toHaveTextContent('5');
       expect(mockedGetStandalonePost).not.toHaveBeenCalled();
+    });
+
+    it('resolve ?post= de post preso em fluxo fora do quadro com duas consultas e um aviso', async () => {
+      mockedGetStandalonePost.mockResolvedValue({ id: 7, workflow_id: 99 } as never);
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [],
+        isLoading: false,
+        isFetching: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?post=7');
+      await waitFor(() =>
+        expect(mockedToast.error).toHaveBeenCalledWith(
+          'Este post está em um fluxo que não aparece mais no quadro.',
+        ),
+      );
+      expect(mockedGetStandalonePost).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText(/Standalone drawer/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Workflow drawer/)).not.toBeInTheDocument();
     });
   });
 

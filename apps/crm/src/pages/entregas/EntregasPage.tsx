@@ -351,7 +351,7 @@ export default function EntregasPage() {
     // Fluxo concluído, arquivado, excluído, ou post desmembrado depois que o
     // link foi compartilhado. Com post no link, o post é o que interessa.
     if (postId != null) {
-      setPendingDeepLink({ workflowId: null, postId, fromDrawerFallback: true });
+      setPendingDeepLink({ workflowId: null, postId, fromDrawerFallback: true, fromUrl: true });
       return;
     }
     toast.error('Fluxo não encontrado');
