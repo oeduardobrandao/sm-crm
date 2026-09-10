@@ -47,6 +47,7 @@ import {
   isValidDropTarget,
 } from '../boardRows';
 import type { BoardRow, BoardColumn } from '../boardRows';
+import { mergeVisibleReorder, insertIntoFullOrder } from '../boardReorder';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
@@ -61,6 +62,10 @@ interface KanbanViewBaseProps {
   /** Persistencia das prefs de ordenacao por coluna; opcional para os testes. */
   contaId?: string;
   cards: BoardCard[];
+  /** Todos os cards ativos, sem o filtro da página. A ordem manual é gravada
+   *  para a coluna inteira; sem esta prop, a coluna inteira é a lista visível
+   *  (comportamento antigo). */
+  allCards?: BoardCard[];
   onCardClick: (card: BoardCard) => void;
   onEditClick: (card: BoardCard) => void;
   onPostsClick: (card: BoardCard) => void;
@@ -103,6 +108,27 @@ function columnTint(stepName: string): string {
   let hash = 0;
   for (let i = 0; i < stepName.length; i++) hash = (hash * 31 + stepName.charCodeAt(i)) >>> 0;
   return COLUMN_TINTS[hash % COLUMN_TINTS.length];
+}
+
+// Ordem da coluna INTEIRA (rowKey, ordem) na ordem exibida (prazo ou position),
+// incluindo cards ocultos pelo filtro da página. Sem allCards cai na lista
+// visível recebida (comportamento antigo, usado pelos testes e por callers
+// que não passam a prop).
+export function fullColumnOrder(
+  allCards: BoardCard[] | undefined,
+  visibleColumnCards: BoardCard[],
+  rowKey: string,
+  ordem: number,
+  templates: WorkflowTemplate[],
+  sortMode: FluxosColumnSort,
+): number[] {
+  const source = allCards
+    ? (buildBoardRows(allCards, templates)
+        .find((r) => r.key === rowKey)
+        ?.columns.find((c) => c.ordem === ordem)?.cards ?? visibleColumnCards)
+    : visibleColumnCards;
+  const ordered = sortMode === 'prazo' ? sortCardsByPrazo(source) : source;
+  return ordered.map((c) => c.workflow.id!);
 }
 
 // Droppable column body — registers the column as a drop target so empty columns can receive drops
@@ -197,6 +223,7 @@ const TABS_THRESHOLD = 1;
 
 export function KanbanView({
   cards,
+  allCards,
   onCardClick,
   onEditClick,
   onPostsClick,
@@ -255,7 +282,6 @@ export function KanbanView({
   const pendingInsertRef = useRef<{
     wfId: number;
     ids: number[];
-    index: number;
     optimisticPos: number;
   } | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(
@@ -447,23 +473,38 @@ export function KanbanView({
 
         const reordered = arrayMove(col, oldIdx, newIdx);
 
+        // A ordem manual é gravada para a coluna INTEIRA, incluindo cards
+        // ocultos pelo filtro da página: mescla o gesto sobre a lista visível
+        // na ordem completa antes de persistir.
+        const colOrdem = activeLocation.column.ordem;
+        const full = fullColumnOrder(
+          allCards,
+          activeLocation.column.cards,
+          activeLocation.row.key,
+          colOrdem,
+          templates,
+          sortModeFor(colKeyStr),
+        );
+        const merged = mergeVisibleReorder(
+          full,
+          reordered.map((c) => c.workflow.id!),
+        );
+
         // Optimistic reorder overlay; rolled back if persistence fails.
         setPendingPositions((prev) => {
           const next = new Map(prev);
-          reordered.forEach((c, i) => next.set(c.workflow.id!, i));
+          merged.forEach((id, i) => next.set(id, i));
           return next;
         });
         if (sortModeFor(colKeyStr) === 'prazo') setColumnSort(colKeyStr, 'manual');
 
         try {
-          await updateWorkflowPositions(
-            reordered.map((c, i) => ({ id: c.workflow.id!, position: i })),
-          );
+          await updateWorkflowPositions(merged.map((id, i) => ({ id, position: i })));
           onRefresh();
         } catch {
           setPendingPositions((prev) => {
             const next = new Map(prev);
-            reordered.forEach((c) => next.delete(c.workflow.id!));
+            merged.forEach((id) => next.delete(id));
             return next;
           });
           toast.error('Erro ao salvar ordem dos cartões');
@@ -501,10 +542,22 @@ export function KanbanView({
               : beforePos != null
                 ? beforePos + 1
                 : 0;
+        const targetFull = fullColumnOrder(
+          allCards,
+          targetColumn.cards,
+          targetRow.key,
+          targetColumn.ordem,
+          templates,
+          sortModeFor(colKey),
+        );
         pendingInsertRef.current = {
           wfId: draggedCard.workflow.id!,
-          ids: targetDisplay.map((c) => c.workflow.id!),
-          index: slotIndex,
+          ids: insertIntoFullOrder(
+            targetFull,
+            targetDisplay.map((c) => c.workflow.id!),
+            slotIndex,
+            draggedCard.workflow.id!,
+          ),
           optimisticPos,
         };
 
@@ -521,6 +574,7 @@ export function KanbanView({
     },
     [
       localCards,
+      allCards,
       dropSlot,
       onRefresh,
       onRecurring,
@@ -558,10 +612,8 @@ export function KanbanView({
         notifyRearmOutcome(result);
         if (insert) {
           pendingInsertRef.current = null;
-          const order = [...insert.ids];
-          order.splice(insert.index, 0, wfId);
           try {
-            await updateWorkflowPositions(order.map((id, i) => ({ id, position: i })));
+            await updateWorkflowPositions(insert.ids.map((id, i) => ({ id, position: i })));
           } catch {
             // Position is best-effort: the etapa advance itself already stuck.
           }
@@ -663,10 +715,8 @@ export function KanbanView({
       toast.success('Etapa revertida!');
       if (insert) {
         pendingInsertRef.current = null;
-        const order = [...insert.ids];
-        order.splice(insert.index, 0, revertTarget.workflowId);
         try {
-          await updateWorkflowPositions(order.map((id, i) => ({ id, position: i })));
+          await updateWorkflowPositions(insert.ids.map((id, i) => ({ id, position: i })));
         } catch {
           // Position is best-effort: the revert itself already stuck.
         }

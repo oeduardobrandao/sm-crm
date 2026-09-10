@@ -883,6 +883,7 @@ export default function EntregasPage() {
           <KanbanView
             contaId={contaId}
             cards={filteredCards}
+            allCards={cards}
             onCardClick={handleCardClick}
             onEditClick={setEditCard}
             onPostsClick={handleCardClick}
