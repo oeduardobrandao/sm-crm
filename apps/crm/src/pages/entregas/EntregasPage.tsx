@@ -27,6 +27,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { shouldAutoStartTour } from './tour/tourGating';
+import { shouldShowExample } from './tour/exampleGate';
 import { ComoFuncionaPanel, explainerStorageKey } from './components/ComoFuncionaPanel';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
 import { EntregasFilters, type FilterState, type StatusFilter } from './components/EntregasFilters';
@@ -188,9 +189,11 @@ export default function EntregasPage() {
   }, [explainerOpen]);
 
   // The example board stands in for a real board on an empty first visit, and comes back
-  // temporarily during a replay. A board emptied by filters (but with real workflows) shows the
-  // plain "Nenhuma entrega" message instead — hence the activeWorkflows guard, not filteredCards.
-  const showExample = activeWorkflows.length === 0 && (!tourDone || replayActive);
+  // temporarily during a replay. A board emptied by filters (but with real cards) shows the
+  // plain "Nenhuma entrega" message instead — hence the unfiltered count, not filteredCards.
+  // activeBoardCount is the single place to extend when the board gains new card kinds.
+  const activeBoardCount = activeWorkflows.length;
+  const showExample = shouldShowExample({ activeBoardCount, tourDone, replayActive });
 
   const markTourDone = useCallback(() => {
     localStorage.setItem(tourStorageKey(contaId), 'true');
