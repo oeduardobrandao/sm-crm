@@ -143,6 +143,7 @@ export default function EntregasPage() {
     awaitingClienteCounts,
     postResponsaveis,
     isLoading,
+    isFetching,
     refresh,
   } = useEntregasData();
 
@@ -343,8 +344,10 @@ export default function EntregasPage() {
     // esperar o card do fluxo recém-criado aparecer após o refetch -- sem
     // `fromUrl`, essa espera é legítima e deve continuar indefinidamente.
     if (!fromUrl) return;
-    // `cards` chega assíncrono: só decidir que o fluxo não existe depois do load.
-    if (isLoading) return;
+    // `cards` chega assíncrono: só decidir que o fluxo não existe com a lista
+    // final -- nem carregando, nem em refetch em background (isLoading fica
+    // false com cache stale, e `cards` ainda reflete o snapshot antigo).
+    if (isLoading || isFetching) return;
     // Fluxo concluído, arquivado, excluído, ou post desmembrado depois que o
     // link foi compartilhado. Com post no link, o post é o que interessa.
     if (postId != null) {
@@ -353,7 +356,7 @@ export default function EntregasPage() {
     }
     toast.error('Fluxo não encontrado');
     setPendingDeepLink(null);
-  }, [cards, isLoading, pendingDeepLink]);
+  }, [cards, isLoading, isFetching, pendingDeepLink]);
 
   // Resolves a `?post=` deep link that arrived with no `?drawer=` (workflowId
   // still null above): looks the post up directly since only its own row says

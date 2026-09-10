@@ -1068,6 +1068,52 @@ describe('EntregasPage', () => {
         cards: [],
         activeWorkflows: [],
         isLoading: true,
+        isFetching: true,
+        refresh: vi.fn(),
+      } as never);
+      const { rerender } = renderPage('/entregas?drawer=99');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockedToast.error).not.toHaveBeenCalled();
+
+      // Carregamento termina, lista final confirma que o fluxo não existe.
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [],
+        isLoading: false,
+        isFetching: false,
+        refresh: vi.fn(),
+      } as never);
+      rerender(
+        <MemoryRouter initialEntries={['/entregas?drawer=99']}>
+          <Routes>
+            <Route
+              path="/entregas"
+              element={
+                <>
+                  <EntregasPage />
+                  <PathProbe />
+                  <DeepLinkProbe />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(mockedToast.error).toHaveBeenCalledWith('Fluxo não encontrado'));
+    });
+
+    it('espera o refetch em background antes de decidir que o fluxo não existe', async () => {
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [wfFixture],
+        isLoading: false,
+        isFetching: true,
         refresh: vi.fn(),
       } as never);
       renderPage('/entregas?drawer=99');
