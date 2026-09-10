@@ -84,7 +84,7 @@ begin;
 do $$
 declare
   v_ws uuid; v_ws2 uuid; v_cli bigint; v_user uuid := gen_random_uuid();
-  v_i uuid; v_i2 uuid; v_ag uuid;
+  v_i uuid; v_i2 uuid; v_i3 uuid; v_ag uuid; v_ag2 uuid;
   v_key text; v_key2 text; v_res jsonb; v_used bigint; v_blocked boolean; v_n int; v_row ideias;
 begin
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
@@ -113,6 +113,15 @@ begin
   insert into ideias (workspace_id, cliente_id, titulo, descricao, origem, visivel_no_hub)
     values (v_ws, v_cli, 'Da agência', 'desc', 'agencia', false) returning id into v_ag;
   assert not (select visivel_no_hub from ideias where id = v_ag), 'agencia row may be hidden';
+
+  -- 0d2. agencia insert omitting visivel_no_hub is HIDDEN (column default false)
+  insert into ideias (workspace_id, cliente_id, titulo, descricao, origem)
+    values (v_ws, v_cli, 'Da agência sem flag', 'desc', 'agencia') returning id into v_ag2;
+  assert not (select visivel_no_hub from ideias where id = v_ag2), 'agencia default must be hidden';
+  -- 0d3. cliente insert with an explicit false is forced visible by the guard
+  insert into ideias (workspace_id, cliente_id, titulo, descricao, visivel_no_hub)
+    values (v_ws, v_cli, 'Do cliente forçado', 'desc', false) returning id into v_i3;
+  assert (select visivel_no_hub from ideias where id = v_i3), 'cliente insert must be visible';
 
   -- 0e. origem is immutable, even for service_role
   v_blocked := false;
@@ -308,7 +317,11 @@ Expected: FAIL on `ideia_audio_rpcs.sql` with `column "origem" of relation "idei
 -- 1) Origem, autor e visibilidade
 ALTER TABLE ideias ADD COLUMN origem text NOT NULL DEFAULT 'cliente';
 ALTER TABLE ideias ADD CONSTRAINT ideias_origem_check CHECK (origem IN ('cliente','agencia'));
+-- Backfill das linhas existentes (todas do cliente) como visíveis; depois o
+-- default vira false: INSERT da agência que omitir a coluna fica OCULTO, nunca
+-- exposto. Linha do cliente é forçada a visível no INSERT pela guarda abaixo.
 ALTER TABLE ideias ADD COLUMN visivel_no_hub boolean NOT NULL DEFAULT true;
+ALTER TABLE ideias ALTER COLUMN visivel_no_hub SET DEFAULT false;
 -- Ideia do cliente nunca fica escondida dele.
 ALTER TABLE ideias ADD CONSTRAINT ideias_cliente_visivel_check CHECK (origem <> 'cliente' OR visivel_no_hub);
 CREATE INDEX ideias_cliente_visivel_idx ON ideias (cliente_id) WHERE visivel_no_hub;
@@ -404,6 +417,10 @@ DECLARE
 BEGIN
   IF TG_OP = 'UPDATE' AND NEW.origem IS DISTINCT FROM OLD.origem THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+  -- Linha do cliente entra sempre visível (o default false é só para a agência).
+  IF TG_OP = 'INSERT' AND NEW.origem = 'cliente' THEN
+    NEW.visivel_no_hub := true;
   END IF;
   IF auth.role() = 'service_role' THEN
     RETURN NEW;

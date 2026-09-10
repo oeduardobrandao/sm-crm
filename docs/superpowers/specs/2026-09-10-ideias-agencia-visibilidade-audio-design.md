@@ -48,7 +48,11 @@ stay above `origin/main`'s tail at PR-open time; re-check then).
 ```sql
 ALTER TABLE ideias ADD COLUMN origem text NOT NULL DEFAULT 'cliente';
 ALTER TABLE ideias ADD CONSTRAINT ideias_origem_check CHECK (origem IN ('cliente','agencia'));
+-- Backfill existing (client) rows as visible, then flip the default to hidden so an
+-- agency insert that omits the column never leaks to the Hub. Client rows are forced
+-- visible on INSERT by the guard trigger (1.3) and kept visible by the CHECK.
 ALTER TABLE ideias ADD COLUMN visivel_no_hub boolean NOT NULL DEFAULT true;
+ALTER TABLE ideias ALTER COLUMN visivel_no_hub SET DEFAULT false;
 ALTER TABLE ideias ADD CONSTRAINT ideias_cliente_visivel_check CHECK (origem <> 'cliente' OR visivel_no_hub);
 CREATE INDEX ideias_cliente_visivel_idx ON ideias (cliente_id) WHERE visivel_no_hub;
 
@@ -74,6 +78,8 @@ ALTER TABLE ideias ADD CONSTRAINT ideias_autor_fk
 - **`origem` is immutable and authenticated inserts are agency-only**, enforced in the
   `ideia_audio_guard` trigger (1.3): on UPDATE, any change to `origem` raises `forbidden`
   for every role; on INSERT by a role other than `service_role`, `origem` must be `'agencia'`.
+  On INSERT with `origem = 'cliente'` the trigger sets `visivel_no_hub := true`, so the column
+  default (`false`) only ever applies to agency rows: omitting the field hides, never exposes.
   Without this a CRM member could flip a client row to `agencia`, hide it, and defeat the CHECK.
 - `autor_membro_id` is set by the CRM on insert to the current member's `membros.id`, resolved
   through `membros.crm_user_id = auth user id` (the `useCurrentMembro` hook). The drawer's
