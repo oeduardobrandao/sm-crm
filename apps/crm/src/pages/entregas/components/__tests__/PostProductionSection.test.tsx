@@ -383,6 +383,7 @@ describe('PostProductionSection', () => {
     const input = screen.getByLabelText('Prazo da etapa Design') as HTMLInputElement;
     const before = input.value;
     fireEvent.change(input, { target: { value: '2026-09-25' } });
+    expect(input.value).toBe('2026-09-25'); // optimistic: shows immediately, before the RPC resolves/fails
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
         'Só etapas pendentes ou em andamento podem ser editadas.',
@@ -395,5 +396,24 @@ describe('PostProductionSection', () => {
     renderSection({ process: concludedProcess, membros: [] });
     expect(screen.queryAllByRole('combobox')).toHaveLength(0);
     expect(screen.queryAllByLabelText(/Prazo da etapa/)).toHaveLength(0);
+  });
+
+  it('etapa herdada de um processo ATIVO não tem controles', () => {
+    renderSection({ process: activeProcessWithPendingStep, membros: [] });
+    expect(screen.queryAllByRole('combobox')).toHaveLength(1);
+    expect(screen.queryAllByLabelText(/Prazo da etapa/)).toHaveLength(1);
+    expect(screen.getByText('Sem prazo')).toBeInTheDocument();
+  });
+
+  it('escolher "Sem responsável" manda responsavelId null', async () => {
+    store.updatePostProcessStep.mockResolvedValue({ ok: true, revisao: 2, step: {} });
+    renderSection({ process: activeProcessWithPendingStep, membros: [{ id: 4, nome: 'Ana' }] });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Responsável da etapa Design' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Sem responsável' }));
+    await waitFor(() =>
+      expect(store.updatePostProcessStep).toHaveBeenLastCalledWith(
+        expect.objectContaining({ responsavelId: null }),
+      ),
+    );
   });
 });
