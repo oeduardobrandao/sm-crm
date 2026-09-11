@@ -7,6 +7,7 @@ import {
   type PostProcessStep,
 } from '../../../store';
 import { etapaDeadlineDateOf, formatEtapaDeadlineDay } from '../etapaPrazo';
+import { forwardLabelFor } from '../postProcessCommands';
 import { buildPostTimeline } from './postTimeline';
 import { PostTimelineList } from './PostTimelinePopover';
 
@@ -97,7 +98,7 @@ export function PostProductionSection({
             <span>Cliente aprovou. Avançar etapa?</span>
             {onAvancar && (
               <button type="button" className="sem-processo-link" onClick={onAvancar}>
-                Avançar etapa
+                {forwardLabelFor(process)}
               </button>
             )}
           </div>

@@ -145,12 +145,14 @@ import {
   getVigentePostProcess,
   updateWorkflowPost,
   removeWorkflowPost,
+  transitionPostProcess,
 } from '@/store';
 
 const mockGetStandalonePost = vi.mocked(getStandalonePost);
 const mockGetVigentePostProcess = vi.mocked(getVigentePostProcess);
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockRemove = vi.mocked(removeWorkflowPost);
+const mockTransition = vi.mocked(transitionPostProcess);
 
 function basePost(overrides: Record<string, unknown> = {}) {
   return {
@@ -527,5 +529,43 @@ describe('StandalonePostDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
     await screen.findByText('Cliente aprovou. Avançar etapa?');
+  });
+
+  // Reviewer finding on Task 7 round 1: `approvalActiveProcessFixture`'s active
+  // aprovacao_cliente step (ordem 1) has no later pendente step, so canConcluir()
+  // is already true here -- this IS the last-step case. The hint used to always
+  // wire onProcessAvancar to commands.avancar, so clicking it on this exact
+  // fixture opened ForwardConfirmDialog with an empty next-step name and the RPC
+  // rejected with no_next_step. Clicking through actually exercises that path
+  // instead of only asserting the hint's text appears.
+  it('post aprovado_cliente na última etapa de aprovação: clicar na dica CONCLUI o processo, não avança', async () => {
+    mockGetStandalonePost.mockResolvedValueOnce({
+      ...postFixture,
+      status: 'aprovado_cliente',
+    } as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(approvalActiveProcessFixture as never);
+    mockTransition.mockResolvedValueOnce({
+      ok: true,
+      revisao: 4,
+      post_status: 'aprovado_cliente',
+      post_status_changed: false,
+      steps: [],
+    } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = renderDrawer(qc);
+    await screen.findByText('Cliente aprovou. Avançar etapa?');
+
+    const hintButton = container.querySelector('.post-production-hint button') as HTMLButtonElement;
+    expect(hintButton).toBeTruthy();
+    expect(hintButton).toHaveTextContent('Concluir processo');
+    fireEvent.click(hintButton);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir' }));
+
+    await waitFor(() => expect(mockTransition).toHaveBeenCalledTimes(1));
+    expect(mockTransition.mock.calls[0][0]).toMatchObject({
+      command: 'concluir',
+    });
+    expect(mockTransition.mock.calls[0][0]).not.toMatchObject({ command: 'avancar' });
   });
 });

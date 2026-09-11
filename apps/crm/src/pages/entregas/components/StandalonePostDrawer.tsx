@@ -638,7 +638,14 @@ export function StandalonePostDrawer({
               editorVersion={editorVersion}
               onAcceptSuggestion={handleAcceptSuggestion}
               onRejectSuggestion={handleRejectSuggestion}
-              onProcessAvancar={target ? () => commands.avancar(target) : undefined}
+              onProcessAvancar={
+                target
+                  ? () =>
+                      canConcluir(target.process)
+                        ? commands.concluir(target)
+                        : commands.avancar(target)
+                  : undefined
+              }
             />
           )}
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
