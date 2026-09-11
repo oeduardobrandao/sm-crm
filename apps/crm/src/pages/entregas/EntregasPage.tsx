@@ -114,8 +114,7 @@ export default function EntregasPage() {
   const { profile } = useAuth();
   const contaId = profile?.conta_id ?? 'unknown';
 
-  // Processos individuais de produção (spec 2026-09-10). Ships dark: every new
-  // surface on this page checks this one boolean; nothing else may read the flag.
+  // Processos individuais de produção (spec 2026-09-10). Ships dark.
   const { features } = useWorkspaceLimits();
   // Duas verdades (spec §11, PO 2026-09-11): `postProcessesEnabled` é a flag do
   // plano e gate SÓ criação (Aplicar processo, Manter etapas, seção Sem
@@ -187,8 +186,9 @@ export default function EntregasPage() {
     refresh,
   } = useEntregasData({ postProcessesEnabled });
 
-  // Flag desligada: o quadro é sempre o de fluxos, a URL não ganha ?entidade= e
-  // nenhuma chave nova entra no localStorage.
+  // Sem processos visíveis (flag desligada E nenhum processo vigente): o quadro
+  // é sempre o de fluxos, a URL não ganha ?entidade= e nenhuma chave nova entra
+  // no localStorage.
   const effectiveEntidade: EntidadeFilter = postProcessesVisible ? entidade : 'fluxos';
 
   // Same inline pattern as NotFoundPage: an app route, not one of the

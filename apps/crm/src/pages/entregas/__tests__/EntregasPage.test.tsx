@@ -1945,6 +1945,13 @@ describe('EntregasPage', () => {
       expect(screen.getByRole('radiogroup', { name: 'Entidades do quadro' })).toBeInTheDocument();
       // Criação continua escondida: a seção Sem processo não aparece com a flag desligada.
       expect(screen.queryByText('Sem processo')).toBeNull();
+      // A asserção acima é vácua sozinha (mockedUseActivePosts já devolve posts: []
+      // neste describe, então SemProcessoSection já se escondia por "total === 0",
+      // independente do gate). Esta é a que de fato prova que semProcessoMode usou
+      // postProcessesEnabled (false aqui), não postProcessesVisible (true aqui, por
+      // haver processo vigente): se EntregasPage.tsx voltasse a gatear por
+      // postProcessesVisible, este valor seria true e a asserção falharia.
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
     });
   });
 });
