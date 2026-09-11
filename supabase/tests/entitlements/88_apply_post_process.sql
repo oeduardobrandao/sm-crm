@@ -11,6 +11,7 @@
 -- 88.5 invalid_start_ordem: fora da sequencia, negativa e nula
 -- 88.6 modo data_entrega sem etapa aprovacao_cliente na sequencia -> erro
 -- 88.7 modo data_fixa exige prazo de toda etapa a partir da inicial -> step_deadline_required
+-- 88.8 a mesma exigencia vale no modo data_entrega, com etapa de aprovacao na sequencia
 --
 -- IMPORTANTE. template_fingerprint e SECURITY INVOKER (Decisao 11) e o
 -- argumento e avaliado no contexto do CHAMADOR. Sob 'set local role
@@ -572,5 +573,44 @@ begin
    where process_id = (v_res ->> 'process_id')::bigint and ordem = 0 and prazo_efetivo is null;
   assert found, 'etapa anterior a inicial (ignorada) fica sem prazo';
   raise notice 'PASS 88.7 step_deadline_required no modo data_fixa';
+end $$;
+rollback;
+
+-- 88.8 (follow-up da Task 7): step_deadline_required nao e regra so do
+-- data_fixa. O template abaixo esta em data_entrega E tem etapa
+-- aprovacao_cliente na sequencia a partir da inicial, entao a checagem
+-- estrutural da Decisao 18 (data_entrega_requires_approval_step) passa e o que
+-- sobra para barrar a chamada e a falta de prazo da etapa 2. Sem a etapa de
+-- aprovacao o bloco provaria a outra regra, nao esta.
+begin;
+do $$
+declare e record; v_tmpl bigint; v_fp text; v_raised boolean := false;
+begin
+  select * into e from pg_temp.et_ap_env();
+  insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo)
+    values (e.usr, e.ws, 'Entrega tres etapas', jsonb_build_array(
+      jsonb_build_object('nome', 'Copy', 'prazo_dias', 2, 'tipo_prazo', 'corridos'),
+      jsonb_build_object('nome', 'Design', 'prazo_dias', 3, 'tipo_prazo', 'corridos'),
+      jsonb_build_object('nome', 'Aprovacao', 'prazo_dias', 1, 'tipo_prazo', 'uteis',
+                         'tipo', 'aprovacao_cliente')
+    ), 'data_entrega') returning id into v_tmpl;
+  v_fp := template_fingerprint(v_tmpl);
+
+  -- Override so da inicial (ordem 1, 'Design'): a etapa 2 ('Aprovacao') fica
+  -- sem prazo apesar de estar a partir da inicial.
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform apply_post_process(e.post, v_tmpl, v_fp, 1, jsonb_build_object(
+      '1', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'step_deadline_required', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'data_entrega com override so da inicial deve ser rejeitado';
+  assert not exists (select 1 from post_processes where post_id = e.post), 'nada pode ter sido criado';
+  assert not exists (select 1 from post_process_events where post_id = e.post), 'nenhum evento pode ter sido gravado';
+  raise notice 'PASS 88.8 step_deadline_required no modo data_entrega';
 end $$;
 rollback;

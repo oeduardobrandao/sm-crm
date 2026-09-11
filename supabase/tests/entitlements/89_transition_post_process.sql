@@ -71,6 +71,14 @@ begin
   assert found, 'etapa nova ativa com o prazo enviado';
   select status into v_status from workflow_posts where id = e.post;
   assert v_status = 'rascunho', 'avancar sobre etapa padrao nao toca o status';
+  -- post_status e o nome exato da tabela de Interfaces do plano, e vale o
+  -- status REAL do post depois do comando, nao o esperado que foi enviado: a
+  -- comparacao e contra o que acabou de ser lido de workflow_posts. Aqui
+  -- avancar sobre etapa padrao nao mexe no post, entao os dois sao 'rascunho'.
+  assert v_res ->> 'post_status' = v_status,
+    format('post_status do retorno deve espelhar workflow_posts.status, retorno %s banco %s',
+           v_res ->> 'post_status', v_status);
+  assert v_res ->> 'post_status' = 'rascunho', 'post_status no contrato de retorno';
   perform 1 from post_process_events where process_id = e.proc and evento = 'avancou';
   assert found, 'evento avancou';
 
