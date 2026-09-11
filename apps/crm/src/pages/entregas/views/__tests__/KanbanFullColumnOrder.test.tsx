@@ -168,4 +168,21 @@ describe('fullMixedColumnOrder', () => {
       '1',
     ]);
   });
+
+  it('coluna sem posts empatada em position ignora post de OUTRA linha e devolve fullColumnOrder', () => {
+    // Fluxos 2 e 1 empatados em position (o DEFAULT de toda coluna nunca
+    // arrastada manualmente). Inserção é [2, 1]: fullColumnOrder (sort
+    // estável, sem desempate próprio) preserva essa ordem de inserção.
+    // sortEntitiesByPosicao (o branch misto) desempataria por id numérico
+    // (1 < 2) e devolveria ['1', '2'] — a guarda por coluna precisa impedir
+    // que esse branch seja alcançado quando a COLUNA ALVO não tem posts,
+    // mesmo com um post existindo em outra linha/coluna do quadro.
+    const all = [card(2, 0), card(1, 0)];
+    const outraLinhaPost: PostEntity = { ...postEntity(50, 0), templateId: 2 };
+    const expected = fullColumnOrder(all, all, 'template:7', 1, [], 'manual').map(String);
+    expect(expected).toEqual(['2', '1']);
+    expect(
+      fullMixedColumnOrder(all, [outraLinhaPost], all, [], 'template:7', 1, [], 'manual'),
+    ).toEqual(expected);
+  });
 });

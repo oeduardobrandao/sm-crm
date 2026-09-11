@@ -174,7 +174,20 @@ export function fullMixedColumnOrder(
   sortMode: FluxosColumnSort,
   signatureRows = false,
 ): BoardSortableId[] {
-  if ((allPosts ?? visibleColumnPosts).length === 0 && visibleColumnPosts.length === 0) {
+  const entities: BoardEntity[] = [
+    ...toWorkflowEntities(allCards ?? visibleColumnCards),
+    ...(allPosts ?? visibleColumnPosts),
+  ];
+  const column = buildBoardRows(entities, templates, { signatureRows })
+    .find((r) => r.key === rowKey)
+    ?.columns.find((c) => c.ordem === ordem);
+  // Guarda POR COLUNA (não pelo quadro inteiro): existir post em outra
+  // linha/coluna não pode empurrar esta coluna para o branch misto — o
+  // desempate de sortEntitiesByPosicao (id numérico) diverge do desempate de
+  // fullColumnOrder (ordem de inserção) quando duas etapas empatam em
+  // position, que é o estado DEFAULT de toda coluna nunca arrastada
+  // manualmente (workflows.position NOT NULL DEFAULT 0).
+  if ((column?.posts.length ?? visibleColumnPosts.length) === 0) {
     return fullColumnOrder(
       allCards,
       visibleColumnCards,
@@ -185,13 +198,6 @@ export function fullMixedColumnOrder(
       signatureRows,
     ).map(String);
   }
-  const entities: BoardEntity[] = [
-    ...toWorkflowEntities(allCards ?? visibleColumnCards),
-    ...(allPosts ?? visibleColumnPosts),
-  ];
-  const column = buildBoardRows(entities, templates, { signatureRows })
-    .find((r) => r.key === rowKey)
-    ?.columns.find((c) => c.ordem === ordem);
   const source: BoardEntity[] = column
     ? [...toWorkflowEntities(column.cards), ...column.posts]
     : [...toWorkflowEntities(visibleColumnCards), ...visibleColumnPosts];
