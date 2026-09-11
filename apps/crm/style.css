@@ -5782,6 +5782,15 @@ body.role-agent input[name='valor_total'] {
   border-color: rgba(255, 191, 48, 0.4);
 }
 
+/* Post individual com processo (spec §5.4): mesma família visual do avulso,
+   borda sólida para diferenciar de "sem processo". */
+.post-fluxo-tag--individual {
+  border-style: solid;
+}
+.board-card--post {
+  cursor: pointer;
+}
+
 .board-card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);

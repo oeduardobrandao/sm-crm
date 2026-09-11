@@ -54,6 +54,8 @@ import { VistasTabs } from './components/VistasTabs';
 import { useActivePosts } from './hooks/useActivePosts';
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
+import { matchesPostEntityFilters } from './entityFilters';
+import type { PostEntity } from './boardEntity';
 import {
   parseEntregasQuery,
   serializeEntregasQuery,
@@ -89,6 +91,9 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
   { id: 'list', label: 'Lista', icon: <List className="h-4 w-4" /> },
   { id: 'concluded', label: 'Concluídas', icon: <Archive className="h-4 w-4" /> },
 ];
+
+const EMPTY_POST_ENTITIES: PostEntity[] = [];
+const EMPTY_CARDS: BoardCard[] = [];
 
 export default function EntregasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -487,8 +492,9 @@ export default function EntregasPage() {
   const etapaNames = useMemo(() => {
     const names = new Set<string>();
     for (const c of cards) names.add(c.etapa.nome);
+    for (const e of postEntities) names.add(e.etapaNome);
     return Array.from(names);
-  }, [cards]);
+  }, [cards, postEntities]);
 
   // Resolve a post's workflow back to its board card (O(1)) for drawer opening.
   // Built from the UNFILTERED cards so a filtered-out workflow's post is still openable.
@@ -523,6 +529,13 @@ export default function EntregasPage() {
     setStandalonePostId(null);
     setDrawerInitialPostId(null);
     setDrawerCard(card);
+  };
+  // Card de post individual: abre o drawer do post (StandalonePostDrawer), que
+  // mostra a seção de produção. Mesmo slot exclusivo dos demais drawers.
+  const handlePostEntityClick = (entity: PostEntity) => {
+    setDrawerCard(null);
+    setDrawerInitialPostId(null);
+    setStandalonePostId(entity.process.post_id);
   };
   // Object-based click contract shared by the four post-list views (Kanban/Lista/
   // Calendário/PublicacoesPanel): a post avulso has no workflow card to open, so it
@@ -724,6 +737,21 @@ export default function EntregasPage() {
       );
     return out;
   }, [cards, filters, postResponsaveis]);
+
+  // Posts individuais passam pelos MESMOS filtros do modo Fluxos (entityFilters
+  // espelha a cadeia acima campo a campo). O filtro de entidade só decide o
+  // que o Kanban e a Lista recebem; Calendário e Gráfico seguem lendo
+  // filteredCards (spec §4.1: "não afeta ... o gráfico").
+  const filteredPostEntities = useMemo(
+    () =>
+      postEntities.length === 0
+        ? EMPTY_POST_ENTITIES
+        : postEntities.filter((e) => matchesPostEntityFilters(e, filters)),
+    [postEntities, filters],
+  );
+  const visibleCards = effectiveEntidade === 'posts' ? EMPTY_CARDS : filteredCards;
+  const visiblePostEntities =
+    effectiveEntidade === 'fluxos' ? EMPTY_POST_ENTITIES : filteredPostEntities;
 
   const overdue = cards.filter((c) => c.deadline.estourado).length;
   const urgent = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
@@ -933,8 +961,11 @@ export default function EntregasPage() {
         (mode === 'entregas' ? (
           <KanbanView
             contaId={contaId}
-            cards={filteredCards}
+            cards={visibleCards}
             allCards={cards}
+            postEntities={visiblePostEntities}
+            postProcessesEnabled={postProcessesEnabled}
+            onPostClick={handlePostEntityClick}
             onCardClick={handleCardClick}
             onEditClick={setEditCard}
             onPostsClick={handleCardClick}

@@ -759,6 +759,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 1 }, { id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -779,6 +781,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -814,6 +818,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -840,6 +846,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -867,6 +875,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -889,6 +899,8 @@ describe('EntregasPage', () => {
           }),
         ],
         activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -924,6 +936,8 @@ describe('EntregasPage', () => {
           }),
         ],
         activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -952,6 +966,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [{ id: 1 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       };
@@ -992,6 +1008,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [{ id: 1 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1020,6 +1038,8 @@ describe('EntregasPage', () => {
           }),
         ],
         activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1043,6 +1063,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [],
         activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1065,6 +1087,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [wfFixture],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1127,6 +1151,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [],
         activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: true,
         isFetching: true,
         refresh: vi.fn(),
@@ -1142,6 +1168,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [],
         activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         isFetching: false,
         refresh: vi.fn(),
@@ -1157,6 +1185,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [wfFixture],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         isFetching: true,
         refresh: vi.fn(),
@@ -1181,6 +1211,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [],
         activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         isFetching: false,
         refresh: vi.fn(),
@@ -1206,6 +1238,8 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [{ id: 1 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh,
     } as never);
@@ -1232,6 +1266,8 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [{ id: 1 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh,
     } as never);
@@ -1380,6 +1416,8 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [wfFixture],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -1402,6 +1440,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [wfFixture],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
