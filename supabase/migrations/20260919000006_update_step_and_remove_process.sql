@@ -53,12 +53,20 @@ BEGIN
     RAISE EXCEPTION 'process_not_found' USING ERRCODE = 'P0001';
   END IF;
 
-  SELECT pp.id, pp.post_id, pp.revisao INTO v_proc
+  SELECT pp.id, pp.post_id, pp.estado, pp.revisao INTO v_proc
     FROM post_processes pp
    WHERE pp.id = p_process_id AND pp.conta_id = v_conta
      FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'process_not_found' USING ERRCODE = 'P0001';
+  END IF;
+  -- Etapa 'pendente'/'ativo' sozinha nao basta: remove deixa etapas futuras
+  -- 'pendente' num processo ja encerrado, e sem esta guarda editar a etapa de
+  -- uma execucao encerrada gravava responsavel/prazo, bumpava revisao e
+  -- logava evento 'etapa_editada' num processo terminal. Mesmo codigo que
+  -- transition_post_process ja usa para o mesmo caso.
+  IF v_proc.estado <> 'ativo' THEN
+    RAISE EXCEPTION 'process_not_active' USING ERRCODE = 'P0001';
   END IF;
   IF v_proc.revisao IS DISTINCT FROM p_expected_revisao THEN
     RAISE EXCEPTION 'process_changed' USING ERRCODE = 'P0001';

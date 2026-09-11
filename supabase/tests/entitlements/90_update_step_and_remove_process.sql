@@ -8,6 +8,9 @@
 -- 90.3 remover libera nova aplicacao e reabrir um encerrado e rejeitado
 -- 90.4 revisao velha e processo de outra conta
 -- 90.5 advisory :post_move segurado ate o fim da transacao e remover duas vezes
+-- 90.6 remover processo concluido tambem encerra com motivo removido
+-- 90.7 editar etapa de processo encerrado e process_not_active, nada muda
+-- 90.8 remover processo de outra conta e process_not_found
 
 create or replace function pg_temp.et_rm_env(
   out ws uuid, out usr uuid, out cli bigint, out post bigint, out proc bigint, out membro bigint)
@@ -230,5 +233,86 @@ begin
    where locktype = 'advisory' and pid = pg_backend_pid();
   assert v_n > v_base, 'remove_post_process precisa tomar o advisory :post_move';
   raise notice 'PASS 90.5 advisory :post_move e process_already_closed';
+end $$;
+rollback;
+
+-- 90.6
+begin;
+do $$
+declare e record; v_res jsonb; v_n int;
+begin
+  select * into e from pg_temp.et_rm_env();
+  -- concluir via UPDATE direto de estado, como a suite 83 faz. A etapa ativa
+  -- tambem vira concluido: um processo concluido de verdade nao tem etapa
+  -- 'ativo' sobrando, entao o UPDATE de remove que filtra estado = 'ativo'
+  -- precisa casar zero linhas neste bloco.
+  update post_process_steps set estado = 'concluido', concluido_em = now()
+   where process_id = e.proc and ordem = 1;
+  update post_processes set estado = 'concluido' where id = e.proc;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_res := remove_post_process(e.proc, 1);
+  execute 'reset role';
+  assert v_res ->> 'estado' = 'encerrado' and v_res ->> 'motivo_encerramento' = 'removido',
+    'processo concluido tambem pode ser removido';
+  perform 1 from post_process_steps where process_id = e.proc and estado = 'interrompido';
+  assert not found, 'sem etapa ativa, nenhuma etapa vira interrompido';
+  select count(*) into v_n from post_process_events where process_id = e.proc and evento = 'removido';
+  assert v_n = 1, 'evento removido gravado';
+  perform 1 from post_processes where id = e.proc and revisao = 2;
+  assert found, 'revisao incrementa mesmo a partir de concluido';
+  raise notice 'PASS 90.6 remover processo concluido';
+end $$;
+rollback;
+
+-- 90.7
+begin;
+do $$
+declare e record; v_raised boolean := false; v_revisao_antes int; v_revisao_depois int;
+begin
+  select * into e from pg_temp.et_rm_env();
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  perform remove_post_process(e.proc, 1);
+  select revisao into v_revisao_antes from post_processes where id = e.proc;
+  begin
+    perform update_post_process_step(e.proc, v_revisao_antes, 2, e.membro, null);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'process_not_active', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'editar etapa de processo encerrado deve levantar process_not_active';
+  select revisao into v_revisao_depois from post_processes where id = e.proc;
+  assert v_revisao_depois = v_revisao_antes, 'revisao nao muda';
+  perform 1 from post_process_steps where process_id = e.proc and ordem = 2 and responsavel_id is null;
+  assert found, 'etapa nao foi editada';
+  perform 1 from post_process_events where process_id = e.proc and evento = 'etapa_editada';
+  assert not found, 'nenhum evento etapa_editada foi gravado num processo terminal';
+  raise notice 'PASS 90.7 editar etapa de processo encerrado';
+end $$;
+rollback;
+
+-- 90.8
+begin;
+do $$
+declare e record; g record; v_raised boolean := false;
+begin
+  select * into e from pg_temp.et_rm_env();
+  select * into g from pg_temp.et_rm_env();
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform remove_post_process(g.proc, 1);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'process_not_found', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'remover processo de outra conta deve levantar process_not_found';
+  perform 1 from post_processes where id = g.proc and estado = 'ativo';
+  assert found, 'processo de outra conta continua intacto';
+  raise notice 'PASS 90.8 remover processo de outra conta';
 end $$;
 rollback;
