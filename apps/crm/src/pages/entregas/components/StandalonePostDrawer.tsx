@@ -2,7 +2,19 @@ import { useCallback, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
-import { X, Trash2, Link2, Maximize2, Minimize2, CircleDashed, Route } from 'lucide-react';
+import {
+  X,
+  Trash2,
+  Link2,
+  Maximize2,
+  Minimize2,
+  CircleDashed,
+  Route,
+  ArrowLeft,
+  Check,
+  RotateCcw,
+  CircleOff,
+} from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +63,13 @@ import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../s
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { PostEditorBody } from './PostEditorBody';
 import { AttachToFluxoDialog } from './AttachToFluxoDialog';
+import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
+import {
+  canConcluir,
+  forwardLabelFor,
+  previousStepOf,
+  type ProcessTarget,
+} from '../postProcessCommands';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -202,6 +221,27 @@ export function StandalonePostDrawer({
     qc.invalidateQueries({ queryKey: ['post-process-events'] });
     if (clienteId != null) qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
   }, [qc, postId, clienteId]);
+
+  // ── Comandos do processo individual (Avançar/Voltar/Concluir/Reabrir/Remover) ──
+
+  const commands = usePostProcessCommands({
+    onRefresh: () => {
+      refresh();
+      onRefresh();
+    },
+  });
+  const target: ProcessTarget | null =
+    post && postProcess
+      ? {
+          process: postProcess,
+          post: {
+            id: post.id!,
+            titulo: post.titulo,
+            status: post.status,
+            cliente_id: post.cliente_id,
+          },
+        }
+      : null;
 
   // ── Field change / status confirm ────────────────────────────────────────────
 
@@ -484,6 +524,52 @@ export function StandalonePostDrawer({
           <div className="drawer-header-actions">
             {post && (
               <>
+                {target && target.process.estado === 'ativo' && (
+                  <>
+                    {previousStepOf(target.process) && (
+                      <button
+                        className="drawer-add-post-btn"
+                        aria-label="Voltar etapa"
+                        onClick={() => commands.voltar(target)}
+                        disabled={commands.busy}
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" /> Voltar etapa
+                      </button>
+                    )}
+                    <button
+                      className="drawer-add-post-btn"
+                      aria-label={forwardLabelFor(target.process)}
+                      onClick={() =>
+                        canConcluir(target.process)
+                          ? commands.concluir(target)
+                          : commands.avancar(target)
+                      }
+                      disabled={commands.busy}
+                    >
+                      <Check className="h-3.5 w-3.5" /> {forwardLabelFor(target.process)}
+                    </button>
+                  </>
+                )}
+                {target && target.process.estado === 'concluido' && (
+                  <button
+                    className="drawer-add-post-btn"
+                    aria-label="Reabrir processo"
+                    onClick={() => commands.reabrir(target)}
+                    disabled={commands.busy}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Reabrir processo
+                  </button>
+                )}
+                {target && (
+                  <button
+                    className="drawer-add-post-btn"
+                    aria-label="Remover processo"
+                    onClick={() => commands.remover(target)}
+                    disabled={commands.busy}
+                  >
+                    <CircleOff className="h-3.5 w-3.5" /> Remover processo
+                  </button>
+                )}
                 <button className="drawer-add-post-btn" onClick={() => setAttachOpen(true)}>
                   <Link2 className="h-3.5 w-3.5" /> Vincular a um fluxo
                 </button>
@@ -552,6 +638,7 @@ export function StandalonePostDrawer({
               editorVersion={editorVersion}
               onAcceptSuggestion={handleAcceptSuggestion}
               onRejectSuggestion={handleRejectSuggestion}
+              onProcessAvancar={target ? () => commands.avancar(target) : undefined}
             />
           )}
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
@@ -567,6 +654,7 @@ export function StandalonePostDrawer({
           onAttached={onAttached}
         />
       )}
+      {commands.dialogs}
 
       <AlertDialog open={pendingDelete} onOpenChange={(open) => !open && setPendingDelete(false)}>
         <AlertDialogContent>

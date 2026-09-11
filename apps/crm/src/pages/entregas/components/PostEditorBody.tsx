@@ -122,6 +122,8 @@ export interface PostEditorBodyProps {
   editorVersion: number;
   onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
   onRejectSuggestion: (id: number) => void;
+  /** Avançar etapa do processo individual, para a dica da seção de produção. */
+  onProcessAvancar?: () => void;
 }
 
 export function PostEditorBody({
@@ -160,6 +162,7 @@ export function PostEditorBody({
   editorVersion,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onProcessAvancar,
 }: PostEditorBodyProps) {
   // Per-row scheduled-day dots for this post's date picker: same client-wide post list for
   // every row (stable identity from the TanStack cache), each row excludes only its own post
@@ -426,7 +429,13 @@ export function PostEditorBody({
       )}
 
       {postProcess && workflowId == null && (
-        <PostProductionSection process={postProcess} postId={post.id!} membros={membros} />
+        <PostProductionSection
+          process={postProcess}
+          postId={post.id!}
+          membros={membros}
+          postStatus={post.status}
+          onAvancar={onProcessAvancar}
+        />
       )}
 
       <PostMediaGallery

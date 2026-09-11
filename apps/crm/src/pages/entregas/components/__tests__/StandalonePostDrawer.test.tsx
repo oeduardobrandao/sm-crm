@@ -82,6 +82,9 @@ vi.mock('@/store', () => ({
   syncMentions: vi.fn(),
   getVigentePostProcess: vi.fn(async () => null),
   getPostProcessEvents: vi.fn(async () => []),
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
@@ -137,9 +140,15 @@ vi.mock('../AttachToFluxoDialog', () => ({
 }));
 
 import { StandalonePostDrawer } from '../StandalonePostDrawer';
-import { getStandalonePost, updateWorkflowPost, removeWorkflowPost } from '@/store';
+import {
+  getStandalonePost,
+  getVigentePostProcess,
+  updateWorkflowPost,
+  removeWorkflowPost,
+} from '@/store';
 
 const mockGetStandalonePost = vi.mocked(getStandalonePost);
+const mockGetVigentePostProcess = vi.mocked(getVigentePostProcess);
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockRemove = vi.mocked(removeWorkflowPost);
 
@@ -181,6 +190,52 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
   );
   return { ...utils, onClose, onRefresh, onAttached };
 }
+
+// ── Fixtures dos comandos do processo individual (Task 7) ────────────────────
+const postFixture = basePost();
+
+function processStep(ordem: number, estado: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id: ordem + 1,
+    ordem,
+    nome: `Etapa ${ordem}`,
+    estado,
+    tipo: 'padrao',
+    responsavel_id: null,
+    prazo_dias: null,
+    tipo_prazo: null,
+    prazo_efetivo: null,
+    iniciado_em: null,
+    ...overrides,
+  };
+}
+
+// Etapa 1 ativa de 3 (0 concluída, 1 ativa, 2 pendente): tem etapa anterior
+// (Voltar etapa) e uma pendente adiante (Avançar etapa, não Concluir).
+const processFixture = {
+  id: 9,
+  post_id: 5,
+  estado: 'ativo',
+  etapa_atual: 1,
+  revisao: 3,
+  template_id: null,
+  template_nome: null,
+  origem_descricao: null,
+  steps: [processStep(0, 'concluido'), processStep(1, 'ativo'), processStep(2, 'pendente')],
+};
+
+// Última etapa ativa (nenhuma pendente adiante): canConcluir() = true.
+const lastStepActiveSteps = [
+  processStep(0, 'concluido'),
+  processStep(1, 'concluido'),
+  processStep(2, 'ativo'),
+];
+
+// Etapa ativa de aprovação do cliente, para a dica da seção de produção.
+const approvalActiveProcessFixture = {
+  ...processFixture,
+  steps: [processStep(0, 'concluido'), processStep(1, 'ativo', { tipo: 'aprovacao_cliente' })],
+};
 
 describe('StandalonePostDrawer', () => {
   beforeEach(() => {
@@ -438,5 +493,39 @@ describe('StandalonePostDrawer', () => {
     renderDrawer(qc, { membros: [{ id: 1, nome: 'Ana' }] });
     expect(await screen.findByText('Individual · Design')).toBeInTheDocument();
     expect(screen.queryByText('Individual · Processo concluído')).not.toBeInTheDocument();
+  });
+
+  it('processo ativo: cabeçalho com Voltar etapa / Avançar etapa / Remover processo, mesmo com a flag desligada', async () => {
+    limitsMock.features = { feature_post_processes: false };
+    mockGetVigentePostProcess.mockResolvedValueOnce(processFixture as never); // etapa 1 ativa de 3, próxima pendente
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByRole('button', { name: 'Avançar etapa' });
+    expect(screen.getByRole('button', { name: 'Voltar etapa' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remover processo' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Concluir processo' })).toBeNull();
+  });
+
+  it('última etapa ativa: "Concluir processo" no lugar de "Avançar etapa"; concluído: "Reabrir processo"', async () => {
+    mockGetVigentePostProcess.mockResolvedValueOnce({
+      ...processFixture,
+      etapa_atual: 2,
+      steps: lastStepActiveSteps,
+    } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByRole('button', { name: 'Concluir processo' });
+    expect(screen.queryByRole('button', { name: 'Avançar etapa' })).toBeNull();
+  });
+
+  it('post aprovado_cliente em etapa de aprovação: dica "Cliente aprovou. Avançar etapa?" na seção', async () => {
+    mockGetStandalonePost.mockResolvedValueOnce({
+      ...postFixture,
+      status: 'aprovado_cliente',
+    } as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(approvalActiveProcessFixture as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByText('Cliente aprovou. Avançar etapa?');
   });
 });

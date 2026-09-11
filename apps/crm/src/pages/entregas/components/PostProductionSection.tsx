@@ -43,6 +43,8 @@ interface PostProductionSectionProps {
   process: PostProcess;
   postId: number;
   membros: Membro[];
+  postStatus: string;
+  onAvancar?: () => void;
 }
 
 /**
@@ -55,7 +57,13 @@ interface PostProductionSectionProps {
  * Vincular são fase 4. Só é montada pelo drawer de post avulso (workflowId
  * nulo) e só busca eventos enquanto está aberta.
  */
-export function PostProductionSection({ process, postId, membros }: PostProductionSectionProps) {
+export function PostProductionSection({
+  process,
+  postId,
+  membros,
+  postStatus,
+  onAvancar,
+}: PostProductionSectionProps) {
   const { data: events = [] } = useQuery({
     queryKey: ['post-process-events', String(postId)],
     queryFn: () => getPostProcessEvents([postId]),
@@ -81,6 +89,19 @@ export function PostProductionSection({ process, postId, membros }: PostProducti
         </span>
       </div>
       <p className="post-production-origem">{origem}</p>
+
+      {process.estado === 'ativo' &&
+        postStatus === 'aprovado_cliente' &&
+        process.steps.find((s) => s.estado === 'ativo')?.tipo === 'aprovacao_cliente' && (
+          <div className="post-production-hint" role="status">
+            <span>Cliente aprovou. Avançar etapa?</span>
+            {onAvancar && (
+              <button type="button" className="sem-processo-link" onClick={onAvancar}>
+                Avançar etapa
+              </button>
+            )}
+          </div>
+        )}
 
       <div className="history-timeline">
         {process.steps.map((step, i) => {

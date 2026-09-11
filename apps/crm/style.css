@@ -13091,6 +13091,22 @@ a.hub-fill__row-inner:hover {
   border-top: 1px solid var(--border-color);
   padding-top: 0.6rem;
 }
+.post-production-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  font-size: 0.78rem;
+  color: var(--text-main);
+}
+.post-production-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
 .entregas-somente-fluxos {
   margin: 0;
   font-size: 0.78rem;

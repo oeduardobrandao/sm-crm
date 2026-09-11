@@ -93,6 +93,7 @@ function renderSection() {
         process={process}
         postId={77}
         membros={[{ id: 7, nome: 'Ana' } as never]}
+        postStatus="rascunho"
       />
     </QueryClientProvider>,
   );
