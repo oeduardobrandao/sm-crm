@@ -1,5 +1,6 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
+select et_grant_hosted_parity();
 
 -- reorder_fluxos_board (migration 20260919000008). Cobre:
 -- 92.0 happy path misto: fluxos e processos renumerados numa chamada
