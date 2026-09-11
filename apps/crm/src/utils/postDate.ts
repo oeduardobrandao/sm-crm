@@ -38,3 +38,26 @@ export function formatPostDateFull(iso: string): string {
     minute: '2-digit',
   });
 }
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** 'YYYY-MM-DD' a partir dos componentes LOCAIS. Nunca use
+ *  `toISOString().split('T')[0]` para um dia de calendário: ele converte para
+ *  UTC antes de cortar e muda o dia no Brasil (spec de processos §7). */
+export function toLocalISODate(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** Meia-noite local de 'YYYY-MM-DD' (aceita um timestamp e usa os 10 primeiros
+ *  caracteres). `new Date('YYYY-MM-DD')` seria meia-noite UTC. */
+export function parseLocalISODate(s: string): Date | null {
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+/** 23:59:59.999 local do dia de `d`: o instante que "fim daquele dia" vira
+ *  como timestamptz (spec de processos §7, prazo congelado de data_limite). */
+export function endOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}

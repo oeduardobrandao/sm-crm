@@ -27,6 +27,7 @@ import { supabase } from '../../../lib/supabase';
 import { getWorkflowCovers, getPostCovers } from '../../../services/postMedia';
 import { buildUsableTokenMap } from '../../../lib/hubTokenMap';
 import { toPostEntity, type PostEntity } from '../boardEntity';
+import { toLocalISODate } from '@/utils/postDate';
 
 export interface BoardCard {
   workflow: Workflow;
@@ -169,6 +170,15 @@ export function getNextDeliveryDate(diaEntrega: number): Date {
   return new Date(nextYear, nextMonth, dayNextMonth);
 }
 
+/** Forma mínima de uma etapa para o cálculo de data de entrega: WorkflowEtapa e
+ *  as etapas de um template (com `ordem` = índice) satisfazem. */
+export type DeliveryStep = {
+  ordem: number;
+  tipo?: 'padrao' | 'aprovacao_cliente' | null;
+  prazo_dias: number;
+  tipo_prazo: 'corridos' | 'uteis';
+};
+
 /**
  * Computes data_limite (ISO date string) for each step in a data_entrega workflow.
  * The aprovacao_cliente step gets deliveryDate.
@@ -177,14 +187,14 @@ export function getNextDeliveryDate(diaEntrega: number): Date {
  * Returns Map<ordem, ISO date string>.
  */
 export function computeDeliveryDeadlines(
-  etapas: WorkflowEtapa[],
+  etapas: DeliveryStep[],
   deliveryDate: Date,
 ): Map<number, string> {
   const sorted = [...etapas].sort((a, b) => a.ordem - b.ordem);
   const anchorIdx = sorted.findIndex((e) => e.tipo === 'aprovacao_cliente');
   if (anchorIdx === -1) return new Map();
 
-  const toISO = (d: Date) => d.toISOString().split('T')[0];
+  const toISO = toLocalISODate;
   const result = new Map<number, string>();
 
   // Anchor step gets delivery date
