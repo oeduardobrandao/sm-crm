@@ -15,6 +15,7 @@ import {
 } from '../../../store';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { HistoryDrawer } from '../components/HistoryDrawer';
+import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,6 +54,16 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
   } | null>(null);
   const [reopenTarget, setReopenTarget] = useState<{ id: number; titulo: string } | null>(null);
   const qc = useQueryClient();
+
+  const commands = usePostProcessCommands({
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['concluded-workflows'] });
+      qc.invalidateQueries({ queryKey: ['concluded-summaries'] });
+      qc.invalidateQueries({ queryKey: ['workflows'] });
+      qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
+      qc.invalidateQueries({ queryKey: ['post-processes'] });
+    },
+  });
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
 
@@ -259,7 +270,28 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
                           )}
                         </div>
                       </div>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <button
+                          className="concluded-reopen-btn"
+                          title="Reabrir processo"
+                          aria-label="Reabrir processo"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            commands.reabrir({
+                              process: p,
+                              post: {
+                                id: p.post_id,
+                                titulo: p.post.titulo,
+                                status: p.post.status,
+                                cliente_id: p.post.cliente_id,
+                              },
+                            });
+                          }}
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -268,6 +300,8 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
           );
         })}
       </div>
+
+      {commands.dialogs}
 
       {selectedWorkflow && (
         <HistoryDrawer
