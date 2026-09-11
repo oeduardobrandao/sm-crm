@@ -3,7 +3,12 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import type { WorkflowEtapa } from '../../../../store';
-import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../useEntregasData';
+import { getVigentePostProcesses } from '../../../../store';
+import {
+  computeDeadlineDate,
+  computeWorkflowDeadlineDate,
+  useEntregasData,
+} from '../useEntregasData';
 
 // useEntregasData reads `clienteAvatars`/`hubTokens` via two `supabase.from(...)`
 // calls made DIRECTLY (bypassing the mocked store module below), and
@@ -101,11 +106,13 @@ vi.mock('../../../../store', async (importOriginal) => {
         [2, [10]],
       ]),
     ),
+    getVigentePostProcesses: vi.fn().mockResolvedValue([]),
   };
 });
 
 vi.mock('../../../../services/postMedia', () => ({
   getWorkflowCovers: vi.fn().mockResolvedValue(new Map()),
+  getPostCovers: vi.fn().mockResolvedValue(new Map()),
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -403,5 +410,152 @@ describe('useEntregasData', () => {
     const { postsCounts } = result.current;
     expect(postsCounts).toBeInstanceOf(Map);
     expect(postsCounts.size).toBe(0);
+  });
+});
+
+const vigenteFixture = {
+  id: 9,
+  conta_id: 'c',
+  post_id: 77,
+  template_id: null,
+  template_nome: null,
+  assinatura: '',
+  origem_workflow_id: null,
+  origem_descricao: null,
+  estado: 'ativo',
+  motivo_encerramento: null,
+  etapa_atual: 0,
+  modo_prazo: 'padrao',
+  board_position: 0,
+  revisao: 1,
+  created_by: null,
+  created_at: '2026-09-10T00:00:00Z',
+  updated_at: '2026-09-10T00:00:00Z',
+  concluido_em: null,
+  steps: [
+    {
+      id: 1,
+      conta_id: 'c',
+      process_id: 9,
+      ordem: 0,
+      nome: 'Copy',
+      tipo: 'padrao',
+      responsavel_id: null,
+      prazo_dias: null,
+      tipo_prazo: null,
+      prazo_efetivo: null,
+      estado: 'ativo',
+      iniciado_em: null,
+      concluido_em: null,
+      interrompido_em: null,
+      origem_etapa_ordem: null,
+      origem_etapa_nome: null,
+    },
+  ],
+  post: {
+    id: 77,
+    workflow_id: null,
+    cliente_id: 10,
+    cliente_nome: 'Cliente A',
+    workflow_titulo: null,
+    titulo: 'Post X',
+    tipo: 'feed',
+    status: 'rascunho',
+    custom_status_id: null,
+    scheduled_at: null,
+    published_at: null,
+    ig_caption: null,
+    instagram_permalink: null,
+    publish_error: null,
+    publish_error_code: null,
+    ordem: 0,
+    responsavel_id: null,
+    platform: 'instagram',
+    tiktok_publish_status: null,
+    tiktok_publish_error: null,
+    tiktok_post_url: null,
+    instagram_media_id: null,
+    ig_trial_strategy: null,
+    board_ordem: null,
+  },
+};
+
+describe('useEntregasData: processos individuais', () => {
+  // The global afterEach (test/vitest.setup.ts) runs vi.restoreAllMocks(),
+  // which strips the implementations `vi.mock('../../../../store', ...)`
+  // set up at module scope (plain vi.fn() mocks behave like mockReset() under
+  // restoreAllMocks -- there is no "original" to fall back to). The sibling
+  // `describe('useEntregasData', ...)` above works around this with its own
+  // beforeEach; this block needs the same for the mocks these two tests touch.
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const store = await import('../../../../store');
+    (store.getWorkflows as any).mockResolvedValue([]);
+    (store.getClientes as any).mockResolvedValue([
+      {
+        id: 10,
+        nome: 'Cliente A',
+        sigla: 'CA',
+        cor: '#f00',
+        plano: 'basic',
+        email: '',
+        telefone: '',
+        status: 'ativo',
+        valor_mensal: 1000,
+      },
+    ]);
+    (store.getMembros as any).mockResolvedValue([]);
+    (store.getWorkflowTemplates as any).mockResolvedValue([]);
+    (store.getAllActiveEtapas as any).mockResolvedValue([]);
+    (store.getVigentePostProcesses as any).mockResolvedValue([]);
+    const postMedia = await import('../../../../services/postMedia');
+    (postMedia.getWorkflowCovers as any).mockResolvedValue(new Map());
+    (postMedia.getPostCovers as any).mockResolvedValue(new Map());
+  });
+
+  it('com a flag desligada não consulta post_processes e devolve listas vazias estáveis', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useEntregasData(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(getVigentePostProcesses).not.toHaveBeenCalled();
+    expect(result.current.postEntities).toEqual([]);
+    expect(result.current.activePostProcessCount).toBe(0);
+    expect(result.current.processByPostId.size).toBe(0);
+    const first = result.current.postEntities;
+    await waitFor(() => expect(result.current.postEntities).toBe(first));
+  });
+
+  it('com a flag ligada monta postEntities dos ativos e o mapa por post dos vigentes', async () => {
+    (getVigentePostProcesses as any).mockResolvedValueOnce([
+      vigenteFixture,
+      { ...vigenteFixture, id: 10, post_id: 78, estado: 'concluido', steps: [], etapa_atual: 0 },
+    ]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useEntregasData({ postProcessesEnabled: true }), {
+      wrapper,
+    });
+    // Waiting only for postEntities.length===1 can catch a render where
+    // vigenteQuery has settled but the sibling ['clientes'] query has not
+    // (same class of race as "keeps cards and the lookup maps stable..." above):
+    // postEntities only needs activeProcesses to be non-empty, so it can turn
+    // up one tick before `cliente` is filled in. Waiting for the whole
+    // QueryClient to go idle closes that gap.
+    await waitFor(() => {
+      expect(result.current.postEntities).toHaveLength(1);
+      expect(qc.isFetching()).toBe(0);
+    });
+    expect(result.current.postEntities[0]).toMatchObject({
+      kind: 'post',
+      id: 'post:9',
+      etapaNome: 'Copy',
+    });
+    expect(result.current.postEntities[0].cliente?.nome).toBe('Cliente A');
+    expect(result.current.activePostProcessCount).toBe(1);
+    expect(result.current.concludedPostProcesses.map((p) => p.id)).toEqual([10]);
+    expect([...result.current.processByPostId.keys()].sort()).toEqual([77, 78]);
   });
 });

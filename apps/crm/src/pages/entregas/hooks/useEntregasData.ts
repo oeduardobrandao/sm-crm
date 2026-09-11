@@ -14,16 +14,19 @@ import {
   getWorkflowAwaitingClientePostsCounts,
   getWorkflowPostResponsaveis,
   getWorkspaceSlug,
+  getVigentePostProcesses,
   type Workflow,
   type WorkflowEtapa,
   type Cliente,
   type Membro,
   type WorkflowTemplate,
   type PostMedia,
+  type PostProcessWithPost,
 } from '../../../store';
 import { supabase } from '../../../lib/supabase';
-import { getWorkflowCovers } from '../../../services/postMedia';
+import { getWorkflowCovers, getPostCovers } from '../../../services/postMedia';
 import { buildUsableTokenMap } from '../../../lib/hubTokenMap';
+import { toPostEntity, type PostEntity } from '../boardEntity';
 
 export interface BoardCard {
   workflow: Workflow;
@@ -57,6 +60,9 @@ const EMPTY_ETAPAS_MAP: Map<number, WorkflowEtapa[]> = new Map();
 /** Shared by all five count maps — they are interchangeable while empty. */
 const EMPTY_COUNT_MAP: Map<number, number> = new Map();
 const EMPTY_RESPONSAVEIS_MAP: Map<number, number[]> = new Map();
+const EMPTY_PROCESSES: PostProcessWithPost[] = [];
+const EMPTY_POST_ENTITIES: PostEntity[] = [];
+const EMPTY_PROCESS_MAP: Map<number, PostProcessWithPost> = new Map();
 
 /**
  * Computes the absolute deadline date from an etapa's start time and duration.
@@ -201,7 +207,14 @@ export function computeDeliveryDeadlines(
   return result;
 }
 
-export function useEntregasData() {
+export interface UseEntregasDataOptions {
+  /** features?.feature_post_processes === true. Off (default) fires no
+   *  post_processes query and returns the empty constants below. */
+  postProcessesEnabled?: boolean;
+}
+
+export function useEntregasData(options: UseEntregasDataOptions = {}) {
+  const postProcessesEnabled = options.postProcessesEnabled === true;
   const qc = useQueryClient();
 
   const {
@@ -326,6 +339,54 @@ export function useEntregasData() {
     enabled: clienteIds.length > 0,
   });
 
+  // Processos individuais (spec §8.3): UM lote por conta com ativos e
+  // concluídos. Os ativos viram cards; os concluídos vão para Concluídas; os
+  // dois juntos são a exclusão da seção Sem processo. Desligado pela flag, a
+  // query nem existe e tudo abaixo devolve as constantes vazias (identidade
+  // estável, mesma regra dos EMPTY_* acima).
+  const vigenteQuery = useQuery({
+    queryKey: ['post-processes', 'vigentes'],
+    queryFn: getVigentePostProcesses,
+    enabled: postProcessesEnabled,
+  });
+  const vigenteProcesses: PostProcessWithPost[] = vigenteQuery.data ?? EMPTY_PROCESSES;
+  const activeProcesses = useMemo(
+    () =>
+      vigenteProcesses.length
+        ? vigenteProcesses.filter((p) => p.estado === 'ativo')
+        : EMPTY_PROCESSES,
+    [vigenteProcesses],
+  );
+  const concludedPostProcesses = useMemo(
+    () =>
+      vigenteProcesses.length
+        ? vigenteProcesses.filter((p) => p.estado === 'concluido')
+        : EMPTY_PROCESSES,
+    [vigenteProcesses],
+  );
+  const processByPostId = useMemo(
+    () =>
+      vigenteProcesses.length
+        ? new Map(vigenteProcesses.map((p) => [p.post_id, p]))
+        : EMPTY_PROCESS_MAP,
+    [vigenteProcesses],
+  );
+  const processPostIds = useMemo(() => activeProcesses.map((p) => p.post_id), [activeProcesses]);
+  const { data: processCovers } = useQuery({
+    queryKey: ['post-process-covers', processPostIds.join(',')],
+    queryFn: () => getPostCovers(processPostIds),
+    enabled: processPostIds.length > 0,
+  });
+  const postEntities: PostEntity[] = useMemo(() => {
+    if (activeProcesses.length === 0) return EMPTY_POST_ENTITIES;
+    const out: PostEntity[] = [];
+    for (const p of activeProcesses) {
+      const e = toPostEntity(p, { clientes, membros, clienteAvatars, covers: processCovers });
+      if (e) out.push(e);
+    }
+    return out;
+  }, [activeProcesses, clientes, membros, clienteAvatars, processCovers]);
+
   // Build BoardCards from active workflows.
   //
   // Memoized because `cards` is the root of the whole page's derived state: the
@@ -395,13 +456,21 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['workflow-post-responsaveis'] });
     qc.invalidateQueries({ queryKey: ['active-posts'] });
     qc.invalidateQueries({ queryKey: ['workflow-events'] });
+    qc.invalidateQueries({ queryKey: ['post-processes'] });
+    qc.invalidateQueries({ queryKey: ['post-process-covers'] });
+    qc.invalidateQueries({ queryKey: ['post-process-events'] });
+    qc.invalidateQueries({ queryKey: ['post-process'] });
+    // Spec §4.4: refresh() da página passa a invalidar concluded-*. Inerte
+    // enquanto ConcludedView não estiver montada.
+    qc.invalidateQueries({ queryKey: ['concluded-workflows'] });
+    qc.invalidateQueries({ queryKey: ['concluded-summaries'] });
   }
 
-  const isLoading = loadingWf || etapasQuery.isLoading;
+  const isLoading = loadingWf || etapasQuery.isLoading || vigenteQuery.isLoading;
   /** Verdadeiro também durante refetch em background (cache stale). O resolvedor
    *  de deep link só pode concluir que um fluxo não está no quadro quando isto
    *  e isLoading forem falsos. */
-  const isFetching = fetchingWf || etapasQuery.isFetching;
+  const isFetching = fetchingWf || etapasQuery.isFetching || vigenteQuery.isFetching;
 
   return {
     workflows,
@@ -411,6 +480,10 @@ export function useEntregasData() {
     templates,
     etapasMap,
     cards,
+    postEntities,
+    processByPostId,
+    concludedPostProcesses,
+    activePostProcessCount: activeProcesses.length,
     postsCounts,
     approvedPostsCounts,
     clearedClienteCounts,

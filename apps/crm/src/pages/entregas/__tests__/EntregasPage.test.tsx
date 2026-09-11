@@ -172,6 +172,17 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: () => ({ profile: { conta_id: 'conta-1', role: 'owner' } }),
 }));
 
+const limitsMock = vi.hoisted(() => ({ features: null as Record<string, boolean> | null }));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    features: limitsMock.features,
+    planName: null,
+    isLoading: false,
+    isUnlimited: false,
+  }),
+}));
+
 // Mock only startEntregasTour (driver.js can't run in jsdom); tourStorageKey stays real so the
 // localStorage assertions exercise the true key format.
 const tourMock = vi.hoisted(() => ({ startEntregasTour: vi.fn() }));
@@ -491,6 +502,10 @@ function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[]
     templates: [],
     cards: data.cards,
     activeWorkflows: data.activeWorkflows,
+    postEntities: [],
+    processByPostId: new Map(),
+    concludedPostProcesses: [],
+    activePostProcessCount: 0,
     isLoading: false,
     refresh: vi.fn(),
   } as never);
@@ -516,6 +531,7 @@ describe('EntregasPage', () => {
     mockedToast.error.mockReset();
     tourMock.startEntregasTour.mockReset();
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
+    limitsMock.features = null;
     localStorage.clear();
     // The "Como funciona" panel is open by default, and its copy names the same
     // objects the board does ("Publicações", "Fluxos"), which makes the board's
@@ -537,6 +553,10 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [],
       activeWorkflows: [],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
       isLoading: true,
       refresh: vi.fn(),
     } as never);
@@ -566,6 +586,10 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 1 }, { id: 2 }],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh,
     } as never);
@@ -595,6 +619,12 @@ describe('EntregasPage', () => {
     expect(screen.getByText('WizardMock')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Created workflow'));
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('mostra o total de posts individuais no cabeçalho só com a flag ligada', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+    expect(await screen.findByText(/fluxos ativos: 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/posts individuais/)).toBeNull();
   });
 
   it('opens the Post avulso dialog from the Novo dropdown and switches into Publicações after creating one', () => {
@@ -645,6 +675,10 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [{ id: 1 }],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -1521,6 +1555,7 @@ describe('EntregasPage — painel "Como funciona"', () => {
   beforeEach(() => {
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
     tourMock.startEntregasTour.mockReset();
+    limitsMock.features = null;
     localStorage.clear();
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       cb(0);

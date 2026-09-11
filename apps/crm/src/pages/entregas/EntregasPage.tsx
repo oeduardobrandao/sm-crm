@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { shouldAutoStartTour } from './tour/tourGating';
 import { shouldShowExample } from './tour/exampleGate';
@@ -95,6 +96,11 @@ export default function EntregasPage() {
   const { profile } = useAuth();
   const contaId = profile?.conta_id ?? 'unknown';
 
+  // Processos individuais de produção (spec 2026-09-10). Ships dark: every new
+  // surface on this page checks this one boolean; nothing else may read the flag.
+  const { features } = useWorkspaceLimits();
+  const postProcessesEnabled = features?.feature_post_processes === true;
+
   const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
   const [filters, setFilters] = useState<FilterState>(initialQuery.filters);
   const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
@@ -136,6 +142,8 @@ export default function EntregasPage() {
     membros,
     templates,
     cards,
+    postEntities,
+    activePostProcessCount,
     activeWorkflows,
     postsCounts,
     approvedPostsCounts,
@@ -146,7 +154,7 @@ export default function EntregasPage() {
     isLoading,
     isFetching,
     refresh,
-  } = useEntregasData();
+  } = useEntregasData({ postProcessesEnabled });
 
   // Same inline pattern as NotFoundPage: an app route, not one of the
   // manifest-driven public pages usePageMeta covers, so nothing else would set
@@ -193,7 +201,7 @@ export default function EntregasPage() {
   // temporarily during a replay. A board emptied by filters (but with real cards) shows the
   // plain "Nenhuma entrega" message instead — hence the unfiltered count, not filteredCards.
   // activeBoardCount is the single place to extend when the board gains new card kinds.
-  const activeBoardCount = activeWorkflows.length;
+  const activeBoardCount = activeWorkflows.length + activePostProcessCount;
   const showExample = shouldShowExample({ activeBoardCount, tourDone, replayActive });
 
   const markTourDone = useCallback(() => {
@@ -751,6 +759,7 @@ export default function EntregasPage() {
               unless the header says which one it is. */}
           <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
             fluxos ativos: {activeWorkflows.length}
+            {postProcessesEnabled && <> · posts individuais: {activePostProcessCount}</>}
             {overdue > 0 && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
                 {' '}
