@@ -1049,7 +1049,10 @@ export default function EntregasPage() {
           onCardClick={handleCardClick}
           onGoToView={setActiveView}
           postProcessesEnabled={postProcessesEnabled}
-          onGoToKanban={() => setActiveView('kanban')}
+          onGoToKanban={() => {
+            setActiveView('kanban');
+            setEntidade('todos');
+          }}
         />
       )}
       {activeView === 'calendar' && (
@@ -1060,7 +1063,10 @@ export default function EntregasPage() {
           openableWorkflowIds={openableWorkflowIds}
           onPostClick={handlePostClick}
           postProcessesEnabled={postProcessesEnabled}
-          onGoToKanban={() => setActiveView('kanban')}
+          onGoToKanban={() => {
+            setActiveView('kanban');
+            setEntidade('todos');
+          }}
         />
       )}
       {activeView === 'list' &&

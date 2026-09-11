@@ -214,6 +214,7 @@ vi.mock('../views/ChartView', () => ({
     onFiltersChange,
     onCardClick,
     onGoToView,
+    onGoToKanban,
   }: {
     cards: Array<{ workflow: { titulo: string } }>;
     totalCards: number;
@@ -221,6 +222,7 @@ vi.mock('../views/ChartView', () => ({
     onFiltersChange: (next: Record<string, unknown>) => void;
     onCardClick: (card: unknown) => void;
     onGoToView: (view: 'kanban' | 'list') => void;
+    onGoToKanban?: () => void;
   }) => (
     <div>
       <div>Chart view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
@@ -230,6 +232,7 @@ vi.mock('../views/ChartView', () => ({
       </button>
       <button onClick={() => onCardClick(cards[0])}>Open drawer from chart</button>
       <button onClick={() => onGoToView('list')}>Chart ver na lista</button>
+      {onGoToKanban && <button onClick={onGoToKanban}>Chart somente fluxos</button>}
     </div>
   ),
 }));
@@ -1759,6 +1762,26 @@ describe('EntregasPage', () => {
       expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
       expect(screen.queryByRole('heading', { name: 'Sem processo' })).toBeNull();
       expect(screen.queryByText('Avulso livre')).toBeNull();
+    });
+
+    it('link "Somente fluxos" da Visão geral leva ao Kanban E muda entidade para Todos, não só a view', () => {
+      limitsMock.features = { feature_post_processes: true };
+      // Returning user with no explicit ?entidade= in the URL: entidade defaults
+      // to 'fluxos' (spec default for "quem já usou Entregas"). This is exactly
+      // the common case where the ChartView "Somente fluxos" note renders and
+      // its link must actually reveal individual posts, not just switch views.
+      localStorage.setItem('entregas_last_mode_conta-1', 'entregas');
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+      expect(screen.getByRole('radio', { name: 'Fluxos' })).toHaveAttribute('aria-checked', 'true');
+
+      fireEvent.click(screen.getByText('Visão geral'));
+      fireEvent.click(screen.getByText('Chart somente fluxos'));
+
+      // 'kanban' is the default view, so serializeEntregasQuery omits it from the
+      // URL; only 'entidade=todos' shows up, confirming the filter itself changed.
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?entidade=todos$/);
+      expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
     });
   });
 });
