@@ -23,7 +23,15 @@ export async function getUserId(): Promise<string> {
 }
 
 export async function getContaId(): Promise<string> {
-  const profile = await getCurrentProfile();
+  // Forces a fresh read instead of the module-level profile cache: this value
+  // is stamped onto every write's conta_id, and RLS checks it against the
+  // DB's live active_workspace_id at insert time. A long-lived tab (sleep/
+  // wake, bfcache restore) can hold a cachedProfile from a previous active
+  // workspace while RLS-scoped reads (already live, uncached) show the
+  // current one -- sending the stale conta_id then fails every write with a
+  // confusing RLS 403, even though nothing about the workspace actually
+  // changed in this tab's session.
+  const profile = await getCurrentProfile(true);
   if (!profile || !profile.conta_id)
     throw new Error('Conta não encontrada ou usuário não autenticado');
   return profile.conta_id;
