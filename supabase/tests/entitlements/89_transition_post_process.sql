@@ -12,6 +12,7 @@
 -- 89.6 concluir na ultima etapa aprovacao_cliente: mesmo dialogo do avancar
 -- 89.7 erros de argumento e de estado, agrupados num bloco so
 -- 89.8 concluir com etapa pendente adiante -> pending_steps_remaining
+-- 89.9 flag do plano desligada nao bloqueia avancar num processo existente (criterio 12.18)
 
 create or replace function pg_temp.et_tr_env(
   out ws uuid, out usr uuid, out cli bigint, out post bigint, out proc bigint)
@@ -50,6 +51,19 @@ begin
   execute 'reset role';
 
   assert (v_res ->> 'etapa_atual')::int = 1 and (v_res ->> 'revisao')::int = 2, 'ponteiro e revisao apos avancar';
+  -- Contrato de retorno completo (Interfaces do plano, I3 do task-5-review.md):
+  -- so etapa_atual e revisao eram assertados antes deste fix round.
+  assert (v_res ->> 'ok')::boolean, 'ok no contrato de retorno';
+  assert v_res ->> 'command' = 'avancar', 'command no contrato de retorno ecoa o comando enviado';
+  assert (v_res ->> 'process_id')::bigint = e.proc, 'process_id no contrato de retorno';
+  assert (v_res ->> 'post_id')::bigint = e.post, 'post_id no contrato de retorno';
+  assert v_res ->> 'estado' = 'ativo', 'estado no contrato de retorno';
+  assert jsonb_array_length(v_res -> 'steps') = 3,
+    format('steps com as tres etapas do processo, obtido %s', jsonb_array_length(v_res -> 'steps'));
+  perform 1 from jsonb_array_elements(v_res -> 'steps') s
+   where (s.value ->> 'ordem')::int = 1 and s.value ->> 'estado' = 'ativo'
+     and (s.value ->> 'prazo_efetivo')::timestamptz = timestamptz '2026-09-08 02:59:59+00';
+  assert found, 'steps traz ordem, estado e prazo_efetivo da etapa nova, nao so o formato';
   perform 1 from post_process_steps where process_id = e.proc and ordem = 0 and estado = 'concluido' and concluido_em is not null;
   assert found, 'etapa anterior concluida';
   perform 1 from post_process_steps where process_id = e.proc and ordem = 1 and estado = 'ativo'
@@ -159,13 +173,18 @@ begin
   select status into v_status from workflow_posts where id = e.post;
   assert v_status = 'rascunho', format('com outra aprovacao adiante o post volta a rascunho, obtido %s', v_status);
 
-  -- agendado nunca e reiniciado
+  -- agendado nunca e reiniciado. A etapa adiante precisa ser
+  -- aprovacao_cliente: e ela que faz v_tem_adiante ficar true na migration e
+  -- exercitar de fato o guard "AND v_status = 'aprovado_cliente'" (fix round
+  -- 1, I1 do task-5-review.md). Com tipo 'padrao' v_tem_adiante ficaria false
+  -- e o ramo do re-arm nem seria alcancado -- o assert abaixo passaria sem
+  -- provar nada sobre o guard.
   update workflow_posts set status = 'agendado' where id = e.post;
   update post_process_steps set estado = 'concluido', concluido_em = now() where process_id = e.proc and ordem = 1;
   update post_process_steps set estado = 'ativo', iniciado_em = now() where process_id = e.proc and ordem = 2;
   update post_processes set etapa_atual = 2, revisao = 3 where id = e.proc;
   insert into post_process_steps (conta_id, process_id, ordem, nome, tipo, estado)
-    values (e.ws, e.proc, 3, 'Publicacao', 'padrao', 'pendente');
+    values (e.ws, e.proc, 3, 'Publicacao', 'aprovacao_cliente', 'pendente');
   perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
   perform transition_post_process(e.proc, 3, 'avancar', null, 'agendado', timestamptz '2026-09-12 02:59:59+00');
@@ -435,5 +454,29 @@ begin
   assert v_res ->> 'estado' = 'concluido', 'na ultima etapa que importa concluir e aceito';
   assert (v_res ->> 'etapa_atual')::int = 0, 'o ponteiro fica na etapa que acabou de ser concluida';
   raise notice 'PASS 89.8 concluir exige a ultima etapa pendente';
+end $$;
+rollback;
+
+-- 89.9. Criterio 12.18: a flag desliga so a CRIACAO de execucoes (apply,
+-- detach), nao a operacao das que ja existem. transition_post_process nunca
+-- consulta effective_plan_feature (post_process_require_editor tambem nao) --
+-- um workspace que fez downgrade continua conseguindo avancar, voltar e
+-- concluir os processos que ja tinha.
+begin;
+do $$
+declare e record; v_res jsonb;
+begin
+  select * into e from pg_temp.et_tr_env();
+  update plans set feature_post_processes = false
+   where id = (select plan_id from workspaces where id = e.ws);
+
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_res := transition_post_process(e.proc, 1, 'avancar', null, 'rascunho', timestamptz '2026-09-08 02:59:59+00');
+  execute 'reset role';
+
+  assert (v_res ->> 'ok')::boolean, 'avancar continua funcionando com a flag do plano desligada';
+  assert (v_res ->> 'etapa_atual')::int = 1, 'o ponteiro avanca normalmente';
+  raise notice 'PASS 89.9 flag do plano desligada nao bloqueia transicao';
 end $$;
 rollback;
