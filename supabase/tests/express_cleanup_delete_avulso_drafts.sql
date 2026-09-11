@@ -5,7 +5,7 @@
 -- atomico do passo 3 do express-post-cleanup-cron. Cobre:
 -- E.0 rascunho avulso com processo ativo e poupado; sem processo e apagado
 -- E.1 ids que nao sao rascunho avulso express sao ignorados
--- E.2 processo concluido/encerrado nao poupa -- rascunho e apagado
+-- E.2 processo concluido poupa o rascunho; encerrado continua nao poupando
 -- E.3 p_ids vazio/NULL devolve {}
 -- E.4 EXECUTE negado para authenticated
 
@@ -92,16 +92,20 @@ begin
   insert into post_processes (conta_id, post_id, assinatura, estado) values (f.ws, f.post, '0|Copy|padrao', 'concluido') returning id into v_proc;
   insert into post_processes (conta_id, post_id, assinatura, estado, motivo_encerramento) values (g.ws, g.post, '0|Copy|padrao', 'encerrado', 'removido') returning id into v_proc2;
 
+  -- concluido POUPA: a fase 2 cria o unico caminho para chegar a concluido e
+  -- nenhum comando de processo tira o post de 'rascunho' (spec 5.5 e 6.2),
+  -- entao sem esta regra o cron apagaria o trabalho e o historico inteiros.
   select public.express_cleanup_delete_avulso_drafts(array[f.post]) into v_deleted;
-  assert v_deleted = array[f.post], format('processo concluido nao deve poupar, veio %s', v_deleted);
-  assert not exists (select 1 from workflow_posts where id = f.post), 'rascunho com processo concluido deve ser apagado';
-  assert not exists (select 1 from post_processes where id = v_proc), 'processo concluido deve ir no cascade do post';
+  assert v_deleted = '{}'::bigint[], format('processo concluido deve poupar o rascunho, veio %s', v_deleted);
+  assert exists (select 1 from workflow_posts where id = f.post), 'rascunho com processo concluido deve continuar existindo';
+  assert exists (select 1 from post_processes where id = v_proc), 'o processo concluido continua no banco';
 
+  -- encerrado NAO poupa: removido ou vinculado, o post voltou a Sem processo.
   select public.express_cleanup_delete_avulso_drafts(array[g.post]) into v_deleted;
   assert v_deleted = array[g.post], format('processo encerrado nao deve poupar, veio %s', v_deleted);
   assert not exists (select 1 from workflow_posts where id = g.post), 'rascunho com processo encerrado deve ser apagado';
   assert not exists (select 1 from post_processes where id = v_proc2), 'processo encerrado deve ir no cascade do post';
-  raise notice 'PASS E.2 processo concluido/encerrado nao poupa';
+  raise notice 'PASS E.2 concluido poupa, encerrado nao';
 end $$;
 rollback;
 

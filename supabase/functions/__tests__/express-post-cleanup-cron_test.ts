@@ -178,8 +178,10 @@ function makeRpc(
         (row.workflow_id === null || row.workflow_id === undefined) &&
         row.status === "rascunho";
       if (!isDeletableAvulsoDraft) continue;
+      // Migration 20260919000002 widened the spared states to `ativo` and
+      // `concluido`; only `encerrado` remains deletable.
       const hasActiveProcess = tables.post_processes.some(
-        (p) => p.post_id === id && p.estado === "ativo",
+        (p) => p.post_id === id && (p.estado === "ativo" || p.estado === "concluido"),
       );
       if (hasActiveProcess) continue;
       deleted.push(id);
@@ -455,12 +457,30 @@ Deno.test("pass 3 poupa rascunho express avulso com processo individual ativo", 
   assertEquals(tables.workflow_posts.map((p) => p.id), [2]);
 });
 
-Deno.test("pass3: apaga rascunho avulso cujo processo individual nao esta ativo (concluido)", async () => {
+Deno.test("pass3: poupa rascunho avulso cujo processo individual esta concluido (migration 20260919000002)", async () => {
+  // The handler's own pre-filter only checks estado === "ativo", so a
+  // `concluido` process does not spare the draft there -- it reaches the
+  // RPC as deletable. The RPC (migration 20260919000002) is authoritative
+  // and now spares `ativo` AND `concluido`, so this is a late spare: it
+  // counts in avulso_skipped_with_process, not avulso_deleted.
   const { db, tables } = makeFakeDb({
     workflow_posts: [
       { id: 3, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
     ],
     post_processes: [{ id: 11, post_id: 3, estado: "concluido" }],
+  });
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, 0);
+  assertEquals(result.avulso_skipped_with_process, 1);
+  assertEquals(tables.workflow_posts.length, 1);
+});
+
+Deno.test("pass3: apaga rascunho avulso cujo processo individual esta encerrado", async () => {
+  const { db, tables } = makeFakeDb({
+    workflow_posts: [
+      { id: 3, workflow_id: null, cliente_id: 5, is_express: true, status: "rascunho", created_at: OLD },
+    ],
+    post_processes: [{ id: 11, post_id: 3, estado: "encerrado" }],
   });
   const result = await runExpressPostCleanupCron(db, CUTOFF);
   assertEquals(result.avulso_deleted, 1);

@@ -92,7 +92,11 @@ begin
   insert into post_processes (conta_id, post_id, assinatura) values (f.ws, f.post, '0|Copy|padrao') returning id into v_proc;
   insert into post_process_steps (conta_id, process_id, ordem, nome, estado) values (f.ws, v_proc, 0, 'Copy', 'ativo');
   insert into post_process_events (conta_id, post_id, process_id, evento) values (f.ws, f.post, v_proc, 'aplicado');
-  perform et_grant_hosted_parity();
+  -- As quatro tabelas ficam FORA da paridade: seus grants sao o que esta sob
+  -- teste (83.12). Com elas excluidas, o SELECT abaixo prova o GRANT SELECT da
+  -- migration, e o INSERT falha por falta de grant, nao so por RLS.
+  perform et_grant_hosted_parity(array['post_processes', 'post_process_steps',
+    'post_process_events', 'post_process_batch_requests']);
 
   -- membro da conta f le
   perform set_config('request.jwt.claims', json_build_object('sub', f.usr, 'role', 'authenticated')::text, true);
@@ -109,11 +113,14 @@ begin
   exception when others then v_raised := true; -- RLS (42501) ou grant: o que importa e falhar
   end;
   assert v_raised, 'authenticated nao pode inserir em post_processes';
+  -- Zero linhas (RLS) ou 42501 (falta de grant) sao os dois jeitos legitimos de
+  -- o UPDATE nao acontecer. Sem o EXCEPTION, o segundo derruba a suite inteira.
   begin
     update post_processes set estado = 'concluido' where id = v_proc;
     get diagnostics v_seen = row_count;
+  exception when insufficient_privilege then v_seen := 0;
   end;
-  assert v_seen = 0, 'authenticated nao pode atualizar post_processes (0 linhas)';
+  assert v_seen = 0, 'authenticated nao pode atualizar post_processes (0 linhas ou 42501)';
   execute 'reset role';
 
   -- membro da conta g nao ve nada de f
@@ -350,5 +357,62 @@ begin
   select concluido_em into v_ts from post_processes where id = v_proc2;
   assert v_ts is null, 'concluido->ativo deve continuar limpando concluido_em (regressao 83.6)';
   raise notice 'PASS 83.11 insert encerrado com post em fluxo, e ativo<->concluido continuam passando';
+end $$;
+rollback;
+
+-- 83.12
+begin;
+do $$
+declare t text; v_acl aclitem[]; v_priv text;
+begin
+  foreach t in array array['post_processes', 'post_process_steps', 'post_process_events'] loop
+    select c.relacl into v_acl from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relname = t;
+    select coalesce(string_agg(a.privilege_type, ',' order by a.privilege_type), '') into v_priv
+      from aclexplode(v_acl) a where a.grantee = 'authenticated'::regrole;
+    assert v_priv = 'SELECT', format('%s: authenticated deve ter EXATAMENTE SELECT, tem %s', t, v_priv);
+    assert not exists (select 1 from aclexplode(v_acl) a where a.grantee = 'anon'::regrole),
+      format('%s: anon nao pode ter privilegio', t);
+    assert not exists (select 1 from aclexplode(v_acl) a where a.grantee = 0),
+      format('%s: PUBLIC nao pode ter privilegio', t);
+    assert exists (select 1 from aclexplode(v_acl) a where a.grantee = 'service_role'::regrole and a.privilege_type = 'INSERT'),
+      format('%s: service_role precisa de INSERT', t);
+  end loop;
+
+  select c.relacl into v_acl from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relname = 'post_process_batch_requests';
+  assert not exists (select 1 from aclexplode(v_acl) a where a.grantee in ('anon'::regrole, 'authenticated'::regrole)),
+    'post_process_batch_requests nao pode ser visivel ao cliente';
+  raise notice 'PASS 83.12 grants das quatro tabelas';
+end $$;
+rollback;
+
+-- 83.13
+begin;
+do $$
+declare f record; v_proc bigint; v_seen int;
+begin
+  select * into f from pg_temp.et_pp_fixture();
+  insert into post_processes (conta_id, post_id, assinatura) values (f.ws, f.post, '0|Copy|padrao') returning id into v_proc;
+  insert into post_process_batch_requests (request_id, conta_id, resultado)
+    values (gen_random_uuid(), f.ws, '{"ok":true}'::jsonb);
+  perform et_grant_hosted_parity(array['post_processes', 'post_process_steps',
+    'post_process_events', 'post_process_batch_requests']);
+  perform set_config('request.jwt.claims', json_build_object('sub', f.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    select count(*) into v_seen from post_process_batch_requests;
+    v_seen := coalesce(v_seen, -1);
+  exception when insufficient_privilege then v_seen := 0;
+  end;
+  assert v_seen = 0, format('recibo de lote nao pode ser lido pelo membro, viu %s', v_seen);
+  begin
+    delete from post_processes where id = v_proc;
+    get diagnostics v_seen = row_count;
+  exception when insufficient_privilege then v_seen := 0;
+  end;
+  assert v_seen = 0, 'authenticated nao pode apagar processo';
+  execute 'reset role';
+  raise notice 'PASS 83.13 recibo invisivel e DELETE negado';
 end $$;
 rollback;
