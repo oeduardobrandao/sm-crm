@@ -508,6 +508,15 @@ export function KanbanView({
         return next;
       });
     },
+    // Um drag entre colunas abre um destes diálogos (avancar/voltar) através
+    // do hook e seta pendingInsertRef ANTES de abrir. Cancelar sem confirmar
+    // não passa por onOptimisticStep (que só roda em run/decideThenRun) --
+    // sem isto, o ref fica preso e o próximo comando do MESMO post disparado
+    // por BOTÃO (não-drag) herda a posição capturada pelo drag abandonado
+    // quando o catch-up effect casar o movedId (Task 8, achado da revisão).
+    onDismiss: () => {
+      pendingInsertRef.current = null;
+    },
   });
 
   // Grava a ordem completa (índice = posição): sem post na coluna é o

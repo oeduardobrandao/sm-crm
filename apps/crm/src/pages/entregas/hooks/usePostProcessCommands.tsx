@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -43,6 +43,15 @@ export interface UsePostProcessCommandsOptions {
   onRefresh: () => void;
   /** Kanban overlay: called with the target ordem before the RPC, and with null on rollback. */
   onOptimisticStep?: (processId: number, ordem: number | null) => void;
+  /** Chamado quando um diálogo de confirmação é DESCARTADO sem rodar o comando
+   *  (Cancelar, Esc, clique fora) -- nunca num confirm que já seguiu para
+   *  `run`/`decideThenRun`. O Kanban usa isso para limpar `pendingInsertRef`
+   *  de um drag entre colunas que abriu este diálogo: sem o callback, um
+   *  Cancelar aqui deixa o ref preso, e o próximo comando do MESMO post
+   *  disparado por botão (não-drag) herda a posição capturada pelo drag
+   *  abandonado quando o catch-up effect casar o `movedId` (bug real, achado
+   *  na revisão da Task 8). */
+  onDismiss?: () => void;
 }
 
 export interface PostProcessCommands {
@@ -91,6 +100,12 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
   const [pending, setPending] = useState<Pending | null>(null);
   const [choice, setChoice] = useState<Choice | null>(null);
   const [busy, setBusy] = useState(false);
+  // Um ciclo (abrir -> confirmar OU cancelar) por diálogo. Ver o comentário
+  // grande junto de `dismissForward`/`dismissRevert`/`dismissChoice` abaixo:
+  // resolvido por `false` sempre que o diálogo ABRE de novo.
+  const forwardResolvedRef = useRef(false);
+  const revertResolvedRef = useRef(false);
+  const choiceResolvedRef = useRef(false);
 
   const invalidate = useCallback(
     (t: ProcessTarget) => {
@@ -178,8 +193,10 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
             ? hasLaterPendingApprovalStep(t.process.steps, active.ordem)
             : false,
       });
-      if (decision.kind === 'choose') setChoice({ t, command, willRearm: decision.willRearm });
-      else void run(t, command, null);
+      if (decision.kind === 'choose') {
+        choiceResolvedRef.current = false;
+        setChoice({ t, command, willRearm: decision.willRearm });
+      } else void run(t, command, null);
     },
     [run],
   );
@@ -219,6 +236,38 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
 
   const close = () => setPending(null);
   const closeChoice = () => setChoice(null);
+  // AlertDialogAction/AlertDialogCancel são primitivas do Radix que fecham o
+  // diálogo por conta própria: um clique em QUALQUER uma delas dispara
+  // `onOpenChange(false)` -- e portanto `onCancel` -- de forma ASSÍNCRONA,
+  // depois do nosso próprio onClick já ter rodado (mesmo comportamento do
+  // comentário de `Choice` acima, aplicado aqui ao Cancelar/Confirmar). Sem
+  // um guarda por ciclo, um Cancelar real dispara `onDismiss` duas vezes (once
+  // pelo onClick, once por esse eco) e um CONFIRMAR bem-sucedido também
+  // dispara `onDismiss` (o `close()` do onConfirm já deixa `open` false, e o
+  // eco chega igual) -- limpando incorretamente o que o caller guarda para um
+  // confirm válido (ex.: `pendingInsertRef` de um drag confirmado). Os refs
+  // abaixo resolvem o ciclo uma única vez: o confirm marca resolvido ANTES de
+  // fechar (nunca chama onDismiss); um Cancelar real marca resolvido e chama
+  // onDismiss; o eco que vier depois de qualquer um dos dois já encontra
+  // resolvido e não faz nada.
+  const dismissForward = () => {
+    if (forwardResolvedRef.current) return;
+    forwardResolvedRef.current = true;
+    opts.onDismiss?.();
+    close();
+  };
+  const dismissRevert = () => {
+    if (revertResolvedRef.current) return;
+    revertResolvedRef.current = true;
+    opts.onDismiss?.();
+    close();
+  };
+  const dismissChoice = () => {
+    if (choiceResolvedRef.current) return;
+    choiceResolvedRef.current = true;
+    opts.onDismiss?.();
+    closeChoice();
+  };
   const p = pending;
   const nextName = p && p.kind === 'forward' ? (nextPendingStepOf(p.t.process)?.nome ?? '') : '';
 
@@ -231,11 +280,12 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
         onConfirm={() => {
           if (p?.kind === 'forward') {
             const t = p.t;
+            forwardResolvedRef.current = true;
             close();
             decideThenRun(t, 'avancar');
           }
         }}
-        onCancel={close}
+        onCancel={dismissForward}
       />
       <RevertConfirmDialog
         open={p?.kind === 'revert'}
@@ -243,11 +293,12 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
         onConfirm={() => {
           if (p?.kind === 'revert') {
             const t = p.t;
+            revertResolvedRef.current = true;
             close();
             void run(t, 'voltar', null);
           }
         }}
-        onCancel={close}
+        onCancel={dismissRevert}
       />
       <ClientApprovalChoiceDialog
         open={!!choice}
@@ -265,6 +316,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
         onApproveInternally={() => {
           if (choice) {
             const { t, command } = choice;
+            choiceResolvedRef.current = true;
             closeChoice();
             void run(t, command, 'aprovar_interno');
           }
@@ -272,6 +324,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
         onSendToPortal={() => {
           if (choice) {
             const t = choice.t;
+            choiceResolvedRef.current = true;
             closeChoice();
             void sendToPortal(t);
           }
@@ -279,11 +332,12 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
         onAdvanceWithoutChanges={() => {
           if (choice) {
             const { t, command } = choice;
+            choiceResolvedRef.current = true;
             closeChoice();
             void run(t, command, 'sem_alterar');
           }
         }}
-        onCancel={closeChoice}
+        onCancel={dismissChoice}
       />
       <AlertDialog
         open={p?.kind === 'conclude' || p?.kind === 'reopen' || p?.kind === 'remove'}
@@ -333,8 +387,14 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
 
   return useMemo(
     () => ({
-      avancar: (t: ProcessTarget) => setPending({ kind: 'forward', t }),
-      voltar: (t: ProcessTarget) => setPending({ kind: 'revert', t }),
+      avancar: (t: ProcessTarget) => {
+        forwardResolvedRef.current = false;
+        setPending({ kind: 'forward', t });
+      },
+      voltar: (t: ProcessTarget) => {
+        revertResolvedRef.current = false;
+        setPending({ kind: 'revert', t });
+      },
       concluir: (t: ProcessTarget) => setPending({ kind: 'conclude', t }),
       reabrir: (t: ProcessTarget) => setPending({ kind: 'reopen', t }),
       remover: (t: ProcessTarget) => setPending({ kind: 'remove', t }),

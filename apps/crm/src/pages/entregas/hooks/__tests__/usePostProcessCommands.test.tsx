@@ -42,12 +42,14 @@ function Harness({
   t,
   onRefresh,
   onOptimisticStep,
+  onDismiss,
 }: {
   t: ProcessTarget;
   onRefresh: () => void;
   onOptimisticStep?: (id: number, o: number | null) => void;
+  onDismiss?: () => void;
 }) {
-  const c = usePostProcessCommands({ onRefresh, onOptimisticStep });
+  const c = usePostProcessCommands({ onRefresh, onOptimisticStep, onDismiss });
   return (
     <>
       <button onClick={() => c.avancar(t)}>avancar</button>
@@ -62,13 +64,19 @@ function Harness({
 function renderHarness(
   t: ProcessTarget,
   onOptimisticStep?: (id: number, o: number | null) => void,
+  onDismiss?: () => void,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(qc, 'invalidateQueries');
   const onRefresh = vi.fn();
   render(
     <QueryClientProvider client={qc}>
-      <Harness t={t} onRefresh={onRefresh} onOptimisticStep={onOptimisticStep} />
+      <Harness
+        t={t}
+        onRefresh={onRefresh}
+        onOptimisticStep={onOptimisticStep}
+        onDismiss={onDismiss}
+      />
     </QueryClientProvider>,
   );
   return { onRefresh, invalidate };
@@ -259,5 +267,61 @@ describe('usePostProcessCommands', () => {
     expect(toast.success).toHaveBeenLastCalledWith(
       'Processo removido. O post continua em Publicações.',
     );
+  });
+
+  // Task 8, fix round 1: Cancelar precisa notificar o caller (onDismiss) --
+  // sem isto, um KanbanView que usa este cancel para limpar pendingInsertRef
+  // (drag entre colunas) nunca recebe o aviso, e o ref de um drag abandonado
+  // fica preso para o próximo comando disparado por botão (leak real achado
+  // na revisão da Task 8).
+  describe('onDismiss (Task 8, fix round 1)', () => {
+    it('avancar: Cancelar chama onDismiss e NÃO roda o comando', async () => {
+      const t = target([step(0, 'concluido'), step(1, 'ativo'), step(2, 'pendente')], 'rascunho');
+      const onDismiss = vi.fn();
+      renderHarness(t, undefined, onDismiss);
+      fireEvent.click(screen.getByText('avancar'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+      await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+      expect(store.transitionPostProcess).not.toHaveBeenCalled();
+    });
+
+    it('voltar: Cancelar chama onDismiss e NÃO roda o comando', async () => {
+      const t = target([step(0, 'concluido'), step(1, 'ativo')], 'rascunho');
+      const onDismiss = vi.fn();
+      renderHarness(t, undefined, onDismiss);
+      fireEvent.click(screen.getByText('voltar'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+      await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+      expect(store.transitionPostProcess).not.toHaveBeenCalled();
+    });
+
+    it('escolha de aprovação: Cancelar chama onDismiss -- e confirmar o Avançar anterior NÃO chama', async () => {
+      const t = target(
+        [step(0, 'concluido'), step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')],
+        'enviado_cliente',
+      );
+      const onDismiss = vi.fn();
+      renderHarness(t, undefined, onDismiss);
+      fireEvent.click(screen.getByText('avancar'));
+      // Confirmar o ForwardConfirmDialog segue por decideThenRun -- NUNCA um
+      // dismiss, mesmo abrindo a escolha de aprovação a seguir.
+      fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
+      expect(await screen.findByRole('button', { name: 'Aprovar internamente' })).toBeVisible();
+      expect(onDismiss).not.toHaveBeenCalled();
+      // Só agora, ao cancelar a ESCOLHA em si, onDismiss deve disparar.
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+      expect(store.transitionPostProcess).not.toHaveBeenCalled();
+    });
+
+    it('confirmar avancar NÃO chama onDismiss', async () => {
+      const t = target([step(0, 'concluido'), step(1, 'ativo'), step(2, 'pendente')], 'rascunho');
+      const onDismiss = vi.fn();
+      renderHarness(t, undefined, onDismiss);
+      fireEvent.click(screen.getByText('avancar'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
+      await waitFor(() => expect(store.transitionPostProcess).toHaveBeenCalledTimes(1));
+      expect(onDismiss).not.toHaveBeenCalled();
+    });
   });
 });
