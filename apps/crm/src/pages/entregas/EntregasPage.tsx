@@ -252,9 +252,10 @@ export default function EntregasPage() {
           captureEvent('entregas_tour_dismissed', { step });
           markTourDone();
         },
+        postProcesses: postProcessesEnabled,
       }),
     );
-  }, [markTourDone]);
+  }, [markTourDone, postProcessesEnabled]);
 
   // Auto-start once on the first visit that shows the example board. Suppressed while the
   // new-workflow wizard is open (?novo-fluxo=1 deep link) so the two onboarding overlays
@@ -887,7 +888,12 @@ export default function EntregasPage() {
         </div>
       </header>
 
-      {explainerOpen && <ComoFuncionaPanel onDismiss={dismissExplainer} />}
+      {explainerOpen && (
+        <ComoFuncionaPanel
+          onDismiss={dismissExplainer}
+          postProcessesEnabled={postProcessesEnabled}
+        />
+      )}
 
       <VistasTabs
         contaId={contaId}
@@ -1052,6 +1058,7 @@ export default function EntregasPage() {
           onGoToKanban={() => {
             setActiveView('kanban');
             setEntidade('todos');
+            setMode('entregas');
           }}
         />
       )}
@@ -1066,6 +1073,7 @@ export default function EntregasPage() {
           onGoToKanban={() => {
             setActiveView('kanban');
             setEntidade('todos');
+            setMode('entregas');
           }}
         />
       )}

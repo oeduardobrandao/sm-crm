@@ -1783,6 +1783,39 @@ describe('EntregasPage', () => {
       expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?entidade=todos$/);
       expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
     });
+
+    it('link "Somente fluxos" clicado em modo Publicações também leva ao Kanban de Fluxos, não ao de Publicações', () => {
+      limitsMock.features = { feature_post_processes: true };
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map(),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+
+      // Starts on the Visão geral (Chart) tab while mode is 'publicacoes' (e.g. the user
+      // was just looking at the Publicações chart). onGoToKanban must reset `mode` too,
+      // not just `entidade` — otherwise the link lands on the Publicações board.
+      renderPage('/entregas?view=chart&mode=publicacoes');
+
+      fireEvent.click(screen.getByText('Chart somente fluxos'));
+
+      // mode=entregas is the default, so it — like the default view=kanban — is omitted
+      // from the URL; only entidade=todos shows up, same shape as the mode=entregas case.
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?entidade=todos$/);
+      expect(screen.getByText(/^Kanban view:/)).toBeInTheDocument();
+      expect(screen.queryByText(/^Posts kanban view:/)).toBeNull();
+      // EntidadeToggle only mounts when mode === 'entregas' (and the flag is on), so this
+      // confirms mode actually flipped back, not just that entidade and the URL did.
+      expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
+    });
   });
 });
 
