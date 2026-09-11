@@ -95,7 +95,7 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
   // dos sumários de fluxo acima.
   const { features } = useWorkspaceLimits();
   const postProcessesEnabled = features?.feature_post_processes === true;
-  const { data: vigente = EMPTY_PROCESSES } = useQuery({
+  const { data: vigente = EMPTY_PROCESSES, isLoading: vigenteLoading } = useQuery({
     queryKey: ['post-processes', 'vigentes'],
     queryFn: getVigentePostProcesses,
     enabled: postProcessesEnabled,
@@ -104,6 +104,10 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
     () => vigente.filter((p) => p.estado === 'concluido'),
     [vigente],
   );
+  // Só considera o carregamento dos processos quando a flag está ligada: com
+  // a flag desligada essa query nunca dispara (enabled: false) e seu
+  // isLoading fica num valor padrão que não deveria travar o guard abaixo.
+  const isLoadingCombined = isLoading || (postProcessesEnabled && vigenteLoading);
 
   const groups: ClientGroup[] = [];
   const clientMap = new Map<
@@ -154,11 +158,11 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
     });
   };
 
-  if (isLoading) {
+  if (isLoadingCombined) {
     return <div className="drawer-empty">Carregando...</div>;
   }
 
-  if (summaries.length === 0 && concludedProcesses.length === 0 && !isLoading) {
+  if (summaries.length === 0 && concludedProcesses.length === 0 && !isLoadingCombined) {
     return (
       <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
         {postProcessesEnabled

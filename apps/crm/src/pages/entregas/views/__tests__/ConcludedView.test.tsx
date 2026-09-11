@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -67,7 +67,7 @@ function renderView(onOpenPost = vi.fn()) {
       <ConcludedView onOpenPost={onOpenPost} />
     </QueryClientProvider>,
   );
-  return onOpenPost;
+  return { onOpenPost, qc };
 }
 
 describe('ConcludedView com processos individuais', () => {
@@ -85,7 +85,7 @@ describe('ConcludedView com processos individuais', () => {
   it('flag ligada: lista o processo concluído no grupo do cliente com a tag e abre o post', async () => {
     limitsMock.features = { feature_post_processes: true };
     store.getVigentePostProcesses.mockResolvedValueOnce([concluded] as never);
-    const onOpenPost = renderView();
+    const { onOpenPost } = renderView();
     fireEvent.click(await screen.findByText('Aurora'));
     expect(screen.getByText('Post concluído')).toBeInTheDocument();
     expect(screen.getByText('Post individual')).toBeInTheDocument();
@@ -101,5 +101,38 @@ describe('ConcludedView com processos individuais', () => {
     expect(
       await screen.findByText('Nenhum fluxo ou post individual concluído ainda.'),
     ).toBeInTheDocument();
+  });
+
+  it('flag ligada: não mostra o vazio prematuro enquanto os processos ainda carregam', async () => {
+    limitsMock.features = { feature_post_processes: true };
+    // getConcludedWorkflows resolve rápido (zero fluxos), mas getVigentePostProcesses
+    // fica pendente de propósito: o guard de vazio não pode renderizar antes dela
+    // resolver, mesmo com summaries e concludedProcesses ambos vazios nesse meio-tempo.
+    let resolveVigente: (value: unknown[]) => void = () => {};
+    store.getVigentePostProcesses.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveVigente = resolve;
+        }),
+    );
+    const { qc } = renderView();
+
+    // Espera a query de fluxos concluídos assentar (sucesso, sem fetch em
+    // voo) sem nunca resolver a de processos: é exatamente a janela em que
+    // o bug aparecia (isLoading dos fluxos já false, processos ainda pendente).
+    await waitFor(() => {
+      const state = qc.getQueryState(['concluded-workflows']);
+      expect(state?.status).toBe('success');
+      expect(state?.fetchStatus).toBe('idle');
+    });
+    expect(screen.queryByText('Nenhum fluxo ou post individual concluído ainda.')).toBeNull();
+    expect(screen.queryByText('Nenhum fluxo concluído ainda.')).toBeNull();
+    expect(screen.getByText('Carregando...')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveVigente([concluded]);
+    });
+    fireEvent.click(await screen.findByText('Aurora'));
+    expect(await screen.findByText('Post individual')).toBeInTheDocument();
   });
 });
