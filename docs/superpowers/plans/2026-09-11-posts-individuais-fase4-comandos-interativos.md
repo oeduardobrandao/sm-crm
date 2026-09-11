@@ -4072,10 +4072,20 @@ export function ApplyProcessDialog({ open, onClose, post, membros, onApplied }: 
   const [busy, setBusy] = useState(false);
   const template = templates.find((t) => t.id === templateId) ?? null;
 
+  // Reset only on open/target-post change — NOT on `cliente?.dia_entrega`. `getClientes` and
+  // `getWorkflowTemplates` are two independent queries; if templates resolve first, the user can
+  // already be picking a template and filling responsáveis/prazos before `getClientes` resolves.
+  // Keying this on `cliente?.dia_entrega` would then wipe that in-progress selection the instant
+  // the client query settles (P2 review finding, 2026-09-11 — confirmed against this exact code).
   useEffect(() => {
     if (!open) return;
-    setTemplateId(null); setStartOrdem(0); setResponsaveis({}); setFixedDates({});
-    setMonth(cliente?.dia_entrega ? monthKey(getNextDeliveryDate(cliente.dia_entrega)) : '');
+    setTemplateId(null); setStartOrdem(0); setResponsaveis({}); setFixedDates({}); setMonth('');
+  }, [open, post.id]);
+  // Delivery-month default is set separately, once the client's dia_entrega is known — this can
+  // still re-run after the reset above without touching template/responsável/prazo selections.
+  useEffect(() => {
+    if (!open || !cliente?.dia_entrega) return;
+    setMonth((m) => (m ? m : monthKey(getNextDeliveryDate(cliente.dia_entrega!))));
   }, [open, cliente?.dia_entrega]);
   useEffect(() => { setStartOrdem(0); setResponsaveis({}); setFixedDates({}); }, [templateId]);
 
@@ -4592,3 +4602,4 @@ Everything below is a decision the plan makes where the spec, the PO decisions o
 9. **Avançar vs Concluir on the card/header (Task 7):** one button whose label flips to "Concluir processo" when no later step is `pendente` (Decision 12 makes them mutually exclusive by state), so `no_next_step`/`pending_steps_remaining` are never the normal path.
 10. **Month input (Task 12) — RESOLVED.** Originally drafted as a native `<input type="month">` (unsupported on Firefox/Safari desktop — falls back to a plain text field, a real regression for this dialog's only job). Fixed to reuse `StepPrazos.tsx`'s existing, already-audited `mesesDeEntrega()` + shadcn `Select` pattern instead of introducing either the native input or the separate `components/ui/month-picker.tsx` component. `mesesDeEntrega` is exported (Task 12 Step 0) for this reuse; no new month-generation logic.
 11. **Contract test technique (Task 14):** service-role calls that must fail with a `P0001` identifier prove parameter-name resolution without seeding auth; the suite is skipped unless pointed at `127.0.0.1`/`localhost`.
+12. **`ApplyProcessDialog` reset effect (Task 12) — FIXED by external review, 2026-09-11.** The dialog's reset effect originally keyed on `[open, cliente?.dia_entrega]`, so a user picking a template and filling responsáveis/prazos while `getClientes` was still loading would have that entire selection silently wiped the instant the client query resolved (a P2 finding from an external review, confirmed against this exact code before applying the fix). Split into two effects: reset (`templateId`/`startOrdem`/`responsaveis`/`fixedDates`/`month`) keyed only on `[open, post.id]`, and a separate month-default effect keyed on `[open, cliente?.dia_entrega]` that only fills `month` when it's still empty, never overwriting the rest of the form.
