@@ -65,7 +65,8 @@ export function PostProductionSection({ process, postId, membros }: PostProducti
     : process.template_nome
       ? `Template: ${process.template_nome}`
       : 'Processo individual';
-  const nodes = buildPostTimeline({ created_at: undefined }, [], [], events).filter(
+  const processEvents = events.filter((e) => e.process_id === process.id);
+  const nodes = buildPostTimeline({ created_at: undefined }, [], [], processEvents).filter(
     (n) => n.kind === 'process',
   );
 

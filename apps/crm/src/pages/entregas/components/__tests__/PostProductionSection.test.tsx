@@ -135,4 +135,38 @@ describe('PostProductionSection', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0);
     await waitFor(() => expect(store.getPostProcessEvents).toHaveBeenCalledWith([77]));
   });
+
+  it('mostra só os eventos do processo atual, não os de um processo anterior do mesmo post', async () => {
+    store.getPostProcessEvents.mockResolvedValue([
+      {
+        id: 10,
+        conta_id: 'c',
+        post_id: 77,
+        process_id: 3,
+        evento: 'removido',
+        actor_user_id: null,
+        actor_name: 'Ana',
+        origem: 'workspace_user',
+        antes: null,
+        depois: null,
+        created_at: '2026-08-01T00:00:00Z',
+      },
+      {
+        id: 11,
+        conta_id: 'c',
+        post_id: 77,
+        process_id: 5,
+        evento: 'concluido',
+        actor_user_id: null,
+        actor_name: 'Ana',
+        origem: 'workspace_user',
+        antes: null,
+        depois: null,
+        created_at: '2026-09-10T00:00:00Z',
+      },
+    ]);
+    renderSection();
+    expect(await screen.findByText('Processo concluído')).toBeInTheDocument();
+    expect(screen.queryByText('Processo removido')).not.toBeInTheDocument();
+  });
 });
