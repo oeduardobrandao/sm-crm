@@ -1023,7 +1023,9 @@ export default function EntregasPage() {
       {activeView === 'list' &&
         (mode === 'entregas' ? (
           <ListView
-            cards={filteredCards}
+            cards={visibleCards}
+            postEntities={visiblePostEntities}
+            onPostClick={handlePostEntityClick}
             sort={listSort}
             onSortChange={setListSort}
             onCardClick={handleCardClick}

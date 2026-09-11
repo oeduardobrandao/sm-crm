@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ListView } from '../ListView';
+import type { PostEntity } from '../../boardEntity';
 
 function makeCard(overrides: Record<string, unknown> = {}) {
   return {
@@ -115,5 +116,72 @@ describe('ListView', () => {
     fireEvent.click(screen.getByText('Cliente'));
 
     expect(onSortChange).toHaveBeenCalledWith({ column: 'cliente', direction: 'desc' });
+  });
+});
+
+function makePostEntity(titulo: string, dias: number): PostEntity {
+  return {
+    kind: 'post',
+    id: 'post:9',
+    process: { id: 9, post_id: 90 } as never,
+    step: {} as never,
+    templateId: null,
+    steps: [],
+    etapaOrdem: 0,
+    etapaNome: 'Copy',
+    responsavel: { id: 2, nome: 'Bia' } as never,
+    prazoEfetivo: null,
+    posicao: 0,
+    deadline: { diasRestantes: dias, horasRestantes: 0, estourado: false, urgente: false },
+    cliente: { id: 1, nome: 'Aurora', cor: '#0f766e' } as never,
+    titulo,
+  };
+}
+
+describe('ListView com posts individuais', () => {
+  it('lista o post com a tag Individual, etapa e responsável da etapa, e abre pelo onPostClick', () => {
+    const onPostClick = vi.fn();
+    render(
+      <ListView
+        cards={[makeCard() as never]}
+        postEntities={[makePostEntity('Post Z', 1)]}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+        onPostClick={onPostClick}
+      />,
+    );
+    expect(screen.getByText('Individual')).toBeInTheDocument();
+    expect(screen.getByText('Bia')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Post Z'));
+    expect(onPostClick).toHaveBeenCalledWith(expect.objectContaining({ id: 'post:9' }));
+  });
+
+  it('ordena fluxos e posts juntos por prazo', () => {
+    render(
+      <ListView
+        cards={[makeCard() as never]} // 3d restantes
+        postEntities={[makePostEntity('Post Z', 1)]}
+        sort={{ column: 'prazo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+      />,
+    );
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('Post Z');
+    expect(rows[1]).toHaveTextContent('Fluxo Base');
+  });
+
+  it('sem cards mas com posts não mostra o estado vazio', () => {
+    render(
+      <ListView
+        cards={[]}
+        postEntities={[makePostEntity('Post Z', 1)]}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('Nenhuma entrega encontrada. Ajuste os filtros.')).toBeNull();
   });
 });
