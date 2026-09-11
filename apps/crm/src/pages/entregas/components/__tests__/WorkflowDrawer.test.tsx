@@ -81,6 +81,7 @@ vi.mock('@/store', () => ({
   sendPostsToCliente: vi.fn(),
   getPostApprovals: vi.fn(async () => []),
   getPostStatusEvents: vi.fn(async () => []),
+  getPostProcessEvents: vi.fn(async () => []),
   replyToPostApproval: vi.fn(),
   completeEtapa: vi.fn(),
   getPostCommentThreads: vi.fn(async () => []),

@@ -22,6 +22,7 @@ const store = vi.hoisted(() => ({
   sendPostsToCliente: vi.fn(),
   getPostApprovals: vi.fn().mockResolvedValue([]),
   getPostStatusEvents: vi.fn().mockResolvedValue([]),
+  getPostProcessEvents: vi.fn().mockResolvedValue([]),
   replyToPostApproval: vi.fn(),
   getPostCommentThreads: vi.fn().mockResolvedValue([]),
   createCommentThread: vi.fn(),
