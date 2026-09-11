@@ -1547,6 +1547,60 @@ describe('EntregasPage', () => {
     fireEvent.click(screen.getByText('Filter prazo atrasado'));
     expect(screen.getByText('Posts kanban view: 1')).toBeInTheDocument();
   });
+
+  describe('filtro de entidade', () => {
+    it('flag desligada: sem toggle, sem entidade na URL e sem chave nova no localStorage', () => {
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(screen.queryByRole('radiogroup', { name: 'Entidades do quadro' })).toBeNull();
+      // PathProbe reads the MemoryRouter's own useLocation(), which DOES reflect
+      // setSearchParams -- so this is a real assertion on the synced URL, not
+      // just an inference from the viewQuery unit tests.
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      expect(localStorage.getItem('entregas_entidade_conta-1')).toBeNull();
+
+      // Switching views/mode is exactly what would otherwise trigger the
+      // persist effect and the URL sync; confirm the guarantee survives that.
+      fireEvent.click(screen.getByText('Lista'));
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=list$/);
+      expect(localStorage.getItem('entregas_entidade_conta-1')).toBeNull();
+    });
+
+    it('flag ligada e navegador novo: começa em Todos; com entregas_last_mode gravado começa em Fluxos', () => {
+      limitsMock.features = { feature_post_processes: true };
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('com entregas_last_mode gravado começa em Fluxos', () => {
+      limitsMock.features = { feature_post_processes: true };
+      localStorage.setItem('entregas_last_mode_conta-1', 'entregas');
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(screen.getByRole('radio', { name: 'Fluxos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('?entidade=posts na URL vence a preferência local', () => {
+      limitsMock.features = { feature_post_processes: true };
+      localStorage.setItem('entregas_entidade_conta-1', 'todos');
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map(),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?entidade=posts');
+      expect(screen.getByRole('radio', { name: 'Posts individuais' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+  });
 });
 
 describe('EntregasPage — painel "Como funciona"', () => {

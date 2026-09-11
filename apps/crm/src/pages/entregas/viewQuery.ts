@@ -8,6 +8,12 @@ import { PRAZO_PRESET_ORDER } from './etapaPrazo';
 
 export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded';
 
+/** Spec §4.1: filtro de entidade do quadro de Fluxos. `fluxos` é o default do
+ *  parser/serializador para que vistas salvas antigas continuem casando por
+ *  igualdade de string enquanto o quadro estiver em Fluxos. */
+export type EntidadeFilter = 'todos' | 'fluxos' | 'posts';
+const ENTIDADES: readonly EntidadeFilter[] = ['todos', 'fluxos', 'posts'];
+
 const VIEWS: readonly ActiveView[] = ['kanban', 'chart', 'calendar', 'list', 'concluded'];
 const STATUS_VALUES: readonly StatusFilter[] = ['atrasado', 'urgente', 'em_dia'];
 
@@ -15,6 +21,8 @@ export interface EntregasViewState {
   view: ActiveView;
   /** Mode of the ACTIVE view (only meaningful for kanban/calendar/list). */
   mode: EntregasMode;
+  /** Only meaningful for kanban/list in mode 'entregas'. */
+  entidade: EntidadeFilter;
   filters: FilterState;
 }
 
@@ -30,6 +38,7 @@ export function serializeEntregasQuery(state: EntregasViewState): string {
   const p = new URLSearchParams();
   if (state.view !== 'kanban') p.set('view', state.view);
   if (state.mode !== 'entregas') p.set('mode', state.mode);
+  if (state.entidade !== 'fluxos') p.set('entidade', state.entidade);
 
   const f = state.filters;
   if (f.filterSearch) p.set('q', f.filterSearch);
@@ -55,6 +64,10 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
   const rawView = p.get('view') as ActiveView | null;
   const view = rawView && VIEWS.includes(rawView) ? rawView : 'kanban';
   const mode: EntregasMode = p.get('mode') === 'publicacoes' ? 'publicacoes' : 'entregas';
+
+  const rawEntidade = p.get('entidade') as EntidadeFilter | null;
+  const entidade: EntidadeFilter =
+    rawEntidade && ENTIDADES.includes(rawEntidade) ? rawEntidade : 'fluxos';
 
   const nums = (key: string) =>
     p
@@ -86,5 +99,5 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
     filterPrazoTo: day('ate'),
   };
 
-  return { view, mode, filters };
+  return { view, mode, entidade, filters };
 }

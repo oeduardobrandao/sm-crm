@@ -49,17 +49,26 @@ import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { StandalonePostDrawer } from './components/StandalonePostDrawer';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
+import { EntidadeToggle } from './components/EntidadeToggle';
 import { VistasTabs } from './components/VistasTabs';
 import { useActivePosts } from './hooks/useActivePosts';
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
-import { parseEntregasQuery, serializeEntregasQuery, type ActiveView } from './viewQuery';
+import {
+  parseEntregasQuery,
+  serializeEntregasQuery,
+  type ActiveView,
+  type EntidadeFilter,
+} from './viewQuery';
 import { postMatchesStatusFilter } from './statusRegistry';
 import {
   loadLastMode,
   persistLastMode,
   loadBoardColumnSorts,
   persistBoardColumnSort,
+  loadLastEntidade,
+  persistLastEntidade,
+  hasLastMode,
 } from './entregasPrefs';
 import type { BoardColumnSort } from './postsBoardOrder';
 import {
@@ -87,6 +96,7 @@ export default function EntregasPage() {
   // `mode` back into the URL for a non-default mode, so reading this as a plain
   // (non-ref) value would flip once that happens and re-seed from the URL forever.
   const hadModeParam = useRef(searchParams.has('mode')).current;
+  const hadEntidadeParam = useRef(searchParams.has('entidade')).current;
   // Parsed exactly once: the URL is only an INPUT at mount time; afterwards the
   // page state is the source of truth and the sync effect below writes it back.
   const initialQuery = useRef(parseEntregasQuery(searchParams)).current;
@@ -122,6 +132,16 @@ export default function EntregasPage() {
   const [mode, setMode] = useState<EntregasMode>(() =>
     hadModeParam ? initialQuery.mode : loadLastMode(contaId),
   );
+  // Filtro de entidade do quadro de Fluxos (spec §4.1). URL vence a preferência
+  // local; sem as duas, quem já usou Entregas neste navegador começa em Fluxos e
+  // quem nunca usou começa em Todos. Só é consumido através de effectiveEntidade.
+  const [entidade, setEntidade] = useState<EntidadeFilter>(() => {
+    if (hadEntidadeParam) return initialQuery.entidade;
+    return loadLastEntidade(contaId) ?? (hasLastMode(contaId) ? 'fluxos' : 'todos');
+  });
+  // Flag desligada: o quadro é sempre o de fluxos, a URL não ganha ?entidade= e
+  // nenhuma chave nova entra no localStorage.
+  const effectiveEntidade: EntidadeFilter = postProcessesEnabled ? entidade : 'fluxos';
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
@@ -326,7 +346,15 @@ export default function EntregasPage() {
     activeView === 'kanban' || activeView === 'calendar' || activeView === 'list'
       ? mode
       : 'entregas';
-  const currentQuery = serializeEntregasQuery({ view: activeView, mode: activeMode, filters });
+  const currentQuery = serializeEntregasQuery({
+    view: activeView,
+    mode: activeMode,
+    entidade:
+      activeMode === 'entregas' && (activeView === 'kanban' || activeView === 'list')
+        ? effectiveEntidade
+        : 'fluxos',
+    filters,
+  });
   useEffect(() => {
     // `currentQuery` alone — the transient ?drawer=/?post= params are deliberately dropped.
     // They were previously carried over from `prev`, but `prev` is the render-time snapshot,
@@ -344,6 +372,13 @@ export default function EntregasPage() {
       persistLastMode(contaId, activeMode);
     }
   }, [activeView, activeMode, contaId]);
+
+  useEffect(() => {
+    if (!postProcessesEnabled) return;
+    if ((activeView === 'kanban' || activeView === 'list') && activeMode === 'entregas') {
+      persistLastEntidade(contaId, effectiveEntidade);
+    }
+  }, [postProcessesEnabled, activeView, activeMode, effectiveEntidade, contaId]);
 
   useEffect(() => {
     if (pendingDeepLink === null || pendingDeepLink.workflowId == null) return;
@@ -544,6 +579,7 @@ export default function EntregasPage() {
     setActiveView(parsed.view);
     if (parsed.view === 'kanban' || parsed.view === 'calendar' || parsed.view === 'list') {
       setMode(parsed.mode);
+      setEntidade(parsed.entidade);
     }
     setFilters(parsed.filters);
   };
@@ -873,6 +909,12 @@ export default function EntregasPage() {
         {(activeView === 'kanban' || activeView === 'list' || activeView === 'calendar') && (
           <ModeToggle mode={mode} onModeChange={setMode} />
         )}
+
+        {postProcessesEnabled &&
+          (activeView === 'kanban' || activeView === 'list') &&
+          mode === 'entregas' && (
+            <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+          )}
 
         {showFilters && (
           <EntregasFilters

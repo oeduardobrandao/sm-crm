@@ -1,4 +1,5 @@
 import type { EntregasMode } from './components/ModeToggle';
+import type { EntidadeFilter } from './viewQuery';
 import { BOARD_COLUMN_SORTS, type BoardColumnSort } from './postsBoardOrder';
 
 /** Ordenacao de uma coluna (etapa) do board de Fluxos: 'prazo' (padrao,
@@ -60,6 +61,40 @@ export function persistLastMode(contaId: string, mode: EntregasMode): void {
     localStorage.setItem(storageKey(contaId), mode);
   } catch {
     // Private browsing / storage full -- the preference just doesn't survive a reload.
+  }
+}
+
+const entidadeKey = (contaId: string) => `entregas_entidade_${contaId}`;
+const ENTIDADES: EntidadeFilter[] = ['todos', 'fluxos', 'posts'];
+
+/** Último filtro de entidade do quadro de Fluxos, por conta. null quando não
+ *  há preferência gravada (ou o valor é lixo) -- a página então decide entre
+ *  Fluxos e Todos pelo proxy hasLastMode (spec §4.1). */
+export function loadLastEntidade(contaId: string): EntidadeFilter | null {
+  try {
+    const raw = localStorage.getItem(entidadeKey(contaId));
+    return raw && (ENTIDADES as string[]).includes(raw) ? (raw as EntidadeFilter) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function persistLastEntidade(contaId: string, entidade: EntidadeFilter): void {
+  try {
+    localStorage.setItem(entidadeKey(contaId), entidade);
+  } catch {
+    // Best effort: a preferência só não sobrevive ao reload.
+  }
+}
+
+/** "Já usou Entregas neste navegador": a chave de modo existe, qualquer valor.
+ *  loadLastMode não serve porque devolve 'entregas' tanto para ausente quanto
+ *  para o valor gravado. */
+export function hasLastMode(contaId: string): boolean {
+  try {
+    return localStorage.getItem(storageKey(contaId)) !== null;
+  } catch {
+    return false;
   }
 }
 
