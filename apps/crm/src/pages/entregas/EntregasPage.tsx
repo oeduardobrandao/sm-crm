@@ -1092,7 +1092,15 @@ export default function EntregasPage() {
             processEtapaByPostId={processEtapaByPostId}
           />
         ))}
-      {activeView === 'concluded' && <ConcludedView />}
+      {activeView === 'concluded' && (
+        <ConcludedView
+          onOpenPost={(postId) => {
+            setDrawerCard(null);
+            setDrawerInitialPostId(null);
+            setStandalonePostId(postId);
+          }}
+        />
+      )}
 
       {newWorkflowOpen && (
         <NewWorkflowWizard
