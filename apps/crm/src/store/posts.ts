@@ -947,10 +947,17 @@ export async function createAvulsoPost(p: {
 /** Postgres deadlock SQLSTATE. detach_posts_from_flow/attach_posts_to_flow can
  * rarely deadlock against the (unrelated, pre-existing) workflow-client-move
  * trigger path -- a documented, self-recovering residual case (see the
- * migration's header comment) -- so both RPC wrappers retry exactly once. */
+ * migration's header comment) -- so both RPC wrappers retry exactly once.
+ *
+ * Retry semantics for callers: the SAME closure is re-invoked, so every value
+ * it captured (post ids, fingerprint, and for detach_posts_keeping_process the
+ * `p_request_id`) is resent unchanged. That is what makes the fase-2 batch
+ * idempotency work: generate the request id OUTSIDE the closure (spec §9.4)
+ * and the retry is recognized server-side as the same attempt. Never generate
+ * an id inside `invoke`. */
 const POSTGRES_DEADLOCK_ERRCODE = '40P01';
 
-async function callRpcWithDeadlockRetry<T>(
+export async function callRpcWithDeadlockRetry<T>(
   invoke: () => PromiseLike<{ data: T | null; error: { code?: string } | null }>,
 ): Promise<T> {
   let { data, error } = await invoke();
