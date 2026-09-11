@@ -1,6 +1,7 @@
 import React from 'react';
-import { act, render } from '@testing-library/react';
+import { act, render as rtlRender } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Mesma técnica do PostsKanbanView.test.tsx (view diferente, mesmo dnd-kit):
 // mocka @dnd-kit/core e @dnd-kit/sortable para capturar os handlers que o
@@ -61,6 +62,14 @@ const store = vi.hoisted(() => ({
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
   reorderFluxosBoard: vi.fn().mockResolvedValue(undefined),
+  // Fase 4: usePostProcessCommands (chamado incondicionalmente pelo
+  // KanbanView) importa estes três do store. O único teste deste arquivo
+  // arrasta um FLUXO (não um post), então não os exercita, mas o módulo
+  // precisa resolver os nomes.
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  updateWorkflowPost: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   getDeadlineInfo: vi.fn(),
   addWorkflow: vi.fn(),
   addWorkflowEtapa: vi.fn(),
@@ -106,6 +115,13 @@ import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import type { PostEntity } from '../../boardEntity';
 
+// usePostProcessCommands usa useQueryClient (fase 4): todo render do
+// KanbanView agora precisa de um QueryClientProvider por cima.
+function render(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
 const ETAPAS = [
   { id: 1, ordem: 0, nome: 'Copy', tipo: 'padrao' as const },
   { id: 2, ordem: 1, nome: 'Design', tipo: 'padrao' as const },
@@ -140,10 +156,28 @@ const workflowCard: BoardCard = {
   allEtapas: ETAPAS,
 } as unknown as BoardCard;
 
+// process.steps/etapa_atual/post precisam ser realistas (fase 4): o
+// SortablePostCard, real dentro do KanbanView (só o PostProcessCard é
+// mockado), chama previousStepOf/forwardLabelFor sobre entity.process mesmo
+// quando o único drag testado aqui é o de um FLUXO -- um `as never` vazio
+// quebra em runtime ao montar a coluna mista.
 const postProcessCard: PostEntity = {
   kind: 'post',
   id: 'post:9',
-  process: { id: 9, post_id: 109, template_id: 7 } as never,
+  process: {
+    id: 9,
+    post_id: 109,
+    template_id: 7,
+    etapa_atual: 1,
+    revisao: 1,
+    steps: ETAPAS.map((e) => ({
+      ordem: e.ordem,
+      nome: e.nome,
+      tipo: e.tipo,
+      estado: e.ordem === 1 ? 'ativo' : e.ordem < 1 ? 'concluido' : 'pendente',
+    })),
+    post: { id: 109, titulo: 'Post Individual A', status: 'rascunho', cliente_id: null },
+  } as never,
   step: { ordem: 1 } as never,
   templateId: 7,
   steps: ETAPAS.map((e) => ({ ordem: e.ordem, nome: e.nome, tipo: e.tipo })),

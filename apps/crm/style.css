@@ -6065,6 +6065,14 @@ body.role-agent input[name='valor_total'] {
   margin-top: 0.15rem;
 }
 
+/* Card de post individual (fase 4, spec §4.2): botões só ícone (Voltar,
+   Avançar/Concluir) e a alça de arrastar, não os botões de largura total do
+   fluxo -- sem isto o `flex: 1 1 auto` genérico acima estica os ícones para
+   dividir a largura da coluna. */
+.board-card--post .board-card-actions button {
+  flex: 0 0 auto;
+}
+
 .board-card-actions button {
   display: flex;
   align-items: center;

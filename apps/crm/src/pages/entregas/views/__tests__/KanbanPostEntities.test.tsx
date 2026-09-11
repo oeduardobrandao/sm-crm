@@ -1,6 +1,7 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
@@ -11,6 +12,10 @@ const store = vi.hoisted(() => ({
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
   reorderFluxosBoard: vi.fn(),
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  updateWorkflowPost: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   getDeadlineInfo: vi.fn(),
   addWorkflow: vi.fn(),
   addWorkflowEtapa: vi.fn(),
@@ -56,9 +61,36 @@ vi.mock('../../components/WorkflowCard', () => ({
   ),
 }));
 vi.mock('../../components/PostProcessCard', () => ({
-  PostProcessCard: ({ entity, onClick }: { entity: { titulo: string }; onClick?: () => void }) => (
+  PostProcessCard: ({
+    entity,
+    onClick,
+    onForwardClick,
+    onRevertClick,
+    dragHandle,
+    forwardLabel,
+    canRevert,
+  }: {
+    entity: { titulo: string };
+    onClick?: () => void;
+    onForwardClick?: () => void;
+    onRevertClick?: () => void;
+    dragHandle?: React.ReactNode;
+    forwardLabel?: string;
+    canRevert?: boolean;
+  }) => (
     <div data-testid="post-process-card" onClick={onClick}>
       {entity.titulo}
+      {dragHandle && <span data-testid="drag-handle" />}
+      {onForwardClick && (
+        <button type="button" onClick={onForwardClick}>
+          {forwardLabel ?? 'Avançar etapa'}
+        </button>
+      )}
+      {canRevert && onRevertClick && (
+        <button type="button" onClick={onRevertClick}>
+          Voltar etapa
+        </button>
+      )}
     </div>
   ),
 }));
@@ -66,6 +98,14 @@ vi.mock('../../components/PostProcessCard', () => ({
 import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import type { PostEntity } from '../../boardEntity';
+
+// usePostProcessCommands usa useQueryClient (fase 4): todo render do KanbanView
+// agora precisa de um QueryClientProvider por cima, mesmo em testes que só
+// exercitam fluxos.
+function render(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const ETAPAS = [
   { id: 1, ordem: 0, nome: 'Copy', tipo: 'padrao' as const },
@@ -98,12 +138,32 @@ const card = {
   allEtapas: ETAPAS,
 } as unknown as BoardCard;
 
+// process.steps/etapa_atual/post precisam ser realistas (fase 4): o
+// SortablePostCard, real dentro do KanbanView (só o PostProcessCard é
+// mockado), chama previousStepOf/nextPendingStepOf/canConcluir/forwardLabelFor
+// sobre entity.process para montar canRevert/forwardLabel e o targetOf usado
+// pelos comandos -- essas funções leem process.steps/etapa_atual/post de
+// verdade, um `as never` vazio quebra em runtime.
 function postEntity(id: number, ordem: number, titulo: string): PostEntity {
   const steps = ETAPAS.map((e) => ({ ordem: e.ordem, nome: e.nome, tipo: e.tipo }));
+  const processSteps = ETAPAS.map((e) => ({
+    ordem: e.ordem,
+    nome: e.nome,
+    tipo: e.tipo,
+    estado: e.ordem === ordem ? 'ativo' : e.ordem < ordem ? 'concluido' : 'pendente',
+  }));
   return {
     kind: 'post',
     id: `post:${id}`,
-    process: { id, post_id: 100 + id, template_id: 7 } as never,
+    process: {
+      id,
+      post_id: 100 + id,
+      template_id: 7,
+      etapa_atual: ordem,
+      revisao: 1,
+      steps: processSteps,
+      post: { id: 100 + id, titulo, status: 'rascunho', cliente_id: null },
+    } as never,
     step: { ordem } as never,
     templateId: 7,
     steps,
@@ -143,13 +203,16 @@ function renderBoard(posts: PostEntity[], onPostClick = vi.fn()) {
 }
 
 describe('KanbanView com posts individuais', () => {
-  it('renderiza o post na coluna da própria etapa, sem alça, e divide a contagem por tipo', () => {
+  // Antes da fase 4 os posts não tinham alça (só o fluxo, length 1); a fase 4
+  // torna o post individual arrastável, então os dois posts também mostram a
+  // alça agora -- 1 fluxo + 2 posts.
+  it('renderiza o post na coluna da própria etapa, com alça de arrastar, e divide a contagem por tipo', () => {
     renderBoard([postEntity(9, 1, 'Post Individual A'), postEntity(10, 0, 'Post Individual B')]);
     expect(screen.getByText('Fluxo A')).toBeInTheDocument();
     expect(screen.getAllByTestId('post-process-card')).toHaveLength(2);
     expect(screen.getByText('1 fluxo · 1 post')).toBeInTheDocument(); // coluna Design
     expect(screen.getByText('1')).toBeInTheDocument(); // coluna Copy: só posts
-    expect(screen.getAllByTestId('drag-handle')).toHaveLength(1); // só o fluxo
+    expect(screen.getAllByTestId('drag-handle')).toHaveLength(3); // fluxo + 2 posts (fase 4)
   });
 
   it('clicar no card do post chama onPostClick com a entidade', () => {
@@ -180,5 +243,31 @@ describe('KanbanView com posts individuais', () => {
     );
     expect(screen.getByText('Só post')).toBeInTheDocument();
     expect(screen.queryByText(/Nenhum fluxo ou post individual encontrado/)).toBeNull();
+  });
+
+  it('post na coluna: botão Avançar abre a confirmação e chama transition_post_process', async () => {
+    store.transitionPostProcess.mockResolvedValue({
+      ok: true,
+      revisao: 2,
+      post_status: 'rascunho',
+      post_status_changed: false,
+      steps: [],
+    });
+    // ordem 0 (Copy): tem uma próxima etapa pendente (Design), então o rótulo
+    // é "Avançar etapa" e não "Concluir processo".
+    const entity = postEntity(9, 0, 'Post Individual A');
+    renderBoard([entity]);
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar etapa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
+    await waitFor(() =>
+      expect(store.transitionPostProcess).toHaveBeenCalledWith(
+        expect.objectContaining({ command: 'avancar', processId: entity.process.id }),
+      ),
+    );
+  });
+
+  it('post na coluna tem alça de arrastar', () => {
+    renderBoard([postEntity(9, 0, 'Post Individual A')]);
+    expect(screen.getAllByTestId('drag-handle').length).toBeGreaterThan(0);
   });
 });

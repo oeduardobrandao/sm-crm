@@ -50,6 +50,7 @@ import {
 } from '../boardRows';
 import type { BoardRow, BoardColumn } from '../boardRows';
 import {
+  toWorkflowEntity,
   toWorkflowEntities,
   sortEntitiesByPrazo,
   sortEntitiesByPosicao,
@@ -75,6 +76,14 @@ import {
   ForwardConfirmDialog,
   ClientApprovalChoiceDialog,
 } from '../components/WorkflowModals';
+import {
+  previousStepOf,
+  nextPendingStepOf,
+  forwardLabelFor,
+  canConcluir,
+  type ProcessTarget,
+} from '../postProcessCommands';
+import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 
 interface KanbanViewBaseProps {
   /** Persistencia das prefs de ordenacao por coluna; opcional para os testes. */
@@ -248,6 +257,23 @@ function DroppableColumnBody({
   );
 }
 
+// Monta o ProcessTarget que usePostProcessCommands espera a partir de um
+// PostEntity do quadro (spec §12.2: drag e botão chamam o MESMO comando com o
+// MESMO target). Função pura de módulo -- não depende de estado do
+// componente, então tanto o render (botões) quanto handleDragEnd (drag) usam
+// a mesma sem duplicar a montagem.
+function targetOf(p: PostEntity): ProcessTarget {
+  return {
+    process: p.process,
+    post: {
+      id: p.process.post_id,
+      titulo: p.titulo,
+      status: p.process.post.status,
+      cliente_id: p.process.post.cliente_id,
+    },
+  };
+}
+
 // Draggable card wrapper
 function SortableCard({
   card,
@@ -309,20 +335,44 @@ function SortableCard({
   );
 }
 
-// Post individual na coluna: registrado no SortableContext com o draggable
-// desligado e o droppable ligado. Nunca arrastável nesta fase (sem
-// `attributes`/`listeners` de propósito), mas o dnd-kit mede o retângulo dele
-// e um fluxo solto sobre o card resolve a coluna via findCardColumn.
-// `disabled: true` desligaria o droppable também (Disabled = { draggable?,
-// droppable? } em @dnd-kit/sortable) e over.id nunca seria um id de post.
-function SortablePostCard({ entity, onClick }: { entity: PostEntity; onClick?: () => void }) {
-  const { setNodeRef, transform, transition } = useSortable({
+// Post individual na coluna (fase 4): agora arrastável, mesma forma que
+// SortableCard -- attributes no wrapper, listeners na alça (GripVertical).
+// canRevert/forwardLabel vêm das mesmas funções puras que decidem o alvo do
+// drag em handleDragEnd (spec §12.2: drag e botão dão o mesmo resultado).
+function SortablePostCard({
+  entity,
+  onClick,
+  onForwardClick,
+  onRevertClick,
+}: {
+  entity: PostEntity;
+  onClick?: () => void;
+  onForwardClick: () => void;
+  onRevertClick?: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entity.id,
-    disabled: { draggable: true, droppable: false },
   });
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
-      <PostProcessCard entity={entity} onClick={onClick} />
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.3 : 1,
+        position: 'relative',
+      }}
+      {...attributes}
+    >
+      <PostProcessCard
+        entity={entity}
+        onClick={onClick}
+        dragHandle={<GripVertical className="h-4 w-4" {...listeners} />}
+        onForwardClick={onForwardClick}
+        onRevertClick={onRevertClick}
+        canRevert={previousStepOf(entity.process) != null}
+        forwardLabel={forwardLabelFor(entity.process)}
+      />
     </div>
   );
 }
@@ -372,6 +422,11 @@ export function KanbanView({
   // Mesma ideia de pendingPositions, chaveado por process id: posicao otimista
   // de um post reordenado (board_position) até o refetch refletir.
   const [pendingPostPositions, setPendingPostPositions] = useState<Map<number, number>>(new Map());
+  // Etapa otimista de um post (process id -> ordem) entre o clique/drag e o
+  // refetch que reflete a transição (fase 4). Alimentado por
+  // usePostProcessCommands({ onOptimisticStep }); liberado no mesmo efeito de
+  // catch-up de pendingEtapas/pendingPositions abaixo.
+  const [pendingPostSteps, setPendingPostSteps] = useState<Map<number, number>>(new Map());
   // Ordenacao por coluna: 'prazo' (padrao, atrasados primeiro) ou 'manual'.
   // Um drag dentro da coluna materializa a ordem visual em positions e troca a
   // coluna para 'manual'; o menu do header volta para 'prazo' quando quiser.
@@ -408,16 +463,20 @@ export function KanbanView({
     },
     [displayCards, sortModeFor],
   );
-  const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
+  // Entidade sob o DragOverlay: fluxo ou post (fase 4), nunca um BoardCard
+  // sintético -- o overlay lê a entidade real (WorkflowEntity | PostEntity) e
+  // decide o componente a renderizar pelo `kind`.
+  const [activeEntity, setActiveEntity] = useState<BoardEntity | null>(null);
   // Valid adjacent column currently hovered during a drag ("rowKey::ordem"),
   // plus the dragged card's height so the slot opens exactly its size.
   const [dropSlot, setDropSlot] = useState<{ colKey: string; index: number } | null>(null);
   const [dragHeight, setDragHeight] = useState(120);
   // Cross-column drop position, captured at drag end and applied after the
-  // (possibly dialog-gated) advance/revert persists. Keyed by workflow id so a
-  // cancelled drag can never leak its position into a button-initiated move.
+  // (possibly dialog-gated) advance/revert persists. Keyed pelo sortable id
+  // (fluxo ou post, fase 4) so a cancelled drag can never leak its position
+  // into a button-initiated move.
   const pendingInsertRef = useRef<{
-    wfId: number;
+    movedId: BoardSortableId;
     ids: BoardSortableId[];
     optimisticPos: number;
   } | null>(null);
@@ -430,6 +489,42 @@ export function KanbanView({
   } | null>(null);
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
+  // Comandos de um processo individual (Task 7), compartilhados pelos botões
+  // Avançar/Voltar do card e pelo drag entre colunas (spec §12.2: o MESMO
+  // comando/target dos dois gestos). onOptimisticStep alimenta o overlay
+  // pendingPostSteps; ordem === null é rollback e também limpa uma posição de
+  // drag ainda pendente para este processo -- um comando disparado por botão
+  // nunca deve herdar a posição de um drag cancelado de OUTRO post.
+  const commands = usePostProcessCommands({
+    onRefresh,
+    onOptimisticStep: (processId, ordem) => {
+      if (ordem == null && pendingInsertRef.current?.movedId === `post:${processId}`) {
+        pendingInsertRef.current = null;
+      }
+      setPendingPostSteps((prev) => {
+        const next = new Map(prev);
+        if (ordem == null) next.delete(processId);
+        else next.set(processId, ordem);
+        return next;
+      });
+    },
+  });
+
+  // Grava a ordem completa (índice = posição): sem post na coluna é o
+  // reorder_workflow_positions de sempre; com post, a RPC mista
+  // reorder_fluxos_board grava os dois tipos no mesmo espaço (spec §4.2).
+  // Declarado ANTES do efeito de catch-up abaixo (que agora também persiste a
+  // posição de um post arrastado, fase 4) -- TS2448/2454 bloqueiam uma
+  // closure referenciando um `const` de módulo declarado mais abaixo no MESMO
+  // escopo de função, mesmo quando só roda depois (efeito assíncrono).
+  const persistColumnOrder = useCallback(async (orderedIds: BoardSortableId[]) => {
+    const plan = planColumnPersist(orderedIds);
+    if (plan.kind === 'workflows') {
+      await updateWorkflowPositions(plan.updates);
+    } else {
+      await reorderFluxosBoard(plan.args);
+    }
+  }, []);
 
   // Drop overlay entries the server already reflects. A cross-column insert
   // stores a FRACTIONAL position (e.g. 0.5) that the persisted integer will
@@ -437,12 +532,26 @@ export function KanbanView({
   // overlay: the refetch that reflects the move also carries the renumbered
   // positions.
   useEffect(() => {
-    if (pendingEtapas.size === 0 && pendingPositions.size === 0 && pendingPostPositions.size === 0)
+    if (
+      pendingEtapas.size === 0 &&
+      pendingPositions.size === 0 &&
+      pendingPostPositions.size === 0 &&
+      pendingPostSteps.size === 0
+    )
       return;
     const movedCaughtUp = new Set<number>();
     for (const c of allCards ?? cards) {
       const pe = pendingEtapas.get(c.workflow.id!);
       if (pe && pe.id === c.etapa.id) movedCaughtUp.add(c.workflow.id!);
+    }
+    const currentPosts = allPostEntities ?? postEntities ?? EMPTY_POST_ENTITIES;
+    // Um post "pega" a etapa otimista quando o servidor já reflete a mesma
+    // ordem, OU quando o processo some da lista (concluído/removido): os dois
+    // casos liberam o overlay do mesmo jeito.
+    const postStepsCaughtUp = new Set<number>();
+    for (const [processId, ordem] of pendingPostSteps) {
+      const p = currentPosts.find((x) => x.process.id === processId);
+      if (!p || p.process.etapa_atual === ordem) postStepsCaughtUp.add(processId);
     }
     setPendingEtapas((prev) => {
       if (prev.size === 0) return prev;
@@ -463,12 +572,32 @@ export function KanbanView({
     setPendingPostPositions((prev) => {
       if (prev.size === 0) return prev;
       const next = new Map(prev);
-      for (const p of allPostEntities ?? postEntities ?? EMPTY_POST_ENTITIES) {
+      for (const p of currentPosts) {
         const pp = next.get(p.process.id);
         if (pp !== undefined && p.posicao === pp) next.delete(p.process.id);
       }
       return next.size === prev.size ? prev : next;
     });
+    setPendingPostSteps((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map(prev);
+      for (const id of postStepsCaughtUp) next.delete(id);
+      return next.size === prev.size ? prev : next;
+    });
+    // A posição de um post solto entre colunas (fase 4) só é persistida depois
+    // que o comando (avancar/voltar) confirma -- aqui, quando pendingPostSteps
+    // libera o processo. Mesmo best-effort/console.warn do caminho de fluxo:
+    // a etapa já mudou, a posição é cosmética.
+    for (const id of postStepsCaughtUp) {
+      const movedId = `post:${id}`;
+      if (pendingInsertRef.current?.movedId === movedId) {
+        const insert = pendingInsertRef.current;
+        pendingInsertRef.current = null;
+        persistColumnOrder(insert.ids).catch((err) => {
+          console.warn('[entregas] falha ao gravar posição após mover etapa', err);
+        });
+      }
+    }
   }, [
     cards,
     allCards,
@@ -477,6 +606,8 @@ export function KanbanView({
     pendingEtapas,
     pendingPositions,
     pendingPostPositions,
+    pendingPostSteps,
+    persistColumnOrder,
   ]);
 
   const localCards = useMemo(() => {
@@ -496,15 +627,29 @@ export function KanbanView({
   // Overlay otimista de post_processes.board_position, na mesma linha de
   // applyOverlays acima mas para posts: aplicado tanto na lista visível
   // quanto na coluna INTEIRA (allPosts), espelhando localCards/localAllCards.
+  // Fase 4 estende para a etapa otimista (pendingPostSteps): o post muda de
+  // coluna assim que o botão/drag dispara o comando, sem esperar o refetch.
   const applyPostOverlay = useCallback(
-    (list: PostEntity[]): PostEntity[] =>
-      pendingPostPositions.size === 0
-        ? list
-        : list.map((p) => {
-            const pp = pendingPostPositions.get(p.process.id);
-            return pp !== undefined && pp !== p.posicao ? { ...p, posicao: pp } : p;
-          }),
-    [pendingPostPositions],
+    (list: PostEntity[]): PostEntity[] => {
+      if (pendingPostPositions.size === 0 && pendingPostSteps.size === 0) return list;
+      return list.map((p) => {
+        let out = p;
+        const pp = pendingPostPositions.get(p.process.id);
+        if (pp !== undefined && pp !== out.posicao) out = { ...out, posicao: pp };
+        const ordem = pendingPostSteps.get(p.process.id);
+        if (ordem !== undefined && ordem !== out.etapaOrdem) {
+          const s = out.steps.find((st) => st.ordem === ordem);
+          out = {
+            ...out,
+            etapaOrdem: ordem,
+            etapaNome: s?.nome ?? out.etapaNome,
+            step: { ...out.step, ordem },
+          };
+        }
+        return out;
+      });
+    },
+    [pendingPostPositions, pendingPostSteps],
   );
   const posts = useMemo(
     () => applyPostOverlay(postEntities ?? EMPTY_POST_ENTITIES),
@@ -526,17 +671,6 @@ export function KanbanView({
   );
   const boardRows = buildBoardRows(localEntities, templates, { signatureRows });
 
-  // Grava a ordem completa (índice = posição): sem post na coluna é o
-  // reorder_workflow_positions de sempre; com post, a RPC mista
-  // reorder_fluxos_board grava os dois tipos no mesmo espaço (spec §4.2).
-  const persistColumnOrder = useCallback(async (orderedIds: BoardSortableId[]) => {
-    const plan = planColumnPersist(orderedIds);
-    if (plan.kind === 'workflows') {
-      await updateWorkflowPositions(plan.updates);
-    } else {
-      await reorderFluxosBoard(plan.args);
-    }
-  }, []);
   // Overlay otimista dos dois tipos de acordo com o mesmo plano, aplicado
   // antes da persistência para o drag parecer instantâneo.
   const applyOptimisticOrder = useCallback((orderedIds: BoardSortableId[]) => {
@@ -579,14 +713,17 @@ export function KanbanView({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const findCard = (id: string) => localCards.find((c) => String(c.workflow.id) === id);
+  const findPost = (id: string) => posts.find((p) => p.id === id);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
-      const card = findCard(String(event.active.id));
-      setActiveCard(card || null);
+      const id = String(event.active.id);
+      const card = findCard(id);
+      const post = card ? undefined : findPost(id);
+      setActiveEntity(card ? toWorkflowEntity(card) : (post ?? null));
       setDragHeight(event.active.rect.current?.initial?.height ?? 120);
     },
-    [localCards],
+    [localCards, posts],
   );
 
   // Opens a slot in the hovered column when the drop would be accepted there:
@@ -594,14 +731,18 @@ export function KanbanView({
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
       const { active, over } = event;
-      const draggedCard = findCard(String(active.id));
-      if (!over || !draggedCard) {
+      const activeId = String(active.id);
+      const draggedCard = findCard(activeId);
+      const draggedPost = draggedCard ? undefined : findPost(activeId);
+      if (!over || (!draggedCard && !draggedPost)) {
         setDropSlot(null);
         return;
       }
+      const draggedSteps = draggedCard ? draggedCard.allEtapas : draggedPost!.steps;
+      const draggedOrdem = draggedCard ? draggedCard.etapa.ordem : draggedPost!.etapaOrdem;
       const overId = String(over.id);
       const rows = buildBoardRows(localEntities, templates, { signatureRows });
-      const activeLocation = findCardColumn(String(active.id), rows);
+      const activeLocation = findCardColumn(activeId, rows);
 
       let targetRow: BoardRow | undefined;
       let targetColumn: BoardColumn | undefined;
@@ -627,11 +768,14 @@ export function KanbanView({
         setDropSlot(null);
         return;
       }
-      const valid = isValidDropTarget(
-        draggedCard.allEtapas,
-        draggedCard.etapa.ordem,
-        targetColumn.ordem,
-      );
+      // Fluxo: adjacência por ordem (como hoje). Post: o MESMO alvo dos
+      // botões (spec §12.2: drag e botão dão o mesmo resultado) -- avançar
+      // vai para a próxima etapa PENDENTE, voltar para a anterior por ordem,
+      // qualquer estado. (draggedSteps/draggedOrdem só valem no ramo fluxo.)
+      const valid = draggedCard
+        ? isValidDropTarget(draggedSteps, draggedOrdem, targetColumn.ordem)
+        : nextPendingStepOf(draggedPost!.process)?.ordem === targetColumn.ordem ||
+          previousStepOf(draggedPost!.process)?.ordem === targetColumn.ordem;
       if (!valid) {
         setDropSlot(null);
         return;
@@ -655,12 +799,12 @@ export function KanbanView({
         prev && prev.colKey === colKey && prev.index === index ? prev : { colKey, index },
       );
     },
-    [localCards, localEntities, signatureRows, templates, displayMixed],
+    [localCards, posts, localEntities, signatureRows, templates, displayMixed],
   );
 
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
-      setActiveCard(null);
+      setActiveEntity(null);
       setDropSlot(null);
       const { active, over } = event;
       if (!over || active.id === over.id) return;
@@ -668,7 +812,8 @@ export function KanbanView({
       const activeId = String(active.id);
       const overId = String(over.id);
       const draggedCard = findCard(activeId);
-      if (!draggedCard) return;
+      const draggedPost = draggedCard ? undefined : findPost(activeId);
+      if (!draggedCard && !draggedPost) return;
 
       const rows = buildBoardRows(localEntities, templates, { signatureRows });
       const activeLocation = findCardColumn(activeId, rows);
@@ -744,15 +889,20 @@ export function KanbanView({
       } else {
         // Between-column move: a coluna alvo precisa existir na sequência de
         // etapas do PRÓPRIO fluxo arrastado (linhas por template aceitam
-        // fluxos com listas divergentes; ver isValidDropTarget).
+        // fluxos com listas divergentes; ver isValidDropTarget). Post: o
+        // MESMO alvo dos botões (spec §12.2) -- avançar vai para a próxima
+        // etapa PENDENTE, voltar para a anterior por ordem, qualquer estado,
+        // então um herdado/ignorado/concluído entre as duas colunas nunca
+        // manda o comando errado.
         if (targetRow.key !== activeLocation.row.key) return; // troca de linha por drag fica bloqueada (spec §4.2)
-        if (
-          !isValidDropTarget(draggedCard.allEtapas, draggedCard.etapa.ordem, targetColumn.ordem)
-        ) {
+        const valid = draggedCard
+          ? isValidDropTarget(draggedCard.allEtapas, draggedCard.etapa.ordem, targetColumn.ordem)
+          : nextPendingStepOf(draggedPost!.process)?.ordem === targetColumn.ordem ||
+            previousStepOf(draggedPost!.process)?.ordem === targetColumn.ordem;
+        if (!valid) {
           toast.error('Só é possível mover para a etapa adjacente');
           return;
         }
-        const diff = targetColumn.ordem - draggedCard.etapa.ordem;
 
         // Capture where in the target column the card was dropped, so the
         // advance/revert (possibly behind a confirm dialog) can land it there
@@ -780,24 +930,34 @@ export function KanbanView({
           signatureRows,
         );
         pendingInsertRef.current = {
-          wfId: draggedCard.workflow.id!,
+          movedId: activeId,
           ids: insertIntoFullOrder(targetFull, targetMixed.map(sortableIdOf), slotIndex, activeId),
           optimisticPos,
         };
 
+        if (draggedPost) {
+          const t = targetOf(draggedPost);
+          const forward = nextPendingStepOf(draggedPost.process)?.ordem === targetColumn.ordem;
+          if (forward) commands.avancar(t);
+          else commands.voltar(t);
+          return;
+        }
+
+        const diff = targetColumn.ordem - draggedCard!.etapa.ordem;
         if (diff === 1) {
-          handleForwardCard(draggedCard);
+          handleForwardCard(draggedCard!);
         } else {
           // Backward — show confirm dialog
           setRevertTarget({
-            workflowId: draggedCard.workflow.id!,
-            title: draggedCard.workflow.titulo,
+            workflowId: draggedCard!.workflow.id!,
+            title: draggedCard!.workflow.titulo,
           });
         }
       }
     },
     [
       localCards,
+      posts,
       localAllCards,
       localEntities,
       allPosts,
@@ -812,6 +972,7 @@ export function KanbanView({
       persistColumnOrder,
       applyOptimisticOrder,
       rollbackOptimisticOrder,
+      commands,
     ],
   );
 
@@ -829,7 +990,8 @@ export function KanbanView({
       // card leaves the board when the refetch lands.
       const nextEtapa = card.allEtapas.find((e) => e.ordem === card.etapa.ordem + 1);
       if (nextEtapa) setPendingEtapas((prev) => new Map(prev).set(wfId, nextEtapa));
-      const insert = pendingInsertRef.current?.wfId === wfId ? pendingInsertRef.current : null;
+      const insert =
+        pendingInsertRef.current?.movedId === String(wfId) ? pendingInsertRef.current : null;
       if (insert && nextEtapa)
         setPendingPositions((prev) => new Map(prev).set(wfId, insert.optimisticPos));
       try {
@@ -936,7 +1098,9 @@ export function KanbanView({
     if (card && prevEtapa)
       setPendingEtapas((prev) => new Map(prev).set(revertTarget.workflowId, prevEtapa));
     const insert =
-      pendingInsertRef.current?.wfId === revertTarget.workflowId ? pendingInsertRef.current : null;
+      pendingInsertRef.current?.movedId === String(revertTarget.workflowId)
+        ? pendingInsertRef.current
+        : null;
     if (insert && card && prevEtapa)
       setPendingPositions((prev) =>
         new Map(prev).set(revertTarget.workflowId, insert.optimisticPos),
@@ -1098,6 +1262,12 @@ export function KanbanView({
                           <SortablePostCard
                             entity={entity}
                             onClick={onPostClick ? () => onPostClick(entity) : undefined}
+                            onForwardClick={() =>
+                              canConcluir(entity.process)
+                                ? commands.concluir(targetOf(entity))
+                                : commands.avancar(targetOf(entity))
+                            }
+                            onRevertClick={() => commands.voltar(targetOf(entity))}
                           />
                         </Fragment>
                       );
@@ -1156,7 +1326,7 @@ export function KanbanView({
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragCancel={() => {
-          setActiveCard(null);
+          setActiveEntity(null);
           setDropSlot(null);
           pendingInsertRef.current = null;
         }}
@@ -1188,17 +1358,18 @@ export function KanbanView({
           )}
         </div>
         <DragOverlay>
-          {activeCard && (
+          {activeEntity?.kind === 'workflow' && (
             <WorkflowCard
-              card={activeCard}
+              card={activeEntity.card}
               isDragOverlay
-              postsCount={postsCounts.get(activeCard.workflow.id!) ?? 0}
-              approvedPostsCount={approvedPostsCounts.get(activeCard.workflow.id!) ?? 0}
-              clearedClienteCount={clearedClienteCounts.get(activeCard.workflow.id!) ?? 0}
-              revisaoInternaCount={revisaoInternaCounts.get(activeCard.workflow.id!) ?? 0}
-              awaitingClienteCount={awaitingClienteCounts.get(activeCard.workflow.id!) ?? 0}
+              postsCount={postsCounts.get(activeEntity.card.workflow.id!) ?? 0}
+              approvedPostsCount={approvedPostsCounts.get(activeEntity.card.workflow.id!) ?? 0}
+              clearedClienteCount={clearedClienteCounts.get(activeEntity.card.workflow.id!) ?? 0}
+              revisaoInternaCount={revisaoInternaCounts.get(activeEntity.card.workflow.id!) ?? 0}
+              awaitingClienteCount={awaitingClienteCounts.get(activeEntity.card.workflow.id!) ?? 0}
             />
           )}
+          {activeEntity?.kind === 'post' && <PostProcessCard entity={activeEntity} isDragOverlay />}
         </DragOverlay>
       </DndContext>
       <ForwardConfirmDialog
@@ -1238,6 +1409,7 @@ export function KanbanView({
           setApprovalChoice(null);
         }}
       />
+      {commands.dialogs}
     </>
   );
 }
