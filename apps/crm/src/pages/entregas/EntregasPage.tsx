@@ -117,6 +117,10 @@ export default function EntregasPage() {
   // Processos individuais de produção (spec 2026-09-10). Ships dark: every new
   // surface on this page checks this one boolean; nothing else may read the flag.
   const { features } = useWorkspaceLimits();
+  // Duas verdades (spec §11, PO 2026-09-11): `postProcessesEnabled` é a flag do
+  // plano e gate SÓ criação (Aplicar processo, Manter etapas, seção Sem
+  // processo). `postProcessesVisible` (hook) = flag OU processo existente, e
+  // gate tudo que é exibição e operação de processos existentes.
   const postProcessesEnabled = features?.feature_post_processes === true;
 
   const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
@@ -147,9 +151,6 @@ export default function EntregasPage() {
     if (hadEntidadeParam) return initialQuery.entidade;
     return loadLastEntidade(contaId) ?? (hasLastMode(contaId) ? 'fluxos' : 'todos');
   });
-  // Flag desligada: o quadro é sempre o de fluxos, a URL não ganha ?entidade= e
-  // nenhuma chave nova entra no localStorage.
-  const effectiveEntidade: EntidadeFilter = postProcessesEnabled ? entidade : 'fluxos';
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
@@ -173,6 +174,7 @@ export default function EntregasPage() {
     postEntities,
     processByPostId,
     activePostProcessCount,
+    postProcessesVisible,
     activeWorkflows,
     postsCounts,
     approvedPostsCounts,
@@ -184,6 +186,10 @@ export default function EntregasPage() {
     isFetching,
     refresh,
   } = useEntregasData({ postProcessesEnabled });
+
+  // Flag desligada: o quadro é sempre o de fluxos, a URL não ganha ?entidade= e
+  // nenhuma chave nova entra no localStorage.
+  const effectiveEntidade: EntidadeFilter = postProcessesVisible ? entidade : 'fluxos';
 
   // Same inline pattern as NotFoundPage: an app route, not one of the
   // manifest-driven public pages usePageMeta covers, so nothing else would set
@@ -252,10 +258,10 @@ export default function EntregasPage() {
           captureEvent('entregas_tour_dismissed', { step });
           markTourDone();
         },
-        postProcesses: postProcessesEnabled,
+        postProcesses: postProcessesVisible,
       }),
     );
-  }, [markTourDone, postProcessesEnabled]);
+  }, [markTourDone, postProcessesVisible]);
 
   // Auto-start once on the first visit that shows the example board. Suppressed while the
   // new-workflow wizard is open (?novo-fluxo=1 deep link) so the two onboarding overlays
@@ -384,11 +390,11 @@ export default function EntregasPage() {
   }, [activeView, activeMode, contaId]);
 
   useEffect(() => {
-    if (!postProcessesEnabled) return;
+    if (!postProcessesVisible) return;
     if ((activeView === 'kanban' || activeView === 'list') && activeMode === 'entregas') {
       persistLastEntidade(contaId, effectiveEntidade);
     }
-  }, [postProcessesEnabled, activeView, activeMode, effectiveEntidade, contaId]);
+  }, [postProcessesVisible, activeView, activeMode, effectiveEntidade, contaId]);
 
   useEffect(() => {
     if (pendingDeepLink === null || pendingDeepLink.workflowId == null) return;
@@ -851,7 +857,7 @@ export default function EntregasPage() {
               unless the header says which one it is. */}
           <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
             fluxos ativos: {activeWorkflows.length}
-            {postProcessesEnabled && <> · posts individuais: {activePostProcessCount}</>}
+            {postProcessesVisible && <> · posts individuais: {activePostProcessCount}</>}
             {overdue > 0 && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
                 {' '}
@@ -891,7 +897,7 @@ export default function EntregasPage() {
       {explainerOpen && (
         <ComoFuncionaPanel
           onDismiss={dismissExplainer}
-          postProcessesEnabled={postProcessesEnabled}
+          postProcessesEnabled={postProcessesVisible}
         />
       )}
 
@@ -971,7 +977,7 @@ export default function EntregasPage() {
           <ModeToggle mode={mode} onModeChange={setMode} />
         )}
 
-        {postProcessesEnabled &&
+        {postProcessesVisible &&
           (activeView === 'kanban' || activeView === 'list') &&
           mode === 'entregas' && (
             <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
@@ -998,7 +1004,7 @@ export default function EntregasPage() {
               cards={visibleCards}
               allCards={cards}
               postEntities={visiblePostEntities}
-              postProcessesEnabled={postProcessesEnabled}
+              postProcessesEnabled={postProcessesVisible}
               onPostClick={handlePostEntityClick}
               onCardClick={handleCardClick}
               onEditClick={setEditCard}
@@ -1054,7 +1060,7 @@ export default function EntregasPage() {
           onFiltersChange={setFilters}
           onCardClick={handleCardClick}
           onGoToView={setActiveView}
-          postProcessesEnabled={postProcessesEnabled}
+          postProcessesEnabled={postProcessesVisible}
           onGoToKanban={() => {
             setActiveView('kanban');
             setEntidade('todos');
@@ -1069,7 +1075,7 @@ export default function EntregasPage() {
           mode={mode}
           openableWorkflowIds={openableWorkflowIds}
           onPostClick={handlePostClick}
-          postProcessesEnabled={postProcessesEnabled}
+          postProcessesEnabled={postProcessesVisible}
           onGoToKanban={() => {
             setActiveView('kanban');
             setEntidade('todos');

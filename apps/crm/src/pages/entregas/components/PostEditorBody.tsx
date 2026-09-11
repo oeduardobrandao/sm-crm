@@ -84,8 +84,8 @@ export interface PostEditorBodyProps {
   templateId: number | null | undefined;
   workflowId: number | null;
   /** Processo individual vigente do post (spec §5.4). `undefined` = não se
-   *  aplica (drawer de fluxo, flag desligada); `null` = avulso sem processo.
-   *  Só o StandalonePostDrawer preenche, e só com feature_post_processes. */
+   *  aplica (drawer de fluxo); `null` = avulso sem processo. Só o
+   *  StandalonePostDrawer preenche, independentemente da flag do plano. */
   postProcess?: PostProcess | null;
   clienteId: number;
   clientePosts: ClientePost[];

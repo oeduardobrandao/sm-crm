@@ -281,12 +281,59 @@ describe('StandalonePostDrawer', () => {
     expect(screen.queryByText('Post aprovado')).not.toBeInTheDocument();
   });
 
-  it('flag desligada mantém a tag "Avulso" e não consulta o processo', async () => {
+  it('flag desligada sem processo: tag "Avulso" (consulta o processo, que vem nulo)', async () => {
+    limitsMock.features = { feature_post_processes: false };
+    const { getVigentePostProcess } = await import('@/store');
+    (getVigentePostProcess as any).mockResolvedValueOnce(null);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
     expect(await screen.findByText('Avulso')).toBeInTheDocument();
+    expect(getVigentePostProcess).toHaveBeenCalledWith(5);
+    expect(screen.queryByText(/Avulso · Sem processo/)).toBeNull();
+  });
+
+  it('flag desligada com processo existente: tag "Individual · <etapa>" e seção de produção visíveis', async () => {
+    limitsMock.features = { feature_post_processes: false };
     const { getVigentePostProcess } = await import('@/store');
-    expect(getVigentePostProcess).not.toHaveBeenCalled();
+    (getVigentePostProcess as any).mockResolvedValueOnce({
+      id: 9,
+      post_id: 5,
+      estado: 'ativo',
+      etapa_atual: 1,
+      template_id: null,
+      template_nome: null,
+      origem_descricao: null,
+      steps: [
+        {
+          id: 1,
+          ordem: 0,
+          nome: 'Copy',
+          estado: 'ignorado',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+        {
+          id: 2,
+          ordem: 1,
+          nome: 'Design',
+          estado: 'ativo',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    expect(await screen.findByText('Individual · Design')).toBeInTheDocument();
+    expect(screen.getByText('Produção')).toBeInTheDocument();
   });
 
   it('flag ligada sem processo: tag "Avulso · Sem processo"', async () => {

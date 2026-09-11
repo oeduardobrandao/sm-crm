@@ -98,16 +98,12 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
   const { data: vigente = EMPTY_PROCESSES, isLoading: vigenteLoading } = useQuery({
     queryKey: ['post-processes', 'vigentes'],
     queryFn: getVigentePostProcesses,
-    enabled: postProcessesEnabled,
   });
   const concludedProcesses = useMemo(
     () => vigente.filter((p) => p.estado === 'concluido'),
     [vigente],
   );
-  // Só considera o carregamento dos processos quando a flag está ligada: com
-  // a flag desligada essa query nunca dispara (enabled: false) e seu
-  // isLoading fica num valor padrão que não deveria travar o guard abaixo.
-  const isLoadingCombined = isLoading || (postProcessesEnabled && vigenteLoading);
+  const isLoadingCombined = isLoading || vigenteLoading;
 
   const groups: ClientGroup[] = [];
   const clientMap = new Map<

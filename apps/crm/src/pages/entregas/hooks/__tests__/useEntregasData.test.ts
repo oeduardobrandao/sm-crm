@@ -513,18 +513,30 @@ describe('useEntregasData: processos individuais', () => {
     (postMedia.getPostCovers as any).mockResolvedValue(new Map());
   });
 
-  it('com a flag desligada não consulta post_processes e devolve listas vazias estáveis', async () => {
+  it('consulta post_processes mesmo com a flag desligada e devolve postProcessesVisible=false sem linhas', async () => {
+    (getVigentePostProcesses as any).mockResolvedValueOnce([]);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const wrapper = ({ children }: { children: ReactNode }) =>
       createElement(QueryClientProvider, { client: qc }, children);
     const { result } = renderHook(() => useEntregasData(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(getVigentePostProcesses).not.toHaveBeenCalled();
+    expect(getVigentePostProcesses).toHaveBeenCalledTimes(1);
     expect(result.current.postEntities).toEqual([]);
     expect(result.current.activePostProcessCount).toBe(0);
     expect(result.current.processByPostId.size).toBe(0);
+    expect(result.current.postProcessesVisible).toBe(false);
     const first = result.current.postEntities;
     await waitFor(() => expect(result.current.postEntities).toBe(first));
+  });
+
+  it('flag desligada com processo existente: postProcessesVisible=true e o card entra em postEntities', async () => {
+    (getVigentePostProcesses as any).mockResolvedValueOnce([vigenteFixture]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useEntregasData(), { wrapper });
+    await waitFor(() => expect(result.current.postEntities.length).toBe(1));
+    expect(result.current.postProcessesVisible).toBe(true);
   });
 
   it('com a flag ligada monta postEntities dos ativos e o mapa por post dos vigentes', async () => {

@@ -208,8 +208,10 @@ export function computeDeliveryDeadlines(
 }
 
 export interface UseEntregasDataOptions {
-  /** features?.feature_post_processes === true. Off (default) fires no
-   *  post_processes query and returns the empty constants below. */
+  /** features?.feature_post_processes === true. Desde a fase 4 a flag NÃO gate
+   *  a leitura (spec §11 + §12.18: execuções existentes ficam visíveis e
+   *  operáveis com a flag desligada); ela só entra em `postProcessesVisible`,
+   *  o booleano de exibição que a página usa no lugar da flag crua. */
   postProcessesEnabled?: boolean;
 }
 
@@ -340,14 +342,12 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
   });
 
   // Processos individuais (spec §8.3): UM lote por conta com ativos e
-  // concluídos. Os ativos viram cards; os concluídos vão para Concluídas; os
-  // dois juntos são a exclusão da seção Sem processo. Desligado pela flag, a
-  // query nem existe e tudo abaixo devolve as constantes vazias (identidade
-  // estável, mesma regra dos EMPTY_* acima).
+  // concluídos, SEMPRE ligado (PO 2026-09-11, decisão 1): com a flag desligada
+  // e zero linhas o resultado é vazio e tudo abaixo devolve as constantes
+  // vazias; com linhas, o quadro continua exibindo e operando os processos.
   const vigenteQuery = useQuery({
     queryKey: ['post-processes', 'vigentes'],
     queryFn: getVigentePostProcesses,
-    enabled: postProcessesEnabled,
   });
   const vigenteProcesses: PostProcessWithPost[] = vigenteQuery.data ?? EMPTY_PROCESSES;
   const activeProcesses = useMemo(
@@ -472,6 +472,10 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
    *  e isLoading forem falsos. */
   const isFetching = fetchingWf || etapasQuery.isFetching || vigenteQuery.isFetching;
 
+  // Exibição = flag OU existência de processo. A flag crua fica para as
+  // affordances de criação (Aplicar processo, Manter etapas, Sem processo).
+  const postProcessesVisible = postProcessesEnabled || vigenteProcesses.length > 0;
+
   return {
     workflows,
     activeWorkflows,
@@ -484,6 +488,7 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
     processByPostId,
     concludedPostProcesses,
     activePostProcessCount: activeProcesses.length,
+    postProcessesVisible,
     postsCounts,
     approvedPostsCounts,
     clearedClienteCounts,

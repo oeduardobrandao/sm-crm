@@ -76,10 +76,20 @@ describe('ConcludedView com processos individuais', () => {
     limitsMock.features = null;
   });
 
-  it('flag desligada: não consulta processos e mantém a cópia vazia de sempre', async () => {
+  it('flag desligada: consulta processos; sem linhas mantém a cópia vazia de sempre', async () => {
+    limitsMock.features = { feature_post_processes: false };
+    store.getVigentePostProcesses.mockResolvedValueOnce([] as never);
     renderView();
     expect(await screen.findByText('Nenhum fluxo concluído ainda.')).toBeInTheDocument();
-    expect(store.getVigentePostProcesses).not.toHaveBeenCalled();
+    expect(store.getVigentePostProcesses).toHaveBeenCalledTimes(1);
+  });
+
+  it('flag desligada com processo concluído: a entrada "Post individual" aparece', async () => {
+    limitsMock.features = { feature_post_processes: false };
+    store.getVigentePostProcesses.mockResolvedValueOnce([concluded] as never);
+    renderView();
+    fireEvent.click(await screen.findByText('Aurora'));
+    expect(screen.getByText('Post individual')).toBeInTheDocument();
   });
 
   it('flag ligada: lista o processo concluído no grupo do cliente com a tag e abre o post', async () => {

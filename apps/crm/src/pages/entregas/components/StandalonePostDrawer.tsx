@@ -85,14 +85,13 @@ export function StandalonePostDrawer({
     queryFn: () => getStandalonePost(postId),
   });
 
-  // Processo individual vigente (spec §5.4). Flag-gated e sob demanda: só
-  // este drawer, só enquanto aberto. `null` = avulso sem processo.
+  // Processo individual vigente (spec §5.4). Sempre consultado (a flag só gate
+  // criação, PO 2026-09-11): `null` = avulso sem processo.
   const { features } = useWorkspaceLimits();
   const postProcessesEnabled = features?.feature_post_processes === true;
   const { data: postProcess = null } = useQuery({
     queryKey: ['post-process', postId],
     queryFn: () => getVigentePostProcess(postId),
-    enabled: postProcessesEnabled,
   });
   const activeStepName =
     postProcess?.estado === 'ativo'
@@ -468,7 +467,7 @@ export function StandalonePostDrawer({
             {post && (
               <div className="drawer-header-subtitle">
                 {post.cliente_nome || '—'} &bull;{' '}
-                {postProcessesEnabled && postProcess ? (
+                {postProcess ? (
                   <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
                     <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
                     Individual · {activeStepName ?? 'Processo concluído'}
@@ -521,7 +520,7 @@ export function StandalonePostDrawer({
               post={post}
               templateId={undefined}
               workflowId={null}
-              postProcess={postProcessesEnabled ? postProcess : undefined}
+              postProcess={postProcess}
               clienteId={post.cliente_id}
               clientePosts={clientePosts}
               isExpanded

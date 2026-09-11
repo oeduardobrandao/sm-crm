@@ -99,7 +99,6 @@ import { shouldAutoCompleteApproval } from './autoComplete';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
 import { PostTimelinePopover } from './PostTimelinePopover';
 import { useAuth } from '@/context/AuthContext';
-import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { hasVideoMissingThumbnail } from './PostMediaGallery';
 import { listPostMedia } from '../../../services/postMedia';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
@@ -297,12 +296,12 @@ export function WorkflowDrawer({
 
   // Histórico de processo dos posts do fluxo (spec §5.4): um post vinculado
   // depois de ter tido processo carrega os eventos do processo encerrado.
-  // Flag-gated: sem feature_post_processes a query não existe.
-  const { features } = useWorkspaceLimits();
+  // Sempre que houver posts: histórico de processo encerrado é história, não
+  // criação (PO 2026-09-11).
   const { data: processEvents = EMPTY_PROCESS_EVENTS } = useQuery({
     queryKey: ['post-process-events', postIds.join(',')],
     queryFn: () => getPostProcessEvents(postIds),
-    enabled: features?.feature_post_processes === true && postIds.length > 0,
+    enabled: postIds.length > 0,
   });
 
   const { data: editSuggestions = [] } = useQuery({
