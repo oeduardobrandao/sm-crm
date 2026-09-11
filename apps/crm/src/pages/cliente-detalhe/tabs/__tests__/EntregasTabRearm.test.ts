@@ -42,10 +42,15 @@ describe('EntregasTab approval re-arm wiring', () => {
     expect(advanceWithout).not.toContain('notifyRearmOutcome');
   });
 
-  it('warns in the approval dialog when another approval etapa lies ahead', () => {
-    expect(source).toContain('hasLaterApprovalEtapa');
-    expect(source).toMatch(
-      /willRearm=\{\s*approvalChoiceCard\s*\?\s*hasLaterApprovalEtapa\(\s*approvalChoiceCard\.allEtapas,\s*approvalChoiceCard\.etapa\.id!,?\s*\)\s*:\s*false\s*\}/,
+  it('decides through the shared approvalAdvance module and forwards willRearm from it', () => {
+    expect(source).toContain(
+      "import { decideApprovalAdvance } from '@/pages/entregas/approvalAdvance'",
     );
+    expect(source).toMatch(/decideApprovalAdvance\(\{/);
+    // hasLaterApprovalEtapa is still the fluxo input to the decision (spec §6.2: not changed).
+    expect(source).toContain('hasLaterApprovalEtapa');
+    // The dialog no longer recomputes the warning inline.
+    expect(source).not.toMatch(/willRearm=\{\s*approvalChoiceCard/);
+    expect(source).toMatch(/willRearm=\{approvalChoice\?\.willRearm \?\? false\}/);
   });
 });

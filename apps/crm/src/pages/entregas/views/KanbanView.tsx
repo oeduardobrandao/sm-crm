@@ -40,6 +40,7 @@ import {
   sendPostsToCliente,
 } from '../../../store';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
+import { decideApprovalAdvance } from '../approvalAdvance';
 import {
   buildBoardRows,
   columnKey,
@@ -423,7 +424,10 @@ export function KanbanView({
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(
     null,
   );
-  const [approvalChoiceCard, setApprovalChoiceCard] = useState<BoardCard | null>(null);
+  const [approvalChoice, setApprovalChoice] = useState<{
+    card: BoardCard;
+    willRearm: boolean;
+  } | null>(null);
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
 
@@ -864,18 +868,17 @@ export function KanbanView({
   const executeForward = useCallback(
     (card: BoardCard) => {
       const wfId = card.workflow.id!;
-      const total = postsCounts.get(wfId) ?? 0;
-      // "Cleared" (approved / scheduled / posted / publish-failed), not just
-      // aprovado_cliente — otherwise a workflow whose approved posts are already
-      // scheduled would wrongly prompt the approval dialog on advance.
-      const cleared = clearedClienteCounts.get(wfId) ?? 0;
-      const allCleared = total > 0 && cleared === total;
-
-      if (card.etapa.tipo === 'aprovacao_cliente' && !allCleared) {
-        setApprovalChoiceCard(card);
-      } else {
-        advanceEtapa(card, 'Etapa concluída!');
-      }
+      const decision = decideApprovalAdvance({
+        tipo: card.etapa.tipo,
+        total: postsCounts.get(wfId) ?? 0,
+        // "Cleared" (approved / scheduled / posted / publish-failed), not just
+        // aprovado_cliente — otherwise a workflow whose approved posts are already
+        // scheduled would wrongly prompt the approval dialog on advance.
+        cleared: clearedClienteCounts.get(wfId) ?? 0,
+        temAprovacaoAdiante: hasLaterApprovalEtapa(card.allEtapas, card.etapa.id!),
+      });
+      if (decision.kind === 'choose') setApprovalChoice({ card, willRearm: decision.willRearm });
+      else advanceEtapa(card, 'Etapa concluída!');
     },
     [advanceEtapa, postsCounts, clearedClienteCounts],
   );
@@ -888,9 +891,9 @@ export function KanbanView({
   };
 
   const handleApproveInternally = async () => {
-    if (!approvalChoiceCard) return;
-    const card = approvalChoiceCard;
-    setApprovalChoiceCard(null);
+    if (!approvalChoice) return;
+    const card = approvalChoice.card;
+    setApprovalChoice(null);
     try {
       await approvePostsInternally(card.workflow.id!);
     } catch (err: unknown) {
@@ -904,9 +907,9 @@ export function KanbanView({
   };
 
   const handleSendToPortal = async () => {
-    if (!approvalChoiceCard) return;
-    const card = approvalChoiceCard;
-    setApprovalChoiceCard(null);
+    if (!approvalChoice) return;
+    const card = approvalChoice.card;
+    setApprovalChoice(null);
     // Send-only: the workflow does not move, so the drag's captured drop
     // position is dead the moment this choice is made.
     pendingInsertRef.current = null;
@@ -920,9 +923,9 @@ export function KanbanView({
   };
 
   const handleAdvanceWithoutApproval = () => {
-    if (!approvalChoiceCard) return;
-    const card = approvalChoiceCard;
-    setApprovalChoiceCard(null);
+    if (!approvalChoice) return;
+    const card = approvalChoice.card;
+    setApprovalChoice(null);
     advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.', { rearm: false });
   };
 
@@ -1200,7 +1203,7 @@ export function KanbanView({
       </DndContext>
       <ForwardConfirmDialog
         open={!!forwardTarget}
-        workflowTitle={forwardTarget?.workflow.titulo || ''}
+        entityTitle={forwardTarget?.workflow.titulo || ''}
         nextEtapaName={
           forwardTarget
             ? ([...forwardTarget.allEtapas]
@@ -1216,7 +1219,7 @@ export function KanbanView({
       />
       <RevertConfirmDialog
         open={!!revertTarget}
-        workflowTitle={revertTarget?.title || ''}
+        entityTitle={revertTarget?.title || ''}
         onConfirm={handleRevertConfirm}
         onCancel={() => {
           pendingInsertRef.current = null;
@@ -1224,19 +1227,15 @@ export function KanbanView({
         }}
       />
       <ClientApprovalChoiceDialog
-        open={!!approvalChoiceCard}
-        workflowTitle={approvalChoiceCard?.workflow.titulo || ''}
-        willRearm={
-          approvalChoiceCard
-            ? hasLaterApprovalEtapa(approvalChoiceCard.allEtapas, approvalChoiceCard.etapa.id!)
-            : false
-        }
+        open={!!approvalChoice}
+        entityTitle={approvalChoice?.card.workflow.titulo || ''}
+        willRearm={approvalChoice?.willRearm ?? false}
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
         onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
         onCancel={() => {
           pendingInsertRef.current = null;
-          setApprovalChoiceCard(null);
+          setApprovalChoice(null);
         }}
       />
     </>
