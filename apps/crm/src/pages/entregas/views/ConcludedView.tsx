@@ -1,16 +1,19 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, FileText } from 'lucide-react';
 import {
   getConcludedWorkflows,
   getWorkflowEtapas,
   getWorkflowPosts,
   getClientes,
   reopenWorkflow,
+  getVigentePostProcesses,
   type Workflow,
   type Cliente,
+  type PostProcessWithPost,
 } from '../../../store';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { HistoryDrawer } from '../components/HistoryDrawer';
 import {
   AlertDialog,
@@ -33,13 +36,16 @@ interface ConcludedWorkflowSummary {
 interface ClientGroup {
   cliente: Cliente;
   workflows: ConcludedWorkflowSummary[];
+  processes: PostProcessWithPost[];
 }
+
+const EMPTY_PROCESSES: PostProcessWithPost[] = [];
 
 function formatDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
-export function ConcludedView() {
+export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) => void } = {}) {
   const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
   const [selectedWorkflow, setSelectedWorkflow] = useState<{
     workflow: Workflow;
@@ -84,16 +90,45 @@ export function ConcludedView() {
     enabled: concludedWorkflows.length > 0,
   });
 
+  // Processos individuais concluídos (spec §4.4): UMA consulta por conta, a
+  // mesma chave/fn de useEntregasData (dedupe pelo cache). Nunca o padrão N+1
+  // dos sumários de fluxo acima.
+  const { features } = useWorkspaceLimits();
+  const postProcessesEnabled = features?.feature_post_processes === true;
+  const { data: vigente = EMPTY_PROCESSES, isLoading: vigenteLoading } = useQuery({
+    queryKey: ['post-processes', 'vigentes'],
+    queryFn: getVigentePostProcesses,
+    enabled: postProcessesEnabled,
+  });
+  const concludedProcesses = useMemo(
+    () => vigente.filter((p) => p.estado === 'concluido'),
+    [vigente],
+  );
+  // Só considera o carregamento dos processos quando a flag está ligada: com
+  // a flag desligada essa query nunca dispara (enabled: false) e seu
+  // isLoading fica num valor padrão que não deveria travar o guard abaixo.
+  const isLoadingCombined = isLoading || (postProcessesEnabled && vigenteLoading);
+
   const groups: ClientGroup[] = [];
-  const clientMap = new Map<number, ConcludedWorkflowSummary[]>();
-  for (const s of summaries) {
-    const list = clientMap.get(s.workflow.cliente_id) ?? [];
-    list.push(s);
-    clientMap.set(s.workflow.cliente_id, list);
+  const clientMap = new Map<
+    number,
+    { workflows: ConcludedWorkflowSummary[]; processes: PostProcessWithPost[] }
+  >();
+  const bucket = (clienteId: number) => {
+    let b = clientMap.get(clienteId);
+    if (!b) {
+      b = { workflows: [], processes: [] };
+      clientMap.set(clienteId, b);
+    }
+    return b;
+  };
+  for (const s of summaries) bucket(s.workflow.cliente_id).workflows.push(s);
+  for (const p of concludedProcesses) {
+    if (p.post.cliente_id != null) bucket(p.post.cliente_id).processes.push(p);
   }
-  for (const [clienteId, workflows] of clientMap) {
+  for (const [clienteId, b] of clientMap) {
     const cliente = clientes.find((c) => c.id === clienteId);
-    if (cliente) groups.push({ cliente, workflows });
+    if (cliente) groups.push({ cliente, workflows: b.workflows, processes: b.processes });
   }
   groups.sort((a, b) => a.cliente.nome.localeCompare(b.cliente.nome));
 
@@ -107,6 +142,7 @@ export function ConcludedView() {
       qc.invalidateQueries({ queryKey: ['workflows'] });
       qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
       qc.invalidateQueries({ queryKey: ['workflow-events'] });
+      qc.invalidateQueries({ queryKey: ['post-processes'] });
     } catch {
       toast.error('Erro ao reabrir fluxo.');
     }
@@ -122,14 +158,16 @@ export function ConcludedView() {
     });
   };
 
-  if (isLoading) {
+  if (isLoadingCombined) {
     return <div className="drawer-empty">Carregando...</div>;
   }
 
-  if (summaries.length === 0 && !isLoading) {
+  if (summaries.length === 0 && concludedProcesses.length === 0 && !isLoadingCombined) {
     return (
       <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-        Nenhum fluxo concluído ainda.
+        {postProcessesEnabled
+          ? 'Nenhum fluxo ou post individual concluído ainda.'
+          : 'Nenhum fluxo concluído ainda.'}
       </div>
     );
   }
@@ -154,7 +192,10 @@ export function ConcludedView() {
                 />
                 <span className="concluded-client-name">{group.cliente.nome}</span>
                 <span className="concluded-client-count">
-                  ({group.workflows.length} fluxo{group.workflows.length > 1 ? 's' : ''})
+                  ({group.workflows.length} fluxo{group.workflows.length !== 1 ? 's' : ''}
+                  {group.processes.length > 0 &&
+                    ` · ${group.processes.length} post${group.processes.length !== 1 ? 's' : ''} individua${group.processes.length !== 1 ? 'is' : 'l'}`}
+                  )
                 </span>
               </div>
               {isOpen && (
@@ -196,6 +237,33 @@ export function ConcludedView() {
                         </button>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
                       </div>
+                    </div>
+                  ))}
+                  {group.processes.map((p) => (
+                    <div
+                      key={`proc-${p.id}`}
+                      className="concluded-wf-row"
+                      onClick={() => onOpenPost?.(p.post_id)}
+                    >
+                      <div>
+                        <div className="concluded-wf-title">
+                          {p.post.titulo || 'Post sem título'}
+                          <span
+                            className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual"
+                            style={{ marginLeft: '0.5rem' }}
+                          >
+                            <FileText size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                            Post individual
+                          </span>
+                        </div>
+                        <div className="concluded-wf-meta">
+                          {p.template_nome ?? 'Etapas personalizadas'}
+                          {p.concluido_em && (
+                            <> &bull; Concluído {formatDateShort(p.concluido_em)}</>
+                          )}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
                     </div>
                   ))}
                 </div>

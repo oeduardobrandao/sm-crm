@@ -10,9 +10,11 @@ import {
   type CommentThreadWithComments,
   type PostEditSuggestion,
   type ClientePost,
+  type PostProcess,
 } from '../../../store';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
+import { PostProductionSection } from './PostProductionSection';
 import PostCommentSummary from './PostCommentSummary';
 import { PostMediaGallery } from './PostMediaGallery';
 import {
@@ -81,6 +83,10 @@ export interface PostEditorBodyProps {
   post: WorkflowPost & { property_values?: PostPropertyValue[] };
   templateId: number | null | undefined;
   workflowId: number | null;
+  /** Processo individual vigente do post (spec §5.4). `undefined` = não se
+   *  aplica (drawer de fluxo, flag desligada); `null` = avulso sem processo.
+   *  Só o StandalonePostDrawer preenche, e só com feature_post_processes. */
+  postProcess?: PostProcess | null;
   clienteId: number;
   clientePosts: ClientePost[];
   isExpanded: boolean;
@@ -122,6 +128,7 @@ export function PostEditorBody({
   post,
   templateId,
   workflowId,
+  postProcess,
   clienteId,
   clientePosts,
   isExpanded,
@@ -361,7 +368,7 @@ export function PostEditorBody({
         </div>
         {membros.length > 0 && (
           <div className="drawer-post-field">
-            <label>Responsável</label>
+            <label>Responsável do post</label>
             <select
               className="drawer-select"
               value={post.responsavel_id ?? ''}
@@ -416,6 +423,10 @@ export function PostEditorBody({
           propertyValues={post.property_values ?? []}
           membros={membros}
         />
+      )}
+
+      {postProcess && workflowId == null && (
+        <PostProductionSection process={postProcess} postId={post.id!} membros={membros} />
       )}
 
       <PostMediaGallery

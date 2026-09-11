@@ -5782,6 +5782,15 @@ body.role-agent input[name='valor_total'] {
   border-color: rgba(255, 191, 48, 0.4);
 }
 
+/* Post individual com processo (spec §5.4): mesma família visual do avulso,
+   borda sólida para diferenciar de "sem processo". */
+.post-fluxo-tag--individual {
+  border-style: solid;
+}
+.board-card--post {
+  cursor: pointer;
+}
+
 .board-card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
@@ -12991,4 +13000,108 @@ a.hub-fill__row-inner:hover {
     break-inside: avoid;
     box-shadow: none !important;
   }
+}
+
+/* Seção "Sem processo" do quadro de Fluxos (spec §4.3) */
+.sem-processo {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.sem-processo-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.sem-processo-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+.sem-processo-link {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-decoration: underline;
+}
+.sem-processo-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.sem-processo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+.sem-processo-card {
+  cursor: pointer;
+}
+
+/* Seção de produção do post individual (spec §5.4) */
+.post-production {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface-1);
+  margin-bottom: 1rem;
+}
+.post-production-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.post-production-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.post-production-state {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-muted);
+}
+.post-production-state--ativo {
+  background: rgba(62, 207, 142, 0.15);
+  color: var(--success);
+}
+.post-production-origem,
+.post-production-note {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.post-production-tipo {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.post-production-history {
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.6rem;
+}
+.entregas-somente-fluxos {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.entregas-somente-fluxos-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-main);
+  text-decoration: underline;
 }

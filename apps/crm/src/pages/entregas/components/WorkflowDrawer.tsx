@@ -79,12 +79,14 @@ import {
   getClientePosts,
   syncMentions,
   detachPostsFromWorkflow,
+  getPostProcessEvents,
   type MovePostsResult,
   type Workflow,
   type WorkflowEtapa,
   type WorkflowPost,
   type PostApproval,
   type PostStatusEvent,
+  type PostProcessEvent,
   type Membro,
   type PostPropertyValue,
   type CommentThreadWithComments,
@@ -97,6 +99,7 @@ import { shouldAutoCompleteApproval } from './autoComplete';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
 import { PostTimelinePopover } from './PostTimelinePopover';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { hasVideoMissingThumbnail } from './PostMediaGallery';
 import { listPostMedia } from '../../../services/postMedia';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
@@ -116,6 +119,10 @@ import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { MovePostsToFluxoDialog } from './MovePostsToFluxoDialog';
+
+// Stable empty array so the fallback in `useQuery({ data: processEvents = ... })` never
+// changes identity across renders when the flag is off or the query hasn't resolved yet.
+const EMPTY_PROCESS_EVENTS: PostProcessEvent[] = [];
 
 /** Maps detach_posts_from_flow's identifier-style RPC errors (see
  *  supabase/migrations/20260830000004_post_detach_attach_rpcs.sql) to PT copy.
@@ -288,6 +295,16 @@ export function WorkflowDrawer({
     enabled: postIds.length > 0,
   });
 
+  // Histórico de processo dos posts do fluxo (spec §5.4): um post vinculado
+  // depois de ter tido processo carrega os eventos do processo encerrado.
+  // Flag-gated: sem feature_post_processes a query não existe.
+  const { features } = useWorkspaceLimits();
+  const { data: processEvents = EMPTY_PROCESS_EVENTS } = useQuery({
+    queryKey: ['post-process-events', postIds.join(',')],
+    queryFn: () => getPostProcessEvents(postIds),
+    enabled: features?.feature_post_processes === true && postIds.length > 0,
+  });
+
   const { data: editSuggestions = [] } = useQuery({
     queryKey: ['post-edit-suggestions', postIds.join(',')],
     queryFn: () => getPostEditSuggestions(postIds),
@@ -342,6 +359,7 @@ export function WorkflowDrawer({
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
     qc.invalidateQueries({ queryKey: ['post-status-events'] });
+    qc.invalidateQueries({ queryKey: ['post-process-events'] });
     qc.invalidateQueries({ queryKey: ['workflow-events', workflowId] });
     // Field changes (incl. scheduled_at, tipo) must also refresh the day-dot markers other
     // rows' date pickers derive from this same client-wide query — see the ['clientePosts',
@@ -963,6 +981,7 @@ export function WorkflowDrawer({
                           isSaving={savingIds.has(post.id!)}
                           approvals={approvals.filter((a) => a.post_id === post.id)}
                           statusEvents={statusEvents.filter((e) => e.post_id === post.id)}
+                          processEvents={processEvents.filter((e) => e.post_id === post.id)}
                           editSuggestion={
                             editSuggestions.find((s) => s.post_id === post.id) ?? null
                           }
@@ -1177,6 +1196,7 @@ interface SortablePostItemProps {
   isSaving: boolean;
   approvals: PostApproval[];
   statusEvents: PostStatusEvent[];
+  processEvents: PostProcessEvent[];
   editSuggestion: PostEditSuggestion | null;
   membros: Membro[];
   replyText: string;
@@ -1224,6 +1244,7 @@ function SortablePostItem({
   isSaving,
   approvals,
   statusEvents,
+  processEvents,
   editSuggestion,
   membros,
   replyText,
@@ -1346,7 +1367,12 @@ function SortablePostItem({
         </div>
         <div className="drawer-post-trigger-right" onClick={(e) => e.stopPropagation()}>
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
-          <PostTimelinePopover post={post} events={statusEvents} approvals={approvals} />
+          <PostTimelinePopover
+            post={post}
+            events={statusEvents}
+            approvals={approvals}
+            processEvents={processEvents}
+          />
           {publishIso ? (
             <span
               className="drawer-post-date"

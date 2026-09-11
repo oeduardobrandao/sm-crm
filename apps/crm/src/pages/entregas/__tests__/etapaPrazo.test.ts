@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deadlineFromPrazoEfetivo,
   etapaDeadlineDate,
   etapaDeadlineDateOf,
   formatEtapaPrazo,
+  matchesDeadlineFilter,
   matchesEtapaPrazo,
   sortCardsByPrazo,
 } from '../etapaPrazo';
@@ -188,5 +190,92 @@ describe('sortCardsByPrazo', () => {
     const cards = [rankedCard('2026-07-20', 0, 1), rankedCard('2026-07-10', 1, 2)];
     sortCardsByPrazo(cards);
     expect(cards.map((c) => c.workflow.id)).toEqual([1, 2]);
+  });
+});
+
+describe('etapaDeadlineDateOf com prazo_efetivo', () => {
+  it('prazo_efetivo vence sobre data_limite e iniciado_em', () => {
+    const d = etapaDeadlineDateOf({
+      prazo_efetivo: '2026-07-20T15:00:00.000Z',
+      data_limite: '2026-07-10',
+      iniciado_em: '2026-07-01T10:00:00Z',
+      prazo_dias: 2,
+      tipo_prazo: 'corridos',
+    });
+    expect(d?.toISOString()).toBe('2026-07-20T15:00:00.000Z');
+  });
+
+  it('sem prazo_efetivo, prazo_dias nulo com iniciado_em devolve null (etapa relativa não ativada)', () => {
+    expect(
+      etapaDeadlineDateOf({
+        prazo_efetivo: null,
+        data_limite: null,
+        iniciado_em: '2026-07-01T10:00:00Z',
+        prazo_dias: null,
+        tipo_prazo: null,
+      }),
+    ).toBeNull();
+  });
+
+  it('prazo_efetivo inválido devolve null', () => {
+    expect(
+      etapaDeadlineDateOf({ prazo_efetivo: 'nope', prazo_dias: 1, tipo_prazo: 'corridos' }),
+    ).toBeNull();
+  });
+});
+
+describe('deadlineFromPrazoEfetivo', () => {
+  it('null devolve o fallback de dias, sem estourado nem urgente', () => {
+    expect(deadlineFromPrazoEfetivo(null, 3, NOW)).toEqual({
+      diasRestantes: 3,
+      horasRestantes: 0,
+      estourado: false,
+      urgente: false,
+    });
+    expect(deadlineFromPrazoEfetivo(null, null, NOW).diasRestantes).toBe(0);
+  });
+
+  it('instante passado é estourado; dentro de 24h é urgente; além disso conta dias e horas', () => {
+    const past = new Date(NOW.getTime() - 30 * 3_600_000).toISOString();
+    expect(deadlineFromPrazoEfetivo(past, null, NOW)).toMatchObject({
+      estourado: true,
+      urgente: false,
+      diasRestantes: -2,
+    });
+    const soon = new Date(NOW.getTime() + 5 * 3_600_000).toISOString();
+    expect(deadlineFromPrazoEfetivo(soon, null, NOW)).toMatchObject({
+      estourado: false,
+      urgente: true,
+      diasRestantes: 0,
+      horasRestantes: 5,
+    });
+    const later = new Date(NOW.getTime() + 50 * 3_600_000).toISOString();
+    expect(deadlineFromPrazoEfetivo(later, null, NOW)).toMatchObject({
+      estourado: false,
+      urgente: false,
+      diasRestantes: 2,
+      horasRestantes: 2,
+    });
+  });
+});
+
+describe('matchesDeadlineFilter', () => {
+  it('filtro vazio aceita tudo, inclusive alvo indefinido; filtro ativo rejeita alvo indefinido', () => {
+    expect(matchesDeadlineFilter(undefined, [], '', '', NOW)).toBe(true);
+    expect(matchesDeadlineFilter(undefined, ['hoje'], '', '', NOW)).toBe(false);
+  });
+
+  it('é a mesma regra de matchesEtapaPrazo para um card', () => {
+    const card = makeCard({ data_limite: '2026-07-15' });
+    expect(matchesEtapaPrazo(card, ['hoje'], '', '', NOW)).toBe(true);
+    expect(
+      matchesDeadlineFilter(
+        { deadline: card.deadline, date: etapaDeadlineDate(card) },
+        ['hoje'],
+        '',
+        '',
+        NOW,
+      ),
+    ).toBe(true);
   });
 });

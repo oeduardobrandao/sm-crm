@@ -47,10 +47,18 @@ import {
   isValidDropTarget,
 } from '../boardRows';
 import type { BoardRow, BoardColumn } from '../boardRows';
+import {
+  toWorkflowEntities,
+  sortEntitiesByPrazo,
+  sortEntitiesByPosicao,
+  type BoardEntity,
+  type PostEntity,
+} from '../boardEntity';
 import { mergeVisibleReorder, insertIntoFullOrder } from '../boardReorder';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
+import { PostProcessCard } from '../components/PostProcessCard';
 import { ExampleBoard } from '../components/ExampleBoard';
 import {
   RevertConfirmDialog,
@@ -80,6 +88,13 @@ interface KanbanViewBaseProps {
   clearedClienteCounts: Map<number, number>;
   revisaoInternaCounts: Map<number, number>;
   awaitingClienteCounts: Map<number, number>;
+  /** Processos individuais ativos, já filtrados pela página (fase 3: só
+   *  leitura; sem drag, sem botões). Ausente = quadro só de fluxos. */
+  postEntities?: PostEntity[];
+  /** features?.feature_post_processes === true. Liga a chave de linha por
+   *  assinatura (spec §4.1) e a cópia do estado vazio. */
+  postProcessesEnabled?: boolean;
+  onPostClick?: (entity: PostEntity) => void;
 }
 
 // Discriminated union: a caller either passes neither prop, or passes both together.
@@ -93,7 +108,7 @@ type KanbanViewProps = KanbanViewBaseProps &
   );
 
 function rowCardCount(row: BoardRow): number {
-  return row.columns.reduce((sum, col) => sum + col.cards.length, 0);
+  return row.columns.reduce((sum, col) => sum + col.cards.length + col.posts.length, 0);
 }
 
 // Etapas are fully user-defined, so their color is keyed to the etapa NAME
@@ -121,9 +136,10 @@ export function fullColumnOrder(
   ordem: number,
   templates: WorkflowTemplate[],
   sortMode: FluxosColumnSort,
+  signatureRows = false,
 ): number[] {
   const source = allCards
-    ? (buildBoardRows(allCards, templates)
+    ? (buildBoardRows(toWorkflowEntities(allCards), templates, { signatureRows })
         .find((r) => r.key === rowKey)
         ?.columns.find((c) => c.ordem === ordem)?.cards ?? visibleColumnCards)
     : visibleColumnCards;
@@ -233,8 +249,30 @@ function SortableCard({
   );
 }
 
+// Post individual na coluna: registrado no SortableContext com o draggable
+// desligado e o droppable ligado. Nunca arrastável nesta fase (sem
+// `attributes`/`listeners` de propósito), mas o dnd-kit mede o retângulo dele
+// e um fluxo solto sobre o card resolve a coluna via findCardColumn.
+// `disabled: true` desligaria o droppable também (Disabled = { draggable?,
+// droppable? } em @dnd-kit/sortable) e over.id nunca seria um id de post.
+function SortablePostCard({ entity, onClick }: { entity: PostEntity; onClick?: () => void }) {
+  const { setNodeRef, transform, transition } = useSortable({
+    id: entity.id,
+    disabled: { draggable: true, droppable: false },
+  });
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
+      <PostProcessCard entity={entity} onClick={onClick} />
+    </div>
+  );
+}
+
 // Column droppable ID prefix — distinguishes column IDs from card IDs in handleDragEnd
 const COL_PREFIX = 'col:';
+
+// Stable empty array identity so `posts ?? EMPTY_POST_ENTITIES` never triggers
+// a useMemo re-run just because the caller passed no postEntities prop.
+const EMPTY_POST_ENTITIES: PostEntity[] = [];
 
 // Above this many template rows the board switches from stacked rows to tabs,
 // so the rows don't pile up on top of each other.
@@ -256,6 +294,9 @@ export function KanbanView({
   clearedClienteCounts,
   revisaoInternaCounts,
   awaitingClienteCounts,
+  postEntities,
+  postProcessesEnabled,
+  onPostClick,
   showExample,
   onDismissExample,
   contaId,
@@ -354,7 +395,18 @@ export function KanbanView({
     return allCards.map((c) => applyOverlays(c, pendingEtapas, pendingPositions));
   }, [allCards, pendingEtapas, pendingPositions]);
 
-  const boardRows = buildBoardRows(localCards, templates);
+  const posts = postEntities ?? EMPTY_POST_ENTITIES;
+  const signatureRows = postProcessesEnabled === true;
+  // A lista mista que o agrupador recebe: fluxos com overlays otimistas + posts
+  // (que nunca têm overlay: fase 3 não os move).
+  const localEntities: BoardEntity[] = useMemo(
+    () =>
+      posts.length === 0
+        ? toWorkflowEntities(localCards)
+        : [...toWorkflowEntities(localCards), ...posts],
+    [localCards, posts],
+  );
+  const boardRows = buildBoardRows(localEntities, templates, { signatureRows });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -380,7 +432,7 @@ export function KanbanView({
         return;
       }
       const overId = String(over.id);
-      const rows = buildBoardRows(localCards, templates);
+      const rows = buildBoardRows(localEntities, templates, { signatureRows });
       const activeLocation = findCardColumn(String(active.id), rows);
 
       let targetRow: BoardRow | undefined;
@@ -435,7 +487,7 @@ export function KanbanView({
         prev && prev.colKey === colKey && prev.index === index ? prev : { colKey, index },
       );
     },
-    [localCards, templates, displayCards],
+    [localCards, localEntities, signatureRows, templates, displayCards],
   );
 
   const handleDragEnd = useCallback(
@@ -450,7 +502,7 @@ export function KanbanView({
       const draggedCard = findCard(activeId);
       if (!draggedCard) return;
 
-      const rows = buildBoardRows(localCards, templates);
+      const rows = buildBoardRows(localEntities, templates, { signatureRows });
       const activeLocation = findCardColumn(activeId, rows);
       if (!activeLocation) return;
 
@@ -504,6 +556,7 @@ export function KanbanView({
           colOrdem,
           templates,
           sortModeFor(colKeyStr),
+          signatureRows,
         );
         const merged = mergeVisibleReorder(
           full,
@@ -569,6 +622,7 @@ export function KanbanView({
           targetColumn.ordem,
           templates,
           sortModeFor(colKey),
+          signatureRows,
         );
         pendingInsertRef.current = {
           wfId: draggedCard.workflow.id!,
@@ -595,6 +649,8 @@ export function KanbanView({
     [
       localCards,
       localAllCards,
+      localEntities,
+      signatureRows,
       dropSlot,
       onRefresh,
       onRecurring,
@@ -758,7 +814,7 @@ export function KanbanView({
     setRevertTarget(null);
   };
 
-  if (localCards.length === 0) {
+  if (localCards.length === 0 && posts.length === 0) {
     if (showExample && onDismissExample) {
       return <ExampleBoard onDismiss={onDismissExample} />;
     }
@@ -774,7 +830,9 @@ export function KanbanView({
       >
         <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem', opacity: 0.3 }}>▣</div>
         <p style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-          Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.
+          {postProcessesEnabled
+            ? 'Nenhum fluxo ou post individual encontrado. Ajuste os filtros ou crie um novo fluxo.'
+            : 'Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.'}
         </p>
       </div>
     );
@@ -788,6 +846,20 @@ export function KanbanView({
         const colKeyStr = columnKey(row.key, column.ordem);
         const stepCards = displayCards(row.key, column.ordem, column.cards);
         const sortMode = sortModeFor(colKeyStr);
+        const stepPosts = column.posts;
+        // Ordem exibida da coluna mista (spec §4.2): prazo por uma única função,
+        // manual por posicao/board_position. Sem posts a lista é exatamente
+        // stepCards, na mesma ordem de hoje.
+        const mixed: BoardEntity[] =
+          stepPosts.length === 0
+            ? toWorkflowEntities(stepCards)
+            : sortMode === 'prazo'
+              ? sortEntitiesByPrazo([...toWorkflowEntities(stepCards), ...stepPosts])
+              : sortEntitiesByPosicao([...toWorkflowEntities(stepCards), ...stepPosts]);
+        const countLabel =
+          stepCards.length > 0 && stepPosts.length > 0
+            ? `${stepCards.length} ${stepCards.length === 1 ? 'fluxo' : 'fluxos'} · ${stepPosts.length} ${stepPosts.length === 1 ? 'post' : 'posts'}`
+            : String(stepCards.length + stepPosts.length);
         return (
           <div key={column.ordem} className="board-column" style={{ borderColor: `${tint}30` }}>
             <div
@@ -843,7 +915,7 @@ export function KanbanView({
                 className="board-column-count"
                 style={{ background: `${tint}3d`, color: tint, borderColor: 'transparent' }}
               >
-                {stepCards.length}
+                {countLabel}
               </span>
             </div>
             <DroppableColumnBody tint={tint} id={`${COL_PREFIX}${colKeyStr}`}>
@@ -851,55 +923,64 @@ export function KanbanView({
                 <button
                   type="button"
                   className="board-add-card"
-                  onClick={() =>
-                    onAddWorkflow(
-                      row.key.startsWith('template:')
-                        ? Number(row.key.slice('template:'.length))
-                        : null,
-                    )
-                  }
+                  onClick={() => onAddWorkflow(row.templateId)}
                 >
                   <Plus className="h-3.5 w-3.5" /> Novo fluxo
                 </button>
               )}
               <SortableContext
-                items={stepCards.map((c) => String(c.workflow.id))}
+                items={mixed.map((e) =>
+                  e.kind === 'workflow' ? String(e.card.workflow.id) : e.id,
+                )}
                 strategy={verticalListSortingStrategy}
               >
-                {stepCards.length === 0 && colKeyStr !== dropSlot?.colKey ? (
+                {mixed.length === 0 && colKeyStr !== dropSlot?.colKey ? (
                   <div className="board-empty">Nenhuma entrega</div>
                 ) : (
-                  stepCards.map((card, cardIdx) => (
-                    <Fragment key={card.workflow.id}>
-                      {colKeyStr === dropSlot?.colKey && dropSlot.index === cardIdx && (
-                        <div
-                          className="board-drop-slot"
-                          style={{ height: dragHeight }}
-                          aria-hidden="true"
+                  mixed.map((entity) => {
+                    if (entity.kind === 'post') {
+                      return (
+                        <SortablePostCard
+                          key={entity.id}
+                          entity={entity}
+                          onClick={onPostClick ? () => onPostClick(entity) : undefined}
                         />
-                      )}
-                      <SortableCard
-                        card={card}
-                        onCardClick={onCardClick}
-                        onEditClick={onEditClick}
-                        onPostsClick={onPostsClick}
-                        membros={membros}
-                        onRefresh={onRefresh}
-                        onRevertClick={() =>
-                          setRevertTarget({
-                            workflowId: card.workflow.id!,
-                            title: card.workflow.titulo,
-                          })
-                        }
-                        onForwardClick={() => handleForwardCard(card)}
-                        postsCount={postsCounts.get(card.workflow.id!) ?? 0}
-                        approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
-                        clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
-                        revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
-                        awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
-                      />
-                    </Fragment>
-                  ))
+                      );
+                    }
+                    const card = entity.card;
+                    const cardIdx = stepCards.indexOf(card);
+                    return (
+                      <Fragment key={card.workflow.id}>
+                        {colKeyStr === dropSlot?.colKey && dropSlot.index === cardIdx && (
+                          <div
+                            className="board-drop-slot"
+                            style={{ height: dragHeight }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <SortableCard
+                          card={card}
+                          onCardClick={onCardClick}
+                          onEditClick={onEditClick}
+                          onPostsClick={onPostsClick}
+                          membros={membros}
+                          onRefresh={onRefresh}
+                          onRevertClick={() =>
+                            setRevertTarget({
+                              workflowId: card.workflow.id!,
+                              title: card.workflow.titulo,
+                            })
+                          }
+                          onForwardClick={() => handleForwardCard(card)}
+                          postsCount={postsCounts.get(card.workflow.id!) ?? 0}
+                          approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
+                          clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
+                          revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
+                          awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
+                        />
+                      </Fragment>
+                    );
+                  })
                 )}
                 {colKeyStr === dropSlot?.colKey && dropSlot.index >= stepCards.length && (
                   <div

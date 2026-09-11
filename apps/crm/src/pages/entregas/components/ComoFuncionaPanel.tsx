@@ -23,7 +23,13 @@ export const explainerStorageKey = (contaId: string) => `entregas_explainer_dism
  * `propagateTemplateToWorkflows`, which rewrites `pendente` and `ativo` etapas
  * (never `concluido`, and never `status`/`iniciado_em`/`concluido_em`).
  */
-export function ComoFuncionaPanel({ onDismiss }: { onDismiss: () => void }) {
+export function ComoFuncionaPanel({
+  onDismiss,
+  postProcessesEnabled = false,
+}: {
+  onDismiss: () => void;
+  postProcessesEnabled?: boolean;
+}) {
   return (
     <section className="ex-panel" aria-labelledby="entregas-explainer-title">
       <div className="ex-head">
@@ -50,16 +56,32 @@ export function ComoFuncionaPanel({ onDismiss }: { onDismiss: () => void }) {
           <ol className="ex-tree">
             <li className="ex-tree-l0">
               <span className="ex-term">Fluxo</span>
-              <span className="ex-def">um ciclo de entrega de um cliente — o card do kanban</span>
+              <span className="ex-def">
+                {postProcessesEnabled
+                  ? 'um ciclo de entrega de um cliente: um card do kanban'
+                  : 'um ciclo de entrega de um cliente — o card do kanban'}
+              </span>
             </li>
             <li className="ex-tree-l1">
               <span className="ex-term">Etapas</span>
-              <span className="ex-def">as fases do fluxo — só uma fica ativa por vez</span>
+              <span className="ex-def">
+                {postProcessesEnabled
+                  ? 'as fases do fluxo ou do post individual: só uma fica ativa por vez'
+                  : 'as fases do fluxo — só uma fica ativa por vez'}
+              </span>
             </li>
             <li className="ex-tree-l2">
               <span className="ex-term">Posts</span>
               <span className="ex-def">o conteúdo em si, cada um com o seu status</span>
             </li>
+            {postProcessesEnabled && (
+              <li className="ex-tree-l0">
+                <span className="ex-term">Post individual</span>
+                <span className="ex-def">
+                  um post com etapas próprias, sem fluxo: também é um card do kanban
+                </span>
+              </li>
+            )}
           </ol>
 
           <p className="ex-aside">
@@ -98,8 +120,9 @@ export function ComoFuncionaPanel({ onDismiss }: { onDismiss: () => void }) {
             adiante devolve os posts aprovados para Rascunho.
           </p>
           <p className="ex-aside">
-            Um post também pode existir sem fluxo (publicação avulsa): ele anda só pelo trilho de
-            status, no quadro de Publicações.
+            {postProcessesEnabled
+              ? 'Um post também pode existir sem fluxo: avulso, andando só pelo trilho de status no quadro de Publicações, ou individual, com etapas próprias no quadro de Fluxos.'
+              : 'Um post também pode existir sem fluxo (publicação avulsa): ele anda só pelo trilho de status, no quadro de Publicações.'}
           </p>
         </article>
 

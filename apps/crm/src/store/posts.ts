@@ -287,16 +287,17 @@ export interface ScheduledPost {
  * migrations before the frontend, so by the time this code ships the column
  * already exists; do not reorder that deploy sequence.
  */
-const POST_CONTEXT_COLUMNS =
+export const POST_CONTEXT_COLUMNS =
   'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy, board_ordem';
 
+// Exported for store/postProcesses.ts, which embeds a workflow_posts row (avulso arm shape).
 /**
  * Maps a workflow_posts row that may come from either arm of a wired/avulso
  * merge: `row.workflows` is present only for the wired arm (left- or
  * inner-joined), and the avulso arm selects `cliente_id` and a top-level
  * `clientes(nome)` embed directly off the post row instead.
  */
-function mapPostContextRow(row: any): ActivePost {
+export function mapPostContextRow(row: any): ActivePost {
   return {
     id: row.id,
     workflow_id: row.workflow_id ?? null,

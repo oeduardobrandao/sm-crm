@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { shouldAutoStartTour } from './tour/tourGating';
 import { shouldShowExample } from './tour/exampleGate';
@@ -47,18 +48,31 @@ import { PostsListView } from './views/PostsListView';
 import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { StandalonePostDrawer } from './components/StandalonePostDrawer';
+import { SemProcessoSection } from './components/SemProcessoSection';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
+import { EntidadeToggle } from './components/EntidadeToggle';
 import { VistasTabs } from './components/VistasTabs';
 import { useActivePosts } from './hooks/useActivePosts';
+import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } from './semProcesso';
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
-import { parseEntregasQuery, serializeEntregasQuery, type ActiveView } from './viewQuery';
+import { matchesPostEntityFilters } from './entityFilters';
+import type { PostEntity } from './boardEntity';
+import {
+  parseEntregasQuery,
+  serializeEntregasQuery,
+  type ActiveView,
+  type EntidadeFilter,
+} from './viewQuery';
 import { postMatchesStatusFilter } from './statusRegistry';
 import {
   loadLastMode,
   persistLastMode,
   loadBoardColumnSorts,
   persistBoardColumnSort,
+  loadLastEntidade,
+  persistLastEntidade,
+  hasLastMode,
 } from './entregasPrefs';
 import type { BoardColumnSort } from './postsBoardOrder';
 import {
@@ -80,12 +94,17 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
   { id: 'concluded', label: 'Concluídas', icon: <Archive className="h-4 w-4" /> },
 ];
 
+const EMPTY_POST_ENTITIES: PostEntity[] = [];
+const EMPTY_CARDS: BoardCard[] = [];
+const EMPTY_ETAPA_MAP: Map<number, string> = new Map();
+
 export default function EntregasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   // Frozen at mount, same as initialQuery below: the sync effect eventually writes
   // `mode` back into the URL for a non-default mode, so reading this as a plain
   // (non-ref) value would flip once that happens and re-seed from the URL forever.
   const hadModeParam = useRef(searchParams.has('mode')).current;
+  const hadEntidadeParam = useRef(searchParams.has('entidade')).current;
   // Parsed exactly once: the URL is only an INPUT at mount time; afterwards the
   // page state is the source of truth and the sync effect below writes it back.
   const initialQuery = useRef(parseEntregasQuery(searchParams)).current;
@@ -94,6 +113,11 @@ export default function EntregasPage() {
   // (its own state, tourDone/explainerOpen, is still set up further down).
   const { profile } = useAuth();
   const contaId = profile?.conta_id ?? 'unknown';
+
+  // Processos individuais de produção (spec 2026-09-10). Ships dark: every new
+  // surface on this page checks this one boolean; nothing else may read the flag.
+  const { features } = useWorkspaceLimits();
+  const postProcessesEnabled = features?.feature_post_processes === true;
 
   const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
   const [filters, setFilters] = useState<FilterState>(initialQuery.filters);
@@ -116,6 +140,16 @@ export default function EntregasPage() {
   const [mode, setMode] = useState<EntregasMode>(() =>
     hadModeParam ? initialQuery.mode : loadLastMode(contaId),
   );
+  // Filtro de entidade do quadro de Fluxos (spec §4.1). URL vence a preferência
+  // local; sem as duas, quem já usou Entregas neste navegador começa em Fluxos e
+  // quem nunca usou começa em Todos. Só é consumido através de effectiveEntidade.
+  const [entidade, setEntidade] = useState<EntidadeFilter>(() => {
+    if (hadEntidadeParam) return initialQuery.entidade;
+    return loadLastEntidade(contaId) ?? (hasLastMode(contaId) ? 'fluxos' : 'todos');
+  });
+  // Flag desligada: o quadro é sempre o de fluxos, a URL não ganha ?entidade= e
+  // nenhuma chave nova entra no localStorage.
+  const effectiveEntidade: EntidadeFilter = postProcessesEnabled ? entidade : 'fluxos';
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
@@ -136,6 +170,9 @@ export default function EntregasPage() {
     membros,
     templates,
     cards,
+    postEntities,
+    processByPostId,
+    activePostProcessCount,
     activeWorkflows,
     postsCounts,
     approvedPostsCounts,
@@ -146,7 +183,7 @@ export default function EntregasPage() {
     isLoading,
     isFetching,
     refresh,
-  } = useEntregasData();
+  } = useEntregasData({ postProcessesEnabled });
 
   // Same inline pattern as NotFoundPage: an app route, not one of the
   // manifest-driven public pages usePageMeta covers, so nothing else would set
@@ -193,7 +230,7 @@ export default function EntregasPage() {
   // temporarily during a replay. A board emptied by filters (but with real cards) shows the
   // plain "Nenhuma entrega" message instead — hence the unfiltered count, not filteredCards.
   // activeBoardCount is the single place to extend when the board gains new card kinds.
-  const activeBoardCount = activeWorkflows.length;
+  const activeBoardCount = activeWorkflows.length + activePostProcessCount;
   const showExample = shouldShowExample({ activeBoardCount, tourDone, replayActive });
 
   const markTourDone = useCallback(() => {
@@ -215,9 +252,10 @@ export default function EntregasPage() {
           captureEvent('entregas_tour_dismissed', { step });
           markTourDone();
         },
+        postProcesses: postProcessesEnabled,
       }),
     );
-  }, [markTourDone]);
+  }, [markTourDone, postProcessesEnabled]);
 
   // Auto-start once on the first visit that shows the example board. Suppressed while the
   // new-workflow wizard is open (?novo-fluxo=1 deep link) so the two onboarding overlays
@@ -318,7 +356,15 @@ export default function EntregasPage() {
     activeView === 'kanban' || activeView === 'calendar' || activeView === 'list'
       ? mode
       : 'entregas';
-  const currentQuery = serializeEntregasQuery({ view: activeView, mode: activeMode, filters });
+  const currentQuery = serializeEntregasQuery({
+    view: activeView,
+    mode: activeMode,
+    entidade:
+      activeMode === 'entregas' && (activeView === 'kanban' || activeView === 'list')
+        ? effectiveEntidade
+        : 'fluxos',
+    filters,
+  });
   useEffect(() => {
     // `currentQuery` alone — the transient ?drawer=/?post= params are deliberately dropped.
     // They were previously carried over from `prev`, but `prev` is the render-time snapshot,
@@ -336,6 +382,13 @@ export default function EntregasPage() {
       persistLastMode(contaId, activeMode);
     }
   }, [activeView, activeMode, contaId]);
+
+  useEffect(() => {
+    if (!postProcessesEnabled) return;
+    if ((activeView === 'kanban' || activeView === 'list') && activeMode === 'entregas') {
+      persistLastEntidade(contaId, effectiveEntidade);
+    }
+  }, [postProcessesEnabled, activeView, activeMode, effectiveEntidade, contaId]);
 
   useEffect(() => {
     if (pendingDeepLink === null || pendingDeepLink.workflowId == null) return;
@@ -444,8 +497,9 @@ export default function EntregasPage() {
   const etapaNames = useMemo(() => {
     const names = new Set<string>();
     for (const c of cards) names.add(c.etapa.nome);
+    for (const e of postEntities) names.add(e.etapaNome);
     return Array.from(names);
-  }, [cards]);
+  }, [cards, postEntities]);
 
   // Resolve a post's workflow back to its board card (O(1)) for drawer opening.
   // Built from the UNFILTERED cards so a filtered-out workflow's post is still openable.
@@ -480,6 +534,13 @@ export default function EntregasPage() {
     setStandalonePostId(null);
     setDrawerInitialPostId(null);
     setDrawerCard(card);
+  };
+  // Card de post individual: abre o drawer do post (StandalonePostDrawer), que
+  // mostra a seção de produção. Mesmo slot exclusivo dos demais drawers.
+  const handlePostEntityClick = (entity: PostEntity) => {
+    setDrawerCard(null);
+    setDrawerInitialPostId(null);
+    setStandalonePostId(entity.process.post_id);
   };
   // Object-based click contract shared by the four post-list views (Kanban/Lista/
   // Calendário/PublicacoesPanel): a post avulso has no workflow card to open, so it
@@ -536,16 +597,33 @@ export default function EntregasPage() {
     setActiveView(parsed.view);
     if (parsed.view === 'kanban' || parsed.view === 'calendar' || parsed.view === 'list') {
       setMode(parsed.mode);
+      setEntidade(parsed.entidade);
     }
     setFilters(parsed.filters);
   };
 
   // Publicações mode (Kanban/Lista): every post of every active workflow, fetched
-  // only while one of those modes is actually visible.
+  // only while one of those modes is actually visible. The "Sem processo"
+  // section of the Fluxos board (spec §4.3) reads the same cache, so it turns
+  // the query on too; the 15 s poll stays conditioned on a post being published.
   const postsMode =
     (activeView === 'kanban' && mode === 'publicacoes') ||
     (activeView === 'list' && mode === 'publicacoes');
-  const { posts: activePosts, isLoading: activePostsLoading } = useActivePosts(postsMode);
+  const semProcessoMode =
+    postProcessesEnabled &&
+    activeView === 'kanban' &&
+    mode === 'entregas' &&
+    effectiveEntidade !== 'fluxos';
+  const { posts: activePosts, isLoading: activePostsLoading } = useActivePosts(
+    postsMode || semProcessoMode,
+  );
+  const semProcessoPosts = useMemo(
+    () =>
+      semProcessoMode
+        ? selectSemProcessoPosts(activePosts, (id) => processByPostId.has(id), filters)
+        : [],
+    [semProcessoMode, activePosts, processByPostId, filters],
+  );
 
   // The busca input (on the VistasTabs row) and the filter pills show together:
   // hidden on Concluídas and on the Publicações calendar, where they don't apply.
@@ -681,6 +759,28 @@ export default function EntregasPage() {
     return out;
   }, [cards, filters, postResponsaveis]);
 
+  // Posts individuais passam pelos MESMOS filtros do modo Fluxos (entityFilters
+  // espelha a cadeia acima campo a campo). O filtro de entidade só decide o
+  // que o Kanban e a Lista recebem; Calendário e Gráfico seguem lendo
+  // filteredCards (spec §4.1: "não afeta ... o gráfico").
+  const filteredPostEntities = useMemo(
+    () =>
+      postEntities.length === 0
+        ? EMPTY_POST_ENTITIES
+        : postEntities.filter((e) => matchesPostEntityFilters(e, filters)),
+    [postEntities, filters],
+  );
+  const visibleCards = effectiveEntidade === 'posts' ? EMPTY_CARDS : filteredCards;
+  const visiblePostEntities =
+    effectiveEntidade === 'fluxos' ? EMPTY_POST_ENTITIES : filteredPostEntities;
+
+  // Publicações (Kanban/Lista): "Individual · <etapa>" no card de um avulso
+  // com processo ativo (spec §4.4). Vazio e estável com a flag desligada.
+  const processEtapaByPostId = useMemo(() => {
+    if (postEntities.length === 0) return EMPTY_ETAPA_MAP;
+    return new Map(postEntities.map((e) => [e.process.post_id, e.etapaNome]));
+  }, [postEntities]);
+
   const overdue = cards.filter((c) => c.deadline.estourado).length;
   const urgent = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
 
@@ -751,6 +851,7 @@ export default function EntregasPage() {
               unless the header says which one it is. */}
           <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
             fluxos ativos: {activeWorkflows.length}
+            {postProcessesEnabled && <> · posts individuais: {activePostProcessCount}</>}
             {overdue > 0 && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
                 {' '}
@@ -787,7 +888,12 @@ export default function EntregasPage() {
         </div>
       </header>
 
-      {explainerOpen && <ComoFuncionaPanel onDismiss={dismissExplainer} />}
+      {explainerOpen && (
+        <ComoFuncionaPanel
+          onDismiss={dismissExplainer}
+          postProcessesEnabled={postProcessesEnabled}
+        />
+      )}
 
       <VistasTabs
         contaId={contaId}
@@ -865,6 +971,12 @@ export default function EntregasPage() {
           <ModeToggle mode={mode} onModeChange={setMode} />
         )}
 
+        {postProcessesEnabled &&
+          (activeView === 'kanban' || activeView === 'list') &&
+          mode === 'entregas' && (
+            <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+          )}
+
         {showFilters && (
           <EntregasFilters
             filters={filters}
@@ -880,32 +992,46 @@ export default function EntregasPage() {
 
       {activeView === 'kanban' &&
         (mode === 'entregas' ? (
-          <KanbanView
-            contaId={contaId}
-            cards={filteredCards}
-            allCards={cards}
-            onCardClick={handleCardClick}
-            onEditClick={setEditCard}
-            onPostsClick={handleCardClick}
-            onRefresh={refresh}
-            onRecurring={setRecurringWfId}
-            onAddWorkflow={(templateId) => {
-              setQuickAddTemplateId(templateId);
-              setNewWorkflowOpen(true);
-            }}
-            membros={membros}
-            templates={templates}
-            postsCounts={postsCounts}
-            approvedPostsCounts={approvedPostsCounts}
-            clearedClienteCounts={clearedClienteCounts}
-            revisaoInternaCounts={revisaoInternaCounts}
-            awaitingClienteCounts={awaitingClienteCounts}
-            showExample={showExample}
-            onDismissExample={() => {
-              captureEvent('entregas_tour_dismissed', { step: -1 });
-              markTourDone();
-            }}
-          />
+          <>
+            <KanbanView
+              contaId={contaId}
+              cards={visibleCards}
+              allCards={cards}
+              postEntities={visiblePostEntities}
+              postProcessesEnabled={postProcessesEnabled}
+              onPostClick={handlePostEntityClick}
+              onCardClick={handleCardClick}
+              onEditClick={setEditCard}
+              onPostsClick={handleCardClick}
+              onRefresh={refresh}
+              onRecurring={setRecurringWfId}
+              onAddWorkflow={(templateId) => {
+                setQuickAddTemplateId(templateId);
+                setNewWorkflowOpen(true);
+              }}
+              membros={membros}
+              templates={templates}
+              postsCounts={postsCounts}
+              approvedPostsCounts={approvedPostsCounts}
+              clearedClienteCounts={clearedClienteCounts}
+              revisaoInternaCounts={revisaoInternaCounts}
+              awaitingClienteCounts={awaitingClienteCounts}
+              showExample={showExample}
+              onDismissExample={() => {
+                captureEvent('entregas_tour_dismissed', { step: -1 });
+                markTourDone();
+              }}
+            />
+            {semProcessoMode && (
+              <SemProcessoSection
+                posts={semProcessoPosts.slice(0, SEM_PROCESSO_LIMIT)}
+                total={semProcessoPosts.length}
+                productionFiltersActive={productionFiltersActive(filters)}
+                onPostClick={handlePostClick}
+                onVerTodos={() => setMode('publicacoes')}
+              />
+            )}
+          </>
         ) : (
           <PostsKanbanView
             posts={filteredPosts}
@@ -917,6 +1043,7 @@ export default function EntregasPage() {
             onCreateAvulso={() => setNewAvulsoOpen(true)}
             columnSorts={boardColumnSorts}
             onColumnSortChange={handleBoardColumnSortChange}
+            processEtapaByPostId={processEtapaByPostId}
           />
         ))}
       {activeView === 'chart' && (
@@ -927,6 +1054,12 @@ export default function EntregasPage() {
           onFiltersChange={setFilters}
           onCardClick={handleCardClick}
           onGoToView={setActiveView}
+          postProcessesEnabled={postProcessesEnabled}
+          onGoToKanban={() => {
+            setActiveView('kanban');
+            setEntidade('todos');
+            setMode('entregas');
+          }}
         />
       )}
       {activeView === 'calendar' && (
@@ -936,12 +1069,20 @@ export default function EntregasPage() {
           mode={mode}
           openableWorkflowIds={openableWorkflowIds}
           onPostClick={handlePostClick}
+          postProcessesEnabled={postProcessesEnabled}
+          onGoToKanban={() => {
+            setActiveView('kanban');
+            setEntidade('todos');
+            setMode('entregas');
+          }}
         />
       )}
       {activeView === 'list' &&
         (mode === 'entregas' ? (
           <ListView
-            cards={filteredCards}
+            cards={visibleCards}
+            postEntities={visiblePostEntities}
+            onPostClick={handlePostEntityClick}
             sort={listSort}
             onSortChange={setListSort}
             onCardClick={handleCardClick}
@@ -956,9 +1097,18 @@ export default function EntregasPage() {
             cardsByWorkflowId={cardsByWorkflowId}
             filtersActive={postsFiltersActive}
             onCreateAvulso={() => setNewAvulsoOpen(true)}
+            processEtapaByPostId={processEtapaByPostId}
           />
         ))}
-      {activeView === 'concluded' && <ConcludedView />}
+      {activeView === 'concluded' && (
+        <ConcludedView
+          onOpenPost={(postId) => {
+            setDrawerCard(null);
+            setDrawerInitialPostId(null);
+            setStandalonePostId(postId);
+          }}
+        />
+      )}
 
       {newWorkflowOpen && (
         <NewWorkflowWizard

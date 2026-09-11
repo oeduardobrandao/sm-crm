@@ -172,6 +172,32 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: () => ({ profile: { conta_id: 'conta-1', role: 'owner' } }),
 }));
 
+const limitsMock = vi.hoisted(() => ({ features: null as Record<string, boolean> | null }));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    features: limitsMock.features,
+    planName: null,
+    isLoading: false,
+    isUnlimited: false,
+  }),
+}));
+
+// SemProcessoSection is real in this suite and its PostStatusChip reads
+// useStatusRegistry, which reaches getPostStatusDefinitions -- absent from
+// storeMocks, and vitest throws on a missing mock export.
+vi.mock('@/hooks/useStatusRegistry', () => ({
+  useStatusRegistry: () => ({
+    resolve: (p: { status: string }) => ({
+      key: p.status,
+      kind: 'canonical',
+      canonical: p.status,
+      label: p.status,
+    }),
+    options: [],
+  }),
+}));
+
 // Mock only startEntregasTour (driver.js can't run in jsdom); tourStorageKey stays real so the
 // localStorage assertions exercise the true key format.
 const tourMock = vi.hoisted(() => ({ startEntregasTour: vi.fn() }));
@@ -188,6 +214,7 @@ vi.mock('../views/ChartView', () => ({
     onFiltersChange,
     onCardClick,
     onGoToView,
+    onGoToKanban,
   }: {
     cards: Array<{ workflow: { titulo: string } }>;
     totalCards: number;
@@ -195,6 +222,7 @@ vi.mock('../views/ChartView', () => ({
     onFiltersChange: (next: Record<string, unknown>) => void;
     onCardClick: (card: unknown) => void;
     onGoToView: (view: 'kanban' | 'list') => void;
+    onGoToKanban?: () => void;
   }) => (
     <div>
       <div>Chart view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
@@ -204,6 +232,7 @@ vi.mock('../views/ChartView', () => ({
       </button>
       <button onClick={() => onCardClick(cards[0])}>Open drawer from chart</button>
       <button onClick={() => onGoToView('list')}>Chart ver na lista</button>
+      {onGoToKanban && <button onClick={onGoToKanban}>Chart somente fluxos</button>}
     </div>
   ),
 }));
@@ -491,6 +520,10 @@ function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[]
     templates: [],
     cards: data.cards,
     activeWorkflows: data.activeWorkflows,
+    postEntities: [],
+    processByPostId: new Map(),
+    concludedPostProcesses: [],
+    activePostProcessCount: 0,
     isLoading: false,
     refresh: vi.fn(),
   } as never);
@@ -516,6 +549,7 @@ describe('EntregasPage', () => {
     mockedToast.error.mockReset();
     tourMock.startEntregasTour.mockReset();
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
+    limitsMock.features = null;
     localStorage.clear();
     // The "Como funciona" panel is open by default, and its copy names the same
     // objects the board does ("Publicações", "Fluxos"), which makes the board's
@@ -537,6 +571,10 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [],
       activeWorkflows: [],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
       isLoading: true,
       refresh: vi.fn(),
     } as never);
@@ -566,6 +604,10 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 1 }, { id: 2 }],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh,
     } as never);
@@ -595,6 +637,12 @@ describe('EntregasPage', () => {
     expect(screen.getByText('WizardMock')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Created workflow'));
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('mostra o total de posts individuais no cabeçalho só com a flag ligada', async () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+    expect(await screen.findByText(/fluxos ativos: 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/posts individuais/)).toBeNull();
   });
 
   it('opens the Post avulso dialog from the Novo dropdown and switches into Publicações after creating one', () => {
@@ -645,6 +693,10 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [{ id: 1 }],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -725,6 +777,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 1 }, { id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -745,6 +799,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -780,6 +836,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -806,6 +864,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -833,6 +893,8 @@ describe('EntregasPage', () => {
         }),
       ],
       activeWorkflows: [{ id: 2 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -855,6 +917,8 @@ describe('EntregasPage', () => {
           }),
         ],
         activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -890,6 +954,8 @@ describe('EntregasPage', () => {
           }),
         ],
         activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -918,6 +984,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [{ id: 1 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       };
@@ -958,6 +1026,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [{ id: 1 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -986,6 +1056,8 @@ describe('EntregasPage', () => {
           }),
         ],
         activeWorkflows: [{ id: 2 }],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1009,6 +1081,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [],
         activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1031,6 +1105,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [wfFixture],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1093,6 +1169,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [],
         activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: true,
         isFetching: true,
         refresh: vi.fn(),
@@ -1108,6 +1186,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [],
         activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         isFetching: false,
         refresh: vi.fn(),
@@ -1123,6 +1203,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [wfFixture],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         isFetching: true,
         refresh: vi.fn(),
@@ -1147,6 +1229,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [],
         activeWorkflows: [],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         isFetching: false,
         refresh: vi.fn(),
@@ -1172,6 +1256,8 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [{ id: 1 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh,
     } as never);
@@ -1198,6 +1284,8 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [{ id: 1 }],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh,
     } as never);
@@ -1346,6 +1434,8 @@ describe('EntregasPage', () => {
       templates: [],
       cards: [makeCard()],
       activeWorkflows: [wfFixture],
+      postEntities: [],
+      activePostProcessCount: 0,
       isLoading: false,
       refresh: vi.fn(),
     } as never);
@@ -1368,6 +1458,8 @@ describe('EntregasPage', () => {
         templates: [],
         cards: [makeCard()],
         activeWorkflows: [wfFixture],
+        postEntities: [],
+        activePostProcessCount: 0,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1513,6 +1605,218 @@ describe('EntregasPage', () => {
     fireEvent.click(screen.getByText('Filter prazo atrasado'));
     expect(screen.getByText('Posts kanban view: 1')).toBeInTheDocument();
   });
+
+  describe('filtro de entidade', () => {
+    it('flag desligada: sem toggle, sem entidade na URL e sem chave nova no localStorage', () => {
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(screen.queryByRole('radiogroup', { name: 'Entidades do quadro' })).toBeNull();
+      // PathProbe reads the MemoryRouter's own useLocation(), which DOES reflect
+      // setSearchParams -- so this is a real assertion on the synced URL, not
+      // just an inference from the viewQuery unit tests.
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas$/);
+      expect(localStorage.getItem('entregas_entidade_conta-1')).toBeNull();
+
+      // Switching views/mode is exactly what would otherwise trigger the
+      // persist effect and the URL sync; confirm the guarantee survives that.
+      fireEvent.click(screen.getByText('Lista'));
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=list$/);
+      expect(localStorage.getItem('entregas_entidade_conta-1')).toBeNull();
+    });
+
+    it('flag ligada e navegador novo: começa em Todos; com entregas_last_mode gravado começa em Fluxos', () => {
+      limitsMock.features = { feature_post_processes: true };
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('com entregas_last_mode gravado começa em Fluxos', () => {
+      limitsMock.features = { feature_post_processes: true };
+      localStorage.setItem('entregas_last_mode_conta-1', 'entregas');
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(screen.getByRole('radio', { name: 'Fluxos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('?entidade=posts na URL vence a preferência local', () => {
+      limitsMock.features = { feature_post_processes: true };
+      localStorage.setItem('entregas_entidade_conta-1', 'todos');
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map(),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?entidade=posts');
+      expect(screen.getByRole('radio', { name: 'Posts individuais' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    it('em Todos, a seção Sem processo lista só avulsos sem processo vigente e liga useActivePosts', async () => {
+      limitsMock.features = { feature_post_processes: true };
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          {
+            id: 1,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso livre',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+          {
+            id: 2,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso com processo',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+        ],
+        isLoading: false,
+      } as never);
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map([[2, {}]]),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?entidade=todos');
+      expect(await screen.findByText('Avulso livre')).toBeInTheDocument();
+      expect(screen.queryByText('Avulso com processo')).toBeNull();
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(true);
+    });
+
+    it('flag desligada: useActivePosts fica em false no Kanban de Fluxos e a seção Sem processo não monta', () => {
+      limitsMock.features = null;
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          {
+            id: 1,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso livre',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+        ],
+        isLoading: false,
+      } as never);
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
+      expect(screen.queryByRole('heading', { name: 'Sem processo' })).toBeNull();
+      expect(screen.queryByText('Avulso livre')).toBeNull();
+    });
+
+    it('flag ligada e entidade=fluxos: a seção Sem processo também não monta (spec §4.3: não aparece em Fluxos)', () => {
+      limitsMock.features = { feature_post_processes: true };
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          {
+            id: 1,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso livre',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+        ],
+        isLoading: false,
+      } as never);
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map(),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?entidade=fluxos');
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
+      expect(screen.queryByRole('heading', { name: 'Sem processo' })).toBeNull();
+      expect(screen.queryByText('Avulso livre')).toBeNull();
+    });
+
+    it('link "Somente fluxos" da Visão geral leva ao Kanban E muda entidade para Todos, não só a view', () => {
+      limitsMock.features = { feature_post_processes: true };
+      // Returning user with no explicit ?entidade= in the URL: entidade defaults
+      // to 'fluxos' (spec default for "quem já usou Entregas"). This is exactly
+      // the common case where the ChartView "Somente fluxos" note renders and
+      // its link must actually reveal individual posts, not just switch views.
+      localStorage.setItem('entregas_last_mode_conta-1', 'entregas');
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+      expect(screen.getByRole('radio', { name: 'Fluxos' })).toHaveAttribute('aria-checked', 'true');
+
+      fireEvent.click(screen.getByText('Visão geral'));
+      fireEvent.click(screen.getByText('Chart somente fluxos'));
+
+      // 'kanban' is the default view, so serializeEntregasQuery omits it from the
+      // URL; only 'entidade=todos' shows up, confirming the filter itself changed.
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?entidade=todos$/);
+      expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('link "Somente fluxos" clicado em modo Publicações também leva ao Kanban de Fluxos, não ao de Publicações', () => {
+      limitsMock.features = { feature_post_processes: true };
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [makeCard()],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map(),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+
+      // Starts on the Visão geral (Chart) tab while mode is 'publicacoes' (e.g. the user
+      // was just looking at the Publicações chart). onGoToKanban must reset `mode` too,
+      // not just `entidade` — otherwise the link lands on the Publicações board.
+      renderPage('/entregas?view=chart&mode=publicacoes');
+
+      fireEvent.click(screen.getByText('Chart somente fluxos'));
+
+      // mode=entregas is the default, so it — like the default view=kanban — is omitted
+      // from the URL; only entidade=todos shows up, same shape as the mode=entregas case.
+      expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?entidade=todos$/);
+      expect(screen.getByText(/^Kanban view:/)).toBeInTheDocument();
+      expect(screen.queryByText(/^Posts kanban view:/)).toBeNull();
+      // EntidadeToggle only mounts when mode === 'entregas' (and the flag is on), so this
+      // confirms mode actually flipped back, not just that entidade and the URL did.
+      expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
+    });
+  });
 });
 
 describe('EntregasPage — painel "Como funciona"', () => {
@@ -1521,6 +1825,7 @@ describe('EntregasPage — painel "Como funciona"', () => {
   beforeEach(() => {
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
     tourMock.startEntregasTour.mockReset();
+    limitsMock.features = null;
     localStorage.clear();
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       cb(0);
