@@ -96,6 +96,7 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 
 const EMPTY_POST_ENTITIES: PostEntity[] = [];
 const EMPTY_CARDS: BoardCard[] = [];
+const EMPTY_ETAPA_MAP: Map<number, string> = new Map();
 
 export default function EntregasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -772,6 +773,13 @@ export default function EntregasPage() {
   const visiblePostEntities =
     effectiveEntidade === 'fluxos' ? EMPTY_POST_ENTITIES : filteredPostEntities;
 
+  // Publicações (Kanban/Lista): "Individual · <etapa>" no card de um avulso
+  // com processo ativo (spec §4.4). Vazio e estável com a flag desligada.
+  const processEtapaByPostId = useMemo(() => {
+    if (postEntities.length === 0) return EMPTY_ETAPA_MAP;
+    return new Map(postEntities.map((e) => [e.process.post_id, e.etapaNome]));
+  }, [postEntities]);
+
   const overdue = cards.filter((c) => c.deadline.estourado).length;
   const urgent = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
 
@@ -1029,6 +1037,7 @@ export default function EntregasPage() {
             onCreateAvulso={() => setNewAvulsoOpen(true)}
             columnSorts={boardColumnSorts}
             onColumnSortChange={handleBoardColumnSortChange}
+            processEtapaByPostId={processEtapaByPostId}
           />
         ))}
       {activeView === 'chart' && (
@@ -1039,6 +1048,8 @@ export default function EntregasPage() {
           onFiltersChange={setFilters}
           onCardClick={handleCardClick}
           onGoToView={setActiveView}
+          postProcessesEnabled={postProcessesEnabled}
+          onGoToKanban={() => setActiveView('kanban')}
         />
       )}
       {activeView === 'calendar' && (
@@ -1048,6 +1059,8 @@ export default function EntregasPage() {
           mode={mode}
           openableWorkflowIds={openableWorkflowIds}
           onPostClick={handlePostClick}
+          postProcessesEnabled={postProcessesEnabled}
+          onGoToKanban={() => setActiveView('kanban')}
         />
       )}
       {activeView === 'list' &&
@@ -1070,6 +1083,7 @@ export default function EntregasPage() {
             cardsByWorkflowId={cardsByWorkflowId}
             filtersActive={postsFiltersActive}
             onCreateAvulso={() => setNewAvulsoOpen(true)}
+            processEtapaByPostId={processEtapaByPostId}
           />
         ))}
       {activeView === 'concluded' && <ConcludedView />}

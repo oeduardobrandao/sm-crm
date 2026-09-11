@@ -13091,3 +13091,17 @@ a.hub-fill__row-inner:hover {
   border-top: 1px solid var(--border-color);
   padding-top: 0.6rem;
 }
+.entregas-somente-fluxos {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.entregas-somente-fluxos-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-main);
+  text-decoration: underline;
+}

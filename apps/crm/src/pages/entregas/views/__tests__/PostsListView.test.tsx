@@ -386,4 +386,49 @@ describe('PostsListView', () => {
     render(<PostsListView {...baseProps} posts={[makePost({ ig_trial_strategy: null })]} />);
     expect(screen.queryByText('Teste')).toBeNull();
   });
+
+  it('mostra "Individual · <etapa>" para um avulso com processo, quando o mapa traz a etapa', () => {
+    const avulso = {
+      id: 1,
+      workflow_id: null,
+      cliente_id: 1,
+      cliente_nome: 'A',
+      workflow_titulo: null,
+      titulo: 'Post individual',
+      tipo: 'feed',
+      status: 'rascunho',
+      custom_status_id: null,
+      scheduled_at: null,
+      published_at: null,
+      ig_caption: null,
+      instagram_permalink: null,
+      publish_error: null,
+      publish_error_code: null,
+      ordem: 0,
+      responsavel_id: null,
+      platform: 'instagram',
+      tiktok_publish_status: null,
+      tiktok_publish_error: null,
+      tiktok_post_url: null,
+      instagram_media_id: null,
+      ig_trial_strategy: null,
+      board_ordem: null,
+    } as ActivePost;
+    render(
+      <PostsListView
+        posts={[avulso]}
+        isLoading={false}
+        openableWorkflowIds={new Set()}
+        onPostClick={vi.fn()}
+        onFluxoClick={vi.fn()}
+        cardsByWorkflowId={new Map()}
+        filtersActive={false}
+        onCreateAvulso={vi.fn()}
+        processEtapaByPostId={new Map([[1, 'Design']])}
+      />,
+    );
+    expect(screen.getByText('Individual · Design')).toBeInTheDocument();
+    expect(screen.queryByText('Avulso')).toBeNull();
+    expect(screen.getAllByText('Design')).not.toHaveLength(0); // célula "Etapa atual"
+  });
 });

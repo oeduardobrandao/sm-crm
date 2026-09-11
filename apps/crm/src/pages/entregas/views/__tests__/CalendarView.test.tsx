@@ -182,4 +182,31 @@ describe('CalendarView', () => {
     fireEvent.click(getDayCell(container, 1)!);
     expect(screen.getByText('Nenhuma entrega neste dia.')).toBeInTheDocument();
   });
+
+  it('mostra a nota "Somente fluxos" com a flag ligada e chama onGoToKanban', () => {
+    const onGoToKanban = vi.fn();
+    render(
+      <Wrapper>
+        <CalendarView
+          cards={[makeCard()]}
+          onCardClick={vi.fn()}
+          {...defaultProps}
+          postProcessesEnabled
+          onGoToKanban={onGoToKanban}
+        />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'quadro' }));
+    expect(onGoToKanban).toHaveBeenCalled();
+    expect(screen.getByText(/Somente fluxos/)).toBeInTheDocument();
+  });
+
+  it('sem a flag não há nota', () => {
+    render(
+      <Wrapper>
+        <CalendarView cards={[makeCard()]} onCardClick={vi.fn()} {...defaultProps} />
+      </Wrapper>,
+    );
+    expect(screen.queryByText(/Somente fluxos/)).toBeNull();
+  });
 });

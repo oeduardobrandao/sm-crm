@@ -65,6 +65,11 @@ export interface ChartViewProps {
   onFiltersChange: (filters: FilterState) => void;
   onCardClick: (card: BoardCard) => void;
   onGoToView: (view: 'kanban' | 'list') => void;
+  /** Spec §4.4: this chart is built purely from fluxo cards -- with the flag
+   *  on, a "Somente fluxos" note links to the board, where posts individuais
+   *  do appear. */
+  postProcessesEnabled?: boolean;
+  onGoToKanban?: () => void;
 }
 
 /** today - n days as 'YYYY-MM-DD', in local time (the filter inputs' format). */
@@ -429,6 +434,8 @@ export function ChartView({
   onFiltersChange,
   onCardClick,
   onGoToView,
+  postProcessesEnabled,
+  onGoToKanban,
 }: ChartViewProps) {
   const isDark = useIsDark();
   const theme = useMemo(() => getChartTheme(isDark), [isDark]);
@@ -541,6 +548,15 @@ export function ChartView({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {postProcessesEnabled && (
+        <p className="entregas-somente-fluxos">
+          Somente fluxos. Posts individuais aparecem no{' '}
+          <button type="button" className="entregas-somente-fluxos-link" onClick={onGoToKanban}>
+            quadro
+          </button>
+          .
+        </p>
+      )}
       <StatCardGrid maxCols={5} className="animate-up">
         <StatCard
           label="Atrasadas"

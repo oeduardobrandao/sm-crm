@@ -18,6 +18,11 @@ interface CalendarViewProps {
   mode: CalendarMode;
   openableWorkflowIds: Set<number>;
   onPostClick: (post: ActivePost) => void;
+  /** Spec §4.4: this calendar only ever shows fluxo deadlines -- with the flag
+   *  on, a "Somente fluxos" note (mode `entregas` only) links to the board,
+   *  where posts individuais do appear. */
+  postProcessesEnabled?: boolean;
+  onGoToKanban?: () => void;
 }
 
 interface CalendarEvent {
@@ -47,6 +52,8 @@ export function CalendarView({
   mode,
   openableWorkflowIds,
   onPostClick,
+  postProcessesEnabled,
+  onGoToKanban,
 }: CalendarViewProps) {
   const qc = useQueryClient();
   const today = new Date();
@@ -120,6 +127,15 @@ export function CalendarView({
 
   return (
     <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {postProcessesEnabled && mode === 'entregas' && (
+        <p className="entregas-somente-fluxos">
+          Somente fluxos. Posts individuais aparecem no{' '}
+          <button type="button" className="entregas-somente-fluxos-link" onClick={onGoToKanban}>
+            quadro
+          </button>
+          .
+        </p>
+      )}
       <div className="calendar-layout">
         <div className="calendar-main">
           <MonthGrid
