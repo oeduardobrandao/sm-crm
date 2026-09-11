@@ -154,16 +154,16 @@ describe('buildApplyPlan data_entrega', () => {
       startOrdem: 0,
       now: NOW,
       fixedDates: {},
-      deliveryDate: new Date(2026, 9, 10),
+      deliveryDate: new Date(2026, 9, 13),
       clienteHasDiaEntrega: true,
       responsaveis: {},
     });
     expect(plan.blockers).toEqual([]);
-    // Aprovação (ordem 2) = 10/10; Design (ordem 1) = 10/10 - 1 dia corrido da aprovação = 09/10;
-    // Copy (ordem 0) = 09/10 - 3 dias úteis do Design = 06/10 (sexta 09 -> qui 08, qua 07, ter 06).
-    expect(new Date(plan.steps[2].prazoEfetivo!).getDate()).toBe(10);
-    expect(new Date(plan.steps[1].prazoEfetivo!).getDate()).toBe(9);
-    expect(new Date(plan.steps[0].prazoEfetivo!).getDate()).toBe(6);
+    // Aprovação (ordem 2) = 13/10; Design (ordem 1) = 13/10 - 1 dia corrido = 12/10;
+    // Copy (ordem 0) = 12/10 - 3 dias úteis = 07/10 (segunda 12 -> sex 09, qui 08, qua 07).
+    expect(new Date(plan.steps[2].prazoEfetivo!).getDate()).toBe(13);
+    expect(new Date(plan.steps[1].prazoEfetivo!).getDate()).toBe(12);
+    expect(new Date(plan.steps[0].prazoEfetivo!).getDate()).toBe(7);
     expect(Object.keys(plan.overrides)).toEqual(['0', '1', '2']);
   });
 });
