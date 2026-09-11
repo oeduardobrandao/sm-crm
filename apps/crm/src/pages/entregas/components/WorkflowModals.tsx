@@ -32,7 +32,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  getDeadlineInfo,
   addWorkflowTemplate,
   removeWorkflowTemplate,
   removeWorkflow,
@@ -42,13 +41,12 @@ import {
   propagateTemplateToWorkflows,
   getPropertyDefinitions,
   deletePropertyDefinition,
-  type Workflow,
-  type WorkflowEtapa,
   type WorkflowTemplate,
   type Cliente,
   type Membro,
   type TemplatePropertyDefinition,
 } from '../../../store';
+import type { BoardCard } from '../hooks/useEntregasData';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
 import { MigrateTemplateDialog } from './MigrateTemplateDialog';
 import {
@@ -57,17 +55,6 @@ import {
   type EtapaFormData,
   type ModoPrazo,
 } from './SortableEtapaList';
-
-// ---- Types ----
-interface BoardCard {
-  workflow: Workflow;
-  etapa: WorkflowEtapa;
-  cliente: Cliente | undefined;
-  membro: Membro | undefined;
-  deadline: ReturnType<typeof getDeadlineInfo>;
-  totalEtapas: number;
-  etapaIdx: number;
-}
 
 // ---- Edit Workflow Modal ----
 export function EditWorkflowModal({

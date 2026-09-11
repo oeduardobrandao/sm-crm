@@ -39,13 +39,6 @@ export interface BoardCard {
   hubUrl?: string;
 }
 
-export interface BoardRow {
-  key: string;
-  label: string;
-  stepNames: string[];
-  columns: Map<string, BoardCard[]>;
-}
-
 /**
  * Stable stand-ins for a query that has not resolved yet. A `= []` destructuring
  * default (or a `?? new Map()`) mints a fresh object on every render, which
