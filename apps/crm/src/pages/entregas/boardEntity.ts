@@ -61,13 +61,22 @@ export function entityNumericId(e: BoardEntity): number {
   return e.kind === 'workflow' ? e.card.workflow.id! : e.process.id;
 }
 
+/** Escapa `|`, `;` e a própria barra invertida em um nome de etapa livre, para
+ *  que ele não possa ser confundido com os separadores de stageSignature. */
+function escapeSigNome(nome: string): string {
+  return nome.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/;/g, '\\;');
+}
+
 /** Assinatura ordenada das etapas (ordem, nome, tipo) para a identidade de
  *  linha (spec §4.1). Separadores imprimíveis: vive em chaves de coluna, ids
- *  de droppable e localStorage. Não é o formato de post_processes.assinatura. */
+ *  de droppable e localStorage. Não é o formato de post_processes.assinatura.
+ *  `nome` é livre (texto do usuário), então é escapado antes de entrar na
+ *  string para que um `|` ou `;` literal no nome não colida com os
+ *  separadores do formato. */
 export function stageSignature(steps: readonly StageStep[]): string {
   return [...steps]
     .sort((a, b) => a.ordem - b.ordem)
-    .map((s) => `${s.ordem}|${s.nome}|${s.tipo}`)
+    .map((s) => `${s.ordem}|${escapeSigNome(s.nome)}|${s.tipo}`)
     .join(';');
 }
 

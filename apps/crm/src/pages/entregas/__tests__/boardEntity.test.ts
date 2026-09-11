@@ -163,6 +163,16 @@ describe('stageSignature', () => {
     ).toBe('0|Copy|padrao;1|Aprovação|aprovacao_cliente');
     expect(stageSignature([])).toBe('');
   });
+
+  it('escapa delimitadores no nome para não colidir com outra sequência de etapas', () => {
+    // Sem escapar, ambos serializariam para "0|A|padrao;1|B|padrao".
+    const colidindoSemEscape = stageSignature([{ ordem: 0, nome: 'A|padrao;1|B', tipo: 'padrao' }]);
+    const duasEtapas = stageSignature([
+      { ordem: 0, nome: 'A', tipo: 'padrao' },
+      { ordem: 1, nome: 'B', tipo: 'padrao' },
+    ]);
+    expect(colidindoSemEscape).not.toBe(duasEtapas);
+  });
 });
 
 describe('toWorkflowEntity', () => {
