@@ -10,6 +10,7 @@ const store = vi.hoisted(() => ({
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
+  reorderFluxosBoard: vi.fn(),
   getDeadlineInfo: vi.fn(),
   addWorkflow: vi.fn(),
   addWorkflowEtapa: vi.fn(),

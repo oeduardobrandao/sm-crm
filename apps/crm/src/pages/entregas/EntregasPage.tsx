@@ -1004,6 +1004,7 @@ export default function EntregasPage() {
               cards={visibleCards}
               allCards={cards}
               postEntities={visiblePostEntities}
+              allPostEntities={postEntities}
               postProcessesEnabled={postProcessesVisible}
               onPostClick={handlePostEntityClick}
               onCardClick={handleCardClick}

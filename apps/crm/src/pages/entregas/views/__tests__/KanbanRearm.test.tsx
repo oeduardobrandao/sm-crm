@@ -10,6 +10,7 @@ const store = vi.hoisted(() => ({
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
+  reorderFluxosBoard: vi.fn(),
   // Pulled in transitively by WorkflowModals / useEntregasData
   getDeadlineInfo: vi.fn(),
   addWorkflow: vi.fn(),

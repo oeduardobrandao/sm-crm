@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { insertIntoFullOrder, mergeVisibleReorder } from '../boardReorder';
+import {
+  insertIntoFullOrder,
+  mergeVisibleReorder,
+  planColumnPersist,
+  computeCrossColumnSlot,
+  sortableIdOf,
+} from '../boardReorder';
 
 describe('mergeVisibleReorder', () => {
   it('reordena só os visíveis e mantém os ocultos no lugar', () => {
@@ -36,5 +42,85 @@ describe('insertIntoFullOrder', () => {
 
   it('remove uma ocorrência anterior do mesmo id antes de inserir', () => {
     expect(insertIntoFullOrder([1, 9, 2], [1, 2], 2, 9)).toEqual([1, 2, 9]);
+  });
+});
+
+describe('sortableIdOf', () => {
+  it('fluxo = id numérico em string (id do dnd de hoje); post = id da entidade', () => {
+    expect(sortableIdOf({ kind: 'workflow', card: { workflow: { id: 4 } } } as never)).toBe('4');
+    expect(sortableIdOf({ kind: 'post', id: 'post:9' } as never)).toBe('post:9');
+  });
+});
+
+describe('planColumnPersist', () => {
+  it('coluna só de fluxos: caminho antigo (reorder_workflow_positions)', () => {
+    expect(planColumnPersist(['3', '1', '2'])).toEqual({
+      kind: 'workflows',
+      updates: [
+        { id: 3, position: 0 },
+        { id: 1, position: 1 },
+        { id: 2, position: 2 },
+      ],
+    });
+  });
+  it('coluna mista: um espaço de índices, cada tipo no seu array', () => {
+    expect(planColumnPersist(['3', 'post:9', '1'])).toEqual({
+      kind: 'mixed',
+      args: {
+        workflowIds: [3, 1],
+        workflowPositions: [0, 2],
+        processIds: [9],
+        processPositions: [1],
+      },
+    });
+  });
+});
+
+describe('computeCrossColumnSlot', () => {
+  const col = [
+    { id: '1', posicao: 0 },
+    { id: 'post:9', posicao: 1 },
+    { id: '2', posicao: 4 },
+  ];
+  it('entre dois vizinhos: média', () => {
+    expect(computeCrossColumnSlot(col, 2)).toEqual({
+      beforePos: 1,
+      afterPos: 4,
+      optimisticPos: 2.5,
+    });
+  });
+  it('no topo: afterPos - 1; no fim: beforePos + 1; vazio: 0', () => {
+    expect(computeCrossColumnSlot(col, 0)).toEqual({
+      beforePos: undefined,
+      afterPos: 0,
+      optimisticPos: -1,
+    });
+    expect(computeCrossColumnSlot(col, 3)).toEqual({
+      beforePos: 4,
+      afterPos: undefined,
+      optimisticPos: 5,
+    });
+    expect(computeCrossColumnSlot([], 0)).toEqual({
+      beforePos: undefined,
+      afterPos: undefined,
+      optimisticPos: 0,
+    });
+  });
+});
+
+describe('generic ids', () => {
+  it('mergeVisibleReorder e insertIntoFullOrder aceitam ids string mistos', () => {
+    expect(mergeVisibleReorder(['1', 'post:9', '2', '3'], ['2', '1'])).toEqual([
+      '2',
+      'post:9',
+      '1',
+      '3',
+    ]);
+    expect(insertIntoFullOrder(['1', 'post:9', '2'], ['1', 'post:9', '2'], 1, '7')).toEqual([
+      '1',
+      '7',
+      'post:9',
+      '2',
+    ]);
   });
 });

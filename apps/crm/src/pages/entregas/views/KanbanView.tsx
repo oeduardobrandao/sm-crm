@@ -35,6 +35,7 @@ import {
   hasLaterApprovalEtapa,
   revertEtapa,
   updateWorkflowPositions,
+  reorderFluxosBoard,
   approvePostsInternally,
   sendPostsToCliente,
 } from '../../../store';
@@ -54,7 +55,15 @@ import {
   type BoardEntity,
   type PostEntity,
 } from '../boardEntity';
-import { mergeVisibleReorder, insertIntoFullOrder } from '../boardReorder';
+import {
+  mergeVisibleReorder,
+  insertIntoFullOrder,
+  planColumnPersist,
+  computeCrossColumnSlot,
+  sortableIdOf,
+  type BoardSortableId,
+} from '../boardReorder';
+import { getPostProcessErrorToast } from '../postProcessErrors';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
@@ -91,6 +100,9 @@ interface KanbanViewBaseProps {
   /** Processos individuais ativos, já filtrados pela página (fase 3: só
    *  leitura; sem drag, sem botões). Ausente = quadro só de fluxos. */
   postEntities?: PostEntity[];
+  /** Todos os processos ativos, sem o filtro da página (espelho de allCards):
+   *  a ordem manual é gravada para a coluna INTEIRA. */
+  allPostEntities?: PostEntity[];
   /** features?.feature_post_processes === true. Liga a chave de linha por
    *  assinatura (spec §4.1) e a cópia do estado vazio. */
   postProcessesEnabled?: boolean;
@@ -145,6 +157,47 @@ export function fullColumnOrder(
     : visibleColumnCards;
   const ordered = sortMode === 'prazo' ? sortCardsByPrazo(source) : source;
   return ordered.map((c) => c.workflow.id!);
+}
+
+// Mesma ideia que fullColumnOrder, mas para a coluna MISTA (fluxos + posts,
+// spec §4.2): índice = posição no espaço único que reorder_fluxos_board grava.
+// Sem post em lugar nenhum (nem allPosts, nem a coluna visível) é exatamente
+// fullColumnOrder, byte a byte — o caminho da fase 3 nunca muda de forma.
+export function fullMixedColumnOrder(
+  allCards: BoardCard[] | undefined,
+  allPosts: PostEntity[] | undefined,
+  visibleColumnCards: BoardCard[],
+  visibleColumnPosts: PostEntity[],
+  rowKey: string,
+  ordem: number,
+  templates: WorkflowTemplate[],
+  sortMode: FluxosColumnSort,
+  signatureRows = false,
+): BoardSortableId[] {
+  if ((allPosts ?? visibleColumnPosts).length === 0 && visibleColumnPosts.length === 0) {
+    return fullColumnOrder(
+      allCards,
+      visibleColumnCards,
+      rowKey,
+      ordem,
+      templates,
+      sortMode,
+      signatureRows,
+    ).map(String);
+  }
+  const entities: BoardEntity[] = [
+    ...toWorkflowEntities(allCards ?? visibleColumnCards),
+    ...(allPosts ?? visibleColumnPosts),
+  ];
+  const column = buildBoardRows(entities, templates, { signatureRows })
+    .find((r) => r.key === rowKey)
+    ?.columns.find((c) => c.ordem === ordem);
+  const source: BoardEntity[] = column
+    ? [...toWorkflowEntities(column.cards), ...column.posts]
+    : [...toWorkflowEntities(visibleColumnCards), ...visibleColumnPosts];
+  const ordered =
+    sortMode === 'prazo' ? sortEntitiesByPrazo(source) : sortEntitiesByPosicao(source);
+  return ordered.map(sortableIdOf);
 }
 
 // Aplica os overlays otimistas (etapa e position pendentes de um drag ainda
@@ -295,6 +348,7 @@ export function KanbanView({
   revisaoInternaCounts,
   awaitingClienteCounts,
   postEntities,
+  allPostEntities,
   postProcessesEnabled,
   onPostClick,
   showExample,
@@ -308,6 +362,9 @@ export function KanbanView({
   // them, so drags feel instant while persistence runs in the background.
   const [pendingEtapas, setPendingEtapas] = useState<Map<number, WorkflowEtapa>>(new Map());
   const [pendingPositions, setPendingPositions] = useState<Map<number, number>>(new Map());
+  // Mesma ideia de pendingPositions, chaveado por process id: posicao otimista
+  // de um post reordenado (board_position) até o refetch refletir.
+  const [pendingPostPositions, setPendingPostPositions] = useState<Map<number, number>>(new Map());
   // Ordenacao por coluna: 'prazo' (padrao, atrasados primeiro) ou 'manual'.
   // Um drag dentro da coluna materializa a ordem visual em positions e troca a
   // coluna para 'manual'; o menu do header volta para 'prazo' quando quiser.
@@ -331,6 +388,19 @@ export function KanbanView({
       sortModeFor(columnKey(rowKey, ordem)) === 'prazo' ? sortCardsByPrazo(cards) : cards,
     [sortModeFor],
   );
+  /** Lista EXIBIDA da coluna mista (spec §4.2). Sem posts é exatamente
+   *  displayCards(...) convertido, na mesma ordem de sempre. */
+  const displayMixed = useCallback(
+    (rowKey: string, ordem: number, column: BoardColumn): BoardEntity[] => {
+      const stepCards = displayCards(rowKey, ordem, column.cards);
+      if (column.posts.length === 0) return toWorkflowEntities(stepCards);
+      const all = [...toWorkflowEntities(stepCards), ...column.posts];
+      return sortModeFor(columnKey(rowKey, ordem)) === 'prazo'
+        ? sortEntitiesByPrazo(all)
+        : sortEntitiesByPosicao(all);
+    },
+    [displayCards, sortModeFor],
+  );
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   // Valid adjacent column currently hovered during a drag ("rowKey::ordem"),
   // plus the dragged card's height so the slot opens exactly its size.
@@ -341,7 +411,7 @@ export function KanbanView({
   // cancelled drag can never leak its position into a button-initiated move.
   const pendingInsertRef = useRef<{
     wfId: number;
-    ids: number[];
+    ids: BoardSortableId[];
     optimisticPos: number;
   } | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(
@@ -357,7 +427,8 @@ export function KanbanView({
   // overlay: the refetch that reflects the move also carries the renumbered
   // positions.
   useEffect(() => {
-    if (pendingEtapas.size === 0 && pendingPositions.size === 0) return;
+    if (pendingEtapas.size === 0 && pendingPositions.size === 0 && pendingPostPositions.size === 0)
+      return;
     const movedCaughtUp = new Set<number>();
     for (const c of allCards ?? cards) {
       const pe = pendingEtapas.get(c.workflow.id!);
@@ -379,7 +450,24 @@ export function KanbanView({
       }
       return next.size === prev.size ? prev : next;
     });
-  }, [cards, allCards, pendingEtapas, pendingPositions]);
+    setPendingPostPositions((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map(prev);
+      for (const p of allPostEntities ?? postEntities ?? EMPTY_POST_ENTITIES) {
+        const pp = next.get(p.process.id);
+        if (pp !== undefined && p.posicao === pp) next.delete(p.process.id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [
+    cards,
+    allCards,
+    postEntities,
+    allPostEntities,
+    pendingEtapas,
+    pendingPositions,
+    pendingPostPositions,
+  ]);
 
   const localCards = useMemo(() => {
     if (pendingEtapas.size === 0 && pendingPositions.size === 0) return cards;
@@ -395,7 +483,27 @@ export function KanbanView({
     return allCards.map((c) => applyOverlays(c, pendingEtapas, pendingPositions));
   }, [allCards, pendingEtapas, pendingPositions]);
 
-  const posts = postEntities ?? EMPTY_POST_ENTITIES;
+  // Overlay otimista de post_processes.board_position, na mesma linha de
+  // applyOverlays acima mas para posts: aplicado tanto na lista visível
+  // quanto na coluna INTEIRA (allPosts), espelhando localCards/localAllCards.
+  const applyPostOverlay = useCallback(
+    (list: PostEntity[]): PostEntity[] =>
+      pendingPostPositions.size === 0
+        ? list
+        : list.map((p) => {
+            const pp = pendingPostPositions.get(p.process.id);
+            return pp !== undefined && pp !== p.posicao ? { ...p, posicao: pp } : p;
+          }),
+    [pendingPostPositions],
+  );
+  const posts = useMemo(
+    () => applyPostOverlay(postEntities ?? EMPTY_POST_ENTITIES),
+    [postEntities, applyPostOverlay],
+  );
+  const allPosts = useMemo(
+    () => (allPostEntities ? applyPostOverlay(allPostEntities) : undefined),
+    [allPostEntities, applyPostOverlay],
+  );
   const signatureRows = postProcessesEnabled === true;
   // A lista mista que o agrupador recebe: fluxos com overlays otimistas + posts
   // (que nunca têm overlay: fase 3 não os move).
@@ -407,6 +515,56 @@ export function KanbanView({
     [localCards, posts],
   );
   const boardRows = buildBoardRows(localEntities, templates, { signatureRows });
+
+  // Grava a ordem completa (índice = posição): sem post na coluna é o
+  // reorder_workflow_positions de sempre; com post, a RPC mista
+  // reorder_fluxos_board grava os dois tipos no mesmo espaço (spec §4.2).
+  const persistColumnOrder = useCallback(async (orderedIds: BoardSortableId[]) => {
+    const plan = planColumnPersist(orderedIds);
+    if (plan.kind === 'workflows') {
+      await updateWorkflowPositions(plan.updates);
+    } else {
+      await reorderFluxosBoard(plan.args);
+    }
+  }, []);
+  // Overlay otimista dos dois tipos de acordo com o mesmo plano, aplicado
+  // antes da persistência para o drag parecer instantâneo.
+  const applyOptimisticOrder = useCallback((orderedIds: BoardSortableId[]) => {
+    const plan = planColumnPersist(orderedIds);
+    if (plan.kind === 'workflows') {
+      setPendingPositions((prev) => {
+        const next = new Map(prev);
+        plan.updates.forEach((u) => next.set(u.id, u.position));
+        return next;
+      });
+      return;
+    }
+    setPendingPositions((prev) => {
+      const next = new Map(prev);
+      plan.args.workflowIds.forEach((id, i) => next.set(id, plan.args.workflowPositions[i]));
+      return next;
+    });
+    setPendingPostPositions((prev) => {
+      const next = new Map(prev);
+      plan.args.processIds.forEach((id, i) => next.set(id, plan.args.processPositions[i]));
+      return next;
+    });
+  }, []);
+  const rollbackOptimisticOrder = useCallback((orderedIds: BoardSortableId[]) => {
+    const plan = planColumnPersist(orderedIds);
+    const wfIds = plan.kind === 'workflows' ? plan.updates.map((u) => u.id) : plan.args.workflowIds;
+    setPendingPositions((prev) => {
+      const next = new Map(prev);
+      wfIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    if (plan.kind === 'mixed')
+      setPendingPostPositions((prev) => {
+        const next = new Map(prev);
+        plan.args.processIds.forEach((id) => next.delete(id));
+        return next;
+      });
+  }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -471,11 +629,11 @@ export function KanbanView({
 
       // Slot index: over a card, before or after it by vertical midpoint;
       // over the column body, at the end. Indices sao sobre a lista EXIBIDA
-      // (modo prazo reordena a coluna).
-      const targetCards = displayCards(targetRow.key, targetColumn.ordem, targetColumn.cards);
-      let index = targetCards.length;
+      // (modo prazo reordena a coluna), incluindo posts.
+      const targetMixed = displayMixed(targetRow.key, targetColumn.ordem, targetColumn);
+      let index = targetMixed.length;
       if (!overId.startsWith(COL_PREFIX)) {
-        const overIdx = targetCards.findIndex((c) => String(c.workflow.id) === overId);
+        const overIdx = targetMixed.findIndex((e) => sortableIdOf(e) === overId);
         if (overIdx !== -1) {
           const activeRect = active.rect.current?.translated;
           const after = activeRect && activeRect.top > over.rect.top + over.rect.height / 2;
@@ -487,7 +645,7 @@ export function KanbanView({
         prev && prev.colKey === colKey && prev.index === index ? prev : { colKey, index },
       );
     },
-    [localCards, localEntities, signatureRows, templates, displayCards],
+    [localCards, localEntities, signatureRows, templates, displayMixed],
   );
 
   const handleDragEnd = useCallback(
@@ -529,58 +687,49 @@ export function KanbanView({
         targetColumn.ordem === activeLocation.column.ordem &&
         targetRow.key === activeLocation.row.key
       ) {
-        // Within-column reorder — sobre a lista EXIBIDA: no modo prazo o drop
-        // materializa a ordem visual em positions e a coluna vira 'manual'.
+        // Within-column reorder — sobre a lista EXIBIDA mista (fluxos + posts):
+        // no modo prazo o drop materializa a ordem visual em positions e a
+        // coluna vira 'manual'.
         const colKeyStr = columnKey(activeLocation.row.key, activeLocation.column.ordem);
-        const col = displayCards(
+        const col = displayMixed(
           activeLocation.row.key,
           activeLocation.column.ordem,
-          activeLocation.column.cards,
+          activeLocation.column,
         );
-        const oldIdx = col.findIndex((c) => String(c.workflow.id) === activeId);
-        const newIdx = overId.startsWith(COL_PREFIX)
-          ? col.length - 1
-          : col.findIndex((c) => String(c.workflow.id) === overId);
+        const colIds = col.map(sortableIdOf);
+        const oldIdx = colIds.indexOf(activeId);
+        const newIdx = overId.startsWith(COL_PREFIX) ? colIds.length - 1 : colIds.indexOf(overId);
         if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
 
-        const reordered = arrayMove(col, oldIdx, newIdx);
+        const reordered = arrayMove(colIds, oldIdx, newIdx);
 
-        // A ordem manual é gravada para a coluna INTEIRA, incluindo cards
-        // ocultos pelo filtro da página: mescla o gesto sobre a lista visível
-        // na ordem completa antes de persistir.
-        const colOrdem = activeLocation.column.ordem;
-        const full = fullColumnOrder(
+        // A ordem manual é gravada para a coluna INTEIRA, incluindo cards e
+        // posts ocultos pelo filtro da página: mescla o gesto sobre a lista
+        // visível na ordem completa antes de persistir.
+        const full = fullMixedColumnOrder(
           localAllCards,
+          allPosts,
           activeLocation.column.cards,
+          activeLocation.column.posts,
           activeLocation.row.key,
-          colOrdem,
+          activeLocation.column.ordem,
           templates,
           sortModeFor(colKeyStr),
           signatureRows,
         );
-        const merged = mergeVisibleReorder(
-          full,
-          reordered.map((c) => c.workflow.id!),
-        );
+        const merged = mergeVisibleReorder(full, reordered);
 
-        // Optimistic reorder overlay; rolled back if persistence fails.
-        setPendingPositions((prev) => {
-          const next = new Map(prev);
-          merged.forEach((id, i) => next.set(id, i));
-          return next;
-        });
+        // Optimistic reorder overlay (fluxos e posts); rolled back if
+        // persistence fails.
+        applyOptimisticOrder(merged);
         if (sortModeFor(colKeyStr) === 'prazo') setColumnSort(colKeyStr, 'manual');
 
         try {
-          await updateWorkflowPositions(merged.map((id, i) => ({ id, position: i })));
+          await persistColumnOrder(merged);
           onRefresh();
-        } catch {
-          setPendingPositions((prev) => {
-            const next = new Map(prev);
-            merged.forEach((id) => next.delete(id));
-            return next;
-          });
-          toast.error('Erro ao salvar ordem dos cartões');
+        } catch (err) {
+          rollbackOptimisticOrder(merged);
+          toast.error(getPostProcessErrorToast(err, 'Erro ao salvar ordem dos cartões'));
         }
       } else {
         // Between-column move: a coluna alvo precisa existir na sequência de
@@ -598,26 +747,22 @@ export function KanbanView({
         // Capture where in the target column the card was dropped, so the
         // advance/revert (possibly behind a confirm dialog) can land it there
         // instead of at the bottom. Indices e vizinhos sobre a lista EXIBIDA
-        // (dropSlot.index veio do handleDragOver, tambem sobre ela).
-        const targetDisplay = displayCards(targetRow.key, targetColumn.ordem, targetColumn.cards);
+        // mista (dropSlot.index veio do handleDragOver, tambem sobre ela).
+        const targetMixed = displayMixed(targetRow.key, targetColumn.ordem, targetColumn);
         const colKey = columnKey(targetRow.key, targetColumn.ordem);
         const slotIndex =
           dropSlot && dropSlot.colKey === colKey
-            ? Math.min(dropSlot.index, targetDisplay.length)
-            : targetDisplay.length;
-        const beforePos = targetDisplay[slotIndex - 1]?.workflow.position;
-        const afterPos = targetDisplay[slotIndex]?.workflow.position;
-        const optimisticPos =
-          beforePos != null && afterPos != null
-            ? (beforePos + afterPos) / 2
-            : afterPos != null
-              ? afterPos - 1
-              : beforePos != null
-                ? beforePos + 1
-                : 0;
-        const targetFull = fullColumnOrder(
+            ? Math.min(dropSlot.index, targetMixed.length)
+            : targetMixed.length;
+        const { optimisticPos } = computeCrossColumnSlot(
+          targetMixed.map((e) => ({ id: sortableIdOf(e), posicao: e.posicao })),
+          slotIndex,
+        );
+        const targetFull = fullMixedColumnOrder(
           localAllCards,
+          allPosts,
           targetColumn.cards,
+          targetColumn.posts,
           targetRow.key,
           targetColumn.ordem,
           templates,
@@ -626,12 +771,7 @@ export function KanbanView({
         );
         pendingInsertRef.current = {
           wfId: draggedCard.workflow.id!,
-          ids: insertIntoFullOrder(
-            targetFull,
-            targetDisplay.map((c) => c.workflow.id!),
-            slotIndex,
-            draggedCard.workflow.id!,
-          ),
+          ids: insertIntoFullOrder(targetFull, targetMixed.map(sortableIdOf), slotIndex, activeId),
           optimisticPos,
         };
 
@@ -650,14 +790,18 @@ export function KanbanView({
       localCards,
       localAllCards,
       localEntities,
+      allPosts,
       signatureRows,
       dropSlot,
       onRefresh,
       onRecurring,
       templates,
-      displayCards,
+      displayMixed,
       sortModeFor,
       setColumnSort,
+      persistColumnOrder,
+      applyOptimisticOrder,
+      rollbackOptimisticOrder,
     ],
   );
 
@@ -689,7 +833,7 @@ export function KanbanView({
         if (insert) {
           pendingInsertRef.current = null;
           try {
-            await updateWorkflowPositions(insert.ids.map((id, i) => ({ id, position: i })));
+            await persistColumnOrder(insert.ids);
           } catch (err) {
             // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
             // (migration não aplicada) isto é o único sinal.
@@ -708,7 +852,7 @@ export function KanbanView({
         toast.error((err as Error).message || 'Erro ao avançar etapa');
       }
     },
-    [onRefresh, onRecurring],
+    [onRefresh, onRecurring, persistColumnOrder],
   );
 
   const executeForward = useCallback(
@@ -794,7 +938,7 @@ export function KanbanView({
       if (insert) {
         pendingInsertRef.current = null;
         try {
-          await updateWorkflowPositions(insert.ids.map((id, i) => ({ id, position: i })));
+          await persistColumnOrder(insert.ids);
         } catch (err) {
           // A etapa já avançou/voltou; a posição é best-effort. Sem a RPC em prod
           // (migration não aplicada) isto é o único sinal.
@@ -850,12 +994,7 @@ export function KanbanView({
         // Ordem exibida da coluna mista (spec §4.2): prazo por uma única função,
         // manual por posicao/board_position. Sem posts a lista é exatamente
         // stepCards, na mesma ordem de hoje.
-        const mixed: BoardEntity[] =
-          stepPosts.length === 0
-            ? toWorkflowEntities(stepCards)
-            : sortMode === 'prazo'
-              ? sortEntitiesByPrazo([...toWorkflowEntities(stepCards), ...stepPosts])
-              : sortEntitiesByPosicao([...toWorkflowEntities(stepCards), ...stepPosts]);
+        const mixed: BoardEntity[] = displayMixed(row.key, column.ordem, column);
         const countLabel =
           stepCards.length > 0 && stepPosts.length > 0
             ? `${stepCards.length} ${stepCards.length === 1 ? 'fluxo' : 'fluxos'} · ${stepPosts.length} ${stepPosts.length === 1 ? 'post' : 'posts'}`
@@ -929,35 +1068,35 @@ export function KanbanView({
                 </button>
               )}
               <SortableContext
-                items={mixed.map((e) =>
-                  e.kind === 'workflow' ? String(e.card.workflow.id) : e.id,
-                )}
+                items={mixed.map(sortableIdOf)}
                 strategy={verticalListSortingStrategy}
               >
                 {mixed.length === 0 && colKeyStr !== dropSlot?.colKey ? (
                   <div className="board-empty">Nenhuma entrega</div>
                 ) : (
-                  mixed.map((entity) => {
+                  mixed.map((entity, idx) => {
+                    const slot = colKeyStr === dropSlot?.colKey && dropSlot.index === idx && (
+                      <div
+                        className="board-drop-slot"
+                        style={{ height: dragHeight }}
+                        aria-hidden="true"
+                      />
+                    );
                     if (entity.kind === 'post') {
                       return (
-                        <SortablePostCard
-                          key={entity.id}
-                          entity={entity}
-                          onClick={onPostClick ? () => onPostClick(entity) : undefined}
-                        />
+                        <Fragment key={entity.id}>
+                          {slot}
+                          <SortablePostCard
+                            entity={entity}
+                            onClick={onPostClick ? () => onPostClick(entity) : undefined}
+                          />
+                        </Fragment>
                       );
                     }
                     const card = entity.card;
-                    const cardIdx = stepCards.indexOf(card);
                     return (
                       <Fragment key={card.workflow.id}>
-                        {colKeyStr === dropSlot?.colKey && dropSlot.index === cardIdx && (
-                          <div
-                            className="board-drop-slot"
-                            style={{ height: dragHeight }}
-                            aria-hidden="true"
-                          />
-                        )}
+                        {slot}
                         <SortableCard
                           card={card}
                           onCardClick={onCardClick}
@@ -982,7 +1121,7 @@ export function KanbanView({
                     );
                   })
                 )}
-                {colKeyStr === dropSlot?.colKey && dropSlot.index >= stepCards.length && (
+                {colKeyStr === dropSlot?.colKey && dropSlot.index >= mixed.length && (
                   <div
                     className="board-drop-slot"
                     style={{ height: dragHeight }}
