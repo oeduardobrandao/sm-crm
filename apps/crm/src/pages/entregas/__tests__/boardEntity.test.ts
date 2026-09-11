@@ -230,6 +230,34 @@ describe('toPostEntity', () => {
       urgente: false,
     });
   });
+
+  it('prazo_efetivo nulo (limpo) com iniciado_em/prazo_dias: prazoEfetivo e deadline.estourado concordam', () => {
+    // Etapa ativada (iniciado_em + prazo_dias + tipo_prazo) mas com prazo_efetivo
+    // explicitamente limpo para null — estado legítimo via update_post_process_step
+    // (p_prazo_efetivo é um setter absoluto: NULL limpa). etapaDeadlineDateOf cai
+    // no fallback iniciado_em+prazo_dias e resolve uma Date real e vencida; deadline
+    // precisa refletir essa mesma Date, não tratar a etapa como "não iniciada".
+    const e = toPostEntity(
+      makeProcess({
+        steps: [
+          step({
+            ordem: 0,
+            nome: 'Design',
+            estado: 'ativo',
+            prazo_efetivo: null,
+            iniciado_em: '2020-01-01T00:00:00.000Z',
+            prazo_dias: 1,
+            tipo_prazo: 'corridos',
+          }),
+        ],
+      }),
+      ctx,
+    );
+    expect(e).not.toBeNull();
+    expect(e!.prazoEfetivo).not.toBeNull();
+    expect(e!.prazoEfetivo!.getTime()).toBeLessThan(Date.now());
+    expect(e!.deadline.estourado).toBe(true);
+  });
 });
 
 describe('sorts', () => {

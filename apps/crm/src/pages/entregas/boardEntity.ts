@@ -112,6 +112,18 @@ export function toPostEntity(
     steps.find((s) => s.estado === 'ativo') ?? steps.find((s) => s.ordem === process.etapa_atual);
   if (!step) return null;
   const clienteId = process.post.cliente_id;
+  // Resolvido uma vez e reusado abaixo: prazoEfetivo e deadline PRECISAM concordar
+  // sobre estourado. etapaDeadlineDateOf cai em iniciado_em+prazo_dias quando
+  // step.prazo_efetivo está null (limpo via update_post_process_step), então deadline
+  // deriva dessa MESMA Date resolvida em vez do step.prazo_efetivo bruto — senão os
+  // dois campos podem discordar (spec review, task 4).
+  const prazoEfetivo = etapaDeadlineDateOf({
+    prazo_efetivo: step.prazo_efetivo,
+    data_limite: null,
+    iniciado_em: step.iniciado_em,
+    prazo_dias: step.prazo_dias,
+    tipo_prazo: step.tipo_prazo,
+  });
   return {
     kind: 'post',
     id: `post:${process.id}`,
@@ -125,15 +137,12 @@ export function toPostEntity(
       step.responsavel_id != null
         ? ctx.membros.find((m) => m.id === step.responsavel_id)
         : undefined,
-    prazoEfetivo: etapaDeadlineDateOf({
-      prazo_efetivo: step.prazo_efetivo,
-      data_limite: null,
-      iniciado_em: step.iniciado_em,
-      prazo_dias: step.prazo_dias,
-      tipo_prazo: step.tipo_prazo,
-    }),
+    prazoEfetivo,
     posicao: process.board_position,
-    deadline: deadlineFromPrazoEfetivo(step.prazo_efetivo, step.prazo_dias),
+    deadline: deadlineFromPrazoEfetivo(
+      prazoEfetivo ? prazoEfetivo.toISOString() : null,
+      step.prazo_dias,
+    ),
     cliente: clienteId != null ? ctx.clientes.find((c) => c.id === clienteId) : undefined,
     titulo: process.post.titulo,
     clienteAvatarUrl: clienteId != null ? ctx.clienteAvatars?.get(clienteId) : undefined,
