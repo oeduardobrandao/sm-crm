@@ -10,6 +10,7 @@
 -- 88.4 template de outra conta -> template_not_found; template vazio -> template_empty
 -- 88.5 invalid_start_ordem: fora da sequencia, negativa e nula
 -- 88.6 modo data_entrega sem etapa aprovacao_cliente na sequencia -> erro
+-- 88.7 modo data_fixa exige prazo de toda etapa a partir da inicial -> step_deadline_required
 --
 -- IMPORTANTE. template_fingerprint e SECURITY INVOKER (Decisao 11) e o
 -- argumento e avaliado no contexto do CHAMADOR. Sob 'set local role
@@ -435,11 +436,14 @@ begin
   assert not exists (select 1 from post_processes), 'nada pode ter sido criado';
 
   -- Comecar NA propria etapa de aprovacao passa: a sequencia a partir dela a
-  -- contem.
+  -- contem. data_entrega tambem exige prazo de TODA etapa a partir da
+  -- inicial (step_deadline_required, fix round 3): '2' entra aqui so por
+  -- isso, nao pela regra deste bloco.
   perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
   perform apply_post_process(e.post, v_com, v_fp, 1, jsonb_build_object(
-    '1', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+    '1', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z'),
+    '2', jsonb_build_object('prazo_efetivo', '2026-09-16T02:59:59.000Z')));
   execute 'reset role';
   assert exists (select 1 from post_processes where post_id = e.post), 'com aprovacao na sequencia, aplica';
 
@@ -460,8 +464,11 @@ begin
   v_fp := template_fingerprint(v_com);
   perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
+  -- '1' entra por step_deadline_required (fix round 3): data_entrega exige
+  -- prazo de toda etapa a partir da inicial, nao so a de aprovacao.
   v_res := apply_post_process(e.post, v_com, v_fp, 0, jsonb_build_object(
-    '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+    '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z'),
+    '1', jsonb_build_object('prazo_efetivo', '2026-09-16T02:59:59.000Z')));
   execute 'reset role';
   assert (v_res ->> 'ok')::boolean, 'data_entrega com etapa de aprovacao aplica normalmente';
   select count(*) into v_n from post_process_steps where process_id = (v_res ->> 'process_id')::bigint;
@@ -493,16 +500,77 @@ begin
   execute 'reset role';
   assert (v_res ->> 'ok')::boolean, 'modo padrao sem aprovacao aplica normalmente';
 
-  -- data_fixa tambem ignora a regra.
+  -- data_fixa tambem ignora a regra de aprovacao_cliente obrigatoria, mas
+  -- exige prazo de CADA etapa a partir da inicial (step_deadline_required,
+  -- fix round 3): '1' entra aqui so por isso.
   update workflow_templates set modo_prazo = 'data_fixa' where id = v_tmpl;
   v_fp := template_fingerprint(v_tmpl);
   delete from post_processes where post_id = e.post;
   perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
   v_res := apply_post_process(e.post, v_tmpl, v_fp, 0, jsonb_build_object(
-    '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+    '0', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z'),
+    '1', jsonb_build_object('prazo_efetivo', '2026-09-16T02:59:59.000Z')));
   execute 'reset role';
   assert (v_res ->> 'ok')::boolean, 'modo data_fixa sem aprovacao aplica normalmente';
-  raise notice 'PASS 88.6c outros modos ignoram a regra';
+  raise notice 'PASS 88.6c outros modos ignoram a regra de aprovacao';
+end $$;
+rollback;
+
+-- 88.7
+begin;
+do $$
+declare
+  e record; v_tmpl bigint; v_fp text; v_res jsonb; v_raised boolean := false;
+  v_n int; v_prazo timestamptz;
+begin
+  select * into e from pg_temp.et_ap_env();
+  insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo)
+    values (e.usr, e.ws, 'Fixa tres etapas', jsonb_build_array(
+      jsonb_build_object('nome', 'Copy', 'prazo_dias', 2, 'tipo_prazo', 'corridos'),
+      jsonb_build_object('nome', 'Design', 'prazo_dias', 3, 'tipo_prazo', 'corridos'),
+      jsonb_build_object('nome', 'Revisao', 'prazo_dias', 1, 'tipo_prazo', 'corridos')
+    ), 'data_fixa') returning id into v_tmpl;
+  v_fp := template_fingerprint(v_tmpl);
+
+  -- Override so da inicial (ordem 1, 'Design'): step_deadline_required, nada
+  -- criado. A etapa 2 ('Revisao') fica sem prazo apesar de estar a partir da
+  -- inicial.
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform apply_post_process(e.post, v_tmpl, v_fp, 1, jsonb_build_object(
+      '1', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z')));
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'step_deadline_required', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'data_fixa com override so da inicial deve ser rejeitado';
+  assert not exists (select 1 from post_processes where post_id = e.post), 'nada pode ter sido criado';
+
+  -- Com todas as etapas a partir da inicial: ok, e cada uma >= start grava o
+  -- prazo_efetivo enviado.
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_res := apply_post_process(e.post, v_tmpl, v_fp, 1, jsonb_build_object(
+    '1', jsonb_build_object('prazo_efetivo', '2026-09-15T02:59:59.000Z'),
+    '2', jsonb_build_object('prazo_efetivo', '2026-09-18T02:59:59.000Z')));
+  execute 'reset role';
+  assert (v_res ->> 'ok')::boolean, 'data_fixa com prazo de toda etapa a partir da inicial aplica';
+
+  select count(*) into v_n from post_process_steps
+   where process_id = (v_res ->> 'process_id')::bigint and ordem >= 1 and prazo_efetivo is not null;
+  assert v_n = 2, format('as duas etapas a partir da inicial tem prazo_efetivo gravado, obtidas %s', v_n);
+  select prazo_efetivo into v_prazo from post_process_steps
+   where process_id = (v_res ->> 'process_id')::bigint and ordem = 1;
+  assert v_prazo = timestamptz '2026-09-15T02:59:59.000Z', 'prazo da inicial bate com o override enviado';
+  select prazo_efetivo into v_prazo from post_process_steps
+   where process_id = (v_res ->> 'process_id')::bigint and ordem = 2;
+  assert v_prazo = timestamptz '2026-09-18T02:59:59.000Z', 'prazo da etapa seguinte bate com o override enviado';
+  perform 1 from post_process_steps
+   where process_id = (v_res ->> 'process_id')::bigint and ordem = 0 and prazo_efetivo is null;
+  assert found, 'etapa anterior a inicial (ignorada) fica sem prazo';
+  raise notice 'PASS 88.7 step_deadline_required no modo data_fixa';
 end $$;
 rollback;

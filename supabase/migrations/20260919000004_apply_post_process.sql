@@ -35,6 +35,17 @@
 -- Um prazo_dias de 10 digitos (por exemplo 2147483648) passava na forma e
 -- estourava 22003 cru no cast do INSERT; agora e template_invalid, antes de
 -- qualquer INSERT.
+--
+-- FIX ROUND 3. Codigo novo: step_deadline_required. Spec 5.2 exige data para
+-- CADA etapa a partir da inicial no modo data_fixa, e a spec 7 diz que no
+-- modo data_entrega os prazos resultantes sao materializados no snapshot;
+-- antes deste fix so a etapa inicial era exigida (a checagem
+-- start_deadline_required, abaixo, que continua sendo a unica regra do modo
+-- padrao). Quando workflow_templates.modo_prazo esta em ('data_fixa',
+-- 'data_entrega'), TODA etapa de ordem >= p_start_ordem precisa de
+-- prazo_efetivo nao nulo em p_step_overrides; faltando, step_deadline_required
+-- antes de qualquer INSERT. Roda logo apos start_deadline_required, que
+-- continua cobrindo so a etapa inicial e vale para todos os modos.
 
 CREATE OR REPLACE FUNCTION public.apply_post_process(
   p_post_id              bigint,
@@ -220,6 +231,18 @@ BEGIN
   -- A etapa inicial e a unica que precisa de prazo agora: e ela que fica ativa.
   IF (p_step_overrides -> p_start_ordem::text ->> 'prazo_efetivo') IS NULL THEN
     RAISE EXCEPTION 'start_deadline_required' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- FIX ROUND 3. Nos modos data_fixa e data_entrega (spec 5.2, 7), o prazo
+  -- resultante de CADA etapa e materializado no snapshot: nao basta a etapa
+  -- inicial ter prazo_efetivo, toda etapa a partir dela precisa. O modo
+  -- padrao continua exigindo so a inicial (checagem acima).
+  IF coalesce(v_tmpl.modo_prazo, 'padrao') IN ('data_fixa', 'data_entrega') THEN
+    FOR v_ordem IN p_start_ordem .. (v_n - 1) LOOP
+      IF (p_step_overrides -> v_ordem::text ->> 'prazo_efetivo') IS NULL THEN
+        RAISE EXCEPTION 'step_deadline_required' USING ERRCODE = 'P0001';
+      END IF;
+    END LOOP;
   END IF;
 
   SELECT string_agg((e.ord - 1)::text || '|' || coalesce(e.val ->> 'nome', '')
