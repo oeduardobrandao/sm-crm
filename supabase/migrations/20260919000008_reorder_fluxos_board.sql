@@ -12,7 +12,7 @@
 -- duas coexistirem, cada uma serve um quadro.
 --
 -- Toma o advisory ':post_move', mesmo sem inserir nem reabrir processo e sem
--- mexer em workflow_id: attach e detach calculam MAX(board_position)+1 sob
+-- mexer em workflow_id: apply e detach calculam MAX(board_position)+1 sob
 -- essa mesma chave (para o processo que eles criam/reabrem), e um reorder
 -- concorrente sem o advisory podia gravar a mesma posicao enquanto o calculo
 -- de um dos outros dois ainda estava em voo, empatando o espaco de indices.
@@ -70,7 +70,7 @@ BEGIN
     RAISE EXCEPTION 'invalid_arguments' USING ERRCODE = 'P0001';
   END IF;
 
-  -- Ver cabecalho: attach/detach calculam MAX(board_position)+1 sob esta
+  -- Ver cabecalho: apply/detach calculam MAX(board_position)+1 sob esta
   -- mesma chave, entao o reorder precisa serializar com elas para nao empatar.
   PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
 
