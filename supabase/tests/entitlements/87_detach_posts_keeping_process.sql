@@ -14,6 +14,7 @@
 -- 87.8 mesmo request_id com outro lote, ou com a mesma selecao e outra flag de
 --      arquivamento -> request_mismatch; entradas iguais -> replay
 -- 87.9 ordem duplicada nas etapas da origem -> workflow_etapas_inconsistent
+-- 87.10 etapa futura com data_limite sem entrada no mapa -> step_deadline_required
 --
 -- IMPORTANTE. workflow_fingerprint e SECURITY INVOKER (Decisao 11) e o
 -- argumento e avaliado no contexto do CHAMADOR, nao dentro da RPC. Sob
@@ -552,5 +553,51 @@ begin
   select count(*) into v_n from workflow_posts where id = e.p1 and workflow_id = e.wf;
   assert v_n = 1, 'o post continua no fluxo';
   raise notice 'PASS 87.9 ordem duplicada nas etapas da origem';
+end $$;
+rollback;
+
+-- 87.10
+begin;
+do $$
+declare
+  e record; v_fp text; v_raised boolean := false; v_n int; v_prazo timestamptz;
+begin
+  select * into e from pg_temp.et_dt_env();
+  -- etapa futura (ordem 2, pendente) ganha data_limite na origem: a spec 7
+  -- exige que o desmembramento preserve essa data como prazo_efetivo.
+  update workflow_etapas set data_limite = date '2026-09-25' where workflow_id = e.wf and ordem = 2;
+  v_fp := workflow_fingerprint(e.wf);
+
+  -- Sem entrada no mapa para a ordem 2: step_deadline_required, nada criado.
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform detach_posts_keeping_process(
+      array[e.p1], e.wf, v_fp,
+      timestamptz '2026-09-06 02:59:59+00', gen_random_uuid());
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'step_deadline_required', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'etapa futura com data_limite sem entrada no mapa deve ser rejeitada';
+  select count(*) into v_n from post_processes where post_id = e.p1;
+  assert v_n = 0, 'nada pode ter sido criado';
+  select count(*) into v_n from workflow_posts where id = e.p1 and workflow_id = e.wf;
+  assert v_n = 1, 'o post continua no fluxo';
+
+  -- Com a entrada no mapa: a etapa nasce com o prazo_efetivo enviado.
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  perform detach_posts_keeping_process(
+    array[e.p1], e.wf, v_fp,
+    timestamptz '2026-09-06 02:59:59+00', gen_random_uuid(),
+    jsonb_build_object('2', '2026-09-20T02:59:59.000Z'));
+  execute 'reset role';
+  select s.prazo_efetivo into v_prazo from post_process_steps s
+    join post_processes pp on pp.id = s.process_id
+   where pp.post_id = e.p1 and s.ordem = 2;
+  assert v_prazo = timestamptz '2026-09-20T02:59:59.000Z', 'etapa futura com data_limite recebe o prazo enviado';
+  raise notice 'PASS 87.10 step_deadline_required de etapas futuras com data_limite';
 end $$;
 rollback;

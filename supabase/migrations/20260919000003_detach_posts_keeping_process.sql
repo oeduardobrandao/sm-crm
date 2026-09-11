@@ -46,9 +46,19 @@
 -- etapa ativa da origem, obrigatorio. p_step_deadlines e o mapa
 -- {"<ordem>": "<ISO>"} das etapas POSTERIORES a ativa que tinham data fixa na
 -- origem: post_process_steps nao tem coluna data_limite, entao sem esse mapa a
--- data fixa de uma etapa futura se perderia no snapshot. Etapa futura sem
--- entrada no mapa fica com prazo_efetivo nulo e recebe prazo quando for
--- ativada por transition_post_process.
+-- data fixa de uma etapa futura se perderia no snapshot. Etapa futura SEM
+-- data_limite na origem continua opcional: fica com prazo_efetivo nulo e
+-- recebe prazo quando for ativada por transition_post_process.
+--
+-- FIX ROUND 4. Codigo novo: step_deadline_required. A spec 7 diz que "etapas
+-- futuras com data_limite mantem a data como prazo_efetivo" -- antes deste fix
+-- p_step_deadlines so validava as chaves que o CRM mandasse, e uma etapa
+-- futura com data_limite sem entrada no mapa perdia a data em silencio (o
+-- CASE do INSERT abaixo so olha o mapa, nunca a origem). Agora, para cada
+-- etapa da origem com ordem > ordem da ativa e data_limite IS NOT NULL, uma
+-- entrada nao nula em p_step_deadlines para aquela ordem e obrigatoria;
+-- faltando, step_deadline_required antes de qualquer INSERT. Etapas futuras
+-- sem data_limite continuam opcionais no mapa.
 
 CREATE OR REPLACE FUNCTION public.detach_posts_keeping_process(
   p_post_ids            bigint[],
@@ -224,6 +234,21 @@ BEGIN
         RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
       END;
     END LOOP;
+  END IF;
+
+  -- FIX ROUND 4 (PASSO 5b). Spec 7: "etapas futuras com data_limite mantem a
+  -- data como prazo_efetivo". O loop acima so valida as chaves que o CRM
+  -- mandou; sem esta checagem, uma etapa futura com data_limite omitida do
+  -- mapa perderia a data em silencio (o INSERT do PASSO 9 so olha o mapa,
+  -- nunca workflow_etapas.data_limite). Etapa futura SEM data_limite continua
+  -- opcional, como antes.
+  IF EXISTS (
+       SELECT 1 FROM workflow_etapas e
+        WHERE e.workflow_id = p_workflow_id
+          AND e.ordem > v_ativa.ordem
+          AND e.data_limite IS NOT NULL
+          AND (p_step_deadlines -> e.ordem::text) IS NULL) THEN
+    RAISE EXCEPTION 'step_deadline_required' USING ERRCODE = 'P0001';
   END IF;
 
   -- PASSO 6: posts travados em ordem estavel, all-or-nothing.
