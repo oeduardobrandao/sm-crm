@@ -98,4 +98,21 @@ describe('SemProcessoSection', () => {
     expect(onApplyProcess).toHaveBeenCalledWith(p);
     expect(onPostClick).not.toHaveBeenCalled();
   });
+  it('Enter no botão "Aplicar processo" não propaga para o card (teclado)', () => {
+    const onPostClick = vi.fn();
+    const onApplyProcess = vi.fn();
+    const p = post(1);
+    render(
+      <SemProcessoSection
+        posts={[p]}
+        total={1}
+        productionFiltersActive={false}
+        onPostClick={onPostClick}
+        onApplyProcess={onApplyProcess}
+        onVerTodos={vi.fn()}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Aplicar processo' }), { key: 'Enter' });
+    expect(onPostClick).not.toHaveBeenCalled();
+  });
 });

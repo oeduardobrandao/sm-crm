@@ -78,6 +78,7 @@ export function SemProcessoSection({
                 e.stopPropagation();
                 onApplyProcess(post);
               }}
+              onKeyDown={(e) => e.stopPropagation()}
             >
               Aplicar processo
             </button>
