@@ -1513,12 +1513,12 @@ git commit -m "fix(entregas): reordenar coluna mista do quadro de Fluxos grava f
 - Create: `apps/crm/src/pages/entregas/approvalAdvance.ts`
 - Modify: `apps/crm/src/pages/entregas/views/KanbanView.tsx:714-731, 1056-1096`
 - Modify: `apps/crm/src/pages/cliente-detalhe/tabs/EntregasTab.tsx:409-424, 694-724`
-- Modify: `apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx:231-259`
 - Modify: `apps/crm/src/pages/entregas/components/WorkflowModals.tsx:910-1050` (three dialogs)
 - Test: `apps/crm/src/pages/entregas/__tests__/approvalAdvance.test.ts` (create)
 - Test: `apps/crm/src/pages/cliente-detalhe/tabs/__tests__/EntregasTabRearm.test.ts:52-59` (rewrite one case)
 - Test: `apps/crm/src/pages/entregas/components/__tests__/WorkflowModals.test.tsx`, `ClientApprovalChoiceDialog.test.tsx` (prop rename + two new cases)
-- Test: `apps/crm/src/pages/entregas/components/__tests__/WorkflowDrawerAutoComplete.test.tsx` (one new case)
+
+**PO decision (2026-09-11):** `WorkflowDrawer.tsx`'s auto-complete effect (lines 231-259) and `WorkflowDrawerAutoComplete.test.tsx` are explicitly OUT OF SCOPE for this task — see Step 7. No behaviour change ships on the live fluxo path in this PR.
 
 **Interfaces:**
 - Consumes: `CLIENT_CLEARED_STATUSES` (`store/posts.ts:766`), `hasLaterApprovalEtapa` (`store/workflows.ts:340`, unchanged: fluxos ignore status by design, spec §6.2).
@@ -1649,27 +1649,12 @@ Add to `ClientApprovalChoiceDialog.test.tsx` (rename every `workflowTitle=` to `
 
 In `WorkflowModals.test.tsx` rename `workflowTitle` → `entityTitle` wherever the three dialogs are rendered.
 
-Add to `WorkflowDrawerAutoComplete.test.tsx` (reuse its render helper and post fixtures; the file already drives the awaiting → aprovado_cliente transition):
-
-```ts
-  it('não completa a etapa quando um post do fluxo continua sem liberação (decisão compartilhada)', async () => {
-    // prev: [enviado_cliente, rascunho] -> next: [aprovado_cliente, rascunho]
-    store.getWorkflowPostsWithProperties
-      .mockResolvedValueOnce([post(1, 'enviado_cliente'), post(2, 'rascunho')])
-      .mockResolvedValueOnce([post(1, 'aprovado_cliente'), post(2, 'rascunho')]);
-    renderDrawerAndRefetch();
-    await waitFor(() => expect(store.getWorkflowPostsWithProperties).toHaveBeenCalledTimes(2));
-    expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
-    expect(store.completeEtapa).not.toHaveBeenCalled();
-  });
-```
-
-(Adapt `post(...)`/`renderDrawerAndRefetch` to the helper names that file actually defines; the intent is: the second fetch still contains a non-cleared post, so no auto-complete.)
+**PO decision (2026-09-11): keep today's auto-complete trigger unchanged — no behaviour change on the live fluxo path in this PR.** Do NOT add a new `WorkflowDrawerAutoComplete.test.tsx` case for this, and do NOT modify `WorkflowDrawer.tsx`'s auto-complete effect (see the revised Step 7 below, which is now a no-op step kept only for the record). Remove `apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx:231-259` and `apps/crm/src/pages/entregas/components/__tests__/WorkflowDrawerAutoComplete.test.tsx` from this task's **Files** list above — this task touches only `approvalAdvance.ts`, `KanbanView.tsx`, `EntregasTab.tsx`, `WorkflowModals.tsx`, and their tests.
 
 - [ ] **Step 2: Run to verify failures**
 
-Run: `npx vitest run apps/crm/src/pages/entregas/__tests__/approvalAdvance.test.ts apps/crm/src/pages/cliente-detalhe/tabs/__tests__/EntregasTabRearm.test.ts apps/crm/src/pages/entregas/components/__tests__/ClientApprovalChoiceDialog.test.tsx apps/crm/src/pages/entregas/components/__tests__/WorkflowDrawerAutoComplete.test.tsx`
-Expected: FAIL (module missing; source regexes; prop unknown; auto-complete fires).
+Run: `npx vitest run apps/crm/src/pages/entregas/__tests__/approvalAdvance.test.ts apps/crm/src/pages/cliente-detalhe/tabs/__tests__/EntregasTabRearm.test.ts apps/crm/src/pages/entregas/components/__tests__/ClientApprovalChoiceDialog.test.tsx`
+Expected: FAIL (module missing; source regexes; prop unknown).
 
 - [ ] **Step 3: Create `approvalAdvance.ts`**
 
@@ -1795,29 +1780,14 @@ Body changes:
 
 Same three changes: state `approvalChoice`, `handleForwardConfirm` uses `decideApprovalAdvance({ tipo: card.etapa.tipo, total, cleared, temAprovacaoAdiante: hasLaterApprovalEtapa(card.allEtapas, card.etapa.id!) })` and `if (decision.kind === 'choose') { setApprovalChoice({ card, willRearm: decision.willRearm }); return; }`; JSX at 694-724 uses `entityTitle=` and `willRearm={approvalChoice?.willRearm ?? false}`. Import line exactly: `import { decideApprovalAdvance } from '@/pages/entregas/approvalAdvance';` (the source-text test pins this string).
 
-- [ ] **Step 7: `WorkflowDrawer.tsx` auto-complete (lines 231-259)**
+- [ ] **Step 7: `WorkflowDrawer.tsx` auto-complete — NO CHANGE (PO decision 2026-09-11)**
 
-After `if (!approvalEtapa) return;` insert:
-
-```ts
-    // Mesma decisão dos botões (spec §6.2): só auto-completa quando TODOS os
-    // posts estão liberados. Um post ainda em rascunho nunca foi enviado e
-    // continua pedindo a escolha explícita do usuário.
-    const decision = decideApprovalAdvance({
-      tipo: 'aprovacao_cliente',
-      total: posts.length,
-      cleared: posts.filter((p) => isClientCleared(p.status)).length,
-      temAprovacaoAdiante: hasLaterApprovalEtapa(card.allEtapas, approvalEtapa.id!),
-    });
-    if (decision.kind !== 'advance') return;
-```
-
-Imports: `decideApprovalAdvance, isClientCleared` from `'../approvalAdvance'`; `hasLaterApprovalEtapa` from `'../../../store'`.
+Per the PO decision recorded at the top of Step 1, this call site is intentionally left untouched: `WorkflowDrawer.tsx`'s auto-complete effect (lines 231-259) keeps using `shouldAutoCompleteApproval` exactly as it is today, with no `decideApprovalAdvance` call and no new guard. §6.2's "as três chamadas" requirement is satisfied by `KanbanView.tsx` and `EntregasTab.tsx` (Steps 5-6); the drawer's auto-complete is a different question (*when* to fire, not *what happens* when it does) and is explicitly out of scope for this PR. Do not add the `decideApprovalAdvance`/`isClientCleared`/`hasLaterApprovalEtapa` imports to `WorkflowDrawer.tsx` for this purpose.
 
 - [ ] **Step 8: Run all touched suites + typecheck**
 
 Run: `npx vitest run apps/crm/src/pages/entregas apps/crm/src/pages/cliente-detalhe && npx tsc -p apps/crm/tsconfig.json --noEmit`
-Expected: PASS. `KanbanRearm.test.tsx`, `EntregasTab.test.tsx` and `WorkflowDrawer.test.tsx` mock `hasLaterApprovalEtapa`; they need no change unless they assert the `willRearm` JSX string.
+Expected: PASS. `KanbanRearm.test.tsx` and `EntregasTab.test.tsx` mock `hasLaterApprovalEtapa`; they need no change unless they assert the `willRearm` JSX string. `WorkflowDrawer.test.tsx`/`WorkflowDrawerAutoComplete.test.tsx` are untouched by this task.
 
 - [ ] **Step 9: Commit**
 
@@ -3893,11 +3863,14 @@ git commit -m "feat(entregas): desmembrar do fluxo mantendo etapas, com revelaç
 - Modify: `apps/crm/src/pages/entregas/components/StandalonePostDrawer.tsx` (button + dialog + `onProcessApplied` prop)
 - Modify: `apps/crm/src/pages/entregas/components/SemProcessoSection.tsx` (per-card "Aplicar processo" button, `onApplyProcess` prop)
 - Modify: `apps/crm/src/pages/entregas/EntregasPage.tsx` (`applyTarget` state; mount dialog for Sem processo; pass `onProcessApplied`)
+- Modify: `apps/crm/src/pages/entregas/wizard/steps/StepPrazos.tsx` (add `export` to the existing `mesesDeEntrega` function — no behaviour change, just visibility, so this task can reuse it instead of introducing a second month picker)
 - Test: `apps/crm/src/pages/entregas/components/__tests__/ApplyProcessDialog.test.tsx` (create)
 - Test: `apps/crm/src/pages/entregas/components/__tests__/SemProcessoSection.test.tsx`, `StandalonePostDrawer.test.tsx` (extend)
 
+**Month picker note:** do NOT use a native `<input type="month">` (Firefox and Safari desktop render it as a plain text field with no calendar UI — a real regression for this dialog's only job) and do NOT use the unaudited `components/ui/month-picker.tsx`. Reuse the exact pattern `StepPrazos.tsx` already uses for the same "mês de entrega" concept in the fluxo-creation wizard: a shadcn `Select` populated by `mesesDeEntrega()` (6 months starting at the current one, `value` formatted `'YYYY-MM'`). Export `mesesDeEntrega` from `StepPrazos.tsx` and import it here — do not duplicate the month-generation logic.
+
 **Interfaces:**
-- Consumes: `getWorkflowTemplates`, `applyPostProcess`, `getClientes` (store), `buildTemplateFingerprint` (`fingerprint.ts`), `buildApplyPlan` (Task 6), `getNextDeliveryDate` (`hooks/useEntregasData.ts:150`), `formatEtapaDeadlineDay` (`etapaPrazo.ts`), `getPostProcessErrorToast`/`isStaleStateError` (Task 1).
+- Consumes: `getWorkflowTemplates`, `applyPostProcess`, `getClientes` (store), `buildTemplateFingerprint` (`fingerprint.ts`), `buildApplyPlan` (Task 6), `getNextDeliveryDate` (`hooks/useEntregasData.ts:150`), `formatEtapaDeadlineDay` (`etapaPrazo.ts`), `getPostProcessErrorToast`/`isStaleStateError` (Task 1), `mesesDeEntrega` (`wizard/steps/StepPrazos.tsx`, exported by this task — see Files).
 - Produces:
 
 ```ts
@@ -3910,9 +3883,13 @@ export interface ApplyProcessDialogProps {
 }
 ```
 
-  Template `<Select aria-label="Modelo de processo">` (templates from `['workflow-templates']`, empty ones disabled with "(sem etapas)"), etapa inicial `<Select aria-label="Etapa inicial">` (default first), per-step responsável `<Select aria-label="Responsável da etapa <nome>">`, per-step `<input type="date" aria-label="Data da etapa <nome>">` (data_fixa only), `<input type="month" aria-label="Mês de entrega">` (data_entrega only; default = month of `getNextDeliveryDate(cliente.dia_entrega)`), a preview list (ordem, nome, estado label, responsável, prazo via `formatEtapaDeadlineDay`), and a confirm button disabled while `plan.blockers.length > 0` with the first blocker rendered under it. Confirm calls `applyPostProcess({ postId, templateId, templateFingerprint: buildTemplateFingerprint(template.etapas), startOrdem, stepOverrides: plan.overrides })`.
+  Template `<Select aria-label="Modelo de processo">` (templates from `['workflow-templates']`, empty ones disabled with "(sem etapas)"), etapa inicial `<Select aria-label="Etapa inicial">` (default first), per-step responsável `<Select aria-label="Responsável da etapa <nome>">`, per-step `<input type="date" aria-label="Data da etapa <nome>">` (data_fixa only), a `<Select aria-label="Mês de entrega">` populated by `mesesDeEntrega()` (data_entrega only; default = month of `getNextDeliveryDate(cliente.dia_entrega)`), a preview list (ordem, nome, estado label, responsável, prazo via `formatEtapaDeadlineDay`), and a confirm button disabled while `plan.blockers.length > 0` with the first blocker rendered under it. Confirm calls `applyPostProcess({ postId, templateId, templateFingerprint: buildTemplateFingerprint(template.etapas), startOrdem, stepOverrides: plan.overrides })`.
 - `StandalonePostDrawerProps` gains `onProcessApplied?: (postId: number) => void`; the header shows `Aplicar processo` (`aria-label`) only when `!postProcess && postProcessesEnabled`.
 - `SemProcessoSectionProps` gains `onApplyProcess: (post: ActivePost) => void`; each card gets a button "Aplicar processo" (`e.stopPropagation()`).
+
+- [ ] **Step 0: Export `mesesDeEntrega` from `StepPrazos.tsx`**
+
+In `apps/crm/src/pages/entregas/wizard/steps/StepPrazos.tsx`, change `function mesesDeEntrega(...)` to `export function mesesDeEntrega(...)`. No other change to that file — its own call site and tests are unaffected by exporting a previously-private function.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3987,7 +3964,7 @@ describe('ApplyProcessDialog', () => {
     renderDialog();
     fireEvent.click(await screen.findByRole('combobox', { name: 'Modelo de processo' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Curto' }));
-    expect(await screen.findByLabelText('Mês de entrega')).toHaveValue(expect.stringMatching(/^\d{4}-\d{2}$/));
+    expect(await screen.findByRole('combobox', { name: 'Mês de entrega' })).toHaveTextContent(/\d{4}/);
     expect(screen.getByRole('button', { name: 'Aplicar processo' })).toBeDisabled();
     expect(screen.getByText('O modelo precisa de uma etapa de aprovação do cliente a partir da etapa inicial.')).toBeInTheDocument();
   });
@@ -4063,6 +4040,7 @@ import { buildApplyPlan } from '../applyProcessDeadlines';
 import { getNextDeliveryDate } from '../hooks/useEntregasData';
 import { formatEtapaDeadlineDay } from '../etapaPrazo';
 import { getPostProcessErrorToast, isStaleStateError } from '../postProcessErrors';
+import { mesesDeEntrega } from '../wizard/steps/StepPrazos';
 
 export interface ApplyProcessDialogProps {
   open: boolean;
@@ -4169,7 +4147,14 @@ export function ApplyProcessDialog({ open, onClose, post, membros, onApplied }: 
               {plan.modo === 'data_entrega' && (
                 <label className="text-sm flex flex-col gap-1">
                   Mês de entrega{cliente?.dia_entrega ? ` (dia ${cliente.dia_entrega})` : ''}
-                  <input type="month" aria-label="Mês de entrega" value={month} onChange={(e) => setMonth(e.target.value)} className="h-8 rounded-md border border-input px-2" />
+                  <Select value={month} onValueChange={setMonth}>
+                    <SelectTrigger aria-label="Mês de entrega"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {mesesDeEntrega().map((m) => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
               )}
               <ul className="history-timeline text-sm">
@@ -4597,7 +4582,7 @@ Not in this plan, on purpose: MCP read fields (§13), server-side approval trans
 Everything below is a decision the plan makes where the spec, the PO decisions or the research left room; each is marked in the task that carries it.
 
 1. **Flag mechanism (Task 3):** reads are unconditionally on and a derived `postProcessesVisible = flag || vigenteProcesses.length > 0` drives every display gate; only Aplicar processo, Manter etapas and the Sem processo section read the raw flag. PO decision 1 asked for "the specific mechanism"; this is it. Cost: one extra zero-row query per Entregas load and per drawer open for every flag-off workspace. `WorkflowDrawer`'s `post-process-events` gate is also removed (history is not creation).
-2. **WorkflowDrawer auto-complete (Task 5):** it now consumes `decideApprovalAdvance` and only auto-fires when every post of the fluxo is client-cleared. Today it fires whenever the last *awaiting* post gets approved even if another post was never sent (still `rascunho`). This is a behaviour change on the fluxo path, chosen because §6.2 says the three callers must use the extracted decision; a test pins it. If the PO prefers today's behaviour, drop the `decision.kind !== 'advance'` guard in Task 5 Step 7 and the new test case.
+2. **WorkflowDrawer auto-complete (Task 5) — RESOLVED by PO decision, 2026-09-11.** The PO chose to keep today's trigger unchanged: `WorkflowDrawer.tsx`'s auto-complete effect does NOT consume `decideApprovalAdvance` and is not touched by Task 5 at all (see Task 5 Step 7). No behaviour change ships on the live fluxo path in this PR; the tightening (auto-fire only once every post is client-cleared) is left as a future, explicitly-scoped follow-up if ever wanted.
 3. **Post cards are draggable (Task 8):** PO decision 2 covers the reorder math only, but spec §4.2 ("move a entidade arrastada") and §12.2 ("Voltar por drag e por botão produz o mesmo resultado") require post drag; fase 3's `disabled: { draggable: true }` is treated as a phase boundary, not a design. A post drop is valid only onto the column of `nextPendingStepOf` (forward) or `previousStepOf` (backward), the same targets the buttons use, so a `herdado`/`ignorado`/`concluido` step between two columns can never make drag and button diverge.
 4. **Step editing included (Task 10):** not in the prompt's enumerated command list, but in spec v1 scope (§2, §5.4), acceptance 12.5, and one of the seven RPCs.
 5. **"Aplicar processo" surfaces (Task 12):** drawer header + Sem processo cards only; the Publicações per-post menu §5.2 names does not exist and is not created here.
@@ -4605,5 +4590,5 @@ Everything below is a decision the plan makes where the spec, the PO decisions o
 7. **`callRpcWithDeadlockRetry` for all seven RPCs (Task 2):** the spec names the retry only for the detach/attach family; transition/update/remove are retry-safe by `revisao`, so retrying them once on `40P01` is harmless and keeps one code path.
 8. **Dialog prop rename (Task 5):** `workflowTitle` → `entityTitle` plus three new optional props, rather than a second post-specific dialog.
 9. **Avançar vs Concluir on the card/header (Task 7):** one button whose label flips to "Concluir processo" when no later step is `pendente` (Decision 12 makes them mutually exclusive by state), so `no_next_step`/`pending_steps_remaining` are never the normal path.
-10. **Month input (Task 12):** a native `<input type="month">` instead of `components/ui/month-picker.tsx` (its API was not audited; the native control is testable and sufficient).
+10. **Month input (Task 12) — RESOLVED.** Originally drafted as a native `<input type="month">` (unsupported on Firefox/Safari desktop — falls back to a plain text field, a real regression for this dialog's only job). Fixed to reuse `StepPrazos.tsx`'s existing, already-audited `mesesDeEntrega()` + shadcn `Select` pattern instead of introducing either the native input or the separate `components/ui/month-picker.tsx` component. `mesesDeEntrega` is exported (Task 12 Step 0) for this reuse; no new month-generation logic.
 11. **Contract test technique (Task 14):** service-role calls that must fail with a `P0001` identifier prove parameter-name resolution without seeding auth; the suite is skipped unless pointed at `127.0.0.1`/`localhost`.
