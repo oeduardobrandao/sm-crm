@@ -64,7 +64,7 @@ export function PostProcessCard({ entity, onClick, isDragOverlay }: PostProcessC
   const etapaIdx = entity.steps.findIndex((s) => s.ordem === entity.etapaOrdem);
   const total = entity.steps.length;
   const progressPct = total > 0 && etapaIdx >= 0 ? Math.round((etapaIdx / total) * 100) : 0;
-  const accent = deadlineAccent[deadlineClass] ?? '#3ecf8e';
+  const accent = hasDeadline ? (deadlineAccent[deadlineClass] ?? '#3ecf8e') : '#3ecf8e';
   const post = entity.process.post;
   const cliente = entity.cliente;
 
