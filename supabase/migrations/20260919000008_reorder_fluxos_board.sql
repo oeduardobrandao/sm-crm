@@ -63,13 +63,16 @@ BEGIN
     RAISE EXCEPTION 'invalid_arguments' USING ERRCODE = 'P0001';
   END IF;
 
+  -- Fluxo arquivado nao pode ter vindo de um drag, mesmo raciocinio do filtro de estado do processo abaixo.
   IF v_nw > 0 THEN
     PERFORM 1 FROM workflows w
      WHERE w.id = ANY(p_workflow_ids) AND w.conta_id = v_conta
+       AND w.status IS DISTINCT FROM 'arquivado'
      ORDER BY w.id
        FOR UPDATE;
     SELECT count(DISTINCT w.id) INTO v_count FROM workflows w
-     WHERE w.id = ANY(p_workflow_ids) AND w.conta_id = v_conta;
+     WHERE w.id = ANY(p_workflow_ids) AND w.conta_id = v_conta
+       AND w.status IS DISTINCT FROM 'arquivado';
     IF v_count IS DISTINCT FROM (SELECT count(DISTINCT x) FROM unnest(p_workflow_ids) x) THEN
       RAISE EXCEPTION 'workflow_not_found' USING ERRCODE = 'P0001';
     END IF;

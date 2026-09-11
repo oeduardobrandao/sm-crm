@@ -7,6 +7,8 @@
 -- 92.2 argumentos invalidos (tamanhos diferentes, tudo vazio)
 -- 92.3 ACL e permissao por papel; revisao do processo intocada
 -- 92.4 duplicatas: id repetido e posicao repetida entre os dois arrays
+-- 92.5 fluxo arquivado da propria conta cai no mesmo codigo de posse
+-- 92.6 processo encerrado da propria conta cai no mesmo codigo de posse
 
 create or replace function pg_temp.et_rb_env(
   out ws uuid, out usr uuid, out cli bigint, out wa bigint, out wb bigint,
@@ -119,6 +121,8 @@ begin
     'anon nao executa reorder_fluxos_board';
   assert has_function_privilege('authenticated', 'public.reorder_fluxos_board(bigint[], integer[], bigint[], integer[])', 'execute'),
     'authenticated executa reorder_fluxos_board';
+  assert has_function_privilege('service_role', 'public.reorder_fluxos_board(bigint[], integer[], bigint[], integer[])', 'execute'),
+    'service_role executa reorder_fluxos_board';
 
   insert into auth.users (id) values (v_ver);
   insert into workspace_roles (conta_id, nome, permissions) values (e.ws, 'ver', '{"entregas":"ver"}'::jsonb) returning id into v_role;
@@ -216,5 +220,49 @@ begin
   select position into v from workflows where id = e.wa;      assert v = 0, 'coluna esparsa e aceita (fluxo)';
   select board_position into v from post_processes where id = e.proca; assert v = 7, 'coluna esparsa e aceita (processo)';
   raise notice 'PASS 92.4 duplicatas de id e de posicao';
+end $$;
+rollback;
+
+-- 92.5
+begin;
+do $$
+declare e record; v_raised boolean := false; v int;
+begin
+  select * into e from pg_temp.et_rb_env();
+  update workflows set status = 'arquivado' where id = e.wa;
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform reorder_fluxos_board(array[e.wa], array[5]::integer[], '{}'::bigint[], '{}'::integer[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'workflow_not_found', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'fluxo arquivado da propria conta cai no mesmo codigo de posse';
+  select position into v from workflows where id = e.wa; assert v = 0, 'nada foi gravado';
+  raise notice 'PASS 92.5 fluxo arquivado da propria conta e workflow_not_found';
+end $$;
+rollback;
+
+-- 92.6
+begin;
+do $$
+declare e record; v_raised boolean := false; v int;
+begin
+  select * into e from pg_temp.et_rb_env();
+  update post_processes set estado = 'encerrado', motivo_encerramento = 'removido' where id = e.proca;
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform reorder_fluxos_board('{}'::bigint[], '{}'::integer[], array[e.proca], array[5]::integer[]);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'process_not_found', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'processo encerrado da propria conta cai no mesmo codigo de posse';
+  select board_position into v from post_processes where id = e.proca; assert v = 2, 'nada foi gravado';
+  raise notice 'PASS 92.6 processo encerrado da propria conta e process_not_found';
 end $$;
 rollback;
