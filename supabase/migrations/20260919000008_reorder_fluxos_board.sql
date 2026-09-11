@@ -11,7 +11,14 @@
 -- main. Esta funcao nao depende dela: reordena fluxos por conta propria. Se as
 -- duas coexistirem, cada uma serve um quadro.
 --
--- Nao toma advisory: nao insere nem reabre processo, e nao mexe em workflow_id.
+-- Toma o advisory ':post_move', mesmo sem inserir nem reabrir processo e sem
+-- mexer em workflow_id: attach e detach calculam MAX(board_position)+1 sob
+-- essa mesma chave (para o processo que eles criam/reabrem), e um reorder
+-- concorrente sem o advisory podia gravar a mesma posicao enquanto o calculo
+-- de um dos outros dois ainda estava em voo, empatando o espaco de indices.
+-- Com o advisory as tres serializam. Ordem de locks continua
+-- advisory -> fluxos -> processos.
+--
 -- Nenhum trigger le position/board_position, e board_position esta fora do
 -- UPDATE OF de post_processes_requires_avulso. Nao incrementa revisao: ordenar
 -- o quadro nao e mudanca de estado do processo.
@@ -62,6 +69,10 @@ BEGIN
      IS DISTINCT FROM (v_nw + v_np) THEN
     RAISE EXCEPTION 'invalid_arguments' USING ERRCODE = 'P0001';
   END IF;
+
+  -- Ver cabecalho: attach/detach calculam MAX(board_position)+1 sob esta
+  -- mesma chave, entao o reorder precisa serializar com elas para nao empatar.
+  PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
 
   -- Fluxo arquivado nao pode ter vindo de um drag, mesmo raciocinio do filtro de estado do processo abaixo.
   IF v_nw > 0 THEN
