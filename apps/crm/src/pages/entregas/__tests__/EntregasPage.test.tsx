@@ -183,6 +183,21 @@ vi.mock('@/hooks/useWorkspaceLimits', () => ({
   }),
 }));
 
+// SemProcessoSection is real in this suite and its PostStatusChip reads
+// useStatusRegistry, which reaches getPostStatusDefinitions -- absent from
+// storeMocks, and vitest throws on a missing mock export.
+vi.mock('@/hooks/useStatusRegistry', () => ({
+  useStatusRegistry: () => ({
+    resolve: (p: { status: string }) => ({
+      key: p.status,
+      kind: 'canonical',
+      canonical: p.status,
+      label: p.status,
+    }),
+    options: [],
+  }),
+}));
+
 // Mock only startEntregasTour (driver.js can't run in jsdom); tourStorageKey stays real so the
 // localStorage assertions exercise the true key format.
 const tourMock = vi.hoisted(() => ({ startEntregasTour: vi.fn() }));
@@ -1639,6 +1654,52 @@ describe('EntregasPage', () => {
         'aria-checked',
         'true',
       );
+    });
+
+    it('em Todos, a seção Sem processo lista só avulsos sem processo vigente e liga useActivePosts', async () => {
+      limitsMock.features = { feature_post_processes: true };
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          {
+            id: 1,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso livre',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+          {
+            id: 2,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso com processo',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+        ],
+        isLoading: false,
+      } as never);
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map([[2, {}]]),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?entidade=todos');
+      expect(await screen.findByText('Avulso livre')).toBeInTheDocument();
+      expect(screen.queryByText('Avulso com processo')).toBeNull();
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(true);
     });
   });
 });

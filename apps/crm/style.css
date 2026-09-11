@@ -13001,3 +13001,44 @@ a.hub-fill__row-inner:hover {
     box-shadow: none !important;
   }
 }
+
+/* Seção "Sem processo" do quadro de Fluxos (spec §4.3) */
+.sem-processo {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.sem-processo-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.sem-processo-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+.sem-processo-link {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-decoration: underline;
+}
+.sem-processo-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.sem-processo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+.sem-processo-card {
+  cursor: pointer;
+}

@@ -48,10 +48,12 @@ import { PostsListView } from './views/PostsListView';
 import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { StandalonePostDrawer } from './components/StandalonePostDrawer';
+import { SemProcessoSection } from './components/SemProcessoSection';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
 import { EntidadeToggle } from './components/EntidadeToggle';
 import { VistasTabs } from './components/VistasTabs';
 import { useActivePosts } from './hooks/useActivePosts';
+import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } from './semProcesso';
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
 import { matchesPostEntityFilters } from './entityFilters';
@@ -168,6 +170,7 @@ export default function EntregasPage() {
     templates,
     cards,
     postEntities,
+    processByPostId,
     activePostProcessCount,
     activeWorkflows,
     postsCounts,
@@ -598,11 +601,27 @@ export default function EntregasPage() {
   };
 
   // Publicações mode (Kanban/Lista): every post of every active workflow, fetched
-  // only while one of those modes is actually visible.
+  // only while one of those modes is actually visible. The "Sem processo"
+  // section of the Fluxos board (spec §4.3) reads the same cache, so it turns
+  // the query on too; the 15 s poll stays conditioned on a post being published.
   const postsMode =
     (activeView === 'kanban' && mode === 'publicacoes') ||
     (activeView === 'list' && mode === 'publicacoes');
-  const { posts: activePosts, isLoading: activePostsLoading } = useActivePosts(postsMode);
+  const semProcessoMode =
+    postProcessesEnabled &&
+    activeView === 'kanban' &&
+    mode === 'entregas' &&
+    effectiveEntidade !== 'fluxos';
+  const { posts: activePosts, isLoading: activePostsLoading } = useActivePosts(
+    postsMode || semProcessoMode,
+  );
+  const semProcessoPosts = useMemo(
+    () =>
+      semProcessoMode
+        ? selectSemProcessoPosts(activePosts, (id) => processByPostId.has(id), filters)
+        : [],
+    [semProcessoMode, activePosts, processByPostId, filters],
+  );
 
   // The busca input (on the VistasTabs row) and the filter pills show together:
   // hidden on Concluídas and on the Publicações calendar, where they don't apply.
@@ -959,35 +978,46 @@ export default function EntregasPage() {
 
       {activeView === 'kanban' &&
         (mode === 'entregas' ? (
-          <KanbanView
-            contaId={contaId}
-            cards={visibleCards}
-            allCards={cards}
-            postEntities={visiblePostEntities}
-            postProcessesEnabled={postProcessesEnabled}
-            onPostClick={handlePostEntityClick}
-            onCardClick={handleCardClick}
-            onEditClick={setEditCard}
-            onPostsClick={handleCardClick}
-            onRefresh={refresh}
-            onRecurring={setRecurringWfId}
-            onAddWorkflow={(templateId) => {
-              setQuickAddTemplateId(templateId);
-              setNewWorkflowOpen(true);
-            }}
-            membros={membros}
-            templates={templates}
-            postsCounts={postsCounts}
-            approvedPostsCounts={approvedPostsCounts}
-            clearedClienteCounts={clearedClienteCounts}
-            revisaoInternaCounts={revisaoInternaCounts}
-            awaitingClienteCounts={awaitingClienteCounts}
-            showExample={showExample}
-            onDismissExample={() => {
-              captureEvent('entregas_tour_dismissed', { step: -1 });
-              markTourDone();
-            }}
-          />
+          <>
+            <KanbanView
+              contaId={contaId}
+              cards={visibleCards}
+              allCards={cards}
+              postEntities={visiblePostEntities}
+              postProcessesEnabled={postProcessesEnabled}
+              onPostClick={handlePostEntityClick}
+              onCardClick={handleCardClick}
+              onEditClick={setEditCard}
+              onPostsClick={handleCardClick}
+              onRefresh={refresh}
+              onRecurring={setRecurringWfId}
+              onAddWorkflow={(templateId) => {
+                setQuickAddTemplateId(templateId);
+                setNewWorkflowOpen(true);
+              }}
+              membros={membros}
+              templates={templates}
+              postsCounts={postsCounts}
+              approvedPostsCounts={approvedPostsCounts}
+              clearedClienteCounts={clearedClienteCounts}
+              revisaoInternaCounts={revisaoInternaCounts}
+              awaitingClienteCounts={awaitingClienteCounts}
+              showExample={showExample}
+              onDismissExample={() => {
+                captureEvent('entregas_tour_dismissed', { step: -1 });
+                markTourDone();
+              }}
+            />
+            {semProcessoMode && (
+              <SemProcessoSection
+                posts={semProcessoPosts.slice(0, SEM_PROCESSO_LIMIT)}
+                total={semProcessoPosts.length}
+                productionFiltersActive={productionFiltersActive(filters)}
+                onPostClick={handlePostClick}
+                onVerTodos={() => setMode('publicacoes')}
+              />
+            )}
+          </>
         ) : (
           <PostsKanbanView
             posts={filteredPosts}
