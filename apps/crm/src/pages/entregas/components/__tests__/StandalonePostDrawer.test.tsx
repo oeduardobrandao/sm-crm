@@ -344,4 +344,52 @@ describe('StandalonePostDrawer', () => {
     expect(screen.getByRole('heading', { name: 'Produção' })).toBeInTheDocument();
     expect(screen.getByText('Responsável do post')).toBeInTheDocument();
   });
+
+  it('processo ativo sem etapa ativa: activeStepName cai em etapa_atual em vez de "Processo concluído"', async () => {
+    // Mirrors toPostEntity's fallback in boardEntity.ts (`steps.find(estado ===
+    // 'ativo') ?? steps.find(ordem === etapa_atual)`): a DB invariant keeps an
+    // ativo process with exactly one ativo etapa, but the header must not
+    // mislabel it as concluded if that invariant is ever violated.
+    limitsMock.features = { feature_post_processes: true };
+    const { getVigentePostProcess } = await import('@/store');
+    (getVigentePostProcess as any).mockResolvedValueOnce({
+      id: 9,
+      post_id: 5,
+      estado: 'ativo',
+      etapa_atual: 1,
+      template_id: null,
+      template_nome: null,
+      origem_descricao: null,
+      steps: [
+        {
+          id: 1,
+          ordem: 0,
+          nome: 'Copy',
+          estado: 'concluido',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+        {
+          id: 2,
+          ordem: 1,
+          nome: 'Design',
+          estado: 'pendente',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { membros: [{ id: 1, nome: 'Ana' }] });
+    expect(await screen.findByText('Individual · Design')).toBeInTheDocument();
+    expect(screen.queryByText('Individual · Processo concluído')).not.toBeInTheDocument();
+  });
 });
