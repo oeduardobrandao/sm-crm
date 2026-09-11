@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,6 +22,7 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
   },
 }));
 
@@ -329,11 +330,13 @@ vi.mock('../components/WorkflowDrawer', () => ({
     onClose,
     initialPostId,
     onOpenWorkflow,
+    onDetachedKeepingProcess,
   }: {
     card: { workflow: { titulo: string } };
     onClose: () => void;
     initialPostId?: number;
     onOpenWorkflow?: (workflowId: number, seed?: unknown) => void;
+    onDetachedKeepingProcess?: (postIds: number[]) => void;
   }) => (
     <div>
       <div>Workflow drawer: {card.workflow.titulo}</div>
@@ -352,6 +355,7 @@ vi.mock('../components/WorkflowDrawer', () => ({
       >
         Move posts to workflow 99 with seed
       </button>
+      <button onClick={() => onDetachedKeepingProcess?.([77])}>Detach keeping process</button>
     </div>
   ),
 }));
@@ -637,6 +641,7 @@ describe('EntregasPage', () => {
     mockedGetStandalonePost.mockReset();
     mockedToast.success.mockReset();
     mockedToast.error.mockReset();
+    mockedToast.info.mockReset();
     tourMock.startEntregasTour.mockReset();
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
     limitsMock.features = null;
@@ -1952,6 +1957,126 @@ describe('EntregasPage', () => {
       // haver processo vigente): se EntregasPage.tsx voltasse a gatear por
       // postProcessesVisible, este valor seria true e a asserção falharia.
       expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
+    });
+
+    describe('revelar card no quadro depois de desmembrar mantendo etapas', () => {
+      const entity = toPostEntity(vigenteFixture, { clientes: [], membros: [] })!;
+
+      function baseData(overrides: Record<string, unknown> = {}) {
+        return {
+          clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+          membros: [{ id: 7, nome: 'Ana' }],
+          templates: [],
+          cards: [
+            makeCard({
+              workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+            }),
+          ],
+          activeWorkflows: [{ id: 2 }],
+          postEntities: [],
+          processByPostId: new Map(),
+          concludedPostProcesses: [],
+          activePostProcessCount: 1,
+          postProcessesVisible: true,
+          isLoading: false,
+          isFetching: false,
+          refresh: vi.fn(),
+          ...overrides,
+        };
+      }
+
+      beforeEach(() => {
+        limitsMock.features = { feature_post_processes: true };
+      });
+
+      it('desmembrar mantendo etapas revela o card: Kanban, Todos, filtros que escondiam limpos, drawer do post aberto', async () => {
+        mockedUseEntregasData.mockReturnValue(baseData({ postEntities: [entity] }) as never);
+        renderPage('/entregas?drawer=2&clientes=99');
+
+        expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Detach keeping process'));
+        });
+
+        await screen.findByText('Standalone drawer: 77');
+        expect(screen.getByTestId('current-path')).toHaveTextContent('entidade=todos');
+        expect(screen.getByTestId('current-path')).not.toHaveTextContent('clientes=99');
+        expect(mockedToast.info).toHaveBeenCalledWith(
+          'Filtros removidos para mostrar o post no quadro.',
+        );
+      });
+
+      it('timing guard: não desiste antes de observar um fetch, e revela assim que a entidade chega', async () => {
+        mockedUseEntregasData.mockReturnValue(baseData({ postEntities: [] }) as never);
+        const { rerender } = renderPage('/entregas?drawer=2');
+
+        expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Detach keeping process'));
+        });
+        // First pass: entity not found yet, and no fetch has been observed since the
+        // reveal started -- keeps waiting silently instead of giving up immediately.
+        expect(mockedToast.error).not.toHaveBeenCalledWith(
+          'O post não apareceu no quadro. Recarregue a página.',
+        );
+        expect(screen.queryByText('Standalone drawer: 77')).toBeNull();
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [], isFetching: true }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+        expect(mockedToast.error).not.toHaveBeenCalledWith(
+          'O post não apareceu no quadro. Recarregue a página.',
+        );
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [entity], isFetching: false }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+
+        await screen.findByText('Standalone drawer: 77');
+        expect(mockedToast.error).not.toHaveBeenCalledWith(
+          'O post não apareceu no quadro. Recarregue a página.',
+        );
+      });
+
+      it('timing guard: desiste e toasta erro só depois de observar um fetch em que a entidade ainda não chegou', async () => {
+        mockedUseEntregasData.mockReturnValue(baseData({ postEntities: [] }) as never);
+        const { rerender } = renderPage('/entregas?drawer=2');
+
+        expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Detach keeping process'));
+        });
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [], isFetching: true }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [], isFetching: false }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+
+        await waitFor(() =>
+          expect(mockedToast.error).toHaveBeenCalledWith(
+            'O post não apareceu no quadro. Recarregue a página.',
+          ),
+        );
+        expect(screen.queryByText('Standalone drawer: 77')).toBeNull();
+      });
     });
   });
 });

@@ -57,6 +57,7 @@ import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } f
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
 import { matchesPostEntityFilters } from './entityFilters';
+import { filtersToReveal } from './revealFilters';
 import type { PostEntity } from './boardEntity';
 import {
   parseEntregasQuery,
@@ -154,6 +155,13 @@ export default function EntregasPage() {
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   const [newAvulsoOpen, setNewAvulsoOpen] = useState(false);
+  // Desmembrar mantendo etapas / aplicar processo: aguarda a entidade aparecer
+  // em `postEntities` (não filtrado) depois do refresh disparado por
+  // revealPostProcesses, para então limpar filtros e abrir o drawer (spec §4.1).
+  const [pendingReveal, setPendingReveal] = useState<{
+    postIds: number[];
+    openDrawer: boolean;
+  } | null>(null);
   // Per-column sort mode for the Publicações board, remembered per conta.
   const [boardColumnSorts, setBoardColumnSorts] = useState<
     Partial<Record<string, BoardColumnSort>>
@@ -787,6 +795,48 @@ export default function EntregasPage() {
     return new Map(postEntities.map((e) => [e.process.post_id, e.etapaNome]));
   }, [postEntities]);
 
+  // Spec §4.1: desmembrar mantendo etapas / aplicar processo abrem Fluxos em
+  // Kanban, selecionam Todos e revelam o card, removendo só os filtros que o
+  // esconderiam, com aviso. Um post abre o drawer; vários só revelam.
+  const revealPostProcesses = useCallback(
+    (postIds: number[]) => {
+      setDrawerCard(null);
+      setDrawerInitialPostId(null);
+      setActiveView('kanban');
+      setMode('entregas');
+      setEntidade('todos');
+      refresh();
+      setPendingReveal({ postIds, openDrawer: postIds.length === 1 });
+    },
+    [refresh],
+  );
+
+  // O refetch disparado por refresh() pode ainda não ter virado isFetching na
+  // primeira renderização após o clique: só desistir depois de ter VISTO o
+  // fetch acontecer uma vez desde o início da revelação.
+  const sawFetchingRef = useRef(false);
+  useEffect(() => {
+    if (!pendingReveal) {
+      sawFetchingRef.current = false;
+      return;
+    }
+    if (isFetching) sawFetchingRef.current = true;
+    const found = postEntities.filter((e) => pendingReveal.postIds.includes(e.process.post_id));
+    if (found.length < pendingReveal.postIds.length) {
+      if (isLoading || isFetching || !sawFetchingRef.current) return;
+      toast.error('O post não apareceu no quadro. Recarregue a página.');
+      setPendingReveal(null);
+      return;
+    }
+    const { filters: next, cleared } = filtersToReveal(found, filters);
+    if (cleared.length) {
+      setFilters(next);
+      toast.info('Filtros removidos para mostrar o post no quadro.');
+    }
+    if (pendingReveal.openDrawer) setStandalonePostId(pendingReveal.postIds[0]);
+    setPendingReveal(null);
+  }, [pendingReveal, postEntities, isLoading, isFetching, filters]);
+
   const overdue = cards.filter((c) => c.deadline.estourado).length;
   const urgent = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
 
@@ -1177,6 +1227,7 @@ export default function EntregasPage() {
             setDrawerInitialPostId(null);
           }}
           onRefresh={refresh}
+          onDetachedKeepingProcess={revealPostProcesses}
           onOpenWorkflow={(workflowId, seed) => {
             // Posts just moved to another flow: land the user there NOW when
             // possible. An existing target already has a board card; a freshly

@@ -101,6 +101,7 @@ vi.mock('@/store', () => ({
   getDesignForPost: vi.fn(async () => null),
   syncMentions: vi.fn(),
   detachPostsFromWorkflow: vi.fn(),
+  detachPostsKeepingProcess: vi.fn(),
   getWorkflows: vi.fn(async () => []),
   movePostsToNewFlow: vi.fn(),
   movePostsToExistingFlow: vi.fn(),

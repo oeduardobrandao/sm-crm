@@ -32,7 +32,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -78,7 +77,6 @@ import {
   rejectEditSuggestion,
   getClientePosts,
   syncMentions,
-  detachPostsFromWorkflow,
   getPostProcessEvents,
   type MovePostsResult,
   type Workflow,
@@ -92,6 +90,8 @@ import {
   type CommentThreadWithComments,
   type PostEditSuggestion,
   type ClientePost,
+  type DetachPostsResult,
+  type DetachKeepingProcessResult,
 } from '../../../store';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
@@ -118,28 +118,12 @@ import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { MovePostsToFluxoDialog } from './MovePostsToFluxoDialog';
+import { DetachPostsDialog } from './DetachPostsDialog';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 
 // Stable empty array so the fallback in `useQuery({ data: processEvents = ... })` never
 // changes identity across renders when the flag is off or the query hasn't resolved yet.
 const EMPTY_PROCESS_EVENTS: PostProcessEvent[] = [];
-
-/** Maps detach_posts_from_flow's identifier-style RPC errors (see
- *  supabase/migrations/20260830000004_post_detach_attach_rpcs.sql) to PT copy.
- *  `post_not_found` is the only identifier that can realistically surface here
- *  (a post selected in this very drawer got deleted from another tab/session
- *  between render and confirm) -- everything else (post_ids_required,
- *  workspace_not_found) can't happen from this call site, so they fall back
- *  to the generic message rather than getting their own copy. */
-function getDetachErrorToast(err: unknown): string {
-  const message =
-    err && typeof err === 'object' && 'message' in err
-      ? (err as { message?: unknown }).message
-      : undefined;
-  if (message === 'post_not_found') {
-    return 'Um ou mais posts não foram encontrados.';
-  }
-  return 'Erro ao desmembrar posts';
-}
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -158,6 +142,9 @@ interface WorkflowDrawerProps {
     workflowId: number,
     seed?: { workflow: Workflow; etapas: WorkflowEtapa[] },
   ) => void;
+  /** Desmembrar mantendo etapas: a página revela o card no quadro (spec §4.1).
+   *  Sem o callback (EntregasTab), só refresh. */
+  onDetachedKeepingProcess?: (postIds: number[]) => void;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -169,9 +156,12 @@ export function WorkflowDrawer({
   onRefresh,
   initialPostId,
   onOpenWorkflow,
+  onDetachedKeepingProcess,
 }: WorkflowDrawerProps) {
   const workflowId = card.workflow.id!;
   const qc = useQueryClient();
+  const { features } = useWorkspaceLimits();
+  const keepStepsEnabled = features?.feature_post_processes === true;
 
   // Expanded post id (accordion). Seeded from initialPostId when opened from the
   // calendar; the call site keys the drawer by initialPostId so a new target remounts.
@@ -208,8 +198,6 @@ export function WorkflowDrawer({
   // dialog only ever shows when that batch covers every post of this workflow.
   const [selectedPostIds, setSelectedPostIds] = useState<Set<number>>(new Set());
   const [detachTarget, setDetachTarget] = useState<number[] | null>(null);
-  const [archiveEmptyFlow, setArchiveEmptyFlow] = useState(false);
-  const [isDetaching, setIsDetaching] = useState(false);
   // Mover para outro fluxo: same two entry points as detach (selection bar +
   // per-post kebab); the dialog itself carries the destination choice.
   const [moveTarget, setMoveTarget] = useState<number[] | null>(null);
@@ -616,41 +604,32 @@ export function WorkflowDrawer({
   const clearSelection = useCallback(() => setSelectedPostIds(new Set()), []);
 
   const openDetachConfirm = useCallback((ids: number[]) => {
-    setArchiveEmptyFlow(false);
     setDetachTarget(ids);
   }, []);
 
-  const handleConfirmDetach = async () => {
-    if (!detachTarget) return;
-    const ids = detachTarget;
-    // Total selection: every post currently in this workflow is part of this
-    // batch -- only then does archiving the now-empty flow make sense, so
-    // only then does the confirm dialog even offer the checkbox.
-    const isTotalSelection = ids.length === posts.length;
-    const archive = isTotalSelection && archiveEmptyFlow;
-    setIsDetaching(true);
-    try {
-      const result = await detachPostsFromWorkflow(ids, archive);
-      const n = result.detached;
-      toast.success(`${n} post${n === 1 ? '' : 's'} desmembrado${n === 1 ? '' : 's'}`);
-      setSelectedPostIds(new Set());
-      setDetachTarget(null);
-      setArchiveEmptyFlow(false);
-      if (archive) {
-        // The flow itself got archived along with the last posts leaving it --
-        // this drawer no longer has anything left to show, so close it instead
-        // of refreshing its own (now pointless) queries.
-        onRefresh();
-        onClose();
-      } else {
-        refresh();
-        onRefresh();
-      }
-    } catch (err) {
-      toast.error(getDetachErrorToast(err));
-    } finally {
-      setIsDetaching(false);
+  const afterDetach = (n: number, archived: boolean) => {
+    toast.success(`${n} post${n === 1 ? '' : 's'} desmembrado${n === 1 ? '' : 's'}`);
+    setSelectedPostIds(new Set());
+    setDetachTarget(null);
+    if (archived) {
+      // The flow itself got archived along with the last posts leaving it --
+      // this drawer no longer has anything left to show, so close it instead
+      // of refreshing its own (now pointless) queries.
+      onRefresh();
+      onClose();
+    } else {
+      refresh();
+      onRefresh();
     }
+  };
+
+  const handleDetachedWithoutProcess = (result: DetachPostsResult, archived: boolean) =>
+    afterDetach(result.detached, archived);
+
+  const handleDetachedKeepingProcess = (result: DetachKeepingProcessResult, archived: boolean) => {
+    const ids = result.processes.map((p) => p.post_id);
+    afterDetach(result.detached, archived);
+    onDetachedKeepingProcess?.(ids);
   };
 
   // Posts left for another flow (new or existing): this drawer's list just
@@ -1122,52 +1101,21 @@ export function WorkflowDrawer({
       </AlertDialog>
 
       {/* Confirmation dialog for desmembrar do fluxo (single post or bulk selection) */}
-      <AlertDialog
-        open={!!detachTarget}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDetachTarget(null);
-            setArchiveEmptyFlow(false);
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Desmembrar do fluxo?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Os posts selecionados viram publicações avulsas de {card.cliente?.nome || '—'}. Eles
-              continuam no quadro de Publicações e no portal do cliente, mas saem deste fluxo.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {isTotalDetachSelection && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="detach-archive-empty-flow"
-                checked={archiveEmptyFlow}
-                onCheckedChange={(checked) => setArchiveEmptyFlow(checked === true)}
-                aria-label="Arquivar o fluxo depois de desmembrar"
-              />
-              <Label htmlFor="detach-archive-empty-flow">
-                Arquivar o fluxo depois de desmembrar
-              </Label>
-            </div>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setDetachTarget(null);
-                setArchiveEmptyFlow(false);
-              }}
-              disabled={isDetaching}
-            >
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDetach} disabled={isDetaching}>
-              {isDetaching ? 'Desmembrando...' : 'Desmembrar'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {detachTarget && (
+        <DetachPostsDialog
+          open
+          onClose={() => setDetachTarget(null)}
+          card={card}
+          posts={detachTarget.map((id) => ({
+            id,
+            titulo: posts.find((p) => p.id === id)?.titulo ?? null,
+          }))}
+          isTotalSelection={isTotalDetachSelection}
+          keepStepsEnabled={keepStepsEnabled}
+          onDetachedWithoutProcess={handleDetachedWithoutProcess}
+          onDetachedKeepingProcess={handleDetachedKeepingProcess}
+        />
+      )}
 
       <MovePostsToFluxoDialog
         open={!!moveTarget}
