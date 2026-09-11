@@ -13042,3 +13042,52 @@ a.hub-fill__row-inner:hover {
 .sem-processo-card {
   cursor: pointer;
 }
+
+/* Seção de produção do post individual (spec §5.4) */
+.post-production {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface-1);
+  margin-bottom: 1rem;
+}
+.post-production-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.post-production-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.post-production-state {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-muted);
+}
+.post-production-state--ativo {
+  background: rgba(62, 207, 142, 0.15);
+  color: var(--success);
+}
+.post-production-origem,
+.post-production-note {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.post-production-tipo {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.post-production-history {
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.6rem;
+}

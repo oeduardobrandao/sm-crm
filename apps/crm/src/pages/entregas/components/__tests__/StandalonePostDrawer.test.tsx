@@ -21,10 +21,11 @@ vi.mock('@/context/AuthContext', () => ({
   }),
 }));
 
+const limitsMock = vi.hoisted(() => ({ features: null as Record<string, boolean> | null }));
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({
     limits: null,
-    features: null,
+    features: limitsMock.features,
     planName: null,
     isLoading: false,
     isUnlimited: true,
@@ -79,6 +80,8 @@ vi.mock('@/store', () => ({
   acceptEditSuggestion: vi.fn(),
   rejectEditSuggestion: vi.fn(),
   syncMentions: vi.fn(),
+  getVigentePostProcess: vi.fn(async () => null),
+  getPostProcessEvents: vi.fn(async () => []),
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
@@ -182,6 +185,7 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
 describe('StandalonePostDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    limitsMock.features = null;
     mockGetStandalonePost.mockResolvedValue(basePost() as never);
     mockUpdate.mockResolvedValue({} as never);
     mockRemove.mockResolvedValue(undefined as never);
@@ -275,5 +279,69 @@ describe('StandalonePostDrawer', () => {
       }),
     );
     expect(screen.queryByText('Post aprovado')).not.toBeInTheDocument();
+  });
+
+  it('flag desligada mantém a tag "Avulso" e não consulta o processo', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    expect(await screen.findByText('Avulso')).toBeInTheDocument();
+    const { getVigentePostProcess } = await import('@/store');
+    expect(getVigentePostProcess).not.toHaveBeenCalled();
+  });
+
+  it('flag ligada sem processo: tag "Avulso · Sem processo"', async () => {
+    limitsMock.features = { feature_post_processes: true };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    expect(await screen.findByText('Avulso · Sem processo')).toBeInTheDocument();
+    const { getVigentePostProcess } = await import('@/store');
+    expect(getVigentePostProcess).toHaveBeenCalledWith(5);
+  });
+
+  it('flag ligada com processo ativo: tag "Individual · <etapa>" e seção Produção', async () => {
+    limitsMock.features = { feature_post_processes: true };
+    const { getVigentePostProcess } = await import('@/store');
+    // Set the value BEFORE mounting: the query fires on mount, and a `Once`
+    // value is consumed by whichever call happens next.
+    (getVigentePostProcess as any).mockResolvedValueOnce({
+      id: 9,
+      post_id: 5,
+      estado: 'ativo',
+      etapa_atual: 1,
+      template_id: null,
+      template_nome: null,
+      origem_descricao: null,
+      steps: [
+        {
+          id: 1,
+          ordem: 0,
+          nome: 'Copy',
+          estado: 'ignorado',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+        {
+          id: 2,
+          ordem: 1,
+          nome: 'Design',
+          estado: 'ativo',
+          tipo: 'padrao',
+          responsavel_id: null,
+          prazo_dias: null,
+          tipo_prazo: null,
+          prazo_efetivo: null,
+          iniciado_em: null,
+        },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { membros: [{ id: 1, nome: 'Ana' }] }); // the select (and its label) only renders with membros
+    expect(await screen.findByText('Individual · Design')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Produção' })).toBeInTheDocument();
+    expect(screen.getByText('Responsável do post')).toBeInTheDocument();
   });
 });

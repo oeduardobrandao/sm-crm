@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
-import { X, Trash2, Link2, Maximize2, Minimize2, CircleDashed } from 'lucide-react';
+import { X, Trash2, Link2, Maximize2, Minimize2, CircleDashed, Route } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +35,7 @@ import {
   rejectEditSuggestion,
   syncMentions,
   getWorkspaceSlug,
+  getVigentePostProcess,
   type Membro,
   type PostEditSuggestion,
   type WorkflowPost,
@@ -45,6 +46,7 @@ import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { useAuth } from '@/context/AuthContext';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../statusRegistry';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { PostEditorBody } from './PostEditorBody';
@@ -82,6 +84,22 @@ export function StandalonePostDrawer({
     queryKey: ['standalone-post', postId],
     queryFn: () => getStandalonePost(postId),
   });
+
+  // Processo individual vigente (spec §5.4). Flag-gated e sob demanda: só
+  // este drawer, só enquanto aberto. `null` = avulso sem processo.
+  const { features } = useWorkspaceLimits();
+  const postProcessesEnabled = features?.feature_post_processes === true;
+  const { data: postProcess = null } = useQuery({
+    queryKey: ['post-process', postId],
+    queryFn: () => getVigentePostProcess(postId),
+    enabled: postProcessesEnabled,
+  });
+  const activeStepName =
+    postProcess?.estado === 'ativo'
+      ? (postProcess.steps.find((s) => s.estado === 'ativo')?.nome ??
+        postProcess.steps.find((s) => s.ordem === postProcess.etapa_atual)?.nome ??
+        null)
+      : null;
 
   const clienteId = post?.cliente_id ?? null;
 
@@ -180,6 +198,9 @@ export function StandalonePostDrawer({
     qc.invalidateQueries({ queryKey: ['post-status-events'] });
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
+    qc.invalidateQueries({ queryKey: ['post-process', postId] });
+    qc.invalidateQueries({ queryKey: ['post-processes'] });
+    qc.invalidateQueries({ queryKey: ['post-process-events'] });
     if (clienteId != null) qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
   }, [qc, postId, clienteId]);
 
@@ -447,10 +468,17 @@ export function StandalonePostDrawer({
             {post && (
               <div className="drawer-header-subtitle">
                 {post.cliente_nome || '—'} &bull;{' '}
-                <span className="post-fluxo-tag post-fluxo-tag--avulso">
-                  <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                  Avulso
-                </span>
+                {postProcessesEnabled && postProcess ? (
+                  <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
+                    <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                    Individual · {activeStepName ?? 'Processo concluído'}
+                  </span>
+                ) : (
+                  <span className="post-fluxo-tag post-fluxo-tag--avulso">
+                    <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                    {postProcessesEnabled ? 'Avulso · Sem processo' : 'Avulso'}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -493,6 +521,7 @@ export function StandalonePostDrawer({
               post={post}
               templateId={undefined}
               workflowId={null}
+              postProcess={postProcessesEnabled ? postProcess : undefined}
               clienteId={post.cliente_id}
               clientePosts={clientePosts}
               isExpanded
