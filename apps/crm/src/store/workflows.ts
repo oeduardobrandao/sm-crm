@@ -166,20 +166,18 @@ export async function updateWorkflow(
   return data;
 }
 
+/** Grava a ordem manual de um lote de fluxos numa única chamada atômica
+ *  (RPC reorder_workflow_positions). Sempre enviar a coluna INTEIRA, não só os
+ *  cards visíveis: a RPC grava exatamente o que recebe. */
 export async function updateWorkflowPositions(
   updates: { id: number; position: number }[],
 ): Promise<void> {
-  await Promise.all(
-    updates.map(({ id, position }) =>
-      supabase
-        .from('workflows')
-        .update({ position })
-        .eq('id', id)
-        .then(({ error }) => {
-          if (error) throw error;
-        }),
-    ),
-  );
+  if (updates.length === 0) return;
+  const { error } = await supabase.rpc('reorder_workflow_positions', {
+    p_workflow_ids: updates.map((u) => u.id),
+    p_positions: updates.map((u) => u.position),
+  });
+  if (error) throw error;
 }
 
 export async function removeWorkflow(id: number): Promise<void> {
