@@ -209,4 +209,24 @@ describe('CalendarView', () => {
     );
     expect(screen.queryByText(/Somente fluxos/)).toBeNull();
   });
+
+  it('mostra a nota "Somente fluxos" também no vazio de zero cards', () => {
+    const onGoToKanban = vi.fn();
+    render(
+      <Wrapper>
+        <CalendarView
+          cards={[]}
+          onCardClick={vi.fn()}
+          {...defaultProps}
+          postProcessesEnabled
+          onGoToKanban={onGoToKanban}
+        />
+      </Wrapper>,
+    );
+
+    expect(screen.getByText('Nenhuma entrega encontrada. Ajuste os filtros.')).toBeInTheDocument();
+    expect(screen.getByText(/Somente fluxos/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'quadro' }));
+    expect(onGoToKanban).toHaveBeenCalled();
+  });
 });

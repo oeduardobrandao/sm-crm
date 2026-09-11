@@ -121,6 +121,15 @@ export function CalendarView({
         >
           <p>Nenhuma entrega encontrada. Ajuste os filtros.</p>
         </div>
+        {postProcessesEnabled && (
+          <p className="entregas-somente-fluxos">
+            Somente fluxos. Posts individuais aparecem no{' '}
+            <button type="button" className="entregas-somente-fluxos-link" onClick={onGoToKanban}>
+              quadro
+            </button>
+            .
+          </p>
+        )}
       </div>
     );
   }
