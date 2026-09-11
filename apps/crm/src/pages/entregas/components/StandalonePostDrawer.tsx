@@ -675,6 +675,7 @@ export function StandalonePostDrawer({
           postId={postId}
           clienteId={clienteId}
           onAttached={onAttached}
+          process={postProcess}
         />
       )}
       {post && (
