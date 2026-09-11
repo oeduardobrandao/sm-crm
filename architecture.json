@@ -1,0 +1,354 @@
+{
+  "project": {
+    "name": "Mesaas CRM",
+    "snapshot": "2026-05-15",
+    "description": "Social media agency CRM (internal dashboard), Hub (client-facing portal), and Admin (platform operations). Portuguese-language UI.",
+    "repo": "sm-crm",
+    "stack": {
+      "frontend": ["React 19", "React Router v7", "TanStack Query", "Tailwind CSS", "shadcn/ui", "Radix UI"],
+      "backend": ["Supabase Edge Functions (Deno)", "Supabase Postgres", "Supabase Auth", "pg_cron"],
+      "storage": ["Cloudflare R2 (presigned URLs)"],
+      "ai": ["Google Gemini 2.5 Flash"],
+      "hosting": ["Vercel (CRM + Hub + Admin SPAs)"],
+      "monitoring": ["Sentry (optional)"],
+      "fonts": ["DM Sans", "Playfair Display", "DM Mono"],
+      "icons": ["lucide-react"]
+    }
+  },
+  "categories": {
+    "actor":    { "color": "#f55a42", "label": "Actor" },
+    "surface":  { "color": "#42c8f5", "label": "Client Surface" },
+    "page":     { "color": "#a855f7", "label": "CRM Page" },
+    "service":  { "color": "#3ecf8e", "label": "State & Service" },
+    "edge-fn":  { "color": "#818cf8", "label": "Edge Function (Deno)" },
+    "storage":  { "color": "#f5a342", "label": "Storage / Data" },
+    "external": { "color": "#6b7280", "label": "External Service" }
+  },
+  "columns": [
+    {
+      "id": "actors",
+      "label": "ACTORS",
+      "cards": [
+        { "id": "end-user",        "title": "End User (Client)",  "subtitle": "Hub portal · post approvals",       "category": "actor" },
+        { "id": "agency-owner",    "title": "Agency Owner",       "subtitle": "owner role · full CRM access",      "category": "actor" },
+        { "id": "agency-admin",    "title": "Agency Admin",       "subtitle": "admin role · full CRM access",      "category": "actor" },
+        { "id": "agency-agent",    "title": "Agency Agent",       "subtitle": "agent role · limited views",        "category": "actor" },
+        { "id": "platform-admin",  "title": "Platform Admin",     "subtitle": "super-admin · workspace ops",       "category": "actor" }
+      ]
+    },
+    {
+      "id": "surfaces",
+      "label": "CLIENT SURFACES",
+      "cards": [
+        { "id": "crm-app",       "title": "CRM App",          "subtitle": "apps/crm/ · 26 routes · React 19",   "category": "surface", "path": "apps/crm/" },
+        { "id": "hub-app",       "title": "Hub App",           "subtitle": "apps/hub/ · 8 pages · token auth",   "category": "surface", "path": "apps/hub/" },
+        { "id": "admin-app",     "title": "Admin App",         "subtitle": "apps/admin/ · 7 routes · platform ops","category": "surface", "path": "apps/admin/" },
+        { "id": "legacy-portal", "title": "Legacy Portal",     "subtitle": "/portal/:token · per-workflow",       "category": "surface" },
+        { "id": "packages-ui",   "title": "packages/ui",       "subtitle": "shared primitives · 10 exports",      "category": "surface", "path": "packages/ui/" }
+      ]
+    },
+    {
+      "id": "pages",
+      "label": "CRM PAGES",
+      "cards": [
+        { "id": "dashboard-page",  "title": "Dashboard",        "subtitle": "KPIs · revenue · charts",            "category": "page", "path": "apps/crm/src/pages/dashboard/" },
+        { "id": "clientes-page",   "title": "Clientes",         "subtitle": "client CRUD · filters · CSV",        "category": "page", "path": "apps/crm/src/pages/clientes/" },
+        { "id": "cliente-detalhe", "title": "Cliente Detalhe",   "subtitle": "tabs: workflows · IG · Hub · files", "category": "page", "path": "apps/crm/src/pages/cliente-detalhe/" },
+        { "id": "entregas-page",   "title": "Entregas",         "subtitle": "kanban · posts · deadlines",         "category": "page", "path": "apps/crm/src/pages/entregas/" },
+        { "id": "analytics-page",  "title": "Analytics",        "subtitle": "portfolio overview · ranked posts",  "category": "page", "path": "apps/crm/src/pages/analytics/" },
+        { "id": "analytics-conta", "title": "Analytics Conta",   "subtitle": "per-account · demographics · AI",   "category": "page", "path": "apps/crm/src/pages/analytics-conta/" },
+        { "id": "financeiro-page", "title": "Financeiro",       "subtitle": "transactions · contracts · projections","category": "page", "path": "apps/crm/src/pages/financeiro/" },
+        { "id": "configuracao-page","title": "Configuracao",    "subtitle": "settings · team · invites",          "category": "page", "path": "apps/crm/src/pages/configuracao/" }
+      ]
+    },
+    {
+      "id": "services",
+      "label": "STATE & SERVICES",
+      "cards": [
+        { "id": "auth-context",   "title": "AuthContext",       "subtitle": "session · role · profile cache",     "category": "service", "path": "apps/crm/src/context/AuthContext.tsx" },
+        { "id": "store-layer",    "title": "store/",            "subtitle": "14 modules · Supabase CRUD",         "category": "service", "path": "apps/crm/src/store/" },
+        { "id": "svc-instagram",  "title": "services/instagram","subtitle": "OAuth · sync · schedule · publish",  "category": "service", "path": "apps/crm/src/services/instagram.ts" },
+        { "id": "svc-analytics",  "title": "services/analytics","subtitle": "portfolio · per-account queries",    "category": "service", "path": "apps/crm/src/services/analytics.ts" },
+        { "id": "svc-post-media", "title": "services/postMedia","subtitle": "upload pipeline · thumbnails",       "category": "service", "path": "apps/crm/src/services/postMedia.ts" }
+      ]
+    },
+    {
+      "id": "edge-fns",
+      "label": "EDGE FUNCTIONS",
+      "cards": [
+        { "id": "fn-ig-integration",  "title": "instagram-integration", "subtitle": "OAuth · sync · disconnect · 704 lines",   "category": "edge-fn", "path": "supabase/functions/instagram-integration/" },
+        { "id": "fn-ig-analytics",    "title": "instagram-analytics",   "subtitle": "insights · AI · reports · 1262 lines",    "category": "edge-fn", "path": "supabase/functions/instagram-analytics/" },
+        { "id": "fn-ig-publish",      "title": "instagram-publish",     "subtitle": "schedule · cancel · retry · publish-now",  "category": "edge-fn", "path": "supabase/functions/instagram-publish/" },
+        { "id": "fn-hub-group",       "title": "Hub functions (9)",     "subtitle": "bootstrap · posts · approve · brand · briefing · ideias · feed · pages · dashboard",  "category": "edge-fn", "paths": ["supabase/functions/hub-bootstrap/", "supabase/functions/hub-posts/", "supabase/functions/hub-approve/", "supabase/functions/hub-brand/", "supabase/functions/hub-pages/", "supabase/functions/hub-dashboard/", "supabase/functions/hub-briefing/", "supabase/functions/hub-ideias/", "supabase/functions/hub-instagram-feed/"] },
+        { "id": "fn-file-group",      "title": "File & media fns (11)","subtitle": "upload · manage · media · zip · sign",     "category": "edge-fn", "paths": ["supabase/functions/file-upload-url/", "supabase/functions/file-upload-finalize/", "supabase/functions/file-manage/", "supabase/functions/file-zip/", "supabase/functions/post-media-manage/", "supabase/functions/post-media-upload-url/", "supabase/functions/post-media-finalize/", "supabase/functions/post-media-backfill-thumbnails/", "supabase/functions/post-media-cleanup-cron/", "supabase/functions/sign-r2-urls/", "supabase/functions/express-post-cleanup-cron/"], "note": "post-media-upload-url, post-media-finalize, and post-media-backfill-thumbnails are orphaned — client calls file-upload-url/finalize instead" },
+        { "id": "fn-platform-admin",  "title": "platform-admin",       "subtitle": "workspace · plan · banner CRUD",          "category": "edge-fn", "path": "supabase/functions/platform-admin/" },
+        { "id": "fn-workspace-limits","title": "workspace-limits",     "subtitle": "plan caps · 18 feature flags",            "category": "edge-fn", "path": "supabase/functions/workspace-limits/" },
+        { "id": "fn-invite-user",     "title": "invite-user",          "subtitle": "team invites · role assignment",           "category": "edge-fn", "path": "supabase/functions/invite-user/" },
+        { "id": "fn-cron-jobs",       "title": "Cron jobs (9)",        "subtitle": "publish · refresh · sync · deadlines · cleanup · reports", "category": "edge-fn", "paths": ["supabase/functions/instagram-publish-cron/", "supabase/functions/instagram-refresh-cron/", "supabase/functions/instagram-sync-cron/", "supabase/functions/notification-deadline-cron/", "supabase/functions/notification-cleanup-cron/", "supabase/functions/post-media-cleanup-cron/", "supabase/functions/express-post-cleanup-cron/", "supabase/functions/invite-expire-cron/", "supabase/functions/analytics-report-cron/"] }
+      ]
+    },
+    {
+      "id": "storage",
+      "label": "STORAGE / DATA",
+      "cards": [
+        { "id": "supabase-postgres", "title": "Supabase Postgres",   "subtitle": "30+ tables · RLS · pg_cron",        "category": "storage" },
+        { "id": "supabase-auth",     "title": "Supabase Auth",       "subtitle": "JWT sessions · user accounts",       "category": "storage" },
+        { "id": "cloudflare-r2",     "title": "Cloudflare R2",       "subtitle": "media · files · report PDFs",        "category": "storage" },
+        { "id": "analytics-cache",   "title": "Analytics Cache",     "subtitle": "instagram_analytics_cache · 6-24h",  "category": "storage" }
+      ]
+    },
+    {
+      "id": "external",
+      "label": "EXTERNAL SERVICES",
+      "cards": [
+        { "id": "meta-graph-api",  "title": "Meta Graph API",     "subtitle": "Instagram OAuth · insights · publish",  "category": "external" },
+        { "id": "google-gemini",   "title": "Google Gemini",      "subtitle": "AI analysis · 2.5 Flash",               "category": "external" },
+        { "id": "vercel-hosting",  "title": "Vercel",             "subtitle": "SPA hosting · rewrites · analytics",    "category": "external" },
+        { "id": "sentry",         "title": "Sentry",              "subtitle": "error tracking · optional",             "category": "external" }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "auth",
+      "title": "User Authentication",
+      "description": "Agency user signs in to the CRM dashboard",
+      "highlightedCards": ["agency-owner", "crm-app", "auth-context", "supabase-auth", "supabase-postgres"],
+      "steps": [
+        { "step": 1, "from": "agency-owner",  "to": "crm-app",          "title": "Agency Owner → CRM App",          "action": "Opens /login page",          "description": "User navigates to the CRM login page." },
+        { "step": 2, "from": "crm-app",       "to": "auth-context",     "title": "CRM App → AuthContext",           "action": "signInWithPassword()",        "description": "Calls Supabase Auth via the AuthContext provider." },
+        { "step": 3, "from": "auth-context",  "to": "supabase-auth",    "title": "AuthContext → Supabase Auth",     "action": "JWT session token",          "description": "Authenticates credentials, returns JWT session." },
+        { "step": 4, "from": "auth-context",  "to": "supabase-postgres","title": "AuthContext → Postgres",          "action": "getCurrentProfile()",         "description": "Fetches role (owner/admin/agent) from profiles table." },
+        { "step": 5, "from": "auth-context",  "to": "crm-app",          "title": "AuthContext → CRM App",           "action": "Sets role, renders /dashboard","description": "AuthProvider populates context, app renders protected routes." }
+      ]
+    },
+    {
+      "id": "instagram-oauth",
+      "title": "Instagram OAuth Connection",
+      "description": "Connect a client's Instagram account to the CRM",
+      "highlightedCards": ["agency-owner", "cliente-detalhe", "svc-instagram", "fn-ig-integration", "supabase-postgres", "meta-graph-api", "crm-app"],
+      "steps": [
+        { "step": 1, "from": "agency-owner",      "to": "cliente-detalhe",    "title": "Agency Owner → Cliente Detalhe",         "action": "Clicks 'Conectar Instagram'",       "description": "Opens Instagram tab on client detail page." },
+        { "step": 2, "from": "svc-instagram",      "to": "fn-ig-integration",  "title": "services/instagram → instagram-integration", "action": "GET /auth/:clientId",           "description": "Requests OAuth URL from edge function with JWT." },
+        { "step": 3, "from": "fn-ig-integration",  "to": "supabase-postgres",  "title": "instagram-integration → Postgres",      "action": "Create oauth_states nonce",          "description": "HMAC-SHA256 signed one-time nonce for CSRF protection." },
+        { "step": 4, "from": "fn-ig-integration",  "to": "meta-graph-api",     "title": "instagram-integration → Meta API",      "action": "Redirect to Instagram OAuth",        "description": "Builds Business Login URL with signed state parameter." },
+        { "step": 5, "from": "meta-graph-api",     "to": "fn-ig-integration",  "title": "Meta API → instagram-integration",      "action": "Callback with auth code",            "description": "Instagram redirects back with authorization code." },
+        { "step": 6, "from": "fn-ig-integration",  "to": "meta-graph-api",     "title": "instagram-integration → Meta API",      "action": "Exchange code → long-lived token",   "description": "Gets 60-day token via graph.instagram.com/access_token." },
+        { "step": 7, "from": "fn-ig-integration",  "to": "supabase-postgres",  "title": "instagram-integration → Postgres",      "action": "Store encrypted token + seed data",  "description": "AES-GCM encrypts token, upserts instagram_accounts, seeds posts." },
+        { "step": 8, "from": "fn-ig-integration",  "to": "crm-app",            "title": "instagram-integration → CRM App",       "action": "302 redirect → /clientes/:id",       "description": "Returns user to client detail page with connected account." }
+      ]
+    },
+    {
+      "id": "post-lifecycle",
+      "title": "Post Lifecycle & Publish",
+      "description": "Full lifecycle: draft → internal review → client approval → schedule → publish",
+      "highlightedCards": ["agency-agent", "entregas-page", "supabase-postgres", "svc-post-media", "fn-file-group", "cloudflare-r2", "agency-owner", "end-user", "hub-app", "fn-hub-group", "svc-instagram", "fn-ig-publish", "fn-cron-jobs", "meta-graph-api"],
+      "steps": [
+        { "step": 1,  "from": "agency-agent",   "to": "entregas-page",      "title": "Agent → Entregas",                    "action": "Creates post (rascunho)",            "description": "Adds workflow_posts row with status 'rascunho' (draft)." },
+        { "step": 2,  "from": "svc-post-media",  "to": "fn-file-group",     "title": "postMedia → File functions",           "action": "Upload media",                       "description": "file-upload-url → R2 PUT → file-upload-finalize. Inserts files + post_file_links." },
+        { "step": 3,  "from": "svc-post-media",  "to": "cloudflare-r2",     "title": "postMedia → R2",                       "action": "PUT media file + thumbnail",         "description": "Direct XHR upload with progress. Client-side thumbnail and blur hash generation." },
+        { "step": 4,  "from": "agency-agent",    "to": "entregas-page",     "title": "Agent → Entregas",                     "action": "Submit for review (revisao_interna)", "description": "Moves post through internal review. Alt: skip to enviado_cliente." },
+        { "step": 5,  "from": "agency-owner",    "to": "entregas-page",     "title": "Owner → Entregas",                     "action": "Approve + send to client (enviado_cliente)", "description": "Internal approval (aprovado_interno), then sent to client for review." },
+        { "step": 6,  "from": "end-user",        "to": "hub-app",           "title": "Client → Hub App",                     "action": "Reviews and approves post",          "description": "Client approves (aprovado_cliente) or requests correction (correcao_cliente)." },
+        { "step": 7,  "from": "hub-app",         "to": "fn-hub-group",      "title": "Hub App → hub-approve",                "action": "Record approval + auto-publish check","description": "Inserts post_approvals row. If auto_publish_on_approval is on, sets status to agendado." },
+        { "step": 8,  "from": "svc-instagram",   "to": "fn-ig-publish",     "title": "services/instagram → instagram-publish","action": "Schedule post (if not auto)",         "description": "Manual schedule. Also supports cancel, retry, and publish-now actions." },
+        { "step": 9,  "from": "fn-ig-publish",   "to": "meta-graph-api",    "title": "instagram-publish → Meta API",          "action": "Create media container",             "description": "Creates single/carousel/video container via Graph API." },
+        { "step": 10, "from": "fn-cron-jobs",    "to": "meta-graph-api",    "title": "Cron → Meta API",                       "action": "Publish at scheduled time",          "description": "instagram-publish-cron claims due posts, publishes container. On failure: falha_publicacao." },
+        { "step": 11, "from": "fn-cron-jobs",    "to": "supabase-postgres", "title": "Cron → Postgres",                       "action": "Status → postado",              "description": "Stores instagram_media_id and permalink. Full state machine: rascunho → revisao_interna → aprovado_interno → enviado_cliente → aprovado_cliente → agendado → postado." }
+      ]
+    },
+    {
+      "id": "hub-access",
+      "title": "Hub Client Portal Access",
+      "description": "Client accesses their portal to view posts, brand, and analytics",
+      "highlightedCards": ["end-user", "hub-app", "fn-hub-group", "supabase-postgres", "cloudflare-r2", "meta-graph-api"],
+      "steps": [
+        { "step": 1, "from": "end-user",       "to": "hub-app",            "title": "End User → Hub App",                "action": "Opens /:workspace/hub/:token",  "description": "Client accesses their unique portal URL." },
+        { "step": 2, "from": "hub-app",        "to": "fn-hub-group",       "title": "Hub App → Hub functions",           "action": "hub-bootstrap",                  "description": "Validates token, returns workspace config and feature flags." },
+        { "step": 3, "from": "fn-hub-group",   "to": "supabase-postgres",  "title": "Hub functions → Postgres",          "action": "Check client_hub_tokens",        "description": "Verifies token is active and not expired." },
+        { "step": 4, "from": "hub-app",        "to": "fn-hub-group",       "title": "Hub App → Hub functions",           "action": "hub-posts",                      "description": "Fetches posts pending client approval." },
+        { "step": 5, "from": "fn-hub-group",   "to": "cloudflare-r2",      "title": "Hub functions → R2",                "action": "Sign media URLs",                "description": "Generates presigned GET URLs for post media display." },
+        { "step": 6, "from": "hub-app",        "to": "fn-hub-group",       "title": "Hub App → Hub functions",           "action": "hub-brand",                      "description": "Fetches brand kit (logo, colors, fonts, files)." },
+        { "step": 7, "from": "hub-app",        "to": "fn-hub-group",       "title": "Hub App → Hub functions",           "action": "hub-dashboard",                  "description": "Fetches analytics data for Hub homepage." },
+        { "step": 8, "from": "fn-hub-group",   "to": "meta-graph-api",     "title": "Hub functions → Meta API",          "action": "Live IG data",                   "description": "Decrypts token, fetches follower/reach data from Graph API." }
+      ]
+    },
+    {
+      "id": "analytics-ai",
+      "title": "Analytics & AI Analysis",
+      "description": "View portfolio analytics, per-account insights, and AI-powered analysis",
+      "highlightedCards": ["agency-owner", "analytics-page", "analytics-conta", "svc-analytics", "fn-ig-analytics", "supabase-postgres", "analytics-cache", "meta-graph-api", "google-gemini"],
+      "steps": [
+        { "step": 1, "from": "agency-owner",     "to": "analytics-page",     "title": "Agency Owner → Analytics",           "action": "Views portfolio overview",       "description": "Portfolio-level overview of all connected Instagram accounts." },
+        { "step": 2, "from": "svc-analytics",    "to": "supabase-postgres",  "title": "services/analytics → Postgres",      "action": "Direct RLS queries",             "description": "Queries posts, accounts, follower history via Supabase client." },
+        { "step": 3, "from": "agency-owner",     "to": "analytics-conta",    "title": "Agency Owner → Analytics Conta",     "action": "Per-account view",               "description": "Opens detailed analytics for a single Instagram account." },
+        { "step": 4, "from": "svc-analytics",    "to": "fn-ig-analytics",    "title": "services/analytics → instagram-analytics", "action": "GET /demographics",        "description": "Requests audience insights via edge function." },
+        { "step": 5, "from": "fn-ig-analytics",  "to": "meta-graph-api",     "title": "instagram-analytics → Meta API",     "action": "Fetch audience data",            "description": "Graph API call for demographics, best posting times." },
+        { "step": 6, "from": "fn-ig-analytics",  "to": "analytics-cache",    "title": "instagram-analytics → Cache",        "action": "Cache results (6-24h)",          "description": "Stores in instagram_analytics_cache table to reduce API calls." },
+        { "step": 7, "from": "agency-owner",     "to": "analytics-conta",    "title": "Agency Owner → Analytics Conta",     "action": "Request AI analysis",            "description": "Clicks AI analysis button on the per-account page." },
+        { "step": 8, "from": "fn-ig-analytics",  "to": "google-gemini",      "title": "instagram-analytics → Gemini",       "action": "Gemini 2.5 Flash",               "description": "Sends post data for structured performance analysis." },
+        { "step": 9, "from": "fn-ig-analytics",  "to": "analytics-conta",    "title": "instagram-analytics → Analytics Conta","action": "Returns structured analysis",   "description": "JSON with insights, recommendations, and metrics." }
+      ]
+    },
+    {
+      "id": "media-upload",
+      "title": "Media Upload Pipeline",
+      "description": "Upload images/videos to a post via presigned R2 URLs. Writes to files + post_file_links tables.",
+      "highlightedCards": ["agency-agent", "entregas-page", "svc-post-media", "fn-file-group", "cloudflare-r2", "supabase-postgres"],
+      "steps": [
+        { "step": 1, "from": "agency-agent",   "to": "entregas-page",      "title": "Agency Agent → Entregas",            "action": "Selects files for post",         "description": "Drag or pick image/video files for a workflow post." },
+        { "step": 2, "from": "svc-post-media", "to": "fn-file-group",      "title": "services/postMedia → file-upload-url","action": "Request presigned URL",          "description": "Edge function generates R2 PUT URL and creates file_upload_slots record." },
+        { "step": 3, "from": "fn-file-group",  "to": "cloudflare-r2",      "title": "file-upload-url → R2",               "action": "Generate PUT URL",               "description": "Creates presigned URL with content-type and size limit." },
+        { "step": 4, "from": "svc-post-media", "to": "cloudflare-r2",      "title": "services/postMedia → R2",             "action": "XHR PUT file + thumbnail",       "description": "Direct upload with progress; thumbnail and blur hash generated client-side." },
+        { "step": 5, "from": "svc-post-media", "to": "fn-file-group",      "title": "services/postMedia → file-upload-finalize", "action": "Confirm upload",           "description": "Confirms R2 object exists via file-upload-finalize." },
+        { "step": 6, "from": "fn-file-group",  "to": "supabase-postgres",  "title": "file-upload-finalize → Postgres",     "action": "file_insert_with_quota RPC",     "description": "Inserts into files table via RPC, checks workspace quota." },
+        { "step": 7, "from": "fn-file-group",  "to": "supabase-postgres",  "title": "file-upload-finalize → Postgres",     "action": "Insert post_file_links row",     "description": "Links the file to the post via post_file_links (not post_media). Note: orphaned post-media-upload-url and post-media-finalize functions use post_media table but are not called by the client." }
+      ]
+    },
+    {
+      "id": "team-invite",
+      "title": "Team Invite & Onboarding",
+      "description": "Owner invites a new team member who joins the workspace",
+      "highlightedCards": ["agency-owner", "configuracao-page", "fn-invite-user", "supabase-auth", "supabase-postgres", "crm-app", "auth-context"],
+      "steps": [
+        { "step": 1, "from": "agency-owner",      "to": "configuracao-page", "title": "Agency Owner → Configuracao",          "action": "Enter invite details",           "description": "Specifies email and role (admin or agent)." },
+        { "step": 2, "from": "configuracao-page", "to": "fn-invite-user",    "title": "Configuracao → invite-user",           "action": "POST invite",                    "description": "Calls invite-user edge function with JWT auth." },
+        { "step": 3, "from": "fn-invite-user",    "to": "supabase-auth",     "title": "invite-user → Supabase Auth",          "action": "Create user account",            "description": "Creates invited user in auth.users with random password." },
+        { "step": 4, "from": "fn-invite-user",    "to": "supabase-postgres", "title": "invite-user → Postgres",               "action": "Insert invite row + send email", "description": "Stores invite with TTL and status; sends invitation email." },
+        { "step": 5, "from": "crm-app",           "to": "auth-context",      "title": "CRM App → AuthContext",                "action": "New user signs in",              "description": "Invited user opens CRM and logs in for the first time." },
+        { "step": 6, "from": "auth-context",      "to": "supabase-postgres", "title": "AuthContext → Postgres",               "action": "healPendingInvite()",            "description": "Auto-accepts workspace membership on first login." }
+      ]
+    },
+    {
+      "id": "admin-portal",
+      "title": "Admin Portal Management",
+      "description": "Platform super-admin manages workspaces, plans, admins, and banners",
+      "highlightedCards": ["platform-admin", "admin-app", "fn-platform-admin", "supabase-auth", "supabase-postgres"],
+      "steps": [
+        { "step": 1, "from": "platform-admin",   "to": "admin-app",           "title": "Platform Admin → Admin App",         "action": "Opens /admin dashboard",         "description": "Super-admin navigates to the platform admin interface." },
+        { "step": 2, "from": "admin-app",        "to": "fn-platform-admin",   "title": "Admin App → platform-admin",         "action": "verify-admin",                   "description": "Checks admin role via JWT against platform_admins table." },
+        { "step": 3, "from": "fn-platform-admin","to": "supabase-auth",       "title": "platform-admin → Supabase Auth",     "action": "Verify JWT",                     "description": "Confirms user has a valid session and platform_admins entry." },
+        { "step": 4, "from": "admin-app",        "to": "fn-platform-admin",   "title": "Admin App → platform-admin",         "action": "list-workspaces",                "description": "Fetches all workspaces with plans, members, and usage data." },
+        { "step": 5, "from": "fn-platform-admin","to": "supabase-postgres",   "title": "platform-admin → Postgres",          "action": "Query workspaces + plans",       "description": "Joins workspaces, plans, workspace_members with aggregated usage." },
+        { "step": 6, "from": "platform-admin",   "to": "admin-app",           "title": "Platform Admin → Admin App",         "action": "Manage plans, banners, admins",  "description": "CRUD operations: create-plan, update-plan, set-workspace-plan, create-banner, invite-admin." },
+        { "step": 7, "from": "admin-app",        "to": "fn-platform-admin",   "title": "Admin App → platform-admin",         "action": "create-plan / update-banner",    "description": "Modifies plans (11 resource caps, 18 feature flags) or global_banners." },
+        { "step": 8, "from": "fn-platform-admin","to": "supabase-postgres",   "title": "platform-admin → Postgres",          "action": "Write changes",                  "description": "Updates plans, global_banners, or platform_admins tables." }
+      ]
+    },
+    {
+      "id": "hub-content",
+      "title": "Hub Content Experience",
+      "description": "Client explores brand kit, custom pages, briefing, and submits content ideas",
+      "highlightedCards": ["end-user", "hub-app", "fn-hub-group", "supabase-postgres", "cloudflare-r2"],
+      "steps": [
+        { "step": 1, "from": "end-user",       "to": "hub-app",            "title": "Client → Hub App",                 "action": "Navigate to Marca",             "description": "Client views brand kit page with logo, colors, fonts." },
+        { "step": 2, "from": "hub-app",        "to": "fn-hub-group",       "title": "Hub App → hub-brand",              "action": "Fetch brand kit",               "description": "Returns hub_brand + hub_brand_files with signed R2 URLs." },
+        { "step": 3, "from": "fn-hub-group",   "to": "cloudflare-r2",      "title": "hub-brand → R2",                   "action": "Sign brand file URLs",          "description": "Generates presigned GET URLs for brand file downloads." },
+        { "step": 4, "from": "end-user",       "to": "hub-app",            "title": "Client → Hub App",                 "action": "Navigate to Paginas",           "description": "Client views custom rich-text pages created by agency." },
+        { "step": 5, "from": "hub-app",        "to": "fn-hub-group",       "title": "Hub App → hub-pages",              "action": "Fetch TipTap content",          "description": "Returns hub_pages with rich-text content per page." },
+        { "step": 6, "from": "end-user",       "to": "hub-app",            "title": "Client → Hub App",                 "action": "Navigate to Briefing",          "description": "Client answers briefing questions from agency." },
+        { "step": 7, "from": "hub-app",        "to": "fn-hub-group",       "title": "Hub App → hub-briefing",           "action": "GET questions / POST answers",  "description": "Reads questions by section, submits answers. Stored in hub_briefing_questions." },
+        { "step": 8, "from": "end-user",       "to": "hub-app",            "title": "Client → Hub App",                 "action": "Navigate to Ideias",            "description": "Client submits content ideas for the agency to review." },
+        { "step": 9, "from": "hub-app",        "to": "fn-hub-group",       "title": "Hub App → hub-ideias",             "action": "POST new idea",                 "description": "Creates ideia row with status 'nova' in ideias table." },
+        { "step": 10,"from": "fn-hub-group",   "to": "supabase-postgres",  "title": "Hub functions → Postgres",          "action": "Upsert content data",           "description": "Writes to hub_briefing_questions and ideias tables." }
+      ]
+    },
+    {
+      "id": "ig-token-lifecycle",
+      "title": "Instagram Token Lifecycle",
+      "description": "Automated token refresh, account sync, and disconnect handling",
+      "highlightedCards": ["fn-cron-jobs", "supabase-postgres", "meta-graph-api"],
+      "steps": [
+        { "step": 1, "from": "fn-cron-jobs",   "to": "supabase-postgres",  "title": "instagram-refresh-cron → Postgres",  "action": "Query expiring tokens",         "description": "Finds instagram_accounts with tokens expiring within 7 days." },
+        { "step": 2, "from": "fn-cron-jobs",   "to": "meta-graph-api",     "title": "instagram-refresh-cron → Meta API",   "action": "Refresh long-lived token",      "description": "Exchanges expiring token for new 60-day token." },
+        { "step": 3, "from": "fn-cron-jobs",   "to": "supabase-postgres",  "title": "instagram-refresh-cron → Postgres",   "action": "Store refreshed token",         "description": "AES-GCM encrypts and updates instagram_accounts. Stale tokens marked authorization_status: revoked." },
+        { "step": 4, "from": "fn-cron-jobs",   "to": "supabase-postgres",  "title": "instagram-sync-cron → Postgres",      "action": "Query auto-sync accounts",      "description": "Finds accounts with auto_sync_enabled = true." },
+        { "step": 5, "from": "fn-cron-jobs",   "to": "meta-graph-api",     "title": "instagram-sync-cron → Meta API",      "action": "Fetch latest metrics + posts",  "description": "Calls Graph API for account insights and recent posts." },
+        { "step": 6, "from": "fn-cron-jobs",   "to": "supabase-postgres",  "title": "instagram-sync-cron → Postgres",      "action": "Update account data",           "description": "Upserts instagram_posts, instagram_follower_history with latest data." }
+      ]
+    }
+  ],
+  "suggestedFlows": [
+    "Workspace setup & onboarding (first-run wizard)",
+    "Workspace switching & member management",
+    "Plan gating & workspace limits enforcement",
+    "Legacy portal approvals (per-workflow tokens)",
+    "File workbench (folder CRUD, ZIP downloads)",
+    "Notification system (deadline alerts, approval notifications, global banners)",
+    "Monthly analytics report generation (analytics-report-cron)"
+  ],
+  "database": {
+    "identity": ["profiles", "contas", "workspaces", "workspace_members", "oauth_states", "platform_admins"],
+    "crm_core": ["clientes", "cliente_enderecos", "cliente_datas", "transacoes", "contratos", "membros", "leads", "integracoes_status"],
+    "workflows": ["workflow_templates", "workflows", "workflow_etapas", "workflow_posts", "template_property_definitions", "post_property_values", "workflow_select_options"],
+    "approvals": ["portal_tokens", "portal_approvals", "post_approvals"],
+    "hub": ["client_hub_tokens", "hub_brand", "hub_brand_files", "hub_pages", "hub_briefing_questions", "ideias", "ideia_reactions"],
+    "instagram": ["instagram_accounts", "instagram_posts", "instagram_follower_history", "instagram_analytics_cache", "instagram_post_tags", "instagram_post_tag_assignments", "analytics_reports"],
+    "files": ["folders", "file_records", "post_file_links", "post_media"],
+    "system": ["invites", "notifications", "global_banners", "banner_dismissals", "audit_log", "plans", "rate_limit_buckets", "file_upload_slots"]
+  },
+  "edgeFunctions": {
+    "instagram": [
+      { "name": "instagram-integration", "type": "HTTP", "lines": 704, "routes": ["GET /auth/:clientId", "GET /callback", "POST /sync/:clientId", "POST /disconnect/:clientId", "GET /summary/:clientId", "GET /posts/:clientId"] },
+      { "name": "instagram-analytics", "type": "HTTP", "lines": 1262, "routes": ["GET /overview/:clientId", "GET /demographics/:clientId", "GET /best-times/:clientId", "POST /ai-analysis/:clientId", "GET /portfolio"] },
+      { "name": "instagram-publish", "type": "HTTP", "routes": ["POST /schedule/:postId", "POST /cancel/:postId", "POST /publish-now/:postId", "POST /retry/:postId"] },
+      { "name": "instagram-report-generator", "type": "HTTP", "routes": ["POST /generate/:clientId"] },
+      { "name": "instagram-refresh-cron", "type": "Cron", "purpose": "Refresh expiring long-lived tokens" },
+      { "name": "instagram-sync-cron", "type": "Cron", "purpose": "Auto-sync accounts with auto_sync_enabled" },
+      { "name": "instagram-publish-cron", "type": "Cron", "purpose": "Publish scheduled posts when due" }
+    ],
+    "hub": [
+      { "name": "hub-bootstrap", "type": "HTTP (no JWT)", "purpose": "Token validation + workspace config" },
+      { "name": "hub-posts", "type": "HTTP (no JWT)", "purpose": "Post list with signed media URLs" },
+      { "name": "hub-approve", "type": "HTTP (no JWT)", "purpose": "Approval actions + auto-publish check + notifications" },
+      { "name": "hub-brand", "type": "HTTP (no JWT)", "purpose": "Brand kit data" },
+      { "name": "hub-pages", "type": "HTTP (no JWT)", "purpose": "Rich-text custom pages" },
+      { "name": "hub-briefing", "type": "HTTP (no JWT)", "purpose": "Briefing Q&A" },
+      { "name": "hub-ideias", "type": "HTTP (no JWT)", "purpose": "Content ideas from clients" },
+      { "name": "hub-instagram-feed", "type": "HTTP (no JWT)", "purpose": "Instagram feed preview" },
+      { "name": "hub-dashboard", "type": "HTTP (no JWT)", "purpose": "Client-facing analytics" }
+    ],
+    "files": [
+      { "name": "file-upload-url", "type": "HTTP", "purpose": "Presigned R2 PUT URL + upload slot", "status": "active" },
+      { "name": "file-upload-finalize", "type": "HTTP", "purpose": "Confirm upload, insert files + post_file_links", "status": "active" },
+      { "name": "file-manage", "type": "HTTP", "purpose": "Folder tree CRUD + signed GET URLs", "status": "active" },
+      { "name": "file-zip", "type": "HTTP", "purpose": "ZIP generation from R2 files", "status": "active" },
+      { "name": "sign-r2-urls", "type": "HTTP", "purpose": "Batch sign R2 GET URLs", "status": "active" },
+      { "name": "post-media-manage", "type": "HTTP", "purpose": "Post media CRUD via post_file_links (cover, sort, delete)", "status": "active" },
+      { "name": "post-media-upload-url", "type": "HTTP", "purpose": "Presigned URL for post_media table", "status": "orphaned", "note": "Client uses file-upload-url instead" },
+      { "name": "post-media-finalize", "type": "HTTP", "purpose": "Insert into post_media table via RPC", "status": "orphaned", "note": "Client uses file-upload-finalize instead" },
+      { "name": "post-media-backfill-thumbnails", "type": "HTTP", "purpose": "Backfill thumbnail_r2_key for post_media", "status": "orphaned", "note": "References unused post_media table" },
+      { "name": "post-media-cleanup-cron", "type": "Cron", "purpose": "Delete orphaned R2 objects", "status": "active" },
+      { "name": "express-post-cleanup-cron", "type": "Cron", "purpose": "Remove unfinished express posts >24h", "status": "active" }
+    ],
+    "workspace": [
+      { "name": "workspace-limits", "type": "HTTP", "purpose": "Plan caps + 18 feature flags + rate limits" },
+      { "name": "invite-user", "type": "HTTP", "purpose": "Create invited user + send email" },
+      { "name": "manage-workspace-user", "type": "HTTP", "purpose": "Accept invite, change role, remove user" },
+      { "name": "platform-admin", "type": "HTTP", "purpose": "Super-admin: workspace/plan/banner/admin CRUD (17 actions)" },
+      { "name": "invite-expire-cron", "type": "Cron", "purpose": "Expire old invites" }
+    ],
+    "notifications": [
+      { "name": "notification-deadline-cron", "type": "Cron", "purpose": "Create deadline notifications" },
+      { "name": "notification-cleanup-cron", "type": "Cron", "purpose": "Delete old dismissed notifications" }
+    ],
+    "portal": [
+      { "name": "portal-data", "type": "HTTP (no JWT)", "purpose": "Legacy workflow approval data" },
+      { "name": "portal-approve", "type": "HTTP (no JWT)", "purpose": "Legacy step-level approvals" }
+    ],
+    "reports": [
+      { "name": "analytics-report-cron", "type": "Cron", "purpose": "Monthly report generation for all accounts" }
+    ]
+  },
+  "architecturePatterns": {
+    "multiTenancy": "Every row has conta_id (workspace UUID). RLS enforces isolation. profiles.conta_id = active workspace.",
+    "planGating": "workspace-limits edge function + useWorkspaceLimits hook. 11 resource caps, 18 boolean feature flags, and 3 rate limits from plans table.",
+    "tokenSecurity": "Instagram long-lived tokens encrypted with AES-GCM using HKDF-derived key from TOKEN_ENCRYPTION_KEY. Legacy padEnd tokens transparently migrated.",
+    "hubSecurity": "No Supabase auth in Hub. All 9 hub functions deployed with --no-verify-jwt. Validate UUID hub token from client_hub_tokens.",
+    "roleBased": "Three roles: owner | admin | agent. Both owner and admin have full CRM access. Agent role hides financials, removes Leads/Financeiro/Contratos/Equipe from nav and route access.",
+    "postStateMachine": "9 states: rascunho -> revisao_interna -> aprovado_interno -> enviado_cliente -> aprovado_cliente | correcao_cliente -> agendado -> postado | falha_publicacao. Additional actions: cancel (agendado -> aprovado_cliente), retry (falha_publicacao -> agendado), publish-now (aprovado_cliente -> postado). Auto-publish: hub-approve checks auto_publish_on_approval flag.",
+    "deadlineEngine": "Three modes: padrao (rolling), data_fixa (manual), data_entrega (backward from client dia_entrega). Business day calculations.",
+    "twoPortals": "Legacy portal (per-workflow tokens, step approvals) + Hub (per-client tokens, full experience with brand/briefing/ideias/post approvals).",
+    "mediaStorage": "Active path: file-upload-url -> R2 -> file-upload-finalize -> files + post_file_links. Orphaned path: post-media-upload-url -> R2 -> post-media-finalize -> post_media. post-media-manage reads from post_file_links (active path)."
+  }
+}
