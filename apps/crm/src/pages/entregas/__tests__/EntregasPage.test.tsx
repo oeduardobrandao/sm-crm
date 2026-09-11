@@ -1701,6 +1701,65 @@ describe('EntregasPage', () => {
       expect(screen.queryByText('Avulso com processo')).toBeNull();
       expect(mockedUseActivePosts).toHaveBeenLastCalledWith(true);
     });
+
+    it('flag desligada: useActivePosts fica em false no Kanban de Fluxos e a seção Sem processo não monta', () => {
+      limitsMock.features = null;
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          {
+            id: 1,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso livre',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+        ],
+        isLoading: false,
+      } as never);
+      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
+      expect(screen.queryByRole('heading', { name: 'Sem processo' })).toBeNull();
+      expect(screen.queryByText('Avulso livre')).toBeNull();
+    });
+
+    it('flag ligada e entidade=fluxos: a seção Sem processo também não monta (spec §4.3: não aparece em Fluxos)', () => {
+      limitsMock.features = { feature_post_processes: true };
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          {
+            id: 1,
+            workflow_id: null,
+            cliente_id: 1,
+            cliente_nome: 'A',
+            titulo: 'Avulso livre',
+            tipo: 'feed',
+            status: 'rascunho',
+            platform: 'instagram',
+          },
+        ],
+        isLoading: false,
+      } as never);
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [wfFixture],
+        postEntities: [],
+        processByPostId: new Map(),
+        concludedPostProcesses: [],
+        activePostProcessCount: 0,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas?entidade=fluxos');
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
+      expect(screen.queryByRole('heading', { name: 'Sem processo' })).toBeNull();
+      expect(screen.queryByText('Avulso livre')).toBeNull();
+    });
   });
 });
 
