@@ -29,7 +29,8 @@ export const POST_PROCESS_ERROR_MESSAGES: Record<string, string> = {
   template_not_found: 'Modelo de fluxo não encontrado.',
   template_empty: 'Este modelo não tem etapas.',
   template_invalid: 'Este modelo tem etapas inválidas. Corrija o modelo antes de aplicá-lo.',
-  template_changed: 'O modelo foi alterado depois que você abriu este diálogo. Recarregue e tente de novo.',
+  template_changed:
+    'O modelo foi alterado depois que você abriu este diálogo. Recarregue e tente de novo.',
   invalid_start_ordem: 'Etapa inicial inválida para este modelo.',
   invalid_step_overrides: 'Responsáveis ou prazos inválidos. Revise os campos.',
   invalid_step_deadlines: 'Prazos das etapas futuras inválidos. Revise os campos.',
@@ -39,7 +40,8 @@ export const POST_PROCESS_ERROR_MESSAGES: Record<string, string> = {
     'No modo data de entrega é preciso haver uma etapa de aprovação do cliente a partir da etapa inicial.',
   active_deadline_required: 'Não foi possível calcular o prazo da etapa atual.',
   next_deadline_required: 'Não foi possível calcular o prazo da próxima etapa.',
-  expected_post_status_required: 'Não foi possível conferir o status do post. Recarregue e tente de novo.',
+  expected_post_status_required:
+    'Não foi possível conferir o status do post. Recarregue e tente de novo.',
   approval_choice_required: 'Escolha como prosseguir com a aprovação.',
   invalid_approval_choice: 'Opção de aprovação inválida.',
   invalid_command: 'Comando inválido.',
