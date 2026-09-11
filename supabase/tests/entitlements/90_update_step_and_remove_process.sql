@@ -276,14 +276,17 @@ begin
   execute 'set local role authenticated';
   perform remove_post_process(e.proc, 1);
   select revisao into v_revisao_antes from post_processes where id = e.proc;
+  -- Revisao propositalmente velha (1, a de antes do remove): mesmo com uma
+  -- revisao desatualizada, o guard de estado tem que ganhar de
+  -- process_changed. Prova que a checagem de estado roda antes da de revisao.
   begin
-    perform update_post_process_step(e.proc, v_revisao_antes, 2, e.membro, null);
+    perform update_post_process_step(e.proc, 1, 2, e.membro, null);
   exception when sqlstate 'P0001' then
     assert sqlerrm = 'process_not_active', format('wrong msg: %s', sqlerrm);
     v_raised := true;
   end;
   execute 'reset role';
-  assert v_raised, 'editar etapa de processo encerrado deve levantar process_not_active';
+  assert v_raised, 'editar etapa de processo encerrado deve levantar process_not_active, mesmo com revisao desatualizada';
   select revisao into v_revisao_depois from post_processes where id = e.proc;
   assert v_revisao_depois = v_revisao_antes, 'revisao nao muda';
   perform 1 from post_process_steps where process_id = e.proc and ordem = 2 and responsavel_id is null;
