@@ -49,6 +49,7 @@ import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { StandalonePostDrawer } from './components/StandalonePostDrawer';
 import { SemProcessoSection } from './components/SemProcessoSection';
+import { ApplyProcessDialog } from './components/ApplyProcessDialog';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
 import { EntidadeToggle } from './components/EntidadeToggle';
 import { VistasTabs } from './components/VistasTabs';
@@ -155,6 +156,9 @@ export default function EntregasPage() {
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   const [newAvulsoOpen, setNewAvulsoOpen] = useState(false);
+  // Post avulso alvo do diálogo "Aplicar processo" (Task 12), aberto a partir
+  // de um card da seção Sem processo.
+  const [applyTarget, setApplyTarget] = useState<ActivePost | null>(null);
   // Desmembrar mantendo etapas / aplicar processo: aguarda a entidade aparecer
   // em `postEntities` (não filtrado) depois do refresh disparado por
   // revealPostProcesses, para então limpar filtros e abrir o drawer (spec §4.1).
@@ -1085,6 +1089,7 @@ export default function EntregasPage() {
                 total={semProcessoPosts.length}
                 productionFiltersActive={productionFiltersActive(filters)}
                 onPostClick={handlePostClick}
+                onApplyProcess={setApplyTarget}
                 onVerTodos={() => setMode('publicacoes')}
               />
             )}
@@ -1264,6 +1269,23 @@ export default function EntregasPage() {
           onClose={() => setStandalonePostId(null)}
           onRefresh={refresh}
           onAttached={handlePostAttached}
+          onProcessApplied={(id) => revealPostProcesses([id])}
+        />
+      )}
+      {applyTarget && (
+        <ApplyProcessDialog
+          open
+          onClose={() => setApplyTarget(null)}
+          post={{
+            id: applyTarget.id,
+            titulo: applyTarget.titulo,
+            cliente_id: applyTarget.cliente_id,
+          }}
+          membros={membros}
+          onApplied={(r) => {
+            setApplyTarget(null);
+            revealPostProcesses([r.post_id]);
+          }}
         />
       )}
       <RecurringWorkflowDialog

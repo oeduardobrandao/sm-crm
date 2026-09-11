@@ -63,6 +63,7 @@ import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../s
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { PostEditorBody } from './PostEditorBody';
 import { AttachToFluxoDialog } from './AttachToFluxoDialog';
+import { ApplyProcessDialog } from './ApplyProcessDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import {
   canConcluir,
@@ -82,6 +83,10 @@ export interface StandalonePostDrawerProps {
    *  is expected to close this drawer and open the WorkflowDrawer at the
    *  same post. */
   onAttached: (workflowId: number, postId: number) => void;
+  /** Fires once a process template is applied to this avulso (Task 12) -- the
+   *  caller is expected to reveal the post's new "Individual" card on the
+   *  Fluxos board (revealPostProcesses). */
+  onProcessApplied?: (postId: number) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -96,6 +101,7 @@ export function StandalonePostDrawer({
   onClose,
   onRefresh,
   onAttached,
+  onProcessApplied,
 }: StandalonePostDrawerProps) {
   const qc = useQueryClient();
 
@@ -207,6 +213,7 @@ export function StandalonePostDrawer({
   }, []);
 
   const [attachOpen, setAttachOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
 
   const refresh = useCallback(() => {
@@ -570,6 +577,15 @@ export function StandalonePostDrawer({
                     <CircleOff className="h-3.5 w-3.5" /> Remover processo
                   </button>
                 )}
+                {!postProcess && postProcessesEnabled && (
+                  <button
+                    className="drawer-add-post-btn"
+                    aria-label="Aplicar processo"
+                    onClick={() => setApplyOpen(true)}
+                  >
+                    <Route className="h-3.5 w-3.5" /> Aplicar processo
+                  </button>
+                )}
                 <button className="drawer-add-post-btn" onClick={() => setAttachOpen(true)}>
                   <Link2 className="h-3.5 w-3.5" /> Vincular a um fluxo
                 </button>
@@ -659,6 +675,19 @@ export function StandalonePostDrawer({
           postId={postId}
           clienteId={clienteId}
           onAttached={onAttached}
+        />
+      )}
+      {post && (
+        <ApplyProcessDialog
+          open={applyOpen}
+          onClose={() => setApplyOpen(false)}
+          post={{ id: postId, titulo: post.titulo, cliente_id: post.cliente_id }}
+          membros={membros}
+          onApplied={() => {
+            refresh();
+            onRefresh();
+            onProcessApplied?.(postId);
+          }}
         />
       )}
       {commands.dialogs}

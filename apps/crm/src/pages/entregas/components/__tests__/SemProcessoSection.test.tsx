@@ -40,6 +40,7 @@ describe('SemProcessoSection', () => {
         total={15}
         productionFiltersActive={false}
         onPostClick={onPostClick}
+        onApplyProcess={vi.fn()}
         onVerTodos={onVerTodos}
       />,
     );
@@ -58,6 +59,7 @@ describe('SemProcessoSection', () => {
         total={1}
         productionFiltersActive
         onPostClick={vi.fn()}
+        onApplyProcess={vi.fn()}
         onVerTodos={vi.fn()}
       />,
     );
@@ -72,9 +74,28 @@ describe('SemProcessoSection', () => {
         total={0}
         productionFiltersActive={false}
         onPostClick={vi.fn()}
+        onApplyProcess={vi.fn()}
         onVerTodos={vi.fn()}
       />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+  it('cada card tem "Aplicar processo" que não abre o post', () => {
+    const onPostClick = vi.fn();
+    const onApplyProcess = vi.fn();
+    const p = post(1);
+    render(
+      <SemProcessoSection
+        posts={[p]}
+        total={1}
+        productionFiltersActive={false}
+        onPostClick={onPostClick}
+        onApplyProcess={onApplyProcess}
+        onVerTodos={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar processo' }));
+    expect(onApplyProcess).toHaveBeenCalledWith(p);
+    expect(onPostClick).not.toHaveBeenCalled();
   });
 });

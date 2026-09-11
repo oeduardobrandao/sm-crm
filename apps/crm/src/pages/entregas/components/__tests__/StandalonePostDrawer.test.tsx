@@ -85,6 +85,12 @@ vi.mock('@/store', () => ({
   transitionPostProcess: vi.fn(),
   removePostProcess: vi.fn(),
   CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
+  // Consumed by ApplyProcessDialog, which this drawer mounts in its header for the
+  // "Aplicar processo" action -- the module-namespace mock below must list every
+  // export imported anywhere in that subtree, even in tests that never open it.
+  getWorkflowTemplates: vi.fn(async () => []),
+  getClientes: vi.fn(async () => []),
+  applyPostProcess: vi.fn(),
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
@@ -567,5 +573,21 @@ describe('StandalonePostDrawer', () => {
       command: 'concluir',
     });
     expect(mockTransition.mock.calls[0][0]).not.toMatchObject({ command: 'avancar' });
+  });
+
+  it('sem processo + flag ligada: "Aplicar processo" no cabeçalho; flag desligada: ausente', async () => {
+    limitsMock.features = { feature_post_processes: true };
+    mockGetVigentePostProcess.mockResolvedValueOnce(null);
+    const qc1 = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { unmount } = renderDrawer(qc1);
+    await screen.findByRole('button', { name: 'Aplicar processo' });
+    unmount();
+
+    limitsMock.features = { feature_post_processes: false };
+    mockGetVigentePostProcess.mockResolvedValueOnce(null);
+    const qc2 = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc2);
+    await screen.findByText('Avulso');
+    expect(screen.queryByRole('button', { name: 'Aplicar processo' })).toBeNull();
   });
 });
