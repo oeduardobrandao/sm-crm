@@ -194,9 +194,12 @@ BEGIN
       IF v_key !~ '^(0|[1-9][0-9]{0,8})$' THEN
         RAISE EXCEPTION 'invalid_step_deadlines' USING ERRCODE = 'P0001';
       END IF;
-      -- A regex aceita qualquer sequencia de digitos, inclusive uma que nao
-      -- cabe em integer ('999999999999999999999'): o cast cru levantaria 22003
-      -- cru. Protegido, vira o mesmo invalid_step_deadlines dos demais casos.
+      -- A regex ^(0|[1-9][0-9]{0,8})$ ja limita a chave a no maximo 9 digitos
+      -- (0 a 999999999), dentro do range de integer (max 2147483647, 10
+      -- digitos), entao o cast abaixo nunca deveria estourar. O bloco
+      -- protegido e cinto e suspensorio: se a regex mudar um dia e deixar
+      -- passar algo maior, o cast cru levantaria 22003 sem codigo mapeavel;
+      -- protegido, vira o mesmo invalid_step_deadlines dos demais casos.
       BEGIN
         v_ordem := v_key::integer;
       EXCEPTION WHEN numeric_value_out_of_range OR invalid_text_representation THEN
@@ -338,8 +341,16 @@ BEGIN
     'processes', coalesce(v_processes, '[]'::jsonb),
     'steps', coalesce(v_steps, '[]'::jsonb));
 
-  INSERT INTO post_process_batch_requests (request_id, conta_id, resultado)
-  VALUES (p_request_id, v_conta, v_res || jsonb_build_object('input_hash', v_hash));
+  -- Corrida entre contas: colisao de uuid gerado pelo CRM e praticamente
+  -- impossivel, mas duas contas com o mesmo request_id concorrente podem
+  -- passar as duas pela leitura do PASSO 1 e a segunda estoura unique_violation
+  -- cru aqui. Sem codigo mapeavel para a UI, vira request_not_found.
+  BEGIN
+    INSERT INTO post_process_batch_requests (request_id, conta_id, resultado)
+    VALUES (p_request_id, v_conta, v_res || jsonb_build_object('input_hash', v_hash));
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'request_not_found' USING ERRCODE = 'P0001';
+  END;
 
   RETURN v_res;
 END;

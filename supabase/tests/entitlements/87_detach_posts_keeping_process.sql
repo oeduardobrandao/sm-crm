@@ -371,11 +371,17 @@ begin
   assert v_raised, 'valor nao-timestamptz deve levantar invalid_step_deadlines';
 
   -- Chave com zero a esquerda: nao canonica, some do INSERT (que le por
-  -- e.ordem::text) e a etapa ficaria sem prazo em silencio.
+  -- e.ordem::text) e a etapa ficaria sem prazo em silencio. Usa '02', ordem
+  -- que EXISTE na fixture (Aprovacao): se a regex tivesse um furo que deixasse
+  -- a chave passar, o fluxo acharia a etapa e devolveria ok em vez de
+  -- levantar erro, entao este bloco realmente discrimina a regex. Uma ordem
+  -- inexistente (ex.: '07') levantaria o mesmo invalid_step_deadlines pelo
+  -- caminho de "ordem nao encontrada" mesmo com a regex furada, escondendo o
+  -- defeito.
   v_raised := false;
   begin
     perform detach_posts_keeping_process(array[e.p1], e.wf, v_fp, v_prazo, gen_random_uuid(),
-      jsonb_build_object('07', '2026-09-20T02:59:59.000Z'));
+      jsonb_build_object('02', '2026-09-20T02:59:59.000Z'));
   exception when sqlstate 'P0001' then
     assert sqlerrm = 'invalid_step_deadlines', format('wrong msg: %s', sqlerrm);
     v_raised := true;
