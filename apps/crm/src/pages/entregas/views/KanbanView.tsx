@@ -47,6 +47,7 @@ import {
   isValidDropTarget,
 } from '../boardRows';
 import type { BoardRow, BoardColumn } from '../boardRows';
+import { toWorkflowEntities } from '../boardEntity';
 import { mergeVisibleReorder, insertIntoFullOrder } from '../boardReorder';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
@@ -121,9 +122,10 @@ export function fullColumnOrder(
   ordem: number,
   templates: WorkflowTemplate[],
   sortMode: FluxosColumnSort,
+  signatureRows = false,
 ): number[] {
   const source = allCards
-    ? (buildBoardRows(allCards, templates)
+    ? (buildBoardRows(toWorkflowEntities(allCards), templates, { signatureRows })
         .find((r) => r.key === rowKey)
         ?.columns.find((c) => c.ordem === ordem)?.cards ?? visibleColumnCards)
     : visibleColumnCards;
@@ -354,7 +356,7 @@ export function KanbanView({
     return allCards.map((c) => applyOverlays(c, pendingEtapas, pendingPositions));
   }, [allCards, pendingEtapas, pendingPositions]);
 
-  const boardRows = buildBoardRows(localCards, templates);
+  const boardRows = buildBoardRows(toWorkflowEntities(localCards), templates);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -380,7 +382,7 @@ export function KanbanView({
         return;
       }
       const overId = String(over.id);
-      const rows = buildBoardRows(localCards, templates);
+      const rows = buildBoardRows(toWorkflowEntities(localCards), templates);
       const activeLocation = findCardColumn(String(active.id), rows);
 
       let targetRow: BoardRow | undefined;
@@ -450,7 +452,7 @@ export function KanbanView({
       const draggedCard = findCard(activeId);
       if (!draggedCard) return;
 
-      const rows = buildBoardRows(localCards, templates);
+      const rows = buildBoardRows(toWorkflowEntities(localCards), templates);
       const activeLocation = findCardColumn(activeId, rows);
       if (!activeLocation) return;
 
@@ -851,13 +853,7 @@ export function KanbanView({
                 <button
                   type="button"
                   className="board-add-card"
-                  onClick={() =>
-                    onAddWorkflow(
-                      row.key.startsWith('template:')
-                        ? Number(row.key.slice('template:'.length))
-                        : null,
-                    )
-                  }
+                  onClick={() => onAddWorkflow(row.templateId)}
                 >
                   <Plus className="h-3.5 w-3.5" /> Novo fluxo
                 </button>
