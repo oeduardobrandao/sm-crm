@@ -18,6 +18,8 @@
 --      contornando o trigger de post_processes) -> move_posts_to_existing_flow
 --      e move_posts_to_new_flow caem no mesmo guard que barra
 --      attach_posts_to_flow em 91.3 (criterio 12.16)
+-- 91.8 fluxo com status nulo (UPDATE direto, workflows.status e nullable) ->
+--      workflow_not_active, processo continua vigente (Minor 1 da review final)
 
 create or replace function pg_temp.et_at_env(
   out ws uuid, out usr uuid, out cli bigint, out cli2 bigint,
@@ -414,5 +416,31 @@ begin
   perform 1 from post_processes where id = proc and estado = 'ativo';
   assert found, 'o processo vigente nao e tocado por nenhuma tentativa recusada';
   raise notice 'PASS 91.7 move_posts_to_existing_flow e move_posts_to_new_flow barrados pelo guard de processo vigente';
+end $$;
+rollback;
+
+-- 91.8: workflows.status e nullable (CHECK admite NULL). Com <> um fluxo de
+-- status nulo passaria a checagem de ativo silenciosamente e receberia o
+-- post; com IS DISTINCT FROM ele e tratado como inativo, mesmo raciocinio do
+-- detach (20260919000003).
+begin;
+do $$
+declare e record; v_raised boolean := false;
+begin
+  select * into e from pg_temp.et_at_env();
+  update workflows set status = null where id = e.wf;
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform attach_post_closing_process(e.post, e.wf, 1);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'workflow_not_active', format('wrong msg: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'fluxo com status nulo deve ser tratado como inativo';
+  perform 1 from post_processes where id = e.proc and estado = 'ativo';
+  assert found, 'processo continua vigente quando o vinculo e recusado';
+  raise notice 'PASS 91.8 status nulo do fluxo e tratado como inativo';
 end $$;
 rollback;

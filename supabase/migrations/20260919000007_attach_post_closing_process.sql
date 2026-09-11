@@ -47,7 +47,9 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'workflow_not_found' USING ERRCODE = 'P0001';
   END IF;
-  IF v_wf.status <> 'ativo' THEN
+  -- IS DISTINCT FROM porque workflows.status e nullable: com <> um fluxo de
+  -- status nulo passaria como ativo (mesmo raciocinio do detach, 20260919000003).
+  IF v_wf.status IS DISTINCT FROM 'ativo' THEN
     RAISE EXCEPTION 'workflow_not_active' USING ERRCODE = 'P0001';
   END IF;
 
