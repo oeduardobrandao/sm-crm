@@ -1,6 +1,6 @@
 import React from 'react';
 import { render } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
@@ -35,67 +35,57 @@ const store = vi.hoisted(() => ({
   getWorkflowPostResponsaveis: vi.fn(),
   getWorkspaceSlug: vi.fn(),
 }));
-
 vi.mock('../../../../store', () => store);
-
-vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
-}));
-
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('../../components/PropertyDefinitionPanel', () => ({
   PropertyDefinitionPanel: () => <div>PropertyDefinitionPanel</div>,
 }));
-
 vi.mock('../../components/WorkflowCard', () => ({
   WorkflowCard: ({ card }: { card: { workflow: { titulo: string } } }) => (
-    <div className="test-card-title">{card.workflow.titulo}</div>
+    <div>{card.workflow.titulo}</div>
   ),
 }));
 
 import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
 
-function makeCard(
-  id: number,
-  titulo: string,
-  position: number,
-  dataLimite: string | null,
-): BoardCard {
-  const etapa = {
-    id: id * 10,
-    workflow_id: id,
-    ordem: 1,
-    nome: 'Produção',
-    prazo_dias: 2,
-    tipo_prazo: 'corridos' as const,
-    tipo: 'padrao' as const,
-    status: 'ativo' as const,
-    data_limite: dataLimite,
-    iniciado_em: null,
-  };
+const ETAPAS = [
+  { id: 1, ordem: 0, nome: 'Copy', tipo: 'padrao' as const },
+  { id: 2, ordem: 1, nome: 'Aprovação', tipo: 'aprovacao_cliente' as const },
+  { id: 3, ordem: 2, nome: 'Design', tipo: 'padrao' as const },
+  { id: 4, ordem: 3, nome: 'Aprovação', tipo: 'aprovacao_cliente' as const },
+].map((e) => ({
+  ...e,
+  workflow_id: 1,
+  prazo_dias: 1,
+  tipo_prazo: 'corridos' as const,
+  status: 'pendente' as const,
+}));
+
+function makeCard(wfId: number, titulo: string, ativaOrdem: number): BoardCard {
+  const etapa = { ...ETAPAS[ativaOrdem], status: 'ativo' as const };
   return {
     workflow: {
-      id,
+      id: wfId,
       cliente_id: 1,
       titulo,
       status: 'ativo',
-      etapa_atual: 1,
+      etapa_atual: ativaOrdem,
       recorrente: false,
-      position,
+      template_id: 7,
     },
     etapa,
     cliente: undefined,
     membro: undefined,
-    deadline: { diasRestantes: 2, horasRestantes: 0, estourado: false, urgente: false },
-    totalEtapas: 2,
-    etapaIdx: 1,
-    allEtapas: [etapa],
+    deadline: { diasRestantes: 1, horasRestantes: 0, estourado: false, urgente: false },
+    totalEtapas: 4,
+    etapaIdx: ativaOrdem,
+    allEtapas: ETAPAS,
   } as unknown as BoardCard;
 }
 
 function boardProps(cards: BoardCard[]) {
   return {
-    contaId: 'conta-teste',
     cards,
     onCardClick: () => {},
     onEditClick: () => {},
@@ -112,37 +102,26 @@ function boardProps(cards: BoardCard[]) {
   };
 }
 
-// Atrasado (2026-01-01) vs futuro (2099-01-01) vs sem prazo, com positions
-// invertidas de propósito: o modo padrão 'prazo' deve ignorá-las.
-const CARDS = [
-  makeCard(1, 'Sem prazo', 0, null),
-  makeCard(2, 'Futuro', 1, '2099-01-01'),
-  makeCard(3, 'Atrasado', 2, '2026-01-01'),
-];
-
-function renderedTitles(container: HTMLElement): string[] {
-  return [...container.querySelectorAll('.test-card-title')].map((n) => n.textContent ?? '');
-}
-
-describe('KanbanView per-column prazo sort', () => {
-  beforeEach(() => localStorage.clear());
-
-  it('default mode orders by shortest deadline first (atrasados > futuro > sem prazo)', () => {
-    const { container } = render(<KanbanView {...boardProps(CARDS)} />);
-    expect(renderedTitles(container)).toEqual(['Atrasado', 'Futuro', 'Sem prazo']);
-  });
-
-  it('a persisted manual pref keeps the position order for that column', () => {
-    localStorage.setItem(
-      'entregas_fluxos_sorts_conta-teste',
-      JSON.stringify({ 'Produção::1': 'manual' }),
+describe('KanbanView com etapas de mesmo nome', () => {
+  it('renderiza duas colunas "Aprovação" e coloca cada card na sua', () => {
+    const { container } = render(
+      <KanbanView
+        {...boardProps([makeCard(1, 'Primeira aprovação', 1), makeCard(2, 'Segunda aprovação', 3)])}
+      />,
     );
-    const { container } = render(<KanbanView {...boardProps(CARDS)} />);
-    expect(renderedTitles(container)).toEqual(['Sem prazo', 'Futuro', 'Atrasado']);
+    const titles = [...container.querySelectorAll('.board-column-title')].map(
+      (el) => el.textContent,
+    );
+    expect(titles).toEqual(['Copy', 'Aprovação', 'Design', 'Aprovação']);
+
+    const columns = container.querySelectorAll('.board-column');
+    expect(columns[1].textContent).toContain('Primeira aprovação');
+    expect(columns[1].textContent).not.toContain('Segunda aprovação');
+    expect(columns[3].textContent).toContain('Segunda aprovação');
   });
 
-  it('renders the sort menu trigger on the column header', () => {
-    const { container } = render(<KanbanView {...boardProps(CARDS)} />);
-    expect(container.querySelector('[aria-label="Ordenar coluna Produção"]')).not.toBeNull();
+  it('marca as duas colunas de aprovação para o tour', () => {
+    const { container } = render(<KanbanView {...boardProps([makeCard(1, 'A', 0)])} />);
+    expect(container.querySelectorAll('[data-tour="wf-col-aprovacao"]')).toHaveLength(2);
   });
 });

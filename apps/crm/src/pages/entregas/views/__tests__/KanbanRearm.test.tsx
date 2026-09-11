@@ -251,9 +251,9 @@ describe('KanbanView approval advance with re-arm', () => {
 });
 
 // The guided tour selects steps by [data-tour] presence at runtime, so a lost anchor
-// degrades the tour silently. This pins the approval-column anchor AND the Set lookup
-// that decides which column gets it — the part most likely to break without noise
-// (e.g. if the columns were ever keyed by etapa id instead of nome).
+// degrades the tour silently. A coluna de aprovação é marcada por
+// column.tipo === 'aprovacao_cliente', e as colunas são identificadas pela ordem
+// da etapa; este teste garante que a âncora do tour vai para a coluna certa.
 describe('KanbanView wf-col-aprovacao tour anchor', () => {
   it('tags the aprovacao_cliente column header and no other column', () => {
     const { container } = renderBoard(0);
