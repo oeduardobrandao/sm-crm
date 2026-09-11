@@ -211,7 +211,11 @@ export function computeDeliveryDeadlines(
 export function useEntregasData() {
   const qc = useQueryClient();
 
-  const { data: workflows = EMPTY_WORKFLOWS, isLoading: loadingWf } = useQuery({
+  const {
+    data: workflows = EMPTY_WORKFLOWS,
+    isLoading: loadingWf,
+    isFetching: fetchingWf,
+  } = useQuery({
     queryKey: ['workflows'],
     queryFn: getWorkflows,
   });
@@ -401,6 +405,10 @@ export function useEntregasData() {
   }
 
   const isLoading = loadingWf || etapasQuery.isLoading;
+  /** Verdadeiro também durante refetch em background (cache stale). O resolvedor
+   *  de deep link só pode concluir que um fluxo não está no quadro quando isto
+   *  e isLoading forem falsos. */
+  const isFetching = fetchingWf || etapasQuery.isFetching;
 
   return {
     workflows,
@@ -417,6 +425,7 @@ export function useEntregasData() {
     awaitingClienteCounts,
     postResponsaveis,
     isLoading,
+    isFetching,
     refresh,
   };
 }
