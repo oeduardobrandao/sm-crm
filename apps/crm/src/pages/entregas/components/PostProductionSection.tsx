@@ -1,15 +1,32 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Clock, Ban, CircleDot } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   getPostProcessEvents,
+  updatePostProcessStep,
   type Membro,
   type PostProcess,
   type PostProcessStep,
 } from '../../../store';
+import { endOfLocalDay, parseLocalISODate, toLocalISODate } from '@/utils/postDate';
+import { getPostProcessErrorToast, isStaleStateError } from '../postProcessErrors';
 import { etapaDeadlineDateOf, formatEtapaDeadlineDay } from '../etapaPrazo';
 import { forwardLabelFor } from '../postProcessCommands';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { buildPostTimeline } from './postTimeline';
 import { PostTimelineList } from './PostTimelinePopover';
+
+/** Sentinel para "sem responsável": Radix `SelectItem` (v2) rejeita
+ *  `value=""`, então o `null` do modelo é representado por 'none' na UI
+ *  (mesmo padrão de TarefaFormDialog.tsx) e traduzido de volta ao salvar. */
+const NO_RESPONSAVEL = 'none';
 
 const ESTADO_LABEL: Record<PostProcessStep['estado'], string> = {
   pendente: 'Pendente',
@@ -49,14 +66,18 @@ interface PostProductionSectionProps {
 }
 
 /**
- * Seção de produção do post individual (spec §5.4), só leitura na fase 3:
- * origem (template ou fluxo de origem), linha de etapas com responsável e
- * prazo por etapa, estado do processo, nota sobre propriedades e o histórico
- * filtrado ao processo. Não existe stepper reutilizável (SortableEtapaList é
+ * Seção de produção do post individual (spec §5.4): origem (template ou
+ * fluxo de origem), linha de etapas com responsável e prazo por etapa,
+ * estado do processo, nota sobre propriedades e o histórico filtrado ao
+ * processo. Não existe stepper reutilizável (SortableEtapaList é
  * formulário); a linha usa o estilo history-timeline do PostTimelinePopover.
  * Sem ações no cabeçalho: Avançar/Voltar/Concluir/Reabrir/Remover/Aplicar/
- * Vincular são fase 4. Só é montada pelo drawer de post avulso (workflowId
- * nulo) e só busca eventos enquanto está aberta.
+ * Vincular são comandos aparte (fase 4). Enquanto o processo está 'ativo',
+ * as etapas 'pendente'/'ativo' ganham editores inline de responsável e
+ * prazo (`update_post_process_step`, Task 10); as demais (concluído,
+ * herdada, ignorada, interrompida) e qualquer etapa de um processo não
+ * ativo continuam só leitura. Só é montada pelo drawer de post avulso
+ * (workflowId nulo) e só busca eventos enquanto está aberta.
  */
 export function PostProductionSection({
   process,
@@ -65,10 +86,62 @@ export function PostProductionSection({
   postStatus,
   onAvancar,
 }: PostProductionSectionProps) {
+  const qc = useQueryClient();
   const { data: events = [] } = useQuery({
     queryKey: ['post-process-events', String(postId)],
     queryFn: () => getPostProcessEvents([postId]),
   });
+  const [draft, setDraft] = useState<
+    Record<number, { responsavelId: number | null; prazo: string }>
+  >({});
+  const [savingOrdem, setSavingOrdem] = useState<number | null>(null);
+
+  // O revisão do processo muda a cada `update_post_process_step` bem-sucedido
+  // (e a qualquer outro comando que avance/reabra a etapa); ao refetch, o
+  // valor do servidor deve vencer sobre qualquer rascunho local pendente.
+  useEffect(() => {
+    setDraft({});
+  }, [process.revisao]);
+
+  const editable = (step: PostProcessStep) =>
+    process.estado === 'ativo' && (step.estado === 'pendente' || step.estado === 'ativo');
+
+  const valueOf = (step: PostProcessStep) =>
+    draft[step.ordem] ?? {
+      responsavelId: step.responsavel_id,
+      prazo: step.prazo_efetivo ? toLocalISODate(new Date(step.prazo_efetivo)) : '',
+    };
+
+  const save = async (
+    step: PostProcessStep,
+    next: { responsavelId: number | null; prazo: string },
+  ) => {
+    setDraft((d) => ({ ...d, [step.ordem]: next }));
+    setSavingOrdem(step.ordem);
+    try {
+      const day = next.prazo ? parseLocalISODate(next.prazo) : null;
+      await updatePostProcessStep({
+        processId: process.id,
+        expectedRevisao: process.revisao,
+        ordem: step.ordem,
+        responsavelId: next.responsavelId,
+        prazoEfetivo: day ? endOfLocalDay(day).toISOString() : null,
+      });
+      qc.invalidateQueries({ queryKey: ['post-process', postId] });
+      qc.invalidateQueries({ queryKey: ['post-processes'] });
+      qc.invalidateQueries({ queryKey: ['post-process-events'] });
+    } catch (err) {
+      setDraft((d) => {
+        const { [step.ordem]: _drop, ...rest } = d;
+        return rest;
+      }); // revert to server value
+      toast.error(getPostProcessErrorToast(err, 'Erro ao editar etapa'));
+      if (isStaleStateError(err)) qc.invalidateQueries({ queryKey: ['post-process', postId] });
+    } finally {
+      setSavingOrdem(null);
+    }
+  };
+
   const origem = process.origem_descricao
     ? `Desmembrado de ${process.origem_descricao}`
     : process.template_nome
@@ -112,6 +185,8 @@ export function PostProductionSection({
               : undefined;
           const prazo = etapaDeadlineDateOf(step);
           const tone = toneFor(step.estado);
+          const stepEditable = editable(step);
+          const v = valueOf(step);
           return (
             <div key={step.id} className="history-step">
               <div className="history-step-track">
@@ -129,13 +204,56 @@ export function PostProductionSection({
                     <span className="post-production-tipo"> · Aprovação do cliente</span>
                   )}
                 </div>
-                <div className="history-step-detail">
-                  <span>{ESTADO_LABEL[step.estado]}</span>
-                  {' · '}
-                  <span>{responsavel ? responsavel.nome : 'Sem responsável'}</span>
-                  {' · '}
-                  <span>{prazo ? formatEtapaDeadlineDay(prazo) : 'Sem prazo'}</span>
-                </div>
+                {stepEditable ? (
+                  <>
+                    <div className="history-step-detail">
+                      <span>{ESTADO_LABEL[step.estado]}</span>
+                    </div>
+                    <div className="post-production-step-edit">
+                      <Select
+                        value={v.responsavelId != null ? String(v.responsavelId) : NO_RESPONSAVEL}
+                        onValueChange={(val) =>
+                          save(step, {
+                            ...v,
+                            responsavelId: val === NO_RESPONSAVEL ? null : Number(val),
+                          })
+                        }
+                        disabled={savingOrdem === step.ordem}
+                      >
+                        <SelectTrigger
+                          aria-label={`Responsável da etapa ${step.nome}`}
+                          className="h-7 text-xs"
+                        >
+                          <SelectValue placeholder="Sem responsável" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_RESPONSAVEL}>Sem responsável</SelectItem>
+                          {membros.map((m) => (
+                            <SelectItem key={m.id} value={String(m.id)}>
+                              {m.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <input
+                        type="date"
+                        aria-label={`Prazo da etapa ${step.nome}`}
+                        className="h-7 text-xs rounded-md border border-input px-2"
+                        value={v.prazo}
+                        disabled={savingOrdem === step.ordem}
+                        onChange={(e) => save(step, { ...v, prazo: e.target.value })}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="history-step-detail">
+                    <span>{ESTADO_LABEL[step.estado]}</span>
+                    {' · '}
+                    <span>{responsavel ? responsavel.nome : 'Sem responsável'}</span>
+                    {' · '}
+                    <span>{prazo ? formatEtapaDeadlineDay(prazo) : 'Sem prazo'}</span>
+                  </div>
+                )}
               </div>
             </div>
           );

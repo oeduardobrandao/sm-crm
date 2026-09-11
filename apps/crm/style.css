@@ -13115,6 +13115,13 @@ a.hub-fill__row-inner:hover {
   gap: 0.35rem;
   align-items: center;
 }
+.post-production-step-edit {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
 .entregas-somente-fluxos {
   margin: 0;
   font-size: 0.78rem;
