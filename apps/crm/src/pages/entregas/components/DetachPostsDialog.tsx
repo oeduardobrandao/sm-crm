@@ -83,14 +83,12 @@ export function DetachPostsDialog({
   const [requestId, setRequestId] = useState(newRequestId);
   useEffect(() => {
     setRequestId(newRequestId());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, postIdsKey, archive, card.workflow.id]);
   useEffect(() => {
     if (open) {
       setMode(keepAvailable ? 'manter' : 'avulso');
       setArchive(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, keepAvailable]);
 
   const confirm = async () => {

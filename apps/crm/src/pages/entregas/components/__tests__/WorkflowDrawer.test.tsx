@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import { makeCan, fakeMembership } from '@/test/makeCan';
@@ -26,10 +26,15 @@ vi.mock('@/context/AuthContext', () => ({
   }),
 }));
 
+// Mutable so the Task-11-fix "manter etapas" test can flip feature_post_processes
+// on for just that describe block; every other test keeps the flag off (default null).
+let mockFeatures: Record<string, boolean> | null = null;
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({
     limits: null,
-    features: null,
+    get features() {
+      return mockFeatures;
+    },
     planName: null,
     isLoading: false,
     isUnlimited: true,
@@ -200,6 +205,7 @@ import {
   acceptEditSuggestion,
   syncMentions,
   detachPostsFromWorkflow,
+  detachPostsKeepingProcess,
   movePostsToNewFlow,
 } from '@/store';
 
@@ -209,6 +215,7 @@ const mockGetEditSuggestions = vi.mocked(getPostEditSuggestions);
 const mockAcceptEditSuggestion = vi.mocked(acceptEditSuggestion);
 const mockSyncMentions = vi.mocked(syncMentions);
 const mockDetach = vi.mocked(detachPostsFromWorkflow);
+const mockDetachKeepingProcess = vi.mocked(detachPostsKeepingProcess);
 const mockMoveToNewFlow = vi.mocked(movePostsToNewFlow);
 
 function renderDrawer(
@@ -218,6 +225,8 @@ function renderDrawer(
     onRefresh?: () => void;
     initialPostId?: number;
     onOpenWorkflow?: (workflowId: number) => void;
+    onDetachedKeepingProcess?: (postIds: number[]) => void;
+    card?: Partial<BoardCard>;
   } = {},
 ) {
   const card = {
@@ -255,6 +264,7 @@ function renderDrawer(
     totalEtapas: 1,
     etapaIdx: 0,
     allEtapas: [],
+    ...overrides.card,
   } as unknown as BoardCard;
 
   return render(
@@ -266,10 +276,17 @@ function renderDrawer(
         onRefresh={overrides.onRefresh ?? vi.fn()}
         initialPostId={overrides.initialPostId ?? 1}
         onOpenWorkflow={overrides.onOpenWorkflow}
+        onDetachedKeepingProcess={overrides.onDetachedKeepingProcess}
       />
     </QueryClientProvider>,
   );
 }
+
+// mockFeatures is set true only inside the "handleDetachedKeepingProcess" describe
+// below; reset it after every test so that flag can't leak into unrelated ones.
+afterEach(() => {
+  mockFeatures = null;
+});
 
 describe('WorkflowDrawer refresh() query invalidation', () => {
   beforeEach(() => {
@@ -719,6 +736,98 @@ describe('WorkflowDrawer desmembrar do fluxo (Task 15)', () => {
       expect(toast.error).toHaveBeenCalledWith('Um ou mais posts não foram encontrados.'),
     );
     expect(await screen.findByText('1 selecionado')).toBeInTheDocument();
+  });
+});
+
+describe('WorkflowDrawer handleDetachedKeepingProcess (Task 11 fix round 1)', () => {
+  // Card wired so DetachPostsDialog's keepStepsAvailability() resolves to
+  // available (see DetachPostsDialog.tsx §5.1): fluxo ativo (default card
+  // fixture already has workflow.status: 'ativo'), exactly one etapa ativa in
+  // allEtapas, and a computable deadline for it (data_limite set, so
+  // buildDetachDeadlines() -- detachDeadlines.ts -- doesn't fall back to null).
+  const etapaAtiva = {
+    id: 1,
+    workflow_id: 10,
+    ordem: 0,
+    nome: 'Produção',
+    prazo_dias: 3,
+    tipo_prazo: 'uteis',
+    status: 'ativo',
+    data_limite: '2026-09-20',
+  } as never;
+
+  const postA = {
+    id: 1,
+    workflow_id: 10,
+    titulo: 'Post A',
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    ordem: 0,
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  } as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFeatures = { feature_post_processes: true };
+    mockGetPosts.mockResolvedValue([postA]);
+  });
+
+  it("extracts post_id (not process_id) from detachPostsKeepingProcess's result.processes and forwards only that to onDetachedKeepingProcess", async () => {
+    // Realistic RPC return shape per the migration SQL / DetachKeepingProcessResult
+    // (store/postProcesses.ts): processes carries BOTH process_id and post_id, and
+    // they deliberately differ here so a handler that grabbed the wrong field
+    // would fail this assertion.
+    mockDetachKeepingProcess.mockResolvedValue({
+      ok: true,
+      request_id: 'req-1',
+      detached: 1,
+      archived_workflow_ids: [],
+      processes: [
+        {
+          process_id: 999,
+          post_id: 1,
+          etapa_atual: 0,
+          revisao: 1,
+          board_position: 0,
+          assinatura: 'sig',
+          origem_workflow_id: 10,
+          origem_descricao: 'Campanha Julho',
+        },
+      ],
+      steps: [],
+    } as never);
+
+    const onDetachedKeepingProcess = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, {
+      initialPostId: undefined,
+      onDetachedKeepingProcess,
+      card: { allEtapas: [etapaAtiva] },
+    });
+
+    // Single-post kebab flow (same pattern as the Task 15 "kebab de um único
+    // post" test above): locate the post row via its checkbox, click the
+    // row's own "Desmembrar do fluxo" item.
+    const checkboxA = await screen.findByRole('checkbox', { name: 'Selecionar Post A' });
+    const rowA = checkboxA.closest('.drawer-post-item') as HTMLElement;
+    fireEvent.click(within(rowA).getByText('Desmembrar do fluxo'));
+
+    await screen.findByText('Desmembrar do fluxo?');
+    // "Manter etapas" is available (single active step + computable deadline)
+    // and selected by default; click it explicitly so this doesn't depend on
+    // that default surviving future changes.
+    fireEvent.click(screen.getByRole('radio', { name: 'Manter etapas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Desmembrar' }));
+
+    await waitFor(() => expect(mockDetachKeepingProcess).toHaveBeenCalled());
+    await waitFor(() => expect(onDetachedKeepingProcess).toHaveBeenCalledWith([1]));
+    // The confusable id never reaches the callback.
+    expect(onDetachedKeepingProcess).not.toHaveBeenCalledWith([999]);
   });
 });
 
