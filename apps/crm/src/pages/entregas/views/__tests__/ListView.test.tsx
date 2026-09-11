@@ -184,4 +184,20 @@ describe('ListView com posts individuais', () => {
     );
     expect(screen.queryByText('Nenhuma entrega encontrada. Ajuste os filtros.')).toBeNull();
   });
+
+  it('mostra "Sem prazo" para um post sem prazo efetivo, em vez de "0h restantes"', () => {
+    // prazoEfetivo null + deadline zerado (fallback de deadlineFromPrazoEfetivo):
+    // exatamente o estado de uma etapa não ativada ou com prazo limpo.
+    render(
+      <ListView
+        cards={[]}
+        postEntities={[makePostEntity('Post Sem Prazo', 0)]}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Sem prazo')).toBeInTheDocument();
+    expect(screen.queryByText('0h restantes')).toBeNull();
+  });
 });

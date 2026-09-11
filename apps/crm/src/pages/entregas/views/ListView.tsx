@@ -33,6 +33,10 @@ interface ListRow {
   etapaNome: string;
   responsavelNome: string;
   deadline: BoardCard['deadline'];
+  /** false quando a entidade não tem prazo efetivo (etapa não ativada ou prazo
+   *  limpo). deadline vem com um fallback zerado nesse caso (spec §7) e não
+   *  deve ser lido como "vence em 0h" -- ver formatPrazo. */
+  hasDeadline: boolean;
   individual: boolean;
   open: () => void;
 }
@@ -70,6 +74,7 @@ function sortRows(rows: ListRow[], column: string, direction: 'asc' | 'desc'): L
 }
 
 function formatPrazo(row: ListRow): string {
+  if (!row.hasDeadline) return 'Sem prazo';
   const d = row.deadline;
   if (d.estourado) return `${Math.abs(d.diasRestantes)}d atrasado`;
   if (d.diasRestantes === 0) return `${d.horasRestantes}h restantes`;
@@ -104,6 +109,7 @@ export function ListView({
       etapaNome: card.etapa.nome,
       responsavelNome: card.membro?.nome || '',
       deadline: card.deadline,
+      hasDeadline: true,
       individual: false,
       open: () => onCardClick(card),
     })),
@@ -115,6 +121,7 @@ export function ListView({
       etapaNome: e.etapaNome,
       responsavelNome: e.responsavel?.nome || '',
       deadline: e.deadline,
+      hasDeadline: e.prazoEfetivo != null,
       individual: true,
       open: () => onPostClick?.(e),
     })),
