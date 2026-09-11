@@ -218,7 +218,7 @@ export function PostProductionSection({
                             responsavelId: val === NO_RESPONSAVEL ? null : Number(val),
                           })
                         }
-                        disabled={savingOrdem === step.ordem}
+                        disabled={savingOrdem !== null}
                       >
                         <SelectTrigger
                           aria-label={`Responsável da etapa ${step.nome}`}
@@ -240,7 +240,7 @@ export function PostProductionSection({
                         aria-label={`Prazo da etapa ${step.nome}`}
                         className="h-7 text-xs rounded-md border border-input px-2"
                         value={v.prazo}
-                        disabled={savingOrdem === step.ordem}
+                        disabled={savingOrdem !== null}
                         onChange={(e) => save(step, { ...v, prazo: e.target.value })}
                       />
                     </div>

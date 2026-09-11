@@ -174,6 +174,70 @@ const activeProcessWithPendingStep: PostProcess = {
   ],
 };
 
+// Processo ativo com DUAS etapas editáveis (uma 'ativo', uma 'pendente'):
+// dedicado à regressão do bug de `expectedRevisao` obsoleto -- salvar a
+// etapa 1 não pode deixar a etapa 2 editável e disparar uma segunda RPC
+// concorrente com o mesmo `revisao` do prop (que só é atualizado depois que
+// a query do processo é invalidada e o pai re-renderiza).
+const activeProcessWithTwoEditableSteps: PostProcess = {
+  id: 8,
+  conta_id: 'c',
+  post_id: 100,
+  template_id: null,
+  template_nome: null,
+  assinatura: '',
+  origem_workflow_id: null,
+  origem_descricao: null,
+  estado: 'ativo',
+  motivo_encerramento: null,
+  etapa_atual: 0,
+  modo_prazo: 'padrao',
+  board_position: 0,
+  revisao: 1,
+  created_by: null,
+  created_at: '',
+  updated_at: '',
+  concluido_em: null,
+  steps: [
+    {
+      id: 41,
+      conta_id: 'c',
+      process_id: 8,
+      ordem: 0,
+      nome: 'Copy',
+      tipo: 'padrao',
+      responsavel_id: 4,
+      prazo_dias: 2,
+      tipo_prazo: 'uteis',
+      prazo_efetivo: null,
+      estado: 'ativo',
+      iniciado_em: '2026-09-10T00:00:00Z',
+      concluido_em: null,
+      interrompido_em: null,
+      origem_etapa_ordem: 0,
+      origem_etapa_nome: 'Copy',
+    },
+    {
+      id: 42,
+      conta_id: 'c',
+      process_id: 8,
+      ordem: 1,
+      nome: 'Design',
+      tipo: 'padrao',
+      responsavel_id: null,
+      prazo_dias: 3,
+      tipo_prazo: 'uteis',
+      prazo_efetivo: null,
+      estado: 'pendente',
+      iniciado_em: null,
+      concluido_em: null,
+      interrompido_em: null,
+      origem_etapa_ordem: 1,
+      origem_etapa_nome: 'Design',
+    },
+  ],
+};
+
 // Processo concluído, com etapas concluídas: cobre "sem controles" mesmo
 // quando os steps individualmente estariam em estados variados.
 const concludedProcess: PostProcess = {
@@ -415,5 +479,52 @@ describe('PostProductionSection', () => {
         expect.objectContaining({ responsavelId: null }),
       ),
     );
+  });
+
+  it('editar uma etapa desabilita as demais até a RPC resolver (evita expectedRevisao obsoleto)', async () => {
+    // Promise controlada à mão: o mock só resolve quando o teste manda,
+    // simulando a janela em que a RPC da etapa 1 ainda está em voo.
+    let resolveSave: (value: {
+      ok: true;
+      revisao: number;
+      step: Record<string, unknown>;
+    }) => void = () => {};
+    store.updatePostProcessStep.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    renderSection({
+      process: activeProcessWithTwoEditableSteps,
+      membros: [
+        { id: 4, nome: 'Ana' },
+        { id: 9, nome: 'Bia' },
+      ],
+    });
+
+    // Antes de qualquer edição, nenhum controle está desabilitado.
+    expect(screen.getByRole('combobox', { name: 'Responsável da etapa Copy' })).not.toBeDisabled();
+    expect(screen.getByLabelText('Prazo da etapa Design')).not.toBeDisabled();
+
+    // Edita a etapa 1 (Copy) sem esperar a RPC resolver.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Responsável da etapa Copy' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Bia' }));
+    await waitFor(() => expect(store.updatePostProcessStep).toHaveBeenCalledTimes(1));
+
+    // Enquanto a etapa 1 está salvando, TODOS os controles -- inclusive os
+    // da etapa 2 -- ficam desabilitados, não só os da etapa que iniciou o save.
+    expect(screen.getByRole('combobox', { name: 'Responsável da etapa Copy' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Responsável da etapa Design' })).toBeDisabled();
+    expect(screen.getByLabelText('Prazo da etapa Design')).toBeDisabled();
+
+    // Resolve a RPC da etapa 1: os controles voltam a ficar habilitados.
+    resolveSave({ ok: true, revisao: 2, step: {} });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: 'Responsável da etapa Design' }),
+      ).not.toBeDisabled(),
+    );
+    expect(screen.getByLabelText('Prazo da etapa Design')).not.toBeDisabled();
   });
 });
