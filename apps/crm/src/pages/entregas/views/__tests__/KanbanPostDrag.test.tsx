@@ -191,6 +191,56 @@ function makePostEntity(): PostEntity {
   };
 }
 
+// Variante com uma etapa de aprovação do cliente ATIVA (ordem 1) e o post já
+// aprovado_interno -- as duas condições que fazem decideApprovalAdvance abrir
+// a escolha (ClientApprovalChoiceDialog) COM "Enviar ao portal do cliente"
+// habilitado (sendToPortalDisabledReasonFor exige status === 'aprovado_interno'
+// exatamente). Usada só pelo teste de "Enviar ao portal" abaixo -- os demais
+// testes deste arquivo usam STAGE_STEPS (tudo 'padrao') de propósito, para
+// nunca abrir esta escolha.
+const APPROVAL_STAGE_STEPS = [
+  { ordem: 0, nome: 'Copy', tipo: 'padrao' as const },
+  { ordem: 1, nome: 'Aprovação', tipo: 'aprovacao_cliente' as const },
+  { ordem: 2, nome: 'Publicação', tipo: 'padrao' as const },
+];
+
+function makeApprovalPostEntity(): PostEntity {
+  return {
+    kind: 'post',
+    id: 'post:9',
+    process: {
+      id: 9,
+      post_id: 109,
+      template_id: 7,
+      etapa_atual: 1,
+      revisao: 1,
+      steps: APPROVAL_STAGE_STEPS.map((e) => ({
+        ordem: e.ordem,
+        nome: e.nome,
+        tipo: e.tipo,
+        estado: e.ordem === 1 ? 'ativo' : e.ordem < 1 ? 'concluido' : 'pendente',
+      })),
+      post: {
+        id: 109,
+        titulo: 'Post Individual A',
+        status: 'aprovado_interno',
+        cliente_id: null,
+      },
+    } as never,
+    step: { ordem: 1 } as never,
+    templateId: 7,
+    steps: APPROVAL_STAGE_STEPS,
+    etapaOrdem: 1,
+    etapaNome: 'Aprovação',
+    responsavel: undefined,
+    prazoEfetivo: null,
+    posicao: 1,
+    deadline: { diasRestantes: 0, horasRestantes: 0, estourado: false, urgente: false },
+    cliente: undefined,
+    titulo: 'Post Individual A',
+  };
+}
+
 // Ids do droppable de uma coluna VAZIA (nenhum card/post nela ainda): o
 // mesmo 'col:<rowKey>::<ordem>' que DroppableColumnBody registra no
 // KanbanView real -- calculado com as MESMAS funções (rowKeyFor/columnKey),
@@ -316,6 +366,73 @@ describe('KanbanView drag de um post individual (fase 4, Task 8)', () => {
     // A posição capturada pelo drag CANCELADO nunca pode ser reproduzida
     // pelo comando disparado por botão -- nem reorderFluxosBoard (coluna
     // mista) nem updateWorkflowPositions (só fluxos) devem ser chamados.
+    await waitFor(() => expect(store.transitionPostProcess).toHaveBeenCalledTimes(1));
+    expect(store.reorderFluxosBoard).not.toHaveBeenCalled();
+    expect(store.updateWorkflowPositions).not.toHaveBeenCalled();
+  });
+
+  // Task 8, fix round 2 (re-revisão): o fix round 1 só cobriu Cancelar (e o
+  // eco assíncrono do Radix); "Enviar ao portal do cliente" resolve a MESMA
+  // escolha de aprovação por um caminho que nunca passava por onDismiss --
+  // ele faz um UPDATE direto (sendToPortal), nunca toca pendingInsertRef por
+  // si só. Reproduz o MESMO leak do teste anterior, mas terminando a escolha
+  // em "Enviar ao portal" em vez de Cancelar.
+  it('"Enviar ao portal" de um post arrastado não deixa o próximo comando por BOTÃO herdar a posição do drag', async () => {
+    const post = makeApprovalPostEntity();
+    const qc = makeQueryClient();
+    const { rerender } = rtlRender(
+      <QueryClientProvider client={qc}>
+        <KanbanView {...baseProps} postEntities={[post]} />
+      </QueryClientProvider>,
+    );
+    expect(dndHandlers.onDragEnd).toBeDefined();
+
+    // 1) Drag para frente ("Aprovação" -> "Publicação"): seta pendingInsertRef
+    // e abre o ForwardConfirmDialog do hook.
+    const overId = emptyColumnOverId(post, 2);
+    await act(async () => {
+      await dndHandlers.onDragEnd?.({ active: { id: 'post:9' }, over: { id: overId } });
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
+
+    // 2) A etapa ativa é de aprovação do cliente e o post ainda não está
+    // liberado (aprovado_interno) -- decideThenRun abre a escolha.
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar ao portal do cliente' }));
+
+    // 3) Com o fix, "Enviar ao portal" passa por dismissChoice() (mesmo
+    // caminho do Cancelar) ANTES de rodar sendToPortal -- pendingInsertRef já
+    // deve estar limpo aqui, e nenhuma transição de etapa roda.
+    await waitFor(() =>
+      expect(store.updateWorkflowPost).toHaveBeenCalledWith(109, { status: 'enviado_cliente' }),
+    );
+    expect(store.transitionPostProcess).not.toHaveBeenCalled();
+
+    // 4) Comando por BOTÃO (não-drag) no MESMO post -- nunca seta
+    // pendingInsertRef por si só.
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar etapa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reverter' }));
+    await waitFor(() => expect(store.transitionPostProcess).toHaveBeenCalledTimes(1));
+    expect(store.transitionPostProcess.mock.calls[0][0]).toMatchObject({
+      processId: 9,
+      command: 'voltar',
+    });
+
+    // 5) Simula o refetch que reflete a etapa nova -- é o que aciona o
+    // catch-up effect que replicaria a posição de um drag abandonado.
+    const revertedPost: PostEntity = {
+      ...post,
+      etapaOrdem: 0,
+      etapaNome: 'Copy',
+      process: { ...post.process, etapa_atual: 0 } as never,
+    };
+    rerender(
+      <QueryClientProvider client={qc}>
+        <KanbanView {...baseProps} postEntities={[revertedPost]} />
+      </QueryClientProvider>,
+    );
+
+    // A posição capturada pelo drag encerrado em "Enviar ao portal" nunca
+    // pode ser reproduzida pelo comando disparado por botão.
     await waitFor(() => expect(store.transitionPostProcess).toHaveBeenCalledTimes(1));
     expect(store.reorderFluxosBoard).not.toHaveBeenCalled();
     expect(store.updateWorkflowPositions).not.toHaveBeenCalled();

@@ -324,4 +324,31 @@ describe('usePostProcessCommands', () => {
       expect(onDismiss).not.toHaveBeenCalled();
     });
   });
+
+  // Task 8, fix round 2 (re-revisão): "Enviar ao portal" resolve a escolha de
+  // aprovação por um caminho que NÃO passa por onConfirm/onCancel -- é um
+  // UPDATE direto (sendToPortal), nunca toca pendingInsertRef. O round 1 só
+  // cobriu Cancelar/Confirmar/Escape; este botão ainda fechava o diálogo sem
+  // chamar onDismiss, reproduzindo o MESMO leak (achado empiricamente na
+  // re-revisão com um probe temporário): um drag cross-column que abre esta
+  // escolha e termina em "Enviar ao portal" deixava pendingInsertRef preso
+  // para o próximo comando por botão do mesmo post.
+  describe('onDismiss (Task 8, fix round 2 -- "Enviar ao portal")', () => {
+    it('"Enviar ao portal" chama onDismiss exatamente uma vez e roda sendToPortal', async () => {
+      const t = target(
+        [step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')],
+        'aprovado_interno',
+      );
+      const onDismiss = vi.fn();
+      renderHarness(t, undefined, onDismiss);
+      fireEvent.click(screen.getByText('avancar'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Enviar ao portal do cliente' }));
+      await waitFor(() =>
+        expect(store.updateWorkflowPost).toHaveBeenCalledWith(77, { status: 'enviado_cliente' }),
+      );
+      await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+      expect(store.transitionPostProcess).not.toHaveBeenCalled();
+    });
+  });
 });

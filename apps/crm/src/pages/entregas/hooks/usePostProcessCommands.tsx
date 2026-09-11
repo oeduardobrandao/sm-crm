@@ -324,8 +324,18 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
         onSendToPortal={() => {
           if (choice) {
             const t = choice.t;
-            choiceResolvedRef.current = true;
-            closeChoice();
+            // "Enviar ao portal" não é cancelamento nem avanço de etapa (é
+            // um UPDATE direto do status do post, nunca toca em
+            // pendingInsertRef) -- mas TAMBÉM resolve o diálogo de escolha, e
+            // por isso precisa do MESMO dismissChoice() do Cancelar: o ref
+            // "resolvido" ainda está false aqui, então dismissChoice roda por
+            // completo, dispara onDismiss (limpando o pendingInsertRef de um
+            // drag pendente) uma única vez, e o eco assíncrono do Radix que
+            // vem depois já encontra resolvido. Sem isto o mesmo leak da
+            // Task 8 (fix round 1) reaparece por este caminho (achado na
+            // re-revisão): um drag cross-column seguido de "Enviar ao
+            // portal" deixava pendingInsertRef preso.
+            dismissChoice();
             void sendToPortal(t);
           }
         }}
