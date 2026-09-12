@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Trash2, Edit2, FileText, Settings, ArrowRightLeft } from 'lucide-react';
@@ -407,6 +407,7 @@ export function TemplatesModal({
   const [deleteTemplateId, setDeleteTemplateId] = useState<number | null>(null);
   const [fNome, setFNome] = useState('');
   const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
+  const formTopRef = useRef<HTMLDivElement>(null);
 
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<'templates' | 'properties'>('templates');
@@ -499,6 +500,7 @@ export function TemplatesModal({
         }),
       ),
     );
+    formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleDeleteConfirm = async () => {
@@ -591,7 +593,7 @@ export function TemplatesModal({
           </div>
           {activeTab === 'templates' && (
             <>
-              <div style={{ marginBottom: '1rem' }}>
+              <div ref={formTopRef} style={{ marginBottom: '1rem' }}>
                 <h4 style={{ marginBottom: '0.75rem' }}>
                   {editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}
                 </h4>
