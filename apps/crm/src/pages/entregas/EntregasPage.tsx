@@ -159,9 +159,21 @@ export default function EntregasPage() {
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   const [newAvulsoOpen, setNewAvulsoOpen] = useState(false);
+  // Template pré-vinculado quando NewAvulsoDialog é aberto a partir do "+ Novo ▾"
+  // da coluna (spec §3, item "Post individual"). null = fluxo normal do "Post
+  // avulso" do dropdown de cabeçalho, sem template.
+  const [avulsoTemplateId, setAvulsoTemplateId] = useState<number | null>(null);
   // Post avulso alvo do diálogo "Aplicar processo" (Task 12), aberto a partir
   // de um card da seção Sem processo.
   const [applyTarget, setApplyTarget] = useState<ActivePost | null>(null);
+  // Mesmo diálogo, aberto pelo NewAvulsoDialog quando o template pré-vinculado
+  // tem modo_prazo != 'padrao' (exige input extra que o quick-add não coleta).
+  const [manualApplyPost, setManualApplyPost] = useState<{
+    id: number;
+    titulo: string | null;
+    cliente_id: number | null;
+    templateId: number;
+  } | null>(null);
   // Desmembrar mantendo etapas / aplicar processo: aguarda a entidade aparecer
   // em `postEntities` (não filtrado) depois do refresh disparado por
   // revealPostProcesses, para então limpar filtros e abrir o drawer (spec §4.1).
@@ -945,7 +957,12 @@ export default function EntregasPage() {
               <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
                 <Route aria-hidden="true" /> Novo fluxo
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setNewAvulsoOpen(true)}>
+              <DropdownMenuItem
+                onClick={() => {
+                  setAvulsoTemplateId(null);
+                  setNewAvulsoOpen(true);
+                }}
+              >
                 <CircleDashed aria-hidden="true" /> Post avulso
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -1077,6 +1094,18 @@ export default function EntregasPage() {
               }}
               onCreateTemplate={() => setTemplatesOpen(true)}
               createTemplateDisabled={templatesAtLimit}
+              // Criar processo individual é CRIAÇÃO: gate na flag do plano
+              // (`postProcessesEnabled`), não em `postProcessesVisible` — ver o
+              // comentário das "duas verdades" no topo. Sem a flag o próprio
+              // apply_post_process levanta feature_disabled.
+              onAddPostIndividual={
+                postProcessesEnabled
+                  ? (templateId) => {
+                      setAvulsoTemplateId(templateId);
+                      setNewAvulsoOpen(true);
+                    }
+                  : undefined
+              }
               membros={membros}
               templates={templates}
               postsCounts={postsCounts}
@@ -1109,7 +1138,10 @@ export default function EntregasPage() {
             onPostClick={handlePostClick}
             cardsByWorkflowId={cardsByWorkflowId}
             filtersActive={postsFiltersActive}
-            onCreateAvulso={() => setNewAvulsoOpen(true)}
+            onCreateAvulso={() => {
+              setAvulsoTemplateId(null);
+              setNewAvulsoOpen(true);
+            }}
             columnSorts={boardColumnSorts}
             onColumnSortChange={handleBoardColumnSortChange}
             processEtapaByPostId={processEtapaByPostId}
@@ -1165,7 +1197,10 @@ export default function EntregasPage() {
             onFluxoClick={handleFluxoClick}
             cardsByWorkflowId={cardsByWorkflowId}
             filtersActive={postsFiltersActive}
-            onCreateAvulso={() => setNewAvulsoOpen(true)}
+            onCreateAvulso={() => {
+              setAvulsoTemplateId(null);
+              setNewAvulsoOpen(true);
+            }}
             processEtapaByPostId={processEtapaByPostId}
           />
         ))}
@@ -1199,9 +1234,23 @@ export default function EntregasPage() {
       {newAvulsoOpen && (
         <NewAvulsoDialog
           open={newAvulsoOpen}
-          onClose={() => setNewAvulsoOpen(false)}
+          onClose={() => {
+            setNewAvulsoOpen(false);
+            setAvulsoTemplateId(null);
+          }}
           clientes={clientes}
+          templates={templates}
+          templateId={avulsoTemplateId ?? undefined}
           onCreated={handleAvulsoCreated}
+          onProcessApplied={(post) => revealPostProcesses([post.id!])}
+          onNeedsManualApply={(post, template) => {
+            setManualApplyPost({
+              id: post.id!,
+              titulo: post.titulo,
+              cliente_id: post.cliente_id,
+              templateId: template.id!,
+            });
+          }}
         />
       )}
       {editCard && (
@@ -1291,6 +1340,22 @@ export default function EntregasPage() {
           membros={membros}
           onApplied={(r) => {
             setApplyTarget(null);
+            revealPostProcesses([r.post_id]);
+          }}
+        />
+      )}
+      {manualApplyPost && (
+        // Post individual criado via "+ Novo ▾" da coluna, mas o template
+        // pré-vinculado tem modo_prazo != 'padrao' (spec §3): NewAvulsoDialog
+        // já criou o post e repassa aqui em vez de tentar aplicar sozinho.
+        <ApplyProcessDialog
+          open
+          onClose={() => setManualApplyPost(null)}
+          post={manualApplyPost}
+          initialTemplateId={manualApplyPost.templateId}
+          membros={membros}
+          onApplied={(r) => {
+            setManualApplyPost(null);
             revealPostProcesses([r.post_id]);
           }}
         />

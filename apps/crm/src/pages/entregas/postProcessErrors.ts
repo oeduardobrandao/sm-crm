@@ -53,6 +53,7 @@ export const POST_PROCESS_ERROR_MESSAGES: Record<string, string> = {
   process_already_closed: 'Este processo já foi encerrado.',
   step_not_found: 'Etapa não encontrada.',
   step_not_editable: 'Só etapas pendentes ou em andamento podem ser editadas.',
+  tipo_prazo_invalido: 'Tipo de prazo inválido. Escolha úteis ou corridos.',
   no_next_step: 'Não há próxima etapa. Use "Concluir processo".',
   no_previous_step: 'Esta já é a primeira etapa.',
   pending_steps_remaining: 'Ainda há etapas pendentes. Avance até a última antes de concluir.',

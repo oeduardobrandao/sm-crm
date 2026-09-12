@@ -29,8 +29,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { createAvulsoPost, type Cliente, type WorkflowPost } from '@/store';
+import {
+  applyPostProcess,
+  createAvulsoPost,
+  type Cliente,
+  type WorkflowPost,
+  type WorkflowTemplate,
+} from '@/store';
 import { TIPO_LABELS, TIPO_ORDER } from '../postLabels';
+import { buildTemplateFingerprint } from '../fingerprint';
+import { buildApplyPlan } from '../applyProcessDeadlines';
+import { getPostProcessErrorToast } from '../postProcessErrors';
 
 const avulsoSchema = z.object({
   cliente_id: z.string().min(1, 'Selecione um cliente'),
@@ -47,14 +56,40 @@ interface NewAvulsoDialogProps {
   onClose: () => void;
   clientes: Cliente[];
   /** Fires after the post is created (and its cache invalidated), so the
-   *  caller can switch into the right view/mode and open it. */
+   *  caller can switch into the right view/mode and open it. Also the landing
+   *  for a FAILED auto-apply (spec §3: toast de erro + abrir o drawer do post
+   *  avulso normalmente, no estado "sem processo"). */
   onCreated: (post: WorkflowPost) => void;
+  /** Auto-apply bem-sucedido (spec §3): o post nasce COM processo, então o
+   *  destino não é o drawer de avulso de `onCreated` e sim a revelação do
+   *  processo no quadro de Fluxos, como nos demais `onApplied`. Sem handler,
+   *  cai em `onCreated`. */
+  onProcessApplied?: (post: WorkflowPost) => void;
+  /** Template pré-vinculado (spec §3, "+ Novo ▾" da coluna): quando setado,
+   *  o submit tenta aplicar o processo automaticamente. Requer `templates`
+   *  para resolver o objeto do template. */
+  templateId?: number;
+  templates?: WorkflowTemplate[];
+  /** Template com modo_prazo != 'padrao' precisa de input extra (etapa
+   *  inicial, responsáveis, prazos) que este diálogo não coleta -- em vez de
+   *  aplicar sozinho, repassa post+template para o caller abrir o fluxo
+   *  manual (ApplyProcessDialog). Chamado NO LUGAR de `onCreated`. */
+  onNeedsManualApply?: (post: WorkflowPost, template: WorkflowTemplate) => void;
 }
 
 /** Creates a post avulso (fora de um fluxo) -- the "Post avulso" item in the
  *  Novo dropdown. Mirrors TarefaFormDialog's form shape (react-hook-form +
  *  zod), but this dialog only ever creates (no edit mode). */
-export function NewAvulsoDialog({ open, onClose, clientes, onCreated }: NewAvulsoDialogProps) {
+export function NewAvulsoDialog({
+  open,
+  onClose,
+  clientes,
+  onCreated,
+  onProcessApplied,
+  templateId,
+  templates,
+  onNeedsManualApply,
+}: NewAvulsoDialogProps) {
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
 
@@ -81,7 +116,61 @@ export function NewAvulsoDialog({ open, onClose, clientes, onCreated }: NewAvuls
       });
       toast.success('Post avulso criado');
       qc.invalidateQueries({ queryKey: ['active-posts'] });
-      onCreated(post);
+
+      const template =
+        templateId != null ? (templates ?? []).find((t) => t.id === templateId) : undefined;
+      if (template) {
+        // buildApplyPlan/applyPostProcess treat a missing modo_prazo the same
+        // as 'padrao' (see applyProcessDeadlines.ts) -- match that here so a
+        // legacy template without the column doesn't fall into the manual
+        // dialog for no reason.
+        const modo = template.modo_prazo ?? 'padrao';
+        if (modo === 'padrao') {
+          let applied = false;
+          try {
+            const plan = buildApplyPlan({
+              template,
+              startOrdem: 0,
+              now: new Date(),
+              fixedDates: {},
+              deliveryDate: null,
+              clienteHasDiaEntrega: false,
+              responsaveis: {},
+            });
+            await applyPostProcess({
+              postId: post.id!,
+              templateId: template.id!,
+              templateFingerprint: buildTemplateFingerprint(template.etapas),
+              startOrdem: 0,
+              stepOverrides: plan.overrides,
+            });
+            applied = true;
+            for (const key of [
+              ['post-processes'],
+              ['post-process', post.id],
+              ['post-process-events'],
+              ['active-posts'],
+              ['standalone-post', post.id],
+            ])
+              qc.invalidateQueries({ queryKey: key });
+          } catch (err) {
+            toast.error(getPostProcessErrorToast(err, 'Erro ao aplicar processo'));
+          }
+          // Sucesso: o post já tem processo, então quem revela é o quadro de
+          // Fluxos. Falha: cai no drawer de avulso (spec §3, estado recuperável
+          // via "Aplicar processo").
+          if (applied && onProcessApplied) onProcessApplied(post);
+          else onCreated(post);
+        } else if (onNeedsManualApply) {
+          onNeedsManualApply(post, template);
+        } else {
+          // Sem handler manual não há para onde encaminhar: não deixar o post
+          // criado sem nenhum destino.
+          onCreated(post);
+        }
+      } else {
+        onCreated(post);
+      }
       onClose();
     } catch {
       toast.error('Erro ao criar post avulso');

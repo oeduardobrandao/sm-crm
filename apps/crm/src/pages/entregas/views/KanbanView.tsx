@@ -1249,15 +1249,35 @@ export function KanbanView({
               </span>
             </div>
             <DroppableColumnBody tint={tint} id={`${COL_PREFIX}${colKeyStr}`}>
-              {colIdx === 0 && onAddWorkflow && (
-                <button
-                  type="button"
-                  className="board-add-card"
-                  onClick={() => onAddWorkflow(row.templateId)}
-                >
-                  <Plus className="h-3.5 w-3.5" /> Novo fluxo
-                </button>
-              )}
+              {colIdx === 0 &&
+                onAddWorkflow &&
+                (row.templateId != null && postProcessesEnabled && onAddPostIndividual ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" className="board-add-card">
+                        <Plus className="h-3.5 w-3.5" /> Novo ▾
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="min-w-[150px]">
+                      <DropdownMenuItem onSelect={() => onAddWorkflow(row.templateId)}>
+                        Fluxo
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => onAddPostIndividual(row.templateId as number)}
+                      >
+                        Post individual
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <button
+                    type="button"
+                    className="board-add-card"
+                    onClick={() => onAddWorkflow(row.templateId)}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Novo fluxo
+                  </button>
+                ))}
               <SortableContext
                 items={mixed.map(sortableIdOf)}
                 strategy={verticalListSortingStrategy}

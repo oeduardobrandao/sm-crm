@@ -24,12 +24,7 @@ import {
 
 export type PostProcessEstado = 'ativo' | 'concluido' | 'encerrado';
 export type PostProcessStepEstado =
-  | 'pendente'
-  | 'ativo'
-  | 'concluido'
-  | 'herdado'
-  | 'ignorado'
-  | 'interrompido';
+  'pendente' | 'ativo' | 'concluido' | 'herdado' | 'ignorado' | 'interrompido';
 
 export interface PostProcessStep {
   id: number;
@@ -350,6 +345,10 @@ export interface UpdatePostProcessStepArgs {
   /** Setters absolutos: null limpa. A UI manda sempre os dois valores. */
   responsavelId: number | null;
   prazoEfetivo: string | null;
+  /** Só para processos `modo_prazo = 'padrao'` (spec §2). Em modo "data fixa"
+   *  a UI manda os dois como `null` -- setters absolutos, igual aos demais. */
+  prazoDias?: number | null;
+  tipoPrazo?: 'uteis' | 'corridos' | null;
 }
 
 export interface UpdatePostProcessStepResult {
@@ -370,6 +369,8 @@ export async function updatePostProcessStep(
       p_ordem: args.ordem,
       p_responsavel_id: args.responsavelId,
       p_prazo_efetivo: args.prazoEfetivo,
+      p_prazo_dias: args.prazoDias,
+      p_tipo_prazo: args.tipoPrazo,
     }),
   );
 }
