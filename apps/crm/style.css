@@ -5343,7 +5343,7 @@ body.role-agent input[name='valor_total'] {
   transition: var(--transition);
 }
 
-.board-tab:hover {
+.board-tab:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-main);
 }

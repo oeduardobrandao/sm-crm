@@ -754,6 +754,18 @@ describe('EntregasPage', () => {
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
+  it('opens TemplatesModal from the board\'s own "Create new template" control', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    expect(screen.queryByText('Templates modal')).not.toBeInTheDocument();
+
+    // Distinct from the top-nav "Templates" button covered above: this exercises
+    // KanbanView's own onCreateTemplate -> setTemplatesOpen(true) wiring.
+    fireEvent.click(screen.getByText('Create new template'));
+
+    expect(screen.getByText('Templates modal')).toBeInTheDocument();
+  });
+
   it('mostra o total de posts individuais no cabeçalho só com a flag ligada', async () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
     expect(await screen.findByText(/fluxos ativos: 1/)).toBeInTheDocument();
