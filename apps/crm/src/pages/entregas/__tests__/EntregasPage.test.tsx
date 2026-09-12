@@ -142,6 +142,8 @@ vi.mock('../views/KanbanView', () => ({
     onEditClick,
     onPostsClick,
     onRecurring,
+    onCreateTemplate,
+    createTemplateDisabled,
   }: {
     cards: Array<{ workflow: { id: number; titulo: string } }>;
     postEntities?: Array<{ id: string }>;
@@ -151,6 +153,8 @@ vi.mock('../views/KanbanView', () => ({
     onEditClick: (card: unknown) => void;
     onPostsClick: (card: unknown) => void;
     onRecurring: (workflowId: number) => void;
+    onCreateTemplate?: () => void;
+    createTemplateDisabled?: boolean;
   }) =>
     showExample ? (
       <div>
@@ -169,6 +173,11 @@ vi.mock('../views/KanbanView', () => ({
             {entity.id}
           </div>
         ))}
+        {onCreateTemplate && (
+          <button onClick={onCreateTemplate} disabled={createTemplateDisabled}>
+            Create new template
+          </button>
+        )}
         {cards.length > 0 && (
           <>
             <button onClick={() => onEditClick(cards[0])}>Open edit modal</button>
@@ -194,6 +203,17 @@ vi.mock('@/hooks/useWorkspaceLimits', () => ({
     planName: null,
     isLoading: false,
     isUnlimited: false,
+  }),
+}));
+
+vi.mock('@/hooks/useEntitlements', () => ({
+  useEntitlements: () => ({
+    isAtLimit: () => false,
+    hasFeature: () => true,
+    features: {},
+    limits: {},
+    planName: null,
+    isLoading: false,
   }),
 }));
 
@@ -732,6 +752,18 @@ describe('EntregasPage', () => {
     expect(screen.getByText('WizardMock')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Created workflow'));
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens TemplatesModal from the board\'s own "Create new template" control', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    expect(screen.queryByText('Templates modal')).not.toBeInTheDocument();
+
+    // Distinct from the top-nav "Templates" button covered above: this exercises
+    // KanbanView's own onCreateTemplate -> setTemplatesOpen(true) wiring.
+    fireEvent.click(screen.getByText('Create new template'));
+
+    expect(screen.getByText('Templates modal')).toBeInTheDocument();
   });
 
   it('mostra o total de posts individuais no cabeçalho só com a flag ligada', async () => {

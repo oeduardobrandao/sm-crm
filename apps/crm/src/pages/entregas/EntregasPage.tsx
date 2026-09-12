@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { useEntitlements } from '@/hooks/useEntitlements';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { shouldAutoStartTour } from './tour/tourGating';
 import { shouldShowExample } from './tour/exampleGate';
@@ -124,6 +125,8 @@ export default function EntregasPage() {
   // gate tudo que é exibição e operação de processos existentes.
   const postProcessesEnabled = features?.feature_post_processes === true;
 
+  const { isAtLimit } = useEntitlements();
+
   const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
   const [filters, setFilters] = useState<FilterState>(initialQuery.filters);
   const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
@@ -197,6 +200,8 @@ export default function EntregasPage() {
     isFetching,
     refresh,
   } = useEntregasData({ postProcessesEnabled });
+
+  const templatesAtLimit = isAtLimit('max_workflow_templates', templates.length);
 
   // Sem processos visíveis (flag desligada E nenhum processo vigente): o quadro
   // é sempre o de fluxos, a URL não ganha ?entidade= e nenhuma chave nova entra
@@ -1070,6 +1075,8 @@ export default function EntregasPage() {
                 setQuickAddTemplateId(templateId);
                 setNewWorkflowOpen(true);
               }}
+              onCreateTemplate={() => setTemplatesOpen(true)}
+              createTemplateDisabled={templatesAtLimit}
               membros={membros}
               templates={templates}
               postsCounts={postsCounts}
