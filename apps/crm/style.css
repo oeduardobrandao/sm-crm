@@ -5304,7 +5304,8 @@ body.role-agent input[name='valor_total'] {
   gap: 2rem;
 }
 
-/* Template tabs — shown instead of stacked rows when 3+ templates are active */
+/* Template tabs — always shown, one tab per template plus a trailing "+" tab
+ * for creating a new template. */
 /* Chrome-style tab strip: a soft band behind the tabs, inactive tabs
  * transparent on it, and the active tab painted with the page background so
  * it merges into the board below. The ::before/::after pseudos are the
@@ -5383,6 +5384,26 @@ body.role-agent input[name='valor_total'] {
   font-weight: 500;
   letter-spacing: 0;
   opacity: 0.7;
+}
+
+/* Trailing "+" tab: an action, not a tab. Icon only, never active, so it keeps the
+ * strip's chrome shape without the count badge or uppercase text. */
+.board-tab-add {
+  padding: 0.55rem 0.8rem;
+  color: var(--primary-color);
+  text-transform: none;
+  letter-spacing: 0;
+  flex: 0 0 auto;
+}
+
+.board-tab-add:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--primary-hover);
+}
+
+.board-tab-add:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 
 .board-container {

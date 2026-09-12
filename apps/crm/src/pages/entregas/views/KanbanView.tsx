@@ -101,6 +101,11 @@ interface KanbanViewBaseProps {
   onRecurring: (workflowId: number) => void;
   /** Quick-add: opens the new-workflow wizard preloaded with the row's template. */
   onAddWorkflow?: (templateId: number | null) => void;
+  /** Opens the existing "Gerenciar Templates" modal from the board's trailing "+" tab. */
+  onCreateTemplate?: () => void;
+  /** True when the workspace is at its plan's max_workflow_templates limit — the "+"
+   *  tab renders disabled with a tooltip instead of calling onCreateTemplate. */
+  createTemplateDisabled?: boolean;
   membros: Membro[];
   templates: WorkflowTemplate[];
   postsCounts: Map<number, number>;
@@ -385,10 +390,6 @@ const COL_PREFIX = 'col:';
 // a useMemo re-run just because the caller passed no postEntities prop.
 const EMPTY_POST_ENTITIES: PostEntity[] = [];
 
-// Above this many template rows the board switches from stacked rows to tabs,
-// so the rows don't pile up on top of each other.
-const TABS_THRESHOLD = 1;
-
 export function KanbanView({
   cards,
   allCards,
@@ -398,6 +399,8 @@ export function KanbanView({
   onRefresh,
   onRecurring,
   onAddWorkflow,
+  onCreateTemplate,
+  createTemplateDisabled,
   membros,
   templates,
   postsCounts,
@@ -1324,8 +1327,9 @@ export function KanbanView({
     </div>
   );
 
-  // With 2+ templates the stacked rows pile up, so switch to tabs and show one at a time.
-  const useTabs = boardRows.length > TABS_THRESHOLD;
+  // The tab strip is always on: with one template it's a single tab plus the trailing
+  // "+", which is how a second template gets created.
+  const useTabs = boardRows.length >= 1;
   const activeRow = boardRows.find((r) => r.key === activeRowKey) ?? boardRows[0];
 
   return (
@@ -1342,7 +1346,7 @@ export function KanbanView({
         onDragEnd={handleDragEnd}
       >
         <div className="board-rows-wrapper animate-up">
-          {useTabs && activeRow ? (
+          {useTabs && activeRow && (
             <div>
               <div className="board-tabs no-scrollbar" role="tablist">
                 {boardRows.map((row) => (
@@ -1358,12 +1362,21 @@ export function KanbanView({
                     <span className="board-tab-count">{rowCardCount(row)}</span>
                   </button>
                 ))}
+                {onCreateTemplate && (
+                  <button
+                    type="button"
+                    className="board-tab board-tab-add"
+                    aria-label="Novo template"
+                    title={createTemplateDisabled ? 'Limite do plano atingido' : 'Novo template'}
+                    disabled={createTemplateDisabled}
+                    onClick={onCreateTemplate}
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                )}
               </div>
               {renderRowBoard(activeRow)}
             </div>
-          ) : (
-            // Single template — no tab bar needed, just the board.
-            boardRows.map((row) => <div key={row.key}>{renderRowBoard(row)}</div>)
           )}
         </div>
         <DragOverlay>
