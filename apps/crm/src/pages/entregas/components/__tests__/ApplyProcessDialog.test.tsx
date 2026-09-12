@@ -96,7 +96,12 @@ describe('ApplyProcessDialog', () => {
     expect(args.templateFingerprint).toBe(
       '0|Copy|padrao|2|corridos\n1|Design|padrao|3|uteis\n2|Aprovação|aprovacao_cliente|1|corridos',
     );
-    expect(args.stepOverrides['0'].responsavel_id).toBe(9);
+    // Sem o usuário mexer no Select de responsável, a chave fica OMITIDA
+    // (não o id bruto 9 do template): apply_post_process usa o próprio
+    // fallback (template -> membro ainda existente -> null), evitando
+    // membro_not_found quando o responsável do template já saiu da equipe
+    // (achado de review, fase 4 final).
+    expect(args.stepOverrides['0'].responsavel_id).toBeUndefined();
     expect(typeof args.stepOverrides['0'].prazo_efetivo).toBe('string');
     expect(args.stepOverrides['1'].prazo_efetivo).toBeNull();
     expect(onApplied).toHaveBeenCalledWith(expect.objectContaining({ process_id: 5 }));

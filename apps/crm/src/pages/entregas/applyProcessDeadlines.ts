@@ -101,6 +101,8 @@ export function buildApplyPlan(input: ApplyPlanInput): ApplyPlan {
 
   const steps: ApplyPlanStep[] = etapas.map((e, i) => {
     const override = input.responsaveis[i];
+    // Só para exibição no diálogo (mostra o responsável do template
+    // pré-selecionado): o envio ao RPC é decidido abaixo, à parte.
     const responsavelId = override === undefined ? (e.responsavel_id ?? null) : override;
     return {
       ordem: i,
@@ -115,7 +117,17 @@ export function buildApplyPlan(input: ApplyPlanInput): ApplyPlan {
   const overrides: StepOverrides = {};
   for (const s of steps) {
     if (s.ordem < startOrdem) continue;
-    overrides[String(s.ordem)] = { responsavel_id: s.responsavelId, prazo_efetivo: s.prazoEfetivo };
+    const userOverride = input.responsaveis[s.ordem];
+    overrides[String(s.ordem)] =
+      // Sem override do usuário: omite a chave e deixa apply_post_process usar
+      // o próprio fallback dele (responsavel_id do template só se ainda
+      // resolver para um membro da conta; senão null). Enviar aqui o
+      // responsavel_id bruto do template forçaria membro_not_found sempre que
+      // ele já tiver saído da equipe, bloqueando "Aplicar processo" inteiro
+      // por um membro que o usuário nem tocou (achado de review, fase 4 final).
+      userOverride === undefined
+        ? { prazo_efetivo: s.prazoEfetivo }
+        : { responsavel_id: userOverride, prazo_efetivo: s.prazoEfetivo };
   }
   return { modo, steps, overrides, blockers, needsApprovalStep };
 }

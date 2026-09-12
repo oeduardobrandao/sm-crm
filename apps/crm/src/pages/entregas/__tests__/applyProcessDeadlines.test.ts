@@ -31,9 +31,12 @@ describe('buildApplyPlan padrao', () => {
     // 3 dias úteis a partir de segunda 14/09 = quinta 17/09
     expect(new Date(plan.steps[1].prazoEfetivo!).getDate()).toBe(17);
     expect(plan.steps[2].prazoEfetivo).toBeNull();
+    // Sem override do usuário: a chave responsavel_id fica OMITIDA (não
+    // null), para que apply_post_process use o próprio fallback dele — ver
+    // teste "membro do template já removido" abaixo.
     expect(plan.overrides).toEqual({
-      '1': { responsavel_id: null, prazo_efetivo: plan.steps[1].prazoEfetivo },
-      '2': { responsavel_id: null, prazo_efetivo: null },
+      '1': { prazo_efetivo: plan.steps[1].prazoEfetivo },
+      '2': { prazo_efetivo: null },
     });
     expect(plan.overrides['0']).toBeUndefined();
   });
@@ -47,10 +50,32 @@ describe('buildApplyPlan padrao', () => {
       clienteHasDiaEntrega: true,
       responsaveis: { 1: 4 },
     });
+    // steps[].responsavelId é só para exibição no diálogo: mostra o
+    // responsável do template pré-selecionado mesmo sem override.
     expect(plan.steps[0].responsavelId).toBe(9);
     expect(plan.steps[1].responsavelId).toBe(4);
-    expect(plan.overrides['0'].responsavel_id).toBe(9);
+    // overrides['0'] não tem override do usuário: não força o responsavel_id
+    // bruto do template (achado de review, fase 4 final — ver teste abaixo).
+    expect(plan.overrides['0'].responsavel_id).toBeUndefined();
     expect(plan.overrides['1'].responsavel_id).toBe(4);
+  });
+  it('membro do template já removido da equipe: não força responsavel_id, deixa o fallback do RPC decidir', () => {
+    // apply_post_process só valida um responsavel_id EXPLÍCITO contra a
+    // tabela membros (membro_not_found se não existir mais); ausente a
+    // chave, ele mesmo tenta resolver o responsavel_id do template e cai
+    // para null se o membro já saiu da conta. Forçar aqui o id bruto do
+    // template (9, possivelmente de um membro removido) bloquearia
+    // "Aplicar processo" inteiro por uma etapa que o usuário nem tocou.
+    const plan = buildApplyPlan({
+      template: padrao,
+      startOrdem: 0,
+      now: NOW,
+      fixedDates: {},
+      deliveryDate: null,
+      clienteHasDiaEntrega: true,
+      responsaveis: {},
+    });
+    expect(plan.overrides['0']).not.toHaveProperty('responsavel_id');
   });
   it('template vazio e etapa inicial fora do intervalo são bloqueios', () => {
     expect(
