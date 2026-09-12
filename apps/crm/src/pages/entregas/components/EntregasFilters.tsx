@@ -454,7 +454,7 @@ export function EntregasFilters({
   }));
 
   return (
-    <div className="flex flex-wrap items-center gap-2 mb-0 animate-up flex-1 min-w-[240px] min-[901px]:justify-end">
+    <div className="flex flex-wrap items-center gap-2 mb-0 animate-up flex-1 min-w-[240px]">
       {/* Primary filters, always on the toolbar. The busca input lives on the
           VistasTabs row above (EntregasPage renders it), not here. */}
       {isPosts ? (
