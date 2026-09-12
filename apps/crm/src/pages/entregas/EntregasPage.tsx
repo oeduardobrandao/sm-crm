@@ -1046,8 +1046,25 @@ export default function EntregasPage() {
         }
       />
 
-      {/* One toolbar row: orientation (view + mode) on the left, filters on the
-          right. Wraps on narrow viewports instead of stacking five control rows. */}
+      {/* Filters get their own row, always in the same place regardless of which
+          view/mode toggles show below -- otherwise they'd share a line with a
+          variable-width set of controls and jump around between views. */}
+      {showFilters && (
+        <div style={{ display: 'flex', marginBottom: '0.75rem' }}>
+          <EntregasFilters
+            filters={filters}
+            onChange={setFilters}
+            clientes={clientes}
+            membros={membros}
+            templates={templates}
+            etapaNames={etapaNames}
+            mode={postsMode ? 'posts' : 'entregas'}
+          />
+        </div>
+      )}
+
+      {/* Orientation row: view tabs + mode + entity toggles. Wraps on narrow
+          viewports instead of stacking three separate control rows. */}
       <div
         style={{
           display: 'flex',
@@ -1108,18 +1125,6 @@ export default function EntregasPage() {
           mode === 'entregas' && (
             <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
           )}
-
-        {showFilters && (
-          <EntregasFilters
-            filters={filters}
-            onChange={setFilters}
-            clientes={clientes}
-            membros={membros}
-            templates={templates}
-            etapaNames={etapaNames}
-            mode={postsMode ? 'posts' : 'entregas'}
-          />
-        )}
       </div>
 
       {activeView === 'kanban' &&
