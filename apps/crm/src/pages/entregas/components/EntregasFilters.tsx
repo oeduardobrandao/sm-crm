@@ -16,11 +16,9 @@ import {
   LayoutTemplate,
   Milestone,
   Shapes,
-  SlidersHorizontal,
   UserCheck,
   UserPen,
   Users,
-  X,
   type LucideIcon,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -415,40 +413,6 @@ function PrazoEtapaFilter({
   );
 }
 
-/**
- * Removable summary of a filter that lives inside "Mais filtros": it keeps an
- * active hidden filter visible on the toolbar, so nothing filters the board
- * invisibly. Editing still happens in the popover; the X clears the dimension.
- */
-function ActiveFilterChip({
-  icon: Icon,
-  dimension,
-  summary,
-  onClear,
-}: {
-  icon: LucideIcon;
-  dimension: string;
-  summary: string;
-  onClear: () => void;
-}) {
-  return (
-    <span className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[var(--primary-color)] bg-transparent px-3 text-xs shadow-sm">
-      <Icon className="h-3.5 w-3.5 opacity-60 shrink-0" />
-      <span className="truncate max-w-[160px]">
-        {dimension} · {summary}
-      </span>
-      <button
-        type="button"
-        aria-label={`Remover filtro de ${dimension}`}
-        onClick={onClear}
-        className="ml-0.5 rounded-full p-0.5 opacity-60 hover:opacity-100"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    </span>
-  );
-}
-
 export function EntregasFilters({
   filters,
   onChange,
@@ -489,67 +453,6 @@ export function EntregasFilters({
     color: o.color,
   }));
 
-  // Anything not on the toolbar lives in "Mais filtros"; when active it also
-  // surfaces as a removable chip so the applied filter stays visible.
-  const secondaryChips = (
-    isPosts
-      ? [
-          {
-            key: 'etapas',
-            icon: Milestone,
-            dimension: 'Etapa',
-            summary: summarizeSelection(etapaOptions, filters.filterEtapas),
-            clear: () => onChange({ ...filters, filterEtapas: [] }),
-          },
-          {
-            key: 'tipos',
-            icon: Shapes,
-            dimension: 'Tipo',
-            summary: summarizeSelection(tipoOptions, filters.filterTipos),
-            clear: () => onChange({ ...filters, filterTipos: [] }),
-          },
-          {
-            key: 'prazo',
-            icon: CalendarClock,
-            dimension: 'Prazo',
-            summary: prazoSummary(filters),
-            clear: () =>
-              onChange({ ...filters, filterPrazo: [], filterPrazoFrom: '', filterPrazoTo: '' }),
-          },
-        ]
-      : [
-          {
-            key: 'postResponsaveis',
-            icon: UserPen,
-            dimension: 'Resp. do post',
-            summary: summarizeSelection(membroOptions, filters.filterPostResponsaveis),
-            clear: () => onChange({ ...filters, filterPostResponsaveis: [] }),
-          },
-          {
-            key: 'etapas',
-            icon: Milestone,
-            dimension: 'Etapa',
-            summary: summarizeSelection(etapaOptions, filters.filterEtapas),
-            clear: () => onChange({ ...filters, filterEtapas: [] }),
-          },
-          {
-            key: 'templates',
-            icon: LayoutTemplate,
-            dimension: 'Template',
-            summary: summarizeSelection(templateOptions, filters.filterTemplates),
-            clear: () => onChange({ ...filters, filterTemplates: [] }),
-          },
-          {
-            key: 'prazo',
-            icon: CalendarClock,
-            dimension: 'Prazo',
-            summary: prazoSummary(filters),
-            clear: () =>
-              onChange({ ...filters, filterPrazo: [], filterPrazoFrom: '', filterPrazoTo: '' }),
-          },
-        ]
-  ).filter((chip): chip is typeof chip & { summary: string } => chip.summary != null);
-
   return (
     <div className="flex flex-wrap items-center gap-2 mb-0 animate-up flex-1 min-w-[240px] min-[901px]:justify-end">
       {/* Primary filters, always on the toolbar. The busca input lives on the
@@ -580,6 +483,23 @@ export function EntregasFilters({
             onSelectedChange={(filterMembros) => onChange({ ...filters, filterMembros })}
             isStacked={false}
           />
+          <MultiSelectFilter
+            placeholder="Todas as etapas"
+            icon={Milestone}
+            options={etapaOptions}
+            selected={filters.filterEtapas}
+            onSelectedChange={(filterEtapas) => onChange({ ...filters, filterEtapas })}
+            isStacked={false}
+          />
+          <MultiSelectFilter
+            placeholder="Todos os tipos"
+            icon={Shapes}
+            options={tipoOptions}
+            selected={filters.filterTipos}
+            onSelectedChange={(filterTipos) => onChange({ ...filters, filterTipos })}
+            isStacked={false}
+          />
+          <PrazoEtapaFilter filters={filters} onChange={onChange} isStacked={false} />
         </>
       ) : (
         <>
@@ -607,98 +527,35 @@ export function EntregasFilters({
             onSelectedChange={(filterMembros) => onChange({ ...filters, filterMembros })}
             isStacked={false}
           />
+          <MultiSelectFilter
+            placeholder="Responsável do post"
+            icon={UserPen}
+            options={membroOptions}
+            selected={filters.filterPostResponsaveis}
+            onSelectedChange={(filterPostResponsaveis) =>
+              onChange({ ...filters, filterPostResponsaveis })
+            }
+            isStacked={false}
+          />
+          <MultiSelectFilter
+            placeholder="Todas as etapas"
+            icon={Milestone}
+            options={etapaOptions}
+            selected={filters.filterEtapas}
+            onSelectedChange={(filterEtapas) => onChange({ ...filters, filterEtapas })}
+            isStacked={false}
+          />
+          <MultiSelectFilter
+            placeholder="Todos os templates"
+            icon={LayoutTemplate}
+            options={templateOptions}
+            selected={filters.filterTemplates}
+            onSelectedChange={(filterTemplates) => onChange({ ...filters, filterTemplates })}
+            isStacked={false}
+          />
+          <PrazoEtapaFilter filters={filters} onChange={onChange} isStacked={false} />
         </>
       )}
-
-      {secondaryChips.map((chip) => (
-        <ActiveFilterChip
-          key={chip.key}
-          icon={chip.icon}
-          dimension={chip.dimension}
-          summary={chip.summary}
-          onClear={chip.clear}
-        />
-      ))}
-
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            className="h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm mb-0 shrink-0"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            Mais filtros
-            {secondaryChips.length > 0 && (
-              <span
-                className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
-                style={{
-                  background: 'var(--primary-color)',
-                  color: '#000',
-                  width: '1.1rem',
-                  height: '1.1rem',
-                }}
-              >
-                {secondaryChips.length}
-              </span>
-            )}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-[300px] p-4">
-          <div className="flex flex-col gap-3">
-            {isPosts ? (
-              <>
-                <MultiSelectFilter
-                  placeholder="Todas as etapas"
-                  icon={Milestone}
-                  options={etapaOptions}
-                  selected={filters.filterEtapas}
-                  onSelectedChange={(filterEtapas) => onChange({ ...filters, filterEtapas })}
-                  isStacked
-                />
-                <MultiSelectFilter
-                  placeholder="Todos os tipos"
-                  icon={Shapes}
-                  options={tipoOptions}
-                  selected={filters.filterTipos}
-                  onSelectedChange={(filterTipos) => onChange({ ...filters, filterTipos })}
-                  isStacked
-                />
-                <PrazoEtapaFilter filters={filters} onChange={onChange} isStacked />
-              </>
-            ) : (
-              <>
-                <MultiSelectFilter
-                  placeholder="Responsável do post"
-                  icon={UserPen}
-                  options={membroOptions}
-                  selected={filters.filterPostResponsaveis}
-                  onSelectedChange={(filterPostResponsaveis) =>
-                    onChange({ ...filters, filterPostResponsaveis })
-                  }
-                  isStacked
-                />
-                <MultiSelectFilter
-                  placeholder="Todas as etapas"
-                  icon={Milestone}
-                  options={etapaOptions}
-                  selected={filters.filterEtapas}
-                  onSelectedChange={(filterEtapas) => onChange({ ...filters, filterEtapas })}
-                  isStacked
-                />
-                <MultiSelectFilter
-                  placeholder="Todos os templates"
-                  icon={LayoutTemplate}
-                  options={templateOptions}
-                  selected={filters.filterTemplates}
-                  onSelectedChange={(filterTemplates) => onChange({ ...filters, filterTemplates })}
-                  isStacked
-                />
-                <PrazoEtapaFilter filters={filters} onChange={onChange} isStacked />
-              </>
-            )}
-          </div>
-        </PopoverContent>
-      </Popover>
 
       {activeCount > 0 && (
         <Button
