@@ -24,6 +24,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useEntitlements } from '@/hooks/useEntitlements';
@@ -82,6 +92,8 @@ import {
   duplicateWorkflow,
   getStandalonePost,
   getDeadlineInfo,
+  removeWorkflow,
+  removeWorkflowPost,
   type ActivePost,
   type Workflow,
   type WorkflowEtapa,
@@ -142,6 +154,12 @@ export default function EntregasPage() {
   const [editCard, setEditCard] = useState<BoardCard | null>(null);
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
+  // Confirmações do kebab dos cards do quadro de Fluxos (spec §4): excluir
+  // fluxo e excluir post. "Encerrar processo" NÃO passa por aqui -- o kebab
+  // chama commands.remover do usePostProcessCommands direto no KanbanView,
+  // que já tem o diálogo, o tratamento de revisão obsoleta e a invalidação.
+  const [deleteWorkflowTarget, setDeleteWorkflowTarget] = useState<BoardCard | null>(null);
+  const [deletePostTarget, setDeletePostTarget] = useState<PostEntity | null>(null);
   // One page-wide mode: flipping Fluxos/Publicações persists across Kanban,
   // Calendário and Lista. An explicit ?mode= in the URL wins; with no ?mode=
   // param, it seeds from the conta's last-used mode.
@@ -576,6 +594,34 @@ export default function EntregasPage() {
     setDrawerCard(null);
     setDrawerInitialPostId(null);
     setStandalonePostId(entity.process.post_id);
+  };
+  // Kebab do card de fluxo (spec §4): mesma RPC que EditWorkflowModal usa,
+  // só que sem passar pelo modal — confirmação própria no card.
+  const confirmDeleteWorkflow = async () => {
+    const card = deleteWorkflowTarget;
+    if (!card) return;
+    setDeleteWorkflowTarget(null);
+    try {
+      await removeWorkflow(card.workflow.id!);
+      toast.success('Fluxo excluído!');
+      refresh();
+    } catch {
+      toast.error('Erro ao excluir fluxo');
+    }
+  };
+  // "Excluir post" no kebab: mesma RPC que StandalonePostDrawer usa no botão
+  // de excluir do drawer.
+  const confirmDeletePost = async () => {
+    const entity = deletePostTarget;
+    if (!entity) return;
+    setDeletePostTarget(null);
+    try {
+      await removeWorkflowPost(entity.process.post_id);
+      toast.success('Post excluído.');
+      refresh();
+    } catch {
+      toast.error('Erro ao excluir post');
+    }
   };
   // Object-based click contract shared by the four post-list views (Kanban/Lista/
   // Calendário/PublicacoesPanel): a post avulso has no workflow card to open, so it
@@ -1088,6 +1134,8 @@ export default function EntregasPage() {
               onPostsClick={handleCardClick}
               onRefresh={refresh}
               onRecurring={setRecurringWfId}
+              onDeleteWorkflowClick={setDeleteWorkflowTarget}
+              onDeletePostClick={setDeletePostTarget}
               onAddWorkflow={(templateId) => {
                 setQuickAddTemplateId(templateId);
                 setNewWorkflowOpen(true);
@@ -1253,6 +1301,46 @@ export default function EntregasPage() {
           }}
         />
       )}
+      <AlertDialog
+        open={!!deleteWorkflowTarget}
+        onOpenChange={(open) => !open && setDeleteWorkflowTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir fluxo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &quot;{deleteWorkflowTarget?.workflow.titulo}&quot; e suas etapas serão excluídos
+              permanentemente. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteWorkflowTarget(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteWorkflow}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={!!deletePostTarget}
+        onOpenChange={(open) => !open && setDeletePostTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &quot;{deletePostTarget?.titulo}&quot; será excluído permanentemente. Esta ação não
+              pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletePostTarget(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeletePost}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {editCard && (
         <EditWorkflowModal
           card={editCard}

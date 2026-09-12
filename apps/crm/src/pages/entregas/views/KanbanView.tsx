@@ -99,6 +99,11 @@ interface KanbanViewBaseProps {
   onPostsClick: (card: BoardCard) => void;
   onRefresh: () => void;
   onRecurring: (workflowId: number) => void;
+  /** Kebab "Excluir" do card de fluxo. Sem esta prop o item some (mesmo gate
+   *  de onDeleteClick que WorkflowCard já usa). */
+  onDeleteWorkflowClick?: (card: BoardCard) => void;
+  /** Kebab "Excluir post" do card de post individual. */
+  onDeletePostClick?: (entity: PostEntity) => void;
   /** Quick-add: opens the new-workflow wizard preloaded with the row's template. */
   onAddWorkflow?: (templateId: number | null) => void;
   /** Opens the existing "Gerenciar Templates" modal from the board's trailing "+" tab. */
@@ -295,6 +300,7 @@ function SortableCard({
   onRefresh,
   onRevertClick,
   onForwardClick,
+  onDeleteClick,
   postsCount,
   approvedPostsCount,
   clearedClienteCount,
@@ -309,6 +315,7 @@ function SortableCard({
   onRefresh: () => void;
   onRevertClick: () => void;
   onForwardClick: () => void;
+  onDeleteClick?: () => void;
   postsCount: number;
   approvedPostsCount: number;
   clearedClienteCount: number;
@@ -336,6 +343,7 @@ function SortableCard({
         onRefresh={onRefresh}
         onRevertClick={onRevertClick}
         onForwardClick={onForwardClick}
+        onDeleteClick={onDeleteClick}
         postsCount={postsCount}
         approvedPostsCount={approvedPostsCount}
         clearedClienteCount={clearedClienteCount}
@@ -355,11 +363,15 @@ function SortablePostCard({
   onClick,
   onForwardClick,
   onRevertClick,
+  onRemoveProcessClick,
+  onDeleteClick,
 }: {
   entity: PostEntity;
   onClick?: () => void;
   onForwardClick: () => void;
   onRevertClick?: () => void;
+  onRemoveProcessClick?: () => void;
+  onDeleteClick?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entity.id,
@@ -381,6 +393,8 @@ function SortablePostCard({
         dragHandle={<GripVertical className="h-4 w-4" {...listeners} />}
         onForwardClick={onForwardClick}
         onRevertClick={onRevertClick}
+        onRemoveProcessClick={onRemoveProcessClick}
+        onDeleteClick={onDeleteClick}
         canRevert={previousStepOf(entity.process) != null}
         forwardLabel={forwardLabelFor(entity.process)}
       />
@@ -407,6 +421,8 @@ export function KanbanView({
   onCreateTemplate,
   createTemplateDisabled,
   onAddPostIndividual,
+  onDeleteWorkflowClick,
+  onDeletePostClick,
   membros,
   templates,
   postsCounts,
@@ -1306,6 +1322,10 @@ export function KanbanView({
                                 : commands.avancar(targetOf(entity))
                             }
                             onRevertClick={() => commands.voltar(targetOf(entity))}
+                            onRemoveProcessClick={() => commands.remover(targetOf(entity))}
+                            onDeleteClick={
+                              onDeletePostClick ? () => onDeletePostClick(entity) : undefined
+                            }
                           />
                         </Fragment>
                       );
@@ -1328,6 +1348,9 @@ export function KanbanView({
                             })
                           }
                           onForwardClick={() => handleForwardCard(card)}
+                          onDeleteClick={
+                            onDeleteWorkflowClick ? () => onDeleteWorkflowClick(card) : undefined
+                          }
                           postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                           approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
                           clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}

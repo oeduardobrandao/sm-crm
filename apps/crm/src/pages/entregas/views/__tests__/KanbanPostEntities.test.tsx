@@ -50,13 +50,20 @@ vi.mock('../../components/WorkflowCard', () => ({
   WorkflowCard: ({
     card,
     dragHandle,
+    onDeleteClick,
   }: {
     card: { workflow: { titulo: string } };
     dragHandle?: React.ReactNode;
+    onDeleteClick?: () => void;
   }) => (
     <div data-testid="workflow-card">
       {card.workflow.titulo}
       {dragHandle && <span data-testid="drag-handle" />}
+      {onDeleteClick && (
+        <button type="button" onClick={onDeleteClick}>
+          Excluir fluxo
+        </button>
+      )}
     </div>
   ),
 }));
@@ -69,6 +76,8 @@ vi.mock('../../components/PostProcessCard', () => ({
     dragHandle,
     forwardLabel,
     canRevert,
+    onRemoveProcessClick,
+    onDeleteClick,
   }: {
     entity: { titulo: string };
     onClick?: () => void;
@@ -77,6 +86,8 @@ vi.mock('../../components/PostProcessCard', () => ({
     dragHandle?: React.ReactNode;
     forwardLabel?: string;
     canRevert?: boolean;
+    onRemoveProcessClick?: () => void;
+    onDeleteClick?: () => void;
   }) => (
     <div data-testid="post-process-card" onClick={onClick}>
       {entity.titulo}
@@ -89,6 +100,16 @@ vi.mock('../../components/PostProcessCard', () => ({
       {canRevert && onRevertClick && (
         <button type="button" onClick={onRevertClick}>
           Voltar etapa
+        </button>
+      )}
+      {onRemoveProcessClick && (
+        <button type="button" onClick={onRemoveProcessClick}>
+          Encerrar processo
+        </button>
+      )}
+      {onDeleteClick && (
+        <button type="button" onClick={onDeleteClick}>
+          Excluir post
         </button>
       )}
     </div>
@@ -178,7 +199,11 @@ function postEntity(id: number, ordem: number, titulo: string): PostEntity {
   };
 }
 
-function renderBoard(posts: PostEntity[], onPostClick = vi.fn()) {
+function renderBoard(
+  posts: PostEntity[],
+  onPostClick = vi.fn(),
+  extra: Partial<React.ComponentProps<typeof KanbanView>> = {},
+) {
   render(
     <KanbanView
       cards={[card]}
@@ -197,6 +222,7 @@ function renderBoard(posts: PostEntity[], onPostClick = vi.fn()) {
       clearedClienteCounts={new Map()}
       revisaoInternaCounts={new Map()}
       awaitingClienteCounts={new Map()}
+      {...extra}
     />,
   );
   return onPostClick;
@@ -269,5 +295,41 @@ describe('KanbanView com posts individuais', () => {
   it('post na coluna tem alça de arrastar', () => {
     renderBoard([postEntity(9, 0, 'Post Individual A')]);
     expect(screen.getAllByTestId('drag-handle').length).toBeGreaterThan(0);
+  });
+
+  // Regressão: os itens de kebab dos cards são renderizados só quando o
+  // handler existe, então uma prop não ligada deixa o menu vazio (bug real,
+  // achado na revisão do redesign dos cards compactos).
+  it('kebab do post: "Encerrar processo" passa pelo comando compartilhado e chama remove_post_process', async () => {
+    store.removePostProcess.mockResolvedValue({ ok: true, revisao: 2 });
+    const entity = postEntity(9, 0, 'Post Individual A');
+    renderBoard([entity]);
+    fireEvent.click(screen.getByRole('button', { name: 'Encerrar processo' }));
+    // Diálogo do usePostProcessCommands, não um segundo diálogo da página.
+    expect(await screen.findByText('Remover processo?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover' }));
+    await waitFor(() =>
+      expect(store.removePostProcess).toHaveBeenCalledWith(
+        entity.process.id,
+        entity.process.revisao,
+      ),
+    );
+  });
+
+  it('kebab do post: "Excluir post" chama onDeletePostClick com a entidade', () => {
+    const onDeletePostClick = vi.fn();
+    const entity = postEntity(9, 0, 'Post Individual A');
+    renderBoard([entity], vi.fn(), { onDeletePostClick });
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir post' }));
+    expect(onDeletePostClick).toHaveBeenCalledWith(expect.objectContaining({ id: 'post:9' }));
+  });
+
+  it('kebab do fluxo: "Excluir" chama onDeleteWorkflowClick com o card', () => {
+    const onDeleteWorkflowClick = vi.fn();
+    renderBoard([], vi.fn(), { onDeleteWorkflowClick });
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir fluxo' }));
+    expect(onDeleteWorkflowClick).toHaveBeenCalledWith(
+      expect.objectContaining({ workflow: expect.objectContaining({ id: 1 }) }),
+    );
   });
 });

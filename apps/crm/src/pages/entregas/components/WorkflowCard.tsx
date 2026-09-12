@@ -691,6 +691,17 @@ export function WorkflowCard({
               <Edit2 className="h-3.5 w-3.5" />
               Editar
             </DropdownMenuItem>
+            {onPostsClick && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPostsClick();
+                }}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Abrir posts
+              </DropdownMenuItem>
+            )}
             {card.etapaIdx > 0 && onRevertClick && (
               <DropdownMenuItem
                 onClick={(e) => {
