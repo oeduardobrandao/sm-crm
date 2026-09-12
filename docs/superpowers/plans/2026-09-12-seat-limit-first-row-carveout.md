@@ -109,30 +109,54 @@ BEGIN
   -- serialize concurrent inserts for this (workspace, limit) to prevent overshoot
   PERFORM pg_advisory_xact_lock(hashtext(v_ws_id::text || ':' || v_limit_key));
 
-  IF v_ws_mode = 'via_clientes' THEN
-    -- workspace-wide count across the clientes join
-    v_sql := format(
-      'select count(*) from %I t join clientes c on c.id = t.%I where c.conta_id = $1',
-      TG_TABLE_NAME, v_ws_col);
-    EXECUTE v_sql USING v_ws_id INTO v_count;
-  ELSE
-    EXECUTE format('select (($1).%I)::text', v_scope_col) USING NEW INTO v_scope_val;
-    -- Cast $1 explicitly; the scope value was read from the same column type,
-    -- so casting back via the column avoids implicit text→typed mismatches.
-    v_sql := format('select count(*) from %I where %I::text = $1', TG_TABLE_NAME, v_scope_col);
-    IF v_pred <> '' THEN
-      v_sql := v_sql || ' and ' || v_pred;
+  IF v_allow_first THEN
+    -- The carve-out needs to know the count before it can decide whether to
+    -- skip the limit check, so it must be computed up front for this trigger.
+    IF v_ws_mode = 'via_clientes' THEN
+      v_sql := format(
+        'select count(*) from %I t join clientes c on c.id = t.%I where c.conta_id = $1',
+        TG_TABLE_NAME, v_ws_col);
+      EXECUTE v_sql USING v_ws_id INTO v_count;
+    ELSE
+      EXECUTE format('select (($1).%I)::text', v_scope_col) USING NEW INTO v_scope_val;
+      v_sql := format('select count(*) from %I where %I::text = $1', TG_TABLE_NAME, v_scope_col);
+      IF v_pred <> '' THEN
+        v_sql := v_sql || ' and ' || v_pred;
+      END IF;
+      EXECUTE v_sql USING v_scope_val INTO v_count;
     END IF;
-    EXECUTE v_sql USING v_scope_val INTO v_count;
+
+    IF v_count = 0 THEN
+      RETURN NEW; -- first row for this scope is always allowed, regardless of plan/limit state
+    END IF;
   END IF;
 
-  IF v_allow_first AND v_count = 0 THEN
-    RETURN NEW; -- first row for this scope is always allowed, regardless of plan/limit state
-  END IF;
-
+  -- Fast path preserved for every other trigger (the 8 not passing
+  -- allow_first_row): resolve the limit first and skip the count entirely
+  -- when unlimited, so bulk inserts on unlimited plans don't pay for a
+  -- COUNT(*) they'll never need.
   v_limit := effective_plan_limit(v_ws_id, v_limit_key);
   IF v_limit IS NULL THEN
     RETURN NEW; -- unlimited
+  END IF;
+
+  IF NOT v_allow_first THEN
+    IF v_ws_mode = 'via_clientes' THEN
+      -- workspace-wide count across the clientes join
+      v_sql := format(
+        'select count(*) from %I t join clientes c on c.id = t.%I where c.conta_id = $1',
+        TG_TABLE_NAME, v_ws_col);
+      EXECUTE v_sql USING v_ws_id INTO v_count;
+    ELSE
+      EXECUTE format('select (($1).%I)::text', v_scope_col) USING NEW INTO v_scope_val;
+      -- Cast $1 explicitly; the scope value was read from the same column type,
+      -- so casting back via the column avoids implicit text→typed mismatches.
+      v_sql := format('select count(*) from %I where %I::text = $1', TG_TABLE_NAME, v_scope_col);
+      IF v_pred <> '' THEN
+        v_sql := v_sql || ' and ' || v_pred;
+      END IF;
+      EXECUTE v_sql USING v_scope_val INTO v_count;
+    END IF;
   END IF;
 
   IF v_count >= v_limit THEN
@@ -152,13 +176,14 @@ CREATE TRIGGER trg_limit_seats BEFORE INSERT ON workspace_members
     'max_team_members', 'direct', 'workspace_id', 'workspace_id', '', 'true');
 ```
 
-Note the `v_allow_first AND v_count = 0` check is placed *before* the
-`effective_plan_limit()` call — this matters: when there's no default plan
-configured, `effective_plan_limit()` itself doesn't raise (its contract is
-"never throws"), but the trigger would otherwise raise on the comparison
-`v_count >= v_limit` when `v_limit` resolves to `0`. Short-circuiting before
-that call also means the carve-out doesn't depend on `effective_plan_limit()`
-succeeding at all.
+**Post-review correction (folded into the shipped migration, code above already
+reflects this):** an initial draft computed `v_count` unconditionally before
+calling `effective_plan_limit()`, which silently removed the original
+function's fast path — every trigger, not just seats, used to skip the
+`COUNT(*)` entirely when `effective_plan_limit()` resolved to `NULL`
+(unlimited). The shipped version only computes the count up front when
+`v_allow_first` is true (seats); the other 8 triggers still resolve the limit
+first and return immediately on `NULL`, exactly as before this migration.
 
 - [ ] **Step 2: Confirm the migration filename doesn't collide**
 

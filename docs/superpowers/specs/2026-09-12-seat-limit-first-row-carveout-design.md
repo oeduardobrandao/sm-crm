@@ -72,6 +72,15 @@ if v_allow_first and v_count = 0 then
 end if;
 ```
 
+The other 8 triggers must keep their original fast path: `effective_plan_limit()`
+resolved first, returning immediately on `NULL` (unlimited) *before* ever running
+the `COUNT(*)`. Only `trg_limit_seats` needs the count computed up front (to
+decide the carve-out before the limit even matters), so the final function
+branches on `v_allow_first` to compute the count either before or after the
+`effective_plan_limit()` call, rather than always counting first — otherwise
+every insert on every plan-gated table, including bulk imports on unlimited
+plans, would pay for a `COUNT(*)` it used to skip entirely.
+
 `trg_limit_seats` is recreated passing `''` for the existing `status_pred`
 slot and `'true'` for the new slot — the only trigger touched by this
 migration. `CREATE OR REPLACE FUNCTION` alone updates the behavior seen by
