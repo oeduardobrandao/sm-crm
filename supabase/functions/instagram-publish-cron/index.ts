@@ -73,12 +73,18 @@ async function markFailed(
 ) {
   const errorCode = classifyPublishError(err);
   const message = err instanceof Error ? err.message : String(err);
+  // publish_processing_at is deliberately NOT nulled here (unlike every success/manual-retry
+  // path). Clearing it let a post that failed in Phase 1 get reclaimed by Phase 3 in the SAME
+  // cron tick (10-min stale-lock window was the only guard), burning all 3 retries inside ~60s
+  // for errors whose own message says "retry later". Leaving claim_posts_for_publishing's
+  // now()-stamped lock in place turns that window into a free ~10-minute backoff instead.
+  // Manual retry (instagram-publish/handler.ts) overwrites this column itself, so it never
+  // waits on the lock to clear.
   const fields: Record<string, unknown> = {
     status: "falha_publicacao",
     publish_retry_count: retryCount + 1,
     publish_error: message.slice(0, 500),
     publish_error_code: errorCode,
-    publish_processing_at: null,
   };
   // Um container expirado nunca volta a funcionar; sem limpar, o retry
   // automático (processRetry) reusaria o mesmo id e falharia 3x igual.

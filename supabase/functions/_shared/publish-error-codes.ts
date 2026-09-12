@@ -9,6 +9,8 @@ export type PublishErrorCode =
   | "NO_MEDIA"
   | "MEDIA_UNSUPPORTED"
   | "TRIAL_INELIGIBLE"
+  | "CAPTION_TOO_LONG"
+  | "ACCOUNT_RESTRICTED"
   | "CONTAINER_EXPIRED"
   | "RATE_LIMIT"
   | "IG_TRANSIENT"
@@ -23,6 +25,8 @@ export const NON_RETRYABLE_CODES: readonly PublishErrorCode[] = [
   "NO_MEDIA",
   "MEDIA_UNSUPPORTED",
   "TRIAL_INELIGIBLE",
+  "CAPTION_TOO_LONG",
+  "ACCOUNT_RESTRICTED",
 ] as const;
 
 /** Lançada pelos guards de publicação quando um post com Reel de teste não é
@@ -67,6 +71,9 @@ export function classifyPublishError(err: unknown): PublishErrorCode {
   // for capturado em staging/prod — não inventar regex para wording da Meta;
   // até lá cai em UNKNOWN (comportamento definido no spec).
   if (msg.includes("reel de teste exige exatamente um vídeo")) return "TRIAL_INELIGIBLE";
+  if (msg.includes("only photo or video can be accepted as media type")) return "MEDIA_UNSUPPORTED";
+  if (msg.includes("caption was too long")) return "CAPTION_TOO_LONG";
+  if (msg.includes("user access is restricted")) return "ACCOUNT_RESTRICTED";
   if (msg.includes("does not exist, cannot be loaded due to missing permissions")) {
     return "CONTAINER_EXPIRED";
   }
@@ -126,6 +133,16 @@ export const PUBLISH_ERROR_COPY: Record<PublishErrorCode, PublishErrorDisplay> =
     titulo: "Reel de teste não aceito",
     explicacao:
       "O post precisa de exatamente um vídeo e a conta precisa ser profissional, pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o Reel de teste, e tente novamente.",
+  },
+  CAPTION_TOO_LONG: {
+    titulo: "Legenda acima do limite do Instagram",
+    explicacao:
+      "O Instagram aceita no máximo 2.200 caracteres na legenda. Reduza o texto na galeria e tente novamente.",
+  },
+  ACCOUNT_RESTRICTED: {
+    titulo: "Acesso da conta restrito pelo Instagram",
+    explicacao:
+      "O Instagram restringiu o acesso desta conta. Confira o aplicativo do Instagram por avisos ou restrições antes de tentar novamente.",
   },
   CONTAINER_EXPIRED: {
     titulo: "Publicação preparada expirou no Instagram",
