@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const store = vi.hoisted(() => ({
   transitionPostProcess: vi.fn(),
   removePostProcess: vi.fn(),
-  updateWorkflowPost: vi.fn(),
+  sendPostToCliente: vi.fn(),
   CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
 }));
 vi.mock('../../../../store', () => store);
@@ -92,7 +92,7 @@ beforeEach(() => {
     steps: [],
   });
   store.removePostProcess.mockResolvedValue({ ok: true });
-  store.updateWorkflowPost.mockResolvedValue({});
+  store.sendPostToCliente.mockResolvedValue({ id: 77, status: 'enviado_cliente' });
 });
 
 describe('usePostProcessCommands', () => {
@@ -162,9 +162,38 @@ describe('usePostProcessCommands', () => {
     fireEvent.click(screen.getByText('avancar'));
     fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Enviar ao portal do cliente' }));
+    await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77));
+    expect(store.transitionPostProcess).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(store.updateWorkflowPost).toHaveBeenCalledWith(77, { status: 'enviado_cliente' }),
+      expect(toast.success).toHaveBeenCalledWith('Post enviado ao portal do cliente.'),
     );
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+  });
+
+  // Standalone fix: sendPostToCliente faz um UPDATE condicional
+  // (.eq('status', 'aprovado_interno')) e retorna null quando zero linhas
+  // batem -- o status mudou em outro lugar entre a UI habilitar o botão
+  // (snapshot) e o clique de fato (edição em outra aba, agendamento
+  // publicado etc.). sendToPortal precisa tratar esse null como o mesmo
+  // "estado obsoleto" que as RPCs de transição sinalizam com post_changed,
+  // em vez de reportar sucesso para uma escrita que o banco rejeitou.
+  it('"Enviar ao portal" com status mudado em outro lugar (zero linhas) mostra post_changed e NÃO reporta sucesso', async () => {
+    store.sendPostToCliente.mockResolvedValueOnce(null);
+    const t = target(
+      [step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')],
+      'aprovado_interno',
+    );
+    const { onRefresh } = renderHarness(t);
+    fireEvent.click(screen.getByText('avancar'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar ao portal do cliente' }));
+    await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O status do post mudou em outro lugar. Recarregue e tente de novo.',
+      ),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
     expect(store.transitionPostProcess).not.toHaveBeenCalled();
     await waitFor(() => expect(onRefresh).toHaveBeenCalled());
   });
@@ -344,9 +373,7 @@ describe('usePostProcessCommands', () => {
       fireEvent.click(screen.getByText('avancar'));
       fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Enviar ao portal do cliente' }));
-      await waitFor(() =>
-        expect(store.updateWorkflowPost).toHaveBeenCalledWith(77, { status: 'enviado_cliente' }),
-      );
+      await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77));
       await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
       expect(store.transitionPostProcess).not.toHaveBeenCalled();
     });

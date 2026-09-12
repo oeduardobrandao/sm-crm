@@ -62,7 +62,7 @@ const store = vi.hoisted(() => ({
   reorderFluxosBoard: vi.fn().mockResolvedValue(undefined),
   transitionPostProcess: vi.fn(),
   removePostProcess: vi.fn(),
-  updateWorkflowPost: vi.fn(),
+  sendPostToCliente: vi.fn(),
   CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   getDeadlineInfo: vi.fn(),
   addWorkflow: vi.fn(),
@@ -261,6 +261,7 @@ beforeEach(() => {
     post_status_changed: false,
     steps: [],
   });
+  store.sendPostToCliente.mockResolvedValue({ id: 109, status: 'enviado_cliente' });
 });
 
 describe('KanbanView drag de um post individual (fase 4, Task 8)', () => {
@@ -402,9 +403,7 @@ describe('KanbanView drag de um post individual (fase 4, Task 8)', () => {
     // 3) Com o fix, "Enviar ao portal" passa por dismissChoice() (mesmo
     // caminho do Cancelar) ANTES de rodar sendToPortal -- pendingInsertRef já
     // deve estar limpo aqui, e nenhuma transição de etapa roda.
-    await waitFor(() =>
-      expect(store.updateWorkflowPost).toHaveBeenCalledWith(109, { status: 'enviado_cliente' }),
-    );
+    await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(109));
     expect(store.transitionPostProcess).not.toHaveBeenCalled();
 
     // 4) Comando por BOTÃO (não-drag) no MESMO post -- nunca seta

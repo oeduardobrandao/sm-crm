@@ -341,6 +341,31 @@ describe('store workflow posts', () => {
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['status', 'aprovado_interno'] });
   });
 
+  it('sendPostToCliente updates ONE aprovado_interno post to enviado_cliente', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: { id: 42, status: 'enviado_cliente' },
+      error: null,
+    });
+
+    const result = await store.sendPostToCliente(42);
+
+    expect(result).toEqual({ id: 42, status: 'enviado_cliente' });
+    const call = getCalls('workflow_posts', 'update').at(-1)!;
+    expect(call.payload).toEqual({ status: 'enviado_cliente' });
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 42] });
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['status', 'aprovado_interno'] });
+    expect(call.modifiers).toContainEqual({ method: 'maybeSingle', args: [] });
+  });
+
+  it('sendPostToCliente returns null when the status already moved (zero rows matched)', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: null,
+      error: null,
+    });
+
+    expect(await store.sendPostToCliente(42)).toBeNull();
+  });
+
   it('approvePostsInternally updates all non-final posts to aprovado_cliente', async () => {
     mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', { data: null, error: null });
 

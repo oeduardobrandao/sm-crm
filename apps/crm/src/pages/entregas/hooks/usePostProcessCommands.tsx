@@ -14,8 +14,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   removePostProcess,
+  sendPostToCliente,
   transitionPostProcess,
-  updateWorkflowPost,
   type ApprovalChoice,
   type ProcessCommand,
 } from '../../../store';
@@ -24,7 +24,11 @@ import {
   hasLaterPendingApprovalStep,
   isClientCleared,
 } from '../approvalAdvance';
-import { getPostProcessErrorToast, isStaleStateError } from '../postProcessErrors';
+import {
+  getPostProcessErrorToast,
+  isStaleStateError,
+  POST_PROCESS_ERROR_MESSAGES,
+} from '../postProcessErrors';
 import {
   activeStepOf,
   nextDeadlineFor,
@@ -205,7 +209,12 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
     async (t: ProcessTarget) => {
       setBusy(true);
       try {
-        await updateWorkflowPost(t.post.id, { status: 'enviado_cliente' });
+        const result = await sendPostToCliente(t.post.id);
+        if (!result) {
+          toast.error(POST_PROCESS_ERROR_MESSAGES.post_changed);
+          invalidate(t);
+          return;
+        }
         toast.success('Post enviado ao portal do cliente.');
         invalidate(t);
       } catch (err) {
