@@ -97,7 +97,6 @@ import {
   type ActivePost,
   type Workflow,
   type WorkflowEtapa,
-  type WorkflowPost,
 } from '../../store';
 import { captureEvent } from '@/lib/analytics';
 
@@ -192,6 +191,11 @@ export default function EntregasPage() {
     cliente_id: number | null;
     templateId: number;
   } | null>(null);
+  // ApplyProcessDialog chama onApplied() e DEPOIS onClose() no sucesso (outros
+  // dois call sites dependem dessa ordem) -- sem esta flag, o fallback de
+  // onClose (abrir Publicações) roda também depois de aplicar com sucesso e
+  // sobrescreve o revealPostProcesses (Fluxos) que acabou de rodar.
+  const manualApplyAppliedRef = useRef(false);
   // Desmembrar mantendo etapas / aplicar processo: aguarda a entidade aparecer
   // em `postEntities` (não filtrado) depois do refresh disparado por
   // revealPostProcesses, para então limpar filtros e abrir o drawer (spec §4.1).
@@ -661,14 +665,14 @@ export default function EntregasPage() {
   // stays as-is if already kanban/list; anything else -- chart/calendar/concluded --
   // switches to kanban), put that view's mode in Publicações, and open the new
   // post in the standalone slot.
-  const handleAvulsoCreated = (post: WorkflowPost) => {
+  const handleAvulsoCreated = (postId: number) => {
     const targetView: ActiveView =
       activeView === 'kanban' || activeView === 'list' ? activeView : 'kanban';
     if (targetView !== activeView) setActiveView(targetView);
     setMode('publicacoes');
     setDrawerCard(null);
     setDrawerInitialPostId(null);
-    setStandalonePostId(post.id!);
+    setStandalonePostId(postId);
   };
 
   // A saved view is just a serialized query string; applying one replays it over
@@ -1289,7 +1293,7 @@ export default function EntregasPage() {
           clientes={clientes}
           templates={templates}
           templateId={avulsoTemplateId ?? undefined}
-          onCreated={handleAvulsoCreated}
+          onCreated={(post) => handleAvulsoCreated(post.id!)}
           onProcessApplied={(post) => revealPostProcesses([post.id!])}
           onNeedsManualApply={(post, template) => {
             setManualApplyPost({
@@ -1438,11 +1442,26 @@ export default function EntregasPage() {
         // já criou o post e repassa aqui em vez de tentar aplicar sozinho.
         <ApplyProcessDialog
           open
-          onClose={() => setManualApplyPost(null)}
+          onClose={() => {
+            // onApplied já rodou (sucesso): não sobrescrever o
+            // revealPostProcesses com o fallback de cancelamento abaixo.
+            if (manualApplyAppliedRef.current) {
+              manualApplyAppliedRef.current = false;
+              return;
+            }
+            // Cancelou sem aplicar: o post avulso já existe sem processo --
+            // fechar só o estado o faria sumir do quadro de Fluxos (não tem
+            // processo nem card). Mesmo fallback do fluxo normal do
+            // NewAvulsoDialog (handleAvulsoCreated).
+            const postId = manualApplyPost.id;
+            setManualApplyPost(null);
+            handleAvulsoCreated(postId);
+          }}
           post={manualApplyPost}
           initialTemplateId={manualApplyPost.templateId}
           membros={membros}
           onApplied={(r) => {
+            manualApplyAppliedRef.current = true;
             setManualApplyPost(null);
             revealPostProcesses([r.post_id]);
           }}

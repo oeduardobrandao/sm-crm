@@ -45,6 +45,12 @@ BEGIN
   IF p_tipo_prazo IS NOT NULL AND p_tipo_prazo NOT IN ('uteis', 'corridos') THEN
     RAISE EXCEPTION 'tipo_prazo_invalido' USING ERRCODE = 'P0001';
   END IF;
+  -- Mesmo teto do input da UI (PostProductionSection.tsx MAX_PRAZO_DIAS):
+  -- sem isso, um valor absurdo em 'uteis' trava computeDeadlineDate (loop
+  -- de 1 iteracao por dia util) para qualquer um que abrir o board/drawer.
+  IF p_prazo_dias IS NOT NULL AND (p_prazo_dias < 0 OR p_prazo_dias > 999) THEN
+    RAISE EXCEPTION 'prazo_dias_invalido' USING ERRCODE = 'P0001';
+  END IF;
 
   PERFORM pg_advisory_xact_lock(hashtext(v_conta::text || ':post_move'));
 

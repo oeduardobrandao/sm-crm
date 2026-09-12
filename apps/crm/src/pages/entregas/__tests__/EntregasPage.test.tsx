@@ -51,10 +51,15 @@ vi.mock('../components/NewAvulsoDialog', () => ({
     open,
     onClose,
     onCreated,
+    onNeedsManualApply,
   }: {
     open: boolean;
     onClose: () => void;
     onCreated: (post: { id: number }) => void;
+    onNeedsManualApply?: (
+      post: { id: number; titulo: string | null; cliente_id: number | null },
+      template: { id: number },
+    ) => void;
   }) =>
     open ? (
       <div>
@@ -68,9 +73,46 @@ vi.mock('../components/NewAvulsoDialog', () => ({
         >
           Create avulso post
         </button>
+        <button
+          onClick={() => {
+            // Template pré-vinculado com modo_prazo != 'padrao' (spec §3): o
+            // post já foi criado, mas precisa do ApplyProcessDialog manual.
+            onNeedsManualApply?.({ id: 77, titulo: 'Post avulso', cliente_id: 1 }, { id: 9 });
+            onClose();
+          }}
+        >
+          Create avulso post needing manual apply
+        </button>
         <button onClick={onClose}>Close avulso dialog</button>
       </div>
     ) : null,
+}));
+
+vi.mock('../components/ApplyProcessDialog', () => ({
+  ApplyProcessDialog: ({
+    onClose,
+    onApplied,
+    post,
+  }: {
+    onClose: () => void;
+    onApplied: (result: { post_id: number }) => void;
+    post: { id: number };
+  }) => (
+    <div>
+      <div>ApplyProcessDialogMock: {post.id}</div>
+      <button onClick={onClose}>Cancel apply process</button>
+      <button
+        onClick={() => {
+          // Mirrors the real dialog's confirm flow (ApplyProcessDialog.tsx):
+          // onApplied() then onClose(), same batch.
+          onApplied({ post_id: post.id });
+          onClose();
+        }}
+      >
+        Apply process
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('../components/EntregasFilters', () => ({
@@ -786,6 +828,44 @@ describe('EntregasPage', () => {
     // mock rendering instead of the KanbanView mock.
     expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
     expect(screen.queryByText('NewAvulsoDialogMock')).not.toBeInTheDocument();
+  });
+
+  it('reveals the standalone post if the manual apply dialog is cancelled (post was already created)', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    fireEvent.click(screen.getByText('Create avulso post needing manual apply'));
+
+    expect(screen.getByText('ApplyProcessDialogMock: 77')).toBeInTheDocument();
+
+    // Cancelling must NOT just close the dialog -- the post already exists
+    // without a process, so it needs the same reveal as a normal avulso
+    // creation, or it silently vanishes from the Fluxos board (2026-09-12
+    // Codex review finding).
+    fireEvent.click(screen.getByText('Cancel apply process'));
+
+    expect(screen.queryByText('ApplyProcessDialogMock: 77')).not.toBeInTheDocument();
+    expect(screen.getByText('Standalone drawer: 77')).toBeInTheDocument();
+    expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
+  });
+
+  it('reveals the post on the Fluxos board (not Publicações) after successfully applying a process manually', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+
+    fireEvent.click(screen.getByText('Post avulso'));
+    fireEvent.click(screen.getByText('Create avulso post needing manual apply'));
+    expect(screen.getByText('ApplyProcessDialogMock: 77')).toBeInTheDocument();
+
+    // The real ApplyProcessDialog calls onApplied() then onClose() in the same
+    // batch on success -- the onClose fallback added for the cancel case must
+    // NOT also fire here and override the reveal (2026-09-12 opus review
+    // finding: it did, landing the user in Publicações instead of Fluxos).
+    fireEvent.click(screen.getByText('Apply process'));
+
+    expect(screen.queryByText('ApplyProcessDialogMock: 77')).not.toBeInTheDocument();
+    expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
+    expect(screen.queryByText('Posts kanban view: 0')).not.toBeInTheDocument();
+    expect(screen.queryByText('Standalone drawer: 77')).not.toBeInTheDocument();
   });
 
   it('keeps the current view when creating a post avulso from an already-Publicações kanban/lista', () => {
