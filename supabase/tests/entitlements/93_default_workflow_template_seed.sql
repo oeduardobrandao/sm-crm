@@ -11,7 +11,7 @@
 -- workspace + profile for ANY auth.users row without a matching pending
 -- invite in its raw_user_meta_data.conta_id -- see the same note in
 -- 74_invite_role_id.sql. Each case below is its own begin/rollback block so
--- an early failure doesn't mask the other two.
+-- an early failure doesn't mask the others.
 
 -- =============================================================
 -- 93-1: Fresh (non-invited) signup seeds exactly one "Padrão" template.
@@ -139,4 +139,121 @@ begin
 end $$;
 rollback;
 
--- Task 2 (backfill migration for existing workspaces) adds its case here.
+-- =============================================================
+-- 93-4: Backfill (20260920000002_backfill_default_workflow_template.sql) seeds
+-- "Padrão" only into a workspace with zero workflow_templates, is idempotent on
+-- re-run, and never touches a workspace that already has ANY template (even a
+-- user-made one).
+-- =============================================================
+begin;
+do $$
+declare
+  v_ws1    uuid;
+  v_ws2    uuid;
+  v_owner1 uuid := gen_random_uuid();
+  v_owner2 uuid := gen_random_uuid();
+  v_count  int;
+  v_nome   text;
+  v_etapas jsonb;
+begin
+  -- Workspace 1: zero templates, has a resolvable owner profile.
+  -- Bare `insert into auth.users` fires handle_new_user_workspace() (see the fixture
+  -- note at the top of this file), which auto-creates its own throwaway workspace +
+  -- profile row for v_owner1 (id conflict on a second INSERT into profiles) -- so
+  -- re-point that auto-created profile at v_ws1 with an UPDATE instead of inserting a
+  -- second row.
+  v_ws1 := et_make_workspace('free'); -- max_workflow_templates = 1
+  insert into auth.users (id) values (v_owner1);
+  update profiles set conta_id = v_ws1, role = 'owner', nome = 'Owner One' where id = v_owner1;
+
+  -- Workspace 2: already has one user-made template before the backfill runs.
+  v_ws2 := et_make_workspace('free');
+  insert into auth.users (id) values (v_owner2);
+  update profiles set conta_id = v_ws2, role = 'owner', nome = 'Owner Two' where id = v_owner2;
+  insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo)
+    values (v_owner2, v_ws2, 'Meu Template', '[]'::jsonb, 'padrao');
+
+  -- Run the backfill INSERT verbatim (20260920000002_backfill_default_workflow_template.sql).
+  insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo)
+  select
+    coalesce(
+      (select p.id from profiles p where p.conta_id = w.id and p.role = 'owner'
+        order by p.created_at limit 1),
+      w.created_by
+    ),
+    w.id,
+    'Padrão',
+    '[
+      {"nome":"Copy","prazo_dias":3,"tipo_prazo":"uteis","tipo":"padrao"},
+      {"nome":"Aprovação da Copy","prazo_dias":2,"tipo_prazo":"corridos","tipo":"aprovacao_cliente"},
+      {"nome":"Mídia","prazo_dias":3,"tipo_prazo":"uteis","tipo":"padrao"},
+      {"nome":"Aprovação da Mídia","prazo_dias":2,"tipo_prazo":"corridos","tipo":"aprovacao_cliente"},
+      {"nome":"Agendamento","prazo_dias":1,"tipo_prazo":"uteis","tipo":"padrao"}
+    ]'::jsonb,
+    'padrao'
+  from workspaces w
+  where not exists (select 1 from workflow_templates t where t.conta_id = w.id)
+    and coalesce(
+          (select p.id from profiles p where p.conta_id = w.id and p.role = 'owner'
+            order by p.created_at limit 1),
+          w.created_by
+        ) is not null
+    and (
+          effective_plan_limit(w.id, 'max_workflow_templates') is null
+          or effective_plan_limit(w.id, 'max_workflow_templates') > 0
+        );
+
+  -- ws1 now has exactly one "Padrão" template with 5 etapas.
+  select count(*) into v_count from workflow_templates where conta_id = v_ws1;
+  assert v_count = 1, format('93-4: expected exactly 1 workflow_templates row for ws1 after backfill, got %', v_count);
+
+  select nome, etapas into v_nome, v_etapas from workflow_templates where conta_id = v_ws1;
+  assert v_nome = 'Padrão', format('93-4: expected nome ''Padrão'' for ws1, got %', v_nome);
+  assert jsonb_array_length(v_etapas) = 5, format('93-4: expected 5 etapas for ws1, got %', jsonb_array_length(v_etapas));
+
+  -- ws2 (pre-existing template) is untouched: still exactly its one original row.
+  select count(*) into v_count from workflow_templates where conta_id = v_ws2;
+  assert v_count = 1, format('93-4: expected ws2 to remain at exactly 1 row (pre-existing template), got %', v_count);
+
+  select nome into v_nome from workflow_templates where conta_id = v_ws2;
+  assert v_nome = 'Meu Template', format('93-4: expected ws2''s template to remain ''Meu Template'' (untouched), got %', v_nome);
+
+  -- Re-run the exact same backfill INSERT: idempotent, no duplicate for ws1 or ws2.
+  insert into workflow_templates (user_id, conta_id, nome, etapas, modo_prazo)
+  select
+    coalesce(
+      (select p.id from profiles p where p.conta_id = w.id and p.role = 'owner'
+        order by p.created_at limit 1),
+      w.created_by
+    ),
+    w.id,
+    'Padrão',
+    '[
+      {"nome":"Copy","prazo_dias":3,"tipo_prazo":"uteis","tipo":"padrao"},
+      {"nome":"Aprovação da Copy","prazo_dias":2,"tipo_prazo":"corridos","tipo":"aprovacao_cliente"},
+      {"nome":"Mídia","prazo_dias":3,"tipo_prazo":"uteis","tipo":"padrao"},
+      {"nome":"Aprovação da Mídia","prazo_dias":2,"tipo_prazo":"corridos","tipo":"aprovacao_cliente"},
+      {"nome":"Agendamento","prazo_dias":1,"tipo_prazo":"uteis","tipo":"padrao"}
+    ]'::jsonb,
+    'padrao'
+  from workspaces w
+  where not exists (select 1 from workflow_templates t where t.conta_id = w.id)
+    and coalesce(
+          (select p.id from profiles p where p.conta_id = w.id and p.role = 'owner'
+            order by p.created_at limit 1),
+          w.created_by
+        ) is not null
+    and (
+          effective_plan_limit(w.id, 'max_workflow_templates') is null
+          or effective_plan_limit(w.id, 'max_workflow_templates') > 0
+        );
+
+  select count(*) into v_count from workflow_templates where conta_id = v_ws1;
+  assert v_count = 1, format('93-4: expected ws1 to still have exactly 1 row after re-running the backfill, got %', v_count);
+
+  select count(*) into v_count from workflow_templates where conta_id = v_ws2;
+  assert v_count = 1, format('93-4: expected ws2 to still have exactly 1 row after re-running the backfill, got %', v_count);
+
+  raise notice 'PASS 93-4: backfill is idempotent and selective';
+end $$;
+rollback;
