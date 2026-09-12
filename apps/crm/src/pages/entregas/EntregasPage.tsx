@@ -1050,7 +1050,7 @@ export default function EntregasPage() {
           view/mode toggles show below -- otherwise they'd share a line with a
           variable-width set of controls and jump around between views. */}
       {showFilters && (
-        <div style={{ display: 'flex', marginBottom: '0.35rem' }}>
+        <div style={{ display: 'flex' }}>
           <EntregasFilters
             filters={filters}
             onChange={setFilters}
