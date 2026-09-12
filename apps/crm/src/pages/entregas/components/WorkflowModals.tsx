@@ -52,6 +52,8 @@ import { MigrateTemplateDialog } from './MigrateTemplateDialog';
 import {
   SortableEtapaList,
   defaultEtapa,
+  findInvalidPrazoEtapa,
+  MAX_PRAZO_DIAS,
   type EtapaFormData,
   type ModoPrazo,
 } from './SortableEtapaList';
@@ -440,6 +442,13 @@ export function TemplatesModal({
     const validEtapas = etapas.filter((e) => e.nome.trim());
     if (validEtapas.length === 0) {
       toast.error('Adicione pelo menos uma etapa.');
+      return;
+    }
+    // apply_post_process rejeita prazo_dias > 999 (template_invalid) na hora de
+    // aplicar o template a um post; barrar aqui evita salvar um template que
+    // nunca vai aplicar.
+    if (findInvalidPrazoEtapa(validEtapas)) {
+      toast.error(`Prazo (dias) não pode passar de ${MAX_PRAZO_DIAS}.`);
       return;
     }
     setSaving(true);
