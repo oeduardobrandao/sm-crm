@@ -5305,22 +5305,15 @@ body.role-agent input[name='valor_total'] {
 }
 
 /* Template tabs — always shown, one tab per template plus a trailing "+" tab
- * for creating a new template. */
-/* Chrome-style tab strip: a soft band behind the tabs, inactive tabs
- * transparent on it, and the active tab painted with the page background so
- * it merges into the board below. The ::before/::after pseudos are the
- * signature Chrome flare: transparent quarter-round notches whose box-shadow
- * (in the tab color) fills the concave outer bottom corners. */
+ * for creating a new template. Underline style: no background band behind the
+ * strip, just a hairline across the bottom and a colored underline under the
+ * active tab, so the strip never reads as an unfinished gray box. */
 .board-tabs {
   display: flex;
   align-items: flex-end;
-  gap: 0;
+  gap: 1.75rem;
   overflow-x: auto;
-  background: var(--surface-2);
-  border-radius: 10px 10px 0 0;
-  /* 10px on top and sides: the grey frame around the active tab reads the
-   * same thickness everywhere (10px is also the flare's minimum clearance). */
-  padding: 6px 6px 0;
+  border-bottom: 1px solid var(--border-color);
   margin-bottom: 0.9rem;
 }
 
@@ -5328,9 +5321,8 @@ body.role-agent input[name='valor_total'] {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.55rem 1.1rem;
+  padding: 0 0 0.65rem;
   border: none;
-  border-radius: 10px 10px 0 0;
   background: transparent;
   color: var(--text-muted);
   font-size: 0.75rem;
@@ -5344,38 +5336,24 @@ body.role-agent input[name='valor_total'] {
 }
 
 .board-tab:hover:not(:disabled) {
-  background: var(--surface-hover);
   color: var(--text-main);
 }
 
 .board-tab.active,
 .board-tab.active:hover {
-  background: var(--bg-color);
   color: var(--text-main);
   font-weight: 600;
-  z-index: 1;
 }
 
-.board-tab.active::before,
 .board-tab.active::after {
   content: '';
   position: absolute;
-  bottom: 0;
-  width: 10px;
-  height: 10px;
-  background: transparent;
-}
-
-/* Radial gradients give the concave curve the exact same 10px radius as the
- * tab's top corners (the box-shadow notch trick renders visually fatter). */
-.board-tab.active::before {
-  left: -10px;
-  background: radial-gradient(circle 10px at 0 0, transparent 9.5px, var(--bg-color) 10px);
-}
-
-.board-tab.active::after {
-  right: -10px;
-  background: radial-gradient(circle 10px at 100% 0, transparent 9.5px, var(--bg-color) 10px);
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--primary-color);
 }
 
 .board-tab-count {
@@ -5386,10 +5364,10 @@ body.role-agent input[name='valor_total'] {
   opacity: 0.7;
 }
 
-/* Trailing "+" tab: an action, not a tab. Icon only, never active, so it keeps the
- * strip's chrome shape without the count badge or uppercase text. */
+/* Trailing "+ Novo template" tab: an action, not a tab. Never active, so it
+ * never gets the underline or the count badge, and stays sentence case to
+ * read as an action rather than another tab label. */
 .board-tab-add {
-  padding: 0.55rem 0.8rem;
   color: var(--primary-color);
   text-transform: none;
   letter-spacing: 0;
@@ -5397,7 +5375,6 @@ body.role-agent input[name='valor_total'] {
 }
 
 .board-tab-add:hover:not(:disabled) {
-  background: var(--surface-hover);
   color: var(--primary-hover);
 }
 

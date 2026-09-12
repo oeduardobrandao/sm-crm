@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Trash2, Edit2, FileText, Settings, ArrowRightLeft } from 'lucide-react';
@@ -407,6 +407,7 @@ export function TemplatesModal({
   const [deleteTemplateId, setDeleteTemplateId] = useState<number | null>(null);
   const [fNome, setFNome] = useState('');
   const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
+  const formTopRef = useRef<HTMLDivElement>(null);
 
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<'templates' | 'properties'>('templates');
@@ -499,6 +500,7 @@ export function TemplatesModal({
         }),
       ),
     );
+    formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleDeleteConfirm = async () => {
@@ -591,7 +593,39 @@ export function TemplatesModal({
           </div>
           {activeTab === 'templates' && (
             <>
-              <div style={{ marginBottom: '1rem' }}>
+              <div ref={formTopRef} style={{ marginBottom: '1rem' }}>
+                <h4 style={{ marginBottom: '0.75rem' }}>
+                  {editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}
+                </h4>
+                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
+                  <Label>Nome *</Label>
+                  <Input
+                    placeholder="Ex: Fluxo Padrão de Post"
+                    value={fNome}
+                    onChange={(e) => setFNome(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
+                  <Label>Modo de Prazo</Label>
+                  <Select value={fModoPrazo} onValueChange={(v) => setFModoPrazo(v as ModoPrazo)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="padrao">Duração (padrão)</SelectItem>
+                      <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
+                      <SelectItem value="data_entrega">Data de entrega do cliente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <SortableEtapaList
+                  etapas={etapas}
+                  setEtapas={setEtapas}
+                  modoPrazo={fModoPrazo}
+                  membros={membros}
+                />
+              </div>
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                 {templates.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)' }}>Nenhum template salvo.</p>
                 ) : (
@@ -640,38 +674,6 @@ export function TemplatesModal({
                     </div>
                   ))
                 )}
-              </div>
-              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                <h4 style={{ marginBottom: '0.75rem' }}>
-                  {editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}
-                </h4>
-                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
-                  <Label>Nome *</Label>
-                  <Input
-                    placeholder="Ex: Fluxo Padrão de Post"
-                    value={fNome}
-                    onChange={(e) => setFNome(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
-                  <Label>Modo de Prazo</Label>
-                  <Select value={fModoPrazo} onValueChange={(v) => setFModoPrazo(v as ModoPrazo)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="padrao">Duração (padrão)</SelectItem>
-                      <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
-                      <SelectItem value="data_entrega">Data de entrega do cliente</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <SortableEtapaList
-                  etapas={etapas}
-                  setEtapas={setEtapas}
-                  modoPrazo={fModoPrazo}
-                  membros={membros}
-                />
               </div>
             </>
           )}
