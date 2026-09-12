@@ -112,15 +112,18 @@ export interface PostEntityContext {
   covers?: Map<number, PostMedia>;
 }
 
-export function toPostEntity(
-  process: PostProcessWithPost,
-  ctx: PostEntityContext,
-): PostEntity | null {
-  const steps = [...process.steps].sort((a, b) => a.ordem - b.ordem);
-  const step =
-    steps.find((s) => s.estado === 'ativo') ?? steps.find((s) => s.ordem === process.etapa_atual);
-  if (!step) return null;
-  const clienteId = process.post.cliente_id;
+/** Campos de PostEntity que dependem só da etapa ativa: reusado por
+ *  toPostEntity e pelo overlay otimista do KanbanView (applyPostOverlay) para
+ *  que os dois nunca divirjam sobre o que uma etapa implica — patchear só
+ *  `step.ordem` sem recomputar isso deixa deadline/tipo_prazo/responsável da
+ *  etapa ANTERIOR visíveis até o refetch (achado de review, fase 4 final). */
+export function derivePostStepFields(
+  step: PostProcessStep,
+  membros: Membro[],
+): Pick<
+  PostEntity,
+  'step' | 'etapaOrdem' | 'etapaNome' | 'responsavel' | 'prazoEfetivo' | 'deadline'
+> {
   // Resolvido uma vez e reusado abaixo: prazoEfetivo e deadline PRECISAM concordar
   // sobre estourado. etapaDeadlineDateOf cai em iniciado_em+prazo_dias quando
   // step.prazo_efetivo está null (limpo via update_post_process_step), então deadline
@@ -134,24 +137,36 @@ export function toPostEntity(
     tipo_prazo: step.tipo_prazo,
   });
   return {
-    kind: 'post',
-    id: `post:${process.id}`,
-    process,
     step,
-    templateId: process.template_id,
-    steps: steps.map((s) => ({ ordem: s.ordem, nome: s.nome, tipo: s.tipo })),
     etapaOrdem: step.ordem,
     etapaNome: step.nome,
     responsavel:
-      step.responsavel_id != null
-        ? ctx.membros.find((m) => m.id === step.responsavel_id)
-        : undefined,
+      step.responsavel_id != null ? membros.find((m) => m.id === step.responsavel_id) : undefined,
     prazoEfetivo,
-    posicao: process.board_position,
     deadline: deadlineFromPrazoEfetivo(
       prazoEfetivo ? prazoEfetivo.toISOString() : null,
       step.prazo_dias,
     ),
+  };
+}
+
+export function toPostEntity(
+  process: PostProcessWithPost,
+  ctx: PostEntityContext,
+): PostEntity | null {
+  const steps = [...process.steps].sort((a, b) => a.ordem - b.ordem);
+  const step =
+    steps.find((s) => s.estado === 'ativo') ?? steps.find((s) => s.ordem === process.etapa_atual);
+  if (!step) return null;
+  const clienteId = process.post.cliente_id;
+  return {
+    kind: 'post',
+    id: `post:${process.id}`,
+    process,
+    templateId: process.template_id,
+    steps: steps.map((s) => ({ ordem: s.ordem, nome: s.nome, tipo: s.tipo })),
+    ...derivePostStepFields(step, ctx.membros),
+    posicao: process.board_position,
     cliente: clienteId != null ? ctx.clientes.find((c) => c.id === clienteId) : undefined,
     titulo: process.post.titulo,
     clienteAvatarUrl: clienteId != null ? ctx.clienteAvatars?.get(clienteId) : undefined,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  derivePostStepFields,
   entityNumericId,
   isPostEntity,
   sortEntitiesByPosicao,
@@ -267,6 +268,47 @@ describe('toPostEntity', () => {
     expect(e!.prazoEfetivo).not.toBeNull();
     expect(e!.prazoEfetivo!.getTime()).toBeLessThan(Date.now());
     expect(e!.deadline.estourado).toBe(true);
+  });
+});
+
+describe('derivePostStepFields', () => {
+  // Achado da revisão final da fase 4: o overlay otimista do KanbanView
+  // (applyPostOverlay) precisa recomputar TODOS esses campos a partir da nova
+  // etapa, não só etapaOrdem/etapaNome/step.ordem — senão tipo_prazo,
+  // responsável e deadline continuam mostrando os da etapa ANTERIOR até o
+  // refetch (badge "corridos"/"úteis", avatar do responsável e cor do prazo
+  // errados por até a duração do RPC + invalidate).
+  it('recomputa responsável, prazoEfetivo e deadline a partir da nova etapa, não da anterior', () => {
+    const copy = step({
+      ordem: 0,
+      nome: 'Copy',
+      estado: 'concluido',
+      responsavel_id: 7,
+      tipo_prazo: 'corridos',
+      prazo_dias: 2,
+      prazo_efetivo: '2020-01-01T00:00:00.000Z', // bem passado: estourado se sobrar
+    });
+    const design = step({
+      ordem: 1,
+      nome: 'Design',
+      estado: 'ativo',
+      responsavel_id: null,
+      tipo_prazo: 'uteis',
+      prazo_dias: 3,
+      iniciado_em: new Date(Date.now() - 1000).toISOString(),
+      prazo_efetivo: null,
+    });
+    const fields = derivePostStepFields(design, [{ id: 7, nome: 'Ana' } as never]);
+    expect(fields.step).toBe(design);
+    expect(fields.etapaOrdem).toBe(1);
+    expect(fields.etapaNome).toBe('Design');
+    // A etapa nova não tem responsavel_id: não deve herdar o "Ana" de Copy.
+    expect(fields.responsavel).toBeUndefined();
+    // A etapa nova ainda não venceu (recém-iniciada): não deve herdar o
+    // prazoEfetivo estourado de Copy.
+    expect(fields.deadline.estourado).toBe(false);
+    expect(fields.prazoEfetivo).not.toBeNull();
+    expect(fields.prazoEfetivo!.getTime()).toBeGreaterThan(new Date(copy.prazo_efetivo!).getTime());
   });
 });
 

@@ -54,6 +54,7 @@ import {
   toWorkflowEntities,
   sortEntitiesByPrazo,
   sortEntitiesByPosicao,
+  derivePostStepFields,
   type BoardEntity,
   type PostEntity,
 } from '../boardEntity';
@@ -647,18 +648,17 @@ export function KanbanView({
         if (pp !== undefined && pp !== out.posicao) out = { ...out, posicao: pp };
         const ordem = pendingPostSteps.get(p.process.id);
         if (ordem !== undefined && ordem !== out.etapaOrdem) {
-          const s = out.steps.find((st) => st.ordem === ordem);
-          out = {
-            ...out,
-            etapaOrdem: ordem,
-            etapaNome: s?.nome ?? out.etapaNome,
-            step: { ...out.step, ordem },
-          };
+          // Etapa completa de process.steps (não a StageStep enxuta de out.steps):
+          // só ela carrega tipo_prazo/prazo_dias/responsavel_id/prazo_efetivo, o
+          // que deadline/tipo_prazo/responsável do card precisam para não ficar
+          // presos na etapa anterior até o refetch (achado de review, fase 4 final).
+          const fullStep = out.process.steps.find((st) => st.ordem === ordem);
+          if (fullStep) out = { ...out, ...derivePostStepFields(fullStep, membros) };
         }
         return out;
       });
     },
-    [pendingPostPositions, pendingPostSteps],
+    [pendingPostPositions, pendingPostSteps, membros],
   );
   const posts = useMemo(
     () => applyPostOverlay(postEntities ?? EMPTY_POST_ENTITIES),
