@@ -141,6 +141,41 @@ describe('buildBoardRows', () => {
   it('descarta linhas sem nenhum card', () => {
     expect(buildBoardRows([], [])).toEqual([]);
   });
+
+  it('inclui uma aba vazia para cada template sem fluxos ativos', () => {
+    const rows = buildBoardRows(
+      [],
+      [
+        {
+          id: 7,
+          nome: 'Redes',
+          etapas: [
+            { nome: 'Copy', prazo_dias: 1, tipo_prazo: 'corridos' },
+            { nome: 'Publicação', prazo_dias: 1, tipo_prazo: 'corridos' },
+          ],
+        } as never,
+      ],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].key).toBe('template:7');
+    expect(rows[0].label).toBe('REDES');
+    expect(rows[0].templateId).toBe(7);
+    expect(rows[0].columns.map((c) => c.ordem)).toEqual([0, 1]);
+    expect(rows[0].columns.map((c) => c.nome)).toEqual(['Copy', 'Publicação']);
+    expect(rows[0].columns.every((c) => c.cards.length === 0 && c.posts.length === 0)).toBe(true);
+  });
+
+  it('não duplica a aba quando o template já tem uma linha com fluxos ativos', () => {
+    const rows = buildBoardRows(toWorkflowEntities([makeCard(1, 7, DUP, 0)]), [
+      { id: 7, nome: 'Redes', etapas: [] } as never,
+      {
+        id: 9,
+        nome: 'Vazio',
+        etapas: [{ nome: 'Única', prazo_dias: 1, tipo_prazo: 'corridos' }],
+      } as never,
+    ]);
+    expect(rows.map((r) => r.key)).toEqual(['template:7', 'template:9']);
+  });
 });
 
 describe('columnKey / parseColumnKey', () => {
