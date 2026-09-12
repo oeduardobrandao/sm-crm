@@ -869,15 +869,21 @@ describe('PostProductionSection', () => {
     expect(summary.textContent).toContain('Ana');
     expect(screen.queryByText('Copy')).not.toBeInTheDocument();
     expect(document.querySelector('.history-timeline')).not.toBeInTheDocument();
+    // O histórico só alimenta o corpo (fora do DOM enquanto recolhida): a
+    // query não deve nem disparar (busca real por post desnecessária a cada
+    // drawer aberto com a seção recolhida, que é o padrão agora).
+    expect(store.getPostProcessEvents).not.toHaveBeenCalled();
   });
 
-  it('clicar no cabeçalho abre a seção (corpo passa a existir)', () => {
+  it('clicar no cabeçalho abre a seção (corpo passa a existir) e só então busca o histórico', async () => {
     renderSection();
+    expect(store.getPostProcessEvents).not.toHaveBeenCalled();
     const toggle = screen.getByRole('button', { name: /Produção/ });
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(document.querySelector('.history-timeline')).toBeInTheDocument();
     expect(screen.getByText('Copy')).toBeInTheDocument();
+    await waitFor(() => expect(store.getPostProcessEvents).toHaveBeenCalledWith([77]));
   });
 
   it('processo concluído recolhido: resumo cai na última etapa, não na primeira', () => {

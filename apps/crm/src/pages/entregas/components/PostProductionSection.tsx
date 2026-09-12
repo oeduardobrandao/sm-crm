@@ -106,9 +106,21 @@ export function PostProductionSection({
   onAvancar,
 }: PostProductionSectionProps) {
   const qc = useQueryClient();
+  const storageKey = `post-production-open:${postId}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      return sessionStorage.getItem(storageKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  // Histórico só alimenta o corpo (linha 372+, dentro de `open`); sem o
+  // `enabled`, toda seção recolhida (o padrão agora, spec §1) buscaria os
+  // eventos à toa no mount do drawer.
   const { data: events = [] } = useQuery({
     queryKey: ['post-process-events', String(postId)],
     queryFn: () => getPostProcessEvents([postId]),
+    enabled: open,
   });
   const [draft, setDraft] = useState<
     Record<
@@ -141,14 +153,6 @@ export function PostProductionSection({
   // some quando a etapa recarrega com nova revisao, igual ao draft.
   const [stepMode, setStepMode] = useState<Record<number, PrazoStepMode>>({});
 
-  const storageKey = `post-production-open:${postId}`;
-  const [open, setOpen] = useState(() => {
-    try {
-      return sessionStorage.getItem(storageKey) === '1';
-    } catch {
-      return false;
-    }
-  });
   const toggleOpen = () => {
     setOpen((prev) => {
       const next = !prev;
