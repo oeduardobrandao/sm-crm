@@ -130,6 +130,28 @@ describe('KanbanView board tab strip', () => {
     expect(container.querySelectorAll('.board-column').length).toBeGreaterThan(0);
   });
 
+  it('shows a tab for a template with zero active fluxos, alongside a template with cards', () => {
+    const { container } = render(
+      <KanbanView
+        {...boardProps([makeCard('Posts Agosto', 1, 1)])}
+        templates={[
+          { id: 1, nome: 'Com fluxos', etapas: [] },
+          {
+            id: 2,
+            nome: 'Vazio',
+            etapas: [{ nome: 'Única', prazo_dias: 1, tipo_prazo: 'corridos' }],
+          },
+        ]}
+      />,
+    );
+
+    const labels = [...container.querySelectorAll('.board-tab:not(.board-tab-add)')].map(
+      (el) => el.textContent,
+    );
+    expect(labels.some((t) => t?.includes('VAZIO'))).toBe(true);
+    expect(labels).toHaveLength(2);
+  });
+
   it('renders the "+" tab when onCreateTemplate is provided and calls it once on click', () => {
     const onCreateTemplate = vi.fn();
     render(

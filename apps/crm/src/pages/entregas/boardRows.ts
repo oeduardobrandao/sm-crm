@@ -1,6 +1,12 @@
 import type { WorkflowTemplate } from '../../store';
 import type { BoardCard } from './hooks/useEntregasData';
-import { entityNumericId, stageSignature, type BoardEntity, type PostEntity } from './boardEntity';
+import {
+  entityNumericId,
+  stageSignature,
+  type BoardEntity,
+  type PostEntity,
+  type StageStep,
+} from './boardEntity';
 
 /** Uma coluna do quadro de Fluxos: identidade pela ORDEM da etapa dentro da
  *  linha, nunca pelo nome. Duas etapas chamadas "Aprovação" são duas colunas.
@@ -123,6 +129,32 @@ export function buildBoardRows(
     }
     if (columns.some((c) => c.cards.length > 0 || c.posts.length > 0))
       rows.push({ key: r.key, label: r.label, templateId: r.templateId, columns });
+  }
+  // Every template gets a tab, even one with zero active fluxos right now (e.g. a
+  // freshly created template, or the "Padrão" template seeded on signup) — otherwise
+  // it's invisible until someone starts a fluxo from it.
+  const templateIdsWithRows = new Set(
+    rows.filter((r) => r.templateId != null).map((r) => r.templateId),
+  );
+  for (const t of templates) {
+    if (t.id == null || templateIdsWithRows.has(t.id)) continue;
+    const steps: StageStep[] = t.etapas.map((e, i) => ({
+      ordem: i,
+      nome: e.nome,
+      tipo: e.tipo ?? 'padrao',
+    }));
+    rows.push({
+      key: signatureRows ? `template:${t.id}#${stageSignature(steps)}` : `template:${t.id}`,
+      label: t.nome.toUpperCase(),
+      templateId: t.id,
+      columns: steps.map((s) => ({
+        ordem: s.ordem,
+        nome: s.nome,
+        tipo: s.tipo,
+        cards: [],
+        posts: [],
+      })),
+    });
   }
   return rows;
 }
