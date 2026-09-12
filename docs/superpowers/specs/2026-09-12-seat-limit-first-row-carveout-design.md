@@ -73,9 +73,26 @@ end if;
 ```
 
 `trg_limit_seats` is recreated passing `''` for the existing `status_pred`
-slot and `'true'` for the new slot. All other triggers are recreated
-unchanged (still passing 4 or 5 args, `TG_ARGV[5]` is simply absent/NULL for
-them, which `coalesce(..., 'false')` treats as off).
+slot and `'true'` for the new slot — the only trigger touched by this
+migration. `CREATE OR REPLACE FUNCTION` alone updates the behavior seen by
+every other trigger that already calls `enforce_plan_count_limit()` (max_clients,
+max_leads, etc.); none of those triggers need to be dropped or recreated,
+since they never pass a 6th argument and `TG_ARGV[5]` is simply absent/NULL
+for them, which `coalesce(..., 'false')` treats as off.
+
+The carve-out is deliberately scoped to "first row for this `workspace_id`,
+any role" rather than "first row AND role = owner" or "only during signup."
+`workspace_members` has no invariant that the first row must be an owner —
+`accept_workspace_invite()` (`supabase/migrations/20260731000002_invite_membro_link.sql`)
+already inserts a non-owner as a workspace's first membership row whenever
+the real seat limit is ≥1 (e.g. a `contas`-legacy workspace whose `workspaces`
+row and first invite acceptance both post-date its owner's signup). That
+flexibility is pre-existing and independent of this fix. Scoping the
+carve-out to "any first row" rather than "owner only" extends the same
+existing behavior to the misconfigured case, so an orphaned zero-member
+workspace can also recover via invite acceptance, not just via fresh signup —
+consistent with the underlying rule ("a workspace can never legitimately have
+zero members") rather than a narrower, signup-only patch.
 
 `profiles` inserts are not gated by `enforce_plan_count_limit` at all (no
 trigger on `profiles` calls it) — no change needed there.
