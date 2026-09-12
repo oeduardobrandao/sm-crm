@@ -74,13 +74,18 @@ etapa a etapa continua só dentro do drawer, alcançado por "Abrir".
 
 `WorkflowCard`: mesma silhueta — contagem de posts vira chip clicável no topo; prazo
 combinado; responsável inline sem borda; barra 4px; rodapé com grip, kebab (editar, abrir
-posts, voltar etapa, histórico, excluir) e botão de avançar fora do kebab.
+posts, voltar etapa, excluir) e botão de avançar fora do kebab. Histórico continua como
+popover próprio no card, fora do kebab (não mudou).
 
 ## Fora de escopo
 
-Sem migração de schema além da extensão de assinatura do item 2. Sem mudança em
-`NewAvulsoDialog` fora do novo prop `templateId`. Sem novo primitive Radix Collapsible —
-`useState` simples.
+Sem migração de schema além da extensão de assinatura do item 2. Sem novo primitive Radix
+Collapsible — `useState` simples.
+
+`NewAvulsoDialog` ganhou mais do que o prop `templateId`: `templates` (para resolver o
+template pré-vinculado), `onProcessApplied` (auto-apply bem-sucedido revela no quadro em
+vez de abrir o drawer de avulso) e `onNeedsManualApply` (template com `modo_prazo !=
+'padrao'` — o post já nasce criado e o chamador abre `ApplyProcessDialog` pré-preenchido).
 
 ## Verificação
 
