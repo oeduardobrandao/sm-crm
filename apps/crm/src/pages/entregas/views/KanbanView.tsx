@@ -1421,6 +1421,7 @@ export function KanbanView({
                     onClick={onCreateTemplate}
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    Novo template
                   </button>
                 )}
               </div>

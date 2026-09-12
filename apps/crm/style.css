@@ -5386,10 +5386,9 @@ body.role-agent input[name='valor_total'] {
   opacity: 0.7;
 }
 
-/* Trailing "+" tab: an action, not a tab. Icon only, never active, so it keeps the
+/* Trailing "+ Novo template" tab: an action, not a tab. Never active, so it keeps the
  * strip's chrome shape without the count badge or uppercase text. */
 .board-tab-add {
-  padding: 0.55rem 0.8rem;
   color: var(--primary-color);
   text-transform: none;
   letter-spacing: 0;
