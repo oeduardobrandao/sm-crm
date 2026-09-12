@@ -760,7 +760,7 @@ describe('EntregasPage', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
     fireEvent.click(screen.getByText('Lista'));
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Post avulso'));
@@ -1452,14 +1452,14 @@ describe('EntregasPage', () => {
     expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
     expect(screen.getByText('FiltersMode: entregas')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
 
     expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
     expect(screen.queryByText(/^kanban view:/i)).toBeNull();
     expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
     expect(screen.getByText('FiltersMode: posts')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Fluxos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Etapas' }));
     expect(screen.getByText(/^kanban view:/i)).toBeInTheDocument();
   });
 
@@ -1469,7 +1469,7 @@ describe('EntregasPage', () => {
     fireEvent.click(screen.getByText('Open drawer from card'));
     expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     fireEvent.click(screen.getByText('Open avulso post from kanban'));
 
     expect(screen.queryByText('Workflow drawer: Fluxo Editorial')).not.toBeInTheDocument();
@@ -1479,7 +1479,7 @@ describe('EntregasPage', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
     // Put the page in Publicações mode from the kanban…
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 0')).toBeInTheDocument();
 
     // …and Lista opens already in Publicações (shared state, not per-view).
@@ -1489,7 +1489,7 @@ describe('EntregasPage', () => {
     expect(screen.getByText('FiltersMode: posts')).toBeInTheDocument();
 
     // Back to Fluxos in the lista carries into the kanban too.
-    fireEvent.click(screen.getByText('Fluxos'));
+    fireEvent.click(screen.getByText('Etapas'));
     expect(screen.getByText(/^list view:/i)).toBeInTheDocument();
     fireEvent.click(screen.getByText('Kanban'));
     expect(screen.queryByText('Posts kanban view: 0')).toBeNull();
@@ -1506,7 +1506,7 @@ describe('EntregasPage', () => {
     } as never);
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 3')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Filter tipo')); // reels only
@@ -1582,7 +1582,7 @@ describe('EntregasPage', () => {
     it('persists the active mode per conta whenever it changes', () => {
       renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
-      fireEvent.click(screen.getByText('Publicações'));
+      fireEvent.click(screen.getByText('Status'));
 
       expect(localStorage.getItem('entregas_last_mode_conta-1')).toBe('publicacoes');
     });
@@ -1592,7 +1592,7 @@ describe('EntregasPage', () => {
     renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
     fireEvent.click(screen.getByText('Lista'));
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     fireEvent.click(screen.getByText('Open fluxo from tag'));
 
     expect(await screen.findByText('Workflow drawer: Fluxo Editorial')).toBeInTheDocument();
@@ -1636,7 +1636,7 @@ describe('EntregasPage', () => {
       ],
     });
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Filter member')); // filterMembros: [7]
@@ -1665,7 +1665,7 @@ describe('EntregasPage', () => {
       ],
     });
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Filter etapa Design'));
@@ -1694,7 +1694,7 @@ describe('EntregasPage', () => {
       ],
     });
 
-    fireEvent.click(screen.getByText('Publicações'));
+    fireEvent.click(screen.getByText('Status'));
     expect(screen.getByText('Posts kanban view: 2')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Filter prazo atrasado'));
