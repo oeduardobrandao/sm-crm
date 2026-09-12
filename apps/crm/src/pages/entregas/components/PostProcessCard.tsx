@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { FileText } from 'lucide-react';
+import { ArrowLeft, Check, FileText } from 'lucide-react';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
@@ -27,18 +27,32 @@ interface PostProcessCardProps {
   entity: PostEntity;
   onClick?: () => void;
   isDragOverlay?: boolean;
+  onForwardClick?: () => void;
+  onRevertClick?: () => void;
+  dragHandle?: React.ReactNode;
+  forwardLabel?: 'Avançar etapa' | 'Concluir processo';
+  canRevert?: boolean;
 }
 
 /**
  * Card de um post individual no quadro de Fluxos (spec §4.2): cliente, título,
  * formato, tag "Individual", status do post (PostStatusChip, os mesmos rótulos
  * de Publicações), responsável e prazo da etapa, etapa e progresso, capa
- * quando existe. Fase 3 = leitura: SEM alça de arrastar e SEM botões de
- * avançar/voltar (fase 4). A marcação espelha WorkflowCard para que os dois
- * tipos fiquem visualmente na mesma família; o tipo é identificado por texto e
- * ícone, a cor é complementar.
+ * quando existe. Fase 4: botões Avançar/Voltar com aria-label e alça de
+ * arrastar (spec §4.2); sem handlers o DOM é o da fase 3. A marcação espelha
+ * WorkflowCard para que os dois tipos fiquem visualmente na mesma família; o
+ * tipo é identificado por texto e ícone, a cor é complementar.
  */
-export function PostProcessCard({ entity, onClick, isDragOverlay }: PostProcessCardProps) {
+export function PostProcessCard({
+  entity,
+  onClick,
+  isDragOverlay,
+  onForwardClick,
+  onRevertClick,
+  dragHandle,
+  forwardLabel,
+  canRevert,
+}: PostProcessCardProps) {
   const navigate = useNavigate();
   const registry = useStatusRegistry();
   const dl = entity.deadline;
@@ -301,6 +315,63 @@ export function PostProcessCard({ entity, onClick, isDragOverlay }: PostProcessC
               decoding="async"
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
+          )}
+        </div>
+      )}
+
+      {(onRevertClick || onForwardClick || dragHandle) && (
+        <div
+          className="board-card-actions"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.3rem',
+            paddingTop: '0.5rem',
+            borderTop: '1px solid var(--border-color)',
+          }}
+        >
+          {dragHandle && (
+            <span
+              className="board-card-drag-handle"
+              style={{ cursor: 'grab', display: 'inline-flex' }}
+            >
+              {dragHandle}
+            </span>
+          )}
+          {canRevert && onRevertClick && (
+            <button
+              className="btn-revert-etapa"
+              aria-label="Voltar etapa"
+              title="Voltar etapa"
+              style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRevertClick();
+              }}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onForwardClick && (
+            <button
+              className="btn-edit-workflow btn-forward-etapa"
+              aria-label={forwardLabel ?? 'Avançar etapa'}
+              title={forwardLabel ?? 'Avançar etapa'}
+              style={{
+                padding: '0.35rem 0.55rem',
+                borderRadius: '10px',
+                flexShrink: 0,
+                marginLeft: 'auto',
+                color: '#3ecf8e',
+                borderColor: '#3ecf8e',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onForwardClick();
+              }}
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
           )}
         </div>
       )}

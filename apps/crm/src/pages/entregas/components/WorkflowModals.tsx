@@ -910,13 +910,13 @@ export function RecurringWorkflowDialog({
 // RevertConfirmDialog — shown when a card is dragged backward in kanban
 interface RevertConfirmDialogProps {
   open: boolean;
-  workflowTitle: string;
+  entityTitle: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 export function RevertConfirmDialog({
   open,
-  workflowTitle,
+  entityTitle,
   onConfirm,
   onCancel,
 }: RevertConfirmDialogProps) {
@@ -931,7 +931,7 @@ export function RevertConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Reverter etapa?</AlertDialogTitle>
           <AlertDialogDescription>
-            Isso vai reverter "{workflowTitle}" para a etapa anterior. Esta ação pode ser refeita
+            Isso vai reverter "{entityTitle}" para a etapa anterior. Esta ação pode ser refeita
             arrastando para frente novamente.
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -947,14 +947,14 @@ export function RevertConfirmDialog({
 // ForwardConfirmDialog — shown when advancing a card to the next etapa
 interface ForwardConfirmDialogProps {
   open: boolean;
-  workflowTitle: string;
+  entityTitle: string;
   nextEtapaName: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 export function ForwardConfirmDialog({
   open,
-  workflowTitle,
+  entityTitle,
   nextEtapaName,
   onConfirm,
   onCancel,
@@ -970,7 +970,7 @@ export function ForwardConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Avançar etapa?</AlertDialogTitle>
           <AlertDialogDescription>
-            Isso vai mover "{workflowTitle}" para a etapa "{nextEtapaName}". Deseja continuar?
+            Isso vai mover "{entityTitle}" para a etapa "{nextEtapaName}". Deseja continuar?
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -985,22 +985,34 @@ export function ForwardConfirmDialog({
 // ClientApprovalChoiceDialog — shown when completing an aprovacao_cliente step
 interface ClientApprovalChoiceDialogProps {
   open: boolean;
-  workflowTitle: string;
+  /** Título do fluxo ou do post (spec §4.2: os diálogos recebem a entidade). */
+  entityTitle: string;
   onApproveInternally: () => void;
   onSendToPortal: () => void;
   onAdvanceWithoutChanges: () => void;
   onCancel: () => void;
   /** Another client-approval etapa lies ahead — completing this one re-arms the posts. */
   willRearm?: boolean;
+  /** Muda a cópia para o singular no processo individual. */
+  entityKind?: 'fluxo' | 'post';
+  /** Rótulo da terceira opção; o processo individual usa "…sem alterar o post"
+   *  ou "Concluir sem alterar o post". */
+  withoutChangesLabel?: string;
+  /** Quando definido, desabilita "Enviar ao portal do cliente" e mostra o motivo
+   *  (spec §6.2: com n=1, botão desabilitado com o motivo, nunca sucesso vazio). */
+  sendToPortalDisabledReason?: string;
 }
 export function ClientApprovalChoiceDialog({
   open,
-  workflowTitle,
+  entityTitle,
   onApproveInternally,
   onSendToPortal,
   onAdvanceWithoutChanges,
   onCancel,
   willRearm,
+  entityKind,
+  withoutChangesLabel,
+  sendToPortalDisabledReason,
 }: ClientApprovalChoiceDialogProps) {
   return (
     <Dialog
@@ -1014,23 +1026,34 @@ export function ClientApprovalChoiceDialog({
           <DialogTitle>Como deseja prosseguir com a aprovação?</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          "{workflowTitle}" está em etapa de aprovação do cliente.
+          "{entityTitle}" está em etapa de aprovação do cliente.
         </p>
         {willRearm && (
           <p className="text-sm" style={{ color: 'var(--warning)' }}>
-            Há outra etapa de aprovação adiante — ao concluir esta, os posts aprovados voltarão para
-            rascunho para o próximo ciclo de aprovação.
+            {entityKind === 'post'
+              ? 'Há outra etapa de aprovação adiante. Ao concluir esta, o post aprovado voltará para rascunho para o próximo ciclo de aprovação.'
+              : 'Há outra etapa de aprovação adiante — ao concluir esta, os posts aprovados voltarão para rascunho para o próximo ciclo de aprovação.'}
           </p>
         )}
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button className="w-full" onClick={onApproveInternally}>
             Aprovar internamente
           </Button>
-          <Button className="w-full" variant="outline" onClick={onSendToPortal}>
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={onSendToPortal}
+            disabled={!!sendToPortalDisabledReason}
+          >
             Enviar ao portal do cliente
           </Button>
+          {sendToPortalDisabledReason && (
+            <p className="text-xs text-muted-foreground" style={{ marginTop: '-0.25rem' }}>
+              {sendToPortalDisabledReason}
+            </p>
+          )}
           <Button className="w-full" variant="secondary" onClick={onAdvanceWithoutChanges}>
-            Avançar etapa sem alterar posts
+            {withoutChangesLabel ?? 'Avançar etapa sem alterar posts'}
           </Button>
           <Button className="w-full" variant="ghost" onClick={onCancel}>
             Cancelar

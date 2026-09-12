@@ -27,6 +27,7 @@ import { supabase } from '../../../lib/supabase';
 import { getWorkflowCovers, getPostCovers } from '../../../services/postMedia';
 import { buildUsableTokenMap } from '../../../lib/hubTokenMap';
 import { toPostEntity, type PostEntity } from '../boardEntity';
+import { toLocalISODate } from '@/utils/postDate';
 
 export interface BoardCard {
   workflow: Workflow;
@@ -169,6 +170,15 @@ export function getNextDeliveryDate(diaEntrega: number): Date {
   return new Date(nextYear, nextMonth, dayNextMonth);
 }
 
+/** Forma mínima de uma etapa para o cálculo de data de entrega: WorkflowEtapa e
+ *  as etapas de um template (com `ordem` = índice) satisfazem. */
+export type DeliveryStep = {
+  ordem: number;
+  tipo?: 'padrao' | 'aprovacao_cliente' | null;
+  prazo_dias: number;
+  tipo_prazo: 'corridos' | 'uteis';
+};
+
 /**
  * Computes data_limite (ISO date string) for each step in a data_entrega workflow.
  * The aprovacao_cliente step gets deliveryDate.
@@ -177,14 +187,14 @@ export function getNextDeliveryDate(diaEntrega: number): Date {
  * Returns Map<ordem, ISO date string>.
  */
 export function computeDeliveryDeadlines(
-  etapas: WorkflowEtapa[],
+  etapas: DeliveryStep[],
   deliveryDate: Date,
 ): Map<number, string> {
   const sorted = [...etapas].sort((a, b) => a.ordem - b.ordem);
   const anchorIdx = sorted.findIndex((e) => e.tipo === 'aprovacao_cliente');
   if (anchorIdx === -1) return new Map();
 
-  const toISO = (d: Date) => d.toISOString().split('T')[0];
+  const toISO = toLocalISODate;
   const result = new Map<number, string>();
 
   // Anchor step gets delivery date
@@ -208,8 +218,10 @@ export function computeDeliveryDeadlines(
 }
 
 export interface UseEntregasDataOptions {
-  /** features?.feature_post_processes === true. Off (default) fires no
-   *  post_processes query and returns the empty constants below. */
+  /** features?.feature_post_processes === true. Desde a fase 4 a flag NÃO gate
+   *  a leitura (spec §11 + §12.18: execuções existentes ficam visíveis e
+   *  operáveis com a flag desligada); ela só entra em `postProcessesVisible`,
+   *  o booleano de exibição que a página usa no lugar da flag crua. */
   postProcessesEnabled?: boolean;
 }
 
@@ -340,14 +352,12 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
   });
 
   // Processos individuais (spec §8.3): UM lote por conta com ativos e
-  // concluídos. Os ativos viram cards; os concluídos vão para Concluídas; os
-  // dois juntos são a exclusão da seção Sem processo. Desligado pela flag, a
-  // query nem existe e tudo abaixo devolve as constantes vazias (identidade
-  // estável, mesma regra dos EMPTY_* acima).
+  // concluídos, SEMPRE ligado (PO 2026-09-11, decisão 1): com a flag desligada
+  // e zero linhas o resultado é vazio e tudo abaixo devolve as constantes
+  // vazias; com linhas, o quadro continua exibindo e operando os processos.
   const vigenteQuery = useQuery({
     queryKey: ['post-processes', 'vigentes'],
     queryFn: getVigentePostProcesses,
-    enabled: postProcessesEnabled,
   });
   const vigenteProcesses: PostProcessWithPost[] = vigenteQuery.data ?? EMPTY_PROCESSES;
   const activeProcesses = useMemo(
@@ -472,6 +482,10 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
    *  e isLoading forem falsos. */
   const isFetching = fetchingWf || etapasQuery.isFetching || vigenteQuery.isFetching;
 
+  // Exibição = flag OU existência de processo. A flag crua fica para as
+  // affordances de criação (Aplicar processo, Manter etapas, Sem processo).
+  const postProcessesVisible = postProcessesEnabled || vigenteProcesses.length > 0;
+
   return {
     workflows,
     activeWorkflows,
@@ -484,6 +498,7 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
     processByPostId,
     concludedPostProcesses,
     activePostProcessCount: activeProcesses.length,
+    postProcessesVisible,
     postsCounts,
     approvedPostsCounts,
     clearedClienteCounts,

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockFrom } = vi.hoisted(() => ({ mockFrom: vi.fn() }));
+const { mockFrom, mockRpc } = vi.hoisted(() => ({ mockFrom: vi.fn(), mockRpc: vi.fn() }));
 
 vi.mock('../core', () => ({
-  supabase: { from: mockFrom },
+  supabase: { from: mockFrom, rpc: mockRpc },
   getContaId: vi.fn(),
   getUserId: vi.fn(),
   getCurrentProfile: vi.fn(),
@@ -13,9 +13,16 @@ vi.mock('../mentions', () => ({ syncMentions: vi.fn() }));
 vi.mock('@/components/mentions/mentionTokens', () => ({ extractMentionsFromDoc: () => [] }));
 
 import {
+  applyPostProcess,
+  attachPostClosingProcess,
+  detachPostsKeepingProcess,
   getPostProcessEvents,
   getVigentePostProcess,
   getVigentePostProcesses,
+  removePostProcess,
+  reorderFluxosBoard,
+  transitionPostProcess,
+  updatePostProcessStep,
 } from '../postProcesses';
 
 /** Thenable query builder: every filter returns itself, awaiting resolves `result`. */
@@ -121,5 +128,152 @@ describe('getPostProcessEvents', () => {
     expect(mockFrom).toHaveBeenCalledWith('post_process_events');
     expect(q.in).toHaveBeenCalledWith('post_id', [77, 78]);
     expect(evs).toHaveLength(1);
+  });
+});
+
+describe('RPC wrappers (fase 4)', () => {
+  beforeEach(() => {
+    mockRpc.mockReset();
+  });
+
+  it('detachPostsKeepingProcess envia os parâmetros exatos da RPC', async () => {
+    mockRpc.mockResolvedValueOnce({ data: { ok: true, detached: 2 }, error: null });
+    const res = await detachPostsKeepingProcess({
+      postIds: [7, 3],
+      workflowId: 11,
+      fingerprint: 'etapa_atual=1\n0|Copy|padrao|concluido||2|corridos||',
+      activeDeadline: '2026-09-15T02:59:59.999Z',
+      requestId: '11111111-2222-4333-8444-555555555555',
+      stepDeadlines: { '2': '2026-09-20T02:59:59.999Z' },
+      archiveEmptyFlow: true,
+    });
+    expect(mockRpc).toHaveBeenCalledWith('detach_posts_keeping_process', {
+      p_post_ids: [7, 3],
+      p_workflow_id: 11,
+      p_fingerprint: 'etapa_atual=1\n0|Copy|padrao|concluido||2|corridos||',
+      p_active_deadline: '2026-09-15T02:59:59.999Z',
+      p_request_id: '11111111-2222-4333-8444-555555555555',
+      p_step_deadlines: { '2': '2026-09-20T02:59:59.999Z' },
+      p_archive_empty_flow: true,
+    });
+    expect(res.detached).toBe(2);
+  });
+
+  it('detachPostsKeepingProcess reenvia o MESMO request_id na repetição por deadlock', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: null, error: { code: '40P01', message: 'deadlock' } })
+      .mockResolvedValueOnce({ data: { ok: true, detached: 1 }, error: null });
+    await detachPostsKeepingProcess({
+      postIds: [7],
+      workflowId: 11,
+      fingerprint: 'fp',
+      activeDeadline: '2026-09-15T02:59:59.999Z',
+      requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    });
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    expect(mockRpc.mock.calls[0][1].p_request_id).toBe('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+    expect(mockRpc.mock.calls[1][1].p_request_id).toBe('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+    // Defaults when the optional args are omitted.
+    expect(mockRpc.mock.calls[0][1].p_step_deadlines).toBeNull();
+    expect(mockRpc.mock.calls[0][1].p_archive_empty_flow).toBe(false);
+  });
+
+  it('applyPostProcess envia overrides por ordem e o fingerprint do template', async () => {
+    mockRpc.mockResolvedValueOnce({ data: { ok: true, process_id: 5, revisao: 1 }, error: null });
+    await applyPostProcess({
+      postId: 77,
+      templateId: 3,
+      templateFingerprint: '0|Copy|padrao|2|corridos\n1|Design|padrao|3|uteis',
+      startOrdem: 1,
+      stepOverrides: { '1': { responsavel_id: 9, prazo_efetivo: '2026-09-18T02:59:59.999Z' } },
+    });
+    expect(mockRpc).toHaveBeenCalledWith('apply_post_process', {
+      p_post_id: 77,
+      p_template_id: 3,
+      p_template_fingerprint: '0|Copy|padrao|2|corridos\n1|Design|padrao|3|uteis',
+      p_start_ordem: 1,
+      p_step_overrides: { '1': { responsavel_id: 9, prazo_efetivo: '2026-09-18T02:59:59.999Z' } },
+    });
+  });
+
+  it('transitionPostProcess envia só os campos informados e nulos nos demais', async () => {
+    mockRpc.mockResolvedValueOnce({ data: { ok: true, revisao: 2 }, error: null });
+    await transitionPostProcess({ processId: 5, expectedRevisao: 1, command: 'voltar' });
+    expect(mockRpc).toHaveBeenCalledWith('transition_post_process', {
+      p_process_id: 5,
+      p_expected_revisao: 1,
+      p_command: 'voltar',
+      p_approval_choice: null,
+      p_expected_post_status: null,
+      p_next_deadline: null,
+    });
+    mockRpc.mockResolvedValueOnce({ data: { ok: true, revisao: 3 }, error: null });
+    await transitionPostProcess({
+      processId: 5,
+      expectedRevisao: 2,
+      command: 'avancar',
+      approvalChoice: 'aprovar_interno',
+      expectedPostStatus: 'enviado_cliente',
+      nextDeadline: '2026-09-20T02:59:59.999Z',
+    });
+    expect(mockRpc.mock.calls[1][1]).toEqual({
+      p_process_id: 5,
+      p_expected_revisao: 2,
+      p_command: 'avancar',
+      p_approval_choice: 'aprovar_interno',
+      p_expected_post_status: 'enviado_cliente',
+      p_next_deadline: '2026-09-20T02:59:59.999Z',
+    });
+  });
+
+  it('updatePostProcessStep, removePostProcess, attachPostClosingProcess, reorderFluxosBoard', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: true }, error: null });
+    await updatePostProcessStep({
+      processId: 5,
+      expectedRevisao: 1,
+      ordem: 1,
+      responsavelId: null,
+      prazoEfetivo: null,
+    });
+    expect(mockRpc).toHaveBeenLastCalledWith('update_post_process_step', {
+      p_process_id: 5,
+      p_expected_revisao: 1,
+      p_ordem: 1,
+      p_responsavel_id: null,
+      p_prazo_efetivo: null,
+    });
+    await removePostProcess(5, 1);
+    expect(mockRpc).toHaveBeenLastCalledWith('remove_post_process', {
+      p_process_id: 5,
+      p_expected_revisao: 1,
+    });
+    await attachPostClosingProcess(77, 11, 1);
+    expect(mockRpc).toHaveBeenLastCalledWith('attach_post_closing_process', {
+      p_post_id: 77,
+      p_workflow_id: 11,
+      p_expected_revisao: 1,
+    });
+    mockRpc.mockResolvedValueOnce({ data: null, error: null });
+    await reorderFluxosBoard({
+      workflowIds: [1, 2],
+      workflowPositions: [0, 2],
+      processIds: [5],
+      processPositions: [1],
+    });
+    expect(mockRpc).toHaveBeenLastCalledWith('reorder_fluxos_board', {
+      p_workflow_ids: [1, 2],
+      p_workflow_positions: [0, 2],
+      p_process_ids: [5],
+      p_process_positions: [1],
+    });
+  });
+
+  it('propaga o erro identificador da RPC sem retry fora de 40P01', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'process_changed' },
+    });
+    await expect(removePostProcess(5, 1)).rejects.toMatchObject({ message: 'process_changed' });
+    expect(mockRpc).toHaveBeenCalledTimes(1);
   });
 });

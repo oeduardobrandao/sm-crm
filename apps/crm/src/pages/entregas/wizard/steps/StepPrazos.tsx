@@ -21,7 +21,7 @@ const AUTO = '__auto__';
  * modal's `setMonth(getMonth() + i)`, which skips a month whenever "today" is a 29th–31st that the
  * target month does not have.
  */
-function mesesDeEntrega(today: Date = new Date()): { value: string; label: string }[] {
+export function mesesDeEntrega(today: Date = new Date()): { value: string; label: string }[] {
   return Array.from({ length: 6 }, (_, i) => {
     const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
     const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });

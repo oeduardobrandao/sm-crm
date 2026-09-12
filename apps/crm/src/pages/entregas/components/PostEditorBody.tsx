@@ -84,8 +84,8 @@ export interface PostEditorBodyProps {
   templateId: number | null | undefined;
   workflowId: number | null;
   /** Processo individual vigente do post (spec §5.4). `undefined` = não se
-   *  aplica (drawer de fluxo, flag desligada); `null` = avulso sem processo.
-   *  Só o StandalonePostDrawer preenche, e só com feature_post_processes. */
+   *  aplica (drawer de fluxo); `null` = avulso sem processo. Só o
+   *  StandalonePostDrawer preenche, independentemente da flag do plano. */
   postProcess?: PostProcess | null;
   clienteId: number;
   clientePosts: ClientePost[];
@@ -122,6 +122,8 @@ export interface PostEditorBodyProps {
   editorVersion: number;
   onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
   onRejectSuggestion: (id: number) => void;
+  /** Avançar etapa do processo individual, para a dica da seção de produção. */
+  onProcessAvancar?: () => void;
 }
 
 export function PostEditorBody({
@@ -160,6 +162,7 @@ export function PostEditorBody({
   editorVersion,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onProcessAvancar,
 }: PostEditorBodyProps) {
   // Per-row scheduled-day dots for this post's date picker: same client-wide post list for
   // every row (stable identity from the TanStack cache), each row excludes only its own post
@@ -426,7 +429,13 @@ export function PostEditorBody({
       )}
 
       {postProcess && workflowId == null && (
-        <PostProductionSection process={postProcess} postId={post.id!} membros={membros} />
+        <PostProductionSection
+          process={postProcess}
+          postId={post.id!}
+          membros={membros}
+          postStatus={post.status}
+          onAvancar={onProcessAvancar}
+        />
       )}
 
       <PostMediaGallery

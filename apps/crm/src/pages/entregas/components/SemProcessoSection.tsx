@@ -11,19 +11,21 @@ interface SemProcessoSectionProps {
   total: number;
   productionFiltersActive: boolean;
   onPostClick: (post: ActivePost) => void;
+  onApplyProcess: (post: ActivePost) => void;
   onVerTodos: () => void;
 }
 
 /**
  * Seção abaixo das linhas de etapas (spec §4.3): avulsos sem processo vigente.
  * Não posiciona os posts numa coluna pelo status nem inventa prazo ou
- * responsável de etapa. Fase 3: sem a ação "Aplicar processo" (fase 4).
+ * responsável de etapa. Fase 4: ação Aplicar processo por card.
  */
 export function SemProcessoSection({
   posts,
   total,
   productionFiltersActive,
   onPostClick,
+  onApplyProcess,
   onVerTodos,
 }: SemProcessoSectionProps) {
   const registry = useStatusRegistry();
@@ -68,6 +70,18 @@ export function SemProcessoSection({
             <div className="item-meta" style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
               {post.cliente_nome || '—'}
             </div>
+            <button
+              type="button"
+              className="sem-processo-link"
+              aria-label="Aplicar processo"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApplyProcess(post);
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              Aplicar processo
+            </button>
           </div>
         ))}
       </div>

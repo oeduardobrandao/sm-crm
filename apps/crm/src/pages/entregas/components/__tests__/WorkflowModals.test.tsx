@@ -266,13 +266,13 @@ describe('WorkflowModals', () => {
         />
         <RevertConfirmDialog
           open={true}
-          workflowTitle="Fluxo Editorial"
+          entityTitle="Fluxo Editorial"
           onConfirm={onConfirmRevert}
           onCancel={onCancelRevert}
         />
         <ClientApprovalChoiceDialog
           open={true}
-          workflowTitle="Fluxo Editorial"
+          entityTitle="Fluxo Editorial"
           onApproveInternally={onApproveInternally}
           onSendToPortal={onSendToPortal}
           onCancel={onCancelApproval}

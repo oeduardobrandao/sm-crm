@@ -8,6 +8,7 @@ vi.mock('../../../../store', () => ({
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
+  reorderFluxosBoard: vi.fn(),
   getDeadlineInfo: vi.fn(),
   addWorkflow: vi.fn(),
   addWorkflowEtapa: vi.fn(),
@@ -35,8 +36,9 @@ vi.mock('../../../../store', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
-import { fullColumnOrder } from '../KanbanView';
+import { fullColumnOrder, fullMixedColumnOrder } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
+import type { PostEntity } from '../../boardEntity';
 
 const etapa = {
   id: 11,
@@ -111,5 +113,76 @@ describe('fullColumnOrder', () => {
     ];
     const visible = [all[0], all[2]]; // card 2 (2026) oculto pelo filtro
     expect(fullColumnOrder(all, visible, 'template:7', 1, [], 'prazo')).toEqual([2, 1, 3]);
+  });
+});
+
+// template_id 7 (não 2) para ficar na MESMA linha ('template:7') que o
+// card() acima: buildBoardRows agrupa por templateId, então um postEntity com
+// outro template cairia numa linha diferente e nunca se juntaria aos fluxos.
+function postEntity(processId: number, posicao: number): PostEntity {
+  return {
+    kind: 'post',
+    id: `post:${processId}`,
+    templateId: 7,
+    steps: [{ ordem: 1, nome: 'Produção', tipo: 'padrao' }],
+    etapaOrdem: 1,
+    etapaNome: 'Produção',
+    responsavel: undefined,
+    prazoEfetivo: null,
+    posicao,
+    deadline: { diasRestantes: 0, horasRestantes: 0, estourado: false, urgente: false },
+    cliente: undefined,
+    titulo: `Post ${processId}`,
+    process: {
+      id: processId,
+      post_id: 100 + processId,
+      template_id: 7,
+      estado: 'ativo',
+      etapa_atual: 1,
+      steps: [],
+    } as never,
+    step: { ordem: 1, estado: 'ativo' } as never,
+  };
+}
+
+describe('fullMixedColumnOrder', () => {
+  it('modo manual: fluxos e posts intercalados por posicao, incluindo ocultos pelo filtro', () => {
+    const all = [card(1, 0), card(2, 3)];
+    const allPosts = [postEntity(9, 1), postEntity(8, 2)];
+    const ids = fullMixedColumnOrder(
+      all,
+      allPosts,
+      [card(1, 0)],
+      [postEntity(9, 1)],
+      'template:7',
+      1,
+      [],
+      'manual',
+    );
+    expect(ids).toEqual(['1', 'post:9', 'post:8', '2']);
+  });
+  it('sem posts devolve exatamente fullColumnOrder (caminho da fase 3)', () => {
+    const all = [card(1, 2), card(2, 0)];
+    expect(fullMixedColumnOrder(all, [], all, [], 'template:7', 1, [], 'manual')).toEqual([
+      '2',
+      '1',
+    ]);
+  });
+
+  it('coluna sem posts empatada em position ignora post de OUTRA linha e devolve fullColumnOrder', () => {
+    // Fluxos 2 e 1 empatados em position (o DEFAULT de toda coluna nunca
+    // arrastada manualmente). Inserção é [2, 1]: fullColumnOrder (sort
+    // estável, sem desempate próprio) preserva essa ordem de inserção.
+    // sortEntitiesByPosicao (o branch misto) desempataria por id numérico
+    // (1 < 2) e devolveria ['1', '2'] — a guarda por coluna precisa impedir
+    // que esse branch seja alcançado quando a COLUNA ALVO não tem posts,
+    // mesmo com um post existindo em outra linha/coluna do quadro.
+    const all = [card(2, 0), card(1, 0)];
+    const outraLinhaPost: PostEntity = { ...postEntity(50, 0), templateId: 2 };
+    const expected = fullColumnOrder(all, all, 'template:7', 1, [], 'manual').map(String);
+    expect(expected).toEqual(['2', '1']);
+    expect(
+      fullMixedColumnOrder(all, [outraLinhaPost], all, [], 'template:7', 1, [], 'manual'),
+    ).toEqual(expected);
   });
 });

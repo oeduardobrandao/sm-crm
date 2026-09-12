@@ -10,9 +10,16 @@ const store = vi.hoisted(() => ({
   getClientes: vi.fn(async () => [{ id: 3, nome: 'Aurora', cor: '#000' }]),
   reopenWorkflow: vi.fn(),
   getVigentePostProcesses: vi.fn(async () => []),
+  // Fase 4: usePostProcessCommands (chamado incondicionalmente pelo
+  // ConcludedView) importa estes do store; o módulo precisa resolver os nomes
+  // mesmo nos testes que não exercitam "Reabrir processo".
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  updateWorkflowPost: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
 }));
 vi.mock('../../../../store', () => store);
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('../../components/HistoryDrawer', () => ({
   HistoryDrawer: () => <div>HistoryDrawer</div>,
 }));
@@ -27,6 +34,7 @@ vi.mock('@/hooks/useWorkspaceLimits', () => ({
   }),
 }));
 
+import { toast } from 'sonner';
 import { ConcludedView } from '../ConcludedView';
 
 const concluded = {
@@ -76,10 +84,20 @@ describe('ConcludedView com processos individuais', () => {
     limitsMock.features = null;
   });
 
-  it('flag desligada: não consulta processos e mantém a cópia vazia de sempre', async () => {
+  it('flag desligada: consulta processos; sem linhas mantém a cópia vazia de sempre', async () => {
+    limitsMock.features = { feature_post_processes: false };
+    store.getVigentePostProcesses.mockResolvedValueOnce([] as never);
     renderView();
     expect(await screen.findByText('Nenhum fluxo concluído ainda.')).toBeInTheDocument();
-    expect(store.getVigentePostProcesses).not.toHaveBeenCalled();
+    expect(store.getVigentePostProcesses).toHaveBeenCalledTimes(1);
+  });
+
+  it('flag desligada com processo concluído: a entrada "Post individual" aparece', async () => {
+    limitsMock.features = { feature_post_processes: false };
+    store.getVigentePostProcesses.mockResolvedValueOnce([concluded] as never);
+    renderView();
+    fireEvent.click(await screen.findByText('Aurora'));
+    expect(screen.getByText('Post individual')).toBeInTheDocument();
   });
 
   it('flag ligada: lista o processo concluído no grupo do cliente com a tag e abre o post', async () => {
@@ -92,7 +110,9 @@ describe('ConcludedView com processos individuais', () => {
     expect(screen.getByText(/1 post individual/)).toBeInTheDocument();
     fireEvent.click(screen.getByText('Post concluído'));
     expect(onOpenPost).toHaveBeenCalledWith(77);
-    expect(screen.queryByTitle('Reabrir processo')).toBeNull();
+    // Task 9: agora existe o botão "Reabrir processo" na linha do post
+    // individual concluído (antes desta task não havia nenhum).
+    expect(screen.getByTitle('Reabrir processo')).toBeInTheDocument();
   });
 
   it('flag ligada e nada concluído: cópia vazia inclui posts individuais', async () => {
@@ -134,5 +154,45 @@ describe('ConcludedView com processos individuais', () => {
     });
     fireEvent.click(await screen.findByText('Aurora'));
     expect(await screen.findByText('Post individual')).toBeInTheDocument();
+  });
+
+  it('Reabrir processo: confirma e chama transition_post_process com reabrir', async () => {
+    store.transitionPostProcess.mockResolvedValue({
+      ok: true,
+      revisao: 2,
+      post_status: 'postado',
+      post_status_changed: false,
+      steps: [],
+    });
+    store.getVigentePostProcesses.mockResolvedValueOnce([concluded] as never);
+    renderView();
+    fireEvent.click(await screen.findByText('Aurora')); // expand the client group (fixture's client name)
+    fireEvent.click(await screen.findByRole('button', { name: 'Reabrir processo' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reabrir' }));
+    await waitFor(() =>
+      expect(store.transitionPostProcess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'reabrir',
+          processId: concluded.id,
+          expectedRevisao: concluded.revisao,
+        }),
+      ),
+    );
+  });
+
+  it('rollback: reabrir falha com process_not_concluded → toast mapeado e nenhum sucesso', async () => {
+    store.transitionPostProcess.mockRejectedValueOnce({
+      message: 'process_not_concluded',
+      code: 'P0001',
+    });
+    store.getVigentePostProcesses.mockResolvedValueOnce([concluded] as never);
+    renderView();
+    fireEvent.click(await screen.findByText('Aurora'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reabrir processo' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reabrir' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Só um processo concluído pode ser reaberto.'),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });

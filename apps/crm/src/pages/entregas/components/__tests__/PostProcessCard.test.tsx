@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render as rtlRender, screen } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -85,5 +85,43 @@ describe('PostProcessCard', () => {
     const bar = card.querySelector('div[style*="width: 0%"]') as HTMLElement | null;
     expect(bar).toBeTruthy();
     expect(bar!.style.background).toBe('rgb(234, 179, 8)'); // #eab308, deadline-caution accent
+  });
+
+  it('renderiza Voltar/Avançar com aria-label e não propaga o clique ao card', () => {
+    const onClick = vi.fn();
+    const onForwardClick = vi.fn();
+    const onRevertClick = vi.fn();
+    render(
+      <PostProcessCard
+        entity={makeEntity()}
+        onClick={onClick}
+        onForwardClick={onForwardClick}
+        onRevertClick={onRevertClick}
+        canRevert
+        forwardLabel="Avançar etapa"
+        dragHandle={<span data-testid="handle" />}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar etapa' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar etapa' }));
+    expect(onForwardClick).toHaveBeenCalledTimes(1);
+    expect(onRevertClick).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(screen.getByTestId('handle')).toBeInTheDocument();
+  });
+  it('sem canRevert não mostra Voltar; rótulo "Concluir processo" na última etapa', () => {
+    render(
+      <PostProcessCard
+        entity={makeEntity()}
+        onForwardClick={vi.fn()}
+        forwardLabel="Concluir processo"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Voltar etapa' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Concluir processo' })).toBeInTheDocument();
+  });
+  it('sem handlers (leitura) não renderiza botão nenhum: DOM da fase 3', () => {
+    render(<PostProcessCard entity={makeEntity()} />);
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 });

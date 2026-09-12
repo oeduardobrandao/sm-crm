@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,6 +22,7 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
   },
 }));
 
@@ -134,6 +135,7 @@ vi.mock('../components/EntregasFilters', () => ({
 vi.mock('../views/KanbanView', () => ({
   KanbanView: ({
     cards,
+    postEntities,
     showExample,
     onDismissExample,
     onCardClick,
@@ -142,6 +144,7 @@ vi.mock('../views/KanbanView', () => ({
     onRecurring,
   }: {
     cards: Array<{ workflow: { id: number; titulo: string } }>;
+    postEntities?: Array<{ id: string }>;
     showExample?: boolean;
     onDismissExample?: () => void;
     onCardClick: (card: unknown) => void;
@@ -154,15 +157,26 @@ vi.mock('../views/KanbanView', () => ({
         <div>Posts de Agosto</div>
         <button onClick={onDismissExample}>Ocultar exemplo</button>
       </div>
-    ) : cards.length === 0 ? (
+    ) : cards.length === 0 && !postEntities?.length ? (
       <div>Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.</div>
     ) : (
       <div>
-        <div>Kanban view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
-        <button onClick={() => onEditClick(cards[0])}>Open edit modal</button>
-        <button onClick={() => onCardClick(cards[0])}>Open drawer from card</button>
-        <button onClick={() => onPostsClick(cards[0])}>Open drawer modal</button>
-        <button onClick={() => onRecurring(cards[0].workflow.id)}>Trigger recurring</button>
+        {cards.length > 0 && (
+          <div>Kanban view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
+        )}
+        {postEntities?.map((entity) => (
+          <div key={entity.id} data-testid="post-process-card">
+            {entity.id}
+          </div>
+        ))}
+        {cards.length > 0 && (
+          <>
+            <button onClick={() => onEditClick(cards[0])}>Open edit modal</button>
+            <button onClick={() => onCardClick(cards[0])}>Open drawer from card</button>
+            <button onClick={() => onPostsClick(cards[0])}>Open drawer modal</button>
+            <button onClick={() => onRecurring(cards[0].workflow.id)}>Trigger recurring</button>
+          </>
+        )}
       </div>
     ),
 }));
@@ -316,11 +330,13 @@ vi.mock('../components/WorkflowDrawer', () => ({
     onClose,
     initialPostId,
     onOpenWorkflow,
+    onDetachedKeepingProcess,
   }: {
     card: { workflow: { titulo: string } };
     onClose: () => void;
     initialPostId?: number;
     onOpenWorkflow?: (workflowId: number, seed?: unknown) => void;
+    onDetachedKeepingProcess?: (postIds: number[]) => void;
   }) => (
     <div>
       <div>Workflow drawer: {card.workflow.titulo}</div>
@@ -339,6 +355,7 @@ vi.mock('../components/WorkflowDrawer', () => ({
       >
         Move posts to workflow 99 with seed
       </button>
+      <button onClick={() => onDetachedKeepingProcess?.([77])}>Detach keeping process</button>
     </div>
   ),
 }));
@@ -447,6 +464,8 @@ import { useActivePosts } from '../hooks/useActivePosts';
 import { duplicateWorkflow, getStandalonePost } from '../../../store';
 import { toast } from 'sonner';
 import EntregasPage from '../EntregasPage';
+import { toPostEntity } from '../boardEntity';
+import type { PostProcessWithPost } from '../../../store';
 
 const mockedUseEntregasData = vi.mocked(useEntregasData);
 const mockedUseActivePosts = vi.mocked(useActivePosts);
@@ -513,7 +532,11 @@ function renderPage(initialEntry = '/entregas') {
   return render(pageTree(initialEntry));
 }
 
-function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[] }) {
+function renderEntregasPage(data: {
+  activeWorkflows: unknown[];
+  cards: unknown[];
+  postProcessesVisible?: boolean;
+}) {
   mockedUseEntregasData.mockReturnValue({
     clientes: [],
     membros: [],
@@ -524,6 +547,7 @@ function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[]
     processByPostId: new Map(),
     concludedPostProcesses: [],
     activePostProcessCount: 0,
+    postProcessesVisible: data.postProcessesVisible ?? false,
     isLoading: false,
     refresh: vi.fn(),
   } as never);
@@ -531,6 +555,76 @@ function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[]
 }
 
 const wfFixture = { id: 1 };
+
+// Mirrors useEntregasData.test.ts's vigenteFixture: a minimal PostProcessWithPost
+// that toPostEntity accepts, used to hand EntregasPage a real PostEntity (the hook
+// itself is mocked in this suite, so nothing derives it for us).
+const vigenteFixture: PostProcessWithPost = {
+  id: 9,
+  conta_id: 'c',
+  post_id: 77,
+  template_id: null,
+  template_nome: null,
+  assinatura: '',
+  origem_workflow_id: null,
+  origem_descricao: null,
+  estado: 'ativo',
+  motivo_encerramento: null,
+  etapa_atual: 0,
+  modo_prazo: 'padrao',
+  board_position: 0,
+  revisao: 1,
+  created_by: null,
+  created_at: '2026-09-10T00:00:00Z',
+  updated_at: '2026-09-10T00:00:00Z',
+  concluido_em: null,
+  steps: [
+    {
+      id: 1,
+      conta_id: 'c',
+      process_id: 9,
+      ordem: 0,
+      nome: 'Copy',
+      tipo: 'padrao',
+      responsavel_id: null,
+      prazo_dias: null,
+      tipo_prazo: null,
+      prazo_efetivo: null,
+      estado: 'ativo',
+      iniciado_em: null,
+      concluido_em: null,
+      interrompido_em: null,
+      origem_etapa_ordem: null,
+      origem_etapa_nome: null,
+    },
+  ],
+  post: {
+    id: 77,
+    workflow_id: null,
+    cliente_id: 10,
+    cliente_nome: 'Cliente A',
+    workflow_titulo: null,
+    titulo: 'Post X',
+    tipo: 'feed',
+    status: 'rascunho',
+    custom_status_id: null,
+    scheduled_at: null,
+    published_at: null,
+    ig_caption: null,
+    instagram_permalink: null,
+    publish_error: null,
+    publish_error_code: null,
+    ordem: 0,
+    responsavel_id: null,
+    platform: 'instagram',
+    tiktok_publish_status: null,
+    tiktok_publish_error: null,
+    tiktok_post_url: null,
+    instagram_media_id: null,
+    ig_trial_strategy: null,
+    board_ordem: null,
+  },
+} as unknown as PostProcessWithPost;
 
 /** 'YYYY-MM-DD' n days from today, local time — the etapa `data_limite` format. */
 function isoInDays(n: number): string {
@@ -547,6 +641,7 @@ describe('EntregasPage', () => {
     mockedGetStandalonePost.mockReset();
     mockedToast.success.mockReset();
     mockedToast.error.mockReset();
+    mockedToast.info.mockReset();
     tourMock.startEntregasTour.mockReset();
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
     limitsMock.features = null;
@@ -1625,14 +1720,22 @@ describe('EntregasPage', () => {
 
     it('flag ligada e navegador novo: começa em Todos; com entregas_last_mode gravado começa em Fluxos', () => {
       limitsMock.features = { feature_post_processes: true };
-      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      renderEntregasPage({
+        activeWorkflows: [wfFixture],
+        cards: [],
+        postProcessesVisible: true,
+      });
       expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
     });
 
     it('com entregas_last_mode gravado começa em Fluxos', () => {
       limitsMock.features = { feature_post_processes: true };
       localStorage.setItem('entregas_last_mode_conta-1', 'entregas');
-      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+      renderEntregasPage({
+        activeWorkflows: [wfFixture],
+        cards: [],
+        postProcessesVisible: true,
+      });
       expect(screen.getByRole('radio', { name: 'Fluxos' })).toHaveAttribute('aria-checked', 'true');
     });
 
@@ -1649,6 +1752,7 @@ describe('EntregasPage', () => {
         processByPostId: new Map(),
         concludedPostProcesses: [],
         activePostProcessCount: 0,
+        postProcessesVisible: true,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1696,6 +1800,7 @@ describe('EntregasPage', () => {
         processByPostId: new Map([[2, {}]]),
         concludedPostProcesses: [],
         activePostProcessCount: 0,
+        postProcessesVisible: true,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1755,6 +1860,7 @@ describe('EntregasPage', () => {
         processByPostId: new Map(),
         concludedPostProcesses: [],
         activePostProcessCount: 0,
+        postProcessesVisible: true,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1771,7 +1877,11 @@ describe('EntregasPage', () => {
       // the common case where the ChartView "Somente fluxos" note renders and
       // its link must actually reveal individual posts, not just switch views.
       localStorage.setItem('entregas_last_mode_conta-1', 'entregas');
-      renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+      renderEntregasPage({
+        activeWorkflows: [wfFixture],
+        cards: [makeCard()],
+        postProcessesVisible: true,
+      });
 
       expect(screen.getByRole('radio', { name: 'Fluxos' })).toHaveAttribute('aria-checked', 'true');
 
@@ -1796,6 +1906,7 @@ describe('EntregasPage', () => {
         processByPostId: new Map(),
         concludedPostProcesses: [],
         activePostProcessCount: 0,
+        postProcessesVisible: true,
         isLoading: false,
         refresh: vi.fn(),
       } as never);
@@ -1815,6 +1926,157 @@ describe('EntregasPage', () => {
       // EntidadeToggle only mounts when mode === 'entregas' (and the flag is on), so this
       // confirms mode actually flipped back, not just that entidade and the URL did.
       expect(screen.getByRole('radio', { name: 'Todos' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('flag desligada com processo ativo: mostra o toggle de entidade e o card individual', async () => {
+      limitsMock.features = { feature_post_processes: false };
+      const entity = toPostEntity(vigenteFixture, { clientes: [], membros: [] })!;
+      mockedUseEntregasData.mockReturnValue({
+        clientes: [],
+        membros: [],
+        templates: [],
+        cards: [],
+        activeWorkflows: [],
+        postEntities: [entity],
+        processByPostId: new Map([[77, vigenteFixture]]),
+        concludedPostProcesses: [],
+        activePostProcessCount: 1,
+        postProcessesVisible: true,
+        isLoading: false,
+        refresh: vi.fn(),
+      } as never);
+      renderPage('/entregas');
+      await screen.findByTestId('post-process-card');
+      expect(screen.getByRole('radiogroup', { name: 'Entidades do quadro' })).toBeInTheDocument();
+      // Criação continua escondida: a seção Sem processo não aparece com a flag desligada.
+      expect(screen.queryByText('Sem processo')).toBeNull();
+      // A asserção acima é vácua sozinha (mockedUseActivePosts já devolve posts: []
+      // neste describe, então SemProcessoSection já se escondia por "total === 0",
+      // independente do gate). Esta é a que de fato prova que semProcessoMode usou
+      // postProcessesEnabled (false aqui), não postProcessesVisible (true aqui, por
+      // haver processo vigente): se EntregasPage.tsx voltasse a gatear por
+      // postProcessesVisible, este valor seria true e a asserção falharia.
+      expect(mockedUseActivePosts).toHaveBeenLastCalledWith(false);
+    });
+
+    describe('revelar card no quadro depois de desmembrar mantendo etapas', () => {
+      const entity = toPostEntity(vigenteFixture, { clientes: [], membros: [] })!;
+
+      function baseData(overrides: Record<string, unknown> = {}) {
+        return {
+          clientes: [{ id: 10, nome: 'Clínica Aurora' }],
+          membros: [{ id: 7, nome: 'Ana' }],
+          templates: [],
+          cards: [
+            makeCard({
+              workflow: { id: 2, titulo: 'Fluxo Profundo', cliente_id: 10, status: 'ativo' },
+            }),
+          ],
+          activeWorkflows: [{ id: 2 }],
+          postEntities: [],
+          processByPostId: new Map(),
+          concludedPostProcesses: [],
+          activePostProcessCount: 1,
+          postProcessesVisible: true,
+          isLoading: false,
+          isFetching: false,
+          refresh: vi.fn(),
+          ...overrides,
+        };
+      }
+
+      beforeEach(() => {
+        limitsMock.features = { feature_post_processes: true };
+      });
+
+      it('desmembrar mantendo etapas revela o card: Kanban, Todos, filtros que escondiam limpos, drawer do post aberto', async () => {
+        mockedUseEntregasData.mockReturnValue(baseData({ postEntities: [entity] }) as never);
+        renderPage('/entregas?drawer=2&clientes=99');
+
+        expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Detach keeping process'));
+        });
+
+        await screen.findByText('Standalone drawer: 77');
+        expect(screen.getByTestId('current-path')).toHaveTextContent('entidade=todos');
+        expect(screen.getByTestId('current-path')).not.toHaveTextContent('clientes=99');
+        expect(mockedToast.info).toHaveBeenCalledWith(
+          'Filtros removidos para mostrar o post no quadro.',
+        );
+      });
+
+      it('timing guard: não desiste antes de observar um fetch, e revela assim que a entidade chega', async () => {
+        mockedUseEntregasData.mockReturnValue(baseData({ postEntities: [] }) as never);
+        const { rerender } = renderPage('/entregas?drawer=2');
+
+        expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Detach keeping process'));
+        });
+        // First pass: entity not found yet, and no fetch has been observed since the
+        // reveal started -- keeps waiting silently instead of giving up immediately.
+        expect(mockedToast.error).not.toHaveBeenCalledWith(
+          'O post não apareceu no quadro. Recarregue a página.',
+        );
+        expect(screen.queryByText('Standalone drawer: 77')).toBeNull();
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [], isFetching: true }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+        expect(mockedToast.error).not.toHaveBeenCalledWith(
+          'O post não apareceu no quadro. Recarregue a página.',
+        );
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [entity], isFetching: false }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+
+        await screen.findByText('Standalone drawer: 77');
+        expect(mockedToast.error).not.toHaveBeenCalledWith(
+          'O post não apareceu no quadro. Recarregue a página.',
+        );
+      });
+
+      it('timing guard: desiste e toasta erro só depois de observar um fetch em que a entidade ainda não chegou', async () => {
+        mockedUseEntregasData.mockReturnValue(baseData({ postEntities: [] }) as never);
+        const { rerender } = renderPage('/entregas?drawer=2');
+
+        expect(await screen.findByText('Workflow drawer: Fluxo Profundo')).toBeInTheDocument();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Detach keeping process'));
+        });
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [], isFetching: true }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+
+        mockedUseEntregasData.mockReturnValue(
+          baseData({ postEntities: [], isFetching: false }) as never,
+        );
+        await act(async () => {
+          rerender(pageTree('/entregas?drawer=2'));
+        });
+
+        await waitFor(() =>
+          expect(mockedToast.error).toHaveBeenCalledWith(
+            'O post não apareceu no quadro. Recarregue a página.',
+          ),
+        );
+        expect(screen.queryByText('Standalone drawer: 77')).toBeNull();
+      });
     });
   });
 });

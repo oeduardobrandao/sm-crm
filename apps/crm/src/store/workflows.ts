@@ -1,6 +1,7 @@
 import { supabase, getUserId, getContaId } from './core';
 import { resetApprovedPostsForNextCycle } from './posts';
 import { fetchAllPaged } from './paging';
+import { toLocalISODate } from '../utils/postDate';
 
 // =============================================
 // WORKFLOW TEMPLATES
@@ -538,7 +539,7 @@ export function _computeDeliveryDeadlines(
   if (anchorIdx === -1) return new Map();
 
   const result = new Map<number, string>();
-  const toISO = (d: Date) => d.toISOString().split('T')[0];
+  const toISO = toLocalISODate;
 
   // Anchor step gets delivery date
   result.set(sorted[anchorIdx].ordem, toISO(deliveryDate));

@@ -6065,6 +6065,14 @@ body.role-agent input[name='valor_total'] {
   margin-top: 0.15rem;
 }
 
+/* Card de post individual (fase 4, spec §4.2): botões só ícone (Voltar,
+   Avançar/Concluir) e a alça de arrastar, não os botões de largura total do
+   fluxo -- sem isto o `flex: 1 1 auto` genérico acima estica os ícones para
+   dividir a largura da coluna. */
+.board-card--post .board-card-actions button {
+  flex: 0 0 auto;
+}
+
 .board-card-actions button {
   display: flex;
   align-items: center;
@@ -13090,6 +13098,29 @@ a.hub-fill__row-inner:hover {
 .post-production-history {
   border-top: 1px solid var(--border-color);
   padding-top: 0.6rem;
+}
+.post-production-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  font-size: 0.78rem;
+  color: var(--text-main);
+}
+.post-production-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+.post-production-step-edit {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
 }
 .entregas-somente-fluxos {
   margin: 0;

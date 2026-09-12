@@ -49,6 +49,7 @@ import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { StandalonePostDrawer } from './components/StandalonePostDrawer';
 import { SemProcessoSection } from './components/SemProcessoSection';
+import { ApplyProcessDialog } from './components/ApplyProcessDialog';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
 import { EntidadeToggle } from './components/EntidadeToggle';
 import { VistasTabs } from './components/VistasTabs';
@@ -57,6 +58,7 @@ import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } f
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { matchesEtapaPrazo } from './etapaPrazo';
 import { matchesPostEntityFilters } from './entityFilters';
+import { filtersToReveal } from './revealFilters';
 import type { PostEntity } from './boardEntity';
 import {
   parseEntregasQuery,
@@ -114,9 +116,12 @@ export default function EntregasPage() {
   const { profile } = useAuth();
   const contaId = profile?.conta_id ?? 'unknown';
 
-  // Processos individuais de produção (spec 2026-09-10). Ships dark: every new
-  // surface on this page checks this one boolean; nothing else may read the flag.
+  // Processos individuais de produção (spec 2026-09-10). Ships dark.
   const { features } = useWorkspaceLimits();
+  // Duas verdades (spec §11, PO 2026-09-11): `postProcessesEnabled` é a flag do
+  // plano e gate SÓ criação (Aplicar processo, Manter etapas, seção Sem
+  // processo). `postProcessesVisible` (hook) = flag OU processo existente, e
+  // gate tudo que é exibição e operação de processos existentes.
   const postProcessesEnabled = features?.feature_post_processes === true;
 
   const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
@@ -147,13 +152,20 @@ export default function EntregasPage() {
     if (hadEntidadeParam) return initialQuery.entidade;
     return loadLastEntidade(contaId) ?? (hasLastMode(contaId) ? 'fluxos' : 'todos');
   });
-  // Flag desligada: o quadro é sempre o de fluxos, a URL não ganha ?entidade= e
-  // nenhuma chave nova entra no localStorage.
-  const effectiveEntidade: EntidadeFilter = postProcessesEnabled ? entidade : 'fluxos';
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   const [newAvulsoOpen, setNewAvulsoOpen] = useState(false);
+  // Post avulso alvo do diálogo "Aplicar processo" (Task 12), aberto a partir
+  // de um card da seção Sem processo.
+  const [applyTarget, setApplyTarget] = useState<ActivePost | null>(null);
+  // Desmembrar mantendo etapas / aplicar processo: aguarda a entidade aparecer
+  // em `postEntities` (não filtrado) depois do refresh disparado por
+  // revealPostProcesses, para então limpar filtros e abrir o drawer (spec §4.1).
+  const [pendingReveal, setPendingReveal] = useState<{
+    postIds: number[];
+    openDrawer: boolean;
+  } | null>(null);
   // Per-column sort mode for the Publicações board, remembered per conta.
   const [boardColumnSorts, setBoardColumnSorts] = useState<
     Partial<Record<string, BoardColumnSort>>
@@ -173,6 +185,7 @@ export default function EntregasPage() {
     postEntities,
     processByPostId,
     activePostProcessCount,
+    postProcessesVisible,
     activeWorkflows,
     postsCounts,
     approvedPostsCounts,
@@ -184,6 +197,11 @@ export default function EntregasPage() {
     isFetching,
     refresh,
   } = useEntregasData({ postProcessesEnabled });
+
+  // Sem processos visíveis (flag desligada E nenhum processo vigente): o quadro
+  // é sempre o de fluxos, a URL não ganha ?entidade= e nenhuma chave nova entra
+  // no localStorage.
+  const effectiveEntidade: EntidadeFilter = postProcessesVisible ? entidade : 'fluxos';
 
   // Same inline pattern as NotFoundPage: an app route, not one of the
   // manifest-driven public pages usePageMeta covers, so nothing else would set
@@ -252,10 +270,10 @@ export default function EntregasPage() {
           captureEvent('entregas_tour_dismissed', { step });
           markTourDone();
         },
-        postProcesses: postProcessesEnabled,
+        postProcesses: postProcessesVisible,
       }),
     );
-  }, [markTourDone, postProcessesEnabled]);
+  }, [markTourDone, postProcessesVisible]);
 
   // Auto-start once on the first visit that shows the example board. Suppressed while the
   // new-workflow wizard is open (?novo-fluxo=1 deep link) so the two onboarding overlays
@@ -384,11 +402,11 @@ export default function EntregasPage() {
   }, [activeView, activeMode, contaId]);
 
   useEffect(() => {
-    if (!postProcessesEnabled) return;
+    if (!postProcessesVisible) return;
     if ((activeView === 'kanban' || activeView === 'list') && activeMode === 'entregas') {
       persistLastEntidade(contaId, effectiveEntidade);
     }
-  }, [postProcessesEnabled, activeView, activeMode, effectiveEntidade, contaId]);
+  }, [postProcessesVisible, activeView, activeMode, effectiveEntidade, contaId]);
 
   useEffect(() => {
     if (pendingDeepLink === null || pendingDeepLink.workflowId == null) return;
@@ -781,6 +799,48 @@ export default function EntregasPage() {
     return new Map(postEntities.map((e) => [e.process.post_id, e.etapaNome]));
   }, [postEntities]);
 
+  // Spec §4.1: desmembrar mantendo etapas / aplicar processo abrem Fluxos em
+  // Kanban, selecionam Todos e revelam o card, removendo só os filtros que o
+  // esconderiam, com aviso. Um post abre o drawer; vários só revelam.
+  const revealPostProcesses = useCallback(
+    (postIds: number[]) => {
+      setDrawerCard(null);
+      setDrawerInitialPostId(null);
+      setActiveView('kanban');
+      setMode('entregas');
+      setEntidade('todos');
+      refresh();
+      setPendingReveal({ postIds, openDrawer: postIds.length === 1 });
+    },
+    [refresh],
+  );
+
+  // O refetch disparado por refresh() pode ainda não ter virado isFetching na
+  // primeira renderização após o clique: só desistir depois de ter VISTO o
+  // fetch acontecer uma vez desde o início da revelação.
+  const sawFetchingRef = useRef(false);
+  useEffect(() => {
+    if (!pendingReveal) {
+      sawFetchingRef.current = false;
+      return;
+    }
+    if (isFetching) sawFetchingRef.current = true;
+    const found = postEntities.filter((e) => pendingReveal.postIds.includes(e.process.post_id));
+    if (found.length < pendingReveal.postIds.length) {
+      if (isLoading || isFetching || !sawFetchingRef.current) return;
+      toast.error('O post não apareceu no quadro. Recarregue a página.');
+      setPendingReveal(null);
+      return;
+    }
+    const { filters: next, cleared } = filtersToReveal(found, filters);
+    if (cleared.length) {
+      setFilters(next);
+      toast.info('Filtros removidos para mostrar o post no quadro.');
+    }
+    if (pendingReveal.openDrawer) setStandalonePostId(pendingReveal.postIds[0]);
+    setPendingReveal(null);
+  }, [pendingReveal, postEntities, isLoading, isFetching, filters]);
+
   const overdue = cards.filter((c) => c.deadline.estourado).length;
   const urgent = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
 
@@ -851,7 +911,7 @@ export default function EntregasPage() {
               unless the header says which one it is. */}
           <p data-tooltip="Totais gerais, sem filtros" data-tooltip-dir="right">
             fluxos ativos: {activeWorkflows.length}
-            {postProcessesEnabled && <> · posts individuais: {activePostProcessCount}</>}
+            {postProcessesVisible && <> · posts individuais: {activePostProcessCount}</>}
             {overdue > 0 && (
               <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
                 {' '}
@@ -891,7 +951,7 @@ export default function EntregasPage() {
       {explainerOpen && (
         <ComoFuncionaPanel
           onDismiss={dismissExplainer}
-          postProcessesEnabled={postProcessesEnabled}
+          postProcessesEnabled={postProcessesVisible}
         />
       )}
 
@@ -971,7 +1031,7 @@ export default function EntregasPage() {
           <ModeToggle mode={mode} onModeChange={setMode} />
         )}
 
-        {postProcessesEnabled &&
+        {postProcessesVisible &&
           (activeView === 'kanban' || activeView === 'list') &&
           mode === 'entregas' && (
             <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
@@ -998,7 +1058,8 @@ export default function EntregasPage() {
               cards={visibleCards}
               allCards={cards}
               postEntities={visiblePostEntities}
-              postProcessesEnabled={postProcessesEnabled}
+              allPostEntities={postEntities}
+              postProcessesEnabled={postProcessesVisible}
               onPostClick={handlePostEntityClick}
               onCardClick={handleCardClick}
               onEditClick={setEditCard}
@@ -1028,6 +1089,7 @@ export default function EntregasPage() {
                 total={semProcessoPosts.length}
                 productionFiltersActive={productionFiltersActive(filters)}
                 onPostClick={handlePostClick}
+                onApplyProcess={setApplyTarget}
                 onVerTodos={() => setMode('publicacoes')}
               />
             )}
@@ -1054,7 +1116,7 @@ export default function EntregasPage() {
           onFiltersChange={setFilters}
           onCardClick={handleCardClick}
           onGoToView={setActiveView}
-          postProcessesEnabled={postProcessesEnabled}
+          postProcessesEnabled={postProcessesVisible}
           onGoToKanban={() => {
             setActiveView('kanban');
             setEntidade('todos');
@@ -1069,7 +1131,7 @@ export default function EntregasPage() {
           mode={mode}
           openableWorkflowIds={openableWorkflowIds}
           onPostClick={handlePostClick}
-          postProcessesEnabled={postProcessesEnabled}
+          postProcessesEnabled={postProcessesVisible}
           onGoToKanban={() => {
             setActiveView('kanban');
             setEntidade('todos');
@@ -1170,6 +1232,7 @@ export default function EntregasPage() {
             setDrawerInitialPostId(null);
           }}
           onRefresh={refresh}
+          onDetachedKeepingProcess={revealPostProcesses}
           onOpenWorkflow={(workflowId, seed) => {
             // Posts just moved to another flow: land the user there NOW when
             // possible. An existing target already has a board card; a freshly
@@ -1206,6 +1269,23 @@ export default function EntregasPage() {
           onClose={() => setStandalonePostId(null)}
           onRefresh={refresh}
           onAttached={handlePostAttached}
+          onProcessApplied={(id) => revealPostProcesses([id])}
+        />
+      )}
+      {applyTarget && (
+        <ApplyProcessDialog
+          open
+          onClose={() => setApplyTarget(null)}
+          post={{
+            id: applyTarget.id,
+            titulo: applyTarget.titulo,
+            cliente_id: applyTarget.cliente_id,
+          }}
+          membros={membros}
+          onApplied={(r) => {
+            setApplyTarget(null);
+            revealPostProcesses([r.post_id]);
+          }}
         />
       )}
       <RecurringWorkflowDialog
