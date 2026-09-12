@@ -37,6 +37,10 @@ export interface ApplyProcessDialogProps {
   post: { id: number; titulo: string | null; cliente_id: number | null };
   membros: Membro[];
   onApplied: (result: ApplyPostProcessResult) => void;
+  /** Pré-seleciona o modelo (quick-add "Post individual" com modo_prazo !=
+   *  'padrao', spec §3): o usuário só completa etapa inicial/datas, sem
+   *  escolher o template de novo. */
+  initialTemplateId?: number;
 }
 
 const ESTADO_LABEL = { ignorado: 'Ignorada', ativo: 'Inicial', pendente: 'Pendente' } as const;
@@ -54,6 +58,7 @@ export function ApplyProcessDialog({
   post,
   membros,
   onApplied,
+  initialTemplateId,
 }: ApplyProcessDialogProps) {
   const qc = useQueryClient();
   const { data: templates = [] } = useQuery({
@@ -82,11 +87,14 @@ export function ApplyProcessDialog({
   // the client query settles (P2 review finding, 2026-09-11 — confirmed against this exact code).
   useEffect(() => {
     if (!open) return;
-    setTemplateId(null);
+    setTemplateId(initialTemplateId ?? null);
     setStartOrdem(0);
     setResponsaveis({});
     setFixedDates({});
     setMonth('');
+    // initialTemplateId só deve valer no primeiro open — não re-executar
+    // a cada render por causa dele quando o pai o mantém estável por post.id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, post.id]);
   // Delivery-month default is set separately, once the client's dia_entrega is known — this can
   // still re-run after the reset above without touching template/responsável/prazo selections.

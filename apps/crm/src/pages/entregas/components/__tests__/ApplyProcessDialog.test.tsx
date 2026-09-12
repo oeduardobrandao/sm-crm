@@ -140,6 +140,26 @@ describe('ApplyProcessDialog', () => {
       'true',
     );
   });
+  // Spec §3: o quick-add "Post individual" com modo_prazo != 'padrao' cria o
+  // post e abre este diálogo PRÉ-PREENCHIDO com o template da linha -- sem a
+  // etapa de escolher o modelo de novo.
+  it('initialTemplateId: abre com o modelo já selecionado e aplica sem tocar no Select de modelo', async () => {
+    const { onApplied } = renderDialog({ initialTemplateId: 4 });
+    // O rótulo só aparece depois que getWorkflowTemplates resolve: o id
+    // semeado é o que sobrevive à corrida entre o open e a query.
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Modelo de processo' })).toHaveTextContent(
+        'Mensal',
+      ),
+    );
+    // Prévia já renderizada: prova que `template` resolveu a partir do id
+    // semeado, e não só que o gatilho mostra um rótulo.
+    expect(await screen.findByRole('combobox', { name: 'Etapa inicial' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar processo' }));
+    await waitFor(() => expect(store.applyPostProcess).toHaveBeenCalledTimes(1));
+    expect(store.applyPostProcess.mock.calls[0][0]).toMatchObject({ postId: 77, templateId: 4 });
+    expect(onApplied).toHaveBeenCalled();
+  });
   it('template_changed: toast mapeado, templates recarregados, nada aplicado', async () => {
     store.applyPostProcess.mockRejectedValueOnce({ message: 'template_changed', code: 'P0001' });
     const { onApplied } = renderDialog();

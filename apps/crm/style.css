@@ -5808,6 +5808,19 @@ body.role-agent input[name='valor_total'] {
 .post-fluxo-tag--individual {
   border-style: solid;
 }
+
+/* Card compacto (spec §4): a tag "Individual" vira só o ícone -- o texto some
+   do DOM e o título/aria-label carrega o rótulo completo. */
+.post-fluxo-tag--icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  max-width: none;
+}
+
 .board-card--post {
   cursor: pointer;
 }
@@ -5816,10 +5829,10 @@ body.role-agent input[name='valor_total'] {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  padding: 0.85rem;
+  padding: 0.7rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
@@ -5879,6 +5892,78 @@ body.role-agent input[name='valor_total'] {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+/* Card compacto (spec §4): a pill de prazo agora carrega o tipo_prazo dentro
+   de si (span aninhado de opacidade baixa), em vez de um span irmão --
+   "23h corridos" numa peça só. */
+.board-card-deadline-pill {
+  display: inline-flex;
+}
+
+.board-card-prazo-type-inner {
+  margin-left: 0.3rem;
+  opacity: 0.6;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+/* Chip combinado de tipo + status (spec §4): o rótulo do tipo ("Feed") e o
+   PostStatusChip ficam dentro do mesmo contêiner, sem alterar o componente
+   PostStatusChip em si. */
+.board-card-type-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface-hover);
+}
+
+.board-card-type-status-chip-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Contagem de posts do fluxo (spec §4): chip clicável no topo do card, no
+   lugar do antigo botão "Posts" no rodapé. */
+.board-card-posts-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.45rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.board-card-posts-chip:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+}
+
+/* No tema escuro --surface-2 e --surface-hover são a mesma cor (#1e2430), o
+   que deixaria o hover do chip sem mudança de fundo. */
+[data-theme='dark'] .board-card-posts-chip:hover {
+  background: var(--surface-3);
+}
+
+.board-card-drag-handle {
+  color: var(--text-muted);
+}
+
+.board-card-kebab {
+  margin-left: 0;
 }
 
 .deadline-ok .board-card-deadline,
@@ -6086,12 +6171,20 @@ body.role-agent input[name='valor_total'] {
   margin-top: 0.15rem;
 }
 
-/* Card de post individual (fase 4, spec §4.2): botões só ícone (Voltar,
-   Avançar/Concluir) e a alça de arrastar, não os botões de largura total do
-   fluxo -- sem isto o `flex: 1 1 auto` genérico acima estica os ícones para
-   dividir a largura da coluna. */
-.board-card--post .board-card-actions button {
+/* Cards compactos (spec §4): o rodapé dos DOIS cards do quadro (fluxo e post
+   individual) é uma fileira de botões só ícone -- sem isto o `flex: 1 1 auto`
+   genérico abaixo os estica para dividir a largura da coluna. */
+.board-card .board-card-actions button {
   flex: 0 0 auto;
+}
+
+/* O botão de histórico do fluxo (Popover) desenha a própria caixa 28x28 sem
+   borda; a regra genérica `.board-card-actions button` abaixo tem mais
+   especificidade que `.drawer-post-history-btn` e lhe daria borda e padding
+   agora que o rodapé do WorkflowCard carrega a classe. */
+.board-card-actions .drawer-post-history-btn {
+  border: none;
+  padding: 0;
 }
 
 .board-card-actions button {
@@ -13083,16 +13176,35 @@ a.hub-fill__row-inner:hover {
   background: var(--surface-1);
   margin-bottom: 1rem;
 }
+.post-production-heading {
+  margin: 0;
+}
 .post-production-head {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  background: none;
+  border: 0;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
 }
 .post-production-title {
   margin: 0;
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--text-main);
+}
+.post-production-summary {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .post-production-state {
   font-size: 0.68rem;

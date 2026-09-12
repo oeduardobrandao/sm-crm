@@ -99,6 +99,11 @@ interface KanbanViewBaseProps {
   onPostsClick: (card: BoardCard) => void;
   onRefresh: () => void;
   onRecurring: (workflowId: number) => void;
+  /** Kebab "Excluir" do card de fluxo. Sem esta prop o item some (mesmo gate
+   *  de onDeleteClick que WorkflowCard já usa). */
+  onDeleteWorkflowClick?: (card: BoardCard) => void;
+  /** Kebab "Excluir post" do card de post individual. */
+  onDeletePostClick?: (entity: PostEntity) => void;
   /** Quick-add: opens the new-workflow wizard preloaded with the row's template. */
   onAddWorkflow?: (templateId: number | null) => void;
   /** Opens the existing "Gerenciar Templates" modal from the board's trailing "+" tab. */
@@ -106,6 +111,11 @@ interface KanbanViewBaseProps {
   /** True when the workspace is at its plan's max_workflow_templates limit — the "+"
    *  tab renders disabled with a tooltip instead of calling onCreateTemplate. */
   createTemplateDisabled?: boolean;
+  /** Quick-add: opens NewAvulsoDialog pre-linked to the row's template (spec §3
+   *  "+ Novo ▾"). Only offered when the row has a template AND
+   *  `postProcessesEnabled`; otherwise the trigger stays a plain button that
+   *  only calls `onAddWorkflow`. */
+  onAddPostIndividual?: (templateId: number) => void;
   membros: Membro[];
   templates: WorkflowTemplate[];
   postsCounts: Map<number, number>;
@@ -290,6 +300,7 @@ function SortableCard({
   onRefresh,
   onRevertClick,
   onForwardClick,
+  onDeleteClick,
   postsCount,
   approvedPostsCount,
   clearedClienteCount,
@@ -304,6 +315,7 @@ function SortableCard({
   onRefresh: () => void;
   onRevertClick: () => void;
   onForwardClick: () => void;
+  onDeleteClick?: () => void;
   postsCount: number;
   approvedPostsCount: number;
   clearedClienteCount: number;
@@ -331,6 +343,7 @@ function SortableCard({
         onRefresh={onRefresh}
         onRevertClick={onRevertClick}
         onForwardClick={onForwardClick}
+        onDeleteClick={onDeleteClick}
         postsCount={postsCount}
         approvedPostsCount={approvedPostsCount}
         clearedClienteCount={clearedClienteCount}
@@ -350,11 +363,15 @@ function SortablePostCard({
   onClick,
   onForwardClick,
   onRevertClick,
+  onRemoveProcessClick,
+  onDeleteClick,
 }: {
   entity: PostEntity;
   onClick?: () => void;
   onForwardClick: () => void;
   onRevertClick?: () => void;
+  onRemoveProcessClick?: () => void;
+  onDeleteClick?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entity.id,
@@ -376,6 +393,8 @@ function SortablePostCard({
         dragHandle={<GripVertical className="h-4 w-4" {...listeners} />}
         onForwardClick={onForwardClick}
         onRevertClick={onRevertClick}
+        onRemoveProcessClick={onRemoveProcessClick}
+        onDeleteClick={onDeleteClick}
         canRevert={previousStepOf(entity.process) != null}
         forwardLabel={forwardLabelFor(entity.process)}
       />
@@ -401,6 +420,9 @@ export function KanbanView({
   onAddWorkflow,
   onCreateTemplate,
   createTemplateDisabled,
+  onAddPostIndividual,
+  onDeleteWorkflowClick,
+  onDeletePostClick,
   membros,
   templates,
   postsCounts,
@@ -1243,15 +1265,35 @@ export function KanbanView({
               </span>
             </div>
             <DroppableColumnBody tint={tint} id={`${COL_PREFIX}${colKeyStr}`}>
-              {colIdx === 0 && onAddWorkflow && (
-                <button
-                  type="button"
-                  className="board-add-card"
-                  onClick={() => onAddWorkflow(row.templateId)}
-                >
-                  <Plus className="h-3.5 w-3.5" /> Novo fluxo
-                </button>
-              )}
+              {colIdx === 0 &&
+                onAddWorkflow &&
+                (row.templateId != null && postProcessesEnabled && onAddPostIndividual ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" className="board-add-card">
+                        <Plus className="h-3.5 w-3.5" /> Novo ▾
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="min-w-[150px]">
+                      <DropdownMenuItem onSelect={() => onAddWorkflow(row.templateId)}>
+                        Fluxo
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => onAddPostIndividual(row.templateId as number)}
+                      >
+                        Post individual
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <button
+                    type="button"
+                    className="board-add-card"
+                    onClick={() => onAddWorkflow(row.templateId)}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Novo fluxo
+                  </button>
+                ))}
               <SortableContext
                 items={mixed.map(sortableIdOf)}
                 strategy={verticalListSortingStrategy}
@@ -1280,6 +1322,10 @@ export function KanbanView({
                                 : commands.avancar(targetOf(entity))
                             }
                             onRevertClick={() => commands.voltar(targetOf(entity))}
+                            onRemoveProcessClick={() => commands.remover(targetOf(entity))}
+                            onDeleteClick={
+                              onDeletePostClick ? () => onDeletePostClick(entity) : undefined
+                            }
                           />
                         </Fragment>
                       );
@@ -1302,6 +1348,9 @@ export function KanbanView({
                             })
                           }
                           onForwardClick={() => handleForwardCard(card)}
+                          onDeleteClick={
+                            onDeleteWorkflowClick ? () => onDeleteWorkflowClick(card) : undefined
+                          }
                           postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                           approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
                           clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}

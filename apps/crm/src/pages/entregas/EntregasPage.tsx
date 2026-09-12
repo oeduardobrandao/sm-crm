@@ -24,6 +24,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useEntitlements } from '@/hooks/useEntitlements';
@@ -82,10 +92,11 @@ import {
   duplicateWorkflow,
   getStandalonePost,
   getDeadlineInfo,
+  removeWorkflow,
+  removeWorkflowPost,
   type ActivePost,
   type Workflow,
   type WorkflowEtapa,
-  type WorkflowPost,
 } from '../../store';
 import { captureEvent } from '@/lib/analytics';
 
@@ -142,6 +153,12 @@ export default function EntregasPage() {
   const [editCard, setEditCard] = useState<BoardCard | null>(null);
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
+  // Confirmações do kebab dos cards do quadro de Fluxos (spec §4): excluir
+  // fluxo e excluir post. "Encerrar processo" NÃO passa por aqui -- o kebab
+  // chama commands.remover do usePostProcessCommands direto no KanbanView,
+  // que já tem o diálogo, o tratamento de revisão obsoleta e a invalidação.
+  const [deleteWorkflowTarget, setDeleteWorkflowTarget] = useState<BoardCard | null>(null);
+  const [deletePostTarget, setDeletePostTarget] = useState<PostEntity | null>(null);
   // One page-wide mode: flipping Fluxos/Publicações persists across Kanban,
   // Calendário and Lista. An explicit ?mode= in the URL wins; with no ?mode=
   // param, it seeds from the conta's last-used mode.
@@ -159,9 +176,26 @@ export default function EntregasPage() {
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   const [newAvulsoOpen, setNewAvulsoOpen] = useState(false);
+  // Template pré-vinculado quando NewAvulsoDialog é aberto a partir do "+ Novo ▾"
+  // da coluna (spec §3, item "Post individual"). null = fluxo normal do "Post
+  // avulso" do dropdown de cabeçalho, sem template.
+  const [avulsoTemplateId, setAvulsoTemplateId] = useState<number | null>(null);
   // Post avulso alvo do diálogo "Aplicar processo" (Task 12), aberto a partir
   // de um card da seção Sem processo.
   const [applyTarget, setApplyTarget] = useState<ActivePost | null>(null);
+  // Mesmo diálogo, aberto pelo NewAvulsoDialog quando o template pré-vinculado
+  // tem modo_prazo != 'padrao' (exige input extra que o quick-add não coleta).
+  const [manualApplyPost, setManualApplyPost] = useState<{
+    id: number;
+    titulo: string | null;
+    cliente_id: number | null;
+    templateId: number;
+  } | null>(null);
+  // ApplyProcessDialog chama onApplied() e DEPOIS onClose() no sucesso (outros
+  // dois call sites dependem dessa ordem) -- sem esta flag, o fallback de
+  // onClose (abrir Publicações) roda também depois de aplicar com sucesso e
+  // sobrescreve o revealPostProcesses (Fluxos) que acabou de rodar.
+  const manualApplyAppliedRef = useRef(false);
   // Desmembrar mantendo etapas / aplicar processo: aguarda a entidade aparecer
   // em `postEntities` (não filtrado) depois do refresh disparado por
   // revealPostProcesses, para então limpar filtros e abrir o drawer (spec §4.1).
@@ -565,6 +599,34 @@ export default function EntregasPage() {
     setDrawerInitialPostId(null);
     setStandalonePostId(entity.process.post_id);
   };
+  // Kebab do card de fluxo (spec §4): mesma RPC que EditWorkflowModal usa,
+  // só que sem passar pelo modal — confirmação própria no card.
+  const confirmDeleteWorkflow = async () => {
+    const card = deleteWorkflowTarget;
+    if (!card) return;
+    setDeleteWorkflowTarget(null);
+    try {
+      await removeWorkflow(card.workflow.id!);
+      toast.success('Fluxo excluído!');
+      refresh();
+    } catch {
+      toast.error('Erro ao excluir fluxo');
+    }
+  };
+  // "Excluir post" no kebab: mesma RPC que StandalonePostDrawer usa no botão
+  // de excluir do drawer.
+  const confirmDeletePost = async () => {
+    const entity = deletePostTarget;
+    if (!entity) return;
+    setDeletePostTarget(null);
+    try {
+      await removeWorkflowPost(entity.process.post_id);
+      toast.success('Post excluído.');
+      refresh();
+    } catch {
+      toast.error('Erro ao excluir post');
+    }
+  };
   // Object-based click contract shared by the four post-list views (Kanban/Lista/
   // Calendário/PublicacoesPanel): a post avulso has no workflow card to open, so it
   // always goes to the standalone slot instead -- avulsos are always "openable".
@@ -603,14 +665,14 @@ export default function EntregasPage() {
   // stays as-is if already kanban/list; anything else -- chart/calendar/concluded --
   // switches to kanban), put that view's mode in Publicações, and open the new
   // post in the standalone slot.
-  const handleAvulsoCreated = (post: WorkflowPost) => {
+  const handleAvulsoCreated = (postId: number) => {
     const targetView: ActiveView =
       activeView === 'kanban' || activeView === 'list' ? activeView : 'kanban';
     if (targetView !== activeView) setActiveView(targetView);
     setMode('publicacoes');
     setDrawerCard(null);
     setDrawerInitialPostId(null);
-    setStandalonePostId(post.id!);
+    setStandalonePostId(postId);
   };
 
   // A saved view is just a serialized query string; applying one replays it over
@@ -945,7 +1007,12 @@ export default function EntregasPage() {
               <DropdownMenuItem onClick={() => setNewWorkflowOpen(true)}>
                 <Route aria-hidden="true" /> Novo fluxo
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setNewAvulsoOpen(true)}>
+              <DropdownMenuItem
+                onClick={() => {
+                  setAvulsoTemplateId(null);
+                  setNewAvulsoOpen(true);
+                }}
+              >
                 <CircleDashed aria-hidden="true" /> Post avulso
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -1071,12 +1138,26 @@ export default function EntregasPage() {
               onPostsClick={handleCardClick}
               onRefresh={refresh}
               onRecurring={setRecurringWfId}
+              onDeleteWorkflowClick={setDeleteWorkflowTarget}
+              onDeletePostClick={setDeletePostTarget}
               onAddWorkflow={(templateId) => {
                 setQuickAddTemplateId(templateId);
                 setNewWorkflowOpen(true);
               }}
               onCreateTemplate={() => setTemplatesOpen(true)}
               createTemplateDisabled={templatesAtLimit}
+              // Criar processo individual é CRIAÇÃO: gate na flag do plano
+              // (`postProcessesEnabled`), não em `postProcessesVisible` — ver o
+              // comentário das "duas verdades" no topo. Sem a flag o próprio
+              // apply_post_process levanta feature_disabled.
+              onAddPostIndividual={
+                postProcessesEnabled
+                  ? (templateId) => {
+                      setAvulsoTemplateId(templateId);
+                      setNewAvulsoOpen(true);
+                    }
+                  : undefined
+              }
               membros={membros}
               templates={templates}
               postsCounts={postsCounts}
@@ -1109,7 +1190,10 @@ export default function EntregasPage() {
             onPostClick={handlePostClick}
             cardsByWorkflowId={cardsByWorkflowId}
             filtersActive={postsFiltersActive}
-            onCreateAvulso={() => setNewAvulsoOpen(true)}
+            onCreateAvulso={() => {
+              setAvulsoTemplateId(null);
+              setNewAvulsoOpen(true);
+            }}
             columnSorts={boardColumnSorts}
             onColumnSortChange={handleBoardColumnSortChange}
             processEtapaByPostId={processEtapaByPostId}
@@ -1165,7 +1249,10 @@ export default function EntregasPage() {
             onFluxoClick={handleFluxoClick}
             cardsByWorkflowId={cardsByWorkflowId}
             filtersActive={postsFiltersActive}
-            onCreateAvulso={() => setNewAvulsoOpen(true)}
+            onCreateAvulso={() => {
+              setAvulsoTemplateId(null);
+              setNewAvulsoOpen(true);
+            }}
             processEtapaByPostId={processEtapaByPostId}
           />
         ))}
@@ -1199,11 +1286,65 @@ export default function EntregasPage() {
       {newAvulsoOpen && (
         <NewAvulsoDialog
           open={newAvulsoOpen}
-          onClose={() => setNewAvulsoOpen(false)}
+          onClose={() => {
+            setNewAvulsoOpen(false);
+            setAvulsoTemplateId(null);
+          }}
           clientes={clientes}
-          onCreated={handleAvulsoCreated}
+          templates={templates}
+          templateId={avulsoTemplateId ?? undefined}
+          onCreated={(post) => handleAvulsoCreated(post.id!)}
+          onProcessApplied={(post) => revealPostProcesses([post.id!])}
+          onNeedsManualApply={(post, template) => {
+            setManualApplyPost({
+              id: post.id!,
+              titulo: post.titulo,
+              cliente_id: post.cliente_id,
+              templateId: template.id!,
+            });
+          }}
         />
       )}
+      <AlertDialog
+        open={!!deleteWorkflowTarget}
+        onOpenChange={(open) => !open && setDeleteWorkflowTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir fluxo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &quot;{deleteWorkflowTarget?.workflow.titulo}&quot; e suas etapas serão excluídos
+              permanentemente. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteWorkflowTarget(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteWorkflow}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={!!deletePostTarget}
+        onOpenChange={(open) => !open && setDeletePostTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &quot;{deletePostTarget?.titulo}&quot; será excluído permanentemente. Esta ação não
+              pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletePostTarget(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeletePost}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {editCard && (
         <EditWorkflowModal
           card={editCard}
@@ -1291,6 +1432,37 @@ export default function EntregasPage() {
           membros={membros}
           onApplied={(r) => {
             setApplyTarget(null);
+            revealPostProcesses([r.post_id]);
+          }}
+        />
+      )}
+      {manualApplyPost && (
+        // Post individual criado via "+ Novo ▾" da coluna, mas o template
+        // pré-vinculado tem modo_prazo != 'padrao' (spec §3): NewAvulsoDialog
+        // já criou o post e repassa aqui em vez de tentar aplicar sozinho.
+        <ApplyProcessDialog
+          open
+          onClose={() => {
+            // onApplied já rodou (sucesso): não sobrescrever o
+            // revealPostProcesses com o fallback de cancelamento abaixo.
+            if (manualApplyAppliedRef.current) {
+              manualApplyAppliedRef.current = false;
+              return;
+            }
+            // Cancelou sem aplicar: o post avulso já existe sem processo --
+            // fechar só o estado o faria sumir do quadro de Fluxos (não tem
+            // processo nem card). Mesmo fallback do fluxo normal do
+            // NewAvulsoDialog (handleAvulsoCreated).
+            const postId = manualApplyPost.id;
+            setManualApplyPost(null);
+            handleAvulsoCreated(postId);
+          }}
+          post={manualApplyPost}
+          initialTemplateId={manualApplyPost.templateId}
+          membros={membros}
+          onApplied={(r) => {
+            manualApplyAppliedRef.current = true;
+            setManualApplyPost(null);
             revealPostProcesses([r.post_id]);
           }}
         />

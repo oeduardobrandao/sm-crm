@@ -241,6 +241,28 @@ describe('RPC wrappers (fase 4)', () => {
       p_ordem: 1,
       p_responsavel_id: null,
       p_prazo_efetivo: null,
+      p_prazo_dias: undefined,
+      p_tipo_prazo: undefined,
+    });
+    // modo_prazo='padrao': prazoDias/tipoPrazo chegam na RPC junto com o
+    // prazoEfetivo recalculado (spec §2) -- nunca só os dois novos sozinhos.
+    await updatePostProcessStep({
+      processId: 5,
+      expectedRevisao: 2,
+      ordem: 1,
+      responsavelId: 9,
+      prazoEfetivo: '2026-09-25T02:59:59.999Z',
+      prazoDias: 3,
+      tipoPrazo: 'uteis',
+    });
+    expect(mockRpc).toHaveBeenLastCalledWith('update_post_process_step', {
+      p_process_id: 5,
+      p_expected_revisao: 2,
+      p_ordem: 1,
+      p_responsavel_id: 9,
+      p_prazo_efetivo: '2026-09-25T02:59:59.999Z',
+      p_prazo_dias: 3,
+      p_tipo_prazo: 'uteis',
     });
     await removePostProcess(5, 1);
     expect(mockRpc).toHaveBeenLastCalledWith('remove_post_process', {

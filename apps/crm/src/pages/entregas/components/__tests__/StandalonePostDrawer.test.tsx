@@ -451,7 +451,7 @@ describe('StandalonePostDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc, { membros: [{ id: 1, nome: 'Ana' }] }); // the select (and its label) only renders with membros
     expect(await screen.findByText('Individual · Design')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Produção' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Produção/ })).toBeInTheDocument();
     expect(screen.getByText('Responsável do post')).toBeInTheDocument();
   });
 
