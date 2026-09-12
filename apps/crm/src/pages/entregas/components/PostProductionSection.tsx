@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Clock, Ban, CircleDot } from 'lucide-react';
+import { Check, Clock, Ban, CircleDot, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   getPostProcessEvents,
@@ -95,6 +95,26 @@ export function PostProductionSection({
     Record<number, { responsavelId: number | null; prazo: string }>
   >({});
   const [savingOrdem, setSavingOrdem] = useState<number | null>(null);
+
+  const storageKey = `post-production-open:${postId}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      return sessionStorage.getItem(storageKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleOpen = () => {
+    setOpen((prev) => {
+      const next = !prev;
+      try {
+        sessionStorage.setItem(storageKey, next ? '1' : '0');
+      } catch {
+        // sessionStorage indisponível (modo privado etc.): estado em memória segue funcionando.
+      }
+      return next;
+    });
+  };
 
   // O revisão do processo muda a cada `update_post_process_step` bem-sucedido
   // (e a qualquer outro comando que avance/reabra a etapa); ao refetch, o

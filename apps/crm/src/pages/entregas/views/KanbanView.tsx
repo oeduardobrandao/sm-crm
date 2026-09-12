@@ -106,6 +106,11 @@ interface KanbanViewBaseProps {
   /** True when the workspace is at its plan's max_workflow_templates limit — the "+"
    *  tab renders disabled with a tooltip instead of calling onCreateTemplate. */
   createTemplateDisabled?: boolean;
+  /** Quick-add: opens NewAvulsoDialog pre-linked to the row's template (spec §3
+   *  "+ Novo ▾"). Only offered when the row has a template AND
+   *  `postProcessesEnabled`; otherwise the trigger stays a plain button that
+   *  only calls `onAddWorkflow`. */
+  onAddPostIndividual?: (templateId: number) => void;
   membros: Membro[];
   templates: WorkflowTemplate[];
   postsCounts: Map<number, number>;
@@ -401,6 +406,7 @@ export function KanbanView({
   onAddWorkflow,
   onCreateTemplate,
   createTemplateDisabled,
+  onAddPostIndividual,
   membros,
   templates,
   postsCounts,
