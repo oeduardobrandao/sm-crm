@@ -142,6 +142,8 @@ vi.mock('../views/KanbanView', () => ({
     onEditClick,
     onPostsClick,
     onRecurring,
+    onCreateTemplate,
+    createTemplateDisabled,
   }: {
     cards: Array<{ workflow: { id: number; titulo: string } }>;
     postEntities?: Array<{ id: string }>;
@@ -151,6 +153,8 @@ vi.mock('../views/KanbanView', () => ({
     onEditClick: (card: unknown) => void;
     onPostsClick: (card: unknown) => void;
     onRecurring: (workflowId: number) => void;
+    onCreateTemplate?: () => void;
+    createTemplateDisabled?: boolean;
   }) =>
     showExample ? (
       <div>
@@ -169,6 +173,11 @@ vi.mock('../views/KanbanView', () => ({
             {entity.id}
           </div>
         ))}
+        {onCreateTemplate && (
+          <button onClick={onCreateTemplate} disabled={createTemplateDisabled}>
+            Create new template
+          </button>
+        )}
         {cards.length > 0 && (
           <>
             <button onClick={() => onEditClick(cards[0])}>Open edit modal</button>
@@ -194,6 +203,17 @@ vi.mock('@/hooks/useWorkspaceLimits', () => ({
     planName: null,
     isLoading: false,
     isUnlimited: false,
+  }),
+}));
+
+vi.mock('@/hooks/useEntitlements', () => ({
+  useEntitlements: () => ({
+    isAtLimit: () => false,
+    hasFeature: () => true,
+    features: {},
+    limits: {},
+    planName: null,
+    isLoading: false,
   }),
 }));
 
