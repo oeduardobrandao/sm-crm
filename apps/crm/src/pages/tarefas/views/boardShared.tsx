@@ -11,6 +11,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+import { Plus } from 'lucide-react';
 import type { Membro, TarefaWithRelations } from '../../../store';
 import { TarefaCard } from '../components/TarefaCard';
 
@@ -20,6 +21,13 @@ export interface BoardColumn {
   title: string;
   tarefas: TarefaWithRelations[];
   hideAssignee?: boolean;
+  /** When false, this column's body doesn't register as a drop target (e.g.
+   * "Em atraso"/"Mais tarde" have no single unambiguous date to assign).
+   * Defaults to true. */
+  droppable?: boolean;
+  /** Renders a "+ Adicionar tarefa" button pinned at the top of the column
+   * when provided. */
+  onAddClick?: () => void;
 }
 
 interface TarefaBoardProps {
@@ -30,6 +38,7 @@ interface TarefaBoardProps {
   /** Fired with the dragged task and the RESOLVED column dropId (card-over-card
    * drops resolve to the hovered card's column). */
   onDropCard: (tarefa: TarefaWithRelations, dropId: string) => void;
+  onRefresh: () => void;
 }
 
 function DraggableTarefaCard({
@@ -37,12 +46,16 @@ function DraggableTarefaCard({
   membro,
   now,
   onClick,
+  membros,
+  onRefresh,
   hideAssignee,
 }: {
   tarefa: TarefaWithRelations;
   membro: Membro | null;
   now: Date;
   onClick: () => void;
+  membros: Membro[];
+  onRefresh: () => void;
   hideAssignee?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -64,14 +77,44 @@ function DraggableTarefaCard({
         membro={membro}
         now={now}
         onClick={onClick}
+        membros={membros}
+        onRefresh={onRefresh}
         hideAssignee={hideAssignee}
       />
     </div>
   );
 }
 
-// Registers the column body as a drop target so empty columns can receive drops.
-function DroppableColumnBody({ id, children }: { id: string; children: React.ReactNode }) {
+// Registers the column body as a drop target so empty columns can receive
+// drops. `droppable: false` columns render a plain div instead -- calling
+// useDroppable conditionally would break the rules of hooks, so this is
+// split into two components rather than an early return inside one.
+function DroppableColumnBody({
+  id,
+  children,
+  droppable = true,
+}: {
+  id: string;
+  children: React.ReactNode;
+  droppable?: boolean;
+}) {
+  if (!droppable) {
+    return (
+      <div className="board-column-body" style={{ minHeight: 60 }}>
+        {children}
+      </div>
+    );
+  }
+  return <DroppableColumnBodyRegistered id={id}>{children}</DroppableColumnBodyRegistered>;
+}
+
+function DroppableColumnBodyRegistered({
+  id,
+  children,
+}: {
+  id: string;
+  children: React.ReactNode;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
     <div
@@ -86,7 +129,14 @@ function DroppableColumnBody({ id, children }: { id: string; children: React.Rea
 
 /** Generic tarefa board: fixed columns, cards draggable across them. No manual
  * ordering (columns are pre-sorted by due date), so no SortableContext. */
-export function TarefaBoard({ columns, membros, now, onCardClick, onDropCard }: TarefaBoardProps) {
+export function TarefaBoard({
+  columns,
+  membros,
+  now,
+  onCardClick,
+  onDropCard,
+  onRefresh,
+}: TarefaBoardProps) {
   const [activeTarefa, setActiveTarefa] = useState<TarefaWithRelations | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -125,7 +175,12 @@ export function TarefaBoard({ columns, membros, now, onCardClick, onDropCard }: 
                 <span className="board-column-title">{col.title}</span>
                 <span className="board-column-count">{col.tarefas.length}</span>
               </div>
-              <DroppableColumnBody id={col.dropId}>
+              <DroppableColumnBody id={col.dropId} droppable={col.droppable}>
+                {col.onAddClick && (
+                  <button type="button" className="board-add-card" onClick={col.onAddClick}>
+                    <Plus className="h-3.5 w-3.5" /> Adicionar tarefa
+                  </button>
+                )}
                 {col.tarefas.length === 0 ? (
                   <div className="board-empty">Nenhuma tarefa</div>
                 ) : (
@@ -138,6 +193,8 @@ export function TarefaBoard({ columns, membros, now, onCardClick, onDropCard }: 
                       }
                       now={now}
                       onClick={() => onCardClick(t)}
+                      membros={membros}
+                      onRefresh={onRefresh}
                       hideAssignee={col.hideAssignee}
                     />
                   ))
@@ -158,6 +215,8 @@ export function TarefaBoard({ columns, membros, now, onCardClick, onDropCard }: 
             }
             now={now}
             onClick={() => {}}
+            membros={[]}
+            onRefresh={() => {}}
           />
         )}
       </DragOverlay>
