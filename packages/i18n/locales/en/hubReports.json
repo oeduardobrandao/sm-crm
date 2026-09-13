@@ -1,0 +1,25 @@
+{
+  "title": "Reports",
+  "description": "Results and performance analysis.",
+  "backLink": "Reports",
+  "generatedAt": "Generated on",
+  "iframeTitleWithMonth": "Report {{month}}",
+  "iframeTitleDefault": "Report",
+  "actions": {
+    "open": "Open",
+    "viewOnline": "View online",
+    "downloadPdf": "Download PDF"
+  },
+  "status": {
+    "ready": "Ready",
+    "preparing": "In progress..."
+  },
+  "empty": {
+    "noReports": "No reports available yet."
+  },
+  "errors": {
+    "loadList": "Error loading reports.",
+    "loadDoc": "Error loading the report.",
+    "loadPrintDoc": "Could not load the report."
+  }
+}
