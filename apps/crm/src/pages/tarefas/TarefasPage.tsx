@@ -35,6 +35,7 @@ export default function TarefasPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TarefaWithRelations | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [createDataLimite, setCreateDataLimite] = useState<string | null | undefined>(undefined);
 
   const { tarefas, tags, membros, clientes, isLoading, refresh } = useTarefasData();
 
@@ -73,6 +74,13 @@ export default function TarefasPage() {
 
   const openForm = (tarefa: TarefaWithRelations | null) => {
     setEditing(tarefa);
+    setCreateDataLimite(undefined);
+    setFormOpen(true);
+  };
+
+  const handleCreateForDate = (date: string | null) => {
+    setEditing(null);
+    setCreateDataLimite(date);
     setFormOpen(true);
   };
 
@@ -208,8 +216,10 @@ export default function TarefasPage() {
           {activeView === 'calendario' && (
             <CalendarView
               tarefas={filteredTarefas}
+              membros={membros}
               onTarefaClick={(t) => setSelectedId(t.id!)}
               onRefresh={refresh}
+              onCreateTask={handleCreateForDate}
             />
           )}
         </>
@@ -224,6 +234,7 @@ export default function TarefasPage() {
         tags={tags}
         onSaved={refresh}
         onTagCreated={refresh}
+        initialValues={{ data_limite: createDataLimite }}
       />
 
       {selected && (
