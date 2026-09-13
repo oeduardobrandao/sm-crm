@@ -1,9 +1,12 @@
+import { useTranslation } from 'react-i18next';
+
 interface FeedPreviewButtonProps {
   selectedCount: number;
   onClick: () => void;
 }
 
 export function FeedPreviewButton({ selectedCount, onClick }: FeedPreviewButtonProps) {
+  const { t } = useTranslation('hubPostCard');
   if (selectedCount === 0) return null;
 
   return (
@@ -24,7 +27,7 @@ export function FeedPreviewButton({ selectedCount, onClick }: FeedPreviewButtonP
         <rect x="3" y="14" width="7" height="7" />
         <rect x="14" y="14" width="7" height="7" />
       </svg>
-      Visualizar no Feed ({selectedCount})
+      {t('grid.previewButton', 'Visualizar no Feed ({{count}})', { count: selectedCount })}
     </button>
   );
 }

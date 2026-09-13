@@ -1,0 +1,77 @@
+{
+  "tipo": {
+    "feed": "Feed",
+    "reels": "Reels",
+    "stories": "Stories",
+    "carrossel": "Carrossel"
+  },
+  "status": {
+    "enviado_cliente": "Aguardando aprovação",
+    "aprovado_cliente": "Aprovado",
+    "correcao_cliente": "Correção solicitada",
+    "agendado": "Agendado",
+    "publicando": "Publicando…",
+    "postado": "Publicado",
+    "falha_publicacao": "Falha na publicação"
+  },
+  "emptyState": {
+    "noImage": "Nenhuma imagem adicionada"
+  },
+  "properties": {
+    "title": "Propriedades"
+  },
+  "comments": {
+    "title": "Comentários",
+    "author": {
+      "team": "Equipe",
+      "correction": "Correção solicitada",
+      "approved": "Aprovado",
+      "you": "Você"
+    }
+  },
+  "suggestion": {
+    "saving": "Salvando sugestão...",
+    "saved": "Sugestão salva",
+    "rejectedNotice": "⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.",
+    "activeNotice": "ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar",
+    "pendingReview": "Sugestão enviada para revisão da equipe"
+  },
+  "placeholders": {
+    "replyMessage": "Enviar mensagem…",
+    "comment": "Comentário (opcional)…"
+  },
+  "actions": {
+    "send": "Enviar",
+    "approve": "Aprovar",
+    "requestCorrection": "Solicitar correção"
+  },
+  "feedback": {
+    "approved": "Post aprovado!",
+    "correctionSent": "Correção enviada!",
+    "replyError": "Erro ao enviar mensagem."
+  },
+  "editHint": "Clique no texto para editar",
+  "media": {
+    "unavailable": "Mídia indisponível"
+  },
+  "lightbox": {
+    "previous": "Anterior",
+    "next": "Próxima"
+  },
+  "grid": {
+    "previewButton": "Visualizar no Feed ({{count}})",
+    "previewAria": "Pré-visualização do feed de {{name}}"
+  },
+  "openPost": {
+    "ariaLabel": "Abrir postagem em nova aba",
+    "label": "Abrir"
+  },
+  "sharePost": {
+    "ariaLabel": "Copiar link da postagem",
+    "copied": "Copiado!",
+    "share": "Compartilhar"
+  },
+  "postChip": {
+    "viewPost": "Ver post"
+  }
+}

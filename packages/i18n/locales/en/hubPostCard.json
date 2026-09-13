@@ -1,0 +1,77 @@
+{
+  "tipo": {
+    "feed": "Feed",
+    "reels": "Reels",
+    "stories": "Stories",
+    "carrossel": "Carousel"
+  },
+  "status": {
+    "enviado_cliente": "Awaiting approval",
+    "aprovado_cliente": "Approved",
+    "correcao_cliente": "Correction requested",
+    "agendado": "Scheduled",
+    "publicando": "Publishing…",
+    "postado": "Published",
+    "falha_publicacao": "Publishing failed"
+  },
+  "emptyState": {
+    "noImage": "No image added"
+  },
+  "properties": {
+    "title": "Properties"
+  },
+  "comments": {
+    "title": "Comments",
+    "author": {
+      "team": "Team",
+      "correction": "Correction requested",
+      "approved": "Approved",
+      "you": "You"
+    }
+  },
+  "suggestion": {
+    "saving": "Saving suggestion...",
+    "saved": "Suggestion saved",
+    "rejectedNotice": "⚠️ Your previous suggestion was rejected by the team. Edit again to send a new one.",
+    "activeNotice": "ℹ️ Your edits will be sent as a suggestion for the team to review",
+    "pendingReview": "Suggestion sent for the team's review"
+  },
+  "placeholders": {
+    "replyMessage": "Send a message…",
+    "comment": "Comment (optional)…"
+  },
+  "actions": {
+    "send": "Send",
+    "approve": "Approve",
+    "requestCorrection": "Request correction"
+  },
+  "feedback": {
+    "approved": "Post approved!",
+    "correctionSent": "Correction sent!",
+    "replyError": "Error sending message."
+  },
+  "editHint": "Click the text to edit",
+  "media": {
+    "unavailable": "Media unavailable"
+  },
+  "lightbox": {
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "grid": {
+    "previewButton": "Preview in Feed ({{count}})",
+    "previewAria": "Feed preview for {{name}}"
+  },
+  "openPost": {
+    "ariaLabel": "Open post in new tab",
+    "label": "Open"
+  },
+  "sharePost": {
+    "ariaLabel": "Copy post link",
+    "copied": "Copied!",
+    "share": "Share"
+  },
+  "postChip": {
+    "viewPost": "View post"
+  }
+}

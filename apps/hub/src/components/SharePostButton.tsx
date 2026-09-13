@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, Link as LinkIcon } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { buildHubPostLink } from '../lib/hubLinks';
 
 export function SharePostButton({ postId, className }: { postId: number; className?: string }) {
+  const { t } = useTranslation('hubPostCard');
   const { token, workspace } = useHub();
   const [copied, setCopied] = useState(false);
 
@@ -23,11 +25,11 @@ export function SharePostButton({ postId, className }: { postId: number; classNa
     <button
       type="button"
       onClick={copy}
-      aria-label="Copiar link da postagem"
+      aria-label={t('sharePost.ariaLabel', 'Copiar link da postagem')}
       className={`inline-flex items-center gap-1 text-[12px] hub-tx3 hub-link-muted transition-colors ${className ?? ''}`}
     >
       {copied ? <Check size={13} /> : <LinkIcon size={13} />}
-      {copied ? 'Copiado!' : 'Compartilhar'}
+      {copied ? t('sharePost.copied', 'Copiado!') : t('sharePost.share', 'Compartilhar')}
     </button>
   );
 }
