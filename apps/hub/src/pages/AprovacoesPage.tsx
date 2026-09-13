@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchPosts, fetchInstagramFeed } from '../api';
@@ -14,6 +15,7 @@ import { OpenPostLink } from '../components/OpenPostLink';
 import { isAutoPublishActive } from '../lib/autoPublish';
 
 export function AprovacoesPage() {
+  const { t } = useTranslation('hubPosts');
   const { token, bootstrap } = useHub();
   const qc = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -60,11 +62,18 @@ export function AprovacoesPage() {
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <PageHeader
-        title="Aprovações"
+        title={t('aprovacoes.title', 'Aprovações')}
         description={
           pending.length === 0
-            ? 'Tudo em dia. Nenhum post aguardando aprovação.'
-            : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`
+            ? t('aprovacoes.emptyDescription', 'Tudo em dia. Nenhum post aguardando aprovação.')
+            : t(
+                'aprovacoes.pendingDescription',
+                '{{count}} post{{plural}} aguardando sua aprovação.',
+                {
+                  count: pending.length,
+                  plural: pending.length > 1 ? 's' : '',
+                },
+              )
         }
         action={
           instagramProfile && (
@@ -97,7 +106,10 @@ export function AprovacoesPage() {
                     <rect x="3" y="14" width="7" height="7" />
                     <rect x="14" y="14" width="7" height="7" />
                   </svg>
-                  Selecione posts para visualizar como ficarão no feed do Instagram.
+                  {t(
+                    'aprovacoes.selectHint',
+                    'Selecione posts para visualizar como ficarão no feed do Instagram.',
+                  )}
                 </p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -131,7 +143,9 @@ export function AprovacoesPage() {
           {stories.length > 0 && (
             <div className={withMedia.length > 0 ? 'mt-10 pt-8 border-t hub-border' : ''}>
               {withMedia.length > 0 && (
-                <p className="text-[13px] font-semibold hub-tx2 mb-4">Stories</p>
+                <p className="text-[13px] font-semibold hub-tx2 mb-4">
+                  {t('aprovacoes.storiesHeader', 'Stories')}
+                </p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {stories.map((post) => (
@@ -164,7 +178,9 @@ export function AprovacoesPage() {
               }
             >
               {(withMedia.length > 0 || stories.length > 0) && (
-                <p className="text-[13px] font-semibold hub-tx2 mb-4">Posts sem mídia</p>
+                <p className="text-[13px] font-semibold hub-tx2 mb-4">
+                  {t('aprovacoes.noMediaHeader', 'Posts sem mídia')}
+                </p>
               )}
               <div className="max-w-[640px] space-y-3">
                 {withoutMedia.map((post) => (

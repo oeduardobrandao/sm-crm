@@ -12,7 +12,16 @@
     "agendado": "Scheduled",
     "publicando": "Publishing…",
     "postado": "Published",
-    "falha_publicacao": "Publishing failed"
+    "falha_publicacao": "Publishing failed",
+    "publicado": "Published",
+    "rascunho": "Draft",
+    "revisao_interna": "Internal review",
+    "aprovado_interno": "Internally approved"
+  },
+  "platform": {
+    "instagram": "Instagram",
+    "tiktok": "TikTok",
+    "both": "Instagram + TikTok"
   },
   "emptyState": {
     "noImage": "No image added"

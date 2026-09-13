@@ -11,30 +11,33 @@ import { MediaUnavailable } from './MediaUnavailable';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 import { sanitizeExternalUrl } from '../lib/security';
 import { StatusPill } from './StatusPill';
+import { getTipoLabel } from '../lib/postView';
+import type { TFunction } from 'i18next';
 
-export const TIPO_LABEL: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
+/** Translated post-status label covering PostCard's full status set (including the
+ * internal-only ones `postView.ts`'s client-facing `getClientStatusLabel` doesn't need). */
+export function getPostStatusLabel(t: TFunction, status: string): string {
+  const labels: Record<string, string> = {
+    enviado_cliente: t('hubPostCard:status.enviado_cliente', 'Aguardando aprovação'),
+    aprovado_cliente: t('hubPostCard:status.aprovado_cliente', 'Aprovado'),
+    correcao_cliente: t('hubPostCard:status.correcao_cliente', 'Correção solicitada'),
+    agendado: t('hubPostCard:status.agendado', 'Agendado'),
+    publicado: t('hubPostCard:status.publicado', 'Publicado'),
+    rascunho: t('hubPostCard:status.rascunho', 'Rascunho'),
+    revisao_interna: t('hubPostCard:status.revisao_interna', 'Revisão interna'),
+    aprovado_interno: t('hubPostCard:status.aprovado_interno', 'Aprovado interno'),
+  };
+  return labels[status] ?? status;
+}
 
-export const STATUS_LABEL: Record<string, string> = {
-  enviado_cliente: 'Aguardando aprovação',
-  aprovado_cliente: 'Aprovado',
-  correcao_cliente: 'Correção solicitada',
-  agendado: 'Agendado',
-  publicado: 'Publicado',
-  rascunho: 'Rascunho',
-  revisao_interna: 'Revisão interna',
-  aprovado_interno: 'Aprovado interno',
-};
-
-export const PLATFORM_LABEL: Record<'instagram' | 'tiktok' | 'both', string> = {
-  instagram: 'Instagram',
-  tiktok: 'TikTok',
-  both: 'Instagram + TikTok',
-};
+function getPlatformLabel(t: TFunction, platform: 'instagram' | 'tiktok' | 'both'): string {
+  const labels: Record<'instagram' | 'tiktok' | 'both', string> = {
+    instagram: t('hubPostCard:platform.instagram', 'Instagram'),
+    tiktok: t('hubPostCard:platform.tiktok', 'TikTok'),
+    both: t('hubPostCard:platform.both', 'Instagram + TikTok'),
+  };
+  return labels[platform];
+}
 
 /**
  * Small, purely presentational chip showing which platform(s) a post targets.
@@ -49,7 +52,8 @@ export function PlatformBadge({
   platform?: HubPost['platform'];
   tone?: 'neutral' | 'overlay';
 }) {
-  const label = PLATFORM_LABEL[platform ?? 'instagram'] ?? PLATFORM_LABEL.instagram;
+  const { t } = useTranslation('hubPostCard');
+  const label = getPlatformLabel(t, platform ?? 'instagram');
   const toneClass =
     tone === 'overlay'
       ? 'bg-white/15 text-white/90 ring-1 ring-white/25 backdrop-blur-sm'
@@ -348,11 +352,11 @@ export function PostCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-2">
             <span className="text-[11px] font-semibold hub-btn-primary px-2 py-0.5 rounded-full">
-              {TIPO_LABEL[post.tipo] ?? post.tipo}
+              {getTipoLabel(t, post.tipo)}
             </span>
             {post.status === 'agendado' ? (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60">
-                {STATUS_LABEL[post.status] ?? post.status}
+                {getPostStatusLabel(t, post.status)}
               </span>
             ) : (
               <StatusPill
@@ -360,7 +364,7 @@ export function PostCard({
                   post.status === 'correcao_cliente' ? 'danger' : isPending ? 'accent' : 'neutral'
                 }
               >
-                {STATUS_LABEL[post.status] ?? post.status}
+                {getPostStatusLabel(t, post.status)}
               </StatusPill>
             )}
             <PlatformBadge platform={post.platform} />

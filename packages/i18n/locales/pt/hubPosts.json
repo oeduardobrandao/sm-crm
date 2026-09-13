@@ -1,0 +1,83 @@
+{
+  "shared": {
+    "reelDeTeste": "Reel de teste",
+    "saving": "Salvando...",
+    "savingSuggestion": "Salvando sugestão...",
+    "suggestionSaved": "Sugestão salva",
+    "aprovar": "Aprovar",
+    "correcaoShort": "Correção",
+    "correcaoLong": "Solicitar correção",
+    "suggestionPendingReviewShort": "Sugestão enviada para revisão",
+    "suggestionPendingReviewFull": "Sugestão enviada para revisão da equipe",
+    "commentPlaceholder": "Comente aqui ou corrija o texto diretamente no campo acima",
+    "correctionCommentRequired": "Deixe um comentário para solicitar correção",
+    "rejectedSuggestionWarning": "⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.",
+    "suggestionInfoNote": "ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar",
+    "postApproved": "Post aprovado!",
+    "correctionSent": "Correção enviada!",
+    "viewOnInstagram": "Ver no Instagram",
+    "viewOnTikTok": "Ver no TikTok"
+  },
+  "aprovacoes": {
+    "title": "Aprovações",
+    "emptyDescription": "Tudo em dia. Nenhum post aguardando aprovação.",
+    "pendingDescription": "{{count}} post{{plural}} aguardando sua aprovação.",
+    "selectHint": "Selecione posts para visualizar como ficarão no feed do Instagram.",
+    "storiesHeader": "Stories",
+    "noMediaHeader": "Posts sem mídia"
+  },
+  "postagens": {
+    "title": "Postagens",
+    "selectHint": "Selecione posts para visualizar e reordenar como ficarão no feed do Instagram.",
+    "defaultDescription": "Todos os posts do seu calendário de conteúdo.",
+    "loadError": "Erro ao carregar postagens.",
+    "empty": "Nenhuma postagem disponível ainda.",
+    "avulsoGroupTitle": "Publicações avulsas",
+    "postCount": "{{count}} {{noun}}",
+    "clickToExpand": "clique para expandir",
+    "status": {
+      "enviadoCliente": "Aguardando aprovação",
+      "aprovadoCliente": "Aprovado",
+      "correcaoCliente": "Correção solicitada",
+      "agendado": "Agendado",
+      "publicando": "Publicando…",
+      "postado": "Publicado",
+      "falhaPublicacao": "Falha na publicação"
+    }
+  },
+  "postagemFoco": {
+    "backLink": "Ver todas as postagens",
+    "loadError": "Não foi possível carregar esta postagem.",
+    "retry": "Tentar novamente",
+    "notAvailable": "Esta postagem não está disponível."
+  },
+  "instagramCard": {
+    "selectAriaLabel": "Selecionar publicação",
+    "openMediaAriaLabel": "Abrir mídia {{index}}",
+    "prevSlideAriaLabel": "Slide anterior",
+    "nextSlideAriaLabel": "Próximo slide",
+    "likeAriaLabel": "Curtir",
+    "suggestionRejected": "⚠️ Sugestão rejeitada — edite novamente",
+    "editCaptionHint": "✏️ Edite a legenda abaixo",
+    "captionAriaLabel": "Legenda do post",
+    "concluir": "Concluir",
+    "verMenos": "ver menos",
+    "verMais": "… mais",
+    "editarLegenda": "Editar legenda",
+    "scheduledPrefix": "Agendado · {{date}}",
+    "scheduledBannerTitle": "Agendado para publicação",
+    "publishedBannerTitle": "Publicado",
+    "postApprovedAndScheduled": "Post aprovado e agendado para publicação!",
+    "autoPublishScheduled": "Ao aprovar, este post será publicado automaticamente no Instagram em {{date}}.",
+    "autoPublishUnscheduled": "Ao aprovar, este post será agendado para publicação automática no Instagram."
+  },
+  "storyCard": {
+    "prevAriaLabel": "Anterior",
+    "nextAriaLabel": "Próximo",
+    "replyPlaceholder": "Responder para {{name}}..."
+  },
+  "textCard": {
+    "mediaRemoved": "Mídia removida para liberar espaço",
+    "instagramCaptionLabel": "Legenda do Instagram"
+  }
+}

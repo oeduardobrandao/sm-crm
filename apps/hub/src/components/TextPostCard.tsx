@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, AlertCircle, ChevronDown, ExternalLink, ImageOff } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitApproval } from '../api';
 import { sanitizeExternalUrl } from '../lib/security';
-import { TIPO_LABEL, STATUS_LABEL, formatDate, PlatformBadge } from './PostCard';
+import { getPostStatusLabel, formatDate, PlatformBadge } from './PostCard';
+import { getTipoLabel } from '../lib/postView';
 import { RichTextContent } from './RichTextContent';
 import type { HubPost, PostApproval } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
@@ -30,6 +32,7 @@ export function TextPostCard({
   onApprovalSubmitted,
   readOnly,
 }: TextPostCardProps) {
+  const { t } = useTranslation('hubPosts');
   const [expanded, setExpanded] = useState(false);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -62,7 +65,10 @@ export function TextPostCard({
       await submitApproval(token, post.id, action, comentario || undefined);
       setResult({
         type: 'success',
-        message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!',
+        message:
+          action === 'aprovado'
+            ? t('shared.postApproved', 'Post aprovado!')
+            : t('shared.correctionSent', 'Correção enviada!'),
       });
       onApprovalSubmitted?.();
     } catch (e) {
@@ -76,9 +82,9 @@ export function TextPostCard({
   // landed on the text card. Say so, and keep a path to the live publication.
   const autocleanedLink = post.media_autocleaned_at
     ? post.instagram_permalink
-      ? { href: post.instagram_permalink, label: 'Ver no Instagram' }
+      ? { href: post.instagram_permalink, label: t('shared.viewOnInstagram', 'Ver no Instagram') }
       : post.tiktok_post_url
-        ? { href: post.tiktok_post_url, label: 'Ver no TikTok' }
+        ? { href: post.tiktok_post_url, label: t('shared.viewOnTikTok', 'Ver no TikTok') }
         : null
     : null;
 
@@ -90,7 +96,7 @@ export function TextPostCard({
         <div className="hub-bg-soft rounded-t-[10px] border-b hub-border px-5 py-6 flex flex-col items-center justify-center gap-2 text-center">
           <ImageOff size={20} className="hub-tx3 opacity-60" aria-hidden="true" />
           <span className="text-[12.5px] font-medium hub-tx2">
-            Mídia removida para liberar espaço
+            {t('textCard.mediaRemoved', 'Mídia removida para liberar espaço')}
           </span>
           {autocleanedLink && (
             <a
@@ -114,20 +120,20 @@ export function TextPostCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[11px] font-semibold hub-btn-primary px-2 py-0.5 rounded">
-              {TIPO_LABEL[post.tipo] ?? post.tipo}
+              {getTipoLabel(t, post.tipo)}
             </span>
             {post.ig_trial_strategy && (
               <span
                 className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full border"
                 style={{ color: 'var(--hub-acc)', borderColor: 'var(--hub-acc)' }}
               >
-                Reel de teste
+                {t('shared.reelDeTeste', 'Reel de teste')}
               </span>
             )}
             <span
               className={`text-[11px] font-semibold ${STATUS_TEXT_COLOR[post.status] ?? 'hub-tx2'}`}
             >
-              {STATUS_LABEL[post.status] ?? post.status}
+              {getPostStatusLabel(t, post.status)}
             </span>
             <PlatformBadge platform={post.platform} />
             <span className="text-[12px] hub-tx3 ml-auto">{formatDate(post.scheduled_at)}</span>
@@ -167,12 +173,16 @@ export function TextPostCard({
           {isEditable && saveState !== 'idle' && (
             <div className="flex items-center gap-1.5">
               {saveState === 'saving' && (
-                <span className="text-[11px] hub-tx3">Salvando sugestão...</span>
+                <span className="text-[11px] hub-tx3">
+                  {t('shared.savingSuggestion', 'Salvando sugestão...')}
+                </span>
               )}
               {saveState === 'saved' && (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[11px] text-emerald-600 font-medium">Sugestão salva</span>
+                  <span className="text-[11px] text-emerald-600 font-medium">
+                    {t('shared.suggestionSaved', 'Sugestão salva')}
+                  </span>
                 </>
               )}
             </div>
@@ -186,15 +196,23 @@ export function TextPostCard({
                 className={`text-[11px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}
               >
                 {wasRejected
-                  ? '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.'
-                  : 'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar'}
+                  ? t(
+                      'shared.rejectedSuggestionWarning',
+                      '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.',
+                    )
+                  : t(
+                      'shared.suggestionInfoNote',
+                      'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar',
+                    )}
               </span>
             </div>
           )}
 
           {(draftIgCaption || post.ig_caption) && (
             <div className="border-l-2 hub-border pl-3">
-              <p className="text-[11px] hub-tx3 font-medium mb-1">Legenda do Instagram</p>
+              <p className="text-[11px] hub-tx3 font-medium mb-1">
+                {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
+              </p>
               {isEditable ? (
                 <textarea
                   defaultValue={draftIgCaption ?? ''}
@@ -216,14 +234,20 @@ export function TextPostCard({
             <div className="space-y-3">
               {hasPendingSuggestion ? (
                 <div className="rounded-lg px-4 py-3 text-[13px] font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200/60 text-center">
-                  Sugestão enviada para revisão da equipe
+                  {t(
+                    'shared.suggestionPendingReviewFull',
+                    'Sugestão enviada para revisão da equipe',
+                  )}
                 </div>
               ) : (
                 <>
                   <textarea
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
-                    placeholder="Comente aqui ou corrija o texto diretamente no campo acima"
+                    placeholder={t(
+                      'shared.commentPlaceholder',
+                      'Comente aqui ou corrija o texto diretamente no campo acima',
+                    )}
                     className="hub-focus-accent w-full rounded border hub-border px-4 py-3 text-[13px] resize-none min-h-[70px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
                   />
                   <div className="flex gap-2">
@@ -232,19 +256,25 @@ export function TextPostCard({
                       disabled={submitting || approvalBlocked}
                       className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50 transition-colors"
                     >
-                      <CheckCircle size={14} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
+                      <CheckCircle size={14} />{' '}
+                      {saveState === 'saving'
+                        ? t('shared.saving', 'Salvando...')
+                        : t('shared.aprovar', 'Aprovar')}
                     </button>
                     <button
                       onClick={() => handleAction('correcao')}
                       disabled={submitting || approvalBlocked || !comentario.trim()}
                       title={
                         !comentario.trim()
-                          ? 'Deixe um comentário para solicitar correção'
+                          ? t(
+                              'shared.correctionCommentRequired',
+                              'Deixe um comentário para solicitar correção',
+                            )
                           : undefined
                       }
                       className="flex-1 flex items-center justify-center gap-1.5 hub-btn-secondary rounded py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50 transition-colors"
                     >
-                      <AlertCircle size={14} /> Solicitar correção
+                      <AlertCircle size={14} /> {t('shared.correcaoLong', 'Solicitar correção')}
                     </button>
                   </div>
                 </>

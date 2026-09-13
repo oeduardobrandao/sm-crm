@@ -12,7 +12,16 @@
     "agendado": "Agendado",
     "publicando": "Publicando…",
     "postado": "Publicado",
-    "falha_publicacao": "Falha na publicação"
+    "falha_publicacao": "Falha na publicação",
+    "publicado": "Publicado",
+    "rascunho": "Rascunho",
+    "revisao_interna": "Revisão interna",
+    "aprovado_interno": "Aprovado interno"
+  },
+  "platform": {
+    "instagram": "Instagram",
+    "tiktok": "TikTok",
+    "both": "Instagram + TikTok"
   },
   "emptyState": {
     "noImage": "Nenhuma imagem adicionada"
