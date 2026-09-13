@@ -147,6 +147,40 @@ describe('TarefaCard', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("doesn't keep showing the optimistic assignee once the tarefa prop's responsavel_id has actually moved on", async () => {
+    updateTarefaMock.mockResolvedValueOnce({});
+    const { rerender } = render(
+      <TarefaCard
+        tarefa={makeTarefa({ id: 42, responsavel_id: 1 })}
+        membro={{ id: 1, nome: 'Ana Silva' } as never}
+        now={NOW}
+        onClick={() => {}}
+        membros={MEMBROS}
+        onRefresh={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Ana Silva'));
+    fireEvent.click(await screen.findByText('Bruno Costa'));
+    await screen.findByTitle('Bruno Costa'); // optimistic localMembro is showing
+
+    // Someone reassigns the same task elsewhere (e.g. the detail sheet) to a
+    // third member; the list refetches and this card re-renders in place
+    // (same key, no remount) with the new responsavel_id.
+    rerender(
+      <TarefaCard
+        tarefa={makeTarefa({ id: 42, responsavel_id: 3 })}
+        membro={{ id: 3, nome: 'Carla Dias' } as never}
+        now={NOW}
+        onClick={() => {}}
+        membros={MEMBROS}
+        onRefresh={() => {}}
+      />,
+    );
+
+    expect(screen.getByTitle('Carla Dias')).toBeInTheDocument();
+    expect(screen.queryByTitle('Bruno Costa')).not.toBeInTheDocument();
+  });
+
   it('rolls back to the original assignee and shows an error toast when the update fails', async () => {
     updateTarefaMock.mockRejectedValueOnce(new Error('network down'));
     render(

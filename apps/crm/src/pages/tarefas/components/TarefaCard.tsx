@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Calendar as CalendarIcon, CheckSquare, User2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -37,6 +37,15 @@ export function TarefaCard({
   const [assignOpen, setAssignOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | null | undefined>(undefined);
   const displayMembro = localMembro !== undefined ? localMembro : membro;
+
+  // A successful reassign sets localMembro to optimistically show the new
+  // avatar before onRefresh's refetch lands. Once the prop actually catches up
+  // (this task's responsavel_id changed -- from this reassign or any other,
+  // e.g. the detail sheet), drop the override so the card can't get stuck
+  // showing a stale assignee if it re-renders in place rather than remounting.
+  useEffect(() => {
+    setLocalMembro(undefined);
+  }, [tarefa.responsavel_id]);
 
   return (
     <div
