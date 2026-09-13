@@ -1,0 +1,74 @@
+{
+  "page": {
+    "title": "Share your ideas",
+    "description": "Send ideas and requests and the agency will respond soon.",
+    "newIdea": "New idea"
+  },
+  "loadError": {
+    "title": "Error loading ideas",
+    "retry": "Try again"
+  },
+  "empty": {
+    "title": "No ideas yet",
+    "description": "Click \"New idea\" to send your first suggestion or request.",
+    "addIdea": "Add idea"
+  },
+  "status": {
+    "nova": "New",
+    "em_analise": "In review",
+    "aprovada": "Approved",
+    "descartada": "Discarded",
+    "convertida": "In progress",
+    "concluida": "Completed"
+  },
+  "tipoLabel": {
+    "ideia": "Idea",
+    "solicitacao": "Request"
+  },
+  "card": {
+    "agencyResponse": "Agency response"
+  },
+  "images": {
+    "addImage": "Add image",
+    "removeImage": "Remove image",
+    "uploadError": "Error uploading image.",
+    "removeError": "Error removing image.",
+    "unsupportedType": "Unsupported file type: {{type}}",
+    "tooLarge": "Image larger than 25 MB",
+    "uploadFailed": "Upload failed: {{status}}",
+    "networkError": "Network error during upload"
+  },
+  "tipo": {
+    "ideia": {
+      "novo": "New idea",
+      "editar": "Edit idea",
+      "tituloPh": "E.g.: Reel showing behind the scenes...",
+      "descricaoPh": "Describe your idea in detail..."
+    },
+    "solicitacao": {
+      "novo": "New request",
+      "editar": "Edit request",
+      "tituloPh": "E.g.: Update the profile cover photo...",
+      "descricaoPh": "Describe what you need and, if there's a deadline, when. E.g.: change the Instagram bio by Friday..."
+    }
+  },
+  "modal": {
+    "tipoLabel": "Type",
+    "tipoHint": "Idea: a content suggestion. Request: a task for the agency to carry out.",
+    "tituloLabel": "Title",
+    "descricaoLabel": "Description",
+    "linksLabel": "Reference links",
+    "optional": "(optional)",
+    "linkPlaceholder": "https://...",
+    "addLink": "+ Add another link",
+    "imagesLabel": "Images",
+    "upToTen": "(up to 10)",
+    "saveChanges": "Save changes",
+    "concluir": "Done",
+    "tituloRequired": "Title is required",
+    "descricaoRequired": "Description is required",
+    "saveError": "Error saving.",
+    "imageUploadFailedOne": "1 image wasn't uploaded. Save again to retry.",
+    "imageUploadFailedMany": "{{count}} images weren't uploaded. Save again to retry."
+  }
+}

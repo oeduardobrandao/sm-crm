@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, ExternalLink, X, Loader2, ImagePlus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { PageHeader } from '../components/PageHeader';
 import { fetchIdeias, createIdeia, updateIdeia, deleteIdeia, deleteIdeiaImage } from '../api';
@@ -67,6 +68,7 @@ function IdeiaImages({
   images: IdeiaImage[];
   onChanged: () => void;
 }) {
+  const { t } = useTranslation('hubIdeas');
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -84,7 +86,7 @@ function IdeiaImages({
       }
       onChanged();
     } catch (e) {
-      setErr((e as Error).message ?? 'Erro ao enviar imagem.');
+      setErr((e as Error).message ?? t('images.uploadError', 'Erro ao enviar imagem.'));
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -98,7 +100,7 @@ function IdeiaImages({
       await deleteIdeiaImage(token, ideiaId, fileId);
       onChanged();
     } catch (e) {
-      setErr((e as Error).message ?? 'Erro ao remover imagem.');
+      setErr((e as Error).message ?? t('images.removeError', 'Erro ao remover imagem.'));
     } finally {
       setBusy(false);
     }
@@ -129,7 +131,7 @@ function IdeiaImages({
               <button
                 onClick={() => remove(img.file_id)}
                 disabled={busy}
-                aria-label="Remover imagem"
+                aria-label={t('images.removeImage', 'Remover imagem')}
                 className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
               >
                 <X size={12} />
@@ -145,7 +147,7 @@ function IdeiaImages({
           className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 transition-colors disabled:opacity-50"
         >
           {busy ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
-          Adicionar imagem
+          {t('images.addImage', 'Adicionar imagem')}
         </button>
       )}
       {err && <p className="text-xs text-red-500">{err}</p>}
@@ -162,6 +164,7 @@ function IdeiaImages({
 }
 
 export function IdeiasPage() {
+  const { t } = useTranslation('hubIdeas');
   const { token } = useHub();
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -191,15 +194,18 @@ export function IdeiasPage() {
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <PageHeader
-        title="Compartilhe suas ideias"
-        description="Envie ideias e solicitações e a agência responderá em breve."
+        title={t('page.title', 'Compartilhe suas ideias')}
+        description={t(
+          'page.description',
+          'Envie ideias e solicitações e a agência responderá em breve.',
+        )}
         action={
           <button
             onClick={openCreate}
             className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold transition-colors"
           >
             <Plus size={16} strokeWidth={2.5} />
-            Nova ideia
+            {t('page.newIdea', 'Nova ideia')}
           </button>
         }
       />
@@ -212,27 +218,34 @@ export function IdeiasPage() {
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">⚠️</span>
-          <p className="font-display text-lg font-semibold hub-txt mb-1">Erro ao carregar ideias</p>
+          <p className="font-display text-lg font-semibold hub-txt mb-1">
+            {t('loadError.title', 'Erro ao carregar ideias')}
+          </p>
           <p className="text-sm hub-tx2 mb-6">{error.message}</p>
           <button
             onClick={() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] })}
             className="px-4 py-2 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold transition-colors"
           >
-            Tentar novamente
+            {t('loadError.retry', 'Tentar novamente')}
           </button>
         </div>
       ) : ideias.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">💡</span>
-          <p className="font-display text-lg font-semibold hub-txt mb-1">Nenhuma ideia ainda</p>
+          <p className="font-display text-lg font-semibold hub-txt mb-1">
+            {t('empty.title', 'Nenhuma ideia ainda')}
+          </p>
           <p className="text-sm hub-tx2 mb-6">
-            Clique em "Nova ideia" para enviar sua primeira sugestão ou solicitação.
+            {t(
+              'empty.description',
+              'Clique em "Nova ideia" para enviar sua primeira sugestão ou solicitação.',
+            )}
           </p>
           <button
             onClick={openCreate}
             className="px-4 py-2 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold transition-colors"
           >
-            Adicionar ideia
+            {t('empty.addIdea', 'Adicionar ideia')}
           </button>
         </div>
       ) : (
@@ -282,6 +295,7 @@ function IdeiaCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation('hubIdeas');
   const mutable = isMutable(ideia);
 
   // Group reactions by emoji
@@ -300,11 +314,11 @@ function IdeiaCard({
           <span
             className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ${STATUS_COLOR[ideia.status]}`}
           >
-            {STATUS_LABEL[ideia.status]}
+            {t(`status.${ideia.status}`, STATUS_LABEL[ideia.status])}
           </span>
           {ideia.tipo === 'solicitacao' && (
             <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 border hub-border hub-tx2">
-              Solicitação
+              {t('tipoLabel.solicitacao', 'Solicitação')}
             </span>
           )}
           <h3 className="font-display text-[17px] font-semibold hub-txt leading-snug">
@@ -370,7 +384,7 @@ function IdeiaCard({
       {ideia.comentario_agencia && (
         <div className="border-t hub-border pt-3 mt-1">
           <p className="text-[12px] hub-tx3 font-medium mb-1">
-            Resposta da agência
+            {t('card.agencyResponse', 'Resposta da agência')}
             {ideia.comentario_autor && (
               <span className="normal-case tracking-normal ml-1">
                 — {ideia.comentario_autor.nome}
@@ -392,6 +406,7 @@ interface ModalProps {
 }
 
 function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
+  const { t } = useTranslation('hubIdeas');
   const qc = useQueryClient();
   const [titulo, setTitulo] = useState(editing?.titulo ?? '');
   const [descricao, setDescricao] = useState(editing?.descricao ?? '');
@@ -445,8 +460,8 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
   function validate() {
     const e: typeof errors = {};
-    if (!titulo.trim()) e.titulo = 'Título obrigatório';
-    if (!descricao.trim()) e.descricao = 'Descrição obrigatória';
+    if (!titulo.trim()) e.titulo = t('modal.tituloRequired', 'Título obrigatório');
+    if (!descricao.trim()) e.descricao = t('modal.descricaoRequired', 'Descrição obrigatória');
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -471,8 +486,15 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             failed.length === 0
               ? null
               : failed.length === 1
-                ? '1 imagem não foi enviada. Salve novamente para tentar de novo.'
-                : `${failed.length} imagens não foram enviadas. Salve novamente para tentar de novo.`,
+                ? t(
+                    'modal.imageUploadFailedOne',
+                    '1 imagem não foi enviada. Salve novamente para tentar de novo.',
+                  )
+                : t(
+                    'modal.imageUploadFailedMany',
+                    '{{count}} imagens não foram enviadas. Salve novamente para tentar de novo.',
+                    { count: failed.length },
+                  ),
           );
           refreshCurrent();
         }
@@ -497,13 +519,20 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
         setPendingFiles(failed);
         setUploadErr(
           failed.length === 1
-            ? '1 imagem não foi enviada. Salve novamente para tentar de novo.'
-            : `${failed.length} imagens não foram enviadas. Salve novamente para tentar de novo.`,
+            ? t(
+                'modal.imageUploadFailedOne',
+                '1 imagem não foi enviada. Salve novamente para tentar de novo.',
+              )
+            : t(
+                'modal.imageUploadFailedMany',
+                '{{count}} imagens não foram enviadas. Salve novamente para tentar de novo.',
+                { count: failed.length },
+              ),
         );
         refreshCurrent();
       }
     } catch (err: unknown) {
-      alert((err as Error).message ?? 'Erro ao salvar.');
+      alert((err as Error).message ?? t('modal.saveError', 'Erro ao salvar.'));
     } finally {
       setSaving(false);
     }
@@ -539,7 +568,9 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
       <div className="hub-bg-card rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-semibold hub-txt">
-            {editing || current ? TIPO_COPY[tipo].editar : TIPO_COPY[tipo].novo}
+            {editing || current
+              ? t(`tipo.${tipo}.editar`, TIPO_COPY[tipo].editar)
+              : t(`tipo.${tipo}.novo`, TIPO_COPY[tipo].novo)}
           </h2>
           <button
             onClick={onClose}
@@ -551,55 +582,66 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
         <div className="space-y-3">
           <div>
-            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Tipo</label>
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
+              {t('modal.tipoLabel', 'Tipo')}
+            </label>
             <div className="flex gap-1 p-1 rounded-lg hub-bg-soft w-fit">
-              {(['ideia', 'solicitacao'] as const).map((t) => (
+              {(['ideia', 'solicitacao'] as const).map((opt) => (
                 <button
-                  key={t}
+                  key={opt}
                   type="button"
-                  onClick={() => setTipo(t)}
+                  onClick={() => setTipo(opt)}
                   // rounded-md (not the --hub-r-ctl token): the radius preset
                   // deliberately skips this site to keep the neutral default
                   // byte-identical.
                   className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${
-                    tipo === t ? 'hub-btn-primary' : 'hub-tx3'
+                    tipo === opt ? 'hub-btn-primary' : 'hub-tx3'
                   }`}
                 >
-                  {t === 'ideia' ? 'Ideia' : 'Solicitação'}
+                  {t(`tipoLabel.${opt}`, opt === 'ideia' ? 'Ideia' : 'Solicitação')}
                 </button>
               ))}
             </div>
             <p className="text-[11.5px] hub-tx3 mt-1">
-              Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.
+              {t(
+                'modal.tipoHint',
+                'Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.',
+              )}
             </p>
           </div>
 
           <div>
-            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Título</label>
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
+              {t('modal.tituloLabel', 'Título')}
+            </label>
             <input
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 ${errors.titulo ? 'border-red-400' : 'hub-border'}`}
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
-              placeholder={TIPO_COPY[tipo].tituloPh}
+              placeholder={t(`tipo.${tipo}.tituloPh`, TIPO_COPY[tipo].tituloPh)}
             />
             {errors.titulo && <p className="text-xs text-red-500 mt-0.5">{errors.titulo}</p>}
           </div>
 
           <div>
-            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Descrição</label>
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
+              {t('modal.descricaoLabel', 'Descrição')}
+            </label>
             <textarea
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'hub-border'}`}
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              placeholder={TIPO_COPY[tipo].descricaoPh}
+              placeholder={t(`tipo.${tipo}.descricaoPh`, TIPO_COPY[tipo].descricaoPh)}
             />
             {errors.descricao && <p className="text-xs text-red-500 mt-0.5">{errors.descricao}</p>}
           </div>
 
           <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
-              Links de referência{' '}
-              <span className="hub-tx3 normal-case tracking-normal font-normal">(opcional)</span>
+              {t('modal.linksLabel', 'Links de referência')}{' '}
+              <span className="hub-tx3 normal-case tracking-normal font-normal">
+                {t('modal.optional', '(opcional)')}
+              </span>
             </label>
             {links.map((link, i) => (
               <div key={i} className="flex gap-2 mb-2">
@@ -609,7 +651,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
                   onChange={(e) =>
                     setLinks((ls) => ls.map((l, j) => (j === i ? e.target.value : l)))
                   }
-                  placeholder="https://..."
+                  placeholder={t('modal.linkPlaceholder', 'https://...')}
                 />
                 {links.length > 1 && (
                   <button
@@ -625,14 +667,16 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
               onClick={() => setLinks((ls) => [...ls, ''])}
               className="text-xs hub-tx3 underline underline-offset-2 transition-colors"
             >
-              + Adicionar outro link
+              {t('modal.addLink', '+ Adicionar outro link')}
             </button>
           </div>
 
           <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
-              Imagens{' '}
-              <span className="hub-tx3 normal-case tracking-normal font-normal">(até 10)</span>
+              {t('modal.imagesLabel', 'Imagens')}{' '}
+              <span className="hub-tx3 normal-case tracking-normal font-normal">
+                {t('modal.upToTen', '(até 10)')}
+              </span>
             </label>
             {current ? (
               <IdeiaImages
@@ -657,7 +701,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
                         <button
                           type="button"
                           onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
-                          aria-label="Remover imagem"
+                          aria-label={t('images.removeImage', 'Remover imagem')}
                           className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X size={12} />
@@ -673,7 +717,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
                     className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 transition-colors"
                   >
                     <ImagePlus size={13} />
-                    Adicionar imagem
+                    {t('images.addImage', 'Adicionar imagem')}
                   </button>
                 )}
                 <input
@@ -697,7 +741,9 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[var(--hub-r-ctl)] hub-btn-primary text-sm font-semibold disabled:opacity-50 transition-colors"
           >
             {saving && <Loader2 size={15} className="animate-spin" />}
-            {current ? 'Salvar alterações' : 'Salvar'}
+            {current
+              ? t('modal.saveChanges', 'Salvar alterações')
+              : t('common:actions.save', 'Salvar')}
           </button>
           <button
             onClick={() => {
@@ -705,7 +751,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             }}
             className="px-4 py-2.5 rounded-lg border hub-border text-sm hub-tx2 hover:bg-[var(--hub-soft)] transition-colors"
           >
-            {current ? 'Concluir' : 'Cancelar'}
+            {current ? t('modal.concluir', 'Concluir') : t('common:actions.cancel', 'Cancelar')}
           </button>
         </div>
       </div>
