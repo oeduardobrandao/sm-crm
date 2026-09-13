@@ -9,6 +9,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
 import { PostCalendar } from '../components/PostCalendar';
@@ -16,10 +17,10 @@ import { DashboardSection } from '../components/dashboard/DashboardSection';
 import { ClientAvatar } from '../components/ClientAvatar';
 
 const RESOURCE_LINKS = [
-  { label: 'Marca', icon: Palette, path: '/marca' },
-  { label: 'Páginas', icon: FileText, path: '/paginas' },
-  { label: 'Briefing', icon: BookOpen, path: '/briefing' },
-  { label: 'Ideias', icon: Lightbulb, path: '/ideias' },
+  { labelKey: 'home.resources.marca', label: 'Marca', icon: Palette, path: '/marca' },
+  { labelKey: 'home.resources.paginas', label: 'Páginas', icon: FileText, path: '/paginas' },
+  { labelKey: 'home.resources.briefing', label: 'Briefing', icon: BookOpen, path: '/briefing' },
+  { labelKey: 'home.resources.ideias', label: 'Ideias', icon: Lightbulb, path: '/ideias' },
 ];
 
 const CALENDAR_STATUSES = new Set([
@@ -30,14 +31,15 @@ const CALENDAR_STATUSES = new Set([
   'postado',
 ]);
 
-function formatNextPost(scheduledAt: string): string {
+function formatNextPost(scheduledAt: string, lang: string = 'pt-BR'): string {
   const date = new Date(scheduledAt);
-  const weekday = date.toLocaleDateString('pt-BR', { weekday: 'short' });
-  const time = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const weekday = date.toLocaleDateString(lang, { weekday: 'short' });
+  const time = date.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
   return `${weekday.replace('.', '')} ${time}`;
 }
 
 export function HomePage() {
+  const { t, i18n } = useTranslation('hubHome');
   const { bootstrap, token } = useHub();
   const { workspace } = useParams<{ workspace: string }>();
   const navigate = useNavigate();
@@ -73,20 +75,33 @@ export function HomePage() {
   const nextPost = upcoming[0];
 
   const firstName = bootstrap.cliente_nome.split(' ')[0];
+  const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 
   const kpis = [
-    { label: 'Posts este mês', value: String(thisMonthCount), hint: 'Feed, Reels, Stories' },
     {
-      label: 'Aprovações pendentes',
+      label: t('home.kpi.postsThisMonth.label', 'Posts este mês'),
+      value: String(thisMonthCount),
+      hint: t('home.kpi.postsThisMonth.hint', 'Feed, Reels, Stories'),
+    },
+    {
+      label: t('home.kpi.pendingApprovals.label', 'Aprovações pendentes'),
       value: String(pendingCount),
-      hint: pendingCount ? `${pendingCount} para revisar` : 'Tudo em dia',
+      hint: pendingCount
+        ? t('home.kpi.pendingApprovals.hintCount', '{{count}} para revisar', {
+            count: pendingCount,
+          })
+        : t('home.kpi.pendingApprovals.hintZero', 'Tudo em dia'),
       onClick: () => navigate(`${base}/aprovacoes`),
     },
-    { label: 'Taxa de aprovação', value: approvalRate, hint: 'Aprovados vs. correção' },
     {
-      label: 'Próximo post',
-      value: nextPost ? formatNextPost(nextPost.scheduled_at!) : '—',
-      hint: nextPost?.titulo ?? 'Nada agendado',
+      label: t('home.kpi.approvalRate.label', 'Taxa de aprovação'),
+      value: approvalRate,
+      hint: t('home.kpi.approvalRate.hint', 'Aprovados vs. correção'),
+    },
+    {
+      label: t('home.kpi.nextPost.label', 'Próximo post'),
+      value: nextPost ? formatNextPost(nextPost.scheduled_at!, dateLocale) : '—',
+      hint: nextPost?.titulo ?? t('home.kpi.nextPost.hintEmpty', 'Nada agendado'),
     },
   ];
 
@@ -100,7 +115,7 @@ export function HomePage() {
         />
         <p className="text-[13px] font-medium hub-tx3 mb-1.5 mt-4">{bootstrap.workspace.name}</p>
         <h1 className="font-display font-medium text-[clamp(2rem,5vw,3rem)] leading-[1.04] tracking-tight hub-txt mb-1.5">
-          Olá, <em className="italic font-normal">{firstName}</em> 👋
+          {t('home.greeting', 'Olá,')} <em className="italic font-normal">{firstName}</em> 👋
         </h1>
       </section>
 
@@ -158,8 +173,10 @@ export function HomePage() {
           </span>
           <span className="flex-1 text-sm font-medium hub-txt">
             {pendingCount === 1
-              ? 'Você tem 1 post aguardando aprovação'
-              : `Você tem ${pendingCount} posts aguardando aprovação`}
+              ? t('home.pendingBanner.singular', 'Você tem 1 post aguardando aprovação')
+              : t('home.pendingBanner.plural', 'Você tem {{count}} posts aguardando aprovação', {
+                  count: pendingCount,
+                })}
           </span>
           <ArrowRight
             size={16}
@@ -169,8 +186,12 @@ export function HomePage() {
       )}
 
       <section className="hub-card p-5">
-        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">Calendário</h3>
-        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">Próximas publicações</div>
+        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">
+          {t('home.calendarSection.title', 'Calendário')}
+        </h3>
+        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">
+          {t('home.calendarSection.subtitle', 'Próximas publicações')}
+        </div>
         {isLoading ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin h-5 w-5 rounded-full border-2 border-stone-300 border-t-stone-900" />
@@ -181,10 +202,14 @@ export function HomePage() {
       </section>
 
       <section className="hub-card p-5">
-        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">Recursos</h3>
-        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">Acesso rápido</div>
+        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">
+          {t('home.resources.title', 'Recursos')}
+        </h3>
+        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">
+          {t('home.resources.subtitle', 'Acesso rápido')}
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {RESOURCE_LINKS.map(({ label, icon: Icon, path }) => (
+          {RESOURCE_LINKS.map(({ labelKey, label, icon: Icon, path }) => (
             <button
               key={path}
               onClick={() => navigate(`${base}${path}`)}
@@ -194,7 +219,7 @@ export function HomePage() {
                 <Icon size={16} strokeWidth={1.75} />
               </span>
               <span className="flex items-center gap-1 text-[14px] font-medium hub-txt">
-                {label}
+                {t(labelKey, label)}
                 <ChevronRight
                   size={14}
                   className="hub-tx3 group-hover:translate-x-0.5 transition-transform"

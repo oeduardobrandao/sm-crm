@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DashboardTopPost } from '../../types';
 import { sanitizeExternalUrl } from '../../lib/security';
 
@@ -8,7 +9,7 @@ const TIPO_COLORS: Record<string, string> = {
   CAROUSEL_ALBUM: '#10b981',
 };
 
-const TIPO_LABELS: Record<string, string> = {
+const TIPO_LABELS_PT: Record<string, string> = {
   CAROUSEL_ALBUM: 'Carrossel',
   VIDEO: 'Reels',
   IMAGE: 'Imagem',
@@ -32,6 +33,12 @@ interface TopPostsRowProps {
 }
 
 export function TopPostsRow({ posts }: TopPostsRowProps) {
+  const { t } = useTranslation('hubHome');
+
+  function tipoLabel(mediaType: string) {
+    return t(`topPosts.tipoLabel.${mediaType}`, TIPO_LABELS_PT[mediaType] ?? mediaType);
+  }
+
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const [activeIndex, setActiveIndex] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -82,7 +89,11 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
   }
 
   if (posts.length === 0) {
-    return <p className="text-sm text-stone-400 py-4">Nenhum post no período selecionado.</p>;
+    return (
+      <p className="text-sm text-stone-400 py-4">
+        {t('topPosts.noPosts', 'Nenhum post no período selecionado.')}
+      </p>
+    );
   }
 
   return (
@@ -127,13 +138,13 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
                   </div>
                 )}
                 <span className="absolute top-2 left-2 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
-                  {TIPO_LABELS[post.mediaType] ?? post.mediaType}
+                  {tipoLabel(post.mediaType)}
                 </span>
               </div>
               <div className="p-3 space-y-1">
                 <div className="flex justify-between">
                   <span className="text-[11px] text-stone-500 dark:text-stone-400">
-                    Visualizações
+                    {t('topPosts.stats.views', 'Visualizações')}
                   </span>
                   <span className="text-[11px] font-bold text-stone-900 dark:text-stone-100">
                     {formatNumber(post.impressions)}
@@ -141,14 +152,16 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[11px] text-stone-500 dark:text-stone-400">
-                    Engajamento
+                    {t('topPosts.stats.engagement', 'Engajamento')}
                   </span>
                   <span className="text-[11px] font-bold text-emerald-500">
                     {post.engagementRate}%
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[11px] text-stone-500 dark:text-stone-400">Salvos</span>
+                  <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                    {t('topPosts.stats.saved', 'Salvos')}
+                  </span>
                   <span className="text-[11px] font-bold text-stone-900 dark:text-stone-100">
                     {post.saved}
                   </span>
@@ -168,7 +181,7 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
               <button
                 key={post.id}
                 type="button"
-                aria-label={`Ir para post ${i + 1}`}
+                aria-label={t('topPosts.goToPost', 'Ir para post {{index}}', { index: i + 1 })}
                 aria-current={active}
                 onClick={() => scrollToCard(i)}
                 className="flex items-center justify-center py-2.5 px-1.5 -my-2"

@@ -9,6 +9,7 @@ import {
   Tooltip,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../../HubContext';
 import { chartInk, chartFont, useFontsReady } from './chartInk';
 import type { DashboardFollowerEntry } from '../../types';
@@ -25,6 +26,7 @@ interface FollowerChartProps {
 }
 
 export function FollowerChart({ followerHistory }: FollowerChartProps) {
+  const { t } = useTranslation('hubHome');
   const canvasRef = useRef<ChartJS<'line'>>(null);
   const { theme } = useHub();
   const ink = chartInk(theme);
@@ -78,7 +80,10 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
     plugins: {
       tooltip: {
         callbacks: {
-          label: (ctx: any) => `${formatAbbrev(ctx.parsed.y)} seguidores`,
+          label: (ctx: any) =>
+            t('followerChart.tooltip', '{{value}} seguidores', {
+              value: formatAbbrev(ctx.parsed.y),
+            }),
         },
       },
     },
@@ -105,14 +110,18 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
   if (followerHistory.length === 0) {
     return (
       <div className="hub-card p-5 flex items-center justify-center min-h-[260px]">
-        <p className="text-sm text-stone-400">Nenhum dado de seguidores disponível.</p>
+        <p className="text-sm text-stone-400">
+          {t('followerChart.noData', 'Nenhum dado de seguidores disponível.')}
+        </p>
       </div>
     );
   }
 
   return (
     <div className="hub-card p-5">
-      <h3 className="text-[13px] font-semibold hub-tx2 mb-4">Seguidores</h3>
+      <h3 className="text-[13px] font-semibold hub-tx2 mb-4">
+        {t('followerChart.title', 'Seguidores')}
+      </h3>
       <div className="h-[180px]">
         <Line ref={canvasRef} data={data} options={options as any} />
       </div>

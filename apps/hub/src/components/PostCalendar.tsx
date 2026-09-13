@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { HubPost } from '../types';
 
+// Portuguese source text kept as the `months`/`weekdaysShort` common-namespace
+// keys' default values -- these are reused from `packages/i18n/locales/*/common.json`,
+// not redefined in hubHome.json.
 const MONTHS_PT = [
   'Janeiro',
   'Fevereiro',
@@ -17,7 +21,7 @@ const MONTHS_PT = [
   'Novembro',
   'Dezembro',
 ];
-const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const WEEKDAYS_SHORT_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 const TIPO_COLOR: Record<string, string> = {
   feed: '#3b82f6',
@@ -26,14 +30,14 @@ const TIPO_COLOR: Record<string, string> = {
   carrossel: '#10b981',
 };
 
-const TIPO_LABEL: Record<string, string> = {
+const TIPO_LABEL_PT: Record<string, string> = {
   feed: 'Feed',
   reels: 'Reels',
   stories: 'Stories',
   carrossel: 'Carrossel',
 };
 
-const STATUS_LABEL: Record<string, string> = {
+const STATUS_LABEL_PT: Record<string, string> = {
   rascunho: 'Rascunho',
   revisao_interna: 'Revisão interna',
   aprovado_interno: 'Aprovado interno',
@@ -54,7 +58,22 @@ function formatTimeUTC(iso: string): string {
 }
 
 export function PostCalendar({ posts }: Props) {
+  const { t, i18n } = useTranslation('hubHome');
   const navigate = useNavigate();
+
+  function monthLabel(i: number) {
+    return t(`months.${i}`, MONTHS_PT[i]);
+  }
+  function weekdayShortLabel(i: number) {
+    return t(`weekdaysShort.${i}`, WEEKDAYS_SHORT_PT[i]);
+  }
+  function tipoLabel(tipo: string) {
+    return t(`calendar.tipoLabel.${tipo}`, TIPO_LABEL_PT[tipo] ?? tipo);
+  }
+  function statusLabel(status: string) {
+    return t(`calendar.statusLabel.${status}`, STATUS_LABEL_PT[status] ?? status);
+  }
+
   const today = new Date();
   // Posts are grouped by their scheduled_at date in UTC (see postsForDay
   // below), so "today" must use the same UTC calendar day — otherwise, for
@@ -118,20 +137,20 @@ export function PostCalendar({ posts }: Props) {
           <div className="flex items-center justify-between mb-5 md:hidden">
             <button
               onClick={prevMonth}
-              aria-label="Mês anterior"
+              aria-label={t('calendar.prevMonth', 'Mês anterior')}
               className="w-10 h-10 flex items-center justify-center rounded-2xl border hub-border hub-txt active:scale-95 transition-transform"
             >
               <ChevronLeft size={18} />
             </button>
             <div className="text-center">
               <h2 className="font-display text-[19px] font-semibold tracking-tight hub-txt leading-none capitalize">
-                {MONTHS_PT[month]}
+                {monthLabel(month)}
               </h2>
               <p className="text-[12.5px] hub-tx3 mt-0.5">{year}</p>
             </div>
             <button
               onClick={nextMonth}
-              aria-label="Próximo mês"
+              aria-label={t('calendar.nextMonth', 'Próximo mês')}
               className="w-10 h-10 flex items-center justify-center rounded-2xl border hub-border hub-txt active:scale-95 transition-transform"
             >
               <ChevronRight size={18} />
@@ -142,23 +161,23 @@ export function PostCalendar({ posts }: Props) {
           <div className="hidden md:flex items-center justify-between mb-5">
             <div>
               <h2 className="font-display text-[20px] font-semibold tracking-tight hub-txt leading-none">
-                Postagens
+                {t('calendar.title', 'Postagens')}
               </h2>
               <p className="text-[12.5px] hub-tx2 mt-1">
-                <span className="capitalize">{MONTHS_PT[month]}</span> {year}
+                <span className="capitalize">{monthLabel(month)}</span> {year}
               </p>
             </div>
             <div className="flex items-center gap-1 p-1 rounded-full hub-bg-soft">
               <button
                 onClick={prevMonth}
-                aria-label="Mês anterior"
+                aria-label={t('calendar.prevMonth', 'Mês anterior')}
                 className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-[var(--hub-card)] hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
               >
                 <ChevronLeft size={15} />
               </button>
               <button
                 onClick={nextMonth}
-                aria-label="Próximo mês"
+                aria-label={t('calendar.nextMonth', 'Próximo mês')}
                 className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-[var(--hub-card)] hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
               >
                 <ChevronRight size={15} />
@@ -168,12 +187,12 @@ export function PostCalendar({ posts }: Props) {
 
           {/* Weekday labels — mixed case + light tracking on mobile, matching the reference */}
           <div className="grid grid-cols-7 mb-1 md:mb-2">
-            {DAYS_PT.map((d) => (
+            {WEEKDAYS_SHORT_PT.map((d, i) => (
               <div
                 key={d}
                 className="text-center text-[12px] md:text-[10px] font-medium md:font-semibold tracking-normal md:uppercase md:tracking-[0.12em] hub-tx3 py-1"
               >
-                {d}
+                {weekdayShortLabel(i)}
               </div>
             ))}
           </div>
@@ -265,7 +284,7 @@ export function PostCalendar({ posts }: Props) {
                           color: TIPO_COLOR[tipo] ?? '#78716c',
                         }}
                       >
-                        {count} {TIPO_LABEL[tipo] ?? tipo}
+                        {count} {tipoLabel(tipo)}
                       </div>
                     ))}
                   </div>
@@ -296,18 +315,27 @@ export function PostCalendar({ posts }: Props) {
         <div className="md:border-l hub-border p-0 pt-1 md:p-6 md:bg-[var(--hub-soft)]">
           <div className="mb-4 hidden md:block">
             <h3 className="font-display text-[15px] font-semibold tracking-tight hub-txt">
-              Postagens
+              {t('calendar.title', 'Postagens')}
             </h3>
             <p className="text-[12px] hub-tx2 mt-0.5">
               {selectedDay
-                ? `${selectedDay} de ${MONTHS_PT[month]}, ${year}`
-                : `${MONTHS_PT[month]} ${year}`}
+                ? t('calendar.selectedDateLabel', '{{day}} de {{month}}, {{year}}', {
+                    day: selectedDay,
+                    month: monthLabel(month),
+                    year,
+                  })
+                : t('calendar.monthYearLabel', '{{month}} {{year}}', {
+                    month: monthLabel(month),
+                    year,
+                  })}
             </p>
           </div>
 
           {selectedPosts.length === 0 ? (
             <div className="py-10 text-center hub-tx3 text-[13px]">
-              {selectedDay ? 'Nenhuma postagem neste dia.' : 'Selecione um dia.'}
+              {selectedDay
+                ? t('calendar.noPostsThisDay', 'Nenhuma postagem neste dia.')
+                : t('calendar.selectADay', 'Selecione um dia.')}
             </div>
           ) : (
             <div className="flex flex-col gap-2.5 md:gap-3">
@@ -337,10 +365,10 @@ export function PostCalendar({ posts }: Props) {
                         color: TIPO_COLOR[p.tipo] ?? '#78716c',
                       }}
                     >
-                      {TIPO_LABEL[p.tipo] ?? p.tipo}
+                      {tipoLabel(p.tipo)}
                     </span>
                     <span className="text-[10px] hub-tx2 px-2 py-0.5 rounded-full hub-bg-soft">
-                      {STATUS_LABEL[p.status] ?? p.status}
+                      {statusLabel(p.status)}
                     </span>
                   </div>
 
@@ -352,11 +380,14 @@ export function PostCalendar({ posts }: Props) {
 
                   {p.scheduled_at && (
                     <p className="hidden md:block text-[11px] hub-tx2">
-                      {new Date(p.scheduled_at).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: 'long',
-                        year: 'numeric',
-                      })}
+                      {new Date(p.scheduled_at).toLocaleDateString(
+                        i18n.language === 'en' ? 'en-US' : 'pt-BR',
+                        {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric',
+                        },
+                      )}
                     </p>
                   )}
                 </button>
