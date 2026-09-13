@@ -134,3 +134,39 @@ describe('TarefaFormDialog error handling', () => {
     expect(toastErrorMock).toHaveBeenCalledWith('Erro ao criar tarefa');
   });
 });
+
+describe('TarefaFormDialog due-date prefill', () => {
+  it('prefills the Prazo field from initialValues.data_limite in create mode', () => {
+    renderDialog(
+      <TarefaFormDialog
+        open
+        onClose={() => {}}
+        editing={null}
+        membros={[]}
+        clientes={CLIENTES}
+        tags={[]}
+        onSaved={() => {}}
+        onTagCreated={() => {}}
+        initialValues={{ data_limite: '2026-08-15' }}
+      />,
+    );
+    expect(screen.getByText('15/08/2026')).toBeInTheDocument();
+  });
+
+  it('leaves the Prazo field empty when initialValues.data_limite is null', () => {
+    renderDialog(
+      <TarefaFormDialog
+        open
+        onClose={() => {}}
+        editing={null}
+        membros={[]}
+        clientes={CLIENTES}
+        tags={[]}
+        onSaved={() => {}}
+        onTagCreated={() => {}}
+        initialValues={{ data_limite: null }}
+      />,
+    );
+    expect(screen.getByText('Sem prazo')).toBeInTheDocument();
+  });
+});

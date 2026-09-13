@@ -82,8 +82,14 @@ interface TarefaFormDialogProps {
   tags: TarefaTag[];
   onSaved: () => void;
   onTagCreated: () => void;
-  /** Create-mode prefill (conversao de solicitacao). */
-  initialValues?: { titulo?: string; descricao?: string; cliente_id?: number | null };
+  /** Create-mode prefill (conversao de solicitacao; also used by the Board
+   *  view's per-column "+ Adicionar tarefa"). */
+  initialValues?: {
+    titulo?: string;
+    descricao?: string;
+    cliente_id?: number | null;
+    data_limite?: string | null;
+  };
   /** Trava o campo cliente (a RPC de conversao fixa o cliente de qualquer forma). */
   lockCliente?: boolean;
   /** Substitui o addTarefa interno no submit de criacao. Quem fornece e dono dos toasts de sucesso. */
@@ -117,6 +123,7 @@ export function TarefaFormDialog({
   const initialTitulo = initialValues?.titulo;
   const initialDescricao = initialValues?.descricao;
   const initialClienteId = initialValues?.cliente_id;
+  const initialDataLimite = initialValues?.data_limite;
 
   useEffect(() => {
     if (!open) return;
@@ -136,10 +143,11 @@ export function TarefaFormDialog({
         titulo: initialTitulo ?? '',
         descricao: initialDescricao ?? '',
         cliente_id: initialClienteId != null ? String(initialClienteId) : 'none',
+        data_limite: initialDataLimite ? parseDateOnly(initialDataLimite) : undefined,
       });
       setTagIds([]);
     }
-  }, [open, editing, initialTitulo, initialDescricao, initialClienteId, form]);
+  }, [open, editing, initialTitulo, initialDescricao, initialClienteId, initialDataLimite, form]);
 
   const activeClientes = clientes
     .filter(
