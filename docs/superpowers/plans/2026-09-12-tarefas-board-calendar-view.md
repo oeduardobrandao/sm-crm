@@ -17,20 +17,21 @@
 - Every task that touches a `.ts`/`.tsx` file must type-check clean: `npx tsc -p apps/crm/tsconfig.json --noEmit`.
 - Run the relevant Vitest file(s) after every code change (`npm run test -- <path>` or `npx vitest run <path>`), not just at the end.
 - No comments explaining *what* code does — only the sparse *why* comments this codebase already uses (see `tarefasLogic.ts`'s date-helper header comment for the house style).
+- **Each task must leave the repo type-checking clean and the full Tarefas test suite green when it ends — no task may depend on a later task to stop a broken build.** (This plan was revised once to enforce this: an earlier draft had `boardShared.tsx`/`TarefaCard.tsx`/`CalendarView.tsx`/`TarefasPage.tsx` split across task boundaries so the repo sat red in between. The tasks below merge those pairs so each one's final commit is a green state.)
 - Full spec: `docs/superpowers/specs/2026-09-12-tarefas-board-calendar-design.md`.
 
 ---
 
 ## Task 1: Client color on tasks (`cliente_cor`)
 
-Adds the client's real color (`clientes.cor`) to every task, so the card redesign in Task 6 has real data instead of a hash. `cor` is already a granted/selected column on `clientes` elsewhere in the app — this only projects it through one more embed.
+Adds the client's real color (`clientes.cor`) to every task, so the card redesign in Task 4 has real data instead of a hash. `cor` is already a granted/selected column on `clientes` elsewhere in the app — this only projects it through one more embed.
 
 **Files:**
 - Modify: `apps/crm/src/store/tarefas.ts` (the `TarefaRow`/`TarefaWithRelations` types and `getTarefas()`)
 - Modify: `apps/crm/src/pages/tarefas/__tests__/tarefasLogic.test.ts:17-34` (the `makeTarefa` fixture helper, so it keeps compiling against the now-required new field)
 
 **Interfaces:**
-- Produces: `TarefaWithRelations.cliente_cor: string | null` — consumed by Task 6's `TarefaCard` redesign.
+- Produces: `TarefaWithRelations.cliente_cor: string | null` — consumed by Task 4's `TarefaCard` redesign.
 
 - [ ] **Step 1: Add `cliente_cor` to the type and the query**
 
@@ -143,7 +144,7 @@ The pure logic that turns a task list into the Board view's columns (Em atraso /
 
 **Interfaces:**
 - Consumes: `parseDateOnly`, `toDateOnlyString`, `sortTarefas` (already exported), plus the file-local `startOfLocalDay`/`isSameLocalDay`/`endOfCurrentWeek` helpers already defined in this same file.
-- Produces: `export interface BoardBucket { key: string; label: string; date: string | null; droppable: boolean; tarefas: TarefaWithRelations[] }` and `export function groupByBoardColumn(tarefas: TarefaWithRelations[], now: Date): BoardBucket[]` — consumed by Task 8 (`BoardView.tsx`).
+- Produces: `export interface BoardBucket { key: string; label: string; date: string | null; droppable: boolean; tarefas: TarefaWithRelations[] }` and `export function groupByBoardColumn(tarefas: TarefaWithRelations[], now: Date): BoardBucket[]` — consumed by Task 6 (`BoardView.tsx`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -383,7 +384,7 @@ A tiny per-conta localStorage-backed preference, mirroring `apps/crm/src/pages/e
 - Test: `apps/crm/src/pages/tarefas/__tests__/tarefasPrefs.test.ts`
 
 **Interfaces:**
-- Produces: `export type TarefasCalendarioModo = 'mes' | 'board'`, `export function loadTarefasCalendarioModo(contaId: string): TarefasCalendarioModo`, `export function persistTarefasCalendarioModo(contaId: string, modo: TarefasCalendarioModo): void` — consumed by Task 9 (`CalendarView.tsx`).
+- Produces: `export type TarefasCalendarioModo = 'mes' | 'board'`, `export function loadTarefasCalendarioModo(contaId: string): TarefasCalendarioModo`, `export function persistTarefasCalendarioModo(contaId: string, modo: TarefasCalendarioModo): void` — consumed by Task 7 (`CalendarView.tsx`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -485,358 +486,22 @@ Mirrors entregasPrefs.ts's loadLastMode/persistLastMode shape exactly."
 
 ---
 
-## Task 4: `boardShared.tsx` — droppable opt-out, add-button slot, `onRefresh` threading
+## Task 4: `TarefaCard` redesign + shared board wiring
 
-Three additions to the shared board component, all additive (existing callers `StatusKanbanView`/`MembrosBoardView` are unaffected by the new optional fields, but DO need the new required `onRefresh` prop — that's Task 5).
+The full card-interactivity slice, landed as one task so the repo never sits between a red `boardShared.tsx` (expecting new `TarefaCard` props) and a `TarefaCard` that doesn't provide them yet. Covers: the redesigned card itself (client-color footer, inline assignee reassignment), `boardShared.tsx`'s supporting changes (droppable opt-out, add-button slot, `onRefresh` threading), and the two existing views (`StatusKanbanView`, `MembrosBoardView`) that need to pass `onRefresh` through. All of it lands, compiles, and tests green together, in one commit at the end of the task.
 
 **Files:**
+- Modify: `apps/crm/src/pages/tarefas/components/TarefaCard.tsx`
+- Test: `apps/crm/src/pages/tarefas/__tests__/TarefaCard.test.tsx` (new file, flat `__tests__/` — matching where `TarefaFormDialog.test.tsx` already lives, not a nested `components/__tests__/`)
 - Modify: `apps/crm/src/pages/tarefas/views/boardShared.tsx`
-
-**Interfaces:**
-- Consumes: nothing new (same `Membro`/`TarefaWithRelations` imports).
-- Produces: `BoardColumn` gains `droppable?: boolean` (default true) and `onAddClick?: () => void`. `TarefaBoardProps` gains `onRefresh: () => void`. Consumed by Task 5 (existing views), Task 8 (`BoardView.tsx`).
-
-This task has no isolated unit test of its own (dnd-kit's `useDroppable` registration isn't observable through a DOM attribute RTL can assert on, and this codebase has zero existing tests for `boardShared.tsx` for exactly that reason — see the spec's Testing section). Correctness here is verified by: (a) the type-check in Step 3, (b) Task 6's `TarefaCard` tests exercising the new props end-to-end, and (c) the manual browser verification in Task 11.
-
-- [ ] **Step 1: Add the new `BoardColumn` fields and `TarefaBoardProps.onRefresh`**
-
-In `apps/crm/src/pages/tarefas/views/boardShared.tsx`, update the `BoardColumn` interface (lines 17-23):
-
-```ts
-export interface BoardColumn {
-  /** Namespaced droppable id from buildDropId. */
-  dropId: string;
-  title: string;
-  tarefas: TarefaWithRelations[];
-  hideAssignee?: boolean;
-  /** When false, this column's body doesn't register as a drop target (e.g.
-   * "Em atraso"/"Mais tarde" have no single unambiguous date to assign).
-   * Defaults to true. */
-  droppable?: boolean;
-  /** Renders a "+ Adicionar tarefa" button pinned at the top of the column
-   * when provided. */
-  onAddClick?: () => void;
-}
-```
-
-Update `TarefaBoardProps` (lines 25-33):
-
-```ts
-interface TarefaBoardProps {
-  columns: BoardColumn[];
-  membros: Membro[];
-  now: Date;
-  onCardClick: (tarefa: TarefaWithRelations) => void;
-  /** Fired with the dragged task and the RESOLVED column dropId (card-over-card
-   * drops resolve to the hovered card's column). */
-  onDropCard: (tarefa: TarefaWithRelations, dropId: string) => void;
-  onRefresh: () => void;
-}
-```
-
-- [ ] **Step 2: Split `DroppableColumnBody` so non-droppable columns skip `useDroppable`**
-
-Replace the existing `DroppableColumnBody` function (lines 74-85) with:
-
-```tsx
-// Registers the column body as a drop target so empty columns can receive
-// drops. `droppable: false` columns render a plain div instead -- calling
-// useDroppable conditionally would break the rules of hooks, so this is
-// split into two components rather than an early return inside one.
-function DroppableColumnBody({
-  id,
-  children,
-  droppable = true,
-}: {
-  id: string;
-  children: React.ReactNode;
-  droppable?: boolean;
-}) {
-  if (!droppable) {
-    return (
-      <div className="board-column-body" style={{ minHeight: 60 }}>
-        {children}
-      </div>
-    );
-  }
-  return <DroppableColumnBodyRegistered id={id}>{children}</DroppableColumnBodyRegistered>;
-}
-
-function DroppableColumnBodyRegistered({
-  id,
-  children,
-}: {
-  id: string;
-  children: React.ReactNode;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id });
-  return (
-    <div
-      ref={setNodeRef}
-      className="board-column-body"
-      style={{ minHeight: 60, ...(isOver ? { background: 'var(--surface-hover)' } : {}) }}
-    >
-      {children}
-    </div>
-  );
-}
-```
-
-- [ ] **Step 3: Thread `onRefresh` into `DraggableTarefaCard` and the `DragOverlay`, add the add-button and `droppable` prop to the column render**
-
-Update the `DraggableTarefaCard` function (lines 35-71) to accept and forward `membros`/`onRefresh`:
-
-```tsx
-function DraggableTarefaCard({
-  tarefa,
-  membro,
-  now,
-  onClick,
-  membros,
-  onRefresh,
-  hideAssignee,
-}: {
-  tarefa: TarefaWithRelations;
-  membro: Membro | null;
-  now: Date;
-  onClick: () => void;
-  membros: Membro[];
-  onRefresh: () => void;
-  hideAssignee?: boolean;
-}) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: String(tarefa.id),
-  });
-  return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      style={{
-        transform: CSS.Translate.toString(transform),
-        opacity: isDragging ? 0.4 : 1,
-        touchAction: 'none',
-      }}
-    >
-      <TarefaCard
-        tarefa={tarefa}
-        membro={membro}
-        now={now}
-        onClick={onClick}
-        membros={membros}
-        onRefresh={onRefresh}
-        hideAssignee={hideAssignee}
-      />
-    </div>
-  );
-}
-```
-
-Update `TarefaBoard`'s signature and JSX (lines 89-166). Add the `Plus` import at the top of the file (alongside the existing `@dnd-kit`/`store`/`TarefaCard` imports):
-
-```ts
-import { Plus } from 'lucide-react';
-```
-
-Then:
-
-```tsx
-export function TarefaBoard({
-  columns,
-  membros,
-  now,
-  onCardClick,
-  onDropCard,
-  onRefresh,
-}: TarefaBoardProps) {
-  const [activeTarefa, setActiveTarefa] = useState<TarefaWithRelations | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  const allTarefas = columns.flatMap((c) => c.tarefas);
-  const findTarefa = (id: string) => allTarefas.find((t) => String(t.id) === id);
-  const columnOfTarefa = (id: string) =>
-    columns.find((c) => c.tarefas.some((t) => String(t.id) === id));
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveTarefa(findTarefa(String(event.active.id)) ?? null);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    setActiveTarefa(null);
-    const { active, over } = event;
-    if (!over) return;
-    const tarefa = findTarefa(String(active.id));
-    if (!tarefa) return;
-
-    const overId = String(over.id);
-    const targetColumn = columns.find((c) => c.dropId === overId) ?? columnOfTarefa(overId);
-    if (!targetColumn) return;
-    onDropCard(tarefa, targetColumn.dropId);
-  };
-
-  const membroById = new Map(membros.filter((m) => m.id != null).map((m) => [m.id!, m]));
-
-  return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="board-rows-wrapper animate-up">
-        <div className="board-container">
-          {columns.map((col) => (
-            <div key={col.dropId} className="board-column">
-              <div className="board-column-header">
-                <span className="board-column-title">{col.title}</span>
-                <span className="board-column-count">{col.tarefas.length}</span>
-              </div>
-              <DroppableColumnBody id={col.dropId} droppable={col.droppable}>
-                {col.onAddClick && (
-                  <button type="button" className="board-add-card" onClick={col.onAddClick}>
-                    <Plus className="h-3.5 w-3.5" /> Adicionar tarefa
-                  </button>
-                )}
-                {col.tarefas.length === 0 ? (
-                  <div className="board-empty">Nenhuma tarefa</div>
-                ) : (
-                  col.tarefas.map((t) => (
-                    <DraggableTarefaCard
-                      key={t.id}
-                      tarefa={t}
-                      membro={
-                        t.responsavel_id != null ? (membroById.get(t.responsavel_id) ?? null) : null
-                      }
-                      now={now}
-                      onClick={() => onCardClick(t)}
-                      membros={membros}
-                      onRefresh={onRefresh}
-                      hideAssignee={col.hideAssignee}
-                    />
-                  ))
-                )}
-              </DroppableColumnBody>
-            </div>
-          ))}
-        </div>
-      </div>
-      <DragOverlay>
-        {activeTarefa && (
-          <TarefaCard
-            tarefa={activeTarefa}
-            membro={
-              activeTarefa.responsavel_id != null
-                ? (membroById.get(activeTarefa.responsavel_id) ?? null)
-                : null
-            }
-            now={now}
-            onClick={() => {}}
-            membros={[]}
-            onRefresh={() => {}}
-          />
-        )}
-      </DragOverlay>
-    </DndContext>
-  );
-}
-```
-
-(The `DragOverlay` copy gets `membros={[]}` so its reassign dropdown is inert — reassigning the ghost card mid-drag makes no sense.)
-
-- [ ] **Step 4: Type-check**
-
-Run: `npx tsc -p apps/crm/tsconfig.json --noEmit`
-Expected: errors in `StatusKanbanView.tsx` and `MembrosBoardView.tsx` (missing `onRefresh` prop on `<TarefaBoard>`) and in `TarefaCard.tsx` (doesn't accept `membros`/`onRefresh` yet) — **this is expected**, both get fixed in Task 5 and Task 6. Confirm there are no OTHER errors beyond those two files.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add apps/crm/src/pages/tarefas/views/boardShared.tsx
-git commit -m "feat(tarefas): add droppable opt-out, add-button slot, onRefresh to TarefaBoard
-
-BoardColumn gains droppable (default true) and onAddClick; TarefaBoardProps
-gains onRefresh, threaded into DraggableTarefaCard and the drag overlay.
-Existing StatusKanbanView/MembrosBoardView call sites are fixed in the next
-commit -- this one intentionally leaves them red."
-```
-
----
-
-## Task 5: Wire `onRefresh` through the existing Kanban and Por membro views
-
-Fixes the type errors left by Task 4. Both views already receive an `onRefresh`/`refresh` callback from `TarefasPage.tsx` — they just weren't passing it into `TarefaBoard` yet.
-
-**Files:**
 - Modify: `apps/crm/src/pages/tarefas/views/StatusKanbanView.tsx:53-61`
 - Modify: `apps/crm/src/pages/tarefas/views/MembrosBoardView.tsx:58-66`
 
 **Interfaces:**
-- Consumes: `TarefaBoardProps.onRefresh` from Task 4.
+- Consumes (in `TarefaCard.tsx`): `updateTarefa` from `'../../../store'`, `dueBadge` from `../tarefasLogic`, `avatarColorClass` from `@/lib/avatarColor`, `DropdownMenu`/`DropdownMenuContent`/`DropdownMenuItem`/`DropdownMenuTrigger` from `@/components/ui/dropdown-menu` (same imports `WorkflowCard.tsx` already uses for this exact pattern).
+- Produces: `TarefaCardProps` gains `membros: Membro[]` and `onRefresh: () => void` (both required). `BoardColumn` (in `boardShared.tsx`) gains `droppable?: boolean` (default true) and `onAddClick?: () => void`. `TarefaBoardProps` gains `onRefresh: () => void`. All of this is consumed by Task 6 (`BoardView.tsx`).
 
-- [ ] **Step 1: Pass `onRefresh` through in `StatusKanbanView.tsx`**
-
-Change the `<TarefaBoard>` render (lines 53-61) from:
-
-```tsx
-    <TarefaBoard
-      columns={columns}
-      membros={membros}
-      now={now}
-      onCardClick={onTarefaClick}
-      onDropCard={handleDrop}
-    />
-```
-
-to:
-
-```tsx
-    <TarefaBoard
-      columns={columns}
-      membros={membros}
-      now={now}
-      onCardClick={onTarefaClick}
-      onDropCard={handleDrop}
-      onRefresh={onRefresh}
-    />
-```
-
-- [ ] **Step 2: Pass `onRefresh` through in `MembrosBoardView.tsx`**
-
-Same one-line addition to its `<TarefaBoard>` render (lines 58-66):
-
-```tsx
-    <TarefaBoard
-      columns={columns}
-      membros={membros}
-      now={now}
-      onCardClick={onTarefaClick}
-      onDropCard={handleDrop}
-      onRefresh={onRefresh}
-    />
-```
-
-- [ ] **Step 3: Type-check**
-
-Run: `npx tsc -p apps/crm/tsconfig.json --noEmit`
-Expected: no more errors from these two files (the remaining `TarefaCard` prop errors are resolved in Task 6).
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add apps/crm/src/pages/tarefas/views/StatusKanbanView.tsx apps/crm/src/pages/tarefas/views/MembrosBoardView.tsx
-git commit -m "fix(tarefas): thread onRefresh into TarefaBoard from Kanban and Por membro"
-```
-
----
-
-## Task 6: `TarefaCard` redesign — client color footer + inline assignee reassignment
-
-The visual and behavioral core of the card redesign. Both Kanban and Por membro pick this up automatically once it lands (they already render `TarefaCard` via `boardShared.tsx`).
-
-**Files:**
-- Modify: `apps/crm/src/pages/tarefas/components/TarefaCard.tsx`
-- Test: `apps/crm/src/pages/tarefas/__tests__/TarefaCard.test.tsx` (flat `__tests__/`, matching where `TarefaFormDialog.test.tsx` already lives — not a nested `components/__tests__/`)
-
-**Interfaces:**
-- Consumes: `updateTarefa` from `'../../../store'`, `dueBadge` from `../tarefasLogic`, `avatarColorClass` from `@/lib/avatarColor`, `DropdownMenu`/`DropdownMenuContent`/`DropdownMenuItem`/`DropdownMenuTrigger` from `@/components/ui/dropdown-menu` (same imports `WorkflowCard.tsx` already uses for this exact pattern).
-- Produces: `TarefaCardProps` gains `membros: Membro[]` and `onRefresh: () => void` (both required) — consumed by Task 4's `boardShared.tsx` (already wired) and Task 8's `BoardView.tsx`.
-
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing `TarefaCard` tests**
 
 Create `apps/crm/src/pages/tarefas/__tests__/TarefaCard.test.tsx`:
 
@@ -1245,38 +910,311 @@ export function TarefaCard({
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 4: Run the `TarefaCard` tests to verify they pass**
 
 Run: `npx vitest run apps/crm/src/pages/tarefas/__tests__/TarefaCard.test.tsx`
 Expected: PASS, all 6 cases green.
 
-- [ ] **Step 5: Type-check the whole CRM project**
+- [ ] **Step 5: Update `boardShared.tsx`**
+
+Add the `Plus` import at the top of `apps/crm/src/pages/tarefas/views/boardShared.tsx` (alongside the existing `@dnd-kit`/`store`/`TarefaCard` imports):
+
+```ts
+import { Plus } from 'lucide-react';
+```
+
+Update the `BoardColumn` interface (lines 17-23):
+
+```ts
+export interface BoardColumn {
+  /** Namespaced droppable id from buildDropId. */
+  dropId: string;
+  title: string;
+  tarefas: TarefaWithRelations[];
+  hideAssignee?: boolean;
+  /** When false, this column's body doesn't register as a drop target (e.g.
+   * "Em atraso"/"Mais tarde" have no single unambiguous date to assign).
+   * Defaults to true. */
+  droppable?: boolean;
+  /** Renders a "+ Adicionar tarefa" button pinned at the top of the column
+   * when provided. */
+  onAddClick?: () => void;
+}
+```
+
+Update `TarefaBoardProps` (lines 25-33):
+
+```ts
+interface TarefaBoardProps {
+  columns: BoardColumn[];
+  membros: Membro[];
+  now: Date;
+  onCardClick: (tarefa: TarefaWithRelations) => void;
+  /** Fired with the dragged task and the RESOLVED column dropId (card-over-card
+   * drops resolve to the hovered card's column). */
+  onDropCard: (tarefa: TarefaWithRelations, dropId: string) => void;
+  onRefresh: () => void;
+}
+```
+
+Replace the `DraggableTarefaCard` function (lines 35-71):
+
+```tsx
+function DraggableTarefaCard({
+  tarefa,
+  membro,
+  now,
+  onClick,
+  membros,
+  onRefresh,
+  hideAssignee,
+}: {
+  tarefa: TarefaWithRelations;
+  membro: Membro | null;
+  now: Date;
+  onClick: () => void;
+  membros: Membro[];
+  onRefresh: () => void;
+  hideAssignee?: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: String(tarefa.id),
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      style={{
+        transform: CSS.Translate.toString(transform),
+        opacity: isDragging ? 0.4 : 1,
+        touchAction: 'none',
+      }}
+    >
+      <TarefaCard
+        tarefa={tarefa}
+        membro={membro}
+        now={now}
+        onClick={onClick}
+        membros={membros}
+        onRefresh={onRefresh}
+        hideAssignee={hideAssignee}
+      />
+    </div>
+  );
+}
+```
+
+Replace `DroppableColumnBody` (lines 74-85) with a split version, since conditionally calling `useDroppable` inside one component would break the rules of hooks:
+
+```tsx
+// Registers the column body as a drop target so empty columns can receive
+// drops. `droppable: false` columns render a plain div instead -- calling
+// useDroppable conditionally would break the rules of hooks, so this is
+// split into two components rather than an early return inside one.
+function DroppableColumnBody({
+  id,
+  children,
+  droppable = true,
+}: {
+  id: string;
+  children: React.ReactNode;
+  droppable?: boolean;
+}) {
+  if (!droppable) {
+    return (
+      <div className="board-column-body" style={{ minHeight: 60 }}>
+        {children}
+      </div>
+    );
+  }
+  return <DroppableColumnBodyRegistered id={id}>{children}</DroppableColumnBodyRegistered>;
+}
+
+function DroppableColumnBodyRegistered({
+  id,
+  children,
+}: {
+  id: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className="board-column-body"
+      style={{ minHeight: 60, ...(isOver ? { background: 'var(--surface-hover)' } : {}) }}
+    >
+      {children}
+    </div>
+  );
+}
+```
+
+Replace the `TarefaBoard` function (lines 89-166):
+
+```tsx
+export function TarefaBoard({
+  columns,
+  membros,
+  now,
+  onCardClick,
+  onDropCard,
+  onRefresh,
+}: TarefaBoardProps) {
+  const [activeTarefa, setActiveTarefa] = useState<TarefaWithRelations | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const allTarefas = columns.flatMap((c) => c.tarefas);
+  const findTarefa = (id: string) => allTarefas.find((t) => String(t.id) === id);
+  const columnOfTarefa = (id: string) =>
+    columns.find((c) => c.tarefas.some((t) => String(t.id) === id));
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveTarefa(findTarefa(String(event.active.id)) ?? null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveTarefa(null);
+    const { active, over } = event;
+    if (!over) return;
+    const tarefa = findTarefa(String(active.id));
+    if (!tarefa) return;
+
+    const overId = String(over.id);
+    const targetColumn = columns.find((c) => c.dropId === overId) ?? columnOfTarefa(overId);
+    if (!targetColumn) return;
+    onDropCard(tarefa, targetColumn.dropId);
+  };
+
+  const membroById = new Map(membros.filter((m) => m.id != null).map((m) => [m.id!, m]));
+
+  return (
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="board-rows-wrapper animate-up">
+        <div className="board-container">
+          {columns.map((col) => (
+            <div key={col.dropId} className="board-column">
+              <div className="board-column-header">
+                <span className="board-column-title">{col.title}</span>
+                <span className="board-column-count">{col.tarefas.length}</span>
+              </div>
+              <DroppableColumnBody id={col.dropId} droppable={col.droppable}>
+                {col.onAddClick && (
+                  <button type="button" className="board-add-card" onClick={col.onAddClick}>
+                    <Plus className="h-3.5 w-3.5" /> Adicionar tarefa
+                  </button>
+                )}
+                {col.tarefas.length === 0 ? (
+                  <div className="board-empty">Nenhuma tarefa</div>
+                ) : (
+                  col.tarefas.map((t) => (
+                    <DraggableTarefaCard
+                      key={t.id}
+                      tarefa={t}
+                      membro={
+                        t.responsavel_id != null ? (membroById.get(t.responsavel_id) ?? null) : null
+                      }
+                      now={now}
+                      onClick={() => onCardClick(t)}
+                      membros={membros}
+                      onRefresh={onRefresh}
+                      hideAssignee={col.hideAssignee}
+                    />
+                  ))
+                )}
+              </DroppableColumnBody>
+            </div>
+          ))}
+        </div>
+      </div>
+      <DragOverlay>
+        {activeTarefa && (
+          <TarefaCard
+            tarefa={activeTarefa}
+            membro={
+              activeTarefa.responsavel_id != null
+                ? (membroById.get(activeTarefa.responsavel_id) ?? null)
+                : null
+            }
+            now={now}
+            onClick={() => {}}
+            membros={[]}
+            onRefresh={() => {}}
+          />
+        )}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+```
+
+(The `DragOverlay` copy gets `membros={[]}` so its reassign dropdown is inert — reassigning the ghost card mid-drag makes no sense.)
+
+- [ ] **Step 6: Wire `onRefresh` through `StatusKanbanView.tsx` and `MembrosBoardView.tsx`**
+
+Both views already receive an `onRefresh` callback from `TarefasPage.tsx` — they just weren't passing it into `TarefaBoard` yet. In `apps/crm/src/pages/tarefas/views/StatusKanbanView.tsx`, change the `<TarefaBoard>` render (lines 53-61) from:
+
+```tsx
+    <TarefaBoard
+      columns={columns}
+      membros={membros}
+      now={now}
+      onCardClick={onTarefaClick}
+      onDropCard={handleDrop}
+    />
+```
+
+to:
+
+```tsx
+    <TarefaBoard
+      columns={columns}
+      membros={membros}
+      now={now}
+      onCardClick={onTarefaClick}
+      onDropCard={handleDrop}
+      onRefresh={onRefresh}
+    />
+```
+
+Make the identical one-line addition to `apps/crm/src/pages/tarefas/views/MembrosBoardView.tsx`'s `<TarefaBoard>` render (lines 58-66).
+
+- [ ] **Step 7: Type-check the whole CRM project**
 
 Run: `npx tsc -p apps/crm/tsconfig.json --noEmit`
-Expected: no errors anywhere now (Task 4's deferred `TarefaCard` errors are resolved).
+Expected: no errors anywhere.
 
-- [ ] **Step 6: Run the full Tarefas test suite so far**
+- [ ] **Step 8: Run the full Tarefas test suite**
 
 Run: `npx vitest run apps/crm/src/pages/tarefas`
-Expected: PASS (this also re-runs `TarefasPage.test.tsx`, `TarefaFormDialog.test.tsx`, `tarefasLogic.test.ts`, `tarefasPrefs.test.ts` — confirm none regressed).
+Expected: PASS (this re-runs `TarefasPage.test.tsx`, `TarefaFormDialog.test.tsx`, `tarefasLogic.test.ts`, `tarefasPrefs.test.ts`, `TarefaCard.test.tsx` — confirm none regressed).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit everything from this task together**
 
 ```bash
-git add apps/crm/src/pages/tarefas/components/TarefaCard.tsx apps/crm/src/pages/tarefas/__tests__/TarefaCard.test.tsx
-git commit -m "feat(tarefas): redesign TarefaCard with client-color footer and inline reassign
+git add apps/crm/src/pages/tarefas/components/TarefaCard.tsx apps/crm/src/pages/tarefas/__tests__/TarefaCard.test.tsx apps/crm/src/pages/tarefas/views/boardShared.tsx apps/crm/src/pages/tarefas/views/StatusKanbanView.tsx apps/crm/src/pages/tarefas/views/MembrosBoardView.tsx
+git commit -m "feat(tarefas): redesign TarefaCard, thread onRefresh/membros through TarefaBoard
 
-Assignee avatar moves to the header (top-right) and becomes a click target
-for reassignment via a DropdownMenu, mirroring WorkflowCard's existing
-pattern (optimistic update, toast, rollback on failure). The client name
-gets its own footer row with a dot colored from clientes.cor instead of
-plain grey text. Kanban and Por membro inherit this for free since they
-already render TarefaCard through boardShared.tsx."
+TarefaCard: assignee avatar moves to the header (top-right) and becomes a
+click target for reassignment via a DropdownMenu, mirroring WorkflowCard's
+existing pattern (optimistic update, toast, rollback on failure). The
+client name gets its own footer row with a dot colored from clientes.cor
+instead of plain grey text.
+
+boardShared.tsx: BoardColumn gains droppable (default true) and
+onAddClick; TarefaBoardProps gains onRefresh, threaded into
+DraggableTarefaCard and the drag overlay. StatusKanbanView and
+MembrosBoardView now pass their existing onRefresh callback through.
+
+Landed as one commit -- the repo would otherwise sit red between
+boardShared.tsx requiring these TarefaCard props and TarefaCard providing
+them."
 ```
 
 ---
 
-## Task 7: `TarefaFormDialog` — due-date prefill for per-column task creation
+## Task 5: `TarefaFormDialog` — due-date prefill for per-column task creation
 
 Extends the existing create-mode prefill mechanism (today only used by a "convert solicitação" flow) with an optional due date, needed by the Board view's per-column "+ Adicionar tarefa" button.
 
@@ -1285,11 +1223,11 @@ Extends the existing create-mode prefill mechanism (today only used by a "conver
 - Test: `apps/crm/src/pages/tarefas/__tests__/TarefaFormDialog.test.tsx`
 
 **Interfaces:**
-- Produces: `initialValues` gains `data_limite?: string | null` — consumed by Task 10 (`TarefasPage.tsx`).
+- Produces: `initialValues` gains `data_limite?: string | null` — consumed by Task 7 (`TarefasPage.tsx`).
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `apps/crm/src/pages/tarefas/__tests__/TarefaFormDialog.test.tsx`, a new `describe` block (the file already has `TarefaFormDialog convert mode` and `TarefaFormDialog error handling` — add this as a third one, and add `DatePicker`-friendly imports if not already present; `screen`/`render` are already imported at the top of the file):
+Add to `apps/crm/src/pages/tarefas/__tests__/TarefaFormDialog.test.tsx`, a new `describe` block (the file already has `TarefaFormDialog convert mode` and `TarefaFormDialog error handling` — add this as a third one; `screen`/`render`/`renderDialog`/`CLIENTES` are already defined at the top of the file):
 
 ```tsx
 describe('TarefaFormDialog due-date prefill', () => {
@@ -1401,14 +1339,14 @@ Expected: no errors.
 git add apps/crm/src/pages/tarefas/components/TarefaFormDialog.tsx apps/crm/src/pages/tarefas/__tests__/TarefaFormDialog.test.tsx
 git commit -m "feat(tarefas): support data_limite prefill in TarefaFormDialog's create mode
 
-Needed by the Board view's per-column \"+ Adicionar tarefa\" (Task 10) --
+Needed by the Board view's per-column \"+ Adicionar tarefa\" (Task 7) --
 extends the same initialValues mechanism already used by the convert-
 solicitação flow, wired up in the next task."
 ```
 
 ---
 
-## Task 8: `BoardView.tsx` — the date-bucket board
+## Task 6: `BoardView.tsx` — the date-bucket board
 
 Ties `groupByBoardColumn` (Task 2) to `TarefaBoard` (Task 4), following the exact same shape as `StatusKanbanView`/`MembrosBoardView`.
 
@@ -1417,9 +1355,9 @@ Ties `groupByBoardColumn` (Task 2) to `TarefaBoard` (Task 4), following the exac
 
 **Interfaces:**
 - Consumes: `groupByBoardColumn`, `buildDropId`, `parseDropId` from `../tarefasLogic`; `useOptimisticTarefas` from `../hooks/useOptimisticTarefas`; `TarefaBoard`, `type BoardColumn` from `./boardShared`; `updateTarefa` from `'../../../store'`.
-- Produces: `export function BoardView(props: { tarefas: TarefaWithRelations[]; membros: Membro[]; onTarefaClick: (t: TarefaWithRelations) => void; onRefresh: () => void; onCreateTask: (date: string | null) => void })` — consumed by Task 9 (`CalendarView.tsx`).
+- Produces: `export function BoardView(props: { tarefas: TarefaWithRelations[]; membros: Membro[]; onTarefaClick: (t: TarefaWithRelations) => void; onRefresh: () => void; onCreateTask: (date: string | null) => void })` — consumed by Task 7 (`CalendarView.tsx`).
 
-No dedicated automated test for this file: it's pure composition (bucketing already covered by Task 2's unit tests; `TarefaBoard`'s rendering has no test precedent anywhere in this codebase, per the spec's Testing section, since dnd-kit interactions aren't practical to assert on through RTL here). It's covered by Task 11's manual browser verification.
+No dedicated automated test for this file: it's pure composition (bucketing already covered by Task 2's unit tests; `TarefaBoard`'s rendering has no test precedent anywhere in this codebase, per the spec's Testing section, since dnd-kit interactions aren't practical to assert on through RTL here). It's covered by Task 8's manual browser verification. Since this is a new, not-yet-referenced file, `tsc` type-checks it standalone with no risk of leaving the repo red.
 
 - [ ] **Step 1: Create `BoardView.tsx`**
 
@@ -1508,18 +1446,19 @@ instead of duplicating a DndContext."
 
 ---
 
-## Task 9: `CalendarView.tsx` — Mês/Board toggle
+## Task 7: Wire the Board toggle into the Tarefas page
 
-Wires `BoardView` into the existing Calendário tab behind a small persisted toggle.
+Lands `CalendarView.tsx`'s Mês/Board toggle and `TarefasPage.tsx`'s supporting wiring together, so the repo never sits red waiting for the other half. `CalendarView` needs `membros` and an `onCreateTask` callback that only `TarefasPage` can provide; `TarefasPage` needs `CalendarView`'s new prop shape to know what to pass. Landed as one task, one green state.
 
 **Files:**
 - Modify: `apps/crm/src/pages/tarefas/views/CalendarView.tsx`
+- Modify: `apps/crm/src/pages/tarefas/TarefasPage.tsx`
 
 **Interfaces:**
-- Consumes: `loadTarefasCalendarioModo`/`persistTarefasCalendarioModo` (Task 3), `BoardView` (Task 8), `useAuth` from `@/context/AuthContext`.
-- Produces: `CalendarViewProps` gains `membros: Membro[]` and `onCreateTask: (date: string | null) => void` — consumed by Task 10 (`TarefasPage.tsx`).
+- Consumes: `loadTarefasCalendarioModo`/`persistTarefasCalendarioModo` (Task 3), `BoardView` (Task 6), `useAuth` from `@/context/AuthContext`, `TarefaFormDialogProps.initialValues.data_limite` (Task 5).
+- Produces: `CalendarViewProps` gains `membros: Membro[]` and `onCreateTask: (date: string | null) => void`.
 
-- [ ] **Step 1: Add the new imports and props**
+- [ ] **Step 1: Add the new imports and props to `CalendarView.tsx`**
 
 In `apps/crm/src/pages/tarefas/views/CalendarView.tsx`, add to the existing import block (after the `useOptimisticTarefas` import, line 18):
 
@@ -1660,35 +1599,7 @@ Replace the final `return (...)` block (lines 235-262) with:
 
 > Note `--text-secondary` here matches `TarefasPage.tsx`'s existing `VIEW_TABS` segmented control (`apps/crm/src/pages/tarefas/TarefasPage.tsx:144`), which already uses that exact token for its inactive-tab color — so this stays visually consistent with the page's own tab row.
 
-- [ ] **Step 4: Type-check**
-
-Run: `npx tsc -p apps/crm/tsconfig.json --noEmit`
-Expected: errors only in `TarefasPage.tsx` (missing new required `CalendarView` props) — fixed in Task 10.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add apps/crm/src/pages/tarefas/views/CalendarView.tsx
-git commit -m "feat(tarefas): add Mês/Board toggle to CalendarView
-
-Persisted per-conta via tarefasPrefs (defaults to Board). TarefasPage.tsx
-wiring for the two new required props (membros, onCreateTask) is the next
-commit -- this one intentionally leaves it red."
-```
-
----
-
-## Task 10: `TarefasPage.tsx` — wire it all together
-
-The last piece: `TarefasPage` needs to pass `membros` into `CalendarView`, provide the `onCreateTask` callback, and support prefilling `TarefaFormDialog`'s due date from it.
-
-**Files:**
-- Modify: `apps/crm/src/pages/tarefas/TarefasPage.tsx`
-
-**Interfaces:**
-- Consumes: `CalendarViewProps` (Task 9), `TarefaFormDialogProps.initialValues.data_limite` (Task 7).
-
-- [ ] **Step 1: Add `createDataLimite` state and a `handleCreateForDate` callback**
+- [ ] **Step 4: Add `createDataLimite` state and a `handleCreateForDate` callback in `TarefasPage.tsx`**
 
 In `apps/crm/src/pages/tarefas/TarefasPage.tsx`, update the state block (lines 33-37):
 
@@ -1717,7 +1628,7 @@ Update `openForm` (lines 74-77) and add `handleCreateForDate` right after it:
   };
 ```
 
-- [ ] **Step 2: Pass the new props to `CalendarView` and `TarefaFormDialog`**
+- [ ] **Step 5: Pass the new props to `CalendarView` and `TarefaFormDialog`**
 
 Update the `CalendarView` render (lines 208-214):
 
@@ -1749,17 +1660,17 @@ Update the `TarefaFormDialog` render (lines 218-227):
       />
 ```
 
-- [ ] **Step 3: Type-check**
+- [ ] **Step 6: Type-check**
 
 Run: `npx tsc -p apps/crm/tsconfig.json --noEmit`
-Expected: no errors anywhere in the project now.
+Expected: no errors anywhere in the project.
 
-- [ ] **Step 4: Run the full frontend test suite**
+- [ ] **Step 7: Run the full frontend test suite**
 
 Run: `npm run test`
-Expected: PASS — no regressions anywhere (this is the point where a stale prop assumption in `TarefasPage.test.tsx`, if any, would surface).
+Expected: PASS — no regressions anywhere.
 
-- [ ] **Step 5: Run lint and format checks**
+- [ ] **Step 8: Run lint and format checks**
 
 Run:
 
@@ -1770,21 +1681,21 @@ npm run format:check
 
 Expected: both clean. If `format:check` fails, run `npm run format` and re-check the diff only touches files this plan modified.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add apps/crm/src/pages/tarefas/TarefasPage.tsx
-git commit -m "feat(tarefas): wire membros and per-column task creation into CalendarView
+git add apps/crm/src/pages/tarefas/views/CalendarView.tsx apps/crm/src/pages/tarefas/TarefasPage.tsx
+git commit -m "feat(tarefas): add Mês/Board toggle to CalendarView, wired through TarefasPage
 
-Completes the Board view integration: TarefasPage now passes membros to
-CalendarView and provides handleCreateForDate, which prefills
-TarefaFormDialog's due date when a column's \"+ Adicionar tarefa\" is
-clicked."
+Toggle is persisted per-conta via tarefasPrefs (defaults to Board).
+TarefasPage now passes membros to CalendarView and provides
+handleCreateForDate, which prefills TarefaFormDialog's due date when a
+column's \"+ Adicionar tarefa\" is clicked. Repo is green end-to-end."
 ```
 
 ---
 
-## Task 11: Manual browser verification
+## Task 8: Manual browser verification
 
 Everything above is type-checked and unit-tested, but drag-and-drop, the click-vs-drag conflict on the new reassign avatar, and real client colors can only be confirmed in a running browser (this codebase has zero automated DnD-interaction tests anywhere, by established precedent — see the spec's Testing section).
 
@@ -1818,7 +1729,7 @@ Click "+ Adicionar tarefa" in the "Amanhã" column — confirm the task dialog o
 
 In the Board view, Kanban view, and Por membro view, click a card's assignee avatar (top-right of the card). Confirm: (a) a dropdown of team members opens, (b) it does **not** start a drag, and (c) selecting a different member updates the card's avatar immediately and shows a success toast.
 
-If clicking the avatar sometimes starts a drag instead of opening the dropdown, that's the risk flagged in the spec (`DraggableTarefaCard` spreads dnd-kit's pointer listeners over the whole card, unlike `WorkflowCard`'s dedicated drag-handle approach). Fix by adding an explicit early stop in `TarefaCard.tsx`'s trigger `<span>` (from Task 6): change its `onClick` handler to also handle `onPointerDownCapture`, so the stop happens before dnd-kit's own pointer-down listener sees the event:
+If clicking the avatar sometimes starts a drag instead of opening the dropdown, that's the risk flagged in the spec (`DraggableTarefaCard` spreads dnd-kit's pointer listeners over the whole card, unlike `WorkflowCard`'s dedicated drag-handle approach). Fix by adding an explicit early stop in `TarefaCard.tsx`'s trigger `<span>` (from Task 4), so the stop happens before dnd-kit's own pointer-down listener sees the event:
 
 ```tsx
 <span
@@ -1847,7 +1758,6 @@ Open the "Kanban" and "Por membro" tabs. Confirm cards show the redesigned layou
 
 ```bash
 npx tsc -p apps/crm/tsconfig.json --noEmit
-npx tsc -p apps/crm/tsconfig.scripts.json --noEmit 2>/dev/null || true
 npm run test
 npm run lint
 npm run format:check
