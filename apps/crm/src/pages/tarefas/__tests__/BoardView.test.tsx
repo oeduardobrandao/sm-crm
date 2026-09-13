@@ -169,6 +169,12 @@ describe('BoardView', () => {
     });
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('Erro ao atualizar prazo'));
+    // Rolled back: the optimistic data_limite override was cleared, not left
+    // showing the (never-applied) new date.
+    const card = getCapturedColumns()
+      .flatMap((c) => c.tarefas)
+      .find((t) => t.id === 42);
+    expect(card?.data_limite).toBeNull();
   });
 
   it('ignores a drop whose dropId is not a day target', () => {
