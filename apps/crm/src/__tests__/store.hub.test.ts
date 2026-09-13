@@ -166,10 +166,14 @@ describe('store hub and ideias helpers', () => {
   });
 
   it('upserts hub pages and resolves the workspace slug', async () => {
-    mockedSupabase.__queueSupabaseResult('hub_pages', 'select', {
-      data: [{ id: 'page-1', title: 'Boas-vindas', display_order: 0 }],
-      error: null,
-    });
+    mockedSupabase.__queueSupabaseResult(
+      'hub_pages',
+      'select',
+      // getHubPages(14) -> list
+      { data: [{ id: 'page-1', title: 'Boas-vindas', display_order: 0 }], error: null },
+      // upsertHubPage (insert path) -> max display_order lookup for cliente 14
+      { data: { display_order: 0 }, error: null },
+    );
     mockedSupabase.__queueSupabaseResult('hub_pages', 'update', { data: null, error: null });
     mockedSupabase.__queueSupabaseResult('hub_pages', 'insert', { data: null, error: null });
     mockedSupabase.__queueSupabaseResult('hub_pages', 'delete', { data: null, error: null });
@@ -195,7 +199,6 @@ describe('store hub and ideias helpers', () => {
       conta_id: 'conta-1',
       title: 'Resultados',
       content: [],
-      display_order: 1,
     });
     await store.removeHubPage('page-1');
 
@@ -204,6 +207,11 @@ describe('store hub and ideias helpers', () => {
       method: 'eq',
       args: ['id', 'page-1'],
     });
+    // display_order must not ride along on an edit -- that field belongs to
+    // reorderHubPages, never to a plain title/content save.
+    expect(getCalls('hub_pages', 'update').at(-1)?.payload).not.toHaveProperty('display_order');
+    // Insert computes display_order itself (max + 1 for this client), so a
+    // caller-supplied value would just get discarded -- proven by omitting it above.
     expect(getCalls('hub_pages', 'insert').at(-1)?.payload).toEqual({
       cliente_id: 14,
       conta_id: 'conta-1',
@@ -211,6 +219,92 @@ describe('store hub and ideias helpers', () => {
       content: [],
       display_order: 1,
     });
+  });
+
+  it('assigns 0 as the first page when the client has none yet', async () => {
+    mockedSupabase.__queueSupabaseResult('hub_pages', 'select', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('hub_pages', 'insert', { data: null, error: null });
+
+    await store.upsertHubPage({
+      cliente_id: 42,
+      conta_id: 'conta-1',
+      title: 'Primeira',
+      content: [],
+    });
+
+    expect(getCalls('hub_pages', 'insert').at(-1)?.payload).toEqual(
+      expect.objectContaining({ display_order: 0 }),
+    );
+  });
+
+  it('propagates a refused hub page write instead of resolving silently', async () => {
+    mockedSupabase.__queueSupabaseResult('hub_pages', 'update', {
+      data: null,
+      error: { message: 'refused' },
+    });
+
+    await expect(
+      store.upsertHubPage({
+        id: 'page-1',
+        cliente_id: 14,
+        conta_id: 'conta-1',
+        title: 'Boas-vindas',
+        content: [],
+      }),
+    ).rejects.toThrow('refused');
+  });
+
+  it('propagates a refused hub page delete instead of resolving silently', async () => {
+    // Same class of bug upsertHubPage was already fixed for: a delete refused by
+    // RLS or a trigger must not resolve as if the row were gone.
+    mockedSupabase.__queueSupabaseResult('hub_pages', 'delete', {
+      data: null,
+      error: { message: 'refused' },
+    });
+
+    await expect(store.removeHubPage('page-1')).rejects.toThrow('refused');
+  });
+
+  it('renumbers pages 0..n-1 with one update per row when reordering', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'hub_pages',
+      'update',
+      { data: null, error: null },
+      { data: null, error: null },
+      { data: null, error: null },
+    );
+
+    await store.reorderHubPages(42, ['c', 'a', 'b']);
+
+    const updateCalls = getCalls('hub_pages', 'update');
+    expect(updateCalls).toHaveLength(3);
+    const byId = (id: string) =>
+      updateCalls.find((c) =>
+        c.modifiers.some((m) => m.method === 'eq' && m.args[0] === 'id' && m.args[1] === id),
+      );
+    expect(byId('c')?.payload).toEqual({ display_order: 0 });
+    expect(byId('a')?.payload).toEqual({ display_order: 1 });
+    expect(byId('b')?.payload).toEqual({ display_order: 2 });
+    for (const call of updateCalls) {
+      expect(call.modifiers).toContainEqual({ method: 'eq', args: ['cliente_id', 42] });
+    }
+  });
+
+  it('does not issue any update when reordering an empty list', async () => {
+    await store.reorderHubPages(42, []);
+
+    expect(getCalls('hub_pages', 'update')).toHaveLength(0);
+  });
+
+  it('breaks ties by created_at when listing hub pages', async () => {
+    mockedSupabase.__queueSupabaseResult('hub_pages', 'select', { data: [], error: null });
+
+    await store.getHubPages(42);
+
+    const orderModifiers = getCalls('hub_pages', 'select')
+      .at(-1)
+      ?.modifiers.filter((m) => m.method === 'order');
+    expect(orderModifiers?.map((m) => m.args)).toEqual([['display_order'], ['created_at']]);
   });
 
   it('handles hub briefing CRUD with display-order sequencing', async () => {

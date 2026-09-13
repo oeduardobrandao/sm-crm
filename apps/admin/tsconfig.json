@@ -3,7 +3,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@mesaas/app-lifecycle": ["../../packages/app-lifecycle/index.ts"]
+      "@mesaas/app-lifecycle": ["../../packages/app-lifecycle/index.ts"],
+      "@mesaas/ui/*": ["../../packages/ui/*"]
     },
     "target": "ES2020",
     "useDefineForClassFields": true,

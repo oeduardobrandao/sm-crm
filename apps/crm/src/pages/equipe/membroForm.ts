@@ -12,7 +12,10 @@ export const membroSchema = z
     crmUserId: z.string().optional(),
     inviteEnabled: z.boolean(),
     inviteEmail: z.string(),
-    inviteRole: z.enum(['admin', 'agent']),
+    // 'admin' | 'agent' | 'custom:<uuid>' — the custom-role encoding is
+    // decoded (and its uuid shape validated) by the server, mirroring
+    // manage-workspace-user's own `role`/`roleId` split (Task 5).
+    inviteRole: z.string().min(1),
   })
   .superRefine((v, ctx) => {
     if (v.inviteEnabled && !/^\S+@\S+\.\S+$/.test(v.inviteEmail.trim())) {

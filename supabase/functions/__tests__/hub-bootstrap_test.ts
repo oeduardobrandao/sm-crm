@@ -157,6 +157,57 @@ Deno.test("feature_mensagens reflects the effective_plan_feature RPC result", as
   assertEquals(body.feature_mensagens, true);
 });
 
+Deno.test("feature_briefing_audio reflects the effective_plan_feature RPC result", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDbWithFeatureFlags(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        { feature_briefing_audio: true, feature_mensagens: false },
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+    rateLimit: async () => true,
+  });
+  const body = await (await handler(req())).json();
+  assertEquals(body.feature_briefing_audio, true);
+  // Resolvida independentemente da de mensagens.
+  assertEquals(body.feature_mensagens, false);
+});
+
+Deno.test("feature_briefing_audio is false when the plan lacks it, and when its RPC errors", async () => {
+  const off = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDbWithFeatureFlags(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        { feature_briefing_audio: false },
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+    rateLimit: async () => true,
+  });
+  assertEquals((await (await off(req())).json()).feature_briefing_audio, false);
+
+  // Fail closed: um erro só nessa RPC não pode derrubar o portal.
+  const broken = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDbWithThrowingFeature(
+        { cliente_id: 15, conta_id: "ws-1", is_active: true },
+        "feature_briefing_audio",
+      ) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+    rateLimit: async () => true,
+  });
+  const res = await broken(req());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.feature_briefing_audio, false);
+  assertEquals(body.feature_mensagens, true);
+});
+
 Deno.test("feature_mensagens defaults to false and does NOT break the response when the RPC errors", async () => {
   function makeDbWithFailingRpc(tokenRow: unknown) {
     const db = makeDb(tokenRow);

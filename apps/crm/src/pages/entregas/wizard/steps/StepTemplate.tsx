@@ -35,6 +35,72 @@ export function StepTemplate({
         <br />
         <b>Post</b> · o conteúdo dentro do fluxo, cada um com o próprio status
       </div>
+      <div style={{ marginBottom: '1.25rem' }}>
+        <h5
+          style={{
+            fontSize: '0.72rem',
+            textTransform: 'uppercase',
+            color: 'var(--text-muted)',
+            marginBottom: 6,
+          }}
+        >
+          Seus modelos
+        </h5>
+        {/* A template without an id cannot be selected as a source — don't render a dead row. */}
+        {templates
+          .filter((t): t is SelectableTemplate => t.id != null)
+          .map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onSelectTemplate(t)}
+              style={{
+                display: 'flex',
+                width: '100%',
+                justifyContent: 'space-between',
+                border: '1px solid var(--border-color)',
+                borderRadius: 8,
+                padding: '0.5rem 0.75rem',
+                marginBottom: 6,
+                background: 'transparent',
+                cursor: 'pointer',
+              }}
+            >
+              <span>
+                📋 <span>{t.nome}</span>
+              </span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {t.etapas.length} etapas
+              </span>
+            </button>
+          ))}
+        <button
+          type="button"
+          onClick={onSelectZero}
+          style={{
+            width: '100%',
+            border: '1px dashed var(--border-color)',
+            borderRadius: 12,
+            padding: '0.9rem',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            background: 'transparent',
+            cursor: 'pointer',
+          }}
+        >
+          ＋ <span>Começar do zero</span>
+        </button>
+      </div>
+      <h5
+        style={{
+          fontSize: '0.72rem',
+          textTransform: 'uppercase',
+          color: 'var(--text-muted)',
+          marginBottom: 6,
+        }}
+      >
+        Sugeridos
+      </h5>
       <div
         style={{
           display: 'grid',
@@ -97,62 +163,6 @@ export function StepTemplate({
             </button>
           );
         })}
-      </div>
-      <div style={{ marginTop: '1rem' }}>
-        <h5
-          style={{
-            fontSize: '0.72rem',
-            textTransform: 'uppercase',
-            color: 'var(--text-muted)',
-            marginBottom: 6,
-          }}
-        >
-          Seus modelos
-        </h5>
-        {/* A template without an id cannot be selected as a source — don't render a dead row. */}
-        {templates
-          .filter((t): t is SelectableTemplate => t.id != null)
-          .map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onSelectTemplate(t)}
-              style={{
-                display: 'flex',
-                width: '100%',
-                justifyContent: 'space-between',
-                border: '1px solid var(--border-color)',
-                borderRadius: 8,
-                padding: '0.5rem 0.75rem',
-                marginBottom: 6,
-                background: 'transparent',
-                cursor: 'pointer',
-              }}
-            >
-              <span>
-                📋 <span>{t.nome}</span>
-              </span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                {t.etapas.length} etapas
-              </span>
-            </button>
-          ))}
-        <button
-          type="button"
-          onClick={onSelectZero}
-          style={{
-            width: '100%',
-            border: '1px dashed var(--border-color)',
-            borderRadius: 12,
-            padding: '0.9rem',
-            textAlign: 'center',
-            color: 'var(--text-muted)',
-            background: 'transparent',
-            cursor: 'pointer',
-          }}
-        >
-          ＋ <span>Começar do zero</span>
-        </button>
       </div>
     </div>
   );

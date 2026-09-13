@@ -32,6 +32,7 @@ npm run test             # Vitest frontend/unit suite
 npm run test:watch       # Vitest in watch mode
 npm run test:coverage    # Vitest with V8 coverage
 deno test supabase/functions/    # Deno edge-function suite
+npm run check:functions  # deno check over the edge functions (test:functions runs --no-check)
 
 # Lint & format (both enforced in CI)
 npm run lint             # eslint apps/ packages/ (runs in the typecheck-and-test job)
@@ -52,7 +53,7 @@ pushes to `main` and `staging`, with **eight** jobs:
 | Job | Runs |
 |---|---|
 | `typecheck-and-test` | `npm run lint`, then `tsc` for **all four** projects (crm, hub, admin, `tsconfig.scripts.json`), then `npm run test:coverage` |
-| `edge-function-tests` | `npm run test:functions` (Deno) |
+| `edge-function-tests` | `npm run check:functions` (`deno check` over every `*/index.ts` and `_shared` module), then `npm run test:functions` (Deno) |
 | `entitlement-tests` | `supabase start` + `bash scripts/test-entitlements.sh` — the psql RLS/entitlement suites |
 | `coverage-threshold` | `npm run coverage:check` |
 | `format-check` | `npm run format:check` |
@@ -60,7 +61,7 @@ pushes to `main` and `staging`, with **eight** jobs:
 | `e2e` | Playwright |
 | `e2e-secrets-guard` | warns when E2E secrets are absent |
 
-Three things this list is here to prevent:
+Four things this list is here to prevent:
 
 - **`npm run build` is not the typecheck.** It only covers the CRM. CI
   typechecks four projects separately, so a Hub, Admin or scripts break passes
@@ -72,9 +73,14 @@ Three things this list is here to prevent:
   job skips silently, which is exactly why `e2e-secrets-guard` exists: it emits
   a warning naming the missing secrets. Check that warning before trusting a
   green e2e.
+- **`test:functions` does not type-check.** It runs `deno test --no-check`, so a
+  reference to an out-of-scope variable in an edge function passes the test
+  suite. `check:functions` is the only type gate for `supabase/functions/`; it
+  runs first in the same job.
 
 Before pushing, run `npm run lint`, `npm run format:check` (`npm run format`
-auto-fixes), the four `tsc` commands, `npm run test` and `npm run test:functions`.
+auto-fixes), the four `tsc` commands, `npm run test`, `npm run check:functions`
+and `npm run test:functions`.
 `npm run test:db` needs Docker locally; CI covers it either way.
 
 Migration filenames must use a unique timestamp version prefix (the digits before the first `_`). Two files sharing a prefix collide in Supabase's `schema_migrations` history table — only the first applies and the second is silently skipped. The `migration-version-guard` CI job fails the build on duplicates.
@@ -114,6 +120,7 @@ Monorepo with npm workspaces:
 - `_shared/cors.ts` -- `buildCorsHeaders(req)` for CORS (never use wildcard `*`)
 - `_shared/audit.ts` -- `insertAuditLog()` for audit trail
 - `_shared/r2.ts` -- Cloudflare R2 storage client (presigned URLs)
+- `mcp-admin/` -- MCP do Admin da plataforma (OAuth-only; `platform_admins` + `admin_mcp_oauth_grants`; banners, popups, artigos da KB em Markdown, leituras de workspaces/planos/dashboard). Escopos em `_shared/mcp-admin-scopes.ts`, bundlados também em `mcp-oauth-consent`: mudar escopo = redeploy dos dois + CRM
 - Cron functions authenticate via `x-cron-secret` header (not JWT)
 - All other functions verify JWT via `Authorization: Bearer <token>` header
 
@@ -156,6 +163,25 @@ Monorepo with npm workspaces:
 - `ALLOWED_ORIGINS` -- Comma-separated allowed CORS origins
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` -- Cloudflare R2
 - `CRON_SECRET` -- Shared secret for cron function authentication
+- `ORPHAN_SCAN_PAGES_PER_RUN` -- listing pages the post-media-cleanup-cron orphan scan
+  consumes per prefix per run (default 10, ~1000 keys each). The scan is checkpointed in
+  `cron_scan_state`, so this bounds ONE run's memory and wall clock, not how much of the
+  bucket eventually gets swept -- a full sweep just spans several runs. It does NOT make
+  the cron reap faster either: `MAX_TRASH_PER_RUN` caps removals at 50 per prefix per run
+  regardless. Raise it only when `cron_scan_state.cycle_started_at` shows a sweep taking
+  too long
+- `SYNC_BATCH_LIMIT` / `SYNC_CONCURRENCY` / `BACKFILL_BATCH_LIMIT` -- throughput dials
+  for instagram-sync-cron (defaults 25 / 5 / 3). These, not the customer count, set the
+  platform's Instagram capacity: the cron runs hourly, so it performs
+  `24 * SYNC_BATCH_LIMIT` account-syncs per day, and the 6h per-account staleness window
+  needs 4 of those per account -- **`6 * SYNC_BATCH_LIMIT` connected accounts** before
+  metrics start aging past the window (150 at the default 25). Raise both dials together:
+  the run is `SYNC_BATCH_LIMIT / SYNC_CONCURRENCY` waves of ~4-8s, so 100/5 is a ~160s
+  run while 100/10 keeps it near 40-80s for the same 4x capacity. Batch size is safe to
+  raise on the failure side -- the per-account callback swallows its own errors, so
+  `runPool`'s abort-on-first-error path is unreachable, and `last_sync_attempt_at` is
+  stamped for the whole batch BEFORE any work, so a dead account can never re-claim the
+  queue head. Both are plain edge-function secrets: changing them needs no deploy
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
 - `REPORT_PRINT_BASE` -- origem pública que serve a página de print do relatório
   de blocos (ex.: https://mesaas.com.br). Usada por report-docs POST /:id/pdf
@@ -170,6 +196,11 @@ Monorepo with npm workspaces:
 - `PAGARME_WEBHOOK_BASIC` -- `user:password` pair configured in the Pagar.me dashboard webhook
   "Habilitar autenticação" toggle, verified timing-safe on every delivery. REQUIRED by
   pagarme-webhook, no default -- throws at module load
+- `PAGARME_DASHBOARD_BASE` -- Pagar.me dashboard prefix up to the account, e.g.
+  `https://dash.pagar.me/merch_xxx/acc_yyy`. platform-admin appends
+  `/subscriptions/{id}/info` to build the "Abrir no Pagar.me" link on the workspace
+  detail. Optional, no default: unset or not `https://` means no link (everything else
+  still works). Differs per environment (live account in prod, sandbox account in staging)
 - `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` -- TikTok Login Kit OAuth (tiktok-integration)
 - `TIKTOK_APP_AUDITED` -- unset until TikTok's Content Posting audit passes; while unset, scheduling enforces SELF_ONLY privacy
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)
@@ -199,6 +230,11 @@ Monorepo with npm workspaces:
 - `META_WEBHOOK_VERIFY_TOKEN` -- Meta webhook verify token for the Instagram
   comment-to-DM automation (instagram-webhook). REQUIRED, no default -- throws
   at module load if missing
+- `TRANSCRIBE_WORKER_URL`, `TRANSCRIBE_SECRET` -- Cloudflare Worker `workers/transcribe`
+  (Workers AI, Whisper turbo) that transcribes Hub briefing audio answers. Both
+  optional, no default: when unset, hub-briefing still stores the audio and marks
+  the transcription `failed` (the client sees "Tentar novamente"). The secret must
+  match the one set on the worker with `wrangler secret put TRANSCRIBE_SECRET`
 - `IG_AUTOMATION_SCOPES_LIVE` -- optional, default off (unset/`false`). While off, the
   Instagram OAuth URL only requests the approved trio of base scopes; flipping it to
   `true` adds the optional `instagram_business_manage_comments` AND
@@ -230,10 +266,11 @@ Monorepo with npm workspaces:
 - Page param validation: `Math.max(1, parseInt(pageStr) || 1)`
 - localStorage iteration: collect keys first, then remove. Modifying during iteration skips items
 - Roles are `owner | admin | agent` -- always check via `AuthContext`, never hardcode
-- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub)
+- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing` (token do hub) and `briefing-audio` (verifies the user JWT itself) both need it too
 - Hub app uses token-based access (no Supabase auth), builds to `dist/hub/` with base path `/hub/`
 - Vercel rewrites in `vercel.json` route Hub URLs to `/hub/index.html` and CRM URLs to `/index.html`
 - `membros` and `clientes` use column-level `GRANT SELECT` allowlists (Migration `20260728000002`). Any column added to either table is invisible to the CRM until it is added to the grant, to `membros_v`/`clientes_v`, and to the `*_SAFE_COLUMNS` constants in `store/team.ts` / `store/clients.ts`. The failure surfaces as a confusing missing-column error. The same allowlist also keeps six PostgREST embeds, ten dependent RLS policies and `get_client_health_aggregates()` working -- none of which a `from('clientes')` grep finds.
+- Deploys trocam de versão em silêncio (`installSilentUpdate` em `packages/app-lifecycle`). Todo editor fora de modal com conteúdo não persistido ou save em voo chama `useUnsavedWork(condição)`, e toda função de upload envolve a promise em `trackUnsavedWork`. Modais com `confirmClose` já estão cobertos pelo `DialogContent`. A heurística de DOM só segura diálogo aberto, campo focado e controle de formulário que o usuário alterou nesta sessão; um save silencioso em voo só o registro vê. Nunca use `useBlocker` nos apps: o React Router honra só o último blocker registrado e `installSilentUpdate` já registra um, então um segundo desliga a troca silenciosa sem aviso. Spec: `docs/superpowers/specs/2026-09-05-seamless-updates-design.md`
 
 ## Deployment
 

@@ -30,7 +30,11 @@ describe('invite service', () => {
       expect(String(fetchHarness.calls[0].input)).toContain('invite-user');
 
       const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
-      expect(body).toEqual({ email: 'novo@equipe.com', role: 'agent' });
+      // role_id: null is ALWAYS present, even without a custom papel — see
+      // the tri-state wire contract (invite-actions.ts): an absent key means
+      // "legacy caller, inherit from a prior pending invite", which this
+      // first-party caller must never trigger by accident.
+      expect(body).toEqual({ email: 'novo@equipe.com', role: 'agent', role_id: null });
     });
 
     it('sends Authorization header with session token', async () => {
@@ -117,7 +121,12 @@ describe('invite service', () => {
       await inviteUser('novo@equipe.com', 'agent', 42);
 
       const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
-      expect(body).toEqual({ email: 'novo@equipe.com', role: 'agent', membroId: 42 });
+      expect(body).toEqual({
+        email: 'novo@equipe.com',
+        role: 'agent',
+        membroId: 42,
+        role_id: null,
+      });
     });
 
     it('omits membroId from the body when not provided', async () => {
@@ -126,7 +135,38 @@ describe('invite service', () => {
       await inviteUser('novo@equipe.com', 'agent');
 
       const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
-      expect(body).toEqual({ email: 'novo@equipe.com', role: 'agent' });
+      expect(body).toEqual({ email: 'novo@equipe.com', role: 'agent', role_id: null });
+    });
+
+    it('includes role_id (snake_case) in the body when a custom papel roleId is provided', async () => {
+      fetchHarness.queueResponse({ json: { success: true, message: 'Convite enviado!' } });
+
+      await inviteUser('novo@equipe.com', 'agent', 42, 'role-uuid-1');
+
+      const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
+      // Snake_case on purpose — invite-user (Task 6) reads body.role_id, not
+      // a camelCase roleId.
+      expect(body).toEqual({
+        email: 'novo@equipe.com',
+        role: 'agent',
+        membroId: 42,
+        role_id: 'role-uuid-1',
+      });
+    });
+
+    it('sends role_id: null (never omitted) when roleId is not provided (preset role invite)', async () => {
+      // Round-2 fix: role_id must NEVER be omitted from a first-party
+      // caller's body. invite-actions.ts treats an ABSENT key as "legacy
+      // caller, inherit role_id from a prior pending invite for this email"
+      // — omitting it here (the old behavior) let a fresh preset-role invite
+      // silently resurrect a stale custom papel from an unrelated earlier
+      // pending invite to the same address.
+      fetchHarness.queueResponse({ json: { success: true } });
+
+      await inviteUser('novo@equipe.com', 'admin');
+
+      const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
+      expect(body).toHaveProperty('role_id', null);
     });
 
     it('attaches the error payload to the thrown Error so entitlement mapping works', async () => {

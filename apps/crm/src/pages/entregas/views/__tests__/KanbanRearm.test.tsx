@@ -1,6 +1,7 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
@@ -10,6 +11,14 @@ const store = vi.hoisted(() => ({
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
+  reorderFluxosBoard: vi.fn(),
+  // Fase 4: usePostProcessCommands (chamado incondicionalmente pelo
+  // KanbanView) importa estes três do store; nenhum teste deste arquivo
+  // exercita um post, mas o módulo precisa resolver os nomes.
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  updateWorkflowPost: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   // Pulled in transitively by WorkflowModals / useEntregasData
   getDeadlineInfo: vi.fn(),
   addWorkflow: vi.fn(),
@@ -101,6 +110,14 @@ vi.mock('@/components/ui/alert-dialog', () => ({
 
 import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
+
+// usePostProcessCommands usa useQueryClient (fase 4): todo render do
+// KanbanView agora precisa de um QueryClientProvider por cima, mesmo em
+// testes que só exercitam fluxos.
+function render(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const approvalEtapa = {
   id: 11,
@@ -251,9 +268,9 @@ describe('KanbanView approval advance with re-arm', () => {
 });
 
 // The guided tour selects steps by [data-tour] presence at runtime, so a lost anchor
-// degrades the tour silently. This pins the approval-column anchor AND the Set lookup
-// that decides which column gets it — the part most likely to break without noise
-// (e.g. if the columns were ever keyed by etapa id instead of nome).
+// degrades the tour silently. A coluna de aprovação é marcada por
+// column.tipo === 'aprovacao_cliente', e as colunas são identificadas pela ordem
+// da etapa; este teste garante que a âncora do tour vai para a coluna certa.
 describe('KanbanView wf-col-aprovacao tour anchor', () => {
   it('tags the aprovacao_cliente column header and no other column', () => {
     const { container } = renderBoard(0);

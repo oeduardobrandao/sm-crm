@@ -36,6 +36,25 @@ function displayLimit(limit: number | null): string {
   return limit == null ? 'Ilimitado' : String(limit);
 }
 
+/** "15 clientes" / "Clientes ilimitados" — for the single-line limits chip. */
+function limitPhrase(limit: number | null, singular: string, plural: string): string {
+  if (limit == null) return `${plural.charAt(0).toUpperCase()}${plural.slice(1)} ilimitados`;
+  return `${limit} ${limit === 1 ? singular : plural}`;
+}
+
+/** Splits "R$ 139,90" so the centavos render smaller ("R$ 139" + ",90"). */
+function PriceValue({ amount }: { amount: number }) {
+  const formatted = formatPrice(amount);
+  const comma = formatted.lastIndexOf(',');
+  if (comma === -1) return <>{formatted}</>;
+  return (
+    <>
+      {formatted.slice(0, comma)}
+      <span className="price-cents">{formatted.slice(comma)}</span>
+    </>
+  );
+}
+
 function annualSavingsPct(plans: PublicPricingPlan[]): number {
   return plans.reduce((best, plan) => {
     if (!plan.price_brl || !plan.price_brl_annual) return best;
@@ -110,7 +129,6 @@ export function PricingSection() {
     <section ref={pricingRef} className="lp-pad" id="pricing">
       <div className="lp-container">
         <div className="section-head reveal">
-          <span className="eyebrow-pill">Planos e preços</span>
           <h2>Um plano que cresce junto com a sua agência.</h2>
           <p>
             Comece com o plano Free e mude de plano quando quiser. Sem fidelidade — cancele a
@@ -127,12 +145,9 @@ export function PricingSection() {
               Mensal
             </button>
             <button aria-pressed={isYear} onClick={() => setPeriod('year')}>
-              Anual
+              Anual{savingsPct > 0 && <span className="pricing-off">−{savingsPct}%</span>}
             </button>
           </div>
-          {savingsPct > 0 && (
-            <span className="pricing-save">Economize até {savingsPct}% no plano anual</span>
-          )}
         </div>
 
         <div className="plans-grid" aria-busy={isLoadingPlans}>
@@ -196,11 +211,13 @@ export function PricingSection() {
                   key={plan.id}
                   className={`plan-card${marketing.highlight ? ' highlight' : ''}`}
                 >
-                  {marketing.highlight && <div className="plan-badge">Mais popular</div>}
-                  <h3>{plan.name}</h3>
+                  <div className="plan-head">
+                    <h3>{plan.name}</h3>
+                    {marketing.highlight && <span className="plan-badge">Mais popular</span>}
+                  </div>
                   <div className="price-row">
                     <span className="price">
-                      {amount == null ? 'Sob consulta' : formatPrice(amount)}
+                      {amount == null ? 'Sob consulta' : <PriceValue amount={amount} />}
                     </span>
                     {amount != null && <span className="price-sub">/mês</span>}
                   </div>
@@ -215,17 +232,10 @@ export function PricingSection() {
                   </div>
                   {!isFree && <div className="plan-trial-note">30 dias grátis para começar</div>}
                   <div className="plan-tag">{marketing.description}</div>
-                  <div className="plan-label">Limites</div>
-                  <ul className="plan-list plan-limits">
-                    <li>
-                      <span className="k">Clientes</span>
-                      <span className="v">{displayLimit(plan.max_clients)}</span>
-                    </li>
-                    <li>
-                      <span className="k">Usuários</span>
-                      <span className="v">{displayLimit(plan.max_team_members)}</span>
-                    </li>
-                  </ul>
+                  <div className="plan-limits-line">
+                    {limitPhrase(plan.max_clients, 'cliente', 'clientes')} ·{' '}
+                    {limitPhrase(plan.max_team_members, 'usuário', 'usuários')}
+                  </div>
                   <div className="plan-cta">
                     <a
                       href={planHref(plan.id)}

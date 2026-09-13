@@ -12,6 +12,7 @@ const {
   mockGetInstagramPosts,
   mockGetClientePosts,
   mockGetPostCovers,
+  mockGetPublishedMedia,
   mockUseAuth,
   mockUploadMedia,
   mockDeleteMedia,
@@ -25,6 +26,7 @@ const {
   mockGetInstagramPosts: vi.fn(),
   mockGetClientePosts: vi.fn(),
   mockGetPostCovers: vi.fn(),
+  mockGetPublishedMedia: vi.fn(),
   mockUseAuth: vi.fn(),
   mockUploadMedia: vi.fn(),
   mockDeleteMedia: vi.fn(),
@@ -72,6 +74,16 @@ vi.mock('../../../services/postMedia', async () => {
   return {
     ...actual,
     getPostCovers: mockGetPostCovers,
+  };
+});
+
+vi.mock('../../../services/publishedMedia', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/publishedMedia')>(
+    '../../../services/publishedMedia',
+  );
+  return {
+    ...actual,
+    getPublishedMedia: mockGetPublishedMedia,
   };
 });
 
@@ -252,6 +264,7 @@ const EDITING_BASE: InstagramCommentAutomation = {
   media_permalink: null,
   media_caption: null,
   workflow_post_id: null,
+  target_unlinked_at: null,
   pending_post_deleted_at: null,
   keywords: ['preco'],
   dm_message: 'Segue o link!',
@@ -293,6 +306,7 @@ function renderDialog(
   initialTarget?: { clientId: number; target: SelectedTarget },
   elevated?: boolean,
   tour?: Omit<TourOverlayProps, 'onCta'>,
+  initialTab?: 'production' | 'published',
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
@@ -304,6 +318,7 @@ function renderDialog(
             open
             onOpenChange={vi.fn()}
             editing={editing}
+            initialTab={initialTab}
             initialTarget={initialTarget}
             elevated={elevated}
             onSaved={onSaved}
@@ -348,6 +363,7 @@ describe('AutomationFormDialog', () => {
     mockGetClientePosts.mockResolvedValue(PRODUCTION_POSTS);
     // No covers -> every production card falls back to titulo + tipo.
     mockGetPostCovers.mockResolvedValue(new Map());
+    mockGetPublishedMedia.mockResolvedValue({ posts: [], next_cursor: null });
     mockCreate.mockResolvedValue({ id: 'auto-new' });
     mockUpdate.mockResolvedValue({ id: 'auto-1' });
     mockUseAuth.mockReturnValue({
@@ -1093,6 +1109,216 @@ describe('AutomationFormDialog', () => {
       renderDialog();
       await screen.findByLabelText('form.nameLabel');
       expect(screen.queryByTestId('tour-overlay')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── re-mirar alvo órfão (seletor ao vivo, initialTab) ──────────────────────
+  describe('re-mirar alvo órfão (seletor ao vivo)', () => {
+    // ig_media_id nulo + target_unlinked_at setado: o post foi marcado como
+    // postado na mão, o trigger nunca preencheu ig_media_id, e o cron carimbou
+    // o alvo como orfao. workflow_post_id continua sendo o ponteiro interno.
+    const UNLINKED_AUTOMATION: InstagramCommentAutomation = {
+      ...EDITING_BASE,
+      workflow_post_id: 4038,
+      ig_media_id: null,
+      media_caption: 'Reels de setembro',
+      target_unlinked_at: '2026-08-31T23:55:44.000Z',
+    };
+
+    // Automação normal, já no estado "ligado" de verdade -- ig_media_id E
+    // workflow_post_id setados (não null): não é o fluxo de re-mirar, então o
+    // seletor "Publicados" de sempre (instagram_posts) continua valendo, e
+    // selectPost() continua zerando workflow_post_id. Com workflow_post_id
+    // null de partida, zerar não seria observável -- null comparado com null
+    // sempre passa, mesmo se o zeramento parar de acontecer.
+    const LINKED_AUTOMATION: InstagramCommentAutomation = {
+      ...EDITING_BASE,
+      ig_media_id: '17900000000000009',
+      media_permalink: 'https://instagram.com/p/existente',
+      media_caption: 'Post existente',
+      workflow_post_id: 4038,
+      target_unlinked_at: null,
+    };
+
+    function liveItem(id: string, over: Record<string, unknown> = {}) {
+      return {
+        id,
+        caption: id,
+        media_type: 'IMAGE',
+        thumbnail_url: null,
+        permalink: `https://instagram.com/p/${id}`,
+        timestamp: '2026-08-31T23:52:49.000Z',
+        ...over,
+      };
+    }
+
+    it('abre na aba Publicados quando initialTab é published', async () => {
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      // Mesmo ToggleGroup (role="radio") do fluxo normal -- decisão do dono
+      // da feature: um `Tabs` só neste modo faria o mesmo controle, no mesmo
+      // lugar do mesmo diálogo, mudar de aparência conforme o caminho de
+      // entrada.
+      expect(
+        (await screen.findByRole('radio', { name: 'form.targetSourcePublished' })).getAttribute(
+          'aria-checked',
+        ),
+      ).toBe('true');
+    });
+
+    it('preserva workflow_post_id ao escolher pelo seletor ao vivo', async () => {
+      mockGetPublishedMedia.mockResolvedValueOnce({
+        posts: [liveItem('18130175596674741', { caption: 'Reels de 07/09' })],
+        next_cursor: null,
+      });
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      fireEvent.click(await screen.findByText('Reels de 07/09'));
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'auto-1',
+        expect.objectContaining({
+          ig_media_id: '18130175596674741',
+          workflow_post_id: 4038,
+        }),
+      );
+    });
+
+    it('trocar de cliente no meio do re-mirar zera o ponteiro do orfao, nunca grava o do cliente antigo', async () => {
+      // Bug alcancavel: o Select de cliente NAO trava durante a edicao
+      // (clientLocked so vale na criacao), e trocar o cliente reseta
+      // targetMode/targetSource/selectedPost mas NAO mexe em `editing`, que
+      // continua sendo o orfao do cliente A. Sem a correcao,
+      // selectPublishedForUnlinkedTarget lia editing.workflow_post_id (4038,
+      // do cliente A) incondicionalmente e gravava esse ponteiro junto de um
+      // client_id de outro cliente -- o resolver
+      // ica_a1_resolve_workflow_post_target rejeita essa combinacao
+      // (wp.cliente_id != a.client_id) e o save falha.
+      const CLIENTE_B = { id: 9, nome: 'Clinica Y', sigla: 'CY', cor: '#f542c8' };
+      mockGetClientes.mockResolvedValue([...CLIENTES, CLIENTE_B]);
+      mockGetStatuses.mockResolvedValue(
+        new Map([
+          [7, { revoked: false, expired: false, canPublish: true, canAutomate: true }],
+          [9, { revoked: false, expired: false, canPublish: true, canAutomate: true }],
+        ]),
+      );
+      // Depende de qual cliente esta selecionado no momento da chamada (o
+      // LiveMediaPicker ja dispara uma busca pro cliente A assim que o
+      // dialog abre, antes de qualquer troca) -- uma unica mockResolvedValue
+      // fixa esconderia esse detalhe e deixaria o teste passar mesmo se a
+      // troca de cliente nao acionasse uma nova busca.
+      mockGetPublishedMedia.mockImplementation((clientId: number) =>
+        Promise.resolve(
+          clientId === 9
+            ? {
+                posts: [liveItem('18130175596674999', { caption: 'Reels da Clinica Y' })],
+                next_cursor: null,
+              }
+            : {
+                posts: [liveItem('18130175596670001', { caption: 'Reels da Clinica X' })],
+                next_cursor: null,
+              },
+        ),
+      );
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      // Confirma o estado de partida: o orfao (cliente A=7) ja abre com o
+      // seletor ao vivo mostrando a midia de A.
+      expect(await screen.findByText('Reels da Clinica X')).toBeInTheDocument();
+
+      // Troca o cliente A (7, dono do orfao) para B (9).
+      fireEvent.click(await screen.findByRole('button', { name: 'Clinica Y' }));
+
+      // A troca zerou targetMode/targetSource -- o usuario volta pra "post" >
+      // "Publicados" na mao, exatamente como no cenario relatado.
+      fireEvent.click(await screen.findByRole('radio', { name: 'form.targetPost' }));
+      fireEvent.click(await screen.findByRole('radio', { name: 'form.targetSourcePublished' }));
+
+      // retargetMode continua true (decisao deliberada: ver comentario em
+      // AutomationFormDialog.tsx sobre nao gatear retargetMode por cliente),
+      // entao o seletor ao vivo segue no ar -- agora buscando a midia do
+      // cliente novo.
+      fireEvent.click(await screen.findByText('Reels da Clinica Y'));
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'auto-1',
+        expect.objectContaining({
+          client_id: 9,
+          ig_media_id: '18130175596674999',
+          workflow_post_id: null,
+        }),
+      );
+    });
+
+    it('selectPost normal continua zerando workflow_post_id', async () => {
+      renderDialog(vi.fn(), LINKED_AUTOMATION);
+
+      // Sem initialTab: fica no seletor "Publicados" normal (instagram_posts),
+      // não no seletor ao vivo. O tile não carrega texto acessível (caption
+      // sempre null nesse grid) -- mesma convenção usada no resto do arquivo.
+      const postButton = await screen.findByRole('button', { pressed: false });
+      fireEvent.click(postButton);
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'auto-1',
+        expect.objectContaining({ workflow_post_id: null }),
+      );
+    });
+
+    it('carregar mais concatena a página seguinte pelo next_cursor', async () => {
+      mockGetPublishedMedia
+        .mockResolvedValueOnce({ posts: [liveItem('a')], next_cursor: 'C2' })
+        .mockResolvedValueOnce({ posts: [liveItem('b')], next_cursor: null });
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      // Página 1 no ar antes do clique -- se a asserção final só checasse 'b',
+      // trocar `pages.flatMap(...)` por "só a última página" também passaria:
+      // 'a' precisa continuar visível depois do "carregar mais" pra provar
+      // que as páginas concatenam em vez de substituir.
+      expect(await screen.findByText('a')).toBeInTheDocument();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'form.loadMore' }));
+
+      await waitFor(() => expect(mockGetPublishedMedia).toHaveBeenLastCalledWith(7, 'C2'));
+      expect(await screen.findByText('b')).toBeInTheDocument();
+      expect(screen.getByText('a')).toBeInTheDocument();
+    });
+
+    it('preserva o ponteiro do órfão mesmo depois de tocar num post errado na aba "Em produção"', async () => {
+      // Cenário concreto da decisão do dono da feature: órfão com ponteiro
+      // 4038, usuário clica na aba "Em produção" (que segue ativa em modo
+      // re-mirar), clica sem querer no card do post 501 ("Carrossel de
+      // agosto"), volta pra "Publicados" e escolhe a mídia ao vivo. O
+      // workflow_post_id salvo tem que ser o do órfão (4038) -- lido de
+      // `editing`, que não muda durante o fluxo -- e nunca o do post 501,
+      // que só passou pelo `form.selectedPost` mutável.
+      mockGetPublishedMedia.mockResolvedValue({
+        posts: [liveItem('18130175596674741', { caption: 'Reels de 07/09' })],
+        next_cursor: null,
+      });
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      fireEvent.click(await screen.findByRole('radio', { name: 'form.targetSourceProduction' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Carrossel de agosto' }));
+
+      fireEvent.click(screen.getByRole('radio', { name: 'form.targetSourcePublished' }));
+      fireEvent.click(await screen.findByText('Reels de 07/09'));
+      fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        'auto-1',
+        expect.objectContaining({
+          ig_media_id: '18130175596674741',
+          workflow_post_id: 4038,
+        }),
+      );
     });
   });
 });

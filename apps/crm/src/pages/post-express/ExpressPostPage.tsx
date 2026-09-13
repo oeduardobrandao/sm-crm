@@ -595,6 +595,7 @@ export default function ExpressPostPage() {
               <>
                 <PostMediaGallery
                   postId={draft.postId}
+                  forStories={isStory}
                   maxFiles={
                     isStory || detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1
                   }

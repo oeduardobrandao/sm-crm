@@ -97,6 +97,12 @@ jobs:
         with:
           deno-version: v2.x
 
+      # test:functions runs with --no-check, so this is the only place the edge
+      # functions get type-checked. Same --node-modules-dir=auto as the tests so
+      # npm: specifiers resolve identically.
+      - name: Edge function type-check (deno check)
+        run: npm run check:functions
+
       - name: Edge function tests (Deno)
         run: npm run test:functions
 

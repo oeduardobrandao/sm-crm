@@ -231,7 +231,7 @@ export interface AnalyticsReport {
   report_url: string | null;
   storage_path: string | null;
   html_storage_path: string | null;
-  status: 'pending' | 'generating' | 'ready' | 'failed';
+  status: 'pending' | 'generating' | 'ready' | 'failed' | 'skipped';
   generated_at: string | null;
   include_ai: boolean;
   ai_status: string;

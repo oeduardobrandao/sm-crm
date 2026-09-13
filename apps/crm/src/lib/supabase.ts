@@ -59,6 +59,11 @@ export async function getCurrentProfile(force = false) {
     return data;
   } catch (e) {
     console.warn('getCurrentProfile error:', e);
+    // A forced refetch (e.g. getContaId() guarding against a stale
+    // conta_id) that hits a transient network blip must not turn into a
+    // hard failure when a perfectly usable profile is already cached —
+    // fall back to it rather than reporting "not authenticated".
+    if (force && cachedProfile) return cachedProfile;
     return null;
   }
 }

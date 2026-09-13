@@ -10,9 +10,11 @@ import {
   type CommentThreadWithComments,
   type PostEditSuggestion,
   type ClientePost,
+  type PostProcess,
 } from '../../../store';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
+import { PostProductionSection } from './PostProductionSection';
 import PostCommentSummary from './PostCommentSummary';
 import { PostMediaGallery } from './PostMediaGallery';
 import {
@@ -81,6 +83,10 @@ export interface PostEditorBodyProps {
   post: WorkflowPost & { property_values?: PostPropertyValue[] };
   templateId: number | null | undefined;
   workflowId: number | null;
+  /** Processo individual vigente do post (spec §5.4). `undefined` = não se
+   *  aplica (drawer de fluxo); `null` = avulso sem processo. Só o
+   *  StandalonePostDrawer preenche, independentemente da flag do plano. */
+  postProcess?: PostProcess | null;
   clienteId: number;
   clientePosts: ClientePost[];
   isExpanded: boolean;
@@ -92,6 +98,11 @@ export interface PostEditorBodyProps {
   commentThreads: CommentThreadWithComments[];
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
+  /** `can('automacoes', 'editar') === true` -- computed by the caller
+   * (WorkflowDrawer/StandalonePostDrawer), threaded down to
+   * PostAutomationSection. See its own prop doc for why this replaced a
+   * `currentUserRole === 'owner' || 'admin'` check. */
+  canManageAutomations: boolean;
   workspaceUsers: { id: string; nome: string; avatar_url: string }[];
   hasInstagramAccount: boolean;
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
@@ -111,12 +122,15 @@ export interface PostEditorBodyProps {
   editorVersion: number;
   onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
   onRejectSuggestion: (id: number) => void;
+  /** Avançar etapa do processo individual, para a dica da seção de produção. */
+  onProcessAvancar?: () => void;
 }
 
 export function PostEditorBody({
   post,
   templateId,
   workflowId,
+  postProcess,
   clienteId,
   clientePosts,
   isExpanded,
@@ -128,6 +142,7 @@ export function PostEditorBody({
   commentThreads,
   currentUserId,
   currentUserRole,
+  canManageAutomations,
   workspaceUsers,
   hasInstagramAccount,
   igAccountStatus,
@@ -147,6 +162,7 @@ export function PostEditorBody({
   editorVersion,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onProcessAvancar,
 }: PostEditorBodyProps) {
   // Per-row scheduled-day dots for this post's date picker: same client-wide post list for
   // every row (stable identity from the TanStack cache), each row excludes only its own post
@@ -355,7 +371,7 @@ export function PostEditorBody({
         </div>
         {membros.length > 0 && (
           <div className="drawer-post-field">
-            <label>Responsável</label>
+            <label>Responsável do post</label>
             <select
               className="drawer-select"
               value={post.responsavel_id ?? ''}
@@ -412,8 +428,28 @@ export function PostEditorBody({
         />
       )}
 
+      {postProcess && workflowId == null && (
+        <PostProductionSection
+          process={postProcess}
+          postId={post.id!}
+          membros={membros}
+          postStatus={post.status}
+          onAvancar={onProcessAvancar}
+        />
+      )}
+
       <PostMediaGallery
         postId={post.id!}
+        forStories={isStoryPost}
+        targetsInstagram={post.platform !== 'tiktok'}
+        adjustmentDisabled={
+          post.status === 'agendado' ||
+          post.status === 'postado' ||
+          !!post.published_at ||
+          !!post.instagram_media_id ||
+          !!post.instagram_container_id ||
+          ['initiated', 'processing', 'published'].includes(post.tiktok_publish_status ?? '')
+        }
         mediaAutocleanedAt={post.media_autocleaned_at}
         instagramPermalink={post.instagram_permalink}
         tiktokPostUrl={post.tiktok_post_url}
@@ -560,7 +596,7 @@ export function PostEditorBody({
       <PostAutomationSection
         post={post}
         clienteId={clienteId}
-        currentUserRole={currentUserRole}
+        canManage={canManageAutomations}
         hasInstagramAccount={hasInstagramAccount}
       />
 

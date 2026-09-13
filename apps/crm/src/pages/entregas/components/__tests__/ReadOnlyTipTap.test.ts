@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
 import { readOnlyTipTapExtensions } from '../ReadOnlyTipTap';
@@ -8,6 +8,20 @@ import { readOnlyTipTapExtensions } from '../ReadOnlyTipTap';
 // can persist, or TipTap silently drops the whole document on read -- same invariant as the
 // hub's richTextExtensions (apps/hub/src/components/__tests__/RichTextContent.test.tsx).
 describe('ReadOnlyTipTap extensions (readOnlyTipTapExtensions)', () => {
+  it('registers no duplicate extension names', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      getSchema(readOnlyTipTapExtensions);
+
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('Duplicate extension names found'),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('parses body text that carries a commentHighlight mark', () => {
     // Exactly what PostEditor persists into `conteudo` when an agent leaves a comment on
     // post text (setCommentHighlight -> setMark). Without the mark registered, TipTap drops

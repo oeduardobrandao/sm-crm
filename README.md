@@ -24,9 +24,9 @@ Monorepo com npm workspaces (`apps/*`, `packages/*`) — **três aplicações Re
 | Pasta | O que é |
 |---|---|
 | `packages/ui`, `packages/i18n` | Primitivos e traduções compartilhados |
-| `supabase/functions/` | 72 edge functions em **Deno** (+ `_shared/` e `__tests__/`) |
+| `supabase/functions/` | 79 edge functions em **Deno** (+ `_shared/` e `__tests__/`) |
 | `supabase/migrations/` | Migrations SQL |
-| `workers/media-proxy/` | Cloudflare Worker (deploy manual) |
+| `workers/media-proxy/`, `workers/transcribe/` | Cloudflare Workers (deploy manual com `wrangler deploy` dentro da pasta; testes com `npm test` lá) |
 | `e2e/` | Playwright |
 | `docs/superpowers/specs/` | Specs de design e planos de implementação |
 
@@ -113,6 +113,7 @@ npx tsc -p apps/admin/tsconfig.json --noEmit
 npx tsc -p tsconfig.scripts.json
 
 npm run test           # Vitest
+npm run check:functions # deno check nas edge functions (test:functions roda com --no-check)
 npm run test:functions # deno test nas edge functions
 npm run lint           # eslint apps/ packages/
 npm run format:check   # prettier
@@ -122,7 +123,7 @@ Jobs do CI (oito, em `.github/workflows/ci.yml`): `typecheck-and-test`,
 `edge-function-tests`, `entitlement-tests`, `coverage-threshold`, `format-check`,
 `migration-version-guard`, `e2e` e `e2e-secrets-guard`.
 
-Três detalhes que costumam enganar:
+Quatro detalhes que costumam enganar:
 
 - `migration-version-guard` falha se duas migrations compartilharem o prefixo de
   versão, porque a segunda seria silenciosamente ignorada no banco remoto.
@@ -132,6 +133,9 @@ Três detalhes que costumam enganar:
 - `e2e` verde nem sempre quer dizer que o e2e rodou: sem os secrets configurados
   o job pula em silêncio. É para isso que existe o `e2e-secrets-guard`, que
   avisa quais secrets faltam.
+- `test:functions` roda com `--no-check`, então não faz typecheck das edge
+  functions. Quem barra erro de tipo em `supabase/functions/` é o
+  `check:functions`, que roda antes dos testes no job `edge-function-tests`.
 
 ## 📦 Build & Deploy
 
@@ -154,7 +158,8 @@ npm run build:admin    # Admin
   > ⚠️ **Ao adicionar uma rota nova no CRM é obrigatório incluí-la nesse padrão nomeado do
   > `vercel.json`.** Sem isso a rota funciona em dev e dá 404 em produção.
 - **Backend:** Supabase. `npx supabase functions deploy <nome>` (use `--no-verify-jwt` em
-  functions que tratam a própria auth: callbacks OAuth, crons, hub) e
+  functions que tratam a própria auth: callbacks OAuth, crons, `hub-briefing` e as
+  demais do hub, e `briefing-audio`, que confere o próprio JWT) e
   `npx supabase db push --linked` para migrations.
 - **Mídia:** Cloudflare R2 via URLs pré-assinadas.
 

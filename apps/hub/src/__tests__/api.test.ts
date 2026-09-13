@@ -3,10 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFetchMock } from '../../../../test/shared/fetchMock';
 import {
   createIdeia,
+  deleteBriefingAudio,
   deleteIdeia,
   fetchBootstrap,
   fetchBriefing,
   fetchPosts,
+  finalizeBriefingAudio,
+  presignBriefingAudio,
+  retryBriefingTranscription,
   submitApproval,
   submitBriefingAnswer,
   submitEditSuggestion,
@@ -182,5 +186,50 @@ describe('hub api client', () => {
     await expect(submitEditSuggestion('token-hub', 99, null, 'texto', null)).rejects.toThrow(
       'Post não está em revisão',
     );
+  });
+
+  it('presigns and finalizes briefing audio on the nested hub-briefing routes', async () => {
+    fetchHarness.queueResponse({
+      json: {
+        upload_url: 'https://r2/put',
+        r2_key: 'briefing-audio/c/q/x.webm',
+        mime_type: 'audio/webm',
+      },
+    });
+    const signed = await presignBriefingAudio('tok', {
+      question_id: 'q1',
+      mime_type: 'audio/webm;codecs=opus',
+      size_bytes: 10,
+    });
+    expect(signed.mime_type).toBe('audio/webm');
+    expect(String(fetchHarness.calls[0].input)).toContain('/functions/v1/hub-briefing/upload-url');
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      token: 'tok',
+      question_id: 'q1',
+      mime_type: 'audio/webm;codecs=opus',
+      size_bytes: 10,
+    });
+
+    fetchHarness.queueResponse({ json: { ok: true, answer: 'oi', transcript: 'oi', audio: null } });
+    const fin = await finalizeBriefingAudio('tok', 'q1', {
+      r2_key: 'k',
+      mime_type: 'audio/webm',
+      size_bytes: 10,
+      duration_seconds: 3,
+    });
+    expect(fin.answer).toBe('oi');
+    expect(String(fetchHarness.calls[1].input)).toContain('/functions/v1/hub-briefing/q1/audio');
+  });
+
+  it('retries transcription and deletes audio', async () => {
+    fetchHarness.queueResponse({ json: { ok: true, answer: 'a', transcript: 'a', audio: null } });
+    await retryBriefingTranscription('tok', 'q1');
+    expect(String(fetchHarness.calls[0].input)).toContain('/hub-briefing/q1/audio/transcribe');
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({ token: 'tok' });
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await deleteBriefingAudio('tok', 'q1');
+    expect(fetchHarness.calls[1].init?.method).toBe('DELETE');
+    expect(String(fetchHarness.calls[1].input)).toContain('/hub-briefing/q1/audio?token=tok');
   });
 });

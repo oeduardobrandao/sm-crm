@@ -87,7 +87,7 @@ export function CalendarPostDetailPanel({
       : null;
 
   return (
-    <aside className="calendar-detail-panel" role="dialog" aria-label="Detalhes do post">
+    <aside className="calendar-detail-panel" aria-label="Detalhes do post">
       <div className="calendar-detail-head">
         <div className="calendar-detail-head-info">
           <span className="calendar-detail-eyebrow">Detalhes do post</span>

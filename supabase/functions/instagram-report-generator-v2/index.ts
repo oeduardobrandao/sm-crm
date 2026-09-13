@@ -5,6 +5,8 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { renderReport } from "../_shared/report-template/render.ts";
 import { convertHtmlToPdf } from "../_shared/report-template/pdf.ts";
 import { generateAINarrative } from "../_shared/report-template/ai.ts";
+import { buildEmailKpis } from "../_shared/report-template/email-kpis.ts";
+import type { EmailKpis } from "../_shared/report-template/brand-header.ts";
 import { mapAudience, mapBestTimes } from "./mappers.ts";
 import type {
   AIOutput,
@@ -1067,6 +1069,59 @@ Deno.serve(async (req) => {
     ]);
 
     // =====================================================================
+    // 17b. Email KPIs (spec §10) — views from the parity source, interactions
+    // + followers from the accumulators already computed in step 5.
+    //
+    // Ordinary PostgREST-level failures resolve as `{ data: null, error }`,
+    // not a throw — those are logged via `warnQueryError` below (the same
+    // helper and pattern as the step-3 snapshot queries) and degrade
+    // `viewsMonth`/`prevViewsMonth` to null, same as a genuinely absent row.
+    // The `try/catch` around the whole block guards a DIFFERENT failure mode:
+    // an actual thrown exception (network/DNS failure, or a bug in
+    // `buildEmailKpis`) would otherwise propagate to the handler's outer
+    // catch and fail the ENTIRE report generation (no PDF, no HTML, status
+    // stuck at error) over a KPI row that the spec says must degrade
+    // silently instead — never take the report down with it.
+    // =====================================================================
+    let emailKpis: EmailKpis | null = null;
+    try {
+      const [monthlyRes, prevMonthlyRes] = await Promise.all([
+        serviceClient
+          .from("instagram_account_metrics_monthly")
+          .select("views_month")
+          .eq("instagram_account_id", igAccountId)
+          .eq("month", currWindow.startDate)
+          .maybeSingle(),
+        serviceClient
+          .from("instagram_account_metrics_monthly")
+          .select("views_month")
+          .eq("instagram_account_id", igAccountId)
+          .eq("month", prevWindow.startDate)
+          .maybeSingle(),
+      ]);
+      warnQueryError("email-kpis report-month metrics", monthlyRes.error);
+      warnQueryError("email-kpis prev-month metrics", prevMonthlyRes.error);
+      const viewsMonth = typeof monthlyRes.data?.views_month === "number"
+        ? monthlyRes.data.views_month
+        : null;
+      const prevViewsMonth = typeof prevMonthlyRes.data?.views_month === "number"
+        ? prevMonthlyRes.data.views_month
+        : null;
+      emailKpis = buildEmailKpis({
+        viewsMonth,
+        prevViewsMonth,
+        interactions: totalLikes + totalComments + totalSaved,
+        followersGained,
+      });
+    } catch (err: unknown) {
+      console.error(
+        `[report-v2] Failed to build email_kpis for report ${reportId}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      emailKpis = null;
+    }
+
+    // =====================================================================
     // 18. Update analytics_reports row
     // =====================================================================
     const updatePayload: Record<string, unknown> = {
@@ -1075,6 +1130,7 @@ Deno.serve(async (req) => {
       html_storage_path: htmlPath,
       generated_at: new Date().toISOString(),
       generation_error: null,
+      email_kpis: emailKpis,
     };
 
     if (aiOutput) {

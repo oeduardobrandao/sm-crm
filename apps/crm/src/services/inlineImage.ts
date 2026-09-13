@@ -1,3 +1,4 @@
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -55,7 +56,14 @@ export interface InlineImageResult {
   height: number;
 }
 
-export async function uploadInlineImage(file: File): Promise<InlineImageResult> {
+/** Holds the unsaved-work registry for the whole upload: a silent version swap must not abort it. */
+export function uploadInlineImage(
+  ...args: Parameters<typeof uploadInlineImageUnguarded>
+): ReturnType<typeof uploadInlineImageUnguarded> {
+  return trackUnsavedWork(uploadInlineImageUnguarded(...args));
+}
+
+async function uploadInlineImageUnguarded(file: File): Promise<InlineImageResult> {
   validateInlineImage(file);
 
   const { width, height } = await probeImage(file);

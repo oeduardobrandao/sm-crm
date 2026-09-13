@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { updateReportDoc } from '../../services/reportDocs';
 
 const LAYOUT_DEBOUNCE_MS = 1500;
@@ -49,6 +50,8 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
   const layoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleDirty = useRef(false);
+  const [titleDirtyState, setTitleDirtyState] = useState(false);
+  const [titleSaving, setTitleSaving] = useState(false);
   const pendingLayout = useRef<ReportLayout | null>(null);
   const docIdRef = useRef(docId);
   const titleRef = useRef(title);
@@ -68,6 +71,13 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
   function setSavingState(value: boolean) {
     savingRef.current = value;
     setSaving(value);
+  }
+
+  // Mirrors `titleDirty` into state so the unsaved-work registry (a render-time boolean)
+  // covers the title's debounce and retry window, exactly like the beforeunload guard does.
+  function setTitleDirty(value: boolean) {
+    titleDirty.current = value;
+    setTitleDirtyState(value);
   }
 
   useEffect(
@@ -174,8 +184,11 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     titleTimer.current = setTimeout(() => {
       titleTimer.current = null;
       appendToDocChain(docIdRef.current, async () => {
-        if (!titleDirty.current) return;
-        titleDirty.current = false;
+        if (!titleDirty.current) {
+          setTitleSaving(false);
+          return;
+        }
+        setTitleDirty(false);
         const toSave = titleRef.current;
         try {
           await updateReportDoc(docIdRef.current, { title: toSave });
@@ -184,16 +197,23 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
             old ? { ...(old as object), title: toSave } : old,
           );
           titleRetryCount.current = 0;
+          // A newer edit is queued behind this request: stay held until its own flush settles.
+          if (!titleDirty.current) setTitleSaving(false);
         } catch (err) {
           console.error('[relatorio-editor] save de título falhou:', err);
           toast.error(SAVE_ERROR_MSG, SAVE_ERROR_TOAST);
           // Mesmo tratamento do layout: retenta com backoff até esgotar
           // RETRY_DELAYS_MS, depois retém a dirty flag sem novo timer.
-          titleDirty.current = true;
+          setTitleDirty(true);
           const delay = RETRY_DELAYS_MS[titleRetryCount.current];
           if (delay !== undefined) {
             titleRetryCount.current += 1;
             scheduleTitleFlush(delay);
+          } else {
+            // Esgotado: para de tentar, mas a dirty flag continua true e segura o
+            // registro sozinha até uma edição nova ou o unmount.
+            // A newer edit is queued behind this request: stay held until its own flush settles.
+            if (!titleDirty.current) setTitleSaving(false);
           }
         }
       });
@@ -211,7 +231,8 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
 
   function setTitle(next: string) {
     setTitleState(next);
-    titleDirty.current = true;
+    setTitleDirty(true);
+    setTitleSaving(true);
     titleRetryCount.current = 0;
     scheduleTitleFlush(TITLE_DEBOUNCE_MS);
   }
@@ -230,6 +251,10 @@ export function useLayoutAutosave(docId: string, initial: { layout: ReportLayout
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
+
+  // A pending layout, a pending or in-flight title, or a layout save in flight must all
+  // finish before any silent version swap.
+  useUnsavedWork(saving || titleDirtyState || titleSaving);
 
   return { layout, applyLayout, title, setTitle, saving };
 }

@@ -24,3 +24,22 @@ export const AGENT_PRESET: string[] = [
   'tarefas:read',
   'membros:read',
 ];
+
+// Escopos do MCP do Admin da plataforma. Espelho de ADMIN_MCP_ALLOWED_SCOPES em
+// supabase/functions/_shared/mcp-admin-scopes.ts.
+export const ADMIN_SCOPE_OPTIONS = [
+  { value: 'banners:read', label: 'Banners (leitura)' },
+  { value: 'banners:write', label: 'Banners (escrita)' },
+  { value: 'popups:read', label: 'Popups (leitura)' },
+  { value: 'popups:write', label: 'Popups (escrita)' },
+  { value: 'kb:read', label: 'Artigos de suporte (leitura)' },
+  { value: 'kb:write', label: 'Artigos de suporte (escrita)' },
+  { value: 'platform:read', label: 'Plataforma: workspaces, planos e dashboard (leitura)' },
+] as const;
+
+export const ADMIN_READ_PRESET: string[] = [
+  'banners:read',
+  'popups:read',
+  'kb:read',
+  'platform:read',
+];

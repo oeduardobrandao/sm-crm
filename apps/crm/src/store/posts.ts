@@ -1,6 +1,7 @@
 import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
+import type { Workflow, WorkflowEtapa } from './workflows';
 
 /**
  * Ascending by scheduled_at, nulls last -- replicates the `.order('scheduled_at',
@@ -286,16 +287,17 @@ export interface ScheduledPost {
  * migrations before the frontend, so by the time this code ships the column
  * already exists; do not reorder that deploy sequence.
  */
-const POST_CONTEXT_COLUMNS =
+export const POST_CONTEXT_COLUMNS =
   'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy, board_ordem';
 
+// Exported for store/postProcesses.ts, which embeds a workflow_posts row (avulso arm shape).
 /**
  * Maps a workflow_posts row that may come from either arm of a wired/avulso
  * merge: `row.workflows` is present only for the wired arm (left- or
  * inner-joined), and the avulso arm selects `cliente_id` and a top-level
  * `clientes(nome)` embed directly off the post row instead.
  */
-function mapPostContextRow(row: any): ActivePost {
+export function mapPostContextRow(row: any): ActivePost {
   return {
     id: row.id,
     workflow_id: row.workflow_id ?? null,
@@ -945,10 +947,17 @@ export async function createAvulsoPost(p: {
 /** Postgres deadlock SQLSTATE. detach_posts_from_flow/attach_posts_to_flow can
  * rarely deadlock against the (unrelated, pre-existing) workflow-client-move
  * trigger path -- a documented, self-recovering residual case (see the
- * migration's header comment) -- so both RPC wrappers retry exactly once. */
+ * migration's header comment) -- so both RPC wrappers retry exactly once.
+ *
+ * Retry semantics for callers: the SAME closure is re-invoked, so every value
+ * it captured (post ids, fingerprint, and for detach_posts_keeping_process the
+ * `p_request_id`) is resent unchanged. That is what makes the fase-2 batch
+ * idempotency work: generate the request id OUTSIDE the closure (spec §9.4)
+ * and the retry is recognized server-side as the same attempt. Never generate
+ * an id inside `invoke`. */
 const POSTGRES_DEADLOCK_ERRCODE = '40P01';
 
-async function callRpcWithDeadlockRetry<T>(
+export async function callRpcWithDeadlockRetry<T>(
   invoke: () => PromiseLike<{ data: T | null; error: { code?: string } | null }>,
 ): Promise<T> {
   let { data, error } = await invoke();
@@ -1003,6 +1012,67 @@ export async function attachPostToWorkflow(
     supabase.rpc('attach_posts_to_flow', {
       p_post_ids: [postId],
       p_workflow_id: workflowId,
+    }),
+  );
+}
+
+export interface MovePostsResult {
+  ok: boolean;
+  moved: number;
+  target_workflow_id: number;
+  archived_workflow_ids: number[];
+  /** New-flow path only, and only once migration 20260901120000 is applied:
+   *  the freshly created workflow row and its cloned etapas, so the UI can
+   *  open the destination drawer immediately instead of waiting for the
+   *  board's workflows + all-active-etapas refetch cascade. Treat as
+   *  optional -- an older DB simply omits them. */
+  workflow?: Workflow;
+  etapas?: WorkflowEtapa[];
+}
+
+/**
+ * Moves posts from their current workflow into a brand-new one cloned from it
+ * (etapas copied; the ones before `startOrdem` land as concluded, `startOrdem`
+ * becomes the active etapa) via the move_posts_to_new_flow RPC -- part of the
+ * same sanctioned-move family as detach/attach (see updateWorkflowPost's doc
+ * comment). `sourceWorkflowId` is the flow the whole batch must still belong
+ * to; a stale selection fails with post_not_in_source_flow instead of acting
+ * on the wrong flow.
+ */
+export async function movePostsToNewFlow(
+  postIds: number[],
+  sourceWorkflowId: number,
+  opts: { titulo: string; startOrdem: number; archiveEmptyFlow?: boolean },
+): Promise<MovePostsResult> {
+  return callRpcWithDeadlockRetry<MovePostsResult>(() =>
+    supabase.rpc('move_posts_to_new_flow', {
+      p_post_ids: postIds,
+      p_source_workflow_id: sourceWorkflowId,
+      p_titulo: opts.titulo,
+      p_start_ordem: opts.startOrdem,
+      p_archive_empty_flow: opts.archiveEmptyFlow ?? false,
+    }),
+  );
+}
+
+/**
+ * Moves posts straight from one workflow into another active workflow of the
+ * same client AND same template (never transiently avulso) via the
+ * move_posts_to_existing_flow RPC. Same declared-source contract as
+ * movePostsToNewFlow.
+ */
+export async function movePostsToExistingFlow(
+  postIds: number[],
+  sourceWorkflowId: number,
+  targetWorkflowId: number,
+  archiveEmptyFlow = false,
+): Promise<MovePostsResult> {
+  return callRpcWithDeadlockRetry<MovePostsResult>(() =>
+    supabase.rpc('move_posts_to_existing_flow', {
+      p_post_ids: postIds,
+      p_source_workflow_id: sourceWorkflowId,
+      p_target_workflow_id: targetWorkflowId,
+      p_archive_empty_flow: archiveEmptyFlow,
     }),
   );
 }
@@ -1164,6 +1234,23 @@ export async function sendPostsToCliente(workflowId: number): Promise<void> {
     .eq('workflow_id', workflowId)
     .eq('status', 'aprovado_interno');
   if (error) throw error;
+}
+
+/**
+ * Sends ONE post to the client portal, only from aprovado_interno (mirrors
+ * sendPostsToCliente's guard for the individual-process path). A zero-row
+ * result means the status already moved -- treated as stale by the caller.
+ */
+export async function sendPostToCliente(postId: number): Promise<WorkflowPost | null> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .update({ status: 'enviado_cliente' })
+    .eq('id', postId)
+    .eq('status', 'aprovado_interno')
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 export async function approvePostsInternally(workflowId: number): Promise<void> {

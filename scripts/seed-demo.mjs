@@ -163,11 +163,19 @@ async function main() {
     },
   ];
 
-  const { data: clientes, error: clientesErr } = await supabase
+  // `clientes` and `membros` carry column-level SELECT allowlists (Migration
+  // 20260728000002): financial columns like valor_mensal/custo_mensal are not
+  // grantable via a bare `.select()` RETURNING, so select allowlisted columns
+  // only and merge the financial values back from the local seed arrays.
+  const { data: clientesRows, error: clientesErr } = await supabase
     .from('clientes')
     .insert(clientesSeed.map((c) => ({ ...c, user_id: userId, conta_id: contaId })))
-    .select();
+    .select('id, nome, status');
   if (clientesErr) die('clientes insert failed', clientesErr);
+  const clientes = clientesRows.map((r) => ({
+    ...clientesSeed.find((s) => s.nome === r.nome),
+    ...r,
+  }));
   log('  ✓', clientes.length, 'clientes');
 
   // ---------- MEMBROS ----------
@@ -178,11 +186,15 @@ async function main() {
     { nome: 'Bianca Almeida', cargo: 'Designer', tipo: 'freelancer_mensal', custo_mensal: 3800, avatar_url: '', data_pagamento: 10 },
     { nome: 'Thiago Rocha', cargo: 'Editor de Vídeo', tipo: 'freelancer_demanda', custo_mensal: null, avatar_url: '', data_pagamento: null },
   ];
-  const { data: membros, error: membrosErr } = await supabase
+  const { data: membrosRows, error: membrosErr } = await supabase
     .from('membros')
     .insert(membrosSeed.map((m) => ({ ...m, user_id: userId, conta_id: contaId })))
-    .select();
+    .select('id, nome, cargo, tipo, data_pagamento');
   if (membrosErr) die('membros insert failed', membrosErr);
+  const membros = membrosRows.map((r) => ({
+    ...membrosSeed.find((s) => s.nome === r.nome),
+    ...r,
+  }));
   log('  ✓', membros.length, 'membros');
 
   // ---------- CONTRATOS ----------

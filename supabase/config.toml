@@ -31,6 +31,9 @@ verify_jwt = false
 [functions.analytics-report-cron]
 verify_jwt = false
 
+[functions.report-worker]
+verify_jwt = false
+
 [functions.invite-expire-cron]
 verify_jwt = false
 
@@ -174,6 +177,9 @@ verify_jwt = false
 [functions.ideia-media-manage]
 verify_jwt = false
 
+[functions.briefing-audio]
+verify_jwt = false
+
 [functions.lifecycle-email-cron]
 verify_jwt = false
 
@@ -205,4 +211,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.automation-media]
+verify_jwt = false
+
+[functions.client-event-email-cron]
+verify_jwt = false
+
+[functions.client-email-unsub]
 verify_jwt = false

@@ -10,7 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { getWorkflows, attachPostToWorkflow } from '../../../store';
+import { getWorkflows, attachPostToWorkflow, attachPostClosingProcess } from '../../../store';
+import type { PostProcess } from '../../../store';
+import { getPostProcessErrorToast } from '../postProcessErrors';
 
 interface AttachToFluxoDialogProps {
   open: boolean;
@@ -21,6 +23,9 @@ interface AttachToFluxoDialogProps {
    *  invalidated), so the caller can open the target WorkflowDrawer at this
    *  post and close whatever standalone surface had it open. */
   onAttached: (workflowId: number, postId: number) => void;
+  /** Processo individual vigente do post, quando existe: exige o passo de
+   *  confirmação e usa attach_post_closing_process (spec §5.5, §9.3). */
+  process?: PostProcess | null;
 }
 
 function getErrorIdentifier(err: unknown): string {
@@ -48,7 +53,7 @@ function getAttachErrorToast(err: unknown): string {
   if (identifier === 'plan_limit_exceeded:max_posts_per_workflow') {
     return 'Limite de posts por fluxo do plano atual atingido.';
   }
-  return 'Erro ao vincular post ao fluxo';
+  return getPostProcessErrorToast(err, 'Erro ao vincular post ao fluxo');
 }
 
 /** Attaches a post avulso to one of the client's own active fluxos. The fluxo
@@ -62,10 +67,12 @@ export function AttachToFluxoDialog({
   postId,
   clienteId,
   onAttached,
+  process,
 }: AttachToFluxoDialogProps) {
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const { data: workflows = [] } = useQuery({
     queryKey: ['workflows'],
@@ -74,7 +81,10 @@ export function AttachToFluxoDialog({
   });
 
   useEffect(() => {
-    if (open) setSelectedId(null);
+    if (open) {
+      setSelectedId(null);
+      setConfirming(false);
+    }
   }, [open]);
 
   const activeFluxos = workflows
@@ -85,9 +95,15 @@ export function AttachToFluxoDialog({
     if (selectedId == null) return;
     const workflow = activeFluxos.find((w) => w.id === selectedId);
     if (!workflow) return;
+    if (process && (process.estado === 'ativo' || process.estado === 'concluido') && !confirming) {
+      setConfirming(true);
+      return;
+    }
     setSaving(true);
     try {
-      await attachPostToWorkflow(postId, selectedId);
+      await (process && confirming
+        ? attachPostClosingProcess(postId, selectedId, process.revisao)
+        : attachPostToWorkflow(postId, selectedId));
       toast.success(`Post vinculado a "${workflow.titulo}"`);
       qc.invalidateQueries({ queryKey: ['active-posts'] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', selectedId] });
@@ -100,6 +116,12 @@ export function AttachToFluxoDialog({
       qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
       qc.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
       qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
+      // Fase-3 caches: the post may have had a vigente individual process that
+      // attach_post_closing_process just closed.
+      qc.invalidateQueries({ queryKey: ['post-process', postId] });
+      qc.invalidateQueries({ queryKey: ['post-processes'] });
+      qc.invalidateQueries({ queryKey: ['post-process-events'] });
+      qc.invalidateQueries({ queryKey: ['standalone-post', postId] });
       onAttached(selectedId, postId);
       onClose();
     } catch (err) {
@@ -118,7 +140,17 @@ export function AttachToFluxoDialog({
             Escolha um fluxo ativo deste cliente para anexar o post
           </DialogDescription>
         </DialogHeader>
-        {activeFluxos.length === 0 ? (
+        {confirming ? (
+          <div className="flex flex-col gap-2 text-sm">
+            <p className="font-medium">Encerrar o processo individual?</p>
+            <p style={{ color: 'var(--text-muted)' }}>
+              O post passará a seguir as etapas de "
+              {activeFluxos.find((w) => w.id === selectedId)?.titulo}". O processo individual será
+              encerrado: etapas, responsáveis e prazos individuais não são transferidos. O histórico
+              fica guardado.
+            </p>
+          </div>
+        ) : activeFluxos.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             Nenhum fluxo ativo para este cliente
           </p>
@@ -142,12 +174,30 @@ export function AttachToFluxoDialog({
           </div>
         )}
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-            Cancelar
-          </Button>
-          <Button type="button" onClick={handleConfirm} disabled={saving || selectedId == null}>
-            {saving ? 'Vinculando...' : 'Vincular'}
-          </Button>
+          {confirming ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirming(false)}
+                disabled={saving}
+              >
+                Voltar
+              </Button>
+              <Button type="button" onClick={handleConfirm} disabled={saving}>
+                {saving ? 'Vinculando...' : 'Encerrar processo e vincular'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+                Cancelar
+              </Button>
+              <Button type="button" onClick={handleConfirm} disabled={saving || selectedId == null}>
+                {saving ? 'Vinculando...' : 'Vincular'}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

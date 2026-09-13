@@ -14,6 +14,26 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
   (() => { throw new Error("CRON_SECRET is required"); })();
+
+// Hard bound on how long this worker waits for the generator.
+//
+// Without it the worker waits forever and the edge runtime eventually kills the
+// isolate mid-await: the row stays in `generating`, no error is recorded, no
+// alert fires, and the only recovery is the 10-minute stale-lock re-claim —
+// which loops silently for as long as the generation keeps hanging.
+//
+// 5 minutes sits under both walls that matter. Under the platform wall clock,
+// so the timeout actually fires and the catch below gets to run its bookkeeping
+// instead of the isolate dying; and under the 10-minute stale-lock window, so
+// that bookkeeping always lands BEFORE another worker becomes eligible to
+// re-claim the same row — two workers never write over each other.
+//
+// An AbortError lands in the existing network-error catch: report marked
+// failed, retry_count incremented, and reportCronFailure on the third attempt.
+// That is the point — a generation that hangs three times becomes a visible
+// failure instead of an invisible loop.
+const GENERATOR_TIMEOUT_MS = 5 * 60 * 1000;
+
 const INTERNAL_FUNCTION_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET") ??
   (() => { throw new Error("INTERNAL_FUNCTION_SECRET is required"); })();
 
@@ -99,10 +119,15 @@ Deno.serve(async (req) => {
         console.log(
           `[report-worker] Report ${data.id} skipped — workspace ${data.conta_id} not entitled to feature_analytics_reports`,
         );
-        await supabase
+        const { error: skipError } = await supabase
           .from("analytics_reports")
           .update({ status: "skipped", locked_at: null, locked_by: null })
           .eq("id", data.id);
+        if (skipError) {
+          // Sem o update a linha fica presa em 'generating' e volta à janela
+          // de candidatos a cada lock vencido — não pode falhar em silêncio.
+          console.error(`[report-worker] Failed to mark report ${data.id} as skipped:`, skipError);
+        }
         continue; // try the next candidate this tick
       }
       claimed = data;
@@ -132,6 +157,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ reportId: claimed.id }),
+      signal: AbortSignal.timeout(GENERATOR_TIMEOUT_MS),
     });
   } catch (fetchErr: unknown) {
     const message = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
@@ -168,7 +194,7 @@ Deno.serve(async (req) => {
     try {
       const { data: reportRow } = await supabase
         .from('analytics_reports')
-        .select('client_id, conta_id, report_month, storage_path, ai_content')
+        .select('client_id, conta_id, report_month, storage_path, ai_content, email_kpis')
         .eq('id', claimed.id)
         .single();
 
@@ -187,7 +213,7 @@ Deno.serve(async (req) => {
           .single();
 
         if (wsFlags?.send_report_email && clientFlags?.send_report_email && clientFlags?.email) {
-          const { buildReportEmail } = await import("../_shared/report-template/email.ts");
+          const { buildReportEmail, buildReportFrom } = await import("../_shared/report-template/email.ts");
 
           let pdfUrl = '';
           if (reportRow.storage_path) {
@@ -206,6 +232,7 @@ Deno.serve(async (req) => {
             aiSummary: reportRow.ai_content?.executive_summary ?? null,
             pdfUrl,
             hubUrl: await resolveHubUrl(supabase, reportRow.client_id, reportRow.conta_id),
+            emailKpis: reportRow.email_kpis ?? null,
           });
 
           const [year, mm] = reportRow.report_month.split('-');
@@ -221,7 +248,7 @@ Deno.serve(async (req) => {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                from: `${wsFlags.name ?? 'Mesaas'} <relatorios@mesaas.com.br>`,
+                from: buildReportFrom(wsFlags.name),
                 to: [clientFlags.email],
                 subject: `Seu relatório de ${monthLabel} está pronto!`,
                 html: emailHtml,

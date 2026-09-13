@@ -1,0 +1,160 @@
+<h2>Analytics de Fluxos · rebuild</h2>
+<p class="subtitle">O review gerencial semanal. Período agora filtra por data de CONCLUSÃO, KPIs ganham comparação vs período anterior, e as métricas novas (aprovação do cliente, retrabalho) vêm dos eventos. Números do mockup baseados nos seus (4 concluídos, 35 ativos, 5d 18h, 61%).</p>
+
+<div class="mockup">
+  <div class="mockup-header">Preview: /analytics-fluxos (tema escuro)</div>
+  <div class="mockup-body" style="background:#0a0c0f;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;color:#e8eaf0;">
+
+    <!-- header -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;">Analytics de Fluxos</div>
+        <div style="font-size:12px;color:#9ca3af;margin-top:4px;">Fluxos concluídos no período <span style="border-bottom:1px dotted #4b5563;" title="O período filtra pela data de conclusão">ⓘ</span></div>
+      </div>
+      <div style="display:flex;gap:8px;font-size:12px;">
+        <span style="border:1px solid #1e2430;border-radius:10px;padding:6px 12px;background:#12151a;color:#e8eaf0;">⬇ Exportar CSV</span>
+        <span style="border:1px solid #1e2430;border-radius:10px;padding:6px 12px;background:#12151a;color:#e8eaf0;">🖨 Imprimir</span>
+      </div>
+    </div>
+
+    <!-- toolbar -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;gap:2px;background:#12151a;border:1px solid #1e2430;border-radius:10px;padding:3px;font-size:12px;">
+        <span style="padding:6px 12px;color:#9ca3af;">7d</span>
+        <span style="padding:6px 12px;background:#e8eaf0;color:#12151a;border-radius:8px;font-weight:600;">30d</span>
+        <span style="padding:6px 12px;color:#9ca3af;">90d</span>
+        <span style="padding:6px 12px;color:#9ca3af;">Tudo</span>
+      </div>
+      <div style="display:flex;gap:8px;font-size:12px;color:#9ca3af;">
+        <span style="border:1px solid #1e2430;border-radius:10px;padding:6px 12px;background:#12151a;">Cliente: todos ▾</span>
+        <span style="border:1px solid #1e2430;border-radius:10px;padding:6px 12px;background:#12151a;">Template: todos ▾</span>
+      </div>
+    </div>
+
+    <!-- data horizon banner -->
+    <div style="display:flex;align-items:center;gap:8px;background:#1a1e26;border:1px solid #1e2430;border-radius:10px;padding:8px 12px;font-size:11px;color:#9ca3af;margin-bottom:16px;">
+      <span style="color:#42c8f5;">ⓘ</span> Métricas de eventos (aprovação, retrabalho) disponíveis desde 26/08/2026. Durações de etapas cobrem todo o histórico. <span style="margin-left:auto;color:#4b5563;cursor:pointer;">✕</span>
+    </div>
+
+    <!-- KPI row with deltas -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#1e2430;border:1px solid #1e2430;border-radius:12px;overflow:hidden;margin-bottom:18px;">
+      <div style="background:#12151a;padding:14px 16px;">
+        <div style="font-size:11px;color:#9ca3af;">Concluídos</div>
+        <div style="font-size:24px;font-weight:700;">4</div>
+        <div style="font-size:10px;"><span style="color:#3ecf8e;">▲ 33%</span> <span style="color:#4b5563;">vs período anterior</span></div>
+      </div>
+      <div style="background:#12151a;padding:14px 16px;">
+        <div style="font-size:11px;color:#9ca3af;">Ativos agora</div>
+        <div style="font-size:24px;font-weight:700;">35</div>
+        <div style="font-size:10px;color:#4b5563;">retrato atual</div>
+      </div>
+      <div style="background:#12151a;padding:14px 16px;">
+        <div style="font-size:11px;color:#9ca3af;">Tempo médio</div>
+        <div style="font-size:24px;font-weight:700;">5d 18h</div>
+        <div style="font-size:10px;"><span style="color:#3ecf8e;">▼ 12%</span> <span style="color:#4b5563;">vs período anterior</span></div>
+      </div>
+      <div style="background:#12151a;padding:14px 16px;">
+        <div style="font-size:11px;color:#9ca3af;">Pontualidade</div>
+        <div style="font-size:24px;font-weight:700;">61%</div>
+        <div style="font-size:10px;"><span style="color:#f55a42;">▼ 8pts</span> <span style="color:#4b5563;">vs período anterior</span></div>
+      </div>
+      <div style="background:#12151a;padding:14px 16px;">
+        <div style="font-size:11px;color:#9ca3af;">Retrabalho</div>
+        <div style="font-size:24px;font-weight:700;">18%</div>
+        <div style="font-size:10px;"><span style="color:#4b5563;">fluxos com etapa devolvida</span></div>
+      </div>
+    </div>
+
+    <!-- ritmo de entrega -->
+    <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;">Ritmo de entrega</div>
+        <div style="display:flex;gap:12px;font-size:10px;color:#9ca3af;">
+          <span><span style="display:inline-block;width:8px;height:8px;background:#3ecf8e;border-radius:2px;margin-right:4px;"></span>Concluídos</span>
+          <span><span style="display:inline-block;width:8px;height:8px;background:#42c8f5;border-radius:2px;margin-right:4px;"></span>Criados</span>
+        </div>
+      </div>
+      <div style="font-size:10px;color:#4b5563;margin-bottom:12px;">por semana, com a linha de criados para ver se a fila cresce ou encolhe</div>
+      <div style="display:flex;align-items:flex-end;gap:24px;height:120px;padding:0 10px;overflow:hidden;">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><div style="display:flex;align-items:flex-end;gap:4px;width:100%;justify-content:center;"><div style="width:34%;height:35px;background:#3ecf8e;opacity:.85;border-radius:4px 4px 0 0;"></div><div style="width:14%;height:60px;background:#42c8f5;opacity:.75;border-radius:4px 4px 0 0;"></div></div><span style="font-size:10px;color:#4b5563;">04/08</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><div style="display:flex;align-items:flex-end;gap:4px;width:100%;justify-content:center;"><div style="width:34%;height:70px;background:#3ecf8e;opacity:.85;border-radius:4px 4px 0 0;"></div><div style="width:14%;height:78px;background:#42c8f5;opacity:.75;border-radius:4px 4px 0 0;"></div></div><span style="font-size:10px;color:#4b5563;">11/08</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><div style="display:flex;align-items:flex-end;gap:4px;width:100%;justify-content:center;"><div style="width:34%;height:52px;background:#3ecf8e;opacity:.85;border-radius:4px 4px 0 0;"></div><div style="width:14%;height:44px;background:#42c8f5;opacity:.75;border-radius:4px 4px 0 0;"></div></div><span style="font-size:10px;color:#4b5563;">18/08</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><div style="display:flex;align-items:flex-end;gap:4px;width:100%;justify-content:center;"><div style="width:34%;height:88px;background:#3ecf8e;opacity:.85;border-radius:4px 4px 0 0;"></div><div style="width:14%;height:92px;background:#42c8f5;opacity:.75;border-radius:4px 4px 0 0;"></div></div><span style="font-size:10px;color:#4b5563;">25/08</span></div>
+      </div>
+      <div style="font-size:10px;color:#4b5563;margin-top:8px;">na versão final "Criados" vira uma linha sobre as barras (Chart.js combo)</div>
+    </div>
+
+    <!-- aprovacao do cliente -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;">
+      <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;">Tempo de resposta do cliente <span style="font-size:9px;background:#ffbf30;color:#12151a;border-radius:4px;padding:1px 6px;font-weight:700;vertical-align:middle;">NOVO</span></div>
+        <div style="font-size:10px;color:#4b5563;margin-bottom:12px;">quanto tempo os posts esperam na aprovação do cliente</div>
+        <div style="display:flex;align-items:flex-end;gap:12px;height:100px;padding:0 6px;">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">9</span><div style="width:100%;height:44px;background:#42c8f5;opacity:.8;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">&lt; 4h</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">14</span><div style="width:100%;height:70px;background:#42c8f5;opacity:.8;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">4 a 24h</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">11</span><div style="width:100%;height:56px;background:#42c8f5;opacity:.8;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">1 a 3d</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">6</span><div style="width:100%;height:30px;background:#f5a342;opacity:.9;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">3 a 7d</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">3</span><div style="width:100%;height:16px;background:#f55a42;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">7d+</span></div>
+        </div>
+        <div style="font-size:11px;margin-top:10px;">Mediana: <b>1d 4h</b> <span style="color:#4b5563;">· 43 aprovações no período</span></div>
+      </div>
+      <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;">Clientes mais lentos para aprovar</div>
+        <div style="font-size:10px;color:#4b5563;margin-bottom:12px;">mediana de resposta · clique abre as entregas do cliente</div>
+        <div style="display:flex;flex-direction:column;font-size:12px;">
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2430;cursor:pointer;"><span style="width:22px;height:22px;border-radius:50%;background:#f542c8;font-size:9px;text-align:center;line-height:22px;color:#12151a;font-weight:700;">OP</span><span>Odonto Prime</span><span style="margin-left:auto;font-weight:700;color:#f55a42;">4d 2h</span><span style="font-size:10px;color:#4b5563;">8 amostras</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2430;cursor:pointer;"><span style="width:22px;height:22px;border-radius:50%;background:#42c8f5;font-size:9px;text-align:center;line-height:22px;color:#12151a;font-weight:700;">CV</span><span>Clínica Vitalis</span><span style="margin-left:auto;font-weight:700;color:#f5a342;">2d 6h</span><span style="font-size:10px;color:#4b5563;">11 amostras</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1e2430;cursor:pointer;"><span style="width:22px;height:22px;border-radius:50%;background:#3ecf8e;font-size:9px;text-align:center;line-height:22px;color:#12151a;font-weight:700;">MA</span><span>Dra. Marina</span><span style="margin-left:auto;font-weight:700;">1d 1h</span><span style="font-size:10px;color:#4b5563;">14 amostras</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;cursor:pointer;"><span style="width:22px;height:22px;border-radius:50%;background:#f5a342;font-size:9px;text-align:center;line-height:22px;color:#12151a;font-weight:700;">RC</span><span>Dr. Rafael Cunha</span><span style="margin-left:auto;font-weight:700;color:#3ecf8e;">3h 20min</span><span style="font-size:10px;color:#4b5563;">10 amostras</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- gargalos -->
+    <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;margin-bottom:18px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:2px;">Gargalos por etapa</div>
+      <div style="font-size:10px;color:#4b5563;margin-bottom:12px;">tempo médio real vs prazo configurado, com retrabalho (uma tabela só, sem gráfico duplicado)</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr style="color:#9ca3af;font-size:10px;text-transform:uppercase;letter-spacing:.04em;text-align:left;">
+          <th style="padding:6px 8px;font-weight:600;">Etapa</th><th style="padding:6px 8px;font-weight:600;width:32%;">Tempo médio</th><th style="padding:6px 8px;font-weight:600;">vs prazo</th><th style="padding:6px 8px;font-weight:600;">Atraso</th><th style="padding:6px 8px;font-weight:600;">Retrabalho</th><th style="padding:6px 8px;font-weight:600;">Amostras</th>
+        </tr>
+        <tr style="border-top:1px solid #1e2430;"><td style="padding:8px;">Copy</td><td style="padding:8px;"><div style="display:flex;align-items:center;gap:8px;"><div style="width:100%;height:6px;background:#1e2430;border-radius:3px;"><div style="width:100%;height:6px;background:#42c8f5;border-radius:3px;"></div></div><span style="white-space:nowrap;">5,0d</span></div></td><td style="padding:8px;color:#f55a42;">prazo 3d</td><td style="padding:8px;"><span style="background:rgba(245,90,66,.15);color:#f55a42;border-radius:6px;padding:2px 8px;font-size:11px;">62%</span></td><td style="padding:8px;color:#9ca3af;">21%</td><td style="padding:8px;color:#9ca3af;">24</td></tr>
+        <tr style="border-top:1px solid #1e2430;"><td style="padding:8px;">Aprovação da copy</td><td style="padding:8px;"><div style="display:flex;align-items:center;gap:8px;"><div style="width:100%;height:6px;background:#1e2430;border-radius:3px;"><div style="width:88%;height:6px;background:#42c8f5;border-radius:3px;"></div></div><span style="white-space:nowrap;">4,4d</span></div></td><td style="padding:8px;color:#f55a42;">prazo 2d</td><td style="padding:8px;"><span style="background:rgba(245,90,66,.15);color:#f55a42;border-radius:6px;padding:2px 8px;font-size:11px;">58%</span></td><td style="padding:8px;color:#9ca3af;">9%</td><td style="padding:8px;color:#9ca3af;">22</td></tr>
+        <tr style="border-top:1px solid #1e2430;"><td style="padding:8px;">Design</td><td style="padding:8px;"><div style="display:flex;align-items:center;gap:8px;"><div style="width:100%;height:6px;background:#1e2430;border-radius:3px;"><div style="width:64%;height:6px;background:#42c8f5;border-radius:3px;"></div></div><span style="white-space:nowrap;">3,2d</span></div></td><td style="padding:8px;color:#f5a342;">prazo 3d</td><td style="padding:8px;"><span style="background:rgba(245,163,66,.15);color:#f5a342;border-radius:6px;padding:2px 8px;font-size:11px;">34%</span></td><td style="padding:8px;color:#9ca3af;">28%</td><td style="padding:8px;color:#9ca3af;">21</td></tr>
+        <tr style="border-top:1px solid #1e2430;"><td style="padding:8px;">Aprovação do cliente</td><td style="padding:8px;"><div style="display:flex;align-items:center;gap:8px;"><div style="width:100%;height:6px;background:#1e2430;border-radius:3px;"><div style="width:60%;height:6px;background:#42c8f5;border-radius:3px;"></div></div><span style="white-space:nowrap;">3,0d</span></div></td><td style="padding:8px;color:#3ecf8e;">prazo 3d</td><td style="padding:8px;"><span style="background:rgba(62,207,142,.15);color:#3ecf8e;border-radius:6px;padding:2px 8px;font-size:11px;">18%</span></td><td style="padding:8px;color:#9ca3af;">31%</td><td style="padding:8px;color:#9ca3af;">19</td></tr>
+        <tr style="border-top:1px solid #1e2430;"><td style="padding:8px;">Captação</td><td style="padding:8px;"><div style="display:flex;align-items:center;gap:8px;"><div style="width:100%;height:6px;background:#1e2430;border-radius:3px;"><div style="width:44%;height:6px;background:#42c8f5;border-radius:3px;"></div></div><span style="white-space:nowrap;">2,2d</span></div></td><td style="padding:8px;color:#3ecf8e;">prazo 5d</td><td style="padding:8px;"><span style="background:rgba(62,207,142,.15);color:#3ecf8e;border-radius:6px;padding:2px 8px;font-size:11px;">8%</span></td><td style="padding:8px;color:#9ca3af;">4%</td><td style="padding:8px;color:#9ca3af;">12</td></tr>
+      </table>
+      <div style="font-size:10px;color:#42c8f5;margin-top:8px;cursor:pointer;">Mostrar todas as etapas</div>
+    </div>
+
+    <!-- equipe -->
+    <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:2px;">Desempenho da equipe</div>
+      <div style="font-size:10px;color:#4b5563;margin-bottom:12px;">sem 100% falso: pouca amostra vira "Poucos dados"</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr style="color:#9ca3af;font-size:10px;text-transform:uppercase;letter-spacing:.04em;text-align:left;">
+          <th style="padding:6px 8px;font-weight:600;">Membro</th><th style="padding:6px 8px;font-weight:600;">Concluídas</th><th style="padding:6px 8px;font-weight:600;">Tempo médio</th><th style="padding:6px 8px;font-weight:600;">Pontualidade</th><th style="padding:6px 8px;font-weight:600;">Retrabalho</th><th style="padding:6px 8px;font-weight:600;">Atividade</th>
+        </tr>
+        <tr style="border-top:1px solid #1e2430;"><td style="padding:8px;">Ana</td><td style="padding:8px;">18</td><td style="padding:8px;">2,1d</td><td style="padding:8px;"><span style="background:rgba(62,207,142,.15);color:#3ecf8e;border-radius:6px;padding:2px 8px;font-size:11px;">83%</span></td><td style="padding:8px;color:#9ca3af;">11%</td><td style="padding:8px;color:#9ca3af;">96 eventos</td></tr>
+        <tr style="border-top:1px solid #1e2430;"><td style="padding:8px;">Eduardo</td><td style="padding:8px;">14</td><td style="padding:8px;">2,8d</td><td style="padding:8px;"><span style="background:rgba(245,163,66,.15);color:#f5a342;border-radius:6px;padding:2px 8px;font-size:11px;">64%</span></td><td style="padding:8px;color:#9ca3af;">19%</td><td style="padding:8px;color:#9ca3af;">71 eventos</td></tr>
+        <tr style="border-top:1px solid #1e2430;"><td style="padding:8px;">Júlia</td><td style="padding:8px;">9</td><td style="padding:8px;">3,4d</td><td style="padding:8px;"><span style="background:rgba(245,90,66,.15);color:#f55a42;border-radius:6px;padding:2px 8px;font-size:11px;">41%</span></td><td style="padding:8px;color:#9ca3af;">27%</td><td style="padding:8px;color:#9ca3af;">44 eventos</td></tr>
+        <tr style="border-top:1px solid #1e2430;"><td style="padding:8px;">Pedro</td><td style="padding:8px;">2</td><td style="padding:8px;">1,9d</td><td style="padding:8px;"><span style="background:#1e2430;color:#9ca3af;border-radius:6px;padding:2px 8px;font-size:11px;" title="Menos de 3 etapas concluídas no período">Poucos dados</span></td><td style="padding:8px;color:#4b5563;">–</td><td style="padding:8px;color:#9ca3af;">12 eventos</td></tr>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>Aprovação</h3>
+  <div class="options" data-multiselect>
+    <div class="option" data-choice="aprovado-analytics" onclick="toggleSelect(this)">
+      <div class="letter">✓</div>
+      <div class="content"><h3>Aprovar essa direção</h3><p>Seguir com este layout para as Fases 2 e 3</p></div>
+    </div>
+    <div class="option" data-choice="ajustes-analytics" onclick="toggleSelect(this)">
+      <div class="letter">✎</div>
+      <div class="content"><h3>Quero ajustes</h3><p>Me diga no terminal o que mudar</p></div>
+    </div>
+  </div>
+</div>

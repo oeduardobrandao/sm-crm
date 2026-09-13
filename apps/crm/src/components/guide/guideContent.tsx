@@ -130,7 +130,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
         action: {
           label: 'Fazer agora',
           caption: 'Abre a aba Hub do cliente para gerar e copiar o link.',
-          to: clienteDeepLink('hub'),
+          to: clienteDeepLink('hub/acesso'),
         },
         signal: 'hasHubToken',
         entitlementFlag: 'feature_hub_portal',

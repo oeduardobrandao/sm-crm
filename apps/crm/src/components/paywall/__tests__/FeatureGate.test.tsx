@@ -6,6 +6,7 @@ import { FeatureGate } from '../FeatureGate';
 import { useEntitlements } from '../../../hooks/useEntitlements';
 import { AuthContext } from '../../../context/AuthContext';
 import { reportPaywallHit } from '../../../lib/paywall-report';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 vi.mock('../../../hooks/useEntitlements', () => ({
   useEntitlements: vi.fn(),
@@ -19,7 +20,16 @@ const mockedUseEntitlements = vi.mocked(useEntitlements);
 const mockedReportPaywallHit = vi.mocked(reportPaywallHit);
 
 function renderWithWorkspace(ui: ReactElement, workspaceId: string | null) {
-  const authValue = workspaceId ? ({ profile: { conta_id: workspaceId } } as never) : null;
+  // `can` is a real derivePermission-backed function (Task 12 note: this
+  // fixture used to omit it entirely, which would hand `can === undefined` to
+  // the first consumer that called it — FeatureGate itself never calls `can`,
+  // but the fixture should still describe a complete, real AuthContextValue).
+  const authValue = workspaceId
+    ? ({
+        profile: { conta_id: workspaceId },
+        can: makeCan(fakeMembership({ role: 'owner' })),
+      } as never)
+    : null;
   return render(
     <AuthContext.Provider value={authValue}>
       <MemoryRouter>{ui}</MemoryRouter>

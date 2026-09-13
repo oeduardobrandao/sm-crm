@@ -1,5 +1,6 @@
 import { UserPlus } from 'lucide-react';
 import type { UseFormReturn } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -13,6 +14,7 @@ import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/comp
 import { InviteTimeLeft } from '../configuracao/inviteHelpers';
 import { UsageMeter } from '@/components/usage/UsageMeter';
 import { useIsWorkspaceOwner } from '@/hooks/useIsWorkspaceOwner';
+import { getWorkspaceRoles } from '@/store';
 import type { MembroFormValues } from './membroForm';
 import type { SeatState } from './inviteSupport';
 
@@ -58,11 +60,46 @@ export function InviteSection({
   form,
   seat,
   pendingInvite,
+  canManageWorkspace,
+  canAssignRoles,
 }: {
   form: UseFormReturn<MembroFormValues>;
   seat: SeatState;
   pendingInvite: { email: string; role: string; expires_at: string } | null;
+  /**
+   * Same prop EquipePage already computes for itself — gates the
+   * custom-papel `getWorkspaceRoles` fetch below so a member who can't
+   * manage the workspace never fires it.
+   *
+   * EquipePage now computes it as `can('equipe', 'editar') === true`
+   * (Task 14), the same check MembrosTab.tsx uses for its equivalent
+   * controls and the same one `manage-workspace-user`/`invite-user` enforce
+   * server-side. Before that conversion the caller used the coarse
+   * `workspaceRole === 'owner' || 'admin'` literal, which hid this section
+   * from a custom papel granted `equipe:editar` even though the server would
+   * have accepted its writes. This prop still just threads through whatever
+   * the caller computes.
+   */
+  canManageWorkspace: boolean;
+  /**
+   * The CHASSIS check (`workspaceRole` is owner/admin), deliberately NOT the
+   * same thing as `canManageWorkspace` above (`equipe:editar`).
+   * `invite-user/index.ts` requires both to invite with an elevated role:
+   * `isPrivilegedActor = caller.role === 'owner' || 'admin'`, and a
+   * non-privileged actor sending `role !== 'agent'` or any `role_id` gets
+   * "Apenas donos e admins podem convidar com função elevada ou papel."
+   * Offering those options to a custom `equipe:editar` actor was a dead end:
+   * the invite only failed after being submitted. Same rule, same prop name,
+   * as MembrosTab's own invite dialog.
+   */
+  canAssignRoles: boolean;
 }) {
+  const { data: workspaceRoles = [] } = useQuery({
+    queryKey: ['workspace-roles'],
+    queryFn: getWorkspaceRoles,
+    enabled: canManageWorkspace,
+  });
+
   const sectionTitle = (
     <span
       style={{
@@ -158,10 +195,21 @@ export function InviteSection({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    {canAssignRoles && <SelectItem value="admin">Admin</SelectItem>}
                     <SelectItem value="agent">Agente</SelectItem>
+                    {canAssignRoles &&
+                      workspaceRoles.map((r) => (
+                        <SelectItem key={r.id} value={`custom:${r.id}`}>
+                          {r.nome}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
+                {!canAssignRoles && (
+                  <p className="text-xs text-[color:var(--text-muted)]">
+                    Apenas donos e admins convidam com função elevada ou papel.
+                  </p>
+                )}
                 <FormMessage />
               </FormItem>
             )}

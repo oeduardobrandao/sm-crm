@@ -366,7 +366,7 @@ describe('PostsKanbanView', () => {
       <PostsKanbanView {...baseProps} posts={[makePost()]} cardsByWorkflowId={overdue} />,
     );
     const prazo = screen.getByText('3d atr.');
-    expect(prazo).toHaveStyle({ color: '#ef4444' });
+    expect(prazo).toHaveStyle({ color: 'var(--danger)' });
   });
 
   it('falls back for missing titulo, date and workflow card', () => {

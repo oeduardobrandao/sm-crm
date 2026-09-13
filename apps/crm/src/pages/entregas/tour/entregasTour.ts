@@ -38,20 +38,47 @@ export const TOUR_STEP_DEFS = [
   },
 ];
 
+/** Variante com feature_post_processes: mesmos seletores, sem afirmar que só
+ *  fluxos são cards (spec §3). */
+export const TOUR_STEP_DEFS_POST_PROCESSES = TOUR_STEP_DEFS.map((s, i) =>
+  i === 0
+    ? {
+        ...s,
+        description:
+          'Isto é um card de fluxo: um ciclo de trabalho de um cliente. Posts individuais com processo próprio também viram cards aqui.',
+      }
+    : i === 2
+      ? {
+          ...s,
+          description:
+            'Os posts de um fluxo ficam dentro do card. Clique no card para abrir o painel e criar posts.',
+        }
+      : s,
+);
+
 export const tourStorageKey = (contaId: string) => `entregas_tour_done_${contaId}`;
 
-export function buildTourSteps(root: ParentNode = document): DriveStep[] {
-  return TOUR_STEP_DEFS.filter((s) => root.querySelector(s.selector)).map((s) => ({
-    element: s.selector,
-    popover: { title: s.title, description: s.description },
-  }));
+export function buildTourSteps(
+  root: ParentNode = document,
+  defs: typeof TOUR_STEP_DEFS = TOUR_STEP_DEFS,
+): DriveStep[] {
+  return defs
+    .filter((s) => root.querySelector(s.selector))
+    .map((s) => ({
+      element: s.selector,
+      popover: { title: s.title, description: s.description },
+    }));
 }
 
 export function startEntregasTour(opts: {
   onComplete: () => void;
   onDismiss: (stepIndex: number) => void;
+  postProcesses?: boolean;
 }): void {
-  const steps = buildTourSteps();
+  const steps = buildTourSteps(
+    document,
+    opts.postProcesses ? TOUR_STEP_DEFS_POST_PROCESSES : TOUR_STEP_DEFS,
+  );
   if (steps.length === 0) return;
 
   // Completion = the user clicked "Concluir" on the last step. Any other exit (X, overlay,

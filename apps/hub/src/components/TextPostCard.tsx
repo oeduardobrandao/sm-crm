@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { CheckCircle, AlertCircle, ChevronDown, ExternalLink, ImageOff } from 'lucide-react';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitApproval } from '../api';
 import { sanitizeExternalUrl } from '../lib/security';
 import { TIPO_LABEL, STATUS_LABEL, formatDate, PlatformBadge } from './PostCard';
@@ -33,6 +34,7 @@ export function TextPostCard({
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  useUnsavedWork(comentario.trim() !== '' || submitting);
   const isPending = !readOnly && post.status === 'enviado_cliente';
   const preview = post.ig_caption || post.conteudo_plain;
 

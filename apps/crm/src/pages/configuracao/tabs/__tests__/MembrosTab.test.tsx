@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +8,7 @@ const { useAuthMock, storeMock } = vi.hoisted(() => ({
   storeMock: {
     getInitials: vi.fn((name: string) => (name ? name[0].toUpperCase() : '?')),
     getWorkspaceUsers: vi.fn(async () => []),
+    getWorkspaceRoles: vi.fn(async () => [] as { id: string; nome: string }[]),
     removeWorkspaceUser: vi.fn(async () => {}),
     updateWorkspaceUserRole: vi.fn(async () => {}),
     setWorkspaceUserFinancialAccess: vi.fn(async () => {}),
@@ -51,6 +53,68 @@ vi.mock('@/components/ui/switch', () => ({
   ),
 }));
 
+// Radix Select requires pointer-capture/scrollIntoView APIs jsdom doesn't
+// implement — mocked the same way PapeisTab.test.tsx does, so the role
+// SelectItems (including the custom-papel ones) render as plain clickable
+// buttons instead of fighting jsdom's missing portal/pointer-capture
+// behaviour. MembrosTab drives these Selects with plain useState (no
+// react-hook-form Controller involved here), so a bare value/onValueChange
+// passthrough is enough.
+vi.mock('@/components/ui/select', async () => {
+  const ReactModule = await vi.importActual<typeof import('react')>('react');
+
+  interface SelectContextValue {
+    value?: string;
+    onValueChange?: (value: string) => void;
+  }
+  const SelectContext = ReactModule.createContext<SelectContextValue>({});
+
+  function Select({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (value: string) => void;
+    children: React.ReactNode;
+  }) {
+    return (
+      <SelectContext.Provider value={{ value, onValueChange }}>
+        <div>{children}</div>
+      </SelectContext.Provider>
+    );
+  }
+  function SelectTrigger({ children }: { children: React.ReactNode }) {
+    return <button type="button">{children}</button>;
+  }
+  function SelectValue({ placeholder }: { placeholder?: string }) {
+    const { value } = ReactModule.useContext(SelectContext);
+    return <span>{value || placeholder || ''}</span>;
+  }
+  function SelectContent({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+  function SelectItem({ value, children }: { value: string; children: React.ReactNode }) {
+    const { onValueChange } = ReactModule.useContext(SelectContext);
+    return (
+      <button type="button" onClick={() => onValueChange?.(value)}>
+        {children}
+      </button>
+    );
+  }
+
+  return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem };
+});
+
+// Mutable holder so individual tests can supply `invites` rows (e.g. for
+// "Reenviar") without redefining the whole vi.mock factory. vi.hoisted (not a
+// plain const) because the vi.mock factory below runs before ordinary
+// top-level statements execute — see the identical pattern/comment on
+// useAuthMock/storeMock above.
+const { invitesRowsHolder } = vi.hoisted(() => ({
+  invitesRowsHolder: { current: [] as Record<string, unknown>[] },
+}));
+
 vi.mock('../../../../lib/supabase', () => ({
   supabase: {
     auth: {
@@ -60,7 +124,7 @@ vi.mock('../../../../lib/supabase', () => ({
       select: () => ({
         eq: () => ({
           in: () => ({
-            order: async () => ({ data: [] }),
+            order: async () => ({ data: invitesRowsHolder.current }),
           }),
         }),
       }),
@@ -70,6 +134,10 @@ vi.mock('../../../../lib/supabase', () => ({
 
 import { toast } from 'sonner';
 import MembrosTab from '../MembrosTab';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
+
+type CanFn = (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
 
 function renderTab() {
   const queryClient = new QueryClient({
@@ -82,6 +150,19 @@ function renderTab() {
   );
 }
 
+/** Scopes a query to one member row, identified by its displayed name —
+ * lets tests assert exactly which row a button does/doesn't appear on,
+ * instead of a page-wide "at least one Remover exists somewhere" count that
+ * a hidden-on-the-owner-row bug wouldn't catch. Waits for the row itself
+ * (the roster query is async), so callers don't need their own leading
+ * `await screen.findByText(...)` first. */
+async function getRow(name: string) {
+  const nameEl = await screen.findByText(name);
+  const row = nameEl.closest('.config-member-row');
+  expect(row).not.toBeNull();
+  return within(row as HTMLElement);
+}
+
 /**
  * `profile.role`/`role` (from `profiles.role`) goes stale on workspace switch —
  * no switch path writes it. `workspaceRole` (from `workspace_members`) is the
@@ -92,15 +173,25 @@ function renderTab() {
 function setAuth({
   workspaceRole,
   staleProfileRole,
+  can,
 }: {
   workspaceRole: 'owner' | 'admin' | 'agent' | null;
   staleProfileRole: 'owner' | 'admin' | 'agent';
+  /**
+   * Override for a custom-role scenario. Defaults to a real
+   * derivePermission-backed `can` for a LEGACY membership of `workspaceRole`
+   * (never derived from the stale `staleProfileRole`, mirroring the real
+   * AuthContext) — pass this explicitly to simulate a custom role_id/permissions
+   * membership instead.
+   */
+  can?: CanFn;
 }) {
   useAuthMock.mockReturnValue({
     user: { id: 'me', email: 'me@exemplo.com' },
     profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1', role: staleProfileRole },
     role: staleProfileRole,
     workspaceRole,
+    can: can ?? makeCan(workspaceRole === null ? null : fakeMembership({ role: workspaceRole })),
     loading: false,
     signOut: vi.fn(),
     refetchProfile: vi.fn(),
@@ -269,5 +360,511 @@ describe('MembrosTab — financial access toggle', () => {
     // The switch reflects server state only, and the server call failed, so it
     // must remain exactly as it was before the click.
     expect(toggle).not.toBeChecked();
+  });
+});
+
+/**
+ * configTabs.ts gates the `membros` TAB itself on `equipe:ver` (Task 12), a
+ * strictly broader condition than the OLD staff-only role gate: a custom role
+ * granted only `equipe:ver` (not `editar`) can now reach this component,
+ * which must therefore stop rendering the mutation controls it cannot
+ * actually use — the invite-user / manage-workspace-user edge functions
+ * already enforce `equipe:editar` server-side (Task 11), so this is a UI
+ * consistency fix, not the real authorization boundary.
+ */
+describe('MembrosTab — action buttons gated on equipe:editar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'u1', nome: 'Ana Owner', role: 'owner', avatar_url: null, created_at: '2026-01-01' },
+      { id: 'u2', nome: 'Beto Admin', role: 'admin', avatar_url: null, created_at: '2026-01-02' },
+    ]);
+  });
+
+  it('loads the list but hides Convidar/Função/Remover for a custom role with equipe:ver only', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'ver' } }),
+      ),
+    });
+    renderTab();
+
+    await screen.findByText('Ana Owner');
+    expect(storeMock.getWorkspaceUsers).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Convidar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+  });
+
+  it('shows Convidar and Remover on the non-owner row for a custom role with equipe:editar', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+      ),
+    });
+    renderTab();
+
+    await screen.findByText('Ana Owner');
+    expect(screen.getByRole('button', { name: /Convidar/ })).toBeInTheDocument();
+    // Beto Admin (not an owner row) gets Remover from equipe:editar alone.
+    const betoRow = await getRow('Beto Admin');
+    expect(betoRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+  });
+
+  /**
+   * Task 14 fix round 2 (external review, P2 confirmed): `update-role` is a
+   * STRICTER server-side gate than `equipe:editar` alone --
+   * manage-workspace-user/index.ts requires the caller's CHASSIS role to be
+   * owner/admin for that action specifically ("atribuição segue dono e
+   * admin"), so a custom equipe:editar actor (chassis 'agent') who saw the
+   * Função button would get a 403 on click. Remover/Convidar stay on
+   * canManageTeam alone -- only `update-role` carries the extra chassis
+   * requirement.
+   */
+  it('hides Função (but keeps Remover) on the non-owner row for a custom role with equipe:editar whose chassis is agent', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+      ),
+    });
+    renderTab();
+
+    await screen.findByText('Ana Owner');
+    expect(screen.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+    const betoRow = await getRow('Beto Admin');
+    expect(betoRow.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+    expect(betoRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+  });
+
+  it('a legacy admin sees Função/Remover on the non-owner row, still gated correctly (no regression)', async () => {
+    setAuth({ workspaceRole: 'admin', staleProfileRole: 'admin' });
+    renderTab();
+
+    await screen.findByText('Ana Owner');
+    expect(screen.getByRole('button', { name: /Convidar/ })).toBeInTheDocument();
+    const betoRow = await getRow('Beto Admin');
+    expect(betoRow.getByRole('button', { name: 'Função' })).toBeInTheDocument();
+    expect(betoRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+  });
+
+  /**
+   * User-reported bug (live verification, pre-existing on main): the reporting
+   * admin saw Função/Remover on the workspace Dono's own row, even though
+   * manage-workspace-user/index.ts's "Cannot modify workspace owner (unless
+   * caller is also owner)" rule (~:226-229) applies to BOTH update-role and
+   * remove, for ANY non-owner caller -- including an admin, whose
+   * `canAssignRoles` gate for Função has no owner-row carve-out on its own.
+   * `canActOnMember` (MembrosTab.tsx) now hides both buttons on any row
+   * where `u.role === 'owner'` unless the VIEWER is also `workspaceRole ===
+   * 'owner'`.
+   */
+  describe('owner row protected from non-owner actors (server rule parity)', () => {
+    it('hides Função and Remover on the Dono row for an admin viewer', async () => {
+      setAuth({ workspaceRole: 'admin', staleProfileRole: 'admin' });
+      renderTab();
+
+      const ownerRow = await getRow('Ana Owner');
+      expect(ownerRow.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+      expect(ownerRow.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+    });
+
+    it('hides Função and Remover on the Dono row for a custom equipe:editar actor (chassis agent)', async () => {
+      setAuth({
+        workspaceRole: 'agent',
+        staleProfileRole: 'agent',
+        can: makeCan(
+          fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+        ),
+      });
+      renderTab();
+
+      const ownerRow = await getRow('Ana Owner');
+      expect(ownerRow.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+      expect(ownerRow.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+    });
+
+    it('shows Função and Remover on another Dono row for an owner viewer', async () => {
+      storeMock.getWorkspaceUsers.mockResolvedValue([
+        { id: 'u1', nome: 'Ana Owner', role: 'owner', avatar_url: null, created_at: '2026-01-01' },
+      ]);
+      setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+      renderTab();
+
+      const ownerRow = await getRow('Ana Owner');
+      expect(ownerRow.getByRole('button', { name: 'Função' })).toBeInTheDocument();
+      expect(ownerRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+    });
+
+    it("still hides Função and Remover on the viewer's own row, even for an owner viewer", async () => {
+      storeMock.getWorkspaceUsers.mockResolvedValue([
+        { id: 'me', nome: 'Eu Mesma', role: 'owner', avatar_url: null, created_at: '2026-01-01' },
+        { id: 'u2', nome: 'Beto Admin', role: 'admin', avatar_url: null, created_at: '2026-01-02' },
+      ]);
+      setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+      renderTab();
+
+      const ownRow = await getRow('Eu Mesma');
+      expect(ownRow.queryByRole('button', { name: 'Função' })).not.toBeInTheDocument();
+      expect(ownRow.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+      // Sanity: the gate isn't just globally broken -- a non-self row still works.
+      const betoRow = await getRow('Beto Admin');
+      expect(betoRow.getByRole('button', { name: 'Função' })).toBeInTheDocument();
+      expect(betoRow.getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+    });
+  });
+});
+
+/**
+ * Task 13: papel (custom-role) assignment in the UI. `wsUsers` rows now carry
+ * `role_id`/`papel_nome` (getWorkspaceUsers, store/workspace.ts), and the
+ * função select encodes 'admin' | 'agent' | 'custom:<uuid>'.
+ */
+describe('MembrosTab — atribuição de papel custom', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invitesRowsHolder.current = [];
+    storeMock.getWorkspaceRoles.mockResolvedValue([
+      { id: 'role-1', nome: 'Editor de Conteúdo', permissions: {}, created_at: '2026-01-01' },
+      { id: 'role-2', nome: 'Financeiro Only', permissions: {}, created_at: '2026-01-01' },
+    ]);
+  });
+
+  it('shows the papel name badge (not the legacy RoleBadge label) for a member with a custom papel', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      {
+        id: 'u1',
+        nome: 'Carla Editora',
+        role: 'agent',
+        role_id: 'role-1',
+        papel_nome: 'Editor de Conteúdo',
+        avatar_url: null,
+        created_at: '2026-01-01',
+      },
+    ]);
+    renderTab();
+
+    await screen.findByText('Carla Editora');
+    expect(screen.getByText('Editor de Conteúdo')).toBeInTheDocument();
+    // RoleBadge's legacy label for 'agent' must NOT appear alongside it.
+    expect(screen.queryByText('Agente')).not.toBeInTheDocument();
+  });
+
+  it('a legacy member (no role_id) keeps the ordinary RoleBadge label', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'u1', nome: 'Beto Admin', role: 'admin', role_id: null, avatar_url: null },
+    ]);
+    renderTab();
+
+    await screen.findByText('Beto Admin');
+    expect(screen.getByText('Admin')).toBeInTheDocument();
+  });
+
+  it('opening "Função" for a custom-papel member pre-selects custom:<roleId>, and saving a different preset calls updateWorkspaceUserRole with { role }', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      {
+        id: 'u1',
+        nome: 'Carla Editora',
+        role: 'agent',
+        role_id: 'role-1',
+        papel_nome: 'Editor de Conteúdo',
+        avatar_url: null,
+      },
+    ]);
+    renderTab();
+
+    await screen.findByText('Carla Editora');
+    fireEvent.click(screen.getByRole('button', { name: 'Função' }));
+
+    // The select's mocked SelectValue renders the current value as text.
+    expect(await screen.findByText('custom:role-1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Admin' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => {
+      expect(storeMock.updateWorkspaceUserRole).toHaveBeenCalledWith('u1', { role: 'admin' });
+    });
+    expect(toast.success).toHaveBeenCalledWith('Função atualizada!');
+  });
+
+  it('selecting a custom papel for a legacy member calls updateWorkspaceUserRole with { roleId }', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([
+      { id: 'u2', nome: 'Beto Admin', role: 'admin', role_id: null, avatar_url: null },
+    ]);
+    renderTab();
+
+    await screen.findByText('Beto Admin');
+    fireEvent.click(screen.getByRole('button', { name: 'Função' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editor de Conteúdo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => {
+      expect(storeMock.updateWorkspaceUserRole).toHaveBeenCalledWith('u2', { roleId: 'role-1' });
+    });
+  });
+
+  it('the invite modal lists custom papéis and sends role: agent + role_id when one is picked', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite enviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+      // The invite modal's <Label>Email *</Label> has no htmlFor/id pairing
+      // with the <Input> beside it, so getByLabelText can't resolve it — the
+      // email field is the only textbox rendered in the dialog at this point.
+      fireEvent.change(screen.getByRole('textbox'), {
+        target: { value: 'nova@equipe.com' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Financeiro Only' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar Convite' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body).toEqual({
+        email: 'nova@equipe.com',
+        role: 'agent',
+        role_id: 'role-2',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('the invite modal sends role_id: null (never omitted) when a preset role is chosen', async () => {
+    // Round-2 fix: role_id must be sent EXPLICITLY as null for a preset
+    // choice, never omitted — invite-actions.ts treats an absent key as
+    // "legacy caller, inherit from a prior pending invite for this email",
+    // which would silently resurrect a stale custom papel from an unrelated
+    // earlier invite instead of the plain role just picked here.
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite enviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+      fireEvent.change(screen.getByRole('textbox'), {
+        target: { value: 'nova@equipe.com' },
+      });
+      // Default select value is already 'agent' (a preset) — no papel click.
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar Convite' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body).toEqual({
+        email: 'nova@equipe.com',
+        role: 'agent',
+        role_id: null,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('"Reenviar" sends the pending invite\'s role_id explicitly (custom papel case)', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+    invitesRowsHolder.current = [
+      {
+        id: 'inv-1',
+        email: 'pendente-custom@x.com',
+        role: 'agent',
+        role_id: 'role-1',
+        status: 'pending',
+        expires_at: '2099-01-01T00:00:00Z',
+      },
+    ];
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite reenviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      fireEvent.click(await screen.findByRole('button', { name: 'Reenviar' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body).toEqual({
+        email: 'pendente-custom@x.com',
+        role: 'agent',
+        role_id: 'role-1',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('"Reenviar" sends role_id: null explicitly (never omitted) for a legacy pending invite with no custom papel', async () => {
+    // Round-2 fix: the resend path must never rely on the server's inherit
+    // fallback (reserved for legacy/stale callers) even for its own
+    // no-custom-role case -- MembrosTab always knows the row's actual value
+    // and must say so explicitly.
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+    invitesRowsHolder.current = [
+      {
+        id: 'inv-2',
+        email: 'pendente-legado@x.com',
+        role: 'admin',
+        role_id: null,
+        status: 'pending',
+        expires_at: '2099-01-01T00:00:00Z',
+      },
+    ];
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite reenviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      fireEvent.click(await screen.findByRole('button', { name: 'Reenviar' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body).toEqual({
+        email: 'pendente-legado@x.com',
+        role: 'admin',
+        role_id: null,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+/**
+ * Revisão externa (P2): the invite dialog's função select offered Admin and
+ * every custom papel to ANY `equipe:editar` actor. `invite-user/index.ts`
+ * rejects both shapes unless the caller's CHASSIS role is owner/admin
+ * (`isPrivilegedActor`; "Apenas donos e admins podem convidar com função
+ * elevada ou papel."), so those options were a dead end that only failed after
+ * the invite was submitted. The select now mirrors `canAssignRoles`, the same
+ * chassis check that already gated the Função button.
+ */
+describe('MembrosTab — invite dialog role options follow the chassis rule', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invitesRowsHolder.current = [];
+    storeMock.getWorkspaceUsers.mockResolvedValue([]);
+    storeMock.getWorkspaceRoles.mockResolvedValue([
+      { id: 'role-1', nome: 'Editor de Conteúdo', permissions: {}, created_at: '2026-01-01' },
+      { id: 'role-2', nome: 'Financeiro Only', permissions: {}, created_at: '2026-01-01' },
+    ]);
+  });
+
+  it('a custom equipe:editar actor (chassis agent) sees ONLY Agente', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-9', permissions: { equipe: 'editar' } }),
+      ),
+    });
+    renderTab();
+    await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+
+    expect(screen.getByRole('button', { name: 'Agente' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Admin' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editor de Conteúdo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Financeiro Only' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Apenas donos e admins convidam com função elevada ou papel.'),
+    ).toBeInTheDocument();
+  });
+
+  it('a legacy admin still sees Admin, Agente and every custom papel', async () => {
+    setAuth({ workspaceRole: 'admin', staleProfileRole: 'admin' });
+    renderTab();
+    await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+
+    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editor de Conteúdo' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Financeiro Only' })).toBeInTheDocument();
+    expect(
+      screen.queryByText('Apenas donos e admins convidam com função elevada ou papel.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a legacy owner sees every option too (regression)', async () => {
+    setAuth({ workspaceRole: 'owner', staleProfileRole: 'owner' });
+    renderTab();
+    await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+
+    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editor de Conteúdo' })).toBeInTheDocument();
+  });
+
+  it('the non-privileged actor can still send an agent invite (role=agent, role_id=null)', async () => {
+    setAuth({
+      workspaceRole: 'agent',
+      staleProfileRole: 'agent',
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-9', permissions: { equipe: 'editar' } }),
+      ),
+    });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ success: true, message: 'Convite enviado!' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderTab();
+      await waitFor(() => expect(storeMock.getWorkspaceUsers).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByRole('button', { name: /Convidar/ }));
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'nova@equipe.com' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar Convite' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      // Exactly the shape invite-user accepts from a non-privileged actor.
+      expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+        email: 'nova@equipe.com',
+        role: 'agent',
+        role_id: null,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

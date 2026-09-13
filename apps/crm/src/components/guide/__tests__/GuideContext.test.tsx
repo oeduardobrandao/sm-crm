@@ -43,6 +43,7 @@ function Probe() {
     <div>
       <span data-testid="open">{String(g.isOpen)}</span>
       <span data-testid="entry">{String(g.showEntryPoint)}</span>
+      <span data-testid="auto">{g.autoOpen}</span>
       <button onClick={() => g.open('pill')}>abrir</button>
       <button onClick={() => g.close()}>fechar</button>
     </div>
@@ -168,5 +169,33 @@ describe('GuideProvider', () => {
     });
     renderProvider();
     expect(screen.getByTestId('entry').textContent).toBe('true');
+  });
+
+  it('autoOpen: yes no dashboard vazio (abre), yes fora do dashboard (vai abrir), no com clientes, unknown pending', async () => {
+    renderProvider('/dashboard');
+    await waitFor(() => expect(screen.getByTestId('open').textContent).toBe('true'));
+    expect(screen.getByTestId('auto').textContent).toBe('yes');
+  });
+
+  it('autoOpen fora do dashboard com workspace vazio é yes sem abrir', () => {
+    renderProvider('/entregas');
+    expect(screen.getByTestId('open').textContent).toBe('false');
+    expect(screen.getByTestId('auto').textContent).toBe('yes');
+  });
+
+  it('autoOpen é no com clientes e unknown enquanto pending', () => {
+    useGuideSignalsMock.mockReturnValue({
+      ...EMPTY_SIGNALS,
+      clientes: { status: 'success', count: 3 },
+    });
+    const { unmount } = renderProvider('/dashboard');
+    expect(screen.getByTestId('auto').textContent).toBe('no');
+    unmount();
+    useGuideSignalsMock.mockReturnValue({
+      ...EMPTY_SIGNALS,
+      clientes: { status: 'pending', count: 0 },
+    });
+    renderProvider('/dashboard');
+    expect(screen.getByTestId('auto').textContent).toBe('unknown');
   });
 });

@@ -90,14 +90,52 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
     const { data: { user }, error: authErr } = await svc.auth.getUser(token);
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", user.id).single();
-    if (!profile?.conta_id) return json({ error: "Profile not found" }, 403);
+    const { data: profile } = await svc.from("profiles").select("conta_id, active_workspace_id").eq("id", user.id).single();
+    if (!profile) return json({ error: "Profile not found" }, 403);
 
     const requestUrl = new URL(req.url);
     const parts = requestUrl.pathname.split("/").filter(Boolean);
     const fnIdx = parts.indexOf("post-media-manage");
     const idStr = parts[fnIdx + 1];
     const sub = parts[fnIdx + 2];
+
+    if (req.method === "PATCH" && sub === "replace") {
+      const linkId = parseInt(idStr, 10);
+      if (!/^\d+$/.test(idStr) || isNaN(linkId) || !Number.isSafeInteger(linkId) || linkId <= 0) {
+        return json({ error: "invalid id" }, 400);
+      }
+      // Never fall back to the legacy selector when there is no active workspace.
+      if (!profile.active_workspace_id) return json({ error: "Workspace unavailable" }, 403);
+      const body = await req.json().catch(() => null);
+      if (!body || !Number.isSafeInteger(body.file_id) || body.file_id <= 0 ||
+        typeof body.expected_r2_key !== "string" || !body.expected_r2_key.trim() ||
+        body.expected_r2_key.length > 2048) {
+        return json({ error: "Invalid replacement" }, 400);
+      }
+      try {
+        // The RPC locks the post/link/files and rechecks membership and ownership inside
+        // the transaction. A preflight SELECT alone would race a publish or another edit.
+        const { error } = await svc.rpc("post_file_link_replace", {
+          p_link_id: linkId,
+          p_file_id: body.file_id,
+          p_expected_r2_key: body.expected_r2_key,
+          p_conta_id: profile.active_workspace_id,
+          p_user_id: user.id,
+        }).abortSignal(AbortSignal.timeout(15_000));
+        if (error) {
+          if (error.code === "P0403") return json({ error: "Workspace unavailable" }, 403);
+          if (error.code === "P0404") return json({ error: "Media not found" }, 404);
+          if (error.code === "P0400") return json({ error: "Invalid replacement" }, 400);
+          if (error.code === "P0409") return json({ error: "Media changed or post is no longer editable" }, 409);
+          return internalServerError(json, "post-media-manage:replace", error);
+        }
+        return json({ ok: true });
+      } catch (error) {
+        return internalServerError(json, "post-media-manage:replace", error);
+      }
+    }
+
+    if (!profile.conta_id) return json({ error: "Profile not found" }, 403);
 
     if (req.method === "GET") {
       const workflowIdsParam = requestUrl.searchParams.get("workflow_ids");

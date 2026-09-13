@@ -5,6 +5,7 @@ import {
   STRIPE_TIMEOUT_MS,
   type StripeClient,
 } from "../_shared/stripe-amount.ts";
+import { loadStripe } from "../_shared/stripe-loader.ts";
 
 // Peak Stripe throughput = STRIPE_CONCURRENCY requests every STRIPE_TIMEOUT_MS at worst; 8 keeps
 // us well under Stripe's rate limit even with a large paying/trialing base. The timeout is enforced
@@ -139,11 +140,7 @@ export async function priceSubscriptionRows<T extends PriceableSub>(
 
   let stripeClient: StripeClient | null = null;
   if (resolved.some((r) => r.result.needsLiveFetch)) {
-    try {
-      stripeClient = (await import("../_shared/stripe.ts")).stripe;
-    } catch (err) {
-      console.error("[platform-admin] stripe import failed:", (err as Error).message);
-    }
+    stripeClient = await loadStripe();
   }
 
   const liveFetch = async (r: (typeof resolved)[number]) => {

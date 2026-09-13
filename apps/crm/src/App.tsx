@@ -6,6 +6,7 @@ import { getCachedProfile } from './lib/supabase';
 import * as Sentry from '@sentry/react';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
+import { BuildPrefetch } from './components/BuildPrefetch';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -41,7 +42,11 @@ const ClienteVisaoGeralTab = lazy(() => import('./pages/cliente-detalhe/tabs/Vis
 const ClienteEntregasTab = lazy(() => import('./pages/cliente-detalhe/tabs/EntregasTab'));
 const ClienteRedesSociaisTab = lazy(() => import('./pages/cliente-detalhe/tabs/RedesSociaisTab'));
 const ClienteRelatoriosTab = lazy(() => import('./pages/cliente-detalhe/tabs/RelatoriosTab'));
-const ClienteHubTab = lazy(() => import('./pages/cliente-detalhe/tabs/HubClienteTab'));
+const ClienteHubAcesso = lazy(() => import('./pages/cliente-detalhe/hub/AcessoPage'));
+const ClienteHubBriefing = lazy(() => import('./pages/cliente-detalhe/hub/BriefingPage'));
+const ClienteHubMarca = lazy(() => import('./pages/cliente-detalhe/hub/MarcaPage'));
+const ClienteHubPaginas = lazy(() => import('./pages/cliente-detalhe/hub/PaginasPage'));
+const ClienteHubIdeias = lazy(() => import('./pages/cliente-detalhe/hub/IdeiasPage'));
 const ClienteArquivosTab = lazy(() => import('./pages/cliente-detalhe/tabs/ArquivosTab'));
 const ClienteFinanceiroTab = lazy(() => import('./pages/cliente-detalhe/tabs/FinanceiroTab'));
 const FinanceiroPage = lazy(() => import('./pages/financeiro/FinanceiroPage'));
@@ -54,6 +59,7 @@ const PerfilTab = lazy(() => import('./pages/configuracao/tabs/PerfilTab'));
 const NotificacoesTab = lazy(() => import('./pages/configuracao/tabs/NotificacoesTab'));
 const WorkspaceTab = lazy(() => import('./pages/configuracao/tabs/WorkspaceTab'));
 const MembrosTab = lazy(() => import('./pages/configuracao/tabs/MembrosTab'));
+const PapeisTab = lazy(() => import('./pages/configuracao/tabs/PapeisTab'));
 const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
 const StatusTab = lazy(() => import('./pages/configuracao/tabs/StatusTab'));
 const HubTab = lazy(() => import('./pages/configuracao/tabs/HubTab'));
@@ -78,7 +84,7 @@ const SecaoPage = lazy(() => import('./pages/ajuda/SecaoPage'));
 const ArtigoPage = lazy(() => import('./pages/ajuda/ArtigoPage'));
 const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage'));
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
@@ -119,6 +125,7 @@ export default function App() {
     >
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <BuildPrefetch />
           <Toaster />
           <Suspense fallback={PageFallback}>
             <Routes>
@@ -191,7 +198,14 @@ export default function App() {
                   <Route path="entregas" element={<ClienteEntregasTab />} />
                   <Route path="redes-sociais" element={<ClienteRedesSociaisTab />} />
                   <Route path="relatorios" element={<ClienteRelatoriosTab />} />
-                  <Route path="hub" element={<ClienteHubTab />} />
+                  <Route path="hub">
+                    <Route index element={<Navigate to="acesso" replace />} />
+                    <Route path="acesso" element={<ClienteHubAcesso />} />
+                    <Route path="briefing" element={<ClienteHubBriefing />} />
+                    <Route path="marca" element={<ClienteHubMarca />} />
+                    <Route path="paginas" element={<ClienteHubPaginas />} />
+                    <Route path="ideias" element={<ClienteHubIdeias />} />
+                  </Route>
                   <Route path="arquivos" element={<ClienteArquivosTab />} />
                   <Route path="financeiro" element={<ClienteFinanceiroTab />} />
                   {/* Unregistered sub-path: ClienteDetalhePage's own guard parses the
@@ -212,6 +226,7 @@ export default function App() {
                   <Route path="notificacoes" element={<NotificacoesTab />} />
                   <Route path="workspace" element={<WorkspaceTab />} />
                   <Route path="membros" element={<MembrosTab />} />
+                  <Route path="papeis" element={<PapeisTab />} />
                   <Route path="relatorios" element={<RelatoriosTab />} />
                   <Route path="status" element={<StatusTab />} />
                   <Route path="hub" element={<HubTab />} />

@@ -36,14 +36,16 @@ interface ClienteDetalheNavProps {
  */
 export function ClienteDetalheNav({ clienteId }: ClienteDetalheNavProps) {
   const { t } = useTranslation('clients');
-  const { workspaceRole, canSeeFinancials } = useAuth();
-  const tabs = visibleClienteTabs(workspaceRole, canSeeFinancials);
+  const { can } = useAuth();
+  const tabs = visibleClienteTabs(can);
   const { pathname } = useLocation();
   const navRef = useRef<HTMLElement>(null);
   const tabLinkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
 
-  // Single trailing segment after /clientes/:id/ — same extraction contract
-  // as ClienteDetalhePage's own route guard.
+  // Everything after /clientes/:id/ — a single segment for a top-level tab
+  // ("entregas"), a nested path for a Hub sub-tab ("hub/paginas"), matching
+  // `ClienteTabKey` (see clienteTabs.model.ts). Same extraction contract as
+  // ClienteDetalhePage's own route guard.
   const activeKey = pathname.replace(/^\/clientes\/[^/]+\/?/, '').replace(/\/+$/, '');
 
   useEffect(() => {

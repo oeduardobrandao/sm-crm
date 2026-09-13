@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { verifyAdmin } from '../lib/api';
 import { describeSignInError } from './login-error';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -53,48 +56,58 @@ export default function LoginPage() {
       className="min-h-screen flex items-center justify-center p-4"
       style={{ background: 'linear-gradient(135deg, #eaf0dc 0%, #eab308 100%)' }}
     >
-      <div className="w-full max-w-[400px] bg-white rounded-3xl p-10 shadow-xl">
+      <div className="w-full max-w-[400px] rounded-3xl bg-card p-10 text-card-foreground shadow-xl">
         <div className="flex flex-col items-center mb-8">
-          <img src="/logo-black.svg" alt="Mesaas" className="h-5 w-auto" />
-          <p className="text-sm text-[#4b5563] mt-2 uppercase tracking-widest font-medium">admin</p>
+          <img src="/logo-black.svg" alt="Mesaas" className="h-5 w-auto dark:hidden" />
+          <img
+            src="/logo-white.svg"
+            alt=""
+            aria-hidden="true"
+            className="hidden h-5 w-auto dark:block"
+          />
+          <p className="mt-2 text-sm font-medium uppercase tracking-widest text-muted-foreground">
+            admin
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-xs font-medium text-[#374151] uppercase tracking-wider mb-1.5">
-              Email
-            </label>
-            <input
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="admin-login-email" className="text-xs uppercase tracking-wider">
+              E-mail
+            </Label>
+            <Input
+              id="admin-login-email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2.5 rounded-lg border border-[#e5e7eb] text-sm font-sf text-[#12151a] focus:outline-none focus:border-[#eab308] transition-colors"
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-[#374151] uppercase tracking-wider mb-1.5">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="admin-login-password" className="text-xs uppercase tracking-wider">
               Senha
-            </label>
-            <input
+            </Label>
+            <Input
+              id="admin-login-password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-3 py-2.5 rounded-lg border border-[#e5e7eb] text-sm font-sf text-[#12151a] focus:outline-none focus:border-[#eab308] transition-colors"
             />
           </div>
 
-          {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+          {error && (
+            <p role="alert" className="text-center text-sm text-destructive">
+              {error}
+            </p>
+          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 rounded-lg bg-[#eab308] text-[#12151a] font-semibold text-sm hover:bg-[#ca8a04] transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? 'Entrando…' : 'Entrar'}
+          </Button>
         </form>
       </div>
     </div>

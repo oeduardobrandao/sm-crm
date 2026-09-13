@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
+import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,14 +23,27 @@ import { getCurrentWorkspace, updateWorkspace } from '../../../store';
 
 /** Workspace identity (name + logo) and the Instagram auto-sync switch. */
 export default function WorkspaceTab() {
-  const { profile, role } = useAuth();
+  const { profile, can } = useAuth();
   const queryClient = useQueryClient();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the route/tab layer (configTabs.ts, Task 12) -- this mirrors that
+  // same check for the tab's OWN queries, which a custom role granted only
+  // `ver` (not `editar`) can still reach. Was `role === 'owner' || role ===
+  // 'admin'`, which a custom role with the chassis 'agent' role never passed
+  // even when it held the tab-level grant.
+  const canViewConfig = can('configuracoes', 'ver') === true;
+  // F4 (revisão externa): `ver`-only still rendered every mutation control
+  // here. `updateWorkspace` writes to `workspaces`, whose RLS policy FILTERS
+  // the row out instead of raising -- PostgREST answers 200 with zero rows
+  // affected, `updateWorkspace` never inspected the count, and the user got a
+  // success toast for a save that never happened. Hiding the controls is the
+  // primary fix; `store/workspace.ts` grew a zero-row throw as the backstop.
+  const canEditConfig = can('configuracoes', 'editar') === true;
 
   const { data: workspace, refetch: refetchWorkspace } = useQuery({
     queryKey: ['currentWorkspace'],
     queryFn: getCurrentWorkspace,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewConfig,
   });
 
   const [wsName, setWsName] = useState('');
@@ -52,6 +66,9 @@ export default function WorkspaceTab() {
       return;
     }
     setWsLogoLoading(true);
+    // The upload and the record update that follows are one unit of work: a silent
+    // version swap must not land between them.
+    const release = holdUnsavedWork();
     try {
       const bitmap = await createImageBitmap(file);
       const canvas = document.createElement('canvas');
@@ -77,6 +94,7 @@ export default function WorkspaceTab() {
     } catch (err: unknown) {
       toast.error('Erro ao enviar logo: ' + (err as Error).message);
     } finally {
+      release();
       setWsLogoLoading(false);
     }
   };
@@ -119,7 +137,7 @@ export default function WorkspaceTab() {
         .eq('clientes.conta_id', profile.conta_id);
       return data ?? [];
     },
-    enabled: isOwnerOrAdmin && !!profile?.conta_id,
+    enabled: canViewConfig && !!profile?.conta_id,
   });
 
   const autoSyncEnabled = (igAccounts ?? []).some(
@@ -147,6 +165,11 @@ export default function WorkspaceTab() {
       {workspace && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="config-title">Workspace</h3>
+          {!canEditConfig && (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
+              Somente leitura
+            </p>
+          )}
           <div style={{ marginBottom: '1rem' }}>
             <Label style={{ display: 'block', marginBottom: 8 }}>Logo</Label>
             {wsLogoUrl && (
@@ -165,7 +188,7 @@ export default function WorkspaceTab() {
             <div style={{ display: 'flex', gap: 8 }}>
               <Button
                 variant="outline"
-                disabled={wsLogoLoading}
+                disabled={wsLogoLoading || !canEditConfig}
                 onClick={() => logoInputRef.current?.click()}
               >
                 {wsLogoLoading && <Spinner size="sm" />} {wsLogoUrl ? 'Trocar Logo' : 'Enviar Logo'}
@@ -174,7 +197,7 @@ export default function WorkspaceTab() {
                 <Button
                   variant="ghost"
                   className="text-destructive"
-                  disabled={wsLogoLoading}
+                  disabled={wsLogoLoading || !canEditConfig}
                   onClick={() => setRemoveLogoOpen(true)}
                 >
                   Remover
@@ -186,9 +209,10 @@ export default function WorkspaceTab() {
               type="file"
               accept="image/png,image/jpeg,image/webp"
               style={{ display: 'none' }}
+              disabled={!canEditConfig}
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) handleLogoUpload(f);
+                if (f && canEditConfig) handleLogoUpload(f);
                 e.target.value = '';
               }}
             />
@@ -199,9 +223,13 @@ export default function WorkspaceTab() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginTop: 12 }}>
             <div style={{ flex: 1 }}>
               <Label style={{ display: 'block', marginBottom: 6 }}>Nome do Workspace</Label>
-              <Input value={wsName} onChange={(e) => setWsName(e.target.value)} />
+              <Input
+                value={wsName}
+                disabled={!canEditConfig}
+                onChange={(e) => setWsName(e.target.value)}
+              />
             </div>
-            <Button className="mb-0" onClick={handleWsSave}>
+            <Button className="mb-0" disabled={!canEditConfig} onClick={handleWsSave}>
               Salvar
             </Button>
           </div>
@@ -213,7 +241,12 @@ export default function WorkspaceTab() {
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="config-title">Auto-Sync Instagram</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <Switch checked={autoSyncEnabled} onCheckedChange={handleAutoSyncToggle} />
+            <Switch
+              aria-label="Auto-sync do Instagram"
+              checked={autoSyncEnabled}
+              disabled={!canEditConfig}
+              onCheckedChange={handleAutoSyncToggle}
+            />
             <span>
               {autoSyncEnabled
                 ? 'Sincronização automática ativada'

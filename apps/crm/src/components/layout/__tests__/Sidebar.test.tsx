@@ -30,6 +30,7 @@ import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
 import * as supabaseModule from '../../../lib/supabase';
 import Sidebar from '../Sidebar';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
 const mockedUseMensagensUnread = vi.mocked(useMensagensUnread);
@@ -63,6 +64,10 @@ function PathProbe() {
 }
 
 function setAuth(overrides: Record<string, unknown> = {}) {
+  // `can` mirrors whichever role this call is simulating -- default 'owner',
+  // or the `role` override (this file only ever exercises legacy roles, not
+  // custom role_id/permissions memberships).
+  const role = (overrides.role as 'owner' | 'admin' | 'agent' | undefined) ?? 'owner';
   mockedUseAuth.mockReturnValue({
     user: { id: 'user-1' } as never,
     profile: {
@@ -73,7 +78,9 @@ function setAuth(overrides: Record<string, unknown> = {}) {
       active_workspace_id: 'w-1',
     } as never,
     role: 'owner',
+    workspaceRole: role,
     canSeeFinancials: true,
+    can: makeCan(fakeMembership({ role })),
     loading: false,
     refetchProfile: vi.fn(),
     signOut: vi.fn(),

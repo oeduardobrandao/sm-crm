@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import JSZip from 'jszip';
 import {
   Upload,
+  Crop,
   Star,
   Trash2,
   AlertTriangle,
@@ -38,6 +39,8 @@ import {
 } from '../../../services/postMedia';
 import { extractVideoFrame } from '../../../utils/videoFrame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
+import { MediaAdjustmentDialog } from './MediaAdjustmentDialog';
+import { validateMedia } from '../instagramLimits';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../../store';
@@ -49,6 +52,9 @@ import { linkFileToPost, unlinkFileFromPost } from '../../../services/fileServic
 
 interface PostMediaGalleryProps {
   postId: number;
+  forStories?: boolean;
+  adjustmentDisabled?: boolean;
+  targetsInstagram?: boolean;
   disabled?: boolean;
   maxFiles?: number;
   onChange?: (media: PostMedia[]) => void;
@@ -69,6 +75,9 @@ const CAROUSEL_MAX_ITEMS = 10;
 
 export function PostMediaGallery({
   postId,
+  forStories = false,
+  adjustmentDisabled = false,
+  targetsInstagram = true,
   disabled,
   maxFiles,
   onChange,
@@ -130,6 +139,7 @@ export function PostMediaGallery({
   const [downloading, setDownloading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingVideos, setPendingVideos] = useState<{ file: File; sortOrder: number }[]>([]);
+  const [adjustingMedia, setAdjustingMedia] = useState<PostMedia | null>(null);
   const [editingMedia, setEditingMedia] = useState<PostMedia | null>(null);
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<
@@ -155,6 +165,21 @@ export function PostMediaGallery({
     refresh();
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
   };
+  const canAdjust = !effectiveDisabled && !adjustmentDisabled;
+  const invalidMedia = targetsInstagram
+    ? media.filter((m) => !m.media_lost_at && validateMedia([m], { forStories }).length > 0)
+    : [];
+  const portraitSuggestions = targetsInstagram
+    ? media.filter(
+        (m) =>
+          !m.media_lost_at &&
+          (m.kind === 'video' || forStories) &&
+          m.width &&
+          m.height &&
+          Math.abs(m.width / m.height - 9 / 16) > 0.005 &&
+          !invalidMedia.includes(m),
+      )
+    : [];
   const atLimit = maxFiles != null && media.length >= maxFiles;
 
   async function handleFiles(files: FileList | null) {
@@ -475,7 +500,55 @@ export function PostMediaGallery({
 
   return (
     <div className="space-y-3">
-      {media.length > CAROUSEL_MAX_ITEMS && (
+      {invalidMedia.length > 0 && (
+        <div className="space-y-3 rounded-xl bg-amber-50 px-3 py-3 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <AlertTriangle size={16} />
+            {invalidMedia.length === 1
+              ? '1 arquivo precisa de ajuste'
+              : `${invalidMedia.length} arquivos precisam de ajuste`}
+          </p>
+          {invalidMedia.map((m) => (
+            <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="min-w-0 flex-1">
+                <p className="break-all font-semibold">{m.original_filename}</p>
+                {validateMedia([m], { forStories }).map((issue) => (
+                  <p key={issue.message}>{issue.message}</p>
+                ))}
+              </div>
+              {canAdjust && (
+                <button
+                  type="button"
+                  aria-label={`Ajustar proporção de ${m.original_filename}`}
+                  onClick={() => setAdjustingMedia(m)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#12151a] px-3 py-2 text-xs font-semibold text-white hover:bg-black"
+                >
+                  <Crop size={14} />
+                  Ajustar proporção
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {canAdjust && portraitSuggestions.length > 0 && (
+        <div className="rounded-xl border p-3 text-xs text-muted-foreground">
+          <p className="mb-2">
+            O formato 9:16 é recomendado. Suas mídias podem ser publicadas na proporção atual.
+          </p>
+          {portraitSuggestions.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setAdjustingMedia(m)}
+              className="mr-2 mt-1 rounded-lg border px-2 py-1 text-foreground hover:bg-muted"
+            >
+              Ajustar {m.original_filename} para 9:16
+            </button>
+          ))}
+        </div>
+      )}
+      {!forStories && media.length > CAROUSEL_MAX_ITEMS && (
         <div className="flex items-start gap-2 rounded-xl bg-amber-50 ring-1 ring-amber-200/60 px-3 py-2.5 text-amber-900">
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
           <div className="flex flex-col gap-0.5">
@@ -498,6 +571,8 @@ export function PostMediaGallery({
                 media={m}
                 disabled={effectiveDisabled}
                 onOpen={() => setLightboxIndex(i)}
+                onAdjust={canAdjust && !m.media_lost_at ? () => setAdjustingMedia(m) : undefined}
+                needsAdjustment={invalidMedia.includes(m)}
                 onSetCover={() => handleSetCover(m.id)}
                 onDelete={() => handleDelete(m.id)}
                 onEditThumbnail={
@@ -637,6 +712,21 @@ export function PostMediaGallery({
         }}
       />
 
+      {adjustingMedia && (
+        <MediaAdjustmentDialog
+          key={adjustingMedia.id}
+          media={adjustingMedia}
+          forStories={forStories}
+          onClose={() => setAdjustingMedia(null)}
+          onUpdated={() => {
+            refreshWithCovers();
+            qc.invalidateQueries({ queryKey: ['workflow-grid'] });
+            qc.invalidateQueries({ queryKey: ['automation-production-covers'] });
+            qc.invalidateQueries({ queryKey: ['folder-contents'] });
+          }}
+        />
+      )}
+
       <ThumbnailPickerDialog
         media={editingMedia ? (media.find((m) => m.id === editingMedia.id) ?? editingMedia) : null}
         onClose={() => setEditingMedia(null)}
@@ -660,6 +750,8 @@ interface SortableMediaTileProps {
   onSetCover: () => void;
   onDelete: () => void;
   onEditThumbnail?: () => void;
+  onAdjust?: () => void;
+  needsAdjustment?: boolean;
 }
 
 function SortableMediaTile({
@@ -669,6 +761,8 @@ function SortableMediaTile({
   onSetCover,
   onDelete,
   onEditThumbnail,
+  onAdjust,
+  needsAdjustment,
 }: SortableMediaTileProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: m.id,
@@ -712,6 +806,14 @@ function SortableMediaTile({
           className="w-full h-full object-cover pointer-events-none"
         />
       )}
+      {needsAdjustment && (
+        <span
+          className="absolute bottom-1.5 left-1.5 rounded-md bg-amber-100 p-1 text-amber-800"
+          title="Mídia precisa de ajuste"
+        >
+          <AlertTriangle size={14} />
+        </span>
+      )}
       {m.is_cover && (
         <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 text-[10px] font-semibold bg-stone-900/85 text-white px-1.5 py-0.5 rounded-full">
           <Star className="h-2.5 w-2.5" /> capa
@@ -719,7 +821,7 @@ function SortableMediaTile({
       )}
       {!disabled && (
         <div
-          className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute top-1.5 right-1.5 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -731,6 +833,17 @@ function SortableMediaTile({
               className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
             >
               <Star className="h-3 w-3" />
+            </button>
+          )}
+          {onAdjust && (
+            <button
+              type="button"
+              onClick={onAdjust}
+              title="Ajustar proporção"
+              aria-label="Ajustar proporção"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-[#12151a] text-white hover:bg-black"
+            >
+              <Crop className="h-3 w-3" />
             </button>
           )}
           {onEditThumbnail && (

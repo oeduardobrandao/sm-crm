@@ -1,0 +1,173 @@
+<h2>Entregas · nova vista "Visão geral"</h2>
+<p class="subtitle">Substitui o donut. Cada número, barra e chip é clicável e aplica o filtro correspondente no board (Kanban/Lista). Dados do mockup = seus números reais de hoje (67 ativos, 53 atrasados, 2 urgentes).</p>
+
+<div class="mockup">
+  <div class="mockup-header">Preview: /entregas · aba "Visão geral" (tema escuro)</div>
+  <div class="mockup-body" style="background:#0a0c0f;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;color:#e8eaf0;">
+
+    <!-- page header -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;">Entregas</div>
+        <div style="font-size:12px;color:#9ca3af;margin-top:4px;">fluxos ativos: 67 · <span style="color:#f55a42;">53 atrasados</span> · <span style="color:#f5a342;">2 urgentes</span> <span style="border-bottom:1px dotted #4b5563;" title="Totais gerais, sem filtros">ⓘ</span></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div style="border:1px solid #1e2430;border-radius:10px;padding:7px 14px;font-size:12px;color:#e8eaf0;background:#12151a;">Templates</div>
+        <div style="border-radius:10px;padding:7px 14px;font-size:12px;color:#12151a;background:#ffbf30;font-weight:600;">+ Novo</div>
+      </div>
+    </div>
+
+    <!-- view switcher + filters -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;gap:2px;background:#12151a;border:1px solid #1e2430;border-radius:10px;padding:3px;font-size:12px;">
+        <span style="padding:6px 12px;color:#9ca3af;">Kanban</span>
+        <span style="padding:6px 12px;background:#e8eaf0;color:#12151a;border-radius:8px;font-weight:600;">Visão geral</span>
+        <span style="padding:6px 12px;color:#9ca3af;">Calendário</span>
+        <span style="padding:6px 12px;color:#9ca3af;">Lista</span>
+        <span style="padding:6px 12px;color:#9ca3af;">Concluídas</span>
+      </div>
+      <div style="display:flex;gap:8px;font-size:12px;color:#9ca3af;">
+        <span style="border:1px solid #1e2430;border-radius:10px;padding:6px 12px;background:#12151a;">Status ▾</span>
+        <span style="border:1px solid #1e2430;border-radius:10px;padding:6px 12px;background:#12151a;">Cliente ▾</span>
+        <span style="border:1px solid #1e2430;border-radius:10px;padding:6px 12px;background:#12151a;">Responsável ▾</span>
+      </div>
+    </div>
+
+    <!-- ROW 1: KPI strip -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#1e2430;border:1px solid #1e2430;border-radius:12px;overflow:hidden;margin-bottom:18px;">
+      <div style="background:#12151a;padding:14px 16px;cursor:pointer;">
+        <div style="font-size:11px;color:#9ca3af;">Atrasadas</div>
+        <div style="font-size:26px;font-weight:700;color:#f55a42;">53</div>
+        <div style="font-size:10px;color:#4b5563;">de 67 fluxos</div>
+      </div>
+      <div style="background:#12151a;padding:14px 16px;cursor:pointer;">
+        <div style="font-size:11px;color:#9ca3af;">Urgentes (24h)</div>
+        <div style="font-size:26px;font-weight:700;color:#f5a342;">2</div>
+        <div style="font-size:10px;color:#4b5563;">de 67 fluxos</div>
+      </div>
+      <div style="background:#12151a;padding:14px 16px;cursor:pointer;">
+        <div style="font-size:11px;color:#9ca3af;">Em dia</div>
+        <div style="font-size:26px;font-weight:700;color:#3ecf8e;">12</div>
+        <div style="font-size:10px;color:#4b5563;">de 67 fluxos</div>
+      </div>
+      <div style="background:#12151a;padding:14px 16px;cursor:pointer;outline:2px solid #ffbf30;outline-offset:-2px;">
+        <div style="font-size:11px;color:#9ca3af;">Vencem hoje</div>
+        <div style="font-size:26px;font-weight:700;">4</div>
+        <div style="font-size:10px;color:#ffbf30;">filtro ativo · clique p/ limpar</div>
+      </div>
+      <div style="background:#12151a;padding:14px 16px;cursor:pointer;">
+        <div style="font-size:11px;color:#9ca3af;">Aguardando cliente</div>
+        <div style="font-size:26px;font-weight:700;color:#42c8f5;">6</div>
+        <div style="font-size:10px;color:#4b5563;">aprovação pendente</div>
+      </div>
+    </div>
+
+    <!-- ROW 2: proximos vencimentos -->
+    <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:600;">Próximos vencimentos</div>
+        <div style="display:flex;gap:2px;background:#0a0c0f;border-radius:8px;padding:2px;font-size:11px;">
+          <span style="padding:4px 10px;background:#1e2430;border-radius:6px;font-weight:600;">Hoje</span>
+          <span style="padding:4px 10px;color:#9ca3af;">Esta semana</span>
+          <span style="padding:4px 10px;color:#9ca3af;">Atrasadas</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;overflow-x:auto;">
+        <div style="min-width:190px;background:#1a1e26;border:1px solid #1e2430;border-radius:10px;padding:10px 12px;cursor:pointer;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><span style="width:18px;height:18px;border-radius:50%;background:#f542c8;display:inline-block;font-size:9px;text-align:center;line-height:18px;color:#12151a;font-weight:700;">MA</span><span style="font-size:11px;color:#9ca3af;">Dra. Marina</span><span style="margin-left:auto;font-size:10px;font-weight:700;color:#f5a342;">hoje</span></div>
+          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Carrossel · Rotina de skincare</div>
+          <div style="font-size:10px;color:#4b5563;">etapa: Aprovação da copy</div>
+        </div>
+        <div style="min-width:190px;background:#1a1e26;border:1px solid #1e2430;border-radius:10px;padding:10px 12px;cursor:pointer;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><span style="width:18px;height:18px;border-radius:50%;background:#42c8f5;display:inline-block;font-size:9px;text-align:center;line-height:18px;color:#12151a;font-weight:700;">CV</span><span style="font-size:11px;color:#9ca3af;">Clínica Vitalis</span><span style="margin-left:auto;font-size:10px;font-weight:700;color:#f5a342;">hoje</span></div>
+          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Reels · Bastidores da clínica</div>
+          <div style="font-size:10px;color:#4b5563;">etapa: Design</div>
+        </div>
+        <div style="min-width:190px;background:#1a1e26;border:1px solid #1e2430;border-radius:10px;padding:10px 12px;cursor:pointer;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><span style="width:18px;height:18px;border-radius:50%;background:#3ecf8e;display:inline-block;font-size:9px;text-align:center;line-height:18px;color:#12151a;font-weight:700;">RC</span><span style="font-size:11px;color:#9ca3af;">Dr. Rafael Cunha</span><span style="margin-left:auto;font-size:10px;font-weight:700;color:#f5a342;">hoje</span></div>
+          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Post · Mitos sobre ortodontia</div>
+          <div style="font-size:10px;color:#4b5563;">etapa: Agendamento</div>
+        </div>
+        <div style="min-width:120px;background:transparent;border:1px dashed #1e2430;border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#9ca3af;cursor:pointer;">+1 · ver na lista</div>
+      </div>
+      <div style="font-size:10px;color:#4b5563;margin-top:8px;">chip abre o drawer do fluxo · "+N" abre a Lista já filtrada</div>
+    </div>
+
+    <!-- ROW 3: por cliente + por responsavel -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;">
+      <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;">Situação por cliente</div>
+        <div style="font-size:10px;color:#4b5563;margin-bottom:12px;">clique num segmento: filtra o board por cliente + status</div>
+        <!-- stacked bars -->
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:11px;">
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Dra. Marina</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;"><div style="width:70%;background:#f55a42;"></div><div style="width:10%;background:#f5a342;"></div><div style="width:20%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">10</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Clínica Vitalis</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;"><div style="width:78%;background:#f55a42;"></div><div style="width:22%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">9</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Dr. Rafael</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:88%;"><div style="width:62%;background:#f55a42;"></div><div style="width:38%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">8</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Odonto Prime</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:77%;"><div style="width:86%;background:#f55a42;"></div><div style="width:14%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">7</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Dra. Paula Reis</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:66%;"><div style="width:67%;background:#f55a42;"></div><div style="width:16%;background:#f5a342;"></div><div style="width:17%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">6</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Clínica Derma+</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:55%;"><div style="width:80%;background:#f55a42;"></div><div style="width:20%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">5</span></div>
+        </div>
+        <div style="font-size:10px;color:#4b5563;margin-top:10px;">top 10 por risco · <span style="color:#42c8f5;">ver todos</span></div>
+      </div>
+      <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;">Carga por responsável</div>
+        <div style="font-size:10px;color:#4b5563;margin-bottom:12px;">quem está afogado, quem tem folga · clique filtra</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:11px;">
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Ana</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;"><div style="width:75%;background:#f55a42;"></div><div style="width:5%;background:#f5a342;"></div><div style="width:20%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">21</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Eduardo</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:81%;"><div style="width:71%;background:#f55a42;"></div><div style="width:29%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">17</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Júlia</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:67%;"><div style="width:79%;background:#f55a42;"></div><div style="width:21%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">14</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#9ca3af;text-align:right;">Pedro</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:52%;"><div style="width:64%;background:#f55a42;"></div><div style="width:36%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">11</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:92px;color:#4b5563;text-align:right;font-style:italic;">Sem responsável</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:19%;"><div style="width:100%;background:#374151;"></div></div><span style="color:#9ca3af;width:20px;">4</span></div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:12px;font-size:10px;color:#9ca3af;">
+          <span><span style="display:inline-block;width:8px;height:8px;background:#3ecf8e;border-radius:2px;margin-right:4px;"></span>Em dia</span>
+          <span><span style="display:inline-block;width:8px;height:8px;background:#f5a342;border-radius:2px;margin-right:4px;"></span>Urgente</span>
+          <span><span style="display:inline-block;width:8px;height:8px;background:#f55a42;border-radius:2px;margin-right:4px;"></span>Atrasado</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 4: por etapa + idade dos atrasos -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+      <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;">Fluxos por etapa</div>
+        <div style="font-size:10px;color:#4b5563;margin-bottom:12px;">onde o trabalho está acumulado agora</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:11px;">
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:120px;color:#9ca3af;text-align:right;">Copy</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;"><div style="width:80%;background:#f55a42;"></div><div style="width:20%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">18</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:120px;color:#9ca3af;text-align:right;">Design</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:83%;"><div style="width:73%;background:#f55a42;"></div><div style="width:7%;background:#f5a342;"></div><div style="width:20%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">15</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:120px;color:#9ca3af;text-align:right;">Aprovação da copy</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:67%;"><div style="width:83%;background:#f55a42;"></div><div style="width:17%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">12</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:120px;color:#9ca3af;text-align:right;">Aprovação do cliente</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:50%;"><div style="width:67%;background:#f55a42;"></div><div style="width:33%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">9</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:120px;color:#9ca3af;text-align:right;">Captação</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:39%;"><div style="width:57%;background:#f55a42;"></div><div style="width:43%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">7</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:120px;color:#9ca3af;text-align:right;">Agendamento</span><div style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;width:33%;"><div style="width:50%;background:#f55a42;"></div><div style="width:17%;background:#f5a342;"></div><div style="width:33%;background:#3ecf8e;"></div></div><span style="color:#9ca3af;width:20px;">6</span></div>
+        </div>
+      </div>
+      <div style="background:#12151a;border:1px solid #1e2430;border-radius:12px;padding:16px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;">Idade dos atrasos</div>
+        <div style="font-size:10px;color:#4b5563;margin-bottom:12px;">há quanto tempo as 53 atrasadas estão estouradas</div>
+        <div style="display:flex;align-items:flex-end;gap:14px;height:120px;padding:0 8px;">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">8</span><div style="width:100%;height:55px;background:#f55a42;opacity:.55;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">1 dia</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">14</span><div style="width:100%;height:96px;background:#f55a42;opacity:.7;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">2 a 3</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">12</span><div style="width:100%;height:82px;background:#f55a42;opacity:.8;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">4 a 7</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">11</span><div style="width:100%;height:75px;background:#f55a42;opacity:.9;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">8 a 14</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:11px;color:#9ca3af;">8</span><div style="width:100%;height:55px;background:#f55a42;border-radius:4px 4px 0 0;"></div><span style="font-size:10px;color:#4b5563;">15+</span></div>
+        </div>
+        <div style="font-size:10px;color:#4b5563;margin-top:10px;">clique num bucket: Lista filtrada por atrasado + faixa de prazo</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>O que mudou vs o donut atual</h3>
+  <div class="options" data-multiselect>
+    <div class="option" data-choice="aprovado" onclick="toggleSelect(this)">
+      <div class="letter">✓</div>
+      <div class="content"><h3>Aprovar essa direção</h3><p>Seguir com este layout para a Fase 1 (ajustes finos durante a implementação)</p></div>
+    </div>
+    <div class="option" data-choice="ajustes" onclick="toggleSelect(this)">
+      <div class="letter">✎</div>
+      <div class="content"><h3>Quero ajustes</h3><p>Me diga no terminal o que mudar (seções, ordem, densidade, cores)</p></div>
+    </div>
+  </div>
+</div>

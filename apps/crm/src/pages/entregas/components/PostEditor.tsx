@@ -10,6 +10,8 @@ import Link from '@tiptap/extension-link';
 import Color from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
+import { toast } from 'sonner';
+import { isAllowedRichTextAutolinkUrl, normalizeRichTextLinkUrl } from '@mesaas/link-policy';
 import {
   Bold,
   Italic,
@@ -22,19 +24,28 @@ import {
   Check,
   Lightbulb,
   MessageSquare,
+  ImagePlus,
+  Loader2,
 } from 'lucide-react';
 import { CalloutExtension } from './CalloutExtension';
 import { CommentHighlight } from './CommentHighlight';
 import { MentionNode } from '@/components/mentions/MentionNode';
 import { mentionHref } from '@/components/mentions/mentionHref';
 import { MentionSuggestion } from '@/components/mentions/mentionSuggestion';
-import { useMentionSearch } from '@/components/mentions/useMentionSearch';
+import { useMentionSearch, type MentionSection } from '@/components/mentions/useMentionSearch';
 import { MentionTextarea } from '@/components/mentions/MentionTextarea';
 import type { MentionEntityType } from '@/components/mentions/types';
 import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
 import PostCommentPopover from './PostCommentPopover';
 import type { CommentThreadWithComments, Membro } from '@/store';
+
+// Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
+// (@mesaas/link-policy) -- sem isso o popover simplesmente fechava e a marca nunca
+// era aplicada, sem qualquer explicação (ver PaginaRichTextEditor.tsx para a mesma
+// checagem no editor de páginas do Hub).
+const LINK_REJECTED_MESSAGE =
+  'Não foi possível aplicar o link. Use um endereço válido (http, https, e-mail ou telefone).';
 
 const TEXT_COLORS = [
   { name: 'Padrão', color: null },
@@ -47,6 +58,65 @@ const TEXT_COLORS = [
   { name: 'Roxo', color: '#9065B0' },
   { name: 'Rosa', color: '#C14C8A' },
 ] as const;
+
+/**
+ * Extracted from `useEditor`'s inline array so the schema can be asserted on directly
+ * (see `__tests__/postEditorExtensions.test.ts`) without mounting the full editor --
+ * PostEditor needs live TanStack Query data (useMentionSearch) and a Router, which makes
+ * a full render expensive to set up just to check the extension set. Mirrors the same
+ * export-for-testability pattern already used by `readOnlyTipTapExtensions`
+ * (ReadOnlyTipTap.tsx) and `pageEditorExtensions` (cliente-detalhe/hub/pageEditorSchema.ts).
+ */
+export function postEditorExtensions({
+  mentionSearch,
+  onUploadInlineImage,
+  placeholder = 'Escreva o conteúdo do post...',
+  onUploadStart,
+  onUploadEnd,
+}: {
+  mentionSearch: (query: string) => Promise<MentionSection[]>;
+  onUploadInlineImage?: InlineImageUploadFn;
+  placeholder?: string;
+  onUploadStart?: () => void;
+  onUploadEnd?: () => void;
+}) {
+  return [
+    // StarterKit v3 already bundles Link and Underline. Without `link: false` /
+    // `underline: false` both register twice -- TipTap logs "Duplicate extension
+    // names found: ['link','underline']" and keeps BOTH Link instances live, so
+    // StarterKit's own `openOnClick: true` handler fires alongside the `openOnClick:
+    // false` one configured below, and clicking a link while editing navigates away.
+    StarterKit.configure({ link: false, underline: false }),
+    UnderlineExt,
+    TextStyle,
+    Color,
+    Highlight.configure({
+      multicolor: true,
+      HTMLAttributes: {},
+    }),
+    // isAllowedRichTextAutolinkUrl (@mesaas/link-policy) -- same policy and same
+    // autolink-aware resolution as the CRM's page editor (pageEditorSchema.ts):
+    // http/https/mailto/tel allowed, everything else (including relative/anchor-only
+    // and credentialed URLs) rejected. This Link extension had no `isAllowedUri` at
+    // all before, so an `ftp:`, credentialed, or relative URL typed into a post
+    // caption persisted here and then rendered as a dead `href=""` in the Hub, which
+    // enforces this same policy on read (RichTextContent.tsx, `autolink: false` there
+    // -- it only ever validates an already-resolved href, never raw typed text).
+    Link.configure({
+      openOnClick: false,
+      autolink: true,
+      isAllowedUri: (url, ctx) => isAllowedRichTextAutolinkUrl(url, ctx),
+    }),
+    Placeholder.configure({ placeholder }),
+    CalloutExtension,
+    CommentHighlight,
+    MentionNode,
+    MentionSuggestion.configure({ search: mentionSearch }),
+    ...(onUploadInlineImage
+      ? [createInlineImageExtension(onUploadInlineImage, onUploadStart, onUploadEnd)]
+      : []),
+  ];
+}
 
 const HIGHLIGHT_COLORS = [
   { name: 'Nenhum', color: null, cssColor: 'transparent' },
@@ -76,6 +146,10 @@ interface PostEditorProps {
   onEditComment?: (commentId: number, content: string) => Promise<void>;
   onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
   onUploadInlineImage?: InlineImageUploadFn;
+  placeholder?: string;
+  ariaLabel?: string;
+  showCharacterCount?: boolean;
+  onUploadStateChange?: (uploading: boolean) => void;
 }
 
 export function PostEditor({
@@ -94,6 +168,10 @@ export function PostEditor({
   onEditComment,
   onDeleteComment,
   onUploadInlineImage,
+  placeholder = 'Escreva o conteúdo do post...',
+  ariaLabel,
+  showCharacterCount = true,
+  onUploadStateChange,
 }: PostEditorProps) {
   const navigate = useNavigate();
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
@@ -116,6 +194,24 @@ export function PostEditor({
   const commentAddRef = useRef<HTMLDivElement>(null);
   const commentAddWrapperRef = useRef<HTMLDivElement>(null);
   const commentPopoverRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const pendingUploadsRef = useRef(0);
+  const uploadStateChangeRef = useRef(onUploadStateChange);
+  useEffect(() => {
+    uploadStateChangeRef.current = onUploadStateChange;
+  }, [onUploadStateChange]);
+  const beginUpload = useRef(() => {
+    pendingUploadsRef.current += 1;
+    setImageUploading(true);
+    uploadStateChangeRef.current?.(true);
+  }).current;
+  const endUpload = useRef(() => {
+    pendingUploadsRef.current = Math.max(0, pendingUploadsRef.current - 1);
+    const uploading = pendingUploadsRef.current > 0;
+    setImageUploading(uploading);
+    uploadStateChangeRef.current?.(uploading);
+  }).current;
 
   // Editor extensions are frozen at first render (useEditor is called with no deps
   // array below), so MentionSuggestion.configure() must receive a STABLE function --
@@ -130,23 +226,13 @@ export function PostEditor({
   const mentionSearchFn = useRef((query: string) => mentionSearchRef.current(query)).current;
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      UnderlineExt,
-      TextStyle,
-      Color,
-      Highlight.configure({
-        multicolor: true,
-        HTMLAttributes: {},
-      }),
-      Link.configure({ openOnClick: false, autolink: true }),
-      Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
-      CalloutExtension,
-      CommentHighlight,
-      MentionNode,
-      MentionSuggestion.configure({ search: mentionSearchFn }),
-      ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
-    ],
+    extensions: postEditorExtensions({
+      mentionSearch: mentionSearchFn,
+      onUploadInlineImage,
+      placeholder,
+      onUploadStart: beginUpload,
+      onUploadEnd: endUpload,
+    }),
     content: initialContent ?? undefined,
     editable: !disabled,
     onCreate: () => {
@@ -156,7 +242,34 @@ export function PostEditor({
       if (!isInitialized.current) return;
       onUpdate(ed.getJSON() as Record<string, unknown>, ed.getText());
     },
+    editorProps: ariaLabel
+      ? {
+          attributes: {
+            role: 'textbox',
+            'aria-label': ariaLabel,
+            'aria-multiline': 'true',
+          },
+        }
+      : {},
   });
+
+  const handleImageSelection = useCallback(
+    async (file: File | undefined) => {
+      if (!file || !editor || !onUploadInlineImage) return;
+      beginUpload();
+      try {
+        const uploaded = await onUploadInlineImage(file);
+        editor.chain().focus().insertInlineImage(uploaded).run();
+        onUpdate(editor.getJSON() as Record<string, unknown>, editor.getText());
+      } catch {
+        // The caller owns the user-facing error message.
+      } finally {
+        endUpload();
+        if (imageInputRef.current) imageInputRef.current.value = '';
+      }
+    },
+    [beginUpload, editor, endUpload, onUpdate, onUploadInlineImage],
+  );
 
   useEffect(() => {
     if (editor) editor.setEditable(!disabled);
@@ -209,11 +322,24 @@ export function PostEditor({
   const applyLink = useCallback(() => {
     if (!editor) return;
     const url = linkInputValue.trim();
-    if (url) {
-      editor.chain().focus().setLink({ href: url }).run();
-    } else {
+    if (!url) {
       editor.chain().focus().unsetLink().run();
+      setLinkPopoverOpen(false);
+      return;
     }
+    // normalizeRichTextLinkUrl (@mesaas/link-policy) resolves a schemeless candidate
+    // ("mesaas.com.br", "contato@exemplo.com") to the href TipTap will actually store --
+    // `isAllowedUri` on the Link extension only decides yes/no on a resolved copy, it
+    // never rewrites what `setLink` persists. Passing the raw `url` through here is what
+    // let a schemeless href reach `setLink` unresolved and render dead (`href=""`) in the
+    // Hub. When nothing valid can be resolved, no link is applied and the popover stays
+    // open with an explanation instead of silently closing.
+    const normalized = normalizeRichTextLinkUrl(url);
+    if (!normalized) {
+      toast.error(LINK_REJECTED_MESSAGE);
+      return;
+    }
+    editor.chain().focus().setLink({ href: normalized }).run();
     setLinkPopoverOpen(false);
   }, [editor, linkInputValue]);
 
@@ -366,6 +492,34 @@ export function PostEditor({
             <ListOrdered className="h-3.5 w-3.5" />
           </button>
           <div className="post-editor-divider" />
+          {onUploadInlineImage && (
+            <>
+              <button
+                type="button"
+                className="post-editor-btn"
+                aria-label="Inserir imagem"
+                disabled={imageUploading}
+                onClick={() => imageInputRef.current?.click()}
+                data-tooltip="Inserir imagem"
+              >
+                {imageUploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ImagePlus className="h-3.5 w-3.5" />
+                )}
+              </button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="sr-only"
+                aria-hidden="true"
+                tabIndex={-1}
+                onChange={(event) => void handleImageSelection(event.target.files?.[0])}
+              />
+              <div className="post-editor-divider" />
+            </>
+          )}
           <button
             type="button"
             className={`post-editor-btn${editor?.isActive('callout') ? ' active' : ''}`}
@@ -377,9 +531,12 @@ export function PostEditor({
           >
             <Lightbulb className="h-3.5 w-3.5" />
           </button>
-          <div className="post-editor-char-count">
-            {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} / 2200
-          </div>
+          {showCharacterCount && (
+            <div className="post-editor-char-count">
+              {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} /
+              2200
+            </div>
+          )}
         </div>
       )}
 
@@ -438,6 +595,7 @@ export function PostEditor({
                   className="post-editor-link-input"
                   type="url"
                   placeholder="https://..."
+                  aria-label="Endereço do link"
                   value={linkInputValue}
                   onChange={(e) => setLinkInputValue(e.target.value)}
                   onKeyDown={(e) => {
@@ -566,28 +724,30 @@ export function PostEditor({
           <div className="post-editor-divider" />
 
           {/* Comment button */}
-          <div className="comment-add-wrapper" ref={commentAddWrapperRef}>
-            <button
-              ref={commentBtnRef}
-              type="button"
-              className="post-editor-btn"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                if (!commentAddOpen && commentBtnRef.current) {
-                  const rect = commentBtnRef.current.getBoundingClientRect();
-                  const left = Math.min(rect.left, window.innerWidth - 280 - 16);
-                  setCommentAddPos({ top: rect.bottom + 6, left });
-                }
-                setCommentAddOpen((v) => !v);
-                setTextColorOpen(false);
-                setHighlightOpen(false);
-                setLinkPopoverOpen(false);
-              }}
-              data-tooltip="Comentar"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          {onCreateComment && (
+            <div className="comment-add-wrapper" ref={commentAddWrapperRef}>
+              <button
+                ref={commentBtnRef}
+                type="button"
+                className="post-editor-btn"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (!commentAddOpen && commentBtnRef.current) {
+                    const rect = commentBtnRef.current.getBoundingClientRect();
+                    const left = Math.min(rect.left, window.innerWidth - 280 - 16);
+                    setCommentAddPos({ top: rect.bottom + 6, left });
+                  }
+                  setCommentAddOpen((v) => !v);
+                  setTextColorOpen(false);
+                  setHighlightOpen(false);
+                  setLinkPopoverOpen(false);
+                }}
+                data-tooltip="Comentar"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </BubbleMenu>
       )}
 
@@ -658,7 +818,6 @@ export function PostEditor({
                   membros={membros ?? []}
                   workspaceUsers={workspaceUsers ?? []}
                   currentUserId={currentUserId}
-                  currentUserRole={currentUserRole}
                   onReply={onReplyToComment ?? (async () => {})}
                   onResolve={handleResolveThread}
                   onReopen={handleReopenThread}

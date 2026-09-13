@@ -290,7 +290,11 @@ export function PostagensPage() {
                           isSelected={selectedIds.has(post.id)}
                           onToggleSelect={instagramProfile ? handleToggleSelect : undefined}
                           priority={i === 0}
-                          autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id)}
+                          autoPublishOnApproval={isAutoPublishActive(
+                            data,
+                            post.workflow_id,
+                            post.id,
+                          )}
                         />
                       </div>
                     ))}

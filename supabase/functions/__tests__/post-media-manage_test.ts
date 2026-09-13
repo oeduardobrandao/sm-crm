@@ -10,7 +10,10 @@ function makeHandler(
 ) {
   return createPostMediaManageHandler({
     buildCorsHeaders,
-    createDb: () => db as never,
+    createDb: () => ({ ...db, rpc: (name: string, params: Record<string, unknown>) => {
+      const query = db.rpc(name, params);
+      return Object.assign(query, { abortSignal: (_signal: AbortSignal) => query });
+    } }) as never,
     signUrl: async (key) => `https://signed.example.com/${key}`,
     signPutUrl: async (key, _mime) => `https://r2.example.com/put/${key}`,
     randomUUID: () => "thumb-uuid",
@@ -484,4 +487,69 @@ Deno.test("post-media-manage: accepts thumbnail_r2_key from same workspace", asy
   const handler = makeHandler(db);
   const res = await handler(req("PATCH", "/1", { thumbnail_r2_key: "contas/conta-1/files/thumb.jpg" }));
   assertEquals(res.status, 200);
+});
+
+// Replacement is a transaction: no file or link mutation occurs outside its RPC.
+function setupReplace(db: ReturnType<typeof createSupabaseQueryMock>) {
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", {
+    data: { conta_id: "conta-1", active_workspace_id: "conta-1" }, error: null,
+  });
+}
+const replacement = { file_id: 20, expected_r2_key: sampleFile.r2_key };
+
+Deno.test("post-media-manage: replace passes authenticated workspace and source version to atomic RPC", async () => {
+  const db = createSupabaseQueryMock();
+  setupReplace(db);
+  const res = await makeHandler(db)(req("PATCH", "/1/replace", { ...replacement, conta_id: "attacker" }));
+  assertEquals(res.status, 200);
+  assertEquals(await readJson(res), { ok: true });
+  assertEquals(db.calls.find((call) => call.operation === "rpc")?.payload, {
+    p_link_id: 1, p_file_id: 20, p_expected_r2_key: sampleFile.r2_key,
+    p_conta_id: "conta-1", p_user_id: "user-1",
+  });
+  assert(!db.calls.some((call) => ["insert", "update", "delete"].includes(call.operation)));
+});
+
+Deno.test("post-media-manage: replace rejects null active workspace instead of using legacy conta_id", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const res = await makeHandler(db)(req("PATCH", "/1/replace", replacement));
+  assertEquals(res.status, 403);
+  assert(!db.calls.some((call) => call.operation === "rpc"));
+});
+
+for (const path of ["/1abc/replace", "/1.5/replace", "/-1/replace", "/9007199254740993/replace"]) {
+  Deno.test(`post-media-manage: replace rejects malformed link ${path}`, async () => {
+    const db = createSupabaseQueryMock(); setupReplace(db);
+    const res = await makeHandler(db)(req("PATCH", path, replacement));
+    assertEquals(res.status, 400);
+    assert(!db.calls.some((call) => call.operation === "rpc"));
+  });
+}
+for (const body of [null, {}, { file_id: "20", expected_r2_key: "x" },
+  { file_id: 1.5, expected_r2_key: "x" }, { file_id: 20, expected_r2_key: "" }]) {
+  Deno.test(`post-media-manage: replace rejects malformed body ${JSON.stringify(body)}`, async () => {
+    const db = createSupabaseQueryMock(); setupReplace(db);
+    const res = await makeHandler(db)(req("PATCH", "/1/replace", body));
+    assertEquals(res.status, 400);
+    assert(!db.calls.some((call) => call.operation === "rpc"));
+  });
+}
+for (const [code, status] of [["P0404", 404], ["P0409", 409], ["P0400", 400], ["P0403", 403], ["XX000", 500]] as const) {
+  Deno.test(`post-media-manage: replace maps ${code} without exposing database details`, async () => {
+    const db = createSupabaseQueryMock(); setupReplace(db);
+    db.queueRpc("post_file_link_replace", { data: null, error: { code, message: "secret database details" } });
+    const res = await makeHandler(db)(req("PATCH", "/1/replace", replacement));
+    assertEquals(res.status, status);
+    assert(!JSON.stringify(await readJson(res)).includes("secret database details"));
+  });
+}
+
+Deno.test("post-media-manage: thrown replacement failure becomes a generic server error", async () => {
+  const db = createSupabaseQueryMock(); setupReplace(db);
+  db.queueRpc("post_file_link_replace", () => Promise.reject(new Error("private connection detail")));
+  const res = await makeHandler(db)(req("PATCH", "/1/replace", replacement));
+  assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "Internal server error" });
 });

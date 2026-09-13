@@ -2,12 +2,21 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
-import { listWorkspaces, listPlans, getMrr, getTrials } from '../lib/api';
+import { listWorkspaces, getMrr, getTrials } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
-import { formatMoney, intervalLabel, statusMeta, toneBadgeClass } from '../lib/subscription';
+import { formatMoney, intervalLabel, statusMeta, STATUS_BADGE_VARIANT } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
 import { describeActivity, ACTIVITY_TONE_CLASS } from './workspace-activity';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
+import { Badge } from '../components/ui/badge';
+import { PageHeader } from '../components/PageHeader';
+import { RowLink } from '../components/RowLink';
+import { Skeleton } from '../components/ui/skeleton';
+import { EmptyState } from '../components/EmptyState';
+import { cn } from '../lib/utils';
+import { workspaceDetailPath } from '../lib/routes';
+import { RiskCard } from './dashboard/RiskCard';
+import { selectTrialsEndingSoon } from './dashboard-risk';
 import {
   PAYING_WORKSPACE_EXPORT_COLUMNS,
   buildPayingWorkspaceExportRows,
@@ -15,10 +24,30 @@ import {
   buildTrialExportRows,
 } from './dashboard-export';
 
+function PlanBadge({ name }: { name: string | null }) {
+  if (!name) return <span className="text-dim-foreground">—</span>;
+  const color = getPlanColor(name);
+  return (
+    <Badge variant="neutral" style={{ color, backgroundColor: `${color}26` }}>
+      {name}
+    </Badge>
+  );
+}
+
 // created_at is only read when last_activity_at is null ("Nunca"); the "now" fallback keeps
 // that branch on the cooling tone in the unlikely case the workspace row wasn't found.
 const activity = (ws: { last_activity_at: string | null; created_at: string | null }) =>
   describeActivity(ws.last_activity_at, ws.created_at ?? new Date().toISOString(), new Date());
+
+function ListSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 py-4">
+      <Skeleton className="h-4 w-72" />
+      <Skeleton className="h-4 w-64" />
+      <Skeleton className="h-4 w-60" />
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -26,11 +55,6 @@ export default function DashboardPage() {
   const { data: workspacesData, isLoading: wsLoading } = useQuery({
     queryKey: ['admin', 'workspaces', { limit: 10 }],
     queryFn: () => listWorkspaces({ limit: 10 }),
-  });
-
-  const { data: plansData, isLoading: plansLoading } = useQuery({
-    queryKey: ['admin', 'plans'],
-    queryFn: listPlans,
   });
 
   // MRR is sourced from real Stripe subscriptions (workspace_subscriptions), not plan-assignment
@@ -42,15 +66,40 @@ export default function DashboardPage() {
 
   // Workspaces on a Stripe trial (status 'trialing') — separate from MRR, which they don't
   // contribute to until they convert.
-  const { data: trialsData, isLoading: trialsLoading } = useQuery({
+  const trialsQuery = useQuery({
     queryKey: ['admin', 'trials'],
     queryFn: getTrials,
   });
+  const trialsData = trialsQuery.data;
+  const trialsLoading = trialsQuery.isLoading;
+
+  // Past-due subscriptions, least-recently-active first. total feeds the KPI, rows feed the card.
+  const pendingQuery = useQuery({
+    queryKey: [
+      'admin',
+      'workspaces',
+      { status: 'pendente', sort: 'last_activity_at', dir: 'asc', limit: 5 },
+    ],
+    queryFn: () =>
+      listWorkspaces({
+        status: 'pendente',
+        sort: 'last_activity_at',
+        dir: 'asc',
+        offset: 0,
+        limit: 5,
+      }),
+  });
+  const now = new Date();
+  const endingSoonCount = trialsData ? selectTrialsEndingSoon(trialsData.trials, now).length : 0;
+  const pendingCount = pendingQuery.data?.total ?? 0;
+  // The RiskCard below already shows per-group ErrorState — the KPI tile must not contradict it
+  // by falling back to 0 and rendering a false all-clear during an outage.
+  const riskUnavailable = trialsQuery.isError || pendingQuery.isError;
 
   function exportPayingWorkspacesCsv() {
     const workspaces = mrrData?.workspaces ?? [];
     if (workspaces.length === 0) {
-      toast.error('Nothing to export');
+      toast.error('Nada para exportar');
       return;
     }
     const csv = toCSV(buildPayingWorkspaceExportRows(workspaces), PAYING_WORKSPACE_EXPORT_COLUMNS);
@@ -60,7 +109,7 @@ export default function DashboardPage() {
   function exportTrialsCsv() {
     const trials = trialsData?.trials ?? [];
     if (trials.length === 0) {
-      toast.error('Nothing to export');
+      toast.error('Nada para exportar');
       return;
     }
     const csv = toCSV(buildTrialExportRows(trials), TRIAL_EXPORT_COLUMNS);
@@ -68,14 +117,18 @@ export default function DashboardPage() {
   }
 
   const totalWorkspaces = workspacesData?.total ?? 0;
-  const activePlans = plansData?.plans?.length ?? 0;
   // Platform-wide counts from the RPC — deriving them from the fetched page would
   // under-count once there are more workspaces than the page size.
-  const withOverrides = workspacesData?.total_with_overrides ?? 0;
   const totalMembers = workspacesData?.total_members ?? 0;
-  const totalClients = workspacesData?.total_clients ?? 0;
+  // Instagram totals only exist from admin_list_workspaces v7 (20260912000001) on: undefined
+  // means "database not migrated yet", which the card shows as '—' rather than a false zero.
+  const igAccounts = workspacesData?.total_instagram_accounts;
+  const igActive = workspacesData?.total_instagram_accounts_active;
+  const igNeedingReauth =
+    igAccounts !== undefined && igActive !== undefined ? igAccounts - igActive : 0;
 
-  // Trials carry an *expected* MRR (what they convert to); the Total card sums realized + expected.
+  // Trials carry an *expected* MRR (what they convert to); the "MRR projetado" card sums
+  // realized + expected.
   const trialMrrCents = trialsData?.trial_mrr_cents ?? null;
   const totalMrrCents = (mrrData?.mrr_cents ?? 0) + (trialsData?.trial_mrr_cents ?? 0);
   const currency = mrrData?.currency ?? trialsData?.currency;
@@ -87,13 +140,34 @@ export default function DashboardPage() {
     formatMoney(cents, currency).replace(/[\u00A0\u202F]/g, ' ');
 
   // Each card gates on its own query only: the Stripe-backed MRR/Trials queries
-  // must not hold the instant workspace/plan counts hostage.
-  const kpis: { label: string; value: string | number; sub?: string; loading: boolean }[] = [
+  // must not hold the instant workspace counts hostage.
+  const kpis: {
+    label: string;
+    value: string | number;
+    sub?: string;
+    loading: boolean;
+    tone?: 'warning';
+  }[] = [
     { label: 'Workspaces', value: totalWorkspaces, loading: wsLoading },
-    { label: 'Total Users', value: totalMembers, loading: wsLoading },
-    { label: 'Total Clients', value: totalClients, loading: wsLoading },
-    { label: 'Active Plans', value: activePlans, loading: plansLoading },
-    { label: 'With Overrides', value: withOverrides, loading: wsLoading },
+    { label: 'Usuários', value: totalMembers, loading: wsLoading },
+    {
+      label: 'Contas do Instagram',
+      value: igAccounts ?? '—',
+      sub:
+        igNeedingReauth > 0
+          ? `${igNeedingReauth} ${igNeedingReauth === 1 ? 'precisa reconectar' : 'precisam reconectar'}`
+          : undefined,
+      loading: wsLoading,
+    },
+    {
+      label: 'Pagantes',
+      value: mrrData?.paying_count ?? '—',
+      sub:
+        mrrData && totalWorkspaces > 0
+          ? `${Math.round((mrrData.paying_count / totalWorkspaces) * 100)}% dos workspaces`
+          : undefined,
+      loading: mrrLoading,
+    },
     {
       label: 'MRR',
       value: kpiMoney(mrrData?.mrr_cents ?? null),
@@ -101,23 +175,31 @@ export default function DashboardPage() {
       loading: mrrLoading,
     },
     {
-      label: 'Trials',
+      label: 'Testes',
       value: kpiMoney(trialMrrCents),
       sub: trialsData ? `${trialsData.trial_count} em teste` : undefined,
       loading: trialsLoading,
     },
     {
-      label: 'Total MRR',
+      label: 'Em risco',
+      value: riskUnavailable ? '—' : endingSoonCount + pendingCount,
+      sub: riskUnavailable
+        ? 'Não foi possível carregar'
+        : `${endingSoonCount} ${endingSoonCount === 1 ? 'teste vencendo' : 'testes vencendo'} · ${pendingCount} ${pendingCount === 1 ? 'pendente' : 'pendentes'}`,
+      loading: trialsLoading || pendingQuery.isPending,
+      tone: !riskUnavailable && endingSoonCount + pendingCount > 0 ? 'warning' : undefined,
+    },
+    {
+      label: 'MRR projetado',
       value: kpiMoney(totalMrrCents),
-      sub: 'MRR + trials',
+      sub: 'MRR + testes',
       loading: mrrLoading || trialsLoading,
     },
   ];
 
   return (
     <div>
-      <h1 className="font-sf text-2xl font-bold mb-1">Dashboard</h1>
-      <p className="text-sm text-muted-foreground mb-8">Platform overview</p>
+      <PageHeader title="Dashboard" description="Visão geral da plataforma" />
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
         {kpis.map((kpi) => (
@@ -128,7 +210,12 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
               {kpi.label}
             </p>
-            <p className="text-2xl sm:text-3xl font-bold font-sf break-words">
+            <p
+              className={cn(
+                'text-2xl sm:text-3xl font-bold font-sf break-words',
+                kpi.tone === 'warning' && 'text-warning',
+              )}
+            >
               {kpi.loading ? '—' : kpi.value}
             </p>
             {!kpi.loading && kpi.sub ? (
@@ -138,9 +225,27 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      <RiskCard
+        now={now}
+        trials={{
+          data: trialsData?.trials,
+          loading: trialsLoading,
+          error: trialsQuery.isError,
+          retry: () => trialsQuery.refetch(),
+        }}
+        pending={{
+          data: pendingQuery.data
+            ? { workspaces: pendingQuery.data.workspaces, total: pendingQuery.data.total }
+            : undefined,
+          loading: pendingQuery.isPending,
+          error: pendingQuery.isError,
+          retry: () => pendingQuery.refetch(),
+        }}
+      />
+
       <div className="glass-surface bg-card border border-border rounded-2xl p-5 mb-8">
         <div className="flex items-baseline justify-between mb-4 gap-3">
-          <h2 className="font-semibold">Paying Workspaces</h2>
+          <h2 className="font-semibold">Workspaces pagantes</h2>
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">
               {mrrLoading
@@ -152,7 +257,7 @@ export default function DashboardPage() {
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <Download size={14} />
-              Export CSV
+              Exportar CSV
             </button>
           </div>
         </div>
@@ -160,46 +265,36 @@ export default function DashboardPage() {
         {/* Desktop table header */}
         <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Workspace</span>
-          <span>Plan</span>
-          <span>Billing</span>
-          <span>Last Activity</span>
+          <span>Plano</span>
+          <span>Cobrança</span>
+          <span>Última atividade</span>
           <span className="text-right">MRR</span>
         </div>
 
         {mrrLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Loading...</p>
+          <ListSkeleton />
         ) : (mrrData?.workspaces?.length ?? 0) === 0 ? (
-          <p className="text-sm text-dim-foreground py-4">No paying workspaces yet.</p>
+          <EmptyState title="Nenhum workspace pagante ainda" />
         ) : (
           (mrrData?.workspaces || []).map((ws) => {
             const meta = statusMeta(ws.status);
             return (
               <div
                 key={ws.workspace_id}
-                onClick={() => navigate(`/admin/workspaces/${ws.workspace_id}`)}
+                onClick={() => navigate(workspaceDetailPath(ws.workspace_id))}
                 className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr_1fr] md:gap-2 md:items-center"
               >
                 {/* Mobile card layout */}
                 <div className="md:hidden flex items-center justify-between gap-3">
                   <div className="flex flex-col gap-1 min-w-0">
-                    <span className="text-foreground font-medium truncate">{ws.name}</span>
+                    <RowLink to={workspaceDetailPath(ws.workspace_id)} className="block truncate">
+                      {ws.name}
+                    </RowLink>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {ws.plan_name && (
-                        <span
-                          className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
-                          style={{
-                            color: getPlanColor(ws.plan_name),
-                            backgroundColor: getPlanColor(ws.plan_name) + '26',
-                          }}
-                        >
-                          {ws.plan_name}
-                        </span>
-                      )}
+                      {ws.plan_name && <PlanBadge name={ws.plan_name} />}
                       <span>{intervalLabel(ws.interval) || '—'}</span>
                       {ws.status !== 'active' && (
-                        <span className={`px-1.5 py-0.5 rounded-sm ${toneBadgeClass(meta.tone)}`}>
-                          {meta.label}
-                        </span>
+                        <Badge variant={STATUS_BADGE_VARIANT[meta.tone]}>{meta.label}</Badge>
                       )}
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -218,29 +313,23 @@ export default function DashboardPage() {
 
                 {/* Desktop row */}
                 <span className="hidden md:flex items-center gap-2 min-w-0">
-                  <span className="text-foreground font-medium text-sm truncate">{ws.name}</span>
+                  <RowLink
+                    to={workspaceDetailPath(ws.workspace_id)}
+                    className="block truncate text-sm"
+                  >
+                    {ws.name}
+                  </RowLink>
                   {ws.status !== 'active' && (
-                    <span
-                      className={`shrink-0 text-[0.7rem] px-1.5 py-0.5 rounded-sm whitespace-nowrap ${toneBadgeClass(meta.tone)}`}
+                    <Badge
+                      variant={STATUS_BADGE_VARIANT[meta.tone]}
+                      className="shrink-0 whitespace-nowrap"
                     >
                       {meta.label}
-                    </span>
+                    </Badge>
                   )}
                 </span>
                 <span className="hidden md:inline text-sm">
-                  {ws.plan_name ? (
-                    <span
-                      className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
-                      style={{
-                        color: getPlanColor(ws.plan_name),
-                        backgroundColor: getPlanColor(ws.plan_name) + '26',
-                      }}
-                    >
-                      {ws.plan_name}
-                    </span>
-                  ) : (
-                    <span className="text-dim-foreground">—</span>
-                  )}
+                  <PlanBadge name={ws.plan_name} />
                 </span>
                 <span className="hidden md:flex items-center gap-2 text-muted-foreground text-sm min-w-0">
                   <span className="shrink-0">{intervalLabel(ws.interval) || '—'}</span>
@@ -273,7 +362,7 @@ export default function DashboardPage() {
 
       <div className="glass-surface bg-card border border-border rounded-2xl p-5 mb-8">
         <div className="flex items-baseline justify-between mb-4 gap-3">
-          <h2 className="font-semibold">Trials</h2>
+          <h2 className="font-semibold">Testes</h2>
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">
               {trialsLoading
@@ -285,7 +374,7 @@ export default function DashboardPage() {
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <Download size={14} />
-              Export CSV
+              Exportar CSV
             </button>
           </div>
         </div>
@@ -293,16 +382,16 @@ export default function DashboardPage() {
         {/* Desktop table header */}
         <div className="hidden md:grid grid-cols-[2fr_1fr_1.25fr_1fr_1fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Workspace</span>
-          <span>Plan</span>
-          <span>Trial ends</span>
-          <span>Last Activity</span>
+          <span>Plano</span>
+          <span>Fim do teste</span>
+          <span>Última atividade</span>
           <span className="text-right">MRR</span>
         </div>
 
         {trialsLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Loading...</p>
+          <ListSkeleton />
         ) : (trialsData?.trials?.length ?? 0) === 0 ? (
-          <p className="text-sm text-dim-foreground py-4">No workspaces on trial right now.</p>
+          <EmptyState title="Nenhum workspace em teste no momento" />
         ) : (
           (trialsData?.trials || []).map((ws) => {
             const end = ws.trial_ends_at ? new Date(ws.trial_ends_at) : null;
@@ -332,7 +421,6 @@ export default function DashboardPage() {
                 daysTone = dayDiff <= 3 ? 'warning' : 'muted';
               }
             }
-            const daysToneClass = toneBadgeClass(daysTone);
             const daysTextClass =
               daysTone === 'danger'
                 ? 'text-destructive'
@@ -342,25 +430,17 @@ export default function DashboardPage() {
             return (
               <div
                 key={ws.workspace_id}
-                onClick={() => navigate(`/admin/workspaces/${ws.workspace_id}`)}
+                onClick={() => navigate(workspaceDetailPath(ws.workspace_id))}
                 className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1fr_1.25fr_1fr_1fr] md:gap-2 md:items-center"
               >
                 {/* Mobile card layout */}
                 <div className="md:hidden flex items-center justify-between gap-3">
                   <div className="flex flex-col gap-1 min-w-0">
-                    <span className="text-foreground font-medium truncate">{ws.name}</span>
+                    <RowLink to={workspaceDetailPath(ws.workspace_id)} className="block truncate">
+                      {ws.name}
+                    </RowLink>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {ws.plan_name && (
-                        <span
-                          className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
-                          style={{
-                            color: getPlanColor(ws.plan_name),
-                            backgroundColor: getPlanColor(ws.plan_name) + '26',
-                          }}
-                        >
-                          {ws.plan_name}
-                        </span>
-                      )}
+                      {ws.plan_name && <PlanBadge name={ws.plan_name} />}
                       <span>{intervalLabel(ws.interval) || '—'}</span>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -384,32 +464,21 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Desktop row */}
-                <span className="hidden md:inline text-foreground font-medium text-sm truncate">
+                <RowLink
+                  to={workspaceDetailPath(ws.workspace_id)}
+                  className="hidden truncate text-sm md:inline"
+                >
                   {ws.name}
-                </span>
+                </RowLink>
                 <span className="hidden md:inline text-sm">
-                  {ws.plan_name ? (
-                    <span
-                      className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
-                      style={{
-                        color: getPlanColor(ws.plan_name),
-                        backgroundColor: getPlanColor(ws.plan_name) + '26',
-                      }}
-                    >
-                      {ws.plan_name}
-                    </span>
-                  ) : (
-                    <span className="text-dim-foreground">—</span>
-                  )}
+                  <PlanBadge name={ws.plan_name} />
                 </span>
                 <span className="hidden md:flex items-center gap-2 text-sm min-w-0">
                   <span className="text-muted-foreground truncate">{endLabel}</span>
                   {daysLabel && (
-                    <span
-                      className={`shrink-0 text-[0.7rem] px-1.5 py-0.5 rounded-sm ${daysToneClass}`}
-                    >
+                    <Badge variant={STATUS_BADGE_VARIANT[daysTone]} className="shrink-0">
                       {daysLabel}
-                    </span>
+                    </Badge>
                   )}
                 </span>
                 <Tooltip>
@@ -434,70 +503,50 @@ export default function DashboardPage() {
       </div>
 
       <div className="glass-surface bg-card border border-border rounded-2xl p-5">
-        <h2 className="font-semibold mb-4">Recent Workspaces</h2>
+        <h2 className="font-semibold mb-4">Workspaces recentes</h2>
 
         {/* Desktop table header */}
         <div className="hidden md:grid grid-cols-[2fr_1.5fr_1fr_1fr_0.75fr] gap-2 text-xs text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Workspace</span>
-          <span>Owner</span>
-          <span>Plan</span>
-          <span>Members</span>
-          <span>Created</span>
+          <span>Dono</span>
+          <span>Plano</span>
+          <span>Membros</span>
+          <span>Criado</span>
         </div>
 
         {wsLoading ? (
-          <p className="text-sm text-dim-foreground py-4">Loading...</p>
+          <ListSkeleton />
         ) : (
           (workspacesData?.workspaces || []).map((ws) => (
             <div
               key={ws.id}
-              onClick={() => navigate(`/admin/workspaces/${ws.id}`)}
+              onClick={() => navigate(workspaceDetailPath(ws.id))}
               className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1.5fr_1fr_1fr_0.75fr] md:gap-2 md:items-center"
             >
               {/* Mobile card layout */}
               <div className="md:hidden flex flex-col gap-1">
-                <span className="text-foreground font-medium">{ws.name}</span>
+                <RowLink to={workspaceDetailPath(ws.id)}>{ws.name}</RowLink>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>{ws.owner?.name || '—'}</span>
                   <span>·</span>
-                  <span>{ws.member_count} members</span>
+                  <span>{ws.member_count} membros</span>
                   {ws.plan_name && (
                     <>
                       <span>·</span>
-                      <span
-                        className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
-                        style={{
-                          color: getPlanColor(ws.plan_name),
-                          backgroundColor: getPlanColor(ws.plan_name) + '26',
-                        }}
-                      >
-                        {ws.plan_name}
-                      </span>
+                      <PlanBadge name={ws.plan_name} />
                     </>
                   )}
                 </div>
               </div>
               {/* Desktop row */}
-              <span className="hidden md:inline text-foreground font-medium text-sm">
+              <RowLink to={workspaceDetailPath(ws.id)} className="hidden text-sm md:inline">
                 {ws.name}
-              </span>
+              </RowLink>
               <span className="hidden md:inline text-muted-foreground text-sm">
                 {ws.owner?.name || '—'}
               </span>
               <span className="hidden md:inline text-sm">
-                {ws.plan_name ? (
-                  <span
-                    className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
-                    style={{
-                      color: getPlanColor(ws.plan_name),
-                      backgroundColor: getPlanColor(ws.plan_name) + '26',
-                    }}
-                  >
-                    {ws.plan_name}
-                  </span>
-                ) : (
-                  <span className="text-dim-foreground">—</span>
-                )}
+                <PlanBadge name={ws.plan_name} />
               </span>
               <span className="hidden md:inline font-sf text-sm">{ws.member_count}</span>
               <span className="hidden md:inline text-muted-foreground text-sm">

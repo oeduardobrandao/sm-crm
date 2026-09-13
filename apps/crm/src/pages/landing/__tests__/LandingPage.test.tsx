@@ -348,13 +348,16 @@ describe('LandingPage', () => {
       .getByRole('heading', { name: 'Start', level: 3 })
       .closest('.plan-card');
     expect(startCard).not.toBeNull();
-    expect(within(startCard as HTMLElement).getByText('R$ 99,90')).toBeInTheDocument();
-    expect(within(startCard as HTMLElement).getByText('5')).toBeInTheDocument();
-    expect(within(startCard as HTMLElement).getByText('2')).toBeInTheDocument();
+    expect((startCard as HTMLElement).querySelector('.price')).toHaveTextContent('R$ 99,90');
+    expect(
+      within(startCard as HTMLElement).getByText('5 clientes · 2 usuários'),
+    ).toBeInTheDocument();
 
     const maxCard = screen.getByRole('heading', { name: 'Max', level: 3 }).closest('.plan-card');
     expect(maxCard).not.toBeNull();
-    expect(within(maxCard as HTMLElement).getAllByText('Ilimitado')).toHaveLength(2);
+    expect(
+      within(maxCard as HTMLElement).getByText('Clientes ilimitados · Usuários ilimitados'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Templates')).not.toBeInTheDocument();
     expect(screen.queryByText('Features')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Lifetime', level: 3 })).not.toBeInTheDocument();
@@ -365,14 +368,14 @@ describe('LandingPage', () => {
     triggerPricingIntersection();
     await screen.findByRole('heading', { name: 'Start', level: 3 });
 
-    expect(screen.getByText('Economize até 20% no plano anual')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+    expect(screen.getByRole('button', { name: /Anual/ })).toHaveTextContent('−20%');
+    fireEvent.click(screen.getByRole('button', { name: /Anual/ }));
 
     const startCard = screen
       .getByRole('heading', { name: 'Start', level: 3 })
       .closest('.plan-card');
     expect(startCard).not.toBeNull();
-    expect(within(startCard as HTMLElement).getByText('R$ 79,92')).toBeInTheDocument();
+    expect((startCard as HTMLElement).querySelector('.price')).toHaveTextContent('R$ 79,92');
     expect(
       within(startCard as HTMLElement).getByText('cobrado anualmente (R$ 959,00/ano)'),
     ).toBeInTheDocument();
@@ -401,12 +404,12 @@ describe('LandingPage', () => {
       triggerPricingIntersection();
       await screen.findByRole('heading', { name: 'Pro', level: 3 });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+      fireEvent.click(screen.getByRole('button', { name: /Anual/ }));
 
       const proCard = screen.getByRole('heading', { name: 'Pro', level: 3 }).closest('.plan-card');
       expect(proCard).not.toBeNull();
-      expect(within(proCard as HTMLElement).getByText('R$ 129,90')).toBeInTheDocument();
-      expect(within(proCard as HTMLElement).queryByText('R$ 111,92')).not.toBeInTheDocument();
+      expect((proCard as HTMLElement).querySelector('.price')).toHaveTextContent('R$ 129,90');
+      expect((proCard as HTMLElement).querySelector('.price')).not.toHaveTextContent('R$ 111,92');
       // X = round((1 - 134300 / (12 * 13990)) * 100) = 20.
       expect(
         within(proCard as HTMLElement).getByText(
@@ -422,13 +425,13 @@ describe('LandingPage', () => {
       triggerPricingIntersection();
       await screen.findByRole('heading', { name: 'Start', level: 3 });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+      fireEvent.click(screen.getByRole('button', { name: /Anual/ }));
 
       const startCard = screen
         .getByRole('heading', { name: 'Start', level: 3 })
         .closest('.plan-card');
       expect(startCard).not.toBeNull();
-      expect(within(startCard as HTMLElement).getByText('R$ 79,92')).toBeInTheDocument();
+      expect((startCard as HTMLElement).querySelector('.price')).toHaveTextContent('R$ 79,92');
       expect(
         within(startCard as HTMLElement).getByText('cobrado anualmente (R$ 959,00/ano)'),
       ).toBeInTheDocument();
@@ -492,7 +495,7 @@ describe('LandingPage', () => {
 
     await screen.findByRole('heading', { name: 'Start', level: 3 });
 
-    expect(screen.queryByText(/Economize até/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Anual' })).not.toHaveTextContent('%');
   });
 
   it('renders the empty catalog state', async () => {

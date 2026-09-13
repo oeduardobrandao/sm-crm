@@ -78,3 +78,19 @@ export async function getContextLinksForRoutes(routes: string[]): Promise<KbCont
   }
   return [];
 }
+
+/** Colunas leves para a busca global; evita puxar o corpo TipTap dos artigos. */
+export type KbSearchEntry = Pick<
+  KbArticle,
+  'id' | 'title' | 'slug' | 'excerpt' | 'category' | 'tags'
+>;
+
+export async function getKbSearchIndex(): Promise<KbSearchEntry[]> {
+  const { data, error } = await supabase
+    .from('kb_articles')
+    .select('id,title,slug,excerpt,category,tags')
+    .eq('status', 'published')
+    .order('display_order');
+  if (error) throw error;
+  return (data ?? []) as KbSearchEntry[];
+}

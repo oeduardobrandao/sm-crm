@@ -102,6 +102,20 @@ Deno.test("mcp-tarefas: updateTask explicit nulls clear responsavel/data_limite 
   assert(!Object.hasOwn(patch, "descricao"), "omitted descricao not in patch");
 });
 
+Deno.test("mcp-tarefas: updateTask plain descricao clears stale rich content", async () => {
+  const { db, calls } = makeFakeDb({
+    tarefas: [
+      { data: { id: 1 }, error: null },
+      { data: { id: 1, titulo: "X", descricao: "Nova", status: "pendente" }, error: null },
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  await updateTask(deps, { task_id: 1, descricao: "Nova descrição via MCP" });
+  const patch = updatePayload(calls, "tarefas")!;
+  assertEquals(patch.descricao, "Nova descrição via MCP");
+  assertEquals(patch.descricao_rich, null);
+});
+
 Deno.test("mcp-tarefas: updateTask task from another workspace -> McpInputError", async () => {
   const { db } = makeFakeDb({ tarefas: [{ data: null, error: null }] });
   const deps = { db, ctx: CTX } as unknown as Deps;

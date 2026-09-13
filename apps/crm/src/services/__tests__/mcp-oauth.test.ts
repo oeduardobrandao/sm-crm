@@ -33,13 +33,25 @@ describe('mcp-oauth service', () => {
     vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
   });
 
-  it('listEligibleWorkspaces hits the consent fn and returns workspaces', async () => {
-    mockFetch({ workspaces: [{ id: 'c1', name: 'X', role: 'owner', feature_mcp: true }] });
-    const ws = await listEligibleWorkspaces();
-    expect(ws).toEqual([{ id: 'c1', name: 'X', role: 'owner', feature_mcp: true }]);
+  it('listEligibleWorkspaces hits the consent fn and returns workspaces + platform_admin', async () => {
+    mockFetch({
+      workspaces: [{ id: 'c1', name: 'X', role: 'owner', feature_mcp: true }],
+      platform_admin: true,
+    });
+    const result = await listEligibleWorkspaces();
+    expect(result).toEqual({
+      workspaces: [{ id: 'c1', name: 'X', role: 'owner', feature_mcp: true }],
+      platform_admin: true,
+    });
     expect(calls()[0][0]).toContain('/functions/v1/mcp-oauth-consent');
     expect(sentBody()).toEqual({ action: 'eligible-workspaces' });
     expect(calls()[0][1].headers.Authorization).toBe('Bearer tok');
+  });
+
+  it('listEligibleWorkspaces defaults platform_admin to false when absent', async () => {
+    mockFetch({ workspaces: [] });
+    const result = await listEligibleWorkspaces();
+    expect(result).toEqual({ workspaces: [], platform_admin: false });
   });
 
   it('recordOAuthGrant posts approve with authorization_id and never client_id', async () => {

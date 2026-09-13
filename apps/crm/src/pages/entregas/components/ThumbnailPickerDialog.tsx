@@ -87,7 +87,7 @@ export function ThumbnailPickerDialog({ media, onClose, onUpdated }: ThumbnailPi
     >
       {/* z-[9005] keeps the dialog above the WorkflowDrawer (panel z-index 9001),
           matching the PostMediaLightbox convention. */}
-      <DialogContent className="max-w-lg z-[9005]" overlayClassName="z-[9005]">
+      <DialogContent className="max-w-lg overflow-y-auto z-[9005]" overlayClassName="z-[9005]">
         <DialogHeader>
           <DialogTitle>{t('thumbnailEditor.title')}</DialogTitle>
           <DialogDescription>{t('thumbnailEditor.disclaimer')}</DialogDescription>
@@ -161,6 +161,36 @@ export function ThumbnailPickerDialog({ media, onClose, onUpdated }: ThumbnailPi
                 </figure>
               )}
             </div>
+          </div>
+        )}
+        {media && (pendingUrl || media.thumbnail_url) && (
+          <div className="rounded-lg border p-3">
+            <p className="mb-2 text-xs font-semibold">Prévia da capa no Instagram</p>
+            <div className="flex items-start gap-4">
+              <figure className="w-20">
+                <img
+                  src={pendingUrl ?? media.thumbnail_url ?? undefined}
+                  alt="Capa do Reel em 9:16"
+                  className="aspect-[9/16] w-full rounded-md object-cover"
+                />
+                <figcaption className="mt-1 text-[11px] text-muted-foreground">
+                  Reel · 9:16
+                </figcaption>
+              </figure>
+              <figure className="w-20">
+                <img
+                  src={pendingUrl ?? media.thumbnail_url ?? undefined}
+                  alt="Recorte central da capa no feed"
+                  className="aspect-square w-full rounded-md object-cover"
+                />
+                <figcaption className="mt-1 text-[11px] text-muted-foreground">
+                  Feed · 1:1
+                </figcaption>
+              </figure>
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              O Instagram usa o recorte central da imagem.
+            </p>
           </div>
         )}
         <DialogFooter>

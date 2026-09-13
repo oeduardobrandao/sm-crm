@@ -9,6 +9,8 @@ export type PublishErrorCode =
   | 'NO_MEDIA'
   | 'MEDIA_UNSUPPORTED'
   | 'TRIAL_INELIGIBLE'
+  | 'CAPTION_TOO_LONG'
+  | 'ACCOUNT_RESTRICTED'
   | 'CONTAINER_EXPIRED'
   | 'RATE_LIMIT'
   | 'IG_TRANSIENT'
@@ -67,6 +69,20 @@ export const PUBLISH_ERROR_COPY: Record<PublishErrorCode, PublishErrorDisplay> =
       'O post precisa de exatamente um vídeo e a conta precisa ser profissional, pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o Reel de teste, e tente novamente.',
     acao: 'retry',
     mostrarDetalhes: false,
+  },
+  CAPTION_TOO_LONG: {
+    titulo: 'Legenda acima do limite do Instagram',
+    explicacao:
+      'O Instagram aceita no máximo 2.200 caracteres na legenda. Reduza o texto na galeria e tente novamente.',
+    acao: 'media',
+    mostrarDetalhes: true,
+  },
+  ACCOUNT_RESTRICTED: {
+    titulo: 'Acesso da conta restrito pelo Instagram',
+    explicacao:
+      'O Instagram restringiu o acesso desta conta. Confira o aplicativo do Instagram por avisos ou restrições antes de tentar novamente.',
+    acao: 'retry',
+    mostrarDetalhes: true,
   },
   CONTAINER_EXPIRED: {
     titulo: 'Publicação preparada expirou no Instagram',

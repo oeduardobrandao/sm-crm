@@ -15,8 +15,13 @@ import { getInitials } from '../../../store';
 
 /** Personal settings: profile, password, account details and sign-out. */
 export default function PerfilTab() {
-  const { user, profile, role, signOut, refetchProfile } = useAuth();
-  const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+  const { user, profile, can, signOut, refetchProfile } = useAuth();
+  // The `configuracoes` tab itself is already gated on `configuracoes:ver`
+  // at the tab layer (configTabs.ts, Task 12) -- mirrors that here. Was
+  // `role === 'owner' || role === 'admin'`, which a custom role with the
+  // chassis 'agent' role never passed even when it held the tab-level
+  // grant, wrongly telling it other config subsections were off-limits.
+  const canViewConfig = can('configuracoes', 'ver') === true;
 
   // --- Profile form ---
   const [pNome, setPNome] = useState('');
@@ -200,7 +205,7 @@ export default function PerfilTab() {
 
       {/* Agents see no other tab, so the strip is hidden for them entirely —
           this is the only place that explains why. */}
-      {!isOwnerOrAdmin && (
+      {!canViewConfig && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <RoleRestrictionNotice
             title="Configurações do workspace"

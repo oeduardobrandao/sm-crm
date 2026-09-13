@@ -1,4 +1,5 @@
 // apps/crm/src/services/postMedia.ts
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
 import type { PostMedia } from '../store';
 
@@ -203,7 +204,14 @@ export async function getPostCovers(postIds: number[]): Promise<Map<number, Post
   return new Map(covers.map((c) => [c.post_id, c.media]));
 }
 
-export async function uploadPostMedia(args: {
+/** Holds the unsaved-work registry for the whole upload: a silent version swap must not abort it. */
+export function uploadPostMedia(
+  ...args: Parameters<typeof uploadPostMediaUnguarded>
+): ReturnType<typeof uploadPostMediaUnguarded> {
+  return trackUnsavedWork(uploadPostMediaUnguarded(...args));
+}
+
+async function uploadPostMediaUnguarded(args: {
   postId: number;
   file: File;
   thumbnail?: File; // required for video

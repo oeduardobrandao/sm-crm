@@ -3,7 +3,31 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import type { WorkflowEtapa } from '../../../../store';
-import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../useEntregasData';
+import { getVigentePostProcesses } from '../../../../store';
+import {
+  computeDeadlineDate,
+  computeWorkflowDeadlineDate,
+  useEntregasData,
+} from '../useEntregasData';
+
+// useEntregasData reads `clienteAvatars`/`hubTokens` via two `supabase.from(...)`
+// calls made DIRECTLY (bypassing the mocked store module below), and
+// `getWorkspaceSlug`/`getWorkflowRevisaoInternaCounts`/
+// `getWorkflowAwaitingClientePostsCounts` (never overridden in the store mock
+// either) reach `supabase` internally too. Without this, all of those hit the
+// REAL `@supabase/supabase-js` client against the fake `VITE_SUPABASE_URL`
+// from vitest.config.ts — a genuine (if failing) network call whose settle
+// time is environment-dependent (fails fast on a sandbox with no DNS, but
+// takes real round-trip time wherever the runner has actual internet access).
+// That was the CI-only flake in "keeps cards and the lookup maps stable...":
+// those two queries are dependencies of the `cards` useMemo, and on a slower/
+// real-network run they could settle for the FIRST time in the gap between
+// this file's `waitFor` (which never checked them) and the assertion,
+// producing a legitimately new-but-deep-equal `cards` array — not a memo bug.
+// Auto-mocked via apps/crm/src/lib/__mocks__/supabase.ts (test/shared/
+// supabaseMock.ts's default `{ data: [], error: null }` per table is exactly
+// right here — nothing needs to be queued).
+vi.mock('../../../../lib/supabase');
 
 // ── Mock store ──────────────────────────────────────────────────────────────
 
@@ -41,21 +65,30 @@ vi.mock('../../../../store', async (importOriginal) => {
     ]),
     getMembros: vi.fn().mockResolvedValue([]),
     getWorkflowTemplates: vi.fn().mockResolvedValue([]),
-    getWorkflowEtapas: vi.fn().mockImplementation((wfId: number) =>
-      Promise.resolve([
-        {
-          id: wfId * 100,
-          workflow_id: wfId,
-          ordem: 0,
-          nome: 'Etapa 1',
-          tipo: 'padrao',
-          prazo_dias: 3,
-          tipo_prazo: 'corridos',
-          status: 'ativo',
-          iniciado_em: '2026-04-01T00:00:00Z',
-        },
-      ]),
-    ),
+    getAllActiveEtapas: vi.fn().mockResolvedValue([
+      {
+        id: 100,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+      {
+        id: 200,
+        workflow_id: 2,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+    ]),
     getDeadlineInfo: vi
       .fn()
       .mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' }),
@@ -73,11 +106,13 @@ vi.mock('../../../../store', async (importOriginal) => {
         [2, [10]],
       ]),
     ),
+    getVigentePostProcesses: vi.fn().mockResolvedValue([]),
   };
 });
 
 vi.mock('../../../../services/postMedia', () => ({
   getWorkflowCovers: vi.fn().mockResolvedValue(new Map()),
+  getPostCovers: vi.fn().mockResolvedValue(new Map()),
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -100,8 +135,9 @@ function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return ({ children }: { children: ReactNode }) =>
+  const Wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
+  return { Wrapper, queryClient };
 }
 
 // ── Pure-function tests (unchanged) ─────────────────────────────────────────
@@ -216,21 +252,30 @@ describe('useEntregasData', () => {
     ]);
     (store.getMembros as any).mockResolvedValue([]);
     (store.getWorkflowTemplates as any).mockResolvedValue([]);
-    (store.getWorkflowEtapas as any).mockImplementation((wfId: number) =>
-      Promise.resolve([
-        {
-          id: wfId * 100,
-          workflow_id: wfId,
-          ordem: 0,
-          nome: 'Etapa 1',
-          tipo: 'padrao',
-          prazo_dias: 3,
-          tipo_prazo: 'corridos',
-          status: 'ativo',
-          iniciado_em: '2026-04-01T00:00:00Z',
-        },
-      ]),
-    );
+    (store.getAllActiveEtapas as any).mockResolvedValue([
+      {
+        id: 100,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+      {
+        id: 200,
+        workflow_id: 2,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+    ]);
     (store.getDeadlineInfo as any).mockReturnValue({
       estourado: false,
       urgente: false,
@@ -263,7 +308,7 @@ describe('useEntregasData', () => {
     const { useEntregasData } = await import('../useEntregasData');
 
     const { result } = renderHook(() => useEntregasData(), {
-      wrapper: createWrapper(),
+      wrapper: createWrapper().Wrapper,
     });
 
     await waitFor(() => {
@@ -281,7 +326,7 @@ describe('useEntregasData', () => {
     const { useEntregasData } = await import('../useEntregasData');
 
     const { result } = renderHook(() => useEntregasData(), {
-      wrapper: createWrapper(),
+      wrapper: createWrapper().Wrapper,
     });
 
     await waitFor(() => {
@@ -295,6 +340,58 @@ describe('useEntregasData', () => {
     expect(postResponsaveis.get(2)).toEqual([10]);
   });
 
+  // EntregasPage keys its filteredCards useMemo (and, through it, every chart
+  // dataset in the Visão geral) on these. A fresh array or Map per render makes
+  // that memo unreachable and re-animates the whole cockpit on any state change.
+  it('keeps cards and the lookup maps stable across a re-render with no new data', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+
+    const { Wrapper, queryClient } = createWrapper();
+    const { result, rerender } = renderHook(() => useEntregasData(), {
+      wrapper: Wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.cards.length).toBe(2);
+      expect(result.current.postResponsaveis.size).toBe(2);
+      // `cards` also depends on covers/clienteAvatars/hubTokens/workspaceSlug
+      // (see useEntregasData.ts), none of which the hook exposes on its return
+      // value — isLoading/cards.length/postResponsaveis above don't cover them.
+      // Waiting for the whole QueryClient to go idle closes that gap: capturing
+      // `before` while a query this memo depends on is still in flight is what
+      // let a later, legitimate first-settlement race as a "new but deep-equal
+      // cards array" flake (CI-only, see the `lib/supabase` mock above).
+      expect(queryClient.isFetching()).toBe(0);
+    });
+
+    const before = result.current;
+    rerender();
+
+    expect(result.current.cards).toBe(before.cards);
+    expect(result.current.activeWorkflows).toBe(before.activeWorkflows);
+    expect(result.current.postResponsaveis).toBe(before.postResponsaveis);
+    expect(result.current.postsCounts).toBe(before.postsCounts);
+    expect(result.current.etapasMap).toBe(before.etapasMap);
+  });
+
+  it('serves stable empty fallbacks while the queries have not resolved', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+
+    const { result, rerender } = renderHook(() => useEntregasData(), {
+      wrapper: createWrapper().Wrapper,
+    });
+
+    // First commit: nothing has resolved yet, so every value is a fallback.
+    const before = result.current;
+    expect(before.cards).toEqual([]);
+    rerender();
+
+    expect(result.current.cards).toBe(before.cards);
+    expect(result.current.clientes).toBe(before.clientes);
+    expect(result.current.postResponsaveis).toBe(before.postResponsaveis);
+  });
+
   it('returns an empty Map when no workflow IDs are available', async () => {
     // Override getWorkflows to return no active workflows
     const store = await import('../../../../store');
@@ -303,7 +400,7 @@ describe('useEntregasData', () => {
     const { useEntregasData } = await import('../useEntregasData');
 
     const { result } = renderHook(() => useEntregasData(), {
-      wrapper: createWrapper(),
+      wrapper: createWrapper().Wrapper,
     });
 
     await waitFor(() => {
@@ -313,5 +410,164 @@ describe('useEntregasData', () => {
     const { postsCounts } = result.current;
     expect(postsCounts).toBeInstanceOf(Map);
     expect(postsCounts.size).toBe(0);
+  });
+});
+
+const vigenteFixture = {
+  id: 9,
+  conta_id: 'c',
+  post_id: 77,
+  template_id: null,
+  template_nome: null,
+  assinatura: '',
+  origem_workflow_id: null,
+  origem_descricao: null,
+  estado: 'ativo',
+  motivo_encerramento: null,
+  etapa_atual: 0,
+  modo_prazo: 'padrao',
+  board_position: 0,
+  revisao: 1,
+  created_by: null,
+  created_at: '2026-09-10T00:00:00Z',
+  updated_at: '2026-09-10T00:00:00Z',
+  concluido_em: null,
+  steps: [
+    {
+      id: 1,
+      conta_id: 'c',
+      process_id: 9,
+      ordem: 0,
+      nome: 'Copy',
+      tipo: 'padrao',
+      responsavel_id: null,
+      prazo_dias: null,
+      tipo_prazo: null,
+      prazo_efetivo: null,
+      estado: 'ativo',
+      iniciado_em: null,
+      concluido_em: null,
+      interrompido_em: null,
+      origem_etapa_ordem: null,
+      origem_etapa_nome: null,
+    },
+  ],
+  post: {
+    id: 77,
+    workflow_id: null,
+    cliente_id: 10,
+    cliente_nome: 'Cliente A',
+    workflow_titulo: null,
+    titulo: 'Post X',
+    tipo: 'feed',
+    status: 'rascunho',
+    custom_status_id: null,
+    scheduled_at: null,
+    published_at: null,
+    ig_caption: null,
+    instagram_permalink: null,
+    publish_error: null,
+    publish_error_code: null,
+    ordem: 0,
+    responsavel_id: null,
+    platform: 'instagram',
+    tiktok_publish_status: null,
+    tiktok_publish_error: null,
+    tiktok_post_url: null,
+    instagram_media_id: null,
+    ig_trial_strategy: null,
+    board_ordem: null,
+  },
+};
+
+describe('useEntregasData: processos individuais', () => {
+  // The global afterEach (test/vitest.setup.ts) runs vi.restoreAllMocks(),
+  // which strips the implementations `vi.mock('../../../../store', ...)`
+  // set up at module scope (plain vi.fn() mocks behave like mockReset() under
+  // restoreAllMocks -- there is no "original" to fall back to). The sibling
+  // `describe('useEntregasData', ...)` above works around this with its own
+  // beforeEach; this block needs the same for the mocks these two tests touch.
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const store = await import('../../../../store');
+    (store.getWorkflows as any).mockResolvedValue([]);
+    (store.getClientes as any).mockResolvedValue([
+      {
+        id: 10,
+        nome: 'Cliente A',
+        sigla: 'CA',
+        cor: '#f00',
+        plano: 'basic',
+        email: '',
+        telefone: '',
+        status: 'ativo',
+        valor_mensal: 1000,
+      },
+    ]);
+    (store.getMembros as any).mockResolvedValue([]);
+    (store.getWorkflowTemplates as any).mockResolvedValue([]);
+    (store.getAllActiveEtapas as any).mockResolvedValue([]);
+    (store.getVigentePostProcesses as any).mockResolvedValue([]);
+    const postMedia = await import('../../../../services/postMedia');
+    (postMedia.getWorkflowCovers as any).mockResolvedValue(new Map());
+    (postMedia.getPostCovers as any).mockResolvedValue(new Map());
+  });
+
+  it('consulta post_processes mesmo com a flag desligada e devolve postProcessesVisible=false sem linhas', async () => {
+    (getVigentePostProcesses as any).mockResolvedValueOnce([]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useEntregasData(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(getVigentePostProcesses).toHaveBeenCalledTimes(1);
+    expect(result.current.postEntities).toEqual([]);
+    expect(result.current.activePostProcessCount).toBe(0);
+    expect(result.current.processByPostId.size).toBe(0);
+    expect(result.current.postProcessesVisible).toBe(false);
+    const first = result.current.postEntities;
+    await waitFor(() => expect(result.current.postEntities).toBe(first));
+  });
+
+  it('flag desligada com processo existente: postProcessesVisible=true e o card entra em postEntities', async () => {
+    (getVigentePostProcesses as any).mockResolvedValueOnce([vigenteFixture]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useEntregasData(), { wrapper });
+    await waitFor(() => expect(result.current.postEntities.length).toBe(1));
+    expect(result.current.postProcessesVisible).toBe(true);
+  });
+
+  it('com a flag ligada monta postEntities dos ativos e o mapa por post dos vigentes', async () => {
+    (getVigentePostProcesses as any).mockResolvedValueOnce([
+      vigenteFixture,
+      { ...vigenteFixture, id: 10, post_id: 78, estado: 'concluido', steps: [], etapa_atual: 0 },
+    ]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useEntregasData({ postProcessesEnabled: true }), {
+      wrapper,
+    });
+    // Waiting only for postEntities.length===1 can catch a render where
+    // vigenteQuery has settled but the sibling ['clientes'] query has not
+    // (same class of race as "keeps cards and the lookup maps stable..." above):
+    // postEntities only needs activeProcesses to be non-empty, so it can turn
+    // up one tick before `cliente` is filled in. Waiting for the whole
+    // QueryClient to go idle closes that gap.
+    await waitFor(() => {
+      expect(result.current.postEntities).toHaveLength(1);
+      expect(qc.isFetching()).toBe(0);
+    });
+    expect(result.current.postEntities[0]).toMatchObject({
+      kind: 'post',
+      id: 'post:9',
+      etapaNome: 'Copy',
+    });
+    expect(result.current.postEntities[0].cliente?.nome).toBe('Cliente A');
+    expect(result.current.activePostProcessCount).toBe(1);
+    expect(result.current.concludedPostProcesses.map((p) => p.id)).toEqual([10]);
+    expect([...result.current.processByPostId.keys()].sort()).toEqual([77, 78]);
   });
 });

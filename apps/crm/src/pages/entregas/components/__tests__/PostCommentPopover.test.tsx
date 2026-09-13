@@ -3,6 +3,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CommentThreadWithComments, Membro } from '@/store';
+import { makeCan, fakeMembership } from '@/test/makeCan';
+
+const { mockUseAuth } = vi.hoisted(() => ({
+  mockUseAuth: vi.fn(() => ({ can: makeCan(fakeMembership({ role: 'owner' })) })),
+}));
+
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: mockUseAuth,
+}));
 
 import PostCommentPopover from '../PostCommentPopover';
 
@@ -84,7 +93,6 @@ function makeThread(overrides?: Partial<CommentThreadWithComments>): CommentThre
 const defaultProps = {
   membros,
   currentUserId: 'user-1',
-  currentUserRole: 'owner' as const,
   onReply: vi.fn().mockResolvedValue(undefined),
   onResolve: vi.fn().mockResolvedValue(undefined),
   onReopen: vi.fn().mockResolvedValue(undefined),
@@ -104,6 +112,7 @@ describe('PostCommentPopover', () => {
     defaultProps.onReopen.mockResolvedValue(undefined);
     defaultProps.onEditComment.mockResolvedValue(undefined);
     defaultProps.onDeleteComment.mockResolvedValue(undefined);
+    mockUseAuth.mockReturnValue({ can: makeCan(fakeMembership({ role: 'owner' })) });
   });
 
   // Re-arms the mocks MentionTextarea's useMentionSearch depends on -- the
@@ -172,33 +181,60 @@ describe('PostCommentPopover', () => {
   });
 
   it('hides edit button but shows delete for admin viewing another user comment', () => {
+    mockUseAuth.mockReturnValue({ can: makeCan(fakeMembership({ role: 'admin' })) });
     const thread = makeThread();
-    render(
-      <PostCommentPopover
-        thread={thread}
-        {...defaultProps}
-        currentUserId="user-2"
-        currentUserRole="admin"
-      />,
-    );
+    render(<PostCommentPopover thread={thread} {...defaultProps} currentUserId="user-2" />);
 
     expect(screen.queryByTitle('Editar')).not.toBeInTheDocument();
     expect(screen.getByTitle('Excluir')).toBeInTheDocument();
   });
 
-  it('hides all action buttons for agent viewing another user comment', () => {
+  /**
+   * Task 14 fix round 2 (external review): `currentUserRole === 'owner' ||
+   * currentUserRole === 'admin'` collapsed onto `can('equipe', 'editar') ===
+   * true`, NOT `entregas`. `post_comments` DELETE RLS is tenant-only (no
+   * author/role predicate) -- this client-side gate is the ONLY
+   * authorization boundary for deleting someone ELSE's comment, so gating on
+   * `entregas:editar` (AGENT_ROLE_PRESET.entregas is 'editar') would have
+   * been a REAL privilege escalation: every legacy agent could delete any
+   * comment, which the old owner/admin-only check never allowed.
+   * `equipe:editar` reproduces the old gate byte-for-byte for every legacy
+   * chassis role (AGENT_ROLE_PRESET.equipe is 'none') and models moderation
+   * as a team-management capability.
+   */
+  it('keeps delete hidden for a legacy agent viewing another user comment (equipe preset is none, matches the old owner/admin-only gate)', () => {
+    mockUseAuth.mockReturnValue({ can: makeCan(fakeMembership({ role: 'agent' })) });
     const thread = makeThread();
-    render(
-      <PostCommentPopover
-        thread={thread}
-        {...defaultProps}
-        currentUserId="user-2"
-        currentUserRole="agent"
-      />,
-    );
+    render(<PostCommentPopover thread={thread} {...defaultProps} currentUserId="user-2" />);
 
     expect(screen.queryByTitle('Editar')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Excluir')).not.toBeInTheDocument();
+  });
+
+  it('hides delete for a custom role with equipe:ver only, viewing another user comment', () => {
+    mockUseAuth.mockReturnValue({
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'ver' } }),
+      ),
+    });
+    const thread = makeThread();
+    render(<PostCommentPopover thread={thread} {...defaultProps} currentUserId="user-2" />);
+
+    expect(screen.queryByTitle('Editar')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Excluir')).not.toBeInTheDocument();
+  });
+
+  it('shows delete for a custom role with equipe:editar, viewing another user comment (the fix)', () => {
+    mockUseAuth.mockReturnValue({
+      can: makeCan(
+        fakeMembership({ role: 'agent', role_id: 'role-1', permissions: { equipe: 'editar' } }),
+      ),
+    });
+    const thread = makeThread();
+    render(<PostCommentPopover thread={thread} {...defaultProps} currentUserId="user-2" />);
+
+    expect(screen.queryByTitle('Editar')).not.toBeInTheDocument();
+    expect(screen.getByTitle('Excluir')).toBeInTheDocument();
   });
 
   it('hides all action buttons in readOnly mode', () => {

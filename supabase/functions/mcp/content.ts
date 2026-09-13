@@ -195,7 +195,10 @@ export function allowlistMember(row: Record<string, unknown>): Record<string, un
  * trusts neither the top-level value nor the shape of any block, and fails closed
  * (returns "") on anything malformed. Unknown block types fall back to rendering
  * their text as a paragraph, mirroring the Hub page renderer's default case
- * (apps/hub/src/pages/PaginaPage.tsx).
+ * (apps/hub/src/pages/PaginaPage.tsx). A `richtext` block (the TipTap editor's
+ * output, see apps/hub/src/types.ts HubRichTextBlock) carries its payload in
+ * `doc` instead of `content` and is serialized via `proseMirrorToMarkdown`; a
+ * missing, null, or non-object `doc` produces no output, never a throw.
  */
 export function pageContentToMarkdown(content: unknown): string {
   if (!Array.isArray(content)) return "";
@@ -207,6 +210,13 @@ export function pageContentToMarkdown(content: unknown): string {
     const text = typeof b.content === "string" ? b.content : "";
     const href = typeof b.href === "string" ? b.href : "";
     switch (type) {
+      case "richtext": {
+        const doc = b.doc;
+        if (typeof doc !== "object" || doc === null) break;
+        const rendered = proseMirrorToMarkdown(doc as Record<string, unknown>);
+        if (rendered) parts.push(rendered);
+        break;
+      }
       case "markdown":
       case "paragraph":
         if (text) parts.push(text);
@@ -230,6 +240,207 @@ export function pageContentToMarkdown(content: unknown): string {
     }
   }
   return parts.join("\n\n").trim();
+}
+
+/**
+ * Minimal serialization of a ProseMirror document (the `richtext` block's `doc`)
+ * to markdown, for agent consumption. Covers only the node/mark set the Páginas
+ * editor can persist (StarterKit, Underline, TextStyle, Color, Highlight, Link,
+ * Placeholder, Callout, per the editor spec); an unrecognized node renders its
+ * children's text instead of dropping content, and this never throws on
+ * malformed input (called only after the caller confirms `doc` is a non-null
+ * object; every field below is read defensively regardless). A depth guard
+ * bounds recursion so pathologically deep or circular input fails closed
+ * (collapses toward "") instead of raising a stack overflow.
+ */
+function proseMirrorToMarkdown(doc: Record<string, unknown>): string {
+  const blocks: string[] = [];
+  const MAX_DEPTH = 100;
+
+  // Inline (span-level) text extraction: text nodes keep their marks applied,
+  // hardBreak becomes a literal newline, and anything else is the concatenation
+  // of its children's inline text (adjacent inline nodes are meant to be flush
+  // against each other, so "" is the correct join here).
+  function inline(node: any, depth = 0): string {
+    if (depth > MAX_DEPTH) return "";
+    if (typeof node?.text === "string") {
+      let out = node.text;
+      for (const m of Array.isArray(node.marks) ? node.marks : []) {
+        if (m?.type === "bold") out = `**${out}**`;
+        else if (m?.type === "italic") out = `*${out}*`;
+        else if (m?.type === "code") out = `\`${out}\``;
+        else if (m?.type === "link" && typeof m?.attrs?.href === "string") {
+          out = `[${out}](${m.attrs.href})`;
+        }
+      }
+      return out;
+    }
+    if (node?.type === "hardBreak") return "\n";
+    return (Array.isArray(node?.content) ? node.content : [])
+      .map((n: any) => inline(n, depth + 1))
+      .join("");
+  }
+
+  // Serialize a run of block-level nodes (used for a blockquote's children and
+  // for a list item's non-paragraph block children) into individual output
+  // lines, unprefixed and unindented: the caller applies its own "> " or
+  // content-column indent to each line afterward. Unlike the top-level
+  // `blocks` array (joined with a blank line between entries), these lines are
+  // joined tightly with a single newline, matching the pre-existing flat
+  // layout for a blockquote's paragraphs and a list item's continuation text.
+  // heading/codeBlock/blockquote/list children keep their own markdown syntax
+  // (heading "#", code fences, nested "> ", list markers) instead of being
+  // flattened through `inline()`; anything else falls back to its inline text.
+  function blockChildLines(kids: any[], depth: number): string[] {
+    if (depth > MAX_DEPTH) return [];
+    const lines: string[] = [];
+    for (const k of kids) {
+      switch (k?.type) {
+        case "heading": {
+          const t = inline(k, depth + 1);
+          if (!t) break;
+          const lvl = Math.min(6, Math.max(1, Math.trunc(Number(k?.attrs?.level)) || 1));
+          lines.push(`${"#".repeat(lvl)} ${t}`);
+          break;
+        }
+        case "codeBlock": {
+          const t = inline(k, depth + 1);
+          if (!t) break;
+          const lang = typeof k?.attrs?.language === "string" ? k.attrs.language : "";
+          lines.push(...("```" + lang + "\n" + t + "\n```").split("\n"));
+          break;
+        }
+        case "blockquote": {
+          const inner = blockChildLines(Array.isArray(k?.content) ? k.content : [], depth + 1);
+          if (inner.length) lines.push(...inner.map((l) => `> ${l}`));
+          break;
+        }
+        case "bulletList":
+        case "orderedList": {
+          lines.push(...listLines(k, k.type === "orderedList", "", depth + 1));
+          break;
+        }
+        default: {
+          const t = inline(k, depth + 1);
+          if (t) lines.push(t);
+          break;
+        }
+      }
+    }
+    return lines;
+  }
+
+  // Render one bulletList/orderedList into a flat array of already-indented,
+  // already-marked lines. `indent` is the accumulated content-column prefix
+  // from every ancestor list item (its exact width, not a fixed two spaces
+  // per level -- an ordered marker like "1. " is 3 characters, and indenting
+  // a nested list by only 2 spaces falls below CommonMark's content-indent
+  // threshold and detaches it as a sibling instead of nesting it). `depth` is
+  // a plain recursion counter for the fail-closed guard, independent of the
+  // indent string's width. One line per non-list child block of each
+  // listItem: a nested list's lines are indented under this item's own marker
+  // width, and a heading/codeBlock/blockquote child is serialized as its own
+  // block (keeping its markdown syntax) and indented to the item's content
+  // column rather than inlined. An item with no renderable text contributes
+  // no line at all, rather than a bare marker.
+  function listLines(list: any, ordered: boolean, indent: string, depth: number): string[] {
+    if (depth > MAX_DEPTH) return [];
+    const items: any[] = Array.isArray(list?.content) ? list.content : [];
+    const lines: string[] = [];
+    items.forEach((li, i) => {
+      const marker = ordered ? `${i + 1}. ` : "- ";
+      const contIndent = indent + " ".repeat(marker.length);
+      const kids: any[] = Array.isArray(li?.content) ? li.content : [];
+      let first = true;
+      for (const kid of kids) {
+        const kt = kid?.type;
+        if (kt === "bulletList" || kt === "orderedList") {
+          lines.push(...listLines(kid, kt === "orderedList", contIndent, depth + 1));
+          continue;
+        }
+        if (kt === "heading" || kt === "codeBlock" || kt === "blockquote") {
+          const blockLines = blockChildLines([kid], depth + 1);
+          if (!blockLines.length) continue;
+          blockLines.forEach((l) => {
+            if (first) {
+              lines.push(`${indent}${marker}${l}`);
+              first = false;
+            } else {
+              lines.push(`${contIndent}${l}`);
+            }
+          });
+          continue;
+        }
+        const t = inline(kid);
+        if (!t) continue;
+        if (first) {
+          lines.push(`${indent}${marker}${t}`);
+          first = false;
+        } else {
+          lines.push(`${contIndent}${t}`);
+        }
+      }
+    });
+    return lines;
+  }
+
+  function walk(node: any, depth: number) {
+    if (depth > MAX_DEPTH) return;
+    const kids: any[] = Array.isArray(node?.content) ? node.content : [];
+    switch (node?.type) {
+      case "heading": {
+        const t = inline(node, depth + 1);
+        if (!t) break;
+        const lvl = Math.min(6, Math.max(1, Math.trunc(Number(node?.attrs?.level)) || 1));
+        blocks.push(`${"#".repeat(lvl)} ${t}`);
+        break;
+      }
+      case "paragraph":
+      case "callout": {
+        const t = inline(node, depth + 1);
+        if (t) blocks.push(t);
+        break;
+      }
+      case "codeBlock": {
+        const t = inline(node, depth + 1);
+        if (!t) break;
+        const lang = typeof node?.attrs?.language === "string" ? node.attrs.language : "";
+        blocks.push("```" + lang + "\n" + t + "\n```");
+        break;
+      }
+      case "blockquote": {
+        // Block-aware: each child (paragraph, heading, codeBlock, list, nested
+        // blockquote, ...) is serialized as its own block, keeping its own
+        // markdown syntax, and every resulting line gets a "> " prefix. One
+        // quoted block, not one per child paragraph -- and a block child (e.g.
+        // a bulletList) no longer welds into a single line.
+        const lines = blockChildLines(kids, depth + 1);
+        if (lines.length) blocks.push(lines.map((l) => `> ${l}`).join("\n"));
+        break;
+      }
+      case "bulletList":
+      case "orderedList": {
+        const lines = listLines(node, node.type === "orderedList", "", 0);
+        if (lines.length) blocks.push(lines.join("\n"));
+        break;
+      }
+      default: {
+        // Try inline text first so a text node (or any node whose direct
+        // children are text nodes) doesn't lose its content; only recurse
+        // block-wise into children when there is no inline text to show.
+        const t = inline(node, depth + 1);
+        if (t) {
+          blocks.push(t);
+        } else {
+          kids.forEach((k) => walk(k, depth + 1));
+        }
+      }
+    }
+  }
+
+  const rootKids: any[] = Array.isArray(doc?.content) ? doc.content : [];
+  rootKids.forEach((k) => walk(k, 0));
+  return blocks.join("\n\n");
 }
 
 // ---- post feedback (list_post_feedback) -------------------------------------

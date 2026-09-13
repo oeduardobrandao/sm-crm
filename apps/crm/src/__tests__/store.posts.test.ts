@@ -341,6 +341,31 @@ describe('store workflow posts', () => {
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['status', 'aprovado_interno'] });
   });
 
+  it('sendPostToCliente updates ONE aprovado_interno post to enviado_cliente', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: { id: 42, status: 'enviado_cliente' },
+      error: null,
+    });
+
+    const result = await store.sendPostToCliente(42);
+
+    expect(result).toEqual({ id: 42, status: 'enviado_cliente' });
+    const call = getCalls('workflow_posts', 'update').at(-1)!;
+    expect(call.payload).toEqual({ status: 'enviado_cliente' });
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 42] });
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['status', 'aprovado_interno'] });
+    expect(call.modifiers).toContainEqual({ method: 'maybeSingle', args: [] });
+  });
+
+  it('sendPostToCliente returns null when the status already moved (zero rows matched)', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', {
+      data: null,
+      error: null,
+    });
+
+    expect(await store.sendPostToCliente(42)).toBeNull();
+  });
+
   it('approvePostsInternally updates all non-final posts to aprovado_cliente', async () => {
     mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', { data: null, error: null });
 
@@ -827,6 +852,129 @@ describe('posts avulsos', () => {
 
     await expect(store.detachPostsFromWorkflow([10])).rejects.toMatchObject({ code: 'P0001' });
     expect(getCalls('rpc:detach_posts_from_flow', 'rpc')).toHaveLength(1);
+  });
+
+  it('movePostsToNewFlow calls the RPC with the batch, declared source and new-flow options', async () => {
+    const workflowRow = { id: 99, titulo: 'Fluxo (continuação)', status: 'ativo' };
+    const etapasRows = [{ id: 500, workflow_id: 99, ordem: 0, nome: 'Copy', status: 'ativo' }];
+    mockedSupabase.__queueSupabaseRpc('move_posts_to_new_flow', {
+      data: {
+        ok: true,
+        moved: 2,
+        target_workflow_id: 99,
+        archived_workflow_ids: [],
+        workflow: workflowRow,
+        etapas: etapasRows,
+      },
+      error: null,
+    });
+
+    const result = await store.movePostsToNewFlow([10, 11], 5, {
+      titulo: 'Fluxo (continuação)',
+      startOrdem: 2,
+    });
+
+    // The new flow's row + etapas (migration 20260901120000) pass through
+    // untouched so the UI can open the destination drawer instantly.
+    expect(result).toEqual({
+      ok: true,
+      moved: 2,
+      target_workflow_id: 99,
+      archived_workflow_ids: [],
+      workflow: workflowRow,
+      etapas: etapasRows,
+    });
+    const call = getCalls('rpc:move_posts_to_new_flow', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({
+      p_post_ids: [10, 11],
+      p_source_workflow_id: 5,
+      p_titulo: 'Fluxo (continuação)',
+      p_start_ordem: 2,
+      p_archive_empty_flow: false,
+    });
+  });
+
+  it('movePostsToNewFlow forwards an explicit archiveEmptyFlow', async () => {
+    mockedSupabase.__queueSupabaseRpc('move_posts_to_new_flow', {
+      data: { ok: true, moved: 1, target_workflow_id: 99, archived_workflow_ids: [5] },
+      error: null,
+    });
+
+    await store.movePostsToNewFlow([10], 5, {
+      titulo: 'Fluxo (continuação)',
+      startOrdem: 0,
+      archiveEmptyFlow: true,
+    });
+
+    const call = getCalls('rpc:move_posts_to_new_flow', 'rpc').at(-1)!;
+    expect(call.payload).toMatchObject({ p_archive_empty_flow: true });
+  });
+
+  it('movePostsToExistingFlow calls the RPC with the declared source and target', async () => {
+    mockedSupabase.__queueSupabaseRpc('move_posts_to_existing_flow', {
+      data: { ok: true, moved: 1, target_workflow_id: 8, archived_workflow_ids: [] },
+      error: null,
+    });
+
+    const result = await store.movePostsToExistingFlow([10], 5, 8);
+
+    expect(result).toEqual({
+      ok: true,
+      moved: 1,
+      target_workflow_id: 8,
+      archived_workflow_ids: [],
+    });
+    const call = getCalls('rpc:move_posts_to_existing_flow', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({
+      p_post_ids: [10],
+      p_source_workflow_id: 5,
+      p_target_workflow_id: 8,
+      p_archive_empty_flow: false,
+    });
+  });
+
+  it('movePostsToNewFlow retries once on a 40P01 deadlock and succeeds', async () => {
+    mockedSupabase.__queueSupabaseRpc(
+      'move_posts_to_new_flow',
+      { data: null, error: { code: '40P01', message: 'deadlock detected' } },
+      {
+        data: { ok: true, moved: 1, target_workflow_id: 99, archived_workflow_ids: [] },
+        error: null,
+      },
+    );
+
+    const result = await store.movePostsToNewFlow([10], 5, { titulo: 'X', startOrdem: 0 });
+
+    expect(result).toMatchObject({ ok: true, target_workflow_id: 99 });
+    expect(getCalls('rpc:move_posts_to_new_flow', 'rpc')).toHaveLength(2);
+  });
+
+  it('movePostsToExistingFlow retries once on a 40P01 deadlock and succeeds', async () => {
+    mockedSupabase.__queueSupabaseRpc(
+      'move_posts_to_existing_flow',
+      { data: null, error: { code: '40P01', message: 'deadlock detected' } },
+      {
+        data: { ok: true, moved: 1, target_workflow_id: 8, archived_workflow_ids: [] },
+        error: null,
+      },
+    );
+
+    const result = await store.movePostsToExistingFlow([10], 5, 8);
+
+    expect(result).toMatchObject({ ok: true, target_workflow_id: 8 });
+    expect(getCalls('rpc:move_posts_to_existing_flow', 'rpc')).toHaveLength(2);
+  });
+
+  it('movePostsToNewFlow does not retry a non-deadlock error', async () => {
+    mockedSupabase.__queueSupabaseRpc('move_posts_to_new_flow', {
+      data: null,
+      error: { code: 'P0001', message: 'post_not_in_source_flow' },
+    });
+
+    await expect(
+      store.movePostsToNewFlow([10], 5, { titulo: 'X', startOrdem: 0 }),
+    ).rejects.toMatchObject({ code: 'P0001' });
+    expect(getCalls('rpc:move_posts_to_new_flow', 'rpc')).toHaveLength(1);
   });
 
   it('getActivePosts includes avulso posts (any status) merged with wired active-workflow posts', async () => {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronUp, ChevronDown, CircleDashed, Plus } from 'lucide-react';
+import { ChevronUp, ChevronDown, CircleDashed, Plus, Route } from 'lucide-react';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,9 @@ interface PostsListViewProps {
   filtersActive: boolean;
   /** Opens NewAvulsoDialog from the unfiltered empty state's CTA. */
   onCreateAvulso: () => void;
+  /** post id → etapa ativa do processo individual (spec §4.4). Só posts
+   *  avulsos aparecem aqui. */
+  processEtapaByPostId?: Map<number, string>;
 }
 
 type Column = { key: string; label: string };
@@ -69,6 +72,7 @@ export function PostsListView({
   cardsByWorkflowId,
   filtersActive,
   onCreateAvulso,
+  processEtapaByPostId,
 }: PostsListViewProps) {
   const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'agendado',
@@ -212,6 +216,7 @@ export function PostsListView({
             // depends on its workflow still being an active, loaded card.
             const openable = workflowId == null || openableWorkflowIds.has(workflowId);
             const card = cardOf(p);
+            const processEtapa = workflowId == null ? processEtapaByPostId?.get(p.id) : undefined;
             const prazo = card ? formatEtapaPrazo(card.deadline) : null;
             const prazoDate = card ? etapaDeadlineDate(card) : null;
             return (
@@ -258,10 +263,17 @@ export function PostsListView({
                 </td>
                 <td style={{ ...oneLineCell, overflow: 'visible' }}>
                   {workflowId == null ? (
-                    <span className="post-fluxo-tag post-fluxo-tag--avulso">
-                      <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                      Avulso
-                    </span>
+                    processEtapa ? (
+                      <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
+                        <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                        Individual · {processEtapa}
+                      </span>
+                    ) : (
+                      <span className="post-fluxo-tag post-fluxo-tag--avulso">
+                        <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                        Avulso
+                      </span>
+                    )
                   ) : card ? (
                     <button
                       type="button"
@@ -281,7 +293,7 @@ export function PostsListView({
                   )}
                 </td>
                 <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
-                  {card?.etapa.nome || '—'}
+                  {card?.etapa.nome || processEtapa || '—'}
                 </td>
                 <td style={{ padding: '0.6rem 1rem' }}>
                   <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>

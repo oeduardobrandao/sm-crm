@@ -36,6 +36,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import {
   getInitials,
+  getWorkspaceRoles,
   getWorkspaceUsers,
   removeWorkspaceUser,
   setWorkspaceUserFinancialAccess,
@@ -51,16 +52,56 @@ import {
 
 /** Workspace members and pending invites. */
 export default function MembrosTab() {
-  const { user, profile, workspaceRole } = useAuth();
-  const isOwnerOrAdmin = workspaceRole === 'owner' || workspaceRole === 'admin';
-  // The financial-access toggle is the first owner-only member-management
-  // action here — gates rendering the switch on admin rows below.
+  const { user, profile, workspaceRole, can } = useAuth();
+  const canViewTeam = can('equipe', 'ver') === true;
+  // Mutations (invite, edit role, remove, cancel/resend invite) all require
+  // `editar` — a custom role granted only `equipe:ver` can reach this tab
+  // (configTabs.ts gates the tab itself on `ver`) and see the roster, but
+  // must not see controls it cannot actually use (the edge functions behind
+  // them already enforce `equipe:editar` server-side — see invite-user and
+  // manage-workspace-user).
+  const canManageTeam = can('equipe', 'editar') === true;
+  // The financial-access toggle is a STRICTER, owner-only lever — distinct
+  // from general team management. `set-financial-access` stays owner-only
+  // server-side regardless of `equipe:editar`, so this intentionally does not
+  // fold into `canManageTeam`.
   const isOwner = workspaceRole === 'owner';
+  // `update-role` is a STRICTER lever than `equipe:editar` too --
+  // manage-workspace-user/index.ts explicitly requires the caller's chassis
+  // role to be owner/admin ON TOP OF equipe:editar ("atribuição segue dono e
+  // admin": a custom role could otherwise hand out a permission set — e.g.
+  // legacy admin, or its own role_id — that it doesn't itself hold). A
+  // custom equipe:editar actor (chassis 'agent') can still remove members
+  // and manage invites (canManageTeam alone), but the Função button must
+  // stay owner/admin-only or it dead-ends in a 403.
+  const canAssignRoles = workspaceRole === 'owner' || workspaceRole === 'admin';
+  // Server rule (manage-workspace-user/index.ts, ~:226-229): "Cannot modify
+  // an owner (unless caller is also owner)" -- applies to BOTH update-role
+  // AND remove, for ANY caller, including an admin (canAssignRoles === true
+  // is not enough) and a custom equipe:editar actor. Combined with the
+  // existing self-row exclusion into one derived check so Função/Remover
+  // never render on a row the server would 403 on.
+  const canActOnMember = (u: Record<string, string>) =>
+    u.id !== user?.id && (u.role !== 'owner' || isOwner);
 
   const { data: wsUsers, refetch: refetchWsUsers } = useQuery({
     queryKey: ['workspace-users'],
     queryFn: getWorkspaceUsers,
-    enabled: isOwnerOrAdmin,
+    enabled: canViewTeam,
+  });
+
+  // Gated on `canManageTeam` (equipe:editar): the roster still needs this
+  // list for the Convidar dialog's role select, which stays open to any
+  // equipe:editar actor. CORRECTION (external review, Task 14 round 2): the
+  // claim this comment used to make -- that a custom equipe:editar role can
+  // also assign roles via update-role -- is wrong. manage-workspace-user/
+  // index.ts requires the caller's CHASSIS role to be owner/admin for
+  // `action === 'update-role'` specifically, on top of equipe:editar (see
+  // `canAssignRoles` above, which gates the Função button accordingly).
+  const { data: workspaceRoles = [] } = useQuery({
+    queryKey: ['workspace-roles'],
+    queryFn: getWorkspaceRoles,
+    enabled: canManageTeam,
   });
 
   const { data: invites, refetch: refetchInvites } = useQuery({
@@ -75,7 +116,7 @@ export default function MembrosTab() {
         .order('created_at', { ascending: false });
       return computeEffectiveInviteStatus(data ?? []);
     },
-    enabled: isOwnerOrAdmin && !!profile?.conta_id,
+    enabled: canViewTeam && !!profile?.conta_id,
   });
 
   // Edit role modal
@@ -91,7 +132,11 @@ export default function MembrosTab() {
 
   const handleEditRole = (u: Record<string, string>) => {
     setEditRoleUser(u as unknown as { id: string; nome: string; role: string });
-    setEditRoleValue(u.role);
+    // Encoding: 'admin' | 'agent' | 'custom:<uuid>'. A member with a custom
+    // papel always has role_id set (the server pins the chassis role to
+    // 'agent' for those — see roleUpdate.ts's resolveRoleUpdate), so role_id
+    // alone decides which form this select opens in.
+    setEditRoleValue(u.role_id ? `custom:${u.role_id}` : u.role);
     setEditRoleOpen(true);
   };
 
@@ -99,7 +144,10 @@ export default function MembrosTab() {
     if (!editRoleUser) return;
     setEditRoleLoading(true);
     try {
-      await updateWorkspaceUserRole(editRoleUser.id, editRoleValue);
+      const value = editRoleValue.startsWith('custom:')
+        ? { roleId: editRoleValue.slice(7) }
+        : { role: editRoleValue as 'admin' | 'agent' };
+      await updateWorkspaceUserRole(editRoleUser.id, value);
       refetchWsUsers();
       setEditRoleOpen(false);
       toast.success('Função atualizada!');
@@ -159,13 +207,24 @@ export default function MembrosTab() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+      // Decode the 'admin' | 'agent' | 'custom:<uuid>' select encoding: a
+      // custom papel always invites with the underlying 'agent' chassis role
+      // plus role_id — mirrors updateWorkspaceUserRole's own split above and
+      // EquipePage's invite submit. role_id is ALWAYS sent explicitly
+      // (uuid, or null for a plain preset) — invite-user/inviteOrResend
+      // treat an ABSENT key as "inherit from a prior pending invite for this
+      // email", and this is a deliberate, explicit role choice that must
+      // never be silently overridden by that inheritance.
+      const body = inviteRole.startsWith('custom:')
+        ? { email: inviteEmail, role: 'agent', role_id: inviteRole.slice(7) }
+        : { email: inviteEmail, role: inviteRole, role_id: null };
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+        body: JSON.stringify(body),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || result.message || `Erro ${res.status}`);
@@ -217,7 +276,18 @@ export default function MembrosTab() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ email: invite.email, role: invite.role }),
+        // role_id: the `invites` row (queried with select('*') above) already
+        // carries it — sent EXPLICITLY as a uuid or `null`, never omitted.
+        // invite-user/inviteOrResend treat an absent key as "inherit from a
+        // prior pending row for this email", which exists for callers that
+        // don't know about this field at all — this one does, and always
+        // knows the row's actual value, so it must say so explicitly
+        // (including the `null` case) rather than relying on inheritance.
+        body: JSON.stringify({
+          email: invite.email,
+          role: invite.role,
+          role_id: invite.role_id ?? null,
+        }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
@@ -240,9 +310,11 @@ export default function MembrosTab() {
           }}
         >
           <h3 className="config-title">Membros do Workspace</h3>
-          <Button onClick={() => setInviteOpen(true)}>
-            <Plus className="h-4 w-4" /> Convidar
-          </Button>
+          {canManageTeam && (
+            <Button onClick={() => setInviteOpen(true)}>
+              <Plus className="h-4 w-4" /> Convidar
+            </Button>
+          )}
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
@@ -265,7 +337,16 @@ export default function MembrosTab() {
                 >
                   {u.nome}
                 </div>
-                <RoleBadge role={u.role} />
+                {u.papel_nome ? (
+                  // Custom papel: same badge look as RoleBadge (badge
+                  // badge-neutral), but with the papel's own name instead of
+                  // one of the three legacy PT-BR labels — inviteHelpers
+                  // itself stays untouched for the legacy cases (RoleBadge's
+                  // three-entry map has no slot for an arbitrary papel name).
+                  <span className="badge badge-neutral">{u.papel_nome}</span>
+                ) : (
+                  <RoleBadge role={u.role} />
+                )}
               </div>
               {isOwner && u.role === 'admin' && (
                 <div
@@ -287,11 +368,13 @@ export default function MembrosTab() {
                   />
                 </div>
               )}
-              {u.id !== user?.id && (
+              {canManageTeam && canActOnMember(u) && (
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                  <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>
-                    Função
-                  </Button>
+                  {canAssignRoles && (
+                    <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>
+                      Função
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -350,21 +433,23 @@ export default function MembrosTab() {
                     <InviteTimeLeft expiresAt={inv.expires_at} status={inv.status} />
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {(inv.status === 'expired' || inv.status === 'pending') && (
-                    <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>
-                      Reenviar
+                {canManageTeam && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(inv.status === 'expired' || inv.status === 'pending') && (
+                      <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>
+                        Reenviar
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => setCancelInviteId(inv.id)}
+                    >
+                      Cancelar
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive"
-                    onClick={() => setCancelInviteId(inv.id)}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
+                  </div>
+                )}
               </div>
             ))}
           </>
@@ -386,6 +471,11 @@ export default function MembrosTab() {
               <SelectContent>
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="agent">Agente</SelectItem>
+                {workspaceRoles.map((r) => (
+                  <SelectItem key={r.id} value={`custom:${r.id}`}>
+                    {r.nome}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -430,6 +520,12 @@ export default function MembrosTab() {
                 onChange={(e) => setInviteEmail(e.target.value)}
               />
             </div>
+            {/* Só um ator privilegiado (chassi dono/admin) vê Admin e os papéis
+                custom. `invite-user` recusa as duas formas para quem chegou
+                aqui só via `equipe:editar` ("Apenas donos e admins podem
+                convidar com função elevada ou papel."), então oferecê-las era
+                um beco sem saída: o convite só falhava depois de enviado.
+                Agente é a única opção que esse ator pode de fato usar. */}
             <div className="space-y-1">
               <Label>Função</Label>
               <Select value={inviteRole} onValueChange={setInviteRole}>
@@ -437,10 +533,21 @@ export default function MembrosTab() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  {canAssignRoles && <SelectItem value="admin">Admin</SelectItem>}
                   <SelectItem value="agent">Agente</SelectItem>
+                  {canAssignRoles &&
+                    workspaceRoles.map((r) => (
+                      <SelectItem key={r.id} value={`custom:${r.id}`}>
+                        {r.nome}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
+              {!canAssignRoles && (
+                <p className="text-xs text-[color:var(--text-muted)]">
+                  Apenas donos e admins convidam com função elevada ou papel.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>

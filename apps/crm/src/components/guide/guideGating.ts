@@ -20,3 +20,29 @@ export function shouldAutoOpenGuide(i: {
   if (i.clientes.status !== 'success' || i.workflows.status !== 'success') return false;
   return i.clientes.count === 0 && i.workflows.count === 0;
 }
+
+export type GuideAutoOpenState = 'unknown' | 'no' | 'yes';
+
+/**
+ * O que o GlobalPopupHost precisa saber do guia, sem o critério de rota de
+ * shouldAutoOpenGuide: 'yes' = já está aberto ou vai abrir assim que o dono chegar
+ * ao dashboard; 'no' = não vai abrir nesta sessão; 'unknown' = ainda não dá para
+ * saber (auth ou sinais em pending). Erro de sinal é 'no': o guia nunca abre sobre
+ * erro, então esperar seria bloquear o popup para sempre.
+ */
+export function guideAutoOpenState(i: {
+  authLoading: boolean;
+  isOwner: boolean;
+  opened: boolean;
+  progress: GuideProgress;
+  clientes: { status: string; count: number };
+  workflows: { status: string; count: number };
+}): GuideAutoOpenState {
+  if (i.opened) return 'yes';
+  if (i.authLoading) return 'unknown';
+  if (!i.isOwner) return 'no';
+  if (i.progress.autoOpenedAt || i.progress.dismissedAt || i.progress.concludedAt) return 'no';
+  if (i.clientes.status === 'error' || i.workflows.status === 'error') return 'no';
+  if (i.clientes.status !== 'success' || i.workflows.status !== 'success') return 'unknown';
+  return i.clientes.count === 0 && i.workflows.count === 0 ? 'yes' : 'no';
+}

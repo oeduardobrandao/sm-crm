@@ -1,7 +1,20 @@
 import { useCallback, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { X, Trash2, Link2, Maximize2, Minimize2, CircleDashed } from 'lucide-react';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
+import {
+  X,
+  Trash2,
+  Link2,
+  Maximize2,
+  Minimize2,
+  CircleDashed,
+  Route,
+  ArrowLeft,
+  Check,
+  RotateCcw,
+  CircleOff,
+} from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +47,7 @@ import {
   rejectEditSuggestion,
   syncMentions,
   getWorkspaceSlug,
+  getVigentePostProcess,
   type Membro,
   type PostEditSuggestion,
   type WorkflowPost,
@@ -44,10 +58,19 @@ import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { useAuth } from '@/context/AuthContext';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../statusRegistry';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { PostEditorBody } from './PostEditorBody';
 import { AttachToFluxoDialog } from './AttachToFluxoDialog';
+import { ApplyProcessDialog } from './ApplyProcessDialog';
+import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
+import {
+  canConcluir,
+  forwardLabelFor,
+  previousStepOf,
+  type ProcessTarget,
+} from '../postProcessCommands';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -60,6 +83,10 @@ export interface StandalonePostDrawerProps {
    *  is expected to close this drawer and open the WorkflowDrawer at the
    *  same post. */
   onAttached: (workflowId: number, postId: number) => void;
+  /** Fires once a process template is applied to this avulso (Task 12) -- the
+   *  caller is expected to reveal the post's new "Individual" card on the
+   *  Fluxos board (revealPostProcesses). */
+  onProcessApplied?: (postId: number) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -74,6 +101,7 @@ export function StandalonePostDrawer({
   onClose,
   onRefresh,
   onAttached,
+  onProcessApplied,
 }: StandalonePostDrawerProps) {
   const qc = useQueryClient();
 
@@ -81,6 +109,21 @@ export function StandalonePostDrawer({
     queryKey: ['standalone-post', postId],
     queryFn: () => getStandalonePost(postId),
   });
+
+  // Processo individual vigente (spec §5.4). Sempre consultado (a flag só gate
+  // criação, PO 2026-09-11): `null` = avulso sem processo.
+  const { features } = useWorkspaceLimits();
+  const postProcessesEnabled = features?.feature_post_processes === true;
+  const { data: postProcess = null } = useQuery({
+    queryKey: ['post-process', postId],
+    queryFn: () => getVigentePostProcess(postId),
+  });
+  const activeStepName =
+    postProcess?.estado === 'ativo'
+      ? (postProcess.steps.find((s) => s.estado === 'ativo')?.nome ??
+        postProcess.steps.find((s) => s.ordem === postProcess.etapa_atual)?.nome ??
+        null)
+      : null;
 
   const clienteId = post?.cliente_id ?? null;
 
@@ -104,7 +147,12 @@ export function StandalonePostDrawer({
     queryFn: () => getPostStatusEvents([postId]),
   });
 
-  const { user, role } = useAuth();
+  const { user, role, can } = useAuth();
+  // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
+  // -- AGENT_ROLE_PRESET.automacoes is 'editar' (lib/permissions.ts), so a
+  // legacy agent already gets full write on instagram_comment_automations
+  // everywhere else; only this drawer shortcut denied it.
+  const canManageAutomations = can('automacoes', 'editar') === true;
 
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
@@ -165,6 +213,7 @@ export function StandalonePostDrawer({
   }, []);
 
   const [attachOpen, setAttachOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
 
   const refresh = useCallback(() => {
@@ -174,8 +223,32 @@ export function StandalonePostDrawer({
     qc.invalidateQueries({ queryKey: ['post-status-events'] });
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
+    qc.invalidateQueries({ queryKey: ['post-process', postId] });
+    qc.invalidateQueries({ queryKey: ['post-processes'] });
+    qc.invalidateQueries({ queryKey: ['post-process-events'] });
     if (clienteId != null) qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
   }, [qc, postId, clienteId]);
+
+  // ── Comandos do processo individual (Avançar/Voltar/Concluir/Reabrir/Remover) ──
+
+  const commands = usePostProcessCommands({
+    onRefresh: () => {
+      refresh();
+      onRefresh();
+    },
+  });
+  const target: ProcessTarget | null =
+    post && postProcess
+      ? {
+          process: postProcess,
+          post: {
+            id: post.id!,
+            titulo: post.titulo,
+            status: post.status,
+            cliente_id: post.cliente_id,
+          },
+        }
+      : null;
 
   // ── Field change / status confirm ────────────────────────────────────────────
 
@@ -219,6 +292,7 @@ export function StandalonePostDrawer({
   // ── Content autosave (debounced, cloned from WorkflowDrawer's scheduleContentSave) ──
 
   const [isSaving, setIsSaving] = useState(false);
+  useUnsavedWork(isSaving);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmedEditRef = useRef(false);
   const [pendingEditData, setPendingEditData] = useState<{
@@ -440,16 +514,78 @@ export function StandalonePostDrawer({
             {post && (
               <div className="drawer-header-subtitle">
                 {post.cliente_nome || '—'} &bull;{' '}
-                <span className="post-fluxo-tag post-fluxo-tag--avulso">
-                  <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                  Avulso
-                </span>
+                {postProcess ? (
+                  <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
+                    <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                    Individual · {activeStepName ?? 'Processo concluído'}
+                  </span>
+                ) : (
+                  <span className="post-fluxo-tag post-fluxo-tag--avulso">
+                    <CircleDashed size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                    {postProcessesEnabled ? 'Avulso · Sem processo' : 'Avulso'}
+                  </span>
+                )}
               </div>
             )}
           </div>
           <div className="drawer-header-actions">
             {post && (
               <>
+                {target && target.process.estado === 'ativo' && (
+                  <>
+                    {previousStepOf(target.process) && (
+                      <button
+                        className="drawer-add-post-btn"
+                        aria-label="Voltar etapa"
+                        onClick={() => commands.voltar(target)}
+                        disabled={commands.busy}
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" /> Voltar etapa
+                      </button>
+                    )}
+                    <button
+                      className="drawer-add-post-btn"
+                      aria-label={forwardLabelFor(target.process)}
+                      onClick={() =>
+                        canConcluir(target.process)
+                          ? commands.concluir(target)
+                          : commands.avancar(target)
+                      }
+                      disabled={commands.busy}
+                    >
+                      <Check className="h-3.5 w-3.5" /> {forwardLabelFor(target.process)}
+                    </button>
+                  </>
+                )}
+                {target && target.process.estado === 'concluido' && (
+                  <button
+                    className="drawer-add-post-btn"
+                    aria-label="Reabrir processo"
+                    onClick={() => commands.reabrir(target)}
+                    disabled={commands.busy}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Reabrir processo
+                  </button>
+                )}
+                {target && (
+                  <button
+                    className="drawer-add-post-btn"
+                    aria-label="Remover processo"
+                    onClick={() => commands.remover(target)}
+                    disabled={commands.busy}
+                  >
+                    <CircleOff className="h-3.5 w-3.5" /> Remover processo
+                  </button>
+                )}
+                {!postProcess && postProcessesEnabled && (
+                  <button
+                    className="drawer-add-post-btn"
+                    aria-label="Aplicar processo"
+                    onClick={() => setApplyOpen(true)}
+                  >
+                    <Route className="h-3.5 w-3.5" /> Aplicar processo
+                  </button>
+                )}
                 <button className="drawer-add-post-btn" onClick={() => setAttachOpen(true)}>
                   <Link2 className="h-3.5 w-3.5" /> Vincular a um fluxo
                 </button>
@@ -486,6 +622,7 @@ export function StandalonePostDrawer({
               post={post}
               templateId={undefined}
               workflowId={null}
+              postProcess={postProcess}
               clienteId={post.cliente_id}
               clientePosts={clientePosts}
               isExpanded
@@ -497,6 +634,7 @@ export function StandalonePostDrawer({
               commentThreads={commentThreads}
               currentUserId={user?.id}
               currentUserRole={role}
+              canManageAutomations={canManageAutomations}
               workspaceUsers={workspaceUsers}
               hasInstagramAccount={hasInstagramAccount}
               igAccountStatus={igAccountStatus}
@@ -516,6 +654,14 @@ export function StandalonePostDrawer({
               editorVersion={editorVersion}
               onAcceptSuggestion={handleAcceptSuggestion}
               onRejectSuggestion={handleRejectSuggestion}
+              onProcessAvancar={
+                target
+                  ? () =>
+                      canConcluir(target.process)
+                        ? commands.concluir(target)
+                        : commands.avancar(target)
+                  : undefined
+              }
             />
           )}
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
@@ -529,8 +675,23 @@ export function StandalonePostDrawer({
           postId={postId}
           clienteId={clienteId}
           onAttached={onAttached}
+          process={postProcess}
         />
       )}
+      {post && (
+        <ApplyProcessDialog
+          open={applyOpen}
+          onClose={() => setApplyOpen(false)}
+          post={{ id: postId, titulo: post.titulo, cliente_id: post.cliente_id }}
+          membros={membros}
+          onApplied={() => {
+            refresh();
+            onRefresh();
+            onProcessApplied?.(postId);
+          }}
+        />
+      )}
+      {commands.dialogs}
 
       <AlertDialog open={pendingDelete} onOpenChange={(open) => !open && setPendingDelete(false)}>
         <AlertDialogContent>

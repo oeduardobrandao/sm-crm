@@ -38,8 +38,11 @@ type AuthChangeCallback = (
 let authChangeCallback: AuthChangeCallback | null = null;
 
 // Minimal postgres_changes realtime stand-in for AuthContext's live-revocation
-// subscription. Only supports a single active UPDATE listener at a time,
-// which is all AuthProvider ever registers.
+// subscriptions. AuthProvider registers ONE UPDATE listener per table it
+// watches (workspace_members, and now workspace_roles) — this mock keys its
+// registered callback/filter by table so both can be subscribed at once
+// without one clobbering the other, while staying a single-listener-per-table
+// stand-in (all AuthProvider ever registers per table).
 type PostgresChangesCallback = (payload: { new: Record<string, unknown> }) => void;
 type PostgresChangesFilter = {
   event: string;
@@ -52,8 +55,10 @@ type PostgresChangesFilter = {
 // (unsubscribed) supabase-js channel delivers nothing either — deleting the
 // `.subscribe()` call in AuthContext must make tests that rely on the
 // subscription fail, not silently pass.
-let workspaceMemberUpdateCallback: PostgresChangesCallback | null = null;
-let workspaceMemberUpdateFilter: PostgresChangesFilter | null = null;
+const subscriptionsByTable = new Map<
+  string,
+  { callback: PostgresChangesCallback; filter: PostgresChangesFilter }
+>();
 export const removedChannelCalls: unknown[] = [];
 
 function makeChannelMock() {
@@ -70,8 +75,12 @@ function makeChannelMock() {
       return channel;
     },
     subscribe() {
-      workspaceMemberUpdateCallback = pendingCallback;
-      workspaceMemberUpdateFilter = pendingFilter;
+      if (pendingCallback && pendingFilter) {
+        subscriptionsByTable.set(pendingFilter.table, {
+          callback: pendingCallback,
+          filter: pendingFilter,
+        });
+      }
       return channel;
     },
   };
@@ -147,8 +156,7 @@ export function __resetSupabaseMock() {
   queryMock.reset();
   profileResponses = [];
   functionsInvokeResponses = [];
-  workspaceMemberUpdateCallback = null;
-  workspaceMemberUpdateFilter = null;
+  subscriptionsByTable.clear();
   removedChannelCalls.length = 0;
   currentUser = { id: 'user-1' };
   currentProfile = {
@@ -218,11 +226,19 @@ export function __emitAuthChange(
 }
 
 export function __emitWorkspaceMemberUpdate(newRow: Record<string, unknown>) {
-  workspaceMemberUpdateCallback?.({ new: newRow });
+  subscriptionsByTable.get('workspace_members')?.callback({ new: newRow });
 }
 
 // Only non-null once subscribe() has actually been called — see the comment
-// above workspaceMemberUpdateCallback.
+// above subscriptionsByTable.
 export function __getWorkspaceMemberSubscription(): PostgresChangesFilter | null {
-  return workspaceMemberUpdateFilter;
+  return subscriptionsByTable.get('workspace_members')?.filter ?? null;
+}
+
+export function __emitWorkspaceRolesUpdate(newRow: Record<string, unknown>) {
+  subscriptionsByTable.get('workspace_roles')?.callback({ new: newRow });
+}
+
+export function __getWorkspaceRolesSubscription(): PostgresChangesFilter | null {
+  return subscriptionsByTable.get('workspace_roles')?.filter ?? null;
 }

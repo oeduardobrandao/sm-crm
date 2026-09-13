@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, Check, ExternalLink, ImagePlus, Instagram, Plus, X } from 'lucide-react';
+import { AlertTriangle, ImagePlus, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -25,11 +25,11 @@ import {
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
-import { sanitizeUrl } from '@/utils/security';
 import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { getInstagramPosts, type InstagramPostSummary } from '../../services/instagram';
 import { getPostCovers } from '../../services/postMedia';
+import type { PublishedMediaItem } from '../../services/publishedMedia';
 import {
   deleteAutomationMedia,
   signAutomationMediaView,
@@ -51,6 +51,8 @@ import {
 } from '../../store';
 import DmPreview from './DmPreview';
 import CommentReplyPreview from './CommentReplyPreview';
+import LiveMediaPicker from './LiveMediaPicker';
+import { ProductionCard, PublishedCard } from './TargetCards';
 import { dmMessageLimit, MAX_BUTTON_TITLE, MAX_DM_BUTTONS, validateDmButtons } from './dmButtons';
 import TourOverlay, { type TourOverlayProps } from './tour/TourOverlay';
 
@@ -186,207 +188,11 @@ function seedTarget(editing: InstagramCommentAutomation): {
   return { targetMode: 'todos', targetSource: 'production', selectedPost: null };
 }
 
-/** One tile of the "Em produção" grid. Shared by the live list and by the pinned
- * card that stands in for a target which has dropped out of that list, so the two
- * are visually identical by construction. */
-function ProductionCard({
-  titulo,
-  tipoLabel,
-  imageUrl,
-  selected,
-  onSelect,
-}: {
-  titulo: string;
-  /** Omitted for the pinned card: the seed carries a titulo and nothing else. */
-  tipoLabel: string | null;
-  imageUrl: string | null;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      // The cover is decorative (alt=""), so the titulo has to carry the
-      // accessible name either way.
-      aria-label={titulo}
-      style={{
-        position: 'relative',
-        aspectRatio: '1',
-        borderRadius: 8,
-        overflow: 'hidden',
-        border: selected ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
-        padding: 0,
-        cursor: 'pointer',
-        background: 'var(--surface-1)',
-      }}
-    >
-      {imageUrl ? (
-        <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      ) : (
-        <span
-          className="flex flex-col justify-center h-full"
-          style={{ padding: '0.375rem', gap: 2, textAlign: 'left', overflow: 'hidden' }}
-        >
-          <span
-            style={{
-              fontSize: '0.7rem',
-              lineHeight: 1.2,
-              color: 'var(--text-main)',
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {titulo}
-          </span>
-          {tipoLabel && (
-            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{tipoLabel}</span>
-          )}
-        </span>
-      )}
-      {selected && (
-        <span
-          style={{
-            position: 'absolute',
-            top: 3,
-            right: 3,
-            background: 'var(--primary-color)',
-            borderRadius: '50%',
-            width: 16,
-            height: 16,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Check className="h-2.5 w-2.5" style={{ color: '#fff' }} />
-        </span>
-      )}
-    </button>
-  );
-}
-
-/** One tile of the "Publicados" grid. Shared by the synced feed and by the
- * pinned card that stands in for a target the daily `instagram_posts` sync has
- * not landed yet, so the two are visually identical by construction. */
-function PublishedCard({
-  caption,
-  thumbnailUrl,
-  permalink,
-  permalinkLabel,
-  selected,
-  onSelect,
-}: {
-  /** Accessible name. Null for the synced tiles, whose thumbnail is decorative
-   * and which are identified by position; the pinned card names itself. */
-  caption: string | null;
-  thumbnailUrl: string | null;
-  permalink: string | null;
-  permalinkLabel: string;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <span style={{ position: 'relative', display: 'block', aspectRatio: '1' }}>
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-pressed={selected}
-        aria-label={caption ?? undefined}
-        style={{
-          width: '100%',
-          height: '100%',
-          borderRadius: 8,
-          overflow: 'hidden',
-          border: selected ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
-          padding: 0,
-          cursor: 'pointer',
-          background: 'var(--surface-1)',
-        }}
-      >
-        {thumbnailUrl ? (
-          <img
-            src={thumbnailUrl}
-            alt=""
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : caption ? (
-          <span
-            className="flex flex-col justify-center h-full"
-            style={{ padding: '0.375rem', textAlign: 'left', overflow: 'hidden' }}
-          >
-            <span
-              style={{
-                fontSize: '0.7rem',
-                lineHeight: 1.2,
-                color: 'var(--text-main)',
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-              }}
-            >
-              {caption}
-            </span>
-          </span>
-        ) : (
-          <span className="flex items-center justify-center h-full">
-            <Instagram className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
-          </span>
-        )}
-      </button>
-      {selected && (
-        <span
-          style={{
-            position: 'absolute',
-            top: 3,
-            right: 3,
-            background: 'var(--primary-color)',
-            borderRadius: '50%',
-            width: 16,
-            height: 16,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          <Check className="h-2.5 w-2.5" style={{ color: '#fff' }} />
-        </span>
-      )}
-      {/* Sibling of the button, never nested inside it: an anchor within a
-          button is invalid markup and swallows the click. */}
-      {permalink && (
-        <a
-          href={sanitizeUrl(permalink)}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={permalinkLabel}
-          style={{
-            position: 'absolute',
-            left: 3,
-            bottom: 3,
-            display: 'flex',
-            padding: 2,
-            borderRadius: 4,
-            background: 'var(--surface-main)',
-            color: 'var(--text-muted)',
-          }}
-        >
-          <ExternalLink className="h-3 w-3" />
-        </a>
-      )}
-    </span>
-  );
-}
-
 export default function AutomationFormDialog({
   open,
   onOpenChange,
   editing,
+  initialTab,
   initialTarget,
   elevated,
   onSaved,
@@ -395,6 +201,12 @@ export default function AutomationFormDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editing: InstagramCommentAutomation | null;
+  /** Sobrepõe qual aba (produção/publicados) abre ao editar -- nunca qual
+   * alvo está selecionado, que continua vindo do seed de `editing`
+   * (`seedTarget`). Hoje só a Task 7 usa isto, e só com 'published', pra
+   * reabrir uma automação de alvo órfão (`target_unlinked_at`) direto no
+   * seletor ao vivo -- ver `retargetMode` abaixo. */
+  initialTab?: 'production' | 'published';
   /** Pre-seeds a creation with the post it was opened from (the Entregas
    * editor's entry point). Ignored while `editing`, which carries its own
    * target. */
@@ -446,10 +258,14 @@ export default function AutomationFormDialog({
     if (!open) return;
     const seed = initialTargetRef.current;
     if (editing) {
+      const seededTargetState = seedTarget(editing);
       setForm({
         name: editing.name,
         clientId: editing.client_id,
-        ...seedTarget(editing),
+        ...seededTargetState,
+        // initialTab só decide qual aba abre -- o alvo em si (targetMode,
+        // selectedPost) continua vindo inteiro do seed acima.
+        targetSource: initialTab ?? seededTargetState.targetSource,
         keywords: editing.keywords,
         keywordInput: '',
         dmMessage: editing.dm_message,
@@ -480,7 +296,10 @@ export default function AutomationFormDialog({
     setProductionPage(1);
     productionPageSeededRef.current = false;
     setSessionUploadedKeys([]);
-  }, [open, editing]);
+    // initialTab is a plain string prop (not an object callers rebuild every
+    // render like initialTarget), so it is safe straight in the deps array --
+    // no ref/identity dance needed to avoid re-seeding on unrelated re-renders.
+  }, [open, editing, initialTab]);
 
   // A mídia persistida só guarda a key -- a URL assinada de leitura tem que
   // ser buscada à parte para a prévia (e o thumbnail no campo) terem algo
@@ -658,6 +477,26 @@ export default function AutomationFormDialog({
 
   const targetingPost = form.targetMode === 'post' && typeof form.clientId === 'number';
 
+  /** Distingue o fluxo de re-mirar um alvo órfão (aberto pela ação da
+   * listagem, Task 7) do seletor "Publicados" normal: as duas condições
+   * precisam bater. Só `initialTab === 'published'` não bastaria -- um dia
+   * outro chamador pode querer abrir na aba Publicados de uma automação
+   * comum, sem precisar do seletor ao vivo.
+   *
+   * DELIBERADAMENTE não soma uma condição de "cliente ainda é o do órfão"
+   * (ao contrário de `selectPublishedForUnlinkedTarget`, que soma): o
+   * `LiveMediaPicker` busca por `form.clientId`, então continua funcionando
+   * corretamente para o cliente novo mesmo depois de uma troca -- é só uma
+   * fonte de dados diferente (Graph API ao vivo, paginação por cursor) do
+   * seletor "Publicados" comum (espelho sincronizado, paginação numerada),
+   * sem nenhuma cópia na tela que diga "re-mirando o órfão X". A correção
+   * real do bug de save (client mismatch) já está em
+   * `selectPublishedForUnlinkedTarget`; gatear isto aqui também deixaria
+   * aquele handler inalcançável pela UI assim que o cliente mudasse, o que
+   * tornaria seu próprio guard morto (e o teste de mutação da correção
+   * deixaria de detectar a regressão). */
+  const retargetMode = initialTab === 'published' && editing?.target_unlinked_at != null;
+
   /** A dialog opened from a post belongs to that post's client: letting the
    * Select move would silently strand the seeded target on another workspace's
    * grid. Editing keeps the Select free, as before. */
@@ -666,7 +505,10 @@ export default function AutomationFormDialog({
   const postsQuery = useQuery({
     queryKey: ['instagram-posts-for-automation', form.clientId, postsPage],
     queryFn: () => getInstagramPosts(form.clientId as number, postsPage),
-    enabled: open && targetingPost && form.targetSource === 'published',
+    // retargetMode renders LiveMediaPicker instead of this grid -- fetching
+    // the synced-feed page here would be a request whose result never
+    // reaches the screen.
+    enabled: open && targetingPost && form.targetSource === 'published' && !retargetMode,
   });
   const hasMorePosts = postsPage * POSTS_PAGE_SIZE < (postsQuery.data?.total ?? 0);
 
@@ -845,6 +687,43 @@ export default function AutomationFormDialog({
         // A freshly picked live post has no internal counterpart; the "linked"
         // state only ever arrives pre-seeded from `editing`.
         workflow_post_id: null,
+      },
+    }));
+
+  /** Re-mira um alvo órfão: o post interno É conhecido -- é o próprio
+   *  `editing.workflow_post_id`, o ponteiro da automação que está sendo
+   *  editada, e ele não muda durante o fluxo de re-mirar. Lê DAÍ, nunca de
+   *  `form.selectedPost`: esse é mutável durante a sessão (a aba "Em
+   *  produção" segue ativa em modo re-mirar, e um clique nela troca
+   *  `selectedPost` para o post que o usuário tocou por engano). Ler o form
+   *  faria o vínculo migrar em silêncio para esse post errado; ler
+   *  `editing` garante que só o alvo órfão que abriu este diálogo pode ser
+   *  o ponteiro salvo. Diferente de `selectPost`, que sempre zera
+   *  `workflow_post_id`, este handler PRESERVA o ponteiro, produzindo o
+   *  estado "ligado" do modelo de 5 estados em vez de um "específico"
+   *  solto.
+   *
+   *  MAS só enquanto o cliente do formulário continuar sendo o do órfão: o
+   *  Select de cliente não trava durante a edição (`clientLocked` só vale na
+   *  criação, ver abaixo) e trocá-lo não limpa `editing`, que segue sendo a
+   *  automação órfã original. Preservar o ponteiro incondicionalmente aqui
+   *  gravaria `workflow_post_id` do cliente ANTIGO junto de um `client_id`
+   *  novo -- o resolver `ica_a1_resolve_workflow_post_target` rejeita essa
+   *  combinação (`wp.cliente_id = a.client_id`) e o save falha. Uma vez que
+   *  o cliente mudou, isto não é mais um re-mirar daquele órfão: é uma
+   *  edição normal, e o ponteiro deve zerar, como em `selectPost`. */
+  const selectPublishedForUnlinkedTarget = (post: PublishedMediaItem) =>
+    setForm((f) => ({
+      ...f,
+      selectedPost: {
+        kind: 'published',
+        ig_media_id: post.id,
+        media_permalink: post.permalink,
+        media_caption: post.caption ? truncate(post.caption, 300) : null,
+        workflow_post_id:
+          editing != null && f.clientId === editing.client_id
+            ? (editing.workflow_post_id ?? null)
+            : null,
       },
     }));
 
@@ -1058,6 +937,10 @@ export default function AutomationFormDialog({
                   </p>
                 ) : (
                   <div style={{ marginTop: 8 }}>
+                    {/* Mesmo ToggleGroup nos dois casos (fluxo normal e
+                        re-mirar): é o mesmo controle, no mesmo lugar do mesmo
+                        diálogo, então precisa ter a mesma aparência
+                        independente do caminho de entrada. */}
                     <ToggleGroup
                       type="single"
                       aria-label={t('form.targetSourceLabel')}
@@ -1167,6 +1050,22 @@ export default function AutomationFormDialog({
                           </p>
                         </>
                       )
+                    ) : retargetMode ? (
+                      // Alvo órfão: a fonte vira a Graph API ao vivo (nunca o
+                      // espelho instagram_posts), e "carregar mais" por cursor
+                      // substitui a paginação numerada por offset acima -- os
+                      // dois modelos de paginação não encaixam (a Graph API
+                      // não devolve total).
+                      <LiveMediaPicker
+                        clientId={form.clientId as number}
+                        selectedId={
+                          form.selectedPost?.kind === 'published'
+                            ? form.selectedPost.ig_media_id
+                            : null
+                        }
+                        onSelect={selectPublishedForUnlinkedTarget}
+                        enabled={retargetMode}
+                      />
                     ) : postsQuery.isLoading ? (
                       <div className="flex justify-center p-4">
                         <Spinner size="sm" />

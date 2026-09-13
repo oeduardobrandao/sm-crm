@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { headObject, listOrphanKeys, purgeTrash, signGetUrl, trashObject } from "../_shared/r2.ts";
+import { headObject, listOrphanKeyPage, purgeTrash, signGetUrl, trashObject } from "../_shared/r2.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
@@ -13,10 +13,19 @@ import {
 } from "../_shared/stream.ts";
 import { createPostMediaCleanupCronHandler } from "./handler.ts";
 import { runStreamSweeps } from "./stream-steps.ts";
-import { runOrphanScan } from "./orphan-scan.ts";
+import { runOrphanScan, type OrphanScanDeps } from "./orphan-scan.ts";
 import { runIntegrityCanary } from "./canary.ts";
 
 const CRON_NAME = "post-media-cleanup-cron";
+
+// Listing pages the orphan scan may consume per target per run. See
+// orphan-scan.ts: the scan is checkpointed, so this bounds ONE run's memory and
+// wall clock, not how much of the bucket eventually gets swept. Raise it if
+// cron_scan_state.cycle_started_at shows sweeps taking too long.
+const ORPHAN_SCAN_PAGES_PER_RUN = Math.max(
+  1,
+  parseInt(Deno.env.get("ORPHAN_SCAN_PAGES_PER_RUN") || "10", 10) || 10,
+);
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -122,7 +131,36 @@ Deno.serve(createPostMediaCleanupCronHandler({
     // Hardened module (see orphan-scan.ts): chunked known-set queries, abort on any
     // query error, and an empty-known-set circuit breaker — the 2026-08 incident
     // (silent .in() failures -> empty known set -> mass deletion) cannot recur.
-    const scan = await runOrphanScan({ db: svc, listOrphanKeys, trashObject });
+    // The cast keeps tsc from expanding PostgrestFilterBuilder against the
+    // narrow structural `db` contract (TS2589: excessively deep instantiation).
+    const scan = await runOrphanScan({
+      db: svc as unknown as OrphanScanDeps["db"],
+      listOrphanKeyPage,
+      trashObject,
+      pagesPerRun: ORPHAN_SCAN_PAGES_PER_RUN,
+      // Checkpoint I/O against cron_scan_state (migration 20260912000001).
+      // A missing row is not an error: it means "start a fresh cycle".
+      readCheckpoint: async (scanKey) => {
+        const { data, error } = await svc
+          .from("cron_scan_state")
+          .select("continuation_token")
+          .eq("scan_key", scanKey)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        return (data?.continuation_token as string | null) ?? null;
+      },
+      // One RPC, not an upsert plus a counter write: a completed cycle has to
+      // move the position, restart the cycle clock and bump the counter as a
+      // unit, or the telemetry starts disagreeing with the cursor.
+      writeCheckpoint: async (scanKey, token, { cycleCompleted }) => {
+        const { error } = await svc.rpc("record_scan_checkpoint", {
+          p_scan_key: scanKey,
+          p_token: token,
+          p_cycle_completed: cycleCompleted,
+        });
+        if (error) throw new Error(error.message);
+      },
+    });
 
     // Purge trash/ entries past their 30-day undo window (bounded per run).
     let trashPurged = 0;
@@ -160,8 +198,16 @@ Deno.serve(createPostMediaCleanupCronHandler({
     if (canaryMissing.length > 0) {
       alerts.push({ error: `integrity canary: ${canaryMissing.length}/${canaryChecked} sampled objects MISSING (ids ${canaryMissing.map((m) => m.id).join(",")})` });
     }
+    // scan.aborted já vem como "prefixo: motivo" de CADA alvo abortado — um
+    // abort em briefing-audio/ não some atrás de um em contas/.
     if (scan.aborted) alerts.push({ error: `orphan scan aborted: ${scan.aborted}` });
-    if (scan.capped > 0) alerts.push({ error: `orphan scan capped: ${scan.capped} orphans deferred (cap ${scan.trashed} trashed)` });
+    if (scan.capped > 0) {
+      const perTarget = scan.targets
+        .filter((t) => t.capped > 0)
+        .map((t) => `${t.prefix} ${t.capped} deferred/${t.trashed} trashed`)
+        .join("; ");
+      alerts.push({ error: `orphan scan capped: ${perTarget}` });
+    }
     if (failed > 0) alerts.push({ error: `deletion drain: ${failed} rows failed this run` });
     if (streamErrors > 0) alerts.push({ error: `stream sweeps: ${streamErrors} step errors` });
     if (alerts.length > 0) {
@@ -170,7 +216,8 @@ Deno.serve(createPostMediaCleanupCronHandler({
 
     return json({
       deleted, failed, orphansTrashed: scan.trashed, orphansCapped: scan.capped,
-      orphanScanAborted: scan.aborted, trashPurged, canaryChecked,
+      orphanScanAborted: scan.aborted, orphanScanPages: scan.pages,
+      orphanScanCyclesCompleted: scan.cyclesCompleted, trashPurged, canaryChecked,
       canaryMissing: canaryMissing.length,
       streamIngested, streamSettled, streamReaped, streamErrors,
     });

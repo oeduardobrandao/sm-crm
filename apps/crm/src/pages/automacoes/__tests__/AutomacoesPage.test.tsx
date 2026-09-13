@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const {
   mockGetAutomations,
@@ -92,20 +93,27 @@ vi.mock('@/components/paywall/FeatureGate', () => ({
 
 // The dialog has its own client-select / posts-grid / keyword-chip surface --
 // out of scope for the list test, which only needs to know it opened. Also
-// exposes `tour` (as a data attribute) and the `onSaved` path so the tour
-// wiring tests below can drive them without the real dialog internals.
+// exposes `tour` and `initialTab` (as data attributes) and the `onSaved` path
+// so the tour/retarget wiring tests below can drive them without the real
+// dialog internals.
 vi.mock('../AutomationFormDialog', () => ({
   default: ({
     open,
     onSaved,
     tour,
+    initialTab,
   }: {
     open: boolean;
     onSaved: () => void;
     tour?: { step: { id: string } };
+    initialTab?: 'production' | 'published';
   }) =>
     open ? (
-      <div data-testid="automation-dialog" data-tour-step={tour?.step.id ?? ''}>
+      <div
+        data-testid="automation-dialog"
+        data-tour-step={tour?.step.id ?? ''}
+        data-initial-tab={initialTab ?? ''}
+      >
         <button onClick={onSaved}>salvar-mock</button>
       </div>
     ) : null,
@@ -151,6 +159,7 @@ const AUTOMATION_PENDING = {
   media_caption: 'Chamada para o evento de sexta',
   workflow_post_id: 501,
   pending_post_deleted_at: null,
+  target_unlinked_at: null,
   keywords: ['evento'],
   dm_message: 'Segue o link!',
   public_reply: null,
@@ -159,6 +168,18 @@ const AUTOMATION_PENDING = {
   last_triggered_at: null,
   created_at: '2026-08-15T09:00:00.000Z',
   updated_at: '2026-08-15T09:00:00.000Z',
+};
+
+// Same shape as AUTOMATION_PENDING (still no ig_media_id), but the target
+// post published outside the app -- marked "postado" by hand without ever
+// going through the publish flow -- so it will NEVER get a media id. Task 5's
+// cron stamps target_unlinked_at when it detects this.
+const AUTOMATION_UNLINKED = {
+  ...AUTOMATION_PENDING,
+  id: 'auto-unlinked',
+  name: 'Story de sábado',
+  workflow_post_id: 4038,
+  target_unlinked_at: '2026-08-31T23:55:44.000Z',
 };
 
 const AUTOMATION_TOMBSTONE = {
@@ -171,6 +192,7 @@ const AUTOMATION_TOMBSTONE = {
   media_caption: 'Promoção de julho',
   workflow_post_id: null,
   pending_post_deleted_at: '2026-08-16T10:00:00.000Z',
+  target_unlinked_at: null,
   keywords: ['julho'],
   dm_message: 'Segue o link!',
   public_reply: null,
@@ -237,9 +259,15 @@ function renderPage() {
 }
 
 function setAuth(overrides: Record<string, unknown> = {}) {
+  const role = (overrides.role as 'owner' | 'admin' | 'agent' | undefined) ?? 'owner';
   mockUseAuth.mockReturnValue({
-    role: 'owner',
-    profile: { id: 'user-1', conta_id: 'w-1', role: 'owner' },
+    role,
+    profile: { id: 'user-1', conta_id: 'w-1', role },
+    // Default: same role drives `can`, via the real derivePermission truth
+    // table (never a hand-rolled reimplementation) -- a test overriding
+    // `role` alone (e.g. 'agent') still gets a `can` consistent with it.
+    // Tests exercising a custom role pass their own `can` override instead.
+    can: makeCan(fakeMembership({ role })),
     ...overrides,
   });
 }
@@ -318,6 +346,94 @@ describe('AutomacoesPage', () => {
     expect(within(row).getByText('Chamada para o evento de sexta')).toBeInTheDocument();
     expect(within(row).getByText('pendingBadge')).toBeInTheDocument();
     expect(within(row).queryByText('allPosts')).not.toBeInTheDocument();
+  });
+
+  it('shows unlinkedTargetBadge (never pendingBadge) when the target post published without a media id', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('pendingBadge')).not.toBeInTheDocument();
+  });
+
+  it('keeps pendingBadge while the target post has not published yet', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_PENDING]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Lançamento de sexta')).closest('tr')!;
+    expect(within(row).getByText('pendingBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('unlinkedTargetBadge')).not.toBeInTheDocument();
+  });
+
+  it('hides the retarget action without automacoes:editar, but still shows the badge', async () => {
+    setAuth({
+      can: makeCan(fakeMembership({ role_id: 'r1', permissions: { automacoes: 'ver' } })),
+    });
+    mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('unlinkedTargetAction')).not.toBeInTheDocument();
+  });
+
+  it('hides the retarget action while membership is still hydrating (can === "unknown"), but still shows the badge', async () => {
+    // `can()` returns 'unknown' (truthy) before the membership fetch settles
+    // -- `makeCan(null)` reproduces that exact state, same as a fresh
+    // AuthContext (see AppLayout.test.tsx and useIsWorkspaceOwner.test.tsx).
+    // This is the actual reason the row uses `=== true` and not a truthy
+    // check: a truthy check would let the action flash on screen for a user
+    // who turns out to lack the permission once hydration resolves.
+    setAuth({ can: makeCan(null) });
+    mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('unlinkedTargetAction')).not.toBeInTheDocument();
+  });
+
+  it('shows the retarget action with automacoes:editar and opens the dialog on the "published" tab for that automation', async () => {
+    mockGetAutomations.mockResolvedValue([AUTOMATION_UNLINKED]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    fireEvent.click(within(row).getByText('unlinkedTargetAction'));
+
+    const dialog = await screen.findByTestId('automation-dialog');
+    expect(dialog).toHaveAttribute('data-initial-tab', 'published');
+
+    // Saving closes the dialog; a subsequent NORMAL edit must not inherit the
+    // "published" tab from the retarget flow (state has to reset on close).
+    fireEvent.click(screen.getByText('salvar-mock'));
+    await waitFor(() => expect(screen.queryByTestId('automation-dialog')).not.toBeInTheDocument());
+
+    // jsdom não modela PointerEvent, então o Radix DropdownMenu não abre com
+    // fireEvent.click no trigger -- mesmo caminho onKeyDown/Enter usado pelos
+    // outros testes de rowActions desta suíte.
+    fireEvent.keyDown(screen.getByRole('button', { name: /rowActions/ }), { key: 'Enter' });
+    fireEvent.click(await screen.findByText('edit'));
+
+    const secondDialog = await screen.findByTestId('automation-dialog');
+    expect(secondDialog).toHaveAttribute('data-initial-tab', '');
+  });
+
+  it('tombstone (deleted target) wins over the unlinked-target mark', async () => {
+    mockGetAutomations.mockResolvedValue([
+      { ...AUTOMATION_UNLINKED, pending_post_deleted_at: '2026-09-01T00:00:00.000Z' },
+    ]);
+
+    renderPage();
+
+    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    expect(within(row).getByText('deletedPostBadge')).toBeInTheDocument();
+    expect(within(row).queryByText('unlinkedTargetBadge')).not.toBeInTheDocument();
   });
 
   it('shows the deletedPostBadge and an off switch for a tombstoned automation', async () => {

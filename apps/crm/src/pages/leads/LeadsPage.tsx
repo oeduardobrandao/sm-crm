@@ -156,7 +156,12 @@ function parseInstagram(raw: string): string {
 
 export default function LeadsPage() {
   const qc = useQueryClient();
-  const { canSeeFinancials, profile } = useAuth();
+  const { canSeeFinancials, profile, can } = useAuth();
+  // No role check existed here before Task 14 -- the route itself already
+  // blocks a legacy agent (AGENT_ROLE_PRESET.leads is 'none', routePermissions.ts
+  // gates /leads on leads:ver), so this only starts to matter for a custom
+  // role that reaches this page with leads:ver but not leads:editar.
+  const canEditLeads = can('leads', 'editar') === true;
   const { t, i18n } = useTranslation('leads');
   const { t: tc } = useTranslation();
   const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -449,19 +454,23 @@ export default function LeadsPage() {
               style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
             />
           </span>
-          <FeatureGate flag="feature_csv_import" label="Importação CSV">
-            <Button variant="outline" onClick={handleCSVImport}>
-              <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
-              {tc('actions.importCsv')}
+          {canEditLeads && (
+            <FeatureGate flag="feature_csv_import" label="Importação CSV">
+              <Button variant="outline" onClick={handleCSVImport}>
+                <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+                {tc('actions.importCsv')}
+              </Button>
+            </FeatureGate>
+          )}
+          {canEditLeads && (
+            <Button
+              onClick={openAdd}
+              disabled={leadsAtLimit}
+              title={leadsAtLimit ? 'Limite do plano atingido' : undefined}
+            >
+              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}
             </Button>
-          </FeatureGate>
-          <Button
-            onClick={openAdd}
-            disabled={leadsAtLimit}
-            title={leadsAtLimit ? 'Limite do plano atingido' : undefined}
-          >
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}
-          </Button>
+          )}
         </div>
       </div>
 
@@ -616,6 +625,7 @@ export default function LeadsPage() {
                     <TableCell data-label={t('table.status')}>
                       <Select
                         value={l.status}
+                        disabled={!canEditLeads}
                         onValueChange={(val) =>
                           l.id && handleStatusChange(l.id, val as Lead['status'])
                         }
@@ -636,29 +646,31 @@ export default function LeadsPage() {
                       {l.created_at ? new Date(l.created_at).toLocaleDateString(locale) : '—'}
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title={t('convertToClient')}
-                          onClick={() => openConvert(l)}
-                        >
-                          <UserPlus className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        {l.id && (
+                      {canEditLeads && (
+                        <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="text-destructive"
-                            onClick={() => setDeleteId(l.id!)}
+                            title={t('convertToClient')}
+                            onClick={() => openConvert(l)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <UserPlus className="h-4 w-4" />
                           </Button>
-                        )}
-                      </div>
+                          <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          {l.id && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-destructive"
+                              onClick={() => setDeleteId(l.id!)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -718,35 +730,37 @@ export default function LeadsPage() {
                       )}
                     </div>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 mb-0">
-                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openConvert(l)}>
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        {t('convertToClient')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => openEdit(l)}>
-                        <Edit2 className="h-4 w-4 mr-2" />
-                        {tc('actions.edit')}
-                      </DropdownMenuItem>
-                      {l.id && (
-                        <>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => setDeleteId(l.id!)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            {tc('actions.delete')}
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {canEditLeads && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 mb-0">
+                          <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openConvert(l)}>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          {t('convertToClient')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEdit(l)}>
+                          <Edit2 className="h-4 w-4 mr-2" />
+                          {tc('actions.edit')}
+                        </DropdownMenuItem>
+                        {l.id && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => setDeleteId(l.id!)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              {tc('actions.delete')}
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
             ))}

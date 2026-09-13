@@ -10,6 +10,7 @@ import { CalloutReadonly } from './CalloutReadonly';
 import { InlineImageReadonly } from './InlineImageReadonly';
 import { CommentHighlightReadonly } from './CommentHighlightReadonly';
 import { MentionReadonly } from './MentionReadonly';
+import { isAllowedRichTextLinkUrl } from '@mesaas/link-policy';
 
 /**
  * The TipTap extension set used to read post `conteudo` in the hub. This must stay a
@@ -19,12 +20,30 @@ import { MentionReadonly } from './MentionReadonly';
  */
 export function richTextExtensions(editable = false) {
   return [
-    StarterKit,
+    // StarterKit v3 already bundles Link and Underline. Without `link: false` /
+    // `underline: false` both register twice -- TipTap logs "Duplicate extension
+    // names found: ['link','underline']" and keeps BOTH Link instances live, so
+    // StarterKit's own `openOnClick: true` handler fires alongside the one configured
+    // below. `openOnClick: !editable` further down is deliberate (portal links should
+    // open in the read-only view) -- this only removes the duplicate registration.
+    StarterKit.configure({ link: false, underline: false }),
     UnderlineExt,
     TextStyle,
     Color,
     Highlight.configure({ multicolor: true }),
-    Link.configure({ openOnClick: !editable, autolink: false }),
+    Link.configure({
+      openOnClick: !editable,
+      autolink: false,
+      // TipTap's own default `isAllowedUri` blocks `javascript:` but still allows
+      // `ftp:`/`ftps:` and doesn't reject credential-bearing URLs
+      // (`https://user:pass@host`). `isAllowedRichTextLinkUrl` (@mesaas/link-policy) is
+      // the single shared policy for this: http/https/mailto/tel allowed, everything
+      // else (including relative/anchor-only URLs) rejected. It is shared with the CRM's
+      // page editor (pageEditorSchema.ts) so the write side and this read side can't
+      // drift -- a scheme one side allows and the other rejects is a link that persists
+      // but silently renders dead here.
+      isAllowedUri: (url) => isAllowedRichTextLinkUrl(url),
+    }),
     CalloutReadonly,
     InlineImageReadonly,
     CommentHighlightReadonly,
@@ -67,19 +86,27 @@ function RichTextEditor({
     extensions: richTextExtensions(editable),
     content,
     editable,
-    editorProps: editable
+    // Only include `editorProps` at all when editable: Tiptap's own default is `{}`, but an
+    // explicit `editorProps: undefined` key overrides that default during option merging and
+    // crashes `Editor.createView()` (`Cannot read properties of undefined (reading
+    // 'dispatchTransaction')`) the moment a read-only instance mounts. The crash is swallowed
+    // by `EditorErrorBoundary` below, so a viewer silently gets the plain-text fallback (or
+    // nothing, when no `fallbackText` is given) instead of the rich content.
+    ...(editable
       ? {
-          handlePaste: (_view, event) => {
-            const text = event.clipboardData?.getData('text/plain');
-            if (text) {
-              editor?.commands.insertContent(text);
-              return true;
-            }
-            return false;
+          editorProps: {
+            handlePaste: (_view, event) => {
+              const text = event.clipboardData?.getData('text/plain');
+              if (text) {
+                editor?.commands.insertContent(text);
+                return true;
+              }
+              return false;
+            },
+            handleDrop: () => true,
           },
-          handleDrop: () => true,
         }
-      : undefined,
+      : {}),
     onUpdate: editable
       ? ({ editor: ed }) => {
           onUpdateRef.current?.(ed.getJSON() as Record<string, unknown>, ed.getText());
@@ -109,7 +136,18 @@ function RichTextEditor({
             : ''
         }
       >
-        <EditorContent editor={editor} className="post-editor-content" />
+        <EditorContent
+          editor={editor}
+          // `.post-editor-content` (apps/crm/style.css) is the CRM editing surface's own
+          // sizing: 0.875rem, 80px min-height, links in the CRM's yellow. It's shared here
+          // only because Tiptap's EditorContent needs a class to hang node CSS off. When
+          // read-only, `hub-rich-content` (apps/hub/index.html) out-specifies it so portal
+          // content reads at the surrounding Hub typography (font-size/line-height/color
+          // inherited from `className` above) with links in the client's own brand color,
+          // not the CRM editor's. Editable mode (inline edit-suggestion UI) keeps the CRM
+          // editor look on purpose -- it IS an editor in that state.
+          className={editable ? 'post-editor-content' : 'post-editor-content hub-rich-content'}
+        />
       </div>
     </div>
   );

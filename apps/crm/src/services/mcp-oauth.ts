@@ -28,11 +28,17 @@ export interface EligibleWorkspace {
   feature_mcp: boolean;
 }
 
-/** The user's owner/admin workspaces, annotated with whether each one's plan enables MCP. */
-export function listEligibleWorkspaces(): Promise<EligibleWorkspace[]> {
-  return call<{ workspaces: EligibleWorkspace[] }>({ action: 'eligible-workspaces' }).then(
-    (d) => d.workspaces,
-  );
+export interface EligibleResult {
+  workspaces: EligibleWorkspace[];
+  /** O usuário está em platform_admins e pode autorizar o MCP do Admin da plataforma. */
+  platform_admin: boolean;
+}
+
+/** Workspaces elegíveis + se o usuário é platform admin. */
+export function listEligibleWorkspaces(): Promise<EligibleResult> {
+  return call<{ workspaces: EligibleWorkspace[]; platform_admin?: boolean }>({
+    action: 'eligible-workspaces',
+  }).then((d) => ({ workspaces: d.workspaces, platform_admin: d.platform_admin === true }));
 }
 
 /**
@@ -41,8 +47,9 @@ export function listEligibleWorkspaces(): Promise<EligibleWorkspace[]> {
  */
 export function recordOAuthGrant(params: {
   authorization_id: string;
-  conta_id: string;
   scopes: string[];
+  conta_id?: string;
+  target?: 'workspace' | 'platform';
 }): Promise<{ ok: true }> {
   return call<{ ok: true }>({ action: 'approve', ...params });
 }

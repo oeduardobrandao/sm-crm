@@ -33,7 +33,7 @@ function setup(extraProps: { willRearm?: boolean } = {}) {
   render(
     <ClientApprovalChoiceDialog
       open
-      workflowTitle="Campanha X"
+      entityTitle="Campanha X"
       onApproveInternally={onApproveInternally}
       onSendToPortal={onSendToPortal}
       onAdvanceWithoutChanges={onAdvanceWithoutChanges}
@@ -75,5 +75,30 @@ describe('ClientApprovalChoiceDialog re-arm note', () => {
   it('hides the note when willRearm is absent', () => {
     setup();
     expect(screen.queryByText(/voltarão para rascunho/i)).not.toBeInTheDocument();
+  });
+
+  it('post individual: cópia no singular e botão do portal desabilitado com o motivo', () => {
+    render(
+      <ClientApprovalChoiceDialog
+        open
+        entityTitle="Post X"
+        entityKind="post"
+        willRearm
+        withoutChangesLabel="Avançar etapa sem alterar o post"
+        sendToPortalDisabledReason="Só posts aprovados internamente podem ser enviados ao cliente."
+        onApproveInternally={vi.fn()}
+        onSendToPortal={vi.fn()}
+        onAdvanceWithoutChanges={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/o post aprovado voltará para rascunho/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar ao portal do cliente' })).toBeDisabled();
+    expect(
+      screen.getByText('Só posts aprovados internamente podem ser enviados ao cliente.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Avançar etapa sem alterar o post' }),
+    ).toBeInTheDocument();
   });
 });

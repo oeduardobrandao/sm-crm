@@ -18,10 +18,10 @@ const EXISTING_WORKFLOW_ID_FOR_EXECUTION_VIEW = 217;
 
 /**
  * Sum a strided sample of a <canvas>'s pixel bytes. Used to detect when Chart.js's
- * doughnut-reveal animation (ChartView.tsx, default ~1000ms duration, no onComplete
+ * bar-reveal animation (ChartView.tsx, default ~1000ms duration, no onComplete
  * hook wired up) has settled, without guessing a fixed delay: poll this until two
- * consecutive samples agree (see the Gráfico step below). Stride keeps the poll cheap
- * on a devicePixelRatio-scaled canvas (this project runs deviceScaleFactor: 2).
+ * consecutive samples agree (see the Visão geral step below). Stride keeps the poll
+ * cheap on a devicePixelRatio-scaled canvas (this project runs deviceScaleFactor: 2).
  */
 async function canvasPixelSample(canvas: Locator): Promise<number> {
   return canvas.evaluate((el) => {
@@ -42,7 +42,7 @@ async function canvasPixelSample(canvas: Locator): Promise<number> {
  * unmounts/remounts the view component, re-triggering this fade every time. A first run
  * of this spec proved this isn't hypothetical: the Calendário and Lista screenshots came
  * back visibly washed out (~mid-fade opacity) because their waits only checked that
- * content had *attached*, not that the animation had *finished*. Kanban/Gráfico's own
+ * content had *attached*, not that the animation had *finished*. Kanban/Visão geral's own
  * shots happened to clear 0.4s incidentally (longer wait chains), which is exactly the
  * kind of luck not to rely on -- so this guard is applied before every view-tab shot.
  * `.last()` because the always-mounted header (EntregasPage.tsx) also carries
@@ -157,12 +157,13 @@ test('criar fluxo + visualizações walkthrough', async ({ page }) => {
   await waitForFadeIn(page);
   await shoot(page, SLUG, 1, 'view-kanban');
 
-  // View 2 -- Gráfico
-  await page.getByRole('button', { name: 'Gráfico' }).click();
+  // View 2 -- Visão geral
+  await page.getByRole('tab', { name: 'Visão geral' }).click();
   // `canvas` alone is ambiguous -- the sidebar's mobile bottom-nav also renders an
   // (off-screen at this desktop viewport) `.mobile-nav-canvas`. Chart.js sets
-  // role="img" on the chart's own canvas; that's unique on this page.
-  const canvas = page.locator('canvas[role="img"]');
+  // role="img" on each chart's own canvas; the cockpit draws up to four of them,
+  // so settle on the first (Situação por cliente) as the animation probe.
+  const canvas = page.locator('canvas[role="img"]').first();
   await canvas.waitFor();
   let previousSample = -1;
   await expect
@@ -180,13 +181,13 @@ test('criar fluxo + visualizações walkthrough', async ({ page }) => {
   await shoot(page, SLUG, 2, 'view-grafico');
 
   // View 3 -- Calendário
-  await page.getByRole('button', { name: 'Calendário' }).click();
+  await page.getByRole('tab', { name: 'Calendário' }).click();
   await page.locator('.month-grid-title').waitFor();
   await waitForFadeIn(page);
   await shoot(page, SLUG, 3, 'view-calendario');
 
   // View 4 -- Lista
-  await page.getByRole('button', { name: 'Lista' }).click();
+  await page.getByRole('tab', { name: 'Lista' }).click();
   await page.getByRole('columnheader', { name: 'Título' }).waitFor();
   await waitForFadeIn(page);
   await shoot(page, SLUG, 4, 'view-lista');
@@ -196,7 +197,7 @@ test('criar fluxo + visualizações walkthrough', async ({ page }) => {
   // concluded workflows in this workspace, so this view's real, honest state is its
   // empty state -- not a loading spinner or a bug. Group B is zero-write, so no fluxo is
   // completed just to populate this screenshot; see the task report for this call-out.
-  await page.getByRole('button', { name: 'Concluídas' }).click();
+  await page.getByRole('tab', { name: 'Concluídas' }).click();
   await page.getByText('Nenhum fluxo concluído ainda.').waitFor();
   await waitForFadeIn(page);
   await shoot(page, SLUG, 5, 'view-concluidas');

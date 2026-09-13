@@ -191,22 +191,40 @@ describe('store ideias', () => {
   });
 
   describe('convertSolicitacaoEmTarefa mention sync', () => {
-    it('syncs mentions extracted from descricao against the new tarefa id', async () => {
+    it('persists rich content and syncs its mentions against the new tarefa id', async () => {
       mockedSupabase.__queueSupabaseRpc('convert_solicitacao_em_tarefa', {
         data: 55,
         error: null,
       });
       mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
 
+      const descricaoRich = {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              {
+                type: 'mention',
+                attrs: { entityType: 'membro', id: 5, label: 'Ana', parentId: null },
+              },
+              { type: 'text', text: ' por favor revise' },
+            ],
+          },
+        ],
+      };
       const tarefaId = await store.convertSolicitacaoEmTarefa({
         ideiaId: 'ideia-1',
         titulo: 'Revisar site',
-        descricao: '@[Ana](membro:5) por favor revise',
+        descricao: '@Ana por favor revise',
+        descricaoRich,
         responsavelId: null,
         dataLimite: null,
       });
 
       expect(tarefaId).toBe(55);
+      const convertCall = getCalls('rpc:convert_solicitacao_em_tarefa', 'rpc').at(-1)!;
+      expect(convertCall.payload).toMatchObject({ p_descricao_rich: descricaoRich });
       const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
       expect(call.payload).toEqual({ p_host_type: 'tarefa', p_host_id: 55, p_membro_ids: [5] });
     });

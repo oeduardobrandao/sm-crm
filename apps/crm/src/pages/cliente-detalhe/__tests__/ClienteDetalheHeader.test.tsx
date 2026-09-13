@@ -27,6 +27,7 @@ describe('ClienteDetalheHeader', () => {
       plano: 'Social + Vídeo',
       status: 'ativo',
       canEditPhoto: false,
+      canEdit: true,
       onBack,
       onEdit,
     });
@@ -54,9 +55,51 @@ describe('ClienteDetalheHeader', () => {
       plano: 'Social + Vídeo',
       status: 'ativo',
       canEditPhoto: true,
+      canEdit: true,
       onBack: vi.fn(),
       onEdit: vi.fn(),
     });
     expect(screen.getByLabelText('Alterar foto do cliente')).toBeInTheDocument();
+  });
+
+  /**
+   * Task 14, revisão externa round 4 (P2): the "Editar" button (and, since
+   * it's the only trigger, ClienteEditDialog) used to render unconditionally
+   * -- a custom role with only `clientes:ver` reached this page but could
+   * still edit the client via this header button, even though
+   * `canEditPhoto` already gated the photo upload on `clientes:editar`.
+   */
+  it('hides the Editar button when canEdit is false', () => {
+    renderHeader({
+      clienteId: 7,
+      nome: 'Ana Beatriz Gois Bessa',
+      initials: 'AB',
+      cor: '#eab308',
+      plano: 'Social + Vídeo',
+      status: 'ativo',
+      canEditPhoto: false,
+      canEdit: false,
+      onBack: vi.fn(),
+      onEdit: vi.fn(),
+    });
+    expect(screen.queryByRole('button', { name: /Editar/ })).not.toBeInTheDocument();
+  });
+
+  it('shows the Editar button when canEdit is true', () => {
+    const onEdit = vi.fn();
+    renderHeader({
+      clienteId: 7,
+      nome: 'Ana Beatriz Gois Bessa',
+      initials: 'AB',
+      cor: '#eab308',
+      plano: 'Social + Vídeo',
+      status: 'ativo',
+      canEditPhoto: false,
+      canEdit: true,
+      onBack: vi.fn(),
+      onEdit,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Editar/ }));
+    expect(onEdit).toHaveBeenCalledOnce();
   });
 });
