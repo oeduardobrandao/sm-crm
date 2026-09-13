@@ -200,7 +200,7 @@ export function CalendarView({
   onCreateTask,
 }: CalendarViewProps) {
   const { profile } = useAuth();
-  const contaId = profile?.conta_id ?? 'unknown';
+  const contaId = profile?.active_workspace_id ?? profile?.conta_id ?? 'unknown';
   const [modo, setModo] = useState<'mes' | 'board'>(() => loadTarefasCalendarioModo(contaId));
   const handleModoChange = (next: 'mes' | 'board') => {
     setModo(next);
