@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, FilePen, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { fetchMensagens, markMensagensSeen, sendHubMensagem, submitApproval } from '../api';
 import { HubPostChip } from '../components/HubPostChip';
@@ -12,8 +13,8 @@ function itemKey(m: MensagemFeedItem) {
   return `${m.source}-${m.item_id}`;
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleString('pt-BR', {
+function formatTime(iso: string, lang: string = 'pt-BR') {
+  return new Date(iso).toLocaleString(lang, {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -27,17 +28,23 @@ function isEventRow(m: MensagemFeedItem) {
   return m.source === 'post_feedback' && m.action !== 'mensagem' && !m.content?.trim();
 }
 
-function eventLabel(m: MensagemFeedItem) {
-  if (m.source === 'edit_suggestion') return 'Você sugeriu edições no texto';
-  return m.action === 'aprovado' ? 'Você aprovou o post' : 'Você pediu correção';
+function eventLabel(m: MensagemFeedItem, t: (key: string, defaultValue: string) => string) {
+  if (m.source === 'edit_suggestion') {
+    return t('events.editSuggestion', 'Você sugeriu edições no texto');
+  }
+  return m.action === 'aprovado'
+    ? t('events.approved', 'Você aprovou o post')
+    : t('events.correctionRequested', 'Você pediu correção');
 }
 
 export function MensagensPage() {
   const { bootstrap, token, workspace } = useHub();
+  const { t, i18n } = useTranslation('hubMessages');
   const base = `/${workspace}/hub/${token}`;
   const qc = useQueryClient();
   const [draft, setDraft] = useState('');
   const [replyTo, setReplyTo] = useState<{ post_id: number; titulo: string } | null>(null);
+  const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 
   const enabled = bootstrap.feature_mensagens;
 
@@ -92,11 +99,14 @@ export function MensagensPage() {
       <div className="flex flex-col gap-4 hub-fade-up">
         <header>
           <h1 className="font-display text-[1.7rem] sm:text-[2.4rem] font-medium tracking-tight hub-txt">
-            Mensagens
+            {t('title', 'Mensagens')}
           </h1>
         </header>
         <p className="text-sm hub-tx2">
-          Este recurso ainda não está disponível no seu plano. Fale com sua agência para saber mais.
+          {t(
+            'disabled.description',
+            'Este recurso ainda não está disponível no seu plano. Fale com sua agência para saber mais.',
+          )}
         </p>
       </div>
     );
@@ -106,10 +116,13 @@ export function MensagensPage() {
     <div className="flex flex-col gap-4 hub-fade-up">
       <header>
         <h1 className="font-display text-[1.7rem] sm:text-[2.4rem] font-medium tracking-tight hub-txt">
-          Mensagens
+          {t('title', 'Mensagens')}
         </h1>
         <p className="text-sm hub-tx2 mt-1">
-          Toda a conversa com a equipe em um só lugar: mensagens, aprovações e sugestões.
+          {t(
+            'subtitle',
+            'Toda a conversa com a equipe em um só lugar: mensagens, aprovações e sugestões.',
+          )}
         </p>
       </header>
       <div className="hub-card flex flex-col min-h-[480px] overflow-hidden">
@@ -123,18 +136,22 @@ export function MensagensPage() {
               disabled={feed.isFetchingNextPage}
               className="self-center text-[12px] font-semibold hub-tx3 hover:hub-txt"
             >
-              {feed.isFetchingNextPage ? 'Carregando…' : 'Carregar mensagens anteriores'}
+              {feed.isFetchingNextPage
+                ? t('loading', 'Carregando…')
+                : t('loadPrevious', 'Carregar mensagens anteriores')}
             </button>
           )}
-          {feed.isLoading && <p className="text-sm hub-tx3 self-center py-8">Carregando…</p>}
+          {feed.isLoading && (
+            <p className="text-sm hub-tx3 self-center py-8">{t('loading', 'Carregando…')}</p>
+          )}
           {feed.isError && (
             <p className="text-sm hub-tx3 self-center py-8">
-              Não foi possível carregar as mensagens.
+              {t('loadError', 'Não foi possível carregar as mensagens.')}
             </p>
           )}
           {!feed.isLoading && !feed.isError && items.length === 0 && (
             <p className="text-sm hub-tx3 self-center py-8">
-              Nenhuma mensagem ainda. Envie a primeira!
+              {t('emptyState', 'Nenhuma mensagem ainda. Envie a primeira!')}
             </p>
           )}
           {items.map((m) => {
@@ -150,7 +167,7 @@ export function MensagensPage() {
                   ) : (
                     <CheckCircle2 size={13} />
                   )}
-                  <span>{eventLabel(m)}</span>
+                  <span>{eventLabel(m, t)}</span>
                   {m.post_id != null && (
                     <HubPostChip
                       postId={m.post_id}
@@ -159,7 +176,7 @@ export function MensagensPage() {
                       token={token}
                     />
                   )}
-                  <span>· {formatTime(m.created_at)}</span>
+                  <span>· {formatTime(m.created_at, dateLocale)}</span>
                 </div>
               );
             }
@@ -183,7 +200,7 @@ export function MensagensPage() {
                           boxShadow: 'inset 0 0 0 1px var(--hub-bd)',
                         }}
                       >
-                        {(m.author_name ?? 'Equipe')
+                        {(m.author_name ?? t('defaultAuthorName', 'Equipe'))
                           .split(' ')
                           .filter(Boolean)
                           .slice(0, 2)
@@ -192,7 +209,7 @@ export function MensagensPage() {
                           .toUpperCase()}
                       </span>
                     )}
-                    {m.author_name ?? 'Equipe'}
+                    {m.author_name ?? t('defaultAuthorName', 'Equipe')}
                   </div>
                 )}
                 <div
@@ -213,9 +230,9 @@ export function MensagensPage() {
                         titulo={m.post_titulo}
                         suffix={
                           m.action === 'correcao'
-                            ? ' · correção'
+                            ? t('postSuffix.correction', ' · correção')
                             : m.action === 'aprovado'
-                              ? ' · aprovação'
+                              ? t('postSuffix.approved', ' · aprovação')
                               : ''
                         }
                         base={base}
@@ -228,15 +245,18 @@ export function MensagensPage() {
                 <div
                   className={`mt-1 flex items-center gap-2 text-[11px] hub-tx3 ${mine ? 'justify-end' : ''}`}
                 >
-                  <span>{formatTime(m.created_at)}</span>
+                  <span>{formatTime(m.created_at, dateLocale)}</span>
                   {m.post_id != null && (
                     <button
                       onClick={() =>
-                        setReplyTo({ post_id: m.post_id!, titulo: m.post_titulo ?? 'Post' })
+                        setReplyTo({
+                          post_id: m.post_id!,
+                          titulo: m.post_titulo ?? t('defaultPostTitle', 'Post'),
+                        })
                       }
                       className="font-semibold hover:hub-txt"
                     >
-                      Responder
+                      {t('reply', 'Responder')}
                     </button>
                   )}
                 </div>
@@ -248,9 +268,12 @@ export function MensagensPage() {
           {replyTo && (
             <div className="flex items-center gap-2 text-[12px] hub-tx2">
               <span>
-                Respondendo sobre: <strong>{replyTo.titulo}</strong>
+                {t('replyingTo', 'Respondendo sobre:')} <strong>{replyTo.titulo}</strong>
               </span>
-              <button onClick={() => setReplyTo(null)} aria-label="Cancelar resposta">
+              <button
+                onClick={() => setReplyTo(null)}
+                aria-label={t('cancelReply', 'Cancelar resposta')}
+              >
                 <X size={13} />
               </button>
             </div>
@@ -262,7 +285,11 @@ export function MensagensPage() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && draft.trim() && !send.isPending) send.mutate(draft.trim());
               }}
-              placeholder={replyTo ? 'Responder sobre o post…' : 'Enviar mensagem…'}
+              placeholder={
+                replyTo
+                  ? t('composer.placeholderReply', 'Responder sobre o post…')
+                  : t('composer.placeholderDefault', 'Enviar mensagem…')
+              }
               className="flex-1 px-[18px] py-3 rounded-full border hub-border-strong text-sm outline-none"
               style={{ background: 'var(--hub-bg)', color: 'var(--hub-txt)' }}
             />
@@ -271,7 +298,7 @@ export function MensagensPage() {
               disabled={send.isPending || !draft.trim()}
               className="px-5 py-3 rounded-full text-[13px] font-semibold hub-btn-primary disabled:opacity-50"
             >
-              Enviar
+              {t('send', 'Enviar')}
             </button>
           </div>
         </div>
