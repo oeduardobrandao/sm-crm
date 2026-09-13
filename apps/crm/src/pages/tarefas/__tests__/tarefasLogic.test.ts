@@ -6,6 +6,7 @@ import {
   computeHeaderStats,
   dueBadge,
   EMPTY_TAREFA_FILTERS,
+  groupByBoardColumn,
   groupByDueBucket,
   parseDateOnly,
   parseDropId,
@@ -203,5 +204,83 @@ describe('dueBadge', () => {
     expect(
       dueBadge(makeTarefa({ data_limite: '2026-07-01', status: 'concluida' }), NOW),
     ).toBeNull();
+  });
+});
+
+describe('groupByBoardColumn', () => {
+  it('buckets atrasado/hoje/amanha/weekday/depois/semData for a normal weekday', () => {
+    const atrasada = makeTarefa({ data_limite: '2026-07-28' });
+    const hoje = makeTarefa({ data_limite: '2026-07-29' });
+    const amanha = makeTarefa({ data_limite: '2026-07-30' });
+    const sexta = makeTarefa({ data_limite: '2026-07-31' });
+    const domingo = makeTarefa({ data_limite: '2026-08-02' });
+    const depois = makeTarefa({ data_limite: '2026-08-03' });
+    const semData = makeTarefa({ data_limite: null });
+
+    const buckets = groupByBoardColumn(
+      [depois, semData, domingo, sexta, amanha, hoje, atrasada],
+      NOW,
+    );
+    expect(buckets.map((b) => b.key)).toEqual([
+      'atrasado',
+      'hoje',
+      'amanha',
+      'dia:2026-07-31',
+      'dia:2026-08-01',
+      'dia:2026-08-02',
+      'depois',
+      'semData',
+    ]);
+    expect(buckets.map((b) => b.label)).toEqual([
+      'Em atraso',
+      'Hoje',
+      'Amanhã',
+      'Sexta',
+      'Sábado',
+      'Domingo',
+      'Mais tarde',
+      'Sem data',
+    ]);
+    expect(buckets.find((b) => b.key === 'atrasado')!.tarefas).toEqual([atrasada]);
+    expect(buckets.find((b) => b.key === 'hoje')!.tarefas).toEqual([hoje]);
+    expect(buckets.find((b) => b.key === 'amanha')!.tarefas).toEqual([amanha]);
+    expect(buckets.find((b) => b.key === 'dia:2026-07-31')!.tarefas).toEqual([sexta]);
+    expect(buckets.find((b) => b.key === 'dia:2026-08-01')!.tarefas).toEqual([]);
+    expect(buckets.find((b) => b.key === 'dia:2026-08-02')!.tarefas).toEqual([domingo]);
+    expect(buckets.find((b) => b.key === 'depois')!.tarefas).toEqual([depois]);
+    expect(buckets.find((b) => b.key === 'semData')!.tarefas).toEqual([semData]);
+  });
+
+  it('marks atrasado, depois and semData droppability correctly', () => {
+    const buckets = groupByBoardColumn([], NOW);
+    const droppableByKey = Object.fromEntries(buckets.map((b) => [b.key, b.droppable]));
+    expect(droppableByKey.atrasado).toBe(false);
+    expect(droppableByKey.depois).toBe(false);
+    expect(droppableByKey.hoje).toBe(true);
+    expect(droppableByKey.amanha).toBe(true);
+    expect(droppableByKey['dia:2026-07-31']).toBe(true);
+    expect(droppableByKey.semData).toBe(true);
+  });
+
+  it('produces zero weekday columns when today is Saturday, and "amanhã" still lands on Sunday', () => {
+    const NOW_SAT = new Date('2026-08-01T10:00:00'); // Saturday; week ends Sunday 2026-08-02
+    const buckets = groupByBoardColumn([], NOW_SAT);
+    expect(buckets.map((b) => b.key)).toEqual(['atrasado', 'hoje', 'amanha', 'depois', 'semData']);
+    expect(buckets.find((b) => b.key === 'amanha')!.date).toBe('2026-08-02');
+  });
+
+  it('produces zero weekday columns when today is Sunday, and "amanhã" is next Monday', () => {
+    const NOW_SUN = new Date('2026-08-02T10:00:00'); // Sunday; week ends Sunday 2026-08-02 (today)
+    const buckets = groupByBoardColumn([], NOW_SUN);
+    expect(buckets.map((b) => b.key)).toEqual(['atrasado', 'hoje', 'amanha', 'depois', 'semData']);
+    expect(buckets.find((b) => b.key === 'amanha')!.date).toBe('2026-08-03');
+  });
+
+  it('keeps a completed task with a due date in its date bucket, but drops a completed undated task', () => {
+    const doneOverdue = makeTarefa({ data_limite: '2026-07-28', status: 'concluida' });
+    const doneNoDate = makeTarefa({ data_limite: null, status: 'concluida' });
+    const buckets = groupByBoardColumn([doneOverdue, doneNoDate], NOW);
+    expect(buckets.find((b) => b.key === 'atrasado')!.tarefas).toEqual([doneOverdue]);
+    expect(buckets.find((b) => b.key === 'semData')!.tarefas).toEqual([]);
   });
 });
