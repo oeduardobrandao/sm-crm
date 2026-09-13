@@ -286,7 +286,7 @@ export function CalendarView({
 
   if (modo === 'board') {
     return (
-      <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {toggle}
         <BoardView
           tarefas={tarefas}
