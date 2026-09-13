@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Mic } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import { MAX_AUDIO_SECONDS, pickRecorderMime } from '../services/briefingAudio';
 
@@ -42,6 +43,7 @@ interface Props {
 type Mode = 'idle' | 'recording' | 'preview';
 
 export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
+  const { t } = useTranslation('hubBriefing');
   const [mode, setMode] = useState<Mode>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -107,8 +109,11 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
         const name = (e as { name?: string }).name;
         setError(
           name === 'NotAllowedError' || name === 'SecurityError'
-            ? 'Permita o acesso ao microfone no navegador para gravar.'
-            : 'Não foi possível acessar o microfone.',
+            ? t(
+                'recorder.micPermissionDenied',
+                'Permita o acesso ao microfone no navegador para gravar.',
+              )
+            : t('recorder.micUnavailable', 'Não foi possível acessar o microfone.'),
         );
         return;
       }
@@ -184,11 +189,17 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
             onClick={() => void start()}
           >
             <Mic size={16} />
-            {busy ? (phase === 'uploading' ? 'Enviando áudio…' : 'Transcrevendo…') : 'Gravar áudio'}
+            {busy
+              ? phase === 'uploading'
+                ? t('recorder.uploading', 'Enviando áudio…')
+                : t('recorder.transcribing', 'Transcrevendo…')
+              : t('recorder.record', 'Gravar áudio')}
           </button>
           {!busy && (
             <span className="text-xs hub-tx3">
-              Até {formatDuration(MAX_AUDIO_SECONDS)} por resposta.
+              {t('recorder.maxDuration', 'Até {{duration}} por resposta.', {
+                duration: formatDuration(MAX_AUDIO_SECONDS),
+              })}
             </span>
           )}
         </div>
@@ -208,20 +219,23 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
               type="button"
               className={`${BTN} hub-btn-primary`}
               onClick={stop}
-              aria-label="Parar gravação"
+              aria-label={t('recorder.stopAria', 'Parar gravação')}
             >
-              Parar
+              {t('recorder.stop', 'Parar')}
             </button>
             {nearLimit && (
               <span className="text-xs text-amber-600">
-                Restam {formatDuration(MAX_AUDIO_SECONDS - elapsed)}. A gravação para sozinha no
-                limite.
+                {t(
+                  'recorder.remainingWarning',
+                  'Restam {{remaining}}. A gravação para sozinha no limite.',
+                  { remaining: formatDuration(MAX_AUDIO_SECONDS - elapsed) },
+                )}
               </span>
             )}
           </div>
           <div
             role="progressbar"
-            aria-label="Tempo de gravação"
+            aria-label={t('recorder.progressAria', 'Tempo de gravação')}
             aria-valuemin={0}
             aria-valuemax={MAX_AUDIO_SECONDS}
             aria-valuenow={elapsed}
@@ -242,7 +256,7 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
           <AudioPlayer
             src={previewUrl}
             durationSeconds={elapsed}
-            label="Prévia"
+            label={t('recorder.previewLabel', 'Prévia')}
             className="hub-txt w-full max-w-[360px]"
             style={HUB_AUDIO_VARS}
           />
@@ -253,10 +267,10 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
             onClick={() => void send()}
           >
             {sending || phase === 'uploading'
-              ? 'Enviando…'
+              ? t('recorder.sending', 'Enviando…')
               : phase === 'transcribing'
-                ? 'Transcrevendo…'
-                : 'Enviar'}
+                ? t('recorder.transcribing', 'Transcrevendo…')
+                : t('recorder.send', 'Enviar')}
           </button>
           <button
             type="button"
@@ -264,7 +278,7 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
             disabled={disabled || busy || sending}
             onClick={discard}
           >
-            Descartar
+            {t('recorder.discard', 'Descartar')}
           </button>
         </div>
       )}

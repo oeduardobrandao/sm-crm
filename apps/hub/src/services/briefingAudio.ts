@@ -1,4 +1,5 @@
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
+import { i18n } from '@mesaas/i18n';
 import { finalizeBriefingAudio, presignBriefingAudio } from '../api';
 import type { BriefingAudioResponse } from '../types';
 import { putToR2 } from './ideiaMedia';
@@ -25,17 +26,48 @@ export function pickRecorderMime(): string | undefined {
 /** Returns the normalized mime or throws a user-facing message. */
 export function validateBriefingAudio(blob: Blob, mime: string): string {
   const normalized = normalizeAudioMime(mime);
-  if (!normalized) throw new Error(`Formato de áudio não suportado: ${mime || 'desconhecido'}`);
-  if (blob.size <= 0) throw new Error('Gravação vazia. Tente de novo.');
-  if (blob.size > MAX_AUDIO_BYTES)
-    throw new Error('Áudio maior que 15 MB. Grave um trecho mais curto.');
+  if (!normalized) {
+    const mimeLabel = mime || i18n.t('hubBriefing:errors.unknownFormat', 'desconhecido');
+    throw new Error(
+      i18n.t('hubBriefing:errors.unsupportedFormat', 'Formato de áudio não suportado: {{mime}}', {
+        mime: mimeLabel,
+      }),
+    );
+  }
+  if (blob.size <= 0) {
+    throw new Error(i18n.t('hubBriefing:errors.emptyRecording', 'Gravação vazia. Tente de novo.'));
+  }
+  if (blob.size > MAX_AUDIO_BYTES) {
+    throw new Error(
+      i18n.t(
+        'hubBriefing:errors.audioTooLarge',
+        'Áudio maior que 15 MB. Grave um trecho mais curto.',
+      ),
+    );
+  }
   return normalized;
 }
 
-const QUOTA_MESSAGE =
-  'O espaço de armazenamento do plano acabou. Fale com a agência para liberar espaço.';
-const GENERIC_UPLOAD_FAILURE_MESSAGE = 'O envio do áudio falhou. Tente de novo.';
-const GENERIC_UNAVAILABLE_MESSAGE = 'Não foi possível concluir agora. Tente de novo em instantes.';
+function quotaMessage(): string {
+  return i18n.t(
+    'hubBriefing:errors.quotaExceeded',
+    'O espaço de armazenamento do plano acabou. Fale com a agência para liberar espaço.',
+  );
+}
+
+function genericUploadFailureMessage(): string {
+  return i18n.t(
+    'hubBriefing:errors.genericUploadFailure',
+    'O envio do áudio falhou. Tente de novo.',
+  );
+}
+
+function genericUnavailableMessage(): string {
+  return i18n.t(
+    'hubBriefing:errors.genericUnavailable',
+    'Não foi possível concluir agora. Tente de novo em instantes.',
+  );
+}
 
 /** Backend codes that all mean "the upload/object ended up in a bad state". */
 const GENERIC_UPLOAD_FAILURE_CODES = new Set([
@@ -57,20 +89,30 @@ export function describeAudioError(e: unknown, fallback: string): string {
   const raw = e instanceof Error ? e.message : typeof e === 'string' ? e : '';
   if (!raw) return fallback;
 
-  if (raw === 'quota_exceeded') return QUOTA_MESSAGE;
+  if (raw === 'quota_exceeded') return quotaMessage();
   if (raw === 'question_not_found' || raw === 'Pergunta não encontrada.') {
-    return 'Esta pergunta não está mais disponível. Recarregue a página.';
+    return i18n.t(
+      'hubBriefing:errors.questionNotFound',
+      'Esta pergunta não está mais disponível. Recarregue a página.',
+    );
   }
-  if (raw === 'Áudio não encontrado.') return 'O áudio não foi encontrado. Grave de novo.';
-  if (raw === 'unsupported file type') return 'Formato de áudio não suportado neste navegador.';
-  if (GENERIC_UPLOAD_FAILURE_CODES.has(raw)) return GENERIC_UPLOAD_FAILURE_MESSAGE;
+  if (raw === 'Áudio não encontrado.') {
+    return i18n.t('hubBriefing:errors.audioNotFound', 'O áudio não foi encontrado. Grave de novo.');
+  }
+  if (raw === 'unsupported file type') {
+    return i18n.t(
+      'hubBriefing:errors.unsupportedFileType',
+      'Formato de áudio não suportado neste navegador.',
+    );
+  }
+  if (GENERIC_UPLOAD_FAILURE_CODES.has(raw)) return genericUploadFailureMessage();
   if (raw.startsWith('Muitas tentativas')) return raw;
 
   const uploadFalhouMatch = /^Upload falhou: (\d+)$/.exec(raw);
   if (uploadFalhouMatch) {
-    return uploadFalhouMatch[1] === '413' ? QUOTA_MESSAGE : GENERIC_UPLOAD_FAILURE_MESSAGE;
+    return uploadFalhouMatch[1] === '413' ? quotaMessage() : genericUploadFailureMessage();
   }
-  if (/^HTTP 5\d{2}$/.test(raw) || raw === 'internal error') return GENERIC_UNAVAILABLE_MESSAGE;
+  if (/^HTTP 5\d{2}$/.test(raw) || raw === 'internal error') return genericUnavailableMessage();
 
   // Already Portuguese (thrown by validateBriefingAudio/uploadBriefingAudio,
   // or another backend message we don't special-case above) — keep as is.
