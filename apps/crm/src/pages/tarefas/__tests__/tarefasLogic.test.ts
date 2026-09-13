@@ -29,6 +29,7 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
     cliente_nome: null,
+    cliente_cor: null,
     ...overrides,
   };
 }
