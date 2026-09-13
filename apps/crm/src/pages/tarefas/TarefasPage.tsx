@@ -161,7 +161,7 @@ export default function TarefasPage() {
         tags={tags}
       />
 
-      {tarefas.length === 0 ? (
+      {tarefas.length === 0 && activeView === 'lista' ? (
         <div
           className="card animate-up"
           style={{
