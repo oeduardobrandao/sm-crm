@@ -321,6 +321,7 @@ function IdeiaAudioBlock({
   const [recording, setRecording] = useState(false);
   const audio = ideia.audio;
   const showRecorder = canWrite && audioEnabled && isRecordingSupported();
+  const canRemoveAudio = canWrite && !!audio;
   if (!audio && !showRecorder) return null;
 
   async function handleRecorded(blob: Blob, mime: string, seconds: number) {
@@ -396,7 +397,9 @@ function IdeiaAudioBlock({
           )}
         </>
       )}
-      {(showRecorder || (audio?.transcription_status === 'failed' && audioEnabled && canWrite)) && (
+      {(showRecorder ||
+        canRemoveAudio ||
+        (audio?.transcription_status === 'failed' && audioEnabled && canWrite)) && (
         <div className="flex flex-wrap items-center gap-2">
           {audio?.transcription_status === 'failed' && audioEnabled && canWrite && (
             <button
@@ -418,7 +421,7 @@ function IdeiaAudioBlock({
               <Mic size={12} /> Gravar novamente
             </button>
           )}
-          {showRecorder && audio && (
+          {canRemoveAudio && (
             <button
               type="button"
               onClick={remove}

@@ -521,7 +521,39 @@ describe('IdeiasPage', () => {
     expect(await screen.findByRole('button', { name: 'fake-recorder:Enviar' })).toBeInTheDocument();
   });
 
-  it('hides recorder, retry and remove when the ideia is locked or the plan lacks audio', async () => {
+  it('keeps remove available (but hides recorder/retry) on a mutable ideia when the plan lacks audio', async () => {
+    hubValue.bootstrap.feature_briefing_audio = false;
+    try {
+      mockedFetchIdeias.mockResolvedValue({
+        ideias: [
+          makeIdeia({
+            id: 'a2',
+            audio: {
+              url: 'https://get/c.webm',
+              mime: 'audio/webm',
+              duration_seconds: 5,
+              transcription_status: 'failed',
+              recorded_at: '2026-09-10T00:00:00Z',
+              transcript: null,
+            },
+          }),
+        ],
+      } as never);
+      renderHubPage(
+        '/mesaas/hub/token-publico/ideias',
+        '/:workspace/hub/:token/ideias',
+        <IdeiasPage />,
+      );
+      expect(await screen.findByRole('button', { name: 'Remover áudio' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Tentar novamente' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Gravar novamente' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /fake-recorder/ })).toBeNull();
+    } finally {
+      hubValue.bootstrap.feature_briefing_audio = true;
+    }
+  });
+
+  it('hides recorder, retry and remove when the ideia is locked (not the current author)', async () => {
     mockedFetchIdeias.mockResolvedValue({
       ideias: [
         makeIdeia({
