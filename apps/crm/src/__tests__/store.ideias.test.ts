@@ -341,7 +341,7 @@ describe('store ideias', () => {
       'origem',
       'visivel_no_hub',
       'autor_membro_id',
-      'autor:membros!autor_membro_id(nome)',
+      'autor:membros!ideias_autor_fk(nome)',
       'audio_r2_key',
       'audio_transcript',
       'audio_transcription_status',

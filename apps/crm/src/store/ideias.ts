@@ -44,6 +44,8 @@ export interface Ideia {
 }
 
 export async function getIdeias(filters: { cliente_id?: number } = {}): Promise<Ideia[]> {
+  // ideias_autor_fk is a composite FK (autor_membro_id, workspace_id) -- PostgREST
+  // requires the constraint name as the embed hint for composite FKs, not the column name.
   let q = supabase
     .from('ideias')
     .select(
@@ -54,7 +56,7 @@ export async function getIdeias(filters: { cliente_id?: number } = {}): Promise<
       audio_r2_key, audio_duration_seconds, audio_transcript, audio_transcription_status,
       clientes(nome),
       comentario_autor:membros!comentario_autor_id(nome),
-      autor:membros!autor_membro_id(nome),
+      autor:membros!ideias_autor_fk(nome),
       ideia_reactions(id, ideia_id, membro_id, emoji, created_at, membros(nome)),
       ideia_files(count)
     `,

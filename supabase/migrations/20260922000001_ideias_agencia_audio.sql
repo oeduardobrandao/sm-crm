@@ -22,6 +22,12 @@ CREATE INDEX ideias_cliente_visivel_idx ON ideias (cliente_id) WHERE visivel_no_
 -- passa por RLS só em workspace_id; sem isto um membro da workspace A insere
 -- cliente_id da B e o GET do Hub (service role, filtra por cliente_id) mostra a
 -- ideia ao cliente da B. clientes_id_conta_uq existe desde 20260815000002.
+-- Troca a FK simples original (ideias_cliente_id_fkey, de 20260414114009) pela
+-- composta: manter as duas deixaria ideias<->clientes com duas relações e o
+-- embed `clientes(nome)` sem hint (apps/crm/src/store/ideias.ts) quebraria com
+-- PGRST201 (relação ambígua) assim que esta migration aplicar em produção,
+-- antes mesmo do frontend novo subir.
+ALTER TABLE ideias DROP CONSTRAINT ideias_cliente_id_fkey;
 ALTER TABLE ideias ADD CONSTRAINT ideias_cliente_workspace_fk
   FOREIGN KEY (cliente_id, workspace_id) REFERENCES clientes (id, conta_id) ON DELETE CASCADE;
 
