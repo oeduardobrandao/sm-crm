@@ -45,6 +45,9 @@ export interface FeatureFlags {
   feature_mensagens: boolean;
   feature_instagram_automation: boolean;
   feature_briefing_audio: boolean;
+  /** Processos individuais de produção (spec 2026-09-10). The workspace-limits
+   *  edge function already returns it (FEATURE_COLUMNS in _shared/entitlements.ts). */
+  feature_post_processes: boolean;
 }
 
 interface WorkspaceLimitsResponse {

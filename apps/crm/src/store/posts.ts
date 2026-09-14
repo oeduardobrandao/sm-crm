@@ -287,16 +287,17 @@ export interface ScheduledPost {
  * migrations before the frontend, so by the time this code ships the column
  * already exists; do not reorder that deploy sequence.
  */
-const POST_CONTEXT_COLUMNS =
+export const POST_CONTEXT_COLUMNS =
   'id, workflow_id, cliente_id, titulo, tipo, status, custom_status_id, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, publish_error_code, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, ig_trial_strategy, board_ordem';
 
+// Exported for store/postProcesses.ts, which embeds a workflow_posts row (avulso arm shape).
 /**
  * Maps a workflow_posts row that may come from either arm of a wired/avulso
  * merge: `row.workflows` is present only for the wired arm (left- or
  * inner-joined), and the avulso arm selects `cliente_id` and a top-level
  * `clientes(nome)` embed directly off the post row instead.
  */
-function mapPostContextRow(row: any): ActivePost {
+export function mapPostContextRow(row: any): ActivePost {
   return {
     id: row.id,
     workflow_id: row.workflow_id ?? null,
@@ -946,10 +947,17 @@ export async function createAvulsoPost(p: {
 /** Postgres deadlock SQLSTATE. detach_posts_from_flow/attach_posts_to_flow can
  * rarely deadlock against the (unrelated, pre-existing) workflow-client-move
  * trigger path -- a documented, self-recovering residual case (see the
- * migration's header comment) -- so both RPC wrappers retry exactly once. */
+ * migration's header comment) -- so both RPC wrappers retry exactly once.
+ *
+ * Retry semantics for callers: the SAME closure is re-invoked, so every value
+ * it captured (post ids, fingerprint, and for detach_posts_keeping_process the
+ * `p_request_id`) is resent unchanged. That is what makes the fase-2 batch
+ * idempotency work: generate the request id OUTSIDE the closure (spec §9.4)
+ * and the retry is recognized server-side as the same attempt. Never generate
+ * an id inside `invoke`. */
 const POSTGRES_DEADLOCK_ERRCODE = '40P01';
 
-async function callRpcWithDeadlockRetry<T>(
+export async function callRpcWithDeadlockRetry<T>(
   invoke: () => PromiseLike<{ data: T | null; error: { code?: string } | null }>,
 ): Promise<T> {
   let { data, error } = await invoke();
@@ -1226,6 +1234,23 @@ export async function sendPostsToCliente(workflowId: number): Promise<void> {
     .eq('workflow_id', workflowId)
     .eq('status', 'aprovado_interno');
   if (error) throw error;
+}
+
+/**
+ * Sends ONE post to the client portal, only from aprovado_interno (mirrors
+ * sendPostsToCliente's guard for the individual-process path). A zero-row
+ * result means the status already moved -- treated as stale by the caller.
+ */
+export async function sendPostToCliente(postId: number): Promise<WorkflowPost | null> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .update({ status: 'enviado_cliente' })
+    .eq('id', postId)
+    .eq('status', 'aprovado_interno')
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 export async function approvePostsInternally(workflowId: number): Promise<void> {

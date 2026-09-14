@@ -1,8 +1,9 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../store', () => ({
   getTarefas: vi.fn().mockResolvedValue([]),
@@ -21,6 +22,12 @@ vi.mock('../../../store', () => ({
   getInitials: (nome: string) => nome.slice(0, 2).toUpperCase(),
 }));
 
+const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+vi.mock('@/context/AuthContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/context/AuthContext')>();
+  return { ...actual, useAuth: useAuthMock };
+});
+
 import TarefasPage from '../TarefasPage';
 
 function renderPage() {
@@ -37,6 +44,10 @@ function renderPage() {
 }
 
 describe('TarefasPage', () => {
+  beforeEach(() => {
+    useAuthMock.mockReturnValue({ profile: { conta_id: 'conta-1' } });
+  });
+
   it('renders header, stats, view tabs and the empty state', async () => {
     renderPage();
 
@@ -58,5 +69,26 @@ describe('TarefasPage', () => {
     expect(
       await screen.findByText('Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.'),
     ).toBeInTheDocument();
+  });
+
+  it('lets an empty workspace reach the Kanban and Calendário tabs instead of trapping it on the generic empty state', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.');
+
+    await user.click(screen.getByRole('button', { name: /Kanban/ }));
+    expect(
+      screen.queryByText('Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.'),
+    ).not.toBeInTheDocument();
+    // StatusKanbanView renders its fixed status columns even with zero tarefas.
+    expect(screen.getAllByText('Nenhuma tarefa').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: /Calendário/ }));
+    expect(
+      screen.queryByText('Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.'),
+    ).not.toBeInTheDocument();
+    // CalendarView's month grid renders regardless of tarefas count.
+    expect(screen.getByText(/Sem data/)).toBeInTheDocument();
   });
 });

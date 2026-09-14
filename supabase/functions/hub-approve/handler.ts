@@ -16,25 +16,56 @@ type DbClient = {
 // aprovacao_cliente etapas still open, this approval belongs to an earlier
 // cycle; only when at most one remains open is the approval final. Workflows
 // without approval etapas (express, legacy) keep today's behavior.
-async function isFinalApprovalCycle(db: DbClient, workflowId: number | null): Promise<boolean> {
-  // An avulso post (workflow_id null) has no workflow etapas at all, so there is
-  // no approval cycle to be mid-way through: it behaves as final, same as a
-  // workflow with no aprovacao_cliente etapas.
-  if (workflowId == null) return true;
-  const { data: etapas, error } = await db
-    .from("workflow_etapas")
-    .select("tipo, status")
-    .eq("workflow_id", workflowId);
-  if (error) {
-    // Fail closed: without the etapa picture a later approval cycle cannot be
-    // ruled out, so the auto-publish is skipped (the agency schedules manually,
-    // same as a failed validation) instead of risking a premature publish.
-    console.error("[hub-approve] etapa lookup failed:", error);
+//
+// Avulso (workflow_id null) mirrors this via post_processes/post_process_steps
+// (phase 2 writes these; today most avulso posts have no row there at all):
+// with an active execution, count its aprovacao_cliente steps still pendente or
+// ativo (herdado/ignorado/concluido do not count) and apply the same < 2 rule.
+// No active execution → final, same as today. Any lookup error fails closed.
+async function isFinalApprovalCycle(
+  db: DbClient,
+  post: { id: number; workflow_id: number | null },
+): Promise<boolean> {
+  if (post.workflow_id != null) {
+    const { data: etapas, error } = await db
+      .from("workflow_etapas")
+      .select("tipo, status")
+      .eq("workflow_id", post.workflow_id);
+    if (error) {
+      // Fail closed: without the etapa picture a later approval cycle cannot be
+      // ruled out, so the auto-publish is skipped (the agency schedules manually,
+      // same as a failed validation) instead of risking a premature publish.
+      console.error("[hub-approve] etapa lookup failed:", error);
+      return false;
+    }
+    const openApprovalEtapas = ((etapas ?? []) as { tipo?: string | null; status?: string | null }[])
+      .filter((e) => e.tipo === "aprovacao_cliente" && e.status !== "concluido").length;
+    return openApprovalEtapas < 2;
+  }
+
+  const { data: proc, error: procError } = await db
+    .from("post_processes")
+    .select("id")
+    .eq("post_id", post.id)
+    .eq("estado", "ativo")
+    .maybeSingle();
+  if (procError) {
+    console.error("[hub-approve] post_processes lookup failed:", procError);
     return false;
   }
-  const openApprovalEtapas = ((etapas ?? []) as { tipo?: string | null; status?: string | null }[])
-    .filter((e) => e.tipo === "aprovacao_cliente" && e.status !== "concluido").length;
-  return openApprovalEtapas < 2;
+  if (!proc) return true;
+
+  const { data: steps, error: stepsError } = await db
+    .from("post_process_steps")
+    .select("tipo, estado")
+    .eq("process_id", (proc as { id: number }).id);
+  if (stepsError) {
+    console.error("[hub-approve] post_process_steps lookup failed:", stepsError);
+    return false;
+  }
+  const openApprovalSteps = ((steps ?? []) as { tipo?: string | null; estado?: string | null }[])
+    .filter((s) => s.tipo === "aprovacao_cliente" && (s.estado === "pendente" || s.estado === "ativo")).length;
+  return openApprovalSteps < 2;
 }
 
 interface HubApproveHandlerDeps {
@@ -124,7 +155,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         .eq("id", post.cliente_id)
         .single();
 
-      if (client?.auto_publish_on_approval && (await isFinalApprovalCycle(db, post.workflow_id))) {
+      if (client?.auto_publish_on_approval && (await isFinalApprovalCycle(db, post))) {
         // Express posts have no scheduled_at: approval IS the publish moment, so the
         // min-future date check is skipped and the post is stamped to publish now.
         const isExpress = post.is_express === true;

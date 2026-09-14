@@ -29,3 +29,13 @@ describe('mapEntitlementError', () => {
     expect(mapEntitlementError(null)).toBeNull();
   });
 });
+
+describe('mapEntitlementError feature_post_processes', () => {
+  it('rotula feature_post_processes em português', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_post_processes' })).toEqual({
+      kind: 'feature',
+      key: 'feature_post_processes',
+      label: 'Processos individuais de produção',
+    });
+  });
+});

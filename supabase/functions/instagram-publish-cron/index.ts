@@ -73,6 +73,14 @@ async function markFailed(
 ) {
   const errorCode = classifyPublishError(err);
   const message = err instanceof Error ? err.message : String(err);
+  // publish_processing_at MUST be nulled on every failure, same as on success: the gallery's
+  // post_file_link_replace RPC (20260916000001) refuses to swap a post's media whenever this
+  // column is non-null, and a failed post's error copy routes the user straight to "fix the
+  // media in the gallery". Leaving the lock set (an earlier version of this fix did, to get
+  // free cron backoff from claim_posts_for_publishing's 10-min stale-reclaim window) silently
+  // stranded every failed post: the gallery edit was rejected AND manual retry just re-ran the
+  // same broken attempt. Same-tick Phase1->Phase3 reclaim is prevented in run() below instead,
+  // via touchedThisRun, without touching this column's meaning anywhere else in the schema.
   const fields: Record<string, unknown> = {
     status: "falha_publicacao",
     publish_retry_count: retryCount + 1,
@@ -389,10 +397,27 @@ Deno.serve(createPublishCronHandler({
       }
 
       // Phase 3: Retries
+      // A post that just failed in Phase 1/2 has publish_processing_at nulled again by
+      // markFailed (see its comment), so it would otherwise be immediately reclaimable here
+      // in the SAME cron tick -- burning all 3 retries in under a minute for errors whose own
+      // message says "retry later". touchedThisRun skips any post already claimed above this
+      // run, releasing its lock so the NEXT tick (not this one) retries it instead.
+      const touchedThisRun = new Set<number>([
+        ...containerPosts.map((p) => p.post_id),
+        ...publishPosts.map((p) => p.post_id),
+      ]);
       const retryPosts = await claimPosts(db, "retry", RETRY_LIMIT);
-      if (retryPosts.length > 0) {
-        console.log(`[IG-PUBLISH] Phase 3: ${retryPosts.length} posts to retry`);
-        const r3 = await processBatch(retryPosts, 5, 1000, async (post) => {
+      const freshRetries: ClaimedPost[] = [];
+      for (const post of retryPosts) {
+        if (touchedThisRun.has(post.post_id)) {
+          await clearLock(db, post.post_id);
+        } else {
+          freshRetries.push(post);
+        }
+      }
+      if (freshRetries.length > 0) {
+        console.log(`[IG-PUBLISH] Phase 3: ${freshRetries.length} posts to retry`);
+        const r3 = await processBatch(freshRetries, 5, 1000, async (post) => {
           try {
             await processRetry(db, post);
           } catch (err: any) {

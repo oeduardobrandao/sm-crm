@@ -9,6 +9,7 @@ export * from './leads';
 export * from './workflows';
 export * from './workflowMigration';
 export * from './posts';
+export * from './postProcesses';
 export * from './postStatuses';
 export * from './instagramAutomations';
 export * from './comments';

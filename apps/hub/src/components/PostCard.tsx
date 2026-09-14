@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, AlertCircle, ChevronDown, MessageSquare, Send } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitApproval } from '../api';
@@ -10,30 +11,33 @@ import { MediaUnavailable } from './MediaUnavailable';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 import { sanitizeExternalUrl } from '../lib/security';
 import { StatusPill } from './StatusPill';
+import { getTipoLabel } from '../lib/postView';
+import type { TFunction } from 'i18next';
 
-export const TIPO_LABEL: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
+/** Translated post-status label covering PostCard's full status set (including the
+ * internal-only ones `postView.ts`'s client-facing `getClientStatusLabel` doesn't need). */
+export function getPostStatusLabel(t: TFunction, status: string): string {
+  const labels: Record<string, string> = {
+    enviado_cliente: t('hubPostCard:status.enviado_cliente', 'Aguardando aprovação'),
+    aprovado_cliente: t('hubPostCard:status.aprovado_cliente', 'Aprovado'),
+    correcao_cliente: t('hubPostCard:status.correcao_cliente', 'Correção solicitada'),
+    agendado: t('hubPostCard:status.agendado', 'Agendado'),
+    publicado: t('hubPostCard:status.publicado', 'Publicado'),
+    rascunho: t('hubPostCard:status.rascunho', 'Rascunho'),
+    revisao_interna: t('hubPostCard:status.revisao_interna', 'Revisão interna'),
+    aprovado_interno: t('hubPostCard:status.aprovado_interno', 'Aprovado interno'),
+  };
+  return labels[status] ?? status;
+}
 
-export const STATUS_LABEL: Record<string, string> = {
-  enviado_cliente: 'Aguardando aprovação',
-  aprovado_cliente: 'Aprovado',
-  correcao_cliente: 'Correção solicitada',
-  agendado: 'Agendado',
-  publicado: 'Publicado',
-  rascunho: 'Rascunho',
-  revisao_interna: 'Revisão interna',
-  aprovado_interno: 'Aprovado interno',
-};
-
-export const PLATFORM_LABEL: Record<'instagram' | 'tiktok' | 'both', string> = {
-  instagram: 'Instagram',
-  tiktok: 'TikTok',
-  both: 'Instagram + TikTok',
-};
+function getPlatformLabel(t: TFunction, platform: 'instagram' | 'tiktok' | 'both'): string {
+  const labels: Record<'instagram' | 'tiktok' | 'both', string> = {
+    instagram: t('hubPostCard:platform.instagram', 'Instagram'),
+    tiktok: t('hubPostCard:platform.tiktok', 'TikTok'),
+    both: t('hubPostCard:platform.both', 'Instagram + TikTok'),
+  };
+  return labels[platform];
+}
 
 /**
  * Small, purely presentational chip showing which platform(s) a post targets.
@@ -48,7 +52,8 @@ export function PlatformBadge({
   platform?: HubPost['platform'];
   tone?: 'neutral' | 'overlay';
 }) {
-  const label = PLATFORM_LABEL[platform ?? 'instagram'] ?? PLATFORM_LABEL.instagram;
+  const { t } = useTranslation('hubPostCard');
+  const label = getPlatformLabel(t, platform ?? 'instagram');
   const toneClass =
     tone === 'overlay'
       ? 'bg-white/15 text-white/90 ring-1 ring-white/25 backdrop-blur-sm'
@@ -62,9 +67,9 @@ export function PlatformBadge({
   );
 }
 
-export function formatDate(d: string | null) {
+export function formatDate(d: string | null, lang: string = 'pt-BR') {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('pt-BR', {
+  return new Date(d).toLocaleDateString(lang, {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -99,6 +104,7 @@ function PropertyRow({
   workflowSelectOptions: HubSelectOption[];
   workflowId: number | null;
 }) {
+  const { t } = useTranslation('hubPostCard');
   const def = prop.template_property_definitions;
   const value = prop.value;
 
@@ -126,7 +132,11 @@ function PropertyRow({
       return <span className="text-sm">{formatted}</span>;
     }
     if (def.type === 'checkbox') {
-      return <span className="text-sm">{value ? 'Sim' : 'Não'}</span>;
+      return (
+        <span className="text-sm">
+          {value ? t('common:actions.yes', 'Sim') : t('common:actions.no', 'Não')}
+        </span>
+      );
     }
     if (def.type === 'select' || def.type === 'status') {
       const options = resolveOptions(def, workflowSelectOptions, workflowId);
@@ -196,6 +206,8 @@ export function PostCard({
   onApprovalSubmitted,
   defaultExpanded,
 }: PostCardProps) {
+  const { t, i18n } = useTranslation('hubPostCard');
+  const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -240,7 +252,10 @@ export function PostCard({
       await submitApproval(token, post.id, action, comentario || undefined);
       setResult({
         type: 'success',
-        message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!',
+        message:
+          action === 'aprovado'
+            ? t('feedback.approved', 'Post aprovado!')
+            : t('feedback.correctionSent', 'Correção enviada!'),
       });
       onApprovalSubmitted();
     } catch (e) {
@@ -258,7 +273,10 @@ export function PostCard({
       setReplyText('');
       onApprovalSubmitted();
     } catch (e) {
-      setResult({ type: 'error', message: (e as Error).message || 'Erro ao enviar mensagem.' });
+      setResult({
+        type: 'error',
+        message: (e as Error).message || t('feedback.replyError', 'Erro ao enviar mensagem.'),
+      });
     } finally {
       setSendingReply(false);
     }
@@ -322,7 +340,9 @@ export function PostCard({
             <circle cx="8.5" cy="8.5" r="1.5" />
             <path d="M21 15l-5-5L5 21" />
           </svg>
-          <span className="text-[11.5px] font-medium">Nenhuma imagem adicionada</span>
+          <span className="text-[11.5px] font-medium">
+            {t('emptyState.noImage', 'Nenhuma imagem adicionada')}
+          </span>
         </div>
       )}
       <button
@@ -332,11 +352,11 @@ export function PostCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-2">
             <span className="text-[11px] font-semibold hub-btn-primary px-2 py-0.5 rounded-full">
-              {TIPO_LABEL[post.tipo] ?? post.tipo}
+              {getTipoLabel(t, post.tipo)}
             </span>
             {post.status === 'agendado' ? (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60">
-                {STATUS_LABEL[post.status] ?? post.status}
+                {getPostStatusLabel(t, post.status)}
               </span>
             ) : (
               <StatusPill
@@ -344,7 +364,7 @@ export function PostCard({
                   post.status === 'correcao_cliente' ? 'danger' : isPending ? 'accent' : 'neutral'
                 }
               >
-                {STATUS_LABEL[post.status] ?? post.status}
+                {getPostStatusLabel(t, post.status)}
               </StatusPill>
             )}
             <PlatformBadge platform={post.platform} />
@@ -353,7 +373,7 @@ export function PostCard({
             {post.titulo}
           </p>
           {post.scheduled_at && (
-            <p className="text-[12px] hub-tx2 mt-1">{formatDate(post.scheduled_at)}</p>
+            <p className="text-[12px] hub-tx2 mt-1">{formatDate(post.scheduled_at, dateLang)}</p>
           )}
         </div>
         <span
@@ -388,12 +408,16 @@ export function PostCard({
           {isEditable && saveState !== 'idle' && (
             <div className="flex items-center gap-1.5">
               {saveState === 'saving' && (
-                <span className="text-[11px] hub-tx3">Salvando sugestão...</span>
+                <span className="text-[11px] hub-tx3">
+                  {t('suggestion.saving', 'Salvando sugestão...')}
+                </span>
               )}
               {saveState === 'saved' && (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[11px] text-emerald-600 font-medium">Sugestão salva</span>
+                  <span className="text-[11px] text-emerald-600 font-medium">
+                    {t('suggestion.saved', 'Sugestão salva')}
+                  </span>
                 </>
               )}
             </div>
@@ -407,8 +431,14 @@ export function PostCard({
                 className={`text-[11px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}
               >
                 {wasRejected
-                  ? '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.'
-                  : 'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar'}
+                  ? t(
+                      'suggestion.rejectedNotice',
+                      '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.',
+                    )
+                  : t(
+                      'suggestion.activeNotice',
+                      'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar',
+                    )}
               </span>
             </div>
           )}
@@ -451,7 +481,9 @@ export function PostCard({
 
           {postProperties.length > 0 && (
             <div className="rounded-xl border hub-border hub-bg-card px-4 pt-3 pb-1">
-              <p className="text-[12px] font-semibold hub-tx3 pb-2">Propriedades</p>
+              <p className="text-[12px] font-semibold hub-tx3 pb-2">
+                {t('properties.title', 'Propriedades')}
+              </p>
               {postProperties.map((p) => (
                 <PropertyRow
                   key={`${p.post_id}-${p.template_property_definitions.name}`}
@@ -466,18 +498,18 @@ export function PostCard({
           {postApprovals.length > 0 && (
             <div className="space-y-2.5">
               <div className="flex items-center gap-1.5 text-[12px] font-semibold hub-tx3">
-                <MessageSquare size={12} /> Comentários
+                <MessageSquare size={12} /> {t('comments.title', 'Comentários')}
               </div>
               {postApprovals.map((a) => {
                 const isTeam = a.is_workspace_user;
                 const label = isTeam
-                  ? 'Equipe'
+                  ? t('comments.author.team', 'Equipe')
                   : a.action === 'correcao'
-                    ? 'Correção solicitada'
+                    ? t('comments.author.correction', 'Correção solicitada')
                     : a.action === 'aprovado'
-                      ? 'Aprovado'
-                      : 'Você';
-                const date = new Date(a.created_at).toLocaleDateString('pt-BR', {
+                      ? t('comments.author.approved', 'Aprovado')
+                      : t('comments.author.you', 'Você');
+                const date = new Date(a.created_at).toLocaleDateString(dateLang, {
                   day: '2-digit',
                   month: 'short',
                   hour: '2-digit',
@@ -520,7 +552,7 @@ export function PostCard({
             <div className="flex items-center gap-2">
               <input
                 className="hub-focus-accent flex-1 rounded-full border hub-border hub-bg-card px-4 py-2.5 text-[13.5px] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
-                placeholder="Enviar mensagem…"
+                placeholder={t('placeholders.replyMessage', 'Enviar mensagem…')}
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 onKeyDown={(e) => {
@@ -534,7 +566,7 @@ export function PostCard({
                 className="shrink-0 flex items-center justify-center w-10 h-10 rounded-full hub-btn-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 disabled={sendingReply || !replyText.trim()}
                 onClick={handleReply}
-                aria-label="Enviar"
+                aria-label={t('actions.send', 'Enviar')}
               >
                 <Send size={14} />
               </button>
@@ -545,14 +577,14 @@ export function PostCard({
             <div className="space-y-3">
               {hasPendingSuggestion ? (
                 <div className="rounded-xl px-4 py-3 text-[13px] font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200/60 text-center">
-                  Sugestão enviada para revisão da equipe
+                  {t('suggestion.pendingReview', 'Sugestão enviada para revisão da equipe')}
                 </div>
               ) : (
                 <>
                   <textarea
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
-                    placeholder="Comentário (opcional)…"
+                    placeholder={t('placeholders.comment', 'Comentário (opcional)…')}
                     className="hub-focus-accent w-full rounded-xl border hub-border px-4 py-3 text-[13.5px] resize-none min-h-[80px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
                   />
                   <div className="flex gap-2.5">
@@ -562,14 +594,17 @@ export function PostCard({
                       className="flex-1 flex items-center justify-center gap-2 hub-btn-primary rounded-full py-3 min-h-[44px] text-[13.5px] font-semibold disabled:opacity-50 transition-colors shadow-sm"
                     >
                       <CheckCircle size={15} />{' '}
-                      {saveState === 'saving' ? 'Salvando sugestão...' : 'Aprovar'}
+                      {saveState === 'saving'
+                        ? t('suggestion.saving', 'Salvando sugestão...')
+                        : t('actions.approve', 'Aprovar')}
                     </button>
                     <button
                       onClick={() => handleAction('correcao')}
                       disabled={submitting || approvalBlocked}
                       className="flex-1 flex items-center justify-center gap-2 rounded-full py-3 min-h-[44px] text-[13.5px] font-semibold hub-btn-secondary disabled:opacity-50 transition-colors"
                     >
-                      <AlertCircle size={15} /> Solicitar correção
+                      <AlertCircle size={15} />{' '}
+                      {t('actions.requestCorrection', 'Solicitar correção')}
                     </button>
                   </div>
                 </>

@@ -18,6 +18,10 @@ export function initI18n(resources: Record<string, Record<string, Record<string,
     lng: getSavedLanguage(),
     fallbackLng: 'pt',
     defaultNS: 'common',
+    // Lets `useTranslation('someOtherNamespace')` still resolve bare `t('actions.save')`-style
+    // keys against `common` without an explicit `common:` prefix, instead of rendering the
+    // raw key when it isn't found in the caller's own namespace.
+    fallbackNS: 'common',
     ns: namespaces,
     interpolation: { escapeValue: false },
     resources,

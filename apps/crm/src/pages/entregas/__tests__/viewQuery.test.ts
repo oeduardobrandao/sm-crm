@@ -10,7 +10,12 @@ import { EMPTY_FILTERS } from '../components/EntregasFilters';
 describe('viewQuery', () => {
   it('serializes the default state to an empty query', () => {
     expect(
-      serializeEntregasQuery({ view: 'kanban', mode: 'entregas', filters: EMPTY_FILTERS }),
+      serializeEntregasQuery({
+        view: 'kanban',
+        mode: 'entregas',
+        entidade: 'fluxos',
+        filters: EMPTY_FILTERS,
+      }),
     ).toBe('');
   });
 
@@ -18,6 +23,7 @@ describe('viewQuery', () => {
     const state = {
       view: 'list' as const,
       mode: 'publicacoes' as const,
+      entidade: 'fluxos' as const,
       filters: {
         ...EMPTY_FILTERS,
         filterSearch: 'post de julho',
@@ -55,6 +61,7 @@ describe('viewQuery', () => {
     const state = {
       view: 'kanban' as const,
       mode: 'publicacoes' as const,
+      entidade: 'fluxos' as const,
       filters: {
         ...EMPTY_FILTERS,
         filterPostStatus: ['revisao_interna' as const, customStatusKey],
@@ -83,5 +90,21 @@ describe('viewQuery', () => {
     const parsed = parseEntregasQuery(new URLSearchParams('drawer=5'));
     expect(parsed.view).toBe('kanban');
     expect(parsed.filters).toEqual(EMPTY_FILTERS);
+  });
+
+  describe('entidade', () => {
+    it('ausente ou malformado vira fluxos; todos e posts são explícitos', () => {
+      expect(parseEntregasQuery(new URLSearchParams('')).entidade).toBe('fluxos');
+      expect(parseEntregasQuery(new URLSearchParams('entidade=xyz')).entidade).toBe('fluxos');
+      expect(parseEntregasQuery(new URLSearchParams('entidade=todos')).entidade).toBe('todos');
+      expect(parseEntregasQuery(new URLSearchParams('entidade=posts')).entidade).toBe('posts');
+    });
+
+    it('o serializador omite fluxos e emite os outros', () => {
+      const base = { view: 'kanban' as const, mode: 'entregas' as const, filters: EMPTY_FILTERS };
+      expect(serializeEntregasQuery({ ...base, entidade: 'fluxos' })).toBe('');
+      expect(serializeEntregasQuery({ ...base, entidade: 'todos' })).toBe('entidade=todos');
+      expect(serializeEntregasQuery({ ...base, entidade: 'posts' })).toBe('entidade=posts');
+    });
   });
 });

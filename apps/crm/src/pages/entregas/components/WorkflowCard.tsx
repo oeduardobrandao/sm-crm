@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, Check, FileText, ExternalLink } from 'lucide-react';
+import {
+  ArrowLeft,
+  Edit2,
+  Check,
+  FileText,
+  ExternalLink,
+  MoreHorizontal,
+  Trash2,
+} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,6 +67,10 @@ interface WorkflowCardProps {
   revisaoInternaCount?: number;
   /** Number of posts still awaiting client approval (status enviado_cliente) */
   awaitingClienteCount?: number;
+  /** Exclui o fluxo. Nenhum caller passa isto ainda -- TODO(fluxos-cards-compactos):
+   *  ligar a uma função de exclusão de fluxo quando o fluxo de exclusão via
+   *  card existir. */
+  onDeleteClick?: () => void;
 }
 
 export function WorkflowCard({
@@ -77,6 +89,7 @@ export function WorkflowCard({
   clearedClienteCount,
   revisaoInternaCount,
   awaitingClienteCount,
+  onDeleteClick,
 }: WorkflowCardProps) {
   const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
@@ -117,8 +130,8 @@ export function WorkflowCard({
         opacity: isDragOverlay ? 0.85 : 1,
         position: 'relative',
         zIndex: assignDropdownOpen ? 50 : 1,
-        padding: '0.9rem',
-        gap: '0.6rem',
+        padding: '0.7rem',
+        gap: '0.45rem',
         borderRadius: '10px',
       }}
       onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
@@ -237,7 +250,7 @@ export function WorkflowCard({
             '—'
           )}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
           {card.workflow.recorrente && (
             <span
               title="Recorrente"
@@ -254,11 +267,20 @@ export function WorkflowCard({
               ↻
             </span>
           )}
-          {dragHandle && (
-            <div style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'flex' }}>
-              {dragHandle}
-            </div>
-          )}
+          <button
+            type="button"
+            className="board-card-posts-chip"
+            data-tour="wf-posts"
+            title="Posts do fluxo"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPostsClick?.();
+            }}
+          >
+            <FileText className="h-3 w-3" />
+            {postsCount ?? 0} posts
+            {approvedPostsCount ? ` · ${approvedPostsCount} ✓` : ''}
+          </button>
         </div>
       </div>
 
@@ -294,40 +316,26 @@ export function WorkflowCard({
         )}
       </div>
 
-      {/* Deadline badge + prazo type */}
-      <div
+      {/* Deadline pill (texto + tipo_prazo combinados, spec §4) */}
+      <span
+        className={`board-card-deadline board-card-deadline-pill ${deadlineClass}`}
+        data-tour="wf-deadline"
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.5rem',
+          fontSize: '0.7rem',
+          fontWeight: 700,
+          padding: '0.2rem 0.6rem',
+          borderRadius: '999px',
+          letterSpacing: '0.01em',
+          alignSelf: 'flex-start',
         }}
       >
-        <span
-          className={`board-card-deadline ${deadlineClass}`}
-          data-tour="wf-deadline"
-          style={{
-            fontSize: '0.7rem',
-            fontWeight: 700,
-            padding: '0.2rem 0.6rem',
-            borderRadius: '999px',
-            letterSpacing: '0.01em',
-          }}
-        >
-          {deadlineText}
-        </span>
-        <span
-          className="board-card-prazo-type"
-          style={{
-            fontSize: '0.62rem',
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-          }}
-        >
-          {card.etapa.tipo_prazo === 'uteis' ? 'úteis' : 'corridos'}
-        </span>
-      </div>
+        {deadlineText}
+        {card.etapa.tipo_prazo && (
+          <span className="board-card-prazo-type-inner">
+            {card.etapa.tipo_prazo === 'uteis' ? 'úteis' : 'corridos'}
+          </span>
+        )}
+      </span>
 
       {/* Assignee chip */}
       <DropdownMenu
@@ -345,13 +353,10 @@ export function WorkflowCard({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.4rem',
-              padding: '0.25rem 0.5rem 0.25rem 0.25rem',
               borderRadius: '10px',
-              border: '1px solid var(--border-color)',
-              background: 'var(--card-bg)',
               width: 'fit-content',
               maxWidth: '100%',
-              transition: 'border-color 0.15s, background 0.15s',
+              transition: 'background 0.15s',
             }}
             onClick={(e) => {
               if (!membros) return;
@@ -527,52 +532,45 @@ export function WorkflowCard({
         );
       })()}
 
-      {/* Current etapa + Progress bar */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span
-            style={{
-              fontSize: '0.68rem',
-              fontWeight: 600,
-              color: 'var(--text-main)',
-              letterSpacing: '0.02em',
-            }}
-          >
-            {card.etapa.nome}
-          </span>
-          <span
-            style={{
-              fontSize: '0.65rem',
-              color: 'var(--text-muted)',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              fontFamily: 'var(--font-mono)',
-            }}
-          >
-            {card.etapaIdx + 1}/{card.totalEtapas}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      {/* Current etapa + Progress bar (4px, sem rótulo visível -- N/total vira tooltip) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <span
+          style={{
+            fontSize: '0.68rem',
+            fontWeight: 600,
+            color: 'var(--text-main)',
+            letterSpacing: '0.02em',
+          }}
+        >
+          {card.etapa.nome}
+        </span>
+        <div
+          className="board-progress-track"
+          data-testid="post-progress-bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={card.totalEtapas}
+          aria-valuenow={card.etapaIdx + 1}
+          aria-valuetext={`${card.etapa.nome} ${card.etapaIdx + 1}/${card.totalEtapas}`}
+          aria-label="Progresso do fluxo"
+          title={`${card.etapa.nome} ${card.etapaIdx + 1}/${card.totalEtapas}`}
+          style={{
+            height: '4px',
+            background: 'var(--surface-hover)',
+            borderRadius: '999px',
+            overflow: 'hidden',
+          }}
+        >
           <div
             style={{
-              flex: 1,
-              height: '5px',
-              background: 'var(--surface-hover)',
+              height: '100%',
+              width: `${progressPct}%`,
+              background: accent,
               borderRadius: '999px',
-              overflow: 'hidden',
+              transition: 'width 0.4s ease',
+              opacity: 0.85,
             }}
-          >
-            <div
-              style={{
-                height: '100%',
-                width: `${progressPct}%`,
-                background: accent,
-                borderRadius: '999px',
-                transition: 'width 0.4s ease',
-                opacity: 0.85,
-              }}
-            />
-          </div>
+          />
         </div>
       </div>
 
@@ -648,71 +646,87 @@ export function WorkflowCard({
         </div>
       )}
 
-      {/* Action buttons */}
+      {/* Rodapé: alça de arrastar, histórico, kebab (editar, voltar etapa,
+          excluir) e avançar fora do kebab (spec §4). */}
       <div
+        className="board-card-actions"
         style={{
           display: 'flex',
-          gap: '0.3rem',
+          alignItems: 'center',
+          gap: '0.35rem',
           paddingTop: '0.5rem',
           borderTop: '1px solid var(--border-color)',
           marginTop: '0.1rem',
         }}
       >
-        {card.etapaIdx > 0 && onRevertClick && (
-          <button
-            className="btn-revert-etapa"
-            title="Voltar etapa"
-            style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRevertClick();
-            }}
+        {dragHandle && (
+          <span
+            className="board-card-drag-handle"
+            style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'inline-flex' }}
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-          </button>
+            {dragHandle}
+          </span>
         )}
-        <button
-          className="btn-edit-workflow"
-          title="Editar fluxo"
-          style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onEditClick?.();
-          }}
-        >
-          <Edit2 className="h-3.5 w-3.5" />
-        </button>
         <WorkflowTimelinePopover workflowId={card.workflow.id!} />
-        <button
-          className="btn-edit-workflow"
-          title="Posts do fluxo"
-          data-tour="wf-posts"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            padding: '0.4rem 0.75rem',
-            borderRadius: '10px',
-            border: '0px solid var(--border-color)',
-            background: 'transparent',
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-            flexShrink: 0,
-            position: 'relative',
-            transition: 'all 0.15s',
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onPostsClick?.();
-          }}
-        >
-          <FileText className="h-3.5 w-3.5" />
-          Posts
-          {postsCount !== undefined && postsCount > 0 && (
-            <span className="board-card-posts-badge">{postsCount}</span>
-          )}
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="btn-edit-workflow board-card-kebab"
+              aria-label="Mais opções"
+              title="Mais opções"
+              style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditClick?.();
+              }}
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+              Editar
+            </DropdownMenuItem>
+            {onPostsClick && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPostsClick();
+                }}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Abrir posts
+              </DropdownMenuItem>
+            )}
+            {card.etapaIdx > 0 && onRevertClick && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRevertClick();
+                }}
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Voltar etapa
+              </DropdownMenuItem>
+            )}
+            {onDeleteClick && (
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteClick();
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Excluir
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {onForwardClick && (
           <button
             className="btn-edit-workflow btn-forward-etapa"

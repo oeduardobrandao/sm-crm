@@ -17,7 +17,7 @@ export interface ValidationError {
   message: string;
 }
 
-export const ALLOWED_IMAGE_MIMES = new Set(['image/jpeg']);
+export const ALLOWED_IMAGE_MIMES = new Set(['image/jpeg', 'image/png']);
 export const ALLOWED_VIDEO_MIMES = new Set(['video/mp4', 'video/quicktime']);
 export const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 export const VIDEO_MAX_BYTES = 300 * 1024 * 1024;
@@ -54,7 +54,7 @@ export function validateMedia(
   for (const f of files) {
     if (f.kind === 'image') {
       if (!ALLOWED_IMAGE_MIMES.has(f.mime_type)) {
-        errors.push({ file_id: f.id, message: 'Imagens devem estar em formato JPEG' });
+        errors.push({ file_id: f.id, message: 'Imagens devem estar em formato JPEG ou PNG' });
         continue;
       }
       if (f.size_bytes > IMAGE_MAX_BYTES) {

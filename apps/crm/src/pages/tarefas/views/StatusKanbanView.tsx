@@ -57,6 +57,7 @@ export function StatusKanbanView({
       now={now}
       onCardClick={onTarefaClick}
       onDropCard={handleDrop}
+      onRefresh={onRefresh}
     />
   );
 }

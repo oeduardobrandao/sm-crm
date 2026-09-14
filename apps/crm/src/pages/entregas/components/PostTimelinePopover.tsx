@@ -1,6 +1,6 @@
 import { Clock, Check, RotateCcw, Send, AlertTriangle } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import type { WorkflowPost, PostApproval, PostStatusEvent } from '../../../store';
+import type { WorkflowPost, PostApproval, PostStatusEvent, PostProcessEvent } from '../../../store';
 import { buildPostTimeline, type TimelineNode, type TimelineTone } from './postTimeline';
 
 function formatNodeDate(iso: string): string {
@@ -57,10 +57,16 @@ interface PostTimelinePopoverProps {
   post: Pick<WorkflowPost, 'created_at'>;
   events: PostStatusEvent[];
   approvals: PostApproval[];
+  processEvents?: PostProcessEvent[];
 }
 
-export function PostTimelinePopover({ post, events, approvals }: PostTimelinePopoverProps) {
-  const nodes = buildPostTimeline(post, events, approvals);
+export function PostTimelinePopover({
+  post,
+  events,
+  approvals,
+  processEvents,
+}: PostTimelinePopoverProps) {
+  const nodes = buildPostTimeline(post, events, approvals, processEvents);
   return (
     <Popover>
       <PopoverTrigger asChild>

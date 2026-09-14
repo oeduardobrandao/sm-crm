@@ -1,4 +1,5 @@
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
+import { i18n } from '@mesaas/i18n';
 import { presignIdeiaImage, finalizeIdeiaImage } from '../api';
 import type { IdeiaImage } from '../types';
 
@@ -7,10 +8,14 @@ export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
 export function validateIdeiaImage(file: File) {
   if (!IMAGE_MIME.includes(file.type)) {
-    throw new Error(`Tipo de arquivo não suportado: ${file.type}`);
+    throw new Error(
+      i18n.t('hubIdeas:images.unsupportedType', 'Tipo de arquivo não suportado: {{type}}', {
+        type: file.type,
+      }),
+    );
   }
   if (file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
-    throw new Error('Imagem maior que 25 MB');
+    throw new Error(i18n.t('hubIdeas:images.tooLarge', 'Imagem maior que 25 MB'));
   }
 }
 
@@ -94,8 +99,15 @@ export function putToR2(url: string, body: Blob, contentType: string): Promise<v
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
-        : reject(new Error(`Upload falhou: ${xhr.status}`));
-    xhr.onerror = () => reject(new Error('Erro de rede no upload'));
+        : reject(
+            new Error(
+              i18n.t('hubIdeas:images.uploadFailed', 'Upload falhou: {{status}}', {
+                status: xhr.status,
+              }),
+            ),
+          );
+    xhr.onerror = () =>
+      reject(new Error(i18n.t('hubIdeas:images.networkError', 'Erro de rede no upload')));
     xhr.send(body);
   });
 }

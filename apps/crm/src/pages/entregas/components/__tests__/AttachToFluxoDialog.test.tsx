@@ -1,19 +1,25 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-const { getWorkflowsMock, attachPostToWorkflowMock, toastSuccessMock, toastErrorMock } = vi.hoisted(
-  () => ({
-    getWorkflowsMock: vi.fn(),
-    attachPostToWorkflowMock: vi.fn(),
-    toastSuccessMock: vi.fn(),
-    toastErrorMock: vi.fn(),
-  }),
-);
+const {
+  getWorkflowsMock,
+  attachPostToWorkflowMock,
+  attachPostClosingProcessMock,
+  toastSuccessMock,
+  toastErrorMock,
+} = vi.hoisted(() => ({
+  getWorkflowsMock: vi.fn(),
+  attachPostToWorkflowMock: vi.fn(),
+  attachPostClosingProcessMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+}));
 
 vi.mock('@/store', () => ({
   getWorkflows: getWorkflowsMock,
   attachPostToWorkflow: attachPostToWorkflowMock,
+  attachPostClosingProcess: attachPostClosingProcessMock,
 }));
 vi.mock('sonner', () => ({ toast: { success: toastSuccessMock, error: toastErrorMock } }));
 
@@ -49,6 +55,7 @@ function renderDialog(overrides: Partial<Record<string, unknown>> = {}) {
 beforeEach(() => {
   getWorkflowsMock.mockReset();
   attachPostToWorkflowMock.mockReset();
+  attachPostClosingProcessMock.mockReset();
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   getWorkflowsMock.mockResolvedValue(WORKFLOWS);
@@ -166,5 +173,69 @@ describe('AttachToFluxoDialog', () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(attachPostToWorkflowMock).not.toHaveBeenCalled();
+  });
+
+  it('com processo vigente: passo de confirmação e RPC de encerrar+vincular com a revisão', async () => {
+    attachPostClosingProcessMock.mockResolvedValue({
+      ok: true,
+      process_id: 5,
+      post_id: 5,
+      workflow_id: 1,
+      revisao: 4,
+    });
+    const { onAttached, invalidateSpy } = renderDialog({
+      process: { id: 5, estado: 'ativo', revisao: 3, template_nome: 'Redes' },
+    });
+    fireEvent.click(await screen.findByLabelText('Fluxo Ativo A'));
+    fireEvent.click(screen.getByRole('button', { name: 'Vincular' }));
+    expect(await screen.findByText('Encerrar o processo individual?')).toBeInTheDocument();
+    expect(attachPostToWorkflowMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Encerrar processo e vincular' }));
+    await waitFor(() => expect(attachPostClosingProcessMock).toHaveBeenCalledWith(5, 1, 3));
+    expect(attachPostToWorkflowMock).not.toHaveBeenCalled();
+    expect(onAttached).toHaveBeenCalledWith(1, 5);
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-process', 5] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-processes'] });
+  });
+
+  it('"Voltar" no passo de confirmação retorna à lista sem chamar nada', async () => {
+    renderDialog({ process: { id: 5, estado: 'concluido', revisao: 1 } });
+    fireEvent.click(await screen.findByLabelText('Fluxo Ativo A'));
+    fireEvent.click(screen.getByRole('button', { name: 'Vincular' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Voltar' }));
+    expect(screen.getByLabelText('Fluxo Ativo A')).toBeInTheDocument();
+    expect(attachPostClosingProcessMock).not.toHaveBeenCalled();
+  });
+
+  it('sem processo: caminho antigo inalterado', async () => {
+    attachPostToWorkflowMock.mockResolvedValue({ ok: true, attached: 1 });
+    renderDialog({ process: null });
+    fireEvent.click(await screen.findByLabelText('Fluxo Ativo A'));
+    fireEvent.click(screen.getByRole('button', { name: 'Vincular' }));
+    await waitFor(() => expect(attachPostToWorkflowMock).toHaveBeenCalledWith(5, 1));
+    expect(screen.queryByText('Encerrar o processo individual?')).toBeNull();
+  });
+
+  it('post_has_active_process (cliente antigo / cache velha) e process_changed têm cópia própria', async () => {
+    attachPostToWorkflowMock.mockRejectedValueOnce({ message: 'post_has_active_process' });
+    renderDialog({ process: null });
+    fireEvent.click(await screen.findByLabelText('Fluxo Ativo A'));
+    fireEvent.click(screen.getByRole('button', { name: 'Vincular' }));
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'Este post tem um processo individual em andamento. Use "Vincular a um fluxo" para encerrá-lo e vincular.',
+      ),
+    );
+    attachPostClosingProcessMock.mockRejectedValueOnce({ message: 'process_changed' });
+    cleanup();
+    renderDialog({ process: { id: 5, estado: 'ativo', revisao: 3 } });
+    fireEvent.click(await screen.findByLabelText('Fluxo Ativo A'));
+    fireEvent.click(screen.getByRole('button', { name: 'Vincular' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Encerrar processo e vincular' }));
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'Este processo foi alterado em outro lugar. Recarregue e tente de novo.',
+      ),
+    );
   });
 });

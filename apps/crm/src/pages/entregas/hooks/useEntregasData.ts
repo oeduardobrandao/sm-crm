@@ -14,16 +14,20 @@ import {
   getWorkflowAwaitingClientePostsCounts,
   getWorkflowPostResponsaveis,
   getWorkspaceSlug,
+  getVigentePostProcesses,
   type Workflow,
   type WorkflowEtapa,
   type Cliente,
   type Membro,
   type WorkflowTemplate,
   type PostMedia,
+  type PostProcessWithPost,
 } from '../../../store';
 import { supabase } from '../../../lib/supabase';
-import { getWorkflowCovers } from '../../../services/postMedia';
+import { getWorkflowCovers, getPostCovers } from '../../../services/postMedia';
 import { buildUsableTokenMap } from '../../../lib/hubTokenMap';
+import { toPostEntity, type PostEntity } from '../boardEntity';
+import { toLocalISODate } from '@/utils/postDate';
 
 export interface BoardCard {
   workflow: Workflow;
@@ -37,13 +41,6 @@ export interface BoardCard {
   postCovers?: PostMedia[];
   clienteAvatarUrl?: string;
   hubUrl?: string;
-}
-
-export interface BoardRow {
-  key: string;
-  label: string;
-  stepNames: string[];
-  columns: Map<string, BoardCard[]>;
 }
 
 /**
@@ -64,6 +61,9 @@ const EMPTY_ETAPAS_MAP: Map<number, WorkflowEtapa[]> = new Map();
 /** Shared by all five count maps — they are interchangeable while empty. */
 const EMPTY_COUNT_MAP: Map<number, number> = new Map();
 const EMPTY_RESPONSAVEIS_MAP: Map<number, number[]> = new Map();
+const EMPTY_PROCESSES: PostProcessWithPost[] = [];
+const EMPTY_POST_ENTITIES: PostEntity[] = [];
+const EMPTY_PROCESS_MAP: Map<number, PostProcessWithPost> = new Map();
 
 /**
  * Computes the absolute deadline date from an etapa's start time and duration.
@@ -170,6 +170,15 @@ export function getNextDeliveryDate(diaEntrega: number): Date {
   return new Date(nextYear, nextMonth, dayNextMonth);
 }
 
+/** Forma mínima de uma etapa para o cálculo de data de entrega: WorkflowEtapa e
+ *  as etapas de um template (com `ordem` = índice) satisfazem. */
+export type DeliveryStep = {
+  ordem: number;
+  tipo?: 'padrao' | 'aprovacao_cliente' | null;
+  prazo_dias: number;
+  tipo_prazo: 'corridos' | 'uteis';
+};
+
 /**
  * Computes data_limite (ISO date string) for each step in a data_entrega workflow.
  * The aprovacao_cliente step gets deliveryDate.
@@ -178,14 +187,14 @@ export function getNextDeliveryDate(diaEntrega: number): Date {
  * Returns Map<ordem, ISO date string>.
  */
 export function computeDeliveryDeadlines(
-  etapas: WorkflowEtapa[],
+  etapas: DeliveryStep[],
   deliveryDate: Date,
 ): Map<number, string> {
   const sorted = [...etapas].sort((a, b) => a.ordem - b.ordem);
   const anchorIdx = sorted.findIndex((e) => e.tipo === 'aprovacao_cliente');
   if (anchorIdx === -1) return new Map();
 
-  const toISO = (d: Date) => d.toISOString().split('T')[0];
+  const toISO = toLocalISODate;
   const result = new Map<number, string>();
 
   // Anchor step gets delivery date
@@ -208,10 +217,23 @@ export function computeDeliveryDeadlines(
   return result;
 }
 
-export function useEntregasData() {
+export interface UseEntregasDataOptions {
+  /** features?.feature_post_processes === true. Desde a fase 4 a flag NÃO gate
+   *  a leitura (spec §11 + §12.18: execuções existentes ficam visíveis e
+   *  operáveis com a flag desligada); ela só entra em `postProcessesVisible`,
+   *  o booleano de exibição que a página usa no lugar da flag crua. */
+  postProcessesEnabled?: boolean;
+}
+
+export function useEntregasData(options: UseEntregasDataOptions = {}) {
+  const postProcessesEnabled = options.postProcessesEnabled === true;
   const qc = useQueryClient();
 
-  const { data: workflows = EMPTY_WORKFLOWS, isLoading: loadingWf } = useQuery({
+  const {
+    data: workflows = EMPTY_WORKFLOWS,
+    isLoading: loadingWf,
+    isFetching: fetchingWf,
+  } = useQuery({
     queryKey: ['workflows'],
     queryFn: getWorkflows,
   });
@@ -329,6 +351,52 @@ export function useEntregasData() {
     enabled: clienteIds.length > 0,
   });
 
+  // Processos individuais (spec §8.3): UM lote por conta com ativos e
+  // concluídos, SEMPRE ligado (PO 2026-09-11, decisão 1): com a flag desligada
+  // e zero linhas o resultado é vazio e tudo abaixo devolve as constantes
+  // vazias; com linhas, o quadro continua exibindo e operando os processos.
+  const vigenteQuery = useQuery({
+    queryKey: ['post-processes', 'vigentes'],
+    queryFn: getVigentePostProcesses,
+  });
+  const vigenteProcesses: PostProcessWithPost[] = vigenteQuery.data ?? EMPTY_PROCESSES;
+  const activeProcesses = useMemo(
+    () =>
+      vigenteProcesses.length
+        ? vigenteProcesses.filter((p) => p.estado === 'ativo')
+        : EMPTY_PROCESSES,
+    [vigenteProcesses],
+  );
+  const concludedPostProcesses = useMemo(
+    () =>
+      vigenteProcesses.length
+        ? vigenteProcesses.filter((p) => p.estado === 'concluido')
+        : EMPTY_PROCESSES,
+    [vigenteProcesses],
+  );
+  const processByPostId = useMemo(
+    () =>
+      vigenteProcesses.length
+        ? new Map(vigenteProcesses.map((p) => [p.post_id, p]))
+        : EMPTY_PROCESS_MAP,
+    [vigenteProcesses],
+  );
+  const processPostIds = useMemo(() => activeProcesses.map((p) => p.post_id), [activeProcesses]);
+  const { data: processCovers } = useQuery({
+    queryKey: ['post-process-covers', processPostIds.join(',')],
+    queryFn: () => getPostCovers(processPostIds),
+    enabled: processPostIds.length > 0,
+  });
+  const postEntities: PostEntity[] = useMemo(() => {
+    if (activeProcesses.length === 0) return EMPTY_POST_ENTITIES;
+    const out: PostEntity[] = [];
+    for (const p of activeProcesses) {
+      const e = toPostEntity(p, { clientes, membros, clienteAvatars, covers: processCovers });
+      if (e) out.push(e);
+    }
+    return out;
+  }, [activeProcesses, clientes, membros, clienteAvatars, processCovers]);
+
   // Build BoardCards from active workflows.
   //
   // Memoized because `cards` is the root of the whole page's derived state: the
@@ -398,9 +466,25 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['workflow-post-responsaveis'] });
     qc.invalidateQueries({ queryKey: ['active-posts'] });
     qc.invalidateQueries({ queryKey: ['workflow-events'] });
+    qc.invalidateQueries({ queryKey: ['post-processes'] });
+    qc.invalidateQueries({ queryKey: ['post-process-covers'] });
+    qc.invalidateQueries({ queryKey: ['post-process-events'] });
+    qc.invalidateQueries({ queryKey: ['post-process'] });
+    // Spec §4.4: refresh() da página passa a invalidar concluded-*. Inerte
+    // enquanto ConcludedView não estiver montada.
+    qc.invalidateQueries({ queryKey: ['concluded-workflows'] });
+    qc.invalidateQueries({ queryKey: ['concluded-summaries'] });
   }
 
-  const isLoading = loadingWf || etapasQuery.isLoading;
+  const isLoading = loadingWf || etapasQuery.isLoading || vigenteQuery.isLoading;
+  /** Verdadeiro também durante refetch em background (cache stale). O resolvedor
+   *  de deep link só pode concluir que um fluxo não está no quadro quando isto
+   *  e isLoading forem falsos. */
+  const isFetching = fetchingWf || etapasQuery.isFetching || vigenteQuery.isFetching;
+
+  // Exibição = flag OU existência de processo. A flag crua fica para as
+  // affordances de criação (Aplicar processo, Manter etapas, Sem processo).
+  const postProcessesVisible = postProcessesEnabled || vigenteProcesses.length > 0;
 
   return {
     workflows,
@@ -410,6 +494,11 @@ export function useEntregasData() {
     templates,
     etapasMap,
     cards,
+    postEntities,
+    processByPostId,
+    concludedPostProcesses,
+    activePostProcessCount: activeProcesses.length,
+    postProcessesVisible,
     postsCounts,
     approvedPostsCounts,
     clearedClienteCounts,
@@ -417,6 +506,7 @@ export function useEntregasData() {
     awaitingClienteCounts,
     postResponsaveis,
     isLoading,
+    isFetching,
     refresh,
   };
 }

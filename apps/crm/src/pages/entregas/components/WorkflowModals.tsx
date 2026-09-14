@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Trash2, Edit2, FileText, Settings, ArrowRightLeft } from 'lucide-react';
@@ -32,7 +32,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  getDeadlineInfo,
   addWorkflowTemplate,
   removeWorkflowTemplate,
   removeWorkflow,
@@ -42,32 +41,22 @@ import {
   propagateTemplateToWorkflows,
   getPropertyDefinitions,
   deletePropertyDefinition,
-  type Workflow,
-  type WorkflowEtapa,
   type WorkflowTemplate,
   type Cliente,
   type Membro,
   type TemplatePropertyDefinition,
 } from '../../../store';
+import type { BoardCard } from '../hooks/useEntregasData';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
 import { MigrateTemplateDialog } from './MigrateTemplateDialog';
 import {
   SortableEtapaList,
   defaultEtapa,
+  findInvalidPrazoEtapa,
+  MAX_PRAZO_DIAS,
   type EtapaFormData,
   type ModoPrazo,
 } from './SortableEtapaList';
-
-// ---- Types ----
-interface BoardCard {
-  workflow: Workflow;
-  etapa: WorkflowEtapa;
-  cliente: Cliente | undefined;
-  membro: Membro | undefined;
-  deadline: ReturnType<typeof getDeadlineInfo>;
-  totalEtapas: number;
-  etapaIdx: number;
-}
 
 // ---- Edit Workflow Modal ----
 export function EditWorkflowModal({
@@ -418,6 +407,7 @@ export function TemplatesModal({
   const [deleteTemplateId, setDeleteTemplateId] = useState<number | null>(null);
   const [fNome, setFNome] = useState('');
   const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
+  const formTopRef = useRef<HTMLDivElement>(null);
 
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<'templates' | 'properties'>('templates');
@@ -453,6 +443,13 @@ export function TemplatesModal({
     const validEtapas = etapas.filter((e) => e.nome.trim());
     if (validEtapas.length === 0) {
       toast.error('Adicione pelo menos uma etapa.');
+      return;
+    }
+    // apply_post_process rejeita prazo_dias > 999 (template_invalid) na hora de
+    // aplicar o template a um post; barrar aqui evita salvar um template que
+    // nunca vai aplicar.
+    if (findInvalidPrazoEtapa(validEtapas)) {
+      toast.error(`Prazo (dias) não pode passar de ${MAX_PRAZO_DIAS}.`);
       return;
     }
     setSaving(true);
@@ -503,6 +500,7 @@ export function TemplatesModal({
         }),
       ),
     );
+    formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleDeleteConfirm = async () => {
@@ -595,7 +593,39 @@ export function TemplatesModal({
           </div>
           {activeTab === 'templates' && (
             <>
-              <div style={{ marginBottom: '1rem' }}>
+              <div ref={formTopRef} style={{ marginBottom: '1rem' }}>
+                <h4 style={{ marginBottom: '0.75rem' }}>
+                  {editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}
+                </h4>
+                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
+                  <Label>Nome *</Label>
+                  <Input
+                    placeholder="Ex: Fluxo Padrão de Post"
+                    value={fNome}
+                    onChange={(e) => setFNome(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
+                  <Label>Modo de Prazo</Label>
+                  <Select value={fModoPrazo} onValueChange={(v) => setFModoPrazo(v as ModoPrazo)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="padrao">Duração (padrão)</SelectItem>
+                      <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
+                      <SelectItem value="data_entrega">Data de entrega do cliente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <SortableEtapaList
+                  etapas={etapas}
+                  setEtapas={setEtapas}
+                  modoPrazo={fModoPrazo}
+                  membros={membros}
+                />
+              </div>
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                 {templates.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)' }}>Nenhum template salvo.</p>
                 ) : (
@@ -644,38 +674,6 @@ export function TemplatesModal({
                     </div>
                   ))
                 )}
-              </div>
-              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                <h4 style={{ marginBottom: '0.75rem' }}>
-                  {editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}
-                </h4>
-                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
-                  <Label>Nome *</Label>
-                  <Input
-                    placeholder="Ex: Fluxo Padrão de Post"
-                    value={fNome}
-                    onChange={(e) => setFNome(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
-                  <Label>Modo de Prazo</Label>
-                  <Select value={fModoPrazo} onValueChange={(v) => setFModoPrazo(v as ModoPrazo)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="padrao">Duração (padrão)</SelectItem>
-                      <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
-                      <SelectItem value="data_entrega">Data de entrega do cliente</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <SortableEtapaList
-                  etapas={etapas}
-                  setEtapas={setEtapas}
-                  modoPrazo={fModoPrazo}
-                  membros={membros}
-                />
               </div>
             </>
           )}
@@ -923,13 +921,13 @@ export function RecurringWorkflowDialog({
 // RevertConfirmDialog — shown when a card is dragged backward in kanban
 interface RevertConfirmDialogProps {
   open: boolean;
-  workflowTitle: string;
+  entityTitle: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 export function RevertConfirmDialog({
   open,
-  workflowTitle,
+  entityTitle,
   onConfirm,
   onCancel,
 }: RevertConfirmDialogProps) {
@@ -944,7 +942,7 @@ export function RevertConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Reverter etapa?</AlertDialogTitle>
           <AlertDialogDescription>
-            Isso vai reverter "{workflowTitle}" para a etapa anterior. Esta ação pode ser refeita
+            Isso vai reverter "{entityTitle}" para a etapa anterior. Esta ação pode ser refeita
             arrastando para frente novamente.
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -960,14 +958,14 @@ export function RevertConfirmDialog({
 // ForwardConfirmDialog — shown when advancing a card to the next etapa
 interface ForwardConfirmDialogProps {
   open: boolean;
-  workflowTitle: string;
+  entityTitle: string;
   nextEtapaName: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 export function ForwardConfirmDialog({
   open,
-  workflowTitle,
+  entityTitle,
   nextEtapaName,
   onConfirm,
   onCancel,
@@ -983,7 +981,7 @@ export function ForwardConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Avançar etapa?</AlertDialogTitle>
           <AlertDialogDescription>
-            Isso vai mover "{workflowTitle}" para a etapa "{nextEtapaName}". Deseja continuar?
+            Isso vai mover "{entityTitle}" para a etapa "{nextEtapaName}". Deseja continuar?
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -998,22 +996,34 @@ export function ForwardConfirmDialog({
 // ClientApprovalChoiceDialog — shown when completing an aprovacao_cliente step
 interface ClientApprovalChoiceDialogProps {
   open: boolean;
-  workflowTitle: string;
+  /** Título do fluxo ou do post (spec §4.2: os diálogos recebem a entidade). */
+  entityTitle: string;
   onApproveInternally: () => void;
   onSendToPortal: () => void;
   onAdvanceWithoutChanges: () => void;
   onCancel: () => void;
   /** Another client-approval etapa lies ahead — completing this one re-arms the posts. */
   willRearm?: boolean;
+  /** Muda a cópia para o singular no processo individual. */
+  entityKind?: 'fluxo' | 'post';
+  /** Rótulo da terceira opção; o processo individual usa "…sem alterar o post"
+   *  ou "Concluir sem alterar o post". */
+  withoutChangesLabel?: string;
+  /** Quando definido, desabilita "Enviar ao portal do cliente" e mostra o motivo
+   *  (spec §6.2: com n=1, botão desabilitado com o motivo, nunca sucesso vazio). */
+  sendToPortalDisabledReason?: string;
 }
 export function ClientApprovalChoiceDialog({
   open,
-  workflowTitle,
+  entityTitle,
   onApproveInternally,
   onSendToPortal,
   onAdvanceWithoutChanges,
   onCancel,
   willRearm,
+  entityKind,
+  withoutChangesLabel,
+  sendToPortalDisabledReason,
 }: ClientApprovalChoiceDialogProps) {
   return (
     <Dialog
@@ -1027,23 +1037,34 @@ export function ClientApprovalChoiceDialog({
           <DialogTitle>Como deseja prosseguir com a aprovação?</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          "{workflowTitle}" está em etapa de aprovação do cliente.
+          "{entityTitle}" está em etapa de aprovação do cliente.
         </p>
         {willRearm && (
           <p className="text-sm" style={{ color: 'var(--warning)' }}>
-            Há outra etapa de aprovação adiante — ao concluir esta, os posts aprovados voltarão para
-            rascunho para o próximo ciclo de aprovação.
+            {entityKind === 'post'
+              ? 'Há outra etapa de aprovação adiante. Ao concluir esta, o post aprovado voltará para rascunho para o próximo ciclo de aprovação.'
+              : 'Há outra etapa de aprovação adiante — ao concluir esta, os posts aprovados voltarão para rascunho para o próximo ciclo de aprovação.'}
           </p>
         )}
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button className="w-full" onClick={onApproveInternally}>
             Aprovar internamente
           </Button>
-          <Button className="w-full" variant="outline" onClick={onSendToPortal}>
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={onSendToPortal}
+            disabled={!!sendToPortalDisabledReason}
+          >
             Enviar ao portal do cliente
           </Button>
+          {sendToPortalDisabledReason && (
+            <p className="text-xs text-muted-foreground" style={{ marginTop: '-0.25rem' }}>
+              {sendToPortalDisabledReason}
+            </p>
+          )}
           <Button className="w-full" variant="secondary" onClick={onAdvanceWithoutChanges}>
-            Avançar etapa sem alterar posts
+            {withoutChangesLabel ?? 'Avançar etapa sem alterar posts'}
           </Button>
           <Button className="w-full" variant="ghost" onClick={onCancel}>
             Cancelar

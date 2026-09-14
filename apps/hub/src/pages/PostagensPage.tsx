@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { useHub } from '../HubContext';
@@ -25,16 +26,6 @@ const STATUS_COLORS: Record<string, string> = {
   falha_publicacao: '#f55a42',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  enviado_cliente: 'Aguardando aprovação',
-  aprovado_cliente: 'Aprovado',
-  correcao_cliente: 'Correção solicitada',
-  agendado: 'Agendado',
-  publicando: 'Publicando…',
-  postado: 'Publicado',
-  falha_publicacao: 'Falha na publicação',
-};
-
 const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
 
 /**
@@ -52,8 +43,18 @@ function getPostPublishState(p: {
 }
 
 function StatusTag({ status }: { status: string }) {
+  const { t } = useTranslation('hubPosts');
   const color = STATUS_COLORS[status] ?? '#94a3b8';
-  const label = STATUS_LABELS[status] ?? status;
+  const statusLabels: Record<string, string> = {
+    enviado_cliente: t('postagens.status.enviadoCliente', 'Aguardando aprovação'),
+    aprovado_cliente: t('postagens.status.aprovadoCliente', 'Aprovado'),
+    correcao_cliente: t('postagens.status.correcaoCliente', 'Correção solicitada'),
+    agendado: t('postagens.status.agendado', 'Agendado'),
+    publicando: t('postagens.status.publicando', 'Publicando…'),
+    postado: t('postagens.status.postado', 'Publicado'),
+    falha_publicacao: t('postagens.status.falhaPublicacao', 'Falha na publicação'),
+  };
+  const label = statusLabels[status] ?? status;
   return (
     <span
       style={{
@@ -79,6 +80,7 @@ function StatusTag({ status }: { status: string }) {
 }
 
 export function PostagensPage() {
+  const { t } = useTranslation('hubPosts');
   const { token, bootstrap } = useHub();
   const qc = useQueryClient();
   const [collapsed, setCollapsed] = useState<Set<string> | null>(null);
@@ -145,7 +147,10 @@ export function PostagensPage() {
             if (!acc[key]) {
               acc[key] = {
                 key,
-                titulo: key === 'avulso' ? 'Publicações avulsas' : (post.workflow_titulo ?? ''),
+                titulo:
+                  key === 'avulso'
+                    ? t('postagens.avulsoGroupTitle', 'Publicações avulsas')
+                    : (post.workflow_titulo ?? ''),
                 posts: [],
               };
             }
@@ -162,7 +167,7 @@ export function PostagensPage() {
         const bDate = b.posts[0]?.workflow_created_at ?? '';
         return bDate.localeCompare(aDate);
       }),
-    [allPosts],
+    [allPosts, t],
   );
 
   const initializedRef = useRef(false);
@@ -185,7 +190,7 @@ export function PostagensPage() {
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <PageHeader
-        title="Postagens"
+        title={t('postagens.title', 'Postagens')}
         description={
           instagramProfile && feedSelectable.length > 0 && selectedPosts.length === 0 ? (
             <span className="inline-flex items-center gap-1.5">
@@ -203,10 +208,13 @@ export function PostagensPage() {
                 <rect x="3" y="14" width="7" height="7" />
                 <rect x="14" y="14" width="7" height="7" />
               </svg>
-              Selecione posts para visualizar e reordenar como ficarão no feed do Instagram.
+              {t(
+                'postagens.selectHint',
+                'Selecione posts para visualizar e reordenar como ficarão no feed do Instagram.',
+              )}
             </span>
           ) : (
-            'Todos os posts do seu calendário de conteúdo.'
+            t('postagens.defaultDescription', 'Todos os posts do seu calendário de conteúdo.')
           )
         }
         action={
@@ -224,9 +232,13 @@ export function PostagensPage() {
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
       ) : isError ? (
-        <div className="py-20 text-center text-sm hub-tx2">Erro ao carregar postagens.</div>
+        <div className="py-20 text-center text-sm hub-tx2">
+          {t('postagens.loadError', 'Erro ao carregar postagens.')}
+        </div>
       ) : groups.length === 0 ? (
-        <p className="text-sm hub-tx2">Nenhuma postagem disponível ainda.</p>
+        <p className="text-sm hub-tx2">
+          {t('postagens.empty', 'Nenhuma postagem disponível ainda.')}
+        </p>
       ) : (
         <div className="space-y-10">
           {groups.map((group) => {
@@ -256,11 +268,14 @@ export function PostagensPage() {
                     {group.titulo}
                   </h3>
                   <span className="text-[11px] hub-tx3">
-                    {group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}
+                    {t('postagens.postCount', '{{count}} {{noun}}', {
+                      count: group.posts.length,
+                      noun: group.posts.length === 1 ? 'post' : 'posts',
+                    })}
                   </span>
                   {effectiveCollapsed.has(group.key) && (
                     <span className="text-[10px] hub-tx3 hidden sm:inline">
-                      clique para expandir
+                      {t('postagens.clickToExpand', 'clique para expandir')}
                     </span>
                   )}
                   <ChevronDown
@@ -290,7 +305,11 @@ export function PostagensPage() {
                           isSelected={selectedIds.has(post.id)}
                           onToggleSelect={instagramProfile ? handleToggleSelect : undefined}
                           priority={i === 0}
-                          autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id)}
+                          autoPublishOnApproval={isAutoPublishActive(
+                            data,
+                            post.workflow_id,
+                            post.id,
+                          )}
                         />
                       </div>
                     ))}

@@ -1,5 +1,6 @@
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../../HubContext';
 import { chartInk, chartFont, useFontsReady } from './chartInk';
 import type { DashboardReachEntry } from '../../types';
@@ -16,6 +17,7 @@ interface ReachChartProps {
 }
 
 export function ReachChart({ reachHistory }: ReachChartProps) {
+  const { t } = useTranslation('hubHome');
   const { theme } = useHub();
   const ink = chartInk(theme);
   // Forces one extra render (and therefore a fresh `options.scales.*.ticks.font`
@@ -55,8 +57,12 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
           label: (ctx: any) => {
             const entry = reachHistory[ctx.dataIndex];
             return [
-              `Alcance: ${formatAbbrev(entry.reach)}`,
-              `Impressões: ${formatAbbrev(entry.impressions)}`,
+              t('reachChart.tooltip.reach', 'Alcance: {{value}}', {
+                value: formatAbbrev(entry.reach),
+              }),
+              t('reachChart.tooltip.impressions', 'Impressões: {{value}}', {
+                value: formatAbbrev(entry.impressions),
+              }),
             ];
           },
         },
@@ -85,14 +91,16 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
   if (reachHistory.length === 0) {
     return (
       <div className="hub-card p-5 flex items-center justify-center min-h-[260px]">
-        <p className="text-sm text-stone-400">Nenhum dado de alcance disponível.</p>
+        <p className="text-sm text-stone-400">
+          {t('reachChart.noData', 'Nenhum dado de alcance disponível.')}
+        </p>
       </div>
     );
   }
 
   return (
     <div className="hub-card p-5">
-      <h3 className="text-[13px] font-semibold hub-tx2 mb-4">Alcance</h3>
+      <h3 className="text-[13px] font-semibold hub-tx2 mb-4">{t('reachChart.title', 'Alcance')}</h3>
       <div className="h-[180px]">
         <Bar data={data} options={options as any} />
       </div>
@@ -100,7 +108,9 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
         <span className="text-lg font-bold text-stone-900 dark:text-stone-100">
           {formatAbbrev(totalReach)}
         </span>
-        <span className="text-[11px] text-stone-500 dark:text-stone-400">total no período</span>
+        <span className="text-[11px] text-stone-500 dark:text-stone-400">
+          {t('reachChart.totalLabel', 'total no período')}
+        </span>
       </div>
     </div>
   );

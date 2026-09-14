@@ -10,9 +10,11 @@ import {
   type CommentThreadWithComments,
   type PostEditSuggestion,
   type ClientePost,
+  type PostProcess,
 } from '../../../store';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
+import { PostProductionSection } from './PostProductionSection';
 import PostCommentSummary from './PostCommentSummary';
 import { PostMediaGallery } from './PostMediaGallery';
 import {
@@ -81,6 +83,10 @@ export interface PostEditorBodyProps {
   post: WorkflowPost & { property_values?: PostPropertyValue[] };
   templateId: number | null | undefined;
   workflowId: number | null;
+  /** Processo individual vigente do post (spec §5.4). `undefined` = não se
+   *  aplica (drawer de fluxo); `null` = avulso sem processo. Só o
+   *  StandalonePostDrawer preenche, independentemente da flag do plano. */
+  postProcess?: PostProcess | null;
   clienteId: number;
   clientePosts: ClientePost[];
   isExpanded: boolean;
@@ -116,12 +122,15 @@ export interface PostEditorBodyProps {
   editorVersion: number;
   onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
   onRejectSuggestion: (id: number) => void;
+  /** Avançar etapa do processo individual, para a dica da seção de produção. */
+  onProcessAvancar?: () => void;
 }
 
 export function PostEditorBody({
   post,
   templateId,
   workflowId,
+  postProcess,
   clienteId,
   clientePosts,
   isExpanded,
@@ -153,6 +162,7 @@ export function PostEditorBody({
   editorVersion,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onProcessAvancar,
 }: PostEditorBodyProps) {
   // Per-row scheduled-day dots for this post's date picker: same client-wide post list for
   // every row (stable identity from the TanStack cache), each row excludes only its own post
@@ -361,7 +371,7 @@ export function PostEditorBody({
         </div>
         {membros.length > 0 && (
           <div className="drawer-post-field">
-            <label>Responsável</label>
+            <label>Responsável do post</label>
             <select
               className="drawer-select"
               value={post.responsavel_id ?? ''}
@@ -415,6 +425,16 @@ export function PostEditorBody({
           workflowId={workflowId}
           propertyValues={post.property_values ?? []}
           membros={membros}
+        />
+      )}
+
+      {postProcess && workflowId == null && (
+        <PostProductionSection
+          process={postProcess}
+          postId={post.id!}
+          membros={membros}
+          postStatus={post.status}
+          onAvancar={onProcessAvancar}
         />
       )}
 

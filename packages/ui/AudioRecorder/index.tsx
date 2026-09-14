@@ -53,6 +53,42 @@ const BTN_SECONDARY: CSSProperties = {
 };
 const MUTED: CSSProperties = { color: 'var(--audio-muted, currentColor)', opacity: 0.8 };
 
+/**
+ * All caller-visible strings, so a host app can localize without this
+ * package depending on an i18n library. Every field defaults to the
+ * existing hardcoded Portuguese text -- an untranslated caller (CRM, or any
+ * `labels` field left out) sees byte-identical copy to before this existed.
+ */
+export interface AudioRecorderLabels {
+  record?: string;
+  uploading?: string;
+  transcribing?: string;
+  micPermissionDenied?: string;
+  micUnavailable?: string;
+  stop?: string;
+  stopAria?: string;
+  progressAria?: string;
+  remainingWarning?: (remaining: string) => string;
+  previewLabel?: string;
+  sending?: string;
+  discard?: string;
+}
+
+const DEFAULT_LABELS: Required<AudioRecorderLabels> = {
+  record: 'Gravar áudio',
+  uploading: 'Enviando áudio…',
+  transcribing: 'Transcrevendo…',
+  micPermissionDenied: 'Permita o acesso ao microfone no navegador para gravar.',
+  micUnavailable: 'Não foi possível acessar o microfone.',
+  stop: 'Parar',
+  stopAria: 'Parar gravação',
+  progressAria: 'Tempo de gravação',
+  remainingWarning: (remaining) => `Restam ${remaining}. A gravação para sozinha no limite.`,
+  previewLabel: 'Prévia',
+  sending: 'Enviando…',
+  discard: 'Descartar',
+};
+
 interface Props {
   phase: RecorderPhase;
   disabled?: boolean;
@@ -61,11 +97,21 @@ interface Props {
   sendLabel?: string;
   /** Helper text next to the record button. Default "Até 5:00 por resposta.". */
   hint?: string;
+  /** Overrides for every other caller-visible string (see AudioRecorderLabels). */
+  labels?: AudioRecorderLabels;
 }
 
 type Mode = 'idle' | 'recording' | 'preview';
 
-export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar', hint }: Props) {
+export function AudioRecorder({
+  phase,
+  disabled,
+  onRecorded,
+  sendLabel = 'Enviar',
+  hint,
+  labels,
+}: Props) {
+  const L = { ...DEFAULT_LABELS, ...labels };
   const [mode, setMode] = useState<Mode>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -131,8 +177,8 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
         const name = (e as { name?: string }).name;
         setError(
           name === 'NotAllowedError' || name === 'SecurityError'
-            ? 'Permita o acesso ao microfone no navegador para gravar.'
-            : 'Não foi possível acessar o microfone.',
+            ? L.micPermissionDenied
+            : L.micUnavailable,
         );
         return;
       }
@@ -209,7 +255,7 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
             onClick={() => void start()}
           >
             <Mic size={16} />
-            {busy ? (phase === 'uploading' ? 'Enviando áudio…' : 'Transcrevendo…') : 'Gravar áudio'}
+            {busy ? (phase === 'uploading' ? L.uploading : L.transcribing) : L.record}
           </button>
           {!busy && (
             <span className="text-xs" style={MUTED}>
@@ -234,20 +280,19 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
               style={BTN_PRIMARY}
               className="hover:opacity-90 transition-opacity disabled:opacity-50"
               onClick={stop}
-              aria-label="Parar gravação"
+              aria-label={L.stopAria}
             >
-              Parar
+              {L.stop}
             </button>
             {nearLimit && (
               <span className="text-xs text-amber-600">
-                Restam {formatDuration(MAX_AUDIO_SECONDS - elapsed)}. A gravação para sozinha no
-                limite.
+                {L.remainingWarning(formatDuration(MAX_AUDIO_SECONDS - elapsed))}
               </span>
             )}
           </div>
           <div
             role="progressbar"
-            aria-label="Tempo de gravação"
+            aria-label={L.progressAria}
             aria-valuemin={0}
             aria-valuemax={MAX_AUDIO_SECONDS}
             aria-valuenow={elapsed}
@@ -272,7 +317,7 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
           <AudioPlayer
             src={previewUrl}
             durationSeconds={elapsed}
-            label="Prévia"
+            label={L.previewLabel}
             className="w-full max-w-[360px]"
           />
           <button
@@ -283,9 +328,9 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
             onClick={() => void send()}
           >
             {sending || phase === 'uploading'
-              ? 'Enviando…'
+              ? L.sending
               : phase === 'transcribing'
-                ? 'Transcrevendo…'
+                ? L.transcribing
                 : sendLabel}
           </button>
           <button
@@ -295,7 +340,7 @@ export function AudioRecorder({ phase, disabled, onRecorded, sendLabel = 'Enviar
             disabled={disabled || busy || sending}
             onClick={discard}
           >
-            Descartar
+            {L.discard}
           </button>
         </div>
       )}

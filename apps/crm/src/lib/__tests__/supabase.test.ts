@@ -134,6 +134,31 @@ describe('supabase helpers', () => {
     ).toHaveLength(2);
   });
 
+  it('falls back to the stale cached profile when a forced refresh fails transiently', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { module, queryMock } = await loadSupabaseModule({ id: 'user-1' });
+
+    queryMock.queue(
+      'profiles',
+      'select',
+      {
+        data: { id: 'user-1', nome: 'Ana Silva', conta_id: 'conta-1' },
+        error: null,
+      },
+      {
+        data: null,
+        error: { message: 'network blip' },
+      },
+    );
+
+    await expect(module.getCurrentProfile()).resolves.toMatchObject({ conta_id: 'conta-1' });
+    // A forced refetch that fails transiently must not discard an already-
+    // cached profile: getContaId() (used on every write) would otherwise
+    // throw "not authenticated" instead of using the still-valid cache.
+    await expect(module.getCurrentProfile(true)).resolves.toMatchObject({ conta_id: 'conta-1' });
+    expect(warnSpy).toHaveBeenCalledWith('getCurrentProfile error:', { message: 'network blip' });
+  });
+
   it('returns null when the current profile cannot be loaded', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { module, queryMock } = await loadSupabaseModule({ id: 'user-1' });

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitApproval } from '../api';
@@ -54,6 +55,7 @@ export function InstagramPostCard({
   priority,
   autoPublishOnApproval = false,
 }: InstagramPostCardProps) {
+  const { t, i18n } = useTranslation('hubPosts');
   const [currentSlide, setCurrentSlide] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -224,9 +226,12 @@ export function InstagramPostCard({
       const message =
         action === 'aprovado'
           ? res.scheduled
-            ? 'Post aprovado e agendado para publicação!'
-            : 'Post aprovado!'
-          : 'Correção enviada!';
+            ? t(
+                'instagramCard.postApprovedAndScheduled',
+                'Post aprovado e agendado para publicação!',
+              )
+            : t('shared.postApproved', 'Post aprovado!')
+          : t('shared.correctionSent', 'Correção enviada!');
       setResult({ type: 'success', message });
       onApprovalSubmitted?.();
     } catch (e) {
@@ -266,7 +271,7 @@ export function InstagramPostCard({
             type="button"
             role="checkbox"
             aria-checked={isSelected}
-            aria-label="Selecionar publicação"
+            aria-label={t('instagramCard.selectAriaLabel', 'Selecionar publicação')}
             onClick={(e) => {
               e.stopPropagation();
               onToggleSelect(post.id);
@@ -321,7 +326,7 @@ export function InstagramPostCard({
             className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0"
             style={{ color: 'var(--hub-acc)', borderColor: 'var(--hub-acc)' }}
           >
-            Reel de teste
+            {t('shared.reelDeTeste', 'Reel de teste')}
           </span>
         )}
         {!onToggleSelect && (
@@ -361,7 +366,9 @@ export function InstagramPostCard({
             <button
               key={m.id}
               type="button"
-              aria-label={`Abrir mídia ${i + 1}`}
+              aria-label={t('instagramCard.openMediaAriaLabel', 'Abrir mídia {{index}}', {
+                index: i + 1,
+              })}
               onClick={() => openLightboxAt(i)}
               draggable={false}
               className="relative flex-none w-full h-full"
@@ -407,7 +414,7 @@ export function InstagramPostCard({
         {isCarousel && currentSlide > 0 && (
           <button
             onClick={prevSlide}
-            aria-label="Slide anterior"
+            aria-label={t('instagramCard.prevSlideAriaLabel', 'Slide anterior')}
             className="absolute left-0 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-[#262626] dark:text-white opacity-100 md:opacity-0 md:group-hover/carousel:opacity-100 transition-opacity"
           >
             <span className="w-7 h-7 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm">
@@ -427,7 +434,7 @@ export function InstagramPostCard({
         {isCarousel && currentSlide < media.length - 1 && (
           <button
             onClick={nextSlide}
-            aria-label="Próximo slide"
+            aria-label={t('instagramCard.nextSlideAriaLabel', 'Próximo slide')}
             className="absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-[#262626] dark:text-white opacity-100 md:opacity-0 md:group-hover/carousel:opacity-100 transition-opacity"
           >
             <span className="w-7 h-7 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm">
@@ -470,7 +477,7 @@ export function InstagramPostCard({
         <div className="flex items-center gap-4 text-[#262626] dark:text-[#f5f5f5]">
           <button
             type="button"
-            aria-label="Curtir"
+            aria-label={t('instagramCard.likeAriaLabel', 'Curtir')}
             onClick={() => setLiked((l) => !l)}
             className="transition-transform active:scale-125"
           >
@@ -527,11 +534,11 @@ export function InstagramPostCard({
               className={`text-[10px] mb-0.5 ${wasRejected ? 'text-amber-600' : 'text-stone-400'}`}
             >
               {wasRejected
-                ? '⚠️ Sugestão rejeitada — edite novamente'
-                : '✏️ Edite a legenda abaixo'}
+                ? t('instagramCard.suggestionRejected', '⚠️ Sugestão rejeitada — edite novamente')
+                : t('instagramCard.editCaptionHint', '✏️ Edite a legenda abaixo')}
             </p>
             <textarea
-              aria-label="Legenda do post"
+              aria-label={t('instagramCard.captionAriaLabel', 'Legenda do post')}
               value={caption}
               onChange={(e) => {
                 setCaptionDraft(e.target.value);
@@ -542,12 +549,16 @@ export function InstagramPostCard({
             <div className="flex items-center justify-between mt-0.5">
               <span className="flex items-center gap-1 min-h-[16px]">
                 {saveState === 'saving' && (
-                  <span className="text-[10px] text-stone-400">Salvando...</span>
+                  <span className="text-[10px] text-stone-400">
+                    {t('shared.saving', 'Salvando...')}
+                  </span>
                 )}
                 {saveState === 'saved' && (
                   <>
                     <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                    <span className="text-[10px] text-emerald-600 font-medium">Sugestão salva</span>
+                    <span className="text-[10px] text-emerald-600 font-medium">
+                      {t('shared.suggestionSaved', 'Sugestão salva')}
+                    </span>
                   </>
                 )}
               </span>
@@ -556,7 +567,7 @@ export function InstagramPostCard({
                 onClick={() => setCaptionMode('preview')}
                 className="text-[13px] font-semibold text-[#0095f6] hover:text-[#0081d6] transition-colors"
               >
-                Concluir
+                {t('instagramCard.concluir', 'Concluir')}
               </button>
             </div>
           </div>
@@ -573,7 +584,9 @@ export function InstagramPostCard({
                 onClick={() => setCaptionExpanded((v) => !v)}
                 className="mt-0.5 text-[14px] text-[#8e8e8e] hover:text-[#5a5a5a] dark:hover:text-[#c7c7c7] transition-colors"
               >
-                {captionExpanded ? 'ver menos' : '… mais'}
+                {captionExpanded
+                  ? t('instagramCard.verMenos', 'ver menos')
+                  : t('instagramCard.verMais', '… mais')}
               </button>
             )}
             {isEditable && (
@@ -582,13 +595,15 @@ export function InstagramPostCard({
                 onClick={() => setCaptionMode('edit')}
                 className="mt-1 self-start text-[13px] font-medium text-[#0095f6] hover:text-[#0081d6] transition-colors"
               >
-                Editar legenda
+                {t('instagramCard.editarLegenda', 'Editar legenda')}
               </button>
             )}
           </div>
         )}
         <p className="text-[10px] uppercase tracking-wide text-[#8e8e8e] dark:text-[#a8a8a8] mt-1.5">
-          Agendado · {formatDate(post.scheduled_at)}
+          {t('instagramCard.scheduledPrefix', 'Agendado · {{date}}', {
+            date: formatDate(post.scheduled_at, i18n.language === 'en' ? 'en-US' : 'pt-BR'),
+          })}
         </p>
       </div>
 
@@ -615,16 +630,19 @@ export function InstagramPostCard({
           />
           <div>
             <div style={{ color: '#3ecf8e', fontSize: '0.8rem', fontWeight: 600 }}>
-              Agendado para publicação
+              {t('instagramCard.scheduledBannerTitle', 'Agendado para publicação')}
             </div>
             <div style={{ color: 'var(--hub-tx2)', fontSize: '0.75rem' }}>
-              {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+              {new Date(post.scheduled_at).toLocaleDateString(
+                i18n.language === 'en' ? 'en-US' : 'pt-BR',
+                {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                },
+              )}
             </div>
           </div>
         </div>
@@ -646,17 +664,20 @@ export function InstagramPostCard({
             <span style={{ color: 'var(--hub-txt)', fontSize: '0.9rem' }}>✓</span>
             <div>
               <div style={{ color: 'var(--hub-txt)', fontSize: '0.8rem', fontWeight: 600 }}>
-                Publicado
+                {t('instagramCard.publishedBannerTitle', 'Publicado')}
               </div>
               {post.published_at && (
                 <div style={{ color: 'var(--hub-tx2)', fontSize: '0.75rem' }}>
-                  {new Date(post.published_at).toLocaleDateString('pt-BR', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {new Date(post.published_at).toLocaleDateString(
+                    i18n.language === 'en' ? 'en-US' : 'pt-BR',
+                    {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    },
+                  )}
                 </div>
               )}
             </div>
@@ -676,7 +697,8 @@ export function InstagramPostCard({
                 gap: '0.3rem',
               }}
             >
-              Ver no Instagram <span style={{ fontSize: '0.7rem' }}>↗</span>
+              {t('shared.viewOnInstagram', 'Ver no Instagram')}{' '}
+              <span style={{ fontSize: '0.7rem' }}>↗</span>
             </a>
           )}
         </div>
@@ -687,14 +709,17 @@ export function InstagramPostCard({
         <div className="border-t border-[#efefef] dark:border-[#262626] px-2.5 py-2 space-y-1.5">
           {hasPendingSuggestion ? (
             <div className="rounded px-3 py-2 text-[11px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/60 text-center">
-              Sugestão enviada para revisão
+              {t('shared.suggestionPendingReviewShort', 'Sugestão enviada para revisão')}
             </div>
           ) : (
             <>
               <textarea
                 value={comentario}
                 onChange={(e) => setComentario(e.target.value)}
-                placeholder="Comente aqui ou corrija o texto diretamente no campo acima"
+                placeholder={t(
+                  'shared.commentPlaceholder',
+                  'Comente aqui ou corrija o texto diretamente no campo acima',
+                )}
                 className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
               />
               <div className="flex gap-1.5">
@@ -703,17 +728,25 @@ export function InstagramPostCard({
                   disabled={submitting || approvalBlocked}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-primary text-[13px] font-semibold disabled:opacity-50 transition-colors"
                 >
-                  <CheckCircle size={16} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
+                  <CheckCircle size={16} />{' '}
+                  {saveState === 'saving'
+                    ? t('shared.saving', 'Salvando...')
+                    : t('shared.aprovar', 'Aprovar')}
                 </button>
                 <button
                   onClick={() => handleAction('correcao')}
                   disabled={submitting || approvalBlocked || !comentario.trim()}
                   title={
-                    !comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined
+                    !comentario.trim()
+                      ? t(
+                          'shared.correctionCommentRequired',
+                          'Deixe um comentário para solicitar correção',
+                        )
+                      : undefined
                   }
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-secondary text-[13px] font-medium disabled:opacity-50 transition-colors"
                 >
-                  <AlertCircle size={16} /> Correção
+                  <AlertCircle size={16} /> {t('shared.correcaoShort', 'Correção')}
                 </button>
               </div>
             </>
@@ -753,22 +786,39 @@ export function InstagramPostCard({
                   lineHeight: 1.4,
                 }}
               >
-                {post.scheduled_at ? (
-                  <>
-                    Ao aprovar, este post será publicado automaticamente no Instagram em{' '}
-                    <strong>
-                      {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </strong>
-                    .
-                  </>
-                ) : (
-                  'Ao aprovar, este post será agendado para publicação automática no Instagram.'
-                )}
+                {post.scheduled_at
+                  ? (() => {
+                      const scheduledDate = new Date(post.scheduled_at).toLocaleDateString(
+                        i18n.language === 'en' ? 'en-US' : 'pt-BR',
+                        {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        },
+                      );
+                      // Bold just the interpolated date: locate it in the translated
+                      // sentence rather than assuming a fixed position, so the
+                      // emphasis survives any word order the translation uses.
+                      const fullSentence = t(
+                        'instagramCard.autoPublishScheduled',
+                        'Ao aprovar, este post será publicado automaticamente no Instagram em {{date}}.',
+                        { date: scheduledDate },
+                      );
+                      const dateIdx = fullSentence.indexOf(scheduledDate);
+                      if (dateIdx === -1) return fullSentence;
+                      return (
+                        <>
+                          {fullSentence.slice(0, dateIdx)}
+                          <strong>{scheduledDate}</strong>
+                          {fullSentence.slice(dateIdx + scheduledDate.length)}
+                        </>
+                      );
+                    })()
+                  : t(
+                      'instagramCard.autoPublishUnscheduled',
+                      'Ao aprovar, este post será agendado para publicação automática no Instagram.',
+                    )}
               </div>
             </div>
           )}

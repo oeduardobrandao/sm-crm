@@ -149,6 +149,9 @@ interface PostsKanbanViewProps {
    *  Stable across renders (owned by the page) so it can be passed straight
    *  into the memoized PostBoardColumn without breaking memo. */
   onColumnSortChange?: (columnKey: string, sort: BoardColumnSort) => void;
+  /** post id → etapa ativa do processo individual (spec §4.4). Só posts
+   *  avulsos aparecem aqui. */
+  processEtapaByPostId?: Map<number, string>;
 }
 
 /** A post avulso (no workflow) is always openable -- only a wired post depends
@@ -171,10 +174,12 @@ function PostBoardCardContent({
   post,
   registry,
   card,
+  processEtapa,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
   card: BoardCard | undefined;
+  processEtapa?: string;
 }) {
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
@@ -226,6 +231,11 @@ function PostBoardCardContent({
         <span className="post-fluxo-tag post-fluxo-tag--static">
           <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
           {card.etapa.nome}
+        </span>
+      ) : post.workflow_id === null && processEtapa ? (
+        <span className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual">
+          <Route size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+          Individual · {processEtapa}
         </span>
       ) : post.workflow_id === null ? (
         <span className="post-fluxo-tag post-fluxo-tag--avulso">
@@ -302,12 +312,14 @@ const PostBoardCard = memo(function PostBoardCard({
   card,
   openable,
   onPostClick,
+  processEtapa,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
   card: BoardCard | undefined;
   openable: boolean;
   onPostClick: (post: ActivePost) => void;
+  processEtapa?: string;
 }) {
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
@@ -334,7 +346,12 @@ const PostBoardCard = memo(function PostBoardCard({
       onClick={openable ? () => onPostClick(post) : undefined}
       {...listeners}
     >
-      <PostBoardCardContent post={post} registry={registry} card={card} />
+      <PostBoardCardContent
+        post={post}
+        registry={registry}
+        card={card}
+        processEtapa={processEtapa}
+      />
     </div>
   );
 });
@@ -359,6 +376,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
   dragHeight,
   sort,
   onColumnSortChange,
+  processEtapaByPostId,
 }: {
   option: StatusOption;
   posts: ActivePost[];
@@ -379,6 +397,8 @@ const PostBoardColumn = memo(function PostBoardColumn({
    *  in an inline arrow here) so this memoized column doesn't re-render on
    *  every parent render. */
   onColumnSortChange?: (columnKey: string, sort: BoardColumnSort) => void;
+  /** post id → etapa ativa do processo individual (spec §4.4). */
+  processEtapaByPostId?: Map<number, string>;
 }) {
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   const tint = columnTintFor(option);
@@ -495,6 +515,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
                     card={p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined}
                     openable={isPostOpenable(p, openableWorkflowIds)}
                     onPostClick={onPostClick}
+                    processEtapa={processEtapaByPostId?.get(p.id)}
                   />
                 </Fragment>
               ))}
@@ -529,6 +550,7 @@ export function PostsKanbanView({
   onCreateAvulso,
   columnSorts,
   onColumnSortChange,
+  processEtapaByPostId,
 }: PostsKanbanViewProps) {
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
@@ -856,6 +878,7 @@ export function PostsKanbanView({
                 dragHeight={dragHeight}
                 sort={columnSortFor(option.key)}
                 onColumnSortChange={onColumnSortChange}
+                processEtapaByPostId={processEtapaByPostId}
               />
             ))}
           </div>
@@ -871,6 +894,7 @@ export function PostsKanbanView({
                     ? cardsByWorkflowId.get(activePost.workflow_id)
                     : undefined
                 }
+                processEtapa={processEtapaByPostId?.get(activePost.id)}
               />
             </div>
           )}

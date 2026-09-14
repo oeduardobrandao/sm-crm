@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../components/PageHeader';
 import { Link, useParams } from 'react-router-dom';
 import { ChevronRight, FileText } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { fetchPages } from '../api';
 
@@ -9,6 +10,7 @@ export function PaginasPage() {
   const { token } = useHub();
   const { workspace } = useParams<{ workspace: string }>();
   const base = `/${workspace}/hub/${token}`;
+  const { t } = useTranslation('hubPages');
 
   const { data, isLoading } = useQuery({
     queryKey: ['hub-pages', token],
@@ -20,15 +22,20 @@ export function PaginasPage() {
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <PageHeader
-        title="Páginas"
-        description="Documentos e materiais compartilhados pela agência."
+        title={t('paginasPage.title', 'Páginas')}
+        description={t(
+          'paginasPage.description',
+          'Documentos e materiais compartilhados pela agência.',
+        )}
       />
       {isLoading ? (
         <div className="flex justify-center py-20">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
       ) : pages.length === 0 ? (
-        <p className="hub-tx2 text-sm">Nenhuma página foi criada ainda.</p>
+        <p className="hub-tx2 text-sm">
+          {t('paginasPage.empty', 'Nenhuma página foi criada ainda.')}
+        </p>
       ) : (
         <div className="space-y-2.5">
           {pages.map((p) => (

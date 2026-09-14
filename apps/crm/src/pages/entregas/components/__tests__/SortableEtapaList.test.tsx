@@ -6,6 +6,8 @@ import {
   SortableEtapaList,
   defaultEtapa,
   findEmptyEtapa,
+  findInvalidPrazoEtapa,
+  MAX_PRAZO_DIAS,
   type EtapaFormData,
 } from '../SortableEtapaList';
 
@@ -107,6 +109,18 @@ describe('SortableEtapaList', () => {
     );
     expect(screen.getByText(/não existe mais/i)).toBeTruthy();
   });
+
+  it('clamps prazo (dias) to MAX_PRAZO_DIAS so it cannot outrun apply_post_process/update_post_process_step', () => {
+    render(
+      <MemoryRouter>
+        <Harness initial={[defaultEtapa({ nome: 'Design' })]} />
+      </MemoryRouter>,
+    );
+    const prazoInput = screen.getByLabelText('Prazo em dias') as HTMLInputElement;
+    expect(prazoInput.max).toBe(String(MAX_PRAZO_DIAS));
+    fireEvent.change(prazoInput, { target: { value: '5000' } });
+    expect(prazoInput.value).toBe(String(MAX_PRAZO_DIAS));
+  });
 });
 
 describe('findEmptyEtapa', () => {
@@ -128,5 +142,29 @@ describe('findEmptyEtapa', () => {
     const first = defaultEtapa();
     const second = defaultEtapa();
     expect(findEmptyEtapa([first, second])).toBe(first);
+  });
+});
+
+describe('findInvalidPrazoEtapa', () => {
+  it('returns undefined when every named row is within MAX_PRAZO_DIAS', () => {
+    expect(
+      findInvalidPrazoEtapa([
+        defaultEtapa({ nome: 'Copy', prazo: 2 }),
+        defaultEtapa({ nome: 'Design', prazo: MAX_PRAZO_DIAS }),
+      ]),
+    ).toBeUndefined();
+  });
+
+  it('flags a named row whose prazo exceeds MAX_PRAZO_DIAS', () => {
+    // e.g. a template loaded via handleEdit from a row saved before this bound existed,
+    // since the input's own clamp only guards new onChange events, not loaded state.
+    const stale = defaultEtapa({ nome: 'Design', prazo: MAX_PRAZO_DIAS + 1 });
+    expect(findInvalidPrazoEtapa([defaultEtapa({ nome: 'Copy', prazo: 2 }), stale])).toBe(stale);
+  });
+
+  it('ignores an over-limit prazo on an unnamed row', () => {
+    expect(findInvalidPrazoEtapa([defaultEtapa({ nome: '', prazo: MAX_PRAZO_DIAS + 1 })])).toBe(
+      undefined,
+    );
   });
 });

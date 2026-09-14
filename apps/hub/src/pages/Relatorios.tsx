@@ -2,14 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../components/PageHeader';
 import { useNavigate, useParams } from 'react-router-dom';
 import { FileText, Download, ExternalLink } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { fetchReportList, fetchReportPdfUrl, type HubReportListItem } from '../api';
 
-function formatMonth(month: string): string {
+function formatMonth(month: string, lang: string = 'pt-BR'): string {
   // month is in format "YYYY-MM"
   const [year, mm] = month.split('-');
   const date = new Date(parseInt(year, 10), parseInt(mm, 10) - 1, 1);
-  const label = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const label = date.toLocaleDateString(lang, { month: 'long', year: 'numeric' });
   // Capitalize first letter
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
@@ -19,6 +20,8 @@ type DocReport = Extract<HubReportListItem, { kind: 'doc' }>;
 
 function DocCard({ doc, base }: { doc: DocReport; base: string }) {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation('hubReports');
+  const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 
   return (
     <div className="hub-card flex flex-col gap-4 p-5 sm:p-6">
@@ -28,7 +31,7 @@ function DocCard({ doc, base }: { doc: DocReport; base: string }) {
         </span>
         <div className="flex-1 min-w-0">
           <p className="font-medium hub-txt text-[15px] leading-tight">{doc.title}</p>
-          <p className="text-[11px] hub-tx3 mt-0.5">{formatMonth(doc.month)}</p>
+          <p className="text-[11px] hub-tx3 mt-0.5">{formatMonth(doc.month, dateLocale)}</p>
         </div>
       </div>
 
@@ -39,7 +42,7 @@ function DocCard({ doc, base }: { doc: DocReport; base: string }) {
           className="flex items-center gap-1.5 text-[12px] font-medium hub-tx2 hub-action-pill transition-colors px-3 py-1.5 rounded-lg"
         >
           <ExternalLink size={13} strokeWidth={2} />
-          Abrir
+          {t('actions.open', 'Abrir')}
         </button>
       </div>
     </div>
@@ -49,6 +52,8 @@ function DocCard({ doc, base }: { doc: DocReport; base: string }) {
 function ReportCard({ report, base }: { report: LegacyReport; base: string }) {
   const navigate = useNavigate();
   const { token } = useHub();
+  const { t, i18n } = useTranslation('hubReports');
+  const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 
   async function handleDownloadPdf(e: React.MouseEvent) {
     e.stopPropagation();
@@ -77,12 +82,12 @@ function ReportCard({ report, base }: { report: LegacyReport; base: string }) {
         </span>
         <div className="flex-1 min-w-0">
           <p className="font-medium hub-txt text-[15px] leading-tight">
-            {formatMonth(report.month)}
+            {formatMonth(report.month, dateLocale)}
           </p>
           {report.generated_at && (
             <p className="text-[11px] hub-tx3 mt-0.5">
-              Gerado em{' '}
-              {new Date(report.generated_at).toLocaleDateString('pt-BR', {
+              {t('generatedAt', 'Gerado em')}{' '}
+              {new Date(report.generated_at).toLocaleDateString(dateLocale, {
                 day: '2-digit',
                 month: '2-digit',
                 year: 'numeric',
@@ -92,7 +97,7 @@ function ReportCard({ report, base }: { report: LegacyReport; base: string }) {
         </div>
         {isReady && (
           <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 flex-shrink-0">
-            Pronto
+            {t('status.ready', 'Pronto')}
           </span>
         )}
       </div>
@@ -106,7 +111,7 @@ function ReportCard({ report, base }: { report: LegacyReport; base: string }) {
               className="flex items-center gap-1.5 text-[12px] font-medium hub-tx2 hub-action-pill transition-colors px-3 py-1.5 rounded-lg"
             >
               <ExternalLink size={13} strokeWidth={2} />
-              Ver online
+              {t('actions.viewOnline', 'Ver online')}
             </button>
           )}
           {report.has_pdf && (
@@ -116,13 +121,15 @@ function ReportCard({ report, base }: { report: LegacyReport; base: string }) {
               className="flex items-center gap-1.5 text-[12px] font-medium hub-tx2 hub-action-pill transition-colors px-3 py-1.5 rounded-lg"
             >
               <Download size={13} strokeWidth={2} />
-              Baixar PDF
+              {t('actions.downloadPdf', 'Baixar PDF')}
             </button>
           )}
         </div>
       )}
 
-      {!isReady && <p className="text-[12px] hub-tx3">Em preparação...</p>}
+      {!isReady && (
+        <p className="text-[12px] hub-tx3">{t('status.preparing', 'Em preparação...')}</p>
+      )}
     </div>
   );
 }
@@ -131,6 +138,7 @@ export function RelatoriosPage() {
   const { token } = useHub();
   const { workspace } = useParams<{ workspace: string; token: string }>();
   const base = `/${workspace}/hub/${token}`;
+  const { t } = useTranslation('hubReports');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-report-list', token],
@@ -141,16 +149,23 @@ export function RelatoriosPage() {
 
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
-      <PageHeader title="Relatórios" description="Resultados e análises de desempenho." />
+      <PageHeader
+        title={t('title', 'Relatórios')}
+        description={t('description', 'Resultados e análises de desempenho.')}
+      />
 
       {isLoading ? (
         <div className="flex justify-center py-20">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
       ) : isError ? (
-        <div className="py-20 text-center text-sm hub-tx2">Erro ao carregar relatórios.</div>
+        <div className="py-20 text-center text-sm hub-tx2">
+          {t('errors.loadList', 'Erro ao carregar relatórios.')}
+        </div>
       ) : items.length === 0 ? (
-        <p className="text-sm hub-tx2">Nenhum relatório disponível ainda.</p>
+        <p className="text-sm hub-tx2">
+          {t('empty.noReports', 'Nenhum relatório disponível ainda.')}
+        </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((item) =>

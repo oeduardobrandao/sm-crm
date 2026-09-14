@@ -41,6 +41,7 @@ import {
 } from '@/pages/entregas/components/WorkflowModals';
 import type { BoardCard } from '@/pages/entregas/hooks/useEntregasData';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '@/pages/entregas/advanceEtapa';
+import { decideApprovalAdvance } from '@/pages/entregas/approvalAdvance';
 import { getWorkflowCovers } from '@/services/postMedia';
 import {
   AlertDialog,
@@ -102,7 +103,10 @@ export default function EntregasTab() {
   const [editCardModal, setEditCardModal] = useState<BoardCard | null>(null);
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<BoardCard | null>(null);
-  const [approvalChoiceCard, setApprovalChoiceCard] = useState<BoardCard | null>(null);
+  const [approvalChoice, setApprovalChoice] = useState<{
+    card: BoardCard;
+    willRearm: boolean;
+  } | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
 
   const { data: clienteWorkflowsRaw } = useQuery({
@@ -411,15 +415,18 @@ export default function EntregasTab() {
     setForwardTarget(null);
     if (!card) return;
 
-    const total = postsCounts.get(card.workflow.id!) ?? 0;
-    // "Cleared" (approved / scheduled / posted / publish-failed), not just
-    // aprovado_cliente — a workflow whose approved posts are already scheduled
-    // should advance without prompting the approval dialog.
-    const cleared = clearedClienteCounts.get(card.workflow.id!) ?? 0;
-    const allCleared = total > 0 && cleared === total;
+    const decision = decideApprovalAdvance({
+      tipo: card.etapa.tipo,
+      // "Cleared" (approved / scheduled / posted / publish-failed), not just
+      // aprovado_cliente — a workflow whose approved posts are already scheduled
+      // should advance without prompting the approval dialog.
+      total: postsCounts.get(card.workflow.id!) ?? 0,
+      cleared: clearedClienteCounts.get(card.workflow.id!) ?? 0,
+      temAprovacaoAdiante: hasLaterApprovalEtapa(card.allEtapas, card.etapa.id!),
+    });
 
-    if (card.etapa.tipo === 'aprovacao_cliente' && !allCleared) {
-      setApprovalChoiceCard(card);
+    if (decision.kind === 'choose') {
+      setApprovalChoice({ card, willRearm: decision.willRearm });
       return;
     }
 
@@ -438,8 +445,8 @@ export default function EntregasTab() {
   };
 
   const handleApproveInternally = async () => {
-    const card = approvalChoiceCard;
-    setApprovalChoiceCard(null);
+    const card = approvalChoice?.card;
+    setApprovalChoice(null);
     if (!card) return;
     try {
       await approvePostsInternally(card.workflow.id!);
@@ -457,8 +464,8 @@ export default function EntregasTab() {
   };
 
   const handleSendToPortal = async () => {
-    const card = approvalChoiceCard;
-    setApprovalChoiceCard(null);
+    const card = approvalChoice?.card;
+    setApprovalChoice(null);
     if (!card) return;
     try {
       await sendPostsToCliente(card.workflow.id!);
@@ -470,8 +477,8 @@ export default function EntregasTab() {
   };
 
   const handleAdvanceWithoutApproval = async () => {
-    const card = approvalChoiceCard;
-    setApprovalChoiceCard(null);
+    const card = approvalChoice?.card;
+    setApprovalChoice(null);
     if (!card) return;
     try {
       // Literal contract of this option: post statuses are left alone, so no re-arm.
@@ -693,7 +700,7 @@ export default function EntregasTab() {
 
       <ForwardConfirmDialog
         open={!!forwardTarget}
-        workflowTitle={forwardTarget?.workflow.titulo ?? ''}
+        entityTitle={forwardTarget?.workflow.titulo ?? ''}
         nextEtapaName={
           forwardTarget
             ? (forwardTarget.allEtapas.find((e) => e.ordem === forwardTarget.etapaIdx + 1)?.nome ??
@@ -705,22 +712,18 @@ export default function EntregasTab() {
       />
       <RevertConfirmDialog
         open={!!revertTarget}
-        workflowTitle={revertTarget?.workflow.titulo ?? ''}
+        entityTitle={revertTarget?.workflow.titulo ?? ''}
         onConfirm={handleRevertConfirm}
         onCancel={() => setRevertTarget(null)}
       />
       <ClientApprovalChoiceDialog
-        open={!!approvalChoiceCard}
-        workflowTitle={approvalChoiceCard?.workflow.titulo ?? ''}
-        willRearm={
-          approvalChoiceCard
-            ? hasLaterApprovalEtapa(approvalChoiceCard.allEtapas, approvalChoiceCard.etapa.id!)
-            : false
-        }
+        open={!!approvalChoice}
+        entityTitle={approvalChoice?.card.workflow.titulo ?? ''}
+        willRearm={approvalChoice?.willRearm ?? false}
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
         onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
-        onCancel={() => setApprovalChoiceCard(null)}
+        onCancel={() => setApprovalChoice(null)}
       />
     </>
   );

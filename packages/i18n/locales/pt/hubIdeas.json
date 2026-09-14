@@ -1,0 +1,114 @@
+{
+  "page": {
+    "title": "Compartilhe suas ideias",
+    "description": "Envie ideias e solicitações e a agência responderá em breve.",
+    "newIdea": "Nova ideia"
+  },
+  "loadError": {
+    "title": "Erro ao carregar ideias",
+    "retry": "Tentar novamente"
+  },
+  "empty": {
+    "title": "Nenhuma ideia ainda",
+    "description": "Clique em \"Nova ideia\" para enviar sua primeira sugestão ou solicitação.",
+    "addIdea": "Adicionar ideia"
+  },
+  "status": {
+    "nova": "Nova",
+    "em_analise": "Em análise",
+    "aprovada": "Aprovada",
+    "descartada": "Descartada",
+    "convertida": "Em andamento",
+    "concluida": "Concluída"
+  },
+  "tipoLabel": {
+    "ideia": "Ideia",
+    "solicitacao": "Solicitação"
+  },
+  "card": {
+    "agencyResponse": "Resposta da agência",
+    "agencySuggestion": "Sugestão da agência",
+    "edit": "Editar",
+    "delete": "Excluir"
+  },
+  "audio": {
+    "label": "Áudio",
+    "status": {
+      "pending": "Transcrição pendente",
+      "done": "Transcrito",
+      "failed": "Falha na transcrição"
+    },
+    "transcript": "Transcrição",
+    "playerLabel": "Áudio da ideia",
+    "previewLabel": "Prévia",
+    "retry": "Tentar novamente",
+    "recordAgain": "Gravar novamente",
+    "remove": "Remover áudio",
+    "recorderHint": "Até 5:00.",
+    "useThisRecording": "Usar este áudio",
+    "transcriptAppearsHint": "A transcrição aparece na ideia logo depois de enviar.",
+    "uploadError": "O envio do áudio falhou. Tente de novo.",
+    "retryError": "Não foi possível transcrever agora.",
+    "removeError": "Não foi possível remover o áudio.",
+    "createUploadError": "Ideia enviada, mas o áudio falhou. Tente de novo no card."
+  },
+  "recorder": {
+    "record": "Gravar áudio",
+    "uploading": "Enviando áudio…",
+    "transcribing": "Transcrevendo…",
+    "maxDuration": "Até {{duration}} por resposta.",
+    "stop": "Parar",
+    "stopAria": "Parar gravação",
+    "remainingWarning": "Restam {{remaining}}. A gravação para sozinha no limite.",
+    "progressAria": "Tempo de gravação",
+    "previewLabel": "Prévia",
+    "sending": "Enviando…",
+    "send": "Enviar",
+    "discard": "Descartar",
+    "micPermissionDenied": "Permita o acesso ao microfone no navegador para gravar.",
+    "micUnavailable": "Não foi possível acessar o microfone."
+  },
+  "images": {
+    "addImage": "Adicionar imagem",
+    "removeImage": "Remover imagem",
+    "uploadError": "Erro ao enviar imagem.",
+    "removeError": "Erro ao remover imagem.",
+    "unsupportedType": "Tipo de arquivo não suportado: {{type}}",
+    "tooLarge": "Imagem maior que 25 MB",
+    "uploadFailed": "Upload falhou: {{status}}",
+    "networkError": "Erro de rede no upload"
+  },
+  "tipo": {
+    "ideia": {
+      "novo": "Nova ideia",
+      "editar": "Editar ideia",
+      "tituloPh": "Ex: Reel mostrando os bastidores...",
+      "descricaoPh": "Descreva sua ideia com detalhes..."
+    },
+    "solicitacao": {
+      "novo": "Nova solicitação",
+      "editar": "Editar solicitação",
+      "tituloPh": "Ex: Atualizar a foto de capa do perfil...",
+      "descricaoPh": "Descreva o que você precisa e, se houver, o prazo. Ex: trocar a bio do Instagram até sexta..."
+    }
+  },
+  "modal": {
+    "tipoLabel": "Tipo",
+    "tipoHint": "Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.",
+    "tituloLabel": "Título",
+    "descricaoLabel": "Descrição",
+    "linksLabel": "Links de referência",
+    "optional": "(opcional)",
+    "linkPlaceholder": "https://...",
+    "addLink": "+ Adicionar outro link",
+    "imagesLabel": "Imagens",
+    "upToTen": "(até 10)",
+    "saveChanges": "Salvar alterações",
+    "concluir": "Concluir",
+    "tituloRequired": "Título obrigatório",
+    "descricaoRequired": "Descrição obrigatória",
+    "saveError": "Erro ao salvar.",
+    "imageUploadFailedOne": "1 imagem não foi enviada. Salve novamente para tentar de novo.",
+    "imageUploadFailedMany": "{{count}} imagens não foram enviadas. Salve novamente para tentar de novo."
+  }
+}

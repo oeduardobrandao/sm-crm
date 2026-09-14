@@ -308,4 +308,14 @@ describe('ChartView', () => {
     expect(screen.queryAllByTestId('bar-chart')).toHaveLength(0);
     expect(screen.queryByRole('button')).toBeNull();
   });
+
+  it('mostra a nota "Somente fluxos" também no vazio de zero cards', () => {
+    const onGoToKanban = vi.fn();
+    renderView({ cards: [], postProcessesEnabled: true, onGoToKanban });
+
+    expect(screen.getByText('Nenhuma entrega encontrada. Ajuste os filtros.')).toBeInTheDocument();
+    expect(screen.getByText(/Somente fluxos/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'quadro' }));
+    expect(onGoToKanban).toHaveBeenCalled();
+  });
 });

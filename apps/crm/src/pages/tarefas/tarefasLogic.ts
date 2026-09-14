@@ -94,6 +94,116 @@ export function groupByDueBucket(
   return buckets;
 }
 
+// ---- Board view (date-bucket kanban) -----------------------------------------
+
+export interface BoardBucket {
+  /** Stable key: 'atrasado' | 'hoje' | 'amanha' | `dia:YYYY-MM-DD` | 'depois' | 'semData'. */
+  key: string;
+  label: string;
+  /** Exact date this bucket maps to when a card is dropped on it. Null for
+   * 'atrasado'/'depois' (no single unambiguous date), and also null for
+   * 'semData' -- there it means "clear the due date" on drop. */
+  date: string | null;
+  droppable: boolean;
+  tarefas: TarefaWithRelations[];
+}
+
+const WEEKDAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+/**
+ * Buckets tasks for the Tarefas "Board" view: Em atraso, Hoje, Amanhã, one
+ * column per remaining weekday through the end of the current week, Mais
+ * tarde, and Sem data. Unlike `groupByDueBucket` (coarser, Lista-view-only,
+ * and drops ALL completed tasks), a completed task WITH a due date still
+ * appears in its date's bucket -- same as the month grid -- so the Mês/Board
+ * toggle shows a consistent set of tasks either way. Only a completed task
+ * with NO due date is dropped.
+ */
+export function groupByBoardColumn(tarefas: TarefaWithRelations[], now: Date): BoardBucket[] {
+  const today = startOfLocalDay(now);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const weekEnd = endOfCurrentWeek(now);
+
+  const atrasado: TarefaWithRelations[] = [];
+  const hoje: TarefaWithRelations[] = [];
+  const amanha: TarefaWithRelations[] = [];
+  const depois: TarefaWithRelations[] = [];
+  const semData: TarefaWithRelations[] = [];
+  const porDia = new Map<string, TarefaWithRelations[]>();
+
+  for (const t of tarefas) {
+    if (!t.data_limite) {
+      if (t.status !== 'concluida') semData.push(t);
+      continue;
+    }
+    const due = parseDateOnly(t.data_limite);
+    if (due < today) atrasado.push(t);
+    else if (isSameLocalDay(due, today)) hoje.push(t);
+    else if (isSameLocalDay(due, tomorrow)) amanha.push(t);
+    else if (due <= weekEnd) {
+      const list = porDia.get(t.data_limite) ?? [];
+      list.push(t);
+      porDia.set(t.data_limite, list);
+    } else depois.push(t);
+  }
+
+  const buckets: BoardBucket[] = [
+    {
+      key: 'atrasado',
+      label: 'Em atraso',
+      date: null,
+      droppable: false,
+      tarefas: atrasado.sort(sortTarefas),
+    },
+    {
+      key: 'hoje',
+      label: 'Hoje',
+      date: toDateOnlyString(today),
+      droppable: true,
+      tarefas: hoje.sort(sortTarefas),
+    },
+    {
+      key: 'amanha',
+      label: 'Amanhã',
+      date: toDateOnlyString(tomorrow),
+      droppable: true,
+      tarefas: amanha.sort(sortTarefas),
+    },
+  ];
+
+  const cursor = new Date(tomorrow);
+  cursor.setDate(cursor.getDate() + 1);
+  while (cursor <= weekEnd) {
+    const dateStr = toDateOnlyString(cursor);
+    buckets.push({
+      key: `dia:${dateStr}`,
+      label: WEEKDAY_LABELS[cursor.getDay()],
+      date: dateStr,
+      droppable: true,
+      tarefas: (porDia.get(dateStr) ?? []).sort(sortTarefas),
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  buckets.push({
+    key: 'depois',
+    label: 'Mais tarde',
+    date: null,
+    droppable: false,
+    tarefas: depois.sort(sortTarefas),
+  });
+  buckets.push({
+    key: 'semData',
+    label: 'Sem data',
+    date: null,
+    droppable: true,
+    tarefas: semData.sort(sortTarefas),
+  });
+
+  return buckets;
+}
+
 // ---- Header stats ------------------------------------------------------------
 
 export interface TarefasHeaderStats {

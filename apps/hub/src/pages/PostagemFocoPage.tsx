@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
@@ -11,6 +12,7 @@ import { TextPostCard } from '../components/TextPostCard';
 import { SharePostButton } from '../components/SharePostButton';
 
 export function PostagemFocoPage() {
+  const { t } = useTranslation('hubPosts');
   const { token, workspace, bootstrap } = useHub();
   const { postId } = useParams<{ postId: string }>();
   const base = `/${workspace}/hub/${token}`;
@@ -27,8 +29,8 @@ export function PostagemFocoPage() {
       to={`${base}/postagens`}
       className="hub-back-link inline-flex items-center gap-1.5 text-[13px] hub-tx3 group transition-colors"
     >
-      <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" /> Ver
-      todas as postagens
+      <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />{' '}
+      {t('postagemFoco.backLink', 'Ver todas as postagens')}
     </Link>
   );
 
@@ -42,12 +44,14 @@ export function PostagemFocoPage() {
   if (isError)
     return (
       <div className="max-w-3xl mx-auto py-16 text-center">
-        <p className="text-sm hub-tx2 mb-4">Não foi possível carregar esta postagem.</p>
+        <p className="text-sm hub-tx2 mb-4">
+          {t('postagemFoco.loadError', 'Não foi possível carregar esta postagem.')}
+        </p>
         <button
           onClick={() => refetch()}
           className="text-[13px] font-medium hub-txt underline decoration-[var(--hub-txt)] decoration-2 underline-offset-4"
         >
-          Tentar novamente
+          {t('postagemFoco.retry', 'Tentar novamente')}
         </button>
       </div>
     );
@@ -58,7 +62,9 @@ export function PostagemFocoPage() {
     return (
       <div className="max-w-3xl mx-auto hub-fade-up">
         {backLink}
-        <div className="py-8 hub-tx2">Esta postagem não está disponível.</div>
+        <div className="py-8 hub-tx2">
+          {t('postagemFoco.notAvailable', 'Esta postagem não está disponível.')}
+        </div>
       </div>
     );
 
@@ -81,7 +87,7 @@ export function PostagemFocoPage() {
             instagramProfile={data?.instagramProfile ?? null}
             workspaceName={bootstrap.workspace.name}
             onApprovalSubmitted={onApprovalSubmitted}
-            autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id)}
+            autoPublishOnApproval={isAutoPublishActive(data, post.workflow_id, post.id)}
           />
         )}
         {kind === 'story' && (

@@ -1,0 +1,98 @@
+{
+  "home": {
+    "greeting": "Hello,",
+    "kpi": {
+      "postsThisMonth": {
+        "label": "Posts this month",
+        "hint": "Feed, Reels, Stories"
+      },
+      "pendingApprovals": {
+        "label": "Pending approvals",
+        "hintCount": "{{count}} to review",
+        "hintZero": "All caught up"
+      },
+      "approvalRate": {
+        "label": "Approval rate",
+        "hint": "Approved vs. revision"
+      },
+      "nextPost": {
+        "label": "Next post",
+        "hintEmpty": "Nothing scheduled"
+      }
+    },
+    "pendingBanner": {
+      "singular": "You have 1 post awaiting approval",
+      "plural": "You have {{count}} posts awaiting approval"
+    },
+    "calendarSection": {
+      "title": "Calendar",
+      "subtitle": "Upcoming posts"
+    },
+    "resources": {
+      "title": "Resources",
+      "subtitle": "Quick access",
+      "marca": "Brand",
+      "paginas": "Pages",
+      "briefing": "Briefing",
+      "ideias": "Ideas"
+    }
+  },
+  "calendar": {
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "title": "Posts",
+    "selectedDateLabel": "{{month}} {{day}}, {{year}}",
+    "monthYearLabel": "{{month}} {{year}}",
+    "noPostsThisDay": "No posts on this day.",
+    "selectADay": "Select a day.",
+    "tipoLabel": {
+      "feed": "Feed",
+      "reels": "Reels",
+      "stories": "Stories",
+      "carrossel": "Carousel"
+    },
+    "statusLabel": {
+      "rascunho": "Draft",
+      "revisao_interna": "Internal review",
+      "aprovado_interno": "Internally approved",
+      "enviado_cliente": "Awaiting approval",
+      "aprovado_cliente": "Approved",
+      "correcao_cliente": "Revision requested",
+      "agendado": "Scheduled",
+      "publicado": "Published"
+    }
+  },
+  "dashboard": {
+    "connectInstagram": "Connect Instagram to see performance metrics.",
+    "title": "Performance",
+    "topPostsTitle": "Top Posts"
+  },
+  "reachChart": {
+    "title": "Reach",
+    "totalLabel": "total in period",
+    "tooltip": {
+      "reach": "Reach: {{value}}",
+      "impressions": "Impressions: {{value}}"
+    },
+    "noData": "No reach data available."
+  },
+  "followerChart": {
+    "title": "Followers",
+    "tooltip": "{{value}} followers",
+    "noData": "No follower data available."
+  },
+  "topPosts": {
+    "noPosts": "No posts in the selected period.",
+    "goToPost": "Go to post {{index}}",
+    "tipoLabel": {
+      "CAROUSEL_ALBUM": "Carousel",
+      "VIDEO": "Reels",
+      "IMAGE": "Image"
+    },
+    "stats": {
+      "views": "Views",
+      "engagement": "Engagement",
+      "saved": "Saved"
+    }
+  }
+}
