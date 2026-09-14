@@ -614,6 +614,14 @@ export default function WorkspaceDetailPage() {
       <Card className="mb-6 min-w-0">
         <CardHeader>
           <CardTitle>Notas</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => saveOverridesMutation.mutate()}
+            disabled={saveOverridesMutation.isPending}
+          >
+            {saveOverridesMutation.isPending ? 'Salvando…' : 'Salvar'}
+          </Button>
         </CardHeader>
         <CardContent>
           <Textarea
