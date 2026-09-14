@@ -270,7 +270,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_tiktok: 'TikTok',
   feature_mensagens: 'Mensagens',
   feature_instagram_automation: 'Automação do Instagram',
-  feature_briefing_audio: 'Briefing por áudio',
+  feature_briefing_audio: 'Gravação de áudio',
   feature_post_processes: 'Processos individuais (Entregas)',
 };
 

@@ -26,7 +26,47 @@
     "solicitacao": "Solicitação"
   },
   "card": {
-    "agencyResponse": "Resposta da agência"
+    "agencyResponse": "Resposta da agência",
+    "agencySuggestion": "Sugestão da agência",
+    "edit": "Editar",
+    "delete": "Excluir"
+  },
+  "audio": {
+    "label": "Áudio",
+    "status": {
+      "pending": "Transcrição pendente",
+      "done": "Transcrito",
+      "failed": "Falha na transcrição"
+    },
+    "transcript": "Transcrição",
+    "playerLabel": "Áudio da ideia",
+    "previewLabel": "Prévia",
+    "retry": "Tentar novamente",
+    "recordAgain": "Gravar novamente",
+    "remove": "Remover áudio",
+    "recorderHint": "Até {{duration}}.",
+    "useThisRecording": "Usar este áudio",
+    "transcriptAppearsHint": "A transcrição aparece na ideia logo depois de enviar.",
+    "uploadError": "O envio do áudio falhou. Tente de novo.",
+    "retryError": "Não foi possível transcrever agora.",
+    "removeError": "Não foi possível remover o áudio.",
+    "createUploadError": "Ideia enviada, mas o áudio falhou. Tente de novo no card."
+  },
+  "recorder": {
+    "record": "Gravar áudio",
+    "uploading": "Enviando áudio…",
+    "transcribing": "Transcrevendo…",
+    "maxDuration": "Até {{duration}} por resposta.",
+    "stop": "Parar",
+    "stopAria": "Parar gravação",
+    "remainingWarning": "Restam {{remaining}}. A gravação para sozinha no limite.",
+    "progressAria": "Tempo de gravação",
+    "previewLabel": "Prévia",
+    "sending": "Enviando…",
+    "send": "Enviar",
+    "discard": "Descartar",
+    "micPermissionDenied": "Permita o acesso ao microfone no navegador para gravar.",
+    "micUnavailable": "Não foi possível acessar o microfone."
   },
   "images": {
     "addImage": "Adicionar imagem",

@@ -9,7 +9,7 @@ export interface Env {
 }
 
 const MODEL = '@cf/openai/whisper-large-v3-turbo';
-const KEY_PREFIX = 'briefing-audio/';
+const KEY_PREFIXES = ['briefing-audio/', 'ideia-audio/'];
 const MAX_BYTES = 15 * 1024 * 1024;
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -48,7 +48,9 @@ export async function handleTranscribe(request: Request, env: Env): Promise<Resp
   } catch {
     return json({ error: 'invalid json' }, 400);
   }
-  if (!key.startsWith(KEY_PREFIX) || key.includes('..')) return json({ error: 'invalid key' }, 400);
+  if (!KEY_PREFIXES.some((p) => key.startsWith(p)) || key.includes('..')) {
+    return json({ error: 'invalid key' }, 400);
+  }
 
   const object = await env.MEDIA_BUCKET.get(key);
   if (!object) return json({ error: 'not found' }, 404);

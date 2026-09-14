@@ -4,7 +4,9 @@ import type { DateRange } from 'react-day-picker';
 import { getIdeias, getClientes, type Ideia } from '@/store';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
 import { IdeiaTipoBadge } from '@/components/ideias/IdeiaTipoBadge';
+import { IdeiaOrigemBadge } from '@/components/ideias/IdeiaOrigemBadge';
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
+import { NovaIdeiaDialog } from '@/components/ideias/NovaIdeiaDialog';
 import {
   Select,
   SelectContent,
@@ -19,7 +21,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown, Info, Lightbulb, Search } from 'lucide-react';
+import { ChevronDown, Info, Lightbulb, Plus, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
@@ -31,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Spinner } from '@/components/ui/spinner';
+import { useAuth } from '@/context/AuthContext';
 
 const ALL_STATUSES = [
   'nova',
@@ -62,6 +65,8 @@ function endOfDayIso(d: Date): string {
 }
 
 export default function IdeiasPage() {
+  const { can } = useAuth();
+  const canEdit = can('ideias', 'editar') === true;
   const queryKey = ['hub-ideias-all'];
   const { data: ideias = [], isLoading } = useQuery({
     queryKey,
@@ -73,6 +78,7 @@ export default function IdeiasPage() {
   });
 
   const [selectedIdeia, setSelectedIdeia] = useState<Ideia | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [clienteFilter, setClienteFilter] = useState<string>('all');
   const [tipoFilter, setTipoFilter] = useState<string>('all');
@@ -102,13 +108,19 @@ export default function IdeiasPage() {
         >
           <h1>Ideias</h1>
           <span
-            data-tooltip="Ideias enviadas pelos clientes no portal."
+            data-tooltip="Ideias enviadas pelos clientes no portal ou criadas pela equipe."
             data-tooltip-dir="right"
             style={{ display: 'flex' }}
           >
             <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
           </span>
         </div>
+        {canEdit && (
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus size={15} className="mr-1.5" />
+            Nova ideia
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -219,6 +231,7 @@ export default function IdeiasPage() {
               <TableRow>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Tipo</TableHead>
+                <TableHead>Origem</TableHead>
                 <TableHead>Título</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Reações</TableHead>
@@ -236,6 +249,12 @@ export default function IdeiasPage() {
                   <TableCell className="text-muted-foreground">{ideia.clientes.nome}</TableCell>
                   <TableCell>
                     <IdeiaTipoBadge tipo={ideia.tipo} />
+                  </TableCell>
+                  <TableCell>
+                    <IdeiaOrigemBadge
+                      origem={ideia.origem}
+                      hidden={ideia.origem === 'agencia' && !ideia.visivel_no_hub}
+                    />
                   </TableCell>
                   <TableCell className="font-medium max-w-[200px] truncate">
                     {ideia.titulo}
@@ -258,6 +277,16 @@ export default function IdeiasPage() {
           </Table>
         </div>
       )}
+
+      <NovaIdeiaDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(id) => {
+          setCreateOpen(false);
+          const fresh = ideias.find((i) => i.id === id);
+          if (fresh) setSelectedIdeia(fresh);
+        }}
+      />
 
       {selectedIdeia &&
         (() => {

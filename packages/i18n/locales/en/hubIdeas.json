@@ -26,7 +26,47 @@
     "solicitacao": "Request"
   },
   "card": {
-    "agencyResponse": "Agency response"
+    "agencyResponse": "Agency response",
+    "agencySuggestion": "Agency suggestion",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "audio": {
+    "label": "Audio",
+    "status": {
+      "pending": "Transcription pending",
+      "done": "Transcribed",
+      "failed": "Transcription failed"
+    },
+    "transcript": "Transcript",
+    "playerLabel": "Idea audio",
+    "previewLabel": "Preview",
+    "retry": "Try again",
+    "recordAgain": "Record again",
+    "remove": "Remove audio",
+    "recorderHint": "Up to {{duration}}.",
+    "useThisRecording": "Use this recording",
+    "transcriptAppearsHint": "The transcript appears on the idea right after sending.",
+    "uploadError": "The audio upload failed. Try again.",
+    "retryError": "Couldn't transcribe right now.",
+    "removeError": "Couldn't remove the audio.",
+    "createUploadError": "Idea sent, but the audio failed. Try again from the card."
+  },
+  "recorder": {
+    "record": "Record audio",
+    "uploading": "Uploading audio…",
+    "transcribing": "Transcribing…",
+    "maxDuration": "Up to {{duration}} per answer.",
+    "stop": "Stop",
+    "stopAria": "Stop recording",
+    "remainingWarning": "{{remaining}} left. Recording stops on its own at the limit.",
+    "progressAria": "Recording time",
+    "previewLabel": "Preview",
+    "sending": "Sending…",
+    "send": "Send",
+    "discard": "Discard",
+    "micPermissionDenied": "Allow microphone access in your browser to record.",
+    "micUnavailable": "Couldn't access the microphone."
   },
   "images": {
     "addImage": "Add image",

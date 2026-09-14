@@ -181,13 +181,14 @@ export interface HubRichTextBlock {
 
 export type HubContentBlock = HubLegacyBlock | HubRichTextBlock;
 
-export interface BriefingAudio {
+export interface HubAudio {
   url: string;
   mime: string;
   duration_seconds: number | null;
   transcription_status: 'pending' | 'done' | 'failed' | null;
   recorded_at: string | null;
 }
+export type BriefingAudio = HubAudio;
 
 export interface BriefingQuestion {
   id: string;
@@ -203,6 +204,12 @@ export interface BriefingAudioResponse {
   answer: string | null;
   transcript: string | null;
   audio: BriefingAudio | null;
+}
+
+export interface IdeiaAudioResponse {
+  ok: boolean;
+  transcript: string | null;
+  audio: HubAudio | null;
 }
 
 export interface Briefing {
@@ -245,6 +252,8 @@ export interface HubIdeia {
   updated_at: string;
   ideia_reactions: IdeiaReaction[];
   images: IdeiaImage[];
+  origem: 'cliente' | 'agencia';
+  audio: (HubAudio & { transcript: string | null }) | null;
 }
 
 export interface InstagramProfile {

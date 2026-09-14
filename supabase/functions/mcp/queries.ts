@@ -759,7 +759,7 @@ export async function listIdeas(
 ): Promise<any[]> {
   let q = d.db
     .from("ideias")
-    .select("id, cliente_id, titulo, descricao, status, tipo, tarefa_id, links, created_at")
+    .select("id, cliente_id, titulo, descricao, status, tipo, tarefa_id, links, created_at, origem, visivel_no_hub, audio_transcript")
     .eq("workspace_id", d.ctx.conta_id);
   if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
   if (args.status) q = q.eq("status", args.status);

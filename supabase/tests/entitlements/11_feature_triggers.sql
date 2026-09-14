@@ -4,6 +4,11 @@ begin;
 do $$
 declare v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_blocked boolean := false;
 begin
+  -- Simulate the service role (as the Hub/an RPC would insert a cliente-origin
+  -- ideia). Since 20260922000001_ideias_agencia_audio.sql, the ideias guard
+  -- trigger reads this GUC and otherwise requires origem = 'agencia' on INSERT.
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
   -- free.feature_ideas = false. ideias NOT NULLs: workspace_id, cliente_id, titulo, descricao.
   v_ws := et_make_workspace('free');
   insert into clientes (user_id, conta_id, nome, sigla, cor)

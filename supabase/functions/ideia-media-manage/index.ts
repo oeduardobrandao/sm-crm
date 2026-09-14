@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { signPutUrl, signGetUrl, headObject } from "../_shared/r2.ts";
+import { signPutUrl, signGetUrl, headObjectSigned } from "../_shared/r2.ts";
+import { makeWorkerTranscriber } from "../_shared/ideia-audio.ts";
 import { createIdeiaMediaManageHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -12,5 +13,9 @@ Deno.serve(createIdeiaMediaManageHandler({
   createDb: () => createClient(SUPABASE_URL, SERVICE_ROLE_KEY),
   signPutUrl,
   signGetUrl,
-  headObject,
+  headObject: headObjectSigned,
+  transcribe: makeWorkerTranscriber({
+    url: Deno.env.get("TRANSCRIBE_WORKER_URL"),
+    secret: Deno.env.get("TRANSCRIBE_SECRET"),
+  }),
 }));

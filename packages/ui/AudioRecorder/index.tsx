@@ -1,17 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Mic } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
-import { MAX_AUDIO_SECONDS, pickRecorderMime } from '../services/briefingAudio';
-
-/** Hub tokens for the shared player (whitelabel-aware). */
-export const HUB_AUDIO_VARS = {
-  '--audio-btn-bg': 'var(--hub-primary)',
-  '--audio-btn-fg': 'var(--hub-primary-fg)',
-  '--audio-track': 'var(--hub-bd)',
-  '--audio-fill': 'var(--hub-txt)',
-} as CSSProperties;
+import { AudioPlayer } from '../AudioPlayer';
+import { MAX_AUDIO_SECONDS, pickRecorderMime } from '../audio/validation';
 
 export type RecorderPhase = 'idle' | 'uploading' | 'transcribing';
 
@@ -31,19 +22,96 @@ export function formatDuration(seconds: number): string {
 }
 
 const WARN_AT_SECONDS = 270;
-const BTN =
-  'inline-flex items-center gap-2 px-3.5 py-2 text-[13px] font-semibold rounded-[var(--hub-r-ctl)] disabled:opacity-50';
+
+/**
+ * CSS variables read (set by the host app, e.g. HUB_AUDIO_VARS / CRM_AUDIO_VARS):
+ * `--audio-btn-bg`, `--audio-btn-fg`, `--audio-btn2-bg`, `--audio-btn2-fg`,
+ * `--audio-btn2-bd`, `--audio-btn2-hover`, `--audio-track`, `--audio-fill`,
+ * `--audio-muted`, `--audio-radius`.
+ */
+const BTN_BASE: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '8px 14px',
+  fontSize: 13,
+  fontWeight: 600,
+  borderRadius: 'var(--audio-radius, 10px)',
+  border: '1px solid transparent',
+  cursor: 'pointer',
+};
+const BTN_PRIMARY: CSSProperties = {
+  ...BTN_BASE,
+  background: 'var(--audio-btn-bg, currentColor)',
+  color: 'var(--audio-btn-fg, #fff)',
+};
+const BTN_SECONDARY: CSSProperties = {
+  ...BTN_BASE,
+  background: 'var(--audio-btn2-bg, transparent)',
+  color: 'var(--audio-btn2-fg, currentColor)',
+  borderColor: 'var(--audio-btn2-bd, rgba(0,0,0,.2))',
+};
+const MUTED: CSSProperties = { color: 'var(--audio-muted, currentColor)', opacity: 0.8 };
+
+/**
+ * All caller-visible strings, so a host app can localize without this
+ * package depending on an i18n library. Every field defaults to the
+ * existing hardcoded Portuguese text -- an untranslated caller (CRM, or any
+ * `labels` field left out) sees byte-identical copy to before this existed.
+ */
+export interface AudioRecorderLabels {
+  record?: string;
+  uploading?: string;
+  transcribing?: string;
+  micPermissionDenied?: string;
+  micUnavailable?: string;
+  stop?: string;
+  stopAria?: string;
+  progressAria?: string;
+  remainingWarning?: (remaining: string) => string;
+  previewLabel?: string;
+  sending?: string;
+  discard?: string;
+}
+
+const DEFAULT_LABELS: Required<AudioRecorderLabels> = {
+  record: 'Gravar áudio',
+  uploading: 'Enviando áudio…',
+  transcribing: 'Transcrevendo…',
+  micPermissionDenied: 'Permita o acesso ao microfone no navegador para gravar.',
+  micUnavailable: 'Não foi possível acessar o microfone.',
+  stop: 'Parar',
+  stopAria: 'Parar gravação',
+  progressAria: 'Tempo de gravação',
+  remainingWarning: (remaining) => `Restam ${remaining}. A gravação para sozinha no limite.`,
+  previewLabel: 'Prévia',
+  sending: 'Enviando…',
+  discard: 'Descartar',
+};
 
 interface Props {
   phase: RecorderPhase;
   disabled?: boolean;
   onRecorded: (blob: Blob, mime: string, durationSeconds: number) => Promise<void>;
+  /** Label of the confirm button in the preview state. Default "Enviar". */
+  sendLabel?: string;
+  /** Helper text next to the record button. Default "Até 5:00 por resposta.". */
+  hint?: string;
+  /** Overrides for every other caller-visible string (see AudioRecorderLabels). */
+  labels?: AudioRecorderLabels;
 }
 
 type Mode = 'idle' | 'recording' | 'preview';
 
-export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
-  const { t } = useTranslation('hubBriefing');
+export function AudioRecorder({
+  phase,
+  disabled,
+  onRecorded,
+  sendLabel = 'Enviar',
+  hint,
+  labels,
+}: Props) {
+  const L = { ...DEFAULT_LABELS, ...labels };
   const [mode, setMode] = useState<Mode>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -109,11 +177,8 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
         const name = (e as { name?: string }).name;
         setError(
           name === 'NotAllowedError' || name === 'SecurityError'
-            ? t(
-                'recorder.micPermissionDenied',
-                'Permita o acesso ao microfone no navegador para gravar.',
-              )
-            : t('recorder.micUnavailable', 'Não foi possível acessar o microfone.'),
+            ? L.micPermissionDenied
+            : L.micUnavailable,
         );
         return;
       }
@@ -184,22 +249,17 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            className={`${BTN} hub-btn-secondary`}
+            style={BTN_SECONDARY}
+            className="hover:bg-[var(--audio-btn2-hover,rgba(0,0,0,.05))] transition-colors disabled:opacity-50"
             disabled={disabled || busy || starting}
             onClick={() => void start()}
           >
             <Mic size={16} />
-            {busy
-              ? phase === 'uploading'
-                ? t('recorder.uploading', 'Enviando áudio…')
-                : t('recorder.transcribing', 'Transcrevendo…')
-              : t('recorder.record', 'Gravar áudio')}
+            {busy ? (phase === 'uploading' ? L.uploading : L.transcribing) : L.record}
           </button>
           {!busy && (
-            <span className="text-xs hub-tx3">
-              {t('recorder.maxDuration', 'Até {{duration}} por resposta.', {
-                duration: formatDuration(MAX_AUDIO_SECONDS),
-              })}
+            <span className="text-xs" style={MUTED}>
+              {hint ?? `Até ${formatDuration(MAX_AUDIO_SECONDS)} por resposta.`}
             </span>
           )}
         </div>
@@ -212,40 +272,41 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
               className="inline-block h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse"
               aria-hidden
             />
-            <span className="text-[13px] tabular-nums hub-txt">
+            <span className="text-[13px] tabular-nums">
               {formatDuration(elapsed)} / {formatDuration(MAX_AUDIO_SECONDS)}
             </span>
             <button
               type="button"
-              className={`${BTN} hub-btn-primary`}
+              style={BTN_PRIMARY}
+              className="hover:opacity-90 transition-opacity disabled:opacity-50"
               onClick={stop}
-              aria-label={t('recorder.stopAria', 'Parar gravação')}
+              aria-label={L.stopAria}
             >
-              {t('recorder.stop', 'Parar')}
+              {L.stop}
             </button>
             {nearLimit && (
               <span className="text-xs text-amber-600">
-                {t(
-                  'recorder.remainingWarning',
-                  'Restam {{remaining}}. A gravação para sozinha no limite.',
-                  { remaining: formatDuration(MAX_AUDIO_SECONDS - elapsed) },
-                )}
+                {L.remainingWarning(formatDuration(MAX_AUDIO_SECONDS - elapsed))}
               </span>
             )}
           </div>
           <div
             role="progressbar"
-            aria-label={t('recorder.progressAria', 'Tempo de gravação')}
+            aria-label={L.progressAria}
             aria-valuemin={0}
             aria-valuemax={MAX_AUDIO_SECONDS}
             aria-valuenow={elapsed}
-            className="h-1 w-full max-w-[420px] overflow-hidden rounded-full bg-[var(--hub-bd)]"
+            className="h-1 w-full max-w-[420px] overflow-hidden rounded-full"
+            style={{ background: 'var(--audio-track, rgba(0,0,0,.1))' }}
           >
             <div
               className={`h-full rounded-full transition-[width] duration-200 ${
-                nearLimit ? 'bg-amber-500' : 'bg-[var(--hub-txt)]'
+                nearLimit ? 'bg-amber-500' : ''
               }`}
-              style={{ width: `${Math.min(100, (elapsed / MAX_AUDIO_SECONDS) * 100)}%` }}
+              style={{
+                width: `${Math.min(100, (elapsed / MAX_AUDIO_SECONDS) * 100)}%`,
+                background: nearLimit ? undefined : 'var(--audio-fill, currentColor)',
+              }}
             />
           </div>
         </div>
@@ -256,29 +317,30 @@ export function AudioRecorder({ phase, disabled, onRecorded }: Props) {
           <AudioPlayer
             src={previewUrl}
             durationSeconds={elapsed}
-            label={t('recorder.previewLabel', 'Prévia')}
-            className="hub-txt w-full max-w-[360px]"
-            style={HUB_AUDIO_VARS}
+            label={L.previewLabel}
+            className="w-full max-w-[360px]"
           />
           <button
             type="button"
-            className={`${BTN} hub-btn-primary`}
+            style={BTN_PRIMARY}
+            className="hover:opacity-90 transition-opacity disabled:opacity-50"
             disabled={disabled || busy || sending}
             onClick={() => void send()}
           >
             {sending || phase === 'uploading'
-              ? t('recorder.sending', 'Enviando…')
+              ? L.sending
               : phase === 'transcribing'
-                ? t('recorder.transcribing', 'Transcrevendo…')
-                : t('recorder.send', 'Enviar')}
+                ? L.transcribing
+                : sendLabel}
           </button>
           <button
             type="button"
-            className={`${BTN} hub-btn-secondary`}
+            style={BTN_SECONDARY}
+            className="hover:bg-[var(--audio-btn2-hover,rgba(0,0,0,.05))] transition-colors disabled:opacity-50"
             disabled={disabled || busy || sending}
             onClick={discard}
           >
-            {t('recorder.discard', 'Descartar')}
+            {L.discard}
           </button>
         </div>
       )}

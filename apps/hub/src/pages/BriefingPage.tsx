@@ -13,10 +13,12 @@ import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import {
   AudioRecorder,
-  HUB_AUDIO_VARS,
+  formatDuration,
   isRecordingSupported,
   type RecorderPhase,
-} from '../components/AudioRecorder';
+} from '@mesaas/ui/AudioRecorder';
+import { MAX_AUDIO_SECONDS } from '../services/briefingAudio';
+import { HUB_AUDIO_VARS } from '../lib/audioVars';
 import { PageHeader } from '../components/PageHeader';
 import { ScrollableTabs } from '../components/ScrollableTabs';
 import type { BriefingAudio, BriefingAudioResponse, BriefingQuestion } from '../types';
@@ -430,7 +432,41 @@ function QuestionItem({
       )}
 
       {audioEnabled && isRecordingSupported() && (
-        <AudioRecorder phase={phase} disabled={busyAction !== null} onRecorded={handleRecorded} />
+        <div style={HUB_AUDIO_VARS}>
+          <AudioRecorder
+            phase={phase}
+            disabled={busyAction !== null}
+            onRecorded={handleRecorded}
+            sendLabel={t('recorder.send', 'Enviar')}
+            hint={t('recorder.maxDuration', 'Até {{duration}} por resposta.', {
+              duration: formatDuration(MAX_AUDIO_SECONDS),
+            })}
+            labels={{
+              record: t('recorder.record', 'Gravar áudio'),
+              uploading: t('recorder.uploading', 'Enviando áudio…'),
+              transcribing: t('recorder.transcribing', 'Transcrevendo…'),
+              micPermissionDenied: t(
+                'recorder.micPermissionDenied',
+                'Permita o acesso ao microfone no navegador para gravar.',
+              ),
+              micUnavailable: t('recorder.micUnavailable', 'Não foi possível acessar o microfone.'),
+              stop: t('recorder.stop', 'Parar'),
+              stopAria: t('recorder.stopAria', 'Parar gravação'),
+              progressAria: t('recorder.progressAria', 'Tempo de gravação'),
+              remainingWarning: (remaining) =>
+                t(
+                  'recorder.remainingWarning',
+                  'Restam {{remaining}}. A gravação para sozinha no limite.',
+                  {
+                    remaining,
+                  },
+                ),
+              previewLabel: t('recorder.previewLabel', 'Prévia'),
+              sending: t('recorder.sending', 'Enviando…'),
+              discard: t('recorder.discard', 'Descartar'),
+            }}
+          />
+        </div>
       )}
       {audioError && <p className="text-xs text-red-500">{audioError}</p>}
     </div>

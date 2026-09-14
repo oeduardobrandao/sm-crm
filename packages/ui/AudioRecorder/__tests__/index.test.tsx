@@ -1,12 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('@mesaas/ui/AudioPlayer', () => ({
+vi.mock('../../AudioPlayer', () => ({
   AudioPlayer: ({ durationSeconds }: { durationSeconds?: number | null }) => (
     <div data-testid="audio-player">{`player ${durationSeconds ?? 0}s`}</div>
   ),
 }));
 
-import { AudioRecorder, formatDuration, isRecordingSupported } from '../AudioRecorder';
+import { AudioRecorder, formatDuration, isRecordingSupported } from '../index';
 
 class FakeMediaRecorder {
   static instances: FakeMediaRecorder[] = [];
@@ -287,5 +287,36 @@ describe('AudioRecorder', () => {
     (URL.createObjectURL as ReturnType<typeof vi.fn>).mockClear();
     rec.stop();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('uses the custom send label and hint', async () => {
+    render(
+      <AudioRecorder
+        phase="idle"
+        onRecorded={async () => {}}
+        sendLabel="Usar este áudio"
+        hint="Até 5:00."
+      />,
+    );
+    expect(screen.getByText('Até 5:00.')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /gravar áudio/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /parar/i }));
+    });
+    expect(screen.getByRole('button', { name: 'Usar este áudio' })).toBeInTheDocument();
+  });
+
+  it('renders no hub-* classes (themed through CSS variables only)', () => {
+    const { container } = render(<AudioRecorder phase="idle" onRecorded={async () => {}} />);
+    expect(container.querySelector('[class*="hub-"]')).toBeNull();
+  });
+
+  it('themes the idle record button through --audio-btn2-bg and keeps hover feedback', () => {
+    render(<AudioRecorder phase="idle" onRecorded={async () => {}} />);
+    const btn = screen.getByRole('button', { name: /gravar áudio/i });
+    expect(btn.style.background).toBe('var(--audio-btn2-bg, transparent)');
+    expect(btn.className).toContain('hover:bg-[var(--audio-btn2-hover');
   });
 });
