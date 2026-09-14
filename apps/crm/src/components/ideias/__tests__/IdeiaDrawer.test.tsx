@@ -16,6 +16,7 @@ const {
   mockUseAuth,
   updateVisMock,
   fetchAudioMock,
+  limitsState,
 } = vi.hoisted(() => ({
   convertSolicitacaoEmTarefaMock: vi.fn(),
   setTarefaTagsMock: vi.fn(),
@@ -26,6 +27,9 @@ const {
   mockUseAuth: vi.fn(() => ({ profile: { id: 'u1' }, can: () => true })),
   updateVisMock: vi.fn(),
   fetchAudioMock: vi.fn().mockResolvedValue({ audio: null, transcript: null }),
+  limitsState: {
+    features: { feature_briefing_audio: true } as { feature_briefing_audio: boolean },
+  },
 }));
 
 vi.mock('@/services/ideiaMedia', () => ({
@@ -52,7 +56,7 @@ vi.mock('@/hooks/useCurrentMembro', () => ({
   useCurrentMembro: () => ({ membro: { id: 9, nome: 'Eduardo' }, isLoading: false }),
 }));
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
-  useWorkspaceLimits: () => ({ features: { feature_briefing_audio: true }, isLoading: false }),
+  useWorkspaceLimits: () => ({ features: limitsState.features, isLoading: false }),
 }));
 vi.mock('@/services/ideiaAudio', () => ({
   fetchIdeiaAudio: fetchAudioMock,
@@ -401,6 +405,7 @@ describe('IdeiaDrawer — image add/remove gated on ideias:editar', () => {
 describe('IdeiaDrawer — origem, visibilidade e áudio', () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({ profile: { id: 'u1' }, can: () => true });
+    limitsState.features = { feature_briefing_audio: true };
   });
 
   it('shows origin badge, author line and the visibility switch only for agency ideias', async () => {
@@ -457,6 +462,21 @@ describe('IdeiaDrawer — origem, visibilidade e áudio', () => {
     expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remover áudio' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Gravar novamente' })).toBeInTheDocument();
+  });
+
+  it('keeps remove available (but hides recorder/retry) on an agency ideia when the plan lacks audio', async () => {
+    limitsState.features = { feature_briefing_audio: false };
+    renderDrawer(
+      makeIdeia({
+        origem: 'agencia',
+        audio_r2_key: 'ideia-audio/c/i/a.webm',
+        audio_transcription_status: 'failed',
+      }),
+    );
+    expect(await screen.findByRole('button', { name: 'Remover áudio' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tentar novamente' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Gravar novamente' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /fake-recorder/ })).toBeNull();
   });
 
   it('offers the recorder on an agency ideia without audio', async () => {

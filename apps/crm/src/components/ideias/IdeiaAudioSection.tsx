@@ -47,6 +47,10 @@ export function IdeiaAudioSection({
   const audioAllowed = features?.feature_briefing_audio === true;
   const showRecorder = canWrite && audioAllowed && isRecordingSupported();
   const hasAudio = !!ideia.audio_r2_key;
+  // DELETE is deliberately plan-ungated server-side (an agency that downgrades
+  // off feature_briefing_audio must still be able to free the recording), so
+  // removal can't be tied to showRecorder/audioAllowed like retry/re-record are.
+  const canRemoveAudio = canWrite && hasAudio;
 
   const [phase, setPhase] = useState<RecorderPhase>('idle');
   const [busy, setBusy] = useState(false);
@@ -156,7 +160,9 @@ export function IdeiaAudioSection({
           )}
         </div>
       )}
-      {(showRecorder || (hasAudio && rawStatus === 'failed' && canWrite && audioAllowed)) && (
+      {(showRecorder ||
+        canRemoveAudio ||
+        (hasAudio && rawStatus === 'failed' && canWrite && audioAllowed)) && (
         <div className="flex flex-wrap gap-2 mt-2">
           {hasAudio && rawStatus === 'failed' && canWrite && audioAllowed && (
             <Button type="button" variant="outline" size="sm" onClick={retry} disabled={busy}>
@@ -179,7 +185,7 @@ export function IdeiaAudioSection({
               <Mic size={13} className="mr-1.5" /> Gravar novamente
             </Button>
           )}
-          {showRecorder && hasAudio && (
+          {canRemoveAudio && (
             <Button
               type="button"
               variant="ghost"
