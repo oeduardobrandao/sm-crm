@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
@@ -58,5 +59,26 @@ describe('TarefasPage', () => {
     expect(
       await screen.findByText('Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.'),
     ).toBeInTheDocument();
+  });
+
+  it('lets an empty workspace reach the Kanban and Calendário tabs instead of trapping it on the generic empty state', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.');
+
+    await user.click(screen.getByRole('button', { name: /Kanban/ }));
+    expect(
+      screen.queryByText('Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.'),
+    ).not.toBeInTheDocument();
+    // StatusKanbanView renders its fixed status columns even with zero tarefas.
+    expect(screen.getAllByText('Nenhuma tarefa').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: /Calendário/ }));
+    expect(
+      screen.queryByText('Nenhuma tarefa ainda. Crie a primeira tarefa da equipe.'),
+    ).not.toBeInTheDocument();
+    // CalendarView's month grid renders regardless of tarefas count.
+    expect(screen.getByText(/Sem data/)).toBeInTheDocument();
   });
 });
