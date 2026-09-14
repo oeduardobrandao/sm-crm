@@ -563,11 +563,14 @@ function IdeiaCard({
         )
       )}
 
-      {/* Audio */}
+      {/* Audio: same rule as images -- full manage UI for the client's own
+          ideias, not lock-gated (the backend never checks lock for audio
+          routes either; a reaction/comment/status change must not strand a
+          client's recording). */}
       <IdeiaAudioBlock
         token={token}
         ideia={ideia}
-        canWrite={mutable}
+        canWrite={ideia.origem === 'cliente'}
         audioEnabled={audioEnabled}
         onChanged={onChanged}
       />

@@ -327,10 +327,12 @@ describe('IdeiasPage', () => {
     const immutableHeading = screen.getByRole('heading', { name: 'Ideia travada' });
     const immutableCard = immutableHeading.closest('.hub-card');
     expect(immutableCard).not.toBeNull();
-    // Locked card: no edit/delete text controls, but image add/remove is lock-independent.
+    // Locked card: no edit/delete text controls, but image add/remove and audio
+    // (here, no existing recording, so the recorder itself) are lock-independent.
     const immutableButtons = within(immutableCard as HTMLElement).getAllByRole('button');
-    expect(immutableButtons).toHaveLength(1);
+    expect(immutableButtons).toHaveLength(2);
     expect(immutableButtons[0]).toHaveTextContent('Adicionar imagem');
+    expect(immutableButtons[1]).toHaveTextContent('fake-recorder:Enviar');
 
     const links = within(immutableCard as HTMLElement).getAllByRole('link');
     expect(links[0]).toHaveAttribute('href', '#');
@@ -553,7 +555,34 @@ describe('IdeiasPage', () => {
     }
   });
 
-  it('hides recorder, retry and remove when the ideia is locked (not the current author)', async () => {
+  it('hides recorder and remove on an agency-suggested ideia (read-only, same rule as images)', async () => {
+    mockedFetchIdeias.mockResolvedValue({
+      ideias: [
+        makeIdeia({
+          id: 'ag2',
+          origem: 'agencia',
+          audio: {
+            url: 'https://get/b.webm',
+            mime: 'audio/webm',
+            duration_seconds: 9,
+            transcription_status: 'done',
+            recorded_at: null,
+            transcript: 'Texto transcrito',
+          },
+        }),
+      ],
+    } as never);
+    renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+    );
+    expect(await screen.findByText('Texto transcrito')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remover áudio' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /fake-recorder/ })).toBeNull();
+  });
+
+  it('keeps audio management available on a locked client ideia (audio is not lock-gated, unlike text edits)', async () => {
     mockedFetchIdeias.mockResolvedValue({
       ideias: [
         makeIdeia({
@@ -576,7 +605,8 @@ describe('IdeiasPage', () => {
       <IdeiasPage />,
     );
     expect(await screen.findByText('Texto transcrito')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Remover áudio' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /fake-recorder/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remover áudio' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gravar novamente' })).toBeInTheDocument();
   });
 });
