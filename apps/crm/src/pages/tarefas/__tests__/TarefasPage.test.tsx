@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../store', () => ({
   getTarefas: vi.fn().mockResolvedValue([]),
@@ -22,6 +22,12 @@ vi.mock('../../../store', () => ({
   getInitials: (nome: string) => nome.slice(0, 2).toUpperCase(),
 }));
 
+const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+vi.mock('@/context/AuthContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/context/AuthContext')>();
+  return { ...actual, useAuth: useAuthMock };
+});
+
 import TarefasPage from '../TarefasPage';
 
 function renderPage() {
@@ -38,6 +44,10 @@ function renderPage() {
 }
 
 describe('TarefasPage', () => {
+  beforeEach(() => {
+    useAuthMock.mockReturnValue({ profile: { conta_id: 'conta-1' } });
+  });
+
   it('renders header, stats, view tabs and the empty state', async () => {
     renderPage();
 
