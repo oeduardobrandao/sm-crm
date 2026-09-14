@@ -14,6 +14,7 @@ import {
 } from "../_shared/admin-kb.ts";
 import { adminContaId } from "../_shared/admin-popups.ts";
 import { handleGetWorkspace } from "./workspace-detail.ts";
+import { handleSetWorkspaceOverrides, handleClearWorkspaceOverrides } from "./workspace-overrides.ts";
 import { handleListPlans } from "./plans.ts";
 import { setStripeLoader } from "../_shared/stripe-loader.ts";
 import { listAdminMcpGrants, revokeAdminMcpGrant } from "../_shared/admin-mcp-grants.ts";
@@ -416,81 +417,6 @@ async function handleUnsetWorkspacePlan(
     JSON.stringify({ message: "Comp removed", plan_source: target.plan_source }),
     { status: 200, headers },
   );
-}
-
-async function handleSetWorkspaceOverrides(
-  svc: SupabaseClient,
-  body: { workspace_id: string; resource_overrides?: Record<string, number>; feature_overrides?: Record<string, boolean>; notes?: string },
-  adminId: string,
-  headers: Record<string, string>,
-) {
-  const { workspace_id, resource_overrides, feature_overrides, notes } = body;
-  if (!workspace_id) {
-    return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
-  }
-
-  const { data: existing } = await svc
-    .from("workspace_plan_overrides")
-    .select("id")
-    .eq("workspace_id", workspace_id)
-    .maybeSingle();
-
-  if (!existing) {
-    return new Response(JSON.stringify({ error: "Workspace has no plan assigned. Assign a plan first." }), { status: 400, headers });
-  }
-
-  const updatePayload: Record<string, unknown> = {
-    updated_by: adminId,
-    updated_at: new Date().toISOString(),
-  };
-  if (resource_overrides !== undefined) updatePayload.resource_overrides = resource_overrides;
-  if (feature_overrides !== undefined) updatePayload.feature_overrides = feature_overrides;
-  if (notes !== undefined) updatePayload.notes = notes;
-
-  const { error } = await svc
-    .from("workspace_plan_overrides")
-    .update(updatePayload)
-    .eq("workspace_id", workspace_id);
-
-  if (error) throw error;
-
-  return new Response(JSON.stringify({ message: "Overrides updated" }), { status: 200, headers });
-}
-
-async function handleClearWorkspaceOverrides(
-  svc: SupabaseClient,
-  body: { workspace_id: string },
-  adminId: string,
-  headers: Record<string, string>,
-) {
-  const { workspace_id } = body;
-  if (!workspace_id) {
-    return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
-  }
-
-  const { data: existing } = await svc
-    .from("workspace_plan_overrides")
-    .select("id")
-    .eq("workspace_id", workspace_id)
-    .maybeSingle();
-
-  if (!existing) {
-    return new Response(JSON.stringify({ error: "Workspace has no plan assigned." }), { status: 400, headers });
-  }
-
-  const { error } = await svc
-    .from("workspace_plan_overrides")
-    .update({
-      resource_overrides: null,
-      feature_overrides: null,
-      updated_by: adminId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("workspace_id", workspace_id);
-
-  if (error) throw error;
-
-  return new Response(JSON.stringify({ message: "Overrides cleared" }), { status: 200, headers });
 }
 
 // ─── MCP do Admin (conector platform-admin) ────────────────────
