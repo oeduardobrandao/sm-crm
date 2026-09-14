@@ -98,6 +98,10 @@ export function TarefaCard({
             <DropdownMenuTrigger asChild>
               <span
                 style={{ flexShrink: 0, cursor: membros.length > 0 ? 'pointer' : 'default' }}
+                onPointerDown={(e) => {
+                  if (membros.length === 0) return;
+                  e.stopPropagation();
+                }}
                 onClick={(e) => {
                   if (membros.length === 0) return;
                   e.stopPropagation();
