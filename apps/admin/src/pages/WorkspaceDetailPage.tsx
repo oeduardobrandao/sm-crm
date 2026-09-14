@@ -186,7 +186,7 @@ export default function WorkspaceDetailPage() {
         workspace_id: id!,
         resource_overrides,
         feature_overrides,
-        notes: notes || undefined,
+        notes,
       });
     },
     onSuccess: () => {
