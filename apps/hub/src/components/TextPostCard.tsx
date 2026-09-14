@@ -32,7 +32,8 @@ export function TextPostCard({
   onApprovalSubmitted,
   readOnly,
 }: TextPostCardProps) {
-  const { t } = useTranslation('hubPosts');
+  const { t, i18n } = useTranslation('hubPosts');
+  const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const [expanded, setExpanded] = useState(false);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -136,7 +137,9 @@ export function TextPostCard({
               {getPostStatusLabel(t, post.status)}
             </span>
             <PlatformBadge platform={post.platform} />
-            <span className="text-[12px] hub-tx3 ml-auto">{formatDate(post.scheduled_at)}</span>
+            <span className="text-[12px] hub-tx3 ml-auto">
+              {formatDate(post.scheduled_at, dateLang)}
+            </span>
           </div>
           <p className="font-semibold text-[14px] hub-txt mb-1">{post.titulo}</p>
           {!expanded && preview && <p className="text-[13px] hub-tx2 truncate">{preview}</p>}

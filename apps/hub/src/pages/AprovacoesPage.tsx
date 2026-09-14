@@ -15,7 +15,8 @@ import { OpenPostLink } from '../components/OpenPostLink';
 import { isAutoPublishActive } from '../lib/autoPublish';
 
 export function AprovacoesPage() {
-  const { t } = useTranslation('hubPosts');
+  const { t, i18n } = useTranslation('hubPosts');
+  const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const { token, bootstrap } = useHub();
   const qc = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -116,7 +117,9 @@ export function AprovacoesPage() {
                 {withMedia.map((post, i) => (
                   <div key={post.id} className="flex flex-col">
                     <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <p className="text-[11px] hub-tx3 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                      <p className="text-[11px] hub-tx3 pl-0.5">
+                        {formatDate(post.scheduled_at, dateLang)}
+                      </p>
                       <span className="flex items-center gap-3">
                         <OpenPostLink postId={post.id} />
                         <SharePostButton postId={post.id} />
@@ -151,7 +154,9 @@ export function AprovacoesPage() {
                 {stories.map((post) => (
                   <div key={post.id}>
                     <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <p className="text-[11px] hub-tx3 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                      <p className="text-[11px] hub-tx3 pl-0.5">
+                        {formatDate(post.scheduled_at, dateLang)}
+                      </p>
                       <span className="flex items-center gap-3">
                         <OpenPostLink postId={post.id} />
                         <SharePostButton postId={post.id} />
@@ -186,7 +191,9 @@ export function AprovacoesPage() {
                 {withoutMedia.map((post) => (
                   <div key={post.id}>
                     <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <p className="text-[11px] hub-tx3 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                      <p className="text-[11px] hub-tx3 pl-0.5">
+                        {formatDate(post.scheduled_at, dateLang)}
+                      </p>
                       <span className="flex items-center gap-3">
                         <OpenPostLink postId={post.id} />
                         <SharePostButton postId={post.id} />

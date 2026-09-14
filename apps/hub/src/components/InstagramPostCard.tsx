@@ -602,7 +602,7 @@ export function InstagramPostCard({
         )}
         <p className="text-[10px] uppercase tracking-wide text-[#8e8e8e] dark:text-[#a8a8a8] mt-1.5">
           {t('instagramCard.scheduledPrefix', 'Agendado · {{date}}', {
-            date: formatDate(post.scheduled_at),
+            date: formatDate(post.scheduled_at, i18n.language === 'en' ? 'en-US' : 'pt-BR'),
           })}
         </p>
       </div>
