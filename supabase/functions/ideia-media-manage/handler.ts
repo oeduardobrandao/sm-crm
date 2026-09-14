@@ -1,5 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 import {
   presignIdeiaImage, finalizeIdeiaImage, listIdeiaImages, removeIdeiaImage,
 } from "../_shared/ideia-media.ts";
@@ -61,7 +62,14 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     const scope = { db: db as any, workspace_id: conta_id, origem: "agencia" as const };
 
     // ── Áudio ──────────────────────────────────────────────────────
+    // 'ideias:ver'/'ideias:editar' checam o papel do chamador -- sem isso um
+    // membro com papel custom SEM ideias nenhum ainda mintaria URL assinada
+    // de áudio (view) ou faria presign/finalize/retry/delete (mutação)
+    // batendo direto na function, ignorando o gate de UI do CRM. Mesmo
+    // racional do sign-view/mutatingRoutes em automation-media/handler.ts.
     if (isAudioView) {
+      const canView = await hasPermissionFor(db, user.id, conta_id, "ideias", "ver");
+      if (!canView) return json({ error: "Forbidden" }, 403);
       const qid = url.searchParams.get("ideia_id");
       if (!qid) return json({ error: "ideia_id required" }, 400);
       const v = await loadIdeiaAudioView({ db: db as any, workspace_id: conta_id, ideia_id: qid, signGetUrl: signGet });
@@ -70,6 +78,8 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     }
 
     if (isAudioPresign || isAudio || isTranscribe) {
+      const canEdit = await hasPermissionFor(db, user.id, conta_id, "ideias", "editar");
+      if (!canEdit) return json({ error: "Forbidden" }, 403);
       if (req.method === "POST") {
         const audioOn = await effectivePlanFeature(db as never, conta_id, "feature_briefing_audio");
         if (!audioOn) return json({ error: "Recurso indisponível no plano atual." }, 403);

@@ -144,3 +144,27 @@ Deno.test("ideia-media-manage: POST /:id/audio finalizes with p_origem=agencia; 
   assertEquals((await makeHandler(d)(req("DELETE", `ideia-media-manage/${I}/audio`))).status, 200);
   assertEquals(d.calls.some((c) => c.table === "rpc:effective_plan_feature"), false);
 });
+
+Deno.test("ideia-media-manage: a custom role without ideias:editar is forbidden from every audio-mutating route", async () => {
+  for (const [method, path, body] of [
+    ["POST", "ideia-media-manage/audio-upload-url", { ideia_id: I, mime_type: "audio/webm", size_bytes: 10 }],
+    ["POST", `ideia-media-manage/${I}/audio`, { r2_key: AKEY, mime_type: "audio/webm", size_bytes: 5000 }],
+    ["POST", `ideia-media-manage/${I}/audio/transcribe`, undefined],
+    ["DELETE", `ideia-media-manage/${I}/audio`, undefined],
+  ] as const) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queueRpc("has_permission_for", { data: false, error: null });
+    const res = await makeHandler(db)(req(method, path, body));
+    assertEquals(res.status, 403, `${method} ${path} should be 403`);
+    assertEquals(db.calls.some((c) => c.table === "rpc:effective_plan_feature"), false, `${method} ${path} must not reach the plan-feature check`);
+  }
+});
+
+Deno.test("ideia-media-manage: a custom role without ideias:ver is forbidden from GET /audio", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("has_permission_for", { data: false, error: null });
+  const res = await makeHandler(db)(req("GET", `ideia-media-manage/audio?ideia_id=${I}`));
+  assertEquals(res.status, 403);
+});
