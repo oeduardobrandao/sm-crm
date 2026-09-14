@@ -11,6 +11,7 @@ type MockedSupabaseModule = typeof supabaseModule & {
     operation: string;
     payload?: unknown;
     modifiers: Array<{ method: string; args: unknown[] }>;
+    selectArgs: unknown[][];
   }>;
   __queueSupabaseResult: (
     table: string,
@@ -269,5 +270,84 @@ describe('store ideias', () => {
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
     });
+  });
+
+  describe('createIdeia', () => {
+    it('inserts an agency ideia with workspace_id, origem, tipo and status fixed', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'insert', {
+        data: { id: 'ideia-new' },
+        error: null,
+      });
+
+      const id = await store.createIdeia({
+        cliente_id: 5,
+        titulo: 'Bastidores',
+        descricao: 'Timelapse da sala',
+        links: ['https://ex.com'],
+        visivel_no_hub: false,
+        autor_membro_id: 9,
+      });
+
+      expect(id).toBe('ideia-new');
+      const call = getCalls('ideias', 'insert').at(-1)!;
+      expect(call.payload).toEqual({
+        workspace_id: 'conta-1',
+        cliente_id: 5,
+        titulo: 'Bastidores',
+        descricao: 'Timelapse da sala',
+        links: ['https://ex.com'],
+        visivel_no_hub: false,
+        autor_membro_id: 9,
+        origem: 'agencia',
+        tipo: 'ideia',
+        status: 'nova',
+      });
+    });
+
+    it('throws on insert error', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'insert', {
+        data: null,
+        error: { message: 'boom' },
+      });
+      await expect(
+        store.createIdeia({
+          cliente_id: 1,
+          titulo: 'T',
+          descricao: 'D',
+          links: [],
+          visivel_no_hub: true,
+          autor_membro_id: null,
+        }),
+      ).rejects.toThrow('boom');
+    });
+  });
+
+  describe('updateIdeiaVisibilidade', () => {
+    it('updates visivel_no_hub by id', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'update', { data: null, error: null });
+      await store.updateIdeiaVisibilidade('ideia-1', true);
+      const call = getCalls('ideias', 'update').at(-1)!;
+      expect(call.payload).toEqual({ visivel_no_hub: true });
+      expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 'ideia-1'] });
+    });
+  });
+
+  it('getIdeias selects origem, visivel_no_hub, autor and audio columns', async () => {
+    mockedSupabase.__queueSupabaseResult('ideias', 'select', { data: [], error: null });
+    await store.getIdeias();
+    const call = getCalls('ideias', 'select').at(-1)!;
+    const str = String((call as unknown as { selectArgs: unknown[][] }).selectArgs?.[0]?.[0] ?? '');
+    for (const col of [
+      'origem',
+      'visivel_no_hub',
+      'autor_membro_id',
+      'autor:membros!autor_membro_id(nome)',
+      'audio_r2_key',
+      'audio_transcript',
+      'audio_transcription_status',
+      'audio_duration_seconds',
+    ]) {
+      expect(str).toContain(col);
+    }
   });
 });
