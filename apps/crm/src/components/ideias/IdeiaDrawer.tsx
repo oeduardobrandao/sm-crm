@@ -27,10 +27,13 @@ import {
 } from '@/components/ui/sheet';
 import { IdeiaStatusBadge } from './IdeiaStatusBadge';
 import { IdeiaTipoBadge } from './IdeiaTipoBadge';
+import { IdeiaOrigemBadge } from './IdeiaOrigemBadge';
+import { IdeiaAudioSection } from './IdeiaAudioSection';
 import {
   updateIdeiaStatus,
   upsertIdeiaComentario,
   toggleIdeiaReaction,
+  updateIdeiaVisibilidade,
   getMembros,
   getClientes,
   getTarefaTags,
@@ -43,6 +46,8 @@ import {
   type TarefaFormPayload,
 } from '@/pages/tarefas/components/TarefaFormDialog';
 import { useAuth } from '@/context/AuthContext';
+import { useCurrentMembro } from '@/hooks/useCurrentMembro';
+import { Switch } from '@/components/ui/switch';
 import { sanitizeExternalUrl, sanitizeUrl } from '@/utils/security';
 
 const ALLOWED_EMOJI = ['👍', '❤️', '🔥', '💡', '🎯'] as const;
@@ -69,7 +74,7 @@ interface IdeiaDrawerProps {
 
 export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDrawerProps) {
   const qc = useQueryClient();
-  const { profile, can } = useAuth();
+  const { can } = useAuth();
   // IdeiasPage/IdeiaDrawer had NO role check at all before Task 14 -- any
   // authenticated member could add or remove an idea's reference images.
   // AGENT_ROLE_PRESET.ideias is 'editar' (lib/permissions.ts), so this
@@ -81,7 +86,10 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDr
     queryKey: ['membros'],
     queryFn: getMembros,
   });
-  const membroId: number | undefined = membros.find((m: any) => m.user_id === profile?.id)?.id;
+  const { membro } = useCurrentMembro();
+  const membroId: number | undefined = membro?.id;
+  const isAgency = ideia.origem === 'agencia';
+  const [visSaving, setVisSaving] = useState(false);
 
   const [convertOpen, setConvertOpen] = useState(false);
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
@@ -203,6 +211,19 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDr
     }
   }
 
+  async function handleVisibilidade(next: boolean) {
+    setVisSaving(true);
+    try {
+      await updateIdeiaVisibilidade(ideia.id, next);
+      qc.invalidateQueries({ queryKey });
+      toast.success(next ? 'Ideia visível no Hub.' : 'Ideia oculta do Hub.');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao atualizar visibilidade.');
+    } finally {
+      setVisSaving(false);
+    }
+  }
+
   async function handleSaveComentario() {
     if (!membroId) return;
     setComentarioSaving(true);
@@ -260,18 +281,43 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDr
           <div className="mb-1.5 flex gap-1.5">
             <IdeiaStatusBadge status={ideia.status} />
             <IdeiaTipoBadge tipo={ideia.tipo} />
+            <IdeiaOrigemBadge origem={ideia.origem} hidden={isAgency && !ideia.visivel_no_hub} />
           </div>
           <SheetTitle className="text-base leading-snug">{ideia.titulo}</SheetTitle>
           <SheetDescription className="text-xs">
             {ideia.clientes.nome} · {formatDate(ideia.created_at)}
+            {isAgency && ideia.autor ? ` · por ${ideia.autor.nome}` : ''}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          {isAgency && canEditIdeias && (
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Visível no Hub do cliente</p>
+                <p className="text-xs text-muted-foreground">
+                  O cliente vê e reage, mas não edita.
+                </p>
+              </div>
+              <Switch
+                checked={ideia.visivel_no_hub}
+                onCheckedChange={handleVisibilidade}
+                disabled={visSaving}
+                aria-label="Visível no Hub do cliente"
+              />
+            </div>
+          )}
+
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-1.5">Descrição</p>
             <p className="text-sm whitespace-pre-wrap">{ideia.descricao}</p>
           </div>
+
+          <IdeiaAudioSection
+            ideia={ideia}
+            canWrite={isAgency && canEditIdeias}
+            queryKey={queryKey}
+          />
 
           {ideia.links.length > 0 && (
             <div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
@@ -14,6 +14,8 @@ const {
   toastErrorMock,
   stubState,
   mockUseAuth,
+  updateVisMock,
+  fetchAudioMock,
 } = vi.hoisted(() => ({
   convertSolicitacaoEmTarefaMock: vi.fn(),
   setTarefaTagsMock: vi.fn(),
@@ -22,6 +24,8 @@ const {
   toastErrorMock: vi.fn(),
   stubState: { result: null as string | null },
   mockUseAuth: vi.fn(() => ({ profile: { id: 'u1' }, can: () => true })),
+  updateVisMock: vi.fn(),
+  fetchAudioMock: vi.fn().mockResolvedValue({ audio: null, transcript: null }),
 }));
 
 vi.mock('@/services/ideiaMedia', () => ({
@@ -33,6 +37,7 @@ vi.mock('@/store', () => ({
   updateIdeiaStatus: vi.fn(),
   upsertIdeiaComentario: vi.fn(),
   toggleIdeiaReaction: vi.fn(),
+  updateIdeiaVisibilidade: updateVisMock,
   getMembros: vi.fn().mockResolvedValue([]),
   getClientes: vi.fn().mockResolvedValue([]),
   getTarefaTags: vi.fn().mockResolvedValue([]),
@@ -43,6 +48,40 @@ vi.mock('sonner', () => ({
   toast: { success: toastSuccessMock, warning: toastWarningMock, error: toastErrorMock },
 }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: mockUseAuth }));
+vi.mock('@/hooks/useCurrentMembro', () => ({
+  useCurrentMembro: () => ({ membro: { id: 9, nome: 'Eduardo' }, isLoading: false }),
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: { feature_briefing_audio: true }, isLoading: false }),
+}));
+vi.mock('@/services/ideiaAudio', () => ({
+  fetchIdeiaAudio: fetchAudioMock,
+  uploadIdeiaAudio: vi.fn(),
+  retryIdeiaTranscription: vi.fn(),
+  deleteIdeiaAudio: vi.fn(),
+}));
+// Same fakes as Task 11 (NovaIdeiaDialog.test.tsx); sendLabel defaults to 'Enviar' here
+// because IdeiaAudioSection never passes one, matching the real AudioRecorder's default.
+vi.mock('@mesaas/ui/AudioRecorder', () => ({
+  isRecordingSupported: () => true,
+  AudioRecorder: ({
+    onRecorded,
+    sendLabel = 'Enviar',
+  }: {
+    onRecorded: (b: Blob, m: string, s: number) => Promise<void>;
+    sendLabel?: string;
+  }) => (
+    <button
+      type="button"
+      onClick={() => void onRecorded(new Blob(['abc'], { type: 'audio/webm' }), 'audio/webm', 5)}
+    >
+      {`fake-recorder:${sendLabel}`}
+    </button>
+  ),
+}));
+vi.mock('@mesaas/ui/AudioPlayer', () => ({
+  AudioPlayer: () => <div data-testid="audio-player" />,
+}));
 
 // Stubs the real form: it renders two buttons that invoke the drawer's onCreate prop
 // (handleConvertCreate) directly, one with no tags and one with tags, and records
@@ -133,10 +172,29 @@ const BASE = {
   comentario_autor: null,
   ideia_reactions: [],
   image_count: 0,
+  origem: 'cliente' as const,
+  autor: null,
+  visivel_no_hub: true,
+  audio_r2_key: null,
+  audio_duration_seconds: null,
+  audio_transcript: null,
+  audio_transcription_status: null,
 };
+
+function makeIdeia(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    ...BASE,
+    tipo: 'ideia',
+    status: 'nova',
+    tarefa_id: null,
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   stubState.result = null;
+  updateVisMock.mockReset();
+  fetchAudioMock.mockReset().mockResolvedValue({ audio: null, transcript: null });
 });
 
 describe('IdeiaDrawer conversion UI', () => {
@@ -337,5 +395,72 @@ describe('IdeiaDrawer — image add/remove gated on ideias:editar', () => {
 
     await screen.findByAltText('');
     expect(screen.queryByLabelText('Remover imagem')).not.toBeInTheDocument();
+  });
+});
+
+describe('IdeiaDrawer — origem, visibilidade e áudio', () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ profile: { id: 'u1' }, can: () => true });
+  });
+
+  it('shows origin badge, author line and the visibility switch only for agency ideias', async () => {
+    renderDrawer(
+      makeIdeia({ origem: 'agencia', autor: { nome: 'Eduardo' }, visivel_no_hub: false }),
+    );
+    expect(await screen.findByText('Agência')).toBeInTheDocument();
+    expect(screen.getByText(/por Eduardo/)).toBeInTheDocument();
+    const sw = screen.getByRole('switch', { name: /visível no hub/i });
+    expect(sw).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(sw);
+    await waitFor(() => expect(updateVisMock).toHaveBeenCalledWith('i1', true));
+
+    cleanup();
+    renderDrawer(makeIdeia({ origem: 'cliente' }));
+    expect(await screen.findByText('Cliente')).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: /visível no hub/i })).toBeNull();
+  });
+
+  it('renders the audio section with player, status and transcript; write actions only on agency ideias', async () => {
+    fetchAudioMock.mockResolvedValue({
+      audio: {
+        url: 'https://get/a.webm',
+        mime: 'audio/webm',
+        duration_seconds: 9,
+        transcription_status: 'done',
+        recorded_at: null,
+      },
+      transcript: 'Texto transcrito',
+    });
+    renderDrawer(
+      makeIdeia({
+        origem: 'cliente',
+        audio_r2_key: 'ideia-audio/c/i/a.webm',
+        audio_transcription_status: 'done',
+        audio_transcript: 'Texto transcrito',
+      }),
+    );
+    expect(await screen.findByTestId('audio-player')).toBeInTheDocument();
+    expect(screen.getByText('Transcrito')).toBeInTheDocument();
+    expect(screen.getByText('Texto transcrito')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remover áudio' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /fake-recorder/ })).toBeNull();
+
+    cleanup();
+    renderDrawer(
+      makeIdeia({
+        origem: 'agencia',
+        audio_r2_key: 'ideia-audio/c/i/a.webm',
+        audio_transcription_status: 'failed',
+      }),
+    );
+    expect(await screen.findByText('Falha na transcrição')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remover áudio' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gravar novamente' })).toBeInTheDocument();
+  });
+
+  it('offers the recorder on an agency ideia without audio', async () => {
+    renderDrawer(makeIdeia({ origem: 'agencia' }));
+    expect(await screen.findByRole('button', { name: 'fake-recorder:Enviar' })).toBeInTheDocument();
   });
 });
