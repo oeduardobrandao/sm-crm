@@ -40,7 +40,7 @@ Three additions to the Ideias feature:
 
 ## 1. Data model
 
-One migration: `supabase/migrations/20260917000001_ideias_agencia_audio.sql` (version prefix must
+One migration: `supabase/migrations/20260922000001_ideias_agencia_audio.sql` (version prefix must
 stay above `origin/main`'s tail at PR-open time; re-check then).
 
 ### 1.1 Origin and visibility

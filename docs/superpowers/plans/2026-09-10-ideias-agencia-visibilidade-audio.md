@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Migration file: `supabase/migrations/20260917000001_ideias_agencia_audio.sql`. Before `gh pr create`, run `git ls-tree --name-only origin/main:supabase/migrations | tail -3` and renumber above main's tail if needed.
+- Migration file: `supabase/migrations/20260922000001_ideias_agencia_audio.sql`. Before `gh pr create`, run `git ls-tree --name-only origin/main:supabase/migrations | tail -3` and renumber above main's tail if needed.
 - R2 prefix for ideia audio: `ideia-audio/{workspace_id}/{ideia_id}/{uuid}.{ext}`. Never under `contas/`.
 - Limits: `MAX_AUDIO_BYTES = 15 MiB`, `MAX_AUDIO_SECONDS = 300`, mimes `audio/webm, audio/mp4, audio/ogg, audio/mpeg, audio/wav`.
 - Plan flag reused as-is: `feature_briefing_audio`. CRM label becomes `'Gravação de áudio'`.
@@ -30,7 +30,7 @@
 
 | Path | Responsibility |
 |---|---|
-| `supabase/migrations/20260917000001_ideias_agencia_audio.sql` | Columns, CHECKs, notification guard, audio guard/cleanup triggers, 3 RPCs |
+| `supabase/migrations/20260922000001_ideias_agencia_audio.sql` | Columns, CHECKs, notification guard, audio guard/cleanup triggers, 3 RPCs |
 | `supabase/tests/ideia_audio_rpcs.sql` | psql suite for the RPCs, triggers and CHECKs |
 | `supabase/functions/_shared/ideia-audio.ts` | presign / finalize / transcribe / remove / view for ideia audio |
 | `supabase/functions/__tests__/ideia-audio_test.ts` | Deno tests for the shared module |
@@ -62,7 +62,7 @@
 ### Task 1: Migration + SQL suite
 
 **Files:**
-- Create: `supabase/migrations/20260917000001_ideias_agencia_audio.sql`
+- Create: `supabase/migrations/20260922000001_ideias_agencia_audio.sql`
 - Create: `supabase/tests/ideia_audio_rpcs.sql`
 - Read for reference: `supabase/migrations/20260907000001_briefing_audio.sql`, `supabase/migrations/20260730000009_ideias_solicitacoes.sql`, `supabase/tests/briefing_audio_rpcs.sql`
 
@@ -303,7 +303,7 @@ Expected: FAIL on `ideia_audio_rpcs.sql` with `column "origem" of relation "idei
 
 - [ ] **Step 3: Write the migration**
 
-`supabase/migrations/20260917000001_ideias_agencia_audio.sql`:
+`supabase/migrations/20260922000001_ideias_agencia_audio.sql`:
 
 ```sql
 -- Ideias criadas pela agência + visibilidade no Hub + áudio nas ideias.
@@ -629,7 +629,7 @@ Expected: `PASS ideia_audio_rpcs` and every pre-existing suite still passing. If
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260917000001_ideias_agencia_audio.sql supabase/tests/ideia_audio_rpcs.sql
+git add supabase/migrations/20260922000001_ideias_agencia_audio.sql supabase/tests/ideia_audio_rpcs.sql
 git commit -m "feat(ideias): origem, visibilidade no hub e colunas de áudio
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -4439,7 +4439,7 @@ git fetch origin main
 git ls-tree --name-only origin/main:supabase/migrations | tail -3
 ```
 
-If a file with prefix `20260917000001` or higher exists on main, `git mv` the migration to the next free `2026091800000N` prefix and update the reference in the spec (`docs/superpowers/specs/2026-09-10-ideias-agencia-visibilidade-audio-design.md` §1) and this plan's Task 1.
+If a file with prefix `20260922000001` or higher exists on main, `git mv` the migration to the next free `2026091800000N` prefix and update the reference in the spec (`docs/superpowers/specs/2026-09-10-ideias-agencia-visibilidade-audio-design.md` §1) and this plan's Task 1.
 
 ```bash
 git add -A

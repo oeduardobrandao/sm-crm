@@ -41,7 +41,7 @@ declare
   v_raised   boolean;
 begin
   -- Fixture inserts below run as the equivalent of the service role (as a
-  -- backend job/RPC would). Since 20260917000001_ideias_agencia_audio.sql,
+  -- backend job/RPC would). Since 20260922000001_ideias_agencia_audio.sql,
   -- the ideias guard trigger reads this GUC to decide whether an INSERT may
   -- default origem to 'cliente'; the later role-impersonation blocks further
   -- down set/reset their own claim and are unaffected by this default.

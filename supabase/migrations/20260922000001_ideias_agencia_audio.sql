@@ -26,7 +26,8 @@ ALTER TABLE ideias ADD CONSTRAINT ideias_cliente_workspace_fk
   FOREIGN KEY (cliente_id, workspace_id) REFERENCES clientes (id, conta_id) ON DELETE CASCADE;
 
 -- Autor (CRM). FK composta pina o membro à workspace da ideia.
-ALTER TABLE membros ADD CONSTRAINT membros_id_conta_uq UNIQUE (id, conta_id);
+-- membros_id_conta_uq já existe desde 20260918000002 (post_processes_schema);
+-- não recriar aqui.
 ALTER TABLE ideias ADD COLUMN autor_membro_id integer;
 ALTER TABLE ideias ADD CONSTRAINT ideias_autor_fk
   FOREIGN KEY (autor_membro_id, workspace_id) REFERENCES membros (id, conta_id)

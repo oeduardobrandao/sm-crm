@@ -25,7 +25,7 @@ begin;
 
 -- import_commit_row is service_role-only in production (an edge function calls
 -- it with the service-role key, which PostgREST/postgres surfaces as this GUC).
--- Since 20260917000001_ideias_agencia_audio.sql, the 'ideia' branch's INSERT
+-- Since 20260922000001_ideias_agencia_audio.sql, the 'ideia' branch's INSERT
 -- into ideias runs through a guard trigger that reads this same GUC to decide
 -- whether the caller may insert an origem = 'cliente' row; without it the
 -- 'ideia' kind case below raises 'forbidden' instead of exercising the actual
