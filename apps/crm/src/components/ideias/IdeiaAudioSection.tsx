@@ -104,12 +104,12 @@ export function IdeiaAudioSection({
     try {
       await deleteIdeiaAudio(ideia.id);
       refresh();
+      setConfirmRemove(false);
       toast.success('Áudio removido.');
     } catch (e) {
       toast.error(describeAudioError(e, 'Não foi possível remover o áudio.'));
     } finally {
       setBusy(false);
-      setConfirmRemove(false);
     }
   }
 
@@ -214,7 +214,13 @@ export function IdeiaAudioSection({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={remove} disabled={busy}>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void remove();
+              }}
+              disabled={busy}
+            >
               Remover
             </AlertDialogAction>
           </AlertDialogFooter>
