@@ -256,11 +256,15 @@ beforeEach(() => {
 });
 
 describe('AnalyticsFluxosPage', () => {
-  it('sets the document title', async () => {
-    renderPage();
+  it('sets the document title and restores the previous one on unmount', async () => {
+    document.title = 'Dashboard | Mesaas';
+    const { unmount } = renderPage();
     await screen.findByTestId('ritmo-chart');
 
     expect(document.title).toBe('Analytics de Fluxos | Mesaas');
+
+    unmount();
+    expect(document.title).toBe('Dashboard | Mesaas');
   });
 
   it('renders the KPI row with deltas computed against the previous window', async () => {

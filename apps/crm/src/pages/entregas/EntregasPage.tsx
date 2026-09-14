@@ -245,8 +245,14 @@ export default function EntregasPage() {
   // Same inline pattern as NotFoundPage: an app route, not one of the
   // manifest-driven public pages usePageMeta covers, so nothing else would set
   // the tab title and it would keep whatever the previous route left behind.
+  // Restoring the prior title on unmount is what stops THIS page's title from
+  // leaking into every other route the same way.
   useEffect(() => {
+    const previousTitle = document.title;
     document.title = 'Entregas | Mesaas';
+    return () => {
+      document.title = previousTitle;
+    };
   }, []);
 
   // --- Onboarding tour + example board ---------------------------------------------------------
