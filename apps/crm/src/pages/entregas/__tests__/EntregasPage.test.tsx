@@ -924,9 +924,17 @@ describe('EntregasPage', () => {
   });
 
   it('exposes the view switcher as a tablist and sets the document title', () => {
-    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
+    document.title = 'Dashboard | Mesaas';
+    const { unmount } = renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
     expect(document.title).toBe('Entregas | Mesaas');
+
+    // Restoring the previous title on unmount is what stops it from leaking
+    // into whatever route the user navigates to next.
+    unmount();
+    expect(document.title).toBe('Dashboard | Mesaas');
+
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [makeCard()] });
 
     expect(screen.getByRole('tablist', { name: 'Modos de visualização' })).toBeInTheDocument();
     const kanbanTab = screen.getByRole('tab', { name: 'Kanban' });

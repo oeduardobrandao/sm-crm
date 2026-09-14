@@ -61,8 +61,14 @@ export default function AnalyticsFluxosPage() {
   // Same inline pattern as EntregasPage: an app route, not one of the
   // manifest-driven public pages usePageMeta covers, so nothing else would set
   // the tab title and it would keep whatever the previous route left behind.
+  // Restoring the prior title on unmount is what stops THIS page's title from
+  // leaking into every other route the same way.
   useEffect(() => {
+    const previousTitle = document.title;
     document.title = 'Analytics de Fluxos | Mesaas';
+    return () => {
+      document.title = previousTitle;
+    };
   }, []);
 
   // Every number on this page comes from this one RPC. The three lists below are
