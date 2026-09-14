@@ -16,6 +16,10 @@ vi.mock('../../api', () => ({
 vi.mock('../../services/ideiaAudio', () => ({ uploadIdeiaAudio: vi.fn() }));
 vi.mock('@mesaas/ui/AudioRecorder', () => ({
   isRecordingSupported: () => true,
+  formatDuration: (seconds: number) => {
+    const s = Math.max(0, Math.floor(seconds));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  },
   AudioRecorder: ({
     onRecorded,
     sendLabel,

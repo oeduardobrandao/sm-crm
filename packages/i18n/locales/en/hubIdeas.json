@@ -44,7 +44,7 @@
     "retry": "Try again",
     "recordAgain": "Record again",
     "remove": "Remove audio",
-    "recorderHint": "Up to 5:00.",
+    "recorderHint": "Up to {{duration}}.",
     "useThisRecording": "Use this recording",
     "transcriptAppearsHint": "The transcript appears on the idea right after sending.",
     "uploadError": "The audio upload failed. Try again.",

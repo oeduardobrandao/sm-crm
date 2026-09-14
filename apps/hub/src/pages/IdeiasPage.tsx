@@ -27,8 +27,13 @@ import {
 import { uploadIdeiaImage } from '../services/ideiaMedia';
 import { uploadIdeiaAudio } from '../services/ideiaAudio';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
-import { AudioRecorder, isRecordingSupported, type RecorderPhase } from '@mesaas/ui/AudioRecorder';
-import { describeAudioError } from '@mesaas/ui/audio/validation';
+import {
+  AudioRecorder,
+  formatDuration,
+  isRecordingSupported,
+  type RecorderPhase,
+} from '@mesaas/ui/AudioRecorder';
+import { describeAudioError, MAX_AUDIO_SECONDS } from '@mesaas/ui/audio/validation';
 import { HUB_AUDIO_VARS } from '../lib/audioVars';
 import type { HubIdeia, IdeiaImage } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
@@ -483,7 +488,9 @@ function IdeiaAudioBlock({
           phase={phase}
           disabled={busy}
           onRecorded={handleRecorded}
-          hint={t('audio.recorderHint', 'Até 5:00.')}
+          hint={t('audio.recorderHint', 'Até {{duration}}.', {
+            duration: formatDuration(MAX_AUDIO_SECONDS),
+          })}
           {...recorderLabels(t)}
         />
       )}
@@ -996,7 +1003,9 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
                     });
                     setRerecord(false);
                   }}
-                  hint={t('audio.recorderHint', 'Até 5:00.')}
+                  hint={t('audio.recorderHint', 'Até {{duration}}.', {
+                    duration: formatDuration(MAX_AUDIO_SECONDS),
+                  })}
                   {...recorderLabels(t)}
                   sendLabel={t('audio.useThisRecording', 'Usar este áudio')}
                 />

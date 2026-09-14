@@ -44,7 +44,7 @@
     "retry": "Tentar novamente",
     "recordAgain": "Gravar novamente",
     "remove": "Remover áudio",
-    "recorderHint": "Até 5:00.",
+    "recorderHint": "Até {{duration}}.",
     "useThisRecording": "Usar este áudio",
     "transcriptAppearsHint": "A transcrição aparece na ideia logo depois de enviar.",
     "uploadError": "O envio do áudio falhou. Tente de novo.",
