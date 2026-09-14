@@ -1,8 +1,10 @@
+import { useTranslation } from 'react-i18next';
 import { ExternalLink } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { buildHubPostLink } from '../lib/hubLinks';
 
 export function OpenPostLink({ postId, className }: { postId: number; className?: string }) {
+  const { t } = useTranslation('hubPostCard');
   const { token, workspace } = useHub();
   const href = buildHubPostLink(`/${workspace}/hub/${token}`, postId);
   return (
@@ -10,11 +12,11 @@ export function OpenPostLink({ postId, className }: { postId: number; className?
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Abrir postagem em nova aba"
+      aria-label={t('openPost.ariaLabel', 'Abrir postagem em nova aba')}
       className={`inline-flex items-center gap-1 text-[12px] hub-tx3 hub-link-muted transition-colors ${className ?? ''}`}
     >
       <ExternalLink size={13} />
-      Abrir
+      {t('openPost.label', 'Abrir')}
     </a>
   );
 }

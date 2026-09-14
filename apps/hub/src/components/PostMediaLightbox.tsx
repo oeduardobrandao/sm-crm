@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import type { HubPostMedia } from '../types';
@@ -19,6 +20,7 @@ export function PostMediaLightbox({
   onClose,
   onStaleUrl,
 }: PostMediaLightboxProps) {
+  const { t } = useTranslation('hubPostCard');
   const [idx, setIdx] = useState(initialIndex);
   const current = media[idx];
 
@@ -96,7 +98,7 @@ export function PostMediaLightbox({
           e.stopPropagation();
           onClose();
         }}
-        aria-label="Fechar"
+        aria-label={t('common:actions.close', 'Fechar')}
         className="fixed top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors ring-1 ring-white/20"
       >
         <X className="h-5 w-5" />
@@ -110,7 +112,7 @@ export function PostMediaLightbox({
               e.stopPropagation();
               prev();
             }}
-            aria-label="Anterior"
+            aria-label={t('lightbox.previous', 'Anterior')}
             className="fixed left-4 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors ring-1 ring-white/20"
           >
             <ChevronLeft className="h-5 w-5" />
@@ -121,7 +123,7 @@ export function PostMediaLightbox({
               e.stopPropagation();
               next();
             }}
-            aria-label="Próxima"
+            aria-label={t('lightbox.next', 'Próxima')}
             className="fixed right-4 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors ring-1 ring-white/20"
           >
             <ChevronRight className="h-5 w-5" />

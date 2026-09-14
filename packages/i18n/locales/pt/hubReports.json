@@ -1,0 +1,25 @@
+{
+  "title": "Relatórios",
+  "description": "Resultados e análises de desempenho.",
+  "backLink": "Relatórios",
+  "generatedAt": "Gerado em",
+  "iframeTitleWithMonth": "Relatório {{month}}",
+  "iframeTitleDefault": "Relatório",
+  "actions": {
+    "open": "Abrir",
+    "viewOnline": "Ver online",
+    "downloadPdf": "Baixar PDF"
+  },
+  "status": {
+    "ready": "Pronto",
+    "preparing": "Em preparação..."
+  },
+  "empty": {
+    "noReports": "Nenhum relatório disponível ainda."
+  },
+  "errors": {
+    "loadList": "Erro ao carregar relatórios.",
+    "loadDoc": "Erro ao carregar o relatório.",
+    "loadPrintDoc": "Não foi possível carregar o relatório."
+  }
+}

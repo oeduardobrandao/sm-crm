@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { PageHeader } from '../components/PageHeader';
 import { Download } from 'lucide-react';
 import { useHub } from '../HubContext';
@@ -26,6 +27,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 }
 
 export function MarcaPage() {
+  const { t } = useTranslation('hubBrand');
   const { token } = useHub();
   const { data, isLoading } = useQuery({
     queryKey: ['hub-brand', token],
@@ -37,23 +39,28 @@ export function MarcaPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 hub-fade-up">
-      <PageHeader title="Marca" description="Cores, logos e tipografia do seu negócio." />
+      <PageHeader
+        title={t('title', 'Marca')}
+        description={t('description', 'Cores, logos e tipografia do seu negócio.')}
+      />
 
       {isLoading ? (
         <div className="flex justify-center py-20">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
       ) : isEmpty ? (
-        <p className="hub-tx2 text-sm">Nenhum material de marca foi adicionado ainda.</p>
+        <p className="hub-tx2 text-sm">
+          {t('empty', 'Nenhum material de marca foi adicionado ainda.')}
+        </p>
       ) : (
         <>
           {brand?.logo_url && (
             <section>
-              <SectionLabel>Logo</SectionLabel>
+              <SectionLabel>{t('sections.logo', 'Logo')}</SectionLabel>
               <div className="hub-card p-10 flex items-center justify-center">
                 <img
                   src={brand.logo_url}
-                  alt="Logo"
+                  alt={t('logoAlt', 'Logo')}
                   className="max-h-28 max-w-full object-contain"
                 />
               </div>
@@ -62,13 +69,19 @@ export function MarcaPage() {
 
           {(brand?.primary_color || brand?.secondary_color) && (
             <section>
-              <SectionLabel>Cores</SectionLabel>
+              <SectionLabel>{t('sections.colors', 'Cores')}</SectionLabel>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {brand.primary_color && (
-                  <ColorSwatch color={brand.primary_color} label="Cor primária" />
+                  <ColorSwatch
+                    color={brand.primary_color}
+                    label={t('colors.primary', 'Cor primária')}
+                  />
                 )}
                 {brand.secondary_color && (
-                  <ColorSwatch color={brand.secondary_color} label="Cor secundária" />
+                  <ColorSwatch
+                    color={brand.secondary_color}
+                    label={t('colors.secondary', 'Cor secundária')}
+                  />
                 )}
               </div>
             </section>
@@ -76,17 +89,17 @@ export function MarcaPage() {
 
           {(brand?.font_primary || brand?.font_secondary) && (
             <section>
-              <SectionLabel>Tipografia</SectionLabel>
+              <SectionLabel>{t('sections.typography', 'Tipografia')}</SectionLabel>
               <div className="hub-card hub-divide">
                 {brand.font_primary && (
                   <div className="flex justify-between items-center px-5 py-4 text-sm">
-                    <span className="hub-tx3">Fonte principal</span>
+                    <span className="hub-tx3">{t('fonts.primary', 'Fonte principal')}</span>
                     <span className="font-semibold hub-txt">{brand.font_primary}</span>
                   </div>
                 )}
                 {brand.font_secondary && (
                   <div className="flex justify-between items-center px-5 py-4 text-sm">
-                    <span className="hub-tx3">Fonte secundária</span>
+                    <span className="hub-tx3">{t('fonts.secondary', 'Fonte secundária')}</span>
                     <span className="font-semibold hub-txt">{brand.font_secondary}</span>
                   </div>
                 )}
@@ -96,7 +109,7 @@ export function MarcaPage() {
 
           {files.length > 0 && (
             <section>
-              <SectionLabel>Arquivos</SectionLabel>
+              <SectionLabel>{t('sections.files', 'Arquivos')}</SectionLabel>
               <div className="space-y-2">
                 {files.map((f) => (
                   <a
@@ -109,7 +122,7 @@ export function MarcaPage() {
                   >
                     <span className="text-[14px] font-semibold hub-txt">{f.name}</span>
                     <span className="hub-download-hint flex items-center gap-2 text-[12px] hub-tx3 transition-colors">
-                      Baixar
+                      {t('download', 'Baixar')}
                       <Download size={15} />
                     </span>
                   </a>

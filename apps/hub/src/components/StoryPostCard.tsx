@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitApproval } from '../api';
@@ -29,6 +30,7 @@ export function StoryPostCard({
   onApprovalSubmitted,
   readOnly,
 }: StoryPostCardProps) {
+  const { t, i18n } = useTranslation('hubPosts');
   const [currentSlide, setCurrentSlide] = useState(0);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -81,7 +83,10 @@ export function StoryPostCard({
       await submitApproval(token, post.id, action, comentario || undefined);
       setResult({
         type: 'success',
-        message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!',
+        message:
+          action === 'aprovado'
+            ? t('shared.postApproved', 'Post aprovado!')
+            : t('shared.correctionSent', 'Correção enviada!'),
       });
       onApprovalSubmitted?.();
     } catch (e) {
@@ -163,12 +168,12 @@ export function StoryPostCard({
             <button
               onClick={handleTapLeft}
               className="absolute left-0 top-0 w-1/3 h-full z-10"
-              aria-label="Anterior"
+              aria-label={t('storyCard.prevAriaLabel', 'Anterior')}
             />
             <button
               onClick={handleTapRight}
               className="absolute right-0 top-0 w-1/3 h-full z-10"
-              aria-label="Próximo"
+              aria-label={t('storyCard.nextAriaLabel', 'Próximo')}
             />
           </>
         )}
@@ -214,10 +219,13 @@ export function StoryPostCard({
           <PlatformBadge platform={post.platform} tone="overlay" />
           <span className="text-white/60 text-[11px] drop-shadow-sm whitespace-nowrap">
             {post.scheduled_at
-              ? new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'short',
-                })
+              ? new Date(post.scheduled_at).toLocaleDateString(
+                  i18n.language === 'en' ? 'en-US' : 'pt-BR',
+                  {
+                    day: '2-digit',
+                    month: 'short',
+                  },
+                )
               : ''}
           </span>
 
@@ -261,7 +269,7 @@ export function StoryPostCard({
         {/* Bottom bar - Reply + heart + send */}
         <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center gap-2.5">
           <div className="flex-1 border border-white/30 rounded-full px-4 py-1.5 text-white/50 text-[13px] truncate">
-            Responder para {displayName}...
+            {t('storyCard.replyPlaceholder', 'Responder para {{name}}...', { name: displayName })}
           </div>
           {/* Heart */}
           <svg
@@ -296,12 +304,16 @@ export function StoryPostCard({
           {saveState !== 'idle' && (
             <div className="flex items-center gap-1.5">
               {saveState === 'saving' && (
-                <span className="text-[10px] text-stone-400">Salvando sugestão...</span>
+                <span className="text-[10px] text-stone-400">
+                  {t('shared.savingSuggestion', 'Salvando sugestão...')}
+                </span>
               )}
               {saveState === 'saved' && (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[10px] text-emerald-600 font-medium">Sugestão salva</span>
+                  <span className="text-[10px] text-emerald-600 font-medium">
+                    {t('shared.suggestionSaved', 'Sugestão salva')}
+                  </span>
                 </>
               )}
             </div>
@@ -311,8 +323,14 @@ export function StoryPostCard({
           >
             <span className={`text-[10px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}>
               {wasRejected
-                ? '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.'
-                : 'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar'}
+                ? t(
+                    'shared.rejectedSuggestionWarning',
+                    '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.',
+                  )
+                : t(
+                    'shared.suggestionInfoNote',
+                    'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar',
+                  )}
             </span>
           </div>
         </div>
@@ -323,14 +341,17 @@ export function StoryPostCard({
         <div className="bg-white dark:bg-[#1a1a1a] rounded-b-2xl px-3 py-2.5 space-y-1.5 -mt-2 pt-4 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]">
           {hasPendingSuggestion ? (
             <div className="rounded-lg px-3 py-2 text-[11px] font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200/60 text-center">
-              Sugestão enviada para revisão da equipe
+              {t('shared.suggestionPendingReviewFull', 'Sugestão enviada para revisão da equipe')}
             </div>
           ) : (
             <>
               <textarea
                 value={comentario}
                 onChange={(e) => setComentario(e.target.value)}
-                placeholder="Comente aqui ou corrija o texto diretamente no campo acima"
+                placeholder={t(
+                  'shared.commentPlaceholder',
+                  'Comente aqui ou corrija o texto diretamente no campo acima',
+                )}
                 className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
               />
               <div className="flex gap-1.5">
@@ -339,17 +360,25 @@ export function StoryPostCard({
                   disabled={submitting || approvalBlocked}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-primary text-[13px] font-semibold disabled:opacity-50 transition-colors"
                 >
-                  <CheckCircle size={16} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
+                  <CheckCircle size={16} />{' '}
+                  {saveState === 'saving'
+                    ? t('shared.saving', 'Salvando...')
+                    : t('shared.aprovar', 'Aprovar')}
                 </button>
                 <button
                   onClick={() => handleAction('correcao')}
                   disabled={submitting || approvalBlocked || !comentario.trim()}
                   title={
-                    !comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined
+                    !comentario.trim()
+                      ? t(
+                          'shared.correctionCommentRequired',
+                          'Deixe um comentário para solicitar correção',
+                        )
+                      : undefined
                   }
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-secondary text-[13px] font-medium disabled:opacity-50 transition-colors"
                 >
-                  <AlertCircle size={16} /> Correção
+                  <AlertCircle size={16} /> {t('shared.correcaoShort', 'Correção')}
                 </button>
               </div>
             </>

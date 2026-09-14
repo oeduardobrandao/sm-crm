@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import {
   deleteBriefingAudio,
@@ -26,6 +27,7 @@ export function BriefingPage() {
   // hub-briefing recusa a escrita de qualquer forma, isto só evita oferecer
   // um botão que responderia 403.
   const audioEnabled = bootstrap.feature_briefing_audio === true;
+  const { t } = useTranslation('hubBriefing');
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['hub-briefing', token],
@@ -43,7 +45,7 @@ export function BriefingPage() {
   // Group the active briefing's questions by section.
   const sections: { name: string; questions: BriefingQuestion[] }[] = [];
   for (const q of questions) {
-    const name = q.section ?? 'Geral';
+    const name = q.section ?? t('page.generalSection', 'Geral');
     const existing = sections.find((s) => s.name === name);
     if (existing) existing.questions.push(q);
     else sections.push({ name, questions: [q] });
@@ -64,8 +66,11 @@ export function BriefingPage() {
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <PageHeader
-        title="Briefing"
-        description="As informações que orientam a estratégia do seu projeto."
+        title={t('common:nav.briefing', 'Briefing')}
+        description={t(
+          'page.description',
+          'As informações que orientam a estratégia do seu projeto.',
+        )}
       />
       {activeBriefing?.title && (
         <p className="-mt-6 mb-8 text-[15px] font-medium hub-tx3">{activeBriefing.title}</p>
@@ -76,11 +81,17 @@ export function BriefingPage() {
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
       ) : briefings.length === 0 ? (
-        <div className="py-8 hub-tx3 text-sm">Nenhum briefing disponível ainda.</div>
+        <div className="py-8 hub-tx3 text-sm">
+          {t('page.noBriefings', 'Nenhum briefing disponível ainda.')}
+        </div>
       ) : (
         <>
           {hasBriefingTabs && (
-            <ScrollableTabs label="Briefings" activeKey={briefingTab} className="mb-6">
+            <ScrollableTabs
+              label={t('tabs.briefingsLabel', 'Briefings')}
+              activeKey={briefingTab}
+              className="mb-6"
+            >
               {briefings.map((b, i) => (
                 <button
                   key={b.id}
@@ -95,7 +106,7 @@ export function BriefingPage() {
                     briefingTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
                   }`}
                 >
-                  {b.title || 'Briefing'}
+                  {b.title || t('common:nav.briefing', 'Briefing')}
                   {briefingTab === i && (
                     <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-txt)]" />
                   )}
@@ -105,7 +116,11 @@ export function BriefingPage() {
           )}
 
           {hasSectionTabs && (
-            <ScrollableTabs label="Seções do briefing" activeKey={sectionTab} className="mb-8">
+            <ScrollableTabs
+              label={t('tabs.sectionsLabel', 'Seções do briefing')}
+              activeKey={sectionTab}
+              className="mb-8"
+            >
               {sections.map((s, i) => (
                 <button
                   key={s.name}
@@ -127,7 +142,9 @@ export function BriefingPage() {
           )}
 
           {visibleQuestions.length === 0 ? (
-            <div className="py-8 hub-tx3 text-sm">Nenhuma pergunta neste briefing ainda.</div>
+            <div className="py-8 hub-tx3 text-sm">
+              {t('page.noQuestions', 'Nenhuma pergunta neste briefing ainda.')}
+            </div>
           ) : (
             <div className="space-y-4">
               {visibleQuestions.map((q) => (
@@ -161,6 +178,7 @@ function QuestionItem({
   audioEnabled: boolean;
   onAudioChanged: () => void;
 }) {
+  const { t } = useTranslation('hubBriefing');
   const [answer, setAnswer] = useState(question.answer ?? '');
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [phase, setPhase] = useState<RecorderPhase>('idle');
@@ -263,9 +281,13 @@ function QuestionItem({
     try {
       await flushPendingSave();
     } catch {
-      setAudioError('Não foi possível salvar o texto. Tente de novo.');
+      const message = t(
+        'question.saveTextError',
+        'Não foi possível salvar o texto. Tente de novo.',
+      );
+      setAudioError(message);
       setPhase('idle');
-      throw new Error('Não foi possível salvar o texto. Tente de novo.');
+      throw new Error(message);
     }
     setAudioError(null);
     try {
@@ -279,7 +301,9 @@ function QuestionItem({
       });
       applyResponse(res);
     } catch (e) {
-      setAudioError(describeAudioError(e, 'Não foi possível enviar o áudio.'));
+      setAudioError(
+        describeAudioError(e, t('errors.uploadFailed', 'Não foi possível enviar o áudio.')),
+      );
       // O servidor pode ter gravado o áudio antes da falha de rede (ex: o
       // upload/finalize terminou no servidor, mas a resposta não chegou) —
       // refaz o fetch em vez de confiar só no estado local.
@@ -299,7 +323,7 @@ function QuestionItem({
     try {
       await flushPendingSave();
     } catch {
-      setAudioError('Não foi possível salvar o texto. Tente de novo.');
+      setAudioError(t('question.saveTextError', 'Não foi possível salvar o texto. Tente de novo.'));
       setBusyAction(null);
       return;
     }
@@ -307,7 +331,9 @@ function QuestionItem({
     try {
       applyResponse(await retryBriefingTranscription(token, question.id));
     } catch (e) {
-      setAudioError(describeAudioError(e, 'Não foi possível transcrever.'));
+      setAudioError(
+        describeAudioError(e, t('errors.transcribeFailed', 'Não foi possível transcrever.')),
+      );
     } finally {
       setBusyAction(null);
     }
@@ -321,7 +347,9 @@ function QuestionItem({
       setAudio(null);
       onAudioChanged();
     } catch (e) {
-      setAudioError(describeAudioError(e, 'Não foi possível remover o áudio.'));
+      setAudioError(
+        describeAudioError(e, t('errors.removeFailed', 'Não foi possível remover o áudio.')),
+      );
     } finally {
       setBusyAction(null);
     }
@@ -329,11 +357,11 @@ function QuestionItem({
 
   const transcriptionLabel =
     audio?.transcription_status === 'done'
-      ? 'Transcrição adicionada à resposta.'
+      ? t('question.transcriptionDone', 'Transcrição adicionada à resposta.')
       : audio?.transcription_status === 'pending'
-        ? 'Transcrição pendente.'
+        ? t('question.transcriptionPending', 'Transcrição pendente.')
         : audio
-          ? 'Não foi possível transcrever este áudio.'
+          ? t('question.transcriptionFailed', 'Não foi possível transcrever este áudio.')
           : null;
 
   return (
@@ -341,10 +369,16 @@ function QuestionItem({
       <div className="flex items-start justify-between gap-3">
         <p className="text-[14px] font-semibold hub-txt leading-snug">{question.question}</p>
         <span className="shrink-0 text-[11px] font-medium min-w-[56px] text-right">
-          {status === 'saving' && <span className="hub-tx3">Salvando…</span>}
-          {status === 'saved' && <span className="text-emerald-600">✓ Salvo</span>}
+          {status === 'saving' && (
+            <span className="hub-tx3">{t('question.saving', 'Salvando…')}</span>
+          )}
+          {status === 'saved' && (
+            <span className="text-emerald-600">{t('question.saved', '✓ Salvo')}</span>
+          )}
           {status === 'error' && (
-            <span className="text-red-500">Não foi possível salvar. Tente de novo.</span>
+            <span className="text-red-500">
+              {t('question.saveError', 'Não foi possível salvar. Tente de novo.')}
+            </span>
           )}
         </span>
       </div>
@@ -353,7 +387,7 @@ function QuestionItem({
         value={answer}
         disabled={locked}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder="Digite sua resposta ou grave um áudio…"
+        placeholder={t('question.placeholder', 'Digite sua resposta ou grave um áudio…')}
       />
 
       {audio && (
@@ -361,7 +395,7 @@ function QuestionItem({
           <AudioPlayer
             src={audio.url}
             durationSeconds={audio.duration_seconds}
-            label="Resposta em áudio"
+            label={t('question.audioResponseLabel', 'Resposta em áudio')}
             className="hub-txt w-full max-w-[420px]"
             style={HUB_AUDIO_VARS}
           />
@@ -376,7 +410,9 @@ function QuestionItem({
                 disabled={busyAction !== null || locked}
                 onClick={() => void handleRetry()}
               >
-                {busyAction === 'retry' ? 'Transcrevendo…' : 'Tentar novamente'}
+                {busyAction === 'retry'
+                  ? t('question.retrying', 'Transcrevendo…')
+                  : t('question.retry', 'Tentar novamente')}
               </button>
             )}
             <button
@@ -385,7 +421,9 @@ function QuestionItem({
               disabled={busyAction !== null || locked}
               onClick={() => void handleRemove()}
             >
-              {busyAction === 'remove' ? 'Removendo…' : 'Remover áudio'}
+              {busyAction === 'remove'
+                ? t('question.removing', 'Removendo…')
+                : t('question.remove', 'Remover áudio')}
             </button>
           </div>
         </div>

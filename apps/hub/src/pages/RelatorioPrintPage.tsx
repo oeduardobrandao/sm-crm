@@ -5,6 +5,7 @@
 import { useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { focusManager, useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
 import { resolveReportTheme } from '@mesaas/report-blocks/theme';
 import type { ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/types';
@@ -21,6 +22,7 @@ export function RelatorioPrintPage() {
   const { docId } = useParams<{ docId: string }>();
   const [params] = useSearchParams();
   const pt = params.get('pt') ?? '';
+  const { t } = useTranslation('hubReports');
 
   // Esta página roda em contextos SEM foco: o Chromium headless do Gotenberg e
   // abas em background reportam document.visibilityState === 'hidden'. O
@@ -67,7 +69,7 @@ export function RelatorioPrintPage() {
   if (isError) {
     return (
       <p style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
-        Não foi possível carregar o relatório.
+        {t('errors.loadPrintDoc', 'Não foi possível carregar o relatório.')}
       </p>
     );
   }

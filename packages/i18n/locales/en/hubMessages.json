@@ -1,0 +1,30 @@
+{
+  "title": "Messages",
+  "subtitle": "All your conversation with the team in one place: messages, approvals, and suggestions.",
+  "disabled": {
+    "description": "This feature isn't available on your plan yet. Talk to your agency to learn more."
+  },
+  "loading": "Loading…",
+  "loadPrevious": "Load earlier messages",
+  "loadError": "Couldn't load messages.",
+  "emptyState": "No messages yet. Send the first one!",
+  "events": {
+    "editSuggestion": "You suggested edits to the copy",
+    "approved": "You approved the post",
+    "correctionRequested": "You requested a correction"
+  },
+  "defaultAuthorName": "Team",
+  "defaultPostTitle": "Post",
+  "postSuffix": {
+    "correction": " · correction",
+    "approved": " · approval"
+  },
+  "reply": "Reply",
+  "replyingTo": "Replying about:",
+  "cancelReply": "Cancel reply",
+  "composer": {
+    "placeholderReply": "Reply about the post…",
+    "placeholderDefault": "Send a message…"
+  },
+  "send": "Send"
+}

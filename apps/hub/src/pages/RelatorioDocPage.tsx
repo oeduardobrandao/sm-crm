@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
 import type { ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
@@ -14,6 +15,7 @@ export function RelatorioDocPage() {
   const { workspace, docId } = useParams<{ workspace: string; token: string; docId: string }>();
   const navigate = useNavigate();
   const base = `/${workspace}/hub/${token}`;
+  const { t } = useTranslation('hubReports');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-report-doc', token, docId],
@@ -31,7 +33,7 @@ export function RelatorioDocPage() {
           className="hub-back-link flex items-center gap-1.5 text-[13px] font-medium hub-tx3 transition-colors"
         >
           <ArrowLeft size={15} strokeWidth={2} />
-          Relatórios
+          {t('backLink', 'Relatórios')}
         </button>
         {doc && <span className="text-[13px] font-medium hub-txt">{doc.title}</span>}
       </div>
@@ -42,7 +44,7 @@ export function RelatorioDocPage() {
       )}
       {isError && (
         <div className="max-w-5xl mx-auto py-20 text-center text-sm hub-tx2">
-          Erro ao carregar o relatório.
+          {t('errors.loadDoc', 'Erro ao carregar o relatório.')}
         </div>
       )}
       {doc && doc.data_snapshot != null && (

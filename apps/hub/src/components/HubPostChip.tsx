@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { ArrowUpRight, FileText, GitBranch } from 'lucide-react';
 import { fetchPosts } from '../api';
-import { CLIENT_STATUS_LABELS, TIPO_LABELS } from '../lib/postView';
+import { getClientStatusLabel, getTipoLabel } from '../lib/postView';
 
 interface Props {
   postId: number;
@@ -39,6 +40,7 @@ function placementFor(el: HTMLElement | null): 'above' | 'below' {
 /** Linked-post chip with a hover preview fed entirely from the already-cached
  * hub-posts payload (thumbnail, tipo/status, fluxo). No extra endpoint. */
 export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
+  const { t } = useTranslation('hubPostCard');
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<'above' | 'below'>('above');
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
@@ -81,7 +83,7 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
       >
         <FileText size={13} className="shrink-0" style={{ color: 'var(--hub-tx3)' }} />
         <span>
-          {titulo ?? 'Ver post'}
+          {titulo ?? t('postChip.viewPost', 'Ver post')}
           {suffix ?? ''}
         </span>
         <ArrowUpRight size={11} className="shrink-0" style={{ color: 'var(--hub-tx3)' }} />
@@ -103,13 +105,13 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
                 className="rounded-full px-2 py-0.5 text-[11px] font-semibold hub-tx2"
                 style={{ boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
               >
-                {TIPO_LABELS[post.tipo] ?? post.tipo}
+                {getTipoLabel(t, post.tipo)}
               </span>
               <span
                 className="rounded-full px-2 py-0.5 text-[11px] font-semibold hub-tx2"
                 style={{ boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
               >
-                {CLIENT_STATUS_LABELS[post.status] ?? post.status}
+                {getClientStatusLabel(t, post.status)}
               </span>
             </div>
             {post.workflow_titulo && (

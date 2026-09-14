@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../../HubContext';
 import { fetchDashboard } from '../../api';
 import { PeriodSelector } from './PeriodSelector';
@@ -8,6 +9,7 @@ import { FollowerChart } from './FollowerChart';
 import { ReachChart } from './ReachChart';
 
 export function DashboardSection() {
+  const { t } = useTranslation('hubHome');
   const { token } = useHub();
   const [period, setPeriod] = useState(30);
 
@@ -47,7 +49,9 @@ export function DashboardSection() {
   if (!data.account) {
     return (
       <div className="mb-12 hub-card p-8 text-center">
-        <p className="text-sm hub-tx3">Conecte o Instagram para ver métricas de desempenho.</p>
+        <p className="text-sm hub-tx3">
+          {t('dashboard.connectInstagram', 'Conecte o Instagram para ver métricas de desempenho.')}
+        </p>
       </div>
     );
   }
@@ -55,12 +59,16 @@ export function DashboardSection() {
   return (
     <div className="mb-12">
       <div className="flex justify-between items-center mb-5">
-        <h2 className="font-display text-xl font-semibold tracking-tight hub-txt">Desempenho</h2>
+        <h2 className="font-display text-xl font-semibold tracking-tight hub-txt">
+          {t('dashboard.title', 'Desempenho')}
+        </h2>
         <PeriodSelector value={period} onChange={setPeriod} />
       </div>
 
       <div className="mb-6">
-        <h3 className="text-[13px] font-semibold hub-tx2 mb-3">Melhores Posts</h3>
+        <h3 className="text-[13px] font-semibold hub-tx2 mb-3">
+          {t('dashboard.topPostsTitle', 'Melhores Posts')}
+        </h3>
         <TopPostsRow posts={data.topPosts} />
       </div>
 

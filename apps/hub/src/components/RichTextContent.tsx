@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import UnderlineExt from '@tiptap/extension-underline';
@@ -78,6 +79,7 @@ function RichTextEditor({
   editable = false,
   onUpdate,
 }: Omit<RichTextContentProps, 'fallbackText'>) {
+  const { t } = useTranslation('hubPostCard');
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
   const [focused, setFocused] = useState(false);
@@ -126,7 +128,7 @@ function RichTextEditor({
     <div className={className}>
       {editable && !focused && !editor?.isFocused && (
         <p className="text-[11px] text-stone-400 mb-1 flex items-center gap-1">
-          <span className="opacity-70">✏️</span> Clique no texto para editar
+          <span className="opacity-70">✏️</span> {t('editHint', 'Clique no texto para editar')}
         </p>
       )}
       <div

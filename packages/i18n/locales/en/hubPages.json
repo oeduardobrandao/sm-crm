@@ -1,0 +1,10 @@
+{
+  "paginasPage": {
+    "title": "Pages",
+    "description": "Documents and materials shared by the agency.",
+    "empty": "No pages have been created yet."
+  },
+  "paginaPage": {
+    "notFound": "Page not found."
+  }
+}

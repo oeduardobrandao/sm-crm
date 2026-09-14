@@ -26,6 +26,24 @@ import ptAuth from '../packages/i18n/locales/pt/auth.json';
 import enAuth from '../packages/i18n/locales/en/auth.json';
 import ptBrand from '../packages/i18n/locales/pt/brand.json';
 import enBrand from '../packages/i18n/locales/en/brand.json';
+import ptHubHome from '../packages/i18n/locales/pt/hubHome.json';
+import enHubHome from '../packages/i18n/locales/en/hubHome.json';
+import ptHubPostCard from '../packages/i18n/locales/pt/hubPostCard.json';
+import enHubPostCard from '../packages/i18n/locales/en/hubPostCard.json';
+import ptHubPosts from '../packages/i18n/locales/pt/hubPosts.json';
+import enHubPosts from '../packages/i18n/locales/en/hubPosts.json';
+import ptHubPages from '../packages/i18n/locales/pt/hubPages.json';
+import enHubPages from '../packages/i18n/locales/en/hubPages.json';
+import ptHubBriefing from '../packages/i18n/locales/pt/hubBriefing.json';
+import enHubBriefing from '../packages/i18n/locales/en/hubBriefing.json';
+import ptHubBrand from '../packages/i18n/locales/pt/hubBrand.json';
+import enHubBrand from '../packages/i18n/locales/en/hubBrand.json';
+import ptHubIdeas from '../packages/i18n/locales/pt/hubIdeas.json';
+import enHubIdeas from '../packages/i18n/locales/en/hubIdeas.json';
+import ptHubReports from '../packages/i18n/locales/pt/hubReports.json';
+import enHubReports from '../packages/i18n/locales/en/hubReports.json';
+import ptHubMessages from '../packages/i18n/locales/pt/hubMessages.json';
+import enHubMessages from '../packages/i18n/locales/en/hubMessages.json';
 
 initI18n({
   pt: {
@@ -36,6 +54,15 @@ initI18n({
     posts: ptPosts,
     auth: ptAuth,
     brand: ptBrand,
+    hubHome: ptHubHome,
+    hubPostCard: ptHubPostCard,
+    hubPosts: ptHubPosts,
+    hubPages: ptHubPages,
+    hubBriefing: ptHubBriefing,
+    hubBrand: ptHubBrand,
+    hubIdeas: ptHubIdeas,
+    hubReports: ptHubReports,
+    hubMessages: ptHubMessages,
   },
   en: {
     common: enCommon,
@@ -45,6 +72,15 @@ initI18n({
     posts: enPosts,
     auth: enAuth,
     brand: enBrand,
+    hubHome: enHubHome,
+    hubPostCard: enHubPostCard,
+    hubPosts: enHubPosts,
+    hubPages: enHubPages,
+    hubBriefing: enHubBriefing,
+    hubBrand: enHubBrand,
+    hubIdeas: enHubIdeas,
+    hubReports: enHubReports,
+    hubMessages: enHubMessages,
   },
 });
 

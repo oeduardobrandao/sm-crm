@@ -1,0 +1,83 @@
+{
+  "shared": {
+    "reelDeTeste": "Test reel",
+    "saving": "Saving...",
+    "savingSuggestion": "Saving suggestion...",
+    "suggestionSaved": "Suggestion saved",
+    "aprovar": "Approve",
+    "correcaoShort": "Correction",
+    "correcaoLong": "Request correction",
+    "suggestionPendingReviewShort": "Suggestion sent for review",
+    "suggestionPendingReviewFull": "Suggestion sent for the team to review",
+    "commentPlaceholder": "Comment here or edit the text directly in the field above",
+    "correctionCommentRequired": "Leave a comment to request a correction",
+    "rejectedSuggestionWarning": "⚠️ Your previous suggestion was rejected by the team. Edit it again to send a new one.",
+    "suggestionInfoNote": "ℹ️ Your edits will be sent as a suggestion for the team to review",
+    "postApproved": "Post approved!",
+    "correctionSent": "Correction sent!",
+    "viewOnInstagram": "View on Instagram",
+    "viewOnTikTok": "View on TikTok"
+  },
+  "aprovacoes": {
+    "title": "Approvals",
+    "emptyDescription": "All caught up. No post awaiting approval.",
+    "pendingDescription": "{{count}} post{{plural}} awaiting your approval.",
+    "selectHint": "Select posts to preview how they'll look in the Instagram feed.",
+    "storiesHeader": "Stories",
+    "noMediaHeader": "Posts without media"
+  },
+  "postagens": {
+    "title": "Posts",
+    "selectHint": "Select posts to preview and reorder how they'll look in the Instagram feed.",
+    "defaultDescription": "All posts in your content calendar.",
+    "loadError": "Error loading posts.",
+    "empty": "No posts available yet.",
+    "avulsoGroupTitle": "Standalone posts",
+    "postCount": "{{count}} {{noun}}",
+    "clickToExpand": "click to expand",
+    "status": {
+      "enviadoCliente": "Awaiting approval",
+      "aprovadoCliente": "Approved",
+      "correcaoCliente": "Correction requested",
+      "agendado": "Scheduled",
+      "publicando": "Publishing…",
+      "postado": "Published",
+      "falhaPublicacao": "Publishing failed"
+    }
+  },
+  "postagemFoco": {
+    "backLink": "See all posts",
+    "loadError": "Could not load this post.",
+    "retry": "Try again",
+    "notAvailable": "This post is not available."
+  },
+  "instagramCard": {
+    "selectAriaLabel": "Select post",
+    "openMediaAriaLabel": "Open media {{index}}",
+    "prevSlideAriaLabel": "Previous slide",
+    "nextSlideAriaLabel": "Next slide",
+    "likeAriaLabel": "Like",
+    "suggestionRejected": "⚠️ Suggestion rejected — edit again",
+    "editCaptionHint": "✏️ Edit the caption below",
+    "captionAriaLabel": "Post caption",
+    "concluir": "Done",
+    "verMenos": "less",
+    "verMais": "… more",
+    "editarLegenda": "Edit caption",
+    "scheduledPrefix": "Scheduled · {{date}}",
+    "scheduledBannerTitle": "Scheduled for publication",
+    "publishedBannerTitle": "Published",
+    "postApprovedAndScheduled": "Post approved and scheduled for publication!",
+    "autoPublishScheduled": "Once approved, this post will be published automatically on Instagram at {{date}}.",
+    "autoPublishUnscheduled": "Once approved, this post will be scheduled for automatic publication on Instagram."
+  },
+  "storyCard": {
+    "prevAriaLabel": "Previous",
+    "nextAriaLabel": "Next",
+    "replyPlaceholder": "Reply to {{name}}..."
+  },
+  "textCard": {
+    "mediaRemoved": "Media removed to free up space",
+    "instagramCaptionLabel": "Instagram caption"
+  }
+}
