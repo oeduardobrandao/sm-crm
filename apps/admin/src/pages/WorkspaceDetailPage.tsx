@@ -196,6 +196,15 @@ export default function WorkspaceDetailPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const saveNotesMutation = useMutation({
+    mutationFn: () => setWorkspaceOverrides({ workspace_id: id!, notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
+      toast.success('Notas salvas');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const clearMutation = useMutation({
     mutationFn: () => clearWorkspaceOverrides(id!),
     onSuccess: () => {
@@ -617,10 +626,11 @@ export default function WorkspaceDetailPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => saveOverridesMutation.mutate()}
-            disabled={saveOverridesMutation.isPending}
+            onClick={() => saveNotesMutation.mutate()}
+            disabled={saveNotesMutation.isPending || !plan}
+            title={!plan ? 'Atribua um plano ao workspace para salvar notas' : undefined}
           >
-            {saveOverridesMutation.isPending ? 'Salvando…' : 'Salvar'}
+            {saveNotesMutation.isPending ? 'Salvando…' : 'Salvar'}
           </Button>
         </CardHeader>
         <CardContent>
