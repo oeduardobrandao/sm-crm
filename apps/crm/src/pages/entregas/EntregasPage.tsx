@@ -126,7 +126,7 @@ export default function EntregasPage() {
   // contaId is needed by the mode-seeding below, so useAuth is read up front
   // (its own state, tourDone/explainerOpen, is still set up further down).
   const { profile } = useAuth();
-  const contaId = profile?.conta_id ?? 'unknown';
+  const contaId = profile?.active_workspace_id ?? profile?.conta_id ?? 'unknown';
 
   // Processos individuais de produção (spec 2026-09-10). Ships dark.
   const { features } = useWorkspaceLimits();

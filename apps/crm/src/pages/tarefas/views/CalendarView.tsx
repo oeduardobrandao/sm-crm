@@ -16,11 +16,17 @@ import { MonthGrid } from '@/components/ui/month-grid';
 import { updateTarefa, type TarefaWithRelations } from '../../../store';
 import { buildDropId, parseDropId, sortTarefas, toDateOnlyString } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
+import { useAuth } from '@/context/AuthContext';
+import type { Membro } from '../../../store';
+import { loadTarefasCalendarioModo, persistTarefasCalendarioModo } from '../tarefasPrefs';
+import { BoardView } from './BoardView';
 
 interface CalendarViewProps {
   tarefas: TarefaWithRelations[];
+  membros: Membro[];
   onTarefaClick: (tarefa: TarefaWithRelations) => void;
   onRefresh: () => void;
+  onCreateTask: (date: string | null) => void;
 }
 
 const MAX_CHIPS_PER_DAY = 3;
@@ -186,7 +192,20 @@ function SemDataRail({
 
 /** Month calendar of due dates. Drag a chip onto a day to set data_limite, or
  * onto the "Sem data" rail to clear it. */
-export function CalendarView({ tarefas, onTarefaClick, onRefresh }: CalendarViewProps) {
+export function CalendarView({
+  tarefas,
+  membros,
+  onTarefaClick,
+  onRefresh,
+  onCreateTask,
+}: CalendarViewProps) {
+  const { profile } = useAuth();
+  const contaId = profile?.active_workspace_id ?? profile?.conta_id ?? 'unknown';
+  const [modo, setModo] = useState<'mes' | 'board'>(() => loadTarefasCalendarioModo(contaId));
+  const handleModoChange = (next: 'mes' | 'board') => {
+    setModo(next);
+    persistTarefasCalendarioModo(contaId, next);
+  };
   const { merged, applyOverride, clearOverride } = useOptimisticTarefas(tarefas);
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [activeTarefa, setActiveTarefa] = useState<TarefaWithRelations | null>(null);
@@ -232,32 +251,86 @@ export function CalendarView({ tarefas, onTarefaClick, onRefresh }: CalendarView
     }
   };
 
-  return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div
-        className="animate-up"
-        style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}
-      >
-        <div className="card" style={{ flex: '1 1 560px', borderRadius: '12px', padding: '1rem' }}>
-          <MonthGrid
-            currentMonth={currentMonth}
-            onMonthChange={setCurrentMonth}
-            renderCell={(date, isCurrentMonth) => (
-              <DayCell
-                date={date}
-                isCurrentMonth={isCurrentMonth}
-                isToday={toDateOnlyString(date) === todayStr}
-                tarefas={byDay.get(toDateOnlyString(date)) ?? []}
-                onTarefaClick={onTarefaClick}
-              />
-            )}
-          />
-        </div>
-        <div style={{ flex: '0 1 240px', minWidth: 200 }}>
-          <SemDataRail tarefas={semData} onTarefaClick={onTarefaClick} />
-        </div>
+  const toggle = (
+    <div
+      style={{
+        display: 'inline-flex',
+        gap: '0.25rem',
+        background: 'var(--surface-2)',
+        padding: '0.2rem',
+        borderRadius: '8px',
+        width: 'fit-content',
+      }}
+    >
+      {(['board', 'mes'] as const).map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => handleModoChange(option)}
+          style={{
+            padding: '0.3rem 0.7rem',
+            borderRadius: '6px',
+            border: 'none',
+            background: modo === option ? '#000' : 'transparent',
+            color: modo === option ? '#fff' : 'var(--text-secondary)',
+            fontSize: '0.75rem',
+            fontWeight: modo === option ? 600 : 400,
+            cursor: 'pointer',
+          }}
+        >
+          {option === 'board' ? 'Board' : 'Mês'}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (modo === 'board') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {toggle}
+        <BoardView
+          tarefas={tarefas}
+          membros={membros}
+          onTarefaClick={onTarefaClick}
+          onRefresh={onRefresh}
+          onCreateTask={onCreateTask}
+        />
       </div>
-      <DragOverlay>{activeTarefa && <TarefaChip tarefa={activeTarefa} overlay />}</DragOverlay>
-    </DndContext>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {toggle}
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div
+          className="animate-up"
+          style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}
+        >
+          <div
+            className="card"
+            style={{ flex: '1 1 560px', borderRadius: '12px', padding: '1rem' }}
+          >
+            <MonthGrid
+              currentMonth={currentMonth}
+              onMonthChange={setCurrentMonth}
+              renderCell={(date, isCurrentMonth) => (
+                <DayCell
+                  date={date}
+                  isCurrentMonth={isCurrentMonth}
+                  isToday={toDateOnlyString(date) === todayStr}
+                  tarefas={byDay.get(toDateOnlyString(date)) ?? []}
+                  onTarefaClick={onTarefaClick}
+                />
+              )}
+            />
+          </div>
+          <div style={{ flex: '0 1 240px', minWidth: 200 }}>
+            <SemDataRail tarefas={semData} onTarefaClick={onTarefaClick} />
+          </div>
+        </div>
+        <DragOverlay>{activeTarefa && <TarefaChip tarefa={activeTarefa} overlay />}</DragOverlay>
+      </DndContext>
+    </div>
   );
 }

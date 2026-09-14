@@ -54,10 +54,11 @@ export interface TarefaWithRelations extends Tarefa {
   subtarefas_total: number;
   subtarefas_concluidas: number;
   cliente_nome: string | null;
+  cliente_cor: string | null;
 }
 
 interface TarefaRow extends Tarefa {
-  clientes: { nome: string } | null;
+  clientes: { nome: string; cor: string } | null;
   tarefa_tag_links: { tarefa_tags: TarefaTag | null }[] | null;
   subtarefas: { id: number; concluida: boolean }[] | null;
 }
@@ -66,7 +67,7 @@ export async function getTarefas(): Promise<TarefaWithRelations[]> {
   const { data, error } = await supabase
     .from('tarefas')
     .select(
-      '*, clientes(nome), tarefa_tag_links(tarefa_tags(id, nome, cor)), subtarefas(id, concluida)',
+      '*, clientes(nome, cor), tarefa_tag_links(tarefa_tags(id, nome, cor)), subtarefas(id, concluida)',
     )
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -81,6 +82,7 @@ export async function getTarefas(): Promise<TarefaWithRelations[]> {
       subtarefas_total: subs.length,
       subtarefas_concluidas: subs.filter((s) => s.concluida).length,
       cliente_nome: clientes?.nome ?? null,
+      cliente_cor: clientes?.cor ?? null,
     };
   });
 }

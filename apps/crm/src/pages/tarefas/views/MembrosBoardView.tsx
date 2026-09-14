@@ -62,6 +62,7 @@ export function MembrosBoardView({
       now={now}
       onCardClick={onTarefaClick}
       onDropCard={handleDrop}
+      onRefresh={onRefresh}
     />
   );
 }
