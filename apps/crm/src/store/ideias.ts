@@ -188,3 +188,33 @@ export async function updateIdeiaVisibilidade(ideiaId: string, visivel: boolean)
     .eq('id', ideiaId);
   if (error) throw new Error(error.message);
 }
+
+export interface UpdateIdeiaInput {
+  cliente_id: number;
+  titulo: string;
+  descricao: string | null;
+  links: string[];
+  visivel_no_hub: boolean;
+}
+
+/** Agency-created ideia only -- the CRM never edits a client-submitted one. */
+export async function updateIdeia(ideiaId: string, input: UpdateIdeiaInput): Promise<void> {
+  const { error } = await supabase
+    .from('ideias')
+    .update({
+      cliente_id: input.cliente_id,
+      titulo: input.titulo,
+      descricao: input.descricao || null,
+      links: input.links,
+      visivel_no_hub: input.visivel_no_hub,
+    })
+    .eq('id', ideiaId)
+    .eq('origem', 'agencia');
+  if (error) throw new Error(error.message);
+}
+
+/** Any origin -- RLS scopes this to the caller's own workspace. */
+export async function deleteIdeia(ideiaId: string): Promise<void> {
+  const { error } = await supabase.from('ideias').delete().eq('id', ideiaId);
+  if (error) throw new Error(error.message);
+}

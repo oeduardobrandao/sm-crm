@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Save, Loader2, ImagePlus, ListChecks, X } from 'lucide-react';
+import {
+  ExternalLink,
+  Save,
+  Loader2,
+  ImagePlus,
+  ListChecks,
+  Pencil,
+  Trash2,
+  X,
+} from 'lucide-react';
 import {
   listIdeiaImages,
   uploadIdeiaImage,
@@ -25,6 +34,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { IdeiaStatusBadge } from './IdeiaStatusBadge';
 import { IdeiaTipoBadge } from './IdeiaTipoBadge';
 import { IdeiaOrigemBadge } from './IdeiaOrigemBadge';
@@ -34,6 +53,7 @@ import {
   upsertIdeiaComentario,
   toggleIdeiaReaction,
   updateIdeiaVisibilidade,
+  deleteIdeia,
   getMembros,
   getClientes,
   getTarefaTags,
@@ -65,6 +85,11 @@ interface IdeiaDrawerProps {
   ideia: Ideia;
   queryKey: unknown[];
   onClose: () => void;
+  // Opens NovaIdeiaDialog in edit mode for this ideia; only rendered (below) for
+  // agencia-origin ideias -- the CRM never edits a client-submitted one. Optional:
+  // a caller without a create/edit dialog of its own (the cliente-detalhe hub tab)
+  // just omits it, which hides "Editar" rather than wiring a no-op.
+  onEdit?: () => void;
   // Shortcut from the card list: opens the drawer already focused on the action the user
   // asked for instead of dropping them at the top. Optional -- every other call site keeps
   // opening on the description with no initial focus/dialog, exactly as before this prop
@@ -72,7 +97,7 @@ interface IdeiaDrawerProps {
   initialAction?: 'responder' | 'converter';
 }
 
-export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDrawerProps) {
+export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }: IdeiaDrawerProps) {
   const qc = useQueryClient();
   const { can } = useAuth();
   // IdeiasPage/IdeiaDrawer had NO role check at all before Task 14 -- any
@@ -189,6 +214,8 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDr
   const [comentario, setComentario] = useState(ideia.comentario_agencia ?? '');
   const [comentarioSaving, setComentarioSaving] = useState(false);
   const [reactionLoading, setReactionLoading] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString('pt-BR', {
@@ -221,6 +248,21 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDr
       toast.error(e.message ?? 'Erro ao atualizar visibilidade.');
     } finally {
       setVisSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await deleteIdeia(ideia.id);
+      qc.invalidateQueries({ queryKey });
+      toast.success('Ideia excluída.');
+      setConfirmDelete(false);
+      onClose();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao excluir ideia.');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -507,10 +549,57 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, initialAction }: IdeiaDr
                 Salvar comentário
               </Button>
             </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-border">
+              {isAgency && canEditIdeias && onEdit ? (
+                <Button type="button" variant="ink" size="sm" onClick={onEdit}>
+                  <Pencil size={13} className="mr-1.5" /> Editar
+                </Button>
+              ) : (
+                <span />
+              )}
+              {canEditIdeias && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-[var(--danger-text)]"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 size={13} className="mr-1.5" /> Excluir
+                </Button>
+              )}
+            </div>
           </div>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background to-transparent" />
         </div>
       </SheetContent>
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir ideia?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A ideia &quot;{ideia.titulo}&quot; será excluída, junto com seu áudio, imagens e
+              reações. Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDelete();
+              }}
+            >
+              {deleting && <Loader2 size={13} className="animate-spin mr-1.5" />}
+              Excluir ideia
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <TarefaFormDialog
         open={convertOpen}

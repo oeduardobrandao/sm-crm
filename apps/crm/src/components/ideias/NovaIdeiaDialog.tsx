@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
 import { AudioRecorder, isRecordingSupported, type RecorderPhase } from '@mesaas/ui/AudioRecorder';
 import { describeAudioError } from '@mesaas/ui/audio/validation';
-import { createIdeia, getClientes } from '@/store';
+import { createIdeia, updateIdeia, getClientes, type Ideia } from '@/store';
 import { uploadIdeiaAudio } from '@/services/ideiaAudio';
 import { useCurrentMembro } from '@/hooks/useCurrentMembro';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
@@ -74,10 +74,12 @@ interface PendingAudio {
 interface Props {
   open: boolean;
   onClose: () => void;
-  onCreated: (ideiaId: string) => void;
+  onSaved: (ideiaId: string) => void;
+  /** Agency-created ideia being edited, or null/omitted to create a new one. */
+  editing?: Ideia | null;
 }
 
-export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
+export function NovaIdeiaDialog({ open, onClose, onSaved, editing = null }: Props) {
   const qc = useQueryClient();
   const { membro } = useCurrentMembro();
   const { features } = useWorkspaceLimits();
@@ -118,14 +120,45 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
     setRerecord(false);
   }
 
+  // Populates the form from `editing` (or blanks it for a fresh create) every time the
+  // dialog opens. The component stays mounted between opens -- react-hook-form's
+  // `defaultValues` only apply once at mount, so without this a second "Nova ideia"
+  // would show whatever was left over from the previous open, and switching between
+  // editing two different ideias wouldn't update the fields at all.
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      form.reset({
+        cliente_id: String(editing.cliente_id),
+        titulo: editing.titulo,
+        descricao: editing.descricao ?? '',
+        links: editing.links.length ? editing.links.map((value) => ({ value })) : [{ value: '' }],
+        visivel_no_hub: editing.visivel_no_hub,
+      });
+    } else {
+      form.reset({
+        cliente_id: '',
+        titulo: '',
+        descricao: '',
+        links: [{ value: '' }],
+        visivel_no_hub: false,
+      });
+    }
+    discardAudio();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editing]);
+
   async function onSubmit(values: FormValues) {
     // While `rerecord` is true, the recorder shown is empty (the user asked to replace
     // the take) even though `pendingAudio` still holds the OLD blob until a new one is
     // confirmed. Treat that stale blob as "no audio" here, for both the guard and the
     // actual upload below -- otherwise submitting mid-rerecord silently uploads the
     // take the user is in the middle of discarding, despite an empty recorder on screen.
-    const audioToUpload = pendingAudio && !rerecord ? pendingAudio : null;
-    if (!values.descricao.trim() && !audioToUpload) {
+    // Editing never re-records audio here (no recorder shown) -- an ideia already
+    // carrying audio still satisfies the guard even with descricao cleared.
+    const audioToUpload = !editing && pendingAudio && !rerecord ? pendingAudio : null;
+    const hasExistingAudio = !!editing?.audio_r2_key;
+    if (!values.descricao.trim() && !audioToUpload && !hasExistingAudio) {
       form.setError('descricao', {
         message: audioAllowed
           ? 'Adicione uma descrição ou grave um áudio.'
@@ -136,6 +169,23 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
     setSubmitting(true);
     try {
       const links = values.links.map((l) => l.value.trim()).filter(Boolean);
+
+      if (editing) {
+        await updateIdeia(editing.id, {
+          cliente_id: parseInt(values.cliente_id, 10),
+          titulo: values.titulo.trim(),
+          descricao: values.descricao.trim() || null,
+          links,
+          visivel_no_hub: values.visivel_no_hub,
+        });
+        qc.invalidateQueries({ queryKey: ['hub-ideias-all'] });
+        qc.invalidateQueries({ queryKey: ['ideias'] });
+        toast.success('Ideia atualizada.');
+        form.reset();
+        onSaved(editing.id);
+        return;
+      }
+
       const id = await createIdeia({
         cliente_id: parseInt(values.cliente_id, 10),
         titulo: values.titulo.trim(),
@@ -179,16 +229,17 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
       if (audioOk) toast.success('Ideia criada.');
       form.reset();
       discardAudio();
-      onCreated(id);
+      onSaved(id);
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao criar ideia.');
+      toast.error(e.message ?? (editing ? 'Erro ao salvar ideia.' : 'Erro ao criar ideia.'));
     } finally {
       setSubmitting(false);
     }
   }
 
-  const submitLabel =
-    audioPhase === 'uploading'
+  const submitLabel = editing
+    ? 'Salvar alterações'
+    : audioPhase === 'uploading'
       ? 'Enviando áudio…'
       : audioPhase === 'transcribing'
         ? 'Transcrevendo…'
@@ -203,8 +254,12 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
     >
       <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>Nova ideia</DialogTitle>
-          <DialogDescription>Registre uma ideia de conteúdo para um cliente.</DialogDescription>
+          <DialogTitle>{editing ? 'Editar ideia' : 'Nova ideia'}</DialogTitle>
+          <DialogDescription>
+            {editing
+              ? 'Atualize os detalhes desta ideia.'
+              : 'Registre uma ideia de conteúdo para um cliente.'}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3" noValidate>
@@ -254,7 +309,7 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
           <div className="space-y-1">
             <Label htmlFor="nova-ideia-descricao">
               Descrição
-              {audioAllowed && (
+              {audioAllowed && !editing && (
                 <span className="font-normal text-muted-foreground">
                   {' '}
                   (ou grave um áudio abaixo)
@@ -274,7 +329,7 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
             )}
           </div>
 
-          {audioAllowed && (
+          {audioAllowed && !editing && (
             <div className="space-y-1.5" style={CRM_AUDIO_VARS}>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Áudio{' '}

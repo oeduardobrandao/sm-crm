@@ -21,7 +21,11 @@ const SheetOverlay = React.forwardRef<
     className={cn(
       // tailwindcss-animate is not registered, so the animate-in utilities are
       // inert; the sheet-overlay class carries the real fade (style.css).
-      'sheet-overlay fixed inset-0 z-50 bg-black/80',
+      // z-[9010] (matching Dialog's own overlay below) -- z-50 sat BELOW
+      // .topbar's z-index: 110, so the app's fixed top bar visually covered
+      // the top of every sheet-based drawer (IdeiaDrawer, TarefaDetailSheet,
+      // AnalyticsPage filters, AddWidgetDrawer, ...).
+      'sheet-overlay fixed inset-0 z-[9010] bg-black/80',
       className,
     )}
     {...props}
@@ -32,7 +36,7 @@ SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 // The sheet-pane--* classes carry the slide animations (style.css); the stock
 // slide-in-from-* utilities need tailwindcss-animate, which is not registered.
-const sheetVariants = cva('fixed z-50 gap-4 bg-background p-6 shadow-lg', {
+const sheetVariants = cva('fixed z-[9011] gap-4 bg-background p-6 shadow-lg', {
   variants: {
     side: {
       top: 'sheet-pane--top inset-x-0 top-0 border-b',
