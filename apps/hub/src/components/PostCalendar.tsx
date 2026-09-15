@@ -342,7 +342,7 @@ export function PostCalendar({ posts }: Props) {
               {selectedPosts.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => navigate(`postagens?post=${p.id}`)}
+                  onClick={() => navigate(`postagens/${p.id}`)}
                   className="text-left rounded-2xl md:rounded-xl md:border hub-border bg-[var(--hub-soft)] md:bg-[var(--hub-card)] p-3.5 space-y-1 md:space-y-2 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
                 >
                   {/* Mobile: colored dot + time, no status/type text */}

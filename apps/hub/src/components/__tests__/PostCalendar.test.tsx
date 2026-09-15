@@ -108,7 +108,7 @@ describe('PostCalendar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Post do dia 20/i }));
 
-    expect(navigateMock).toHaveBeenCalledWith('postagens?post=4');
+    expect(navigateMock).toHaveBeenCalledWith('postagens/4');
   });
 
   it('moves between months across year boundaries and clears the selected day until another one is picked', () => {
