@@ -590,6 +590,8 @@ Run: `npx supabase db query --linked --file <scratch-file>.sql`
 
 Compare the `id` values in the result against the `cliente_id` values recorded in Step 3. If every id from Step 3 appears in this result, proceed to Step 5. If any is missing, that client had `event_claim_through` still set (a lease the pause in Step 1 didn't clear in time) — re-run this exact same SQL again (it's idempotent within this paused window: a client already updated no longer matches `ca.arrived_at <= cl.event_cursor_at`, so re-running only retries whoever is still missing) until the two lists match.
 
+If a client is still missing after one or two retries — i.e. it's not a transient in-flight lease but genuinely stuck — note that `claim_client_event_emails()` (`supabase/migrations/20260904000001_client_event_emails.sql:130-157`) never touches `event_claim_through` on claim; only the handler's own success/release paths clear it, and those can't run while the cron is paused. Confirm no worker is actually running for that client, then clear the lease directly: `UPDATE clientes SET event_claim_through = NULL WHERE id = <id>;` before re-running the SQL above.
+
 - [ ] **Step 5: Resume the cron**
 
 Write this to a scratch file (verbatim from `supabase/migrations/20260904000001_client_event_emails.sql:178-192`):
@@ -618,6 +620,8 @@ Run: `npx supabase db query --linked --file <scratch-file>.sql`
 
 Wait up to 15 minutes, then write this to a scratch file:
 
+Note: `claim_client_event_emails()` also requires `event_claimed_at < p_now - interval '30 minutes'` to reclaim a client (same migration, line 151), and the backfill above only rewinds `event_cursor_at` — it does not touch `event_claimed_at`. Any client whose last claim attempt (successful or not) happened less than 30 minutes before the cron was resumed in Step 5 will not be eligible on this first tick; it clears on a later tick once that 30-minute window passes.
+
 ```sql
 SELECT resource_id, created_at, metadata
 FROM audit_log
@@ -630,6 +634,8 @@ LIMIT 10;
 Run: `npx supabase db query --linked --file <scratch-file>.sql`
 
 Expected: a fresh row (timestamp after Step 5's resume) for each of the four Hanna Marques clients, confirming they received the recovery digest. (Adjust the `resource_id` list to match whatever Step 3 actually returned if other workspaces were also affected.)
+
+If some clients are missing after the first 15-minute tick, re-run this query after a second tick before treating it as a failure: any client whose `event_claimed_at` was recent (within 30 minutes) at resume time is expected to land on the second tick, not the first — that's the pre-existing claim-rotation backoff described above, not a bug.
 
 - [ ] **Step 7: Commit the plan/spec status**
 

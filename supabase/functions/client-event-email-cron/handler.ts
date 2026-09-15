@@ -183,9 +183,10 @@ const SEND_DEADLINE_MS = 60_000;
  * deterministic tiebreak) and cap at this count. Under the cap, the fetched
  * set IS the whole window and the cursor advances to `upper` as usual. At
  * the cap, the fetched set is only the OLDEST EVENTS_QUERY_CAP rows --
- * `(lower, lastReturned]` where `lastReturned` is the last row's
- * created_at -- so the cursor advances only to `lastReturned` instead of
- * `upper`. The unprocessed remainder, `(lastReturned, upper]`, is strictly
+ * `(windowLower, lastReturned]` (`approvalsLowerIso` for the approvals
+ * query, `msgLower` for the messages query) where `lastReturned` is the
+ * last row's created_at -- so the cursor advances only to `lastReturned`
+ * instead of `upper`. The unprocessed remainder, `(lastReturned, upper]`, is strictly
  * NEWER, and the next tick's window starts exactly at `lastReturned` and
  * extends forward to that tick's own (later) claim_through -- so the
  * remainder is naturally swept up next time, and nothing strands. (An
@@ -345,7 +346,7 @@ export async function runClientEventEmailCron(
 
       // The cap was hit -- the window holds MORE than EVENTS_QUERY_CAP events
       // and the query (ordered created_at ASC) only returned the OLDEST
-      // slice: `(lower, lastReturned]`. Complete any tied created_at group
+      // slice: `(approvalsLowerIso, lastReturned]`. Complete any tied created_at group
       // the cap cut through (EVENTS_QUERY_CAP's comment, point 1 -- the
       // mensagens_consolidadas composite-keyset-cursor precedent) before
       // trusting the boundary, then track it so the cursor advances only up
@@ -387,8 +388,9 @@ export async function runClientEventEmailCron(
       if (seenErr) throw new Error(`mensagens_last_seen query failed: ${seenErr.message}`);
       const lastSeenAt = (seenRows?.[0] as { last_seen_at: string } | undefined)?.last_seen_at ?? null;
       // Mensagens: mantém o piso de 72h (o e-mail só mostra uma CONTAGEM, não o
-      // conteúdo -- ver cabeçalho do arquivo). created_at > window_lower AND
-      // created_at > last_seen_at == created_at > GREATEST(window_lower, last_seen_at).
+      // conteúdo -- ver cabeçalho do arquivo). created_at > messagesCursorLower AND
+      // created_at > last_seen_at == created_at > GREATEST(messagesCursorLower,
+      // last_seen_at) == created_at > msgLower.
       const messagesFloor = new Date(now.getTime() - SEVENTY_TWO_HOURS_MS);
       const messagesCursorLower = maxDate(row.event_cursor_at, messagesFloor);
       const msgLower = maxDate(lastSeenAt, messagesCursorLower);
@@ -536,9 +538,15 @@ export async function runClientEventEmailCron(
       // bound when either query was over-dense. Advancing the cursor to it
       // (never past it) is what keeps the un-fetched/trimmed-out remainder
       // for the next tick's window instead of falsely marking it delivered.
-      // boundIso is always > approvalsLowerIso and > msgLower by construction
-      // (it comes from a row that already passed one of the two `gt` filters,
-      // or is `upper` itself), so this can never move the cursor backwards.
+      // boundIso is always > event_cursor_at, because both approvalsLowerIso
+      // and msgLower are >= the cursor by construction (approvalsLowerIso IS
+      // the cursor, or EPOCH; msgLower is a GREATEST that includes the
+      // cursor). So this can never move the cursor backwards. Note boundIso
+      // is NOT always > msgLower specifically -- if the approvals query caps
+      // out on old rows, boundIso can be older than msgLower's 72h floor;
+      // that's fine, it just means the un-fetched messages remainder is
+      // picked up on the following tick along with everything else in the
+      // widened window.
       //
       // The email is already sent at this point -- a cursor-advance failure
       // below must still release the lease (so the client isn't stuck)

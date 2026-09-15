@@ -388,7 +388,7 @@ Deno.test("From display name quotes RFC 5322 specials (comma, ampersand, parens)
   assertEquals(sent[0].from, '"Silva, Souza & Cia (Oficial)" <notificacoes@mesaas.com.br>');
 });
 
-// --- 4. NULL cursor: floor = now-72h ------------------------------------------
+// --- 4. NULL cursor: approvals have no floor -----------------------------------
 
 Deno.test("NULL cursor: an 80h-old pending approval is now included (no floor on approvals)", async () => {
   const db = makeFakeDb(
@@ -414,7 +414,7 @@ Deno.test("NULL cursor: an 80h-old pending approval is now included (no floor on
   assert(sent[0].html.includes("Old post"), "expected the 80h-old post to be included, not floor-excluded");
 });
 
-// --- 5. old cursor: GREATEST clamps to now-72h --------------------------------
+// --- 5. old cursor: approvals are not GREATEST-clamped -------------------------
 
 Deno.test("cursor 5 days old: both events included now (no floor clamp on approvals)", async () => {
   const db = makeFakeDb(
