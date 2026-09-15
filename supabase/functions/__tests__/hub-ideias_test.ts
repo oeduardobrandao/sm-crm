@@ -385,7 +385,7 @@ Deno.test("hub-ideias: POST /:id/audio finalizes + transcribes; DELETE /:id/audi
   // No feature_briefing_audio queued: only resolveHubToken's mandatory feature_hub_portal
   // check may hit effective_plan_feature (via the mock's default `true`); DELETE must not
   // consult the plan gate a second time.
-  del.queue("ideias", "select", { data: { id: OWN.id, audio_r2_key: key }, error: null });
+  del.queue("ideias", "select", { data: { id: OWN.id, audio_r2_key: key, descricao: "algo escrito" }, error: null });
   del.queueRpc("ideia_audio_release", { data: key, error: null });
   const dres = await makeHandler(del)(new Request(`https://x.test/hub-ideias/${OWN.id}/audio?token=t`, { method: "DELETE" }));
   assertEquals(dres.status, 200);

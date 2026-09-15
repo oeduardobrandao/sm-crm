@@ -119,7 +119,13 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
   }
 
   async function onSubmit(values: FormValues) {
-    if (!values.descricao.trim() && !pendingAudio) {
+    // While `rerecord` is true, the recorder shown is empty (the user asked to replace
+    // the take) even though `pendingAudio` still holds the OLD blob until a new one is
+    // confirmed. Treat that stale blob as "no audio" here, for both the guard and the
+    // actual upload below -- otherwise submitting mid-rerecord silently uploads the
+    // take the user is in the middle of discarding, despite an empty recorder on screen.
+    const audioToUpload = pendingAudio && !rerecord ? pendingAudio : null;
+    if (!values.descricao.trim() && !audioToUpload) {
       form.setError('descricao', {
         message: audioAllowed
           ? 'Adicione uma descrição ou grave um áudio.'
@@ -139,21 +145,29 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
         autor_membro_id: membro?.id ?? null,
       });
       let audioOk = true;
-      if (pendingAudio) {
+      if (audioToUpload) {
         try {
           await uploadIdeiaAudio({
             ideiaId: id,
-            blob: pendingAudio.blob,
-            mime: pendingAudio.mime,
-            durationSeconds: pendingAudio.durationSeconds,
+            blob: audioToUpload.blob,
+            mime: audioToUpload.mime,
+            durationSeconds: audioToUpload.durationSeconds,
             onPhase: setAudioPhase,
           });
         } catch (e) {
           audioOk = false;
+          // The blob is gone by the time the user reads this (discarded below,
+          // same as the success path) -- when there's no descricao either, the
+          // ideia was just created with no content at all, so say so plainly and
+          // point at the drawer's own recorder, which still works for a
+          // no-audio ideia, rather than implying "tentar de novo" replays
+          // anything.
           toast.warning(
             describeAudioError(
               e,
-              'Ideia criada, mas o áudio falhou. Abra a ideia para tentar de novo.',
+              values.descricao.trim()
+                ? 'Ideia criada, mas o áudio falhou. Abra a ideia para tentar de novo.'
+                : 'Ideia criada sem conteúdo: o áudio falhou e não há descrição. Abra a ideia para gravar de novo ou escrever uma descrição.',
             ),
           );
         } finally {

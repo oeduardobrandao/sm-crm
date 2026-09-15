@@ -209,9 +209,14 @@ export function transcribeIdeiaAudio(a: TranscriptionArgs): Promise<IdeiaAudioRe
 }
 
 export async function removeIdeiaAudio(a: IdeiaAudioScope): Promise<IdeiaAudioResult> {
-  const { data: row } = await scoped(a.db.from("ideias").select("id, audio_r2_key"), a).maybeSingle();
+  const { data: row } = await scoped(a.db.from("ideias").select("id, audio_r2_key, descricao"), a).maybeSingle();
   if (!row) return { status: 404, body: { error: "Ideia não encontrada." } };
   if (!row.audio_r2_key) return { status: 200, body: { ok: true } };
+  // descricao is optional precisely because audio can carry the content instead --
+  // removing the only audio off a text-less ideia would leave it with neither.
+  if (!(row as { descricao?: string | null }).descricao) {
+    return { status: 400, body: { error: "descricao obrigatória" } };
+  }
   const { error } = await a.db.rpc("ideia_audio_release", {
     p_workspace_id: a.workspace_id, p_ideia_id: a.ideia_id, p_origem: a.origem,
   });

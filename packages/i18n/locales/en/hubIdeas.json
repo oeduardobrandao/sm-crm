@@ -51,7 +51,8 @@
     "uploadError": "The audio upload failed. Try again.",
     "retryError": "Couldn't transcribe right now.",
     "removeError": "Couldn't remove the audio.",
-    "createUploadError": "Idea sent, but the audio failed. Try again from the card."
+    "createUploadError": "Idea sent, but the audio failed. Try again from the card.",
+    "createUploadErrorNoContent": "Idea sent with no content: the audio failed and there's no description. Record again or write a description from the card."
   },
   "recorder": {
     "record": "Record audio",

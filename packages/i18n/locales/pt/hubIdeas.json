@@ -51,7 +51,8 @@
     "uploadError": "O envio do áudio falhou. Tente de novo.",
     "retryError": "Não foi possível transcrever agora.",
     "removeError": "Não foi possível remover o áudio.",
-    "createUploadError": "Ideia enviada, mas o áudio falhou. Tente de novo no card."
+    "createUploadError": "Ideia enviada, mas o áudio falhou. Tente de novo no card.",
+    "createUploadErrorNoContent": "Ideia enviada sem conteúdo: o áudio falhou e não há descrição. Grave de novo ou escreva uma descrição no card."
   },
   "recorder": {
     "record": "Gravar áudio",

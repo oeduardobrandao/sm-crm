@@ -759,7 +759,11 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
   // descricao alone can be empty when an audio recording (new, pending upload; or
   // already saved on the ideia being edited) conveys the idea instead. Editing an
   // ideia with no audio at all keeps requiring text -- there's no audio UI here.
-  const hasAudioAlternative = !!pendingAudio || !!current?.audio;
+  // While `rerecord` is true the recorder shown is empty (the user asked to replace
+  // the take) even though `pendingAudio` still holds the OLD blob until a new one is
+  // confirmed -- that stale blob doesn't count as "has audio" here or below.
+  const audioToUpload = !rerecord ? pendingAudio : null;
+  const hasAudioAlternative = !!audioToUpload || !!current?.audio;
 
   function validate() {
     const e: typeof errors = {};
@@ -813,24 +817,34 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
           links: cleanLinks,
           tipo,
         });
-        if (pendingAudio) {
+        if (audioToUpload) {
           try {
             await uploadIdeiaAudio({
               token,
               ideiaId: ideia.id,
-              blob: pendingAudio.blob,
-              mime: pendingAudio.mime,
-              durationSeconds: pendingAudio.durationSeconds,
+              blob: audioToUpload.blob,
+              mime: audioToUpload.mime,
+              durationSeconds: audioToUpload.durationSeconds,
               onPhase: setAudioPhase,
             });
           } catch (e) {
+            // The blob is gone by the time the user reads this (discarded once the
+            // modal closes below, same as the success path) -- when there's no
+            // descricao either, the ideia was just created with no content at all,
+            // so say so plainly and point at the card's own recorder (works for a
+            // no-audio ideia) rather than implying "tente de novo" replays anything.
             alert(
               describeAudioError(
                 e,
-                t(
-                  'audio.createUploadError',
-                  'Ideia enviada, mas o áudio falhou. Tente de novo no card.',
-                ),
+                descricao.trim()
+                  ? t(
+                      'audio.createUploadError',
+                      'Ideia enviada, mas o áudio falhou. Tente de novo no card.',
+                    )
+                  : t(
+                      'audio.createUploadErrorNoContent',
+                      'Ideia enviada sem conteúdo: o áudio falhou e não há descrição. Grave de novo ou escreva uma descrição no card.',
+                    ),
               ),
             );
           } finally {
