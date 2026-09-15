@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, ImagePlus, Plus, X } from 'lucide-react';
+import { AlertTriangle, ImagePlus, Plus, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -27,7 +27,11 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../../context/AuthContext';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
-import { getInstagramPosts, type InstagramPostSummary } from '../../services/instagram';
+import {
+  getInstagramPosts,
+  syncInstagramData,
+  type InstagramPostSummary,
+} from '../../services/instagram';
 import { getPostCovers } from '../../services/postMedia';
 import type { PublishedMediaItem } from '../../services/publishedMedia';
 import {
@@ -228,6 +232,7 @@ export default function AutomationFormDialog({
   const [form, setForm] = useState(emptyState);
   const [postsPage, setPostsPage] = useState(1);
   const [productionPage, setProductionPage] = useState(1);
+  const [syncingPosts, setSyncingPosts] = useState(false);
   /** Keys uploaded to R2 DURING this dialog session that the database has
    * never referenced yet. Only these are safe to trash fire-and-forget on
    * remove/replace/cancel -- a persisted key stays attached to the automation
@@ -511,6 +516,33 @@ export default function AutomationFormDialog({
     enabled: open && targetingPost && form.targetSource === 'published' && !retargetMode,
   });
   const hasMorePosts = postsPage * POSTS_PAGE_SIZE < (postsQuery.data?.total ?? 0);
+
+  /* The synced feed (instagram_posts) is filled by an hourly cron that only
+   * revisits an account once its last sync is 6h+ stale, so a post made
+   * directly in Instagram can take hours to appear here. This button calls
+   * the same on-demand /sync/:clientId path already used elsewhere in the
+   * app (RedesSociaisTab, AnalyticsContaPage) to pull that one client's
+   * media immediately and upsert it into instagram_posts, then refetches
+   * this grid -- unlike LiveMediaPicker's live Graph read, the result is
+   * persisted, so it's still there next time this dialog opens. */
+  const handleRefreshPosts = async () => {
+    if (typeof form.clientId !== 'number') return;
+    setSyncingPosts(true);
+    try {
+      await syncInstagramData(form.clientId);
+      setPostsPage(1);
+      await qc.invalidateQueries({ queryKey: ['instagram-posts-for-automation', form.clientId] });
+      toast.success(t('form.postsRefreshed'));
+    } catch (err: any) {
+      if (err?.message === 'TOKEN_EXPIRED') {
+        toast.error(t('form.refreshPostsTokenExpired'));
+      } else {
+        toast.error(t('form.refreshPostsError'));
+      }
+    } finally {
+      setSyncingPosts(false);
+    }
+  };
 
   // Shares ['clientePosts', clienteId] with the Entregas calendar/drawer, so an
   // already-warm cache renders the grid without a round trip.
@@ -941,24 +973,38 @@ export default function AutomationFormDialog({
                         re-mirar): é o mesmo controle, no mesmo lugar do mesmo
                         diálogo, então precisa ter a mesma aparência
                         independente do caminho de entrada. */}
-                    <ToggleGroup
-                      type="single"
-                      aria-label={t('form.targetSourceLabel')}
-                      value={form.targetSource}
-                      onValueChange={(v) => {
-                        if (!v || v === form.targetSource) return;
-                        setForm((f) => ({ ...f, targetSource: v as TargetSource }));
-                      }}
-                      className="justify-start"
-                      style={{ marginBottom: 8 }}
-                    >
-                      <ToggleGroupItem value="production" size="sm">
-                        {t('form.targetSourceProduction')}
-                      </ToggleGroupItem>
-                      <ToggleGroupItem value="published" size="sm">
-                        {t('form.targetSourcePublished')}
-                      </ToggleGroupItem>
-                    </ToggleGroup>
+                    <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
+                      <ToggleGroup
+                        type="single"
+                        aria-label={t('form.targetSourceLabel')}
+                        value={form.targetSource}
+                        onValueChange={(v) => {
+                          if (!v || v === form.targetSource) return;
+                          setForm((f) => ({ ...f, targetSource: v as TargetSource }));
+                        }}
+                        className="justify-start"
+                      >
+                        <ToggleGroupItem value="production" size="sm">
+                          {t('form.targetSourceProduction')}
+                        </ToggleGroupItem>
+                        <ToggleGroupItem value="published" size="sm">
+                          {t('form.targetSourcePublished')}
+                        </ToggleGroupItem>
+                      </ToggleGroup>
+
+                      {form.targetSource === 'published' && !retargetMode && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={syncingPosts}
+                          onClick={handleRefreshPosts}
+                        >
+                          {syncingPosts ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
+                          {t('form.refreshPosts')}
+                        </Button>
+                      )}
+                    </div>
 
                     {form.targetSource === 'production' ? (
                       productionQuery.isLoading ? (
