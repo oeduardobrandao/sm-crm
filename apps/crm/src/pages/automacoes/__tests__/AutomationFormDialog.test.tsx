@@ -10,6 +10,7 @@ const {
   mockGetClientes,
   mockGetStatuses,
   mockGetInstagramPosts,
+  mockSyncInstagramData,
   mockGetClientePosts,
   mockGetPostCovers,
   mockGetPublishedMedia,
@@ -24,6 +25,7 @@ const {
   mockGetClientes: vi.fn(),
   mockGetStatuses: vi.fn(),
   mockGetInstagramPosts: vi.fn(),
+  mockSyncInstagramData: vi.fn(),
   mockGetClientePosts: vi.fn(),
   mockGetPostCovers: vi.fn(),
   mockGetPublishedMedia: vi.fn(),
@@ -64,6 +66,7 @@ vi.mock('../../../services/instagram', async () => {
   return {
     ...actual,
     getInstagramPosts: mockGetInstagramPosts,
+    syncInstagramData: mockSyncInstagramData,
   };
 });
 
@@ -360,6 +363,7 @@ describe('AutomationFormDialog', () => {
       new Map([[7, { revoked: false, expired: false, canPublish: true, canAutomate: true }]]),
     );
     mockGetInstagramPosts.mockResolvedValue({ posts: [POST], total: 1 });
+    mockSyncInstagramData.mockResolvedValue(undefined);
     mockGetClientePosts.mockResolvedValue(PRODUCTION_POSTS);
     // No covers -> every production card falls back to titulo + tipo.
     mockGetPostCovers.mockResolvedValue(new Map());
@@ -430,6 +434,41 @@ describe('AutomationFormDialog', () => {
       expect.objectContaining({ ig_media_id: '17900000000000001', workflow_post_id: null }),
     );
     expect(mockCreate).not.toHaveBeenCalledWith(expect.objectContaining({ ig_media_id: POST.id }));
+  });
+
+  it('atualizar posts sincroniza o cliente e reconsulta a página 1, sem esperar o cron', async () => {
+    renderDialog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Clinica X' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'form.targetPost' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'form.targetSourcePublished' }));
+
+    await screen.findByRole('button', { pressed: false });
+    mockGetInstagramPosts.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'form.refreshPosts' }));
+
+    await waitFor(() => expect(mockSyncInstagramData).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('form.postsRefreshed'));
+    // Invalidating the query refetches page 1 with the client just synced.
+    await waitFor(() => expect(mockGetInstagramPosts).toHaveBeenCalledWith(7, 1));
+  });
+
+  it('atualizar posts com token expirado avisa para reconectar, sem quebrar a grade atual', async () => {
+    mockSyncInstagramData.mockRejectedValue(new Error('TOKEN_EXPIRED'));
+    renderDialog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Clinica X' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'form.targetPost' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'form.targetSourcePublished' }));
+    await screen.findByRole('button', { pressed: false });
+
+    fireEvent.click(screen.getByRole('button', { name: 'form.refreshPosts' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('form.refreshPostsTokenExpired'),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('lists only eligible posts under "Em producao" (no postado, stories or tiktok-only)', async () => {
@@ -1164,6 +1203,13 @@ describe('AutomationFormDialog', () => {
           'aria-checked',
         ),
       ).toBe('true');
+    });
+
+    it('esconde o botão atualizar durante o re-mirar (a fonte já é a Graph API ao vivo)', async () => {
+      renderDialog(vi.fn(), UNLINKED_AUTOMATION, undefined, undefined, undefined, 'published');
+
+      await screen.findByRole('radio', { name: 'form.targetSourcePublished' });
+      expect(screen.queryByRole('button', { name: 'form.refreshPosts' })).not.toBeInTheDocument();
     });
 
     it('preserva workflow_post_id ao escolher pelo seletor ao vivo', async () => {
