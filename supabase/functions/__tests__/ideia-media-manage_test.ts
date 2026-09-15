@@ -139,7 +139,7 @@ Deno.test("ideia-media-manage: POST /:id/audio finalizes with p_origem=agencia; 
 
   const d = createSupabaseQueryMock();
   setupAuth(d);
-  d.queue("ideias", "select", { data: { id: I, audio_r2_key: AKEY }, error: null });
+  d.queue("ideias", "select", { data: { id: I, audio_r2_key: AKEY, descricao: "algo escrito" }, error: null });
   d.queueRpc("ideia_audio_release", { data: AKEY, error: null });
   assertEquals((await makeHandler(d)(req("DELETE", `ideia-media-manage/${I}/audio`))).status, 200);
   assertEquals(d.calls.some((c) => c.table === "rpc:effective_plan_feature"), false);

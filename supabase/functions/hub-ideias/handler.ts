@@ -282,11 +282,15 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
 
       const body = await req.json().catch(() => ({}));
       const titulo = (body.titulo ?? "").trim();
-      const descricao = (body.descricao ?? "").trim();
+      // Optional: an ideia can be conveyed entirely through its audio recording
+      // instead, uploaded in a separate call right after this one returns the id --
+      // there's no way to know at this point whether that call is coming, so this
+      // route can't enforce "at least one of descricao/audio" itself. The client UI
+      // does (NovaIdeiaDialog / IdeiaModal), same as the agency-side CRM flow.
+      const descricao = (body.descricao ?? "").trim() || null;
       const links: string[] = Array.isArray(body.links) ? body.links.filter((link: string) => typeof link === "string" && link.trim()) : [];
 
       if (!titulo) return json({ error: "titulo obrigatório" }, 400);
-      if (!descricao) return json({ error: "descricao obrigatória" }, 400);
 
       const tipo = body.tipo === undefined ? "ideia" : String(body.tipo);
       if (!HUB_IDEIA_TIPOS.includes(tipo)) return json({ error: "tipo inválido" }, 400);
@@ -310,7 +314,9 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       const body = await req.json().catch(() => ({}));
       const patch: Record<string, unknown> = {};
       if (body.titulo !== undefined) patch.titulo = (body.titulo ?? "").trim();
-      if (body.descricao !== undefined) patch.descricao = (body.descricao ?? "").trim();
+      // Optional, same as create -- an existing ideia may already carry its content
+      // as audio_transcript, so clearing the text here isn't necessarily invalid.
+      if (body.descricao !== undefined) patch.descricao = (body.descricao ?? "").trim() || null;
       if (body.links !== undefined) patch.links = Array.isArray(body.links) ? body.links.filter((link: string) => typeof link === "string" && link.trim()) : [];
       if (body.tipo !== undefined) {
         if (!HUB_IDEIA_TIPOS.includes(String(body.tipo))) return json({ error: "tipo inválido" }, 400);
@@ -318,7 +324,23 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       }
 
       if (patch.titulo === "") return json({ error: "titulo obrigatório" }, 400);
-      if (patch.descricao === "") return json({ error: "descricao obrigatória" }, 400);
+
+      // Clearing descricao is only safe when the ideia already has audio to fall back
+      // on -- otherwise this PATCH (a client-token-authenticated, so not fully trusted
+      // route) would leave the row with neither, breaking the description-or-audio
+      // invariant the UI enforces on its own side.
+      if (patch.descricao === null) {
+        const { data: current } = await db
+          .from("ideias")
+          .select("audio_r2_key")
+          .eq("id", ideiaId!)
+          .eq("cliente_id", clienteId)
+          .eq("origem", "cliente")
+          .maybeSingle();
+        if (!(current as { audio_r2_key?: string | null } | null)?.audio_r2_key) {
+          return json({ error: "descricao obrigatória" }, 400);
+        }
+      }
 
       const { data, error } = await db
         .from("ideias")

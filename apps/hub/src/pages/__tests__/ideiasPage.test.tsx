@@ -241,7 +241,9 @@ describe('IdeiasPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 
     expect(screen.getByText('Título obrigatório')).toBeInTheDocument();
-    expect(screen.getByText('Descrição obrigatória')).toBeInTheDocument();
+    // descricao alone is optional -- audio is a valid alternative (feature_briefing_audio
+    // is true here) -- so with neither provided this is the message, not "obrigatória".
+    expect(screen.getByText('Adicione uma descrição ou grave um áudio.')).toBeInTheDocument();
     expect(mockedCreateIdeia).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByPlaceholderText('Ex: Reel mostrando os bastidores...'), {
@@ -260,6 +262,40 @@ describe('IdeiasPage', () => {
         titulo: 'Campanha junho',
         descricao: 'Sequência de posts com depoimentos reais.',
         links: ['https://www.notion.so/campanha-junho'],
+        tipo: 'ideia',
+      });
+    });
+  });
+
+  it('accepts a recorded audio in place of a typed description', async () => {
+    mockedFetchIdeias.mockResolvedValue({ ideias: [] } as never);
+    mockedCreateIdeia.mockResolvedValue({
+      ideia: makeIdeia({ id: 'idea-created', titulo: 'Bastidores' }),
+    } as never);
+
+    renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+    );
+
+    await screen.findByText('Nenhuma ideia ainda');
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar ideia' }));
+
+    fireEvent.change(screen.getByPlaceholderText('Ex: Reel mostrando os bastidores...'), {
+      target: { value: 'Bastidores' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'fake-recorder:Usar este áudio' }));
+    expect(await screen.findByTestId('audio-player')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(screen.queryByText('Adicione uma descrição ou grave um áudio.')).toBeNull();
+
+    await waitFor(() => {
+      expect(mockedCreateIdeia).toHaveBeenCalledWith('token-publico', {
+        titulo: 'Bastidores',
+        descricao: null,
+        links: [],
         tipo: 'ideia',
       });
     });

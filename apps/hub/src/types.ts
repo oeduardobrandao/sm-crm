@@ -240,7 +240,8 @@ export interface IdeiaImage {
 export interface HubIdeia {
   id: string;
   titulo: string;
-  descricao: string;
+  // Optional: an ideia can be conveyed entirely through its audio recording instead.
+  descricao: string | null;
   links: string[];
   tipo: 'ideia' | 'solicitacao';
   status: 'nova' | 'em_analise' | 'aprovada' | 'descartada' | 'convertida' | 'concluida';

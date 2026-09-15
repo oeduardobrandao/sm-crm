@@ -33,6 +33,7 @@
   },
   "audio": {
     "label": "Áudio",
+    "orWriteDescriptionAbove": "(ou escreva a descrição acima)",
     "status": {
       "pending": "Transcrição pendente",
       "done": "Transcrito",
@@ -50,7 +51,8 @@
     "uploadError": "O envio do áudio falhou. Tente de novo.",
     "retryError": "Não foi possível transcrever agora.",
     "removeError": "Não foi possível remover o áudio.",
-    "createUploadError": "Ideia enviada, mas o áudio falhou. Tente de novo no card."
+    "createUploadError": "Ideia enviada, mas o áudio falhou. Tente de novo no card.",
+    "createUploadErrorNoContent": "Ideia enviada sem conteúdo: o áudio falhou e não há descrição. Grave de novo ou escreva uma descrição no card."
   },
   "recorder": {
     "record": "Gravar áudio",
@@ -97,6 +99,7 @@
     "tipoHint": "Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.",
     "tituloLabel": "Título",
     "descricaoLabel": "Descrição",
+    "descricaoOrAudioHint": "(ou grave um áudio abaixo)",
     "linksLabel": "Links de referência",
     "optional": "(opcional)",
     "linkPlaceholder": "https://...",
@@ -107,6 +110,7 @@
     "concluir": "Concluir",
     "tituloRequired": "Título obrigatório",
     "descricaoRequired": "Descrição obrigatória",
+    "descricaoOrAudioRequired": "Adicione uma descrição ou grave um áudio.",
     "saveError": "Erro ao salvar.",
     "imageUploadFailedOne": "1 imagem não foi enviada. Salve novamente para tentar de novo.",
     "imageUploadFailedMany": "{{count}} imagens não foram enviadas. Salve novamente para tentar de novo."

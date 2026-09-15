@@ -164,7 +164,7 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
                     </div>
                     <p className="text-sm font-medium text-foreground truncate">{ideia.titulo}</p>
                     <p className="text-xs text-muted-foreground line-clamp-3 mt-0.5">
-                      {ideia.descricao}
+                      {ideia.descricao || (ideia.audio_r2_key ? 'Áudio gravado' : '')}
                     </p>
                   </div>
                   <span className="text-xs text-muted-foreground shrink-0">

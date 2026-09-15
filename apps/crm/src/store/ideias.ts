@@ -19,7 +19,8 @@ export interface Ideia {
   workspace_id: string;
   cliente_id: number;
   titulo: string;
-  descricao: string;
+  // Optional: an ideia can be conveyed entirely through audio_transcript instead.
+  descricao: string | null;
   links: string[];
   tipo: 'ideia' | 'solicitacao';
   tarefa_id: number | null;
@@ -150,7 +151,8 @@ export async function convertSolicitacaoEmTarefa(args: {
 export interface CreateIdeiaInput {
   cliente_id: number;
   titulo: string;
-  descricao: string;
+  // Optional: an ideia can be conveyed entirely through its audio recording instead.
+  descricao: string | null;
   links: string[];
   visivel_no_hub: boolean;
   autor_membro_id: number | null;
@@ -165,7 +167,7 @@ export async function createIdeia(input: CreateIdeiaInput): Promise<string> {
       workspace_id,
       cliente_id: input.cliente_id,
       titulo: input.titulo,
-      descricao: input.descricao,
+      descricao: input.descricao || null,
       links: input.links,
       visivel_no_hub: input.visivel_no_hub,
       autor_membro_id: input.autor_membro_id,

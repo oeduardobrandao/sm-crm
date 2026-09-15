@@ -1895,10 +1895,14 @@ Deno.test("hub-ideias rejects POSTs missing titulo with 400", async () => {
   assertEquals(response.status, 400);
 });
 
-Deno.test("hub-ideias rejects POSTs missing descricao with 400", async () => {
+Deno.test("hub-ideias accepts a missing descricao (audio-only ideia, uploaded in a follow-up call)", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {
     data: { cliente_id: 14, is_active: true, clientes: { conta_id: "conta-1" } },
+    error: null,
+  });
+  db.queue("ideias", "insert", {
+    data: { id: "34a7c1ef-9a2e-4707-a833-cb8f871a0df8", titulo: "só o título", descricao: null },
     error: null,
   });
 
@@ -1912,7 +1916,7 @@ Deno.test("hub-ideias rejects POSTs missing descricao with 400", async () => {
     method: "POST",
     body: JSON.stringify({ token: "hub-123", titulo: "só o título" }),
   }));
-  assertEquals(response.status, 400);
+  assertEquals(response.status, 201);
 });
 
 Deno.test("hub-ideias returns 500 when the insert reports an error", async () => {

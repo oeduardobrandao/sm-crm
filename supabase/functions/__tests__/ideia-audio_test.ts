@@ -178,14 +178,22 @@ Deno.test("remove: 404 sem linha, ok sem áudio, RPC release com p_origem", asyn
   const db = createSupabaseQueryMock();
   db.queue("ideias", "select", { data: null, error: null });
   assertEquals((await removeIdeiaAudio({ db, workspace_id: "conta-1", ideia_id: I, origem: "cliente", cliente_id: 14 })).status, 404);
-  db.queue("ideias", "select", { data: { id: I, audio_r2_key: null }, error: null });
+  db.queue("ideias", "select", { data: { id: I, audio_r2_key: null, descricao: null }, error: null });
   assertEquals((await removeIdeiaAudio({ db, workspace_id: "conta-1", ideia_id: I, origem: "cliente", cliente_id: 14 })).status, 200);
-  db.queue("ideias", "select", { data: { id: I, audio_r2_key: KEY }, error: null });
+  db.queue("ideias", "select", { data: { id: I, audio_r2_key: KEY, descricao: "algo escrito" }, error: null });
   db.queueRpc("ideia_audio_release", { data: KEY, error: null });
   const r = await removeIdeiaAudio({ db, workspace_id: "conta-1", ideia_id: I, origem: "agencia" });
   assertEquals(r.status, 200);
   const rpc = db.calls.find((c) => c.table === "rpc:ideia_audio_release");
   assertEquals((rpc?.payload as Record<string, unknown>).p_origem, "agencia");
+});
+
+Deno.test("remove: 400 quando a ideia não tem descricao -- removeria o único conteúdo", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("ideias", "select", { data: { id: I, audio_r2_key: KEY, descricao: null }, error: null });
+  const r = await removeIdeiaAudio({ db, workspace_id: "conta-1", ideia_id: I, origem: "cliente", cliente_id: 14 });
+  assertEquals(r.status, 400);
+  assertEquals(db.calls.some((c) => c.table === "rpc:ideia_audio_release"), false);
 });
 
 Deno.test("loadIdeiaAudioView: sem filtro de origem; null quando a ideia não existe; audio null sem chave", async () => {

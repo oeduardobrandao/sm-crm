@@ -195,7 +195,13 @@ export function fetchIdeias(token: string) {
 
 export function createIdeia(
   token: string,
-  payload: { titulo: string; descricao: string; links: string[]; tipo: 'ideia' | 'solicitacao' },
+  payload: {
+    titulo: string;
+    // Optional: an ideia can be conveyed entirely through its audio recording instead.
+    descricao: string | null;
+    links: string[];
+    tipo: 'ideia' | 'solicitacao';
+  },
 ) {
   return post<{ ideia: HubIdeia }>('hub-ideias', { token, ...payload });
 }
@@ -205,7 +211,7 @@ export function updateIdeia(
   id: string,
   payload: {
     titulo?: string;
-    descricao?: string;
+    descricao?: string | null;
     links?: string[];
     tipo?: 'ideia' | 'solicitacao';
   },

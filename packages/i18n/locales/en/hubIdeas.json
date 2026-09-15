@@ -33,6 +33,7 @@
   },
   "audio": {
     "label": "Audio",
+    "orWriteDescriptionAbove": "(or write the description above)",
     "status": {
       "pending": "Transcription pending",
       "done": "Transcribed",
@@ -50,7 +51,8 @@
     "uploadError": "The audio upload failed. Try again.",
     "retryError": "Couldn't transcribe right now.",
     "removeError": "Couldn't remove the audio.",
-    "createUploadError": "Idea sent, but the audio failed. Try again from the card."
+    "createUploadError": "Idea sent, but the audio failed. Try again from the card.",
+    "createUploadErrorNoContent": "Idea sent with no content: the audio failed and there's no description. Record again or write a description from the card."
   },
   "recorder": {
     "record": "Record audio",
@@ -97,6 +99,7 @@
     "tipoHint": "Idea: a content suggestion. Request: a task for the agency to carry out.",
     "tituloLabel": "Title",
     "descricaoLabel": "Description",
+    "descricaoOrAudioHint": "(or record audio below)",
     "linksLabel": "Reference links",
     "optional": "(optional)",
     "linkPlaceholder": "https://...",
@@ -107,6 +110,7 @@
     "concluir": "Done",
     "tituloRequired": "Title is required",
     "descricaoRequired": "Description is required",
+    "descricaoOrAudioRequired": "Add a description or record audio.",
     "saveError": "Error saving.",
     "imageUploadFailedOne": "1 image wasn't uploaded. Save again to retry.",
     "imageUploadFailedMany": "{{count}} images weren't uploaded. Save again to retry."
