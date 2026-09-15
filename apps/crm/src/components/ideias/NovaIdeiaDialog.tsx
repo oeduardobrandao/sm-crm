@@ -241,6 +241,54 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
             )}
           </div>
 
+          {audioAllowed && (
+            <div className="space-y-2" style={CRM_AUDIO_VARS}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Áudio <span className="ml-1 normal-case font-normal tracking-normal">opcional</span>
+              </p>
+              {pendingAudio && !rerecord ? (
+                <div className="space-y-2">
+                  <AudioPlayer
+                    src={pendingAudio.url}
+                    durationSeconds={pendingAudio.durationSeconds}
+                    label="Prévia"
+                    className="w-full max-w-[360px] text-foreground"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setRerecord(true)}
+                    >
+                      <Mic size={13} className="mr-1.5" /> Gravar novamente
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={discardAudio}>
+                      Descartar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <AudioRecorder
+                  phase={audioPhase}
+                  disabled={submitting}
+                  sendLabel="Usar este áudio"
+                  hint="Até 5:00. A transcrição aparece na ideia depois de salvar."
+                  onRecorded={async (blob, mime, durationSeconds) => {
+                    if (pendingAudio) URL.revokeObjectURL(pendingAudio.url);
+                    setPendingAudio({
+                      blob,
+                      mime,
+                      durationSeconds,
+                      url: URL.createObjectURL(blob),
+                    });
+                    setRerecord(false);
+                  }}
+                />
+              )}
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label>Links de referência</Label>
             {fields.map((f, i) => (
@@ -290,54 +338,6 @@ export function NovaIdeiaDialog({ open, onClose, onCreated }: Props) {
               )}
             />
           </div>
-
-          {audioAllowed && (
-            <div className="space-y-2" style={CRM_AUDIO_VARS}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Áudio <span className="ml-1 normal-case font-normal tracking-normal">opcional</span>
-              </p>
-              {pendingAudio && !rerecord ? (
-                <div className="space-y-2">
-                  <AudioPlayer
-                    src={pendingAudio.url}
-                    durationSeconds={pendingAudio.durationSeconds}
-                    label="Prévia"
-                    className="w-full max-w-[360px] text-foreground"
-                  />
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRerecord(true)}
-                    >
-                      <Mic size={13} className="mr-1.5" /> Gravar novamente
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={discardAudio}>
-                      Descartar
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <AudioRecorder
-                  phase={audioPhase}
-                  disabled={submitting}
-                  sendLabel="Usar este áudio"
-                  hint="Até 5:00. A transcrição aparece na ideia depois de salvar."
-                  onRecorded={async (blob, mime, durationSeconds) => {
-                    if (pendingAudio) URL.revokeObjectURL(pendingAudio.url);
-                    setPendingAudio({
-                      blob,
-                      mime,
-                      durationSeconds,
-                      url: URL.createObjectURL(blob),
-                    });
-                    setRerecord(false);
-                  }}
-                />
-              )}
-            </div>
-          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
