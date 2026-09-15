@@ -173,6 +173,7 @@ Deno.test("hub-ideias: PATCH accepts clearing descricao to null (the ideia alrea
   setupToken(db);
   db.queue("ideias", "select", { data: { status: "nova", comentario_agencia: null }, error: null });
   db.queue("ideia_reactions", "select", { data: null, error: null, count: 0 });
+  db.queue("ideias", "select", { data: { audio_r2_key: "ideia-audio/x.webm" }, error: null });
   db.queue("ideias", "update", { data: OWN, error: null });
   const res = await makeHandler(db)(new Request("https://x.test/hub-ideias/11111111-1111-1111-1111-111111111111?token=t", {
     method: "PATCH",
@@ -182,6 +183,21 @@ Deno.test("hub-ideias: PATCH accepts clearing descricao to null (the ideia alrea
   assertEquals(res.status, 200);
   const update = db.calls.find((c) => c.table === "ideias" && c.operation === "update");
   assertEquals((update?.payload as Record<string, unknown> | undefined)?.descricao, null);
+});
+
+Deno.test("hub-ideias: PATCH rejects clearing descricao to null on a text-only ideia (no audio to fall back on)", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("ideias", "select", { data: { status: "nova", comentario_agencia: null }, error: null });
+  db.queue("ideia_reactions", "select", { data: null, error: null, count: 0 });
+  db.queue("ideias", "select", { data: { audio_r2_key: null }, error: null });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-ideias/11111111-1111-1111-1111-111111111111?token=t", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "t", descricao: "" }),
+  }));
+  assertEquals(res.status, 400);
+  assertEquals(db.calls.some((c) => c.table === "ideias" && c.operation === "update"), false);
 });
 
 Deno.test("hub-ideias: POST create rejects invalid tipo with 400", async () => {

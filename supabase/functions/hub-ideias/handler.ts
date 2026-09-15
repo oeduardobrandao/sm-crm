@@ -325,6 +325,23 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
 
       if (patch.titulo === "") return json({ error: "titulo obrigatório" }, 400);
 
+      // Clearing descricao is only safe when the ideia already has audio to fall back
+      // on -- otherwise this PATCH (a client-token-authenticated, so not fully trusted
+      // route) would leave the row with neither, breaking the description-or-audio
+      // invariant the UI enforces on its own side.
+      if (patch.descricao === null) {
+        const { data: current } = await db
+          .from("ideias")
+          .select("audio_r2_key")
+          .eq("id", ideiaId!)
+          .eq("cliente_id", clienteId)
+          .eq("origem", "cliente")
+          .maybeSingle();
+        if (!(current as { audio_r2_key?: string | null } | null)?.audio_r2_key) {
+          return json({ error: "descricao obrigatória" }, 400);
+        }
+      }
+
       const { data, error } = await db
         .from("ideias")
         .update(patch)
