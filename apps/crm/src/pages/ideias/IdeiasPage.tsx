@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DateRange } from 'react-day-picker';
 import { getIdeias, getClientes, type Ideia } from '@/store';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
@@ -66,6 +66,7 @@ function endOfDayIso(d: Date): string {
 
 export default function IdeiasPage() {
   const { can } = useAuth();
+  const qc = useQueryClient();
   const canEdit = can('ideias', 'editar') === true;
   const queryKey = ['hub-ideias-all'];
   const { data: ideias = [], isLoading } = useQuery({
@@ -281,9 +282,14 @@ export default function IdeiasPage() {
       <NovaIdeiaDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(id) => {
+        onCreated={async (id) => {
           setCreateOpen(false);
-          const fresh = ideias.find((i) => i.id === id);
+          // NovaIdeiaDialog already invalidates `queryKey` before calling us, but
+          // that refetch is fire-and-forget from its side -- `ideias` here is still
+          // the pre-creation snapshot this closure was built from. Await our own
+          // invalidation so the cache is guaranteed fresh before we look the row up.
+          await qc.invalidateQueries({ queryKey });
+          const fresh = qc.getQueryData<Ideia[]>(queryKey)?.find((i) => i.id === id);
           if (fresh) setSelectedIdeia(fresh);
         }}
       />

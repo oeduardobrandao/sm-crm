@@ -33,6 +33,7 @@
   },
   "audio": {
     "label": "Áudio",
+    "orWriteDescriptionAbove": "(ou escreva a descrição acima)",
     "status": {
       "pending": "Transcrição pendente",
       "done": "Transcrito",
@@ -97,6 +98,7 @@
     "tipoHint": "Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.",
     "tituloLabel": "Título",
     "descricaoLabel": "Descrição",
+    "descricaoOrAudioHint": "(ou grave um áudio abaixo)",
     "linksLabel": "Links de referência",
     "optional": "(opcional)",
     "linkPlaceholder": "https://...",
@@ -107,6 +109,7 @@
     "concluir": "Concluir",
     "tituloRequired": "Título obrigatório",
     "descricaoRequired": "Descrição obrigatória",
+    "descricaoOrAudioRequired": "Adicione uma descrição ou grave um áudio.",
     "saveError": "Erro ao salvar.",
     "imageUploadFailedOne": "1 imagem não foi enviada. Salve novamente para tentar de novo.",
     "imageUploadFailedMany": "{{count}} imagens não foram enviadas. Salve novamente para tentar de novo."

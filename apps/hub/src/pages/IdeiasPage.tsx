@@ -548,7 +548,9 @@ function IdeiaCard({
           <h3 className="font-display text-[17px] font-semibold hub-txt leading-snug">
             {ideia.titulo}
           </h3>
-          <p className="text-sm hub-tx2 mt-1 whitespace-pre-wrap">{ideia.descricao}</p>
+          {ideia.descricao && (
+            <p className="text-sm hub-tx2 mt-1 whitespace-pre-wrap">{ideia.descricao}</p>
+          )}
         </div>
         {mutable && (
           <div className="flex gap-1 shrink-0">
@@ -754,10 +756,19 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
     return failed;
   }
 
+  // descricao alone can be empty when an audio recording (new, pending upload; or
+  // already saved on the ideia being edited) conveys the idea instead. Editing an
+  // ideia with no audio at all keeps requiring text -- there's no audio UI here.
+  const hasAudioAlternative = !!pendingAudio || !!current?.audio;
+
   function validate() {
     const e: typeof errors = {};
     if (!titulo.trim()) e.titulo = t('modal.tituloRequired', 'Título obrigatório');
-    if (!descricao.trim()) e.descricao = t('modal.descricaoRequired', 'Descrição obrigatória');
+    if (!descricao.trim() && !hasAudioAlternative) {
+      e.descricao = audioSupported
+        ? t('modal.descricaoOrAudioRequired', 'Adicione uma descrição ou grave um áudio.')
+        : t('modal.descricaoRequired', 'Descrição obrigatória');
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -770,7 +781,7 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
       if (current) {
         const { ideia } = await updateIdeia(token, current.id, {
           titulo: titulo.trim(),
-          descricao: descricao.trim(),
+          descricao: descricao.trim() || null,
           links: cleanLinks,
           tipo,
         });
@@ -798,7 +809,7 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
       } else {
         const { ideia } = await createIdeia(token, {
           titulo: titulo.trim(),
-          descricao: descricao.trim(),
+          descricao: descricao.trim() || null,
           links: cleanLinks,
           tipo,
         });
@@ -946,6 +957,12 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
           <div>
             <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
               {t('modal.descricaoLabel', 'Descrição')}
+              {audioSupported && !current && (
+                <span className="hub-tx3 font-normal">
+                  {' '}
+                  {t('modal.descricaoOrAudioHint', '(ou grave um áudio abaixo)')}
+                </span>
+              )}
             </label>
             <textarea
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'hub-border'}`}
@@ -963,7 +980,9 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
             >
               <label className="text-[12.5px] font-semibold hub-tx2 block">
                 {t('audio.label', 'Áudio')}{' '}
-                <span className="hub-tx3 font-normal">· {t('modal.optional', '(opcional)')}</span>
+                <span className="hub-tx3 font-normal">
+                  · {t('audio.orWriteDescriptionAbove', '(ou escreva a descrição acima)')}
+                </span>
               </label>
               {pendingAudio && !rerecord ? (
                 <div className="space-y-2">

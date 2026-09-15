@@ -282,11 +282,15 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
 
       const body = await req.json().catch(() => ({}));
       const titulo = (body.titulo ?? "").trim();
-      const descricao = (body.descricao ?? "").trim();
+      // Optional: an ideia can be conveyed entirely through its audio recording
+      // instead, uploaded in a separate call right after this one returns the id --
+      // there's no way to know at this point whether that call is coming, so this
+      // route can't enforce "at least one of descricao/audio" itself. The client UI
+      // does (NovaIdeiaDialog / IdeiaModal), same as the agency-side CRM flow.
+      const descricao = (body.descricao ?? "").trim() || null;
       const links: string[] = Array.isArray(body.links) ? body.links.filter((link: string) => typeof link === "string" && link.trim()) : [];
 
       if (!titulo) return json({ error: "titulo obrigatório" }, 400);
-      if (!descricao) return json({ error: "descricao obrigatória" }, 400);
 
       const tipo = body.tipo === undefined ? "ideia" : String(body.tipo);
       if (!HUB_IDEIA_TIPOS.includes(tipo)) return json({ error: "tipo inválido" }, 400);
@@ -310,7 +314,9 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       const body = await req.json().catch(() => ({}));
       const patch: Record<string, unknown> = {};
       if (body.titulo !== undefined) patch.titulo = (body.titulo ?? "").trim();
-      if (body.descricao !== undefined) patch.descricao = (body.descricao ?? "").trim();
+      // Optional, same as create -- an existing ideia may already carry its content
+      // as audio_transcript, so clearing the text here isn't necessarily invalid.
+      if (body.descricao !== undefined) patch.descricao = (body.descricao ?? "").trim() || null;
       if (body.links !== undefined) patch.links = Array.isArray(body.links) ? body.links.filter((link: string) => typeof link === "string" && link.trim()) : [];
       if (body.tipo !== undefined) {
         if (!HUB_IDEIA_TIPOS.includes(String(body.tipo))) return json({ error: "tipo inválido" }, 400);
@@ -318,7 +324,6 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
       }
 
       if (patch.titulo === "") return json({ error: "titulo obrigatório" }, 400);
-      if (patch.descricao === "") return json({ error: "descricao obrigatória" }, 400);
 
       const { data, error } = await db
         .from("ideias")

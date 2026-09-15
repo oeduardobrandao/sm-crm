@@ -89,7 +89,7 @@ async function fillRequired() {
   expect((select as HTMLSelectElement).options[1].text).toBe('Alfa Odonto');
   fireEvent.change(select, { target: { value: '1' } });
   fireEvent.change(screen.getByLabelText('Título'), { target: { value: '  Bastidores  ' } });
-  fireEvent.change(screen.getByLabelText('Descrição'), { target: { value: 'Timelapse' } });
+  fireEvent.change(screen.getByLabelText(/^Descrição/), { target: { value: 'Timelapse' } });
 }
 
 describe('NovaIdeiaDialog', () => {
@@ -122,7 +122,6 @@ describe('NovaIdeiaDialog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Criar ideia' }));
     expect(await screen.findByText('Selecione um cliente')).toBeInTheDocument();
     expect(screen.getByText('Título obrigatório')).toBeInTheDocument();
-    expect(screen.getByText('Descrição obrigatória')).toBeInTheDocument();
     expect(createIdeiaMock).not.toHaveBeenCalled();
 
     await fillRequired();
@@ -132,6 +131,28 @@ describe('NovaIdeiaDialog', () => {
       await screen.findByText('Informe um link completo, começando com https://'),
     ).toBeInTheDocument();
     expect(createIdeiaMock).not.toHaveBeenCalled();
+  });
+
+  it('requires a description or a recorded audio, but not both', async () => {
+    renderDialog();
+    const select = await screen.findByRole('combobox', { name: 'Cliente' });
+    await waitFor(() => expect((select as HTMLSelectElement).options.length).toBeGreaterThan(1));
+    fireEvent.change(select, { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Bastidores' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Criar ideia' }));
+    expect(
+      await screen.findByText('Adicione uma descrição ou grave um áudio.'),
+    ).toBeInTheDocument();
+    expect(createIdeiaMock).not.toHaveBeenCalled();
+
+    // Recording (not typing a description) clears the guard.
+    createIdeiaMock.mockResolvedValue('new-id');
+    fireEvent.click(await screen.findByRole('button', { name: 'fake-recorder:Usar este áudio' }));
+    expect(await screen.findByTestId('audio-player')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Criar ideia' }));
+    await waitFor(() => expect(createIdeiaMock).toHaveBeenCalled());
+    expect(createIdeiaMock.mock.calls[0][0].descricao).toBeNull();
   });
 
   it('creates with visivel_no_hub false by default, trimmed fields and the current membro as author', async () => {
