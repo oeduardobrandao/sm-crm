@@ -973,10 +973,7 @@ export default function AutomationFormDialog({
                         re-mirar): é o mesmo controle, no mesmo lugar do mesmo
                         diálogo, então precisa ter a mesma aparência
                         independente do caminho de entrada. */}
-                    <div
-                      className="flex items-center justify-between"
-                      style={{ marginBottom: 8 }}
-                    >
+                    <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
                       <ToggleGroup
                         type="single"
                         aria-label={t('form.targetSourceLabel')}
@@ -1003,11 +1000,7 @@ export default function AutomationFormDialog({
                           disabled={syncingPosts}
                           onClick={handleRefreshPosts}
                         >
-                          {syncingPosts ? (
-                            <Spinner size="sm" />
-                          ) : (
-                            <RefreshCw className="h-4 w-4" />
-                          )}
+                          {syncingPosts ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
                           {t('form.refreshPosts')}
                         </Button>
                       )}

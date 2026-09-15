@@ -465,9 +465,7 @@ describe('AutomationFormDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'form.refreshPosts' }));
 
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('form.refreshPostsTokenExpired'),
-    );
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('form.refreshPostsTokenExpired'));
     expect(toast.success).not.toHaveBeenCalled();
   });
 
