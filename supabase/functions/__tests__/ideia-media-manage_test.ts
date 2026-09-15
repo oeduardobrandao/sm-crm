@@ -168,3 +168,32 @@ Deno.test("ideia-media-manage: a custom role without ideias:ver is forbidden fro
   const res = await makeHandler(db)(req("GET", `ideia-media-manage/audio?ideia_id=${I}`));
   assertEquals(res.status, 403);
 });
+
+Deno.test("ideia-media-manage: a custom role without ideias:editar is forbidden from every image-mutating route", async () => {
+  for (const [method, path, body] of [
+    ["POST", "ideia-media-manage/upload-url", { ideia_id: "i1", filename: "a.png", mime_type: "image/png", size_bytes: 10 }],
+    ["POST", "ideia-media-manage/i1/files", { r2_key: "k", mime_type: "image/png", size_bytes: 10 }],
+    ["DELETE", "ideia-media-manage/i1/files/7", undefined],
+  ] as const) {
+    const db = createSupabaseQueryMock();
+    setupAuth(db);
+    db.queueRpc("has_permission_for", { data: false, error: null });
+    const res = await makeHandler(db)(req(method, path, body));
+    assertEquals(res.status, 403, `${method} ${path} should be 403`);
+    const rpc = db.calls.find((c) => c.table === "rpc:has_permission_for");
+    assertEquals((rpc?.payload as Record<string, unknown>).p_module, "ideias", `${method} ${path} checked the wrong module`);
+    assertEquals((rpc?.payload as Record<string, unknown>).p_action, "editar", `${method} ${path} checked the wrong action`);
+    assertEquals(db.calls.some((c) => c.table === "ideia_files"), false, `${method} ${path} must not reach the storage layer`);
+  }
+});
+
+Deno.test("ideia-media-manage: a custom role without ideias:ver is forbidden from GET (list images)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("has_permission_for", { data: false, error: null });
+  const res = await makeHandler(db)(req("GET", "ideia-media-manage?ideia_id=i1"));
+  assertEquals(res.status, 403);
+  const rpc = db.calls.find((c) => c.table === "rpc:has_permission_for");
+  assertEquals((rpc?.payload as Record<string, unknown>).p_module, "ideias");
+  assertEquals((rpc?.payload as Record<string, unknown>).p_action, "ver");
+});

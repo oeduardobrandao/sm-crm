@@ -119,7 +119,19 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
       return json(r.body, r.status);
     }
 
-    // ── Imagens (inalterado) ───────────────────────────────────────
+    // ── Imagens ────────────────────────────────────────────────────
+    // Mesmo racional do bloco de Áudio: ideias:ver no GET, ideias:editar nas mutações.
+    const isImageUploadUrl = req.method === "POST" && seg[0] === "upload-url";
+    const isImageFinalize = req.method === "POST" && !!ideiaId && seg[1] === "files";
+    const isImageDelete = req.method === "DELETE" && !!ideiaId && seg[1] === "files" && !!seg[2];
+    if (req.method === "GET") {
+      const canView = await hasPermissionFor(db, user.id, conta_id, "ideias", "ver");
+      if (!canView) return json({ error: "Forbidden" }, 403);
+    } else if (isImageUploadUrl || isImageFinalize || isImageDelete) {
+      const canEdit = await hasPermissionFor(db, user.id, conta_id, "ideias", "editar");
+      if (!canEdit) return json({ error: "Forbidden" }, 403);
+    }
+
     // GET ?ideia_id= -> list
     if (req.method === "GET") {
       const qid = url.searchParams.get("ideia_id");
@@ -131,7 +143,7 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     }
 
     // POST /upload-url -> presign
-    if (req.method === "POST" && seg[0] === "upload-url") {
+    if (isImageUploadUrl) {
       const body = await req.json().catch(() => ({}));
       const r = await presignIdeiaImage({
         db: db as any, conta_id, cliente_id: null,
@@ -149,10 +161,10 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     }
 
     // POST /:id/files -> finalize
-    if (req.method === "POST" && ideiaId && seg[1] === "files") {
+    if (isImageFinalize) {
       const body = await req.json().catch(() => ({}));
       const r = await finalizeIdeiaImage({
-        db: db as any, conta_id, cliente_id: null, ideia_id: ideiaId,
+        db: db as any, conta_id, cliente_id: null, ideia_id: ideiaId!,
         r2_key: String(body.r2_key ?? ""),
         thumbnail_r2_key: String(body.thumbnail_r2_key ?? ""),
         mime_type: String(body.mime_type ?? ""),
@@ -171,11 +183,11 @@ export function createIdeiaMediaManageHandler(deps: Deps) {
     }
 
     // DELETE /:id/files/:fileId -> remove
-    if (req.method === "DELETE" && ideiaId && seg[1] === "files" && seg[2]) {
+    if (isImageDelete) {
       const fileId = Number(seg[2]);
       if (Number.isNaN(fileId)) return json({ error: "invalid file id" }, 400);
       const r = await removeIdeiaImage({
-        db: db as any, conta_id, cliente_id: null, ideia_id: ideiaId, file_id: fileId,
+        db: db as any, conta_id, cliente_id: null, ideia_id: ideiaId!, file_id: fileId,
       });
       return json(r.body, r.status);
     }
