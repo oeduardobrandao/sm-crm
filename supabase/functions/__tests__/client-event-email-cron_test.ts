@@ -390,7 +390,7 @@ Deno.test("From display name quotes RFC 5322 specials (comma, ampersand, parens)
 
 // --- 4. NULL cursor: floor = now-72h ------------------------------------------
 
-Deno.test("NULL cursor: lower bound is now-72h, an event 80h old is excluded", async () => {
+Deno.test("NULL cursor: an 80h-old pending approval is now included (no floor on approvals)", async () => {
   const db = makeFakeDb(
     [claimedRow({ id: 2, conta_id: "ws1", event_cursor_at: null, event_claim_through: NOW.toISOString() })],
     {
@@ -400,22 +400,23 @@ Deno.test("NULL cursor: lower bound is now-72h, an event 80h old is excluded", a
           post_id: 200,
           conta_id: "ws1",
           to_status: "enviado_cliente",
-          created_at: "2026-08-10T04:00:00.000Z", // 80h before NOW
+          created_at: "2026-08-10T04:00:00.000Z", // 80h before NOW -- excluded under the old 72h floor
           workflow_posts: { cliente_id: 2, status: "enviado_cliente", tipo: "feed", titulo: "Old post" },
         },
       ],
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
     },
   );
-  const { deps } = makeDeps(db);
+  const { deps, sent } = makeDeps(db);
   const r = await runClientEventEmailCron(deps);
-  assertEquals(r.skippedNoContent, 1);
-  assertEquals(r.emailed, 0);
-  assertEquals(db.releaseCalls, [{ ids: [2], patch: { event_claim_through: null } }]);
+  assertEquals(r.emailed, 1);
+  assertEquals(r.skippedNoContent, 0);
+  assert(sent[0].html.includes("Old post"), "expected the 80h-old post to be included, not floor-excluded");
 });
 
 // --- 5. old cursor: GREATEST clamps to now-72h --------------------------------
 
-Deno.test("cursor 5 days old: lower bound is still now-72h (GREATEST)", async () => {
+Deno.test("cursor 5 days old: both events included now (no floor clamp on approvals)", async () => {
   const db = makeFakeDb(
     [
       claimedRow({
@@ -427,16 +428,16 @@ Deno.test("cursor 5 days old: lower bound is still now-72h (GREATEST)", async ()
     ],
     {
       postStatusEvents: [
-        // Inside the cursor-based window but OUTSIDE now-72h: must be excluded.
+        // Would have been clamped out by the old 72h floor -- now included,
+        // since the only lower bound left for approvals is the cursor itself.
         {
           id: 30,
           post_id: 300,
           conta_id: "ws1",
           to_status: "enviado_cliente",
           created_at: "2026-08-09T12:00:00.000Z",
-          workflow_posts: { cliente_id: 3, status: "enviado_cliente", tipo: "feed", titulo: "Too old" },
+          workflow_posts: { cliente_id: 3, status: "enviado_cliente", tipo: "feed", titulo: "Older" },
         },
-        // Inside now-72h: must survive.
         {
           id: 31,
           post_id: 301,
@@ -452,8 +453,113 @@ Deno.test("cursor 5 days old: lower bound is still now-72h (GREATEST)", async ()
   const { deps, sent } = makeDeps(db);
   const r = await runClientEventEmailCron(deps);
   assertEquals(r.emailed, 1);
-  assert(sent[0].html.includes("Recent"), "expected the in-window post");
-  assert(!sent[0].html.includes("Too old"), "expected the clamped-out post to be excluded");
+  assert(sent[0].html.includes("Recent"), "expected the recent post");
+  assert(sent[0].html.includes("Older"), "expected the previously floor-excluded post to now be included");
+});
+
+
+Deno.test("NULL cursor: messages still respect the 72h floor (an 80h-old message is excluded)", async () => {
+  const db = makeFakeDb(
+    [claimedRow({ id: 4, conta_id: "ws1", event_cursor_at: null, event_claim_through: NOW.toISOString() })],
+    {
+      mensagens: [
+        { id: 40, conta_id: "ws1", cliente_id: 4, is_workspace_user: true, created_at: "2026-08-10T04:00:00.000Z" }, // 80h before NOW
+      ],
+    },
+  );
+  const { deps } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.skippedNoContent, 1);
+  assertEquals(r.emailed, 0);
+});
+
+Deno.test("cursor 5 days old: messages older than 72h are still clamped out (GREATEST still applies to messages)", async () => {
+  const db = makeFakeDb(
+    [
+      claimedRow({
+        id: 5,
+        conta_id: "ws1",
+        event_cursor_at: "2026-08-08T12:00:00.000Z", // 5 days before NOW
+        event_claim_through: NOW.toISOString(),
+      }),
+    ],
+    {
+      mensagens: [
+        // Inside the cursor-based window but OUTSIDE now-72h: must still be excluded.
+        { id: 50, conta_id: "ws1", cliente_id: 5, is_workspace_user: true, created_at: "2026-08-09T12:00:00.000Z" },
+        // Inside now-72h: must survive.
+        { id: 51, conta_id: "ws1", cliente_id: 5, is_workspace_user: true, created_at: "2026-08-13T11:00:00.000Z" },
+      ],
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+    },
+  );
+  const { deps, auditCalls } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assertEquals(auditCalls[0].metadata, { posts: 0, messages: 1 });
+});
+
+Deno.test("mixed: an 80h-old approval ships in the digest, an 80h-old message does not (independent lower bounds)", async () => {
+  const db = makeFakeDb(
+    [claimedRow({ id: 6, conta_id: "ws1", event_cursor_at: null, event_claim_through: NOW.toISOString() })],
+    {
+      postStatusEvents: [
+        {
+          id: 60,
+          post_id: 600,
+          conta_id: "ws1",
+          to_status: "enviado_cliente",
+          created_at: "2026-08-10T04:00:00.000Z", // 80h before NOW
+          workflow_posts: { cliente_id: 6, status: "enviado_cliente", tipo: "feed", titulo: "Old approval" },
+        },
+      ],
+      mensagens: [
+        // Same age as the approval above -- proves the two bounds are evaluated independently,
+        // not that one happens to be more lenient across the board.
+        { id: 61, conta_id: "ws1", cliente_id: 6, is_workspace_user: true, created_at: "2026-08-10T04:00:00.000Z" },
+      ],
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+    },
+  );
+  const { deps, sent, auditCalls } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assert(sent[0].html.includes("Old approval"), "expected the stale approval to ship");
+  assertEquals(auditCalls[0].metadata, { posts: 1, messages: 0 });
+});
+
+Deno.test("post-backfill state: old non-null cursor with an approval and a message both between cursor and now-72h -- approval ships, message doesn't", async () => {
+  const db = makeFakeDb(
+    [
+      claimedRow({
+        id: 7,
+        conta_id: "ws1",
+        event_cursor_at: "2026-08-08T12:00:00.000Z", // simulates a backfill-rewound cursor, 5 days before NOW
+        event_claim_through: NOW.toISOString(),
+      }),
+    ],
+    {
+      postStatusEvents: [
+        {
+          id: 70,
+          post_id: 700,
+          conta_id: "ws1",
+          to_status: "enviado_cliente",
+          created_at: "2026-08-09T00:00:00.000Z", // after cursor, before now-72h (2026-08-10T12:00)
+          workflow_posts: { cliente_id: 7, status: "enviado_cliente", tipo: "feed", titulo: "Rewound approval" },
+        },
+      ],
+      mensagens: [
+        { id: 71, conta_id: "ws1", cliente_id: 7, is_workspace_user: true, created_at: "2026-08-09T00:00:00.000Z" },
+      ],
+      workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null }],
+    },
+  );
+  const { deps, sent, auditCalls } = makeDeps(db);
+  const r = await runClientEventEmailCron(deps);
+  assertEquals(r.emailed, 1);
+  assert(sent[0].html.includes("Rewound approval"), "expected the rewound-cursor approval to ship");
+  assertEquals(auditCalls[0].metadata, { posts: 1, messages: 0 });
 });
 
 // --- 6. dedupe + current-status filter ----------------------------------------
