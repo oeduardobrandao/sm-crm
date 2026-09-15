@@ -86,11 +86,12 @@ describe('vercel.json Permissions-Policy', () => {
   // casa é a que vale.
   const HUB_SOURCES = ['/:workspace/hub/:token', '/:workspace/hub/:token/(.*)'];
   // As ideias da agência (Task 11/12) trouxeram gravação de áudio pro CRM por
-  // dois caminhos -- a página /ideias e a aba Ideias de /clientes/:id -- que
-  // caíram no mesmo bloqueio do Hub em 2026-09-04 (incidente novo, mesma
-  // causa): o catch-all bloqueia o microfone e nenhuma regra do CRM o
-  // liberava, então getUserMedia rejeitava sem nem abrir o prompt.
-  const CRM_AUDIO_SOURCES = ['/ideias(/.*)?', '/clientes/:id/ideias'];
+  // dois caminhos -- a página /ideias e a aba Ideias de /clientes/:id/hub
+  // (rota aninhada sob "hub", não direto em /clientes/:id) -- que caíram no
+  // mesmo bloqueio do Hub em 2026-09-04 (incidente novo, mesma causa): o
+  // catch-all bloqueia o microfone e nenhuma regra do CRM o liberava, então
+  // getUserMedia rejeitava sem nem abrir o prompt.
+  const CRM_AUDIO_SOURCES = ['/ideias(/.*)?', '/clientes/:id/hub/ideias'];
   const policyOf = (source: string) =>
     headers.find((h) => h.source === source)?.headers.find((x) => x.key === 'Permissions-Policy')
       ?.value;
