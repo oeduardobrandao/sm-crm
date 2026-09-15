@@ -15,6 +15,7 @@ const {
   stubState,
   mockUseAuth,
   updateVisMock,
+  deleteIdeiaMock,
   fetchAudioMock,
   limitsState,
 } = vi.hoisted(() => ({
@@ -26,6 +27,7 @@ const {
   stubState: { result: null as string | null },
   mockUseAuth: vi.fn(() => ({ profile: { id: 'u1' }, can: () => true })),
   updateVisMock: vi.fn(),
+  deleteIdeiaMock: vi.fn(),
   fetchAudioMock: vi.fn().mockResolvedValue({ audio: null, transcript: null }),
   limitsState: {
     features: { feature_briefing_audio: true } as { feature_briefing_audio: boolean },
@@ -42,6 +44,7 @@ vi.mock('@/store', () => ({
   upsertIdeiaComentario: vi.fn(),
   toggleIdeiaReaction: vi.fn(),
   updateIdeiaVisibilidade: updateVisMock,
+  deleteIdeia: deleteIdeiaMock,
   getMembros: vi.fn().mockResolvedValue([]),
   getClientes: vi.fn().mockResolvedValue([]),
   getTarefaTags: vi.fn().mockResolvedValue([]),
@@ -144,6 +147,7 @@ function renderDrawer(
   ideia: Record<string, unknown>,
   client?: QueryClient,
   initialAction?: 'responder' | 'converter',
+  overrides: { onClose?: () => void; onEdit?: () => void } = {},
 ) {
   const qc = client ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -152,7 +156,8 @@ function renderDrawer(
         <IdeiaDrawer
           ideia={ideia as never}
           queryKey={['x']}
-          onClose={() => {}}
+          onClose={overrides.onClose ?? (() => {})}
+          onEdit={overrides.onEdit}
           initialAction={initialAction}
         />
       </MemoryRouter>
@@ -198,6 +203,7 @@ function makeIdeia(overrides: Record<string, unknown> = {}): Record<string, unkn
 beforeEach(() => {
   stubState.result = null;
   updateVisMock.mockReset();
+  deleteIdeiaMock.mockReset();
   fetchAudioMock.mockReset().mockResolvedValue({ audio: null, transcript: null });
 });
 
@@ -482,5 +488,78 @@ describe('IdeiaDrawer — origem, visibilidade e áudio', () => {
   it('offers the recorder on an agency ideia without audio', async () => {
     renderDrawer(makeIdeia({ origem: 'agencia' }));
     expect(await screen.findByRole('button', { name: 'fake-recorder:Enviar' })).toBeInTheDocument();
+  });
+});
+
+describe('IdeiaDrawer — editar e excluir', () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ profile: { id: 'u1' }, can: () => true });
+  });
+
+  it('shows Editar only for an agencia ideia, calling onEdit when clicked', async () => {
+    const onEdit = vi.fn();
+    renderDrawer(makeIdeia({ origem: 'agencia' }), undefined, undefined, { onEdit });
+    const editar = await screen.findByRole('button', { name: 'Editar' });
+    fireEvent.click(editar);
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides Editar for a client-submitted ideia even with ideias:editar', async () => {
+    const onEdit = vi.fn();
+    renderDrawer(makeIdeia({ origem: 'cliente' }), undefined, undefined, { onEdit });
+    await screen.findByText('Trocar arte');
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+  });
+
+  it('hides Editar when the caller has no onEdit to offer (e.g. the cliente-detalhe hub tab)', async () => {
+    renderDrawer(makeIdeia({ origem: 'agencia' }));
+    await screen.findByText('Trocar arte');
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+  });
+
+  it('hides both Editar and Excluir for a custom role without ideias:editar', async () => {
+    mockUseAuth.mockReturnValue({
+      profile: { id: 'u1' },
+      can: makeCan(fakeMembership({ role: 'agent', role_id: 'role-1', permissions: {} })),
+    });
+    renderDrawer(makeIdeia({ origem: 'agencia' }), undefined, undefined, { onEdit: vi.fn() });
+    await screen.findByText('Trocar arte');
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Excluir' })).not.toBeInTheDocument();
+  });
+
+  it('shows Excluir for both origins, and deleting closes the drawer after confirming', async () => {
+    deleteIdeiaMock.mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    renderDrawer(makeIdeia({ origem: 'cliente' }), undefined, undefined, { onClose });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir' }));
+    expect(await screen.findByText('Excluir ideia?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir ideia' }));
+
+    await waitFor(() => expect(deleteIdeiaMock).toHaveBeenCalledWith('i1'));
+    expect(toastSuccessMock).toHaveBeenCalledWith('Ideia excluída.');
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not delete when the confirmation is cancelled', async () => {
+    renderDrawer(makeIdeia({ origem: 'agencia' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir' }));
+    await screen.findByText('Excluir ideia?');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByText('Excluir ideia?')).not.toBeInTheDocument());
+    expect(deleteIdeiaMock).not.toHaveBeenCalled();
+  });
+
+  it('shows an error toast and keeps the drawer open when delete fails', async () => {
+    deleteIdeiaMock.mockRejectedValue(new Error('boom'));
+    const onClose = vi.fn();
+    renderDrawer(makeIdeia({ origem: 'agencia' }), undefined, undefined, { onClose });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Excluir ideia' }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('boom'));
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

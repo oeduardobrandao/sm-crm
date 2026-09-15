@@ -332,6 +332,76 @@ describe('store ideias', () => {
     });
   });
 
+  describe('updateIdeia', () => {
+    it('updates cliente_id, titulo, descricao, links and visivel_no_hub, scoped to origem=agencia', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'update', { data: null, error: null });
+      await store.updateIdeia('ideia-1', {
+        cliente_id: 7,
+        titulo: 'Novo título',
+        descricao: 'Nova descrição',
+        links: ['https://ex.com'],
+        visivel_no_hub: true,
+      });
+      const call = getCalls('ideias', 'update').at(-1)!;
+      expect(call.payload).toEqual({
+        cliente_id: 7,
+        titulo: 'Novo título',
+        descricao: 'Nova descrição',
+        links: ['https://ex.com'],
+        visivel_no_hub: true,
+      });
+      expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 'ideia-1'] });
+      expect(call.modifiers).toContainEqual({ method: 'eq', args: ['origem', 'agencia'] });
+    });
+
+    it('normalizes an empty descricao to null', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'update', { data: null, error: null });
+      await store.updateIdeia('ideia-1', {
+        cliente_id: 7,
+        titulo: 'T',
+        descricao: '',
+        links: [],
+        visivel_no_hub: false,
+      });
+      const call = getCalls('ideias', 'update').at(-1)!;
+      expect((call.payload as Record<string, unknown>).descricao).toBeNull();
+    });
+
+    it('throws on update error', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'update', {
+        data: null,
+        error: { message: 'boom' },
+      });
+      await expect(
+        store.updateIdeia('ideia-1', {
+          cliente_id: 1,
+          titulo: 'T',
+          descricao: 'D',
+          links: [],
+          visivel_no_hub: false,
+        }),
+      ).rejects.toThrow('boom');
+    });
+  });
+
+  describe('deleteIdeia', () => {
+    it('deletes by id, any origem', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'delete', { data: null, error: null });
+      await store.deleteIdeia('ideia-1');
+      const call = getCalls('ideias', 'delete').at(-1)!;
+      expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 'ideia-1'] });
+      expect(call.modifiers.some((m) => m.method === 'eq' && m.args[0] === 'origem')).toBe(false);
+    });
+
+    it('throws on delete error', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'delete', {
+        data: null,
+        error: { message: 'boom' },
+      });
+      await expect(store.deleteIdeia('ideia-1')).rejects.toThrow('boom');
+    });
+  });
+
   it('getIdeias selects origem, visivel_no_hub, autor and audio columns', async () => {
     mockedSupabase.__queueSupabaseResult('ideias', 'select', { data: [], error: null });
     await store.getIdeias();

@@ -42,7 +42,12 @@ describe('final mobile responsive CSS contracts', () => {
 
   it('keeps phone navigation below Radix sheets and preserves More-sheet safe padding', () => {
     expect(lastValue('.mobile-nav-glass', 'z-index', 390)).toBe('40');
-    expect(sheetSource.match(/z-50/g)?.length).toBeGreaterThanOrEqual(2);
+    // Sheet's overlay/content used to both be z-50 (still > 40); bumped to
+    // z-[9010]/z-[9011] (matching Dialog) so sheets clear the app's own
+    // fixed .topbar (z-index: 110), which used to visually cover the top of
+    // every open drawer. Either way, well above .mobile-nav-glass's 40.
+    expect(sheetSource.match(/z-\[9010\]/g)?.length).toBeGreaterThanOrEqual(1);
+    expect(sheetSource.match(/z-\[9011\]/g)?.length).toBeGreaterThanOrEqual(1);
     expect(lastValue('.mobile-more-sheet', 'padding-bottom', 390)).toContain(
       'safe-area-inset-bottom',
     );

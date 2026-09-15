@@ -79,7 +79,8 @@ export default function IdeiasPage() {
   });
 
   const [selectedIdeia, setSelectedIdeia] = useState<Ideia | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingIdeia, setEditingIdeia] = useState<Ideia | null>(null);
   const [search, setSearch] = useState('');
   const [clienteFilter, setClienteFilter] = useState<string>('all');
   const [tipoFilter, setTipoFilter] = useState<string>('all');
@@ -117,7 +118,12 @@ export default function IdeiasPage() {
           </span>
         </div>
         {canEdit && (
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button
+            onClick={() => {
+              setEditingIdeia(null);
+              setFormOpen(true);
+            }}
+          >
             <Plus size={15} className="mr-1.5" />
             Nova ideia
           </Button>
@@ -280,13 +286,15 @@ export default function IdeiasPage() {
       )}
 
       <NovaIdeiaDialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={async (id) => {
-          setCreateOpen(false);
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        editing={editingIdeia}
+        onSaved={async (id) => {
+          setFormOpen(false);
+          setEditingIdeia(null);
           // NovaIdeiaDialog already invalidates `queryKey` before calling us, but
           // that refetch is fire-and-forget from its side -- `ideias` here is still
-          // the pre-creation snapshot this closure was built from. Await our own
+          // the pre-save snapshot this closure was built from. Await our own
           // invalidation so the cache is guaranteed fresh before we look the row up.
           await qc.invalidateQueries({ queryKey });
           const fresh = qc.getQueryData<Ideia[]>(queryKey)?.find((i) => i.id === id);
@@ -305,6 +313,11 @@ export default function IdeiasPage() {
               ideia={current}
               queryKey={queryKey}
               onClose={() => setSelectedIdeia(null)}
+              onEdit={() => {
+                setSelectedIdeia(null);
+                setEditingIdeia(current);
+                setFormOpen(true);
+              }}
             />
           );
         })()}

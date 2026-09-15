@@ -16,18 +16,38 @@ vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ can: () => true }),
 }));
 // NovaIdeiaDialog's real form is exercised in its own test suite; here we only
-// need to trigger the same onCreated(id) contract it calls after a successful
-// create, to test how IdeiasPage reacts to it.
+// need to trigger the same onSaved(id) contract it calls after a successful
+// create/save, and expose `editing` so tests can see which mode IdeiasPage
+// put the dialog in.
 vi.mock('@/components/ideias/NovaIdeiaDialog', () => ({
-  NovaIdeiaDialog: ({ open, onCreated }: { open: boolean; onCreated: (id: string) => void }) =>
+  NovaIdeiaDialog: ({
+    open,
+    editing,
+    onSaved,
+  }: {
+    open: boolean;
+    editing?: Ideia | null;
+    onSaved: (id: string) => void;
+  }) =>
     open ? (
-      <button type="button" onClick={() => onCreated('new-ideia-id')}>
-        fake-criar-ideia
-      </button>
+      <div data-testid="dialog" data-editing-titulo={editing?.titulo ?? ''}>
+        <button type="button" onClick={() => onSaved(editing ? editing.id : 'new-ideia-id')}>
+          fake-criar-ideia
+        </button>
+      </div>
     ) : null,
 }));
 vi.mock('@/components/ideias/IdeiaDrawer', () => ({
-  IdeiaDrawer: ({ ideia }: { ideia: Ideia }) => <div data-testid="drawer">{ideia.titulo}</div>,
+  IdeiaDrawer: ({ ideia, onEdit }: { ideia: Ideia; onEdit?: () => void }) => (
+    <div data-testid="drawer">
+      {ideia.titulo}
+      {onEdit && (
+        <button type="button" onClick={onEdit}>
+          fake-editar
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 const BASE_IDEIA: Ideia = {
@@ -92,6 +112,20 @@ describe('IdeiasPage', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId('drawer')).toHaveTextContent('Ideia recem-criada'),
+    );
+  });
+
+  it('opens NovaIdeiaDialog in edit mode for the selected ideia, closing the drawer first', async () => {
+    await renderPage();
+    await waitFor(() => expect(getIdeiasMock).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByText('Ideia antiga'));
+    fireEvent.click(await screen.findByText('fake-editar'));
+
+    expect(screen.queryByTestId('drawer')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('dialog')).toHaveAttribute(
+      'data-editing-titulo',
+      'Ideia antiga',
     );
   });
 });
