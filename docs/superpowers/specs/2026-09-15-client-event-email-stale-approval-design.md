@@ -171,15 +171,18 @@ exercitar um backlog grande o bastante para tocar esse caminho, mas o caso extre
 (2000+ transições de status no mesmo timestamp truncado, para o mesmo cliente) segue
 extremamente improvável. Aceito como limitação pré-existente.
 
-**Custo de consulta em conta antiga com cursor nulo.** Com `EPOCH`, a consulta de aprovações
-para um cliente nunca antes emailado deixa de ser limitada a uma janela de 72h e passa a
-varrer todo o histórico de `post_status_events` daquela conta (o índice
-`idx_post_status_events_conta_created (conta_id, created_at)` ainda se aplica, mas a faixa
-é bem maior). Combinado com o backoff de 30 min para clientes vazios, um workspace grande e
-antigo poderia rodar essa varredura ampla repetidamente. Não deve bloquear o fix, mas vale
-rodar um `EXPLAIN ANALYZE` contra produção num workspace grande antes de considerar
-encerrado — se o custo for real, um índice parcial `WHERE to_status = 'enviado_cliente'`
-resolve sem mudar a lógica.
+**Custo de consulta em conta antiga com cursor nulo — verificado, não é um problema real.**
+A preocupação inicial era que, com `EPOCH`, a consulta de aprovações para um cliente nunca
+antes emailado varreria todo o histórico de `post_status_events` da CONTA. Rodamos
+`EXPLAIN ANALYZE` em produção contra o workspace com mais volume da plataforma
+(`cbaf0da8-d042-46dd-a8ee-cd5ca2b857a0`, 3.955 linhas em `post_status_events`) simulando
+`EPOCH` como limite inferior: **0.571ms**. O plano usa `idx_workflow_posts_cliente` primeiro
+(o filtro real do handler é por `workflow_posts.cliente_id`, não por `conta_id` — a consulta
+é implicitamente por CLIENTE, não por conta inteira) e só então entra em
+`post_status_events` via `idx_post_status_events_post_created_at (post_id, created_at)` — o
+volume relevante é "posts de um cliente" (dezenas), não "eventos da conta inteira"
+(milhares). Nenhum índice novo necessário; item removido da lista de verificação do
+rollout.
 
 ## Testes
 
@@ -226,22 +229,38 @@ apontou 15 posts; cruzando com `audit_log`, 5 desses já tinham sido entregues (
 em `metadata.posts` das linhas de 2026-09-14/15) — o critério solto teria rebobinado o
 cursor e reenviado menção a posts que não precisavam disso.
 
-**Critério certo: existe um envio bem-sucedido para esse cliente dentro de até 72h depois da
-chegada do post em `enviado_cliente`?** Prova: seja `e` o evento (chegada em
-`enviado_cliente`, timestamp `t_e`) e `S` o primeiro envio bem-sucedido daquele cliente
-depois de `t_e`. Como nenhum envio aconteceu entre `t_e` e `S`, o cursor no início de `S`
-ainda é `< t_e`. Se `S` acontece menos de 72h depois de `t_e`, o piso de `S`
-(`run_S - 72h`) também é `< t_e`, então o limite inferior de `S` é `< t_e` e o evento
-**entra** na janela — entregue. Se `S` acontece 72h ou mais depois de `t_e`, o piso de `S`
-já é `>= t_e`, o evento fica de fora da janela mas o cursor mesmo assim avança para
-`upper_S >= t_e` — **órfão**, e como todo envio seguinte já parte de um cursor `>= t_e`,
-nunca mais é revisitado. Ou seja: basta checar se existe uma linha de sucesso em `audit_log`
-dentro de `[t_e, t_e + 72h)` para esse cliente.
+**Critério certo tem DUAS partes, não uma.** A primeira revisão externa apontou (corretamente)
+que "chegou antes do cursor" sozinho é solto demais; a segunda revisão apontou (também
+corretamente) que só o teste de `audit_log` sozinho é solto demais na direção oposta — sem
+exigir que o cursor já tenha passado do evento, um post que acabou de chegar (ainda à
+FRENTE do cursor, que o cron corrigido enviaria normalmente no próximo tick) também não tem
+ainda nenhuma linha de `audit_log` dentro de `[t_e, t_e+72h)` simplesmente porque essa janela
+de 72h **ainda não terminou** — e seria classificado como órfão por engano. As duas condições
+juntas são necessárias e suficientes:
 
-`audit_log` é best-effort (a escrita pode falhar sem desfazer o envio, ver comentário do
-handler) — um buraco no audit faz o critério tratar um post entregue como órfão e
-mencioná-lo de novo. Aceitável: o pior caso é uma menção redundante, não uma perda de
-notificação.
+1. **`arrived_at <= event_cursor_at` (necessária):** sem isso, o post nem está "preso" —
+   ele está simplesmente esperando o próximo tick, o que já funciona.
+2. **Não existe envio bem-sucedido para esse cliente dentro de `[arrived_at, arrived_at +
+   72h)` (distingue órfão de "mailado e cliente não aprovou ainda"):** prova — seja `e` o
+   evento (chegada em `enviado_cliente`, timestamp `t_e`) e `S` o primeiro envio
+   bem-sucedido daquele cliente depois de `t_e`. Como nenhum envio aconteceu entre `t_e` e
+   `S`, o cursor no início de `S` ainda é `< t_e`. Se `S` acontece menos de 72h depois de
+   `t_e`, o piso de `S` (`run_S - 72h`) também é `< t_e`, então o limite inferior de `S` é
+   `< t_e` e o evento **entra** na janela — entregue. Se `S` acontece 72h ou mais depois de
+   `t_e`, o piso de `S` já é `>= t_e`, o evento fica de fora da janela mas o cursor mesmo
+   assim avança para `upper_S >= t_e` — **órfão**, e como todo envio seguinte já parte de um
+   cursor `>= t_e`, nunca mais é revisitado.
+
+**Duas ressalvas assumidas por essa prova:**
+- `audit_log` é best-effort (a escrita pode falhar sem desfazer o envio, ver comentário do
+  handler) — um buraco no audit faz o critério tratar um post entregue como órfão e
+  mencioná-lo de novo. Aceitável: pior caso é uma menção redundante, não perda de
+  notificação.
+- A prova assume que `S` não foi truncado pelo cap de `EVENTS_QUERY_CAP` (1000 linhas) — se
+  foi, o cursor pode ter avançado só até um `safeUpperMs` mais conservador que `upper_S`, e
+  a aritmética acima não se sustenta necessariamente. Mesma situação já aceita em
+  "Limitações aceitas" (exige >1000 eventos pendentes para UM cliente numa única janela;
+  não observado nos dados auditados nesta spec).
 
 **Isto não é uma ferramenta para rodar repetidamente a qualquer momento.** O critério
 responde "esse evento foi entregue pelo comportamento ANTIGO (com piso)?" — depois que o
@@ -252,6 +271,20 @@ novo. Por isso o runbook abaixo pausa o cron ANTES do deploy e só o retoma DEPO
 backfill: dentro dessa janela pausada, nenhum envio novo acontece, então o critério está
 respondendo exatamente a pergunta certa (histórico sob o comportamento antigo) e o script só
 precisa rodar uma vez.
+
+**O rewind não é seletivo — e isso é intencional, não um bug escondido.** O `UPDATE`
+identifica QUAIS clientes têm pelo menos um órfão e para QUE PONTO mínimo rebobinar o cursor
+deles. Mas o cursor é único por cliente: depois do rewind, o próximo digest desse cliente
+inclui **todo** post ainda pendente com `arrived_at` depois do ponto de rewind — não só os
+órfãos identificados. Verificado em produção: rebobinar o cursor da cliente 405 (Rachel
+Gonzaga) para antes do órfão mais antigo (post 4729, 2026-09-08) também reincluiria os posts
+5058/5037/5028 (arrived_at 2026-09-14), que já tinham sido entregues corretamente e o
+cliente simplesmente ainda não aprovou. Não há como evitar isso sem um mecanismo
+completamente separado (um ledger por evento entregue, ou um envio avulso fora do cron) —
+fora de escopo. Aceito como parte do "efeito colateral" já combinado na decisão de rollout:
+o digest de recuperação de um cliente afetado pode mencionar de novo posts que ele já tinha
+visto, não só os genuinamente novos. Informacional, não dispara ação, acontece uma única vez
+por cliente.
 
 Preview (somente leitura — rodar dentro da janela com o cron pausado, ver Rollout):
 
@@ -270,7 +303,8 @@ orphaned_posts AS (
   FROM current_arrival ca
   JOIN clientes cl ON cl.id = ca.cliente_id
   WHERE cl.event_cursor_at IS NOT NULL
-    AND NOT EXISTS (
+    AND ca.arrived_at <= cl.event_cursor_at   -- necessária: já precisa estar "preso"
+    AND NOT EXISTS (                          -- suficiente: nunca foi entregue
       SELECT 1 FROM audit_log a
       WHERE a.action = 'client_event_email_sent'
         AND a.resource_type = 'cliente'
@@ -306,7 +340,8 @@ orphaned AS (
   FROM current_arrival ca
   JOIN clientes cl ON cl.id = ca.cliente_id
   WHERE cl.event_cursor_at IS NOT NULL
-    AND NOT EXISTS (
+    AND ca.arrived_at <= cl.event_cursor_at   -- necessária: já precisa estar "preso"
+    AND NOT EXISTS (                          -- suficiente: nunca foi entregue
       SELECT 1 FROM audit_log a
       WHERE a.action = 'client_event_email_sent'
         AND a.resource_type = 'cliente'
@@ -337,8 +372,14 @@ RETURNING c.id, c.nome, c.conta_id, c.event_cursor_at;
    `SEND_DEADLINE_MS` = 60s por lote) terminar sozinha.
 2. Deploy de `client-event-email-cron` (`--use-api`, o bundler local está quebrado neste
    repo; `--no-verify-jwt`, autentica via `x-cron-secret` como os demais crons).
-3. Rodar o preview SQL da seção Backfill contra produção, revisar a lista.
-4. Rodar o `UPDATE` de backfill contra produção.
+3. Rodar o preview SQL da seção Backfill contra produção, revisar a lista — essa é a lista
+   ESPERADA de clientes a rebobinar.
+4. Rodar o `UPDATE` de backfill contra produção. **Reconciliar**: comparar o conjunto de
+   `id` no `RETURNING` contra o conjunto de `cliente_id` do preview do passo 3. Se algum
+   candidato do preview não aparecer no `RETURNING`, ele tinha `event_claim_through` não
+   nulo no momento do UPDATE (um lease que a pausa do passo 1 não conseguiu limpar a
+   tempo) — rodar o `UPDATE` de novo (idempotente dentro dessa janela pausada) até as duas
+   listas baterem, antes de seguir para o passo 5.
 5. Reagendar o cron (mesma definição da migration
    `20260904000001_client_event_emails.sql:178-192`):
    ```sql
@@ -361,11 +402,11 @@ RETURNING c.id, c.nome, c.conta_id, c.event_cursor_at;
 6. Na execução seguinte (até 15 min depois), conferir em `audit_log`
    (`action = 'client_event_email_sent'`) que os clientes antes silenciosos aparecem —
    tanto os de cursor nulo (406, 417) quanto os órfãos rebobinados.
-7. Rodar `EXPLAIN ANALYZE` da consulta de aprovações contra um workspace grande e antigo,
-   para confirmar que o custo sem piso é aceitável (ver "Limitações aceitas").
-8. Nenhuma migration, nenhum flag novo. Deploy só desta function; decidido deliberadamente
+7. Nenhuma migration, nenhum flag novo. Deploy só desta function; decidido deliberadamente
    pular o passo usual de staging-antes-de-prod dado o tamanho da mudança (um arquivo, sem
    schema) — ok revisitar se o time preferir seguir o fluxo padrão mesmo assim.
+   (Custo da consulta sem piso já verificado em produção — ver "Limitações aceitas" — não
+   é motivo para gate nenhum aqui.)
 
 ## Fora de escopo
 
