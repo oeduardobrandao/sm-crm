@@ -85,11 +85,18 @@ describe('vercel.json Permissions-Policy', () => {
   // vir DEPOIS do catch-all porque, com a mesma chave, a última regra que
   // casa é a que vale.
   const HUB_SOURCES = ['/:workspace/hub/:token', '/:workspace/hub/:token/(.*)'];
+  // As ideias da agência (Task 11/12) trouxeram gravação de áudio pro CRM por
+  // dois caminhos -- a página /ideias e a aba Ideias de /clientes/:id/hub
+  // (rota aninhada sob "hub", não direto em /clientes/:id) -- que caíram no
+  // mesmo bloqueio do Hub em 2026-09-04 (incidente novo, mesma causa): o
+  // catch-all bloqueia o microfone e nenhuma regra do CRM o liberava, então
+  // getUserMedia rejeitava sem nem abrir o prompt.
+  const CRM_AUDIO_SOURCES = ['/ideias(/.*)?', '/clientes/:id/hub/ideias'];
   const policyOf = (source: string) =>
     headers.find((h) => h.source === source)?.headers.find((x) => x.key === 'Permissions-Policy')
       ?.value;
 
-  test('o catch-all segue bloqueando o microfone fora do Hub', () => {
+  test('o catch-all segue bloqueando o microfone fora do Hub e do CRM de ideias', () => {
     expect(policyOf('/(.*)')).toMatch(/microphone=\(\)/);
   });
 
@@ -97,6 +104,21 @@ describe('vercel.json Permissions-Policy', () => {
     const catchAllIdx = headers.findIndex((h) => h.source === '/(.*)');
     expect(catchAllIdx).toBeGreaterThanOrEqual(0);
     for (const src of HUB_SOURCES) {
+      expect(policyOf(src), `${src} não libera o microfone`).toMatch(/microphone=\(self\)/);
+      expect(policyOf(src), `${src} libera câmera ou geolocalização`).toMatch(
+        /camera=\(\).*geolocation=\(\)/,
+      );
+      expect(
+        headers.findIndex((h) => h.source === src),
+        `${src} precisa vir depois do catch-all`,
+      ).toBeGreaterThan(catchAllIdx);
+    }
+  });
+
+  test('as rotas de ideias do CRM liberam o microfone para self, depois do catch-all', () => {
+    const catchAllIdx = headers.findIndex((h) => h.source === '/(.*)');
+    expect(catchAllIdx).toBeGreaterThanOrEqual(0);
+    for (const src of CRM_AUDIO_SOURCES) {
       expect(policyOf(src), `${src} não libera o microfone`).toMatch(/microphone=\(self\)/);
       expect(policyOf(src), `${src} libera câmera ou geolocalização`).toMatch(
         /camera=\(\).*geolocation=\(\)/,
