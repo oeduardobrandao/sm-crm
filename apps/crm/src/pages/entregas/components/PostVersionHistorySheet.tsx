@@ -91,14 +91,27 @@ export function PostVersionHistorySheet({
 
   const [resolvedCurrent, setResolvedCurrent] = useState<Record<string, unknown> | null>(null);
   const [resolvedPrevious, setResolvedPrevious] = useState<Record<string, unknown> | null>(null);
+  // Remount key for ReadOnlyTipTap, set together with resolvedCurrent/
+  // resolvedPrevious inside the effect below (never derived from selection
+  // state directly). useEditor only builds its document once per mount, so
+  // switching versions needs a fresh instance -- but keying off selection
+  // state changes one render before the resolved content below catches up
+  // (resolution is async, via a separate effect+state), so the remount
+  // would land with the OLD content and then silently miss the real update
+  // once it arrives, since the key wouldn't change again. Keying off this
+  // instead guarantees the remount happens in the same commit as the
+  // content it renders.
+  const [resolvedKey, setResolvedKey] = useState('none');
 
   useEffect(() => {
     const current = selectedNode?.version.conteudo ?? null;
     const previous = precedingVersion?.conteudo ?? null;
+    const nextKey = `${selectedNode?.version.id ?? 'none'}-${precedingVersion?.id ?? 'none'}`;
 
     if (!current && !previous) {
       setResolvedCurrent(current);
       setResolvedPrevious(previous);
+      setResolvedKey(nextKey);
       return;
     }
     // Batch both docs' R2 keys into one call -- a naive per-doc resolve would
@@ -107,6 +120,7 @@ export function PostVersionHistorySheet({
     if (keys.length === 0) {
       setResolvedCurrent(current);
       setResolvedPrevious(previous);
+      setResolvedKey(nextKey);
       return;
     }
     let cancelled = false;
@@ -115,11 +129,13 @@ export function PostVersionHistorySheet({
         if (cancelled) return;
         setResolvedCurrent(current ? injectSignedUrls(current, urlMap) : current);
         setResolvedPrevious(previous ? injectSignedUrls(previous, urlMap) : previous);
+        setResolvedKey(nextKey);
       })
       .catch(() => {
         if (cancelled) return;
         setResolvedCurrent(current);
         setResolvedPrevious(previous);
+        setResolvedKey(nextKey);
       });
     return () => {
       cancelled = true;
@@ -216,6 +232,7 @@ export function PostVersionHistorySheet({
                   )}
                   {selectedNode.version.conteudo && resolvedCurrent && (
                     <ReadOnlyTipTap
+                      key={resolvedKey}
                       content={
                         precedingVersion && resolvedPrevious
                           ? computeTipTapDiff(resolvedPrevious, resolvedCurrent)
