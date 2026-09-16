@@ -206,3 +206,42 @@ begin
   raise notice 'PASS 94.4';
 end $$;
 rollback;
+
+-- =============================================================
+-- 94.5: set_membro_crm_user rejeita chamador sem workspace_members
+-- nesta conta (NULL role != NOT IN check bypass)
+-- =============================================================
+begin;
+do $$
+declare
+  v_ws uuid;
+  v_owner uuid := gen_random_uuid();
+  v_outsider uuid := gen_random_uuid();
+  v_target_user uuid := gen_random_uuid();
+  v_membro bigint;
+  v_raised boolean := false;
+begin
+  v_ws := et_make_workspace('max');
+  insert into auth.users (id) values (v_owner);
+  insert into auth.users (id) values (v_outsider);
+  insert into auth.users (id) values (v_target_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_owner, v_ws, 'owner');
+
+  insert into membros (user_id, conta_id, nome) values (v_owner, v_ws, 'M1')
+    returning id into v_membro;
+
+  -- v_outsider has no workspace_members row in v_ws at all.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_outsider, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform set_membro_crm_user(v_membro, v_target_user);
+  exception when others then
+    v_raised := true;
+    assert sqlerrm = 'Insufficient permissions', format('94.5: wrong message: %s', sqlerrm);
+  end;
+  execute 'reset role';
+
+  assert v_raised, '94.5: a caller with no membership in this conta should not be able to call set_membro_crm_user';
+  raise notice 'PASS 94.5';
+end $$;
+rollback;

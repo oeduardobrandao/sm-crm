@@ -9,9 +9,8 @@
 -- get_mensagens_feed's `LEFT JOIN membros mb ON mb.crm_user_id = f.f_author`
 -- (20260830000003_avulso_notifications_folders_views.sql), which assumes
 -- 0-or-1 membro per (conta, crm_user_id) and silently fans out otherwise.
--- Both prod duplicates were cleaned up by hand before this migration; see
--- the incident writeup for detail. The index below is what makes it stay
--- clean.
+-- Both prod duplicates were cleaned up by hand before this migration. The
+-- index below is what makes it stay clean.
 
 -- Per-conta, not global: the same person can legitimately be a membro of
 -- multiple contas (see 20260903000030_workflow_analytics_events.sql's note
@@ -47,7 +46,7 @@ BEGIN
     WHERE user_id = auth.uid()
       AND workspace_id = v_membro_conta;
 
-  IF v_caller_role NOT IN ('owner', 'admin') THEN
+  IF v_caller_role IS NULL OR v_caller_role NOT IN ('owner', 'admin') THEN
     RAISE EXCEPTION 'Insufficient permissions';
   END IF;
 
