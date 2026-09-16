@@ -254,7 +254,11 @@ rollback;
 --    prior updated_at, followed by the edit's own row. Without this, a
 --    post whose content was set once at creation and never touched again
 --    would lose its pre-edit state forever the moment it was first edited
---    (20260923000004).
+--    (20260923000004). This test's own setup -- post created and first
+--    edited within the same transaction -- is exactly the case where
+--    old.updated_at and the edit's own now() tie (transaction-stable
+--    now()), so it also covers the ordering fix in 20260923000005: the
+--    baseline must sort strictly before the edit even then.
 -- =====================================================================
 begin;
 do $$
@@ -289,8 +293,14 @@ begin
 
   assert v_baseline.conteudo_plain = 'born with this text',
     format('baseline row must carry the pre-edit content, got %s', v_baseline.conteudo_plain);
-  assert v_baseline.created_at = v_old_updated_at,
-    'baseline row must be dated at the post''s prior updated_at, not now()';
+  assert v_baseline.created_at <= v_old_updated_at,
+    'baseline row must never be dated later than the post''s prior updated_at';
+  assert v_baseline.created_at < v_latest.created_at,
+    format(
+      'baseline must sort strictly before the edit even when created in the same transaction (tie risk: '
+      || 'old.updated_at %s vs edit now() %s), got baseline %s = latest %s',
+      v_old_updated_at, v_latest.created_at, v_baseline.created_at, v_latest.created_at
+    );
   assert v_baseline.source = 'workspace_user' and v_baseline.actor_user_id is null,
     'baseline row must not be misattributed to whoever made the first real edit';
 
