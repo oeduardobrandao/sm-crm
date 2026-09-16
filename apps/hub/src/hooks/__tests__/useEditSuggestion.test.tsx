@@ -108,4 +108,66 @@ describe('useEditSuggestion', () => {
       null,
     );
   });
+
+  it('attributes a queued save to the post it was typed into, even when the hook is reused for a different post mid-flight', async () => {
+    // `postagens/:postId` has no `key`, so React Router reuses the same component
+    // (and this hook's instance/refs) across navigation -- editing post A, then
+    // navigating to post B before A's save resolves, re-renders this hook with a new
+    // `post` while its in-flight request and queue are still live.
+    const postA = deferred<{ ok: boolean; pending_suggestion: null }>();
+    const postBResponse = { ok: true, pending_suggestion: null };
+    mockedSubmit.mockReturnValueOnce(postA.promise).mockResolvedValueOnce(postBResponse);
+
+    const onSaved = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ post }) => useEditSuggestion({ token: 'tok', post, onSaved }),
+      { initialProps: { post: makePost({ id: 5103 }) } },
+    );
+
+    // Edit post A (5103): debounce fires, its save goes in flight and stays there.
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    expect(mockedSubmit).toHaveBeenNthCalledWith(
+      1,
+      'tok',
+      5103,
+      { type: 'doc', content: [] },
+      'edit-for-post-a',
+      null,
+    );
+
+    // Navigate to a different post (5104) -- same hook instance, new `post` prop --
+    // and edit it before post A's save has resolved.
+    rerender({ post: makePost({ id: 5104 }) });
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-b', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1); // still queued -- post A's save is in flight
+
+    // Post A's save finally resolves; its `finally` block drains the queue.
+    await act(async () => {
+      postA.resolve({ ok: true, pending_suggestion: null });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The queued edit must be sent for post B (5104), not misattributed to post A (5103).
+    expect(mockedSubmit).toHaveBeenCalledTimes(2);
+    expect(mockedSubmit).toHaveBeenNthCalledWith(
+      2,
+      'tok',
+      5104,
+      { type: 'doc', content: [] },
+      'edit-for-post-b',
+      null,
+    );
+  });
 });
