@@ -675,7 +675,7 @@ export function WorkflowCard({
               className="btn-edit-workflow board-card-kebab"
               aria-label="Mais opções"
               title="Mais opções"
-              style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
+              style={{ padding: '0.35rem 0.55rem', borderRadius: '8px', flexShrink: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
@@ -735,7 +735,7 @@ export function WorkflowCard({
             }
             style={{
               padding: '0.35rem 0.55rem',
-              borderRadius: '10px',
+              borderRadius: '8px',
               flexShrink: 0,
               marginLeft: 'auto',
               color: '#3ecf8e',
