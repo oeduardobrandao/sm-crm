@@ -247,3 +247,87 @@ begin
   raise notice 'PASS 95.5 accept_edit_suggestion always produces a fresh source=client row linked via suggestion_id';
 end $$;
 rollback;
+
+-- =====================================================================
+-- 6. The first-ever content update on a version-less post yields TWO rows:
+--    a baseline row carrying the pre-edit (OLD) state, dated at the post's
+--    prior updated_at, followed by the edit's own row. Without this, a
+--    post whose content was set once at creation and never touched again
+--    would lose its pre-edit state forever the moment it was first edited
+--    (20260923000004).
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint;
+  v_count int;
+  v_baseline post_content_versions;
+  v_latest post_content_versions;
+  v_old_updated_at timestamptz;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain)
+    values (v_ws, v_cli, 'rascunho', 'born with this text') returning id into v_post;
+
+  select updated_at into v_old_updated_at from workflow_posts where id = v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'first real edit' where id = v_post;
+
+  select count(*) into v_count from post_content_versions where post_id = v_post;
+  assert v_count = 2,
+    format('the first content update on a version-less post must yield a baseline + the edit itself, got %s rows', v_count);
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+  select * into v_latest from post_content_versions where post_id = v_post order by created_at desc limit 1;
+
+  assert v_baseline.conteudo_plain = 'born with this text',
+    format('baseline row must carry the pre-edit content, got %s', v_baseline.conteudo_plain);
+  assert v_baseline.created_at = v_old_updated_at,
+    'baseline row must be dated at the post''s prior updated_at, not now()';
+  assert v_baseline.source = 'workspace_user' and v_baseline.actor_user_id is null,
+    'baseline row must not be misattributed to whoever made the first real edit';
+
+  assert v_latest.conteudo_plain = 'first real edit',
+    format('the edit''s own row must carry the new content, got %s', v_latest.conteudo_plain);
+  assert v_latest.actor_user_id = v_user, 'the edit''s own row must attribute to the acting user';
+
+  raise notice 'PASS 95.6 first-ever content update on a version-less post yields a baseline row + the edit itself';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 7. A post born WITHOUT content (empty draft) gets no baseline row on its
+--    first edit -- there is nothing worth snapshotting before it.
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint;
+  v_count int;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflow_posts (conta_id, cliente_id, status) values (v_ws, v_cli, 'rascunho') returning id into v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'first content ever' where id = v_post;
+
+  select count(*) into v_count from post_content_versions where post_id = v_post;
+  assert v_count = 1,
+    format('a post born empty must not get a synthetic baseline row on its first edit, got %s rows', v_count);
+
+  raise notice 'PASS 95.7 a post born with no content gets no baseline row on its first edit';
+end $$;
+rollback;
