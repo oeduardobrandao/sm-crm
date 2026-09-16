@@ -170,4 +170,63 @@ describe('useEditSuggestion', () => {
       null,
     );
   });
+
+  it('queues edits per post so a third post edited mid-flight does not drop a second, still-queued post', async () => {
+    // A single-slot queue would let editing post C overwrite post B's still-queued
+    // entry while post A's save is in flight, silently dropping B's edit. Each post
+    // must keep its own queued entry until it is actually sent.
+    const postA = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit
+      .mockReturnValueOnce(postA.promise)
+      .mockResolvedValueOnce({ ok: true, pending_suggestion: null })
+      .mockResolvedValueOnce({ ok: true, pending_suggestion: null });
+
+    const onSaved = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ post }) => useEditSuggestion({ token: 'tok', post, onSaved }),
+      { initialProps: { post: makePost({ id: 5103 }) } },
+    );
+
+    // Edit post A (5103): its save goes in flight and stays there.
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+
+    // Navigate to post B (5104) and edit it -- queued, post A is still in flight.
+    rerender({ post: makePost({ id: 5104 }) });
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-b', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1); // still just post A -- B is queued
+
+    // Navigate to post C (5105) and edit it too, before post A's save resolves.
+    rerender({ post: makePost({ id: 5105 }) });
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-c', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1); // still just post A -- B and C are both queued
+
+    // Post A's save finally resolves; the drain loop must send BOTH queued posts.
+    await act(async () => {
+      postA.resolve({ ok: true, pending_suggestion: null });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockedSubmit).toHaveBeenCalledTimes(3);
+    const sentPostIds = mockedSubmit.mock.calls.map((call) => call[1]).sort();
+    expect(sentPostIds).toEqual([5103, 5104, 5105]);
+  });
 });
