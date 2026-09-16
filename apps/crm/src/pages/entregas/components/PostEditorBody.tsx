@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { MessageSquare, Send } from 'lucide-react';
+import { MessageSquare, Send, History } from 'lucide-react';
 import {
   type WorkflowPost,
   type PostApproval,
+  type PostStatusEvent,
   type Membro,
   type PostPropertyValue,
   type CommentThreadWithComments,
@@ -48,6 +49,7 @@ import {
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { groupOptionsByOwner } from '../statusRegistry';
+import { PostVersionHistorySheet } from './PostVersionHistorySheet';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 //
@@ -91,6 +93,7 @@ export interface PostEditorBodyProps {
   clientePosts: ClientePost[];
   isExpanded: boolean;
   approvals: PostApproval[];
+  statusEvents: PostStatusEvent[];
   editSuggestion: PostEditSuggestion | null;
   membros: Membro[];
   replyText: string;
@@ -135,6 +138,7 @@ export function PostEditorBody({
   clientePosts,
   isExpanded,
   approvals,
+  statusEvents,
   editSuggestion,
   membros,
   replyText,
@@ -174,6 +178,7 @@ export function PostEditorBody({
 
   const { features } = useWorkspaceLimits();
   const statusRegistry = useStatusRegistry();
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   // Shares the ['post-media', post.id] cache key with PostMediaGallery below, so this is a
   // cache hit whenever the gallery already loaded it. Feeds ScheduleButton's client-side
@@ -455,6 +460,17 @@ export function PostEditorBody({
         tiktokPostUrl={post.tiktok_post_url}
       />
 
+      {post.id != null && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => setVersionHistoryOpen(true)}
+            className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <History className="h-3.5 w-3.5" /> Histórico de versões
+          </button>
+        </div>
+      )}
+
       {editSuggestion ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200/60 bg-amber-50">
@@ -639,6 +655,16 @@ export function PostEditorBody({
           <Send className="h-3.5 w-3.5" />
         </button>
       </div>
+
+      {post.id != null && (
+        <PostVersionHistorySheet
+          postId={post.id}
+          open={versionHistoryOpen}
+          onOpenChange={setVersionHistoryOpen}
+          statusEvents={statusEvents}
+          approvals={approvals}
+        />
+      )}
     </div>
   );
 }

@@ -346,6 +346,7 @@ export function WorkflowDrawer({
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
     qc.invalidateQueries({ queryKey: ['post-status-events'] });
+    qc.invalidateQueries({ queryKey: ['post-content-versions'] });
     qc.invalidateQueries({ queryKey: ['post-process-events'] });
     qc.invalidateQueries({ queryKey: ['workflow-events', workflowId] });
     // Field changes (incl. scheduled_at, tipo) must also refresh the day-dot markers other
@@ -1358,6 +1359,7 @@ function SortablePostItem({
         clientePosts={clientePosts}
         isExpanded={isExpanded}
         approvals={approvals}
+        statusEvents={statusEvents}
         editSuggestion={editSuggestion}
         membros={membros}
         replyText={replyText}

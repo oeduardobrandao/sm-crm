@@ -140,6 +140,9 @@ export function StandalonePostDrawer({
   });
   const editSuggestion = editSuggestions.find((s) => s.post_id === postId) ?? null;
 
+  // Feeds both PostTimelinePopover (status timeline in the header) and
+  // PostVersionHistorySheet's status-anchor interleave (via PostEditorBody
+  // below) -- both invalidated together by refresh() below.
   const { data: statusEvents = [] } = useQuery({
     queryKey: ['post-status-events', String(postId)],
     queryFn: () => getPostStatusEvents([postId]),
@@ -224,6 +227,7 @@ export function StandalonePostDrawer({
     qc.invalidateQueries({ queryKey: ['active-posts'] });
     qc.invalidateQueries({ queryKey: ['post-approvals'] });
     qc.invalidateQueries({ queryKey: ['post-status-events'] });
+    qc.invalidateQueries({ queryKey: ['post-content-versions'] });
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
     qc.invalidateQueries({ queryKey: ['post-process', postId] });
@@ -636,6 +640,7 @@ export function StandalonePostDrawer({
               clientePosts={clientePosts}
               isExpanded
               approvals={approvals}
+              statusEvents={statusEvents}
               editSuggestion={editSuggestion}
               membros={membros}
               replyText={replyText}

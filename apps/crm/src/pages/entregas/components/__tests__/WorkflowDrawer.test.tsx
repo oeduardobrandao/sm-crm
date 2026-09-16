@@ -521,7 +521,10 @@ describe('WorkflowDrawer Histórico tab', () => {
     renderDrawer(qc);
 
     await screen.findByDisplayValue('Feed');
-    fireEvent.click(screen.getByRole('button', { name: /Histórico/i }));
+    // Exact match: the expanded post row also renders a "Histórico de versões"
+    // button (PostVersionHistorySheet's entry point), which a loose /Histórico/i
+    // regex would ambiguously match too.
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
 
     expect(await screen.findByTestId('workflow-history-view-stub')).toHaveTextContent('history-10');
   });

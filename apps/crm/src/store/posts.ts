@@ -468,6 +468,22 @@ export interface PostStatusEvent {
   created_at: string;
 }
 
+export interface PostContentVersion {
+  id: number;
+  post_id: number;
+  conteudo: Record<string, unknown> | null;
+  conteudo_plain: string | null;
+  ig_caption: string | null;
+  tiktok_caption: string | null;
+  changed_fields: string[];
+  source: 'workspace_user' | 'client' | 'system';
+  actor_user_id: string | null;
+  actor_name: string | null;
+  suggestion_id: number | null;
+  created_at: string;
+  last_touched_at: string;
+}
+
 // =============================================
 // CUSTOM PROPERTIES
 // =============================================
@@ -1297,6 +1313,24 @@ export async function getPostStatusEvents(postIds: number[]): Promise<PostStatus
     )
     .in('post_id', postIds)
     .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+/** Lazy, per-post fetch (only called when the version-history sheet opens) --
+ *  unlike getPostStatusEvents, deliberately NOT batch-prefetched for every post
+ *  in a workflow, since a row carries a full `conteudo` jsonb snapshot.
+ *  Ordered/anchored on last_touched_at (when a coalesced group was last
+ *  touched), not created_at -- see PostVersionHistorySheet. */
+export async function getPostContentVersions(postIds: number[]): Promise<PostContentVersion[]> {
+  if (postIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('post_content_versions')
+    .select(
+      'id, post_id, conteudo, conteudo_plain, ig_caption, tiktok_caption, changed_fields, source, actor_user_id, actor_name, suggestion_id, created_at, last_touched_at',
+    )
+    .in('post_id', postIds)
+    .order('last_touched_at', { ascending: true });
   if (error) throw error;
   return data || [];
 }
