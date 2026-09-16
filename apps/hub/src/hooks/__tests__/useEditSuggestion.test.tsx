@@ -498,4 +498,73 @@ describe('useEditSuggestion', () => {
     // Must still show the failed edit as unsaved, not a clean idle state.
     expect(lastActive()).toBe(true);
   });
+
+  it('does not let a stale, older save erase a newer save failure recorded for the same post', async () => {
+    // Two SEPARATE hook instances for the same post can each have their own request in
+    // flight: attempt A is dispatched, the user leaves before it resolves (a real
+    // unmount, not just a rerender), reopens the same post (a fresh instance), and
+    // edits again -- attempt B. If B fails first and A's now-stale, slower request
+    // then succeeds, that success must not erase B's failure: B is the newer, truer
+    // outcome, and its edit never actually reached the server.
+    //
+    // A currently-mounted instance's own `dirty` state is a poor probe here: it's
+    // already true from its own `saveSuggestion` call and stays true regardless of
+    // what the module-level failure map does in the background (that map is only
+    // re-read at mount time). So this asserts through a THIRD, later instance's own
+    // mount -- the same observable the original finding described ("reopening the
+    // post appears clean") -- rather than through instance #2, which would pass even
+    // on the buggy code.
+    const attemptA = deferred<{ ok: boolean; pending_suggestion: null }>();
+    const attemptB = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit.mockReturnValueOnce(attemptA.promise).mockReturnValueOnce(attemptB.promise);
+
+    const post = makePost({ id: 5103 });
+
+    // Instance #1: dispatch attempt A, then leave before it resolves.
+    const { result: result1, unmount: unmount1 } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    act(() => {
+      result1.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-attempt-a', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    unmount1();
+
+    // Instance #2: reopen the same post fresh, and edit it again -- dispatches attempt B.
+    const { result: result2, unmount: unmount2 } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    act(() => {
+      result2.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-attempt-b', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(2);
+
+    // Attempt B (the newer one) fails first, recording the hold.
+    await act(async () => {
+      attemptB.reject(new Error('network error'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    unmount2();
+
+    // Attempt A (the older, now-superseded one) finally succeeds in the background.
+    await act(async () => {
+      attemptA.resolve({ ok: true, pending_suggestion: null });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Reopen the post a third time: a brand new instance, reading the module-level
+    // failure memory fresh at mount. B's failure must have survived A's stale
+    // success -- the latest edit never reached the server.
+    renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
+    const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
+    expect(lastActive()).toBe(true);
+  });
 });

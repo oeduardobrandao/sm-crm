@@ -22,10 +22,23 @@ interface UseEditSuggestionOpts {
 // (implicitly) a hard page reload.
 const failedSuggestionHolds = new Map<number, () => void>();
 
-/** Test-only: forget every recorded failure between tests. */
+// Which dispatched attempt is the newest one known for each post, across every hook
+// instance. Two SEPARATE instances (an old one left mid-save, a fresh one from reopening
+// the same post) can each have their own request in flight for the same post id -- the
+// per-instance `pendingRef` serialization only prevents that WITHIN one instance. Without
+// this, a slower, older request resolving after a newer one has already recorded a
+// failure could unconditionally clear that failure's hold (or the reverse), erasing the
+// true, latest outcome. `flush` stamps a fresh id here the moment it dispatches, and a
+// settling request only touches `failedSuggestionHolds` if its own id is still the latest
+// recorded one for that post.
+let nextAttemptId = 0;
+const latestAttemptByPostId = new Map<number, number>();
+
+/** Test-only: forget every recorded failure and attempt ordering between tests. */
 export function resetEditSuggestionFailuresForTests(): void {
   for (const release of failedSuggestionHolds.values()) release();
   failedSuggestionHolds.clear();
+  latestAttemptByPostId.clear();
 }
 
 export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpts) {
@@ -148,6 +161,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         const isCurrentPost = postId === currentPostIdRef.current;
         if (isCurrentPost) setSaveState('saving');
         inFlightPostIdRef.current = postId;
+        const attemptId = ++nextAttemptId;
+        latestAttemptByPostId.set(postId, attemptId);
         try {
           const res = await submitEditSuggestion(
             token,
@@ -159,8 +174,14 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
           onSaved();
           // Unconditional (not gated by isCurrentPost): this post's last known
           // attempt is no longer a failure, whether or not it's on screen right now.
-          failedSuggestionHolds.get(postId)?.();
-          failedSuggestionHolds.delete(postId);
+          // Gated on still being the latest dispatched attempt for this post: a
+          // slower, now-superseded request (e.g. one still in flight from an
+          // instance the user already left and reopened) must not clear a failure
+          // hold that a newer attempt has since recorded.
+          if (latestAttemptByPostId.get(postId) === attemptId) {
+            failedSuggestionHolds.get(postId)?.();
+            failedSuggestionHolds.delete(postId);
+          }
           if (isCurrentPost) {
             currentPostOutcome = {
               postId,
@@ -172,8 +193,13 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
           // Unconditional: a post left mid-save (possibly a full unmount, not just a
           // same-instance navigation) must still remember its attempt failed once the
           // user comes back to it. Guarded by `has` so a post that fails twice in a
-          // row before ever succeeding doesn't leak a second hold.
-          if (!failedSuggestionHolds.has(postId)) {
+          // row before ever succeeding doesn't leak a second hold, and by the same
+          // latest-attempt check as the success branch above -- a stale failure must
+          // not mark a post dirty after a newer attempt has already succeeded.
+          if (
+            latestAttemptByPostId.get(postId) === attemptId &&
+            !failedSuggestionHolds.has(postId)
+          ) {
             failedSuggestionHolds.set(postId, holdUnsavedWork());
           }
           if (isCurrentPost)
