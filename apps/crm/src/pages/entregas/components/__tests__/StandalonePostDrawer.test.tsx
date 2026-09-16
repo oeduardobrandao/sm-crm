@@ -149,6 +149,7 @@ import { StandalonePostDrawer } from '../StandalonePostDrawer';
 import {
   getStandalonePost,
   getVigentePostProcess,
+  getPostStatusEvents,
   updateWorkflowPost,
   removeWorkflowPost,
   transitionPostProcess,
@@ -156,6 +157,7 @@ import {
 
 const mockGetStandalonePost = vi.mocked(getStandalonePost);
 const mockGetVigentePostProcess = vi.mocked(getVigentePostProcess);
+const mockGetPostStatusEvents = vi.mocked(getPostStatusEvents);
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockRemove = vi.mocked(removeWorkflowPost);
 const mockTransition = vi.mocked(transitionPostProcess);
@@ -268,6 +270,35 @@ describe('StandalonePostDrawer', () => {
 
     expect(await screen.findByText('Avulso')).toBeInTheDocument();
     expect(screen.getByText('Marca X', { exact: false })).toBeInTheDocument();
+  });
+
+  it("renders a Histórico button populated with the post's real status events", async () => {
+    mockGetPostStatusEvents.mockResolvedValue([
+      {
+        id: 1,
+        post_id: 5,
+        from_status: 'rascunho',
+        to_status: 'aprovado_cliente',
+        source: 'client',
+        actor_user_id: null,
+        actor_name: null,
+        post_approval_id: null,
+        from_custom_status_id: null,
+        to_custom_status_id: null,
+        from_custom_nome: null,
+        to_custom_nome: null,
+        created_at: '2026-06-03T12:00:00Z',
+      },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByTestId('post-editor-stub');
+    fireEvent.click(screen.getByTitle('Histórico do post'));
+
+    expect(await screen.findByText('Histórico')).toBeInTheDocument();
+    expect(screen.getByText('Aprovado pelo cliente')).toBeInTheDocument();
+    expect(screen.getByText('Cliente')).toBeInTheDocument();
   });
 
   it('deletes the post through the confirm dialog and closes the drawer', async () => {
