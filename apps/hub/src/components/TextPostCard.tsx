@@ -50,6 +50,7 @@ export function TextPostCard({
     saveState,
     approvalBlocked,
     draftConteudo,
+    draftConteudoPlain,
     draftIgCaption,
   } = useEditSuggestion({
     token,
@@ -58,6 +59,12 @@ export function TextPostCard({
   });
   const isEditable = canEdit && !readOnly;
   const igCaptionRef = useRef(draftIgCaption ?? '');
+  // Mirrors the roteiro editor's live content so the caption field (a separate,
+  // independently-editable field) always saves alongside the freshest roteiro state
+  // instead of the stale `draftConteudo`/`post.conteudo_plain` snapshot -- otherwise
+  // editing the caption shortly after editing the roteiro would revert the roteiro.
+  const conteudoRef = useRef(draftConteudo);
+  const conteudoPlainRef = useRef(draftConteudoPlain);
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -161,6 +168,8 @@ export function TextPostCard({
               onUpdate={
                 isEditable
                   ? (json, plain) => {
+                      conteudoRef.current = json;
+                      conteudoPlainRef.current = plain;
                       saveSuggestion(json, plain, igCaptionRef.current);
                     }
                   : undefined
@@ -221,7 +230,7 @@ export function TextPostCard({
                   defaultValue={draftIgCaption ?? ''}
                   onChange={(e) => {
                     igCaptionRef.current = e.target.value;
-                    saveSuggestion(draftConteudo, post.conteudo_plain, e.target.value);
+                    saveSuggestion(conteudoRef.current, conteudoPlainRef.current, e.target.value);
                   }}
                   className="w-full text-[13px] hub-tx2 leading-relaxed border border-dashed hub-border-strong rounded-lg px-3 py-2 resize-none min-h-[60px] focus:outline-none focus:border-[var(--hub-bd2)] focus:border-solid transition-colors"
                 />
