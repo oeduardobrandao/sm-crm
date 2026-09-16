@@ -18,8 +18,11 @@ export const FEED_PRESETS = [
   { label: '1,91:1', width: 1080, height: 566 },
 ];
 export const PORTRAIT_PRESET = { label: '9:16', width: 1080, height: 1920 };
-export function getPresets(kind: 'image' | 'video', forStories: boolean) {
-  return kind === 'video' || forStories ? [PORTRAIT_PRESET] : FEED_PRESETS;
+/** A video alongside other items in a feed carousel follows the same feed
+ *  ratios as images there; only a standalone video (a Reel) or a Story is
+ *  locked to 9:16. */
+export function getPresets(kind: 'image' | 'video', forStories: boolean, isCarousel = false) {
+  return forStories || (kind === 'video' && !isCarousel) ? [PORTRAIT_PRESET] : FEED_PRESETS;
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));

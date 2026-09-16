@@ -521,7 +521,12 @@ export function ScheduleButton({
     const hasRequiredCaption =
       isStoryPost || !!post.ig_caption?.trim() || (targetsTikTok && !!post.tiktok_caption?.trim());
     const mediaViolations =
-      targetsInstagram && media ? validatePostMedia(media, { forStories: isStoryPost }) : [];
+      targetsInstagram && media
+        ? validatePostMedia(media, {
+            forStories: isStoryPost,
+            isCarousel: !isStoryPost && media.length > 1,
+          })
+        : [];
     const canSchedule =
       !!post.scheduled_at &&
       hasRequiredCaption &&

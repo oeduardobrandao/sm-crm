@@ -69,6 +69,33 @@ describe('MediaAdjustmentDialog', () => {
     expect(screen.getByRole('button', { name: /9:16/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /3:4/ })).not.toBeInTheDocument();
   });
+  it('locks a standalone video (Reel) to 9:16 but offers feed ratios once it is a carousel item', () => {
+    const { rerender } = render(
+      <MediaAdjustmentDialog
+        media={{ ...media, kind: 'video' }}
+        forStories={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Instagram · Reel/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /9:16/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /3:4/ })).not.toBeInTheDocument();
+
+    rerender(
+      <MediaAdjustmentDialog
+        media={{ ...media, kind: 'video' }}
+        forStories={false}
+        isCarousel
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Instagram · Feed \/ Carrossel/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /3:4/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /1,91:1/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^9:16/ })).not.toBeInTheDocument();
+  });
 });
 
 async function loadEditableImage(onClose = vi.fn(), onUpdated = vi.fn()) {

@@ -18,6 +18,10 @@ import { adjustedFilename, drawAdjustment, jpegFromCanvas } from '../media-edito
 interface Props {
   media: PostMedia;
   forStories: boolean;
+  /** True when this item shares a feed post with other media (an Instagram
+   *  carousel), so a video should offer the same feed ratios as an image
+   *  instead of being locked to the Reel-only 9:16 frame. */
+  isCarousel?: boolean;
   onClose: () => void;
   onUpdated: () => void;
 }
@@ -27,11 +31,18 @@ const option = 'rounded-lg border px-3 py-2 text-sm transition-colors';
 const selected =
   'border-amber-400 bg-amber-50 text-stone-900 dark:bg-amber-900/30 dark:text-amber-100';
 
-export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }: Props) {
+export function MediaAdjustmentDialog({
+  media,
+  forStories,
+  isCarousel = false,
+  onClose,
+  onUpdated,
+}: Props) {
   const video = media.kind === 'video';
-  const presets = getPresets(media.kind, forStories);
+  const presets = getPresets(media.kind, forStories, isCarousel);
+  const portraitOnly = forStories || (video && !isCarousel);
   const initial = (): Adjustment => ({
-    ...presets[video || forStories ? 0 : 1],
+    ...presets[portraitOnly ? 0 : 1],
     mode: 'crop',
     zoom: 1,
     x: 0.5,
@@ -185,7 +196,7 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
                 : null,
           },
         ],
-        { forStories },
+        { forStories, isCarousel },
       );
       if (issues.length) throw new Error(issues.map((i) => i.message).join(' '));
       controller.signal.throwIfAborted();
@@ -242,7 +253,7 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
             {media.original_filename} · {video ? 'Vídeo' : 'Imagem'}
           </DialogDescription>
           <p className="text-xs text-muted-foreground">
-            Instagram · {forStories ? 'Stories' : video ? 'Reel' : 'Feed / Carrossel'}
+            Instagram · {forStories ? 'Stories' : portraitOnly ? 'Reel' : 'Feed / Carrossel'}
           </p>
         </DialogHeader>
         <div className="grid gap-5 px-6 pb-5 md:grid-cols-[minmax(0,1fr)_260px]">
@@ -455,7 +466,7 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
                   </button>
                 ))}
               </div>
-              {(video || forStories) && (
+              {portraitOnly && (
                 <p className="mt-2 text-xs text-muted-foreground">
                   Formato recomendado. Outras proporções aceitas não impedem a publicação.
                 </p>

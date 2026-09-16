@@ -43,11 +43,16 @@ export const CAROUSEL_MAX_ITEMS = 10;
 
 export function validateMedia(
   files: PostMediaLike[],
-  opts?: { forStories?: boolean },
+  opts?: { forStories?: boolean; isCarousel?: boolean },
 ): ValidationError[] {
   const errors: ValidationError[] = [];
+  // A video sharing a feed post with other media follows the same aspect
+  // ratio rule as an image there; a standalone video (Reel) keeps the loose
+  // bound. Stories are never carousels, so forStories always wins.
+  const carousel = !!opts?.isCarousel && !opts?.forStories;
   const videoMaxBytes = opts?.forStories ? STORY_VIDEO_MAX_BYTES : VIDEO_MAX_BYTES;
-  const videoArMin = opts?.forStories ? STORY_VIDEO_AR_MIN : VIDEO_AR_MIN;
+  const videoArMin = opts?.forStories ? STORY_VIDEO_AR_MIN : carousel ? IMAGE_AR_MIN : VIDEO_AR_MIN;
+  const videoArMax = carousel ? IMAGE_AR_MAX : VIDEO_AR_MAX;
 
   const videoMaxDuration = opts?.forStories ? STORY_VIDEO_MAX_DURATION : VIDEO_MAX_DURATION;
   const videoDurationLabel = opts?.forStories ? '3–60 segundos' : '3 segundos a 15 minutos';
@@ -93,8 +98,13 @@ export function validateMedia(
         if (f.width > VIDEO_MAX_WIDTH) {
           errors.push({ file_id: f.id, message: 'Vídeo excede a largura máxima de 1920 pixels' });
         }
-        if (ar < videoArMin || ar > VIDEO_AR_MAX) {
-          errors.push({ file_id: f.id, message: 'Proporção do vídeo fora do permitido' });
+        if (ar < videoArMin || ar > videoArMax) {
+          errors.push({
+            file_id: f.id,
+            message: carousel
+              ? 'Proporção do vídeo fora do permitido (3:4 a 1.91:1)'
+              : 'Proporção do vídeo fora do permitido',
+          });
         }
       }
     }
@@ -105,7 +115,7 @@ export function validateMedia(
 /** Preflight do front: retorna as mensagens em PT prontas para exibir. */
 export function validatePostMedia(
   media: PostMediaLike[],
-  opts?: { forStories?: boolean },
+  opts?: { forStories?: boolean; isCarousel?: boolean },
 ): string[] {
   return validateMedia(media, opts).map((e) => e.message);
 }

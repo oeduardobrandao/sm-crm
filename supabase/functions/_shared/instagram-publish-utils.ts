@@ -110,7 +110,10 @@ export async function validateForScheduling(
           `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`,
       );
     }
-    const mediaErrors = validateMedia(mediaFiles, { forStories: isStory });
+    const mediaErrors = validateMedia(mediaFiles, {
+      forStories: isStory,
+      isCarousel: !isStory && mediaFiles.length > 1,
+    });
     for (const e of mediaErrors) errors.push(e.message);
   }
 
