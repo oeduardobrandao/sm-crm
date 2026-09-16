@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { useUnsavedWork, holdUnsavedWork } from '@mesaas/app-lifecycle';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitEditSuggestion } from '../api';
 import type { HubPost, PendingEditSuggestion } from '../types';
 
@@ -15,29 +15,32 @@ interface UseEditSuggestionOpts {
 // routes with different Components, so navigating between them fully unmounts this hook's
 // instance -- any per-instance ref (pendingRef, inFlightPostIdRef, etc.) is discarded with
 // it. A save that fails while the user is elsewhere must still be remembered when they
-// reopen that post later; a plain module-level Map is the only thing that survives the
-// unmount. `holdUnsavedWork()` doubles as the hold itself, so a failed, un-retried edit
-// also keeps blocking a silent app-version reload, not just this hook's own UI -- exactly
-// the risk `holdUnsavedWork` exists for. Cleared only by a later success for that post, or
-// (implicitly) a hard page reload.
-const failedSuggestionHolds = new Map<number, () => void>();
+// reopen that post later; a plain module-level Set is the only thing that survives the
+// unmount. It does NOT also hold `useUnsavedWork` open for a post nobody has on screen:
+// that would block the app's silent-reload mechanism indefinitely whenever the failure is
+// non-retriable (e.g. a 409 because the post was approved elsewhere while mid-edit, which
+// also hides the editor and removes any way to retry) -- with no UI ever reading it while
+// unmounted, there is nothing to lose by letting a reload through. The still-mounted
+// instance that's actually displaying a failed post already blocks reload on its own via
+// `dirty` below. Cleared only by a later success for that post, or (implicitly) a hard
+// page reload.
+const failedPostIds = new Set<number>();
 
 // Which dispatched attempt is the newest one known for each post, across every hook
 // instance. Two SEPARATE instances (an old one left mid-save, a fresh one from reopening
 // the same post) can each have their own request in flight for the same post id -- the
 // per-instance `pendingRef` serialization only prevents that WITHIN one instance. Without
 // this, a slower, older request resolving after a newer one has already recorded a
-// failure could unconditionally clear that failure's hold (or the reverse), erasing the
-// true, latest outcome. `flush` stamps a fresh id here the moment it dispatches, and a
-// settling request only touches `failedSuggestionHolds` if its own id is still the latest
-// recorded one for that post.
+// failure could unconditionally clear that failure (or the reverse), erasing the true,
+// latest outcome. `flush` stamps a fresh id here the moment it dispatches, and a settling
+// request only touches `failedPostIds` if its own id is still the latest recorded one for
+// that post.
 let nextAttemptId = 0;
 const latestAttemptByPostId = new Map<number, number>();
 
 /** Test-only: forget every recorded failure and attempt ordering between tests. */
 export function resetEditSuggestionFailuresForTests(): void {
-  for (const release of failedSuggestionHolds.values()) release();
-  failedSuggestionHolds.clear();
+  failedPostIds.clear();
   latestAttemptByPostId.clear();
 }
 
@@ -84,7 +87,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   // `isDirtyFor` folds the module-level failure memory (above) into the dirty check
   // alongside queued/in-flight work, so a post that's neither queued nor in flight but
   // whose last attempt failed still reads as dirty -- on this instance or a fresh one.
-  const isDirtyFor = (postId: number) => isSavingFor(postId) || failedSuggestionHolds.has(postId);
+  const isDirtyFor = (postId: number) => isSavingFor(postId) || failedPostIds.has(postId);
 
   const [saveState, setSaveState] = useState<SaveState>(() =>
     isSavingFor(post.id) ? 'saving' : 'idle',
@@ -177,10 +180,9 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
           // Gated on still being the latest dispatched attempt for this post: a
           // slower, now-superseded request (e.g. one still in flight from an
           // instance the user already left and reopened) must not clear a failure
-          // hold that a newer attempt has since recorded.
+          // that a newer attempt has since recorded.
           if (latestAttemptByPostId.get(postId) === attemptId) {
-            failedSuggestionHolds.get(postId)?.();
-            failedSuggestionHolds.delete(postId);
+            failedPostIds.delete(postId);
           }
           if (isCurrentPost) {
             currentPostOutcome = {
@@ -192,15 +194,11 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         } catch {
           // Unconditional: a post left mid-save (possibly a full unmount, not just a
           // same-instance navigation) must still remember its attempt failed once the
-          // user comes back to it. Guarded by `has` so a post that fails twice in a
-          // row before ever succeeding doesn't leak a second hold, and by the same
-          // latest-attempt check as the success branch above -- a stale failure must
-          // not mark a post dirty after a newer attempt has already succeeded.
-          if (
-            latestAttemptByPostId.get(postId) === attemptId &&
-            !failedSuggestionHolds.has(postId)
-          ) {
-            failedSuggestionHolds.set(postId, holdUnsavedWork());
+          // user comes back to it. Gated by the same latest-attempt check as the
+          // success branch above -- a stale failure must not mark a post dirty after a
+          // newer attempt has already succeeded.
+          if (latestAttemptByPostId.get(postId) === attemptId) {
+            failedPostIds.add(postId);
           }
           if (isCurrentPost)
             currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null };

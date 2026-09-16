@@ -14,11 +14,6 @@ vi.mock('../../api', () => ({
 const useUnsavedWorkMock = vi.hoisted(() => vi.fn());
 vi.mock('@mesaas/app-lifecycle', () => ({
   useUnsavedWork: (active: boolean) => useUnsavedWorkMock(active),
-  // The real `holdUnsavedWork` just increments/decrements a module-level counter --
-  // irrelevant to these tests, which observe unsaved-work state through
-  // `useUnsavedWorkMock` instead. A working stub is enough so the failure path (which
-  // calls it) doesn't throw.
-  holdUnsavedWork: () => () => {},
 }));
 
 const mockedSubmit = vi.mocked(submitEditSuggestion);
