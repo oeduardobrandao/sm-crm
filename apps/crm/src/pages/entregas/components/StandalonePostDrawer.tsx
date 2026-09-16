@@ -29,6 +29,7 @@ import {
   getStandalonePost,
   getPostApprovals,
   getPostStatusEvents,
+  getPostProcessEvents,
   getPostCommentThreads,
   getPostEditSuggestions,
   getWorkspaceUsers,
@@ -62,6 +63,7 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../statusRegistry';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { PostEditorBody } from './PostEditorBody';
+import { PostTimelinePopover } from './PostTimelinePopover';
 import { AttachToFluxoDialog } from './AttachToFluxoDialog';
 import { ApplyProcessDialog } from './ApplyProcessDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
@@ -138,13 +140,14 @@ export function StandalonePostDrawer({
   });
   const editSuggestion = editSuggestions.find((s) => s.post_id === postId) ?? null;
 
-  // Fetched (and invalidated by refresh() below) for parity with WorkflowDrawer's own
-  // query set even though this single-post shell has no timeline popover to show it in --
-  // any other open surface caching ['post-status-events', ...] for this post still needs
-  // to see this drawer's status changes.
-  useQuery({
+  const { data: statusEvents = [] } = useQuery({
     queryKey: ['post-status-events', String(postId)],
     queryFn: () => getPostStatusEvents([postId]),
+  });
+
+  const { data: processEvents = [] } = useQuery({
+    queryKey: ['post-process-events', String(postId)],
+    queryFn: () => getPostProcessEvents([postId]),
   });
 
   const { user, role, can } = useAuth();
@@ -589,6 +592,12 @@ export function StandalonePostDrawer({
                 <button className="drawer-add-post-btn" onClick={() => setAttachOpen(true)}>
                   <Link2 className="h-3.5 w-3.5" /> Vincular a um fluxo
                 </button>
+                <PostTimelinePopover
+                  post={post}
+                  events={statusEvents}
+                  approvals={approvals}
+                  processEvents={processEvents}
+                />
                 <CopyPostLinkButton hubUrl={hubUrl} postId={postId} />
                 <button
                   className="drawer-delete-btn"
