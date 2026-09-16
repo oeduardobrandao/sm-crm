@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { useUnsavedWork } from '@mesaas/app-lifecycle';
+import { useUnsavedWork, holdUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitEditSuggestion } from '../api';
 import type { HubPost, PendingEditSuggestion } from '../types';
 
@@ -9,6 +9,23 @@ interface UseEditSuggestionOpts {
   token: string;
   post: HubPost;
   onSaved: () => void;
+}
+
+// Module-level, not a ref: `postagens/:postId` and `postagens` (the list) are SIBLING
+// routes with different Components, so navigating between them fully unmounts this hook's
+// instance -- any per-instance ref (pendingRef, inFlightPostIdRef, etc.) is discarded with
+// it. A save that fails while the user is elsewhere must still be remembered when they
+// reopen that post later; a plain module-level Map is the only thing that survives the
+// unmount. `holdUnsavedWork()` doubles as the hold itself, so a failed, un-retried edit
+// also keeps blocking a silent app-version reload, not just this hook's own UI -- exactly
+// the risk `holdUnsavedWork` exists for. Cleared only by a later success for that post, or
+// (implicitly) a hard page reload.
+const failedSuggestionHolds = new Map<number, () => void>();
+
+/** Test-only: forget every recorded failure between tests. */
+export function resetEditSuggestionFailuresForTests(): void {
+  for (const release of failedSuggestionHolds.values()) release();
+  failedSuggestionHolds.clear();
 }
 
 export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpts) {
@@ -51,18 +68,10 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   const inFlightPostIdRef = useRef<number | null>(null);
   const isSavingFor = (postId: number) =>
     pendingRef.current.has(postId) || inFlightPostIdRef.current === postId;
-  // Posts whose most recent send attempt failed while nothing else is queued or in
-  // flight for them. When a save fails for a post the user has already navigated away
-  // from (isCurrentPost was only captured true at dequeue time, before the
-  // navigation), the completion block below correctly refuses to paint that failure
-  // onto whatever post is now on screen -- but the render-time reset (below) had
-  // already cleared `dirty` back to false for that post the moment the user left it,
-  // before the failure was even known. Without this, navigating back later shows a
-  // clean idle/saved state with no trace the edit never reached the server. This set
-  // is the memory that survives that gap; `isDirtyFor` folds it into the dirty check.
-  const failedPostIdsRef = useRef<Set<number>>(new Set());
-  const isDirtyFor = (postId: number) =>
-    isSavingFor(postId) || failedPostIdsRef.current.has(postId);
+  // `isDirtyFor` folds the module-level failure memory (above) into the dirty check
+  // alongside queued/in-flight work, so a post that's neither queued nor in flight but
+  // whose last attempt failed still reads as dirty -- on this instance or a fresh one.
+  const isDirtyFor = (postId: number) => isSavingFor(postId) || failedSuggestionHolds.has(postId);
 
   const [saveState, setSaveState] = useState<SaveState>(() =>
     isSavingFor(post.id) ? 'saving' : 'idle',
@@ -150,7 +159,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
           onSaved();
           // Unconditional (not gated by isCurrentPost): this post's last known
           // attempt is no longer a failure, whether or not it's on screen right now.
-          failedPostIdsRef.current.delete(postId);
+          failedSuggestionHolds.get(postId)?.();
+          failedSuggestionHolds.delete(postId);
           if (isCurrentPost) {
             currentPostOutcome = {
               postId,
@@ -159,9 +169,13 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
             };
           }
         } catch {
-          // Unconditional: a post left mid-save must still remember its attempt
-          // failed once the user navigates back to it, not just while it's current.
-          failedPostIdsRef.current.add(postId);
+          // Unconditional: a post left mid-save (possibly a full unmount, not just a
+          // same-instance navigation) must still remember its attempt failed once the
+          // user comes back to it. Guarded by `has` so a post that fails twice in a
+          // row before ever succeeding doesn't leak a second hold.
+          if (!failedSuggestionHolds.has(postId)) {
+            failedSuggestionHolds.set(postId, holdUnsavedWork());
+          }
           if (isCurrentPost)
             currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null };
         } finally {
