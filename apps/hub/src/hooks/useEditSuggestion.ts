@@ -40,7 +40,17 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   // always holds the latest edit; a flush in flight is followed by another flush of
   // whatever is left in `pendingRef` once it settles, so saves are strictly serialized
   // and each one reflects the freshest state at send time.
+  //
+  // `postId` travels WITH the payload, not via the `flush` closure's own `post.id`.
+  // This component/hook instance can be reused across different posts without
+  // remounting (e.g. `postagens/:postId` has no `key`, so React Router re-renders the
+  // same instance on navigation) -- if the finally-block's recursive `flush()` call
+  // resolved a stale, post-A-scoped closure while `pendingRef` now holds post B's
+  // edit, submitting via that closure's own `post.id` would attribute B's content to
+  // A. Reading the target id off the payload itself keeps every save attributed to
+  // whichever post it was actually typed into, regardless of which closure sends it.
   type Payload = {
+    postId: number;
     conteudo: Record<string, unknown> | null;
     conteudoPlain: string;
     igCaption: string | null;
@@ -48,41 +58,52 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   const pendingRef = useRef<Payload | null>(null);
   const inFlightRef = useRef(false);
 
+  // An explicit drain loop rather than recursion: a queued edit made while this was
+  // already running (another `saveSuggestion` call landing mid-`await`) is handled by
+  // looping back to `pendingRef` instead of calling `flush` again, so there is only
+  // ever one closure involved -- nothing about it can go stale mid-drain.
   const flush = useCallback(async () => {
-    const payload = pendingRef.current;
-    if (!payload || inFlightRef.current) return;
-    pendingRef.current = null;
+    if (inFlightRef.current || !pendingRef.current) return;
     inFlightRef.current = true;
-    setSaveState('saving');
+    let succeeded = false;
     try {
-      const res = await submitEditSuggestion(
-        token,
-        post.id,
-        payload.conteudo,
-        payload.conteudoPlain,
-        payload.igCaption,
-      );
-      setHasPendingSuggestion(!!res.pending_suggestion);
-      onSaved();
-      if (!pendingRef.current) {
-        setSaveState('saved');
-        setDirty(false);
-        savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
+      while (pendingRef.current) {
+        const payload = pendingRef.current;
+        pendingRef.current = null;
+        setSaveState('saving');
+        try {
+          const res = await submitEditSuggestion(
+            token,
+            payload.postId,
+            payload.conteudo,
+            payload.conteudoPlain,
+            payload.igCaption,
+          );
+          setHasPendingSuggestion(!!res.pending_suggestion);
+          onSaved();
+          succeeded = true;
+        } catch {
+          // Swallowed on purpose (see saveState reset below), so `dirty` is the only
+          // signal left that the edit never made it to the server: it stays true here.
+          succeeded = false;
+        }
       }
-    } catch {
-      // Swallowed on purpose (see saveState reset below), so `dirty` is the only
-      // signal left that the edit never made it to the server: it stays true here.
-      setSaveState('idle');
     } finally {
       inFlightRef.current = false;
-      if (pendingRef.current) flush();
     }
-  }, [token, post.id, onSaved]);
+    if (succeeded) {
+      setSaveState('saved');
+      setDirty(false);
+      savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
+    } else {
+      setSaveState('idle');
+    }
+  }, [token, onSaved]);
 
   const saveSuggestion = useCallback(
     (conteudo: Record<string, unknown> | null, conteudoPlain: string, igCaption: string | null) => {
       setDirty(true);
-      pendingRef.current = { conteudo, conteudoPlain, igCaption };
+      pendingRef.current = { postId: post.id, conteudo, conteudoPlain, igCaption };
       if (timerRef.current) clearTimeout(timerRef.current);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
 
@@ -90,7 +111,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         flush();
       }, 1500);
     },
-    [flush],
+    [flush, post.id],
   );
 
   const approvalBlocked = saveState === 'saving' || hasPendingSuggestion;
