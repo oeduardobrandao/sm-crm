@@ -41,12 +41,22 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   };
   const pendingRef = useRef<Map<number, Payload>>(new Map());
   const inFlightRef = useRef(false);
+  // The specific post id `flush` has already dequeued and is currently awaiting a
+  // response for. `flush` removes an entry from `pendingRef` BEFORE awaiting its
+  // request (so a newer edit to that same post, made while it's in flight, queues
+  // cleanly instead of colliding with it) -- which means `pendingRef.current.has(id)`
+  // alone can't tell "queued" apart from "in flight, entry already removed". Anything
+  // that needs to know whether a post has outstanding work (queued OR in flight) must
+  // check both; `hasOutstandingWork` below is that single check.
+  const inFlightPostIdRef = useRef<number | null>(null);
+  const hasOutstandingWork = (postId: number) =>
+    pendingRef.current.has(postId) || inFlightPostIdRef.current === postId;
 
   const [saveState, setSaveState] = useState<SaveState>(() =>
-    pendingRef.current.has(post.id) ? 'saving' : 'idle',
+    hasOutstandingWork(post.id) ? 'saving' : 'idle',
   );
   const [hasPendingSuggestion, setHasPendingSuggestion] = useState(!!suggestion);
-  const [dirty, setDirty] = useState(() => pendingRef.current.has(post.id));
+  const [dirty, setDirty] = useState(() => hasOutstandingWork(post.id));
 
   const draftConteudo = useMemo(
     () => suggestion?.suggested_conteudo ?? post.conteudo,
@@ -80,8 +90,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     // work for it (from an earlier visit) shows as saving/dirty, a fresh post shows
     // idle/clean.
     currentPostIdRef.current = post.id;
-    setSaveState(pendingRef.current.has(post.id) ? 'saving' : 'idle');
-    setDirty(pendingRef.current.has(post.id));
+    setSaveState(hasOutstandingWork(post.id) ? 'saving' : 'idle');
+    setDirty(hasOutstandingWork(post.id));
     setHasPendingSuggestion(!!suggestion);
     // The cosmetic "saved -> idle" timer belongs to the post being left; if left
     // running, it would fire later and could stomp the newly-displayed post's own,
@@ -116,6 +126,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         pendingRef.current.delete(postId);
         const isCurrentPost = postId === currentPostIdRef.current;
         if (isCurrentPost) setSaveState('saving');
+        inFlightPostIdRef.current = postId;
         try {
           const res = await submitEditSuggestion(
             token,
@@ -135,6 +146,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         } catch {
           if (isCurrentPost)
             currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null };
+        } finally {
+          inFlightPostIdRef.current = null;
         }
       }
     } finally {

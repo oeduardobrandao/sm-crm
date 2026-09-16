@@ -348,4 +348,52 @@ describe('useEditSuggestion', () => {
     expect(result.current.saveState).toBe('idle');
     expect(result.current.approvalBlocked).toBe(false);
   });
+
+  it('keeps showing "saving" for a post whose save is genuinely in flight when navigating back to it', async () => {
+    // `flush` dequeues post A's entry from `pendingRef` BEFORE awaiting its request,
+    // so `pendingRef.current.has(A)` alone goes false the instant the request is
+    // sent -- even though it hasn't resolved yet. If the navigation-reset only checked
+    // `pendingRef`, navigating A -> B -> A while A's original request is still
+    // unresolved would wrongly reset A to idle/clean, unblocking its approval button
+    // while an edit-suggestion submission for it is still underway.
+    const first = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit.mockReturnValueOnce(first.promise);
+
+    const onSaved = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ post }) => useEditSuggestion({ token: 'tok', post, onSaved }),
+      { initialProps: { post: makePost({ id: 5103 }) } },
+    );
+    const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
+
+    // Edit post A (5103): debounce fires, its save is dequeued and in flight.
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    expect(result.current.saveState).toBe('saving');
+
+    // Navigate away to post B, then back to post A -- all before A's request settles.
+    rerender({ post: makePost({ id: 5104 }) });
+    rerender({ post: makePost({ id: 5103 }) });
+
+    // Post A's save is still genuinely in flight: must still show saving/blocked/dirty,
+    // not a false idle/clean that would let the client approve ahead of the pending edit.
+    expect(result.current.saveState).toBe('saving');
+    expect(result.current.approvalBlocked).toBe(true);
+    expect(lastActive()).toBe(true);
+
+    // The in-flight request finally resolves while post A is back on screen.
+    await act(async () => {
+      first.resolve({ ok: true, pending_suggestion: null });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.saveState).toBe('saved');
+    expect(lastActive()).toBe(false);
+  });
 });
