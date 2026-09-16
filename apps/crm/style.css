@@ -11674,6 +11674,14 @@ a.hub-fill__row-inner:hover {
   background: var(--surface-hover);
 }
 
+/* grid-template-columns kept explicit (matches --kpi-cols: 3 set inline by
+   InstagramOverviewCard.ts) so the rule's intent is documented in CSS too;
+   gap intentionally omitted -- .kpi-grid's own 1px hairline-divider gap must
+   win here, a wider gap here previously left visible gray gutters. */
+.instagram-overview__account-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .instagram-overview__actions {
   display: flex;
   gap: 0.5rem;
