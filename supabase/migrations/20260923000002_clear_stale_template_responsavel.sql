@@ -35,29 +35,64 @@
 -- the fix.
 -- =====================================================================
 
+-- workflow_templates.etapas has no CHECK constraint (it's "jsonb livre, sem
+-- CHECK na escrita" -- see 20260919000004_apply_post_process.sql's own FIX
+-- ROUND 1 note): nothing stops a row from holding a non-array JSON value.
+-- A single UPDATE with a correlated jsonb_array_elements(t.etapas) would
+-- evaluate that call for every row scanned for this conta_id regardless of
+-- shape (WHERE-clause AND is not guaranteed left-to-right), so one
+-- malformed template in the deleted membro's workspace would raise "cannot
+-- extract elements from an object/scalar" and roll back the DELETE FROM
+-- membros itself -- turning an ordinary "remove team member" action into a
+-- hard failure, which is worse than the bug this migration fixes. The
+-- per-row loop below filters on jsonb_typeof(etapas) = 'array' in the
+-- cursor's own SELECT (a plain predicate, not a correlated subquery), so
+-- jsonb_array_elements only ever runs against a row already proven to be an
+-- array, and the per-iteration EXCEPTION block (mirroring the backfill
+-- below) means even an unforeseen shape inside one template can never abort
+-- the deletion or any other template's cleanup.
 CREATE OR REPLACE FUNCTION public.clear_stale_template_responsavel()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+DECLARE
+  t RECORD;
+  v_new_etapas jsonb;
 BEGIN
-  UPDATE workflow_templates t
-  SET etapas = (
-    SELECT jsonb_agg(
-      CASE WHEN x.elem ->> 'responsavel_id' = OLD.id::text
-           THEN jsonb_set(x.elem, '{responsavel_id}', 'null'::jsonb)
-           ELSE x.elem
-      END
-      ORDER BY x.ord
-    )
-    FROM jsonb_array_elements(t.etapas) WITH ORDINALITY AS x(elem, ord)
-  )
-  WHERE t.conta_id = OLD.conta_id
-    AND EXISTS (
-      SELECT 1 FROM jsonb_array_elements(t.etapas) AS e(elem)
-      WHERE e.elem ->> 'responsavel_id' = OLD.id::text
-    );
+  -- Only jsonb_typeof in the cursor's WHERE: it never throws for any jsonb
+  -- input, so this SELECT itself can't fail. jsonb_array_length is checked
+  -- separately, as its own statement inside the loop body, only once a row
+  -- is already known (from the completed SELECT above) to be an array --
+  -- combining it into this WHERE via AND would reintroduce the same
+  -- unordered-evaluation hazard this whole guard exists to avoid.
+  FOR t IN
+    SELECT id, etapas FROM workflow_templates
+    WHERE conta_id = OLD.conta_id
+      AND jsonb_typeof(etapas) = 'array'
+  LOOP
+    IF jsonb_array_length(t.etapas) = 0 THEN
+      CONTINUE;
+    END IF;
+    BEGIN
+      SELECT jsonb_agg(
+        CASE WHEN x.elem ->> 'responsavel_id' = OLD.id::text
+             THEN jsonb_set(x.elem, '{responsavel_id}', 'null'::jsonb)
+             ELSE x.elem
+        END
+        ORDER BY x.ord
+      )
+      INTO v_new_etapas
+      FROM jsonb_array_elements(t.etapas) WITH ORDINALITY AS x(elem, ord);
+
+      IF v_new_etapas IS DISTINCT FROM t.etapas THEN
+        UPDATE workflow_templates SET etapas = v_new_etapas WHERE id = t.id;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'clear_stale_template_responsavel: skipped template % for membro % (sqlstate %): %', t.id, OLD.id, sqlstate, sqlerrm;
+    END;
+  END LOOP;
   RETURN OLD;
 END;
 $$;
@@ -78,10 +113,16 @@ DECLARE
   t RECORD;
   v_new_etapas jsonb;
 BEGIN
+  -- Same evaluation-order hazard as the trigger above: jsonb_array_length
+  -- is checked as its own statement inside the loop, never ANDed into this
+  -- WHERE alongside jsonb_typeof.
   FOR t IN
     SELECT id, conta_id, etapas FROM workflow_templates
-    WHERE etapas IS NOT NULL AND jsonb_typeof(etapas) = 'array' AND jsonb_array_length(etapas) > 0
+    WHERE etapas IS NOT NULL AND jsonb_typeof(etapas) = 'array'
   LOOP
+    IF jsonb_array_length(t.etapas) = 0 THEN
+      CONTINUE;
+    END IF;
     BEGIN
       SELECT jsonb_agg(
         CASE

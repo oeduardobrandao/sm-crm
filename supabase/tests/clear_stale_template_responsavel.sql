@@ -15,6 +15,11 @@
 --   (g) fim-a-fim: depois do membro removido (via DELETE, disparando a limpeza), migrar um
 --       fluxo para esse template não lança mais invalid_responsavel -- fecha o loop do bug
 --       original (visto em prod: template "Posts (Estáticos e Carrosséis)", etapa "Design")
+--   (h) etapas SEM CHECK na escrita permite um valor não-array (a coluna aceita qualquer
+--       jsonb); um template assim na mesma conta não pode quebrar o DELETE de um membro
+--       nem ficar alterado -- regressão apontada em review: um UPDATE com
+--       jsonb_array_elements correlacionado bateria "cannot extract elements from an
+--       object" e reverteria a remoção do próprio membro
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 begin;
@@ -25,7 +30,7 @@ declare
   v_other uuid := gen_random_uuid();
   v_cli bigint;
   v_membro_stays bigint; v_membro_goes bigint; v_membro_unused bigint; v_membro_other_ws bigint;
-  v_tpl bigint; v_tpl_origin bigint; v_tpl_other_conta bigint; v_tpl_poison bigint;
+  v_tpl bigint; v_tpl_origin bigint; v_tpl_other_conta bigint; v_tpl_poison bigint; v_tpl_malformed bigint;
   v_wf bigint;
   v_etapas jsonb;
   v_new_etapas jsonb;
@@ -74,6 +79,13 @@ begin
       'padrao')
     returning id into v_tpl_poison;
 
+  -- (h) etapas não é um array -- a coluna não tem CHECK, então isso é uma linha legal.
+  -- Precisa estar na MESMA conta de v_membro_goes: é o DELETE desse membro (abaixo) que
+  -- teria que lidar com esta linha ao varrer os templates da conta.
+  insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
+    values (v_ws, v_owner, 'Template Malformado', '{"nome":"não é um array"}'::jsonb, 'padrao')
+    returning id into v_tpl_malformed;
+
   -- Fluxo ativo parado num template "de origem" qualquer, para migrar para v_tpl no caso (g).
   insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
     values (v_ws, v_owner, 'Template Origem',
@@ -109,7 +121,13 @@ begin
   delete from membros where id = v_membro_unused; -- (e) no-op, nada referencia esse id
 
   select etapas into v_etapas from workflow_templates where id = v_tpl_other_conta;
+  -- (h) v_tpl_malformed já existe na mesma conta neste ponto: se o trigger chamasse
+  -- jsonb_array_elements sem checar o tipo primeiro, este DELETE já falharia aqui.
   delete from membros where id = v_membro_goes; -- dispara trg_clear_stale_template_responsavel
+
+  select etapas into v_etapas from workflow_templates where id = v_tpl_malformed;
+  assert v_etapas = '{"nome":"não é um array"}'::jsonb,
+    '(h) template com etapas malformado (objeto) não deve ser tocado pelo trigger';
 
   select etapas into v_etapas from workflow_templates where id = v_tpl;
   assert (v_etapas -> 0 ->> 'responsavel_id') is null,
