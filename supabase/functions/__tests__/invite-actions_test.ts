@@ -310,6 +310,7 @@ function makeInviteAdmin(opts: {
   insertReturnsNoId?: boolean;      // insert resolves with NO error and NO row
   priorPendingMembroId?: number | null; // the replaced pending row's membro_id, for the inherit lookup
   priorPendingRoleId?: string;      // the replaced pending row's role_id, for the inherit lookup (Task 13 review fix)
+  membroConflict?: boolean;         // add-direct's crm_user_id conflict check (membros_conta_crm_user_unique) finds a different membro already linked
 }) {
   const events: string[] = [];
   const failErr = { message: "injected failure" };
@@ -369,6 +370,7 @@ function makeInviteAdmin(opts: {
             error: null,
           });
           if (table === "workspace_members") return Promise.resolve({ data: opts.isMember ? { id: "m1" } : null, error: null });
+          if (table === "membros") return Promise.resolve({ data: opts.membroConflict ? { id: "other-membro" } : null, error: null });
           if (table === "contas") return Promise.resolve({ data: { nome: "WS" }, error: null });
           if (table === "invites") {
             // One canned "prior pending row" response shared by BOTH the
@@ -719,6 +721,22 @@ Deno.test("inviteOrResend: added route stamps membro_id AND links the membro imm
   assertEquals(inviteRow?.row.membro_id, 7);
   const link = admin._updates().find((u) => u.table === "membros");
   assertEquals(link?.row.crm_user_id, "u1");
+});
+
+Deno.test("inviteOrResend: added route skips the membro link (not an error) when the user is already linked to a DIFFERENT membro in this conta", async () => {
+  // membros_conta_crm_user_unique (20260922000003) would reject this UPDATE
+  // outright. By this point membership/profile/invite are already committed,
+  // so the route must still report success -- just without the link.
+  const admin = makeInviteAdmin({
+    limit: null, members: 0,
+    authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+    onboarding: true, hasProfile: true, hasPassword: true, isMember: false,
+    membroConflict: true,
+  });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, { ...baseInput, membroId: 7 }, CRM);
+  assertEquals(out.route, "added");
+  assertEquals(admin._updates().filter((u) => u.table === "membros").length, 0);
 });
 
 Deno.test("inviteOrResend: added route WITHOUT membroId never touches membros", async () => {
