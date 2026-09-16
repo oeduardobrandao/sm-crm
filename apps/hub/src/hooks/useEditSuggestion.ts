@@ -33,35 +33,64 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     [suggestion, post.ig_caption],
   );
 
+  // At most one submitEditSuggestion call in flight at a time. Without this, two
+  // debounced saves can overlap (the edge function round-trip is several sequential
+  // DB calls, easily 0.5-1.5s) and complete out of order: an earlier, staler snapshot
+  // can land AFTER a later, more complete one and silently overwrite it. `pendingRef`
+  // always holds the latest edit; a flush in flight is followed by another flush of
+  // whatever is left in `pendingRef` once it settles, so saves are strictly serialized
+  // and each one reflects the freshest state at send time.
+  type Payload = {
+    conteudo: Record<string, unknown> | null;
+    conteudoPlain: string;
+    igCaption: string | null;
+  };
+  const pendingRef = useRef<Payload | null>(null);
+  const inFlightRef = useRef(false);
+
+  const flush = useCallback(async () => {
+    const payload = pendingRef.current;
+    if (!payload || inFlightRef.current) return;
+    pendingRef.current = null;
+    inFlightRef.current = true;
+    setSaveState('saving');
+    try {
+      const res = await submitEditSuggestion(
+        token,
+        post.id,
+        payload.conteudo,
+        payload.conteudoPlain,
+        payload.igCaption,
+      );
+      setHasPendingSuggestion(!!res.pending_suggestion);
+      onSaved();
+      if (!pendingRef.current) {
+        setSaveState('saved');
+        setDirty(false);
+        savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
+      }
+    } catch {
+      // Swallowed on purpose (see saveState reset below), so `dirty` is the only
+      // signal left that the edit never made it to the server: it stays true here.
+      setSaveState('idle');
+    } finally {
+      inFlightRef.current = false;
+      if (pendingRef.current) flush();
+    }
+  }, [token, post.id, onSaved]);
+
   const saveSuggestion = useCallback(
     (conteudo: Record<string, unknown> | null, conteudoPlain: string, igCaption: string | null) => {
       setDirty(true);
+      pendingRef.current = { conteudo, conteudoPlain, igCaption };
       if (timerRef.current) clearTimeout(timerRef.current);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
 
-      timerRef.current = setTimeout(async () => {
-        setSaveState('saving');
-        try {
-          const res = await submitEditSuggestion(
-            token,
-            post.id,
-            conteudo,
-            conteudoPlain,
-            igCaption,
-          );
-          setHasPendingSuggestion(!!res.pending_suggestion);
-          setSaveState('saved');
-          setDirty(false);
-          savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
-          onSaved();
-        } catch {
-          // Swallowed on purpose (see saveState reset below), so `dirty` is the only
-          // signal left that the edit never made it to the server: it stays true here.
-          setSaveState('idle');
-        }
+      timerRef.current = setTimeout(() => {
+        flush();
       }, 1500);
     },
-    [token, post.id, onSaved],
+    [flush],
   );
 
   const approvalBlocked = saveState === 'saving' || hasPendingSuggestion;
