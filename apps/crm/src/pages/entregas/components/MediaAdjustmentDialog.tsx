@@ -92,20 +92,23 @@ export function MediaAdjustmentDialog({
           );
         const total = Number(response.headers.get('content-length')) || 0;
         let blob: Blob;
-        if (response.body) {
-          const reader = response.body.getReader();
-          const chunks: BlobPart[] = [];
+        if (response.body && total > 0) {
+          // Tee the stream instead of buffering chunks ourselves: one branch
+          // is only ever read for its byte count, the other is handed whole
+          // to the native Response.blob(), which avoids doubling a large
+          // video in JS-managed memory (buffer chunks + re-copy into a Blob).
+          const [progressStream, blobStream] = response.body.tee();
+          const blobPromise = new Response(blobStream, { headers: response.headers }).blob();
+          blobPromise.catch(() => {});
+          const reader = progressStream.getReader();
           let loaded = 0;
           for (;;) {
             const { done, value } = await reader.read();
             if (done) break;
-            chunks.push(value as BlobPart);
             loaded += value.byteLength;
-            if (!disposed) setLoadProgress(total > 0 ? Math.round((loaded / total) * 100) : null);
+            if (!disposed) setLoadProgress(Math.round((loaded / total) * 100));
           }
-          blob = new Blob(chunks, {
-            type: response.headers.get('content-type') || media.mime_type,
-          });
+          blob = await blobPromise;
         } else {
           blob = await response.blob();
         }
