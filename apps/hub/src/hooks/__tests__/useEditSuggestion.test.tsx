@@ -300,4 +300,52 @@ describe('useEditSuggestion', () => {
     // not silently treat the earlier (now-superseded) success as the final word.
     expect(lastActive()).toBe(true);
   });
+
+  it('does not get stuck showing "saving" for a freshly-displayed post after navigating away from an in-flight save', async () => {
+    // Post A's save begins (saveState -> 'saving'), then the user navigates to post B
+    // before it resolves. `flush`'s completion gate correctly refuses to apply A's
+    // eventual outcome to B's UI (that's the point) -- but without a reset on
+    // navigation, nothing EVER clears the 'saving' state that was set while A was
+    // still current, permanently blocking approval and showing a false unsaved-work
+    // warning for B, even though B itself was never touched.
+    const first = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit.mockReturnValueOnce(first.promise);
+
+    const onSaved = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ post }) => useEditSuggestion({ token: 'tok', post, onSaved }),
+      { initialProps: { post: makePost({ id: 5103 }) } },
+    );
+    const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
+
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    expect(result.current.saveState).toBe('saving');
+
+    // Navigate to a fresh post (5104) that was never edited -- same hook instance,
+    // post A's save is still in flight.
+    rerender({ post: makePost({ id: 5104 }) });
+
+    // Must immediately reflect post B's own (clean) status, not post A's leftover
+    // 'saving' state.
+    expect(result.current.saveState).toBe('idle');
+    expect(result.current.approvalBlocked).toBe(false);
+    expect(lastActive()).toBe(false);
+
+    // Post A's save finally resolves in the background.
+    await act(async () => {
+      first.resolve({ ok: true, pending_suggestion: null });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Its outcome must still not touch post B's (currently displayed) UI.
+    expect(result.current.saveState).toBe('idle');
+    expect(result.current.approvalBlocked).toBe(false);
+  });
 });

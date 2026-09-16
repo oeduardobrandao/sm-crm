@@ -14,24 +14,8 @@ interface UseEditSuggestionOpts {
 export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpts) {
   const isEditable = post.status === 'enviado_cliente';
   const suggestion = post.pending_suggestion;
-  const [saveState, setSaveState] = useState<SaveState>('idle');
-  const [hasPendingSuggestion, setHasPendingSuggestion] = useState(!!suggestion);
-  const [dirty, setDirty] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const draftConteudo = useMemo(
-    () => suggestion?.suggested_conteudo ?? post.conteudo,
-    [suggestion, post.conteudo],
-  );
-  const draftConteudoPlain = useMemo(
-    () => suggestion?.suggested_conteudo_plain ?? post.conteudo_plain,
-    [suggestion, post.conteudo_plain],
-  );
-  const draftIgCaption = useMemo(
-    () => suggestion?.suggested_ig_caption ?? post.ig_caption ?? null,
-    [suggestion, post.ig_caption],
-  );
 
   // At most one submitEditSuggestion call in flight at a time. Without this, two
   // debounced saves can overlap (the edge function round-trip is several sequential
@@ -57,14 +41,55 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   };
   const pendingRef = useRef<Map<number, Payload>>(new Map());
   const inFlightRef = useRef(false);
-  // Always holds the id of whichever post this hook is CURRENTLY rendering, updated
-  // every render (not via effect -- there is nothing to react to, just a fresh read).
-  // `flush` uses it to decide whether a just-drained save's outcome should update this
+
+  const [saveState, setSaveState] = useState<SaveState>(() =>
+    pendingRef.current.has(post.id) ? 'saving' : 'idle',
+  );
+  const [hasPendingSuggestion, setHasPendingSuggestion] = useState(!!suggestion);
+  const [dirty, setDirty] = useState(() => pendingRef.current.has(post.id));
+
+  const draftConteudo = useMemo(
+    () => suggestion?.suggested_conteudo ?? post.conteudo,
+    [suggestion, post.conteudo],
+  );
+  const draftConteudoPlain = useMemo(
+    () => suggestion?.suggested_conteudo_plain ?? post.conteudo_plain,
+    [suggestion, post.conteudo_plain],
+  );
+  const draftIgCaption = useMemo(
+    () => suggestion?.suggested_ig_caption ?? post.ig_caption ?? null,
+    [suggestion, post.ig_caption],
+  );
+
+  // Always holds the id of whichever post this hook is CURRENTLY rendering. `flush`
+  // uses it to decide whether a just-drained save's outcome should update this
   // instance's on-screen state (saveState/hasPendingSuggestion/dirty): a save for a
   // post the user has since navigated away from must still be sent (below), but must
   // not paint the CURRENTLY displayed post's UI with a different post's result.
   const currentPostIdRef = useRef(post.id);
-  currentPostIdRef.current = post.id;
+  if (currentPostIdRef.current !== post.id) {
+    // Navigated to a different post (`postagens/:postId` has no `key`, so React
+    // Router reuses this same component/hook instance instead of remounting it on
+    // navigation). This is React's documented pattern for resetting state in response
+    // to a prop change during render: without it, a save still in flight for the post
+    // just left would correctly never touch this hook's state once it resolves (the
+    // freshness check in `flush`, below) -- but then nothing EVER clears the
+    // 'saving'/dirty state left over from that post, leaving the NEWLY displayed post
+    // stuck permanently "saving" with its approval blocked. Resetting here makes this
+    // instance immediately reflect the incoming post's own true status: still-queued
+    // work for it (from an earlier visit) shows as saving/dirty, a fresh post shows
+    // idle/clean.
+    currentPostIdRef.current = post.id;
+    setSaveState(pendingRef.current.has(post.id) ? 'saving' : 'idle');
+    setDirty(pendingRef.current.has(post.id));
+    setHasPendingSuggestion(!!suggestion);
+    // The cosmetic "saved -> idle" timer belongs to the post being left; if left
+    // running, it would fire later and could stomp the newly-displayed post's own,
+    // legitimately different saveState (e.g. flipping it from 'saving' to 'idle'
+    // mid-save). The debounce timer (`timerRef`) is deliberately NOT cleared here --
+    // it's the pending autosave for the post being left, which must still fire.
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+  }
 
   // An explicit drain loop rather than recursion: a queued edit made while this was
   // already running (another `saveSuggestion` call landing mid-`await`) is handled by
