@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { useEditSuggestion } from '../useEditSuggestion';
+import { useEditSuggestion, resetEditSuggestionFailuresForTests } from '../useEditSuggestion';
 import { submitEditSuggestion } from '../../api';
 import type { HubPost } from '../../types';
 
@@ -14,6 +14,11 @@ vi.mock('../../api', () => ({
 const useUnsavedWorkMock = vi.hoisted(() => vi.fn());
 vi.mock('@mesaas/app-lifecycle', () => ({
   useUnsavedWork: (active: boolean) => useUnsavedWorkMock(active),
+  // The real `holdUnsavedWork` just increments/decrements a module-level counter --
+  // irrelevant to these tests, which observe unsaved-work state through
+  // `useUnsavedWorkMock` instead. A working stub is enough so the failure path (which
+  // calls it) doesn't throw.
+  holdUnsavedWork: () => () => {},
 }));
 
 const mockedSubmit = vi.mocked(submitEditSuggestion);
@@ -54,6 +59,9 @@ describe('useEditSuggestion', () => {
     vi.useFakeTimers();
     mockedSubmit.mockReset();
     useUnsavedWorkMock.mockReset();
+    // The failed-post memory is module-level (survives a real unmount on purpose --
+    // see useEditSuggestion.ts) but must not leak between tests.
+    resetEditSuggestionFailuresForTests();
   });
 
   afterEach(() => {
@@ -445,6 +453,49 @@ describe('useEditSuggestion', () => {
 
     // The failed edit must still be flagged as unsaved -- it never reached the server,
     // and the client could otherwise navigate away thinking it was saved.
+    expect(lastActive()).toBe(true);
+  });
+
+  it('remembers a save failed for a post across a real unmount, not just a same-instance navigation', async () => {
+    // `postagens/:postId` and `postagens` (the list) are SIBLING routes with different
+    // Components -- clicking through to "Ver todas as postagens" and back fully
+    // unmounts and remounts this hook, unlike the param-only navigation the other
+    // tests cover via `rerender`. Any state kept purely on a per-instance ref would be
+    // discarded with that unmount; this is what forces the failure memory to live at
+    // module level instead.
+    const first = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit.mockReturnValueOnce(first.promise);
+
+    const post = makePost({ id: 5103 });
+    const { result, unmount } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+
+    // Navigate away entirely -- a real unmount, not a rerender with a new post prop --
+    // before the request settles.
+    unmount();
+
+    // The save fails while nothing for post A is mounted at all.
+    await act(async () => {
+      first.reject(new Error('network error'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Reopen the same post: a brand new hook instance, unrelated to the one that was
+    // just unmounted.
+    renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
+    const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
+
+    // Must still show the failed edit as unsaved, not a clean idle state.
     expect(lastActive()).toBe(true);
   });
 });
