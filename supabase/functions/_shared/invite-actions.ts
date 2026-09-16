@@ -437,10 +437,24 @@ export async function inviteOrResend(
         role_id: roleId,
       }).select("id").single();
       if (membroId != null) {
-        const upd = await adminClient.from("membros")
-          .update({ crm_user_id: existingUser.id })
-          .eq("id", membroId).eq("conta_id", input.contaId).is("crm_user_id", null);
-        ensureOk(upd.error, "membro_link");
+        // membros_conta_crm_user_unique (20260923000003) blocks a second
+        // membro linked to the same crm_user_id in this conta. Everything
+        // above this point (membership, profile, the accepted invite) is
+        // already committed via separate un-transacted calls, so failing
+        // loudly here would report an error for a mostly-successful add.
+        // Skip the link instead -- same trade-off accept_workspace_invite
+        // makes: a roster-display gap beats reporting failure for an add
+        // that actually went through.
+        const { data: conflict } = await adminClient
+          .from("membros").select("id")
+          .eq("conta_id", input.contaId).eq("crm_user_id", existingUser.id)
+          .neq("id", membroId).maybeSingle();
+        if (!conflict) {
+          const upd = await adminClient.from("membros")
+            .update({ crm_user_id: existingUser.id })
+            .eq("id", membroId).eq("conta_id", input.contaId).is("crm_user_id", null);
+          ensureOk(upd.error, "membro_link");
+        }
       }
       return { route: "added", inviteId: insertedId(iIns, "invite_insert_accepted") };
     }

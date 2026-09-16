@@ -544,7 +544,12 @@ export default function EquipePage() {
         </div>
       )}
 
-      <MembroFormDialog open={modalOpen} membro={editing} onOpenChange={setModalOpen} />
+      <MembroFormDialog
+        open={modalOpen}
+        membro={editing}
+        membros={membros}
+        onOpenChange={setModalOpen}
+      />
 
       <AlertDialog
         open={deleteId != null}

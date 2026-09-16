@@ -222,7 +222,12 @@ export default function MembroDetalhePage() {
         </>
       )}
 
-      <MembroFormDialog open={modalOpen} membro={membro ?? null} onOpenChange={setModalOpen} />
+      <MembroFormDialog
+        open={modalOpen}
+        membro={membro ?? null}
+        membros={membros}
+        onOpenChange={setModalOpen}
+      />
     </div>
   );
 }

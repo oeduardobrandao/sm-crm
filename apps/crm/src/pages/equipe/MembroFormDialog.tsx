@@ -44,10 +44,11 @@ import { MEMBRO_FORM_DEFAULTS, membroSchema, type MembroFormValues } from './mem
 interface MembroFormDialogProps {
   open: boolean;
   membro: Membro | null;
+  membros: Membro[];
   onOpenChange: (open: boolean) => void;
 }
 
-export function MembroFormDialog({ open, membro, onOpenChange }: MembroFormDialogProps) {
+export function MembroFormDialog({ open, membro, membros, onOpenChange }: MembroFormDialogProps) {
   const qc = useQueryClient();
   const { canSeeFinancials, can, workspaceRole, profile } = useAuth();
   const canManageWorkspace = can('equipe', 'editar') === true;
@@ -65,6 +66,22 @@ export function MembroFormDialog({ open, membro, onOpenChange }: MembroFormDialo
     queryFn: getWorkspaceUsers,
     enabled: canManageWorkspace,
   });
+  // Users already linked to a DIFFERENT membro can't be picked again --
+  // set_membro_crm_user rejects it (membros_conta_crm_user_unique), so keep
+  // it out of the dropdown instead of letting the save fail.
+  const linkedElsewhere = useMemo(
+    () =>
+      new Set(
+        membros
+          .filter((m) => m.id !== membro?.id && m.crm_user_id)
+          .map((m) => m.crm_user_id as string),
+      ),
+    [membros, membro?.id],
+  );
+  const availableWorkspaceUsers = useMemo(
+    () => workspaceUsers.filter((u: { id: string }) => !linkedElsewhere.has(u.id)),
+    [workspaceUsers, linkedElsewhere],
+  );
   const { limits, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
   const { data: pendingInviteRows = [] } = useQuery({
     queryKey: ['invites', 'equipe-pending', profile?.conta_id],
@@ -177,8 +194,12 @@ export function MembroFormDialog({ open, membro, onOpenChange }: MembroFormDialo
       qc.invalidateQueries({ queryKey: ['workspace-users'] });
       qc.invalidateQueries({ queryKey: ['invites'] });
       onOpenChange(false);
-    } catch {
-      toast.error('Erro ao salvar');
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message === 'crm_user_already_linked'
+          ? 'Esta conta CRM já está vinculada a outro membro deste workspace'
+          : 'Erro ao salvar';
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -286,7 +307,7 @@ export function MembroFormDialog({ open, membro, onOpenChange }: MembroFormDialo
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="__none__">Não vinculado</SelectItem>
-                        {workspaceUsers.map((user: { id: string; nome?: string }) => (
+                        {availableWorkspaceUsers.map((user: { id: string; nome?: string }) => (
                           <SelectItem key={user.id} value={user.id}>
                             {user.nome || user.id}
                           </SelectItem>
