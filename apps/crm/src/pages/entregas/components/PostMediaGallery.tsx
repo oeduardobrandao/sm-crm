@@ -166,14 +166,20 @@ export function PostMediaGallery({
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
   };
   const canAdjust = !effectiveDisabled && !adjustmentDisabled;
+  // A video sharing a feed post with other media is a carousel item, not a
+  // Reel — it should follow the same feed ratios as an image there instead
+  // of being pushed toward the Reel-only 9:16 frame.
+  const isCarousel = !forStories && media.length > 1;
   const invalidMedia = targetsInstagram
-    ? media.filter((m) => !m.media_lost_at && validateMedia([m], { forStories }).length > 0)
+    ? media.filter(
+        (m) => !m.media_lost_at && validateMedia([m], { forStories, isCarousel }).length > 0,
+      )
     : [];
   const portraitSuggestions = targetsInstagram
     ? media.filter(
         (m) =>
           !m.media_lost_at &&
-          (m.kind === 'video' || forStories) &&
+          ((m.kind === 'video' && !isCarousel) || forStories) &&
           m.width &&
           m.height &&
           Math.abs(m.width / m.height - 9 / 16) > 0.005 &&
@@ -512,7 +518,7 @@ export function PostMediaGallery({
             <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <div className="min-w-0 flex-1">
                 <p className="break-all font-semibold">{m.original_filename}</p>
-                {validateMedia([m], { forStories }).map((issue) => (
+                {validateMedia([m], { forStories, isCarousel }).map((issue) => (
                   <p key={issue.message}>{issue.message}</p>
                 ))}
               </div>
@@ -717,6 +723,7 @@ export function PostMediaGallery({
           key={adjustingMedia.id}
           media={adjustingMedia}
           forStories={forStories}
+          isCarousel={isCarousel}
           onClose={() => setAdjustingMedia(null)}
           onUpdated={() => {
             refreshWithCovers();

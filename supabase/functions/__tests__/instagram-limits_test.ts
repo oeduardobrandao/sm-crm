@@ -60,3 +60,24 @@ Deno.test("instagram-limits: updated publishing boundaries", () => {
   assertEquals(validateMedia([img({ width: 300, height: 300 })]), []);
   assertEquals(validateMedia([img({ height: 2200 })], { forStories: true }), []);
 });
+
+Deno.test("instagram-limits: carousel video follows the image aspect ratio range", () => {
+  // 9:16 (0.5625) is below the image floor of 3:4 (0.75).
+  assertEquals(validateMedia([vid()]), []);
+  assertEquals(validateMedia([vid()], { isCarousel: true }).length, 1);
+  for (const feedRatio of [
+    { width: 1080, height: 1080 },
+    { width: 1080, height: 1350 },
+    { width: 1080, height: 566 },
+  ]) {
+    assertEquals(validateMedia([vid(feedRatio)], { isCarousel: true }), []);
+  }
+  // Stories are never carousels: the loose video ratio still applies.
+  assertEquals(
+    validateMedia([vid({ size_bytes: 100 * 1024 * 1024, duration_seconds: 60 })], {
+      forStories: true,
+      isCarousel: true,
+    }),
+    [],
+  );
+});

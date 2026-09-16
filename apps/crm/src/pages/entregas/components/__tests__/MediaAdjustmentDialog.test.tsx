@@ -69,6 +69,62 @@ describe('MediaAdjustmentDialog', () => {
     expect(screen.getByRole('button', { name: /9:16/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /3:4/ })).not.toBeInTheDocument();
   });
+  it('locks a standalone video (Reel) to 9:16 but offers feed ratios once it is a carousel item', () => {
+    const { rerender } = render(
+      <MediaAdjustmentDialog
+        media={{ ...media, kind: 'video' }}
+        forStories={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Instagram · Reel/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /9:16/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /3:4/ })).not.toBeInTheDocument();
+
+    rerender(
+      <MediaAdjustmentDialog
+        media={{ ...media, kind: 'video' }}
+        forStories={false}
+        isCarousel
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Instagram · Feed \/ Carrossel/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /3:4/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /1,91:1/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^9:16/ })).not.toBeInTheDocument();
+  });
+  it('shows a download percentage while the media streams in', async () => {
+    let controllerRef: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controllerRef = controller;
+      },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        headers: new Headers({ 'content-length': '10' }),
+        body: stream,
+      })),
+    );
+    render(
+      <MediaAdjustmentDialog
+        media={{ ...media, url: 'https://example.test/image.jpg' }}
+        forStories={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+    expect(document.body.textContent).toContain('Carregando mídia…');
+    controllerRef!.enqueue(new Uint8Array(5));
+    await waitFor(() => expect(document.body.textContent).toContain('Carregando mídia (50%)'));
+    controllerRef!.enqueue(new Uint8Array(5));
+    controllerRef!.close();
+  });
 });
 
 async function loadEditableImage(onClose = vi.fn(), onUpdated = vi.fn()) {
@@ -76,6 +132,7 @@ async function loadEditableImage(onClose = vi.fn(), onUpdated = vi.fn()) {
     'fetch',
     vi.fn(async () => ({
       ok: true,
+      headers: new Headers({ 'content-length': '6', 'content-type': 'image/jpeg' }),
       blob: async () => new Blob(['source'], { type: 'image/jpeg' }),
     })),
   );

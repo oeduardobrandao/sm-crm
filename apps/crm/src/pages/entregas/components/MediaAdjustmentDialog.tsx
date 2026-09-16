@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Slider } from '@/components/ui/slider';
 import type { PostMedia } from '@/store';
 import { replacePostMedia } from '@/services/mediaAdjustment';
 import { probeImage, probeVideo } from '@/services/postMedia';
@@ -18,6 +19,10 @@ import { adjustedFilename, drawAdjustment, jpegFromCanvas } from '../media-edito
 interface Props {
   media: PostMedia;
   forStories: boolean;
+  /** True when this item shares a feed post with other media (an Instagram
+   *  carousel), so a video should offer the same feed ratios as an image
+   *  instead of being locked to the Reel-only 9:16 frame. */
+  isCarousel?: boolean;
   onClose: () => void;
   onUpdated: () => void;
 }
@@ -27,11 +32,18 @@ const option = 'rounded-lg border px-3 py-2 text-sm transition-colors';
 const selected =
   'border-amber-400 bg-amber-50 text-stone-900 dark:bg-amber-900/30 dark:text-amber-100';
 
-export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }: Props) {
+export function MediaAdjustmentDialog({
+  media,
+  forStories,
+  isCarousel = false,
+  onClose,
+  onUpdated,
+}: Props) {
   const video = media.kind === 'video';
-  const presets = getPresets(media.kind, forStories);
+  const presets = getPresets(media.kind, forStories, isCarousel);
+  const portraitOnly = forStories || (video && !isCarousel);
   const initial = (): Adjustment => ({
-    ...presets[video || forStories ? 0 : 1],
+    ...presets[portraitOnly ? 0 : 1],
     mode: 'crop',
     zoom: 1,
     x: 0.5,
@@ -47,6 +59,7 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
     duration: number;
   } | null>(null);
   const [error, setError] = useState('');
+  const [loadProgress, setLoadProgress] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [stage, setStage] = useState<'exporting' | 'saving' | null>(null);
   const [progress, setProgress] = useState(0);
@@ -67,6 +80,7 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
     setError('');
     setSource(null);
     setDimensions(null);
+    setLoadProgress(null);
     const timer = setTimeout(() => controller.abort(), 120_000);
     void (async () => {
       try {
@@ -76,7 +90,28 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
           throw new Error(
             'Não foi possível carregar esta mídia. Feche e abra o editor para tentar novamente.',
           );
-        const blob = await response.blob();
+        const total = Number(response.headers.get('content-length')) || 0;
+        let blob: Blob;
+        if (response.body && total > 0) {
+          // Tee the stream instead of buffering chunks ourselves: one branch
+          // is only ever read for its byte count, the other is handed whole
+          // to the native Response.blob(), which avoids doubling a large
+          // video in JS-managed memory (buffer chunks + re-copy into a Blob).
+          const [progressStream, blobStream] = response.body.tee();
+          const blobPromise = new Response(blobStream, { headers: response.headers }).blob();
+          blobPromise.catch(() => {});
+          const reader = progressStream.getReader();
+          let loaded = 0;
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            loaded += value.byteLength;
+            if (!disposed) setLoadProgress(Math.round((loaded / total) * 100));
+          }
+          blob = await blobPromise;
+        } else {
+          blob = await response.blob();
+        }
         controller.signal.throwIfAborted();
         const file = new File([blob], media.original_filename, {
           type: blob.type || media.mime_type,
@@ -185,7 +220,7 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
                 : null,
           },
         ],
-        { forStories },
+        { forStories, isCarousel },
       );
       if (issues.length) throw new Error(issues.map((i) => i.message).join(' '));
       controller.signal.throwIfAborted();
@@ -242,7 +277,7 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
             {media.original_filename} · {video ? 'Vídeo' : 'Imagem'}
           </DialogDescription>
           <p className="text-xs text-muted-foreground">
-            Instagram · {forStories ? 'Stories' : video ? 'Reel' : 'Feed / Carrossel'}
+            Instagram · {forStories ? 'Stories' : portraitOnly ? 'Reel' : 'Feed / Carrossel'}
           </p>
         </DialogHeader>
         <div className="grid gap-5 px-6 pb-5 md:grid-cols-[minmax(0,1fr)_260px]">
@@ -255,7 +290,7 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
                   ) : (
                     <>
                       <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
-                      Carregando mídia…
+                      Carregando mídia{loadProgress != null ? ` (${loadProgress}%)` : '…'}
                     </>
                   )}
                 </div>
@@ -412,18 +447,19 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
                 >
                   {playing ? <Pause size={16} /> : <Play size={16} />}
                 </button>
-                <input
-                  type="range"
+                <Slider
                   aria-label="Posição do vídeo"
                   min={0}
                   max={dimensions.duration || 1}
                   step={0.1}
-                  value={time}
+                  value={[time]}
                   disabled={!!stage}
-                  onChange={(e) => {
-                    if (videoRef.current) videoRef.current.currentTime = Number(e.target.value);
+                  onValueChange={([v]) => {
+                    if (videoRef.current) videoRef.current.currentTime = v;
                   }}
-                  className="min-w-0 flex-1 accent-amber-400"
+                  className="min-w-0 flex-1"
+                  rangeClassName="bg-amber-400"
+                  thumbClassName="border-amber-400"
                 />
                 <span className="text-xs text-muted-foreground">
                   {Math.floor(time)} / {Math.floor(dimensions.duration)} s
@@ -455,7 +491,7 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
                   </button>
                 ))}
               </div>
-              {(video || forStories) && (
+              {portraitOnly && (
                 <p className="mt-2 text-xs text-muted-foreground">
                   Formato recomendado. Outras proporções aceitas não impedem a publicação.
                 </p>
@@ -488,15 +524,16 @@ export function MediaAdjustmentDialog({ media, forStories, onClose, onUpdated }:
                 <span className="float-right font-normal">
                   {Math.round(adjustment.zoom * 100)}%
                 </span>
-                <input
-                  type="range"
+                <Slider
                   aria-label="Zoom"
                   min={1}
                   max={3}
                   step={0.01}
-                  value={adjustment.zoom}
-                  onChange={(e) => setAdjustment((a) => ({ ...a, zoom: Number(e.target.value) }))}
-                  className="mt-3 w-full accent-amber-400"
+                  value={[adjustment.zoom]}
+                  onValueChange={([v]) => setAdjustment((a) => ({ ...a, zoom: v }))}
+                  className="mt-3 w-full"
+                  rangeClassName="bg-amber-400"
+                  thumbClassName="border-amber-400"
                 />
               </label>
             ) : (

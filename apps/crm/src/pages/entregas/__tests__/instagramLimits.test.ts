@@ -75,9 +75,13 @@ describe('instagramLimits: paridade front vs _shared', () => {
     ];
     const sharedFixtures = fixtures.map((f) => ({ ...f, r2_key: 'k', sort_order: 0 }));
     for (const forStories of [false, true]) {
-      expect(front.validateMedia(fixtures, { forStories }).map((e) => e.message)).toEqual(
-        shared.validateMedia(sharedFixtures, { forStories }).map((e) => e.message),
-      );
+      for (const isCarousel of [false, true]) {
+        expect(
+          front.validateMedia(fixtures, { forStories, isCarousel }).map((e) => e.message),
+        ).toEqual(
+          shared.validateMedia(sharedFixtures, { forStories, isCarousel }).map((e) => e.message),
+        );
+      }
     }
   });
 });
@@ -130,5 +134,27 @@ describe('publishing requirements', () => {
     expect(
       front.validateMedia([{ ...image, width: 1080, height: 2200 }], { forStories: true }),
     ).toEqual([]);
+  });
+  it('applies the image aspect ratio range to a video sharing a carousel', () => {
+    const portraitVideo = { ...video, width: 1080, height: 1920 };
+    expect(front.validateMedia([portraitVideo])).toEqual([]);
+    expect(front.validateMedia([portraitVideo], { isCarousel: true })).toHaveLength(1);
+    for (const feedRatio of [
+      { width: 1080, height: 1080 },
+      { width: 1080, height: 1350 },
+      { width: 1080, height: 566 },
+    ]) {
+      expect(front.validateMedia([{ ...video, ...feedRatio }], { isCarousel: true })).toEqual([]);
+    }
+  });
+  it('keeps the loose video aspect ratio for a Story even when isCarousel is passed', () => {
+    const storyVideo = {
+      ...video,
+      width: 1080,
+      height: 1920,
+      duration_seconds: 60,
+      size_bytes: 100 * 1024 * 1024,
+    };
+    expect(front.validateMedia([storyVideo], { forStories: true, isCarousel: true })).toEqual([]);
   });
 });
