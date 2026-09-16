@@ -5409,6 +5409,7 @@ body.role-agent input[name='valor_total'] {
   align-items: center;
   justify-content: space-between;
   padding: 0.7rem 0.9rem;
+  min-height: 3.75rem;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border-color);
 }
@@ -6173,7 +6174,7 @@ body.role-agent input[name='valor_total'] {
   border: 1px solid var(--border-color);
   background: transparent;
   color: var(--text-muted);
-  border-radius: var(--radius);
+  border-radius: 8px;
   font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
@@ -6199,7 +6200,7 @@ body.role-agent input[name='valor_total'] {
 }
 
 .btn-edit-workflow {
-  border-color: var(--text-muted) !important;
+  border-color: var(--border-color) !important;
   color: var(--text-muted) !important;
 }
 
@@ -11673,10 +11674,12 @@ a.hub-fill__row-inner:hover {
   background: var(--surface-hover);
 }
 
+/* grid-template-columns kept explicit (matches --kpi-cols: 3 set inline by
+   InstagramOverviewCard.ts) so the rule's intent is documented in CSS too;
+   gap intentionally omitted -- .kpi-grid's own 1px hairline-divider gap must
+   win here, a wider gap here previously left visible gray gutters. */
 .instagram-overview__account-kpis {
-  display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
 }
 
 .instagram-overview__actions {

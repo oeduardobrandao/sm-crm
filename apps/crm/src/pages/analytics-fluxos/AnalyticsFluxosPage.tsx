@@ -211,7 +211,7 @@ export default function AnalyticsFluxosPage() {
             value={clienteId !== null ? String(clienteId) : 'all'}
             onValueChange={(v) => setClienteId(v === 'all' ? null : Number(v))}
           >
-            <SelectTrigger aria-label="Cliente" style={{ minWidth: 160 }}>
+            <SelectTrigger aria-label="Cliente" style={{ minWidth: 160, width: 'auto' }}>
               <SelectValue placeholder="Cliente: todos" />
             </SelectTrigger>
             <SelectContent>
@@ -228,7 +228,7 @@ export default function AnalyticsFluxosPage() {
             value={templateId !== null ? String(templateId) : 'all'}
             onValueChange={(v) => setTemplateId(v === 'all' ? null : Number(v))}
           >
-            <SelectTrigger aria-label="Template" style={{ minWidth: 160 }}>
+            <SelectTrigger aria-label="Template" style={{ minWidth: 160, width: 'auto' }}>
               <SelectValue placeholder="Template: todos" />
             </SelectTrigger>
             <SelectContent>
