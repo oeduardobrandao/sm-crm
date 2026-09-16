@@ -73,6 +73,18 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   const flush = useCallback(async () => {
     if (inFlightRef.current || pendingRef.current.size === 0) return;
     inFlightRef.current = true;
+    // The completion side effects (saveState/hasPendingSuggestion/dirty) are applied
+    // once, AFTER the loop below has fully drained -- not per iteration. A second edit
+    // to the currently-displayed post made while its first save is in flight coalesces
+    // onto the SAME map entry and gets picked up by the next loop iteration; applying
+    // "saved"/dirty=false right after the FIRST response would be premature (that
+    // newer edit hasn't been sent yet) and, if the newer send then fails, would leave
+    // `dirty` stuck at false with no signal that the latest edit was never saved.
+    let currentPostOutcome: {
+      postId: number;
+      succeeded: boolean;
+      pendingSuggestion: unknown;
+    } | null = null;
     try {
       while (pendingRef.current.size > 0) {
         const [postId, payload] = pendingRef.current.entries().next().value as [number, Payload];
@@ -89,20 +101,35 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
           );
           onSaved();
           if (isCurrentPost) {
-            setHasPendingSuggestion(!!res.pending_suggestion);
-            setSaveState('saved');
-            setDirty(false);
-            savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
+            currentPostOutcome = {
+              postId,
+              succeeded: true,
+              pendingSuggestion: res.pending_suggestion,
+            };
           }
         } catch {
-          // Swallowed on purpose, so `dirty` is the only signal left that the edit
-          // never made it to the server: it stays true (set in saveSuggestion, never
-          // cleared here) for whichever post this failure was for.
-          if (isCurrentPost) setSaveState('idle');
+          if (isCurrentPost)
+            currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null };
         }
       }
     } finally {
       inFlightRef.current = false;
+    }
+    // Re-check against the freshest current post id: it may have changed again while
+    // the loop above was still draining (further navigation), in which case this
+    // outcome is no longer about whatever is on screen and must not touch its UI.
+    if (currentPostOutcome && currentPostOutcome.postId === currentPostIdRef.current) {
+      if (currentPostOutcome.succeeded) {
+        setHasPendingSuggestion(!!currentPostOutcome.pendingSuggestion);
+        setSaveState('saved');
+        setDirty(false);
+        savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
+      } else {
+        // Swallowed on purpose, so `dirty` is the only signal left that the edit
+        // never made it to the server: it stays true (set in saveSuggestion, never
+        // cleared here).
+        setSaveState('idle');
+      }
     }
   }, [token, onSaved]);
 

@@ -8,6 +8,14 @@ vi.mock('../../api', () => ({
   submitEditSuggestion: vi.fn(),
 }));
 
+// `dirty` (the real "is there unsaved work" signal) isn't part of the hook's public
+// return value -- it only ever surfaces via `useUnsavedWork(dirty || saveState ===
+// 'saving')`. Spying on that call is the only way to observe it from outside.
+const useUnsavedWorkMock = vi.hoisted(() => vi.fn());
+vi.mock('@mesaas/app-lifecycle', () => ({
+  useUnsavedWork: (active: boolean) => useUnsavedWorkMock(active),
+}));
+
 const mockedSubmit = vi.mocked(submitEditSuggestion);
 
 function makePost(overrides: Partial<HubPost> = {}): HubPost {
@@ -33,14 +41,19 @@ function makePost(overrides: Partial<HubPost> = {}): HubPost {
 // letting us simulate responses arriving out of send order.
 function deferred<T>() {
   let resolve!: (v: T) => void;
-  const promise = new Promise<T>((r) => (resolve = r));
-  return { promise, resolve };
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 describe('useEditSuggestion', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockedSubmit.mockReset();
+    useUnsavedWorkMock.mockReset();
   });
 
   afterEach(() => {
@@ -228,5 +241,63 @@ describe('useEditSuggestion', () => {
     expect(mockedSubmit).toHaveBeenCalledTimes(3);
     const sentPostIds = mockedSubmit.mock.calls.map((call) => call[1]).sort();
     expect(sentPostIds).toEqual([5103, 5104, 5105]);
+  });
+
+  it('keeps `dirty` true when a newer edit to the same post fails, even though an earlier response for it already succeeded', async () => {
+    // A second edit to the SAME post made while its first save is in flight coalesces
+    // onto the same queue entry and is picked up by the drain loop's next iteration.
+    // If the completion side effects were applied per-response instead of once the
+    // whole queue drains, the first response succeeding would clear `dirty` right
+    // away -- even though that second, newer edit hasn't been sent yet -- and if THAT
+    // one then fails, `dirty` would be stuck at false with no signal the latest edit
+    // was never saved. `dirty` itself isn't exposed; it only surfaces via
+    // `useUnsavedWork(dirty || saveState === 'saving')`, so assert through that spy.
+    const first = deferred<{ ok: boolean; pending_suggestion: null }>();
+    const second = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+
+    const post = makePost();
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
+
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-1', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    expect(lastActive()).toBe(true); // dirty || saving -- unsaved work in progress
+
+    // A second edit to the same post, queued while the first is still in flight --
+    // the already-running flush's while loop will pick this up on its own, no need
+    // to wait out another debounce.
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-2', null);
+    });
+
+    // The first (now-stale) request resolves successfully.
+    await act(async () => {
+      first.resolve({ ok: true, pending_suggestion: null });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Must still report unsaved work -- edit-2 is being sent right now, not confirmed.
+    expect(mockedSubmit).toHaveBeenCalledTimes(2);
+    expect(lastActive()).toBe(true);
+
+    // The second, newer request (the one that actually matters) fails.
+    await act(async () => {
+      second.reject(new Error('network error'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The latest edit never made it to the server -- must still report unsaved work,
+    // not silently treat the earlier (now-superseded) success as the final word.
+    expect(lastActive()).toBe(true);
   });
 });
