@@ -396,4 +396,55 @@ describe('useEditSuggestion', () => {
     expect(result.current.saveState).toBe('saved');
     expect(lastActive()).toBe(false);
   });
+
+  it('remembers a save failed for a post even after navigating away and back before the response arrives', async () => {
+    // Post A's save is dequeued and in flight while it's still on screen (isCurrentPost
+    // captured true), but the user navigates to post B before it resolves. The
+    // navigation reset correctly clears A's `dirty` for POST B'S display -- but when
+    // A's request then fails in the background, `flush`'s completion gate correctly
+    // refuses to paint that failure onto B's UI either (it isn't A's outcome to show).
+    // Without separately remembering the failure, navigating back to A afterward would
+    // show a clean idle/saved state with no trace the edit never reached the server.
+    const first = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit.mockReturnValueOnce(first.promise);
+
+    const onSaved = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ post }) => useEditSuggestion({ token: 'tok', post, onSaved }),
+      { initialProps: { post: makePost({ id: 5103 }) } },
+    );
+    const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
+
+    // Edit post A (5103): debounce fires, its save is dequeued and in flight.
+    act(() => {
+      result.current.saveSuggestion({ type: 'doc', content: [] }, 'edit-for-post-a', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+
+    // Navigate away to post B before A's request settles.
+    rerender({ post: makePost({ id: 5104 }) });
+    expect(result.current.saveState).toBe('idle');
+    expect(lastActive()).toBe(false); // post B itself has no unsaved work
+
+    // Post A's save fails while post B is on screen.
+    await act(async () => {
+      first.reject(new Error('network error'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Must still not touch post B's (currently displayed, untouched) UI.
+    expect(result.current.saveState).toBe('idle');
+    expect(lastActive()).toBe(false);
+
+    // Navigate back to post A.
+    rerender({ post: makePost({ id: 5103 }) });
+
+    // The failed edit must still be flagged as unsaved -- it never reached the server,
+    // and the client could otherwise navigate away thinking it was saved.
+    expect(lastActive()).toBe(true);
+  });
 });

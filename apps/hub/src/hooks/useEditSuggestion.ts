@@ -47,16 +47,28 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   // cleanly instead of colliding with it) -- which means `pendingRef.current.has(id)`
   // alone can't tell "queued" apart from "in flight, entry already removed". Anything
   // that needs to know whether a post has outstanding work (queued OR in flight) must
-  // check both; `hasOutstandingWork` below is that single check.
+  // check both; `isSavingFor` below is that single check.
   const inFlightPostIdRef = useRef<number | null>(null);
-  const hasOutstandingWork = (postId: number) =>
+  const isSavingFor = (postId: number) =>
     pendingRef.current.has(postId) || inFlightPostIdRef.current === postId;
+  // Posts whose most recent send attempt failed while nothing else is queued or in
+  // flight for them. When a save fails for a post the user has already navigated away
+  // from (isCurrentPost was only captured true at dequeue time, before the
+  // navigation), the completion block below correctly refuses to paint that failure
+  // onto whatever post is now on screen -- but the render-time reset (below) had
+  // already cleared `dirty` back to false for that post the moment the user left it,
+  // before the failure was even known. Without this, navigating back later shows a
+  // clean idle/saved state with no trace the edit never reached the server. This set
+  // is the memory that survives that gap; `isDirtyFor` folds it into the dirty check.
+  const failedPostIdsRef = useRef<Set<number>>(new Set());
+  const isDirtyFor = (postId: number) =>
+    isSavingFor(postId) || failedPostIdsRef.current.has(postId);
 
   const [saveState, setSaveState] = useState<SaveState>(() =>
-    hasOutstandingWork(post.id) ? 'saving' : 'idle',
+    isSavingFor(post.id) ? 'saving' : 'idle',
   );
   const [hasPendingSuggestion, setHasPendingSuggestion] = useState(!!suggestion);
-  const [dirty, setDirty] = useState(() => hasOutstandingWork(post.id));
+  const [dirty, setDirty] = useState(() => isDirtyFor(post.id));
 
   const draftConteudo = useMemo(
     () => suggestion?.suggested_conteudo ?? post.conteudo,
@@ -90,8 +102,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     // work for it (from an earlier visit) shows as saving/dirty, a fresh post shows
     // idle/clean.
     currentPostIdRef.current = post.id;
-    setSaveState(hasOutstandingWork(post.id) ? 'saving' : 'idle');
-    setDirty(hasOutstandingWork(post.id));
+    setSaveState(isSavingFor(post.id) ? 'saving' : 'idle');
+    setDirty(isDirtyFor(post.id));
     setHasPendingSuggestion(!!suggestion);
     // The cosmetic "saved -> idle" timer belongs to the post being left; if left
     // running, it would fire later and could stomp the newly-displayed post's own,
@@ -136,6 +148,9 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
             payload.igCaption,
           );
           onSaved();
+          // Unconditional (not gated by isCurrentPost): this post's last known
+          // attempt is no longer a failure, whether or not it's on screen right now.
+          failedPostIdsRef.current.delete(postId);
           if (isCurrentPost) {
             currentPostOutcome = {
               postId,
@@ -144,6 +159,9 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
             };
           }
         } catch {
+          // Unconditional: a post left mid-save must still remember its attempt
+          // failed once the user navigates back to it, not just while it's current.
+          failedPostIdsRef.current.add(postId);
           if (isCurrentPost)
             currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null };
         } finally {
