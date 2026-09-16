@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Slider } from '@/components/ui/slider';
 import type { PostMedia } from '@/store';
 import { replacePostMedia } from '@/services/mediaAdjustment';
 import { probeImage, probeVideo } from '@/services/postMedia';
@@ -58,6 +59,7 @@ export function MediaAdjustmentDialog({
     duration: number;
   } | null>(null);
   const [error, setError] = useState('');
+  const [loadProgress, setLoadProgress] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [stage, setStage] = useState<'exporting' | 'saving' | null>(null);
   const [progress, setProgress] = useState(0);
@@ -78,6 +80,7 @@ export function MediaAdjustmentDialog({
     setError('');
     setSource(null);
     setDimensions(null);
+    setLoadProgress(null);
     const timer = setTimeout(() => controller.abort(), 120_000);
     void (async () => {
       try {
@@ -87,7 +90,25 @@ export function MediaAdjustmentDialog({
           throw new Error(
             'Não foi possível carregar esta mídia. Feche e abra o editor para tentar novamente.',
           );
-        const blob = await response.blob();
+        const total = Number(response.headers.get('content-length')) || 0;
+        let blob: Blob;
+        if (response.body) {
+          const reader = response.body.getReader();
+          const chunks: BlobPart[] = [];
+          let loaded = 0;
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value as BlobPart);
+            loaded += value.byteLength;
+            if (!disposed) setLoadProgress(total > 0 ? Math.round((loaded / total) * 100) : null);
+          }
+          blob = new Blob(chunks, {
+            type: response.headers.get('content-type') || media.mime_type,
+          });
+        } else {
+          blob = await response.blob();
+        }
         controller.signal.throwIfAborted();
         const file = new File([blob], media.original_filename, {
           type: blob.type || media.mime_type,
@@ -266,7 +287,7 @@ export function MediaAdjustmentDialog({
                   ) : (
                     <>
                       <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
-                      Carregando mídia…
+                      Carregando mídia{loadProgress != null ? ` (${loadProgress}%)` : '…'}
                     </>
                   )}
                 </div>
@@ -423,18 +444,19 @@ export function MediaAdjustmentDialog({
                 >
                   {playing ? <Pause size={16} /> : <Play size={16} />}
                 </button>
-                <input
-                  type="range"
+                <Slider
                   aria-label="Posição do vídeo"
                   min={0}
                   max={dimensions.duration || 1}
                   step={0.1}
-                  value={time}
+                  value={[time]}
                   disabled={!!stage}
-                  onChange={(e) => {
-                    if (videoRef.current) videoRef.current.currentTime = Number(e.target.value);
+                  onValueChange={([v]) => {
+                    if (videoRef.current) videoRef.current.currentTime = v;
                   }}
-                  className="min-w-0 flex-1 accent-amber-400"
+                  className="min-w-0 flex-1"
+                  rangeClassName="bg-amber-400"
+                  thumbClassName="border-amber-400"
                 />
                 <span className="text-xs text-muted-foreground">
                   {Math.floor(time)} / {Math.floor(dimensions.duration)} s
@@ -499,15 +521,16 @@ export function MediaAdjustmentDialog({
                 <span className="float-right font-normal">
                   {Math.round(adjustment.zoom * 100)}%
                 </span>
-                <input
-                  type="range"
+                <Slider
                   aria-label="Zoom"
                   min={1}
                   max={3}
                   step={0.01}
-                  value={adjustment.zoom}
-                  onChange={(e) => setAdjustment((a) => ({ ...a, zoom: Number(e.target.value) }))}
-                  className="mt-3 w-full accent-amber-400"
+                  value={[adjustment.zoom]}
+                  onValueChange={([v]) => setAdjustment((a) => ({ ...a, zoom: v }))}
+                  className="mt-3 w-full"
+                  rangeClassName="bg-amber-400"
+                  thumbClassName="border-amber-400"
                 />
               </label>
             ) : (
