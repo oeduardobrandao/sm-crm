@@ -36,41 +36,61 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   // At most one submitEditSuggestion call in flight at a time. Without this, two
   // debounced saves can overlap (the edge function round-trip is several sequential
   // DB calls, easily 0.5-1.5s) and complete out of order: an earlier, staler snapshot
-  // can land AFTER a later, more complete one and silently overwrite it. `pendingRef`
-  // always holds the latest edit; a flush in flight is followed by another flush of
-  // whatever is left in `pendingRef` once it settles, so saves are strictly serialized
-  // and each one reflects the freshest state at send time.
+  // can land AFTER a later, more complete one and silently overwrite it. A flush in
+  // flight is followed by another flush of whatever is left queued once it settles,
+  // so saves are strictly serialized and each one reflects the freshest state at send
+  // time -- per post, see below.
   //
-  // `postId` travels WITH the payload, not via the `flush` closure's own `post.id`.
-  // This component/hook instance can be reused across different posts without
-  // remounting (e.g. `postagens/:postId` has no `key`, so React Router re-renders the
-  // same instance on navigation) -- if the finally-block's recursive `flush()` call
-  // resolved a stale, post-A-scoped closure while `pendingRef` now holds post B's
-  // edit, submitting via that closure's own `post.id` would attribute B's content to
-  // A. Reading the target id off the payload itself keeps every save attributed to
-  // whichever post it was actually typed into, regardless of which closure sends it.
+  // `pendingRef` is a Map keyed by post id, not a single slot. This component/hook
+  // instance can be reused across different posts without remounting (e.g.
+  // `postagens/:postId` has no `key`, so React Router re-renders the same instance on
+  // navigation) -- a single-slot queue would let editing post C overwrite a still-queued
+  // edit for post B, silently dropping B's edit even though it was typed into a
+  // different post and never got a chance to send. Keying by post id keeps each post's
+  // latest edit (repeated edits to the same post still coalesce onto one entry) until
+  // it is actually sent.
   type Payload = {
     postId: number;
     conteudo: Record<string, unknown> | null;
     conteudoPlain: string;
     igCaption: string | null;
   };
-  const pendingRef = useRef<Payload | null>(null);
+  const pendingRef = useRef<Map<number, Payload>>(new Map());
   const inFlightRef = useRef(false);
+  // Always holds the id of whichever post this hook is CURRENTLY rendering, updated
+  // every render (not via effect -- there is nothing to react to, just a fresh read).
+  // `flush` uses it to decide whether a just-drained save's outcome should update this
+  // instance's on-screen state (saveState/hasPendingSuggestion/dirty): a save for a
+  // post the user has since navigated away from must still be sent (below), but must
+  // not paint the CURRENTLY displayed post's UI with a different post's result.
+  const currentPostIdRef = useRef(post.id);
+  currentPostIdRef.current = post.id;
 
   // An explicit drain loop rather than recursion: a queued edit made while this was
   // already running (another `saveSuggestion` call landing mid-`await`) is handled by
   // looping back to `pendingRef` instead of calling `flush` again, so there is only
   // ever one closure involved -- nothing about it can go stale mid-drain.
   const flush = useCallback(async () => {
-    if (inFlightRef.current || !pendingRef.current) return;
+    if (inFlightRef.current || pendingRef.current.size === 0) return;
     inFlightRef.current = true;
-    let succeeded = false;
+    // The completion side effects (saveState/hasPendingSuggestion/dirty) are applied
+    // once, AFTER the loop below has fully drained -- not per iteration. A second edit
+    // to the currently-displayed post made while its first save is in flight coalesces
+    // onto the SAME map entry and gets picked up by the next loop iteration; applying
+    // "saved"/dirty=false right after the FIRST response would be premature (that
+    // newer edit hasn't been sent yet) and, if the newer send then fails, would leave
+    // `dirty` stuck at false with no signal that the latest edit was never saved.
+    let currentPostOutcome: {
+      postId: number;
+      succeeded: boolean;
+      pendingSuggestion: unknown;
+    } | null = null;
     try {
-      while (pendingRef.current) {
-        const payload = pendingRef.current;
-        pendingRef.current = null;
-        setSaveState('saving');
+      while (pendingRef.current.size > 0) {
+        const [postId, payload] = pendingRef.current.entries().next().value as [number, Payload];
+        pendingRef.current.delete(postId);
+        const isCurrentPost = postId === currentPostIdRef.current;
+        if (isCurrentPost) setSaveState('saving');
         try {
           const res = await submitEditSuggestion(
             token,
@@ -79,31 +99,44 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
             payload.conteudoPlain,
             payload.igCaption,
           );
-          setHasPendingSuggestion(!!res.pending_suggestion);
           onSaved();
-          succeeded = true;
+          if (isCurrentPost) {
+            currentPostOutcome = {
+              postId,
+              succeeded: true,
+              pendingSuggestion: res.pending_suggestion,
+            };
+          }
         } catch {
-          // Swallowed on purpose (see saveState reset below), so `dirty` is the only
-          // signal left that the edit never made it to the server: it stays true here.
-          succeeded = false;
+          if (isCurrentPost)
+            currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null };
         }
       }
     } finally {
       inFlightRef.current = false;
     }
-    if (succeeded) {
-      setSaveState('saved');
-      setDirty(false);
-      savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
-    } else {
-      setSaveState('idle');
+    // Re-check against the freshest current post id: it may have changed again while
+    // the loop above was still draining (further navigation), in which case this
+    // outcome is no longer about whatever is on screen and must not touch its UI.
+    if (currentPostOutcome && currentPostOutcome.postId === currentPostIdRef.current) {
+      if (currentPostOutcome.succeeded) {
+        setHasPendingSuggestion(!!currentPostOutcome.pendingSuggestion);
+        setSaveState('saved');
+        setDirty(false);
+        savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
+      } else {
+        // Swallowed on purpose, so `dirty` is the only signal left that the edit
+        // never made it to the server: it stays true (set in saveSuggestion, never
+        // cleared here).
+        setSaveState('idle');
+      }
     }
   }, [token, onSaved]);
 
   const saveSuggestion = useCallback(
     (conteudo: Record<string, unknown> | null, conteudoPlain: string, igCaption: string | null) => {
       setDirty(true);
-      pendingRef.current = { postId: post.id, conteudo, conteudoPlain, igCaption };
+      pendingRef.current.set(post.id, { postId: post.id, conteudo, conteudoPlain, igCaption });
       if (timerRef.current) clearTimeout(timerRef.current);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
 
