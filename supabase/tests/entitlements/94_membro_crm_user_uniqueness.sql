@@ -3,7 +3,7 @@
 select et_grant_hosted_parity();
 
 -- membros_conta_crm_user_unique + set_membro_crm_user + accept_workspace_invite
--- (migration 20260922000003_membro_crm_user_uniqueness.sql). Cobre:
+-- (migration 20260923000003_membro_crm_user_uniqueness.sql). Cobre:
 -- 94.0 o indice em si bloqueia uma segunda linha de membros linkada ao mesmo
 --      crm_user_id na mesma conta
 -- 94.1 set_membro_crm_user: caminho feliz, sem conflito

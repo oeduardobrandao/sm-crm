@@ -724,7 +724,7 @@ Deno.test("inviteOrResend: added route stamps membro_id AND links the membro imm
 });
 
 Deno.test("inviteOrResend: added route skips the membro link (not an error) when the user is already linked to a DIFFERENT membro in this conta", async () => {
-  // membros_conta_crm_user_unique (20260922000003) would reject this UPDATE
+  // membros_conta_crm_user_unique (20260923000003) would reject this UPDATE
   // outright. By this point membership/profile/invite are already committed,
   // so the route must still report success -- just without the link.
   const admin = makeInviteAdmin({

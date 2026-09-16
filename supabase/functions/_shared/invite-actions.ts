@@ -437,7 +437,7 @@ export async function inviteOrResend(
         role_id: roleId,
       }).select("id").single();
       if (membroId != null) {
-        // membros_conta_crm_user_unique (20260922000003) blocks a second
+        // membros_conta_crm_user_unique (20260923000003) blocks a second
         // membro linked to the same crm_user_id in this conta. Everything
         // above this point (membership, profile, the accepted invite) is
         // already committed via separate un-transacted calls, so failing
