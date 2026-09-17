@@ -1059,6 +1059,13 @@ export function KanbanView({
       try {
         const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!, opts);
         if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
+          // Recurring-completion wins over the batch-schedule nudge (fix round 1's
+          // render-time gate). Fix round 2: also CLEAR batchScheduleWfId here, not
+          // just suppress it -- otherwise, once the user dismisses
+          // RecurringWorkflowDialog (recurringWfId -> null again), the gate flips
+          // back open and the nudge resurfaces for a workflow already dealt with.
+          // The opportunity for this advance is meant to be gone for good.
+          setBatchScheduleWfId((prev) => (prev === wfId ? null : prev));
           onRecurring(card.workflow.id!);
         } else {
           toast.success(successMessage);

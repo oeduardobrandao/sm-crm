@@ -470,6 +470,12 @@ export default function EntregasTab() {
       }
       const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!);
       if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
+        // Recurring-completion wins over the batch-schedule nudge (fix round 1's
+        // render-time gate). Fix round 2: also CLEAR batchScheduleWfId here, not
+        // just suppress it -- otherwise, once the recurring dialog is dismissed
+        // (recurringWfId -> null again), the gate flips back open and the nudge
+        // resurfaces for a workflow already dealt with.
+        setBatchScheduleWfId(null);
         setRecurringWfId(card.workflow.id!);
       } else {
         refreshCards();

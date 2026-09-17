@@ -243,8 +243,17 @@ function RecurringAwareHarness({ card }: { card: BoardCard }) {
       />
       {/* Stand-in for EntregasPage's <RecurringWorkflowDialog>: this test only
           needs to observe THAT the recurring-completion signal reached the
-          parent, not the real dialog's markup. */}
-      {recurringWfId != null && <div data-testid="recurring-open">{recurringWfId}</div>}
+          parent, not the real dialog's markup. The dismiss button mirrors
+          what BOTH real exits do -- handleRecurringConfirm (after
+          duplicateWorkflow) and the dialog's onCancel both just
+          setRecurringWfId(null); which one fires doesn't matter for this
+          regression, only that recurringWfId goes back to null afterward. */}
+      {recurringWfId != null && (
+        <div data-testid="recurring-open">
+          {recurringWfId}
+          <button onClick={() => setRecurringWfId(null)}>dismiss-recurring</button>
+        </div>
+      )}
     </>
   );
 }
@@ -331,13 +340,22 @@ describe('KanbanView batch auto-schedule nudge (spec peça 2)', () => {
     expect(store.completeEtapa).not.toHaveBeenCalled();
   });
 
-  // Post-review fix: when the SAME handleApproveInternally call both (a)
-  // passes the batch-dialog gates (schedulingEnabled, auto_publish_on_approval,
-  // !willRearm) AND (b) completes a recorrente workflow's final etapa,
-  // advanceEtapa's onRecurring branch fires on top of the already-set
-  // batchScheduleWfId. Both are AlertDialogs; the recurring-completion one
-  // must win, not stack.
-  it('suppresses the batch dialog when the same advance also completes a recorrente workflow cycle', async () => {
+  // Post-review fix (round 1): when the SAME handleApproveInternally call both
+  // (a) passes the batch-dialog gates (schedulingEnabled,
+  // auto_publish_on_approval, !willRearm) AND (b) completes a recorrente
+  // workflow's final etapa, advanceEtapa's onRecurring branch fires on top of
+  // the already-set batchScheduleWfId. Both are AlertDialogs; the
+  // recurring-completion one must win, not stack.
+  //
+  // Fix round 2: winning isn't enough on its own -- round 1 only gated the
+  // batch dialog's RENDER (workflowId={recurringWfId == null ? ... : null}),
+  // it never cleared batchScheduleWfId itself. So once the user dismisses
+  // RecurringWorkflowDialog (recurringWfId -> null again), the gate flips
+  // back open and the nudge would resurface for a workflow already dealt
+  // with. This test continues past the dismiss to prove that no longer
+  // happens: batchScheduleWfId must be cleared for good, not just suppressed
+  // while recurringWfId happens to be non-null.
+  it('suppresses the batch dialog when the same advance also completes a recorrente workflow cycle, and it stays closed after the recurring dialog is dismissed', async () => {
     store.completeEtapaWithRearm.mockResolvedValue({
       workflow: { status: 'concluido', recorrente: true },
       etapas: [],
@@ -361,6 +379,15 @@ describe('KanbanView batch auto-schedule nudge (spec peça 2)', () => {
     await waitFor(() => expect(screen.getByTestId('recurring-open')).toHaveTextContent('1'));
     // Settled state: only the recurring dialog's stand-in is present, never
     // the batch dialog too.
+    expect(screen.queryByTestId('batch-nudge')).toBeNull();
+
+    // Dismiss the recurring dialog (confirm or cancel -- both real exits just
+    // setRecurringWfId(null); this harness's dismiss button mirrors either).
+    fireEvent.click(screen.getByText('dismiss-recurring'));
+    await waitFor(() => expect(screen.queryByTestId('recurring-open')).toBeNull());
+    // The batch-schedule opportunity for THIS advance is gone for good, not
+    // deferred until the recurring dialog closes -- it must not reopen now
+    // that recurringWfId is null again.
     expect(screen.queryByTestId('batch-nudge')).toBeNull();
   });
 });
