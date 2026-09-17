@@ -8,6 +8,7 @@ const submitApprovalMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api', () => ({
   submitApproval: submitApprovalMock,
+  fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
 }));
 
 vi.mock('../PostMediaLightbox', () => ({
@@ -400,5 +401,48 @@ describe('InstagramPostCard', () => {
     );
 
     expect(screen.queryByText('Reel de teste')).toBeNull();
+  });
+
+  it('requires a motivo chip before "Correção" is enabled and sends it', async () => {
+    mockedSubmitApproval.mockResolvedValue({ ok: true } as never);
+    render(
+      <InstagramPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    const correctionButton = screen.getByRole('button', { name: /Correção/ });
+    fireEvent.change(screen.getByPlaceholderText(/Comente aqui/), {
+      target: { value: 'Ajustar legenda' },
+    });
+    expect(correctionButton).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Legenda' }));
+    expect(correctionButton).toBeEnabled();
+    fireEvent.click(correctionButton);
+    await waitFor(() =>
+      expect(mockedSubmitApproval).toHaveBeenCalledWith(
+        'token-publico',
+        7,
+        'correcao',
+        'Ajustar legenda',
+        'legenda',
+      ),
+    );
+  });
+
+  it('renders the history panel toggle in read-only mode', () => {
+    render(
+      <InstagramPostCard
+        post={makePost({ status: 'agendado' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        readOnly
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Histórico e comentários/ })).toBeInTheDocument();
   });
 });
