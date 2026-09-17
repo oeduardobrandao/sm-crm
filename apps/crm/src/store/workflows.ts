@@ -344,6 +344,34 @@ export function hasLaterApprovalEtapa(etapas: WorkflowEtapa[], etapaId: number):
   return etapas.some((e) => e.tipo === 'aprovacao_cliente' && e.ordem > current.ordem);
 }
 
+/**
+ * Espelho no cliente de `isFinalApprovalCycle` do `hub-approve`
+ * (supabase/functions/hub-approve/handler.ts:25-43, branch `workflow_id != null`
+ * nas linhas 29-43):
+ * conta as etapas `aprovacao_cliente` do fluxo que ainda NÃO estão `concluido` e
+ * exige menos de 2. Com duas ou mais abertas, a aprovação atual pertence a um
+ * ciclo anterior (fluxo de dupla aprovação) e agendar agora publicaria antes da
+ * segunda aprovação do cliente -- exatamente o bug do PR #400.
+ *
+ * MANTENHA OS DOIS EM SINCRONIA. A regra do servidor é a canônica; este espelho
+ * existe porque nenhuma escrita de status feita pela CRM passa por `hub-approve`.
+ * Os testes de apps/crm/src/store/__tests__/finalApprovalCycle.test.ts usam as
+ * mesmas formas de etapa que supabase/functions/__tests__/hub-functions_test.ts.
+ *
+ * Diferença deliberada em relação ao servidor: lista VAZIA devolve false. No
+ * servidor uma lista vazia significa "fluxo sem etapa de aprovação" (express,
+ * legado) e é final; aqui significa "não temos as etapas deste post" (post
+ * avulso, card não carregado), e aí o aviso não deve aparecer -- fail closed,
+ * mesma postura do `return false` do servidor quando o lookup falha.
+ */
+export function isFinalClientApprovalCycle(etapas: WorkflowEtapa[]): boolean {
+  if (etapas.length === 0) return false;
+  const openApprovalEtapas = etapas.filter(
+    (e) => e.tipo === 'aprovacao_cliente' && e.status !== 'concluido',
+  ).length;
+  return openApprovalEtapas < 2;
+}
+
 export interface CompleteEtapaWithRearmResult {
   workflow: Workflow;
   etapas: WorkflowEtapa[];
