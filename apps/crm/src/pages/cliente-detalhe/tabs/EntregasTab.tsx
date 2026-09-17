@@ -744,7 +744,12 @@ export default function EntregasTab() {
         onCancel={() => setApprovalChoice(null)}
       />
       <AutoScheduleBatchDialog
-        workflowId={batchScheduleWfId}
+        // Exclusão mútua com o AlertDialog "Recurring workflow confirm" acima
+        // (fix pós-review da Task 4): os dois vivem neste mesmo componente, e a
+        // mesma chamada de handleApproveInternally pode setar batchScheduleWfId
+        // e depois, via completeEtapaForAdvance devolvendo concluido+recorrente,
+        // setar recurringWfId também -- o de conclusão de ciclo tem precedência.
+        workflowId={recurringWfId == null ? batchScheduleWfId : null}
         tiktokFeatureEnabled={tiktokEnabled}
         onClose={() => setBatchScheduleWfId(null)}
         onScheduled={() => {

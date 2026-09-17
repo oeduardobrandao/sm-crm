@@ -212,6 +212,43 @@ async function openApprovalChoiceAndApproveInternally() {
   fireEvent.click(await screen.findByText('Aprovar internamente'));
 }
 
+// Regression harness for the post-Task-4-review finding: KanbanView itself
+// doesn't own `recurringWfId` (that state lives in EntregasPage, fed back in
+// only as a prop, via the real onRecurring -> setRecurringWfId round trip).
+// This tiny wrapper plays EntregasPage's part just enough to exercise that
+// real feedback loop -- onRecurring here actually updates state and re-renders
+// KanbanView with the new `recurringWfId`, instead of a no-op like the plain
+// renderBoard() above uses for every other test in this file.
+function RecurringAwareHarness({ card }: { card: BoardCard }) {
+  const [recurringWfId, setRecurringWfId] = React.useState<number | null>(null);
+  return (
+    <>
+      <KanbanView
+        cards={[card]}
+        onCardClick={() => {}}
+        onEditClick={() => {}}
+        onPostsClick={() => {}}
+        onRefresh={() => {}}
+        onRecurring={setRecurringWfId}
+        membros={[]}
+        templates={[]}
+        postsCounts={new Map([[1, 2]])}
+        approvedPostsCounts={new Map()}
+        clearedClienteCounts={new Map([[1, 0]])}
+        revisaoInternaCounts={new Map()}
+        awaitingClienteCounts={new Map()}
+        schedulingEnabled
+        tiktokEnabled
+        recurringWfId={recurringWfId}
+      />
+      {/* Stand-in for EntregasPage's <RecurringWorkflowDialog>: this test only
+          needs to observe THAT the recurring-completion signal reached the
+          parent, not the real dialog's markup. */}
+      {recurringWfId != null && <div data-testid="recurring-open">{recurringWfId}</div>}
+    </>
+  );
+}
+
 describe('KanbanView batch auto-schedule nudge (spec peça 2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -292,5 +329,38 @@ describe('KanbanView batch auto-schedule nudge (spec peça 2)', () => {
     // Non-vacuity: the advance never even runs when the approval write itself failed.
     expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
     expect(store.completeEtapa).not.toHaveBeenCalled();
+  });
+
+  // Post-review fix: when the SAME handleApproveInternally call both (a)
+  // passes the batch-dialog gates (schedulingEnabled, auto_publish_on_approval,
+  // !willRearm) AND (b) completes a recorrente workflow's final etapa,
+  // advanceEtapa's onRecurring branch fires on top of the already-set
+  // batchScheduleWfId. Both are AlertDialogs; the recurring-completion one
+  // must win, not stack.
+  it('suppresses the batch dialog when the same advance also completes a recorrente workflow cycle', async () => {
+    store.completeEtapaWithRearm.mockResolvedValue({
+      workflow: { status: 'concluido', recorrente: true },
+      etapas: [],
+      rearmed: false,
+      rearmFailed: false,
+    });
+    const recorrenteCard = makeCard({
+      workflow: {
+        id: 1,
+        cliente_id: 1,
+        titulo: 'Posts Agosto',
+        status: 'ativo',
+        etapa_atual: 1,
+        recorrente: true,
+      },
+    });
+    render(<RecurringAwareHarness card={recorrenteCard} />);
+    await openApprovalChoiceAndApproveInternally();
+    // The recurring signal actually reached the parent (unchanged behaviour --
+    // this fix must not swallow or delay onRecurring).
+    await waitFor(() => expect(screen.getByTestId('recurring-open')).toHaveTextContent('1'));
+    // Settled state: only the recurring dialog's stand-in is present, never
+    // the batch dialog too.
+    expect(screen.queryByTestId('batch-nudge')).toBeNull();
   });
 });

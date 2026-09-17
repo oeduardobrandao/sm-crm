@@ -1226,6 +1226,7 @@ export default function EntregasPage() {
               }}
               schedulingEnabled={schedulingEnabled}
               tiktokEnabled={tiktokEnabled}
+              recurringWfId={recurringWfId}
             />
             {semProcessoMode && (
               <SemProcessoSection

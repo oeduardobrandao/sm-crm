@@ -147,6 +147,15 @@ interface KanbanViewBaseProps {
    *  feature_disabled (feature: "feature_tiktok") ao confirmar. Ausente =
    *  desligado. */
   tiktokEnabled?: boolean;
+  /** Estado de `RecurringWorkflowDialog`, que vive na EntregasPage (setado via
+   *  `onRecurring` abaixo) -- lido aqui só para exclusão mútua com o diálogo de
+   *  agendamento em lote deste componente (achado de review pós-Task 4): os dois
+   *  são AlertDialogs, e a mesma chamada de handleApproveInternally pode setar
+   *  batchScheduleWfId e, na sequência, terminar concluindo um fluxo recorrente
+   *  (advanceEtapa chama onRecurring), empilhando os dois. O de conclusão de
+   *  ciclo tem precedência -- é um "nudge, não enforcement": os posts continuam
+   *  aprovado_cliente e o indicador persistente da Task 5 ainda os oferece. */
+  recurringWfId?: number | null;
 }
 
 // Discriminated union: a caller either passes neither prop, or passes both together.
@@ -453,6 +462,7 @@ export function KanbanView({
   contaId,
   schedulingEnabled,
   tiktokEnabled,
+  recurringWfId,
 }: KanbanViewProps) {
   // Server data is canonical: the board always re-derives from the cards prop,
   // so any edit (título, responsável, prazo…) shows as soon as the refetch
@@ -1512,7 +1522,12 @@ export function KanbanView({
         }}
       />
       <AutoScheduleBatchDialog
-        workflowId={batchScheduleWfId}
+        // Exclusão mútua com RecurringWorkflowDialog (fix pós-review da Task 4):
+        // recurringWfId != null significa que o pai já vai abrir (ou já abriu) o
+        // diálogo de conclusão de ciclo para este mesmo avanço -- ele tem
+        // precedência, então o resumo em lote nem monta com um workflowId
+        // não-nulo neste render.
+        workflowId={recurringWfId == null ? batchScheduleWfId : null}
         tiktokFeatureEnabled={tiktokEnabled === true}
         onClose={() => setBatchScheduleWfId(null)}
         onScheduled={() => {
