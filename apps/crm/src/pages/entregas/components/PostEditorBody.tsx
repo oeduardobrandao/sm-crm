@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { MessageSquare, Send, History } from 'lucide-react';
+import { MessageSquare, Send, History, Loader2 } from 'lucide-react';
 import {
   type WorkflowPost,
   type PostApproval,
@@ -269,6 +269,24 @@ export function PostEditorBody({
       ? resolvedAsyncContent.content
       : post.conteudo;
 
+  // Mirrors the query-await fix above one level down: <PostEditor> freezes whatever
+  // `initialContent` it's handed at mount and never re-syncs, so a mount landing before
+  // `resolvedAsyncContent` catches up would freeze on raw (unsigned) R2 image refs --
+  // permanently broken inline images, not just for the accept-suggestion flow but for
+  // any post whose first render lands before signing resolves. Once a given editor key
+  // has actually mounted, this ref latches it open -- later post.conteudo changes (e.g.
+  // an autosave-triggered refetch) must NOT re-hide an already-mounted, actively-edited
+  // <PostEditor>; only a genuinely new key (a real remount) re-checks readiness.
+  const editorKey = `${post.id}-v${editorVersion}`;
+  const mountedEditorKeyRef = useRef<string | null>(null);
+  const contentReadyForMount =
+    contentR2Keys.length === 0 ||
+    (resolvedAsyncContent !== null && resolvedAsyncContent.forContent === post.conteudo);
+  const canMountEditor = mountedEditorKeyRef.current === editorKey || contentReadyForMount;
+  if (canMountEditor) {
+    mountedEditorKeyRef.current = editorKey;
+  }
+
   const [resolvedSuggestion, setResolvedSuggestion] = useState<Record<string, unknown> | null>(
     editSuggestion?.suggested_conteudo ?? null,
   );
@@ -535,9 +553,17 @@ export function PostEditorBody({
             )}
           </div>
         </div>
+      ) : !canMountEditor ? (
+        <div
+          className="flex items-center justify-center gap-2 py-10 text-[13px]"
+          style={{ color: 'var(--text-light)' }}
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Carregando conteúdo…
+        </div>
       ) : (
         <PostEditor
-          key={`${post.id}-v${editorVersion}`}
+          key={editorKey}
           initialContent={resolvedContent}
           onUpdate={onContentUpdate}
           onUploadInlineImage={

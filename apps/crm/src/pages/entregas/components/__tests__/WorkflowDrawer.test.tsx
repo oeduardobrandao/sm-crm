@@ -136,12 +136,19 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
 
-vi.mock('@/services/inlineImage', () => ({
-  uploadInlineImage: vi.fn(),
-  extractR2Keys: vi.fn(() => []),
-  injectSignedUrls: vi.fn((content: unknown) => content),
-  resolveInlineImageUrls: vi.fn(async () => ({})),
-}));
+// extractR2Keys/injectSignedUrls are pure doc-walking helpers -- use the real
+// implementations so the R2-image-mount-gating test below exercises actual TipTap
+// inlineImage nodes instead of a hand-rolled fake. Only the network call
+// (resolveInlineImageUrls) and the upload call stay mocked.
+vi.mock('@/services/inlineImage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/inlineImage')>();
+  return {
+    uploadInlineImage: vi.fn(),
+    extractR2Keys: actual.extractR2Keys,
+    injectSignedUrls: actual.injectSignedUrls,
+    resolveInlineImageUrls: vi.fn(async () => ({})),
+  };
+});
 
 // Heavy leaf components — stubbed out so only WorkflowDrawer's own logic runs.
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
@@ -217,8 +224,10 @@ import {
   detachPostsKeepingProcess,
   movePostsToNewFlow,
 } from '@/store';
+import { resolveInlineImageUrls } from '@/services/inlineImage';
 
 const mockGetPosts = vi.mocked(getWorkflowPostsWithProperties);
+const mockResolveInlineImageUrls = vi.mocked(resolveInlineImageUrls);
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockGetEditSuggestions = vi.mocked(getPostEditSuggestions);
 const mockAcceptEditSuggestion = vi.mocked(acceptEditSuggestion);
@@ -509,6 +518,81 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
       expect(JSON.parse(editorStub.getAttribute('data-content') ?? 'null')).toEqual(
         acceptedContent,
       );
+    });
+  });
+
+  it('withholds the editor mount until inline R2 image URLs resolve, instead of freezing on unsigned refs', async () => {
+    // Same freeze-at-mount hazard as the test above, one layer down: PostEditorBody's
+    // R2 signed-URL resolution is genuinely async (unlike the plain-content path, which
+    // is now synchronous), so a <PostEditor> mount landing before resolveInlineImageUrls
+    // settles would freeze with the raw, unsigned r2Key and never show the image. This
+    // isn't specific to the accept-suggestion flow -- it's the general "PostEditor never
+    // re-syncs after mount" hazard -- but accepting a suggestion is the easiest way to
+    // force a fresh mount in this test harness.
+    const oldContent = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
+    const acceptedContentWithImage = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [] },
+        { type: 'inlineImage', attrs: { r2Key: 'img-abc', src: null } },
+      ],
+    };
+    const suggestionWithImage = { ...suggestion, suggested_conteudo: acceptedContentWithImage };
+    const oldPost = {
+      id: 1,
+      workflow_id: 10,
+      titulo: 'Post A',
+      conteudo: oldContent,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: 0,
+      status: 'rascunho',
+      responsavel_id: null,
+      scheduled_at: null,
+      ig_caption: null,
+      platform: 'instagram',
+    };
+    const acceptedPost = {
+      ...oldPost,
+      conteudo: acceptedContentWithImage,
+      conteudo_plain: '@Ana confere',
+    };
+
+    mockGetPosts
+      .mockResolvedValueOnce([oldPost] as never)
+      .mockResolvedValue([acceptedPost] as never);
+    mockGetEditSuggestions
+      .mockResolvedValueOnce([suggestionWithImage] as never)
+      .mockResolvedValue([]);
+
+    let resolveSignedUrls!: (urls: Record<string, string>) => void;
+    const signedUrlsPromise = new Promise<Record<string, string>>((resolve) => {
+      resolveSignedUrls = resolve;
+    });
+    mockResolveInlineImageUrls.mockReturnValue(signedUrlsPromise);
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
+    fireEvent.click(acceptButton);
+
+    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+
+    // The diff card clears once posts + suggestions settle, but the signed-URL fetch is
+    // still pending -- the editor must not mount yet with the unsigned content.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Aceitar' })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('post-editor-stub')).not.toBeInTheDocument();
+    expect(screen.getByText('Carregando conteúdo…')).toBeInTheDocument();
+
+    resolveSignedUrls({ 'img-abc': 'https://signed.example/img-abc' });
+
+    await waitFor(() => {
+      const editorStub = screen.getByTestId('post-editor-stub');
+      const content = JSON.parse(editorStub.getAttribute('data-content') ?? 'null');
+      expect(content.content[1].attrs.src).toBe('https://signed.example/img-abc');
     });
   });
 });
