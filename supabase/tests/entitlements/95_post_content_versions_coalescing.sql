@@ -341,3 +341,71 @@ begin
   raise notice 'PASS 95.7 a post born with no content gets no baseline row on its first edit';
 end $$;
 rollback;
+
+-- =====================================================================
+-- 8. A baseline row is attributed to the post's assignee
+--    (responsavel_id -> membros.nome) as a best-effort label -- nothing
+--    records who actually wrote a pre-existing post's original content, so
+--    this is the closest available "who this belongs to" fact
+--    (20260923000006). Unassigned posts keep actor_name null (renders "—"
+--    in the UI), asserted in the second block below.
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint; v_membro bigint;
+  v_baseline post_content_versions;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into membros (user_id, conta_id, nome) values (v_user, v_ws, 'Fulana Responsável') returning id into v_membro;
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain, responsavel_id)
+    values (v_ws, v_cli, 'rascunho', 'assigned post text', v_membro) returning id into v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'edited assigned post text' where id = v_post;
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+
+  assert v_baseline.actor_name = 'Fulana Responsável',
+    format('baseline row must be attributed to the post''s assignee, got %s', v_baseline.actor_name);
+  assert v_baseline.actor_user_id is null,
+    'baseline row must not claim a verified actor_user_id -- the assignee is a best-effort label, not a proven author';
+
+  raise notice 'PASS 95.8 baseline row is attributed to the post''s assignee via membros.nome';
+end $$;
+rollback;
+
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint;
+  v_baseline post_content_versions;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  -- No responsavel_id: unassigned.
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain)
+    values (v_ws, v_cli, 'rascunho', 'unassigned post text') returning id into v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'edited unassigned post text' where id = v_post;
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+
+  assert v_baseline.actor_name is null,
+    format('an unassigned post''s baseline must keep actor_name null (renders "—"), got %s', v_baseline.actor_name);
+
+  raise notice 'PASS 95.9 an unassigned post''s baseline row keeps actor_name null';
+end $$;
+rollback;
