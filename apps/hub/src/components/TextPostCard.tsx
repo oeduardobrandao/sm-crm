@@ -7,7 +7,9 @@ import { sanitizeExternalUrl } from '../lib/security';
 import { getPostStatusLabel, formatDate, PlatformBadge } from './PostCard';
 import { getTipoLabel } from '../lib/postView';
 import { RichTextContent } from './RichTextContent';
-import type { HubPost, PostApproval } from '../types';
+import { CorrectionReasonChips } from './CorrectionReasonChips';
+import { PostHistoryPanel } from './PostHistoryPanel';
+import type { CorrectionReason, HubPost, PostApproval } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
 /** Status label color, independent from PostagensPage's StatusTag map (not guaranteed to share every key). */
@@ -36,6 +38,7 @@ export function TextPostCard({
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const [expanded, setExpanded] = useState(false);
   const [comentario, setComentario] = useState('');
+  const [motivo, setMotivo] = useState<CorrectionReason | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   useUnsavedWork(comentario.trim() !== '' || submitting);
@@ -70,7 +73,11 @@ export function TextPostCard({
     setSubmitting(true);
     setResult(null);
     try {
-      await submitApproval(token, post.id, action, comentario || undefined);
+      if (action === 'correcao') {
+        await submitApproval(token, post.id, action, comentario.trim(), motivo ?? undefined);
+      } else {
+        await submitApproval(token, post.id, action, comentario || undefined);
+      }
       setResult({
         type: 'success',
         message:
@@ -262,6 +269,16 @@ export function TextPostCard({
                     )}
                     className="hub-focus-accent w-full rounded border hub-border px-4 py-3 text-[13px] resize-none min-h-[70px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
                   />
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium hub-tx3">
+                      {t('correctionReason.title', 'Motivo da correção')}
+                    </p>
+                    <CorrectionReasonChips
+                      value={motivo}
+                      onChange={setMotivo}
+                      disabled={submitting || approvalBlocked}
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleAction('aprovado')}
@@ -275,12 +292,12 @@ export function TextPostCard({
                     </button>
                     <button
                       onClick={() => handleAction('correcao')}
-                      disabled={submitting || approvalBlocked || !comentario.trim()}
+                      disabled={submitting || approvalBlocked || !comentario.trim() || !motivo}
                       title={
-                        !comentario.trim()
+                        !comentario.trim() || !motivo
                           ? t(
-                              'shared.correctionCommentRequired',
-                              'Deixe um comentário para solicitar correção',
+                              'correctionReason.required',
+                              'Escolha o motivo e deixe um comentário para solicitar correção',
                             )
                           : undefined
                       }
@@ -301,6 +318,13 @@ export function TextPostCard({
               {result.message}
             </div>
           )}
+
+          <PostHistoryPanel
+            post={post}
+            token={token}
+            approvals={approvals}
+            onCommentSent={onApprovalSubmitted}
+          />
         </div>
       )}
     </div>

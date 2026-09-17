@@ -8,6 +8,7 @@ const submitApprovalMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api', () => ({
   submitApproval: submitApprovalMock,
+  fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
 }));
 
 const mockedSubmitApproval = vi.mocked(submitApproval);
@@ -144,6 +145,53 @@ describe('TextPostCard', () => {
     );
 
     expect(screen.queryByText('Reel de teste')).toBeNull();
+  });
+
+  it('requires a motivo chip before "Solicitar correção" is enabled and sends it', async () => {
+    mockedSubmitApproval.mockResolvedValue({ ok: true } as never);
+    render(
+      <TextPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Texto motivacional segunda-feira'));
+
+    const correctionButton = screen.getByRole('button', { name: /Solicitar correção/i });
+    fireEvent.change(screen.getByPlaceholderText(/Comente aqui/), {
+      target: { value: 'Trocar a data' },
+    });
+    expect(correctionButton).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Data' }));
+    expect(correctionButton).toBeEnabled();
+    fireEvent.click(correctionButton);
+
+    await waitFor(() =>
+      expect(mockedSubmitApproval).toHaveBeenCalledWith(
+        'token-publico',
+        10,
+        'correcao',
+        'Trocar a data',
+        'data',
+      ),
+    );
+  });
+
+  it('renders the history panel toggle when expanded, also in read-only mode', () => {
+    render(
+      <TextPostCard
+        post={makePost({ status: 'postado' })}
+        token="token-publico"
+        approvals={[]}
+        readOnly
+      />,
+    );
+    fireEvent.click(screen.getByText('Texto motivacional segunda-feira'));
+    expect(screen.getByRole('button', { name: /Histórico e comentários/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Aprovar/i })).not.toBeInTheDocument();
   });
 });
 
