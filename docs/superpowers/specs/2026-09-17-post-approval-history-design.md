@@ -1,6 +1,6 @@
 # Histórico de aprovação e comentários por post (Hub)
 
-**Data:** 2026-09-17 (revisado dez vezes após review externa)
+**Data:** 2026-09-17 (revisado onze vezes após review externa)
 **Status:** Design proposto, aguardando aprovação
 **Origem:** Feedback direto de Anna Lourenço (CLD Advogados), repassado via Hanna
 
@@ -87,6 +87,17 @@
 > trigger que falhou). Corrigido, e depois simplificado (sem coluna nova —
 > ver seção 1): a aba Comentários mostra só mensagens do cliente nesta
 > entrega, e conteúdo do cliente nunca é filtrado pelo piso temporal.
+>
+> **Nota de revisão (11ª rodada):** uma décima primeira review (Codex) achou
+> dois pontos: (a) `hub-approve` não confere `post.status` na ação `mensagem`
+> hoje (só `aprovado`/`correcao` conferem), então dava pra comentar num
+> rascunho interno que o cliente nem deveria saber que existe — corrigido
+> exigindo `VISIBLE_STATUSES` também para `mensagem`; e (b) a notificação
+> owner/admin que `hub-approve` já dispara pra toda ação
+> (`create_post_approval_notification`) continuaria disparando para cada
+> comentário novo, o que parecia conflitar com "notificação cortada desta
+> entrega" — esclarecido na seção 4: o corte é só do indicador novo, a
+> notificação existente não muda.
 
 ## Contexto
 
@@ -114,7 +125,7 @@ duplicado nos três arquivos). O feedback da Anna é preciso.
 
 - **UI de histórico/comentário nos três cards reais.** Isso é trabalho novo de verdade, não uma reorganização de algo que já roda. Recomendação de implementação: extrair um componente compartilhado (ex. `PostHistoryPanel`) usado pelos três, em vez de implementar a mesma coisa três vezes — hoje já há sinal de duplicação (o aviso de "comentário obrigatório na correção" está copiado nos três arquivos).
 - Duas abas dentro desse painel: **Histórico** (linhas `aprovado`/`correcao`, mais transições de status sem `post_approval_id`) e **Comentários** (linhas `mensagem`) — a query já traz os dois tipos de `post_approvals`, é só uma questão de agrupar na apresentação.
-- A aba **Comentários** inclui uma caixa de composição nova (nenhum dos três cards reais tem uma hoje — só a caixa existente no `PostCard.tsx` morto). Precisa definir: em quais status é permitido comentar (provavelmente qualquer um visível ao cliente, não só enquanto pendente), e validação server-side em `hub-approve` para a ação `mensagem` — hoje ela aceita `comentario` nulo/vazio sem rejeitar; a nova aba de comentários precisa de um mínimo de conteúdo (trim + não-vazio) pra não poluir o histórico e o indicador de não lido com eventos vazios.
+- A aba **Comentários** inclui uma caixa de composição nova (nenhum dos três cards reais tem uma hoje — só a caixa existente no `PostCard.tsx` morto). Validação server-side em `hub-approve` para a ação `mensagem`, hoje ausente: (a) `comentario` mínimo depois de `trim()` (não vazio), pra não poluir o histórico com eventos em branco; (b) **`post.status` restrito a `VISIBLE_STATUSES`, verificado antes do insert** — hoje a ação `mensagem` não confere status nenhum (só `aprovado`/`correcao` conferem `post.status IN ('enviado_cliente', 'correcao_cliente')`), então um portador de token válido pode comentar num post ainda em `rascunho`/`revisao_interna` — um rascunho interno que o cliente nem deveria saber que existe. Como as linhas do cliente nunca são filtradas pelo piso temporal (ver abaixo), esse comentário ficaria permanentemente visível assim que o post fosse enviado, com timestamp anterior ao envio. A checagem de status fecha essa lacuna, no mesmo padrão já usado para `aprovado`/`correcao`.
 - Diff de conteúdo por versão (novo).
 - Filtro de status (novo).
 - KPIs (novo, com uma definição de ciclo própria — ver seção 3).
@@ -174,6 +185,7 @@ duplicado nos três arquivos). O feedback da Anna é preciso.
 ### 4. Indicador de comentário não lido — cortado desta entrega
 
 - Movido para fora de escopo (era, nas versões anteriores deste documento, tratado como incluído). O motivo: o Hub não tem usuário autenticado individual — o acesso é por token, e o token pode rotacionar — enquanto o CRM tem usuários individuais. Isso muda o schema (chave do "leitor" é o quê: o token? o `cliente_id`? um usuário específico do CRM?) e o que conta como "lido" (abrir o card? abrir a aba Comentários especificamente?) de um jeito que não dá pra decidir de raspão dentro desta entrega. Fica como feature própria, com seu próprio design, depois que a timeline/comentários estiverem no ar.
+- **Isso não inclui a notificação já existente.** `hub-approve` já chama `create_post_approval_notification` para toda ação, inclusive `mensagem`, e essa RPC já notifica owner/admin (papéis internos) quando o cliente manda qualquer coisa pelo Hub — isso é anterior a esta feature e continua exatamente como está, sem mudança. "Cortado desta entrega" aqui é só o indicador novo (badge de não lido, cliente↔equipe); não é uma instrução pra suprimir essa notificação existente. Se a Hanna achar que um comentário casual ("ficou ótimo!") não deveria gerar a mesma notificação que uma correção, isso é uma decisão de produto separada — não o padrão desta entrega, e não algo a implementar sem pedido explícito.
 
 ## Fora de escopo (explicitamente)
 
