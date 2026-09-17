@@ -4,7 +4,7 @@
 
 **Goal:** Bind the CRM's Crisp support widget to a backend-issued, per-user random token (`window.CRISP_TOKEN_ID`) so the same support conversation follows an agency user across browsers, devices and cookie clears.
 
-**Architecture:** A new service-role-only table `crisp_sessions` mints one `uuid` token per user. The existing `crisp-identity` edge function (which already verifies the caller's JWT and HMAC-signs their email) additionally get-or-creates that row and returns `{ signature, crispToken? }`, with `crispToken` best-effort. `AuthContext.tsx`'s already-`userId`-gated Crisp-identify effect reconciles the returned token against a `{ userId, token }` pair cached in `localStorage`: on a mismatch it sets `window.CRISP_TOKEN_ID`, pushes `session:reset`, re-establishes `user:email` and `user:nickname` on the fresh session, and writes the cache; on a match it does nothing; when the token is absent it does nothing continuity-related. Sign-out and user-change null `CRISP_TOKEN_ID` and clear the cache. `index.html` is not touched.
+**Architecture:** A new service-role-only table `crisp_sessions` mints one `uuid` token per user. The existing `crisp-identity` edge function (which already verifies the caller's JWT and HMAC-signs their email) additionally get-or-creates that row and returns `{ signature, crispToken? }`, with `crispToken` best-effort. `AuthContext.tsx`'s already-`userId`-gated Crisp-identify effect reconciles the returned token against a `{ userId, token }` pair cached in `localStorage`: on a mismatch it sets `window.CRISP_TOKEN_ID`, pushes `session:reset`, re-establishes `user:email` and `user:nickname` on the fresh session, and writes the cache; on a match it does nothing; when the token is absent it does nothing continuity-related. Sign-out and user-change null `CRISP_TOKEN_ID` and clear the cache — sign-out does this, and pushes `session:reset` itself, entirely before its `await`, so a rejected/hung sign-out can't leave a stale binding live. `LoginPage` also hides the widget on mount (mirroring `AppLayout`), since it is not wrapped by `AppLayout` and Crisp's own cookie persistence means a binding can survive there independent of Supabase auth state. `index.html` is not touched.
 
 **Tech Stack:** Postgres (migration + psql entitlement suite), Deno edge function (`supabase/functions/crisp-identity`), React 19 context (`apps/crm/src/context/AuthContext.tsx`), Vitest + Testing Library (jsdom), `deno test`.
 
@@ -29,13 +29,14 @@ Spec of record: `docs/superpowers/specs/2026-09-17-crisp-session-continuity-desi
   CREATE POLICY crisp_sessions_service_role ON crisp_sessions
     FOR ALL TO service_role USING (true) WITH CHECK (true);
   ```
-- **Migration filename:** `supabase/migrations/20260923000010_crisp_sessions.sql`. `origin/main`'s tail at plan time is `20260923000009_instagram_carousel_children.sql`. Re-check with `git ls-tree --name-only origin/main supabase/migrations/ | sort | tail -3` immediately before `gh pr create` and renumber above the tail if it moved (`migration-version-guard` fails CI on a duplicate prefix; a duplicate is silently skipped by Supabase's `schema_migrations`).
+- **Migration filename:** `supabase/migrations/20260925000010_crisp_sessions.sql`. `origin/main`'s tail as of this revision is `20260925000001_lockdown_definer_function_grants.sql` (the plan's first draft used a stale tail — `main` had moved six migrations past what the plan-writing pass saw). This number is a planning-time placeholder, not a reservation: re-check with `git ls-tree --name-only origin/main supabase/migrations/ | sort | tail -3` immediately before Task 1's `db push` (staging) AND again immediately before `gh pr create`, and renumber above whatever the tail is at that moment if it moved — do not trust either the plan's or the spec's stated number. `migration-version-guard` fails CI on a duplicate prefix, and a duplicate silently loses its second file to Supabase's `schema_migrations` (only the first applies), so renumbering a local file *after* staging has already recorded the old version under a different name is not a safe fix on its own — it leaves `schema_migrations` and the local migration directory disagreeing about what the applied file is called. If the tail moved between the staging push and PR time, treat it as a full stop: confirm what staging actually recorded (`select version from supabase_migrations.schema_migrations order by version desc limit 5` via `db query --linked`) before deciding whether to renumber or to leave the already-applied version as-is and only rename going forward.
 - **Entitlement suite number:** `96`. `supabase/tests/entitlements/` currently tops out at `95_post_content_versions_coalescing.sql` (the spec's "runs up to 95" is accurate).
 - **The upsert** must be `.upsert({ user_id }, { onConflict: 'user_id' })` with `ignoreDuplicates` left at its default (`false`), never `true` (`true` compiles to `ON CONFLICT DO NOTHING`, which returns no row on the conflicting call).
 - **`crisp-identity` response:** `{ signature, crispToken? }`. `crispToken` is best-effort and simply absent on any failure (network, timeout, the upsert itself). Identity verification must never become collateral damage of the new table.
 - **Reconciliation placement:** entirely inside the identify effect, AFTER the existing `if (!active || crispResetGeneration.current !== initialCrispResetGeneration) return;` guard.
 - **Three branches, verbatim:** token absent: do nothing continuity-related (not a mismatch, not a clear; "fail closed" was explicitly rejected). Token matches the cached `{ userId, token }` for this exact user: no-op. Otherwise: live rebind, in this order: (a) `window.CRISP_TOKEN_ID = crispToken`, (b) `$crisp.push(['do','session:reset'])`, (c) re-push `user:email` (with the signature) and, if `profile?.nome` is already known, `user:nickname`, in that order, (d) write `{ userId, token: crispToken }` to the cache.
-- **Sign-out:** `window.CRISP_TOKEN_ID = null` and the cache clear execute synchronously immediately after `crispResetGeneration.current += 1`, BEFORE `await supabaseSignOut()`. The `session:reset` push stays after the await. The `userChanged` branch of `onAuthStateChange` clears immediately before its own `session:reset` push (it has no `await`).
+- **Sign-out:** the ENTIRE teardown — `window.CRISP_TOKEN_ID = null`, the cache clear, AND the `session:reset` push itself — executes synchronously immediately after `crispResetGeneration.current += 1`, BEFORE `await supabaseSignOut()`. Nothing Crisp-related is left after the await; a push left there would survive a rejected/hung sign-out and leave Crisp's own cookie-persisted session bound to the outgoing identity indefinitely. The `userChanged` branch of `onAuthStateChange` clears immediately before its own `session:reset` push, unchanged (it has no `await`, so no reordering is needed there).
+- **`/login` hides the widget on mount**, mirroring `AppLayout.tsx:161-163`'s `chat:hide` exactly. `/login` is a standalone route, not nested under `<AppLayout />`, so that effect never runs there; Crisp's cookie persists a binding independent of Supabase auth state, so without this a stale bound session is visible and interactive to whoever loads `/login` next on a shared machine.
 - **`crispResetGeneration` is NOT bumped by the rebind's `session:reset`.** Its comment must name the rebind as a third push site and say why it is excluded.
 - Every `window.$crisp?.push(...)` and every `localStorage` access is individually wrapped in `try/catch`. A support-tooling failure must never break auth.
 - `CRISP_TOKEN_ID?: string | null` is added to exactly ONE existing `declare global { interface Window { ... } }` block (this plan uses `TopBarActions.tsx`). `MobileNav.tsx` and `AuthContext.tsx` get no declaration.
@@ -55,7 +56,7 @@ Spec of record: `docs/superpowers/specs/2026-09-17-crisp-session-continuity-desi
 
 | File | Responsibility |
 |---|---|
-| `supabase/migrations/20260923000010_crisp_sessions.sql` (create) | The table, RLS, named-role grants, service-role policy |
+| `supabase/migrations/20260925000010_crisp_sessions.sql` (create) | The table, RLS, named-role grants, service-role policy |
 | `supabase/tests/entitlements/96_crisp_sessions.sql` (create) | Real `service_role` get-or-create positive + `authenticated`/`anon` negatives |
 | `supabase/functions/crisp-identity/session.ts` (create) | Pure, injectable `getOrCreateCrispToken(db, userId)` |
 | `supabase/functions/__tests__/crisp-identity_test.ts` (modify) | Fake-db tests for `session.ts` |
@@ -65,13 +66,15 @@ Spec of record: `docs/superpowers/specs/2026-09-17-crisp-session-continuity-desi
 | `apps/crm/src/lib/__tests__/crispSession.test.ts` (create) | Cache helper unit tests |
 | `apps/crm/src/context/AuthContext.tsx` (modify) | Reconciliation in the identify effect, teardown in `signOut` and `userChanged`, ref comment |
 | `apps/crm/src/context/__tests__/AuthContext.test.tsx` (modify) | New cases in the existing `AuthProvider Crisp identification` block |
+| `apps/crm/src/pages/login/LoginPage.tsx` (modify) | Hide the widget on mount — `/login` isn't wrapped by `AppLayout`, so nothing else hides it |
+| `apps/crm/src/pages/login/__tests__/LoginPage.test.tsx` (modify) | New `Crisp widget visibility` case |
 
 ---
 
 ### Task 1: `crisp_sessions` migration and entitlement suite
 
 **Files:**
-- Create: `supabase/migrations/20260923000010_crisp_sessions.sql`
+- Create: `supabase/migrations/20260925000010_crisp_sessions.sql`
 - Create: `supabase/tests/entitlements/96_crisp_sessions.sql`
 - Reference: `supabase/migrations/20260908000001_admin_mcp_oauth_grants.sql` (shape to follow), `supabase/tests/entitlements/_helpers.sql` (`et_grant_hosted_parity(p_exclude)`)
 
@@ -87,7 +90,7 @@ Create `supabase/tests/entitlements/96_crisp_sessions.sql`:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- crisp_sessions (migration 20260923000010): the per-user Crisp Session
+-- crisp_sessions (migration 20260925000010): the per-user Crisp Session
 -- Continuity token behind window.CRISP_TOKEN_ID. Only crisp-identity's
 -- service-role client ever touches it.
 --
@@ -194,7 +197,7 @@ If Docker/colima is unavailable on this machine, the CI job `entitlement-tests` 
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/20260923000010_crisp_sessions.sql`:
+Create `supabase/migrations/20260925000010_crisp_sessions.sql`:
 
 ```sql
 -- crisp_sessions (spec docs/superpowers/specs/2026-09-17-crisp-session-continuity-design.md).
@@ -245,7 +248,7 @@ Expected: `PASS supabase/tests/entitlements/96_crisp_sessions.sql` in the list a
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260923000010_crisp_sessions.sql supabase/tests/entitlements/96_crisp_sessions.sql
+git add supabase/migrations/20260925000010_crisp_sessions.sql supabase/tests/entitlements/96_crisp_sessions.sql
 git commit -m "feat(crisp): add crisp_sessions table for Session Continuity tokens
 
 Service-role-only table, one gen_random_uuid() token per user. Entitlement
@@ -1162,15 +1165,19 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 6: Teardown on sign-out and user change, and the `crispResetGeneration` comment
+### Task 6: Teardown on sign-out and user change, the `crispResetGeneration` comment, and hiding the widget on `/login`
 
 **Files:**
-- Modify: `apps/crm/src/context/AuthContext.tsx` (imports line from Task 5; the `crispResetGeneration` doc comment at lines 188-204; the `userChanged` branch at lines 264-278; `signOut` at lines 881-890)
+- Modify: `apps/crm/src/context/AuthContext.tsx` (imports line from Task 5; the `crispResetGeneration` doc comment at lines 188-204; the `userChanged` branch at lines 264-278; `signOut` at lines 881-903)
 - Modify: `apps/crm/src/context/__tests__/AuthContext.test.tsx` (two cases appended to the `AuthProvider Crisp identification` block)
+- Modify: `apps/crm/src/pages/login/LoginPage.tsx` (one new mount effect)
+- Modify: `apps/crm/src/pages/login/__tests__/LoginPage.test.tsx` (one new case)
 
 **Interfaces:**
 - Consumes: `clearCrispSessionCache` (Task 4); `window.CRISP_TOKEN_ID` (Task 4); `readCache()` and `OWNER_PROFILE` test helpers (Task 5).
-- Produces: nothing new for later tasks; Task 7 verifies the sign-out behaviour in a real browser.
+- Produces: nothing new for later tasks; Task 7 verifies the sign-out and `/login` behaviour in a real browser.
+
+This task closes two separate but related exposure windows. The first three steps are the sign-out/user-change teardown from the original plan. Steps 5-7 below are a small, independently-motivated addition: an external review of the spec pointed out that a *pre-existing* gap (not introduced by this feature) becomes materially worse once identity is cross-device-continuous. Today, if a user's Supabase session simply lapses while their browser tab is closed (no explicit sign-out event ever fires — nothing here is a *transition* for `onAuthStateChange` to detect), Crisp's own cookie keeps that browser's session bound and Verified indefinitely, because nothing ever told it to reset. `/login` is a standalone route (`App.tsx`, `<Route path="/login" ...>`, not nested under `<AppLayout />`), so `AppLayout`'s `chat:hide`-on-mount never runs there — visiting `/login` on that same, now-idle browser shows the widget fully interactive and unhidden. Before this feature, that exposed an anonymous-looking but Verified session; after it, the same gap exposes a conversation that also follows the user across every device they've ever used. Mirroring `AppLayout`'s own `chat:hide` pattern onto `LoginPage`'s mount closes the visible exposure (nothing to see, regardless of what's bound underneath) for the cost of one line. This does not fully solve the deeper "nothing resets on silent expiry" gap — `/login` never offers a chat affordance today, so there is nothing to reset *to* — and that deeper gap is called out explicitly as an out-of-scope, pre-existing limitation in this task's commit message rather than silently left undocumented.
 
 - [ ] **Step 1: Write the failing teardown tests**
 
@@ -1200,23 +1207,33 @@ Append inside the `describe('AuthProvider Crisp identification', ...)` block, af
     // (everything before its first `await`) without draining microtasks --
     // the same technique the in-flight-signing race test above uses. The
     // mocked supabaseSignOut() has therefore NOT resolved yet at the
-    // assertions below, which is what proves the clear happens before the
-    // await rather than after it. If that await ever rejected or hung, a
-    // clear placed after it would silently leave the next person on this
-    // machine bound to this user's token across reloads.
+    // assertions below, which is what proves the whole teardown -- the local
+    // clears AND the reset push itself -- happens before the await rather
+    // than after it. If that await ever rejected or hung, anything placed
+    // after it would silently leave the next person on this machine bound to
+    // this user's token, across reloads, not just one render.
     act(() => {
       screen.getByText('sair').click();
     });
     expect(window.CRISP_TOKEN_ID).toBeNull();
     expect(readCache()).toBeNull();
-    // The reset push lives AFTER the await and must not have fired yet:
-    // this is what shows the assertions above ran inside the pre-await window.
-    expect(crispPush).not.toHaveBeenCalledWith(['do', 'session:reset']);
+    // The reset push now lives in this SAME synchronous prefix, precisely so
+    // a hung/rejected supabaseSignOut() can't leave it unpushed -- unlike the
+    // local clears alone, Crisp's own cookie-persisted binding is the thing
+    // an unpushed reset would leave exposed.
+    expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+    const resetCallCountBeforeAwait = crispPush.mock.calls.filter(
+      ([call]) => JSON.stringify(call) === JSON.stringify(['do', 'session:reset']),
+    ).length;
+    expect(resetCallCountBeforeAwait).toBe(1);
 
     await act(async () => {});
-    await waitFor(() => {
-      expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
-    });
+    // Only ever pushed once per sign-out -- there is no second, post-await
+    // reset to wait for now that both live in the pre-await block above.
+    const resetCallCountAfterAwait = crispPush.mock.calls.filter(
+      ([call]) => JSON.stringify(call) === JSON.stringify(['do', 'session:reset']),
+    ).length;
+    expect(resetCallCountAfterAwait).toBe(1);
   });
 
   it('drops the binding on an in-place user change (A -> B) before B is identified', async () => {
@@ -1306,31 +1323,69 @@ with:
         }
 ```
 
-(c) In `signOut`, replace (currently lines 888-890):
+(c) In `signOut`, replace the whole span from the `crispResetGeneration` bump through the post-await Crisp reset (currently lines 883-901 — the comment above the bump, the bump itself, the `await`, `resetAnalytics()`, the Crisp-reset comment+push, down to just before `clearProfileCache()`):
 
 ```ts
+    // Paired with the `['do', 'session:reset']` push below, but bumped HERE,
+    // before the first await: an in-flight crisp-identity response for the
+    // outgoing user can resolve during `await supabaseSignOut()`, so the
+    // counter has to have moved already for the identify effect's post-await
+    // guard to see it. Same reasoning as authGeneration on the line above.
     crispResetGeneration.current += 1;
     profileRequestId.current += 1;
     await supabaseSignOut();
+    // Prevent the next user on a shared machine from being merged into this identity.
+    resetAnalytics();
+    // Same shared-machine reasoning as resetAnalytics() above, but for Crisp:
+    // without this, the next person on this browser inherits the outgoing
+    // user's identified Crisp contact (their email/nickname) and their
+    // support messages land on it. Guarded because a support-tooling failure
+    // must never break sign-out, a security-relevant path.
+    try {
+      window.$crisp?.push(['do', 'session:reset']);
+    } catch {
+      // Never let a support-tooling nicety break auth.
+    }
 ```
 
 with:
 
 ```ts
+    // Paired with the `['do', 'session:reset']` push a few lines below, but
+    // bumped HERE, before the first await: an in-flight crisp-identity
+    // response for the outgoing user can resolve during `await
+    // supabaseSignOut()`, so the counter has to have moved already for the
+    // identify effect's post-await guard to see it. Same reasoning as
+    // authGeneration on the line above.
     crispResetGeneration.current += 1;
-    // Session Continuity teardown, synchronously and BEFORE the await below.
-    // If `supabaseSignOut()` rejects or hangs, nothing after it ever runs, so
-    // a clear placed next to the session:reset push would silently survive a
-    // failed sign-out and the NEXT person on a shared machine would load
-    // bound to this user's token, across reloads, not just one render.
-    // Costs nothing to do early. The session:reset push itself stays after
-    // the await, matching the best-effort placement of every other Crisp
-    // push in this file.
+    // Session Continuity teardown, synchronously and BEFORE the await below
+    // -- including the reset push ITSELF, not just the local clears (an
+    // earlier revision of this code left the push after the await, matching
+    // this file's older, pre-existing placement for the identity-verification
+    // reset -- an external review caught that this doesn't go far enough: if
+    // `supabaseSignOut()` rejects or hangs, nothing after it ever runs, so a
+    // push placed there would leave Crisp's own cookie-persisted session
+    // bound to the outgoing user's token AND identified email indefinitely,
+    // and the next person on a shared machine would see it, unhidden, on
+    // /login). Moving the push earlier costs nothing: worst case on a
+    // signOut() failure is an unnecessary reset while still logged in, which
+    // self-heals the next time this effect re-runs. Guarded because a
+    // support-tooling failure must never break sign-out, a security-relevant
+    // path.
     window.CRISP_TOKEN_ID = null;
     clearCrispSessionCache();
+    try {
+      window.$crisp?.push(['do', 'session:reset']);
+    } catch {
+      // Never let a support-tooling nicety break auth.
+    }
     profileRequestId.current += 1;
     await supabaseSignOut();
+    // Prevent the next user on a shared machine from being merged into this identity.
+    resetAnalytics();
 ```
+
+This also strengthens the pre-existing (not-new-to-this-feature) identity-verification reset in the same way, for free: there was only ever one `session:reset` push in `signOut()`, shared by both features, so moving it fixes the same class of gap for the email/nickname identity too, not just the token.
 
 (d) Replace the first paragraph of the `crispResetGeneration` doc comment (currently lines 188-191):
 
@@ -1379,11 +1434,105 @@ Expected: every case passes, including the pre-existing `resets the Crisp sessio
 git add apps/crm/src/context/AuthContext.tsx apps/crm/src/context/__tests__/AuthContext.test.tsx
 git commit -m "feat(crm): drop the Crisp token binding on sign-out and user change
 
-signOut nulls CRISP_TOKEN_ID and clears the cache before its await so a
-rejected or hung supabaseSignOut() can never leave the next person on a
-shared machine bound to the outgoing user's token. The userChanged branch
-clears next to its own reset push. crispResetGeneration's comment now names
-the rebind as the third reset site and why it is excluded.
+signOut moves the ENTIRE Crisp teardown -- CRISP_TOKEN_ID = null, the cache
+clear, and the session:reset push itself -- before its await, not just the
+local clears. A push left after the await would survive a rejected or hung
+supabaseSignOut() and leave Crisp's own cookie-persisted session bound to
+the outgoing user's token AND identified email indefinitely; the next
+person on a shared machine would see it, unhidden, wherever the widget
+isn't otherwise hidden. This also strengthens the pre-existing
+identity-verification reset for free, since both features shared the one
+push site. The userChanged branch clears next to its own reset push (no
+await in that branch, so no reordering needed there). crispResetGeneration's
+comment now names the rebind as a third reset site and why it is excluded.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+- [ ] **Step 6: Write the failing `LoginPage` hide test**
+
+Add to `apps/crm/src/pages/login/__tests__/LoginPage.test.tsx`, near the other top-level `describe`/`it` blocks (after the existing imports and mock setup shown near the top of the file — reuse `renderLoginPage` and the existing `vi.mock('@/context/AuthContext', ...)` already in this file):
+
+```ts
+describe('Crisp widget visibility', () => {
+  let crispPush: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    window.$crisp = [];
+    crispPush = vi.spyOn(window.$crisp, 'push');
+  });
+
+  afterEach(() => {
+    crispPush.mockRestore();
+  });
+
+  it('hides the Crisp widget on mount, the same way AppLayout does for authenticated routes', () => {
+    // /login is a standalone route, never nested under AppLayout, so
+    // AppLayout's own chat:hide-on-mount never runs here. Without this,
+    // a Crisp session left bound from a PRIOR visit on this browser (its
+    // own cookie persists it independent of Supabase auth state -- see
+    // the design spec's Verification section) would show fully
+    // interactive and unhidden to whoever loads /login next.
+    renderLoginPage();
+    expect(crispPush).toHaveBeenCalledWith(['do', 'chat:hide']);
+  });
+});
+```
+
+- [ ] **Step 7: Run the file to verify the new case fails**
+
+```bash
+npx vitest run apps/crm/src/pages/login/__tests__/LoginPage.test.tsx
+```
+
+Expected: FAILS — `crispPush` was never called with `['do', 'chat:hide']`. Every other case in this file still passes.
+
+- [ ] **Step 8: Implement the hide-on-mount effect**
+
+In `apps/crm/src/pages/login/LoginPage.tsx`, add a new effect near the existing `authRedirected` effect (after its closing `}, [...]);` around line 66) — no new imports needed, `useEffect` is already imported at line 1:
+
+```ts
+  // /login is not nested under AppLayout (see App.tsx's route tree), so
+  // AppLayout's own chat:hide-on-mount effect never runs here. A Crisp
+  // session bound on a PRIOR visit persists via Crisp's own cookie,
+  // independent of Supabase auth state, so without this a shared machine
+  // could show a previous user's identified conversation, unhidden, to
+  // whoever loads this page next. Unconditional and un-gated on `user`/
+  // `authLoading`: the exposure this closes exists precisely BEFORE auth
+  // resolves, so it cannot wait for either.
+  useEffect(() => {
+    window.$crisp?.push(['do', 'chat:hide']);
+  }, []);
+```
+
+- [ ] **Step 9: Run the file, the CRM typecheck, lint and format, then commit**
+
+```bash
+npx vitest run apps/crm/src/pages/login/__tests__/LoginPage.test.tsx
+npx tsc -p apps/crm/tsconfig.json --noEmit
+npm run lint
+npm run format:check
+```
+
+Expected: every case in the file passes; `tsc` exits 0; lint clean; `format:check` clean.
+
+```bash
+git add apps/crm/src/pages/login/LoginPage.tsx apps/crm/src/pages/login/__tests__/LoginPage.test.tsx
+git commit -m "fix(crm): hide the Crisp widget on /login, matching AppLayout
+
+/login is a standalone route, never wrapped by AppLayout, so its own
+chat:hide-on-mount effect never ran there. Crisp persists a bound session
+across reloads via its own cookie regardless of Supabase auth state, so a
+session left Verified/bound from a prior visit on a shared machine was
+fully visible and interactive to the next person who loaded /login --
+before this feature that exposed an anonymous-looking but Verified
+session, and after it the same gap exposes a conversation that also
+follows the user across every device they've used. This closes the
+visible exposure; it does not solve the deeper, pre-existing gap where
+nothing resets Crisp's binding when a Supabase session merely lapses
+without an explicit sign-out event -- /login has no chat affordance to
+reset TO today, so there is nothing more to do here. Worth a follow-up
+if that ever changes.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
@@ -1429,12 +1578,12 @@ npx supabase db push --linked
 npx supabase functions deploy crisp-identity --project-ref wlyzhyfondykzpsiqsce --no-verify-jwt --use-api
 ```
 
-Expected: `db push` lists and applies `20260923000010_crisp_sessions.sql`; the deploy prints `Deployed Functions on project wlyzhyfondykzpsiqsce: crisp-identity`. Neither command asks for the database password: `link` reads the CLI token from the macOS keychain (`< /dev/null` suppresses its prompt) and `db push --linked` connects through the Management API's login role.
+Expected: `db push` lists and applies `20260925000010_crisp_sessions.sql`; the deploy prints `Deployed Functions on project wlyzhyfondykzpsiqsce: crisp-identity`. Neither command asks for the database password: `link` reads the CLI token from the macOS keychain (`< /dev/null` suppresses its prompt) and `db push --linked` connects through the Management API's login role.
 
 Two known ways `db push` fails on staging, and what to do (both documented in the `reference-staging-ops-management-api` memory note, dated 2026-09-04):
 
 - `Failed to create login role: Connection terminated due to connection timeout`: the staging database is unhealthy even though the project status says ACTIVE_HEALTHY. Confirm with `GET https://api.supabase.com/v1/projects/wlyzhyfondykzpsiqsce/health?services=db,rest,auth` and restart with `POST https://api.supabase.com/v1/projects/wlyzhyfondykzpsiqsce/restart` (bearer token: `security find-generic-password -s "Supabase CLI" -a supabase -w > /tmp/crisp-smoke/mgmt.txt`, then `curl -H @/tmp/crisp-smoke/mgmt-header.txt` with `Authorization: Bearer <token>` in that file; never the token on the command line). It takes about 10 minutes to come back; retry `db push` afterwards.
-- `LegacyDbPushMissingLocalError` (staging carries migration versions this repo does not have): apply the migration out of band and record it by hand. Write `/tmp/crisp-smoke/apply.sql` as the full contents of `supabase/migrations/20260923000010_crisp_sessions.sql` followed by `insert into supabase_migrations.schema_migrations (version, name) values ('20260923000010', 'crisp_sessions') on conflict do nothing; select version from supabase_migrations.schema_migrations where version = '20260923000010';`, run `npx supabase db query --linked --file /tmp/crisp-smoke/apply.sql` (only the last statement's rows print; expect one row), and continue with the function deploy.
+- `LegacyDbPushMissingLocalError` (staging carries migration versions this repo does not have): apply the migration out of band and record it by hand. Write `/tmp/crisp-smoke/apply.sql` as the full contents of `supabase/migrations/20260925000010_crisp_sessions.sql` followed by `insert into supabase_migrations.schema_migrations (version, name) values ('20260925000010', 'crisp_sessions') on conflict do nothing; select version from supabase_migrations.schema_migrations where version = '20260925000010';`, run `npx supabase db query --linked --file /tmp/crisp-smoke/apply.sql` (only the last statement's rows print; expect one row), and continue with the function deploy.
 
 If `db push` stalls at a `Enter your database password:` prompt instead (the login role path silently unavailable), do NOT type a password; abort with Ctrl-C and use the out-of-band `db query` path above, which needs none.
 
@@ -1527,6 +1676,7 @@ Use a real browser with DevTools. All commands go in the console.
    - `window.CRISP_TOKEN_ID` prints `null`.
    - `localStorage.getItem('crisp_session_v1')` prints `null`.
    - `$crisp.get('session:identifier')` is NOT S1 (fresh anonymous session).
+   - `$crisp.is('chat:visible')` is `false` — Task 6's `LoginPage` mount effect hiding it, independent of the sign-out teardown above (reload `/login` directly, with no sign-out involved, and re-check the same thing to confirm it's not an artifact of the just-completed sign-out).
 
 - [ ] **Step 6: Open the PR**
 
@@ -1537,14 +1687,18 @@ git fetch origin main
 git ls-tree --name-only origin/main supabase/migrations/ | sort | tail -3
 ```
 
-Expected: the tail is still `20260923000009_instagram_carousel_children.sql`. If a newer prefix appeared, `git mv` the migration to the next free prefix, update the reference in `supabase/tests/entitlements/96_crisp_sessions.sql`'s header comment, commit, and (because staging already applied the old version name) re-run `npx supabase db push --linked` against staging after the rename so `schema_migrations` there matches.
+What this check is actually for: `migration-version-guard` only fails on a **duplicate** prefix — Supabase applies any local migration file not yet recorded in the remote `schema_migrations` table regardless of whether its prefix numerically precedes some other already-applied migration, so a chosen prefix that is merely "behind" a newer one that landed on `main` in the meantime is NOT itself a problem and does not require renaming. Only an actual **collision** — another migration on `main` claiming the exact same `20260925000010` prefix — does.
+
+If (and only if) that exact collision happened: renaming the local file and re-running `db push --linked` against staging does **not** cleanly repair the mismatch Codex's review of this plan correctly flagged — staging already recorded the OLD version string in `schema_migrations` before the rename, and re-pushing the renamed file adds a *second*, differently-named row for what is materially the same table (harmless in effect, since the DDL is `CREATE TABLE IF NOT EXISTS` / `DROP POLICY IF EXISTS`, so the second application no-ops rather than erroring — but it leaves an orphaned, untidy ledger entry on staging permanently). That is an acceptable cost specifically because staging in this repo is treated as disposable/re-syncable, and it is not something to paper over — say so in the PR description if it happens, don't silently rename and move on. What is NOT acceptable is carrying the same inconsistency into production: prod has not been touched yet at this step (Task 7 Step 7 does that, after PR approval), so re-run this exact same collision check immediately before Step 7's `db push --linked` against prod, using whatever the final, renamed-if-necessary local filename is by then — prod must only ever see one correctly-named application, never the collision-triggering name.
 
 ```bash
 git push -u origin claude/crisp-session-continuity-5f7915
 gh pr create --base main --title "Crisp Session Continuity: bind the support widget to a per-user token" --body-file - <<'EOF'
 ## What
 
-Adds Crisp **Session Continuity** to the CRM: `crisp-identity` now get-or-creates a per-user random token in a new service-role-only `crisp_sessions` table and returns it as `crispToken` (best-effort, alongside the existing signature). `AuthContext.tsx`'s already-`userId`-gated identify effect reconciles it against a `{ userId, token }` pair cached in `localStorage`: mismatch = live rebind (`CRISP_TOKEN_ID`, `session:reset`, re-push email + nickname, cache); match = no-op; absent = nothing continuity-related. Sign-out and user change null `CRISP_TOKEN_ID` and clear the cache before any await. `index.html` is untouched.
+Adds Crisp **Session Continuity** to the CRM: `crisp-identity` now get-or-creates a per-user random token in a new service-role-only `crisp_sessions` table and returns it as `crispToken` (best-effort, alongside the existing signature). `AuthContext.tsx`'s already-`userId`-gated identify effect reconciles it against a `{ userId, token }` pair cached in `localStorage`: mismatch = live rebind (`CRISP_TOKEN_ID`, `session:reset`, re-push email + nickname, cache); match = no-op; absent = nothing continuity-related. Sign-out and user change null `CRISP_TOKEN_ID`, clear the cache, AND push `session:reset` itself, all before any await, so a rejected/hung sign-out can't leave a stale binding live. `LoginPage` also hides the widget on mount, mirroring `AppLayout` — it's a standalone route `AppLayout` never wraps, and Crisp's own cookie persists a binding there independent of Supabase auth state. `index.html` is untouched.
+
+Two rounds of external review (fable and Codex) on the spec and this plan caught and fixed a real vulnerability (an earlier draft's `index.html` preload would have exposed a previous user's verified conversation, unhidden, on `/login`) plus several correctness gaps in the sign-out ordering and testing approach. See the spec's revision history and this plan's Task 6 for the full reasoning.
 
 Spec: `docs/superpowers/specs/2026-09-17-crisp-session-continuity-design.md`
 Plan: `docs/superpowers/plans/2026-09-17-crisp-session-continuity.md`
@@ -1552,7 +1706,8 @@ Plan: `docs/superpowers/plans/2026-09-17-crisp-session-continuity.md`
 ## Verified on staging
 
 - Two `crisp-identity` calls with the same JWT return the same `crispToken`.
-- First login binds; reload resumes the same `session:identifier` with no rebind; a fresh incognito login as the same user lands on the same session; sign-out nulls `CRISP_TOKEN_ID` and clears the cache.
+- First login binds; reload resumes the same `session:identifier` with no rebind; a fresh incognito login as the same user lands on the same session; sign-out nulls `CRISP_TOKEN_ID`, clears the cache, and pushes `session:reset` before `supabaseSignOut()` resolves.
+- `/login` pushes `chat:hide` on load, independent of auth state.
 
 ## Prod rollout order (before merging, since merge deploys the frontend)
 
@@ -1567,6 +1722,8 @@ EOF
 Expected: the PR opens; CI's eight jobs run. Confirm `entitlement-tests` is green (it is the gate of record for `96_crisp_sessions.sql` if Task 1 could not run locally) and read the `e2e-secrets-guard` warning before trusting a green `e2e`.
 
 - [ ] **Step 7: Prod rollout after approval (do not merge first)**
+
+Re-run Step 6's exact collision check (`git fetch origin main && git ls-tree --name-only origin/main supabase/migrations/ | sort | tail -3`) one more time here, against whatever the branch's final migration filename is by now. `main` may have moved again between PR approval and this step; prod must only ever apply one correctly, uniquely-prefixed migration file, never a name that collided with something that landed on `main` in the meantime.
 
 ```bash
 pwd && git branch --show-current

@@ -1,13 +1,18 @@
 # Crisp session continuity — Design
 
 **Date:** 2026-09-17
-**Status:** Revised same-day after two independent reviews (fable, twice — once on the design,
-once on the written spec — plus an automated Codex review of the committed spec) surfaced a real
-vulnerability in the first draft: a blind `localStorage` preload in `index.html` could bind an
-unauthenticated visitor's Crisp widget to a *previous* user's verified conversation, unhidden, on
-`/login` — a public route `AppLayout`'s `chat:hide` never reaches. Fixed by removing the preload
-entirely and verifying (twice, against the live production widget) that the remaining mechanism
-does not need it. Ready for implementation.
+**Status:** Revised twice same-day. First revision (fable, twice — once on the design, once on the
+written spec — plus an automated Codex review) found a real vulnerability in the first draft: a
+blind `localStorage` preload in `index.html` could bind an unauthenticated visitor's Crisp widget
+to a *previous* user's verified conversation, unhidden, on `/login` — a public route `AppLayout`'s
+`chat:hide` never reaches. Fixed by removing the preload entirely and verifying (twice, against the
+live production widget) that the remaining mechanism does not need it. Second revision (a further
+automated Codex review, against Crisp's own docs, and against the actual sign-out code) refined
+that fix: added a `chat:hide` push to `/login` itself for the pre-existing, broader version of the
+same exposure class (see "Why the `index.html` preload was removed"); moved the *entire* Crisp
+teardown in `signOut()` — not just the local cache clears — to before its `await`; and made the
+token's lack of any server-side revocation explicit rather than implied (see "Non-goals"). Ready
+for implementation.
 
 ## Goal
 
@@ -94,6 +99,29 @@ exact session across an ordinary reload **entirely on its own**, via its own coo
 already-bound user's reload resumes silently; the authenticated effect's job on that load is just
 to confirm nothing changed (see Data flow, "match" branch) and do nothing further.
 
+**A further review round correctly pointed out this fix is narrower than it can be read to claim.**
+Cutting the preload closes the vector *it* introduced (a foreign token loaded from `localStorage`
+with zero verification), but Crisp's cookie-based persistence described in the paragraph above is
+not new — it is the same mechanism the *already-shipped* `user:email` identity verification push
+already relies on, and it applies regardless of anything in this spec. Concretely: if a user's
+Supabase session simply lapses while their tab is closed (no explicit sign-out event ever fires —
+there is no *transition* for `onAuthStateChange`'s `userChanged` check to detect, since
+`activeUserId.current` starts `null` and a session that was merely never restored resolves to
+`null` too), nothing in `AuthContext.tsx` — before or after this feature — ever pushes
+`session:reset`. Crisp's cookie keeps that browser's session bound and Verified regardless.
+Visiting `/login` on that same, now-idle browser shows it, unhidden, exactly as described above.
+Before this feature that exposed an anonymous-looking but Verified session; after it, the same gap
+exposes a conversation that also follows the user across every device they've used, which is a
+materially higher-stakes version of the same pre-existing hole.
+
+This spec closes the *visible* consequence of that broader gap by mirroring `AppLayout`'s own
+`chat:hide`-on-mount pattern onto `LoginPage` (see the implementation plan's Task 6) — one line,
+same pattern already in use, costs nothing. It does not fully close the underlying gap: the widget
+is still bound under the hood even while hidden, and `/login` offers no chat affordance to reset
+*to* today, so there is nothing more actionable to do here without a larger, separately-scoped
+change (e.g. proactively detecting a silently-expired session and resetting Crisp at that point).
+Flagged explicitly as a known, pre-existing, NOT-solved-here limitation rather than left implicit.
+
 ## Architecture
 
 | Piece | Purpose |
@@ -140,18 +168,25 @@ to confirm nothing changed (see Data flow, "match" branch) and do nothing furthe
         `[userId, profile?.nome]`, which a rebind alone doesn't change) to happen to re-fire.
      d. Write `{ userId, token: crispToken }` to the cache.
 4. **Sign-out / user-change.** Both existing sites still null `CRISP_TOKEN_ID`, clear the cache, and
-   push `session:reset` — but the *placement* in `signOut()` changes. The original draft (and
-   Crisp's own documented logout pattern) put the null-out immediately before the `session:reset`
-   push, which in this file's `signOut()` happens **after** `await supabaseSignOut()`. If that
-   `await` rejects or hangs, nothing after it ever runs — so a cache-clear placed there would
-   silently survive a failed sign-out, and the *next* person on a shared machine would load bound to
-   the outgoing user's token. Fix: `window.CRISP_TOKEN_ID = null` and the `localStorage` clear move
-   to execute synchronously immediately after `crispResetGeneration.current += 1`, **before** the
-   `await` — costs nothing to do early. The `session:reset` push itself stays where it is, after the
-   await, matching the file's existing best-effort-support-tooling placement for the `user:email`
-   reset. The `userChanged` branch of `onAuthStateChange` needs no such change — it runs
-   synchronously start to finish with no `await` in between, so its single existing clear site
-   (immediately before its own `session:reset` push) is already safe.
+   push `session:reset` — but the *placement* in `signOut()` changes, and not only for the local
+   clears. The first revision of this spec moved just `window.CRISP_TOKEN_ID = null` and the
+   `localStorage` clear before `await supabaseSignOut()`, leaving the actual `session:reset` push
+   where it already was — after the await, matching this file's pre-existing placement for the
+   `user:email` reset. A further review round (checked directly against the code) correctly pointed
+   out that this doesn't go far enough: if `supabaseSignOut()` rejects or hangs, nothing after it
+   ever runs, so a push left there would leave Crisp's own cookie-persisted session bound to the
+   outgoing user's token **and** identified email indefinitely — the next person on a shared machine
+   would see it, unhidden, on `/login` (see previous section). The local clears alone don't prevent
+   that; only actually pushing the reset does. Fix: the *entire* teardown — `CRISP_TOKEN_ID = null`,
+   the `localStorage` clear, **and** the `session:reset` push itself — moves to execute synchronously
+   immediately after `crispResetGeneration.current += 1`, **before** the `await`. Costs nothing to do
+   early: the worst case on a `signOut()` failure is an unnecessary reset while the user is still
+   technically logged in, which self-heals the next time the identify effect re-runs. This also
+   strengthens the pre-existing, not-new-to-this-feature `user:email` reset guarantee for free, since
+   `signOut()` only ever had one `session:reset` push site, shared by both features. The
+   `userChanged` branch of `onAuthStateChange` needs no such change — it runs synchronously start to
+   finish with no `await` in between, so its single existing clear site (immediately before its own
+   `session:reset` push) is already safe.
 5. **`crispResetGeneration` is deliberately not bumped by the live rebind** (step 3's reset push).
    That ref's documented invariant is "bumped at exactly the two places that push session:reset...
    and nowhere else" (sign-out, user-change) — a same-identity self-correction is not an "outgoing
@@ -282,6 +317,18 @@ back for a while), but this is the correct order regardless.
   (`CRISP_RUNTIME_CONFIG.session_merge`).
 - Per-user token rotation UI/flow. `user_id` is the table's primary key, so "rotating" a token
   means updating that user's existing row, not inserting a new one — nothing in this spec builds a
-  trigger for that update. Rotating a token is a "start over" operation — the old conversation stays
-  in the Crisp inbox but becomes unreachable from the widget — not something to do routinely.
+  trigger for that update.
+- **A revocation mechanism.** Checked directly against Crisp's own Session Continuity docs: there is
+  no server-side API to revoke or expire a `CRISP_TOKEN_ID` once issued. The only documented
+  invalidation path is client-side (`CRISP_TOKEN_ID = null` + `session:reset`, exactly what this spec
+  already does on sign-out). Rotating our own `crisp_sessions` row — updating `token` to a new
+  `gen_random_uuid()` — stops any *future* rebind from using the old value, but does **not** revoke
+  the old value at Crisp's end: if it was ever copied (a captured request, a compromised browser, a
+  future bug reintroducing the leak class this spec's own review process found once already), it
+  remains a valid credential to that conversation at Crisp indefinitely, no matter what our database
+  says. This is a real limitation of Crisp's platform, not an oversight in this design — stated
+  plainly here rather than glossed as a routine "start over" operation, so nobody later assumes
+  rotation is a meaningful incident response to a leaked token. If that ever matters (e.g. an
+  account-deletion or incident-response requirement), it needs its own spec, and would likely mean
+  asking Crisp support to intervene manually, since no self-service API exists for it today.
 - Any change to Admin or Hub — neither loads Crisp today and neither gains it here.
