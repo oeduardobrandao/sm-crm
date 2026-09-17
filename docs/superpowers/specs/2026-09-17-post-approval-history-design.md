@@ -1,6 +1,6 @@
 # Histórico de aprovação e comentários por post (Hub)
 
-**Data:** 2026-09-17 (revisado sete vezes após review externa)
+**Data:** 2026-09-17 (revisado oito vezes após review externa)
 **Status:** Design proposto, aguardando aprovação
 **Origem:** Feedback direto de Anna Lourenço (CLD Advogados), repassado via Hanna
 
@@ -57,6 +57,16 @@
 > `replyToPostApproval`, sem checagem de status) — uma nota interna anterior
 > ao primeiro envio vazaria pro cliente. Corrigido na seção 1: o mesmo piso
 > agora se aplica às duas fontes.
+>
+> **Nota de revisão (8ª rodada):** uma oitava review (Codex) achou que o piso
+> temporal não bastava — mesmo depois do primeiro envio, uma linha `mensagem`
+> escrita pela equipe (`is_workspace_user = true`, via `replyToPostApproval`,
+> usada hoje na página Mensagens do CRM) nunca foi pensada como algo que o
+> cliente veria: o trigger de notificação dessa ação avisa só owner/admin,
+> nunca o cliente, e nenhuma UI hoje mostra essas linhas pra fora da equipe.
+> Corrigido na seção 1: a aba Comentários do Hub só mostra mensagens do
+> cliente e mensagens da equipe escritas por um caminho novo, dedicado a essa
+> feature — não o `replyToPostApproval` existente.
 
 ## Contexto
 
@@ -108,7 +118,8 @@ duplicado nos três arquivos). O feedback da Anna é preciso.
 
 ### 1. Histórico + comentários dentro do card (trabalho novo de UI)
 
-- Novo painel (idealmente um componente compartilhado pelos três tipos de card, para não triplicar a implementação e a manutenção), com duas abas: **Histórico** (`post_approvals` com `action IN ('aprovado','correcao')`, mais eventos de `post_status_events` sem `post_approval_id`) e **Comentários** (`action = 'mensagem'`).
+- Novo painel (idealmente um componente compartilhado pelos três tipos de card, para não triplicar a implementação e a manutenção), com duas abas: **Histórico** (`post_approvals` com `action IN ('aprovado','correcao')`, mais eventos de `post_status_events` sem `post_approval_id`) e **Comentários** (`action = 'mensagem'`, com a ressalva abaixo).
+- **A aba Comentários não pode incluir toda linha `mensagem` histórica.** `replyToPostApproval` (a função por trás do "Responder sobre o post…" na página Mensagens do CRM) grava `is_workspace_user = true`, e o trigger de notificação dessa ação (`supabase/migrations/20260505100001_approval_notification_rpc.sql:108-136`) só disperta para `is_workspace_user = true` e notifica **owner/admin** (papéis internos) — nunca o cliente. Ou seja, essa é hoje uma ferramenta de coordenação interna da equipe sobre o post, sem nenhum canal que confirme ou garanta que o cliente algum dia veria aquilo — e nenhuma UI hoje mostra essas linhas ao cliente. Incluir todo o histórico de `mensagem` (inclusive linhas antigas, escritas por um membro da equipe sem essa expectativa) exporia retroativamente conversa interna. Regra: a aba Comentários do Hub mostra (a) toda linha `mensagem` com `is_workspace_user = false` (o cliente escreveu, sem risco — ele já sabe o que disse), e (b) só linhas `is_workspace_user = true` criadas a partir de um novo caminho de escrita dedicado a esta feature (uma nova ação/endpoint explicitamente pensado como "responder ao cliente", não o `replyToPostApproval` existente da página Mensagens do CRM). Se a Hanna quiser que as respostas da equipe já escritas hoje pela página Mensagens também apareçam pro cliente, isso é uma decisão de produto explícita — não o padrão desta entrega.
 - A query precisa trazer `post_approvals` diretamente (não só via `post_status_events.post_approval_id`) — uma segunda correção antes de um reenvio, ou uma mensagem solta, não geram evento de status novo.
 - **O piso temporal (definido abaixo, para eventos de status) tem que valer também para `post_approvals`, inclusive linhas `mensagem` — não só para `post_status_events`.** `replyToPostApproval` (`apps/crm/src/store/posts.ts:1337-1352`) insere uma linha `action = 'mensagem'` em `post_approvals` para qualquer `post_id`, sem checar o status do post — um membro da equipe pode deixar uma nota interna num post ainda em `rascunho`/`revisao_interna`, antes de qualquer envio ao cliente. Sem aplicar o mesmo piso a essas linhas, uma nota interna anterior ao primeiro envio vazaria pro cliente assim que o post virasse visível. A query do endpoint precisa filtrar **toda** linha de `post_approvals` (não só as ligadas a um evento de status) por `created_at >= primeiro created_at com to_status = 'enviado_cliente' daquele post` — o mesmo piso, uma única regra, aplicada às duas fontes.
 - **Diff de conteúdo — condicionado a uma referência confiável.** `post_content_versions` não referencia qual aprovação/evento a gerou (exceto `suggestion_id`, só para sugestões aceitas). Pareamento por "timestamp mais próximo" **não é seguro**: a coalescência de edições em até 5 minutos, um reenvio que não muda texto, e uma edição adjacente de outra ação podem todos produzir uma correlação errada. Duas opções, a decidir no plano: (a) gravar uma referência explícita entre o evento de reenvio/aprovação e a versão de conteúdo no momento em que ambos acontecem (mudança de schema pequena, mas nova), ou (b) cortar o diff desta entrega e mostrar só "conteúdo foi alterado" sem o texto do diff. Não implementar a correlação por proximidade de tempo como se fosse confiável.
@@ -155,3 +166,4 @@ duplicado nos três arquivos). O feedback da Anna é preciso.
 1. Confirmar que "Rejeitado" não precisa ser um estado diferente de "Em Refação" na prática da Anna.
 2. Confirmar que tags de motivo (4 opções fixas) cobrem os casos reais dela.
 3. **Decidir no plano:** se o diff de conteúdo é viável (referência explícita evento↔versão) ou cortado desta entrega; a máquina de estados exata de "rodada"/"tempo de resposta", com casos de teste cobrindo os quatro cenários da seção 3; a janela/agregação do painel de KPI agregado; em quais status a nova caixa de comentário fica habilitada.
+4. Confirmar com a Hanna se as respostas da equipe já escritas hoje pela página Mensagens do CRM (`is_workspace_user = true`, via `replyToPostApproval`) devem, em algum momento, também aparecer pro cliente no Hub — o padrão desta entrega é não mostrar (ver seção 1).
