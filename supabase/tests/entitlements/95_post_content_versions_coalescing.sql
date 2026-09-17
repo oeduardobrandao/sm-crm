@@ -404,8 +404,139 @@ begin
   select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
 
   assert v_baseline.actor_name is null,
-    format('an unassigned post''s baseline must keep actor_name null (renders "—"), got %s', v_baseline.actor_name);
+    format('an unassigned post''s baseline must keep actor_name null (renders "—") when it also has no "enviado_cliente" status event to fall back to, got %s', v_baseline.actor_name);
 
-  raise notice 'PASS 95.9 an unassigned post''s baseline row keeps actor_name null';
+  raise notice 'PASS 95.9 an unassigned post''s baseline row keeps actor_name null when there''s no fallback either';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 10. SECURITY: the assignee lookup must not attribute a baseline row to
+--    a membro belonging to a DIFFERENT workspace, even if
+--    workflow_posts.responsavel_id somehow points at one (the FK is bare,
+--    with no tenant-scoping constraint, and workflow_posts' RLS has no
+--    WITH CHECK on it either -- see 20260923000007's header). A
+--    SECURITY DEFINER lookup with no conta_id filter would otherwise leak
+--    a real name across tenant boundaries.
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws_a uuid; v_ws_b uuid;
+  v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint; v_membro_b bigint;
+  v_baseline post_content_versions;
+begin
+  v_ws_a := et_make_workspace('pro');
+  v_ws_b := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws_a, 'owner');
+  update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws_a, 'C', 'C', '#000') returning id into v_cli;
+  -- A membro belonging to workspace B, not A.
+  insert into membros (user_id, conta_id, nome) values (v_user, v_ws_b, 'Fulano de Outro Workspace') returning id into v_membro_b;
+  -- Post in workspace A, but responsavel_id points cross-tenant at B's membro
+  -- (as a direct API write could force, bypassing the CRM's own same-workspace
+  -- picker -- see 20260923000007's header for the exploit path).
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain, responsavel_id)
+    values (v_ws_a, v_cli, 'rascunho', 'cross-tenant assignee text', v_membro_b) returning id into v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'edited cross-tenant assignee text' where id = v_post;
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+
+  assert v_baseline.actor_name is distinct from 'Fulano de Outro Workspace',
+    'baseline row must NEVER be attributed to a membro from a different workspace -- cross-tenant name leak';
+
+  raise notice 'PASS 95.10 a cross-tenant responsavel_id never leaks that membro''s name into the baseline row';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 11. An unassigned post's baseline falls back to whoever first sent it
+--    to the client (earliest post_status_events row transitioning to
+--    'enviado_cliente') -- the closest available "who put this in front
+--    of the client" fact when there's no assignee to attribute to.
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint;
+  v_baseline post_content_versions;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  -- No responsavel_id: unassigned.
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain)
+    values (v_ws, v_cli, 'rascunho', 'sent without an assignee') returning id into v_post;
+
+  -- Simulate having been sent to the client before this backdated status
+  -- event's actor is who we expect the baseline to fall back to.
+  insert into post_status_events (post_id, conta_id, from_status, to_status, source, actor_name, created_at)
+    values (v_post, v_ws, 'rascunho', 'enviado_cliente', 'workspace_user', 'Quem Enviou Primeiro',
+            now() - interval '1 hour');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'edited after being sent' where id = v_post;
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+
+  assert v_baseline.actor_name = 'Quem Enviou Primeiro',
+    format('an unassigned post''s baseline must fall back to whoever first sent it to the client, got %s', v_baseline.actor_name);
+
+  raise notice 'PASS 95.11 an unassigned post''s baseline falls back to whoever first sent it to the client';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 12. When an unassigned post's first content edit ALSO transitions its
+--    status to 'enviado_cliente' in the SAME UPDATE statement, the
+--    fallback must still resolve -- not read a post_status_events row
+--    that the sibling trigger (workflow_posts_status_event, alphabetically
+--    after this one) hasn't inserted yet (20260923000008).
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint;
+  v_baseline post_content_versions;
+  v_actor_name text;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws, nome = 'Quem Enviou Agora' where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  -- No responsavel_id: unassigned.
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain)
+    values (v_ws, v_cli, 'rascunho', 'not yet sent') returning id into v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  -- Single statement: content AND the enviado_cliente transition together
+  -- -- no earlier, separately-committed post_status_events row exists for
+  -- this trigger's fallback query to find.
+  update workflow_posts
+     set conteudo_plain = 'sent to client just now', status = 'enviado_cliente'
+   where id = v_post;
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+  select nome into v_actor_name from profiles where id = v_user;
+
+  assert v_baseline.actor_name = v_actor_name,
+    format(
+      'a same-statement content+enviado_cliente update must attribute the baseline to the acting user directly, got %s (expected %s)',
+      v_baseline.actor_name, v_actor_name
+    );
+
+  raise notice 'PASS 95.12 a same-statement content+enviado_cliente transition resolves the fallback without reading the not-yet-inserted status event';
 end $$;
 rollback;
