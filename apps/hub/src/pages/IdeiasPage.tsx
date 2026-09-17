@@ -196,7 +196,7 @@ function IdeiaImages({
                 onClick={() => remove(img.file_id)}
                 disabled={busy}
                 aria-label={t('images.removeImage', 'Remover imagem')}
-                className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity disabled:opacity-50"
               >
                 <X size={12} />
               </button>
@@ -1118,7 +1118,7 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
                           type="button"
                           onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
                           aria-label={t('images.removeImage', 'Remover imagem')}
-                          className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                          className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
                         >
                           <X size={12} />
                         </button>

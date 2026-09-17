@@ -413,7 +413,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose, onEdit, initialAction }:
                           onClick={() => handleRemoveImage(img.file_id)}
                           disabled={imgBusy}
                           aria-label="Remover imagem"
-                          className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-foreground text-background opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                          className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-foreground text-background opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity disabled:opacity-50"
                         >
                           <X size={12} />
                         </button>

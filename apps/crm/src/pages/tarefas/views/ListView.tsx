@@ -74,7 +74,7 @@ function TarefaRow({
       >
         {tarefa.titulo}
       </span>
-      <span style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
+      <span className="hidden sm:flex" style={{ gap: '0.25rem', flexShrink: 0 }}>
         {tarefa.tags.slice(0, 3).map((tag) => (
           <TagPill key={tag.id} tag={tag} small />
         ))}
