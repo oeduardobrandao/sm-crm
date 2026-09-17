@@ -6466,6 +6466,13 @@ body.role-agent input[name='valor_total'] {
     margin-bottom: 2rem;
   }
 
+  /* Same override as the 900px breakpoint above -- this narrower block
+     redeclares .header's margin-bottom too, so --flush needs repeating here
+     or it gets silently undone below 768px. */
+  .header--flush {
+    margin-bottom: 0;
+  }
+
   .header-actions {
     width: 100%;
     flex-wrap: wrap;

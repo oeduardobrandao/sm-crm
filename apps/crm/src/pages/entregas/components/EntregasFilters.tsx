@@ -586,10 +586,10 @@ export function EntregasFilters({
 
       {/* Mobile: a single "Filtros" button opening a bottom sheet, instead of
           every pill wrapping across two or three lines of the first fold. */}
-      <div className="flex min-[901px]:hidden items-center animate-up">
+      <div className="flex min-[901px]:hidden items-center animate-up shrink-0">
         <Button
           variant="outline"
-          className="h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm shrink-0"
+          className="h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm shrink-0 mb-0"
           onClick={() => setSheetOpen(true)}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
