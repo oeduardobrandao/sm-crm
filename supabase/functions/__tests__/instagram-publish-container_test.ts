@@ -33,9 +33,10 @@ function stubFetch() {
   return { calls, restore: () => { globalThis.fetch = original; } };
 }
 
-// Like stubFetch, but GET status-check calls (checkContainerStatus has no `init`)
-// answer from a per-container-id queue of status_code values instead of always
-// FINISHED-equivalent — lets tests drive IN_PROGRESS→FINISHED and ERROR paths.
+// Like stubFetch, but GET status-check calls (checkContainerStatus/
+// fetchContainerStatusDetail send no `body`, only an abort signal) answer from a
+// per-container-id queue of status_code values instead of always FINISHED-
+// equivalent — lets tests drive IN_PROGRESS→FINISHED and ERROR paths.
 // deno-lint-ignore no-explicit-any
 function stubFetchWithStatus(statusQueues: Record<string, string[]>) {
   const original = globalThis.fetch;
@@ -44,7 +45,7 @@ function stubFetchWithStatus(statusQueues: Record<string, string[]>) {
   globalThis.fetch = ((input: unknown, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (!init) {
+    if (!init?.body) {
       const id = url.split("/").pop()?.split("?")[0] ?? "";
       const queue = statusQueues[id];
       const status = queue && queue.length > 0 ? queue.shift()! : "FINISHED";

@@ -607,6 +607,7 @@ export async function fetchContainerStatusDetail(
 ): Promise<{ status_code: string; status?: string }> {
   const res = await fetch(
     `${GRAPH_BASE}/${containerId}?fields=status_code,status&access_token=${token}`,
+    { signal: AbortSignal.timeout(10_000) },
   );
   const data = await res.json();
   if (data.error) throwGraphError(data);
