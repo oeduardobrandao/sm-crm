@@ -1,6 +1,6 @@
 # Histórico de aprovação e comentários por post (Hub)
 
-**Data:** 2026-09-17 (revisado onze vezes após review externa)
+**Data:** 2026-09-17 (revisado doze vezes após review externa)
 **Status:** Design proposto, aguardando aprovação
 **Origem:** Feedback direto de Anna Lourenço (CLD Advogados), repassado via Hanna
 
@@ -98,6 +98,14 @@
 > comentário novo, o que parecia conflitar com "notificação cortada desta
 > entrega" — esclarecido na seção 4: o corte é só do indicador novo, a
 > notificação existente não muda.
+>
+> **Nota de revisão (12ª rodada):** uma décima segunda review (Codex) achou
+> que o filtro de mensagens internas (rodadas 8/10/11) só foi aplicado ao
+> endpoint novo (`hub-post-history`) — mas `hub-posts`, o endpoint que já
+> existe hoje, já devolve `post_approvals` sem filtro nenhum na resposta de
+> listagem, antes de qualquer UI decidir o que mostrar. Filtrar só o endpoint
+> novo não protege nada: o vazamento já está na rede. Corrigido na seção 1: a
+> mesma exclusão servidor-side vale para os dois endpoints.
 
 ## Contexto
 
@@ -162,6 +170,7 @@ duplicado nos três arquivos). O feedback da Anna é preciso.
   - `actor_name` de equipe: exibir só um rótulo genérico ("Equipe") no Hub — não expor nomes de membros da equipe interna ao cliente por padrão; decisão final de copy fica pro plano, mas o default seguro é genérico.
   - **Conteúdo — schema de resposta higienizado, não o JSON cru.** O endpoint precisa devolver um DTO específico (ex.: só texto simples extraído, sem a árvore TipTap completa) que nunca inclua `commentHighlight`, `threadId`, `resolved` ou qualquer outra marca interna — a supressão que existe hoje (`CommentHighlightReadonly`) é só visual, no cliente, e não protege um payload de API novo. Definir esse DTO é parte do design, mesmo que os campos exatos fiquem pro plano.
 - Fonte de dados: extensão do endpoint `hub-posts` para incluir os campos necessários de `post_status_events` (já filtrados pelo allowlist acima), e uma consulta por post sob demanda para `post_content_versions` (só quando o painel é aberto, com a mesma checagem de posse). **Paginação/limite obrigatórios**: o histórico de status/aprovações não pode ser embutido sem limite na listagem principal de `hub-posts` (hoje já devolve todos os posts de uma vez) — cada post no payload de lista carrega no máximo um resumo (ex.: status atual + contagem), e o histórico completo só é buscado quando o painel de um post específico é aberto.
+- **`hub-posts` já devolve `post_approvals` sem filtro nenhum — isso precisa mudar, não só o endpoint novo.** Confirmado em `supabase/functions/hub-posts/handler.ts:139-145`: a query de `post_approvals` ali não filtra por `action` nem por `is_workspace_user`, então toda linha `mensagem` de equipe (hoje só usada via `replyToPostApproval`) já viaja, sem filtro, na resposta de listagem que qualquer sessão do Hub busca a cada carregamento de página — antes de qualquer UI decidir o que renderizar. Filtrar só no `hub-post-history` novo não resolve nada: quem inspecionar a rede diretamente (ou uma UI futura que use `postApprovals` da listagem sem essa mesma disciplina, como o contador do cabeçalho recolhido do painel) já vê o conteúdo interno. A mesma regra da seção 1 (excluir `action = 'mensagem' AND is_workspace_user = true`) tem que ser aplicada na query do `hub-posts` também — servidor, não cliente — não é opcional nem exclusivo do endpoint novo.
 
 ### 2. Filtro de status (só em Postagens)
 
