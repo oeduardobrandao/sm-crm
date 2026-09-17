@@ -12,7 +12,15 @@ import {
   Search,
   UsersRound,
   Wallet,
+  SlidersHorizontal,
 } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { openCSVSelector } from '../../lib/csv';
@@ -94,6 +102,7 @@ export default function EquipePage() {
   const [filter, setFilter] = useState<FilterTipo>('todos');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('nome');
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Membro | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -251,7 +260,21 @@ export default function EquipePage() {
             </HelpTooltip>
           )}
           {canEditTeam && (
-            <Button variant="outline" onClick={handleCSVImport}>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleCSVImport}
+              className="header-actions-icon-only"
+            >
+              <Upload className="h-4 w-4" />
+            </Button>
+          )}
+          {canEditTeam && (
+            <Button
+              variant="outline"
+              onClick={handleCSVImport}
+              className="header-actions-full-only"
+            >
               <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
             </Button>
           )}
@@ -305,46 +328,130 @@ export default function EquipePage() {
             style={{ paddingLeft: '2rem' }}
           />
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0"
-            >
-              {filter === 'todos' ? 'Tipo' : TIPO_LABEL[filter]}
-              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuRadioGroup
-              value={filter}
-              onValueChange={(v) => setFilter(v as FilterTipo)}
-            >
-              {(['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]).map(
-                (f) => (
-                  <DropdownMenuRadioItem key={f} value={f}>
-                    {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
-                  </DropdownMenuRadioItem>
-                ),
+        {/* Desktop: tipo + ordenar inline. Below 901px they collapse into a
+            single "Filtros" button/sheet -- otherwise they wrap below the
+            search box and eat the first fold on a phone. */}
+        <div className="hidden min-[901px]:contents">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0"
+              >
+                {filter === 'todos' ? 'Tipo' : TIPO_LABEL[filter]}
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuRadioGroup
+                value={filter}
+                onValueChange={(v) => setFilter(v as FilterTipo)}
+              >
+                {(['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]).map(
+                  (f) => (
+                    <DropdownMenuRadioItem key={f} value={f}>
+                      {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
+                    </DropdownMenuRadioItem>
+                  ),
+                )}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+            <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="nome">Nome</SelectItem>
+              {canSeeFinancials === true && (
+                <>
+                  <SelectItem value="custo_maior">Custo (maior)</SelectItem>
+                  <SelectItem value="custo_menor">Custo (menor)</SelectItem>
+                </>
               )}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="nome">Nome</SelectItem>
-            {canSeeFinancials === true && (
-              <>
-                <SelectItem value="custo_maior">Custo (maior)</SelectItem>
-                <SelectItem value="custo_menor">Custo (menor)</SelectItem>
-              </>
-            )}
-          </SelectContent>
-        </Select>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Button
+          variant="outline"
+          className="flex min-[901px]:hidden h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm mb-0 shrink-0"
+          onClick={() => setFilterSheetOpen(true)}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Filtros
+          {filter !== 'todos' && (
+            <span
+              className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
+              style={{
+                background: 'var(--primary-color)',
+                color: '#000',
+                width: '1.1rem',
+                height: '1.1rem',
+              }}
+            >
+              1
+            </span>
+          )}
+        </Button>
       </div>
+
+      <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
+        <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="text-base">Filtros</SheetTitle>
+            <SheetDescription className="sr-only">Filtre e ordene a equipe</SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+              Tipo
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 w-full justify-between text-xs font-normal"
+                  >
+                    {filter === 'todos' ? 'Todos' : TIPO_LABEL[filter]}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[calc(100vw-3rem)]">
+                  <DropdownMenuRadioGroup
+                    value={filter}
+                    onValueChange={(v) => setFilter(v as FilterTipo)}
+                  >
+                    {(
+                      ['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]
+                    ).map((f) => (
+                      <DropdownMenuRadioItem key={f} value={f}>
+                        {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+              Ordenar por
+              <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+                <SelectTrigger className="!text-xs h-9 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nome">Nome</SelectItem>
+                  {canSeeFinancials === true && (
+                    <>
+                      <SelectItem value="custo_maior">Custo (maior)</SelectItem>
+                      <SelectItem value="custo_menor">Custo (menor)</SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {isLoading ? (
         <div className="flex justify-center p-8">

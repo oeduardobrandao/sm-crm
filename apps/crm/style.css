@@ -11708,6 +11708,34 @@ a.hub-fill__row-inner:hover {
   color: var(--text-muted);
 }
 
+/* Below 768px the row would otherwise be the first thing every page renders
+   -- a full-width line before the title. Pull it out of flow entirely (fixed,
+   floating under the topbar) instead, and collapse it to an icon-only pill so
+   it reads as a small badge, not a header row competing with the page's own. */
+@media (max-width: 767px) {
+  .context-help {
+    position: fixed;
+    top: calc(var(--topbar-height) + var(--banner-height, 0px) + 10px);
+    right: 14px;
+    z-index: 45;
+    min-height: 0;
+    margin-bottom: 0;
+  }
+
+  .context-help__trigger {
+    min-height: 36px;
+    padding: 0.4rem 0.55rem;
+    border-radius: 999px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .context-help__label {
+    display: none;
+  }
+}
+
 .context-help__count {
   display: grid;
   min-width: 20px;
