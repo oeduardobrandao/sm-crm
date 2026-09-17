@@ -247,3 +247,165 @@ begin
   raise notice 'PASS 95.5 accept_edit_suggestion always produces a fresh source=client row linked via suggestion_id';
 end $$;
 rollback;
+
+-- =====================================================================
+-- 6. The first-ever content update on a version-less post yields TWO rows:
+--    a baseline row carrying the pre-edit (OLD) state, dated at the post's
+--    prior updated_at, followed by the edit's own row. Without this, a
+--    post whose content was set once at creation and never touched again
+--    would lose its pre-edit state forever the moment it was first edited
+--    (20260923000004). This test's own setup -- post created and first
+--    edited within the same transaction -- is exactly the case where
+--    old.updated_at and the edit's own now() tie (transaction-stable
+--    now()), so it also covers the ordering fix in 20260923000005: the
+--    baseline must sort strictly before the edit even then.
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint;
+  v_count int;
+  v_baseline post_content_versions;
+  v_latest post_content_versions;
+  v_old_updated_at timestamptz;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain)
+    values (v_ws, v_cli, 'rascunho', 'born with this text') returning id into v_post;
+
+  select updated_at into v_old_updated_at from workflow_posts where id = v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'first real edit' where id = v_post;
+
+  select count(*) into v_count from post_content_versions where post_id = v_post;
+  assert v_count = 2,
+    format('the first content update on a version-less post must yield a baseline + the edit itself, got %s rows', v_count);
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+  select * into v_latest from post_content_versions where post_id = v_post order by created_at desc limit 1;
+
+  assert v_baseline.conteudo_plain = 'born with this text',
+    format('baseline row must carry the pre-edit content, got %s', v_baseline.conteudo_plain);
+  assert v_baseline.created_at <= v_old_updated_at,
+    'baseline row must never be dated later than the post''s prior updated_at';
+  assert v_baseline.created_at < v_latest.created_at,
+    format(
+      'baseline must sort strictly before the edit even when created in the same transaction (tie risk: '
+      || 'old.updated_at %s vs edit now() %s), got baseline %s = latest %s',
+      v_old_updated_at, v_latest.created_at, v_baseline.created_at, v_latest.created_at
+    );
+  assert v_baseline.source = 'workspace_user' and v_baseline.actor_user_id is null,
+    'baseline row must not be misattributed to whoever made the first real edit';
+
+  assert v_latest.conteudo_plain = 'first real edit',
+    format('the edit''s own row must carry the new content, got %s', v_latest.conteudo_plain);
+  assert v_latest.actor_user_id = v_user, 'the edit''s own row must attribute to the acting user';
+
+  raise notice 'PASS 95.6 first-ever content update on a version-less post yields a baseline row + the edit itself';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 7. A post born WITHOUT content (empty draft) gets no baseline row on its
+--    first edit -- there is nothing worth snapshotting before it.
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint;
+  v_count int;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflow_posts (conta_id, cliente_id, status) values (v_ws, v_cli, 'rascunho') returning id into v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'first content ever' where id = v_post;
+
+  select count(*) into v_count from post_content_versions where post_id = v_post;
+  assert v_count = 1,
+    format('a post born empty must not get a synthetic baseline row on its first edit, got %s rows', v_count);
+
+  raise notice 'PASS 95.7 a post born with no content gets no baseline row on its first edit';
+end $$;
+rollback;
+
+-- =====================================================================
+-- 8. A baseline row is attributed to the post's assignee
+--    (responsavel_id -> membros.nome) as a best-effort label -- nothing
+--    records who actually wrote a pre-existing post's original content, so
+--    this is the closest available "who this belongs to" fact
+--    (20260923000006). Unassigned posts keep actor_name null (renders "—"
+--    in the UI), asserted in the second block below.
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint; v_membro bigint;
+  v_baseline post_content_versions;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into membros (user_id, conta_id, nome) values (v_user, v_ws, 'Fulana Responsável') returning id into v_membro;
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain, responsavel_id)
+    values (v_ws, v_cli, 'rascunho', 'assigned post text', v_membro) returning id into v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'edited assigned post text' where id = v_post;
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+
+  assert v_baseline.actor_name = 'Fulana Responsável',
+    format('baseline row must be attributed to the post''s assignee, got %s', v_baseline.actor_name);
+  assert v_baseline.actor_user_id is null,
+    'baseline row must not claim a verified actor_user_id -- the assignee is a best-effort label, not a proven author';
+
+  raise notice 'PASS 95.8 baseline row is attributed to the post''s assignee via membros.nome';
+end $$;
+rollback;
+
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint;
+  v_baseline post_content_versions;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  -- No responsavel_id: unassigned.
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain)
+    values (v_ws, v_cli, 'rascunho', 'unassigned post text') returning id into v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  update workflow_posts set conteudo_plain = 'edited unassigned post text' where id = v_post;
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+
+  assert v_baseline.actor_name is null,
+    format('an unassigned post''s baseline must keep actor_name null (renders "—"), got %s', v_baseline.actor_name);
+
+  raise notice 'PASS 95.9 an unassigned post''s baseline row keeps actor_name null';
+end $$;
+rollback;
