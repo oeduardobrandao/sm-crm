@@ -177,3 +177,102 @@ Deno.test("createMissingCarouselChildContainers: >10 media throws CAROUSEL_LIMIT
   assertEquals(classifyPublishError(new Error(threw)), "CAROUSEL_LIMIT");
   assertEquals(g.calls.length, 0);
 });
+
+const { pollCarouselChildrenReady } = await import("../_shared/instagram-publish-utils.ts");
+
+const twoMedia = [link(0, 11, "image"), link(1, 12, "video")];
+
+Deno.test("pollCarouselChildrenReady marks FINISHED children ready, persists it, reports allReady", async () => {
+  const ctx = makeDb({
+    children: [
+      { file_id: 11, kind: "image", container_id: "c-1", ready: true },  // already ready: not polled
+      { file_id: 12, kind: "video", container_id: "c-2", ready: false },
+    ],
+    media: twoMedia,
+  });
+  const g = stubGraph(() => "FINISHED");
+  let result;
+  try {
+    result = await pollCarouselChildrenReady(ctx.db, { postId: 1, igUserId: "ig", token: "t", maxPolls: 1, intervalMs: 1 });
+  } finally { g.restore(); }
+  assertEquals(result.allReady, true);
+  assertEquals(g.calls.length, 1, "only the unready child is polled");
+  assert(g.calls[0].url.includes("/c-2?"), "polls the unready child's container");
+  const readySets = ctx.rpcCalls.filter((c) => c.fn === "set_carousel_child_field" && c.params.p_field === "ready");
+  assertEquals(readySets.map((c) => [c.params.p_index, c.params.p_value]), [[1, true]]);
+});
+
+Deno.test("pollCarouselChildrenReady leaves an IN_PROGRESS child for the next tick without throwing", async () => {
+  const ctx = makeDb({
+    children: [
+      { file_id: 11, kind: "image", container_id: "c-1", ready: false },
+      { file_id: 12, kind: "video", container_id: "c-2", ready: false },
+    ],
+    media: twoMedia,
+  });
+  const g = stubGraph((id) => (id === "c-2" ? "IN_PROGRESS" : "FINISHED"));
+  let result;
+  try {
+    result = await pollCarouselChildrenReady(ctx.db, { postId: 1, igUserId: "ig", token: "t", maxPolls: 2, intervalMs: 1 });
+  } finally { g.restore(); }
+  assertEquals(result.allReady, false);
+  // round 1 polls both (c-1 FINISHED, c-2 IN_PROGRESS); round 2 polls only c-2.
+  assertEquals(g.calls.length, 3, "bounded: maxPolls rounds, only pending children per round");
+  assertEquals(result.children[0].ready, true);
+  assertEquals(result.children[1].ready, false);
+  assertEquals(result.children[1].container_id, "c-2", "IN_PROGRESS must NOT clear the container");
+  const readySets = ctx.rpcCalls.filter((c) => c.fn === "set_carousel_child_field" && c.params.p_field === "ready");
+  assertEquals(readySets.length, 1, "only the FINISHED child is persisted as ready");
+});
+
+Deno.test("pollCarouselChildrenReady: ERROR clears that child's container_id, persists it, and throws MEDIA_UNSUPPORTED wording", async () => {
+  const ctx = makeDb({
+    children: [
+      { file_id: 11, kind: "image", container_id: "c-1", ready: false },
+      { file_id: 12, kind: "video", container_id: "c-2", ready: false },
+    ],
+    media: twoMedia,
+  });
+  const g = stubGraph((id) => (id === "c-2" ? "ERROR" : "FINISHED"));
+  let threw = "";
+  try {
+    await pollCarouselChildrenReady(ctx.db, { postId: 1, igUserId: "ig", token: "t", maxPolls: 1, intervalMs: 1 });
+  } catch (e) { threw = (e as Error).message; } finally { g.restore(); }
+  assertEquals(threw, "Item 2 do carrossel falhou no processamento do Instagram");
+  assertEquals(classifyPublishError(new Error(threw)), "MEDIA_UNSUPPORTED");
+  const cleared = ctx.rpcCalls.find((c) =>
+    c.fn === "set_carousel_child_field" && c.params.p_index === 1 &&
+    c.params.p_field === "container_id" && c.params.p_value === null
+  );
+  assert(cleared, "must clear the failed child's container_id so the next tick recreates it");
+  // The sibling that FINISHED in the same round keeps its progress.
+  assertEquals(ctx.children[0], { file_id: 11, kind: "image", container_id: "c-1", ready: true });
+  assertEquals(ctx.children[1], { file_id: 12, kind: "video", container_id: null, ready: false });
+});
+
+Deno.test("pollCarouselChildrenReady: a child without a container is not polled and blocks allReady", async () => {
+  const ctx = makeDb({
+    children: [
+      { file_id: 11, kind: "image", container_id: "c-1", ready: true },
+      { file_id: 12, kind: "video", container_id: null, ready: false },
+    ],
+    media: twoMedia,
+  });
+  const g = stubGraph();
+  let result;
+  try {
+    result = await pollCarouselChildrenReady(ctx.db, { postId: 1, igUserId: "ig", token: "t", maxPolls: 3, intervalMs: 1 });
+  } finally { g.restore(); }
+  assertEquals(result.allReady, false);
+  assertEquals(g.calls.length, 0, "nothing to poll");
+});
+
+Deno.test("pollCarouselChildrenReady returns allReady=false for an empty children array", async () => {
+  const ctx = makeDb({ children: [], media: [] });
+  const g = stubGraph();
+  let result;
+  try {
+    result = await pollCarouselChildrenReady(ctx.db, { postId: 1, igUserId: "ig", token: "t", maxPolls: 1, intervalMs: 1 });
+  } finally { g.restore(); }
+  assertEquals(result.allReady, false, "empty must never report ready (mirrors publishReadyStorySegments)");
+});

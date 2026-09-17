@@ -578,6 +578,60 @@ export async function createMissingCarouselChildContainers(
   return children;
 }
 
+/**
+ * Poll every child that has a container but is not yet ready. Round-based: one
+ * status check per pending child per round (in parallel), at most `maxPolls`
+ * rounds, so the wall clock is bounded by maxPolls * intervalMs no matter how
+ * many videos the carousel has. FINISHED -> ready:true (persisted). ERROR ->
+ * that child's container_id is cleared (persisted) so the next container phase
+ * recreates it, then throws; the wording classifies as MEDIA_UNSUPPORTED, same
+ * as a story segment ERROR. IN_PROGRESS after the budget is not an error:
+ * allReady=false tells the caller to leave the post for the next cron tick.
+ */
+export async function pollCarouselChildrenReady(
+  db: DbClient,
+  opts: { postId: number; igUserId: string; token: string; maxPolls?: number; intervalMs?: number },
+): Promise<{ children: CarouselChild[]; allReady: boolean }> {
+  const { postId, token, maxPolls = 2, intervalMs = 3000 } = opts;
+  const children = await ensureCarouselChildren(db, postId);
+
+  for (let round = 0; round < maxPolls; round++) {
+    const pending = children
+      .map((child, index) => ({ child, index }))
+      .filter(({ child }) => child.container_id && !child.ready);
+    if (pending.length === 0) break;
+
+    const statuses = await Promise.all(
+      pending.map(({ child }) => checkContainerStatus(child.container_id as string, token)),
+    );
+
+    // Persist every FINISHED child first so a sibling's ERROR never discards
+    // progress made in the same round.
+    let errored: number | null = null;
+    for (let k = 0; k < pending.length; k++) {
+      const { child, index } = pending[k];
+      if (statuses[k] === "FINISHED") {
+        child.ready = true;
+        await setCarouselChildField(db, postId, index, "ready", true);
+      } else if (statuses[k] === "ERROR" && errored === null) {
+        errored = index;
+      }
+    }
+    if (errored !== null) {
+      children[errored].container_id = null;
+      await setCarouselChildField(db, postId, errored, "container_id", null);
+      throw new Error(`Item ${errored + 1} do carrossel falhou no processamento do Instagram`);
+    }
+
+    const stillPending = children.some((c) => c.container_id && !c.ready);
+    if (!stillPending) break;
+    if (round < maxPolls - 1) await new Promise((r) => setTimeout(r, intervalMs));
+  }
+
+  const allReady = children.length > 0 && children.every((c) => !!c.container_id && c.ready);
+  return { children, allReady };
+}
+
 export interface ContainerCreationResult {
   containerId: string;
   /**
