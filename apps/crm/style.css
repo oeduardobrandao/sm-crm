@@ -3608,7 +3608,12 @@ select.form-input option {
     z-index: 40;
     left: max(12px, env(safe-area-inset-left));
     right: max(12px, env(safe-area-inset-right));
-    bottom: max(10px, env(safe-area-inset-bottom));
+    /* env(safe-area-inset-bottom) only covers the home-indicator inset -- it does not
+       account for Safari's own collapsible toolbar, which is a separate, dynamically
+       sized overlay. --mobile-nav-chrome-offset (set from window.visualViewport in
+       MobileNav.tsx) carries that extra height so the pill clears the toolbar even
+       when it's expanded; it's 0px whenever there's no such overlay to clear. */
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + var(--mobile-nav-chrome-offset, 0px));
     display: block;
     min-height: 72px;
     padding: 6px;
@@ -3628,7 +3633,7 @@ select.form-input option {
 
   .mobile-more-sheet {
     right: max(20px, env(safe-area-inset-right, 0px));
-    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px));
     left: max(20px, env(safe-area-inset-left, 0px));
     width: auto;
   }
