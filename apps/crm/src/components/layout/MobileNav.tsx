@@ -48,7 +48,7 @@ export default function MobileNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile, signOut, workspaceRole, can } = useAuth();
-  const { features: rawFeatures } = useWorkspaceLimits();
+  const { features: rawFeatures, planName } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
   const guide = useGuide();
@@ -199,9 +199,7 @@ export default function MobileNav() {
               <div className="mobile-more-profile-name" id="mobile-user-name">
                 {profile?.nome || 'Minha Conta'}
               </div>
-              <div className="mobile-more-profile-plan">
-                {(profile?.plano as string | undefined)?.toUpperCase() || 'FREE'}
-              </div>
+              <div className="mobile-more-profile-plan">{planName?.toUpperCase() || 'FREE'}</div>
             </div>
           </div>
 
