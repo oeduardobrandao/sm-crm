@@ -45,6 +45,7 @@ import {
   createInstagramAutomation,
   updateInstagramAutomation,
   getClientes,
+  sortClientesByNome,
   getClientePosts,
   getInstagramAccountStatuses,
   type ClientePost,
@@ -354,7 +355,7 @@ export default function AutomationFormDialog({
       const editingClient = clientes.find((c) => c.id === editing.client_id);
       if (editingClient) withIg.push(editingClient);
     }
-    return withIg;
+    return sortClientesByNome(withIg);
   }, [clientes, statuses, editing]);
 
   const selectedStatus =

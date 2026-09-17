@@ -79,10 +79,10 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: 'gestao',
-    label: 'Gestao',
-    labelKey: 'nav.gestao',
-    icon: 'ph-folder',
+    id: 'producao',
+    label: 'Producao',
+    labelKey: 'nav.producao',
+    icon: 'ph-kanban',
     items: [
       {
         id: 'entregas',
@@ -92,18 +92,18 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-kanban',
       },
       {
-        id: 'tarefas',
-        route: '/tarefas',
-        label: 'Tarefas',
-        labelKey: 'nav.tarefas',
-        icon: 'ph-list-checks',
-      },
-      {
         id: 'post-express',
         route: '/post-express',
         label: 'Post Express',
         labelKey: 'nav.postExpress',
         icon: 'ph-paper-plane-tilt',
+      },
+      {
+        id: 'analytics-fluxos',
+        route: '/analytics-fluxos',
+        label: 'Fluxos',
+        labelKey: 'nav.fluxos',
+        icon: 'ph-flow-arrow',
       },
       {
         id: 'automacoes',
@@ -112,6 +112,21 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav.automacoes',
         icon: 'ph-robot',
         showLockedWhenGated: true,
+      },
+    ],
+  },
+  {
+    id: 'operacao',
+    label: 'Operacao',
+    labelKey: 'nav.operacao',
+    icon: 'ph-folder',
+    items: [
+      {
+        id: 'tarefas',
+        route: '/tarefas',
+        label: 'Tarefas',
+        labelKey: 'nav.tarefas',
+        icon: 'ph-list-checks',
       },
       {
         id: 'arquivos',
@@ -164,13 +179,6 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-tiktok-logo',
         disabled: true,
       },
-      {
-        id: 'analytics-fluxos',
-        route: '/analytics-fluxos',
-        label: 'Fluxos',
-        labelKey: 'nav.fluxos',
-        icon: 'ph-flow-arrow',
-      },
     ],
   },
   {
@@ -195,7 +203,6 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
     label: 'Configuracoes',
     labelKey: 'nav.configuracoes',
     icon: 'ph-gear',
-    isBottom: true,
     items: [
       {
         id: 'configuracao',
@@ -319,6 +326,18 @@ export function getNavGroups(
   }
 
   return groups;
+}
+
+/**
+ * A nav item's route is "active" for a pathname on an exact match or a
+ * child path, never on an unrelated route that merely shares a text prefix
+ * -- plain `pathname.startsWith(route)` marks '/analytics-fluxos' active for
+ * the '/analytics' (Instagram) item too, since the string '/analytics-fluxos'
+ * starts with '/analytics'. Requiring the boundary '/' after `route` rules
+ * that out while still matching real sub-routes like '/analytics/tiktok'.
+ */
+export function isNavRouteActive(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(`${route}/`);
 }
 
 export function getMoreSheetGroups(

@@ -28,6 +28,8 @@ vi.mock('@/services/workflowAnalytics', async () => {
 
 vi.mock('../../../store', () => ({
   getClientes: vi.fn(),
+  sortClientesByNome: <T extends { nome: string }>(clientes: T[]) =>
+    [...clientes].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
   getWorkflowTemplates: vi.fn(),
   getMembros: vi.fn(),
 }));

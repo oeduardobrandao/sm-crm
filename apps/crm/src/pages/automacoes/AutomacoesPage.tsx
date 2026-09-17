@@ -64,6 +64,7 @@ import {
   deleteInstagramAutomation,
   getInstagramAutomationSends,
   getClientes,
+  sortClientesByNome,
   getInitials,
   hasAutomationReadyAccount,
   type InstagramCommentAutomation,
@@ -200,7 +201,7 @@ export default function AutomacoesPage() {
 
   const clientesComAutomacao = useMemo(() => {
     const ids = new Set(automations.map((a) => a.client_id));
-    return clientes.filter((c) => c.id != null && ids.has(c.id));
+    return sortClientesByNome(clientes.filter((c) => c.id != null && ids.has(c.id)));
   }, [automations, clientes]);
 
   const filtered = useMemo(
