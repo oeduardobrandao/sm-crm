@@ -76,7 +76,7 @@ function stubGraph(statusFor: (id: string) => string) {
     const url = String(input);
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ url, body });
-    if (!init) {
+    if (!init?.body) {
       if (url.includes("fields=permalink")) return ok({ permalink: "https://instagram.com/p/x" });
       const id = url.split("/").pop()?.split("?")[0] ?? "";
       return ok({ status_code: statusFor(id) });

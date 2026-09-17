@@ -173,6 +173,7 @@ export async function createSingleImageContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image_url: imageUrl, caption, access_token: token }),
+    signal: AbortSignal.timeout(10_000),
   });
   const data = await res.json();
   if (data.error) {
@@ -207,6 +208,7 @@ export async function createVideoContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -226,6 +228,7 @@ export async function createStoryImageContainer(
       image_url: imageUrl,
       access_token: token,
     }),
+    signal: AbortSignal.timeout(10_000),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -245,6 +248,7 @@ export async function createStoryVideoContainer(
       video_url: videoUrl,
       access_token: token,
     }),
+    signal: AbortSignal.timeout(10_000),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -271,6 +275,7 @@ export async function createCarouselChildContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -292,6 +297,7 @@ export async function createCarouselParentContainer(
       caption,
       access_token: token,
     }),
+    signal: AbortSignal.timeout(10_000),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -317,13 +323,22 @@ export async function fetchPostMedia(db: DbClient, postId: number): Promise<Post
     .order("sort_order", { ascending: true });
 
   // deno-lint-ignore no-explicit-any
-  return (data ?? []).map((l: any) => ({
+  const rows: PostMediaRow[] = (data ?? []).map((l: any) => ({
     id: l.files.id,
     kind: l.files.kind,
     r2_key: l.files.r2_key,
     thumbnail_r2_key: l.files.thumbnail_r2_key,
     sort_order: l.sort_order,
   }));
+
+  // sort_order can have ties (confirmed: other handlers can write duplicate
+  // values). Tiebreak on id so this function's output is deterministic
+  // regardless of tie order returned by the query -- ensureCarouselChildren's
+  // sameFileSequence check compares this to persisted state index-by-index,
+  // and a tie-induced reorder with no real gallery change must not look like
+  // a sequence change.
+  rows.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  return rows;
 }
 
 export interface StorySegment {
@@ -477,11 +492,12 @@ function sameFileSequence(children: CarouselChild[], media: PostMediaRow[]): boo
  * single-writer holding the publish_processing_at lock should call this.
  */
 export async function ensureCarouselChildren(db: DbClient, postId: number): Promise<CarouselChild[]> {
-  const { data: post } = await db
+  const { data: post, error } = await db
     .from("workflow_posts")
     .select("carousel_children")
     .eq("id", postId)
     .single();
+  if (error) throw new Error(`Failed to read carousel children: ${error.message ?? error}`);
   const media = await fetchPostMedia(db, postId);
 
   const existing = (post?.carousel_children ?? null) as CarouselChild[] | null;
@@ -754,6 +770,7 @@ export async function checkContainerStatus(
 ): Promise<"FINISHED" | "IN_PROGRESS" | "ERROR"> {
   const res = await fetch(
     `${GRAPH_BASE}/${containerId}?fields=status_code&access_token=${token}`,
+    { signal: AbortSignal.timeout(10_000) },
   );
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -783,6 +800,7 @@ export async function publishContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ creation_id: containerId, access_token: token }),
+    signal: AbortSignal.timeout(10_000),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -796,6 +814,7 @@ export async function fetchPermalink(
   try {
     const res = await fetch(
       `${GRAPH_BASE}/${mediaId}?fields=permalink&access_token=${token}`,
+      { signal: AbortSignal.timeout(10_000) },
     );
     const data = await res.json();
     return data.permalink ?? null;

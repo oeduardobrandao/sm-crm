@@ -124,7 +124,7 @@ function stubGraph(statusFor: (id: string) => string = () => "FINISHED") {
     const url = String(input);
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ url, body });
-    if (!init) {
+    if (!init?.body) {
       const id = url.split("/").pop()?.split("?")[0] ?? "";
       return Promise.resolve(new Response(JSON.stringify({ status_code: statusFor(id) }), { status: 200 }));
     }
