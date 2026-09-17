@@ -276,3 +276,61 @@ Deno.test("pollCarouselChildrenReady returns allReady=false for an empty childre
   } finally { g.restore(); }
   assertEquals(result.allReady, false, "empty must never report ready (mirrors publishReadyStorySegments)");
 });
+
+const { advanceCarouselContainer } = await import("../_shared/instagram-publish-utils.ts");
+
+Deno.test("advanceCarouselContainer: not all ready -> containerId null, no CAROUSEL parent call", async () => {
+  const ctx = makeDb({ children: null, media: twoMedia });
+  // c-1 (image) FINISHED immediately, c-2 (video) still transcoding.
+  const g = stubGraph((id) => (id === "c-2" ? "IN_PROGRESS" : "FINISHED"));
+  let result;
+  try {
+    result = await advanceCarouselContainer(ctx.db, {
+      postId: 1, igUserId: "ig", token: "t", caption: "cap", maxPolls: 1, intervalMs: 1,
+    });
+  } finally { g.restore(); }
+  assertEquals(result.allReady, false);
+  assertEquals(result.containerId, null);
+  assert(!g.calls.some((c) => c.body?.media_type === "CAROUSEL"), "parent must not be assembled");
+  // Both children were created and persisted this tick: next tick resumes from here.
+  assertEquals(ctx.children.map((c: { container_id: string | null }) => c.container_id), ["c-1", "c-2"]);
+});
+
+Deno.test("advanceCarouselContainer: all ready -> parent assembled from children in order, containerId returned", async () => {
+  const ctx = makeDb({
+    children: [
+      { file_id: 11, kind: "image", container_id: "c-1", ready: true },
+      { file_id: 12, kind: "video", container_id: "c-2", ready: false },
+    ],
+    media: twoMedia,
+  });
+  const g = stubGraph(() => "FINISHED");
+  let result;
+  try {
+    result = await advanceCarouselContainer(ctx.db, {
+      postId: 1, igUserId: "ig", token: "t", caption: "cap", maxPolls: 1, intervalMs: 1,
+    });
+  } finally { g.restore(); }
+  assertEquals(result.allReady, true);
+  const parent = g.calls.find((c) => c.body?.media_type === "CAROUSEL");
+  assert(parent, "parent must be assembled once every child is ready");
+  assertEquals(parent!.body.children, "c-1,c-2");
+  assertEquals(parent!.body.caption, "cap");
+  // POST count: 0 children (both existed) + 1 parent => the parent is c-1 in the
+  // stub's POST numbering, and that id is what the caller persists.
+  assertEquals(result.containerId, "c-1");
+});
+
+Deno.test("advanceCarouselContainer: trial reel on a carousel throws TRIAL_MEDIA_SHAPE_ERROR before any Graph call", async () => {
+  const ctx = makeDb({ children: null, media: twoMedia });
+  const g = stubGraph();
+  let threw = "";
+  try {
+    await advanceCarouselContainer(ctx.db, {
+      postId: 1, igUserId: "ig", token: "t", caption: "cap", trialStrategy: "auto", maxPolls: 1, intervalMs: 1,
+    });
+  } catch (e) { threw = (e as Error).message; } finally { g.restore(); }
+  assertEquals(threw, TRIAL_MEDIA_SHAPE_ERROR);
+  assertEquals(g.calls.length, 0);
+  assertEquals(ctx.updates.length, 0, "must not even build the children array");
+});

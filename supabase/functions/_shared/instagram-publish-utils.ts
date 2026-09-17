@@ -632,6 +632,57 @@ export async function pollCarouselChildrenReady(
   return { children, allReady };
 }
 
+export interface CarouselAdvanceResult {
+  /** The CAROUSEL parent container id; non-null exactly when allReady is true. */
+  containerId: string | null;
+  children: CarouselChild[];
+  allReady: boolean;
+}
+
+/**
+ * One resumable step of carousel container creation: create any missing child
+ * containers (persisting each), poll readiness within the budget, and assemble
+ * the CAROUSEL parent only once every child is FINISHED. allReady=false is NOT
+ * an error -- the caller clears the publish lock and lets the next cron tick
+ * call this again; persisted state makes the next call pick up where this one
+ * stopped. Throws on child ERROR, cap, trial-shape, or any Graph error (callers
+ * mark the post failed, as with createContainerForPost).
+ */
+export async function advanceCarouselContainer(
+  db: DbClient,
+  opts: {
+    postId: number;
+    igUserId: string;
+    token: string;
+    caption: string;
+    trialStrategy?: string | null;
+    maxPolls?: number;
+    intervalMs?: number;
+  },
+): Promise<CarouselAdvanceResult> {
+  const { postId, igUserId, token, caption, maxPolls, intervalMs } = opts;
+
+  // Reel de teste nunca degrada em silêncio: fora do formato exato (reels + 1
+  // vídeo) falha alto com TRIAL_INELIGIBLE, igual a createContainerForPost.
+  if (opts.trialStrategy === "manual" || opts.trialStrategy === "auto") {
+    throw new Error(TRIAL_MEDIA_SHAPE_ERROR);
+  }
+
+  await createMissingCarouselChildContainers(db, { postId, igUserId, token });
+  const { children, allReady } = await pollCarouselChildrenReady(db, {
+    postId, igUserId, token, maxPolls, intervalMs,
+  });
+  if (!allReady) return { containerId: null, children, allReady: false };
+
+  const parent = await createCarouselParentContainer(
+    igUserId,
+    token,
+    children.map((c) => c.container_id as string),
+    caption,
+  );
+  return { containerId: parent.id, children, allReady: true };
+}
+
 export interface ContainerCreationResult {
   containerId: string;
   /**
