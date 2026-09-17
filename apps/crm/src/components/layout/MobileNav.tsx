@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
-import { getMoreSheetGroups, NAV_MODULE } from './nav-data';
+import { getMoreSheetGroups, NAV_MODULE, isNavRouteActive } from './nav-data';
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 import { Search, MessageCircle, Compass } from 'lucide-react';
 import GlobalSearchDialog from './GlobalSearchDialog';
@@ -40,7 +40,7 @@ function filterPrimaryItems(
 }
 
 function getActiveIndex(items: typeof PRIMARY_ITEMS, pathname: string): number {
-  const idx = items.findIndex((item) => pathname.startsWith(item.route));
+  const idx = items.findIndex((item) => isNavRouteActive(pathname, item.route));
   return idx >= 0 ? idx : -1;
 }
 
@@ -61,7 +61,7 @@ export default function MobileNav() {
 
   const moreSheetGroups = getMoreSheetGroups(features, workspaceRole, can);
   const isMoreRouteActive = moreSheetGroups.some((group) =>
-    group.items.some((item) => location.pathname.startsWith(item.route)),
+    group.items.some((item) => isNavRouteActive(location.pathname, item.route)),
   );
   // Task 14, revisão externa round 4 (P2): the fixed primary bar used to
   // render dashboard/clientes/analytics/entregas unconditionally -- only the
@@ -261,7 +261,7 @@ export default function MobileNav() {
                     </button>
                   );
                 }
-                const isActive = location.pathname.startsWith(item.route);
+                const isActive = isNavRouteActive(location.pathname, item.route);
                 return (
                   <button
                     key={item.id}

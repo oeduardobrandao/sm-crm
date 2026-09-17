@@ -15,6 +15,7 @@ import { QueryErrorCard } from '@/components/QueryErrorCard';
 import { getWorkflowAnalytics, NotEntitledError } from '@/services/workflowAnalytics';
 import {
   getClientes,
+  sortClientesByNome,
   getMembros,
   getWorkflowTemplates,
   type Cliente,
@@ -216,7 +217,7 @@ export default function AnalyticsFluxosPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Cliente: todos</SelectItem>
-              {clientes.map((c) => (
+              {sortClientesByNome(clientes).map((c) => (
                 <SelectItem key={c.id} value={String(c.id)}>
                   {c.nome}
                 </SelectItem>

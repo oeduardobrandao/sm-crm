@@ -20,10 +20,47 @@ export function InstagramCaptionField({
 }: InstagramCaptionFieldProps) {
   const [local, setLocal] = useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastWidthRef = useRef<number | null>(null);
+
+  const resize = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  };
 
   useEffect(() => {
     setLocal(value);
   }, [value]);
+
+  // Grows with content the same way the Conteúdo editor does -- re-measured
+  // whenever the text changes (typing, a remote update, or wrapping caused by
+  // a resize) instead of only on mount, so a value set from outside (e.g.
+  // switching posts) starts at the right height too.
+  useEffect(() => {
+    resize();
+  }, [local]);
+
+  // A container/viewport resize (drawer width change, window resize) can
+  // change how the SAME text wraps without `local` changing at all, so the
+  // effect above wouldn't rerun -- with overflow hidden and no manual resize
+  // handle, the newly wrapped lines would just get clipped. Re-measuring on
+  // width change (not height, which `resize()` itself just set, to avoid an
+  // observer feedback loop) keeps it in sync either way.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width === undefined) return;
+      if (lastWidthRef.current !== null && Math.abs(width - lastWidthRef.current) < 0.5) return;
+      lastWidthRef.current = width;
+      resize();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const handleChange = (newVal: string) => {
     if (newVal.length > MAX_CHARS) return;
@@ -60,11 +97,12 @@ export function InstagramCaptionField({
         </span>
       </div>
       <Textarea
+        ref={textareaRef}
         value={local}
         onChange={(e) => handleChange(e.target.value)}
         disabled={disabled}
         placeholder="Texto exato que será publicado no Instagram. Suporta emojis e hashtags."
-        className="min-h-[80px] resize-y"
+        className="min-h-[80px] resize-none overflow-hidden"
         style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}
       />
       <p className="text-xs mt-1" style={{ color: 'var(--text-light)' }}>

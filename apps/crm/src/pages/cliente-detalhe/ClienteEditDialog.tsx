@@ -168,10 +168,12 @@ export function ClienteEditDialog({ cliente, open, onOpenChange }: ClienteEditDi
               <Input type="number" value={fValor} onChange={(e) => setFValor(e.target.value)} />
             </div>
           )}
-          <div className="space-y-1">
-            <Label>{t('detail.formNotionUrl')}</Label>
-            <Input value={fNotion} onChange={(e) => setFNotion(e.target.value)} />
-          </div>
+          {cliente.notion_page_url && (
+            <div className="space-y-1">
+              <Label>{t('detail.formNotionUrl')}</Label>
+              <Input value={fNotion} onChange={(e) => setFNotion(e.target.value)} />
+            </div>
+          )}
           <div className="space-y-1">
             <Label>{t('detail.formPaymentDay')}</Label>
             <Input

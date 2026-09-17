@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
-import { getNavGroups } from './nav-data';
+import { getNavGroups, isNavRouteActive } from './nav-data';
 import type { NavGroup } from './nav-data';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
@@ -20,6 +20,19 @@ interface SidebarProps {
   isDrawer?: boolean;
   isOpen?: boolean;
   onClose?: () => void;
+}
+
+const COLLAPSED_GROUPS_STORAGE_KEY = 'sidebar-collapsed-groups';
+
+function readCollapsedGroups(): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const ids = JSON.parse(raw);
+    return Array.isArray(ids) ? new Set(ids) : new Set();
+  } catch {
+    return new Set();
+  }
 }
 
 export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: SidebarProps) {
@@ -36,6 +49,21 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsedGroups);
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      try {
+        localStorage.setItem(COLLAPSED_GROUPS_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // localStorage unavailable (private mode, quota) -- collapse state just won't persist.
+      }
+      return next;
+    });
+  };
 
   const navGroups = getNavGroups(features, workspaceRole, can);
   const activeRoute = location.pathname;
@@ -103,78 +131,104 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
 
   // The support group (Novidades/Ajuda) lives in the account menu on desktop
   // instead of the main nav list — see the utilityItems section below.
-  const mainGroups = navGroups.filter((g) => !g.isBottom && g.id !== 'ajuda-group');
-  const configItems = navGroups.find((g) => g.id === 'config')?.items ?? [];
-  const supportItems = navGroups.find((g) => g.id === 'ajuda-group')?.items ?? [];
-  const utilityItems = [...configItems, ...supportItems];
+  // Configurações lives in the main nav list itself (it's not filtered out
+  // here), so it isn't repeated in the dropdown.
+  const mainGroups = navGroups.filter((g) => g.id !== 'ajuda-group');
+  const utilityItems = navGroups.find((g) => g.id === 'ajuda-group')?.items ?? [];
 
-  const renderGroup = (group: NavGroup) => (
-    <li key={group.id} className="sidebar-group">
-      <div className="sidebar-group-label">{t(group.labelKey, group.label)}</div>
-      <ul className="sidebar-sub-nav">
-        {group.items.map((item) => {
-          const isActiveItem = activeRoute.startsWith(item.route);
-          const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
-          return (
-            <li key={item.id} className="sidebar-sub-item">
-              {item.disabled ? (
-                <div className="sidebar-sub-link sidebar-sub-link--disabled" aria-disabled="true">
-                  <i className={`ph ${item.icon}`} />
-                  <span>{t(item.labelKey, item.label)}</span>
-                  <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
-                </div>
-              ) : item.locked ? (
-                <a
-                  className="sidebar-sub-link sidebar-sub-link--locked"
-                  href={`#${item.route}`}
-                  data-testid={`nav-locked-${item.id}`}
-                  title={t('sidebar.upgradeToUnlock', 'Disponível nos planos Pro e Max')}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleNavClick(item.route);
-                  }}
-                >
-                  <i className={`ph ${item.icon}`} />
-                  <span>{t(item.labelKey, item.label)}</span>
-                  <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
-                </a>
-              ) : item.newTab ? (
-                <a
-                  className="sidebar-sub-link"
-                  href={item.route}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => {
-                    if (isDrawer) onClose?.();
-                  }}
-                >
-                  <i className={`ph ${item.icon}`} />
-                  <span>{t(item.labelKey, item.label)}</span>
-                </a>
-              ) : (
-                <a
-                  className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
-                  href={`#${item.route}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleNavClick(item.route);
-                  }}
-                >
-                  <i className={ItemIcon} />
-                  <span>{t(item.labelKey, item.label)}</span>
-                  {item.id === 'mensagens' && mensagensUnread > 0 && (
-                    <span className="nav-badge nav-badge--count" data-testid="mensagens-nav-badge">
-                      {mensagensUnread > 99 ? '99+' : mensagensUnread}
-                    </span>
+  const renderGroup = (group: NavGroup) => {
+    const groupHasActiveItem = group.items.some((item) =>
+      isNavRouteActive(activeRoute, item.route),
+    );
+    const isCollapsed = collapsedGroups.has(group.id) && !groupHasActiveItem;
+    return (
+      <li key={group.id} className="sidebar-group">
+        <button
+          type="button"
+          className="sidebar-group-label"
+          aria-expanded={!isCollapsed}
+          onClick={() => toggleGroup(group.id)}
+        >
+          <span>{t(group.labelKey, group.label)}</span>
+          <i
+            className={`ph ph-caret-down sidebar-group-caret${isCollapsed ? ' sidebar-group-caret--collapsed' : ''}`}
+          />
+        </button>
+        <div
+          className={`sidebar-group-content${isCollapsed ? ' sidebar-group-content--collapsed' : ''}`}
+        >
+          <ul className="sidebar-sub-nav" inert={isCollapsed || undefined}>
+            {group.items.map((item) => {
+              const isActiveItem = isNavRouteActive(activeRoute, item.route);
+              const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
+              return (
+                <li key={item.id} className="sidebar-sub-item">
+                  {item.disabled ? (
+                    <div
+                      className="sidebar-sub-link sidebar-sub-link--disabled"
+                      aria-disabled="true"
+                    >
+                      <i className={`ph ${item.icon}`} />
+                      <span>{t(item.labelKey, item.label)}</span>
+                      <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
+                    </div>
+                  ) : item.locked ? (
+                    <a
+                      className="sidebar-sub-link sidebar-sub-link--locked"
+                      href={`#${item.route}`}
+                      data-testid={`nav-locked-${item.id}`}
+                      title={t('sidebar.upgradeToUnlock', 'Disponível nos planos Pro e Max')}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleNavClick(item.route);
+                      }}
+                    >
+                      <i className={`ph ${item.icon}`} />
+                      <span>{t(item.labelKey, item.label)}</span>
+                      <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
+                    </a>
+                  ) : item.newTab ? (
+                    <a
+                      className="sidebar-sub-link"
+                      href={item.route}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        if (isDrawer) onClose?.();
+                      }}
+                    >
+                      <i className={`ph ${item.icon}`} />
+                      <span>{t(item.labelKey, item.label)}</span>
+                    </a>
+                  ) : (
+                    <a
+                      className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
+                      href={`#${item.route}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleNavClick(item.route);
+                      }}
+                    >
+                      <i className={ItemIcon} />
+                      <span>{t(item.labelKey, item.label)}</span>
+                      {item.id === 'mensagens' && mensagensUnread > 0 && (
+                        <span
+                          className="nav-badge nav-badge--count"
+                          data-testid="mensagens-nav-badge"
+                        >
+                          {mensagensUnread > 99 ? '99+' : mensagensUnread}
+                        </span>
+                      )}
+                    </a>
                   )}
-                </a>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </li>
-  );
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </li>
+    );
+  };
 
   return (
     <nav
@@ -240,9 +294,9 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                           className={`user-dropdown-item${isActive ? ' user-dropdown-item--active' : ''}`}
                           onClick={() => !isActive && handleWorkspaceSwitch(m.workspaces.id)}
                         >
-                          <i className="ph ph-buildings" />
+                          <i className="ph-bold ph-buildings" />
                           <span>{m.workspaces.name || 'Workspace'}</span>
-                          {isActive && <i className="ph ph-check user-dropdown-item-check" />}
+                          {isActive && <i className="ph-bold ph-check user-dropdown-item-check" />}
                         </button>
                       );
                     })}
@@ -264,7 +318,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                             setUserMenuOpen(false);
                           }}
                         >
-                          <i className={`ph ${item.icon}`} />
+                          <i className={`ph-bold ${item.icon}`} />
                           <span>{t(item.labelKey, item.label)}</span>
                         </a>
                       ) : (
@@ -277,7 +331,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                             setUserMenuOpen(false);
                           }}
                         >
-                          <i className={`ph ${item.icon}`} />
+                          <i className={`ph-bold ${item.icon}`} />
                           <span>{t(item.labelKey, item.label)}</span>
                         </button>
                       ),
@@ -293,13 +347,15 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                       setLanguageMenuOpen((v) => !v);
                     }}
                   >
-                    <i className="ph ph-globe" />
+                    <i className="ph-bold ph-globe" />
                     <span>{t('sidebar.language')}</span>
                     <span className="user-dropdown-item-value">
                       <FlagIcon lang={i18n.language as Language} size={14} />
                       {t(`language.${i18n.language}`)}
                     </span>
-                    <i className={`ph ${languageMenuOpen ? 'ph-caret-up' : 'ph-caret-down'}`} />
+                    <i
+                      className={`ph-bold ${languageMenuOpen ? 'ph-caret-up' : 'ph-caret-down'}`}
+                    />
                   </button>
                   {languageMenuOpen && (
                     <div className="user-dropdown-submenu">
@@ -317,7 +373,9 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                           >
                             <FlagIcon lang={lang} size={16} />
                             <span>{t(`language.${lang}`)}</span>
-                            {isActive && <i className="ph ph-check user-dropdown-item-check" />}
+                            {isActive && (
+                              <i className="ph-bold ph-check user-dropdown-item-check" />
+                            )}
                           </button>
                         );
                       })}
@@ -332,7 +390,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                     toggleTheme();
                   }}
                 >
-                  <i className={`ph ${isDark ? 'ph-sun' : 'ph-moon'}`} />
+                  <i className={`ph-bold ${isDark ? 'ph-sun' : 'ph-moon'}`} />
                   <span>{isDark ? t('sidebar.lightMode') : t('sidebar.darkMode')}</span>
                 </button>
 
@@ -341,7 +399,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                   className="user-dropdown-item text-danger"
                   onClick={signOut}
                 >
-                  <i className="ph ph-sign-out" />
+                  <i className="ph-bold ph-sign-out" />
                   <span>{t('sidebar.logout')}</span>
                 </button>
               </div>

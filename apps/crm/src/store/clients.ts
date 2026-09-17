@@ -55,6 +55,17 @@ export interface ClienteData {
 }
 
 /**
+ * Alphabetical comparator for client pickers (dropdowns, selects, comboboxes).
+ * `getClientes()` itself stays newest-first (see PAGE_SIZE comment below) --
+ * useGuideSignals.ts relies on that order to find the most recently created
+ * client, so callers that need alphabetical order sort at their own call site
+ * with this shared comparator instead of resorting the shared fetch.
+ */
+export function sortClientesByNome<T extends { nome: string }>(clientes: T[]): T[] {
+  return [...clientes].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+/**
  * Allowlisted columns — must match the GRANT in Migration B exactly.
  *
  * Must stay a single string literal (no `+` concatenation): supabase-js parses

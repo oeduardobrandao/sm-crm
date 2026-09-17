@@ -269,24 +269,65 @@ body {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.1rem;
 }
 
 .sidebar-group {
   width: 100%;
   display: flex;
   flex-direction: column;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.1rem;
 }
 
 .sidebar-group-label {
-  padding: 0.5rem 0.75rem 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.4rem 0.75rem 0.2rem;
   font-size: 0.7rem;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
   user-select: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.sidebar-group-label:hover {
+  color: var(--text-light);
+}
+
+.sidebar-group-caret {
+  font-size: 0.75rem;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-group-caret--collapsed {
+  transform: rotate(-90deg);
+}
+
+.sidebar-group-content {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 0.2s ease,
+    opacity 0.2s ease;
+  opacity: 1;
+}
+
+.sidebar-group-content--collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.sidebar-group-content > .sidebar-sub-nav {
+  overflow: hidden;
+  min-height: 0;
 }
 
 .sidebar-sub-nav {
@@ -295,7 +336,7 @@ body {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.05rem;
 }
 
 .sidebar-sub-item {
@@ -306,7 +347,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.3rem 0.75rem;
+  padding: 0.2rem 0.75rem;
   color: var(--text-light);
   text-decoration: none;
   border-radius: 8px;
@@ -331,11 +372,11 @@ body {
 }
 
 .sidebar-sub-link.active {
+  background: var(--surface-hover);
   color: var(--text-main);
-  font-weight: 600;
 }
 .sidebar-sub-link.active i {
-  color: var(--primary-color);
+  color: var(--text-main);
 }
 
 .sidebar-sub-link--disabled {
@@ -365,7 +406,7 @@ body {
   border-radius: 2px;
   font-family: var(--font-mono);
   font-size: 0.6rem;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
@@ -947,9 +988,19 @@ body {
 }
 
 .header-title p.conta-identity__handle {
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   letter-spacing: 0.04em;
-  margin-top: 0.35rem;
+  margin-top: -1.25rem;
+}
+
+.conta-identity__handle-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.conta-identity__handle-link:hover {
+  color: var(--text-main);
 }
 
 .conta-identity--avatar .conta-identity__handle {
@@ -963,7 +1014,7 @@ body {
   }
 
   .header-title p.conta-identity__handle {
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
 }
 

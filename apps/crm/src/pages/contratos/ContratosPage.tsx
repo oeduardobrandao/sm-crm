@@ -66,6 +66,7 @@ import {
   updateContrato,
   removeContrato,
   getClientes,
+  sortClientesByNome,
   formatDate,
   type Contrato,
 } from '../../store';
@@ -465,7 +466,7 @@ export default function ContratosPage() {
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="__none__">Nenhum</SelectItem>
-                        {clientes.map((c) => (
+                        {sortClientesByNome(clientes).map((c) => (
                           <SelectItem key={c.id} value={String(c.id)}>
                             {c.nome}
                           </SelectItem>

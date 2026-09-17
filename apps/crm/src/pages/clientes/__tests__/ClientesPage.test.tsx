@@ -587,6 +587,7 @@ describe('ClientesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Novo Cliente' }));
 
     const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByLabelText('URL do Notion')).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Nome *'), {
       target: { value: 'Clínica Solaris' },
     });
@@ -599,9 +600,6 @@ describe('ClientesPage', () => {
     fireEvent.change(within(dialog).getByLabelText('Plano'), { target: { value: 'Growth' } });
     fireEvent.change(within(dialog).getByLabelText('Valor Mensal (R$)'), {
       target: { value: '2500' },
-    });
-    fireEvent.change(within(dialog).getByLabelText('URL do Notion'), {
-      target: { value: 'https://notion.so/solaris' },
     });
     fireEvent.change(within(dialog).getByLabelText('Dia de Pagamento (1-31)'), {
       target: { value: '18' },
@@ -616,7 +614,6 @@ describe('ClientesPage', () => {
         telefone: '(85) 98888-0000',
         plano: 'Growth',
         valor_mensal: 2500,
-        notion_page_url: 'https://notion.so/solaris',
         data_pagamento: 18,
         sigla: 'CS',
         cor: '#e74c3c',
@@ -693,6 +690,7 @@ describe('ClientesPage', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByDisplayValue('Beta Care')).toBeInTheDocument();
     expect(within(dialog).getByDisplayValue('beta@care.com')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('URL do Notion')).not.toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByLabelText('Nome *'), {
       target: { value: 'Beta Care Plus' },
@@ -713,7 +711,6 @@ describe('ClientesPage', () => {
         telefone: '(85) 97777-0000',
         plano: 'Base',
         valor_mensal: 2100,
-        notion_page_url: 'https://notion.so/beta',
         data_pagamento: 22,
         status: 'pausado',
       });

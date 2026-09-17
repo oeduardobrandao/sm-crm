@@ -1540,7 +1540,17 @@ function AnalyticsContent({
                   <h1>{cliente.nome}</h1>
                 </div>
                 <p className="conta-identity__handle">
-                  @{account.username} {cacheNote}
+                  <a
+                    href={sanitizeUrl(
+                      `https://instagram.com/${encodeURIComponent(account.username)}`,
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="conta-identity__handle-link"
+                  >
+                    @{account.username}
+                  </a>{' '}
+                  {cacheNote}
                 </p>
               </div>
             );

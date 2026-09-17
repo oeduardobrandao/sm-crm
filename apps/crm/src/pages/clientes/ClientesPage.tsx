@@ -97,7 +97,6 @@ function createClienteSchema(t: (key: string) => string) {
     telefone: z.string(),
     plano: z.string(),
     valor: z.string(),
-    notion: z.string(),
     diaPag: z
       .string()
       .refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), t('validation.dayRange')),
@@ -168,7 +167,6 @@ export default function ClientesPage() {
       telefone: '',
       plano: '',
       valor: '',
-      notion: '',
       diaPag: '',
       status: 'ativo',
     },
@@ -213,7 +211,6 @@ export default function ClientesPage() {
       telefone: '',
       plano: '',
       valor: '',
-      notion: '',
       diaPag: '',
       status: 'ativo',
     });
@@ -230,7 +227,6 @@ export default function ClientesPage() {
       telefone: c.telefone || '',
       plano: c.plano || '',
       valor: c.valor_mensal ? String(c.valor_mensal) : '',
-      notion: c.notion_page_url || '',
       diaPag: c.data_pagamento ? String(c.data_pagamento) : '',
       status: c.status,
     });
@@ -248,7 +244,6 @@ export default function ClientesPage() {
           telefone: values.telefone,
           plano: values.plano,
           valor_mensal: values.valor ? Number(values.valor) : 0,
-          notion_page_url: values.notion,
           data_pagamento: diaPag,
           status: values.status,
         };
@@ -265,7 +260,6 @@ export default function ClientesPage() {
           telefone: values.telefone,
           plano: values.plano,
           valor_mensal: values.valor ? Number(values.valor) : 0,
-          notion_page_url: values.notion,
           data_pagamento: diaPag,
           sigla: getInitials(values.nome),
           cor: randomColor,
@@ -837,19 +831,6 @@ export default function ClientesPage() {
                   )}
                 />
               )}
-              <FormField
-                control={form.control}
-                name="notion"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.notionUrl')}</FormLabel>
-                    <FormControl>
-                      <Input placeholder="https://notion.so/..." {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <FormField
                 control={form.control}
                 name="diaPag"

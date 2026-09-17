@@ -428,7 +428,7 @@ export function PostProductionSection({
                           >
                             <SelectTrigger
                               aria-label={`Responsável da etapa ${step.nome}`}
-                              className="h-7 text-xs"
+                              className="h-7 text-xs w-auto min-w-32"
                             >
                               <SelectValue placeholder="Sem responsável" />
                             </SelectTrigger>
@@ -456,7 +456,7 @@ export function PostProductionSection({
                                 max={MAX_PRAZO_DIAS}
                                 step={1}
                                 aria-label={`Dias da etapa ${step.nome}`}
-                                className="h-7 text-xs rounded-md border border-input px-2 w-14"
+                                className="h-7 text-xs rounded-md border border-input bg-transparent text-foreground px-2 w-14"
                                 value={v.prazoDias ?? ''}
                                 disabled={savingOrdem !== null}
                                 onChange={(e) => {
@@ -505,7 +505,7 @@ export function PostProductionSection({
                               >
                                 <SelectTrigger
                                   aria-label={`Tipo de prazo da etapa ${step.nome}`}
-                                  className="h-7 text-xs"
+                                  className="h-7 text-xs w-auto min-w-28"
                                 >
                                   <SelectValue />
                                 </SelectTrigger>
@@ -547,7 +547,7 @@ export function PostProductionSection({
                               <input
                                 type="date"
                                 aria-label={`Prazo da etapa ${step.nome}`}
-                                className="h-7 text-xs rounded-md border border-input px-2"
+                                className="h-7 text-xs rounded-md border border-input bg-transparent text-foreground px-2"
                                 value={v.prazo}
                                 disabled={savingOrdem !== null}
                                 onChange={(e) =>
