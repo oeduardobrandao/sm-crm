@@ -327,7 +327,7 @@ describe('AutomacoesPage', () => {
   it('expands a row to load and show its sends log', async () => {
     renderPage();
 
-    const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+    const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
     fireEvent.click(row);
 
     expect(await screen.findByText('@fulano')).toBeInTheDocument();
@@ -342,7 +342,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Lançamento de sexta')).closest('tr')!;
+    const row = (await screen.findByText('Lançamento de sexta')).closest('[aria-expanded]')!;
     expect(within(row).getByText('Chamada para o evento de sexta')).toBeInTheDocument();
     expect(within(row).getByText('pendingBadge')).toBeInTheDocument();
     expect(within(row).queryByText('allPosts')).not.toBeInTheDocument();
@@ -353,7 +353,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
     expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
     expect(within(row).queryByText('pendingBadge')).not.toBeInTheDocument();
   });
@@ -363,7 +363,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Lançamento de sexta')).closest('tr')!;
+    const row = (await screen.findByText('Lançamento de sexta')).closest('[aria-expanded]')!;
     expect(within(row).getByText('pendingBadge')).toBeInTheDocument();
     expect(within(row).queryByText('unlinkedTargetBadge')).not.toBeInTheDocument();
   });
@@ -376,7 +376,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
     expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
     expect(within(row).queryByText('unlinkedTargetAction')).not.toBeInTheDocument();
   });
@@ -393,7 +393,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
     expect(within(row).getByText('unlinkedTargetBadge')).toBeInTheDocument();
     expect(within(row).queryByText('unlinkedTargetAction')).not.toBeInTheDocument();
   });
@@ -403,7 +403,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
     fireEvent.click(within(row).getByText('unlinkedTargetAction'));
 
     const dialog = await screen.findByTestId('automation-dialog');
@@ -431,7 +431,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Story de sábado')).closest('tr')!;
+    const row = (await screen.findByText('Story de sábado')).closest('[aria-expanded]')!;
     expect(within(row).getByText('deletedPostBadge')).toBeInTheDocument();
     expect(within(row).queryByText('unlinkedTargetBadge')).not.toBeInTheDocument();
   });
@@ -441,7 +441,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Promo antiga')).closest('tr')!;
+    const row = (await screen.findByText('Promo antiga')).closest('[aria-expanded]')!;
     expect(within(row).getByText('deletedPostBadge')).toBeInTheDocument();
     expect(within(row).getByRole('switch')).not.toBeChecked();
   });
@@ -451,7 +451,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Reels recém-ligado')).closest('tr')!;
+    const row = (await screen.findByText('Reels recém-ligado')).closest('[aria-expanded]')!;
     expect(within(row).getByText('Bastidores do lançamento')).toBeInTheDocument();
     expect(within(row).queryByText('allPosts')).not.toBeInTheDocument();
     expect(within(row).queryByRole('link')).not.toBeInTheDocument();
@@ -467,7 +467,7 @@ describe('AutomacoesPage', () => {
 
     renderPage();
 
-    const row = (await screen.findByText('Promo antiga')).closest('tr')!;
+    const row = (await screen.findByText('Promo antiga')).closest('[aria-expanded]')!;
     fireEvent.click(within(row).getByRole('switch'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('reactivateNeedsTarget'));
@@ -484,14 +484,14 @@ describe('AutomacoesPage', () => {
       mockGetAutomations.mockResolvedValue([{ ...AUTOMATIONS[0], dm_media: MEDIA }]);
       renderPage();
 
-      const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+      const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
       expect(within(row).getByText('table.cardBadge')).toBeInTheDocument();
     });
 
     it('não mostra o chip de cartão para uma automação sem dm_media', async () => {
       renderPage();
 
-      const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+      const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
       expect(within(row).queryByText('table.cardBadge')).not.toBeInTheDocument();
     });
 
@@ -502,7 +502,7 @@ describe('AutomacoesPage', () => {
       ]);
       renderPage();
 
-      const row = (await screen.findByText('Promo de agosto')).closest('tr')!;
+      const row = (await screen.findByText('Promo de agosto')).closest('[aria-expanded]')!;
       fireEvent.click(row);
 
       expect(await screen.findByText('sendStatus.card_fallback_buttons')).toBeInTheDocument();

@@ -55,6 +55,7 @@ import { FeatureGate } from '@/components/paywall/FeatureGate';
 import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { useAuth } from '../../context/AuthContext';
 import { useEntitlements } from '../../hooks/useEntitlements';
+import { useIsDesktop } from '../../hooks/useIsDesktop';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { deleteAutomationMedia } from '../../services/automationMedia';
@@ -120,6 +121,7 @@ export default function AutomacoesPage() {
   const { t, i18n } = useTranslation('automations');
   const { profile, can } = useAuth();
   const qc = useQueryClient();
+  const isDesktop = useIsDesktop(901);
 
   const [clientFilter, setClientFilter] = useState<number | 'todos'>('todos');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -392,7 +394,7 @@ export default function AutomacoesPage() {
         <div className="flex justify-center p-8">
           <Spinner size="lg" />
         </div>
-      ) : (
+      ) : isDesktop ? (
         <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
           <Table>
             <TableHeader>
@@ -539,6 +541,166 @@ export default function AutomacoesPage() {
               })}
             </TableBody>
           </Table>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {filtered.length === 0 && (
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem 0' }}>
+              {automations.length === 0 ? t('emptyNone') : t('emptyForClient')}
+            </p>
+          )}
+          {filtered.map((a) => {
+            const cliente = clientesById.get(a.client_id);
+            const expanded = expandedId === a.id;
+            return (
+              <div key={a.id} className="team-card card animate-up">
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setExpandedId(expanded ? null : a.id)}
+                  aria-expanded={expanded}
+                >
+                  <div style={{ paddingTop: '0.15rem', flexShrink: 0 }}>
+                    {expanded ? (
+                      <ChevronDown className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{a.name}</span>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        marginTop: 4,
+                        fontSize: '0.75rem',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      <div
+                        className={`avatar ${avatarColorClass(cliente?.id ?? cliente?.nome)}`}
+                        style={{ width: 18, height: 18, fontSize: '0.6rem', flexShrink: 0 }}
+                      >
+                        {cliente ? getInitials(cliente.nome) : '?'}
+                      </div>
+                      <span>{cliente?.nome ?? t('clientRemoved')}</span>
+                    </div>
+                    <div
+                      className="flex flex-wrap items-center gap-1"
+                      style={{ marginTop: 6 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <AutomationTargetCell
+                        automation={a}
+                        canEdit={can('automacoes', 'editar') === true}
+                        onRetarget={openRetarget}
+                      />
+                    </div>
+                    {(a.keywords.length > 0 || (a.dm_buttons ?? []).length > 0 || a.dm_media) && (
+                      <div className="flex flex-wrap gap-1" style={{ marginTop: 6 }}>
+                        {a.keywords.map((k) => (
+                          <Badge key={k} variant="outline" size="sm">
+                            {k}
+                          </Badge>
+                        ))}
+                        {(a.dm_buttons ?? []).length > 0 && (
+                          <Badge variant="neutral" size="sm">
+                            {t('table.buttonsCount', { count: (a.dm_buttons ?? []).length })}
+                          </Badge>
+                        )}
+                        {a.dm_media && (
+                          <Badge variant="neutral" size="sm">
+                            {t('table.cardBadge')}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '0.4rem',
+                        marginTop: 6,
+                        fontSize: '0.75rem',
+                        color: 'var(--text-muted)',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <span>{t('table.dmsSent')}:</span>
+                      <span>{a.dms_sent_count}</span>
+                      <span>&bull;</span>
+                      <span>
+                        {a.last_triggered_at
+                          ? formatDate(a.last_triggered_at, i18n.language)
+                          : t('neverTriggered')}
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-end',
+                      gap: '0.5rem',
+                      flexShrink: 0,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Switch
+                      checked={a.ativo}
+                      aria-label={a.ativo ? t('switchDeactivate') : t('switchActivate')}
+                      onCheckedChange={(ativo) => toggleMutation.mutate({ id: a.id, ativo })}
+                    />
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 mb-0"
+                          aria-label={t('rowActions', { name: a.name })}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEdit(a)}>
+                          <Pencil className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
+                          {t('edit')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setDeleteTarget(a)}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" style={{ marginRight: '0.5rem' }} />
+                          {t('delete')}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+                {expanded && (
+                  <div
+                    style={{
+                      marginTop: '0.75rem',
+                      paddingTop: '0.75rem',
+                      borderTop: '1px solid var(--border-color)',
+                    }}
+                  >
+                    <SendsLog
+                      sends={sendsQuery.data}
+                      isLoading={sendsQuery.isLoading}
+                      isError={sendsQuery.isError}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
