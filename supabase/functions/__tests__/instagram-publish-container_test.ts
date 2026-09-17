@@ -146,22 +146,21 @@ Deno.test("createContainerForPost: video useCover:true but no thumbnail → no c
   }
 });
 
-Deno.test("createContainerForPost: multiple media → carousel children + parent", async () => {
+Deno.test("createContainerForPost: multiple media → throws before any Graph call (carousels use advanceCarouselContainer)", async () => {
   const f = stubFetch();
   try {
     const db = dbWithMedia([
       { kind: "image", r2_key: "a.jpg" },
       { kind: "video", r2_key: "b.mp4" },
     ]);
-    const res = await createContainerForPost(db, { ...base, useCover: true });
-    assertEquals(f.calls.length, 3); // 2 children + 1 parent
-    assertEquals(f.calls[0].body.is_carousel_item, true);
-    assertEquals(f.calls[1].body.is_carousel_item, true);
-    const parent = f.calls[2].body;
-    assertEquals(parent.media_type, "CAROUSEL");
-    assertEquals(parent.children, "c-1,c-2");
-    assertEquals(res.containerId, "c-3");
-    assertEquals(res.coverVideoUrl, undefined); // carousels never carry a Reel cover
+    let threw = "";
+    try {
+      await createContainerForPost(db, { ...base, useCover: true });
+    } catch (e) {
+      threw = (e as Error).message;
+    }
+    assertEquals(threw, "Carousel posts must go through advanceCarouselContainer");
+    assertEquals(f.calls.length, 0, "no child or parent container may be created here");
   } finally {
     f.restore();
   }
