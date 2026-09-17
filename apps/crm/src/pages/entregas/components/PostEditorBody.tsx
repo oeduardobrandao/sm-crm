@@ -229,32 +229,45 @@ export function PostEditorBody({
     return () => clearTimeout(t);
   }, [tituloLocal]);
 
-  const [resolvedContent, setResolvedContent] = useState<Record<string, unknown> | null>(
-    post.conteudo,
+  // `resolvedContent` must track post.conteudo synchronously (same render, not one tick
+  // later via an effect): when a client's edit suggestion is accepted, the diff card swaps
+  // to <PostEditor> by remounting it (new key), and PostEditor freezes whatever content it's
+  // handed at that exact mount -- it never re-syncs later. A useState-seeded-then-effect-
+  // updated value lags the first render after post.conteudo changes, so a remount landing in
+  // that render (as the accept-suggestion swap does) would freeze on the pre-suggestion doc
+  // even though post.conteudo had already updated. Only the R2 signed-URL resolution is
+  // genuinely async; the common case (no inline images) resolves in the same render.
+  const contentR2Keys = useMemo(
+    () => (post.conteudo ? extractR2Keys(post.conteudo) : []),
+    [post.conteudo],
   );
+  const [resolvedAsyncContent, setResolvedAsyncContent] = useState<{
+    forContent: Record<string, unknown>;
+    content: Record<string, unknown>;
+  } | null>(null);
 
   useEffect(() => {
-    if (!post.conteudo) {
-      setResolvedContent(null);
-      return;
-    }
-    const keys = extractR2Keys(post.conteudo);
-    if (keys.length === 0) {
-      setResolvedContent(post.conteudo);
-      return;
-    }
+    if (!post.conteudo || contentR2Keys.length === 0) return;
     let cancelled = false;
-    resolveInlineImageUrls(keys)
+    const forContent = post.conteudo;
+    resolveInlineImageUrls(contentR2Keys)
       .then((urlMap) => {
-        if (!cancelled) setResolvedContent(injectSignedUrls(post.conteudo!, urlMap));
+        if (!cancelled)
+          setResolvedAsyncContent({ forContent, content: injectSignedUrls(forContent, urlMap) });
       })
       .catch(() => {
-        if (!cancelled) setResolvedContent(post.conteudo);
+        if (!cancelled) setResolvedAsyncContent({ forContent, content: forContent });
       });
     return () => {
       cancelled = true;
     };
-  }, [post.conteudo]);
+  }, [post.conteudo, contentR2Keys]);
+
+  const resolvedContent = !post.conteudo
+    ? null
+    : resolvedAsyncContent && resolvedAsyncContent.forContent === post.conteudo
+      ? resolvedAsyncContent.content
+      : post.conteudo;
 
   const [resolvedSuggestion, setResolvedSuggestion] = useState<Record<string, unknown> | null>(
     editSuggestion?.suggested_conteudo ?? null,
