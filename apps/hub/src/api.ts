@@ -1,7 +1,9 @@
 import type {
+  CorrectionReason,
   HubBootstrap,
   HubPost,
   PostApproval,
+  PostHistoryResponse,
   HubPostProperty,
   HubSelectOption,
   HubBrand,
@@ -69,13 +71,19 @@ export function submitApproval(
   post_id: number,
   action: 'aprovado' | 'correcao' | 'mensagem',
   comentario?: string,
+  motivo?: CorrectionReason,
 ) {
   return post<{ ok: boolean; scheduled?: boolean }>('hub-approve', {
     token,
     post_id,
     action,
     comentario,
+    ...(motivo ? { motivo } : {}),
   });
+}
+
+export function fetchPostHistory(token: string, post_id: number) {
+  return get<PostHistoryResponse>('hub-post-history', { token, post_id: String(post_id) });
 }
 
 export async function reorderPostSchedules(
