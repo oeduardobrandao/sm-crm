@@ -62,6 +62,7 @@ import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { statusChangeNeedsConfirm, statusKeyToPatch, type StatusKey } from '../statusRegistry';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
+import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { PostEditorBody } from './PostEditorBody';
 import { PostTimelinePopover } from './PostTimelinePopover';
 import { AttachToFluxoDialog } from './AttachToFluxoDialog';
@@ -611,6 +612,7 @@ export function StandalonePostDrawer({
                   processEvents={processEvents}
                 />
                 <CopyPostLinkButton hubUrl={hubUrl} postId={postId} />
+                <CopyLinkButton path={`/entregas?post=${postId}`} label="Copiar link do post" />
                 <button
                   className="drawer-delete-btn"
                   onClick={() => setPendingDelete(true)}
