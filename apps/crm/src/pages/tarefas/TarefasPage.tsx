@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Calendar, Columns, List, ListChecks, Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { useAuth } from '@/context/AuthContext';
+import { useCurrentMembro } from '@/hooks/useCurrentMembro';
 import type { TarefaWithRelations } from '../../store';
 import { useTarefasData } from './hooks/useTarefasData';
 import {
@@ -11,6 +13,7 @@ import {
   EMPTY_TAREFA_FILTERS,
   type TarefaFilterState,
 } from './tarefasLogic';
+import { loadTarefasEscopo, persistTarefasEscopo, type TarefasEscopo } from './tarefasPrefs';
 import { TarefasStatsHeader } from './components/TarefasStatsHeader';
 import { TarefasFilters } from './components/TarefasFilters';
 import { TarefaFormDialog } from './components/TarefaFormDialog';
@@ -38,6 +41,21 @@ export default function TarefasPage() {
   const [createDataLimite, setCreateDataLimite] = useState<string | null | undefined>(undefined);
 
   const { tarefas, tags, membros, clientes, isLoading, refresh } = useTarefasData();
+
+  const { user, profile } = useAuth();
+  const { membro: currentMembro } = useCurrentMembro();
+  const contaId = profile?.active_workspace_id ?? profile?.conta_id ?? 'unknown';
+  const userId = user?.id ?? 'unknown';
+  const [escopo, setEscopo] = useState<TarefasEscopo>(() => loadTarefasEscopo(contaId, userId));
+  const handleEscopoChange = (next: TarefasEscopo) => {
+    setEscopo(next);
+    persistTarefasEscopo(contaId, userId, next);
+  };
+  const currentMembroId = currentMembro?.id ?? null;
+  const scopedTarefas = useMemo(() => {
+    if (escopo !== 'minhas' || currentMembroId == null) return tarefas;
+    return tarefas.filter((t) => t.responsavel_id === currentMembroId);
+  }, [tarefas, escopo, currentMembroId]);
 
   // Deep link: /tarefas?tarefa=<id> opens the detail sheet (EntregasPage ?drawer= pattern).
   const [searchParams, setSearchParams] = useSearchParams();
@@ -68,8 +86,11 @@ export default function TarefasPage() {
     }
   }, [tarefas]);
 
-  const filteredTarefas = useMemo(() => applyTarefaFilters(tarefas, filters), [tarefas, filters]);
-  const stats = useMemo(() => computeHeaderStats(tarefas, new Date()), [tarefas]);
+  const filteredTarefas = useMemo(
+    () => applyTarefaFilters(scopedTarefas, filters),
+    [scopedTarefas, filters],
+  );
+  const stats = useMemo(() => computeHeaderStats(scopedTarefas, new Date()), [scopedTarefas]);
   const selected = selectedId != null ? (tarefas.find((t) => t.id === selectedId) ?? null) : null;
 
   const openForm = (tarefa: TarefaWithRelations | null) => {
@@ -127,38 +148,82 @@ export default function TarefasPage() {
       <div
         style={{
           display: 'flex',
-          gap: '0.25rem',
-          background: 'var(--surface-2)',
-          padding: '0.25rem',
-          borderRadius: '8px',
-          overflowX: 'auto',
-          width: 'fit-content',
-          maxWidth: '100%',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.5rem',
         }}
-        className="animate-up no-scrollbar"
       >
-        {VIEW_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveView(tab.id)}
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.25rem',
+            background: 'var(--surface-2)',
+            padding: '0.25rem',
+            borderRadius: '8px',
+            overflowX: 'auto',
+            width: 'fit-content',
+            maxWidth: '100%',
+          }}
+          className="animate-up no-scrollbar"
+        >
+          {VIEW_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveView(tab.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.4rem 0.9rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: activeView === tab.id ? '#000' : 'transparent',
+                color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
+                fontSize: '0.8rem',
+                fontWeight: activeView === tab.id ? 600 : 400,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {currentMembroId != null && (
+          <div
             style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.4rem 0.9rem',
-              borderRadius: '6px',
-              border: 'none',
-              background: activeView === tab.id ? '#000' : 'transparent',
-              color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
-              fontSize: '0.8rem',
-              fontWeight: activeView === tab.id ? 600 : 400,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
+              gap: '0.25rem',
+              background: 'var(--surface-2)',
+              padding: '0.25rem',
+              borderRadius: '8px',
+              width: 'fit-content',
             }}
+            className="animate-up"
           >
-            {tab.icon} {tab.label}
-          </button>
-        ))}
+            {(['minhas', 'todas'] as const).map((option) => (
+              <button
+                key={option}
+                onClick={() => handleEscopoChange(option)}
+                style={{
+                  padding: '0.4rem 0.9rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: escopo === option ? '#000' : 'transparent',
+                  color: escopo === option ? '#fff' : 'var(--text-secondary)',
+                  fontSize: '0.8rem',
+                  fontWeight: escopo === option ? 600 : 400,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {option === 'minhas' ? 'Minhas tarefas' : 'Todas as tarefas'}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <TarefasFilters
@@ -203,6 +268,7 @@ export default function TarefasPage() {
               membros={membros}
               onTarefaClick={(t) => setSelectedId(t.id!)}
               onRefresh={refresh}
+              onlyMembroId={escopo === 'minhas' ? currentMembroId : null}
             />
           )}
           {activeView === 'kanban' && (

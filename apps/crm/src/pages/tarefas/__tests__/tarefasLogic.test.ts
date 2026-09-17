@@ -276,11 +276,15 @@ describe('groupByBoardColumn', () => {
     expect(buckets.find((b) => b.key === 'amanha')!.date).toBe('2026-08-03');
   });
 
-  it('keeps a completed task with a due date in its date bucket, but drops a completed undated task', () => {
+  it('keeps a completed task with a future/today due date in its date bucket, but drops one that is overdue or undated', () => {
     const doneOverdue = makeTarefa({ data_limite: '2026-07-28', status: 'concluida' });
+    const doneToday = makeTarefa({ data_limite: '2026-07-29', status: 'concluida' });
     const doneNoDate = makeTarefa({ data_limite: null, status: 'concluida' });
-    const buckets = groupByBoardColumn([doneOverdue, doneNoDate], NOW);
-    expect(buckets.find((b) => b.key === 'atrasado')!.tarefas).toEqual([doneOverdue]);
+    const buckets = groupByBoardColumn([doneOverdue, doneToday, doneNoDate], NOW);
+    // A finished task isn't overdue anymore -- dropped the same way a
+    // completed undated task is dropped from "Sem data".
+    expect(buckets.find((b) => b.key === 'atrasado')!.tarefas).toEqual([]);
+    expect(buckets.find((b) => b.key === 'hoje')!.tarefas).toEqual([doneToday]);
     expect(buckets.find((b) => b.key === 'semData')!.tarefas).toEqual([]);
   });
 });

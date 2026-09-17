@@ -116,8 +116,9 @@ const WEEKDAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sex
  * tarde, and Sem data. Unlike `groupByDueBucket` (coarser, Lista-view-only,
  * and drops ALL completed tasks), a completed task WITH a due date still
  * appears in its date's bucket -- same as the month grid -- so the Mês/Board
- * toggle shows a consistent set of tasks either way. Only a completed task
- * with NO due date is dropped.
+ * toggle shows a consistent set of tasks either way. The one exception is
+ * "Em atraso": a finished task isn't overdue anymore, so it's dropped there
+ * the same way a completed task with NO due date is dropped from "Sem data".
  */
 export function groupByBoardColumn(tarefas: TarefaWithRelations[], now: Date): BoardBucket[] {
   const today = startOfLocalDay(now);
@@ -138,8 +139,9 @@ export function groupByBoardColumn(tarefas: TarefaWithRelations[], now: Date): B
       continue;
     }
     const due = parseDateOnly(t.data_limite);
-    if (due < today) atrasado.push(t);
-    else if (isSameLocalDay(due, today)) hoje.push(t);
+    if (due < today) {
+      if (t.status !== 'concluida') atrasado.push(t);
+    } else if (isSameLocalDay(due, today)) hoje.push(t);
     else if (isSameLocalDay(due, tomorrow)) amanha.push(t);
     else if (due <= weekEnd) {
       const list = porDia.get(t.data_limite) ?? [];

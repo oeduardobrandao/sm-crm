@@ -3,7 +3,18 @@ import type { Membro, TarefaWithRelations } from '../../../store';
 import { updateTarefa } from '../../../store';
 import { buildDropId, groupByBoardColumn, parseDropId } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
-import { TarefaBoard, type BoardColumn } from './boardShared';
+import { TarefaBoard, type BoardColumn, type BoardColumnAccent } from './boardShared';
+
+/** Em atraso reads danger-red, Hoje reads blue -- same rgba-tint-over-solid-text
+ *  language as the `.deadline-*` badge classes elsewhere in Tarefas. */
+const COLUMN_ACCENTS: Partial<Record<string, BoardColumnAccent>> = {
+  atrasado: {
+    text: 'var(--danger)',
+    bg: 'rgba(239, 68, 68, 0.12)',
+    border: 'rgba(239, 68, 68, 0.3)',
+  },
+  hoje: { text: '#3b82f6', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.3)' },
+};
 
 interface BoardViewProps {
   tarefas: TarefaWithRelations[];
@@ -34,6 +45,7 @@ export function BoardView({
     tarefas: b.tarefas,
     droppable: b.droppable,
     onAddClick: () => onCreateTask(b.date),
+    accent: COLUMN_ACCENTS[b.key],
   }));
 
   const handleDrop = async (tarefa: TarefaWithRelations, dropId: string) => {
