@@ -20,6 +20,7 @@ import {
   Minimize2,
   History,
   MoreVertical,
+  Copy,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -105,6 +106,8 @@ import { WorkflowCalendarView } from './WorkflowCalendarView';
 import { WorkflowGridView } from './WorkflowGridView';
 import { WorkflowHistoryView } from './WorkflowHistoryView';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
+import { CopyLinkButton } from '@/components/CopyLinkButton';
+import { copyAppLink } from '@/lib/copyAppLink';
 import {
   TIPO_LABELS,
   getPostPublishState,
@@ -850,6 +853,11 @@ export function WorkflowDrawer({
                 Histórico
               </button>
             </div>
+            <CopyLinkButton
+              path={`/entregas?drawer=${workflowId}`}
+              label="Copiar link do fluxo"
+              className="drawer-close-btn"
+            />
             <button
               className="drawer-close-btn drawer-fullscreen-btn"
               onClick={toggleFullscreen}
@@ -1351,6 +1359,10 @@ function SortablePostItem({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => copyAppLink(`/entregas?post=${post.id}`)}>
+                <Copy className="h-3.5 w-3.5" />
+                Copiar link do post
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onMoveRequest}>Mover para outro fluxo</DropdownMenuItem>
               <DropdownMenuItem onClick={onDetachRequest}>Desmembrar do fluxo</DropdownMenuItem>
             </DropdownMenuContent>
