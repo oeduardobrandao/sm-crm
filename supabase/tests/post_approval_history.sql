@@ -96,3 +96,47 @@ begin
     'anon nao pode executar';
 end $$;
 rollback;
+
+-- B.1
+begin;
+do $$
+declare f record; v_ev record;
+begin
+  select * into f from pg_temp.pah_fixture();
+  update workflow_posts set status = 'rascunho' where id = f.post;
+  delete from post_status_events where post_id = f.post;
+  update workflow_posts set status = 'enviado_cliente' where id = f.post;
+  select * into v_ev from post_status_events where post_id = f.post order by created_at desc, id desc limit 1;
+  assert v_ev.to_status = 'enviado_cliente';
+  assert v_ev.snapshot_ig_caption = 'legenda v1', format('snapshot_ig_caption = %s', v_ev.snapshot_ig_caption);
+  assert v_ev.snapshot_conteudo_plain = 'texto v1', format('snapshot_conteudo_plain = %s', v_ev.snapshot_conteudo_plain);
+end $$;
+rollback;
+
+-- B.2
+begin;
+do $$
+declare f record; v_ev record;
+begin
+  select * into f from pg_temp.pah_fixture();
+  update workflow_posts set status = 'aprovado_cliente' where id = f.post;
+  select * into v_ev from post_status_events where post_id = f.post order by created_at desc, id desc limit 1;
+  assert v_ev.to_status = 'aprovado_cliente';
+  assert v_ev.snapshot_ig_caption is null, 'aprovacao nao grava snapshot';
+  assert v_ev.snapshot_conteudo_plain is null, 'aprovacao nao grava snapshot';
+end $$;
+rollback;
+
+-- B.3
+begin;
+do $$
+declare f record; v_ev record;
+begin
+  select * into f from pg_temp.pah_fixture();
+  update workflow_posts set status = 'correcao_cliente' where id = f.post;
+  update workflow_posts set status = 'enviado_cliente', ig_caption = 'legenda v2' where id = f.post;
+  select * into v_ev from post_status_events where post_id = f.post order by created_at desc, id desc limit 1;
+  assert v_ev.to_status = 'enviado_cliente';
+  assert v_ev.snapshot_ig_caption = 'legenda v2', format('reenvio deve snapshotar o texto NOVO, veio %s', v_ev.snapshot_ig_caption);
+end $$;
+rollback;
