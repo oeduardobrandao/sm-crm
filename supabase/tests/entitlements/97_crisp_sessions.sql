@@ -18,6 +18,14 @@
 
 begin;
 select et_grant_hosted_parity(array['crisp_sessions']);
+-- Defensive: 92_reorder_fluxos_board.sql calls et_grant_hosted_parity() at
+-- its top level, outside any transaction, so its grants commit permanently
+-- instead of rolling back like every other suite's usage -- a pre-existing
+-- test-isolation gap in that file, not something this suite should also
+-- carry. Any suite numbered after 92 that asserts a hard REVOKE (this one
+-- does; most others rely on RLS instead, which isn't affected) inherits
+-- those leaked grants unless it strips them itself first.
+revoke all on crisp_sessions from anon, authenticated;
 do $$
 declare
   v_ua       uuid := gen_random_uuid();
