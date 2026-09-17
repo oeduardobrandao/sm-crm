@@ -15,6 +15,7 @@ import { VISIBLE_STATUSES } from '../lib/postView';
 import { isAutoPublishActive } from '../lib/autoPublish';
 import { SharePostButton } from '../components/SharePostButton';
 import { OpenPostLink } from '../components/OpenPostLink';
+import { StatusFilterChips, type StatusFilter } from '../components/StatusFilterChips';
 
 const STATUS_COLORS: Record<string, string> = {
   enviado_cliente: '#f5a342',
@@ -86,6 +87,7 @@ export function PostagensPage() {
   const [collapsed, setCollapsed] = useState<Set<string> | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showGrid, setShowGrid] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
     queryFn: () => fetchPosts(token),
@@ -97,7 +99,16 @@ export function PostagensPage() {
         : false,
   });
 
-  const allPosts = (data?.posts ?? []).filter((p) => VISIBLE_STATUSES.has(p.status));
+  const visiblePosts = (data?.posts ?? []).filter((p) => VISIBLE_STATUSES.has(p.status));
+  const filterCounts: Record<StatusFilter, number> = {
+    all: visiblePosts.length,
+    enviado_cliente: visiblePosts.filter((p) => p.status === 'enviado_cliente').length,
+    correcao_cliente: visiblePosts.filter((p) => p.status === 'correcao_cliente').length,
+    aprovado_cliente: visiblePosts.filter((p) => p.status === 'aprovado_cliente').length,
+  };
+  // Filter before grouping so a fluxo with no matching post disappears with its header.
+  const allPosts =
+    statusFilter === 'all' ? visiblePosts : visiblePosts.filter((p) => p.status === statusFilter);
   const approvals = data?.postApprovals ?? [];
   const instagramProfile = data?.instagramProfile ?? null;
 
@@ -134,6 +145,14 @@ export function PostagensPage() {
 
   function handleInvalidate() {
     qc.invalidateQueries({ queryKey: ['hub-posts', token] });
+  }
+
+  // Reset the collapse state on filter change: the initial "only the first fluxo is
+  // expanded" default was computed against the unfiltered groups, so it can leave the
+  // sole remaining group collapsed after a filter hides everything else.
+  function handleStatusFilterChange(next: StatusFilter) {
+    setStatusFilter(next);
+    setCollapsed(null);
   }
 
   const handleCloseGrid = useCallback(() => setShowGrid(false), []);
@@ -235,12 +254,17 @@ export function PostagensPage() {
         <div className="py-20 text-center text-sm hub-tx2">
           {t('postagens.loadError', 'Erro ao carregar postagens.')}
         </div>
-      ) : groups.length === 0 ? (
+      ) : visiblePosts.length === 0 ? (
         <p className="text-sm hub-tx2">
           {t('postagens.empty', 'Nenhuma postagem disponível ainda.')}
         </p>
       ) : (
         <div className="space-y-10">
+          <StatusFilterChips
+            value={statusFilter}
+            counts={filterCounts}
+            onChange={handleStatusFilterChange}
+          />
           {groups.map((group) => {
             const withMedia = group.posts.filter((p) => p.media.length > 0 && p.tipo !== 'stories');
             const stories = group.posts.filter((p) => p.media.length > 0 && p.tipo === 'stories');

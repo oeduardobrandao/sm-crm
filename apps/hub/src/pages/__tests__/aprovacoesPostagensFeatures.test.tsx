@@ -1173,3 +1173,88 @@ describe('PostagensPage — grupo de avulsos', () => {
     expect(screen.getByText('Post do segundo')).toBeInTheDocument();
   });
 });
+
+describe('PostagensPage — status filter chips', () => {
+  beforeEach(() => {
+    mockedFetchPosts.mockReset();
+    mockedFetchInstagramFeed.mockReset();
+  });
+
+  it('shows live counts, filters the cards, hides empty groups and keeps counts from the unfiltered list', async () => {
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Pendente A',
+            status: 'enviado_cliente',
+            workflow_id: 1,
+            workflow_titulo: 'Editorial',
+          }),
+          makePost({
+            id: 2,
+            titulo: 'Corrigir B',
+            status: 'correcao_cliente',
+            workflow_id: 1,
+            workflow_titulo: 'Editorial',
+          }),
+          makePost({
+            id: 3,
+            titulo: 'Aprovado C',
+            status: 'aprovado_cliente',
+            workflow_id: 2,
+            workflow_titulo: 'Campanha',
+          }),
+          makePost({
+            id: 4,
+            titulo: 'Publicado D',
+            status: 'postado',
+            workflow_id: 2,
+            workflow_titulo: 'Campanha',
+          }),
+          makePost({
+            id: 5,
+            titulo: 'Rascunho E',
+            status: 'rascunho',
+            workflow_id: 2,
+            workflow_titulo: 'Campanha',
+          }),
+        ],
+      }),
+    );
+
+    renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
+    await screen.findByText('Pendente A');
+
+    expect(screen.getByRole('button', { name: 'Todos (4)' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Aguardando aprovação (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Correção solicitada (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aprovado (1)' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aprovado (1)' }));
+    expect(screen.getByText('Aprovado C')).toBeInTheDocument();
+    expect(screen.queryByText('Pendente A')).not.toBeInTheDocument();
+    expect(screen.queryByText('Publicado D')).not.toBeInTheDocument();
+    expect(screen.queryByText('Editorial')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Todos (4)' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Todos (4)' }));
+    expect(screen.getByText('Pendente A')).toBeInTheDocument();
+    expect(screen.getByText('Publicado D')).toBeInTheDocument();
+  });
+
+  it('does not render the filter chips on AprovacoesPage', async () => {
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({ posts: [makePost({ id: 1, titulo: 'Pendente A' })] }),
+    );
+    renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
+    await screen.findByText('Pendente A');
+    expect(screen.queryByRole('group', { name: 'Filtrar por status' })).not.toBeInTheDocument();
+  });
+});
