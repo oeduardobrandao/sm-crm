@@ -494,3 +494,49 @@ begin
   raise notice 'PASS 95.11 an unassigned post''s baseline falls back to whoever first sent it to the client';
 end $$;
 rollback;
+
+-- =====================================================================
+-- 12. When an unassigned post's first content edit ALSO transitions its
+--    status to 'enviado_cliente' in the SAME UPDATE statement, the
+--    fallback must still resolve -- not read a post_status_events row
+--    that the sibling trigger (workflow_posts_status_event, alphabetically
+--    after this one) hasn't inserted yet (20260923000008).
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_post bigint;
+  v_baseline post_content_versions;
+  v_actor_name text;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws, nome = 'Quem Enviou Agora' where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  -- No responsavel_id: unassigned.
+  insert into workflow_posts (conta_id, cliente_id, status, conteudo_plain)
+    values (v_ws, v_cli, 'rascunho', 'not yet sent') returning id into v_post;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  -- Single statement: content AND the enviado_cliente transition together
+  -- -- no earlier, separately-committed post_status_events row exists for
+  -- this trigger's fallback query to find.
+  update workflow_posts
+     set conteudo_plain = 'sent to client just now', status = 'enviado_cliente'
+   where id = v_post;
+
+  select * into v_baseline from post_content_versions where post_id = v_post order by created_at asc limit 1;
+  select nome into v_actor_name from profiles where id = v_user;
+
+  assert v_baseline.actor_name = v_actor_name,
+    format(
+      'a same-statement content+enviado_cliente update must attribute the baseline to the acting user directly, got %s (expected %s)',
+      v_baseline.actor_name, v_actor_name
+    );
+
+  raise notice 'PASS 95.12 a same-statement content+enviado_cliente transition resolves the fallback without reading the not-yet-inserted status event';
+end $$;
+rollback;
