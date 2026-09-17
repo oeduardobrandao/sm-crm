@@ -70,21 +70,30 @@ própria. `ScheduleButton` já aparece dentro do `StandalonePostDrawer` (mesmo
 `PostEditorBody`), então o buraco prático é menor do que parece — só falta o mesmo tipo de
 aviso, que fica como trabalho futuro.
 
-## Decisões (confirmadas em brainstorming 2026-09-17, com revisão do Fable antes de fechar)
+## Decisões (confirmadas em brainstorming 2026-09-17, com revisão do Fable e do Codex antes de fechar)
 
-1. **Elegibilidade para agendar em um clique exige data futura, não só "tem data".**
-   `validateForScheduling` (`_shared/instagram-publish-utils.ts:83-85`) rejeita
+1. **Elegibilidade para agendar em um clique exige data futura com margem, não só "tem
+   data".** `validateForScheduling` (`_shared/instagram-publish-utils.ts:83-85`) rejeita
    `scheduled_at` a menos de 10 minutos no futuro. A maioria dos 22 posts do backlog tem
    `scheduled_at` já no passado (estão parados há dias). Um fluxo que só checasse
    `!!post.scheduled_at` chamaria o schedule endpoint, tomaria 422 e pioraria a experiência
-   exatamente nos posts que motivam este trabalho. Regra usada em todo o design:
+   exatamente nos posts que motivam este trabalho. **Revisão externa (Codex) apontou que o
+   limite exato de 10 min no cliente corre risco de virar inválido durante a latência do
+   request** (usuário confirma no instante exato do limite, o POST chega alguns segundos
+   depois já abaixo dos 10 min do servidor) — regra usada em todo o design tem margem de
+   segurança de 2 min:
    ```ts
+   const SCHEDULE_SAFETY_MARGIN_MS = 2 * 60 * 1000;
    const isEligibleToScheduleNow = (scheduledAt: string | null) =>
-     !!scheduledAt && new Date(scheduledAt).getTime() >= Date.now() + 10 * 60 * 1000;
+     !!scheduledAt &&
+     new Date(scheduledAt).getTime() >= Date.now() + 10 * 60 * 1000 + SCHEDULE_SAFETY_MARGIN_MS;
    ```
    Quando falso, o fluxo abre `DateTimePicker` (o mesmo componente que `PostEditorBody.tsx:429`
    já usa para `scheduled_at`, com `futureOnly`) pré-preenchido com a data antiga se houver,
-   em vez de tentar agendar direto.
+   em vez de tentar agendar direto. O servidor continua sendo a fonte de verdade: mesmo com a
+   margem, um 422 residual (relógio do cliente adiantado, latência anormal) é tratado como
+   qualquer outro erro do endpoint (ver seção Design técnico, tratamento de erro) — a margem
+   só reduz a frequência, não substitui a validação do servidor.
 
 2. **Cobrir os dois casos: aprovações futuras E o backlog já parado.** Um diálogo disparado
    só na transição de status nunca alcançaria os 22 posts já parados (nenhuma escrita de
@@ -112,20 +121,37 @@ aviso, que fica como trabalho futuro.
    recomputar a contagem de etapas seria duplicar um cálculo que o próprio fluxo de avançar
    etapa já fez.
 
-4. **Diálogo de lote abre DEPOIS de `advanceEtapa`/`completeEtapaForAdvance` resolver, não
-   logo após `approvePostsInternally`.** Em fluxo de dupla aprovação, `completeEtapaWithRearm`
-   pode devolver os posts recém-aprovados para `rascunho` (`resetApprovedPostsForNextCycle`)
-   como parte do avanço de etapa. Abrir o diálogo antes disso ofereceria agendar posts que
-   estão prestes a voltar para rascunho. Como o gate da decisão 3 já usa `!willRearm`, na
-   prática isso nunca aconteceria mesmo se a ordem fosse trocada — mas a ordem certa
-   (diálogo só depois do avanço de etapa resolver com sucesso) é mantida por clareza e para
-   não depender só do gate para essa garantia.
+4. **Diálogo de lote abre logo após `approvePostsInternally` resolver — não depois de
+   `advanceEtapa`/`completeEtapaForAdvance`.** A primeira versão deste design exigia esperar
+   o avanço de etapa "resolver com sucesso" antes de abrir o diálogo, para não oferecer
+   agendar posts que `completeEtapaWithRearm` estivesse prestes a devolver para `rascunho`
+   (`resetApprovedPostsForNextCycle`). **Revisão externa (Codex) apontou que esse sinal não
+   existe**: em `KanbanView.tsx`, `advanceEtapa` (`:1019`) captura o erro de
+   `completeEtapaForAdvance` internamente, mostra um toast e retorna `void` sem relançar —
+   `await advanceEtapa(...)` sempre resolve (fulfilled), sucesso ou falha, então não há como
+   o chamador diferenciar os dois casos por fora.
+
+   A correção não é inventar um contrato de sucesso/exceção novo em `advanceEtapa` — é
+   perceber que a garantia que essa ordem tentava proteger já vem de outro lugar:
+   `willRearm` é calculado por `decideApprovalAdvance` **antes** de qualquer uma dessas
+   chamadas (a partir do tipo da etapa e das contagens do workflow, não do resultado da
+   RPC), e `resetApprovedPostsForNextCycle` só roda como parte de um rearm que `willRearm`
+   já previu. Como o gate da decisão 3 exige `!willRearm`, um post só chega ao diálogo de
+   lote quando um rearm nunca ia acontecer, `completeEtapaForAdvance` tendo sucesso ou não —
+   `approvePostsInternally` já é quem efetivamente grava `aprovado_cliente` no banco, e nada
+   depois disso desfaz essa escrita quando `!willRearm`. Portanto: abrir o diálogo assim que
+   `approvePostsInternally` resolver é seguro e mais simples; esperar `advanceEtapa` não
+   adiciona nenhuma garantia real, só um sinal de sucesso que a função não fornece.
 
 5. **`feature_post_scheduling` precisa ser checado antes de qualquer aviso.**
    `instagram-publish/handler.ts:70-76` devolve 403 `feature_disabled` para `action ===
    "schedule"` quando o plano do workspace não inclui `feature_post_scheduling`. Um diálogo
    que aparece sozinho e termina em "feature_disabled" é pior do que não avisar nada. Gate
-   adicional em todos os três pontos: `useWorkspaceLimits().feature_post_scheduling === true`.
+   adicional em todos os três pontos — **correção (Codex): `useWorkspaceLimits()` não expõe
+   o flag no nível raiz, ele vem dentro de `features`** (`useWorkspaceLimits.ts:91-97`
+   devolve `{ limits, features, planName, isLoading, isUnlimited }`), então a checagem certa
+   é `useWorkspaceLimits().features?.feature_post_scheduling === true` (com `isLoading`
+   tratado como "ainda não sabemos" — não mostrar nada até resolver).
 
 6. **`platform === 'both'` chama só `scheduleTikTokPost`, nunca os dois.** Confirmado em
    `ScheduleButton.tsx` (`handleSchedule`, `~L323-339`): para `both`, só `scheduleTikTokPost`
@@ -163,27 +189,37 @@ gate da decisão 3 (etapas). Se algum falhar, comportamento de hoje sem alteraç
 
 - Elegível (decisão 1): `AlertDialog` bloqueante — "Este cliente agenda automaticamente
   quando um post é aprovado. Deseja agendar agora para {data formatada}?" / Cancelar /
-  Agendar. Confirmar chama `scheduleApprovedPost`.
+  Agendar. Confirmar chama `scheduleApprovedPost(post)`.
 - Não elegível: o mesmo diálogo mostra `DateTimePicker` (pré-preenchido com a data antiga se
-  houver) no lugar do texto de confirmação, com botão "Definir e agendar" que primeiro
-  `updateWorkflowPost(id, { scheduled_at })`, depois `scheduleApprovedPost`.
+  houver) no lugar do texto de confirmação, com botão "Definir e agendar". **Correção
+  (Codex): `scheduleApprovedPost` não pode receber o `post` da closure original nesse
+  branch** — para TikTok/`both` ele lê `post.scheduled_at` e enviaria a data antiga (ou
+  `null`) no request, que o endpoint do TikTok exige e rejeitaria. `updateWorkflowPost`
+  devolve a linha atualizada (`Promise<WorkflowPost>`); o botão usa esse retorno:
+  `const updated = await updateWorkflowPost(id, { scheduled_at }); await
+  scheduleApprovedPost(updated);` — nunca o `post` capturado antes da escolha da data.
 - Erro do schedule endpoint (`details` do `validateForScheduling`, ex. legenda faltando):
-  mostrado inline no diálogo, mesma string que `ScheduleButton` já exibe hoje. O post
-  permanece em `aprovado_cliente` — igual ao que já acontece quando alguém tenta o botão
-  manual e falha.
+  **correção (Codex): `ScheduleButton` não tem nenhum padrão de erro inline para reaproveitar**
+  — tanto `handleSchedule` quanto o `handlePublishNow` do próprio diálogo de confirmação de
+  `ScheduleButton` só fazem `toast.error(err.message)` (e, no caso do diálogo, fecham o
+  diálogo antes de disparar o toast). O diálogo novo segue o mesmo padrão em vez de inventar
+  um estado de erro inline: fecha e mostra `toast.error(err.message)`. O post permanece em
+  `aprovado_cliente` de qualquer forma (a chamada de schedule só muda o status em caso de
+  sucesso) — para reagendar, a pessoa usa o indicador persistente (peça 3), que continua
+  visível enquanto o post estiver em `aprovado_cliente`.
 
 ### 2. Diálogo de resumo na aprovação em lote
 
 Pontos: `handleApproveInternally` em `KanbanView.tsx:1089` e o equivalente em
-`EntregasTab.tsx:~452`. Depois que `advanceEtapa`/`completeEtapaForAdvance` resolve com
-sucesso (decisão 4), se `clientes.auto_publish_on_approval`, `feature_post_scheduling` e
-`!approvalChoice.willRearm` (decisão 3): diálogo único — "N posts aprovados. M já têm data
-definida e podem ser agendados agora." Botão "Agendar N posts" chama `scheduleApprovedPost`
-em loop para os M elegíveis (decisão 1) a partir do snapshot local de posts que
-`approvePostsInternally` moveu (o `.update()` em `store/posts.ts:1272` devolve `void`, então
-N/M vêm do estado do board já carregado antes da chamada, não do retorno). Toast final com
-contagem de sucesso/falha. Posts sem data elegível ficam listados como "sem data — agende
-manualmente", sem alteração.
+`EntregasTab.tsx:~452`. Assim que `approvePostsInternally` resolver (decisão 4 — não espera
+`advanceEtapa`/`completeEtapaForAdvance`), se `clientes.auto_publish_on_approval`,
+`features?.feature_post_scheduling` e `!approvalChoice.willRearm` (decisão 3): diálogo único
+— "N posts aprovados. M já têm data definida e podem ser agendados agora." Botão "Agendar N
+posts" chama `scheduleApprovedPost` em loop para os M elegíveis (decisão 1) a partir do
+snapshot local de posts que `approvePostsInternally` moveu (o `.update()` em
+`store/posts.ts:1272` devolve `void`, então N/M vêm do estado do board já carregado antes da
+chamada, não do retorno). Toast final com contagem de sucesso/falha. Posts sem data elegível
+ficam listados como "sem data — agende manualmente", sem alteração.
 
 Não há chamada em lote no backend — é um loop sequencial de `scheduleApprovedPost`, aceitável
 dado que `max_posts_per_workflow` já limita N por workflow (sem endpoint de batch existente
@@ -194,17 +230,31 @@ justifique).
 
 Cobre os posts que já estão hoje em `aprovado_cliente` sem nunca mais sofrer uma escrita de
 status (os 22 do levantamento, mais qualquer futuro caso que passe pelas peças 1/2 sem ser
-resolvido na hora). Dois lugares:
+resolvido na hora).
+
+**Correção (Codex, P0): a primeira versão desta seção esqueceu o gate da decisão 3.** Sem
+ele, um post no PRIMEIRO ciclo de um fluxo de dupla aprovação (ainda em `aprovado_cliente`,
+com uma segunda etapa `aprovacao_cliente` pendente à frente) ganharia uma ação "Agendar"
+sempre visível e agendaria antes da segunda aprovação — exatamente o bug do PR #400,
+reintroduzido por uma superfície de UI nova em vez do fluxo antigo. Nenhum dos dois endpoints
+de publicação aplica `isFinalApprovalCycle` por conta própria (ele só existe dentro de
+`hub-approve`), então essa checagem tem que vir do lado do indicador. Gates completos, os
+mesmos três da peça 1: `clientes.auto_publish_on_approval`, `features?.feature_post_scheduling`,
+e o helper mirror de `isFinalApprovalCycle` da decisão 3 — computado a partir das etapas do
+workflow que a própria view já carrega (`card.allEtapas` no kanban, etapas do workflow no
+`WorkflowDrawer`), sem round-trip novo.
+
+Dois lugares:
 
 - **Badge/ação compacta por post**, onde hoje só aparece o badge estático "Aprovado pelo
   cliente" sem `ScheduleButton` por perto: linha do post no `WorkflowDrawer` (view "Posts") e
-  face do card no kanban. Mesmos gates (auto_publish_on_approval, feature_post_scheduling) +
-  `isEligibleToScheduleNow` decide se o clique agenda direto ou abre o `DateTimePicker`
-  primeiro. Mesmo helper `scheduleApprovedPost`.
+  face do card no kanban. Todos os gates acima + `isEligibleToScheduleNow` decide se o clique
+  agenda direto ou abre o `DateTimePicker` primeiro. Mesmo helper `scheduleApprovedPost`,
+  mesmo padrão de erro (toast, sem estado inline) da peça 1.
 - **Resumo no cabeçalho de posts do `WorkflowDrawer`**, ao lado de "N de M aprovados pelo
-  cliente": quando há pelo menos um post elegível para este indicador, mostra "K aguardando
-  agendamento automático" com ação "Agendar" que dispara o mesmo loop da peça 2 para os K
-  posts daquele workflow.
+  cliente": quando há pelo menos um post elegível para este indicador (passando todos os
+  gates, inclusive o de ciclo final), mostra "K aguardando agendamento automático" com ação
+  "Agendar" que dispara o mesmo loop da peça 2 para os K posts daquele workflow.
 
 ### Tipagem
 
@@ -221,12 +271,20 @@ tipo. Adicionar `auto_publish_on_approval: boolean` à interface.
   mudança na regra do servidor tenha um teste espelho falhando aqui também.
 - `scheduleApprovedPost`: platform instagram/tiktok/both chamando o serviço certo (decisão 6).
 - Diálogo individual: aparece só com os três gates verdadeiros; ausente com qualquer um
-  falso; branch "tem data futura" vs. "abre DateTimePicker"; erro do endpoint aparece inline
-  e mantém status.
-- Diálogo de lote: `willRearm = true` nunca mostra diálogo; contagem N/M correta a partir do
-  snapshot local; posts sem data elegível listados à parte.
-- Indicador persistente: aparece/some conforme os gates e `isEligibleToScheduleNow`; ação
-  dispara o mesmo helper.
+  falso; branch "tem data futura" vs. "abre DateTimePicker"; **branch "definir e agendar"
+  chama `scheduleApprovedPost` com a linha retornada por `updateWorkflowPost`, não com o
+  `post` original** (regressão específica apontada pelo Codex); erro do endpoint fecha o
+  diálogo e dispara `toast.error`, post permanece em `aprovado_cliente`.
+- Diálogo de lote: `willRearm = true` nunca mostra diálogo (inclusive quando
+  `completeEtapaForAdvance` falha — o diálogo já abriu antes, a partir só de
+  `approvePostsInternally`); contagem N/M correta a partir do snapshot local; posts sem data
+  elegível listados à parte.
+- Indicador persistente: aparece/some conforme os gates e `isEligibleToScheduleNow`;
+  **especificamente ausente quando o gate de ciclo final é falso** (post no primeiro ciclo de
+  uma dupla aprovação, com uma segunda etapa `aprovacao_cliente` pendente) — regressão do
+  PR #400 que a revisão do Codex pegou faltando nesta seção; ação dispara o mesmo helper.
+- Elegibilidade: caso de fronteira exatamente em `now + 10min` é tratado como NÃO elegível
+  (a margem de segurança da decisão 1), não só `< now + 10min`.
 
 ## Fora de escopo
 
