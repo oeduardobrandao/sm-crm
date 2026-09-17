@@ -8,6 +8,19 @@ type DbClient = {
   rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
 };
 
+// Mirrors hub-mensagens' MAX_CONTENT and the post_approvals motivo CHECK
+// (20260924000001 value rule, 20260925000001 presence rule): the DB rejects
+// anything else, this turns that into a 400 instead of a 500.
+const MAX_COMMENT_LENGTH = 4000;
+const CORRECTION_REASONS = ["legenda", "imagem_video", "data", "outro"];
+// Same list as apps/hub/src/lib/postView.ts VISIBLE_STATUSES and the
+// hub-post-history allowlist: the client may only comment on a post it can
+// see. A comment on an internal draft would be a client-authored
+// post_approvals row (never floor-filtered) dated before the first send.
+const HUB_VISIBLE_STATUSES = [
+  "enviado_cliente", "aprovado_cliente", "correcao_cliente", "agendado", "postado", "falha_publicacao",
+];
+
 // Dual-approval fluxos (e.g. copy approval → design → design approval) must not
 // auto-schedule on the first approval: the post still has production stages and
 // another client approval ahead, and once `agendado` the re-arm on etapa
@@ -83,9 +96,19 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { token, post_id, action, comentario } = await req.json();
+    const { token, post_id, action, comentario, motivo } = await req.json();
     if (!token || !post_id || !action) return json({ error: "token, post_id and action required" }, 400);
     if (!["aprovado", "correcao", "mensagem"].includes(action)) return json({ error: "Invalid action" }, 400);
+
+    // Validated before any DB round-trip so a bad payload costs nothing.
+    const mensagemText = typeof comentario === "string" ? comentario.trim() : "";
+    if (action === "mensagem") {
+      if (!mensagemText) return json({ error: "Escreva um comentário." }, 400);
+      if (mensagemText.length > MAX_COMMENT_LENGTH) return json({ error: "Comentário muito longo." }, 400);
+    }
+    if (action === "correcao" && !CORRECTION_REASONS.includes(motivo)) {
+      return json({ error: "Informe o motivo da correção." }, 400);
+    }
 
     const db = deps.createDb();
 
@@ -121,15 +144,23 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     }
 
     if (action === "mensagem") {
-      // Message-only: no status change, keep the plain insert.
+      // Message-only: no status change, keep the plain insert. The client can
+      // only comment on a post it can already see (mirrors the
+      // enviado_cliente/correcao_cliente gate of the aprovado/correcao branch).
+      if (!HUB_VISIBLE_STATUSES.includes(post.status)) {
+        return json({ error: "Post ainda não foi enviado para o cliente." }, 400);
+      }
       const { error: insertError } = await db.from("post_approvals").insert({
         post_id,
         token,
         action,
-        comentario: comentario ?? null,
+        comentario: mensagemText,
         is_workspace_user: false,
       });
-      if (insertError) return json({ error: insertError.message }, 500);
+      if (insertError) {
+        console.error("[hub-approve] mensagem insert failed:", insertError);
+        return json({ error: "Erro ao registrar comentário." }, 500);
+      }
     } else {
       // aprovado | correcao must actually transition the post.
       if (!["enviado_cliente", "correcao_cliente"].includes(post.status)) {
@@ -143,6 +174,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         p_comentario: comentario ?? null,
         p_is_workspace_user: false,
         p_new_status: newStatus,
+        p_motivo: action === "correcao" ? motivo : null,
       });
       if (approvalErr) return json({ error: "Erro ao registrar aprovação." }, 500);
     }
@@ -188,7 +220,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     const { error: notifErr } = await db.rpc("create_post_approval_notification", {
       p_post_id: post_id,
       p_action: action,
-      p_comentario: comentario ?? null,
+      p_comentario: action === "mensagem" ? mensagemText : (comentario ?? null),
     });
     if (notifErr) {
       console.error("[hub-approve] notification creation failed:", notifErr);
