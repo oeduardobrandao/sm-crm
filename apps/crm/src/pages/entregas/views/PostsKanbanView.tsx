@@ -1,4 +1,4 @@
-import { Fragment, memo, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -37,11 +37,12 @@ import {
 } from 'lucide-react';
 import { isFinalClientApprovalCycle, reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
-import { shouldOfferAutoSchedule } from '../autoScheduleNudge';
+import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoScheduleNudge';
 import {
   AutoSchedulePromptDialog,
   type AutoSchedulePromptPost,
 } from '../components/AutoSchedulePromptDialog';
+import { AutoScheduleBadge } from '../components/AutoScheduleBadge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
@@ -193,17 +194,36 @@ function PostBoardCardContent({
   registry,
   card,
   processEtapa,
+  onAutoScheduleClick,
+  schedulingEnabled,
+  tiktokEnabled,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
   card: BoardCard | undefined;
   processEtapa?: string;
+  /** Abre o aviso de agendamento automático para este post. Ausente no clone do
+   *  DragOverlay, que renderiza o badge estático. */
+  onAutoScheduleClick?: () => void;
+  schedulingEnabled?: boolean;
+  tiktokEnabled?: boolean;
 }) {
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
   const membro = card?.membro;
   const prazo = card ? formatEtapaPrazo(card.deadline) : null;
   const TipoIcon = TIPO_ICONS[post.tipo];
+  // Quinto e último ponto de chamada de shouldOfferAutoSchedule (spec peça 3):
+  // sem platform/tiktokEnabled aqui, um post tiktok num workspace sem o add-on
+  // carregaria um badge permanente que toma 403 a cada clique.
+  const offerAutoSchedule = shouldOfferAutoSchedule({
+    status: post.status,
+    platform: post.platform,
+    autoPublishOnApproval: card?.cliente?.auto_publish_on_approval === true,
+    schedulingFeatureEnabled: schedulingEnabled === true,
+    tiktokFeatureEnabled: tiktokEnabled === true,
+    isFinalApprovalCycle: card ? isFinalClientApprovalCycle(card.allEtapas) : false,
+  });
 
   return (
     <>
@@ -227,6 +247,12 @@ function PostBoardCardContent({
             >
               {prazo.shortLabel}
             </span>
+          )}
+          {offerAutoSchedule && (
+            <AutoScheduleBadge
+              onClick={onAutoScheduleClick}
+              needsDate={!isEligibleToScheduleNow(post.scheduled_at)}
+            />
           )}
           {locked && (
             <TooltipProvider delayDuration={200}>
@@ -331,6 +357,9 @@ const PostBoardCard = memo(function PostBoardCard({
   openable,
   onPostClick,
   processEtapa,
+  onAutoScheduleClick,
+  schedulingEnabled,
+  tiktokEnabled,
 }: {
   post: ActivePost;
   registry: StatusRegistry;
@@ -338,6 +367,9 @@ const PostBoardCard = memo(function PostBoardCard({
   openable: boolean;
   onPostClick: (post: ActivePost) => void;
   processEtapa?: string;
+  onAutoScheduleClick?: (post: ActivePost) => void;
+  schedulingEnabled?: boolean;
+  tiktokEnabled?: boolean;
 }) {
   const opt = registry.resolve(post);
   const locked = LOCKED_STATUSES.has(opt.canonical);
@@ -369,6 +401,9 @@ const PostBoardCard = memo(function PostBoardCard({
         registry={registry}
         card={card}
         processEtapa={processEtapa}
+        onAutoScheduleClick={onAutoScheduleClick ? () => onAutoScheduleClick(post) : undefined}
+        schedulingEnabled={schedulingEnabled}
+        tiktokEnabled={tiktokEnabled}
       />
     </div>
   );
@@ -395,6 +430,9 @@ const PostBoardColumn = memo(function PostBoardColumn({
   sort,
   onColumnSortChange,
   processEtapaByPostId,
+  onAutoScheduleClick,
+  schedulingEnabled,
+  tiktokEnabled,
 }: {
   option: StatusOption;
   posts: ActivePost[];
@@ -417,6 +455,11 @@ const PostBoardColumn = memo(function PostBoardColumn({
   onColumnSortChange?: (columnKey: string, sort: BoardColumnSort) => void;
   /** post id → etapa ativa do processo individual (spec §4.4). */
   processEtapaByPostId?: Map<number, string>;
+  /** Stable callback (spec peça 3) -- same identity guarantee as
+   *  onColumnSortChange above. */
+  onAutoScheduleClick?: (post: ActivePost) => void;
+  schedulingEnabled?: boolean;
+  tiktokEnabled?: boolean;
 }) {
   const { setNodeRef } = useDroppable({ id: `${COL_PREFIX}${option.key}` });
   const tint = columnTintFor(option);
@@ -534,6 +577,9 @@ const PostBoardColumn = memo(function PostBoardColumn({
                     openable={isPostOpenable(p, openableWorkflowIds)}
                     onPostClick={onPostClick}
                     processEtapa={processEtapaByPostId?.get(p.id)}
+                    onAutoScheduleClick={onAutoScheduleClick}
+                    schedulingEnabled={schedulingEnabled}
+                    tiktokEnabled={tiktokEnabled}
                   />
                 </Fragment>
               ))}
@@ -589,6 +635,18 @@ export function PostsKanbanView({
 
   /** Post cujo aviso de agendamento automático está aberto (peça 1 da spec). */
   const [nudgePost, setNudgePost] = useState<AutoSchedulePromptPost | null>(null);
+
+  /** Abre o aviso para o post do indicador persistente (spec peça 3). Identidade
+   *  estável (deps vazias, setNudgePost já é estável) para não quebrar o memo de
+   *  PostBoardColumn/PostBoardCard a cada render desta página. */
+  const handleAutoScheduleClick = useCallback((post: ActivePost) => {
+    setNudgePost({
+      id: post.id,
+      titulo: post.titulo,
+      platform: post.platform,
+      scheduled_at: post.scheduled_at,
+    });
+  }, []);
 
   /** Driven by the column header menu; a column absent from `columnSorts`
    *  defaults to 'manual'. */
@@ -927,6 +985,9 @@ export function PostsKanbanView({
                 sort={columnSortFor(option.key)}
                 onColumnSortChange={onColumnSortChange}
                 processEtapaByPostId={processEtapaByPostId}
+                onAutoScheduleClick={handleAutoScheduleClick}
+                schedulingEnabled={schedulingEnabled}
+                tiktokEnabled={tiktokEnabled}
               />
             ))}
           </div>
@@ -943,6 +1004,8 @@ export function PostsKanbanView({
                     : undefined
                 }
                 processEtapa={processEtapaByPostId?.get(activePost.id)}
+                schedulingEnabled={schedulingEnabled}
+                tiktokEnabled={tiktokEnabled}
               />
             </div>
           )}

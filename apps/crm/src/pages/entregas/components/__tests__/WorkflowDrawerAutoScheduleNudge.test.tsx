@@ -122,6 +122,14 @@ vi.mock('../AutoSchedulePromptDialog', () => ({
     post ? <div data-testid="nudge">{post.id}</div> : null,
 }));
 
+// Stub the batch dialog too: Task 4 already covers its own fetch/partition
+// logic. This file only proves whether the drawer's header action opens it,
+// and for which workflow.
+vi.mock('../AutoScheduleBatchDialog', () => ({
+  AutoScheduleBatchDialog: ({ workflowId }: { workflowId: number | null }) =>
+    workflowId != null ? <div data-testid="batch-dialog">{workflowId}</div> : null,
+}));
+
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -634,5 +642,193 @@ describe('WorkflowDrawer auto-schedule nudge', () => {
     fireEvent.change(getStatusSelect(container), { target: { value: 'aprovado_cliente' } });
 
     expect(await screen.findByTestId('nudge')).toHaveTextContent('1');
+  });
+});
+
+// Task 5 — piece 3 of the auto-schedule nudge spec: the persistent indicator
+// (drawer row badge + drawer header summary), gated by the exact same
+// shouldOfferAutoSchedule call as the nudge dialogs above. Every fixture here
+// sets an initial post `status` directly (no status-select write): the badge
+// reacts to whatever the drawer already has loaded, which is the whole point
+// -- it has to reach the existing backlog, not just newly-approved posts.
+describe('persistent indicator (spec piece 3)', () => {
+  const PAST = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const FUTURE = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+
+  function basePost(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 1,
+      workflow_id: 10,
+      titulo: 'Post A',
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: 0,
+      status: 'aprovado_cliente',
+      responsavel_id: null,
+      scheduled_at: PAST,
+      ig_caption: null,
+      platform: 'instagram',
+      ...overrides,
+    };
+  }
+
+  it('shows the badge on an aprovado_cliente post when every gate passes', async () => {
+    // one open aprovacao_cliente etapa, auto_publish true, feature on,
+    // post.status 'aprovado_cliente' with a date in the PAST (the backlog case)
+    // -> badge present
+    mockFeatures = { feature_post_scheduling: true };
+    mockGetPosts.mockResolvedValue([basePost() as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    expect(await screen.findByRole('button', { name: /Agendar/ })).toBeInTheDocument();
+  });
+
+  // The P0 the Codex review caught missing from this section of the spec.
+  it('hides the badge in the first cycle of a dual-approval fluxo', async () => {
+    // card.allEtapas = two OPEN aprovacao_cliente etapas -> no badge
+    mockFeatures = { feature_post_scheduling: true };
+    mockGetPosts.mockResolvedValue([basePost() as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { card: { allEtapas: TWO_OPEN_APPROVALS } });
+
+    await screen.findByText('Post A');
+    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+  });
+
+  it('hides the badge when feature_post_scheduling is off', async () => {
+    mockFeatures = { feature_post_scheduling: false };
+    mockGetPosts.mockResolvedValue([basePost() as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByText('Post A');
+    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+  });
+
+  it('hides the badge when the client does not auto-publish on approval', async () => {
+    mockFeatures = { feature_post_scheduling: true };
+    mockGetPosts.mockResolvedValue([basePost() as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, {
+      card: {
+        cliente: {
+          id: 42,
+          nome: 'Marca X',
+          sigla: 'MX',
+          cor: '#000',
+          plano: 'pro',
+          email: '',
+          telefone: '',
+          status: 'ativo',
+          valor_mensal: 0,
+          auto_publish_on_approval: false,
+        },
+      } as never,
+    });
+
+    await screen.findByText('Post A');
+    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+  });
+
+  it('hides the badge for a post in any other status', async () => {
+    mockFeatures = { feature_post_scheduling: true };
+    mockGetPosts.mockResolvedValue([basePost({ status: 'aprovado_interno' }) as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByText('Post A');
+    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+  });
+
+  // Decisão 5 da spec: o badge usa o MESMO gate do aviso, senão um post tiktok
+  // sem o add-on ganharia um badge permanente que 403 a cada clique.
+  it('hides the badge for a tiktok post when feature_tiktok is off', async () => {
+    // mockFeatures = { feature_post_scheduling: true, feature_tiktok: false }
+    // post.platform = 'tiktok' -> no badge
+    mockFeatures = { feature_post_scheduling: true, feature_tiktok: false };
+    mockGetPosts.mockResolvedValue([basePost({ platform: 'tiktok' }) as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByText('Post A');
+    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+  });
+
+  it('hides the badge for a both post when feature_tiktok is off', async () => {
+    mockFeatures = { feature_post_scheduling: true, feature_tiktok: false };
+    mockGetPosts.mockResolvedValue([basePost({ platform: 'both' }) as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByText('Post A');
+    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+  });
+
+  it('shows the badge for a tiktok post when feature_tiktok is on', async () => {
+    mockFeatures = { feature_post_scheduling: true, feature_tiktok: true };
+    mockGetPosts.mockResolvedValue([basePost({ platform: 'tiktok' }) as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    expect(await screen.findByRole('button', { name: /Agendar/ })).toBeInTheDocument();
+  });
+
+  it('shows the badge for an instagram post when feature_tiktok is off', async () => {
+    mockFeatures = { feature_post_scheduling: true, feature_tiktok: false };
+    mockGetPosts.mockResolvedValue([basePost({ platform: 'instagram' }) as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    expect(await screen.findByRole('button', { name: /Agendar/ })).toBeInTheDocument();
+  });
+
+  it('clicking the badge opens the same nudge dialog', async () => {
+    // -> the AutoSchedulePromptDialog stub receives that post id
+    mockFeatures = { feature_post_scheduling: true };
+    mockGetPosts.mockResolvedValue([basePost({ scheduled_at: FUTURE }) as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Agendar/ }));
+
+    expect(await screen.findByTestId('nudge')).toHaveTextContent('1');
+  });
+
+  it('shows the header summary with the count of waiting posts', async () => {
+    // 2 of 3 posts eligible for the indicator -> "2 aguardando agendamento automático"
+    mockFeatures = { feature_post_scheduling: true };
+    mockGetPosts.mockResolvedValue([
+      basePost({ id: 1, titulo: 'Post A' }) as never,
+      basePost({ id: 2, titulo: 'Post B' }) as never,
+      basePost({ id: 3, titulo: 'Post C', status: 'aprovado_interno' }) as never,
+    ]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    expect(await screen.findByText(/2 aguardando agendamento automático/)).toBeInTheDocument();
+  });
+
+  it('omits the header summary when no post qualifies', async () => {
+    mockFeatures = { feature_post_scheduling: false };
+    mockGetPosts.mockResolvedValue([basePost() as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByText('Post A');
+    expect(screen.queryByText(/aguardando agendamento automático/)).toBeNull();
+  });
+
+  it('the header action opens the batch dialog for this fluxo', async () => {
+    // -> AutoScheduleBatchDialog stub receives workflowId
+    mockFeatures = { feature_post_scheduling: true };
+    mockGetPosts.mockResolvedValue([basePost() as never]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByText(/aguardando agendamento automático/));
+
+    expect(await screen.findByTestId('batch-dialog')).toHaveTextContent('10');
   });
 });

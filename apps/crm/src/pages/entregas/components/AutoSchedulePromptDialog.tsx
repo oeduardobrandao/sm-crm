@@ -140,7 +140,9 @@ export function AutoSchedulePromptDialog({
           ) : (
             <Button
               onClick={handleSetDateAndSchedule}
-              disabled={loading || !pickedDate || !isEligibleToScheduleNow(pickedDate.toISOString())}
+              disabled={
+                loading || !pickedDate || !isEligibleToScheduleNow(pickedDate.toISOString())
+              }
             >
               Definir e agendar
             </Button>

@@ -30,7 +30,10 @@ describe('isFinalClientApprovalCycle', () => {
 
   it('is true with exactly one open client-approval etapa (the single-approval fluxo)', () => {
     expect(
-      isFinalClientApprovalCycle([etapa(1, 'padrao', 'concluido'), etapa(2, 'aprovacao_cliente', 'ativo')]),
+      isFinalClientApprovalCycle([
+        etapa(1, 'padrao', 'concluido'),
+        etapa(2, 'aprovacao_cliente', 'ativo'),
+      ]),
     ).toBe(true);
   });
 

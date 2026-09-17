@@ -21,6 +21,7 @@ import {
   History,
   MoreVertical,
   Copy,
+  CalendarClock,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -95,8 +96,10 @@ import {
   type DetachKeepingProcessResult,
   isFinalClientApprovalCycle,
 } from '../../../store';
-import { shouldOfferAutoSchedule } from '../autoScheduleNudge';
+import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoScheduleNudge';
 import { AutoSchedulePromptDialog, type AutoSchedulePromptPost } from './AutoSchedulePromptDialog';
+import { AutoScheduleBadge } from './AutoScheduleBadge';
+import { AutoScheduleBatchDialog } from './AutoScheduleBatchDialog';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
@@ -171,6 +174,11 @@ export function WorkflowDrawer({
   const schedulingEnabled = features?.feature_post_scheduling === true;
   const tiktokEnabled = features?.feature_tiktok === true;
   const [nudgePost, setNudgePost] = useState<AutoSchedulePromptPost | null>(null);
+  /** Fluxo cujo diálogo de agendamento em lote está aberto (spec peça 3,
+   *  resumo do cabeçalho). Este drawer não tem um diálogo de fluxo recorrente
+   *  para disputar com este, então não precisa da guarda de mútua exclusão
+   *  que KanbanView/EntregasTab aplicam ao mesmo diálogo. */
+  const [batchScheduleWfId, setBatchScheduleWfId] = useState<number | null>(null);
 
   /** Um só lugar para os gates da spec, usado pelos dois pontos de escrita de
    *  status abaixo e pelo indicador persistente da linha do post. `platform` vem
@@ -817,6 +825,9 @@ export function WorkflowDrawer({
     ['enviado_cliente', 'aprovado_cliente', 'correcao_cliente'].includes(p.status),
   ).length;
   const readyToSend = orderedPosts.filter((p) => p.status === 'aprovado_interno').length;
+  /** Posts que passaram os gates de shouldOfferAutoSchedule e estão esperando um agendamento que não
+   *  vai acontecer sozinho (spec peça 3, resumo do cabeçalho). */
+  const awaitingAutoScheduleCount = orderedPosts.filter((p) => offerAutoSchedule(p)).length;
 
   // The archive-empty-flow checkbox in the detach confirm dialog only shows when the
   // pending batch covers every post currently in this workflow.
@@ -931,6 +942,17 @@ export function WorkflowDrawer({
                     <span className="drawer-post-count">
                       {approvedCount} de {clientFacingCount} aprovados pelo cliente
                     </span>
+                  )}
+                  {awaitingAutoScheduleCount > 0 && (
+                    <button
+                      type="button"
+                      className="auto-schedule-badge auto-schedule-badge--action"
+                      onClick={() => setBatchScheduleWfId(workflowId)}
+                      title="Agendar de uma vez os posts aprovados que ainda têm data válida."
+                    >
+                      <CalendarClock className="h-3 w-3" aria-hidden="true" />
+                      {awaitingAutoScheduleCount} aguardando agendamento automático
+                    </button>
                   )}
                 </span>
                 <button className="drawer-add-post-btn" onClick={handleAddPost}>
@@ -1048,6 +1070,8 @@ export function WorkflowDrawer({
                           editorVersion={editorVersions[post.id!] ?? 0}
                           onAcceptSuggestion={handleAcceptSuggestion}
                           onRejectSuggestion={handleRejectSuggestion}
+                          showAutoScheduleBadge={offerAutoSchedule(post)}
+                          onAutoScheduleClick={() => maybeNudge(post)}
                         />
                       ))}
                     </div>
@@ -1130,6 +1154,16 @@ export function WorkflowDrawer({
         onClose={() => setNudgePost(null)}
         onScheduled={() => {
           setNudgePost(null);
+          refresh();
+        }}
+      />
+
+      <AutoScheduleBatchDialog
+        workflowId={batchScheduleWfId}
+        tiktokFeatureEnabled={tiktokEnabled}
+        onClose={() => setBatchScheduleWfId(null)}
+        onScheduled={() => {
+          setBatchScheduleWfId(null);
           refresh();
         }}
       />
@@ -1235,6 +1269,11 @@ interface SortablePostItemProps {
   editorVersion: number;
   onAcceptSuggestion: (suggestion: PostEditSuggestion) => void;
   onRejectSuggestion: (id: number) => void;
+  /** True quando este post passou os gates do aviso de agendamento
+   *  automático (spec peça 3). Calculado pelo drawer, não pela linha. */
+  showAutoScheduleBadge: boolean;
+  /** Abre o aviso para este post. */
+  onAutoScheduleClick: () => void;
 }
 
 function SortablePostItem({
@@ -1283,6 +1322,8 @@ function SortablePostItem({
   editorVersion,
   onAcceptSuggestion,
   onRejectSuggestion,
+  showAutoScheduleBadge,
+  onAutoScheduleClick,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.id!,
@@ -1388,6 +1429,12 @@ function SortablePostItem({
             <span className="drawer-post-date drawer-post-date--empty">A definir</span>
           )}
           <PostStatusChip post={post} registry={statusRegistry} />
+          {showAutoScheduleBadge && (
+            <AutoScheduleBadge
+              onClick={onAutoScheduleClick}
+              needsDate={!isEligibleToScheduleNow(post.scheduled_at)}
+            />
+          )}
           <CopyPostLinkButton hubUrl={hubUrl} postId={post.id!} />
           <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
             <Trash2 className="h-3.5 w-3.5" />
