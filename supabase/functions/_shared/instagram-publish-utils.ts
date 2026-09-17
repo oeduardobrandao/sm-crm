@@ -7,6 +7,21 @@ import { TRIAL_MEDIA_SHAPE_ERROR } from "./publish-error-codes.ts";
 export { CAROUSEL_MAX_ITEMS, validateMedia };
 export type { MediaFile, ValidationError };
 
+// Narrow mitigation for a real prod failure (post 5093, 2026-09-17): a carousel
+// with several video children created back-to-back, then assembled into a
+// CAROUSEL container immediately, reproducibly got Meta's generic "An unexpected
+// error has occurred. Please retry your request later." (classified IG_TRANSIENT)
+// on every attempt. Root cause wasn't isolated to a single bad file — all 8
+// videos decoded cleanly — so this hedges both plausible triggers: bursting the
+// Graph API with back-to-back video-container creations, and assembling the
+// parent while a video child is still IN_PROGRESS. It is a bounded, best-effort
+// mitigation, not the real fix — see the resumable per-child design tracked for
+// the long-term carousel rework (children need persisted state across cron
+// ticks, like story_segments already has for Stories).
+const CAROUSEL_VIDEO_CHILD_DELAY_MS = 1200;
+const CAROUSEL_CHILD_POLL_ROUNDS = 3;
+const CAROUSEL_CHILD_POLL_INTERVAL_MS = 2000;
+
 // --- Token Decryption (duplicated across functions; centralized here) ---
 
 function getTokenEncryptionKey(): string {
@@ -518,10 +533,40 @@ export async function createContainerForPost(
 
   if (isCarousel) {
     const childIds: string[] = [];
-    for (const m of media) {
+    const videoChildIds: string[] = [];
+    for (let i = 0; i < media.length; i++) {
+      const m = media[i];
       const url = await signGetUrl(m.r2_key, 7200);
       const child = await createCarouselChildContainer(igUserId, token, url, m.kind === "video");
       childIds.push(child.id);
+      if (m.kind === "video") {
+        videoChildIds.push(child.id);
+        // Pace video-container creation: firing several back-to-back kicks off
+        // that many concurrent Meta-side transcodes for the same IG account.
+        if (i < media.length - 1) {
+          await new Promise((r) => setTimeout(r, CAROUSEL_VIDEO_CHILD_DELAY_MS));
+        }
+      }
+    }
+    // Best-effort, bounded wait for video children to leave IN_PROGRESS before
+    // assembling the carousel. A child still IN_PROGRESS after the budget just
+    // proceeds (same behavior as before this change) rather than blocking
+    // indefinitely inside the cron's wall-clock budget.
+    for (let round = 0; round < CAROUSEL_CHILD_POLL_ROUNDS && videoChildIds.length > 0; round++) {
+      const details = await Promise.all(
+        videoChildIds.map((id) => fetchContainerStatusDetail(id, token)),
+      );
+      // TEMP diagnostic for the post-5093 investigation — remove with the block above.
+      console.log(
+        `[IG-PUBLISH][diag] post ${postId} carousel child statuses (round ${round}):`,
+        JSON.stringify(videoChildIds.map((id, i) => ({ id, ...details[i] }))),
+      );
+      const statuses = details.map((d) => d.status_code);
+      if (statuses.some((s) => s === "ERROR")) {
+        throw new Error("Um item do carrossel falhou no processamento do Instagram");
+      }
+      if (statuses.every((s) => s !== "IN_PROGRESS")) break;
+      await new Promise((r) => setTimeout(r, CAROUSEL_CHILD_POLL_INTERVAL_MS));
     }
     const parent = await createCarouselParentContainer(igUserId, token, childIds, caption);
     return { containerId: parent.id };
@@ -550,6 +595,22 @@ export async function checkContainerStatus(
   const data = await res.json();
   if (data.error) throwGraphError(data);
   return data.status_code ?? "FINISHED";
+}
+
+// TEMP diagnostic for the post-5093 carousel investigation (2026-09-17) — Meta's
+// `status` field sometimes carries a human-readable reason behind an ERROR/
+// IN_PROGRESS status_code that `checkContainerStatus` doesn't surface. Remove once
+// the bad video is identified (tracked alongside the resumable-carousel plan).
+export async function fetchContainerStatusDetail(
+  containerId: string,
+  token: string,
+): Promise<{ status_code: string; status?: string }> {
+  const res = await fetch(
+    `${GRAPH_BASE}/${containerId}?fields=status_code,status&access_token=${token}`,
+  );
+  const data = await res.json();
+  if (data.error) throwGraphError(data);
+  return { status_code: data.status_code ?? "FINISHED", status: data.status };
 }
 
 export async function pollContainerReady(

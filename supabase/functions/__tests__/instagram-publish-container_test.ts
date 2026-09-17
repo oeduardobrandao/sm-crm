@@ -10,6 +10,13 @@ Deno.env.set("R2_BUCKET", "bucket");
 
 const { createContainerForPost } = await import("../_shared/instagram-publish-utils.ts");
 
+// No test in this file exercises real timing — the carousel pacing/readiness-poll
+// delays in createContainerForPost are a distraction here. Fire immediately.
+globalThis.setTimeout = ((fn: () => void) => {
+  fn();
+  return 0 as unknown as number;
+}) as typeof setTimeout;
+
 // deno-lint-ignore no-explicit-any
 function stubFetch() {
   const original = globalThis.fetch;
@@ -20,6 +27,29 @@ function stubFetch() {
       url: String(input),
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
+    n += 1;
+    return Promise.resolve(new Response(JSON.stringify({ id: `c-${n}` }), { status: 200 }));
+  }) as typeof fetch;
+  return { calls, restore: () => { globalThis.fetch = original; } };
+}
+
+// Like stubFetch, but GET status-check calls (checkContainerStatus has no `init`)
+// answer from a per-container-id queue of status_code values instead of always
+// FINISHED-equivalent — lets tests drive IN_PROGRESS→FINISHED and ERROR paths.
+// deno-lint-ignore no-explicit-any
+function stubFetchWithStatus(statusQueues: Record<string, string[]>) {
+  const original = globalThis.fetch;
+  const calls: Array<{ url: string; body: any }> = [];
+  let n = 0;
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (!init) {
+      const id = url.split("/").pop()?.split("?")[0] ?? "";
+      const queue = statusQueues[id];
+      const status = queue && queue.length > 0 ? queue.shift()! : "FINISHED";
+      return Promise.resolve(new Response(JSON.stringify({ status_code: status }), { status: 200 }));
+    }
     n += 1;
     return Promise.resolve(new Response(JSON.stringify({ id: `c-${n}` }), { status: 200 }));
   }) as typeof fetch;
@@ -154,14 +184,59 @@ Deno.test("createContainerForPost: multiple media → carousel children + parent
       { kind: "video", r2_key: "b.mp4" },
     ]);
     const res = await createContainerForPost(db, { ...base, useCover: true });
-    assertEquals(f.calls.length, 3); // 2 children + 1 parent
+    // 2 children + 1 readiness poll (the single video child) + 1 parent.
+    assertEquals(f.calls.length, 4);
     assertEquals(f.calls[0].body.is_carousel_item, true);
     assertEquals(f.calls[1].body.is_carousel_item, true);
-    const parent = f.calls[2].body;
+    assertEquals(f.calls[2].body, undefined, "status poll is a GET, no body");
+    const parent = f.calls[3].body;
     assertEquals(parent.media_type, "CAROUSEL");
     assertEquals(parent.children, "c-1,c-2");
-    assertEquals(res.containerId, "c-3");
+    assertEquals(res.containerId, "c-4");
     assertEquals(res.coverVideoUrl, undefined); // carousels never carry a Reel cover
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("createContainerForPost: video-heavy carousel paces children and waits out IN_PROGRESS", async () => {
+  const f = stubFetchWithStatus({ "c-2": ["IN_PROGRESS", "FINISHED"] });
+  try {
+    const db = dbWithMedia([
+      { kind: "video", r2_key: "v1.mp4" },
+      { kind: "video", r2_key: "v2.mp4" },
+      { kind: "video", r2_key: "v3.mp4" },
+    ]);
+    const res = await createContainerForPost(db, { ...base, useCover: false });
+    // 3 children + 2 poll rounds x 3 status checks + 1 parent.
+    assertEquals(f.calls.length, 3 + 6 + 1);
+    const parent = f.calls[f.calls.length - 1].body;
+    assertEquals(parent.media_type, "CAROUSEL");
+    assertEquals(parent.children, "c-1,c-2,c-3");
+    assertEquals(res.containerId, "c-4");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("createContainerForPost: video child ERROR before assembly → throws, no parent call", async () => {
+  const f = stubFetchWithStatus({ "c-2": ["ERROR"] });
+  try {
+    const db = dbWithMedia([
+      { kind: "image", r2_key: "a.jpg" },
+      { kind: "video", r2_key: "b.mp4" },
+    ]);
+    let threw = "";
+    try {
+      await createContainerForPost(db, { ...base, useCover: false });
+    } catch (e) {
+      threw = (e as Error).message;
+    }
+    assertEquals(threw, "Um item do carrossel falhou no processamento do Instagram");
+    assert(
+      !f.calls.some((c) => c.body?.media_type === "CAROUSEL"),
+      "must not assemble the parent when a child errored",
+    );
   } finally {
     f.restore();
   }
