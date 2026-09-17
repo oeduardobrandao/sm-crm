@@ -167,6 +167,53 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
   assertEquals(body.posts[0].cover_media.playback, null);
 });
 
+Deno.test("hub-posts never ships team-authored mensagem rows in postApprovals", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      { id: 99, titulo: "Post principal", tipo: "feed", status: "enviado_cliente", ordem: 0, conteudo_plain: "x", scheduled_at: "2026-04-20T10:00:00.000Z", platform: "instagram", workflow_id: 7, workflows: { titulo: "Calendário Abril" } },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", {
+    data: [
+      // internal note from the CRM Mensagens page (replyToPostApproval): must be dropped
+      { id: 1, post_id: 99, action: "mensagem", comentario: "Ana, o CTA está fraco", is_workspace_user: true, created_at: "2026-04-10T10:00:00.000Z" },
+      { id: 2, post_id: 99, action: "correcao", comentario: "Trocar a foto", is_workspace_user: false, created_at: "2026-04-11T10:00:00.000Z" },
+      { id: 3, post_id: 99, action: "mensagem", comentario: "Ficou ótimo", is_workspace_user: false, created_at: "2026-04-12T10:00:00.000Z" },
+      // team-authored approval rows do not exist in practice (hub-approve hardcodes false) but are not messages: kept
+      { id: 4, post_id: 99, action: "aprovado", comentario: null, is_workspace_user: true, created_at: "2026-04-13T10:00:00.000Z" },
+    ],
+    error: null,
+  });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    rateLimit: async () => true,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.postApprovals.map((a: { id: number }) => a.id), [2, 3, 4]);
+  assert(
+    !body.postApprovals.some((a: { action: string; is_workspace_user: boolean }) => a.action === "mensagem" && a.is_workspace_user),
+    "team mensagem rows must not leave hub-posts",
+  );
+});
+
 Deno.test("hub-posts omits signed URLs and returns media_lost_at for a permanently lost file", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {
