@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadTarefasCalendarioModo, persistTarefasCalendarioModo } from '../tarefasPrefs';
+import {
+  loadTarefasCalendarioModo,
+  loadTarefasEscopo,
+  persistTarefasCalendarioModo,
+  persistTarefasEscopo,
+} from '../tarefasPrefs';
 
 describe('tarefasPrefs', () => {
   beforeEach(() => {
@@ -39,6 +44,49 @@ describe('tarefasPrefs', () => {
       throw new Error('quota exceeded');
     });
     expect(() => persistTarefasCalendarioModo('conta-1', 'mes')).not.toThrow();
+    spy.mockRestore();
+  });
+});
+
+describe('tarefasPrefs (escopo)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('defaults to todas when the key is unset', () => {
+    expect(loadTarefasEscopo('conta-1', 'user-1')).toBe('todas');
+  });
+
+  it('persists and reloads minhas', () => {
+    persistTarefasEscopo('conta-1', 'user-1', 'minhas');
+    expect(loadTarefasEscopo('conta-1', 'user-1')).toBe('minhas');
+    expect(localStorage.getItem('tarefas_escopo_conta-1_user-1')).toBe('minhas');
+  });
+
+  it('keys the preference per conta and per user', () => {
+    persistTarefasEscopo('conta-1', 'user-1', 'minhas');
+    expect(loadTarefasEscopo('conta-2', 'user-1')).toBe('todas');
+    expect(loadTarefasEscopo('conta-1', 'user-2')).toBe('todas');
+  });
+
+  it('falls back to todas for a malformed stored value', () => {
+    localStorage.setItem('tarefas_escopo_conta-1_user-1', 'garbage');
+    expect(loadTarefasEscopo('conta-1', 'user-1')).toBe('todas');
+  });
+
+  it('does not throw when localStorage.getItem fails', () => {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(loadTarefasEscopo('conta-1', 'user-1')).toBe('todas');
+    spy.mockRestore();
+  });
+
+  it('does not throw when localStorage.setItem fails', () => {
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    expect(() => persistTarefasEscopo('conta-1', 'user-1', 'minhas')).not.toThrow();
     spy.mockRestore();
   });
 });

@@ -131,6 +131,13 @@ describe('BoardView', () => {
       // Droppable, date-bearing column: onAddClick fires with that column's date.
       byTitle('Amanhã').onAddClick!();
       expect(onCreateTask).toHaveBeenLastCalledWith('2026-07-30');
+
+      // Em atraso reads red, Hoje reads blue; every other column is unaccented.
+      expect(atrasado.accent?.text).toBe('var(--danger)');
+      expect(byTitle('Hoje').accent?.text).toBe('#3b82f6');
+      expect(byTitle('Amanhã').accent).toBeUndefined();
+      expect(maisTarde.accent).toBeUndefined();
+      expect(semData.accent).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }

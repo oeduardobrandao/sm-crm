@@ -15,6 +15,14 @@ import { Plus } from 'lucide-react';
 import type { Membro, TarefaWithRelations } from '../../../store';
 import { TarefaCard } from '../components/TarefaCard';
 
+/** Solid text/count color plus a matching translucent header wash -- same
+ *  rgba-tint-over-solid-text language as the `.deadline-*` badge classes. */
+export interface BoardColumnAccent {
+  text: string;
+  bg: string;
+  border: string;
+}
+
 export interface BoardColumn {
   /** Namespaced droppable id from buildDropId. */
   dropId: string;
@@ -28,6 +36,9 @@ export interface BoardColumn {
   /** Renders a "+ Adicionar tarefa" button pinned at the top of the column
    * when provided. */
   onAddClick?: () => void;
+  /** Tints this column's header only (e.g. Em atraso red, Hoje blue in the
+   * Calendário board view). Other boards leave this unset. */
+  accent?: BoardColumnAccent;
 }
 
 interface TarefaBoardProps {
@@ -171,9 +182,34 @@ export function TarefaBoard({
         <div className="board-container">
           {columns.map((col) => (
             <div key={col.dropId} className="board-column">
-              <div className="board-column-header">
-                <span className="board-column-title">{col.title}</span>
-                <span className="board-column-count">{col.tarefas.length}</span>
+              <div
+                className="board-column-header"
+                style={
+                  col.accent
+                    ? { background: col.accent.bg, borderBottom: `1px solid ${col.accent.border}` }
+                    : undefined
+                }
+              >
+                <span
+                  className="board-column-title"
+                  style={col.accent ? { color: col.accent.text } : undefined}
+                >
+                  {col.title}
+                </span>
+                <span
+                  className="board-column-count"
+                  style={
+                    col.accent
+                      ? {
+                          color: col.accent.text,
+                          borderColor: col.accent.border,
+                          background: 'transparent',
+                        }
+                      : undefined
+                  }
+                >
+                  {col.tarefas.length}
+                </span>
               </div>
               <DroppableColumnBody id={col.dropId} droppable={col.droppable}>
                 {col.onAddClick && (
