@@ -166,9 +166,25 @@ REVOKE ALL ON FUNCTION import_resolve_cliente(uuid, bigint, jsonb) FROM public, 
 GRANT EXECUTE ON FUNCTION import_resolve_cliente(uuid, bigint, jsonb) TO service_role;
 
 -- ---------- Planos / entitlements ----------
-REVOKE ALL ON FUNCTION effective_plan_feature(uuid, text) FROM public, anon, authenticated;
-GRANT EXECUTE ON FUNCTION effective_plan_feature(uuid, text) TO service_role;
+-- effective_plan_feature é chamada de dentro de get_workflow_analytics
+-- (20260903000030_workflow_analytics_events.sql), que é `LANGUAGE sql STABLE
+-- SECURITY INVOKER` -- SECURITY INVOKER roda o corpo inteiro, incluindo
+-- chamadas internas, sob o papel de quem invoca. authenticated PRECISA manter
+-- EXECUTE aqui pelo mesmo motivo de resolve_workspace_plan, mesmo essa função
+-- sendo SECURITY DEFINER -- o que importa é o modo de quem a CHAMA, não o
+-- dela mesma. Todo outro chamador (enforce_plan_feature_fn,
+-- claim_client_event_emails, apply_post_process, etc.) é SECURITY DEFINER,
+-- então só esse um caminho precisa do grant.
+REVOKE ALL ON FUNCTION effective_plan_feature(uuid, text) FROM public, anon;
+GRANT EXECUTE ON FUNCTION effective_plan_feature(uuid, text) TO authenticated, service_role;
 
+-- effective_plan_limit(): auditados TODOS os chamadores no repositório --
+-- são todos SECURITY DEFINER (enforce_plan_count_limit_fn, storage_quota_from_plan,
+-- ideia_file_insert_with_quota, storage_autoclean_run, attach/detach_posts_to_flow,
+-- move_posts_to_*_flow, briefing/ideia_audio_finalize, attach_post_closing_process,
+-- enforce_plan_count_limit) ou SQL de migration de uma vez só (executa como
+-- postgres). Nenhum caminho SECURITY INVOKER encontrado -- seguro revogar de
+-- authenticated.
 REVOKE ALL ON FUNCTION effective_plan_limit(uuid, text) FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION effective_plan_limit(uuid, text) TO service_role;
 

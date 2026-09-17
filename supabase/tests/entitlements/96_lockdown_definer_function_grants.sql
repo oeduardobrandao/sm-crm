@@ -54,7 +54,6 @@ declare
     'public.post_media_set_cover(bigint)',
     'public.import_commit_row(uuid, bigint, text, text, jsonb)',
     'public.import_resolve_cliente(uuid, bigint, jsonb)',
-    'public.effective_plan_feature(uuid, text)',
     'public.effective_plan_limit(uuid, text)',
     'public.expire_and_cleanup_invites()'
   ];
@@ -74,19 +73,33 @@ begin
   raise notice 'PASS 96_lockdown_definer_function_grants (% functions)', array_length(v_fns, 1);
 end $$;
 
--- resolve_workspace_plan is a special case: it's called directly inside the RLS
--- SELECT policies on global_banners/global_popups (`... to authenticated using
--- (... and resolve_workspace_plan(...) ...)`), which evaluate under the querying
--- role, not the function owner -- authenticated must keep EXECUTE or every
--- plan-targeted banner/popup read starts failing with permission denied. Only
--- anon is revoked (same pattern already used by popup_trigger_matches).
+-- resolve_workspace_plan and effective_plan_feature are special cases: both are
+-- called from code paths that execute under the QUERYING role, not the function
+-- owner, so authenticated must keep EXECUTE even though the function itself is
+-- otherwise a service-only helper:
+--   - resolve_workspace_plan: called directly inside the RLS SELECT policies on
+--     global_banners/global_popups (`... to authenticated using (... and
+--     resolve_workspace_plan(...) ...)`) -- RLS policies always evaluate as the
+--     querying role.
+--   - effective_plan_feature: called from get_workflow_analytics
+--     (LANGUAGE sql STABLE SECURITY INVOKER) -- SECURITY INVOKER runs the whole
+--     function body, including internal calls, as the caller.
+-- Only anon is revoked (same pattern already used by popup_trigger_matches).
 do $$
+declare
+  v_fn text;
+  v_fns text[] := array[
+    'public.resolve_workspace_plan(uuid)',
+    'public.effective_plan_feature(uuid, text)'
+  ];
 begin
-  assert has_function_privilege('anon', 'public.resolve_workspace_plan(uuid)', 'EXECUTE') = false,
-    'anon must NOT execute resolve_workspace_plan';
-  assert has_function_privilege('authenticated', 'public.resolve_workspace_plan(uuid)', 'EXECUTE') = true,
-    'authenticated must execute resolve_workspace_plan (used inside RLS policies)';
-  assert has_function_privilege('service_role', 'public.resolve_workspace_plan(uuid)', 'EXECUTE') = true,
-    'service_role must keep execute on resolve_workspace_plan';
-  raise notice 'PASS 96_lockdown_definer_function_grants (resolve_workspace_plan)';
+  foreach v_fn in array v_fns loop
+    assert has_function_privilege('anon', v_fn, 'EXECUTE') = false,
+      format('anon must NOT execute %s', v_fn);
+    assert has_function_privilege('authenticated', v_fn, 'EXECUTE') = true,
+      format('authenticated must execute %s (called from an invoker-context code path)', v_fn);
+    assert has_function_privilege('service_role', v_fn, 'EXECUTE') = true,
+      format('service_role must keep execute on %s', v_fn);
+  end loop;
+  raise notice 'PASS 96_lockdown_definer_function_grants (invoker-context exceptions)';
 end $$;
