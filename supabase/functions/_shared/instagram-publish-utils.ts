@@ -467,6 +467,62 @@ export function selectStoryMediaId(segments: StorySegment[]): string | null {
   return null;
 }
 
+// --- Carousel children (resumable per-child state, mirrors story_segments) ---
+
+export interface CarouselChild {
+  file_id: number;
+  kind: "image" | "video";
+  container_id: string | null;
+  ready: boolean;
+}
+
+function sameFileSequence(children: CarouselChild[], media: PostMediaRow[]): boolean {
+  if (children.length !== media.length) return false;
+  return children.every((c, i) => c.file_id === media[i].id);
+}
+
+/**
+ * Idempotently ensure a carousel post has a `carousel_children` array (one entry
+ * per media, ordered). Returns the persisted array unchanged when its file_id
+ * sequence still matches post_file_links, preserving container_id/ready. Unlike
+ * ensureStorySegments it REBUILDS when the sequence differs: post_file_link_replace
+ * only blocks gallery swaps once instagram_container_id is set, and an in-flight
+ * carousel has none yet, so a swap mid-flight would otherwise leave stale file_ids
+ * that createMissingCarouselChildContainers could never resolve. Only the
+ * single-writer holding the publish_processing_at lock should call this.
+ */
+export async function ensureCarouselChildren(db: DbClient, postId: number): Promise<CarouselChild[]> {
+  const { data: post } = await db
+    .from("workflow_posts")
+    .select("carousel_children")
+    .eq("id", postId)
+    .single();
+  const media = await fetchPostMedia(db, postId);
+
+  const existing = (post?.carousel_children ?? null) as CarouselChild[] | null;
+  if (existing && existing.length > 0 && sameFileSequence(existing, media)) return existing;
+
+  const children: CarouselChild[] = media.map((m) => ({
+    file_id: m.id,
+    kind: m.kind === "video" ? "video" : "image",
+    container_id: null,
+    ready: false,
+  }));
+  await db.from("workflow_posts").update({ carousel_children: children }).eq("id", postId);
+  return children;
+}
+
+/** A non-story post with more than one media publishes as a carousel. */
+export async function isCarouselPost(
+  db: DbClient,
+  postId: number,
+  tipo?: string | null,
+): Promise<boolean> {
+  if (tipo === "stories") return false;
+  const media = await fetchPostMedia(db, postId);
+  return media.length > 1;
+}
+
 export interface ContainerCreationResult {
   containerId: string;
   /**
