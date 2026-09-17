@@ -143,7 +143,8 @@ aviso, que fica como trabalho futuro.
    `approvePostsInternally` resolver é seguro e mais simples; esperar `advanceEtapa` não
    adiciona nenhuma garantia real, só um sinal de sucesso que a função não fornece.
 
-5. **`feature_post_scheduling` precisa ser checado antes de qualquer aviso.**
+5. **`feature_post_scheduling` precisa ser checado antes de qualquer aviso — e, para
+   TikTok/`both`, `feature_tiktok` também.**
    `instagram-publish/handler.ts:70-76` devolve 403 `feature_disabled` para `action ===
    "schedule"` quando o plano do workspace não inclui `feature_post_scheduling`. Um diálogo
    que aparece sozinho e termina em "feature_disabled" é pior do que não avisar nada. Gate
@@ -152,6 +153,14 @@ aviso, que fica como trabalho futuro.
    devolve `{ limits, features, planName, isLoading, isUnlimited }`), então a checagem certa
    é `useWorkspaceLimits().features?.feature_post_scheduling === true` (com `isLoading`
    tratado como "ainda não sabemos" — não mostrar nada até resolver).
+
+   **Correção (Codex): esse gate por si só não basta para posts com `platform` `tiktok` ou
+   `both`.** `tiktok-publish/handler.ts:85-89` exige `feature_post_scheduling` **e**
+   `feature_tiktok` para a action `schedule` — um workspace com agendamento habilitado mas
+   sem o add-on de TikTok passaria pelo gate acima, mostraria o aviso, e tomaria 403
+   `feature_disabled` (`feature: "feature_tiktok"`) ao confirmar. Nos três pontos, quando
+   `post.platform === 'tiktok' || post.platform === 'both'`, o gate de feature também exige
+   `features?.feature_tiktok === true`.
 
 6. **`platform === 'both'` chama só `scheduleTikTokPost`, nunca os dois.** Confirmado em
    `ScheduleButton.tsx` (`handleSchedule`, `~L323-339`): para `both`, só `scheduleTikTokPost`
@@ -177,6 +186,30 @@ export async function scheduleApprovedPost(post: Pick<WorkflowPost, 'id' | 'plat
 `ScheduleButton.tsx` passa a chamar esse helper em vez de duplicar o branch — única fonte da
 regra "both usa TikTok", usada pelos três pontos novos abaixo e pelo botão que já existia.
 
+### Atualização de cache após agendar
+
+**Correção (Codex): nenhuma das três peças abaixo especificava um refresh depois de
+`scheduleApprovedPost` ter sucesso.** O botão que já existe resolve isso por fora — via a
+prop `onStatusChange`/`onRefresh` que seus dois usos hoje passam (`PostEditorBody.tsx:444` e
+`:646` passam `onRefresh`; `PublicacoesPanel.tsx:117` passa o `onStatusChange` do painel) — e
+`ScheduleButton` chama essa prop em todo caminho de sucesso. Os três pontos novos não têm
+nenhuma prop equivalente para herdar: sem uma chamada própria, o post continua na cache local
+como `aprovado_cliente` depois do agendamento já ter tido sucesso no servidor. Prático, isso
+significa o indicador persistente (peça 3) continuando a oferecer "Agendar" para um post que
+já está `agendado`, e um segundo clique tomando 422 (`instagram-publish/handler.ts` exige
+`status === 'aprovado_cliente'` para a action `schedule`, que o primeiro agendamento já
+mudou).
+
+Os três pontos usam `useQueryClient()` para invalidar exatamente as keys que
+`useUpdatePostStatus.ts` já invalida no seu `onSettled` para qualquer outra troca de status
+— `ACTIVE_POSTS_KEY` (`['active-posts']`), `['workflow-posts-with-props', workflowId]`,
+`['workflow-posts-counts']`, `['workflow-approved-posts-counts']`,
+`['workflow-cleared-cliente-counts']`, `['workflow-revisao-interna-counts']`,
+`['workflow-awaiting-cliente-counts']` — já que `aprovado_cliente` → `agendado` é a mesma
+categoria de transição que esse hook cobre, só disparada por `scheduleApprovedPost` em vez
+de `updateWorkflowPost` direto. Na peça 2 (lote), uma única invalidação depois do loop
+inteiro é suficiente — não uma por post.
+
 ### 1. Diálogo na transição individual
 
 Disparado no `onSuccess`/sucesso da escrita de status para `aprovado_cliente`, nos pontos que
@@ -185,7 +218,8 @@ hoje fazem essa escrita direta:
 - `WorkflowDrawer.tsx`, os dois call sites de troca de status (`:438` e `:458`)
 
 Gates (todos obrigatórios): `clientes.auto_publish_on_approval`, `feature_post_scheduling`,
-gate da decisão 3 (etapas). Se algum falhar, comportamento de hoje sem alteração.
+gate da decisão 3 (etapas), e `feature_tiktok` quando `platform` é `tiktok`/`both` (decisão
+5). Se algum falhar, comportamento de hoje sem alteração.
 
 - Elegível (decisão 1): `AlertDialog` bloqueante — "Este cliente agenda automaticamente
   quando um post é aprovado. Deseja agendar agora para {data formatada}?" / Cancelar /
@@ -213,7 +247,8 @@ gate da decisão 3 (etapas). Se algum falhar, comportamento de hoje sem alteraç
 Pontos: `handleApproveInternally` em `KanbanView.tsx:1089` e o equivalente em
 `EntregasTab.tsx:~452`. Assim que `approvePostsInternally` resolver (decisão 4 — não espera
 `advanceEtapa`/`completeEtapaForAdvance`), se `clientes.auto_publish_on_approval`,
-`features?.feature_post_scheduling` e `!approvalChoice.willRearm` (decisão 3): diálogo único
+`features?.feature_post_scheduling` (mais `feature_tiktok` para quem tem post `tiktok`/`both`
+no lote, decisão 5) e `!approvalChoice.willRearm` (decisão 3): diálogo único
 — "N posts aprovados. M já têm data definida e podem ser agendados agora." Botão "Agendar N
 posts" chama `scheduleApprovedPost` em loop para os M elegíveis (decisão 1) a partir do
 snapshot local de posts que `approvePostsInternally` moveu (o `.update()` em
@@ -239,8 +274,9 @@ sempre visível e agendaria antes da segunda aprovação — exatamente o bug do
 reintroduzido por uma superfície de UI nova em vez do fluxo antigo. Nenhum dos dois endpoints
 de publicação aplica `isFinalApprovalCycle` por conta própria (ele só existe dentro de
 `hub-approve`), então essa checagem tem que vir do lado do indicador. Gates completos, os
-mesmos três da peça 1: `clientes.auto_publish_on_approval`, `features?.feature_post_scheduling`,
-e o helper mirror de `isFinalApprovalCycle` da decisão 3 — computado a partir das etapas do
+mesmos da peça 1: `clientes.auto_publish_on_approval`, `features?.feature_post_scheduling`
+(mais `feature_tiktok` para o post em questão quando `platform` é `tiktok`/`both`, decisão
+5), e o helper mirror de `isFinalApprovalCycle` da decisão 3 — computado a partir das etapas do
 workflow que a própria view já carrega (`card.allEtapas` no kanban, etapas do workflow no
 `WorkflowDrawer`), sem round-trip novo.
 
@@ -285,6 +321,16 @@ tipo. Adicionar `auto_publish_on_approval: boolean` à interface.
   PR #400 que a revisão do Codex pegou faltando nesta seção; ação dispara o mesmo helper.
 - Elegibilidade: caso de fronteira exatamente em `now + 10min` é tratado como NÃO elegível
   (a margem de segurança da decisão 1), não só `< now + 10min`.
+- Gate de feature para TikTok: post `platform: 'tiktok'` ou `'both'` com
+  `feature_post_scheduling = true` e `feature_tiktok = false` não mostra nenhum dos três
+  avisos (regressão específica apontada pelo Codex — sem esse gate o aviso apareceria e o
+  clique tomaria 403 `feature_disabled: "feature_tiktok"`).
+- Atualização de cache: depois de um `scheduleApprovedPost` com sucesso em qualquer um dos
+  três pontos, as queries invalidadas incluem `ACTIVE_POSTS_KEY` e as chaves de contagem do
+  workflow — o indicador persistente não deve continuar oferecendo "Agendar" para o mesmo
+  post depois do agendamento (regressão específica apontada pelo Codex — sem essa
+  invalidação, um segundo clique tomaria 422 porque o servidor já moveu o post para
+  `agendado`).
 
 ## Fora de escopo
 
