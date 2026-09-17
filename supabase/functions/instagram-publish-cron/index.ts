@@ -16,6 +16,8 @@ import {
   createMissingStorySegmentContainers,
   publishReadyStorySegments,
   selectStoryMediaId,
+  isCarouselPost,
+  advanceCarouselContainer,
 } from "../_shared/instagram-publish-utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -89,8 +91,13 @@ async function markFailed(
     publish_processing_at: null,
   };
   // Um container expirado nunca volta a funcionar; sem limpar, o retry
-  // automático (processRetry) reusaria o mesmo id e falharia 3x igual.
-  if (errorCode === "CONTAINER_EXPIRED") fields.instagram_container_id = null;
+  // automático (processRetry) reusaria o mesmo id e falharia 3x igual. O mesmo
+  // vale para os filhos de um carrossel (carousel_children): sem limpar, o
+  // próximo tick montaria um novo pai a partir de filhos já expirados.
+  if (errorCode === "CONTAINER_EXPIRED") {
+    fields.instagram_container_id = null;
+    fields.carousel_children = null;
+  }
   await db.from("workflow_posts").update(fields).eq("id", postId);
 
   if (errorCode === "CONTAINER_EXPIRED") {
@@ -144,6 +151,33 @@ async function processContainerCreation(
     });
     await db.from("workflow_posts").update({ publish_processing_at: null }).eq("id", post.post_id);
     console.log(`[IG-PUBLISH] Story containers ensured for post ${post.post_id}`);
+    return;
+  }
+
+  // Carousels are resumable across ticks (carousel_children mirrors story_segments):
+  // each child container id is persisted as it is created, readiness is persisted
+  // per child, and the CAROUSEL parent is only assembled once every child is
+  // FINISHED. "Not ready yet" is not a failure -- release the lock and let the
+  // next tick continue from the persisted state. The claim RPC keeps re-claiming
+  // this post in the container phase while instagram_container_id is null.
+  if (await isCarouselPost(db, post.post_id, post.tipo)) {
+    const { containerId, allReady } = await advanceCarouselContainer(db, {
+      postId: post.post_id,
+      igUserId: post.instagram_user_id,
+      token,
+      caption: post.ig_caption,
+      trialStrategy: post.ig_trial_strategy,
+    });
+    if (!allReady) {
+      await clearLock(db, post.post_id);
+      console.log(`[IG-PUBLISH] Carousel post ${post.post_id}: children still processing, will continue next cycle`);
+      return;
+    }
+    await db.from("workflow_posts").update({
+      instagram_container_id: containerId,
+      publish_processing_at: null,
+    }).eq("id", post.post_id);
+    console.log(`[IG-PUBLISH] Carousel container created for post ${post.post_id}: ${containerId}`);
     return;
   }
 
