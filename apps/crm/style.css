@@ -3226,9 +3226,14 @@ select.form-input option {
     gap: 0.75rem;
   }
 
-  /* Same fused block as desktop, just two columns wide */
+  /*
+   * Same fused block as desktop, just two columns wide. minmax(0, 1fr), not
+   * plain 1fr: a bare 1fr track's minimum is its content's min-content width,
+   * so an unbroken value like "R$ 49.500,00" pushed the track wider than the
+   * viewport instead of wrapping.
+   */
   .kpi-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /*
