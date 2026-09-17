@@ -35,8 +35,13 @@ import {
   Send,
   ShieldCheck,
 } from 'lucide-react';
-import { reorderBoardPosts, type ActivePost } from '@/store';
+import { isFinalClientApprovalCycle, reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { shouldOfferAutoSchedule } from '../autoScheduleNudge';
+import {
+  AutoSchedulePromptDialog,
+  type AutoSchedulePromptPost,
+} from '../components/AutoSchedulePromptDialog';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
@@ -152,6 +157,19 @@ interface PostsKanbanViewProps {
   /** post id → etapa ativa do processo individual (spec §4.4). Só posts
    *  avulsos aparecem aqui. */
   processEtapaByPostId?: Map<number, string>;
+  /** features?.feature_post_scheduling === true, vindo da EntregasPage. Gate do
+   *  aviso de agendamento automático: instagram-publish devolve 403
+   *  feature_disabled para action "schedule" sem esse flag no plano
+   *  (supabase/functions/instagram-publish/handler.ts:70-77), então um aviso que
+   *  termina em erro é pior do que nenhum aviso. Ausente = desligado. */
+  schedulingEnabled?: boolean;
+  /** features?.feature_tiktok === true, vindo da EntregasPage. Gate ADICIONAL só
+   *  para post `tiktok`/`both`: tiktok-publish/handler.ts:85-89 exige
+   *  feature_post_scheduling E feature_tiktok para a action "schedule", então um
+   *  workspace com agendamento e sem o add-on de TikTok tomaria 403
+   *  feature_disabled (feature: "feature_tiktok") ao confirmar. Ausente =
+   *  desligado. */
+  tiktokEnabled?: boolean;
 }
 
 /** A post avulso (no workflow) is always openable -- only a wired post depends
@@ -551,6 +569,8 @@ export function PostsKanbanView({
   columnSorts,
   onColumnSortChange,
   processEtapaByPostId,
+  schedulingEnabled,
+  tiktokEnabled,
 }: PostsKanbanViewProps) {
   const registry = useStatusRegistry();
   const updateStatus = useUpdatePostStatus();
@@ -566,6 +586,9 @@ export function PostsKanbanView({
      *  captured drop slot. */
     place?: () => void;
   } | null>(null);
+
+  /** Post cujo aviso de agendamento automático está aberto (peça 1 da spec). */
+  const [nudgePost, setNudgePost] = useState<AutoSchedulePromptPost | null>(null);
 
   /** Driven by the column header menu; a column absent from `columnSorts`
    *  defaults to 'manual'. */
@@ -653,6 +676,28 @@ export function PostsKanbanView({
     updateStatus.mutate(move.forward, {
       onError: () =>
         persistPlacement([{ id: move.forward.id, board_ordem: move.previousBoardOrdem }]),
+      // Aviso de agendamento automático (spec peça 1). A linha devolvida pela
+      // escrita é a fonte do status: o trigger do banco força `status` a partir
+      // de um custom_status_id, então um status custom que se comporta como
+      // aprovado_cliente também cai aqui, sem consultar o registry.
+      onSuccess: (updated) => {
+        const card = post.workflow_id != null ? cardsByWorkflowId.get(post.workflow_id) : undefined;
+        const offer = shouldOfferAutoSchedule({
+          status: updated?.status ?? move.forward.canonical,
+          platform: updated?.platform ?? post.platform,
+          autoPublishOnApproval: card?.cliente?.auto_publish_on_approval === true,
+          schedulingFeatureEnabled: schedulingEnabled === true,
+          tiktokFeatureEnabled: tiktokEnabled === true,
+          isFinalApprovalCycle: card ? isFinalClientApprovalCycle(card.allEtapas) : false,
+        });
+        if (!offer) return;
+        setNudgePost({
+          id: post.id,
+          titulo: post.titulo,
+          platform: post.platform,
+          scheduled_at: updated?.scheduled_at ?? post.scheduled_at,
+        });
+      },
     });
     toast(`Post movido para "${move.targetLabel}".`, {
       duration: 6000,
@@ -673,6 +718,9 @@ export function PostsKanbanView({
           updateStatus.mutate(move.backward, {
             onError: () => persistPlacement([{ id: move.forward.id, board_ordem: rankBeforeUndo }]),
           });
+          // O post está voltando para fora de aprovado_cliente; um aviso aberto
+          // para ele ficaria oferecendo agendar um post que já não está aprovado.
+          setNudgePost((current) => (current?.id === move.forward.id ? null : current));
           // The forward move may also have placed the post in the target
           // column's manual order -- Desfazer restores the rank it had
           // before the drag, not just the status. Skipped when the forward
@@ -919,6 +967,22 @@ export function PostsKanbanView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AutoSchedulePromptDialog
+        post={nudgePost}
+        onClose={() => setNudgePost(null)}
+        onScheduled={() => {
+          setNudgePost(null);
+          qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
+          // Prefixo sem o workflowId de propósito: TanStack Query casa chaves por
+          // prefixo, então isto invalida ['workflow-posts-with-props', <qualquer
+          // id>]. O diálogo não carrega o workflow_id do post, e invalidar a lista
+          // de outro fluxo é inofensivo (são listas refetch-on-demand).
+          qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
+          qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+          qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
+          qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
+        }}
+      />
     </>
   );
 }

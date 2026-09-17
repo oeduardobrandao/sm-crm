@@ -93,7 +93,10 @@ import {
   type ClientePost,
   type DetachPostsResult,
   type DetachKeepingProcessResult,
+  isFinalClientApprovalCycle,
 } from '../../../store';
+import { shouldOfferAutoSchedule } from '../autoScheduleNudge';
+import { AutoSchedulePromptDialog, type AutoSchedulePromptPost } from './AutoSchedulePromptDialog';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
@@ -165,6 +168,32 @@ export function WorkflowDrawer({
   const qc = useQueryClient();
   const { features } = useWorkspaceLimits();
   const keepStepsEnabled = features?.feature_post_processes === true;
+  const schedulingEnabled = features?.feature_post_scheduling === true;
+  const tiktokEnabled = features?.feature_tiktok === true;
+  const [nudgePost, setNudgePost] = useState<AutoSchedulePromptPost | null>(null);
+
+  /** Um só lugar para os gates da spec, usado pelos dois pontos de escrita de
+   *  status abaixo e pelo indicador persistente da linha do post. `platform` vem
+   *  da linha atualizada porque o gate de feature_tiktok depende dela. */
+  const offerAutoSchedule = (updated: WorkflowPost): boolean =>
+    shouldOfferAutoSchedule({
+      status: updated.status,
+      platform: updated.platform,
+      autoPublishOnApproval: card.cliente?.auto_publish_on_approval === true,
+      schedulingFeatureEnabled: schedulingEnabled,
+      tiktokFeatureEnabled: tiktokEnabled,
+      isFinalApprovalCycle: isFinalClientApprovalCycle(card.allEtapas),
+    });
+
+  const maybeNudge = (updated: WorkflowPost) => {
+    if (!offerAutoSchedule(updated)) return;
+    setNudgePost({
+      id: updated.id!,
+      titulo: updated.titulo,
+      platform: updated.platform,
+      scheduled_at: updated.scheduled_at ?? null,
+    });
+  };
 
   // Expanded post id (accordion). Seeded from initialPostId when opened from the
   // calendar; the call site keys the drawer by initialPostId so a new target remounts.
@@ -438,8 +467,9 @@ export function WorkflowDrawer({
         return;
       }
       try {
-        await updateWorkflowPost(id, statusKeyToPatch(key));
+        const updated = await updateWorkflowPost(id, statusKeyToPatch(key));
         refresh();
+        maybeNudge(updated);
       } catch {
         toast.error('Erro ao atualizar post');
       }
@@ -458,8 +488,9 @@ export function WorkflowDrawer({
     const { id, newStatusKey } = pendingStatusChange;
     setPendingStatusChange(null);
     try {
-      await updateWorkflowPost(id, statusKeyToPatch(newStatusKey));
+      const updated = await updateWorkflowPost(id, statusKeyToPatch(newStatusKey));
       refresh();
+      maybeNudge(updated);
     } catch {
       toast.error('Erro ao atualizar status');
     }
@@ -1093,6 +1124,15 @@ export function WorkflowDrawer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AutoSchedulePromptDialog
+        post={nudgePost}
+        onClose={() => setNudgePost(null)}
+        onScheduled={() => {
+          setNudgePost(null);
+          refresh();
+        }}
+      />
 
       <AlertDialog
         open={!!pendingRejectSuggestionId}

@@ -42,6 +42,7 @@ const store = vi.hoisted(() => ({
   getWorkflows: vi.fn().mockResolvedValue([]),
   movePostsToNewFlow: vi.fn(),
   movePostsToExistingFlow: vi.fn(),
+  isFinalClientApprovalCycle: vi.fn(() => true),
 }));
 vi.mock('../../../../store', () => store);
 
