@@ -523,6 +523,61 @@ export async function isCarouselPost(
   return media.length > 1;
 }
 
+function carouselLimitMessage(count: number): string {
+  return (
+    `Carrossel do Instagram aceita no máximo ${CAROUSEL_MAX_ITEMS} itens ` +
+    `(este post tem ${count}). Reduza para ${CAROUSEL_MAX_ITEMS} ou menos. ` +
+    `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`
+  );
+}
+
+async function setCarouselChildField(
+  db: DbClient,
+  postId: number,
+  index: number,
+  field: "container_id" | "ready",
+  value: string | boolean | null,
+): Promise<void> {
+  // p_value is jsonb on the SQL side (ready is a boolean); JS null clears the field.
+  // deno-lint-ignore no-explicit-any
+  const { error } = await (db as any).rpc("set_carousel_child_field", {
+    p_post_id: postId,
+    p_index: index,
+    p_field: field,
+    p_value: value,
+  });
+  if (error) throw new Error(`Failed to persist carousel child ${field}: ${error.message ?? error}`);
+}
+
+/**
+ * Create a carousel-item container for every child that lacks one; persist each
+ * id the moment it exists (one RPC per success, never batched at the end) so a
+ * later tick resumes from the last created child instead of redoing the burst.
+ */
+export async function createMissingCarouselChildContainers(
+  db: DbClient,
+  opts: { postId: number; igUserId: string; token: string },
+): Promise<CarouselChild[]> {
+  const { postId, igUserId, token } = opts;
+  const children = await ensureCarouselChildren(db, postId);
+  if (children.length > CAROUSEL_MAX_ITEMS) throw new Error(carouselLimitMessage(children.length));
+
+  const media = await fetchPostMedia(db, postId);
+  const byFileId = new Map(media.map((m) => [m.id, m]));
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (child.container_id) continue;
+    const file = byFileId.get(child.file_id);
+    if (!file) throw new Error(`Carousel child ${i}: media file ${child.file_id} not found`);
+    const url = await signGetUrl(file.r2_key, 7200);
+    const container = await createCarouselChildContainer(igUserId, token, url, child.kind === "video");
+    child.container_id = container.id;
+    await setCarouselChildField(db, postId, i, "container_id", container.id);
+  }
+  return children;
+}
+
 export interface ContainerCreationResult {
   containerId: string;
   /**
@@ -576,13 +631,7 @@ export async function createContainerForPost(
   }
 
   if (media.length === 0) throw new Error("No media files found");
-  if (media.length > CAROUSEL_MAX_ITEMS) {
-    throw new Error(
-      `Carrossel do Instagram aceita no máximo ${CAROUSEL_MAX_ITEMS} itens ` +
-        `(este post tem ${media.length}). Reduza para ${CAROUSEL_MAX_ITEMS} ou menos. ` +
-        `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`,
-    );
-  }
+  if (media.length > CAROUSEL_MAX_ITEMS) throw new Error(carouselLimitMessage(media.length));
 
   const isCarousel = media.length > 1;
   const isSingleVideo = media.length === 1 && media[0].kind === "video";

@@ -109,3 +109,71 @@ Deno.test("isCarouselPost: stories never, single media no, 2+ media yes", async 
   assertEquals(await isCarouselPost(makeDb({ media: two }).db, 1, "feed"), true);
   assertEquals(await isCarouselPost(makeDb({ media: two }).db, 1, null), true);
 });
+
+const { createMissingCarouselChildContainers } = await import("../_shared/instagram-publish-utils.ts");
+
+// Graph stub. POST /media -> {id: c-N} (N counts POSTs); GET status polls answer
+// from statusFor(containerId), default FINISHED. Records every call.
+// deno-lint-ignore no-explicit-any
+function stubGraph(statusFor: (id: string) => string = () => "FINISHED") {
+  const original = globalThis.fetch;
+  // deno-lint-ignore no-explicit-any
+  const calls: Array<{ url: string; body: any }> = [];
+  let n = 0;
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ url, body });
+    if (!init) {
+      const id = url.split("/").pop()?.split("?")[0] ?? "";
+      return Promise.resolve(new Response(JSON.stringify({ status_code: statusFor(id) }), { status: 200 }));
+    }
+    n += 1;
+    return Promise.resolve(new Response(JSON.stringify({ id: `c-${n}` }), { status: 200 }));
+  }) as typeof fetch;
+  return { calls, restore: () => { globalThis.fetch = original; } };
+}
+
+Deno.test("createMissingCarouselChildContainers creates only children lacking a container and persists each id", async () => {
+  const ctx = makeDb({
+    children: [
+      { file_id: 11, kind: "image", container_id: "kept", ready: true },
+      { file_id: 12, kind: "video", container_id: null, ready: false },
+      { file_id: 13, kind: "image", container_id: null, ready: false },
+    ],
+    media: [link(0, 11, "image"), link(1, 12, "video"), link(2, 13, "image")],
+  });
+  const g = stubGraph();
+  let children;
+  try {
+    children = await createMissingCarouselChildContainers(ctx.db, { postId: 1, igUserId: "ig", token: "t" });
+  } finally { g.restore(); }
+
+  assertEquals(g.calls.length, 2, "one POST per missing child, none for the kept one");
+  assertEquals(g.calls[0].body.is_carousel_item, true);
+  assertEquals(g.calls[0].body.media_type, "VIDEO");
+  assert(g.calls[0].body.video_url, "video child uses video_url");
+  assertEquals(g.calls[1].body.is_carousel_item, true);
+  assert(g.calls[1].body.image_url, "image child uses image_url");
+  assert(!("media_type" in g.calls[1].body), "image child sets no media_type");
+
+  const sets = ctx.rpcCalls.filter((c) => c.fn === "set_carousel_child_field");
+  assertEquals(sets.map((c) => [c.params.p_index, c.params.p_field, c.params.p_value]), [
+    [1, "container_id", "c-1"],
+    [2, "container_id", "c-2"],
+  ]);
+  assertEquals(children.map((c) => c.container_id), ["kept", "c-1", "c-2"]);
+});
+
+Deno.test("createMissingCarouselChildContainers: >10 media throws CAROUSEL_LIMIT before any Graph call", async () => {
+  const media = Array.from({ length: 11 }, (_, i) => link(i, i + 1, "image"));
+  const ctx = makeDb({ children: null, media });
+  const g = stubGraph();
+  let threw = "";
+  try {
+    await createMissingCarouselChildContainers(ctx.db, { postId: 1, igUserId: "ig", token: "t" });
+  } catch (e) { threw = (e as Error).message; } finally { g.restore(); }
+  assert(threw.includes("máximo 10"), `expected the cap message, got: ${threw}`);
+  assertEquals(classifyPublishError(new Error(threw)), "CAROUSEL_LIMIT");
+  assertEquals(g.calls.length, 0);
+});
