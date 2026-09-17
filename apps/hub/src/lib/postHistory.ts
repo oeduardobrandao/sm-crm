@@ -159,7 +159,7 @@ export function computePostKpis(history: PostHistoryResponse): PostKpis {
   const approvals = sortedApprovals(history);
 
   const rounds =
-    approvals.filter((a) => a.action === 'correcao').length +
+    approvals.filter((a) => a.action === 'correcao' && !a.is_workspace_user).length +
     events.filter((e) => e.to_status === 'correcao_cliente' && e.post_approval_id == null).length;
 
   const sends = events.filter((e) => e.to_status === 'enviado_cliente');

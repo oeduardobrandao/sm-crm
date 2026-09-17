@@ -195,6 +195,22 @@ describe('computePostKpis', () => {
     expect(computePostKpis(h)).toEqual({ rounds: 0, samples: 0, avgResponseMs: null });
   });
 
+  it('excludes a workspace-authored correcao row from rounds (defensive, mirrors selectComments)', () => {
+    const h = history(
+      [send(1, '2026-09-01T10:00:00.000Z', 'v1')],
+      [
+        ap({
+          id: 10,
+          action: 'correcao',
+          motivo: 'legenda',
+          is_workspace_user: true,
+          created_at: '2026-09-01T11:00:00.000Z',
+        }),
+      ],
+    );
+    expect(computePostKpis(h)).toEqual({ rounds: 0, samples: 0, avgResponseMs: null });
+  });
+
   it('pre-20260606 post with approvals but no events: rounds from approvals, no samples (missing, not zero)', () => {
     const h = history(
       [],
