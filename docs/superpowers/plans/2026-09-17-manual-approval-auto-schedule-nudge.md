@@ -4,7 +4,7 @@
 
 **Goal:** When someone on the agency team marks a flow post as `aprovado_cliente` directly in the CRM (kanban drag, drawer status dropdown, or "aprovar internamente"), and that client has `auto_publish_on_approval = true`, the CRM offers to schedule the post right there — plus a persistent indicator on the posts already stuck in that state — instead of silently doing nothing because the auto-schedule logic only lives in `hub-approve`.
 
-**Architecture:** No new edge function, table, column or migration. One new pure-logic module (`autoScheduleNudge.ts`) holds the eligibility and gate rules; one new thin module (`scheduleApprovedPost.ts`) holds the platform-routing branch extracted out of `ScheduleButton.handleSchedule`, so the existing "Agendar publicação" button and the three new surfaces all call the same code. Two new dialog components consume those: a single-post prompt (used by the individual-transition nudge and by the persistent per-post indicator) and a batch summary (used by the two "aprovar internamente" call sites). Every surface is gated on three conditions that must all be true: the client's `auto_publish_on_approval`, the plan's `feature_post_scheduling`, and a client-side mirror of `hub-approve`'s `isFinalApprovalCycle` (so a first-cycle post in a dual-approval flow is never offered — that is the PR #400 bug).
+**Architecture:** No new edge function, table, column or migration. One new pure-logic module (`autoScheduleNudge.ts`) holds the eligibility and gate rules; one new thin module (`scheduleApprovedPost.ts`) holds the platform-routing branch extracted out of `ScheduleButton.handleSchedule`, so the existing "Agendar publicação" button and the three new surfaces all call the same code. Two new dialog components consume those: a single-post prompt (used by the individual-transition nudge and by the persistent per-post indicator) and a batch summary (used by the two "aprovar internamente" call sites). Every surface is gated on three unconditional conditions that must all be true — the client's `auto_publish_on_approval`, the plan's `feature_post_scheduling`, and a client-side mirror of `hub-approve`'s `isFinalApprovalCycle` (so a first-cycle post in a dual-approval flow is never offered — that is the PR #400 bug) — plus a fourth, **platform-conditional** gate: a post whose `platform` is `tiktok` or `both` additionally requires the plan's `feature_tiktok`, because `tiktok-publish/handler.ts:85-89` demands both flags for `action === "schedule"` while `instagram-publish/handler.ts:70-77` demands only `feature_post_scheduling` (spec decision 5).
 
 **Tech Stack:** React 19 + TypeScript, TanStack Query, shadcn/ui (`AlertDialog`, `DateTimePicker`), `sonner` toasts, Vitest + @testing-library/react. No backend work at all.
 
@@ -17,6 +17,7 @@
 - **Scope is flow posts only** (`workflow_id != null`). Posts avulsos (`workflow_id == null`, `StandalonePostDrawer`) are explicitly out of scope: their approval cycle runs on `post_processes` / `post_process_steps`, a different mechanism (`supabase/functions/hub-approve/handler.ts:45-67`). The gate falls out naturally — an avulso post has no `BoardCard`, so no `allEtapas`, so the final-cycle gate is false and nothing renders. Never "fix" that by defaulting the gate to true.
 - **The server stays the source of truth.** The client-side eligibility rule only reduces the frequency of a 422 from `validateForScheduling` (`supabase/functions/_shared/instagram-publish-utils.ts:83-89`); it never replaces it. Any endpoint error is surfaced as a `toast.error(err.message)` and the post stays in `aprovado_cliente`.
 - **Four `tsc` projects, not `npm run build`.** See the Verification section. `npm run build` only typechecks the CRM.
+- **Two entitlement flags, not one.** `feature_post_scheduling` gates every surface unconditionally; `feature_tiktok` gates *additionally* and only for a post whose `platform` is `tiktok` or `both`, because `supabase/functions/tiktok-publish/handler.ts:85-89` requires both flags for `action === "schedule"` while `supabase/functions/instagram-publish/handler.ts:70-77` requires only the first (spec decision 5). Both come from `useWorkspaceLimits().features` (`apps/crm/src/hooks/useWorkspaceLimits.ts:39` and `:44`) — never from the hook's root, which does not expose them. Never gate an `instagram` post on `feature_tiktok`: that would hide the feature from workspaces entitled to it.
 - **Deviation from the spec, decided during planning (§2 "Diálogo de resumo na aprovação em lote"):** the spec says the batch dialog's N/M counts come from "o snapshot local de posts que `approvePostsInternally` moveu ... o estado do board já carregado antes da chamada". **That state does not exist at either call site.** `KanbanView` receives only per-workflow *counts* (`KanbanViewBaseProps` at `apps/crm/src/pages/entregas/views/KanbanView.tsx:121-125`: `postsCounts`, `approvedPostsCounts`, `clearedClienteCounts`, `revisaoInternaCounts`, `awaitingClienteCounts`) and `postEntities`/`allPostEntities`, which are individual-process entities (posts avulsos), not the flow's `workflow_posts` rows. `EntregasTab` is the same. So this plan fetches the workflow's posts with the existing `getWorkflowPosts(workflowId)` (`apps/crm/src/store/posts.ts:554-562`) *after* `approvePostsInternally` resolves, from inside the batch dialog. This preserves the spec's intent exactly (offer the M eligible posts), is strictly fresher than a pre-write snapshot, and needs no new store function.
 - **Second, smaller deviation from the spec (§Tipagem):** the spec declares `auto_publish_on_approval: boolean` (required) on `Cliente`. This plan declares it **optional** (`auto_publish_on_approval?: boolean`) to match every other nullable column already on that interface (`apps/crm/src/store/clients.ts:4-29`) and because the `clientes_v` row can legitimately arrive without it in a partial select. `AutoScheduleGateInput.autoPublishOnApproval` stays strictly `boolean`, and every call site narrows on the way in with `card.cliente?.auto_publish_on_approval === true` (Tasks 3, 4 and 5), so the behaviour is identical; declaring the column required would instead force a non-null assertion at each of those reads.
 
@@ -41,7 +42,8 @@
   - `isFinalClientApprovalCycle(etapas: WorkflowEtapa[]): boolean` — exported from `apps/crm/src/store/workflows.ts`, therefore reachable as `import { isFinalClientApprovalCycle } from '@/store'` (`apps/crm/src/store/index.ts:9` is `export * from './workflows'`).
   - `SCHEDULE_MIN_FUTURE_MS: number`, `SCHEDULE_SAFETY_MARGIN_MS: number`
   - `isEligibleToScheduleNow(scheduledAt: string | null | undefined, now?: number): boolean`
-  - `shouldOfferAutoSchedule(input: AutoScheduleGateInput): boolean` where `AutoScheduleGateInput = { status: string | null | undefined; autoPublishOnApproval: boolean; schedulingFeatureEnabled: boolean; isFinalApprovalCycle: boolean }`
+  - `targetsTikTokService(platform: string | null | undefined): boolean` — the single definition of decision 6's "`tiktok` and `both` go through the TikTok endpoint" rule. Imported by `scheduleApprovedPost.ts` *and* by the gate below, so routing and entitlement can never disagree.
+  - `shouldOfferAutoSchedule(input: AutoScheduleGateInput): boolean` where `AutoScheduleGateInput = { status: string | null | undefined; platform: string | null | undefined; autoPublishOnApproval: boolean; schedulingFeatureEnabled: boolean; tiktokFeatureEnabled: boolean; isFinalApprovalCycle: boolean }`. **All six fields are required, with none optional, at all three call sites** (two in Task 3, one in Task 5) — TypeScript enforces this, so a site that forgets `platform`/`tiktokFeatureEnabled` fails `tsc`, which is deliberate. Task 4's batch dialog deliberately does *not* call this function; see its own Interfaces block for why.
   - `partitionByScheduleEligibility<T extends { scheduled_at: string | null }>(posts: T[], now?: number): { eligible: T[]; missingDate: T[] }`
   - `SchedulablePost = Pick<WorkflowPost, 'id' | 'platform' | 'scheduled_at'>`
   - `scheduleApprovedPost(post: SchedulablePost): Promise<{ ok: boolean; status: string }>`
@@ -73,6 +75,7 @@ import {
   isEligibleToScheduleNow,
   partitionByScheduleEligibility,
   shouldOfferAutoSchedule,
+  targetsTikTokService,
 } from '../autoScheduleNudge';
 
 // Fixed clock so every boundary case is exact; the helpers take `now` as an
@@ -120,8 +123,10 @@ describe('isEligibleToScheduleNow', () => {
 describe('shouldOfferAutoSchedule', () => {
   const allTrue = {
     status: 'aprovado_cliente',
+    platform: 'instagram',
     autoPublishOnApproval: true,
     schedulingFeatureEnabled: true,
+    tiktokFeatureEnabled: true,
     isFinalApprovalCycle: true,
   };
 
@@ -148,6 +153,47 @@ describe('shouldOfferAutoSchedule', () => {
   // second client approval.
   it('is false when this is not the final approval cycle', () => {
     expect(shouldOfferAutoSchedule({ ...allTrue, isFinalApprovalCycle: false })).toBe(false);
+  });
+
+  // Decisão 5 da spec (correção do Codex): tiktok-publish/handler.ts:85-89 exige
+  // feature_tiktok ALÉM de feature_post_scheduling. O gate só se aplica aos posts
+  // que passam por aquele endpoint -- 'tiktok' e 'both' (decisão 6).
+  it('is false for a tiktok post when feature_tiktok is off', () => {
+    expect(
+      shouldOfferAutoSchedule({ ...allTrue, platform: 'tiktok', tiktokFeatureEnabled: false }),
+    ).toBe(false);
+  });
+
+  it('is false for a both post when feature_tiktok is off', () => {
+    expect(
+      shouldOfferAutoSchedule({ ...allTrue, platform: 'both', tiktokFeatureEnabled: false }),
+    ).toBe(false);
+  });
+
+  it('is true for tiktok and both when feature_tiktok is on', () => {
+    expect(shouldOfferAutoSchedule({ ...allTrue, platform: 'tiktok' })).toBe(true);
+    expect(shouldOfferAutoSchedule({ ...allTrue, platform: 'both' })).toBe(true);
+  });
+
+  // O gate é condicional: um post de Instagram nunca toca tiktok-publish, então
+  // feature_tiktok não pode bloqueá-lo em nenhum dos dois valores.
+  it('ignores feature_tiktok entirely for an instagram post', () => {
+    expect(
+      shouldOfferAutoSchedule({ ...allTrue, platform: 'instagram', tiktokFeatureEnabled: false }),
+    ).toBe(true);
+    expect(
+      shouldOfferAutoSchedule({ ...allTrue, platform: null, tiktokFeatureEnabled: false }),
+    ).toBe(true);
+  });
+});
+
+describe('targetsTikTokService', () => {
+  it('is true only for tiktok and both', () => {
+    expect(targetsTikTokService('tiktok')).toBe(true);
+    expect(targetsTikTokService('both')).toBe(true);
+    expect(targetsTikTokService('instagram')).toBe(false);
+    expect(targetsTikTokService(null)).toBe(false);
+    expect(targetsTikTokService(undefined)).toBe(false);
   });
 });
 
@@ -220,28 +266,54 @@ export function isEligibleToScheduleNow(
   return at >= now + SCHEDULE_MIN_FUTURE_MS + SCHEDULE_SAFETY_MARGIN_MS;
 }
 
+/**
+ * True quando agendar este post passa pelo serviço do TikTok. Decisão 6 da spec:
+ * `both` vai SÓ pelo TikTok (o servidor do TikTok valida os dois lados). Esta é a
+ * única definição da regra no código — `scheduleApprovedPost` importa esta função
+ * em vez de repetir a comparação, para que o gate de feature e o roteamento real
+ * nunca possam divergir se uma plataforma nova aparecer.
+ */
+export function targetsTikTokService(platform: string | null | undefined): boolean {
+  return platform === 'tiktok' || platform === 'both';
+}
+
 export interface AutoScheduleGateInput {
   /** Status canônico do post. Só 'aprovado_cliente' habilita o aviso. */
   status: string | null | undefined;
+  /** post.platform. Decide se o gate de feature_tiktok se aplica. */
+  platform: string | null | undefined;
   /** clientes.auto_publish_on_approval do cliente do post. */
   autoPublishOnApproval: boolean;
   /** useWorkspaceLimits().features?.feature_post_scheduling === true. */
   schedulingFeatureEnabled: boolean;
+  /** useWorkspaceLimits().features?.feature_tiktok === true. */
+  tiktokFeatureEnabled: boolean;
   /** isFinalClientApprovalCycle(etapas) do fluxo do post. */
   isFinalApprovalCycle: boolean;
 }
 
 /**
- * Os três gates obrigatórios da spec (mais o status), num só lugar, para que as
- * três superfícies novas não divirjam. Qualquer um falso = nenhum aviso, nenhuma
- * ação, comportamento de hoje inalterado.
+ * Os gates obrigatórios da spec (mais o status), num só lugar, para que as três
+ * superfícies novas não divirjam. Qualquer um falso = nenhum aviso, nenhuma ação,
+ * comportamento de hoje inalterado.
+ *
+ * Três gates são incondicionais (auto_publish_on_approval, feature_post_scheduling,
+ * ciclo final de aprovação). O quarto é CONDICIONAL à plataforma: decisão 5 da spec
+ * (correção do Codex) — `tiktok-publish/handler.ts:85-89` exige
+ * `feature_post_scheduling` E `feature_tiktok` para a action `schedule`, enquanto
+ * `instagram-publish/handler.ts:70-77` exige só o primeiro. Um workspace com
+ * agendamento habilitado e sem o add-on de TikTok passaria pelos três primeiros
+ * gates, veria o aviso, e tomaria 403 `feature_disabled` (`feature:
+ * "feature_tiktok"`) ao confirmar. Por isso o gate de TikTok só morde quando o
+ * post realmente vai por aquele endpoint.
  */
 export function shouldOfferAutoSchedule(input: AutoScheduleGateInput): boolean {
   return (
     input.status === 'aprovado_cliente' &&
     input.autoPublishOnApproval &&
     input.schedulingFeatureEnabled &&
-    input.isFinalApprovalCycle
+    input.isFinalApprovalCycle &&
+    (!targetsTikTokService(input.platform) || input.tiktokFeatureEnabled)
   );
 }
 
@@ -273,7 +345,7 @@ export function partitionByScheduleEligibility<T extends { scheduled_at: string 
 npx vitest run apps/crm/src/pages/entregas/__tests__/autoScheduleNudge.test.ts
 ```
 
-Expected: PASS, 13 tests.
+Expected: PASS, 19 tests (7 for `isEligibleToScheduleNow`, 9 for `shouldOfferAutoSchedule`, 1 for `targetsTikTokService`, 2 for `partitionByScheduleEligibility`).
 
 - [ ] **Step 6: Write the failing test for `isFinalClientApprovalCycle`**
 
@@ -499,6 +571,7 @@ import { scheduleInstagramPost } from '@/services/instagram';
 import { scheduleTikTokPost } from '@/services/tiktok';
 import type { WorkflowPost } from '@/store';
 import type { Platform } from './components/PlatformSelector';
+import { targetsTikTokService } from './autoScheduleNudge';
 
 /** O mínimo que o agendamento precisa de um post. Satisfeito por WorkflowPost
  *  (drawer, retorno de updateWorkflowPost) e por ActivePost (kanban). */
@@ -524,8 +597,7 @@ export async function scheduleApprovedPost(
   post: SchedulablePost,
 ): Promise<{ ok: boolean; status: string }> {
   const platform: Platform = post.platform ?? 'instagram';
-  const targetsTikTok = platform === 'tiktok' || platform === 'both';
-  if (targetsTikTok) return scheduleTikTokPost(post.id!, post.scheduled_at!);
+  if (targetsTikTokService(platform)) return scheduleTikTokPost(post.id!, post.scheduled_at!);
   return scheduleInstagramPost(post.id!);
 }
 ```
@@ -1137,6 +1209,25 @@ it('does not open the nudge for a post avulso (no BoardCard)', async () => {
 it('closes an open nudge when Desfazer moves the post back out of aprovado_cliente', async () => {
   // click the sonner "Desfazer" action -> dialog gone
 });
+
+// Decisão 5 da spec: tiktok-publish/handler.ts:85-89 exige feature_tiktok além de
+// feature_post_scheduling, e decisão 6 manda `both` pelo endpoint do TikTok -- os
+// dois valores de platform precisam do add-on.
+it('does not open the nudge for a tiktok post when tiktokEnabled is false', async () => {
+  // post.platform = 'tiktok', schedulingEnabled={true} tiktokEnabled={false} -> no dialog
+});
+
+it('does not open the nudge for a both post when tiktokEnabled is false', async () => {
+  // post.platform = 'both', mesmos props -> no dialog
+});
+
+it('opens the nudge for a both post when tiktokEnabled is true', async () => {
+  // post.platform = 'both', tiktokEnabled={true} -> dialog renders
+});
+
+it('opens the nudge for an instagram post when tiktokEnabled is false', async () => {
+  // o gate é condicional: platform 'instagram' não passa por tiktok-publish
+});
 ```
 
 Write each of these out fully against the real harness — the comments above are the specification of what to assert, not a substitute for the code. Mock `../../components/AutoSchedulePromptDialog` with a stub that renders `post ? <div data-testid="nudge">{post.id}</div> : null` if driving the real dialog through jsdom proves noisy; Task 2 already covers the dialog's own behavior, so this file only needs to prove *whether* it is opened and with which post.
@@ -1162,7 +1253,16 @@ Add to `PostsKanbanViewProps` (`:132-155`):
    *  (supabase/functions/instagram-publish/handler.ts:70-77), então um aviso que
    *  termina em erro é pior do que nenhum aviso. Ausente = desligado. */
   schedulingEnabled?: boolean;
+  /** features?.feature_tiktok === true, vindo da EntregasPage. Gate ADICIONAL só
+   *  para post `tiktok`/`both`: tiktok-publish/handler.ts:85-89 exige
+   *  feature_post_scheduling E feature_tiktok para a action "schedule", então um
+   *  workspace com agendamento e sem o add-on de TikTok tomaria 403
+   *  feature_disabled (feature: "feature_tiktok") ao confirmar. Ausente =
+   *  desligado. */
+  tiktokEnabled?: boolean;
 ```
+
+**Naming convention, kept deliberately parallel:** the two *props* are `schedulingEnabled` / `tiktokEnabled` (both arrive from `EntregasPage`), and the two `AutoScheduleGateInput` *fields* they feed are `schedulingFeatureEnabled` / `tiktokFeatureEnabled`. Same mapping on both sides; do not rename one without the other.
 
 Add to the destructuring in the component signature and to the imports:
 
@@ -1196,8 +1296,10 @@ In `applyStatusChange` (`:651`), add an `onSuccess` beside the existing `onError
         const card = post.workflow_id != null ? cardsByWorkflowId.get(post.workflow_id) : undefined;
         const offer = shouldOfferAutoSchedule({
           status: updated?.status ?? move.forward.canonical,
+          platform: updated?.platform ?? post.platform,
           autoPublishOnApproval: card?.cliente?.auto_publish_on_approval === true,
           schedulingFeatureEnabled: schedulingEnabled === true,
+          tiktokFeatureEnabled: tiktokEnabled === true,
           isFinalApprovalCycle: card ? isFinalClientApprovalCycle(card.allEtapas) : false,
         });
         if (!offer) return;
@@ -1228,6 +1330,11 @@ Render the dialog at the end of the component's JSX (as a sibling of the existin
         onScheduled={() => {
           setNudgePost(null);
           qc.invalidateQueries({ queryKey: ACTIVE_POSTS_KEY });
+          // Prefixo sem o workflowId de propósito: TanStack Query casa chaves por
+          // prefixo, então isto invalida ['workflow-posts-with-props', <qualquer
+          // id>]. O diálogo não carrega o workflow_id do post, e invalidar a lista
+          // de outro fluxo é inofensivo (são listas refetch-on-demand).
+          qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
           qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
           qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
           qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
@@ -1235,7 +1342,9 @@ Render the dialog at the end of the component's JSX (as a sibling of the existin
       />
 ```
 
-Those three count keys plus `ACTIVE_POSTS_KEY` are the subset of `useUpdatePostStatus.onSettled`'s list (`apps/crm/src/pages/entregas/hooks/useUpdatePostStatus.ts:66-76`) that a schedule actually changes: the post leaves the `aprovado_cliente` column for `agendado`.
+**Why these five and not the spec's seven.** The spec's "Atualização de cache após agendar" section (`:203-211`) says to invalidate exactly what `useUpdatePostStatus.onSettled` invalidates (`apps/crm/src/pages/entregas/hooks/useUpdatePostStatus.ts:66-76`), which is seven keys. Five of them are above. The two left out are **`['workflow-revisao-interna-counts']` and `['workflow-awaiting-cliente-counts']`** — neither can change on an `aprovado_cliente → agendado` transition, because the post is in neither of those buckets before the schedule nor after it. This is a deliberate subset, not an oversight: a future reviewer comparing against the spec's list should find this note rather than re-flag it.
+
+`['workflow-posts-with-props']` **is** in the list above and must stay there, for two reasons. First, parity: `useUpdatePostStatus.onSettled` is the hook this very component uses for *every other* status write, and it invalidates that key — a schedule that skipped it would leave the component's two write paths inconsistent for no reason. Second, its one and only consumer is `WorkflowDrawer.tsx:210`; if a drawer is mounted for the same fluxo it is exactly the surface that would otherwise keep serving the row as `aprovado_cliente` after the schedule already succeeded, which is the stale-cache failure the spec's section was written to prevent. (The drawer's *own* nudge path in Step 10 does not need this line — it calls the drawer's existing `refresh()` helper, `WorkflowDrawer.tsx:341-343`, which already invalidates the key with the concrete `workflowId`.)
 
 - [ ] **Step 6: Pass the prop from `EntregasPage`**
 
@@ -1243,9 +1352,12 @@ In `apps/crm/src/pages/entregas/EntregasPage.tsx`, next to `postProcessesEnabled
 
 ```ts
   const schedulingEnabled = features?.feature_post_scheduling === true;
+  const tiktokEnabled = features?.feature_tiktok === true;
 ```
 
-and pass `schedulingEnabled={schedulingEnabled}` to `<PostsKanbanView ... />`. (`KanbanView` gets the same prop in Task 4.)
+`feature_tiktok` is already on the `features` type (`apps/crm/src/hooks/useWorkspaceLimits.ts:44`), so this needs no change to the hook.
+
+and pass `schedulingEnabled={schedulingEnabled} tiktokEnabled={tiktokEnabled}` to `<PostsKanbanView ... />`. (`KanbanView` gets both props in Task 4.)
 
 - [ ] **Step 7: Run the kanban nudge test**
 
@@ -1253,7 +1365,7 @@ and pass `schedulingEnabled={schedulingEnabled}` to `<PostsKanbanView ... />`. (
 npx vitest run apps/crm/src/pages/entregas/views/__tests__/PostsKanbanAutoScheduleNudge.test.tsx
 ```
 
-Expected: PASS, 7 tests.
+Expected: PASS, 11 tests (7 original + 4 for the `feature_tiktok` gate).
 
 - [ ] **Step 8: Write the failing drawer-dropdown nudge test**
 
@@ -1284,6 +1396,24 @@ it('does not open the nudge in the first cycle of a dual-approval fluxo', async 
 });
 
 it('does not open the nudge for a write to another status', async () => {});
+
+// Decisão 5 da spec: tiktok-publish exige feature_tiktok além de
+// feature_post_scheduling (tiktok-publish/handler.ts:85-89).
+it('does not open the nudge for a tiktok post when feature_tiktok is off', async () => {
+  // mockFeatures = { feature_post_scheduling: true, feature_tiktok: false }
+  // updateWorkflowPost resolves { ..., platform: 'tiktok', status: 'aprovado_cliente' }
+  // -> no nudge
+});
+
+it('opens the nudge for a tiktok post when feature_tiktok is on', async () => {
+  // mockFeatures = { feature_post_scheduling: true, feature_tiktok: true }
+  // same post -> nudge renders
+});
+
+it('opens the nudge for an instagram post even when feature_tiktok is off', async () => {
+  // o gate é condicional à plataforma: um post de Instagram nunca toca
+  // tiktok-publish, então feature_tiktok não pode bloqueá-lo
+});
 ```
 
 - [ ] **Step 9: Run it and confirm it fails**
@@ -1310,15 +1440,19 @@ Add, next to `keepStepsEnabled` (`:164`):
 
 ```ts
   const schedulingEnabled = features?.feature_post_scheduling === true;
+  const tiktokEnabled = features?.feature_tiktok === true;
   const [nudgePost, setNudgePost] = useState<AutoSchedulePromptPost | null>(null);
 
-  /** Um só lugar para os três gates da spec, usado pelos dois pontos de escrita
-   *  de status abaixo e pelo indicador persistente da linha do post. */
+  /** Um só lugar para os gates da spec, usado pelos dois pontos de escrita de
+   *  status abaixo e pelo indicador persistente da linha do post. `platform` vem
+   *  da linha atualizada porque o gate de feature_tiktok depende dela. */
   const offerAutoSchedule = (updated: WorkflowPost): boolean =>
     shouldOfferAutoSchedule({
       status: updated.status,
+      platform: updated.platform,
       autoPublishOnApproval: card.cliente?.auto_publish_on_approval === true,
       schedulingFeatureEnabled: schedulingEnabled,
+      tiktokFeatureEnabled: tiktokEnabled,
       isFinalApprovalCycle: isFinalClientApprovalCycle(card.allEtapas),
     });
 
@@ -1431,13 +1565,17 @@ EOF
 - Test: `apps/crm/src/pages/entregas/views/__tests__/KanbanBatchAutoScheduleNudge.test.tsx` (create)
 
 **Interfaces:**
-- Consumes from Task 1: `partitionByScheduleEligibility`, `scheduleApprovedPost`. Plus `getWorkflowPosts` (`apps/crm/src/store/posts.ts:554-562`), `approvalChoice.willRearm` (already held in state at `KanbanView.tsx:1076` and `EntregasTab.tsx:429`, computed by `decideApprovalAdvance`, `apps/crm/src/pages/entregas/approvalAdvance.ts:24-29`).
+- Consumes from Task 1: `partitionByScheduleEligibility`, `targetsTikTokService`, `scheduleApprovedPost`. Plus `getWorkflowPosts` (`apps/crm/src/store/posts.ts:554-562`), `approvalChoice.willRearm` (already held in state at `KanbanView.tsx:1076` and `EntregasTab.tsx:429`, computed by `decideApprovalAdvance`, `apps/crm/src/pages/entregas/approvalAdvance.ts:24-29`).
 - Produces:
 
 ```ts
 export interface AutoScheduleBatchDialogProps {
   /** null fecha. Não-null abre e busca os posts desse fluxo. */
   workflowId: number | null;
+  /** features?.feature_tiktok === true. Decisão 5 da spec, aplicada POR POST:
+   *  um post `tiktok`/`both` sem o add-on não é agendável, mesmo com data
+   *  válida. Os três chamadores (KanbanView, EntregasTab, WorkflowDrawer) passam. */
+  tiktokFeatureEnabled: boolean;
   onClose: () => void;
   onScheduled: () => void;
 }
@@ -1445,6 +1583,8 @@ export function AutoScheduleBatchDialog(props: AutoScheduleBatchDialogProps): JS
 ```
 
 **The gate here is `!approvalChoice.willRearm`, not the etapa helper** (decision 3): that signal is already computed by `decideApprovalAdvance` before any write, from the etapa type and the fluxo's counts — recomputing it would duplicate a calculation the advance flow already did. The other two gates (`auto_publish_on_approval`, `feature_post_scheduling`) still apply.
+
+**Why this dialog takes `tiktokFeatureEnabled` instead of calling `shouldOfferAutoSchedule`.** The per-post gate the other surfaces get from `shouldOfferAutoSchedule` does not fit here: status, `auto_publish_on_approval` and the cycle gate are all decided once for the whole batch at the call site, and what varies per post inside the dialog is only the date and the platform. So the dialog keeps filtering by date via `partitionByScheduleEligibility` and applies just one extra per-post condition — `targetsTikTokService(post.platform) && !tiktokFeatureEnabled` moves the post out of `eligible`. The spec's wording for peça 2 ("mais `feature_tiktok` para quem tem post `tiktok`/`both` no lote") is per-post, and this covers it. **Those posts fold into the existing "sem data válida, agende manualmente" list — do not add a third "bloqueado pelo TikTok" bucket to the UI.**
 
 **Open the dialog as soon as `approvePostsInternally` resolves** (decision 4). Do NOT wait for `advanceEtapa` / `completeEtapaForAdvance`: in `KanbanView` `advanceEtapa` (`:1019-1060`) swallows its own error, toasts, and returns `void`, so `await advanceEtapa(...)` always fulfils and carries no success signal. The guarantee the old ordering tried to protect comes from `willRearm` instead: `resetApprovedPostsForNextCycle` only runs inside a rearm that `willRearm` already predicted, and the gate requires `!willRearm`. In `EntregasTab.handleApproveInternally` the two awaits share one `try` block, so the dialog-open statement must sit *between* them — a `completeEtapaForAdvance` throw must not skip it.
 
@@ -1491,7 +1631,12 @@ describe('AutoScheduleBatchDialog', () => {
 
   it('renders nothing when workflowId is null and never fetches', () => {
     const { container } = wrap(
-      <AutoScheduleBatchDialog workflowId={null} onClose={vi.fn()} onScheduled={vi.fn()} />,
+      <AutoScheduleBatchDialog
+        workflowId={null}
+        tiktokFeatureEnabled
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
     );
     expect(container).toBeEmptyDOMElement();
     expect(getWorkflowPosts).not.toHaveBeenCalled();
@@ -1505,7 +1650,14 @@ describe('AutoScheduleBatchDialog', () => {
       { id: 4, titulo: 'D', status: 'agendado', platform: 'instagram', scheduled_at: future(5) },
       { id: 5, titulo: 'E', status: 'rascunho', platform: 'instagram', scheduled_at: future(5) },
     ]);
-    wrap(<AutoScheduleBatchDialog workflowId={7} onClose={vi.fn()} onScheduled={vi.fn()} />);
+    wrap(
+      <AutoScheduleBatchDialog
+        workflowId={7}
+        tiktokFeatureEnabled
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
     // 3 aprovado_cliente, of which 1 is eligible
     await waitFor(() => expect(screen.getByText(/3 posts aprovados/)).toBeInTheDocument());
     expect(screen.getByText(/1 já tem data/)).toBeInTheDocument();
@@ -1521,7 +1673,14 @@ describe('AutoScheduleBatchDialog', () => {
       { id: 2, titulo: 'B', status: 'aprovado_cliente', platform: 'tiktok', scheduled_at: future(4) },
     ]);
     const onScheduled = vi.fn();
-    wrap(<AutoScheduleBatchDialog workflowId={7} onClose={vi.fn()} onScheduled={onScheduled} />);
+    wrap(
+      <AutoScheduleBatchDialog
+        workflowId={7}
+        tiktokFeatureEnabled
+        onClose={vi.fn()}
+        onScheduled={onScheduled}
+      />,
+    );
     const btn = await screen.findByRole('button', { name: /Agendar 2 posts/ });
     fireEvent.click(btn);
     await waitFor(() => expect(scheduleApprovedPost).toHaveBeenCalledTimes(2));
@@ -1539,7 +1698,14 @@ describe('AutoScheduleBatchDialog', () => {
     scheduleApprovedPost
       .mockRejectedValueOnce(new Error('Legenda do Instagram não definida.'))
       .mockResolvedValueOnce({ ok: true, status: 'agendado' });
-    wrap(<AutoScheduleBatchDialog workflowId={7} onClose={vi.fn()} onScheduled={vi.fn()} />);
+    wrap(
+      <AutoScheduleBatchDialog
+        workflowId={7}
+        tiktokFeatureEnabled
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
     fireEvent.click(await screen.findByRole('button', { name: /Agendar 2 posts/ }));
     await waitFor(() => expect(scheduleApprovedPost).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('1 post agendado, 1 falhou.'));
@@ -1550,8 +1716,85 @@ describe('AutoScheduleBatchDialog', () => {
       { id: 9, titulo: 'X', status: 'agendado', platform: 'instagram', scheduled_at: future(5) },
     ]);
     const onClose = vi.fn();
-    wrap(<AutoScheduleBatchDialog workflowId={7} onClose={onClose} onScheduled={vi.fn()} />);
+    wrap(
+      <AutoScheduleBatchDialog
+        workflowId={7}
+        tiktokFeatureEnabled
+        onClose={onClose}
+        onScheduled={vi.fn()}
+      />,
+    );
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  // Decisão 5 da spec, aplicada por post: tiktok-publish/handler.ts:85-89 exige
+  // feature_tiktok. Sem o add-on, um post tiktok/both com data válida NÃO é
+  // elegível -- e cai na lista "sem data válida, agende manualmente", sem um
+  // terceiro balde novo na UI.
+  it('moves tiktok and both posts into the manual list when feature_tiktok is off', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      { id: 1, titulo: 'A', status: 'aprovado_cliente', platform: 'instagram', scheduled_at: future(3) },
+      { id: 2, titulo: 'B', status: 'aprovado_cliente', platform: 'tiktok', scheduled_at: future(4) },
+      { id: 3, titulo: 'C', status: 'aprovado_cliente', platform: 'both', scheduled_at: future(5) },
+    ]);
+    wrap(
+      <AutoScheduleBatchDialog
+        workflowId={7}
+        tiktokFeatureEnabled={false}
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    // 3 aprovados, mas só o de Instagram é agendável.
+    await waitFor(() => expect(screen.getByText(/3 posts aprovados/)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Agendar 1 post/ })).toBeEnabled();
+    expect(screen.getByText(/Sem data válida, agende manualmente/)).toBeInTheDocument();
+    expect(screen.getByText(/B/)).toBeInTheDocument();
+    expect(screen.getByText(/C/)).toBeInTheDocument();
+  });
+
+  it('schedules tiktok and both posts normally when feature_tiktok is on', async () => {
+    getWorkflowPosts.mockResolvedValue([
+      { id: 2, titulo: 'B', status: 'aprovado_cliente', platform: 'tiktok', scheduled_at: future(4) },
+      { id: 3, titulo: 'C', status: 'aprovado_cliente', platform: 'both', scheduled_at: future(5) },
+    ]);
+    wrap(
+      <AutoScheduleBatchDialog
+        workflowId={7}
+        tiktokFeatureEnabled
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Agendar 2 posts/ }));
+    await waitFor(() => expect(scheduleApprovedPost).toHaveBeenCalledTimes(2));
+  });
+
+  // A trava contra agir sobre dados velhos: com staleTime 0, toda reabertura
+  // refetcha, e o botão fica travado enquanto isso está em voo.
+  it('keeps the action disabled while the posts are being refetched', async () => {
+    let resolveFetch: (v: unknown) => void = () => {};
+    getWorkflowPosts.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+    wrap(
+      <AutoScheduleBatchDialog
+        workflowId={7}
+        tiktokFeatureEnabled
+        onClose={vi.fn()}
+        onScheduled={vi.fn()}
+      />,
+    );
+    // Enquanto a busca não resolve, não existe botão de ação habilitado.
+    expect(screen.queryByRole('button', { name: /Agendar/ })).not.toBeEnabled();
+    resolveFetch([
+      { id: 1, titulo: 'A', status: 'aprovado_cliente', platform: 'instagram', scheduled_at: future(3) },
+    ]);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Agendar 1 post/ })).toBeEnabled(),
+    );
   });
 });
 ```
@@ -1590,7 +1833,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { getWorkflowPosts } from '@/store';
-import { partitionByScheduleEligibility } from '../autoScheduleNudge';
+import { partitionByScheduleEligibility, targetsTikTokService } from '../autoScheduleNudge';
 import { scheduleApprovedPost } from '../scheduleApprovedPost';
 
 function plural(n: number, one: string, many: string): string {
@@ -1600,6 +1843,10 @@ function plural(n: number, one: string, many: string): string {
 export interface AutoScheduleBatchDialogProps {
   /** null fecha o diálogo. Não-null abre e busca os posts desse fluxo. */
   workflowId: number | null;
+  /** features?.feature_tiktok === true. Decisão 5 da spec: tiktok-publish exige
+   *  esse flag além de feature_post_scheduling, então sem ele um post
+   *  tiktok/both não é agendável mesmo com data válida. */
+  tiktokFeatureEnabled: boolean;
   onClose: () => void;
   onScheduled: () => void;
 }
@@ -1619,29 +1866,45 @@ export interface AutoScheduleBatchDialogProps {
  */
 export function AutoScheduleBatchDialog({
   workflowId,
+  tiktokFeatureEnabled,
   onClose,
   onScheduled,
 }: AutoScheduleBatchDialogProps) {
   const [running, setRunning] = useState(false);
 
-  const { data: posts, isLoading } = useQuery({
+  const { data: posts, isLoading, isFetching } = useQuery({
     queryKey: ['auto-schedule-batch-posts', workflowId],
     queryFn: () => getWorkflowPosts(workflowId!),
     enabled: workflowId != null,
-    // staleTime 0 + gcTime 0: os dois são necessários. Sem gcTime 0, reabrir o
-    // diálogo para o MESMO fluxo depois de um lote bem-sucedido renderiza a
-    // lista em cache (a de antes do agendamento) com isLoading já false, e um
-    // clique rápido em "Agendar todos" manda posts já agendados para o servidor
-    // -> 422. Com gcTime 0 o cache é descartado ao desmontar e a reabertura
-    // sempre começa em isLoading.
+    // Este componente fica SEMPRE montado (o pai controla por workflowId, como o
+    // AlertDialog de pendingConfirm vizinho já faz), então a garantia do gcTime 0
+    // NÃO é "descarta ao desmontar": quando workflowId volta para null a CHAVE
+    // muda para [..., null], a chave [..., <id antigo>] fica com zero observers e
+    // é evictada na hora. Reabrir para o mesmo fluxo começa então sem cache.
+    // O staleTime 0 garante um refetch em toda transição enabled false -> true, e
+    // o `isFetching` no disabled do botão abaixo é a trava real: mesmo se alguma
+    // entrada sobrevivesse, não dá para agir sobre ela enquanto a busca está em
+    // voo (clicar sobre a lista velha mandaria posts já agendados -> 422).
     staleTime: 0,
     gcTime: 0,
   });
 
   const approved = (posts ?? []).filter((p) => p.status === 'aprovado_cliente');
-  const { eligible, missingDate } = partitionByScheduleEligibility(
+  const byDate = partitionByScheduleEligibility(
     approved.map((p) => ({ ...p, scheduled_at: p.scheduled_at ?? null })),
   );
+
+  // Decisão 5 da spec, por post: um post tiktok/both só é agendável com
+  // feature_tiktok. Sem o add-on ele desce para a lista manual em vez de ganhar
+  // um balde próprio na UI -- do ponto de vista de quem usa, é a mesma ação
+  // ("resolva esse à mão").
+  const blockedByTikTok = (p: { platform?: string | null }) =>
+    targetsTikTokService(p.platform) && !tiktokFeatureEnabled;
+  const eligible = byDate.eligible.filter((p) => !blockedByTikTok(p));
+  const missingDate = [
+    ...byDate.missingDate,
+    ...byDate.eligible.filter(blockedByTikTok),
+  ];
 
   // Nada aprovado (aprovação em lote sem efeito, ou tudo já agendado): não vale
   // um diálogo vazio.
@@ -1708,7 +1971,13 @@ export function AutoScheduleBatchDialog({
 
         <AlertDialogFooter>
           <AlertDialogCancel disabled={running}>Agora não</AlertDialogCancel>
-          <Button onClick={handleScheduleAll} disabled={running || eligible.length === 0}>
+          {/* isFetching trava a ação enquanto a busca está em voo: com staleTime 0
+              toda reabertura refetcha, e agir sobre a lista anterior mandaria
+              posts já agendados ao servidor (422). */}
+          <Button
+            onClick={handleScheduleAll}
+            disabled={running || isFetching || eligible.length === 0}
+          >
             {`Agendar ${eligible.length} ${plural(eligible.length, 'post', 'posts')}`}
           </Button>
         </AlertDialogFooter>
@@ -1724,7 +1993,7 @@ export function AutoScheduleBatchDialog({
 npx vitest run apps/crm/src/pages/entregas/components/__tests__/AutoScheduleBatchDialog.test.tsx
 ```
 
-Expected: PASS, 5 tests.
+Expected: PASS, 8 tests (5 original + 2 for the per-post `feature_tiktok` filter + 1 for the `isFetching` action lock).
 
 - [ ] **Step 5: Write the failing KanbanView batch-wiring test**
 
@@ -1830,6 +2099,7 @@ Render next to the other modals:
 ```tsx
       <AutoScheduleBatchDialog
         workflowId={batchScheduleWfId}
+        tiktokFeatureEnabled={tiktokEnabled === true}
         onClose={() => setBatchScheduleWfId(null)}
         onScheduled={() => {
           setBatchScheduleWfId(null);
@@ -1838,7 +2108,7 @@ Render next to the other modals:
       />
 ```
 
-Pass `schedulingEnabled={schedulingEnabled}` from `EntregasPage.tsx` to `<KanbanView />` (the constant was added in Task 3, Step 6).
+Pass `schedulingEnabled={schedulingEnabled} tiktokEnabled={tiktokEnabled}` from `EntregasPage.tsx` to `<KanbanView />` (both constants were added in Task 3, Step 6), and declare `tiktokEnabled?: boolean` on `KanbanViewBaseProps` next to `schedulingEnabled?: boolean` with the same doc comment as `PostsKanbanViewProps` (Task 3, Step 5).
 
 - [ ] **Step 8: Wire `EntregasTab.handleApproveInternally`**
 
@@ -1906,12 +2176,20 @@ Render the dialog alongside the tab's other dialogs:
 ```tsx
       <AutoScheduleBatchDialog
         workflowId={batchScheduleWfId}
+        tiktokFeatureEnabled={tiktokEnabled}
         onClose={() => setBatchScheduleWfId(null)}
         onScheduled={() => {
           setBatchScheduleWfId(null);
           refreshCards();
         }}
       />
+```
+
+`EntregasTab` computes both flags locally from its own `useWorkspaceLimits()` (added in Step 9 below), next to wherever `schedulingEnabled` is declared:
+
+```ts
+  const schedulingEnabled = features?.feature_post_scheduling === true;
+  const tiktokEnabled = features?.feature_tiktok === true;
 ```
 
 - [ ] **Step 9: Add the `useWorkspaceLimits` mock to `EntregasTab.test.tsx`**
@@ -1995,7 +2273,7 @@ export interface AutoScheduleBadgeProps {
 export function AutoScheduleBadge(props: AutoScheduleBadgeProps): JSX.Element;
 ```
 
-**The gate this piece must not forget (Codex P0):** all three gates, `isFinalClientApprovalCycle` included. Without it, a post in the FIRST cycle of a dual-approval fluxo gets an always-visible "Agendar" action and publishes before the second approval — the PR #400 bug reintroduced through a new surface. Neither publish endpoint applies `isFinalApprovalCycle` on its own (it exists only inside `hub-approve`), so this check has to come from the indicator's side. The etapas are already in hand at both surfaces: `card.allEtapas` in the kanban (via `cardsByWorkflowId`) and `card.allEtapas` in the drawer. No new round trip.
+**The gate this piece must not forget (Codex P0):** every gate `shouldOfferAutoSchedule` applies, `isFinalClientApprovalCycle` and the platform-conditional `feature_tiktok` clause included. Without it, a post in the FIRST cycle of a dual-approval fluxo gets an always-visible "Agendar" action and publishes before the second approval — the PR #400 bug reintroduced through a new surface. Neither publish endpoint applies `isFinalApprovalCycle` on its own (it exists only inside `hub-approve`), so this check has to come from the indicator's side. The etapas are already in hand at both surfaces: `card.allEtapas` in the kanban (via `cardsByWorkflowId`) and `card.allEtapas` in the drawer. No new round trip.
 
 **Note that `isEligibleToScheduleNow` does NOT gate visibility here** — it only decides what the click does (schedule directly vs. open the date picker first). The whole point of this piece is reaching the stuck posts, most of which have a date in the past.
 
@@ -2073,7 +2351,7 @@ const TITLE_NEEDS_DATE =
 
 /**
  * Indicador persistente da peça 3 da spec: aparece em todo post em
- * aprovado_cliente que passou os três gates e está esperando um agendamento que
+ * aprovado_cliente que passou os gates de shouldOfferAutoSchedule e está esperando um agendamento que
  * nunca vai acontecer sozinho. Quem decide a visibilidade é o caller
  * (shouldOfferAutoSchedule); este componente é só a superfície.
  */
@@ -2161,6 +2439,19 @@ describe('persistent indicator (spec piece 3)', () => {
   it('hides the badge when the client does not auto-publish on approval', async () => {});
   it('hides the badge for a post in any other status', async () => {});
 
+  // Decisão 5 da spec: o badge usa o MESMO gate do aviso, senão um post tiktok
+  // sem o add-on ganharia um badge permanente que 403 a cada clique.
+  it('hides the badge for a tiktok post when feature_tiktok is off', async () => {
+    // mockFeatures = { feature_post_scheduling: true, feature_tiktok: false }
+    // post.platform = 'tiktok' -> no badge
+  });
+
+  it('hides the badge for a both post when feature_tiktok is off', async () => {});
+
+  it('shows the badge for a tiktok post when feature_tiktok is on', async () => {});
+
+  it('shows the badge for an instagram post when feature_tiktok is off', async () => {});
+
   it('clicking the badge opens the same nudge dialog', async () => {
     // -> the AutoSchedulePromptDialog stub receives that post id
   });
@@ -2183,7 +2474,7 @@ describe('persistent indicator (spec piece 3)', () => {
 npx vitest run apps/crm/src/pages/entregas/components/__tests__/WorkflowDrawerAutoScheduleNudge.test.tsx
 ```
 
-Expected: the Task-3 cases still pass; the nine new ones fail.
+Expected: the Task-3 cases still pass; the thirteen new ones fail (nine for the badge and header summary, four for the `feature_tiktok` gate on the badge).
 
 - [ ] **Step 7: Wire the drawer row badge and the header summary**
 
@@ -2192,7 +2483,7 @@ In `WorkflowDrawer.tsx`:
 Add two props to `SortablePostItemProps` (`:1152`):
 
 ```ts
-  /** True quando este post passou os três gates do aviso de agendamento
+  /** True quando este post passou os gates do aviso de agendamento
    *  automático (spec peça 3). Calculado pelo drawer, não pela linha. */
   showAutoScheduleBadge: boolean;
   /** Abre o aviso para este post. */
@@ -2222,7 +2513,7 @@ Inside `SortablePostItem`'s collapsed row, right after `<PostStatusChip post={po
 For the header summary, add next to `approvedCount` / `clientFacingCount` (`:784-786`):
 
 ```ts
-  /** Posts que passaram os três gates e estão esperando um agendamento que não
+  /** Posts que passaram os gates de shouldOfferAutoSchedule e estão esperando um agendamento que não
    *  vai acontecer sozinho (spec peça 3, resumo do cabeçalho). */
   const awaitingAutoScheduleCount = orderedPosts.filter((p) => offerAutoSchedule(p)).length;
 ```
@@ -2257,6 +2548,7 @@ The header action reuses `AutoScheduleBatchDialog` from Task 4, so the drawer al
 ```tsx
       <AutoScheduleBatchDialog
         workflowId={batchScheduleWfId}
+        tiktokFeatureEnabled={tiktokEnabled}
         onClose={() => setBatchScheduleWfId(null)}
         onScheduled={() => {
           setBatchScheduleWfId(null);
@@ -2264,6 +2556,8 @@ The header action reuses `AutoScheduleBatchDialog` from Task 4, so the drawer al
         }}
       />
 ```
+
+`tiktokEnabled` is the constant added to this file in Task 3, Step 10 — no second `useWorkspaceLimits()` call.
 
 Imports to add in this file: `CalendarClock` from `lucide-react`, `AutoScheduleBadge` from `./AutoScheduleBadge`, `AutoScheduleBatchDialog` from `./AutoScheduleBatchDialog`, `isEligibleToScheduleNow` from `../autoScheduleNudge`.
 
@@ -2276,6 +2570,7 @@ In `PostsKanbanView.tsx`, add to `PostBoardCardContent`'s props (`:173-183`):
    *  DragOverlay, que renderiza o badge estático. */
   onAutoScheduleClick?: () => void;
   schedulingEnabled?: boolean;
+  tiktokEnabled?: boolean;
 ```
 
 Compute inside it (it already receives `card`, which carries `cliente` and `allEtapas`):
@@ -2283,11 +2578,15 @@ Compute inside it (it already receives `card`, which carries `cliente` and `allE
 ```ts
   const offerAutoSchedule = shouldOfferAutoSchedule({
     status: post.status,
+    platform: post.platform,
     autoPublishOnApproval: card?.cliente?.auto_publish_on_approval === true,
     schedulingFeatureEnabled: schedulingEnabled === true,
+    tiktokFeatureEnabled: tiktokEnabled === true,
     isFinalApprovalCycle: card ? isFinalClientApprovalCycle(card.allEtapas) : false,
   });
 ```
+
+This is the fifth and last `shouldOfferAutoSchedule` call site, and it matters that the badge uses the same gate as the nudge: without `platform`/`tiktokEnabled` here, a `tiktok` post in a workspace without the add-on would carry a permanent badge that 403s on every click.
 
 Render it inside the `item-top` right-hand `<span>` (`:192` opens `item-top`; the span holds the "Publicando…" pill and the prazo pill), immediately before the `locked` lock icon at `:213`:
 
@@ -2300,7 +2599,7 @@ Render it inside the `item-top` right-hand `<span>` (`:192` opens `item-top`; th
           )}
 ```
 
-At the real card's render site pass `schedulingEnabled={schedulingEnabled}` and `onAutoScheduleClick={() => setNudgePost({ id: post.id, titulo: post.titulo, platform: post.platform, scheduled_at: post.scheduled_at })}` (`setNudgePost` and the dialog already exist from Task 3). At the `DragOverlay` clone's render site pass `schedulingEnabled` but **not** `onAutoScheduleClick`, so the clone gets the static badge.
+At the real card's render site pass `schedulingEnabled={schedulingEnabled} tiktokEnabled={tiktokEnabled}` and `onAutoScheduleClick={() => setNudgePost({ id: post.id, titulo: post.titulo, platform: post.platform, scheduled_at: post.scheduled_at })}` (`setNudgePost` and the dialog already exist from Task 3). At the `DragOverlay` clone's render site pass both flags but **not** `onAutoScheduleClick`, so the clone gets the static badge.
 
 - [ ] **Step 9: Run everything touched**
 
@@ -2389,6 +2688,8 @@ Check, in order:
 5. Fluxo drawer: change a post's status to "Aprovado pelo cliente" via the dropdown → nudge; the header shows "N aguardando agendamento automático" for a fluxo with stuck posts; the header action opens the batch summary.
 6. Drag the fluxo card forward on the Fluxos board so the approval choice dialog appears → "Aprovar internamente" → the batch summary lists the eligible posts and the ones without a date.
 7. Switch to a client with `auto_publish_on_approval = false` → nothing appears anywhere.
+8. **The TikTok entitlement gate (decision 5).** On a plan with `feature_post_scheduling` but WITHOUT `feature_tiktok`, take a post whose `platform` is `tiktok` or `both` through the same drag as case 1 → **no** nudge and **no** badge, while an `instagram` post on the same fluxo still gets both. Then flip the workspace onto a plan that includes `feature_tiktok` and repeat → the `tiktok` post now gets the nudge and schedules successfully. If no plan without `feature_tiktok` is reachable on staging, say so rather than claiming the case passed; the unit cases in `autoScheduleNudge.test.ts` cover the rule itself.
+9. **Batch dialog reopen.** Run case 6 to completion (schedule the eligible posts), then immediately trigger the batch summary again for the same fluxo → the action button is disabled while the list refetches, and the reopened list reflects the posts that are still `aprovado_cliente`, not the pre-schedule snapshot.
 
 - [ ] **Step 4: Commit any fixes the sweep produced, then report**
 
@@ -2416,7 +2717,7 @@ Report the branch, the commits, and any manual case that could not be exercised 
 | Deno tests | `npm run test:functions` | Same; also the `hub-functions_test.ts` mirror fixtures live there |
 | Prettier | `npm run format:check` (`npm run format` fixes) | `format-check` is its own CI job |
 
-### The five Codex-review-caught defects, and the test that guards each
+### The six Codex-review-caught defects, and the test that guards each
 
 | # | Defect the review caught | Guarding test |
 |---|---|---|
@@ -2426,7 +2727,11 @@ Report the branch, the commits, and any manual case that could not be exercised 
 | 4 | The date branch handing `scheduleApprovedPost` the closure's original `post` sends the stale (or null) date to the TikTok endpoint | `AutoSchedulePromptDialog.test.tsx` "date branch: schedules with the row updateWorkflowPost returned, not the original post", including the negative assertion against the old date (Task 2, Step 1) |
 | 5 | **P0:** the persistent indicator's first draft forgot the final-approval-cycle gate, reintroducing the PR #400 premature-publish bug on a new surface | `finalApprovalCycle.test.ts` "is false with two open client-approval etapas" (Task 1, Step 6) + `WorkflowDrawerAutoScheduleNudge.test.tsx` "hides the badge in the first cycle of a dual-approval fluxo" + `PostsKanbanAutoScheduleNudge.test.tsx` "does not open the nudge in the first cycle of a dual-approval fluxo" (Tasks 3 and 5) + manual case 4 in Task 6 Step 3 |
 
-Plus the spec's other named test requirements: `scheduleApprovedPost` platform routing including `both` (Task 1, Step 10), the mirror fixtures shared with `hub-functions_test.ts` (Task 1, Step 6), the batch N/M counts and the "no valid date" list (Task 4, Step 1), and the indicator appearing/disappearing per gate (Task 5, Step 5).
+| 6 | **The `feature_tiktok` add-on gate was missing entirely.** `tiktok-publish/handler.ts:85-89` requires `feature_post_scheduling` **and** `feature_tiktok` for `action === "schedule"`, while `instagram-publish/handler.ts:70-77` requires only the first. Since decision 6 routes `both` through the TikTok endpoint, a workspace with scheduling and no TikTok add-on would get the nudge, the badge and the batch entry on a `tiktok`/`both` post, then a 403 `feature_disabled` on confirm | `autoScheduleNudge.test.ts` "is false for a tiktok post when feature_tiktok is off", "is false for a both post when feature_tiktok is off", "is true for tiktok and both when feature_tiktok is on", "ignores feature_tiktok entirely for an instagram post", plus `targetsTikTokService` (Task 1, Step 2) + `PostsKanbanAutoScheduleNudge.test.tsx` and `WorkflowDrawerAutoScheduleNudge.test.tsx` four cases each (Tasks 3 and 5) + `AutoScheduleBatchDialog.test.tsx` "moves tiktok and both posts into the manual list when feature_tiktok is off" / "schedules tiktok and both posts normally when feature_tiktok is on" (Task 4, Step 1) + manual case 8 in Task 6 Step 3 |
+
+Plus the spec's other named test requirements: `scheduleApprovedPost` platform routing including `both` (Task 1, Step 10), the mirror fixtures shared with `hub-functions_test.ts` (Task 1, Step 6), the batch N/M counts and the "no valid date" list (Task 4, Step 1), the cache invalidation after a successful schedule (Task 3, Step 5 and the note beside it), and the indicator appearing/disappearing per gate (Task 5, Step 5).
+
+**One hardening taken without a matching defect.** A later Codex round claimed the batch dialog's `gcTime: 0` "does not discard this query while the component remains mounted", framing the always-mounted-returning-null pattern as breaking garbage collection. **That mechanism is wrong** and the plan does not act on it: when `workflowId` flips to `null` the query *key* changes to `[..., null]`, so the `[..., <old id>]` entry drops to zero observers and `gcTime: 0` evicts it on the key switch — mount/unmount is irrelevant. Restructuring to conditional mounting was therefore rejected: it would break the always-mounted-with-`open` convention the sibling `pendingConfirm` `AlertDialog` already uses in the same file, and lose the Radix close animation for nothing. The underlying worry — acting on a stale list during a refetch — is real but cheap to close, so the action button is additionally disabled on `isFetching` (Task 4, Step 3), with `AutoScheduleBatchDialog.test.tsx` "keeps the action disabled while the posts are being refetched" as the guard.
 
 ---
 
@@ -2441,8 +2746,10 @@ Plus the spec's other named test requirements: `scheduleApprovedPost` platform r
 | Decision 2 (cover both future approvals and the existing backlog) | Tasks 3 and 4 (future), Task 5 (backlog) |
 | Decision 3 (mirror `isFinalApprovalCycle`; use `!willRearm` for the batch) | Task 1, Steps 6-9 (mirror); Task 4, Steps 7-8 (`willRearm`) |
 | Decision 4 (batch dialog opens right after `approvePostsInternally`) | Task 4, Steps 7-8, with the ordering spelled out in both call sites |
-| Decision 5 (`features?.feature_post_scheduling` gate everywhere) | Task 3, Steps 5-6 and 10; Task 4, Steps 7-8; Task 5, Step 8 |
-| Decision 6 (`platform === 'both'` uses the TikTok service only) | Task 1, Steps 10-12 |
+| Decision 5, first half (`features?.feature_post_scheduling` gate everywhere) | Task 3, Steps 5-6 and 10; Task 4, Steps 7-8; Task 5, Step 8 |
+| Decision 5, second half (`features?.feature_tiktok` additionally, for `tiktok`/`both`) | Task 1, Steps 2-4 (the gate and `targetsTikTokService`); threaded at all five sites in Task 3, Steps 5-6 and 10, Task 4, Steps 7-8, and Task 5, Step 8; applied per post inside the batch dialog in Task 4, Step 3 |
+| Decision 6 (`platform === 'both'` uses the TikTok service only) | Task 1, Steps 10-12, with the predicate single-sourced as `targetsTikTokService` |
+| "Atualização de cache após agendar" | Task 3, Step 5 (the kanban's `onScheduled`, five of the hook's seven keys with the two no-op keys named) and Step 10 (the drawer's existing `refresh()`); Task 4, Step 3 (one invalidation after the whole loop, not one per post) |
 | Design técnico §1 (individual transition dialog) | Tasks 2 and 3 |
 | Design técnico §2 (batch summary) | Task 4 |
 | Design técnico §3 (persistent indicator, both places) | Task 5 |
@@ -2454,6 +2761,6 @@ Plus the spec's other named test requirements: `scheduleApprovedPost` platform r
 
 **Placeholder scan.** The only steps that describe tests instead of spelling them out line-for-line are Task 3 Steps 3 and 8, Task 4 Step 5, and Task 5 Step 5, where the test bodies depend on a large existing harness (`PostsKanbanView.test.tsx`, `WorkflowDrawer.test.tsx`, `KanbanRearm.test.tsx`) that must be read and reused rather than retyped. Each of those steps names the harness file to copy, the stub to substitute for the dialog under test, and the exact assertion for every case. No step says "add error handling", "handle edge cases", or "write tests for the above".
 
-**Type and name consistency.** Checked across tasks: `isFinalClientApprovalCycle` (not `isFinalApprovalCycle`, which is the server's name) is used identically in Tasks 1, 3 and 5; `shouldOfferAutoSchedule` takes the same four-field `AutoScheduleGateInput` at all four call sites; `AutoSchedulePromptPost` is the dialog's post shape in Tasks 2, 3 and 5; `AutoScheduleBatchDialog` takes `workflowId | null` in Tasks 4 and 5; `schedulingEnabled` is the prop name on both `PostsKanbanViewProps` (Task 3) and `KanbanViewBaseProps` (Task 4), and the local constant in `EntregasPage` / `WorkflowDrawer` / `EntregasTab`; `SchedulablePost` is satisfied by both `WorkflowPost` and `ActivePost` because both carry `id`, `platform` and `scheduled_at` (`apps/crm/src/store/posts.ts:86-89`, `:262`, and `POST_CONTEXT_COLUMNS` at `:290-291`).
+**Type and name consistency.** Checked across tasks: `isFinalClientApprovalCycle` (not `isFinalApprovalCycle`, which is the server's name) is used identically in Tasks 1, 3 and 5; `shouldOfferAutoSchedule` takes the same **six**-field `AutoScheduleGateInput` — `status`, `platform`, `autoPublishOnApproval`, `schedulingFeatureEnabled`, `tiktokFeatureEnabled`, `isFinalApprovalCycle` — at all **three** literal call sites, which between them cover five surfaces: Task 3's kanban `onSuccess` (the drag), Task 3's `WorkflowDrawer.offerAutoSchedule` helper (shared by the drawer's two status-write sites *and* the Task-5 header count), and Task 5's `PostBoardCardContent` (the card-face badge). No field is optional, so `tsc` rejects a site that forgets one; `targetsTikTokService` is the single definition of the `tiktok`/`both` predicate, imported by both `scheduleApprovedPost.ts` and the gate; `AutoSchedulePromptPost` is the dialog's post shape in Tasks 2, 3 and 5; `AutoScheduleBatchDialog` takes `workflowId | null` **and `tiktokFeatureEnabled: boolean`** in Tasks 4 and 5, passed by all three of its callers (`KanbanView`, `EntregasTab`, `WorkflowDrawer`); the prop pair is `schedulingEnabled` / `tiktokEnabled` on both `PostsKanbanViewProps` (Task 3), `KanbanViewBaseProps` (Task 4) and `PostBoardCardContent` (Task 5), and the same two names are the local constants in `EntregasPage` / `WorkflowDrawer` / `EntregasTab` — the `*FeatureEnabled` spelling belongs to the gate input only; `SchedulablePost` is satisfied by both `WorkflowPost` and `ActivePost` because both carry `id`, `platform` and `scheduled_at` (`apps/crm/src/store/posts.ts:86-89`, `:262`, and `POST_CONTEXT_COLUMNS` at `:290-291`).
 
 **Deliberate divergence from the server, documented in code:** `isFinalClientApprovalCycle([])` returns `false` while the server's `isFinalApprovalCycle` would return `true` for an empty etapa list. On the server an empty list means "fluxo with no approval etapa" (express, legacy) and is genuinely final; on the client it means "we have no etapas for this post", which for this feature must fail closed. The implementation comment and the test both say so, so a future reader does not "fix" the mirror into agreeing.
