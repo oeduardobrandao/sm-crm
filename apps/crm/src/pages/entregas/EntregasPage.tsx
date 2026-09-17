@@ -941,7 +941,7 @@ export default function EntregasPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header animate-up">
+      <header className="header header--flush animate-up">
         <div className="header-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <h1>Entregas</h1>
@@ -1064,11 +1064,19 @@ export default function EntregasPage() {
         }
       />
 
-      {/* Filters get their own row, always in the same place regardless of which
-          view/mode toggles show below -- otherwise they'd share a line with a
-          variable-width set of controls and jump around between views. */}
-      {showFilters && (
-        <div style={{ display: 'flex' }}>
+      {/* Filters + view/mode/entity toggles share one row -- filters wrap onto
+          their own line on desktop when the pill set is long, but on mobile
+          the compact "Filtros" button sits right next to the view toggles
+          instead of eating a whole row of its own. */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '0.75rem',
+        }}
+      >
+        {showFilters && (
           <EntregasFilters
             filters={filters}
             onChange={setFilters}
@@ -1078,79 +1086,88 @@ export default function EntregasPage() {
             etapaNames={etapaNames}
             mode={postsMode ? 'posts' : 'entregas'}
           />
-        </div>
-      )}
-
-      {/* Orientation row: view tabs + mode + entity toggles. Scrolls
-          horizontally on narrow viewports instead of wrapping into several
-          stacked control rows, which was eating the first fold on phones. */}
-      <div
-        className="no-scrollbar"
-        style={{
-          display: 'flex',
-          flexWrap: 'nowrap',
-          overflowX: 'auto',
-          alignItems: 'center',
-          gap: '0.75rem',
-        }}
-      >
-        <div
-          role="tablist"
-          aria-label="Modos de visualização"
-          style={{
-            display: 'flex',
-            gap: '0.25rem',
-            background: 'var(--card-bg)',
-            border: '1px solid var(--border-color)',
-            padding: '0.25rem',
-            borderRadius: '8px',
-            overflowX: 'auto',
-            width: 'fit-content',
-            maxWidth: '100%',
-            flexShrink: 0,
-          }}
-          className="animate-up no-scrollbar"
-        >
-          {VIEW_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={activeView === tab.id}
-              onClick={() => setActiveView(tab.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.4rem 0.9rem',
-                borderRadius: '6px',
-                border: 'none',
-                background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
-                color: activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
-                fontSize: '0.8rem',
-                fontWeight: activeView === tab.id ? 600 : 400,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {(activeView === 'kanban' || activeView === 'list' || activeView === 'calendar') && (
-          <div style={{ flexShrink: 0 }}>
-            <ModeToggle mode={mode} onModeChange={setMode} />
-          </div>
         )}
 
-        {postProcessesVisible &&
-          (activeView === 'kanban' || activeView === 'list') &&
-          mode === 'entregas' && (
+        {/* View tabs + mode + entity toggles. Scrolls horizontally within its
+            own space instead of wrapping into several stacked control rows,
+            which was eating the first fold on phones. */}
+        <div
+          className="no-scrollbar"
+          style={{
+            display: 'flex',
+            flexWrap: 'nowrap',
+            overflowX: 'auto',
+            alignItems: 'center',
+            gap: '0.75rem',
+            minWidth: 0,
+            // flex-basis 0% (not 'auto') so the outer row's line-wrapping
+            // decision -- made from each item's hypothetical size BEFORE
+            // shrinking is applied -- doesn't see this item's full content
+            // width and wrap it onto its own line. minWidth:0 then lets it
+            // actually shrink to fit next to the Filtros button, and this
+            // element's own overflow-x:auto scrolls whatever doesn't fit.
+            flex: '1 1 0%',
+          }}
+        >
+          <div
+            role="tablist"
+            aria-label="Modos de visualização"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              background: 'var(--card-bg)',
+              border: '1px solid var(--border-color)',
+              padding: '0.25rem',
+              borderRadius: '8px',
+              overflowX: 'auto',
+              width: 'fit-content',
+              maxWidth: '100%',
+              flexShrink: 0,
+            }}
+            className="animate-up no-scrollbar"
+          >
+            {VIEW_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeView === tab.id}
+                onClick={() => setActiveView(tab.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.4rem 0.9rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
+                  color: activeView === tab.id ? 'var(--cta-fg)' : 'var(--text-secondary)',
+                  fontSize: '0.8rem',
+                  fontWeight: activeView === tab.id ? 600 : 400,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {(activeView === 'kanban' || activeView === 'list' || activeView === 'calendar') && (
             <div style={{ flexShrink: 0 }}>
-              <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+              <ModeToggle mode={mode} onModeChange={setMode} />
             </div>
           )}
+
+          {postProcessesVisible &&
+            (activeView === 'kanban' || activeView === 'list') &&
+            mode === 'entregas' && (
+              <div style={{ flexShrink: 0 }}>
+                <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+              </div>
+            )}
+        </div>
       </div>
 
       {activeView === 'kanban' &&
