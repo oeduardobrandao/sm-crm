@@ -1541,7 +1541,9 @@ function AnalyticsContent({
                 </div>
                 <p className="conta-identity__handle">
                   <a
-                    href={`https://instagram.com/${account.username}`}
+                    href={sanitizeUrl(
+                      `https://instagram.com/${encodeURIComponent(account.username)}`,
+                    )}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="conta-identity__handle-link"
