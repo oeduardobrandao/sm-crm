@@ -56,11 +56,12 @@ declare
     'public.import_resolve_cliente(uuid, bigint, jsonb)',
     'public.effective_plan_feature(uuid, text)',
     'public.effective_plan_limit(uuid, text)',
-    'public.resolve_workspace_plan(uuid)',
-    'public.check_resource_limit(uuid, text)',
-    'public.rls_auto_enable()',
     'public.expire_and_cleanup_invites()'
   ];
+  -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
+  -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
+  -- there manually), so has_function_privilege() on a fresh CI database would raise
+  -- "function does not exist" rather than assert anything.
 begin
   foreach v_fn in array v_fns loop
     assert has_function_privilege('anon', v_fn, 'EXECUTE') = false,
@@ -71,4 +72,21 @@ begin
       format('service_role must keep execute on %s (PUBLIC revoke strips it without the explicit grant)', v_fn);
   end loop;
   raise notice 'PASS 96_lockdown_definer_function_grants (% functions)', array_length(v_fns, 1);
+end $$;
+
+-- resolve_workspace_plan is a special case: it's called directly inside the RLS
+-- SELECT policies on global_banners/global_popups (`... to authenticated using
+-- (... and resolve_workspace_plan(...) ...)`), which evaluate under the querying
+-- role, not the function owner -- authenticated must keep EXECUTE or every
+-- plan-targeted banner/popup read starts failing with permission denied. Only
+-- anon is revoked (same pattern already used by popup_trigger_matches).
+do $$
+begin
+  assert has_function_privilege('anon', 'public.resolve_workspace_plan(uuid)', 'EXECUTE') = false,
+    'anon must NOT execute resolve_workspace_plan';
+  assert has_function_privilege('authenticated', 'public.resolve_workspace_plan(uuid)', 'EXECUTE') = true,
+    'authenticated must execute resolve_workspace_plan (used inside RLS policies)';
+  assert has_function_privilege('service_role', 'public.resolve_workspace_plan(uuid)', 'EXECUTE') = true,
+    'service_role must keep execute on resolve_workspace_plan';
+  raise notice 'PASS 96_lockdown_definer_function_grants (resolve_workspace_plan)';
 end $$;

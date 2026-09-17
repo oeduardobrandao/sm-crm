@@ -28,12 +28,23 @@
 -- switch_workspace, get_mensagens_*, reorder_*, etc.) -- essas são legitimamente
 -- chamadas por authenticated.
 --
+-- resolve_workspace_plan(ws_id) é chamada DENTRO das policies RLS de
+-- global_banners/global_popups (`... to authenticated using (... and
+-- resolve_workspace_plan(...) ...)`) -- uma policy roda sob o papel de quem
+-- consulta a tabela, não do dono da função, então authenticated PRECISA manter
+-- EXECUTE aqui (mesmo padrão documentado no comentário de
+-- popup_trigger_matches em 20260911000001_popup_triggers.sql). Só o anon é
+-- revogado; authenticated recebe grant explícito abaixo, como
+-- popup_trigger_matches já faz.
+--
 -- check_resource_limit e rls_auto_enable não têm CREATE FUNCTION em nenhuma
 -- migration deste repositório (nem set_carousel_child_field, que já está
--- corretamente fechada ao vivo) -- drift: objetos existem no banco hospedado sem
--- migration correspondente. Fechados aqui mesmo assim (não têm chamador algum em
--- apps/ ou supabase/functions/), mas a falta de proveniência merece investigação à
--- parte.
+-- corretamente fechada ao vivo) -- drift: objetos existem no banco hospedado
+-- sem migration correspondente. NÃO incluídos aqui: um REVOKE ON FUNCTION para
+-- uma função inexistente falha com "function does not exist" e aborta a
+-- migration inteira num banco criado do zero (CI). Foram fechados
+-- manualmente em prod fora desta migration; a falta de proveniência merece
+-- investigação à parte.
 
 -- ---------- Instagram publishing pipeline ----------
 REVOKE ALL ON FUNCTION set_story_segment_field(bigint, int, text, text) FROM public, anon, authenticated;
@@ -162,16 +173,11 @@ REVOKE ALL ON FUNCTION effective_plan_limit(uuid, text) FROM public, anon, authe
 GRANT EXECUTE ON FUNCTION effective_plan_limit(uuid, text) TO service_role;
 
 -- resolve_workspace_plan(ws_id) também nunca teve REVOKE -- sem isso, qualquer
--- anon/authenticated conseguia consultar o plano de QUALQUER workspace por id.
-REVOKE ALL ON FUNCTION resolve_workspace_plan(uuid) FROM public, anon, authenticated;
-GRANT EXECUTE ON FUNCTION resolve_workspace_plan(uuid) TO service_role;
-
--- ---------- Sem CREATE FUNCTION em nenhuma migration deste repositório (drift) ----------
-REVOKE ALL ON FUNCTION check_resource_limit(uuid, text) FROM public, anon, authenticated;
-GRANT EXECUTE ON FUNCTION check_resource_limit(uuid, text) TO service_role;
-
-REVOKE ALL ON FUNCTION rls_auto_enable() FROM public, anon, authenticated;
-GRANT EXECUTE ON FUNCTION rls_auto_enable() TO service_role;
+-- anon conseguia consultar o plano de QUALQUER workspace por id via RPC direta.
+-- authenticated MANTÉM EXECUTE (ver comentário acima): é usado dentro de
+-- policies RLS, não só via .rpc().
+REVOKE ALL ON FUNCTION resolve_workspace_plan(uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION resolve_workspace_plan(uuid) TO authenticated, service_role;
 
 -- ---------- Convites / auth ----------
 REVOKE ALL ON FUNCTION expire_and_cleanup_invites() FROM public, anon, authenticated;
