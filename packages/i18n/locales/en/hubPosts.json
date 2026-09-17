@@ -35,6 +35,10 @@
     "avulsoGroupTitle": "Standalone posts",
     "postCount": "{{count}} {{noun}}",
     "clickToExpand": "click to expand",
+    "filter": {
+      "label": "Filter by status",
+      "all": "All"
+    },
     "status": {
       "enviadoCliente": "Awaiting approval",
       "aprovadoCliente": "Approved",
@@ -79,5 +83,43 @@
   "textCard": {
     "mediaRemoved": "Media removed to free up space",
     "instagramCaptionLabel": "Instagram caption"
+  },
+  "history": {
+    "toggle": "History and comments",
+    "summary": "{{decisions}} decisions · {{comments}} comments",
+    "tabHistory": "History",
+    "tabComments": "Comments",
+    "loading": "Loading history...",
+    "loadError": "Could not load the history.",
+    "empty": "No events recorded yet.",
+    "emptyComments": "No comments yet. Write the first one.",
+    "sentVersion": "v{{version}}: sent for approval",
+    "approved": "Approved",
+    "correctionRequested": "Correction requested",
+    "actor": {
+      "team": "Team",
+      "system": "System",
+      "you": "You"
+    },
+    "showDiff": "Show caption changes",
+    "hideDiff": "Hide changes",
+    "kpi": {
+      "rounds": "{{count}} correction round(s)",
+      "avgResponse": "Average response time: {{value}}",
+      "noData": "Average response time: no data yet"
+    },
+    "composerPlaceholder": "Write a comment about this post",
+    "send": "Send",
+    "sending": "Sending...",
+    "sendError": "Could not send the comment.",
+    "motivoLabel": "Reason"
+  },
+  "correctionReason": {
+    "title": "Correction reason",
+    "required": "Pick a reason and leave a comment to request a correction",
+    "legenda": "Caption",
+    "imagem_video": "Image/video",
+    "data": "Date",
+    "outro": "Other"
   }
 }

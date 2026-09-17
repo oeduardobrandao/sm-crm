@@ -35,6 +35,10 @@
     "avulsoGroupTitle": "Publicações avulsas",
     "postCount": "{{count}} {{noun}}",
     "clickToExpand": "clique para expandir",
+    "filter": {
+      "label": "Filtrar por status",
+      "all": "Todos"
+    },
     "status": {
       "enviadoCliente": "Aguardando aprovação",
       "aprovadoCliente": "Aprovado",
@@ -79,5 +83,43 @@
   "textCard": {
     "mediaRemoved": "Mídia removida para liberar espaço",
     "instagramCaptionLabel": "Legenda do Instagram"
+  },
+  "history": {
+    "toggle": "Histórico e comentários",
+    "summary": "{{decisions}} decisões · {{comments}} comentários",
+    "tabHistory": "Histórico",
+    "tabComments": "Comentários",
+    "loading": "Carregando histórico...",
+    "loadError": "Não foi possível carregar o histórico.",
+    "empty": "Nenhum evento registrado ainda.",
+    "emptyComments": "Nenhum comentário ainda. Escreva o primeiro.",
+    "sentVersion": "v{{version}}: enviado para aprovação",
+    "approved": "Aprovado",
+    "correctionRequested": "Correção solicitada",
+    "actor": {
+      "team": "Equipe",
+      "system": "Sistema",
+      "you": "Você"
+    },
+    "showDiff": "Ver alterações na legenda",
+    "hideDiff": "Ocultar alterações",
+    "kpi": {
+      "rounds": "{{count}} rodada(s) de correção",
+      "avgResponse": "Tempo médio de resposta: {{value}}",
+      "noData": "Tempo médio de resposta: sem dados ainda"
+    },
+    "composerPlaceholder": "Escreva um comentário sobre este post",
+    "send": "Enviar",
+    "sending": "Enviando...",
+    "sendError": "Não foi possível enviar o comentário.",
+    "motivoLabel": "Motivo"
+  },
+  "correctionReason": {
+    "title": "Motivo da correção",
+    "required": "Escolha o motivo e deixe um comentário para solicitar correção",
+    "legenda": "Legenda",
+    "imagem_video": "Imagem/vídeo",
+    "data": "Data",
+    "outro": "Outro"
   }
 }
