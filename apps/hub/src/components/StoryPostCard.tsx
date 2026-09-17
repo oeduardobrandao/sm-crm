@@ -8,7 +8,9 @@ import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import { VideoPrewarm } from './VideoPrewarm';
 import { MediaUnavailable } from './MediaUnavailable';
-import type { HubPost, PostApproval, InstagramProfile } from '../types';
+import { CorrectionReasonChips } from './CorrectionReasonChips';
+import { PostHistoryPanel } from './PostHistoryPanel';
+import type { CorrectionReason, HubPost, PostApproval, InstagramProfile } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
 interface StoryPostCardProps {
@@ -33,6 +35,7 @@ export function StoryPostCard({
   const { t, i18n } = useTranslation('hubPosts');
   const [currentSlide, setCurrentSlide] = useState(0);
   const [comentario, setComentario] = useState('');
+  const [motivo, setMotivo] = useState<CorrectionReason | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -80,7 +83,11 @@ export function StoryPostCard({
     setSubmitting(true);
     setResult(null);
     try {
-      await submitApproval(token, post.id, action, comentario || undefined);
+      if (action === 'correcao') {
+        await submitApproval(token, post.id, action, comentario.trim(), motivo ?? undefined);
+      } else {
+        await submitApproval(token, post.id, action, comentario || undefined);
+      }
       setResult({
         type: 'success',
         message:
@@ -354,6 +361,11 @@ export function StoryPostCard({
                 )}
                 className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
               />
+              <CorrectionReasonChips
+                value={motivo}
+                onChange={setMotivo}
+                disabled={submitting || approvalBlocked}
+              />
               <div className="flex gap-1.5">
                 <button
                   onClick={() => handleAction('aprovado')}
@@ -367,12 +379,12 @@ export function StoryPostCard({
                 </button>
                 <button
                   onClick={() => handleAction('correcao')}
-                  disabled={submitting || approvalBlocked || !comentario.trim()}
+                  disabled={submitting || approvalBlocked || !comentario.trim() || !motivo}
                   title={
-                    !comentario.trim()
+                    !comentario.trim() || !motivo
                       ? t(
-                          'shared.correctionCommentRequired',
-                          'Deixe um comentário para solicitar correção',
+                          'correctionReason.required',
+                          'Escolha o motivo e deixe um comentário para solicitar correção',
                         )
                       : undefined
                   }
@@ -397,6 +409,15 @@ export function StoryPostCard({
           </div>
         </div>
       )}
+
+      <div className="bg-white dark:bg-[#1a1a1a] rounded-b-2xl -mt-2 pt-2 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]">
+        <PostHistoryPanel
+          post={post}
+          token={token}
+          approvals={approvals}
+          onCommentSent={onApprovalSubmitted}
+        />
+      </div>
 
       {lightboxIdx !== null && media.length > 0 && (
         <PostMediaLightbox

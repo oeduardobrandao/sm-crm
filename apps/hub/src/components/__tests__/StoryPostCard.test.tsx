@@ -1,11 +1,17 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StoryPostCard } from '../StoryPostCard';
+import { submitApproval } from '../../api';
 import type { HubPost, HubPostMedia, InstagramProfile } from '../../types';
 
+const submitApprovalMock = vi.hoisted(() => vi.fn());
+
 vi.mock('../../api', () => ({
-  submitApproval: vi.fn(),
+  submitApproval: submitApprovalMock,
+  fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
 }));
+
+const mockedSubmitApproval = vi.mocked(submitApproval);
 
 vi.mock('../PostMediaLightbox', () => ({
   PostMediaLightbox: () => <div data-testid="post-media-lightbox" />,
@@ -51,6 +57,10 @@ const profile: InstagramProfile = {
 };
 
 describe('StoryPostCard', () => {
+  beforeEach(() => {
+    mockedSubmitApproval.mockReset();
+  });
+
   it('prewarms the story video so the lightbox opens without stutter', () => {
     const { container } = render(
       <StoryPostCard
@@ -116,5 +126,50 @@ describe('StoryPostCard', () => {
       />,
     );
     expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
+  });
+
+  it('requires a motivo chip before "Correção" is enabled and sends it', async () => {
+    mockedSubmitApproval.mockResolvedValue({ ok: true });
+    render(
+      <StoryPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={null}
+        workspaceName="Mesaas"
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    const correctionButton = screen.getByRole('button', { name: /Correção/ });
+    fireEvent.change(screen.getByPlaceholderText(/Comente aqui/), {
+      target: { value: 'Trocar a imagem' },
+    });
+    expect(correctionButton).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Imagem/vídeo' }));
+    expect(correctionButton).toBeEnabled();
+    fireEvent.click(correctionButton);
+    await waitFor(() =>
+      expect(mockedSubmitApproval).toHaveBeenCalledWith(
+        'token-publico',
+        7,
+        'correcao',
+        'Trocar a imagem',
+        'imagem_video',
+      ),
+    );
+  });
+
+  it('renders the history panel toggle in read-only mode', () => {
+    render(
+      <StoryPostCard
+        post={makePost({ status: 'aprovado_cliente' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={null}
+        workspaceName="Mesaas"
+        readOnly
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Histórico e comentários/ })).toBeInTheDocument();
   });
 });
