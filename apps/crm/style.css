@@ -3226,9 +3226,14 @@ select.form-input option {
     gap: 0.75rem;
   }
 
-  /* Same fused block as desktop, just two columns wide */
+  /*
+   * Same fused block as desktop, just two columns wide. minmax(0, 1fr), not
+   * plain 1fr: a bare 1fr track's minimum is its content's min-content width,
+   * so an unbroken value like "R$ 49.500,00" pushed the track wider than the
+   * viewport instead of wrapping.
+   */
   .kpi-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /*
@@ -5914,6 +5919,23 @@ body.role-agent input[name='valor_total'] {
   gap: 0.25rem;
   padding: 0.15rem 0.5rem;
   border-radius: 2rem;
+}
+
+/*
+ * The list-view row's deadline pill carries an unbounded "N dias de atraso"
+ * label with no flex-shrink -- a task overdue by 100+ days can push the row
+ * past the viewport, and the row's overflow-x:hidden ancestors then clip the
+ * assignee avatar right off it. Cap it and let it ellipsize on narrow
+ * screens; desktop has room to show the full label.
+ */
+@media (max-width: 640px) {
+  .tarefa-list-row .board-card-deadline {
+    display: inline-block;
+    max-width: 7.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .board-card-prazo-type {
@@ -11684,6 +11706,34 @@ a.hub-fill__row-inner:hover {
   min-height: 44px;
   gap: 0.45rem;
   color: var(--text-muted);
+}
+
+/* Below 768px the row would otherwise be the first thing every page renders
+   -- a full-width line before the title. Pull it out of flow entirely (fixed,
+   floating under the topbar) instead, and collapse it to an icon-only pill so
+   it reads as a small badge, not a header row competing with the page's own. */
+@media (max-width: 767px) {
+  .context-help {
+    position: fixed;
+    top: calc(var(--topbar-height) + var(--banner-height, 0px) + 10px);
+    right: 14px;
+    z-index: 45;
+    min-height: 0;
+    margin-bottom: 0;
+  }
+
+  .context-help__trigger {
+    min-height: 36px;
+    padding: 0.4rem 0.55rem;
+    border-radius: 999px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .context-help__label {
+    display: none;
+  }
 }
 
 .context-help__count {

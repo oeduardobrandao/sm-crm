@@ -531,7 +531,7 @@ export function FileGrid(props: FileGridProps) {
                 className={`absolute top-2 left-2 w-5 h-5 rounded border-[1.5px] flex items-center justify-center text-[0.6rem] font-bold cursor-pointer z-10 transition-all ${
                   isSelected
                     ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[#12151a] opacity-100'
-                    : 'border-white/60 bg-black/40 opacity-0 group-hover:opacity-100'
+                    : 'border-white/60 bg-black/40 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100'
                 }`}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -630,7 +630,7 @@ export function FileGrid(props: FileGridProps) {
                   className={`absolute top-2 left-2 w-5 h-5 rounded border-[1.5px] flex items-center justify-center text-[0.6rem] font-bold cursor-pointer z-10 transition-all ${
                     isSelected
                       ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[#12151a] opacity-100'
-                      : 'border-white/60 bg-black/40 opacity-0 group-hover:opacity-100'
+                      : 'border-white/60 bg-black/40 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100'
                   }`}
                   onClick={(e) => {
                     e.stopPropagation();

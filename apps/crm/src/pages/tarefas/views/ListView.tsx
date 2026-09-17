@@ -63,17 +63,25 @@ function TarefaRow({
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
+          // Without an explicit minWidth, a flex item with overflow:hidden gets an
+          // automatic minimum size of 0 (CSS Flexbox §4.5) instead of its content
+          // size — the row's other elements are all flexShrink:0, so this title,
+          // being the only shrinkable item, absorbed the entire deficit and
+          // collapsed to a couple of characters on narrow viewports.
+          minWidth: '4rem',
+          flex: '1 1 auto',
         }}
       >
         {tarefa.titulo}
       </span>
-      <span style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
+      <span className="hidden sm:flex" style={{ gap: '0.25rem', flexShrink: 0 }}>
         {tarefa.tags.slice(0, 3).map((tag) => (
           <TagPill key={tag.id} tag={tag} small />
         ))}
       </span>
       {tarefa.cliente_nome && (
         <span
+          className="hidden sm:inline-block"
           style={{
             fontSize: '0.7rem',
             color: 'var(--text-muted)',

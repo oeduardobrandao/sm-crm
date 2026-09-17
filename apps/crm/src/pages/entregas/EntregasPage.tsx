@@ -1000,7 +1000,19 @@ export default function EntregasPage() {
           </p>
         </div>
         <div className="header-actions">
-          <Button variant="outline" onClick={() => setTemplatesOpen(true)}>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setTemplatesOpen(true)}
+            className="header-actions-icon-only"
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setTemplatesOpen(true)}
+            className="header-actions-full-only"
+          >
             <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
           </Button>
           <DropdownMenu>
@@ -1069,12 +1081,15 @@ export default function EntregasPage() {
         </div>
       )}
 
-      {/* Orientation row: view tabs + mode + entity toggles. Wraps on narrow
-          viewports instead of stacking three separate control rows. */}
+      {/* Orientation row: view tabs + mode + entity toggles. Scrolls
+          horizontally on narrow viewports instead of wrapping into several
+          stacked control rows, which was eating the first fold on phones. */}
       <div
+        className="no-scrollbar"
         style={{
           display: 'flex',
-          flexWrap: 'wrap',
+          flexWrap: 'nowrap',
+          overflowX: 'auto',
           alignItems: 'center',
           gap: '0.75rem',
         }}
@@ -1092,6 +1107,7 @@ export default function EntregasPage() {
             overflowX: 'auto',
             width: 'fit-content',
             maxWidth: '100%',
+            flexShrink: 0,
           }}
           className="animate-up no-scrollbar"
         >
@@ -1123,13 +1139,17 @@ export default function EntregasPage() {
         </div>
 
         {(activeView === 'kanban' || activeView === 'list' || activeView === 'calendar') && (
-          <ModeToggle mode={mode} onModeChange={setMode} />
+          <div style={{ flexShrink: 0 }}>
+            <ModeToggle mode={mode} onModeChange={setMode} />
+          </div>
         )}
 
         {postProcessesVisible &&
           (activeView === 'kanban' || activeView === 'list') &&
           mode === 'entregas' && (
-            <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+            <div style={{ flexShrink: 0 }}>
+              <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
+            </div>
           )}
       </div>
 
