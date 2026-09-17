@@ -72,6 +72,7 @@ import type { Membro, WorkflowEtapa, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
 import { PostProcessCard } from '../components/PostProcessCard';
 import { ExampleBoard } from '../components/ExampleBoard';
+import { AutoScheduleBatchDialog } from '../components/AutoScheduleBatchDialog';
 import {
   RevertConfirmDialog,
   ForwardConfirmDialog,
@@ -133,6 +134,19 @@ interface KanbanViewBaseProps {
    *  assinatura (spec §4.1) e a cópia do estado vazio. */
   postProcessesEnabled?: boolean;
   onPostClick?: (entity: PostEntity) => void;
+  /** features?.feature_post_scheduling === true, vindo da EntregasPage. Gate do
+   *  aviso de agendamento automático: instagram-publish devolve 403
+   *  feature_disabled para action "schedule" sem esse flag no plano
+   *  (supabase/functions/instagram-publish/handler.ts:70-77), então um aviso que
+   *  termina em erro é pior do que nenhum aviso. Ausente = desligado. */
+  schedulingEnabled?: boolean;
+  /** features?.feature_tiktok === true, vindo da EntregasPage. Gate ADICIONAL só
+   *  para post `tiktok`/`both`: tiktok-publish/handler.ts:85-89 exige
+   *  feature_post_scheduling E feature_tiktok para a action "schedule", então um
+   *  workspace com agendamento e sem o add-on de TikTok tomaria 403
+   *  feature_disabled (feature: "feature_tiktok") ao confirmar. Ausente =
+   *  desligado. */
+  tiktokEnabled?: boolean;
 }
 
 // Discriminated union: a caller either passes neither prop, or passes both together.
@@ -437,6 +451,8 @@ export function KanbanView({
   showExample,
   onDismissExample,
   contaId,
+  schedulingEnabled,
+  tiktokEnabled,
 }: KanbanViewProps) {
   // Server data is canonical: the board always re-derives from the cards prop,
   // so any edit (título, responsável, prazo…) shows as soon as the refetch
@@ -513,6 +529,8 @@ export function KanbanView({
     card: BoardCard;
     willRearm: boolean;
   } | null>(null);
+  /** Fluxo cujo resumo de agendamento em lote está aberto (peça 2 da spec). */
+  const [batchScheduleWfId, setBatchScheduleWfId] = useState<number | null>(null);
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
   // Comandos de um processo individual (Task 7), compartilhados pelos botões
@@ -1089,6 +1107,7 @@ export function KanbanView({
   const handleApproveInternally = async () => {
     if (!approvalChoice) return;
     const card = approvalChoice.card;
+    const { willRearm } = approvalChoice;
     setApprovalChoice(null);
     try {
       await approvePostsInternally(card.workflow.id!);
@@ -1098,6 +1117,17 @@ export function KanbanView({
       pendingInsertRef.current = null;
       toast.error((err as Error).message || 'Erro ao aprovar internamente');
       return;
+    }
+    // Aviso de agendamento em lote (spec peça 2), aberto AQUI e não depois de
+    // advanceEtapa: advanceEtapa captura o próprio erro e devolve void, então
+    // não existe sinal de sucesso para esperar (decisão 4). O gate !willRearm já
+    // garante que nenhum rearm vai devolver estes posts para rascunho.
+    if (
+      !willRearm &&
+      schedulingEnabled === true &&
+      card.cliente?.auto_publish_on_approval === true
+    ) {
+      setBatchScheduleWfId(card.workflow.id!);
     }
     await advanceEtapa(card, 'Posts aprovados internamente — etapa concluída!');
   };
@@ -1479,6 +1509,15 @@ export function KanbanView({
         onCancel={() => {
           pendingInsertRef.current = null;
           setApprovalChoice(null);
+        }}
+      />
+      <AutoScheduleBatchDialog
+        workflowId={batchScheduleWfId}
+        tiktokFeatureEnabled={tiktokEnabled === true}
+        onClose={() => setBatchScheduleWfId(null)}
+        onScheduled={() => {
+          setBatchScheduleWfId(null);
+          onRefresh();
         }}
       />
       {commands.dialogs}

@@ -1224,6 +1224,8 @@ export default function EntregasPage() {
                 captureEvent('entregas_tour_dismissed', { step: -1 });
                 markTourDone();
               }}
+              schedulingEnabled={schedulingEnabled}
+              tiktokEnabled={tiktokEnabled}
             />
             {semProcessoMode && (
               <SemProcessoSection

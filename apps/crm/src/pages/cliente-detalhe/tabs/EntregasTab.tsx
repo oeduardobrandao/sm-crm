@@ -30,9 +30,11 @@ import {
   type Workflow,
   type WorkflowEtapa,
 } from '@/store';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { HistoryDrawer } from '@/pages/entregas/components/HistoryDrawer';
 import { WorkflowCard } from '@/pages/entregas/components/WorkflowCard';
 import { WorkflowDrawer } from '@/pages/entregas/components/WorkflowDrawer';
+import { AutoScheduleBatchDialog } from '@/pages/entregas/components/AutoScheduleBatchDialog';
 import {
   EditWorkflowModal,
   ForwardConfirmDialog,
@@ -108,6 +110,14 @@ export default function EntregasTab() {
     willRearm: boolean;
   } | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
+  // Aviso de agendamento automático em lote (spec 2026-09-17, peça 2):
+  // schedulingEnabled é o gate incondicional (feature_post_scheduling);
+  // tiktokEnabled é o gate ADICIONAL só para post tiktok/both (decisão 5 da
+  // spec), aplicado por post DENTRO do AutoScheduleBatchDialog.
+  const { features } = useWorkspaceLimits();
+  const schedulingEnabled = features?.feature_post_scheduling === true;
+  const tiktokEnabled = features?.feature_tiktok === true;
+  const [batchScheduleWfId, setBatchScheduleWfId] = useState<number | null>(null);
 
   const { data: clienteWorkflowsRaw } = useQuery({
     queryKey: ['workflowsByCliente', clienteId],
@@ -446,10 +456,18 @@ export default function EntregasTab() {
 
   const handleApproveInternally = async () => {
     const card = approvalChoice?.card;
+    const willRearm = approvalChoice?.willRearm === true;
     setApprovalChoice(null);
     if (!card) return;
     try {
       await approvePostsInternally(card.workflow.id!);
+      // Spec peça 2 / decisão 4: assim que a escrita de aprovação resolve. Fica
+      // ANTES do avanço de etapa de propósito -- se completeEtapaForAdvance
+      // lançar, o catch abaixo mostra o erro do avanço, mas os posts já estão
+      // aprovados e o aviso de agendamento continua válido.
+      if (!willRearm && schedulingEnabled && card.cliente?.auto_publish_on_approval === true) {
+        setBatchScheduleWfId(card.workflow.id!);
+      }
       const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!);
       if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
         setRecurringWfId(card.workflow.id!);
@@ -724,6 +742,15 @@ export default function EntregasTab() {
         onSendToPortal={handleSendToPortal}
         onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
         onCancel={() => setApprovalChoice(null)}
+      />
+      <AutoScheduleBatchDialog
+        workflowId={batchScheduleWfId}
+        tiktokFeatureEnabled={tiktokEnabled}
+        onClose={() => setBatchScheduleWfId(null)}
+        onScheduled={() => {
+          setBatchScheduleWfId(null);
+          refreshCards();
+        }}
       />
     </>
   );

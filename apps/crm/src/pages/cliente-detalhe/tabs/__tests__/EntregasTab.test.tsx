@@ -48,6 +48,24 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+// Mutable so a future test can flip a feature on for just its own describe
+// block; every other test keeps the flags off (default null), same
+// mutable-features pattern as WorkflowDrawer.test.tsx. No test in THIS file
+// reassigns it yet, so `let` alone trips prefer-const.
+// eslint-disable-next-line prefer-const
+let mockFeatures: Record<string, boolean> | null = null;
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    get features() {
+      return mockFeatures;
+    },
+    planName: null,
+    isLoading: false,
+    isUnlimited: true,
+  }),
+}));
+
 vi.mock('@/services/postMedia', () => ({
   getWorkflowCovers: vi.fn(),
 }));
@@ -465,6 +483,10 @@ describe('EntregasTab', () => {
       // `workspace-slug`/`hub-token` are the one deliberate exception (see
       // EntregasTab.tsx's module doc): they exist only to compute
       // BoardCard.hubUrl, not to pull any Hub-domain content.
+      // `auto-schedule-batch-posts` is AutoScheduleBatchDialog's own useQuery
+      // (a workflow_posts read, same domain as everything else here): it is
+      // always mounted (workflowId gates only whether it fetches), so React
+      // Query registers the cache entry even with workflowId still null.
       const { queryClient } = renderTab();
       await screen.findByText('Posts Agosto');
 
@@ -491,6 +513,7 @@ describe('EntregasTab', () => {
             'workflow-covers',
             'workspace-slug',
             'hub-token',
+            'auto-schedule-batch-posts',
           ]),
         );
       });
