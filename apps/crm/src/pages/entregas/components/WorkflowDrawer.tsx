@@ -681,6 +681,14 @@ export function WorkflowDrawer({
             .map((ref) => ref.id);
           await syncMentions('workflow_post', suggestion.post_id, membroIds);
         }
+        // Wait for the posts query to actually land the accepted content before
+        // bumping editorVersions (which remounts <PostEditor> via its key prop).
+        // PostEditor's TipTap instance is only ever hydrated once, at mount --
+        // remounting while ['workflow-posts-with-props'] is still serving the
+        // stale pre-suggestion doc hydrates the editor with that stale doc, and
+        // the next autosave (even a non-user content-normalization update) writes
+        // it back over the suggestion we just accepted.
+        await qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
         setEditorVersions((prev) => ({
           ...prev,
           [suggestion.post_id]: (prev[suggestion.post_id] ?? 0) + 1,
@@ -692,7 +700,7 @@ export function WorkflowDrawer({
         toast.error('Erro ao aceitar sugestão');
       }
     },
-    [refresh, onRefresh],
+    [refresh, onRefresh, qc, workflowId],
   );
 
   const handleRejectSuggestion = useCallback((id: number) => {

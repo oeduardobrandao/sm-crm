@@ -383,6 +383,14 @@ export function StandalonePostDrawer({
             .map((ref) => ref.id);
           await syncMentions('workflow_post', suggestion.post_id, membroIds);
         }
+        // Wait for the post query to actually land the accepted content before
+        // bumping editorVersion (which remounts <PostEditor> via its key prop).
+        // PostEditor's TipTap instance is only ever hydrated once, at mount --
+        // remounting while ['standalone-post'] is still serving the stale
+        // pre-suggestion doc hydrates the editor with that stale doc, and the
+        // next autosave (even a non-user content-normalization update) writes
+        // it back over the suggestion we just accepted.
+        await qc.invalidateQueries({ queryKey: ['standalone-post', postId] });
         setEditorVersion((v) => v + 1);
         toast.success('Sugestão aceita!');
         refresh();
@@ -391,7 +399,7 @@ export function StandalonePostDrawer({
         toast.error('Erro ao aceitar sugestão');
       }
     },
-    [refresh, onRefresh],
+    [refresh, onRefresh, qc, postId],
   );
 
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);

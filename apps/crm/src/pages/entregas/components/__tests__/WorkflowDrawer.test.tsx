@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -135,16 +136,31 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
 
-vi.mock('@/services/inlineImage', () => ({
-  uploadInlineImage: vi.fn(),
-  extractR2Keys: vi.fn(() => []),
-  injectSignedUrls: vi.fn((content: unknown) => content),
-  resolveInlineImageUrls: vi.fn(async () => ({})),
-}));
+// extractR2Keys/injectSignedUrls are pure doc-walking helpers -- use the real
+// implementations so the R2-image-mount-gating test below exercises actual TipTap
+// inlineImage nodes instead of a hand-rolled fake. Only the network call
+// (resolveInlineImageUrls) and the upload call stay mocked.
+vi.mock('@/services/inlineImage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/inlineImage')>();
+  return {
+    uploadInlineImage: vi.fn(),
+    extractR2Keys: actual.extractR2Keys,
+    injectSignedUrls: actual.injectSignedUrls,
+    resolveInlineImageUrls: vi.fn(async () => ({})),
+  };
+});
 
 // Heavy leaf components — stubbed out so only WorkflowDrawer's own logic runs.
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
-  PostEditor: () => <div data-testid="post-editor-stub" />,
+  // Real PostEditor hydrates TipTap's `content` once at mount (useEditor has no deps array;
+  // see PostEditor.tsx) and never syncs it again on prop changes -- only a full remount (new
+  // `key`) re-hydrates it. Mirror that here with useState's lazy initializer, captured once
+  // per mount, so the suggestion-acceptance race test below can tell "remounted with stale
+  // content" apart from "re-rendered with fresh content" the way the real editor would.
+  PostEditor: ({ initialContent }: { initialContent: unknown }) => {
+    const [frozenContent] = useState(initialContent);
+    return <div data-testid="post-editor-stub" data-content={JSON.stringify(frozenContent)} />;
+  },
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
   PropertyPanel: () => <div data-testid="property-panel-stub" />,
@@ -208,8 +224,10 @@ import {
   detachPostsKeepingProcess,
   movePostsToNewFlow,
 } from '@/store';
+import { resolveInlineImageUrls } from '@/services/inlineImage';
 
 const mockGetPosts = vi.mocked(getWorkflowPostsWithProperties);
+const mockResolveInlineImageUrls = vi.mocked(resolveInlineImageUrls);
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockGetEditSuggestions = vi.mocked(getPostEditSuggestions);
 const mockAcceptEditSuggestion = vi.mocked(acceptEditSuggestion);
@@ -426,6 +444,156 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
 
     await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
     expect(mockSyncMentions).not.toHaveBeenCalled();
+  });
+
+  it('remounts the editor with the accepted content, not the stale pre-suggestion doc', async () => {
+    // Regression test: accepting a suggestion used to bump editorVersions (which remounts
+    // <PostEditor> via its key) before the ['workflow-posts-with-props'] refetch it triggers
+    // had actually landed. PostEditor only ever reads `initialContent` once, at mount (see
+    // PostEditor.tsx), so that remount could hydrate the editor from the query cache's still-
+    // stale pre-suggestion post.conteudo -- and the next autosave would write that stale doc
+    // back over the suggestion that was just accepted. See CLAUDE.md-adjacent debugging notes:
+    // client "Enviado ao cliente" -> "via sugestão aceita" -> content reverts, no user edit.
+    //
+    // The diff-card-vs-<PostEditor> swap is gated by `editSuggestion` clearing (the
+    // post-edit-suggestions query going empty), not directly by the editorVersions bump --
+    // see PostEditorBody.tsx's `editSuggestion ? <diff card> : <PostEditor .../>`. In
+    // production post-edit-suggestions is a lean single-table query that resolves well
+    // before the heavier joined workflow-posts-with-props, so the mocks below deliberately
+    // let suggestions clear fast while holding the posts refetch pending -- mirroring that
+    // ordering instead of coincidentally matching it, so this test actually fails without
+    // the WorkflowDrawer await (see git history) rather than passing by mock-timing luck.
+    const oldContent = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
+    const acceptedContent = suggestion.suggested_conteudo;
+    const oldPost = {
+      id: 1,
+      workflow_id: 10,
+      titulo: 'Post A',
+      conteudo: oldContent,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: 0,
+      status: 'rascunho',
+      responsavel_id: null,
+      scheduled_at: null,
+      ig_caption: null,
+      platform: 'instagram',
+    };
+    const acceptedPost = { ...oldPost, conteudo: acceptedContent, conteudo_plain: '@Ana confere' };
+
+    let resolvePostsRefetch!: (posts: unknown) => void;
+    const postsRefetchPromise = new Promise((resolve) => {
+      resolvePostsRefetch = resolve;
+    });
+
+    mockGetPosts
+      .mockResolvedValueOnce([oldPost] as never)
+      .mockImplementationOnce(() => postsRefetchPromise as never)
+      .mockResolvedValue([acceptedPost] as never);
+    mockGetEditSuggestions.mockResolvedValueOnce([suggestion] as never).mockResolvedValue([]);
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
+    fireEvent.click(acceptButton);
+
+    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+
+    // While the posts refetch that handleAcceptSuggestion explicitly awaits is still
+    // pending, refresh() (which invalidates post-edit-suggestions) must not have fired
+    // yet either -- so the diff card, gated on editSuggestion, is still up. This is the
+    // assertion that fails without the WorkflowDrawer await: without it, editorVersions
+    // bumps and refresh() fires immediately, suggestions clears, and <PostEditor> mounts
+    // here against the still-stale cached post.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByRole('button', { name: 'Aceitar' })).toBeInTheDocument();
+
+    resolvePostsRefetch([acceptedPost]);
+
+    // Re-query inside waitFor (not a captured reference) -- the diff card only swaps to
+    // <PostEditor> once suggestions clears, which replaces this DOM node entirely.
+    await waitFor(() => {
+      const editorStub = screen.getByTestId('post-editor-stub');
+      expect(JSON.parse(editorStub.getAttribute('data-content') ?? 'null')).toEqual(
+        acceptedContent,
+      );
+    });
+  });
+
+  it('withholds the editor mount until inline R2 image URLs resolve, instead of freezing on unsigned refs', async () => {
+    // Same freeze-at-mount hazard as the test above, one layer down: PostEditorBody's
+    // R2 signed-URL resolution is genuinely async (unlike the plain-content path, which
+    // is now synchronous), so a <PostEditor> mount landing before resolveInlineImageUrls
+    // settles would freeze with the raw, unsigned r2Key and never show the image. This
+    // isn't specific to the accept-suggestion flow -- it's the general "PostEditor never
+    // re-syncs after mount" hazard -- but accepting a suggestion is the easiest way to
+    // force a fresh mount in this test harness.
+    const oldContent = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
+    const acceptedContentWithImage = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [] },
+        { type: 'inlineImage', attrs: { r2Key: 'img-abc', src: null } },
+      ],
+    };
+    const suggestionWithImage = { ...suggestion, suggested_conteudo: acceptedContentWithImage };
+    const oldPost = {
+      id: 1,
+      workflow_id: 10,
+      titulo: 'Post A',
+      conteudo: oldContent,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: 0,
+      status: 'rascunho',
+      responsavel_id: null,
+      scheduled_at: null,
+      ig_caption: null,
+      platform: 'instagram',
+    };
+    const acceptedPost = {
+      ...oldPost,
+      conteudo: acceptedContentWithImage,
+      conteudo_plain: '@Ana confere',
+    };
+
+    mockGetPosts
+      .mockResolvedValueOnce([oldPost] as never)
+      .mockResolvedValue([acceptedPost] as never);
+    mockGetEditSuggestions
+      .mockResolvedValueOnce([suggestionWithImage] as never)
+      .mockResolvedValue([]);
+
+    let resolveSignedUrls!: (urls: Record<string, string>) => void;
+    const signedUrlsPromise = new Promise<Record<string, string>>((resolve) => {
+      resolveSignedUrls = resolve;
+    });
+    mockResolveInlineImageUrls.mockReturnValue(signedUrlsPromise);
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
+    fireEvent.click(acceptButton);
+
+    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+
+    // The diff card clears once posts + suggestions settle, but the signed-URL fetch is
+    // still pending -- the editor must not mount yet with the unsigned content.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Aceitar' })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('post-editor-stub')).not.toBeInTheDocument();
+    expect(screen.getByText('Carregando conteúdo…')).toBeInTheDocument();
+
+    resolveSignedUrls({ 'img-abc': 'https://signed.example/img-abc' });
+
+    await waitFor(() => {
+      const editorStub = screen.getByTestId('post-editor-stub');
+      const content = JSON.parse(editorStub.getAttribute('data-content') ?? 'null');
+      expect(content.content[1].attrs.src).toBe('https://signed.example/img-abc');
+    });
   });
 });
 

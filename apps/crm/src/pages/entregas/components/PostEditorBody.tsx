@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { MessageSquare, Send, History } from 'lucide-react';
+import { MessageSquare, Send, History, Loader2 } from 'lucide-react';
 import {
   type WorkflowPost,
   type PostApproval,
@@ -229,32 +229,63 @@ export function PostEditorBody({
     return () => clearTimeout(t);
   }, [tituloLocal]);
 
-  const [resolvedContent, setResolvedContent] = useState<Record<string, unknown> | null>(
-    post.conteudo,
+  // `resolvedContent` must track post.conteudo synchronously (same render, not one tick
+  // later via an effect): when a client's edit suggestion is accepted, the diff card swaps
+  // to <PostEditor> by remounting it (new key), and PostEditor freezes whatever content it's
+  // handed at that exact mount -- it never re-syncs later. A useState-seeded-then-effect-
+  // updated value lags the first render after post.conteudo changes, so a remount landing in
+  // that render (as the accept-suggestion swap does) would freeze on the pre-suggestion doc
+  // even though post.conteudo had already updated. Only the R2 signed-URL resolution is
+  // genuinely async; the common case (no inline images) resolves in the same render.
+  const contentR2Keys = useMemo(
+    () => (post.conteudo ? extractR2Keys(post.conteudo) : []),
+    [post.conteudo],
   );
+  const [resolvedAsyncContent, setResolvedAsyncContent] = useState<{
+    forContent: Record<string, unknown>;
+    content: Record<string, unknown>;
+  } | null>(null);
 
   useEffect(() => {
-    if (!post.conteudo) {
-      setResolvedContent(null);
-      return;
-    }
-    const keys = extractR2Keys(post.conteudo);
-    if (keys.length === 0) {
-      setResolvedContent(post.conteudo);
-      return;
-    }
+    if (!post.conteudo || contentR2Keys.length === 0) return;
     let cancelled = false;
-    resolveInlineImageUrls(keys)
+    const forContent = post.conteudo;
+    resolveInlineImageUrls(contentR2Keys)
       .then((urlMap) => {
-        if (!cancelled) setResolvedContent(injectSignedUrls(post.conteudo!, urlMap));
+        if (!cancelled)
+          setResolvedAsyncContent({ forContent, content: injectSignedUrls(forContent, urlMap) });
       })
       .catch(() => {
-        if (!cancelled) setResolvedContent(post.conteudo);
+        if (!cancelled) setResolvedAsyncContent({ forContent, content: forContent });
       });
     return () => {
       cancelled = true;
     };
-  }, [post.conteudo]);
+  }, [post.conteudo, contentR2Keys]);
+
+  const resolvedContent = !post.conteudo
+    ? null
+    : resolvedAsyncContent && resolvedAsyncContent.forContent === post.conteudo
+      ? resolvedAsyncContent.content
+      : post.conteudo;
+
+  // Mirrors the query-await fix above one level down: <PostEditor> freezes whatever
+  // `initialContent` it's handed at mount and never re-syncs, so a mount landing before
+  // `resolvedAsyncContent` catches up would freeze on raw (unsigned) R2 image refs --
+  // permanently broken inline images, not just for the accept-suggestion flow but for
+  // any post whose first render lands before signing resolves. Once a given editor key
+  // has actually mounted, this ref latches it open -- later post.conteudo changes (e.g.
+  // an autosave-triggered refetch) must NOT re-hide an already-mounted, actively-edited
+  // <PostEditor>; only a genuinely new key (a real remount) re-checks readiness.
+  const editorKey = `${post.id}-v${editorVersion}`;
+  const mountedEditorKeyRef = useRef<string | null>(null);
+  const contentReadyForMount =
+    contentR2Keys.length === 0 ||
+    (resolvedAsyncContent !== null && resolvedAsyncContent.forContent === post.conteudo);
+  const canMountEditor = mountedEditorKeyRef.current === editorKey || contentReadyForMount;
+  if (canMountEditor) {
+    mountedEditorKeyRef.current = editorKey;
+  }
 
   const [resolvedSuggestion, setResolvedSuggestion] = useState<Record<string, unknown> | null>(
     editSuggestion?.suggested_conteudo ?? null,
@@ -522,9 +553,17 @@ export function PostEditorBody({
             )}
           </div>
         </div>
+      ) : !canMountEditor ? (
+        <div
+          className="flex items-center justify-center gap-2 py-10 text-[13px]"
+          style={{ color: 'var(--text-light)' }}
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Carregando conteúdo…
+        </div>
       ) : (
         <PostEditor
-          key={`${post.id}-v${editorVersion}`}
+          key={editorKey}
           initialContent={resolvedContent}
           onUpdate={onContentUpdate}
           onUploadInlineImage={
