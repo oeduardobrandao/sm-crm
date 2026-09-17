@@ -1,6 +1,6 @@
 # Histórico de aprovação e comentários por post (Hub)
 
-**Data:** 2026-09-17 (revisado seis vezes após review externa)
+**Data:** 2026-09-17 (revisado sete vezes após review externa)
 **Status:** Design proposto, aguardando aprovação
 **Origem:** Feedback direto de Anna Lourenço (CLD Advogados), repassado via Hanna
 
@@ -50,6 +50,13 @@
 > não rejeitava `motivo = NULL` — clássica pegadinha de lógica de três
 > valores do SQL (`IN` com `NULL` dá `NULL`, não `FALSE`, e `CHECK` só
 > rejeita em `FALSE`). Corrigido com `IS NOT NULL` explícito na seção 3.
+>
+> **Nota de revisão (7ª rodada):** uma sétima review (Codex) achou que o piso
+> temporal, especificado só para `post_status_events`, deixava de fora as
+> linhas `post_approvals` inseridas diretamente pela equipe (`mensagem`, via
+> `replyToPostApproval`, sem checagem de status) — uma nota interna anterior
+> ao primeiro envio vazaria pro cliente. Corrigido na seção 1: o mesmo piso
+> agora se aplica às duas fontes.
 
 ## Contexto
 
@@ -103,6 +110,7 @@ duplicado nos três arquivos). O feedback da Anna é preciso.
 
 - Novo painel (idealmente um componente compartilhado pelos três tipos de card, para não triplicar a implementação e a manutenção), com duas abas: **Histórico** (`post_approvals` com `action IN ('aprovado','correcao')`, mais eventos de `post_status_events` sem `post_approval_id`) e **Comentários** (`action = 'mensagem'`).
 - A query precisa trazer `post_approvals` diretamente (não só via `post_status_events.post_approval_id`) — uma segunda correção antes de um reenvio, ou uma mensagem solta, não geram evento de status novo.
+- **O piso temporal (definido abaixo, para eventos de status) tem que valer também para `post_approvals`, inclusive linhas `mensagem` — não só para `post_status_events`.** `replyToPostApproval` (`apps/crm/src/store/posts.ts:1337-1352`) insere uma linha `action = 'mensagem'` em `post_approvals` para qualquer `post_id`, sem checar o status do post — um membro da equipe pode deixar uma nota interna num post ainda em `rascunho`/`revisao_interna`, antes de qualquer envio ao cliente. Sem aplicar o mesmo piso a essas linhas, uma nota interna anterior ao primeiro envio vazaria pro cliente assim que o post virasse visível. A query do endpoint precisa filtrar **toda** linha de `post_approvals` (não só as ligadas a um evento de status) por `created_at >= primeiro created_at com to_status = 'enviado_cliente' daquele post` — o mesmo piso, uma única regra, aplicada às duas fontes.
 - **Diff de conteúdo — condicionado a uma referência confiável.** `post_content_versions` não referencia qual aprovação/evento a gerou (exceto `suggestion_id`, só para sugestões aceitas). Pareamento por "timestamp mais próximo" **não é seguro**: a coalescência de edições em até 5 minutos, um reenvio que não muda texto, e uma edição adjacente de outra ação podem todos produzir uma correlação errada. Duas opções, a decidir no plano: (a) gravar uma referência explícita entre o evento de reenvio/aprovação e a versão de conteúdo no momento em que ambos acontecem (mudança de schema pequena, mas nova), ou (b) cortar o diff desta entrega e mostrar só "conteúdo foi alterado" sem o texto do diff. Não implementar a correlação por proximidade de tempo como se fosse confiável.
 - **Autorização do endpoint sob demanda (P0 — sem isso, um token válido de um cliente pode ler o histórico de outro).** A consulta por post a `post_content_versions`/`post_status_events` tem que resolver o post através do próprio token, no mesmo padrão já usado em `hub-approve/handler.ts`: buscar `workflow_posts` por `id`, e conferir `post.conta_id === hubToken.conta_id && post.cliente_id === hubToken.cliente_id` **antes** de devolver qualquer histórico — nunca confiar num `post_id` vindo do cliente sem essa checagem. Isso não é uma decisão de plano, é obrigatório desde o design (regra do projeto: toda function confere posse do workspace antes de devolver dado).
 - **Vazamento pro cliente — allowlist concreto, não “a definir”:**
