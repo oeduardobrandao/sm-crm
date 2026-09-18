@@ -571,7 +571,7 @@ export function EntregasFilters({
     <>
       {/* Desktop: every dropdown inline on the toolbar. The busca input lives
           on the VistasTabs row above (EntregasPage renders it), not here. */}
-      <div className="hidden min-[901px]:flex flex-wrap items-center gap-2 mb-0 animate-up flex-1 min-w-[240px]">
+      <div className="hidden min-[901px]:flex flex-wrap items-center gap-2 mb-0 animate-up grow basis-full min-w-[240px]">
         {renderControls(false)}
         {activeCount > 0 && (
           <Button
