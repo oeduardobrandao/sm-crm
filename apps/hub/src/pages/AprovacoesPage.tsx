@@ -245,6 +245,7 @@ export function AprovacoesPage() {
             />
           )}
           <PostDetailDialog
+            fallbackTitle={t('aprovacoes.title', 'Aprovações')}
             posts={visiblePosts}
             currentId={currentId}
             token={token}

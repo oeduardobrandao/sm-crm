@@ -47,6 +47,8 @@ interface PostDetailDialogProps {
   workspaceName?: string;
   isAutoPublish: (post: HubPost) => boolean;
   onNavigate: (postId: number | null) => void;
+  /** Accessible name of the "not available" fallback; defaults to the Postagens title. */
+  fallbackTitle?: string;
   onApprovalSubmitted: () => void;
 }
 
@@ -101,7 +103,7 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
       <HubDialog
         open
         onRequestClose={() => onNavigate(null)}
-        title={t('postagens.title', 'Postagens')}
+        title={props.fallbackTitle ?? t('postagens.title', 'Postagens')}
       >
         <div className="hub-bg-card rounded-[4px] w-[min(420px,calc(100vw-2rem))] p-6 text-center space-y-4">
           <p className="text-[14px] hub-tx2">

@@ -541,6 +541,11 @@ describe('PostDetailDialog', () => {
     expect(screen.getByRole('button', { name: /Aprovar/ })).toBeEnabled();
   });
 
+  it('names the notAvailable dialog after the host page when fallbackTitle is given', () => {
+    renderDialog(99, { fallbackTitle: 'Aprovações' });
+    expect(screen.getByRole('dialog', { name: 'Aprovações' })).toBeInTheDocument();
+  });
+
   it('renders the notAvailable state for an unknown id', () => {
     const { onNavigate } = renderDialog(99);
     expect(screen.getByText('Esta postagem não está disponível.')).toBeInTheDocument();
