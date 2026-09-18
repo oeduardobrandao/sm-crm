@@ -114,8 +114,7 @@ function PromoBanner() {
   return (
     <div className="promo-banner" role="region" aria-label="Oferta de lançamento">
       <span className="promo-banner-text">
-        <strong>30 dias grátis</strong> em qualquer plano pago. Sem cupom, sem cartão. Cancele
-        quando quiser.
+        <strong>30 dias grátis</strong> em qualquer plano pago. Sem cupom. Cancele quando quiser.
       </span>
       <a href="/login?tab=register" className="promo-banner-cta">
         Começar teste grátis

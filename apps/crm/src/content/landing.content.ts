@@ -42,7 +42,7 @@ export const LANDING: {
     titleEm: '',
     titleAfter: '',
     sub: 'O Mesaas reúne clientes, entregas, aprovações, agendamento no Instagram e métricas em um único lugar. Feito para quem gerencia social media, sozinho ou com equipe.',
-    note: '30 dias grátis, sem cartão de crédito.',
+    note: '30 dias grátis em qualquer plano.',
   },
   ticker: [
     'Clientes + contratos',
