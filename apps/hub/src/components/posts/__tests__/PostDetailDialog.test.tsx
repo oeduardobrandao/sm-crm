@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { HubContext } from '../../../HubContext';
 import { resetEditSuggestionFailuresForTests } from '../../../hooks/useEditSuggestion';
 import { PostDetailDialog } from '../PostDetailDialog';
+import { CONFIRM_HOLD_MS, SLIDE_MS } from '../../../hooks/usePostAdvance';
 import type { HubPost, HubPostMedia } from '../../../types';
 
 const submitApprovalMock = vi.hoisted(() => vi.fn());
@@ -104,24 +105,44 @@ function renderDialog(
   return { onNavigate, onApprovalSubmitted };
 }
 
-function StatefulDialog({ initialId }: { initialId: number }) {
-  const [currentId, setCurrentId] = useState<number | null>(initialId);
+/** The props the pages own (URL id + list), driven from the test. */
+function ControlledDialog({
+  posts: list,
+  currentId,
+  onNavigate = () => undefined,
+}: {
+  posts: HubPost[];
+  currentId: number | null;
+  onNavigate?: (id: number | null) => void;
+}) {
   return (
     <HubContext.Provider value={hubValue}>
       <MemoryRouter>
         <PostDetailDialog
-          posts={posts}
+          posts={list}
           currentId={currentId}
           token="token-publico"
           approvals={[]}
           instagramProfile={null}
           isAutoPublish={() => false}
-          onNavigate={setCurrentId}
+          onNavigate={onNavigate}
           onApprovalSubmitted={() => undefined}
         />
       </MemoryRouter>
     </HubContext.Provider>
   );
+}
+
+/** Like the pages: onNavigate really moves the dialog. */
+function StatefulDialog({ initialId }: { initialId: number }) {
+  const [currentId, setCurrentId] = useState<number | null>(initialId);
+  return <ControlledDialog posts={posts} currentId={currentId} onNavigate={setCurrentId} />;
+}
+
+async function tick(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
 }
 
 describe('PostDetailDialog', () => {
@@ -226,40 +247,170 @@ describe('PostDetailDialog', () => {
     expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
   });
 
-  describe('slide-in between posts', () => {
+  // jsdom runs no CSS animation: these assert the phases through the classes and the
+  // ghost slot, and drive usePostAdvance's timers (CONFIRM_HOLD_MS, SLIDE_MS) by hand.
+  describe('moving between posts (slide + ghost)', () => {
+    const live = () => screen.getByTestId('hub-post-card-slot');
+    const ghost = () => screen.queryByTestId('hub-post-card-ghost');
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     it('does not animate the first open', () => {
       render(<StatefulDialog initialId={1} />);
-      expect(document.querySelector('.hub-slide-in-next, .hub-slide-in-prev')).toBeNull();
+      expect(document.querySelector('[data-slide]')).toBeNull();
+      expect(ghost()).toBeNull();
     });
 
-    it('slides in from the right on next and from the left on previous', () => {
+    it('next slides the new card in from the right while the old one exits left as an inert ghost', async () => {
+      render(<StatefulDialog initialId={1} />);
+      const scrim = screen.getByTestId('hub-dialog-scrim');
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
+
+      expect(within(live()).getByRole('heading', { name: 'Segundo' })).toBeInTheDocument();
+      expect(live().querySelector('.hub-card-enter-next')).not.toBeNull();
+      const g = ghost() as HTMLElement;
+      expect(g).toHaveAttribute('aria-hidden', 'true');
+      expect(g).toHaveAttribute('inert');
+      expect(g.querySelector('.hub-card-exit-next')).not.toBeNull();
+      expect(
+        within(g).getByRole('heading', { name: 'Primeiro', hidden: true }),
+      ).toBeInTheDocument();
+      // Hidden from the accessibility tree: nothing in the ghost is reachable by role.
+      expect(screen.getAllByRole('button', { name: 'Próximo post' })).toHaveLength(1);
+      expect(screen.queryAllByRole('heading', { name: 'Primeiro' })).toHaveLength(0);
+      // The dialog chrome never remounted.
+      expect(screen.getByTestId('hub-dialog-scrim')).toBe(scrim);
+
+      await tick(SLIDE_MS);
+      expect(ghost()).toBeNull();
+      expect(live().querySelector('.hub-card-enter-next')).not.toBeNull();
+    });
+
+    it('previous slides in from the left, and reversing mid-slide re-enters from the new side', () => {
       render(<StatefulDialog initialId={1} />);
       fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
-      expect(document.querySelector('.hub-slide-in-next')).not.toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Post anterior' }));
-      expect(document.querySelector('.hub-slide-in-prev')).not.toBeNull();
-      expect(document.querySelector('.hub-slide-in-next')).toBeNull();
+      expect(live().querySelector('.hub-card-enter-prev')).not.toBeNull();
+      expect(live().querySelector('.hub-card-enter-next')).toBeNull();
+      expect(ghost()?.querySelector('.hub-card-exit-prev')).not.toBeNull();
+      expect(document.querySelector('.hub-card-exit-next')).toBeNull();
     });
 
-    it('shows the approved badge on the approved post first, then moves on', async () => {
+    it('a URL-driven change (deep link, history) swaps the card without a slide or a ghost', () => {
+      const { rerender } = render(<ControlledDialog posts={posts} currentId={1} />);
+      rerender(<ControlledDialog posts={posts} currentId={2} />);
+      expect(within(live()).getByRole('heading', { name: 'Segundo' })).toBeInTheDocument();
+      expect(document.querySelector('[data-slide]')).toBeNull();
+      expect(ghost()).toBeNull();
+    });
+
+    it('focuses the card that slid in', () => {
+      render(<StatefulDialog initialId={1} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
+      expect(document.activeElement).toBe(within(live()).getByRole('group', { name: 'Segundo' }));
+    });
+  });
+
+  describe('approve, badge for 3s, then move on', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('keeps the badge on the approved post for CONFIRM_HOLD_MS with everything locked, then navigates and invalidates', async () => {
       submitApprovalMock.mockResolvedValue({ scheduled: false });
+      const calls: string[] = [];
       const { onNavigate, onApprovalSubmitted } = renderDialog(1);
+      onNavigate.mockImplementation((id) => calls.push(`navigate:${id}`));
+      onApprovalSubmitted.mockImplementation(() => calls.push('invalidate'));
       fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
-      const badge = await screen.findByRole('status');
-      expect(badge).toHaveTextContent(/aprovad/i);
-      expect(screen.getAllByRole('heading', { name: 'Primeiro' }).length).toBeGreaterThan(0);
-      expect(onNavigate).not.toHaveBeenCalled();
-      expect(onApprovalSubmitted).not.toHaveBeenCalled();
-      await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(3), { timeout: 2000 });
-      expect(onApprovalSubmitted).toHaveBeenCalledTimes(1);
+      await tick(0);
+
+      const badge = screen.getByRole('status');
+      expect(badge).toHaveTextContent('Post aprovado!');
+      const live = screen.getByTestId('hub-post-card-slot');
+      expect(within(live).getByRole('heading', { name: 'Primeiro' })).toBeInTheDocument();
+      expect(live).toContainElement(badge);
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Corrigir/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Próximo post' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Ir para Terceiro' })).toBeDisabled();
+      fireEvent.keyDown(window, { key: 'ArrowRight' });
+      fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+      expect(submitApprovalMock).toHaveBeenCalledTimes(1);
+      expect(calls).toEqual([]);
+
+      await tick(CONFIRM_HOLD_MS - 1);
+      expect(screen.getByRole('status')).toHaveTextContent('Post aprovado!');
+      expect(calls).toEqual([]);
+
+      await tick(1);
+      expect(calls).toEqual(['navigate:3', 'invalidate']);
     });
 
-    it('slides in from the right after approving and auto-advancing', async () => {
+    it('slides to the next pending post with the badge riding out on the approved card', async () => {
       submitApprovalMock.mockResolvedValue({ scheduled: false });
       render(<StatefulDialog initialId={1} />);
+      const scrim = screen.getByTestId('hub-dialog-scrim');
       fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
-      await waitFor(() => expect(screen.getByText('Texto do terceiro')).toBeInTheDocument());
-      expect(document.querySelector('.hub-slide-in-next')).not.toBeNull();
+      await tick(0);
+      await tick(CONFIRM_HOLD_MS);
+
+      const live = screen.getByTestId('hub-post-card-slot');
+      expect(within(live).getByText('Texto do terceiro')).toBeInTheDocument();
+      expect(live.querySelector('.hub-card-enter-next')).not.toBeNull();
+      expect(within(live).queryByRole('status')).toBeNull();
+      const ghost = screen.getByTestId('hub-post-card-ghost');
+      expect(ghost.querySelector('.hub-card-exit-next')).not.toBeNull();
+      expect(ghost.querySelector('[role="status"]')).toHaveTextContent('Post aprovado!');
+      expect(screen.getByTestId('hub-dialog-scrim')).toBe(scrim);
+      // The new card is usable right away.
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeEnabled();
+
+      await tick(SLIDE_MS);
+      expect(screen.queryByTestId('hub-post-card-ghost')).toBeNull();
+      expect(document.querySelector('[role="status"]')).toBeNull();
+    });
+
+    it.each([
+      ['Esc', () => fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })],
+      ['X', () => fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }))],
+    ])(
+      '%s during the hold closes at once, drops the advance and still refreshes the list once',
+      async (_label, dismiss) => {
+        submitApprovalMock.mockResolvedValue({ scheduled: false });
+        const { onNavigate, onApprovalSubmitted } = renderDialog(1);
+        fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+        await tick(0);
+        expect(screen.getByRole('status')).toBeInTheDocument();
+        dismiss();
+        expect(onNavigate).toHaveBeenCalledTimes(1);
+        expect(onNavigate).toHaveBeenCalledWith(null);
+        expect(onApprovalSubmitted).toHaveBeenCalledTimes(1);
+        await tick(CONFIRM_HOLD_MS + SLIDE_MS);
+        expect(onNavigate).toHaveBeenCalledTimes(1);
+        expect(onApprovalSubmitted).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('a refetch that drops the approved post mid-hold does not disturb the held card', async () => {
+      submitApprovalMock.mockResolvedValue({ scheduled: false });
+      const { rerender } = render(<ControlledDialog posts={posts} currentId={1} />);
+      fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+      await tick(0);
+      rerender(<ControlledDialog posts={posts.filter((p) => p.id !== 1)} currentId={1} />);
+      const live = screen.getByTestId('hub-post-card-slot');
+      expect(within(live).getByRole('heading', { name: 'Primeiro' })).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('Post aprovado!');
+      expect(screen.queryByText('Esta postagem não está disponível.')).toBeNull();
+      expect(screen.getByText('1 de 3')).toBeInTheDocument();
     });
   });
 
@@ -271,25 +422,30 @@ describe('PostDetailDialog', () => {
     expect(screen.getByRole('button', { name: /Aprovar/ })).toBeEnabled();
   });
 
-  it('Aprovar submits, then auto-advances to the next pending post before invalidating', async () => {
+  it('Aprovar submits, then (after the hold) advances to the next pending post before invalidating', async () => {
     submitApprovalMock.mockResolvedValue({ ok: true, scheduled: false });
-    const calls: string[] = [];
-    const { onNavigate, onApprovalSubmitted } = renderDialog(3, {
-      posts: [
-        post({ id: 3, titulo: 'A' }),
-        post({ id: 4, titulo: 'B', status: 'postado' }),
-        post({ id: 5, titulo: 'C' }),
-      ],
-    });
-    onNavigate.mockImplementation(() => calls.push('navigate'));
-    onApprovalSubmitted.mockImplementation(() => calls.push('invalidate'));
-    fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
-    await waitFor(() =>
-      expect(submitApprovalMock).toHaveBeenCalledWith('token-publico', 3, 'aprovado', undefined),
-    );
-    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(5));
-    expect(calls).toEqual(['navigate', 'invalidate']);
-    expect(screen.getByText('Post aprovado!')).toBeInTheDocument();
+    vi.useFakeTimers();
+    try {
+      const calls: string[] = [];
+      const { onNavigate, onApprovalSubmitted } = renderDialog(3, {
+        posts: [
+          post({ id: 3, titulo: 'A' }),
+          post({ id: 4, titulo: 'B', status: 'postado' }),
+          post({ id: 5, titulo: 'C' }),
+        ],
+      });
+      onNavigate.mockImplementation(() => calls.push('navigate'));
+      onApprovalSubmitted.mockImplementation(() => calls.push('invalidate'));
+      fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+      await tick(0);
+      expect(submitApprovalMock).toHaveBeenCalledWith('token-publico', 3, 'aprovado', undefined);
+      expect(screen.getByText('Post aprovado!')).toBeInTheDocument();
+      await tick(CONFIRM_HOLD_MS);
+      expect(onNavigate).toHaveBeenCalledWith(5);
+      expect(calls).toEqual(['navigate', 'invalidate']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows the scheduled flash when the approval auto-scheduled the post', async () => {
@@ -301,31 +457,21 @@ describe('PostDetailDialog', () => {
     ).toBeInTheDocument();
   });
 
-  it('restarts the flash timer when the same flash fires again within 3s', async () => {
+  it('the badge stays with the post it confirms and is gone once the card has left', async () => {
     submitApprovalMock.mockResolvedValue({ ok: true });
-    renderDialog(1);
     vi.useFakeTimers();
     try {
-      const approve = async () => {
-        fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(0);
-        });
-      };
-      await approve();
+      render(<StatefulDialog initialId={1} />);
+      fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+      await tick(0);
       expect(screen.getByText('Post aprovado!')).toBeInTheDocument();
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(2000);
-      });
-      await approve();
-      // 4s after the first flash, 2s after the second: the second timer is still running.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(2000);
-      });
+      await tick(CONFIRM_HOLD_MS - 1);
       expect(screen.getByText('Post aprovado!')).toBeInTheDocument();
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1100);
-      });
+      // Hold over: the badge is on the ghost only, then leaves with it.
+      await tick(1);
+      expect(screen.getByTestId('hub-post-card-ghost')).toHaveTextContent('Post aprovado!');
+      expect(screen.getByTestId('hub-post-card-slot')).not.toHaveTextContent('Post aprovado!');
+      await tick(SLIDE_MS);
       expect(screen.queryByText('Post aprovado!')).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -343,26 +489,34 @@ describe('PostDetailDialog', () => {
     expect(screen.getByRole('dialog', { name: 'Primeiro' })).toBeInTheDocument();
   });
 
-  it('closes after the action when no other pending post remains', async () => {
+  it('closes after the hold when no other pending post remains', async () => {
     submitApprovalMock.mockResolvedValue({ ok: true });
-    const { onNavigate } = renderDialog(1, {
-      posts: [post({ id: 1 }), post({ id: 2, status: 'postado' })],
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Enviar correção/ }));
-    await waitFor(() =>
+    vi.useFakeTimers();
+    try {
+      const { onNavigate, onApprovalSubmitted } = renderDialog(1, {
+        posts: [post({ id: 1 }), post({ id: 2, status: 'postado' })],
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Enviar correção/ }));
+      await tick(0);
       expect(submitApprovalMock).toHaveBeenCalledWith(
         'token-publico',
         1,
         'correcao',
         '',
         undefined,
-      ),
-    );
-    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(null));
+      );
+      expect(screen.getByRole('status')).toHaveTextContent('Correção enviada!');
+      expect(onNavigate).not.toHaveBeenCalled();
+      await tick(CONFIRM_HOLD_MS);
+      expect(onNavigate).toHaveBeenCalledWith(null);
+      expect(onApprovalSubmitted).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it('shows the correction flash on the next post', async () => {
+  it('shows the correction badge on the corrected post', async () => {
     submitApprovalMock.mockResolvedValue({ ok: true });
     renderDialog(1);
     fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));

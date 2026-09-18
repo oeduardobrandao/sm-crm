@@ -33,6 +33,7 @@ vi.mock('../../components/InstagramGridPreview', () => ({
 
 import { fetchPosts, fetchInstagramFeed } from '../../api';
 import { AprovacoesPage } from '../AprovacoesPage';
+import { CONFIRM_HOLD_MS } from '../../hooks/usePostAdvance';
 const mockedFetchPosts = vi.mocked(fetchPosts);
 const mockedFetchInstagramFeed = vi.mocked(fetchInstagramFeed);
 
@@ -187,7 +188,11 @@ describe('AprovacoesPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Abrir A' }));
     expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}/1`);
     fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
-    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}/2`));
+    // The badge sits on A for CONFIRM_HOLD_MS before the dialog moves on (real timers here:
+    // the page's query client and router are easier to trust than a faked clock).
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}/2`), {
+      timeout: CONFIRM_HOLD_MS + 1500,
+    });
     expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
     // The approval refreshes the posts query so the approved post leaves the pending list.
     await waitFor(() =>
