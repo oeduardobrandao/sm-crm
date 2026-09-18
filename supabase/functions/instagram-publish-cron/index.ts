@@ -28,8 +28,14 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
 // Per-phase claim limits keep a single cron run bounded. The publish/retry phases
 // poll the Instagram container in-run (≤ ~6s each), so they're capped lower than
 // container creation to stay under the edge-function wall-clock at 1-min cadence.
+//
+// PUBLISH_LIMIT was 10 -- prod data (2026-09-18) showed peak-minute post counts
+// (agencies converging on round-hour schedule slots, e.g. 13:00 UTC) already hitting
+// 13-15 in a single minute across unrelated clients, so posts were spilling into a
+// second/third tick from volume alone, before any Meta-side slowness. Doubled to
+// match CONTAINER_LIMIT's margin over that observed peak.
 const CONTAINER_LIMIT = 25;
-const PUBLISH_LIMIT = 10;
+const PUBLISH_LIMIT = 20;
 const RETRY_LIMIT = 10;
 
 interface ClaimedPost {

@@ -7,6 +7,12 @@ import { TRIAL_MEDIA_SHAPE_ERROR } from "./publish-error-codes.ts";
 export { CAROUSEL_MAX_ITEMS, validateMedia };
 export type { MediaFile, ValidationError };
 
+// 10s was too tight: Meta's Graph API gets measurably slower under the load spike
+// every scheduler hits at round-hour marks (:00, :15, :30, :45), which was tripping
+// this on otherwise-healthy publishes (post-mortem 2026-09-18, posts 5172/4277/3049/
+// 4106/5545 -- all published fine on the cron's own retry a minute later).
+const GRAPH_TIMEOUT_MS = 20_000;
+
 // --- Token Decryption (duplicated across functions; centralized here) ---
 
 function getTokenEncryptionKey(): string {
@@ -173,7 +179,7 @@ export async function createSingleImageContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image_url: imageUrl, caption, access_token: token }),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) {
@@ -208,7 +214,7 @@ export async function createVideoContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -228,7 +234,7 @@ export async function createStoryImageContainer(
       image_url: imageUrl,
       access_token: token,
     }),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -248,7 +254,7 @@ export async function createStoryVideoContainer(
       video_url: videoUrl,
       access_token: token,
     }),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -275,7 +281,7 @@ export async function createCarouselChildContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -297,7 +303,7 @@ export async function createCarouselParentContainer(
       caption,
       access_token: token,
     }),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -770,7 +776,7 @@ export async function checkContainerStatus(
 ): Promise<"FINISHED" | "IN_PROGRESS" | "ERROR"> {
   const res = await fetch(
     `${GRAPH_BASE}/${containerId}?fields=status_code&access_token=${token}`,
-    { signal: AbortSignal.timeout(10_000) },
+    { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) },
   );
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -800,7 +806,7 @@ export async function publishContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ creation_id: containerId, access_token: token }),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -814,7 +820,7 @@ export async function fetchPermalink(
   try {
     const res = await fetch(
       `${GRAPH_BASE}/${mediaId}?fields=permalink&access_token=${token}`,
-      { signal: AbortSignal.timeout(10_000) },
+      { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) },
     );
     const data = await res.json();
     return data.permalink ?? null;
