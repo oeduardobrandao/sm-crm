@@ -139,12 +139,12 @@ function PostDetailContent({
 
   // Navigation/close guard: blocked while a save is in flight or failed; confirm when unsent input exists.
   const guard = useCallback((): boolean => {
-    if (dirty) return false;
+    if (dirty || submitting) return false;
     if (!panelDirty) return true;
     return window.confirm(
       t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'),
     );
-  }, [dirty, panelDirty, t]);
+  }, [dirty, submitting, panelDirty, t]);
 
   const go = useCallback(
     (target: HubPost | null) => {
@@ -338,7 +338,7 @@ function PostDetailContent({
         aria-label={
           dir === 'prev' ? t('posts.previous', 'Post anterior') : t('posts.next', 'Próximo post')
         }
-        disabled={!target || dirty}
+        disabled={!target || dirty || submitting}
         onClick={() => go(target)}
         className={`absolute z-30 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 text-[#222] flex items-center justify-center shadow disabled:opacity-30 disabled:cursor-default ${
           dir === 'prev' ? 'left-2 md:-left-14' : 'right-2 md:-right-14'
@@ -479,7 +479,7 @@ function PostDetailContent({
                       type="button"
                       aria-label={t('posts.goToPost', 'Ir para {{title}}', { title: p.titulo })}
                       aria-current={isCurrent ? 'true' : undefined}
-                      disabled={dirty}
+                      disabled={dirty || submitting}
                       onClick={() => (isCurrent ? undefined : go(p))}
                       className={`block w-[30px] h-[38px] rounded-md overflow-hidden ${isCurrent ? 'ring-2 ring-[var(--hub-txt)] ring-offset-1 ring-offset-[var(--hub-card)]' : 'opacity-60 hover:opacity-100'}`}
                     >
