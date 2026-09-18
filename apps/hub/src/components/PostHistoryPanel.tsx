@@ -11,7 +11,7 @@ import {
   selectComments,
   type HistoryEntry,
 } from '../lib/postHistory';
-import { getClientStatusLabel, VISIBLE_STATUSES } from '../lib/postView';
+import { getClientStatusLabel, pickPostCardKind, VISIBLE_STATUSES } from '../lib/postView';
 import { formatDate } from './PostCard';
 import type { HubPost, PostApproval, PostHistoryResponse } from '../types';
 
@@ -153,6 +153,9 @@ export function PostHistoryPanel({
   function renderEntry(entry: HistoryEntry) {
     const when = formatDate(entry.at, dateLang);
     if (entry.kind === 'send') {
+      // A text-only post shows its whole body on the Texto tab; media posts show the caption.
+      const versionText =
+        pickPostCardKind(post) === 'text' ? (entry.content ?? entry.text) : entry.text;
       return (
         <li key={entry.key} className="space-y-1">
           <div className="flex items-baseline justify-between gap-2">
@@ -164,7 +167,7 @@ export function PostHistoryPanel({
             <span className="text-[11px] hub-tx3">{when}</span>
           </div>
           <span className="text-[11px] hub-tx3">{actorLabel('team')}</span>
-          {entry.text && (
+          {versionText && (
             <div>
               <button
                 type="button"
@@ -179,7 +182,7 @@ export function PostHistoryPanel({
               </button>
               {openVersions.has(entry.key) && (
                 <p className="mt-1.5 rounded-[4px] hub-bg-soft px-3 py-2 text-[12px] hub-txt whitespace-pre-wrap">
-                  {entry.text}
+                  {versionText}
                 </p>
               )}
             </div>

@@ -21,6 +21,8 @@ export type HistoryEntry =
       version: number;
       /** Full text the client saw on this send (caption, or the text of a text-only post); null when the send has no snapshot or no text. */
       text: string | null;
+      /** Full body the client saw on this send (what a text-only post shows on its Texto tab); null when absent. */
+      content: string | null;
       diff: { before: string; after: string } | null;
     }
   | {
@@ -96,6 +98,7 @@ export function buildHistoryEntries(history: PostHistoryResponse): HistoryEntry[
         at: event.created_at,
         version,
         text: text || null,
+        content: event.snapshot?.conteudo_plain?.trim() || null,
         diff,
         id: event.id,
       });

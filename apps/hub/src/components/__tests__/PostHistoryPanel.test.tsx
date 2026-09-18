@@ -189,7 +189,14 @@ describe('PostHistoryPanel', () => {
 
   it('lets the client open the full text of every sent version, including the first', async () => {
     mockedFetch.mockResolvedValue(fullHistory);
-    render(<PostHistoryPanel embedded post={makePost()} token="tok" approvals={listApprovals} />);
+    render(
+      <PostHistoryPanel
+        embedded
+        post={makePost({ media: [{ id: 1 } as never] })}
+        token="tok"
+        approvals={listApprovals}
+      />,
+    );
     await screen.findByText('v1: enviado para aprovação');
 
     const buttons = screen.getAllByRole('button', { name: 'Ver versão completa' });
@@ -202,6 +209,36 @@ describe('PostHistoryPanel', () => {
     );
     fireEvent.click(screen.getAllByRole('button', { name: 'Ver versão completa' })[0]);
     expect(screen.getByText('legenda v2', { selector: 'p' })).toBeInTheDocument();
+  });
+
+  it('shows the whole body of a text-only post, even when it has no caption', async () => {
+    mockedFetch.mockResolvedValue({
+      events: [
+        {
+          id: 1,
+          to_status: 'enviado_cliente',
+          source: 'team',
+          created_at: '2026-09-11T12:30:00.000Z',
+          post_approval_id: null,
+          snapshot: { conteudo_plain: 'TELA 1: CAPA\nSe eu tivesse melasma', ig_caption: null },
+        },
+      ],
+      approvals: [],
+    });
+    render(
+      <PostHistoryPanel
+        embedded
+        post={makePost({ media: [], ig_caption: null })}
+        token="tok"
+        approvals={[]}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver versão completa' }));
+    expect(
+      screen.getByText(
+        (_, el) => el?.tagName === 'P' && !!el.textContent?.includes('TELA 1: CAPA'),
+      ),
+    ).toHaveTextContent('Se eu tivesse melasma');
   });
 
   it('embedded: fetches on mount and renders no toggle header', async () => {
