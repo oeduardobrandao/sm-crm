@@ -48,6 +48,24 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+// Mutable so a future test can flip a feature on for just its own describe
+// block; every other test keeps the flags off (default null), same
+// mutable-features pattern as WorkflowDrawer.test.tsx. No test in THIS file
+// reassigns it yet, so `let` alone trips prefer-const.
+// eslint-disable-next-line prefer-const
+let mockFeatures: Record<string, boolean> | null = null;
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    get features() {
+      return mockFeatures;
+    },
+    planName: null,
+    isLoading: false,
+    isUnlimited: true,
+  }),
+}));
+
 vi.mock('@/services/postMedia', () => ({
   getWorkflowCovers: vi.fn(),
 }));
@@ -281,6 +299,7 @@ function mockCounts(cleared: number) {
 describe('EntregasTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFeatures = null;
     mockedGetWorkflowsByCliente.mockResolvedValue([workflow()]);
     mockedGetWorkflowEtapas.mockResolvedValue([approvalEtapa, nextEtapa]);
     mockedGetDeadlineInfo.mockReturnValue({
@@ -399,6 +418,76 @@ describe('EntregasTab', () => {
     });
   });
 
+  // Fix A (revisão final): antes deste describe, `mockFeatures` era declarado
+  // mas NUNCA reatribuído para longe de `null` em nenhum teste deste arquivo,
+  // então schedulingEnabled/tiktokEnabled eram sempre false e
+  // handleApproveInternally jamais abria o AutoScheduleBatchDialog sob teste --
+  // zero cobertura comportamental para essa superfície nesta aba, apesar do
+  // mock (`mockFeatures`) já existir pronto para ligar. AutoScheduleBatchDialog
+  // NÃO é mockado neste arquivo (ao contrário de
+  // KanbanBatchAutoScheduleNudge.test.tsx), então os casos abaixo procuram o
+  // conteúdo real do AlertDialog.
+  describe('batch auto-schedule nudge after "Aprovar internamente" (spec peça 2 / fix A)', () => {
+    const futureIso = () => new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+
+    function approvedPost(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 1,
+        titulo: 'Post A',
+        status: 'aprovado_cliente',
+        platform: 'instagram',
+        scheduled_at: futureIso(),
+        ...overrides,
+      };
+    }
+
+    it('opens the batch dialog once scheduling is enabled, the client auto-publishes, and the approval is not a rearm', async () => {
+      mockFeatures = { feature_post_scheduling: true };
+      // hasLaterApprovalEtapa -> false makes decideApprovalAdvance's willRearm
+      // false (approvalAdvance.ts: willRearm = temAprovacaoAdiante), the
+      // !willRearm half of the gate this test exercises. Mirrors how
+      // KanbanBatchAutoScheduleNudge.test.tsx's makeCard()/renderBoard()
+      // construct the non-rearm case for KanbanView's equivalent handler.
+      mockedHasLaterApprovalEtapa.mockReturnValue(false);
+      mockedGetWorkflowPosts.mockResolvedValue([approvedPost()] as never);
+      renderTab({ ...CLIENTE, auto_publish_on_approval: true });
+
+      // mockCounts(0) from beforeEach -> cleared !== total -> approval-choice dialog.
+      fireEvent.click(await screen.findByText('forward-card-1'));
+      fireEvent.click(await screen.findByText('Avançar'));
+      fireEvent.click(await screen.findByText('Aprovar internamente'));
+
+      await waitFor(() => expect(mockedApprovePostsInternally).toHaveBeenCalledWith(1));
+      expect(await screen.findByText('Agendar os posts aprovados?')).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /Agendar 1 post/ })).toBeInTheDocument();
+    });
+
+    it('does not end up open when the same advance also completes a recorrente workflow cycle', async () => {
+      mockFeatures = { feature_post_scheduling: true };
+      mockedHasLaterApprovalEtapa.mockReturnValue(false);
+      mockedGetWorkflowPosts.mockResolvedValue([approvedPost()] as never);
+      mockedGetWorkflowsByCliente.mockResolvedValue([workflow({ recorrente: true })]);
+      mockedCompleteEtapaWithRearm.mockResolvedValue({
+        workflow: workflow({ status: 'concluido', recorrente: true }),
+        etapas: [],
+        rearmed: false,
+        rearmFailed: false,
+      });
+      renderTab({ ...CLIENTE, auto_publish_on_approval: true });
+
+      fireEvent.click(await screen.findByText('forward-card-1'));
+      fireEvent.click(await screen.findByText('Avançar'));
+      fireEvent.click(await screen.findByText('Aprovar internamente'));
+
+      await waitFor(() => expect(mockedApprovePostsInternally).toHaveBeenCalledWith(1));
+      // The recurring-completion dialog wins (its own workflowId={recurringWfId
+      // == null ? ... : null} render-time gate) -- settled state never shows
+      // both AlertDialogs at once.
+      expect(await screen.findByText('Criar Novo Ciclo')).toBeInTheDocument();
+      expect(screen.queryByText('Agendar os posts aprovados?')).not.toBeInTheDocument();
+    });
+  });
+
   it('reverts an etapa and refreshes the board', async () => {
     const { invalidateSpy } = renderTab();
     fireEvent.click(await screen.findByText('revert-card-1'));
@@ -465,6 +554,10 @@ describe('EntregasTab', () => {
       // `workspace-slug`/`hub-token` are the one deliberate exception (see
       // EntregasTab.tsx's module doc): they exist only to compute
       // BoardCard.hubUrl, not to pull any Hub-domain content.
+      // `auto-schedule-batch-posts` is AutoScheduleBatchDialog's own useQuery
+      // (a workflow_posts read, same domain as everything else here): it is
+      // always mounted (workflowId gates only whether it fetches), so React
+      // Query registers the cache entry even with workflowId still null.
       const { queryClient } = renderTab();
       await screen.findByText('Posts Agosto');
 
@@ -491,6 +584,7 @@ describe('EntregasTab', () => {
             'workflow-covers',
             'workspace-slug',
             'hub-token',
+            'auto-schedule-batch-posts',
           ]),
         );
       });

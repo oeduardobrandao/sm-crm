@@ -21,6 +21,13 @@ export interface Cliente {
   send_report_email?: boolean;
   include_ai_analysis?: boolean;
   foto_url?: string | null;
+  /**
+   * Agenda a publicação sozinho quando o CLIENTE aprova pelo Hub
+   * (supabase/functions/hub-approve/handler.ts:152-185). Já vinha selecionado em
+   * CLIENTE_SAFE_COLUMNS e exposto por clientes_v; só faltava no tipo. A CRM lê
+   * este campo para avisar quando uma aprovação manual deveria ter agendado.
+   */
+  auto_publish_on_approval?: boolean;
   // Central de Notificações, Fase 2 (spec 2026-09-02): "Pendências do Hub" digest
   // opt-in. event_email_unsub_at is set when the client clicks the unsubscribe
   // link in one of those emails — reactivating requires an explicit confirm in

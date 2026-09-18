@@ -82,6 +82,8 @@ vi.mock('@/store', () => ({
   getWorkflowPostsWithProperties: vi.fn(),
   addWorkflowPost: vi.fn(),
   updateWorkflowPost: vi.fn(),
+  isFinalClientApprovalCycle: vi.fn(() => true),
+  cardAutoScheduleGates: vi.fn(() => ({ autoPublishOnApproval: true, isFinalApprovalCycle: true })),
   removeWorkflowPost: vi.fn(),
   reorderWorkflowPosts: vi.fn(),
   sendPostsToCliente: vi.fn(),
