@@ -43,6 +43,9 @@ interface PostDetailDialogProps {
 
 type Flash = 'approved' | 'approvedScheduled' | 'correctionSent';
 
+/** How long the confirmation badge sits on the approved post before the card slides away. */
+const CONFIRM_HOLD_MS = 700;
+
 /** Which way the card slides in after a post-to-post move; scoped to the target post so a stale value never animates a URL-driven change. */
 type Enter = { id: number; dir: 'next' | 'prev' };
 
@@ -227,6 +230,14 @@ function PostDetailContent({
       ?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
   }, [post.id]);
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   async function submit(
     action: 'aprovado' | 'correcao',
     comentario = '',
@@ -242,7 +253,6 @@ function PostDetailContent({
       // Snapshot BEFORE invalidation: on Aprovações the post leaves the list and indices shift.
       const next = nav.nextPending;
       setPanelDirty(false);
-      if (next) onEnter({ id: next.id, dir: 'next' });
       onFlash(
         action === 'correcao'
           ? 'correctionSent'
@@ -250,7 +260,13 @@ function PostDetailContent({
             ? 'approvedScheduled'
             : 'approved',
       );
-      onNavigate(next?.id ?? null);
+      // Let the badge register on the post it confirms before the card moves on. The list
+      // refresh waits too: on Aprovações it would pull this post out from under the badge.
+      await new Promise((resolve) => window.setTimeout(resolve, CONFIRM_HOLD_MS));
+      if (mountedRef.current) {
+        if (next) onEnter({ id: next.id, dir: 'next' });
+        onNavigate(next?.id ?? null);
+      }
       onApprovalSubmitted();
     } catch {
       setError(t('posts.submitError', 'Não foi possível enviar. Tente novamente.'));

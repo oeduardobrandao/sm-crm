@@ -241,6 +241,19 @@ describe('PostDetailDialog', () => {
       expect(document.querySelector('.hub-slide-in-next')).toBeNull();
     });
 
+    it('shows the approved badge on the approved post first, then moves on', async () => {
+      submitApprovalMock.mockResolvedValue({ scheduled: false });
+      const { onNavigate, onApprovalSubmitted } = renderDialog(1);
+      fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+      const badge = await screen.findByRole('status');
+      expect(badge).toHaveTextContent(/aprovad/i);
+      expect(screen.getAllByRole('heading', { name: 'Primeiro' }).length).toBeGreaterThan(0);
+      expect(onNavigate).not.toHaveBeenCalled();
+      expect(onApprovalSubmitted).not.toHaveBeenCalled();
+      await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(3), { timeout: 2000 });
+      expect(onApprovalSubmitted).toHaveBeenCalledTimes(1);
+    });
+
     it('slides in from the right after approving and auto-advancing', async () => {
       submitApprovalMock.mockResolvedValue({ scheduled: false });
       render(<StatefulDialog initialId={1} />);
