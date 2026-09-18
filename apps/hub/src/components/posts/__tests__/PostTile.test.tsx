@@ -203,6 +203,31 @@ describe('PostTile', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
+  it('does not render the autoclean link when a cover image is present', () => {
+    render(
+      <PostTile
+        post={post({
+          media_autocleaned_at: '2026-08-05T05:30:00Z',
+          instagram_permalink: 'https://instagram.com/p/abc',
+        })}
+        mode="browse"
+        selected={false}
+        onOpen={noop}
+        onToggle={noop}
+      />,
+    );
+    expect(screen.queryByRole('link', { name: /Ver no Instagram/ })).not.toBeInTheDocument();
+  });
+
+  it('gives a selected tile the blue selection ring, not the default ring', () => {
+    const { container } = render(
+      <PostTile post={post()} mode="select" selected={true} onOpen={noop} onToggle={noop} />,
+    );
+    const tile = container.querySelector('[role="checkbox"]');
+    expect(tile).toHaveClass('ring-[3px]', 'ring-[#0095f6]');
+    expect(tile).not.toHaveClass('ring-black/5');
+  });
+
   describe('isFeedSelectable', () => {
     it('is false for stories even when media is present', () => {
       expect(isFeedSelectable(post({ tipo: 'stories', media: [media()] }))).toBe(false);

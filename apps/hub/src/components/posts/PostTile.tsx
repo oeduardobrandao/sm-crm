@@ -140,7 +140,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
     );
   }
 
-  const base = 'relative w-full aspect-[4/5] rounded-xl overflow-hidden ring-1 ring-black/5';
+  const base = 'relative w-full aspect-[4/5]';
 
   if (selecting && selectable) {
     return (
@@ -150,7 +150,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         aria-checked={selected}
         aria-label={t('instagramCard.selectAriaLabel', 'Selecionar publicação')}
         onClick={() => onToggle(post.id)}
-        className={`${base} block text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ${selected ? 'ring-[3px] ring-[#0095f6]' : ''}`}
+        className={`${base} block rounded-xl overflow-hidden text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ${selected ? 'ring-[3px] ring-[#0095f6]' : 'ring-1 ring-black/5'}`}
       >
         {body}
         <span
@@ -178,17 +178,17 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         aria-label={openLabel}
         disabled={inert}
         onClick={() => onOpen(post.id)}
-        className={`absolute inset-0 text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ${inert ? 'opacity-50 cursor-default' : 'hover:-translate-y-0.5 hover:shadow-lg'}`}
+        className={`absolute inset-0 rounded-xl overflow-hidden text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ring-1 ring-black/5 ${inert ? 'opacity-50 cursor-default' : 'hover:-translate-y-0.5 hover:shadow-lg'}`}
       >
         {body}
       </button>
-      {autocleanedLink && (
+      {autocleanedLink && !cover && (
         <a
           href={sanitizeExternalUrl(autocleanedLink.href)}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="absolute z-20 bottom-2 inset-x-0 flex justify-center items-center gap-1 text-[11px] font-semibold"
+          className="absolute z-20 bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 text-[11px] font-semibold"
           style={{ color: 'var(--hub-acc)' }}
         >
           {autocleanedLink.label}
