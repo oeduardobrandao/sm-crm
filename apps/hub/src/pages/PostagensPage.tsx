@@ -49,6 +49,11 @@ export function PostagensPage() {
         : false,
   });
 
+  // A failed refetch keeps the cached `data` (status flips to 'error' but data stays), so
+  // only treat the error as fatal when there is nothing to show: otherwise a background
+  // refetch failure would unmount the grid and an open dialog with an unsent correction.
+  const fatalError = isError && data === undefined;
+
   const allVisible = useMemo(
     () =>
       sortPostsChronologically((data?.posts ?? []).filter((p) => VISIBLE_STATUSES.has(p.status))),
@@ -188,7 +193,7 @@ export function PostagensPage() {
         <div className="flex justify-center py-20">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
-      ) : isError ? (
+      ) : fatalError ? (
         <div className="py-20 text-center text-sm hub-tx2">
           {t('postagens.loadError', 'Erro ao carregar postagens.')}
         </div>
@@ -220,7 +225,7 @@ export function PostagensPage() {
         </>
       )}
 
-      {!isLoading && !isError && (
+      {!isLoading && !fatalError && (
         <PostDetailDialog
           posts={visiblePosts}
           currentId={currentId}

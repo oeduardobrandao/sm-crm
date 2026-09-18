@@ -274,6 +274,28 @@ describe('PostagensPage', () => {
     expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
   });
 
+  it('keeps cached posts, chips and the open dialog when a background refetch fails', async () => {
+    const { qc } = renderPage(
+      `${BASE}/1`,
+      response({ posts: [post({ id: 1, titulo: 'A' }), post({ id: 2, titulo: 'B' })] }),
+    );
+    expect(await screen.findByRole('dialog', { name: 'A' })).toBeInTheDocument();
+    mockedFetchPosts.mockRejectedValue(new Error('flaky'));
+    await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
+    expect(qc.getQueryState(['hub-posts', 'token-publico'])?.status).toBe('error');
+    // react-query batches observer notifications on a timer; let the error render flush.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(screen.queryByText('Erro ao carregar postagens.')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'A' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir A', hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir B', hidden: true })).toBeInTheDocument();
+    expect(
+      screen.getByRole('group', { name: 'Filtrar por status', hidden: true }),
+    ).toBeInTheDocument();
+  });
+
   it('resets a fluxo filter whose option disappears after a refetch', async () => {
     const both = [
       post({ id: 1, titulo: 'A' }),

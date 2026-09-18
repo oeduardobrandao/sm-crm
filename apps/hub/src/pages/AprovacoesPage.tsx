@@ -41,6 +41,11 @@ export function AprovacoesPage() {
     enabled: showGrid && data?.instagramProfile != null,
   });
 
+  // A failed refetch keeps the cached `data` (status flips to 'error' but data stays), so
+  // only treat the error as fatal when there is nothing to show: otherwise a background
+  // refetch failure would unmount the grid and an open dialog with an unsent correction.
+  const fatalError = isError && data === undefined;
+
   const approvals = data?.postApprovals ?? [];
   const instagramProfile = data?.instagramProfile ?? null;
   const pending = useMemo(
@@ -78,7 +83,7 @@ export function AprovacoesPage() {
   // The count/empty line is only truthful once the fetch has succeeded; while loading or
   // after a failure "Tudo em dia" would claim an empty queue we haven't actually seen.
   const description =
-    isLoading || isError
+    isLoading || fatalError
       ? undefined
       : mode === 'select'
         ? t(
@@ -127,7 +132,7 @@ export function AprovacoesPage() {
         <div className="flex justify-center py-20">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
-      ) : isError ? (
+      ) : fatalError ? (
         <div className="py-20 text-center text-sm hub-tx2">
           {t('aprovacoes.loadError', 'Erro ao carregar aprovações.')}
         </div>
