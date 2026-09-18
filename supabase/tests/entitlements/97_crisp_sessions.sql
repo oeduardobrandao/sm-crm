@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- crisp_sessions (migration 20260925000010): the per-user Crisp Session
+-- crisp_sessions (migration 20260925000012): the per-user Crisp Session
 -- Continuity token behind window.CRISP_TOKEN_ID. Only crisp-identity's
 -- service-role client ever touches it.
 --
