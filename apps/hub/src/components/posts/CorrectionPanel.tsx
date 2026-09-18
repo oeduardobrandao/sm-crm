@@ -255,13 +255,17 @@ export function CorrectionPanel({
               <span className="text-[11px] text-rose-600 dark:text-rose-400">
                 {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
               </span>
-              <button
-                type="button"
-                onClick={submitStaged}
-                className="hub-btn-secondary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold transition-colors"
-              >
-                {t('shared.retrySave', 'Tentar novamente')}
-              </button>
+              {/* A failure remembered from an earlier mount leaves nothing staged here, and
+                  resubmitting the baseline would create a no-op pending suggestion. */}
+              {contentDirty && (
+                <button
+                  type="button"
+                  onClick={submitStaged}
+                  className="hub-btn-secondary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold transition-colors"
+                >
+                  {t('shared.retrySave', 'Tentar novamente')}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={discardFailedEdit}

@@ -228,8 +228,32 @@ describe('CorrectionPanel', () => {
         />,
       );
       expect(screen.getByText(FAILED)).toBeInTheDocument();
+      // A real failed save leaves the client's edit staged, so both ways out are offered.
+      fireEvent.change(screen.getByDisplayValue('Legenda original'), {
+        target: { value: 'Legenda editada' },
+      });
       expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Descartar edição' })).toBeEnabled();
+    });
+
+    it('offers only Descartar edição for a remembered failure with nothing staged to resend', () => {
+      const edit = makeEdit({ dirty: true, saveFailed: true, saveState: 'idle' });
+      render(
+        <CorrectionPanel
+          post={post()}
+          edit={edit}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      // Fresh mount: staged content equals the baseline, so a retry would create a no-op
+      // pending suggestion and block Aprovar.
+      expect(screen.getByText(FAILED)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Descartar edição' })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Descartar edição' }));
+      expect(edit.discardFailedSave).toHaveBeenCalledTimes(1);
     });
 
     it('Tentar novamente resubmits the staged caption exactly like Salvar edição', () => {
