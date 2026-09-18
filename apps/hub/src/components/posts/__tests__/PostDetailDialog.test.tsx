@@ -443,6 +443,12 @@ describe('PostDetailDialog', () => {
       await tick(CONFIRM_HOLD_MS);
       expect(onNavigate).toHaveBeenCalledWith(5);
       expect(calls).toEqual(['navigate', 'invalidate']);
+      // The URL has not followed yet (the router commits navigate() in a transition lane;
+      // here the mock never moves it): the outgoing post keeps its badge, no idle flash.
+      const live = screen.getByTestId('hub-post-card-slot');
+      expect(within(live).getByRole('heading', { name: 'A' })).toBeInTheDocument();
+      expect(within(live).getByRole('status')).toHaveTextContent('Post aprovado!');
+      expect(screen.queryByTestId('hub-post-card-ghost')).toBeNull();
     } finally {
       vi.useRealTimers();
     }
