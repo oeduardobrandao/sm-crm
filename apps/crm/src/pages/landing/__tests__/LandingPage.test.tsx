@@ -569,7 +569,7 @@ describe('LandingPage', () => {
     expect(freeQuestion).toHaveAttribute('aria-expanded', 'true');
     expect(
       screen.getByText(
-        'Sim. O plano Free permite começar sem custo. Para ver os limites, recursos e condições atuais de cada opção, compare os planos exibidos acima e escolha o que melhor atende à sua operação.',
+        'Sim. O plano Free não tem custo e serve para conhecer a plataforma. Os limites e recursos de cada plano estão na tabela acima.',
       ),
     ).toBeInTheDocument();
 
@@ -577,10 +577,10 @@ describe('LandingPage', () => {
 
     expect(freeQuestion).toHaveAttribute('aria-expanded', 'false');
     expect(installQuestion).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByText(/permite começar sem custo/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/serve para conhecer a plataforma/i)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        'Não. O Mesaas é 100% web e funciona em qualquer navegador moderno, no computador ou no celular. Nada para baixar, nada para configurar.',
+        'Não. O Mesaas roda no navegador, no computador ou no celular. Não tem nada para baixar nem instalar.',
       ),
     ).toBeInTheDocument();
   });
