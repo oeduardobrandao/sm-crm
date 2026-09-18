@@ -119,6 +119,13 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
       return json({ error: "Comentário muito longo." }, 400);
     }
     const correcaoComentario = correcaoComentarioRaw || null;
+    // aprovado gets the same trim + cap: without it a valid Hub token could
+    // store an unbounded string in post_approvals.comentario and forward it
+    // to the notification RPC.
+    if (action === "aprovado" && correcaoComentarioRaw.length > MAX_COMMENT_LENGTH) {
+      return json({ error: "Comentário muito longo." }, 400);
+    }
+    const approvalComentario = action === "mensagem" ? mensagemText : correcaoComentario;
 
     const db = deps.createDb();
 
@@ -181,7 +188,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         p_post_id: post_id,
         p_token: token,
         p_action: action,
-        p_comentario: action === "correcao" ? correcaoComentario : (comentario ?? null),
+        p_comentario: approvalComentario,
         p_is_workspace_user: false,
         p_new_status: newStatus,
         p_motivo: action === "correcao" ? (motivo ?? null) : null,
@@ -230,8 +237,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     const { error: notifErr } = await db.rpc("create_post_approval_notification", {
       p_post_id: post_id,
       p_action: action,
-      p_comentario:
-        action === "mensagem" ? mensagemText : action === "correcao" ? correcaoComentario : (comentario ?? null),
+      p_comentario: approvalComentario,
     });
     if (notifErr) {
       console.error("[hub-approve] notification creation failed:", notifErr);

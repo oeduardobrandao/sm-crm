@@ -719,6 +719,32 @@ Deno.test("hub-approve rejects a correcao comentario longer than 4000 characters
   assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
 });
 
+Deno.test("hub-approve rejects an aprovado comentario longer than 4000 characters", async () => {
+  const db = hubApproveDbForPost();
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: "a".repeat(4001) }),
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Comentário muito longo.");
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+});
+
+Deno.test("hub-approve trims an aprovado comentario and nulls a blank one", async () => {
+  for (const [input, expected] of [["  ótimo  ", "ótimo"], ["   ", null]] as const) {
+    const db = hubApproveDbForPost();
+    db.queue("workflow_posts", "update", { data: null, error: null });
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: input }),
+    }));
+    assertEquals(response.status, 200);
+    const rpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+    assert(rpc);
+    assertEquals((rpc.payload as { p_comentario: unknown }).p_comentario, expected);
+  }
+});
+
 Deno.test("hub-approve sends p_motivo: null for an approval", async () => {
   const db = hubApproveDbForPost();
   db.queue("workflow_posts", "update", { data: null, error: null });
