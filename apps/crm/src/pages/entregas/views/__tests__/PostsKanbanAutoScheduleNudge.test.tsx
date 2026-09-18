@@ -275,9 +275,15 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
         }),
       ],
     ]);
-    renderWithQuery(
+    const { qc } = renderWithQuery(
       <PostsKanbanView {...baseProps} posts={[post]} cardsByWorkflowId={cards} schedulingEnabled />,
     );
+    // Seeded so resolveUndoGuard (Fix 2) sees a live post to resolve against --
+    // without it, the guard alone would return 'stale' and mask whatever this
+    // test's own gate condition computes, making the assertion below vacuous.
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '901' }, over: { id: 'col:aprovado_cliente' } });
 
@@ -289,7 +295,12 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
   it('does not open the nudge when schedulingEnabled is false', async () => {
     mockUpdate.mockResolvedValue(resolvedRow() as never);
     const post = makePost({ id: 902, status: 'rascunho' });
-    renderWithQuery(<PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled={false} />);
+    const { qc } = renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled={false} />,
+    );
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '902' }, over: { id: 'col:aprovado_cliente' } });
 
@@ -303,9 +314,12 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
     mockUpdate.mockResolvedValue(resolvedRow() as never);
     const post = makePost({ id: 903, status: 'rascunho' });
     const cards = new Map([[7, makeCard({ allEtapas: TWO_OPEN_APPROVALS })]]);
-    renderWithQuery(
+    const { qc } = renderWithQuery(
       <PostsKanbanView {...baseProps} posts={[post]} cardsByWorkflowId={cards} schedulingEnabled />,
     );
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '903' }, over: { id: 'col:aprovado_cliente' } });
 
@@ -317,7 +331,12 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
   it('does not open the nudge for a drag into any other status', async () => {
     mockUpdate.mockResolvedValue(resolvedRow({ status: 'revisao_interna' }) as never);
     const post = makePost({ id: 904, status: 'rascunho' });
-    renderWithQuery(<PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled />);
+    const { qc } = renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled />,
+    );
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '904' }, over: { id: 'col:revisao_interna' } });
 
@@ -329,7 +348,7 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
   it('does not open the nudge for a post avulso (no BoardCard)', async () => {
     mockUpdate.mockResolvedValue(resolvedRow() as never);
     const post = makePost({ id: 905, status: 'rascunho', workflow_id: null });
-    renderWithQuery(
+    const { qc } = renderWithQuery(
       <PostsKanbanView
         {...baseProps}
         posts={[post]}
@@ -338,6 +357,9 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
         schedulingEnabled
       />,
     );
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '905' }, over: { id: 'col:aprovado_cliente' } });
 
@@ -430,9 +452,12 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
   it('does not open the nudge for a tiktok post when tiktokEnabled is false', async () => {
     mockUpdate.mockResolvedValue(resolvedRow({ platform: 'tiktok' }) as never);
     const post = makePost({ id: 907, status: 'rascunho', platform: 'tiktok' });
-    renderWithQuery(
+    const { qc } = renderWithQuery(
       <PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled tiktokEnabled={false} />,
     );
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '907' }, over: { id: 'col:aprovado_cliente' } });
 
@@ -444,9 +469,12 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
   it('does not open the nudge for a both post when tiktokEnabled is false', async () => {
     mockUpdate.mockResolvedValue(resolvedRow({ platform: 'both' }) as never);
     const post = makePost({ id: 908, status: 'rascunho', platform: 'both' });
-    renderWithQuery(
+    const { qc } = renderWithQuery(
       <PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled tiktokEnabled={false} />,
     );
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '908' }, over: { id: 'col:aprovado_cliente' } });
 
