@@ -1244,3 +1244,62 @@ body.landing-page:has(.lp-v2) {
     padding-top: 80px;
   }
 }
+
+/* ---------- hero motion ---------- */
+/* Staggered fade-up on load: headline, sub, offer pill, then the devices. */
+@keyframes lp2-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.lp-v2 .lp2-hero > .hero-title,
+.lp-v2 .lp2-hero > .hero-sub,
+.lp-v2 .lp2-hero > .lp2-offer,
+.lp-v2 .lp2-hero > .hero-stage {
+  animation: lp2-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.lp-v2 .lp2-hero > .hero-sub {
+  animation-delay: 80ms;
+}
+.lp-v2 .lp2-hero > .lp2-offer {
+  animation-delay: 160ms;
+}
+.lp-v2 .lp2-hero > .hero-stage {
+  animation-delay: 260ms;
+}
+
+/* Lid-open on the MacBook: starts tilted back and dimmed, settles flat as
+ * the visitor scrolls the first ~320px. `--lp2-lid` (0..1) is driven from a
+ * passive scroll listener in LandingPage on desktop; below 981px it is
+ * pinned to 1 so the mockup is simply flat. */
+.lp-v2 .lp2-hd {
+  --lp2-lid: 1;
+  perspective: 1400px;
+}
+.lp-v2 .lp2-hd-macbook {
+  transform-origin: 50% 100%;
+  transform: rotateX(calc(18deg * (1 - var(--lp2-lid)))) scale(calc(0.96 + 0.04 * var(--lp2-lid)));
+  opacity: calc(0.55 + 0.45 * var(--lp2-lid));
+  will-change: transform, opacity;
+}
+.lp-v2 .lp2-hd-iphone {
+  transform: translateY(calc(40px * (1 - var(--lp2-lid))));
+  opacity: calc(0.25 + 0.75 * var(--lp2-lid));
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-v2 .lp2-hero > .hero-title,
+  .lp-v2 .lp2-hero > .hero-sub,
+  .lp-v2 .lp2-hero > .lp2-offer,
+  .lp-v2 .lp2-hero > .hero-stage {
+    animation: none;
+  }
+  .lp-v2 .lp2-hd {
+    --lp2-lid: 1 !important;
+  }
+}
