@@ -136,12 +136,12 @@ export const LANDING: {
   agente: {
     title: 'Um agente de conteúdo que escreve com a voz de cada cliente.',
     paragraphs: [
-      'Conecte o Mesaas ao Claude e gere carrosséis, roteiros de Reels e legendas a partir do briefing, da identidade e dos posts que mais performaram de cada cliente. Sem sair do seu fluxo de trabalho.',
+      'Conecte o Mesaas ao Claude ou ao ChatGPT e gere carrosséis, roteiros de Reels e legendas a partir do briefing, da identidade e dos posts que mais performaram de cada cliente. Sem sair do seu fluxo de trabalho.',
     ],
     bullets: [
       'Aprende o briefing e a identidade de cada marca',
       'Usa os posts que mais performaram como referência',
-      'Funciona com claude.ai, Claude Desktop ou via API',
+      'Funciona com Claude, ChatGPT ou via API',
     ],
   },
   how: {
@@ -190,7 +190,7 @@ export const LANDING: {
     },
     {
       q: 'Uso Notion, ClickUp ou Trello hoje. Consigo migrar meus dados?',
-      a: 'Sim. O Mesaas importa direto o export do Notion, do Trello e do ClickUp, além de qualquer planilha em CSV. Você envia o arquivo, confere como as colunas foram mapeadas e confirma. Seus clientes e entregas entram no sistema sem precisar recadastrar nada.',
+      a: 'Sim. O Mesaas importa direto o export do Notion, do Trello e do ClickUp, além de qualquer planilha em CSV. Você envia o arquivo, confere como as colunas foram mapeadas e confirma. Seus clientes e entregas entram no sistema sem precisar recadastrar nada. Se preferir, peça ao seu agente de IA (Claude ou ChatGPT) conectado ao Mesaas para fazer a migração por você.',
     },
     {
       q: 'Funciona para freelancer ou só para agência?',
