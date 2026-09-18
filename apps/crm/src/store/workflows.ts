@@ -372,6 +372,39 @@ export function isFinalClientApprovalCycle(etapas: WorkflowEtapa[]): boolean {
   return openApprovalEtapas < 2;
 }
 
+/**
+ * Os dois campos derivados de `card` que `shouldOfferAutoSchedule` sempre
+ * recebe da mesma forma em três pontos de chamada (PostsKanbanView.tsx x2,
+ * WorkflowDrawer.tsx x1) -- fix F da revisão final. Os demais campos de cada
+ * chamada (`status`, `platform`, `schedulingFeatureEnabled`,
+ * `tiktokFeatureEnabled`) legitimamente diferem por call site e continuam
+ * montados à mão ali; só este par é a duplicação real.
+ *
+ * `card` nulo/undefined (post ainda sem card carregado, ou call site com
+ * `card?`) devolve os dois `false` -- fail closed, mesma postura de
+ * `isFinalClientApprovalCycle` para uma lista de etapas vazia.
+ *
+ * Assinatura estrutural (não `BoardCard` importado): mora aqui, e não em
+ * autoScheduleNudge.ts, porque já tem o conhecimento do formato de etapas de
+ * `isFinalClientApprovalCycle`; usar um tipo estrutural evita importar
+ * `Cliente` de `./clients` só por um campo opcional.
+ */
+export function cardAutoScheduleGates(
+  card:
+    | {
+        cliente?: { auto_publish_on_approval?: boolean | null } | null;
+        allEtapas: WorkflowEtapa[];
+      }
+    | null
+    | undefined,
+): { autoPublishOnApproval: boolean; isFinalApprovalCycle: boolean } {
+  if (!card) return { autoPublishOnApproval: false, isFinalApprovalCycle: false };
+  return {
+    autoPublishOnApproval: card.cliente?.auto_publish_on_approval === true,
+    isFinalApprovalCycle: isFinalClientApprovalCycle(card.allEtapas),
+  };
+}
+
 export interface CompleteEtapaWithRearmResult {
   workflow: Workflow;
   etapas: WorkflowEtapa[];

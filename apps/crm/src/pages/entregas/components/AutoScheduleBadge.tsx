@@ -22,7 +22,7 @@ export function AutoScheduleBadge({ onClick, needsDate }: AutoScheduleBadgeProps
   const title = needsDate ? TITLE_NEEDS_DATE : TITLE_READY;
   if (!onClick) {
     return (
-      <span className="auto-schedule-badge" title={title}>
+      <span className="auto-schedule-badge" title={title} aria-label={title}>
         <CalendarClock className="h-3 w-3" aria-hidden="true" /> Agendar
       </span>
     );
@@ -32,6 +32,7 @@ export function AutoScheduleBadge({ onClick, needsDate }: AutoScheduleBadgeProps
       type="button"
       className="auto-schedule-badge auto-schedule-badge--action"
       title={title}
+      aria-label={title}
       // O badge vive dentro de um card arrastável (kanban) e de uma linha
       // clicável (drawer): sem parar os dois eventos, o clique inicia um drag
       // ou expande o acordeão em vez de abrir o aviso.

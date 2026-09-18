@@ -24,11 +24,12 @@ vi.mock('sonner', () => ({
 // PostsKanbanView's onSuccess is built (and calls this function) eagerly for any
 // drop that resolves a card, even when the target status isn't aprovado_cliente.
 vi.mock('@/store', async () => {
-  const { isFinalClientApprovalCycle } = await import('@/store/workflows');
+  const { isFinalClientApprovalCycle, cardAutoScheduleGates } = await import('@/store/workflows');
   return {
     updateWorkflowPost: vi.fn(),
     reorderBoardPosts: vi.fn(),
     isFinalClientApprovalCycle,
+    cardAutoScheduleGates,
   };
 });
 
@@ -443,7 +444,7 @@ describe('persistent indicator on the card face (spec piece 3, kanban surface)',
     // Confirms the card actually rendered (so the absence below isn't just a
     // render failure) before asserting the badge itself is missing.
     await screen.findByText('Post Base');
-    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /agendar/i })).toBeNull();
   });
 
   it('renders the DragOverlay clone as the static (non-button) badge variant, not the interactive one', async () => {
@@ -454,7 +455,7 @@ describe('persistent indicator on the card face (spec piece 3, kanban surface)',
 
     // Live card: every gate passes (default ONE_OPEN_APPROVAL + auto_publish_on_approval
     // true + schedulingEnabled) -> the interactive <button> badge renders on the card face.
-    expect(await screen.findByRole('button', { name: /Agendar/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /agendar/i })).toBeInTheDocument();
 
     // Starting a drag mounts the DragOverlay clone -- a second PostBoardCardContent for
     // the same post, rendered by PostsKanbanView without onAutoScheduleClick -- alongside
@@ -466,10 +467,10 @@ describe('persistent indicator on the card face (spec piece 3, kanban surface)',
     const overlay = container.querySelector('.board-post-card--overlay');
     expect(overlay).not.toBeNull();
     expect(within(overlay as HTMLElement).getByText(/Agendar/)).toBeInTheDocument();
-    expect(within(overlay as HTMLElement).queryByRole('button', { name: /Agendar/ })).toBeNull();
+    expect(within(overlay as HTMLElement).queryByRole('button', { name: /agendar/i })).toBeNull();
 
     // The live card's own badge is unaffected by the drag start -- still the
     // clickable button, and still the only <button> badge in the document.
-    expect(screen.getAllByRole('button', { name: /Agendar/ })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /agendar/i })).toHaveLength(1);
   });
 });

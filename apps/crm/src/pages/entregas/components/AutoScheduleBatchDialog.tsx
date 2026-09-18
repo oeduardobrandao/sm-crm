@@ -26,6 +26,11 @@ export interface AutoScheduleBatchDialogProps {
    *  esse flag além de feature_post_scheduling, então sem ele um post
    *  tiktok/both não é agendável mesmo com data válida. */
   tiktokFeatureEnabled: boolean;
+  /** Espelho client-side do ciclo final de aprovação (PR#400) para O FLUXO de
+   *  `workflowId`, avaliado pelo caller no ponto de escrita/render que tem o
+   *  `card` (ou o `willRearm` derivado dele) em mãos. Ver nota de segurança
+   *  abaixo -- este componente NÃO recalcula isso por conta própria. */
+  isFinalApprovalCycle: boolean;
   onClose: () => void;
   onScheduled: () => void;
 }
@@ -33,6 +38,18 @@ export interface AutoScheduleBatchDialogProps {
 /**
  * Resumo da aprovação em lote (peça 2 da spec). Os gates (auto_publish_on_approval,
  * feature_post_scheduling, !willRearm) são do caller; aqui só a contagem e o loop.
+ *
+ * Segurança (PR#400 / fix da revisão final, item B): `isFinalApprovalCycle` é um
+ * gate OBRIGATÓRIO que este componente aplica sozinho (linha do early return
+ * abaixo), não só um valor que os três callers (KanbanView, EntregasTab,
+ * WorkflowDrawer) prometem já ter checado antes de setar `workflowId`. Os três
+ * hoje calculam esse booleano por dois caminhos equivalentes mas estruturalmente
+ * diferentes (KanbanView/EntregasTab: `!willRearm`, um cálculo baseado em ORDEM
+ * via `hasLaterApprovalEtapa`; WorkflowDrawer: `isFinalClientApprovalCycle(card.allEtapas)`,
+ * baseado em STATUS) -- concordam em todo estado alcançável hoje, mas nada além
+ * deste early return impede um quarto caller futuro, ou um refactor de
+ * `willRearm`, de reabrir exatamente a falha do PR#400. Por isso o gate mora
+ * AQUI, não só nos três call sites.
  *
  * Por que buscar em vez de usar um snapshot do board: nem KanbanView nem
  * EntregasTab têm as linhas de workflow_posts do fluxo (só contagens por fluxo),
@@ -46,6 +63,7 @@ export interface AutoScheduleBatchDialogProps {
 export function AutoScheduleBatchDialog({
   workflowId,
   tiktokFeatureEnabled,
+  isFinalApprovalCycle,
   onClose,
   onScheduled,
 }: AutoScheduleBatchDialogProps) {
@@ -84,7 +102,13 @@ export function AutoScheduleBatchDialog({
   const blockedByTikTok = (p: { platform?: string | null }) =>
     targetsTikTokService(p.platform) && !tiktokFeatureEnabled;
   const eligible = byDate.eligible.filter((p) => !blockedByTikTok(p));
-  const missingDate = [...byDate.missingDate, ...byDate.eligible.filter(blockedByTikTok)];
+  // Duas causas distintas de "não vai no clique único" (fix da revisão, item C):
+  // sem data válida (agenda manualmente) vs. data válida mas bloqueado só pelo
+  // add-on de TikTok (nem "agende manualmente" resolve -- o endpoint do TikTok
+  // rejeita sem o feature flag). Misturar os dois sob "Sem data válida" é
+  // literalmente falso para o segundo grupo.
+  const tiktokBlocked = byDate.eligible.filter(blockedByTikTok);
+  const missingDate = byDate.missingDate;
 
   // Nada aprovado (aprovação em lote sem efeito, ou tudo já agendado): não vale
   // um diálogo vazio.
@@ -92,7 +116,7 @@ export function AutoScheduleBatchDialog({
     if (workflowId != null && !isLoading && posts && approved.length === 0) onClose();
   }, [workflowId, isLoading, posts, approved.length, onClose]);
 
-  if (workflowId == null) return null;
+  if (workflowId == null || !isFinalApprovalCycle) return null;
 
   const handleScheduleAll = async () => {
     setRunning(true);
@@ -149,17 +173,30 @@ export function AutoScheduleBatchDialog({
           </div>
         )}
 
+        {tiktokBlocked.length > 0 && (
+          <div className="px-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+            <p className="font-semibold">Bloqueado: requer o recurso do TikTok.</p>
+            <ul>
+              {tiktokBlocked.map((p) => (
+                <li key={p.id}>{p.titulo || 'Post sem título'}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <AlertDialogFooter>
           <AlertDialogCancel disabled={running}>Agora não</AlertDialogCancel>
           {/* isFetching trava a ação enquanto a busca está em voo: com staleTime 0
               toda reabertura refetcha, e agir sobre a lista anterior mandaria
-              posts já agendados ao servidor (422). */}
-          <Button
-            onClick={handleScheduleAll}
-            disabled={running || isFetching || eligible.length === 0}
-          >
-            {`Agendar ${eligible.length} ${plural(eligible.length, 'post', 'posts')}`}
-          </Button>
+              posts já agendados ao servidor (422). Botão totalmente OMITIDO (não
+              só desabilitado) quando não há nenhum post agendável agora -- fix D
+              da revisão: um "Agendar 0 posts" clicável-parecendo-mas-não era um
+              CTA morto. */}
+          {eligible.length > 0 && (
+            <Button onClick={handleScheduleAll} disabled={running || isFetching}>
+              {`Agendar ${eligible.length} ${plural(eligible.length, 'post', 'posts')}`}
+            </Button>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

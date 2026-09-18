@@ -35,7 +35,7 @@ import {
   Send,
   ShieldCheck,
 } from 'lucide-react';
-import { isFinalClientApprovalCycle, reorderBoardPosts, type ActivePost } from '@/store';
+import { cardAutoScheduleGates, reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoScheduleNudge';
 import {
@@ -219,10 +219,9 @@ function PostBoardCardContent({
   const offerAutoSchedule = shouldOfferAutoSchedule({
     status: post.status,
     platform: post.platform,
-    autoPublishOnApproval: card?.cliente?.auto_publish_on_approval === true,
     schedulingFeatureEnabled: schedulingEnabled === true,
     tiktokFeatureEnabled: tiktokEnabled === true,
-    isFinalApprovalCycle: card ? isFinalClientApprovalCycle(card.allEtapas) : false,
+    ...cardAutoScheduleGates(card),
   });
 
   return (
@@ -743,10 +742,9 @@ export function PostsKanbanView({
         const offer = shouldOfferAutoSchedule({
           status: updated?.status ?? move.forward.canonical,
           platform: updated?.platform ?? post.platform,
-          autoPublishOnApproval: card?.cliente?.auto_publish_on_approval === true,
           schedulingFeatureEnabled: schedulingEnabled === true,
           tiktokFeatureEnabled: tiktokEnabled === true,
-          isFinalApprovalCycle: card ? isFinalClientApprovalCycle(card.allEtapas) : false,
+          ...cardAutoScheduleGates(card),
         });
         if (!offer) return;
         setNudgePost({

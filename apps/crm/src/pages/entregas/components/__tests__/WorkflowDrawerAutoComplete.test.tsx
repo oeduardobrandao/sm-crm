@@ -43,6 +43,7 @@ const store = vi.hoisted(() => ({
   movePostsToNewFlow: vi.fn(),
   movePostsToExistingFlow: vi.fn(),
   isFinalClientApprovalCycle: vi.fn(() => true),
+  cardAutoScheduleGates: vi.fn(() => ({ autoPublishOnApproval: true, isFinalApprovalCycle: true })),
 }));
 vi.mock('../../../../store', () => store);
 

@@ -38,9 +38,14 @@ export function isEligibleToScheduleNow(
 /**
  * True quando agendar este post passa pelo serviço do TikTok. Decisão 6 da spec:
  * `both` vai SÓ pelo TikTok (o servidor do TikTok valida os dois lados). Esta é a
- * única definição da regra no código — `scheduleApprovedPost` importa esta função
- * em vez de repetir a comparação, para que o gate de feature e o roteamento real
- * nunca possam divergir se uma plataforma nova aparecer.
+ * única definição da regra de roteamento/gate de agendamento — `scheduleApprovedPost`
+ * importa esta função em vez de repetir a comparação, para que o gate de feature e o
+ * roteamento real nunca possam divergir se uma plataforma nova aparecer.
+ * `ScheduleButton.tsx` computa a mesma comparação (`platform === 'tiktok' || 'both'`)
+ * duas vezes, de forma independente — mas para decidir qual chip de status
+ * por-plataforma exibir num post `both`, não para gate de feature ou roteamento de
+ * endpoint. É uma coincidência de expressão, não a mesma regra; não faz sentido
+ * acoplar as duas.
  */
 export function targetsTikTokService(platform: string | null | undefined): boolean {
   return platform === 'tiktok' || platform === 'both';

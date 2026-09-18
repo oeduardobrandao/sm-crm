@@ -151,7 +151,7 @@ interface KanbanViewBaseProps {
    *  `onRecurring` abaixo) -- lido aqui só para exclusão mútua com o diálogo de
    *  agendamento em lote deste componente (achado de review pós-Task 4): os dois
    *  são AlertDialogs, e a mesma chamada de handleApproveInternally pode setar
-   *  batchScheduleWfId e, na sequência, terminar concluindo um fluxo recorrente
+   *  batchSchedule e, na sequência, terminar concluindo um fluxo recorrente
    *  (advanceEtapa chama onRecurring), empilhando os dois. O de conclusão de
    *  ciclo tem precedência -- é um "nudge, não enforcement": os posts continuam
    *  aprovado_cliente e o indicador persistente da Task 5 ainda os oferece. */
@@ -539,8 +539,16 @@ export function KanbanView({
     card: BoardCard;
     willRearm: boolean;
   } | null>(null);
-  /** Fluxo cujo resumo de agendamento em lote está aberto (peça 2 da spec). */
-  const [batchScheduleWfId, setBatchScheduleWfId] = useState<number | null>(null);
+  /** Fluxo cujo resumo de agendamento em lote está aberto (peça 2 da spec), com o
+   *  booleano do gate de segurança (fix B da revisão final) capturado no MOMENTO
+   *  em que `!willRearm` foi checado em handleApproveInternally -- não
+   *  recalculado depois, no render, quando o card já pode não estar mais no
+   *  mesmo estado. AutoScheduleBatchDialog agora exige essa prop e a usa como
+   *  seu próprio gate interno. */
+  const [batchSchedule, setBatchSchedule] = useState<{
+    workflowId: number;
+    isFinalApprovalCycle: boolean;
+  } | null>(null);
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
   // Comandos de um processo individual (Task 7), compartilhados pelos botões
@@ -1060,12 +1068,12 @@ export function KanbanView({
         const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!, opts);
         if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
           // Recurring-completion wins over the batch-schedule nudge (fix round 1's
-          // render-time gate). Fix round 2: also CLEAR batchScheduleWfId here, not
+          // render-time gate). Fix round 2: also CLEAR batchSchedule here, not
           // just suppress it -- otherwise, once the user dismisses
           // RecurringWorkflowDialog (recurringWfId -> null again), the gate flips
           // back open and the nudge resurfaces for a workflow already dealt with.
           // The opportunity for this advance is meant to be gone for good.
-          setBatchScheduleWfId((prev) => (prev === wfId ? null : prev));
+          setBatchSchedule((prev) => (prev?.workflowId === wfId ? null : prev));
           onRecurring(card.workflow.id!);
         } else {
           toast.success(successMessage);
@@ -1139,12 +1147,19 @@ export function KanbanView({
     // advanceEtapa: advanceEtapa captura o próprio erro e devolve void, então
     // não existe sinal de sucesso para esperar (decisão 4). O gate !willRearm já
     // garante que nenhum rearm vai devolver estes posts para rascunho.
+    //
+    // isFinalApprovalCycle: !willRearm -- capturado AQUI, no mesmo instante em
+    // que willRearm foi checado, e carregado junto com o workflowId (fix B da
+    // revisão final). AutoScheduleBatchDialog agora exige essa prop como seu
+    // próprio gate interno; sem carregá-la junto do id, o valor teria que ser
+    // recalculado no render, quando `card` pode já não refletir mais o mesmo
+    // estado que motivou a decisão.
     if (
       !willRearm &&
       schedulingEnabled === true &&
       card.cliente?.auto_publish_on_approval === true
     ) {
-      setBatchScheduleWfId(card.workflow.id!);
+      setBatchSchedule({ workflowId: card.workflow.id!, isFinalApprovalCycle: !willRearm });
     }
     await advanceEtapa(card, 'Posts aprovados internamente — etapa concluída!');
   };
@@ -1534,11 +1549,12 @@ export function KanbanView({
         // diálogo de conclusão de ciclo para este mesmo avanço -- ele tem
         // precedência, então o resumo em lote nem monta com um workflowId
         // não-nulo neste render.
-        workflowId={recurringWfId == null ? batchScheduleWfId : null}
+        workflowId={recurringWfId == null ? (batchSchedule?.workflowId ?? null) : null}
         tiktokFeatureEnabled={tiktokEnabled === true}
-        onClose={() => setBatchScheduleWfId(null)}
+        isFinalApprovalCycle={batchSchedule?.isFinalApprovalCycle ?? false}
+        onClose={() => setBatchSchedule(null)}
         onScheduled={() => {
-          setBatchScheduleWfId(null);
+          setBatchSchedule(null);
           onRefresh();
         }}
       />

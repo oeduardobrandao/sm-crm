@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isFinalClientApprovalCycle } from '../workflows';
+import { isFinalClientApprovalCycle, cardAutoScheduleGates } from '../workflows';
 import type { WorkflowEtapa } from '../workflows';
 
 // Only `tipo` and `status` matter to the rule; the rest is filler so the
@@ -77,5 +77,65 @@ describe('isFinalClientApprovalCycle', () => {
   // BoardCard (post avulso), which is out of scope for this feature.
   it('is false for an empty etapa list', () => {
     expect(isFinalClientApprovalCycle([])).toBe(false);
+  });
+});
+
+// Fix F (revisão final): extrai a dupla {autoPublishOnApproval, isFinalApprovalCycle}
+// que PostsKanbanView.tsx (x2) e WorkflowDrawer.tsx (x1) montavam à mão de forma
+// idêntica a partir do card.
+describe('cardAutoScheduleGates', () => {
+  const oneOpenApproval = [etapa(1, 'aprovacao_cliente', 'ativo')];
+  const twoOpenApprovals = [
+    etapa(1, 'aprovacao_cliente', 'ativo'),
+    etapa(2, 'aprovacao_cliente', 'pendente'),
+  ];
+
+  it('returns both false for a nullish card -- fail closed, same posture as an empty etapa list', () => {
+    expect(cardAutoScheduleGates(null)).toEqual({
+      autoPublishOnApproval: false,
+      isFinalApprovalCycle: false,
+    });
+    expect(cardAutoScheduleGates(undefined)).toEqual({
+      autoPublishOnApproval: false,
+      isFinalApprovalCycle: false,
+    });
+  });
+
+  it('reads auto_publish_on_approval from card.cliente and delegates isFinalApprovalCycle to isFinalClientApprovalCycle', () => {
+    expect(
+      cardAutoScheduleGates({
+        cliente: { auto_publish_on_approval: true },
+        allEtapas: oneOpenApproval,
+      }),
+    ).toEqual({ autoPublishOnApproval: true, isFinalApprovalCycle: true });
+  });
+
+  it('is false for autoPublishOnApproval when the client does not auto-publish, independent of the etapas', () => {
+    expect(
+      cardAutoScheduleGates({
+        cliente: { auto_publish_on_approval: false },
+        allEtapas: oneOpenApproval,
+      }),
+    ).toEqual({ autoPublishOnApproval: false, isFinalApprovalCycle: true });
+  });
+
+  it('is false for isFinalApprovalCycle in the first cycle of a dual-approval fluxo (PR#400)', () => {
+    expect(
+      cardAutoScheduleGates({
+        cliente: { auto_publish_on_approval: true },
+        allEtapas: twoOpenApprovals,
+      }),
+    ).toEqual({ autoPublishOnApproval: true, isFinalApprovalCycle: false });
+  });
+
+  it('treats a missing or null cliente as auto_publish_on_approval false', () => {
+    expect(cardAutoScheduleGates({ cliente: undefined, allEtapas: oneOpenApproval })).toEqual({
+      autoPublishOnApproval: false,
+      isFinalApprovalCycle: true,
+    });
+    expect(cardAutoScheduleGates({ cliente: null, allEtapas: oneOpenApproval })).toEqual({
+      autoPublishOnApproval: false,
+      isFinalApprovalCycle: true,
+    });
   });
 });

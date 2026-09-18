@@ -117,7 +117,14 @@ export default function EntregasTab() {
   const { features } = useWorkspaceLimits();
   const schedulingEnabled = features?.feature_post_scheduling === true;
   const tiktokEnabled = features?.feature_tiktok === true;
-  const [batchScheduleWfId, setBatchScheduleWfId] = useState<number | null>(null);
+  // Carrega o booleano do gate de segurança (fix B da revisão final) junto do
+  // id, capturado no momento em que !willRearm foi checado em
+  // handleApproveInternally -- AutoScheduleBatchDialog agora exige essa prop e
+  // a usa como seu próprio gate interno, não recalculado depois no render.
+  const [batchSchedule, setBatchSchedule] = useState<{
+    workflowId: number;
+    isFinalApprovalCycle: boolean;
+  } | null>(null);
 
   const { data: clienteWorkflowsRaw } = useQuery({
     queryKey: ['workflowsByCliente', clienteId],
@@ -465,17 +472,25 @@ export default function EntregasTab() {
       // ANTES do avanço de etapa de propósito -- se completeEtapaForAdvance
       // lançar, o catch abaixo mostra o erro do avanço, mas os posts já estão
       // aprovados e o aviso de agendamento continua válido.
+      //
+      // isFinalApprovalCycle: !willRearm -- capturado AQUI, no mesmo instante em
+      // que willRearm foi checado, e carregado junto do workflowId (fix B da
+      // revisão final). AutoScheduleBatchDialog agora exige essa prop como seu
+      // próprio gate interno.
       if (!willRearm && schedulingEnabled && card.cliente?.auto_publish_on_approval === true) {
-        setBatchScheduleWfId(card.workflow.id!);
+        setBatchSchedule({ workflowId: card.workflow.id!, isFinalApprovalCycle: !willRearm });
       }
       const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!);
       if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
         // Recurring-completion wins over the batch-schedule nudge (fix round 1's
-        // render-time gate). Fix round 2: also CLEAR batchScheduleWfId here, not
+        // render-time gate). Fix round 2: also CLEAR batchSchedule here, not
         // just suppress it -- otherwise, once the recurring dialog is dismissed
         // (recurringWfId -> null again), the gate flips back open and the nudge
-        // resurfaces for a workflow already dealt with.
-        setBatchScheduleWfId(null);
+        // resurfaces for a workflow already dealt with. Fix G (revisão final):
+        // id-guarded like KanbanView's equivalent clear, not unconditional --
+        // harmless here in practice (same card, same tick) but keeps the two
+        // call sites' clear semantics identical.
+        setBatchSchedule((prev) => (prev?.workflowId === card.workflow.id ? null : prev));
         setRecurringWfId(card.workflow.id!);
       } else {
         refreshCards();
@@ -752,14 +767,15 @@ export default function EntregasTab() {
       <AutoScheduleBatchDialog
         // Exclusão mútua com o AlertDialog "Recurring workflow confirm" acima
         // (fix pós-review da Task 4): os dois vivem neste mesmo componente, e a
-        // mesma chamada de handleApproveInternally pode setar batchScheduleWfId
+        // mesma chamada de handleApproveInternally pode setar batchSchedule
         // e depois, via completeEtapaForAdvance devolvendo concluido+recorrente,
         // setar recurringWfId também -- o de conclusão de ciclo tem precedência.
-        workflowId={recurringWfId == null ? batchScheduleWfId : null}
+        workflowId={recurringWfId == null ? (batchSchedule?.workflowId ?? null) : null}
         tiktokFeatureEnabled={tiktokEnabled}
-        onClose={() => setBatchScheduleWfId(null)}
+        isFinalApprovalCycle={batchSchedule?.isFinalApprovalCycle ?? false}
+        onClose={() => setBatchSchedule(null)}
         onScheduled={() => {
-          setBatchScheduleWfId(null);
+          setBatchSchedule(null);
           refreshCards();
         }}
       />

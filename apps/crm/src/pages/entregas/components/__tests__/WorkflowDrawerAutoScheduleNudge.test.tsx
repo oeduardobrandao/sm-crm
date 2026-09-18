@@ -77,12 +77,13 @@ vi.mock('@/lib/supabase', () => ({
 // make that assertion meaningless. Every BoardCard fixture below therefore
 // carries a real `allEtapas` array.
 vi.mock('@/store', async () => {
-  const { isFinalClientApprovalCycle } = await import('@/store/workflows');
+  const { isFinalClientApprovalCycle, cardAutoScheduleGates } = await import('@/store/workflows');
   return {
     getWorkflowPostsWithProperties: vi.fn(),
     addWorkflowPost: vi.fn(),
     updateWorkflowPost: vi.fn(),
     isFinalClientApprovalCycle,
+    cardAutoScheduleGates,
     removeWorkflowPost: vi.fn(),
     reorderWorkflowPosts: vi.fn(),
     sendPostsToCliente: vi.fn(),
@@ -682,7 +683,7 @@ describe('persistent indicator (spec piece 3)', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    expect(await screen.findByRole('button', { name: /Agendar/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /agendar/i })).toBeInTheDocument();
   });
 
   // The P0 the Codex review caught missing from this section of the spec.
@@ -694,7 +695,7 @@ describe('persistent indicator (spec piece 3)', () => {
     renderDrawer(qc, { card: { allEtapas: TWO_OPEN_APPROVALS } });
 
     await screen.findByText('Post A');
-    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /agendar/i })).toBeNull();
   });
 
   it('hides the badge when feature_post_scheduling is off', async () => {
@@ -704,7 +705,7 @@ describe('persistent indicator (spec piece 3)', () => {
     renderDrawer(qc);
 
     await screen.findByText('Post A');
-    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /agendar/i })).toBeNull();
   });
 
   it('hides the badge when the client does not auto-publish on approval', async () => {
@@ -729,7 +730,7 @@ describe('persistent indicator (spec piece 3)', () => {
     });
 
     await screen.findByText('Post A');
-    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /agendar/i })).toBeNull();
   });
 
   it('hides the badge for a post in any other status', async () => {
@@ -739,7 +740,7 @@ describe('persistent indicator (spec piece 3)', () => {
     renderDrawer(qc);
 
     await screen.findByText('Post A');
-    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /agendar/i })).toBeNull();
   });
 
   // Decisão 5 da spec: o badge usa o MESMO gate do aviso, senão um post tiktok
@@ -753,7 +754,7 @@ describe('persistent indicator (spec piece 3)', () => {
     renderDrawer(qc);
 
     await screen.findByText('Post A');
-    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /agendar/i })).toBeNull();
   });
 
   it('hides the badge for a both post when feature_tiktok is off', async () => {
@@ -763,7 +764,7 @@ describe('persistent indicator (spec piece 3)', () => {
     renderDrawer(qc);
 
     await screen.findByText('Post A');
-    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /agendar/i })).toBeNull();
   });
 
   it('shows the badge for a tiktok post when feature_tiktok is on', async () => {
@@ -772,7 +773,7 @@ describe('persistent indicator (spec piece 3)', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    expect(await screen.findByRole('button', { name: /Agendar/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /agendar/i })).toBeInTheDocument();
   });
 
   it('shows the badge for an instagram post when feature_tiktok is off', async () => {
@@ -781,7 +782,7 @@ describe('persistent indicator (spec piece 3)', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    expect(await screen.findByRole('button', { name: /Agendar/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /agendar/i })).toBeInTheDocument();
   });
 
   it('clicking the badge opens the same nudge dialog', async () => {
@@ -791,7 +792,7 @@ describe('persistent indicator (spec piece 3)', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Agendar/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /agendar/i }));
 
     expect(await screen.findByTestId('nudge')).toHaveTextContent('1');
   });

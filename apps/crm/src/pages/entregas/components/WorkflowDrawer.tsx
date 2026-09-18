@@ -95,6 +95,7 @@ import {
   type DetachPostsResult,
   type DetachKeepingProcessResult,
   isFinalClientApprovalCycle,
+  cardAutoScheduleGates,
 } from '../../../store';
 import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoScheduleNudge';
 import { AutoSchedulePromptDialog, type AutoSchedulePromptPost } from './AutoSchedulePromptDialog';
@@ -187,10 +188,9 @@ export function WorkflowDrawer({
     shouldOfferAutoSchedule({
       status: updated.status,
       platform: updated.platform,
-      autoPublishOnApproval: card.cliente?.auto_publish_on_approval === true,
       schedulingFeatureEnabled: schedulingEnabled,
       tiktokFeatureEnabled: tiktokEnabled,
-      isFinalApprovalCycle: isFinalClientApprovalCycle(card.allEtapas),
+      ...cardAutoScheduleGates(card),
     });
 
   const maybeNudge = (updated: WorkflowPost) => {
@@ -1161,6 +1161,11 @@ export function WorkflowDrawer({
       <AutoScheduleBatchDialog
         workflowId={batchScheduleWfId}
         tiktokFeatureEnabled={tiktokEnabled}
+        // Computado fresco aqui: `card` é uma prop estável deste drawer (um só
+        // fluxo por vida do componente), então não precisa de um estado próprio
+        // para carregar o booleano até o render, ao contrário de KanbanView e
+        // EntregasTab (board com vários cards).
+        isFinalApprovalCycle={isFinalClientApprovalCycle(card.allEtapas)}
         onClose={() => setBatchScheduleWfId(null)}
         onScheduled={() => {
           setBatchScheduleWfId(null);
