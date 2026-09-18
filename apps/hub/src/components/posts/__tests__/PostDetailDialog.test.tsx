@@ -856,6 +856,22 @@ describe('PostDetailDialog', () => {
       expect(onNavigate).toHaveBeenCalledWith(target);
     });
 
+    it('Aprovar asks before dropping an unsent history comment; cancel does not submit', async () => {
+      submitApprovalMock.mockResolvedValue({ scheduled: false });
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      renderDialog(1);
+      await typeHistoryDraft();
+      fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+      expect(confirm).toHaveBeenCalledWith('Descartar as alterações não enviadas?');
+      expect(submitApprovalMock).not.toHaveBeenCalled();
+      expect(screen.getByPlaceholderText(DRAFT_PLACEHOLDER)).toHaveValue('rascunho');
+
+      confirm.mockReturnValue(true);
+      fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+      await act(async () => {});
+      expect(submitApprovalMock).toHaveBeenCalledTimes(1);
+    });
+
     it('asks to discard on prev', async () => {
       const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
       const { onNavigate } = renderDialog(2);

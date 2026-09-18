@@ -346,6 +346,12 @@ function PostDetailContent({
     motivo: CorrectionReason | null = null,
   ) {
     if (submitting || locked) return;
+    // The card is about to leave: an unsent comment typed in the Histórico tab would go with it.
+    if (
+      historyDirty &&
+      !window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'))
+    )
+      return;
     setSubmitting(true);
     setError(null);
     try {
