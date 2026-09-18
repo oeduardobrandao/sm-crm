@@ -27,6 +27,7 @@ import {
 } from '../lib/permissions';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
 import { clearPopupSession } from '../hooks/popupSession';
+import { readCrispSessionCache, writeCrispSessionCache } from '../lib/crispSession';
 
 interface Profile {
   id: string;
@@ -385,6 +386,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [sessionReady, userId]);
 
+  // Latest known display name, for the Session Continuity rebind inside the
+  // identify effect below. That effect is keyed on [userId, user?.email] on
+  // purpose (a name change must not re-invoke crisp-identity), so it cannot
+  // read `profile?.nome` from its own closure without going stale: the
+  // profile usually resolves AFTER the effect has started. A ref mirror gives
+  // the rebind whatever name is known at push time, if any. Same
+  // backstop-mirror pattern as canSeeFinancialsRef / membershipRef below.
+  const profileNomeRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    profileNomeRef.current = profile?.nome;
+  }, [profile?.nome]);
+
   // Crisp identification, split out from the profile-hydration effect above
   // on purpose: that effect is keyed on [sessionReady, userId] so an email or
   // name change alone never re-triggers the profile/membership fetch, but
@@ -433,6 +446,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (async () => {
       if (!user?.email) return;
       let signature: string | undefined;
+      let crispToken: string | undefined;
       try {
         // Explicit timeout: browser fetch has no default one, and
         // functions-js resolves rather than throws on genuine errors -- but
@@ -442,7 +456,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // exists for. This repo has been bitten before by unbounded I/O in
         // state-setting handlers (R2 presign) -- same fix here.
         const { data } = await supabase.functions.invoke('crisp-identity', { timeout: 5000 });
-        signature = (data as { signature?: string } | null)?.signature;
+        const payload = data as { signature?: string; crispToken?: unknown } | null;
+        signature = payload?.signature;
+        // Absent whenever the function's best-effort upsert failed (or on
+        // any transport failure). Treated below as "nothing to reconcile",
+        // never as a signal to tear an existing binding down.
+        crispToken =
+          typeof payload?.crispToken === 'string' && payload.crispToken
+            ? payload.crispToken
+            : undefined;
       } catch {
         // Signing is best-effort. A failure means the session shows as
         // Unverified in the inbox, which is the pre-existing behaviour and is
@@ -454,6 +476,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // is only cleared asynchronously by React's own cleanup.
       if (!active || crispResetGeneration.current !== initialCrispResetGeneration) return;
 
+      // Session Continuity reconciliation. Placed AFTER the guard above on
+      // purpose: a write before it could let a response for an already
+      // signed-out identity bind the NEXT person on a shared machine to the
+      // outgoing user's token, and that binding persists across reloads.
+      //
+      //   token absent  -> nothing continuity-related happens (not a
+      //                    mismatch, not a clear); the identity push below
+      //                    proceeds exactly as before.
+      //   token matches the cached { userId, token } for THIS user
+      //                 -> no-op: Crisp's own cookie already resumes the
+      //                    bound session across reloads (verified against
+      //                    the production widget).
+      //   otherwise     -> live rebind: set CRISP_TOKEN_ID, reset so the
+      //                    widget re-reads it, re-establish identity on the
+      //                    fresh session below, then record the pair.
+      //
+      // The rebind's session:reset deliberately does NOT bump
+      // crispResetGeneration; see that ref's declaration.
+      let reboundTo: string | null = null;
+      if (crispToken) {
+        const cached = readCrispSessionCache();
+        const matches = cached !== null && cached.userId === userId && cached.token === crispToken;
+        if (!matches) {
+          reboundTo = crispToken;
+          window.CRISP_TOKEN_ID = crispToken;
+          try {
+            window.$crisp?.push(['do', 'session:reset']);
+          } catch {
+            // Never let a support-tooling nicety break auth.
+          }
+        }
+      }
+
       try {
         // Second element is the identity signature. Crisp marks the session
         // Verified only when it validates; unsigned sessions still work.
@@ -464,6 +519,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
       } catch {
         // Never let a support-tooling nicety break auth.
+      }
+
+      if (reboundTo) {
+        // A reset starts a fresh local session that has forgotten every trait
+        // set on the prior one. user:email was just re-pushed above; the
+        // nickname has to be re-established here too, because the separate
+        // nickname effect is keyed on [userId, profile?.nome], which a rebind
+        // alone never changes, so it would not re-fire on its own.
+        const nome = profileNomeRef.current;
+        if (nome) {
+          try {
+            window.$crisp?.push(['set', 'user:nickname', [nome]]);
+          } catch {
+            // Never let a support-tooling nicety break auth.
+          }
+        }
+        writeCrispSessionCache(userId, reboundTo);
       }
     })();
 

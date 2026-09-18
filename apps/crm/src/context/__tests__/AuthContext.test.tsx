@@ -45,6 +45,7 @@ vi.mock('../../lib/analytics', () => ({
 import * as supabaseModule from '../../lib/supabase';
 import { resetAnalytics } from '../../lib/analytics';
 import { AuthProvider, useAuth } from '../AuthContext';
+import { CRISP_SESSION_STORAGE_KEY } from '../../lib/crispSession';
 
 const mockedResetAnalytics = vi.mocked(resetAnalytics);
 
@@ -487,11 +488,32 @@ describe('AuthProvider Crisp identification', () => {
   beforeEach(() => {
     window.$crisp = [];
     crispPush = vi.spyOn(window.$crisp, 'push');
+    // Session Continuity state is per-browser (localStorage + a window
+    // property), so it would leak between cases without this.
+    localStorage.clear();
+    delete (window as { CRISP_TOKEN_ID?: unknown }).CRISP_TOKEN_ID;
   });
 
   afterEach(() => {
     delete (window as { $crisp?: unknown }).$crisp;
+    delete (window as { CRISP_TOKEN_ID?: unknown }).CRISP_TOKEN_ID;
+    localStorage.clear();
   });
+
+  // CRISP_TOKEN_ID is a plain window property assignment, not a $crisp.push,
+  // so the push spy can never observe it: every continuity assertion reads
+  // window.CRISP_TOKEN_ID and the cache directly.
+  function readCache(): { userId: string; token: string } | null {
+    const raw = localStorage.getItem(CRISP_SESSION_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as { userId: string; token: string }) : null;
+  }
+
+  const OWNER_PROFILE = {
+    id: 'user-1',
+    nome: 'Eduardo Souza',
+    role: 'owner',
+    conta_id: 'conta-1',
+  };
 
   it('identifies user:email and user:nickname once an identity exists', async () => {
     mockedSupabase.__resetSupabaseMock();
@@ -737,5 +759,143 @@ describe('AuthProvider Crisp identification', () => {
     await waitFor(() => {
       expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com', 'abc']]);
     });
+  });
+
+  it('binds on first login: sets CRISP_TOKEN_ID, resets, re-pushes email then nickname, then caches', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile(OWNER_PROFILE);
+
+    // Hold the invoke so profile hydration (and its nickname push on the OLD,
+    // anonymous session) has settled before the token arrives. That makes the
+    // post-reset push order deterministic instead of racing hydration.
+    let resolveInvoke!: (value: { data: unknown; error?: unknown }) => void;
+    mockedSupabase.__queueFunctionsInvokeResponse(
+      new Promise((resolve) => {
+        resolveInvoke = resolve;
+      }),
+    );
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:nickname', ['Eduardo Souza']]);
+    });
+    // Nothing continuity-related may happen before the server confirms a token.
+    expect(window.CRISP_TOKEN_ID).toBeUndefined();
+    expect(readCache()).toBeNull();
+    crispPush.mockClear();
+
+    await act(async () => {
+      resolveInvoke({ data: { signature: 'abc', crispToken: 'tok-1' }, error: null });
+    });
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:nickname', ['Eduardo Souza']]);
+    });
+    expect(window.CRISP_TOKEN_ID).toBe('tok-1');
+    // Exact order after the token lands: reset the session so the widget
+    // re-reads CRISP_TOKEN_ID, then re-establish BOTH traits on the fresh
+    // session (a reset forgets them, and the separate nickname effect is
+    // keyed on [userId, profile?.nome], which a rebind never changes).
+    expect(crispPush.mock.calls.map((call) => call[0])).toEqual([
+      ['do', 'session:reset'],
+      ['set', 'user:email', ['eduardo@example.com', 'abc']],
+      ['set', 'user:nickname', ['Eduardo Souza']],
+    ]);
+    expect(readCache()).toEqual({ userId: 'user-1', token: 'tok-1' });
+  });
+
+  it('does nothing continuity-related when the token matches the cached pair for this user', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile(OWNER_PROFILE);
+    localStorage.setItem(
+      CRISP_SESSION_STORAGE_KEY,
+      JSON.stringify({ userId: 'user-1', token: 'tok-1' }),
+    );
+    mockedSupabase.__queueFunctionsInvokeResponse({
+      data: { signature: 'abc', crispToken: 'tok-1' },
+      error: null,
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com', 'abc']]);
+    });
+    // Crisp's own cookie already resumes the bound session across reloads
+    // (verified against the production widget); a reset here would restart
+    // the conversation on every load for nothing.
+    expect(crispPush).not.toHaveBeenCalledWith(['do', 'session:reset']);
+    expect(window.CRISP_TOKEN_ID).toBeUndefined();
+    expect(readCache()).toEqual({ userId: 'user-1', token: 'tok-1' });
+  });
+
+  it('rebinds when the cached pair belongs to a different user, even for an identical token', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile(OWNER_PROFILE);
+    // A stale pair from whoever used this browser before: same token string
+    // must NOT count as a match for a different userId.
+    localStorage.setItem(
+      CRISP_SESSION_STORAGE_KEY,
+      JSON.stringify({ userId: 'user-0', token: 'tok-1' }),
+    );
+    mockedSupabase.__queueFunctionsInvokeResponse({
+      data: { signature: 'abc', crispToken: 'tok-1' },
+      error: null,
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+    });
+    expect(window.CRISP_TOKEN_ID).toBe('tok-1');
+    await waitFor(() => {
+      expect(readCache()).toEqual({ userId: 'user-1', token: 'tok-1' });
+    });
+  });
+
+  it('leaves an existing binding untouched when crispToken is absent (a failure is not a mismatch)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile(OWNER_PROFILE);
+    // A binding established earlier in this browser's life.
+    localStorage.setItem(
+      CRISP_SESSION_STORAGE_KEY,
+      JSON.stringify({ userId: 'user-1', token: 'tok-1' }),
+    );
+    window.CRISP_TOKEN_ID = 'tok-1';
+    // The function signed the email but its upsert failed: no crispToken.
+    mockedSupabase.__queueFunctionsInvokeResponse({ data: { signature: 'abc' }, error: null });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com', 'abc']]);
+    });
+    // "Fail closed" was explicitly rejected: a transient hiccup must not
+    // regress an already-correct binding into a visible reset.
+    expect(crispPush).not.toHaveBeenCalledWith(['do', 'session:reset']);
+    expect(window.CRISP_TOKEN_ID).toBe('tok-1');
+    expect(readCache()).toEqual({ userId: 'user-1', token: 'tok-1' });
+  });
+
+  it('writes nothing when crispToken is absent and nothing was cached', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile(OWNER_PROFILE);
+    mockedSupabase.__queueFunctionsInvokeResponse({ data: { signature: 'abc' }, error: null });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com', 'abc']]);
+    });
+    expect(crispPush).not.toHaveBeenCalledWith(['do', 'session:reset']);
+    expect(window.CRISP_TOKEN_ID).toBeUndefined();
+    expect(readCache()).toBeNull();
   });
 });
