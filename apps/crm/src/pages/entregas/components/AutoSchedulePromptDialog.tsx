@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { updateWorkflowPost } from '@/store';
+import type { WorkflowPost } from '@/store/posts';
 import { isEligibleToScheduleNow } from '../autoScheduleNudge';
 import { scheduleApprovedPost, scheduleSuccessMessage } from '../scheduleApprovedPost';
 
@@ -28,7 +29,9 @@ export interface AutoSchedulePromptDialogProps {
   /** null fecha o diálogo; não-null abre para esse post. */
   post: AutoSchedulePromptPost | null;
   onClose: () => void;
-  /** Só após sucesso, para o caller invalidar as próprias queries. */
+  /** Após um agendamento bem-sucedido, ou após uma data nova ser persistida
+   *  mesmo que o agendamento em si falhe (a data já mudou no banco), para o
+   *  caller invalidar as próprias queries. */
   onScheduled: () => void;
 }
 
@@ -96,7 +99,7 @@ export function AutoSchedulePromptDialog({
     // A linha DEVOLVIDA pela escrita, nunca o `post` capturado antes da
     // escolha: para tiktok/both, scheduleApprovedPost lê scheduled_at do
     // objeto e mandaria a data antiga (ou null) no corpo do request.
-    let updated;
+    let updated: WorkflowPost;
     try {
       updated = await updateWorkflowPost(post.id, {
         scheduled_at: pickedDate.toISOString(),
