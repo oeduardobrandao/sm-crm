@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InstagramPostCard } from '../InstagramPostCard';
-import { submitApproval } from '../../api';
+import { fetchPostHistory, submitApproval } from '../../api';
 import type { HubPost, HubPostMedia, InstagramProfile } from '../../types';
 
 const submitApprovalMock = vi.hoisted(() => vi.fn());
@@ -472,5 +472,34 @@ describe('InstagramPostCard', () => {
       />,
     );
     expect(screen.getByRole('button', { name: /Histórico e comentários/ })).toBeInTheDocument();
+  });
+
+  it('resets the history panel (open state and unsent draft) when the post changes', async () => {
+    vi.mocked(fetchPostHistory).mockResolvedValue({ events: [], approvals: [] });
+    const renderCard = (id: number) => (
+      <InstagramPostCard
+        post={makePost({ id, status: 'agendado' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        readOnly
+      />
+    );
+    const { rerender } = render(renderCard(1));
+    fireEvent.click(screen.getByRole('button', { name: /Histórico e comentários/ }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+    const placeholder = 'Escreva um comentário sobre este post';
+    fireEvent.change(screen.getByPlaceholderText(placeholder), {
+      target: { value: 'rascunho do post 1' },
+    });
+    expect(screen.getByPlaceholderText(placeholder)).toHaveValue('rascunho do post 1');
+
+    // Same card kind, different post (back/forward, pasted deep link): React reuses the card instance.
+    rerender(renderCard(2));
+    expect(screen.queryByPlaceholderText(placeholder)).not.toBeInTheDocument();
+    expect(screen.queryByText('rascunho do post 1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Histórico e comentários/ }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+    expect(screen.getByPlaceholderText(placeholder)).toHaveValue('');
   });
 });

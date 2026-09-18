@@ -84,6 +84,19 @@ export function StoryPostCard({
   const [stagedCaption, setStagedCaption] = useState(caption);
   const contentDirty = stagedCaption !== caption;
 
+  // Server-side changes to the caption (a poll, a window-focus refetch, or approving
+  // another post invalidating the same query) must reach the staged copy while the
+  // client hasn't diverged from it -- otherwise `contentDirty` flips true with no edit
+  // ever made and silently disables Aprovar. A real pending edit (staged differs from
+  // the last synced baseline) is left untouched.
+  const lastSyncedCaptionRef = useRef(caption);
+  useEffect(() => {
+    const prev = lastSyncedCaptionRef.current;
+    if (caption === prev) return;
+    lastSyncedCaptionRef.current = caption;
+    setStagedCaption((current) => (current === prev ? caption : current));
+  }, [caption]);
+
   useUnsavedWork(comentario.trim() !== '' || submitting || contentDirty);
 
   useEffect(() => {
@@ -109,7 +122,11 @@ export function StoryPostCard({
 
   function closePanel() {
     if (contentDirty || comentario.trim() !== '' || motivo) {
-      if (!window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?')))
+      if (
+        !window.confirm(
+          t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'),
+        )
+      )
         return;
     }
     setPanelOpen(false);
@@ -472,6 +489,7 @@ export function StoryPostCard({
 
       <div className="bg-white dark:bg-[#1a1a1a] rounded-b-2xl -mt-2 pt-2 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]">
         <PostHistoryPanel
+          key={post.id}
           post={post}
           token={token}
           approvals={approvals}

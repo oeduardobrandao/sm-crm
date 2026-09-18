@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TextPostCard } from '../TextPostCard';
-import { submitApproval } from '../../api';
+import { fetchPostHistory, submitApproval } from '../../api';
 import type { HubPost, PostApproval } from '../../types';
 
 const submitApprovalMock = vi.hoisted(() => vi.fn());
@@ -259,6 +259,37 @@ describe('TextPostCard', () => {
     fireEvent.click(screen.getByText('Texto motivacional segunda-feira'));
     expect(screen.getByRole('button', { name: /Histórico e comentários/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Aprovar/i })).not.toBeInTheDocument();
+  });
+
+  it('resets the history panel (open state and unsent draft) when the post changes', async () => {
+    vi.mocked(fetchPostHistory).mockResolvedValue({ events: [], approvals: [] });
+    const renderCard = (id: number) => (
+      <TextPostCard
+        post={makePost({ id, status: 'postado' })}
+        token="token-publico"
+        approvals={[]}
+        readOnly
+      />
+    );
+    const placeholder = 'Escreva um comentário sobre este post';
+    const { rerender } = render(renderCard(1));
+    fireEvent.click(screen.getByText('Texto motivacional segunda-feira'));
+    fireEvent.click(screen.getByRole('button', { name: /Histórico e comentários/ }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+    fireEvent.change(screen.getByPlaceholderText(placeholder), {
+      target: { value: 'rascunho do post 1' },
+    });
+
+    // Same card kind, different post (back/forward, pasted deep link): React reuses the card instance.
+    rerender(renderCard(2));
+    if (!screen.queryByRole('button', { name: /Histórico e comentários/ })) {
+      fireEvent.click(screen.getByText('Texto motivacional segunda-feira'));
+    }
+    expect(screen.queryByPlaceholderText(placeholder)).not.toBeInTheDocument();
+    expect(screen.queryByText('rascunho do post 1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Histórico e comentários/ }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+    expect(screen.getByPlaceholderText(placeholder)).toHaveValue('');
   });
 });
 

@@ -70,6 +70,28 @@ export function TextPostCard({
   const contentDirty =
     stagedConteudoPlain !== draftConteudoPlain || stagedIgCaption !== (draftIgCaption ?? '');
 
+  // Server-side changes to the drafts (a poll, a window-focus refetch, or approving
+  // another post invalidating the same query) must reach the staged copy while the
+  // client hasn't diverged from it -- otherwise `contentDirty` flips true with no edit
+  // ever made and silently disables Aprovar. Each field is synced independently, and
+  // only when its staged value still equals the last synced baseline: a real pending
+  // edit is left untouched.
+  const lastSyncedRef = useRef({ plain: draftConteudoPlain, ig: draftIgCaption ?? '' });
+  useEffect(() => {
+    const prev = lastSyncedRef.current;
+    const nextIg = draftIgCaption ?? '';
+    if (draftConteudoPlain !== prev.plain) {
+      if (stagedConteudoPlain === prev.plain) {
+        setStagedConteudo(draftConteudo);
+        setStagedConteudoPlain(draftConteudoPlain);
+      }
+    }
+    if (nextIg !== prev.ig && stagedIgCaption === prev.ig) setStagedIgCaption(nextIg);
+    if (draftConteudoPlain !== prev.plain || nextIg !== prev.ig) {
+      lastSyncedRef.current = { plain: draftConteudoPlain, ig: nextIg };
+    }
+  }, [draftConteudo, draftConteudoPlain, draftIgCaption, stagedConteudoPlain, stagedIgCaption]);
+
   useUnsavedWork(comentario.trim() !== '' || submitting || contentDirty);
 
   // Once a staged edit successfully flushes, the panel has nothing left to do --
@@ -103,7 +125,11 @@ export function TextPostCard({
 
   function closePanel() {
     if (contentDirty || comentario.trim() !== '' || motivo) {
-      if (!window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?')))
+      if (
+        !window.confirm(
+          t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'),
+        )
+      )
         return;
     }
     setPanelOpen(false);
@@ -392,6 +418,7 @@ export function TextPostCard({
           )}
 
           <PostHistoryPanel
+            key={post.id}
             post={post}
             token={token}
             approvals={approvals}
