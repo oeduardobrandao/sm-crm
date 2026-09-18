@@ -56,57 +56,6 @@ vi.mock('../../components/PostCard', async (importOriginal) => {
   };
 });
 
-vi.mock('../../components/InstagramPostCard', () => ({
-  InstagramPostCard: ({
-    post,
-    onApprovalSubmitted,
-  }: {
-    post: { id: number; titulo: string };
-    onApprovalSubmitted: () => void;
-  }) => (
-    <article data-testid="instagram-post-card" data-post-id={String(post.id)}>
-      <h4>{post.titulo}</h4>
-      <button type="button" onClick={onApprovalSubmitted}>
-        Refresh {post.id}
-      </button>
-    </article>
-  ),
-}));
-
-vi.mock('../../components/TextPostCard', () => ({
-  TextPostCard: ({
-    post,
-    onApprovalSubmitted,
-  }: {
-    post: { id: number; titulo: string };
-    onApprovalSubmitted: () => void;
-  }) => (
-    <article data-testid="text-post-card" data-post-id={String(post.id)}>
-      <h4>{post.titulo}</h4>
-      <button type="button" onClick={onApprovalSubmitted}>
-        Refresh {post.id}
-      </button>
-    </article>
-  ),
-}));
-
-vi.mock('../../components/StoryPostCard', () => ({
-  StoryPostCard: ({
-    post,
-    onApprovalSubmitted,
-  }: {
-    post: { id: number; titulo: string };
-    onApprovalSubmitted: () => void;
-  }) => (
-    <article data-testid="story-post-card" data-post-id={String(post.id)}>
-      <h4>{post.titulo}</h4>
-      <button type="button" onClick={onApprovalSubmitted}>
-        Refresh {post.id}
-      </button>
-    </article>
-  ),
-}));
-
 vi.mock('../../components/FeedPreviewButton', () => ({
   FeedPreviewButton: () => null,
 }));
@@ -245,8 +194,6 @@ describe('hub approval, posts, and brand pages', () => {
       expect(
         await screen.findByText('Tudo em dia. Nenhum post aguardando aprovação.'),
       ).toBeInTheDocument();
-      expect(screen.queryByTestId('text-post-card')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('instagram-post-card')).not.toBeInTheDocument();
     });
   });
 
@@ -295,9 +242,6 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(await screen.findByText('Nenhuma postagem disponível ainda.')).toBeInTheDocument();
-      expect(screen.queryByTestId('text-post-card')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('instagram-post-card')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('story-post-card')).not.toBeInTheDocument();
     });
 
     it('sorts visible posts chronologically into one flattened grid, with fluxo chips per workflow', async () => {

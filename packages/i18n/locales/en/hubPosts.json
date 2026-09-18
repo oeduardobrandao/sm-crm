@@ -5,8 +5,6 @@
     "savingSuggestion": "Saving suggestion...",
     "suggestionSaved": "Suggestion saved",
     "aprovar": "Approve",
-    "correcaoShort": "Correction",
-    "suggestionPendingReviewShort": "Suggestion sent for review",
     "suggestionPendingReviewFull": "Suggestion sent for the team to review",
     "commentPlaceholder": "Describe what needs to change",
     "rejectedSuggestionWarning": "⚠️ Your previous suggestion was rejected by the team. Edit it again to send a new one.",
@@ -28,9 +26,7 @@
     "emptyDescription": "All caught up. No post awaiting approval.",
     "pendingDescription": "{{count}} post{{plural}} awaiting your approval.",
     "selectHint": "Select posts to preview how they'll look in the Instagram feed.",
-    "loadError": "Error loading approvals.",
-    "storiesHeader": "Stories",
-    "noMediaHeader": "Posts without media"
+    "loadError": "Error loading approvals."
   },
   "postagens": {
     "title": "Posts",
@@ -39,9 +35,6 @@
     "loadError": "Error loading posts.",
     "empty": "No posts available yet.",
     "noResults": "No posts found for this filter.",
-    "avulsoGroupTitle": "Standalone posts",
-    "postCount": "{{count}} {{noun}}",
-    "clickToExpand": "click to expand",
     "filter": {
       "label": "Filter by status",
       "all": "All",
@@ -58,34 +51,19 @@
       "falhaPublicacao": "Publishing failed"
     }
   },
-  "postagemFoco": {
-    "backLink": "See all posts",
-    "loadError": "Could not load this post.",
-    "retry": "Try again",
-    "notAvailable": "This post is not available."
-  },
   "instagramCard": {
     "selectAriaLabel": "Select post",
     "openMediaAriaLabel": "Open media {{index}}",
     "prevSlideAriaLabel": "Previous slide",
     "nextSlideAriaLabel": "Next slide",
-    "likeAriaLabel": "Like",
-    "suggestionRejected": "⚠️ Suggestion rejected — edit again",
-    "editCaptionHint": "✏️ Edit the caption below",
     "captionAriaLabel": "Post caption",
-    "verMenos": "less",
-    "verMais": "… more",
-    "scheduledPrefix": "Scheduled · {{date}}",
-    "scheduledBannerTitle": "Scheduled for publication",
-    "publishedBannerTitle": "Published",
     "postApprovedAndScheduled": "Post approved and scheduled for publication!",
     "autoPublishScheduled": "Once approved, this post will be published automatically on Instagram at {{date}}.",
     "autoPublishUnscheduled": "Once approved, this post will be scheduled for automatic publication on Instagram."
   },
   "storyCard": {
     "prevAriaLabel": "Previous",
-    "nextAriaLabel": "Next",
-    "replyPlaceholder": "Reply to {{name}}..."
+    "nextAriaLabel": "Next"
   },
   "textCard": {
     "mediaRemoved": "Media removed to free up space",
