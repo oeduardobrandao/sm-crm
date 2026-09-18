@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle } from 'lucide-react';
 import type { CorrectionReason, HubPost } from '../../types';
@@ -64,6 +64,40 @@ export function CorrectionPanel({
   useEffect(() => {
     if (saveState !== 'idle') setSaveRequested(false);
   }, [saveState]);
+
+  // The panel is only remounted when the post ID changes (key={post.id} in the
+  // dialog), not when the SAME post's data refetches (window-focus refetch, the
+  // publicando poll, another post's approval invalidating the shared query). A
+  // background refetch can change captionBaseline/draftConteudoPlain while the
+  // staged fields stay stale, which would otherwise permanently flip
+  // contentDirty/panelDirty to true with no edit the user actually made. Only
+  // auto-resync when the staged value still equals the PREVIOUSLY-synced
+  // baseline (the user hasn't diverged from it yet) -- never clobber a genuine
+  // local edit.
+  //
+  // Done during render (React's "adjusting state when a prop changes" pattern),
+  // not in a useEffect: an effect would still let THIS render's contentDirty
+  // see the stale staged value and briefly report dirty=true to onDirtyChange
+  // before the effect corrects it on the next render. Adjusting state directly
+  // in the render body makes React redo this render immediately, with the
+  // corrected staged value, before anything downstream (contentDirty,
+  // onDirtyChange) ever observes the stale one.
+  const lastSyncedCaptionRef = useRef(captionBaseline);
+  if (captionBaseline !== lastSyncedCaptionRef.current) {
+    if (stagedCaption === lastSyncedCaptionRef.current) {
+      setStagedCaption(captionBaseline);
+    }
+    lastSyncedCaptionRef.current = captionBaseline;
+  }
+
+  const lastSyncedConteudoPlainRef = useRef(draftConteudoPlain);
+  if (draftConteudoPlain !== lastSyncedConteudoPlainRef.current) {
+    if (stagedConteudoPlain === lastSyncedConteudoPlainRef.current) {
+      setStagedConteudo(draftConteudo);
+      setStagedConteudoPlain(draftConteudoPlain);
+    }
+    lastSyncedConteudoPlainRef.current = draftConteudoPlain;
+  }
 
   const contentDirty =
     (isText && stagedConteudoPlain !== draftConteudoPlain) || stagedCaption !== captionBaseline;

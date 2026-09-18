@@ -198,6 +198,57 @@ describe('CorrectionPanel', () => {
     expect(screen.getByRole('button', { name: /Salvar edição/ })).toBeEnabled();
   });
 
+  it('resyncs staged caption to a refetched baseline instead of going dirty, when untouched', () => {
+    const { rerender } = render(
+      <CorrectionPanel
+        post={post()}
+        edit={makeEdit()}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    onDirtyChange.mockClear();
+    rerender(
+      <CorrectionPanel
+        post={post()}
+        edit={makeEdit({ draftIgCaption: 'Legenda atualizada' })}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    expect(onDirtyChange).not.toHaveBeenCalledWith(true);
+    expect(screen.getByDisplayValue('Legenda atualizada')).toBeInTheDocument();
+  });
+
+  it('preserves a local caption edit and stays dirty when the baseline refetches under it', () => {
+    const { rerender } = render(
+      <CorrectionPanel
+        post={post()}
+        edit={makeEdit()}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    fireEvent.change(screen.getByDisplayValue('Legenda original'), {
+      target: { value: 'Minha edição' },
+    });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    rerender(
+      <CorrectionPanel
+        post={post()}
+        edit={makeEdit({ draftIgCaption: 'Legenda atualizada' })}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    expect(screen.getByDisplayValue('Minha edição')).toBeInTheDocument();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+  });
+
   it('collapses to the pending message when a suggestion is pending', () => {
     render(
       <CorrectionPanel
