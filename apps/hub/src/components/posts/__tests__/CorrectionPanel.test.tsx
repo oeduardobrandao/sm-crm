@@ -249,6 +249,91 @@ describe('CorrectionPanel', () => {
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
   });
 
+  it('submits an empty caption for a caption-less text post instead of the edited body', () => {
+    // Deliberately no "legenda" (case-insensitive) substring anywhere in this body --
+    // deriveCaption treats that word as a marker and would otherwise mask the bug this
+    // test targets by producing an empty captionBaseline on its own, for the wrong reason.
+    const bodyText = 'Um texto qualquer sem nenhum marcador especial';
+    const edit = makeEdit({
+      draftIgCaption: null,
+      draftConteudo: null,
+      draftConteudoPlain: bodyText,
+    });
+    render(
+      <CorrectionPanel
+        post={post({
+          media: [],
+          ig_caption: null,
+          conteudo: null,
+          conteudo_plain: bodyText,
+        })}
+        edit={edit}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    // No caption field is rendered at all -- the client never sees one to edit.
+    expect(screen.queryByText('Legenda do Instagram', { exact: false })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue(bodyText), {
+      target: { value: 'Corpo editado' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+    expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo editado', '');
+  });
+
+  it('remounts the rich-text editor to a refetched body instead of showing stale content', async () => {
+    const initialDoc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Corpo original do roteiro' }] },
+      ],
+    };
+    const updatedDoc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Corpo atualizado do roteiro' }] },
+      ],
+    };
+    const { rerender } = render(
+      <CorrectionPanel
+        post={post({
+          media: [],
+          conteudo: initialDoc,
+          conteudo_plain: 'Corpo original do roteiro',
+        })}
+        edit={makeEdit({
+          draftConteudo: initialDoc,
+          draftConteudoPlain: 'Corpo original do roteiro',
+        })}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    expect(await screen.findByText('Corpo original do roteiro')).toBeInTheDocument();
+
+    rerender(
+      <CorrectionPanel
+        post={post({
+          media: [],
+          conteudo: initialDoc,
+          conteudo_plain: 'Corpo original do roteiro',
+        })}
+        edit={makeEdit({
+          draftConteudo: updatedDoc,
+          draftConteudoPlain: 'Corpo atualizado do roteiro',
+        })}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+
+    expect(await screen.findByText('Corpo atualizado do roteiro')).toBeInTheDocument();
+    expect(screen.queryByText('Corpo original do roteiro')).not.toBeInTheDocument();
+  });
+
   it('collapses to the pending message when a suggestion is pending', () => {
     render(
       <CorrectionPanel

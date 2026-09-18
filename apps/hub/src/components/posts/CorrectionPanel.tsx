@@ -60,6 +60,13 @@ export function CorrectionPanel({
   // soon as saveState leaves 'idle', so a REAL failure (which brings saveState back
   // to 'idle' afterwards) still shows the message.
   const [saveRequested, setSaveRequested] = useState(false);
+  // Bumped only when a genuine background resync (below) replaces stagedConteudo,
+  // and passed as RichTextContent's `key`. RichTextContent/TipTap only reads
+  // `content` as the editor's INITIAL value -- it never calls setContent when the
+  // prop changes later -- so without forcing a remount here, the on-screen editor
+  // would keep showing the pre-refetch body even though stagedConteudo/panelDirty
+  // have already moved on, letting the user approve or edit on top of stale text.
+  const [contentVersion, setContentVersion] = useState(0);
 
   useEffect(() => {
     if (saveState !== 'idle') setSaveRequested(false);
@@ -95,9 +102,19 @@ export function CorrectionPanel({
     if (stagedConteudoPlain === lastSyncedConteudoPlainRef.current) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
+      // Force RichTextContent to remount with the resynced body as its new
+      // initial value -- see contentVersion's declaration above.
+      setContentVersion((v) => v + 1);
     }
     lastSyncedConteudoPlainRef.current = draftConteudoPlain;
   }
+
+  // The caption field itself is hidden under this same condition (below) when
+  // there's neither an explicit ig_caption nor a draft/suggested one -- in that
+  // case stagedCaption is still seeded from captionBaseline's conteudo_plain
+  // fallback (deriveCaption), but the client never saw or edited that text as a
+  // caption, so it must not be submitted as one.
+  const showCaptionField = !isText || draftIgCaption !== null || !!post.ig_caption;
 
   const contentDirty =
     (isText && stagedConteudoPlain !== draftConteudoPlain) || stagedCaption !== captionBaseline;
@@ -138,6 +155,7 @@ export function CorrectionPanel({
         </p>
         {isText && stagedConteudo && (
           <RichTextContent
+            key={contentVersion}
             content={stagedConteudo}
             className="text-[13px] hub-tx2 leading-relaxed rounded-lg border border-dashed hub-border-strong px-3 py-2 hub-bg-card"
             editable
@@ -158,7 +176,7 @@ export function CorrectionPanel({
             className="hub-focus-accent w-full text-[13px] hub-tx2 leading-relaxed border border-dashed hub-border-strong rounded-lg px-3 py-2 resize-none min-h-[100px] hub-bg-card focus:outline-none focus:border-solid"
           />
         )}
-        {(!isText || draftIgCaption !== null || post.ig_caption) && (
+        {showCaptionField && (
           <>
             {isText && (
               <p className="text-[11px] hub-tx3 font-medium">
@@ -207,7 +225,7 @@ export function CorrectionPanel({
               saveSuggestion(
                 isText ? stagedConteudo : draftConteudo,
                 isText ? stagedConteudoPlain : (post.conteudo_plain ?? ''),
-                stagedCaption,
+                showCaptionField ? stagedCaption : '',
               );
             }}
             disabled={(!contentDirty && !dirty) || saveState === 'saving'}
