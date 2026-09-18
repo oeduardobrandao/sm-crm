@@ -62,11 +62,19 @@ export function AutoSchedulePromptDialog({
   const eligible = isEligibleToScheduleNow(post.scheduled_at);
   const platform = post.platform ?? 'instagram';
 
-  const finish = (err?: unknown) => {
+  // `datePersisted` marks a failure that still landed a DB write (the
+  // scheduled_at update inside handleSetDateAndSchedule succeeded before
+  // scheduleApprovedPost threw): the toast must stay an error -- scheduling
+  // itself did not complete -- but onScheduled still needs to fire so the
+  // caller's caches pick up the new scheduled_at instead of showing the
+  // stale one.
+  const finish = (err?: unknown, datePersisted?: boolean) => {
     setLoading(false);
     onClose();
-    if (err) toast.error((err as Error).message || 'Erro ao agendar');
-    else {
+    if (err) {
+      toast.error((err as Error).message || 'Erro ao agendar');
+      if (datePersisted) onScheduled();
+    } else {
       toast.success(scheduleSuccessMessage(platform));
       onScheduled();
     }
@@ -85,17 +93,26 @@ export function AutoSchedulePromptDialog({
   const handleSetDateAndSchedule = async () => {
     if (!pickedDate) return;
     setLoading(true);
+    // A linha DEVOLVIDA pela escrita, nunca o `post` capturado antes da
+    // escolha: para tiktok/both, scheduleApprovedPost lê scheduled_at do
+    // objeto e mandaria a data antiga (ou null) no corpo do request.
+    let updated;
     try {
-      // A linha DEVOLVIDA pela escrita, nunca o `post` capturado antes da
-      // escolha: para tiktok/both, scheduleApprovedPost lê scheduled_at do
-      // objeto e mandaria a data antiga (ou null) no corpo do request.
-      const updated = await updateWorkflowPost(post.id, {
+      updated = await updateWorkflowPost(post.id, {
         scheduled_at: pickedDate.toISOString(),
       });
+    } catch (err) {
+      finish(err);
+      return;
+    }
+    try {
       await scheduleApprovedPost(updated);
       finish();
     } catch (err) {
-      finish(err);
+      // The date write above already landed -- scheduleApprovedPost failing
+      // afterwards (e.g. missing caption/media) must not leave the caller's
+      // cache pointing at the old scheduled_at.
+      finish(err, true);
     }
   };
 

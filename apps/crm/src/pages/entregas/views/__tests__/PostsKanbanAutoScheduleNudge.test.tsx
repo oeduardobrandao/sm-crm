@@ -249,7 +249,15 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
   it('opens the nudge after a drag into Aprovado pelo cliente when every gate passes', async () => {
     mockUpdate.mockResolvedValue(resolvedRow() as never);
     const post = makePost({ id: 900, status: 'rascunho' });
-    renderWithQuery(<PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled />);
+    const { qc } = renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled />,
+    );
+    // Mirrors production: useActivePosts already holds this list in the
+    // ['active-posts'] cache before PostsKanbanView receives it as a prop --
+    // the onSuccess undo-race guard (Fix 2) reads that cache directly.
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '900' }, over: { id: 'col:aprovado_cliente' } });
 
@@ -364,6 +372,58 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
     await waitFor(() => expect(screen.queryByTestId('nudge')).toBeNull());
   });
 
+  // Fix 2 (Codex follow-up): the forward mutate's onSuccess uses the `updated`
+  // row from ITS OWN network response to decide whether to offer the nudge --
+  // but that response can land AFTER a concurrent Desfazer's backward mutate
+  // has already reverted the post. Without re-checking the live cache, onSuccess
+  // would open a nudge for a post that, by the time this callback runs, no
+  // longer sits at the forward target. resolveUndoGuard (already used by the
+  // Desfazer onClick above, to protect the BACKWARD write) is reused here to
+  // protect this side effect of the FORWARD write instead.
+  it('does not open the nudge when the post was reverted before the forward write resolved (undo race)', async () => {
+    let resolveUpdate: (row: unknown) => void = () => {};
+    mockUpdate.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+    const post = makePost({ id: 911, status: 'rascunho' });
+    const { qc } = renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled />,
+    );
+    // Mirrors production: useActivePosts already holds this list in the
+    // ['active-posts'] cache before PostsKanbanView receives it as a prop --
+    // resolveUndoGuard reads that cache directly.
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
+
+    dndHandlers.onDragEnd?.({ active: { id: '911' }, over: { id: 'col:aprovado_cliente' } });
+
+    // The forward mutate's own onMutate has patched the cache to
+    // aprovado_cliente and its mutationFn (mockUpdate) is now pending.
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+
+    // Simulates Desfazer's backward mutate landing (its own onMutate patch)
+    // before this forward write's network response comes back.
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, (old) =>
+        (old ?? []).map((p) =>
+          p.id === 911 ? { ...p, status: 'rascunho', custom_status_id: null } : p,
+        ),
+      );
+    });
+
+    // The forward write's (now-stale) network response finally arrives.
+    act(() => {
+      resolveUpdate(resolvedRow());
+    });
+    await flush();
+
+    expect(screen.queryByTestId('nudge')).toBeNull();
+  });
+
   // Decisão 5 da spec: tiktok-publish/handler.ts:85-89 exige feature_tiktok além de
   // feature_post_scheduling, e decisão 6 manda `both` pelo endpoint do TikTok -- os
   // dois valores de platform precisam do add-on.
@@ -398,9 +458,12 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
   it('opens the nudge for a both post when tiktokEnabled is true', async () => {
     mockUpdate.mockResolvedValue(resolvedRow({ platform: 'both' }) as never);
     const post = makePost({ id: 909, status: 'rascunho', platform: 'both' });
-    renderWithQuery(
+    const { qc } = renderWithQuery(
       <PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled tiktokEnabled />,
     );
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '909' }, over: { id: 'col:aprovado_cliente' } });
 
@@ -411,9 +474,12 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
     // O gate é condicional: platform 'instagram' não passa por tiktok-publish.
     mockUpdate.mockResolvedValue(resolvedRow({ platform: 'instagram' }) as never);
     const post = makePost({ id: 910, status: 'rascunho', platform: 'instagram' });
-    renderWithQuery(
+    const { qc } = renderWithQuery(
       <PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled tiktokEnabled={false} />,
     );
+    act(() => {
+      qc.setQueryData<ActivePost[]>(ACTIVE_POSTS_KEY, [post]);
+    });
 
     dndHandlers.onDragEnd?.({ active: { id: '910' }, over: { id: 'col:aprovado_cliente' } });
 

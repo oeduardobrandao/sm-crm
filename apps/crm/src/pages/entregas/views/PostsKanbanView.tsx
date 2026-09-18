@@ -738,6 +738,14 @@ export function PostsKanbanView({
       // de um custom_status_id, então um status custom que se comporta como
       // aprovado_cliente também cai aqui, sem consultar o registry.
       onSuccess: (updated) => {
+        // The forward write is a network round trip; if the user clicks
+        // Desfazer before it resolves, the backward mutate can revert the
+        // post BEFORE this callback runs. Re-check the LIVE cache (same
+        // resolveUndoGuard the Desfazer handler below uses to protect ITS
+        // write) so a since-reverted post doesn't get offered a nudge for a
+        // status it no longer has.
+        const cachedPosts = qc.getQueryData<ActivePost[]>(ACTIVE_POSTS_KEY);
+        if (resolveUndoGuard(cachedPosts, move, registry) === 'stale') return;
         const card = post.workflow_id != null ? cardsByWorkflowId.get(post.workflow_id) : undefined;
         const offer = shouldOfferAutoSchedule({
           status: updated?.status ?? move.forward.canonical,

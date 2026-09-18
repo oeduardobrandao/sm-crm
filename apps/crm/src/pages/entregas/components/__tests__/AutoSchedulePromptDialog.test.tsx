@@ -134,6 +134,63 @@ describe('AutoSchedulePromptDialog', () => {
     );
   });
 
+  // The bug Codex caught: updateWorkflowPost's write succeeds (scheduled_at
+  // is already persisted server-side) but the follow-up scheduleApprovedPost
+  // call then rejects. The dialog must still surface the error, but it must
+  // also call onScheduled so the caller refreshes its caches to the new
+  // (already-saved) date instead of showing the stale one.
+  it('date branch: onScheduled still fires when the date write succeeds but scheduling then fails', async () => {
+    const onClose = vi.fn();
+    const onScheduled = vi.fn();
+    updateWorkflowPost.mockResolvedValue({
+      id: 17,
+      titulo: 'Post G',
+      platform: 'instagram',
+      scheduled_at: PICKED.toISOString(),
+      status: 'aprovado_cliente',
+    });
+    scheduleApprovedPost.mockRejectedValueOnce(new Error('Legenda do Instagram não definida.'));
+    render(
+      <AutoSchedulePromptDialog
+        post={{ id: 17, titulo: 'Post G', platform: 'instagram', scheduled_at: PAST }}
+        onClose={onClose}
+        onScheduled={onScheduled}
+      />,
+    );
+    fireEvent.click(screen.getByText('escolher data'));
+    fireEvent.click(screen.getByRole('button', { name: /Definir e agendar/ }));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith('Legenda do Instagram não definida.'),
+    );
+    expect(onClose).toHaveBeenCalled();
+    expect(toastSuccess).not.toHaveBeenCalled();
+    // The date write already landed in the DB -- the caller's caches must
+    // still be invalidated, even though scheduling itself failed.
+    expect(onScheduled).toHaveBeenCalled();
+  });
+
+  // Today's existing behavior must not regress: when the date write itself
+  // fails, nothing was persisted, so there is nothing for the caller to
+  // refresh.
+  it('date branch: onScheduled is NOT called when updateWorkflowPost itself fails', async () => {
+    const onClose = vi.fn();
+    const onScheduled = vi.fn();
+    updateWorkflowPost.mockRejectedValueOnce(new Error('Erro de rede.'));
+    render(
+      <AutoSchedulePromptDialog
+        post={{ id: 18, titulo: 'Post H', platform: 'instagram', scheduled_at: PAST }}
+        onClose={onClose}
+        onScheduled={onScheduled}
+      />,
+    );
+    fireEvent.click(screen.getByText('escolher data'));
+    fireEvent.click(screen.getByRole('button', { name: /Definir e agendar/ }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Erro de rede.'));
+    expect(onClose).toHaveBeenCalled();
+    expect(scheduleApprovedPost).not.toHaveBeenCalled();
+    expect(onScheduled).not.toHaveBeenCalled();
+  });
+
   it('an endpoint error closes the dialog and toasts the message', async () => {
     const onClose = vi.fn();
     const onScheduled = vi.fn();
