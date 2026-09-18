@@ -77,7 +77,7 @@ export default function PlanComparison({ plans, actionFor }: PlanComparisonProps
     <section className="plan-comparison" aria-labelledby="plan-comparison-title">
       <div className="plan-comparison-heading">
         <h3 id="plan-comparison-title">Compare os planos</h3>
-        <p>Confira os limites e recursos atuais de cada opção.</p>
+        <p>Veja o que cada plano inclui.</p>
       </div>
       <p className="plan-comparison-swipe-hint" aria-hidden>
         Deslize para comparar →

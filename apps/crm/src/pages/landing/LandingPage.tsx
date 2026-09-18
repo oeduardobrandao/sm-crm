@@ -114,7 +114,8 @@ function PromoBanner() {
   return (
     <div className="promo-banner" role="region" aria-label="Oferta de lançamento">
       <span className="promo-banner-text">
-        <strong>30 dias grátis</strong> em qualquer plano pago. Sem código, cancele quando quiser.
+        <strong>30 dias grátis</strong> em qualquer plano pago. Sem cupom, sem cartão. Cancele
+        quando quiser.
       </span>
       <a href="/login?tab=register" className="promo-banner-cta">
         Começar teste grátis
@@ -341,7 +342,7 @@ function HowItWorks() {
       <div className="lp-container">
         <div className="section-head reveal">
           <h2>{LANDING.how.title}</h2>
-          <p>Do zero em 5 minutos.</p>
+          <p>Do zero ao primeiro post agendado em 5 minutos.</p>
         </div>
         <div className="how-grid">
           {LANDING.how.steps.map((s, i) => (
@@ -396,14 +397,14 @@ function CtaFinal() {
           {user ? (
             <>
               <h2>Bem-vindo de volta!</h2>
-              <p>Sua conta já está ativa. Acesse seu painel e continue organizando sua agência.</p>
+              <p>Sua conta está ativa. Acesse o painel e continue de onde parou.</p>
             </>
           ) : (
             <>
               <h2>Pronto para sair das planilhas?</h2>
               <p>
-                Crie sua conta grátis e comece a organizar sua agência hoje. Sem cartão, sem
-                compromisso.
+                Crie sua conta grátis e organize seus clientes ainda hoje. Sem cartão de crédito,
+                sem compromisso.
               </p>
             </>
           )}
@@ -426,7 +427,7 @@ function CtaFinal() {
               letterSpacing: '.08em',
             }}
           >
-            Comece grátis · sem cartão de crédito
+            30 dias grátis · sem cartão de crédito
           </div>
         </div>
       </div>

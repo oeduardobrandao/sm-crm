@@ -120,10 +120,7 @@ export function LandingFooter() {
               className="logo-dark"
               alt="Mesaas"
             />
-            <p className="footer-tag">
-              Gestão inteligente para social media managers. Feito no Brasil, pensado para quem
-              entrega conteúdo todo dia.
-            </p>
+            <p className="footer-tag">Gestão para quem vive de social media. Feito no Brasil.</p>
           </div>
           <div className="footer-col">
             <p className="ft-label">Produto</p>
@@ -148,9 +145,6 @@ export function LandingFooter() {
               </li>
               <li>
                 <a href="/agente-de-conteudo-ia">Agente de conteúdo IA</a>
-              </li>
-              <li>
-                <a href="/precos">Planos e preços</a>
               </li>
               <li>
                 <a href="/sobre">Sobre</a>
@@ -181,7 +175,7 @@ export function LandingFooter() {
       </div>
       <div className="footer-bottom">
         <span>
-          © 2025 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS
+          © 2026 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS
         </span>
         <div className="footer-socials">
           <a href="https://www.instagram.com/mesaas.com.br/" aria-label="Instagram do Mesaas">
