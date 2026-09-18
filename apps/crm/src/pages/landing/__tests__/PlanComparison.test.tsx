@@ -22,6 +22,8 @@ const FREE: PublicPricingPlan = {
   feature_contracts: false,
   feature_brand_customization: false,
   feature_mcp: false,
+  feature_instagram_automation: false,
+  feature_briefing_audio: false,
 };
 
 const PRO: PublicPricingPlan = {
@@ -42,6 +44,8 @@ const PRO: PublicPricingPlan = {
   feature_contracts: true,
   feature_brand_customization: true,
   feature_mcp: true,
+  feature_instagram_automation: true,
+  feature_briefing_audio: true,
 };
 
 const actionFor = (plan: PublicPricingPlan) => ({

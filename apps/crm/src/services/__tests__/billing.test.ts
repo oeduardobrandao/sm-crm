@@ -60,6 +60,8 @@ describe('billing service', () => {
       feature_contracts: true,
       feature_brand_customization: true,
       feature_mcp: true,
+      feature_instagram_automation: true,
+      feature_briefing_audio: true,
       pagarme_12x_enabled: false,
       pagarme_installment_cents: null,
     };
@@ -82,6 +84,8 @@ describe('billing service', () => {
       feature_contracts: true,
       feature_brand_customization: true,
       feature_mcp: true,
+      feature_instagram_automation: true,
+      feature_briefing_audio: true,
       pagarme_12x_enabled: null,
       pagarme_installment_cents: 9490,
     };

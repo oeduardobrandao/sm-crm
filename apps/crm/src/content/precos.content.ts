@@ -3,9 +3,9 @@ export const PRECOS = {
   sub: 'Comece grátis, sem cartão de crédito. Mude de plano quando quiser — sem fidelidade e sem multa de cancelamento.',
   plans: [
     { name: 'Free', description: 'Para conhecer a plataforma.' },
-    { name: 'Start', description: 'Para freelancers que estão começando.' },
-    { name: 'Pro', description: 'Para freelancers com carteira consolidada.' },
-    { name: 'Max', description: 'Para micro-agências e equipes completas.' },
+    { name: 'Start', description: 'Para freelancers montando a carteira.' },
+    { name: 'Pro', description: 'Para freelancers com a carteira cheia.' },
+    { name: 'Max', description: 'Para agências com equipe.' },
   ],
   faq: [
     {

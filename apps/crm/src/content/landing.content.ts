@@ -4,7 +4,7 @@
  * what actually ships — this is the single source of truth for the copy.
  *
  * Some `description`/`bullets` strings embed literal `<strong>…</strong>`
- * markup (e.g. "<strong>5 etapas padrão</strong> — ideia, ..."). That mirrors
+ * markup (e.g. "<strong>5 etapas prontas</strong>: ideia, ..."). That mirrors
  * the original inline JSX emphasis in these spots. LandingPage.tsx parses
  * that literal markup into real `<strong>` elements when rendering — it is
  * never used with dangerouslySetInnerHTML.
@@ -18,7 +18,10 @@ export interface LandingFaqItem {
 export interface LandingFeature {
   title: string;
   description: string;
+  /** Extra detail. Rendered only when `showBullets` is true; the SEO mirror
+   * follows the same flag so crawlers never see copy visitors do not. */
   bullets: string[];
+  showBullets?: boolean;
 }
 
 export interface LandingHowStep {
@@ -38,9 +41,9 @@ export const LANDING: {
   faq: LandingFaqItem[];
 } = {
   hero: {
-    titleBefore: 'Chega de gerenciar clientes de social media em planilha e grupo de WhatsApp.',
-    titleEm: '',
-    titleAfter: '',
+    titleBefore: 'Chega de gerenciar clientes de social media ',
+    titleEm: 'em planilha e grupo de WhatsApp',
+    titleAfter: '.',
     sub: 'O Mesaas reúne clientes, entregas, aprovações, agendamento no Instagram e métricas em um único lugar. Feito para quem gerencia social media, sozinho ou com equipe.',
     note: '30 dias grátis em qualquer plano.',
   },
@@ -67,20 +70,21 @@ export const LANDING: {
       description:
         'Arraste cada post da ideia até a publicação. Todos os clientes, formatos e prazos em um único fluxo visual.',
       bullets: [
-        '5 etapas prontas: ideia, produção, aprovação, agendado, publicado',
-        'Cliente, formato, prazo e status visíveis no card',
-        'Post atrasado fica vermelho sozinho, sem você precisar conferir',
+        '<strong>5 etapas prontas</strong>: ideia, produção, aprovação, agendado, publicado',
+        '<strong>Cliente, formato, prazo e status</strong> visíveis no card',
+        '<strong>Post atrasado</strong> fica vermelho sozinho, sem você precisar conferir',
         'Filtre por cliente ou tipo de conteúdo com um clique',
       ],
     },
     {
       title: 'Agende e publique no Instagram sem sair do Mesaas.',
+      showBullets: true,
       description:
         'Escolha dia e horário, escreva a legenda e pronto: o post vai ao ar no perfil do seu cliente pela API oficial do Meta. Feed, Reels e Carrossel, sem app de terceiros e sem alarme no celular.',
       bullets: [
-        'O post é publicado sozinho na data e hora marcadas',
-        'Feed, Reels e Carrossel, com a mídia validada antes de agendar',
-        'Botão de publicar agora para os urgentes',
+        'O post é <strong>publicado sozinho</strong> na data e hora marcadas',
+        '<strong>Feed, Reels e Carrossel</strong>, com a mídia validada antes de agendar',
+        'Botão de <strong>publicar agora</strong> para os urgentes',
       ],
     },
     {
@@ -88,7 +92,7 @@ export const LANDING: {
       description:
         'Seguidores, alcance, engajamento e top posts atualizados todo dia, direto da API oficial. Dados confiáveis para provar o resultado do seu trabalho.',
       bullets: [
-        'Dados da API oficial do Meta, sem scraping',
+        'Dados da <strong>API oficial do Meta</strong>, sem scraping',
         'Crescimento de seguidores, <strong>alcance e engajamento</strong> por período',
         'Top posts da semana em destaque',
         'Relatório em PDF gerado em um clique',
@@ -97,11 +101,11 @@ export const LANDING: {
     {
       title: 'Seu cliente aprova por um link. Sem login, sem app.',
       description:
-        'Seu cliente aprova posts, acompanha o calendário e fala com a equipe por um link único. O portal leva a marca dele, não a do Mesaas, e ele nunca precisa criar conta.',
+        'Seu cliente aprova posts, acompanha o calendário e fala com a equipe por um <strong>link único</strong>. O portal leva a marca dele, não a do Mesaas, e ele nunca precisa criar conta.',
       bullets: [
-        'Acesso por link único, sem criar conta',
+        'Acesso por link único, <strong>sem criar conta</strong>',
         'Aprova, pede ajuste ou comenta em cada post',
-        'Calendário editorial e biblioteca de marca do cliente',
+        'Calendário editorial e <strong>biblioteca de marca</strong> do cliente',
         'Aviso automático quando um post está esperando a decisão dele',
       ],
     },
@@ -112,17 +116,18 @@ export const LANDING: {
       bullets: [
         'Visão <strong>mensal, semanal e por cliente</strong>',
         'Uma cor para cada formato: Feed, Reels, Story e Carrossel',
-        'Arraste para reagendar',
+        'Arraste para <strong>reagendar</strong>',
         'Reagendou no calendário, a publicação automática acompanha',
       ],
     },
     {
       title: 'Comentou a palavra-chave, o link chega no direct. Sem ninguém precisar responder.',
+      showBullets: true,
       description:
         'Crie um gatilho para um post ou para o perfil inteiro. O Mesaas responde o comentário em público e envia a DM com link ou cartão na mesma hora, a qualquer horário do dia. Disponível nos planos Pro e Max.',
       bullets: [
         'Gatilho por <strong>palavra-chave</strong> em Feed e Reels',
-        'Respostas públicas variadas, para não soar automático',
+        'Respostas públicas <strong>variadas</strong>, para não soar automático',
         'DM com <strong>cartão, imagem e botão</strong> de link',
         'Tudo configurado no próprio post, dentro do Mesaas',
       ],
@@ -131,12 +136,12 @@ export const LANDING: {
   agente: {
     title: 'Um agente de conteúdo que escreve com a voz de cada cliente.',
     paragraphs: [
-      'Conecte o Mesaas ao Claude e gere carrosséis, roteiros de Reels e legendas a partir do briefing, da identidade e dos posts que mais performaram de cada cliente. Sem sair do seu fluxo de trabalho.',
+      'Conecte o Mesaas ao Claude ou ao ChatGPT e gere carrosséis, roteiros de Reels e legendas a partir do briefing, da identidade e dos posts que mais performaram de cada cliente. Sem sair do seu fluxo de trabalho.',
     ],
     bullets: [
       'Aprende o briefing e a identidade de cada marca',
       'Usa os posts que mais performaram como referência',
-      'Funciona com claude.ai, Claude Desktop ou via API',
+      'Funciona com Claude, ChatGPT ou via API',
     ],
   },
   how: {
@@ -182,6 +187,10 @@ export const LANDING: {
     {
       q: 'Consigo importar meus clientes de uma planilha?',
       a: 'Sim. Dá para cadastrar um por um ou importar todos de uma vez por planilha. Em poucos minutos sua base inteira está no Mesaas.',
+    },
+    {
+      q: 'Uso Notion, ClickUp ou Trello hoje. Consigo migrar meus dados?',
+      a: 'Sim. O Mesaas importa direto o export do Notion, do Trello e do ClickUp, além de qualquer planilha em CSV. Você envia o arquivo, confere como as colunas foram mapeadas e confirma. Seus clientes e entregas entram no sistema sem precisar recadastrar nada. Se preferir, peça ao seu agente de IA (Claude ou ChatGPT) conectado ao Mesaas para fazer a migração por você.',
     },
     {
       q: 'Funciona para freelancer ou só para agência?',
