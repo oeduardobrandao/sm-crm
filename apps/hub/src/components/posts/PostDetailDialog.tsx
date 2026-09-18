@@ -79,7 +79,7 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
         onRequestClose={() => onNavigate(null)}
         title={t('postagens.title', 'Postagens')}
       >
-        <div className="hub-bg-card rounded-2xl w-[min(420px,calc(100vw-2rem))] p-6 text-center space-y-4">
+        <div className="hub-bg-card rounded-[4px] w-[min(420px,calc(100vw-2rem))] p-6 text-center space-y-4">
           <p className="text-[14px] hub-tx2">
             {t('posts.notAvailable', 'Esta postagem não está disponível.')}
           </p>
@@ -294,7 +294,7 @@ function PostDetailContent({
     kind === 'text' ? (
       <div className="space-y-4">
         {post.media_autocleaned_at && (
-          <div className="hub-bg-soft rounded-xl px-4 py-5 flex flex-col items-center gap-2 text-center">
+          <div className="hub-bg-soft rounded-[4px] px-4 py-5 flex flex-col items-center gap-2 text-center">
             <ImageOff size={20} className="hub-tx3 opacity-60" aria-hidden="true" />
             <span className="text-[12.5px] font-medium hub-tx2">
               {t('textCard.mediaRemoved', 'Mídia removida para liberar espaço')}
@@ -400,7 +400,7 @@ function PostDetailContent({
         {navButton('prev')}
         {navButton('next')}
         <div
-          className={`hub-bg-card md:rounded-2xl overflow-hidden flex flex-col md:grid w-full h-full md:h-[min(92vh,820px)] ${
+          className={`hub-bg-card md:rounded-[4px] overflow-hidden flex flex-col md:grid w-full h-full md:h-[min(92vh,820px)] ${
             singleColumn
               ? 'md:w-[min(560px,calc(100vw-7rem))] md:grid-cols-[minmax(0,1fr)]'
               : 'md:w-[min(1040px,calc(100vw-7rem))] md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'

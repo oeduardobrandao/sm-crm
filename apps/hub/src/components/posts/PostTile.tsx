@@ -150,7 +150,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         aria-checked={selected}
         aria-label={t('instagramCard.selectAriaLabel', 'Selecionar publicação')}
         onClick={() => onToggle(post.id)}
-        className={`${base} block rounded-xl overflow-hidden text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ${selected ? 'ring-[3px] ring-[#0095f6]' : 'ring-1 ring-black/5'}`}
+        className={`${base} block rounded-[4px] overflow-hidden text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ${selected ? 'ring-[3px] ring-[#0095f6]' : 'ring-1 ring-black/5'}`}
       >
         {body}
         <span
@@ -178,7 +178,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         aria-label={openLabel}
         disabled={inert}
         onClick={() => onOpen(post.id)}
-        className={`absolute inset-0 rounded-xl overflow-hidden text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ring-1 ring-black/5 ${inert ? 'opacity-50 cursor-default' : 'hover:-translate-y-0.5 hover:shadow-lg'}`}
+        className={`absolute inset-0 rounded-[4px] overflow-hidden text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ring-1 ring-black/5 ${inert ? 'opacity-50 cursor-default' : 'hover:-translate-y-0.5 hover:shadow-lg'}`}
       >
         {body}
       </button>
