@@ -381,6 +381,7 @@ describe('hub content pages', () => {
       'token-publico',
       'q2',
       'Gerar mais leads qualificados',
+      expect.any(AbortSignal),
     );
     expect(screen.getByText('✓ Salvo')).toBeInTheDocument();
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['hub-briefing', 'token-publico'] });

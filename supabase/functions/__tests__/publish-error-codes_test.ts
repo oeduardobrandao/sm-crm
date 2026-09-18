@@ -84,6 +84,17 @@ Deno.test("classify: transiente da Meta", () => {
   );
 });
 
+// Caso real de produção (posts 5172/4277/3049/4106/5545, 2026-09-18): AbortSignal.timeout()
+// no nosso próprio fetch, não um erro vindo da Meta. Todos publicaram com sucesso no retry
+// do cron, então isso é instabilidade transiente, não UNKNOWN.
+Deno.test("classify: nosso AbortSignal.timeout (DOMException local) vira transiente", () => {
+  const timeoutErr = new DOMException("Signal timed out.", "TimeoutError");
+  assertEquals(classifyPublishError(timeoutErr), "IG_TRANSIENT");
+
+  const abortErr = new DOMException("The signal has been aborted", "AbortError");
+  assertEquals(classifyPublishError(abortErr), "IG_TRANSIENT");
+});
+
 Deno.test("classify: erros internos", () => {
   assertEquals(classifyPublishError(new Error("Tag length overflows ciphertext")), "INTERNAL");
   assertEquals(classifyPublishError(new Error("mark_platform_published failed for post 1: boom")), "INTERNAL");

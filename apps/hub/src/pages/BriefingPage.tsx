@@ -59,8 +59,8 @@ export function BriefingPage() {
     : questions;
 
   function handleSave(questionId: string) {
-    return async (answer: string) => {
-      await submitBriefingAnswer(token, questionId, answer);
+    return async (answer: string, signal: AbortSignal) => {
+      await submitBriefingAnswer(token, questionId, answer, signal);
       qc.invalidateQueries({ queryKey: ['hub-briefing', token] });
     };
   }
@@ -176,7 +176,7 @@ function QuestionItem({
 }: {
   token: string;
   question: BriefingQuestion;
-  onSave: (answer: string) => Promise<void>;
+  onSave: (answer: string, signal: AbortSignal) => Promise<void>;
   audioEnabled: boolean;
   onAudioChanged: () => void;
 }) {
@@ -194,6 +194,18 @@ function QuestionItem({
   // append from the DB row's current `answer`, so a cancelled debounce would
   // let the server overwrite the user's unsaved edit with a stale value.
   const pendingRef = useRef<{ value: string; dirty: boolean }>({ value: answer, dirty: false });
+  // One controller per outstanding save. A new save aborts the previous one so
+  // that a save still waiting out a 429 backoff (see api.ts) never replays its
+  // now-stale text over the newer edit. The aborted save is "superseded", not
+  // failed: its outcome is ignored and the newer save drives `status`.
+  const saveAbortRef = useRef<AbortController | null>(null);
+
+  function beginSave(): AbortController {
+    saveAbortRef.current?.abort();
+    const controller = new AbortController();
+    saveAbortRef.current = controller;
+    return controller;
+  }
   const locked = phase !== 'idle' || busyAction !== null;
   // Typed text not yet saved, a save in flight, or an audio upload / transcription in
   // progress: a silent version swap must wait.
@@ -233,12 +245,15 @@ function QuestionItem({
       pendingRef.current = { value, dirty: true };
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
+        const { signal } = beginSave();
         try {
-          await onSave(value);
+          await onSave(value, signal);
+          if (signal.aborted) return;
           pendingRef.current = { value, dirty: false };
           setStatus('saved');
           setTimeout(() => setStatus('idle'), 2000);
         } catch {
+          if (signal.aborted) return;
           setStatus('error');
         }
       }, 800);
@@ -257,8 +272,9 @@ function QuestionItem({
       debounceRef.current = null;
     }
     const value = pendingRef.current.value;
+    const { signal } = beginSave();
     try {
-      await onSave(value);
+      await onSave(value, signal);
       pendingRef.current = { value, dirty: false };
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2000);

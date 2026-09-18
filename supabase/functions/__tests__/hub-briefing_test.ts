@@ -8,7 +8,7 @@ function makeHandler(
   db: ReturnType<typeof createSupabaseQueryMock>,
   opts: {
     transcribe?: ((key: string) => Promise<{ text: string } | null>) | null;
-    rateLimit?: (k: string) => boolean;
+    rateLimit?: (k: string, max?: number, windowSeconds?: number) => boolean;
     signGetUrl?: (key: string) => Promise<string>;
   } = {},
 ) {
@@ -16,7 +16,8 @@ function makeHandler(
     buildCorsHeaders,
     createDb: () => db as never,
     now: () => "2026-06-16T12:00:00.000Z",
-    rateLimit: async (_db, key) => (opts.rateLimit ? opts.rateLimit(key) : true),
+    rateLimit: async (_db, key, max, windowSeconds) =>
+      opts.rateLimit ? opts.rateLimit(key, max, windowSeconds) : true,
     signPutUrl: async (key: string) => `https://put.example.com/${key}`,
     signGetUrl: opts.signGetUrl ?? (async (key: string) => `https://get.example.com/${key}`),
     headObject: async () => ({ contentLength: 5000, contentType: "audio/webm" }),
@@ -315,6 +316,44 @@ Deno.test("hub-briefing POST simples (sem segmento) segue salvando answer", asyn
   const res = await makeHandler(db)(postReq("", { token: "t", question_id: Q, answer: "oi" }));
   assertEquals(res.status, 200);
   assertEquals(await readJson(res), { ok: true });
+});
+
+Deno.test("hub-briefing POST de texto usa o orçamento de autosave (120 por 5 min), não 30/h", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("hub_briefing_questions", "select", { data: { id: Q }, error: null });
+  db.queue("hub_briefing_questions", "update", { data: null, error: null });
+  const seen: Array<[string, number | undefined, number | undefined]> = [];
+  const handler = makeHandler(db, {
+    rateLimit: (k, max, win) => {
+      seen.push([k, max, win]);
+      return true;
+    },
+  });
+  const res = await handler(postReq("", { token: "t", question_id: Q, answer: "oi" }));
+  assertEquals(res.status, 200);
+  const write = seen.find(([k]) => k.startsWith("hub-write:hub-briefing:"));
+  assertEquals(write?.[1], 120);
+  assertEquals(write?.[2], 300);
+  // The shared Hub-wide read pool is only debited by GET.
+  assertEquals(seen.some(([k]) => k.startsWith("hub-read:")), false);
+});
+
+Deno.test("hub-briefing GET debita o pool compartilhado hub-read", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("briefings", "select", { data: [], error: null });
+  db.queue("hub_briefing_questions", "select", { data: [], error: null });
+  const seen: string[] = [];
+  const handler = makeHandler(db, {
+    rateLimit: (k) => {
+      seen.push(k);
+      return true;
+    },
+  });
+  const res = await handler(new Request("https://x.test/hub-briefing?token=t"));
+  assertEquals(res.status, 200);
+  assertEquals(seen.some((k) => k.startsWith("hub-read:")), true);
 });
 
 // ── Gate de plano (feature_briefing_audio) ─────────────────────────────

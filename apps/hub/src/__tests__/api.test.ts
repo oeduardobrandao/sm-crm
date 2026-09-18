@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFetchMock } from '../../../../test/shared/fetchMock';
 import {
@@ -61,6 +61,73 @@ describe('hub api client', () => {
     await expect(submitApproval('token-hub', 12, 'mensagem')).rejects.toThrow(
       'Comentário obrigatório',
     );
+  });
+
+  describe('429 retry', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('retries a rate-limited write with backoff and resolves once the server accepts it', async () => {
+      vi.useFakeTimers();
+      fetchHarness.queueResponse({ ok: false, status: 429, json: { error: 'Muitas tentativas.' } });
+      fetchHarness.queueResponse({ ok: false, status: 429, json: { error: 'Muitas tentativas.' } });
+      fetchHarness.queueResponse({ json: { ok: true } });
+
+      const pending = submitBriefingAnswer('token-hub', 'q1', 'resposta');
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      await expect(pending).resolves.toEqual({ ok: true });
+      expect(fetchHarness.calls).toHaveLength(3);
+      for (const call of fetchHarness.calls) {
+        expect(JSON.parse(String(call.init?.body))).toEqual({
+          token: 'token-hub',
+          question_id: 'q1',
+          answer: 'resposta',
+        });
+      }
+    });
+
+    it('gives up after the retry budget and surfaces the rate-limit message', async () => {
+      vi.useFakeTimers();
+      for (let i = 0; i < 10; i++) {
+        fetchHarness.queueResponse({
+          ok: false,
+          status: 429,
+          json: { error: 'Muitas tentativas.' },
+        });
+      }
+
+      const pending = submitBriefingAnswer('token-hub', 'q1', 'resposta');
+      const outcome = expect(pending).rejects.toThrow('Muitas tentativas.');
+      await vi.advanceTimersByTimeAsync(120_000);
+      await outcome;
+
+      expect(fetchHarness.calls).toHaveLength(4);
+    });
+
+    it('stops retrying once its abort signal fires (a newer autosave superseded it)', async () => {
+      vi.useFakeTimers();
+      fetchHarness.queueResponse({ ok: false, status: 429, json: { error: 'Muitas tentativas.' } });
+      fetchHarness.queueResponse({ json: { ok: true } });
+
+      const ac = new AbortController();
+      const pending = submitBriefingAnswer('token-hub', 'q1', 'versão antiga', ac.signal);
+      const outcome = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(500);
+      ac.abort();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await outcome;
+
+      // The stale payload was never replayed.
+      expect(fetchHarness.calls).toHaveLength(1);
+    });
+
+    it('does not retry non-429 failures', async () => {
+      fetchHarness.queueResponse({ ok: false, status: 500, json: { error: 'boom' } });
+      await expect(submitBriefingAnswer('token-hub', 'q1', 'x')).rejects.toThrow('boom');
+      expect(fetchHarness.calls).toHaveLength(1);
+    });
   });
 
   it('falls back to HTTP status when error bodies are not valid JSON', async () => {

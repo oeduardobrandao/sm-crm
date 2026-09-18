@@ -6,6 +6,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 declare global {
   interface Window {
     $crisp?: Array<unknown[]>;
+    /**
+     * Crisp Session Continuity token, read by the widget on `session:reset`.
+     * Only ever written by AuthContext.tsx: set on an authenticated rebind,
+     * nulled on sign-out and user change. Declared here once; a TS global
+     * augmentation merges across the compilation, so MobileNav.tsx's own
+     * `$crisp` block deliberately does not repeat it.
+     */
+    CRISP_TOKEN_ID?: string | null;
   }
 }
 

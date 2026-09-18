@@ -27,6 +27,11 @@ import {
 } from '../lib/permissions';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
 import { clearPopupSession } from '../hooks/popupSession';
+import {
+  clearCrispSessionCache,
+  readCrispSessionCache,
+  writeCrispSessionCache,
+} from '../lib/crispSession';
 
 interface Profile {
   id: string;
@@ -187,8 +192,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authGeneration = useRef(0);
   /**
    * Counts CRISP IDENTITY RESETS only — bumped at exactly the two places that
-   * push `['do', 'session:reset']` (the user-change branch of
-   * onAuthStateChange, and signOut) and nowhere else.
+   * push `['do', 'session:reset']` for an OUTGOING identity (the user-change
+   * branch of onAuthStateChange, and signOut) and nowhere else.
+   *
+   * There is a THIRD session:reset push site, the Session Continuity rebind
+   * inside the identify effect, and it deliberately does NOT bump this
+   * counter. That reset is a same-identity self-correction (binding the
+   * widget to the current user's own token), not an identity going away, so
+   * there is no in-flight response for a stale identity to fence off. Bumping
+   * it there would make the effect's own post-await guard reject the very
+   * pushes the rebind is about to make. Do not "fix" it into bumping.
    *
    * Deliberately NOT `authGeneration`, which the Crisp identify effect used to
    * compare against. `authGeneration` moves on EVERY onAuthStateChange event —
@@ -271,6 +284,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // try, so an in-flight crisp-identity response for the OUTGOING
         // identity can never land after this reset (see the identify effect).
         crispResetGeneration.current += 1;
+        // Session Continuity: B must not inherit A's token binding either.
+        // Immediately before the reset push is safe HERE (unlike signOut,
+        // which has to clear before its await): this handler runs
+        // synchronously start to finish.
+        window.CRISP_TOKEN_ID = null;
+        clearCrispSessionCache();
         try {
           window.$crisp?.push(['do', 'session:reset']);
         } catch {
@@ -385,6 +404,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [sessionReady, userId]);
 
+  // Latest known display name, for the Session Continuity rebind inside the
+  // identify effect below. That effect is keyed on [userId, user?.email] on
+  // purpose (a name change must not re-invoke crisp-identity), so it cannot
+  // read `profile?.nome` from its own closure without going stale: the
+  // profile usually resolves AFTER the effect has started. A ref mirror gives
+  // the rebind whatever name is known at push time, if any. Same
+  // backstop-mirror pattern as canSeeFinancialsRef / membershipRef below.
+  const profileNomeRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    profileNomeRef.current = profile?.nome;
+  }, [profile?.nome]);
+
   // Crisp identification, split out from the profile-hydration effect above
   // on purpose: that effect is keyed on [sessionReady, userId] so an email or
   // name change alone never re-triggers the profile/membership fetch, but
@@ -433,6 +464,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (async () => {
       if (!user?.email) return;
       let signature: string | undefined;
+      let crispToken: string | undefined;
       try {
         // Explicit timeout: browser fetch has no default one, and
         // functions-js resolves rather than throws on genuine errors -- but
@@ -442,7 +474,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // exists for. This repo has been bitten before by unbounded I/O in
         // state-setting handlers (R2 presign) -- same fix here.
         const { data } = await supabase.functions.invoke('crisp-identity', { timeout: 5000 });
-        signature = (data as { signature?: string } | null)?.signature;
+        const payload = data as { signature?: string; crispToken?: unknown } | null;
+        signature = payload?.signature;
+        // Absent whenever the function's best-effort upsert failed (or on
+        // any transport failure). Treated below as "nothing to reconcile",
+        // never as a signal to tear an existing binding down.
+        crispToken =
+          typeof payload?.crispToken === 'string' && payload.crispToken
+            ? payload.crispToken
+            : undefined;
       } catch {
         // Signing is best-effort. A failure means the session shows as
         // Unverified in the inbox, which is the pre-existing behaviour and is
@@ -454,6 +494,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // is only cleared asynchronously by React's own cleanup.
       if (!active || crispResetGeneration.current !== initialCrispResetGeneration) return;
 
+      // Session Continuity reconciliation. Placed AFTER the guard above on
+      // purpose: a write before it could let a response for an already
+      // signed-out identity bind the NEXT person on a shared machine to the
+      // outgoing user's token, and that binding persists across reloads.
+      //
+      //   token absent  -> nothing continuity-related happens (not a
+      //                    mismatch, not a clear); the identity push below
+      //                    proceeds exactly as before.
+      //   token matches the cached { userId, token } for THIS user
+      //                 -> no-op: Crisp's own cookie already resumes the
+      //                    bound session across reloads (verified against
+      //                    the production widget).
+      //   otherwise     -> live rebind: set CRISP_TOKEN_ID, reset so the
+      //                    widget re-reads it, re-establish identity on the
+      //                    fresh session below, then record the pair.
+      //
+      // The rebind's session:reset deliberately does NOT bump
+      // crispResetGeneration; see that ref's declaration.
+      let reboundTo: string | null = null;
+      if (crispToken) {
+        const cached = readCrispSessionCache();
+        const matches = cached !== null && cached.userId === userId && cached.token === crispToken;
+        if (!matches) {
+          reboundTo = crispToken;
+          window.CRISP_TOKEN_ID = crispToken;
+          try {
+            window.$crisp?.push(['do', 'session:reset']);
+          } catch {
+            // Never let a support-tooling nicety break auth.
+          }
+        }
+      }
+
       try {
         // Second element is the identity signature. Crisp marks the session
         // Verified only when it validates; unsigned sessions still work.
@@ -464,6 +537,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
       } catch {
         // Never let a support-tooling nicety break auth.
+      }
+
+      if (reboundTo) {
+        // A reset starts a fresh local session that has forgotten every trait
+        // set on the prior one. user:email was just re-pushed above; the
+        // nickname has to be re-established here too, because the separate
+        // nickname effect is keyed on [userId, profile?.nome], which a rebind
+        // alone never changes, so it would not re-fire on its own.
+        const nome = profileNomeRef.current;
+        if (nome) {
+          try {
+            window.$crisp?.push(['set', 'user:nickname', [nome]]);
+          } catch {
+            // Never let a support-tooling nicety break auth.
+          }
+        }
+        writeCrispSessionCache(userId, reboundTo);
       }
     })();
 
@@ -880,26 +970,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     authGeneration.current += 1;
-    // Paired with the `['do', 'session:reset']` push below, but bumped HERE,
-    // before the first await: an in-flight crisp-identity response for the
-    // outgoing user can resolve during `await supabaseSignOut()`, so the
-    // counter has to have moved already for the identify effect's post-await
-    // guard to see it. Same reasoning as authGeneration on the line above.
+    // Paired with the `['do', 'session:reset']` push a few lines below, but
+    // bumped HERE, before the first await: an in-flight crisp-identity
+    // response for the outgoing user can resolve during `await
+    // supabaseSignOut()`, so the counter has to have moved already for the
+    // identify effect's post-await guard to see it. Same reasoning as
+    // authGeneration on the line above.
     crispResetGeneration.current += 1;
-    profileRequestId.current += 1;
-    await supabaseSignOut();
-    // Prevent the next user on a shared machine from being merged into this identity.
-    resetAnalytics();
-    // Same shared-machine reasoning as resetAnalytics() above, but for Crisp:
-    // without this, the next person on this browser inherits the outgoing
-    // user's identified Crisp contact (their email/nickname) and their
-    // support messages land on it. Guarded because a support-tooling failure
-    // must never break sign-out, a security-relevant path.
+    // Session Continuity teardown, synchronously and BEFORE the await below
+    // -- including the reset push ITSELF, not just the local clears (an
+    // earlier revision of this code left the push after the await, matching
+    // this file's older, pre-existing placement for the identity-verification
+    // reset -- an external review caught that this doesn't go far enough: if
+    // `supabaseSignOut()` rejects or hangs, nothing after it ever runs, so a
+    // push placed there would leave Crisp's own cookie-persisted session
+    // bound to the outgoing user's token AND identified email indefinitely,
+    // and the next person on a shared machine would see it, unhidden, on
+    // /login). Moving the push earlier costs nothing: worst case on a
+    // signOut() failure is an unnecessary reset while still logged in, which
+    // self-heals the next time this effect re-runs. Guarded because a
+    // support-tooling failure must never break sign-out, a security-relevant
+    // path.
+    window.CRISP_TOKEN_ID = null;
+    clearCrispSessionCache();
     try {
       window.$crisp?.push(['do', 'session:reset']);
     } catch {
       // Never let a support-tooling nicety break auth.
     }
+    profileRequestId.current += 1;
+    await supabaseSignOut();
+    // Prevent the next user on a shared machine from being merged into this identity.
+    resetAnalytics();
     clearProfileCache();
     activeUserId.current = null;
     setUser(null);

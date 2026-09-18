@@ -25,11 +25,29 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
   (() => { throw new Error("CRON_SECRET is required"); })();
 
-// Per-phase claim limits keep a single cron run bounded. The publish/retry phases
-// poll the Instagram container in-run (≤ ~6s each), so they're capped lower than
-// container creation to stay under the edge-function wall-clock at 1-min cadence.
+// Per-phase claim limits keep a single cron run bounded. The old "≤ ~6s each"
+// framing here assumed a near-instant Graph API and only counted pollContainerReady's
+// intentional 3s sleep -- it never accounted for each check/publish/permalink call's
+// own timeout, so it was already optimistic before this comment was corrected. Actual
+// worst case per publish-phase item is closer to 4*GRAPH_TIMEOUT_MS+3s (two
+// checkContainerStatus calls, one 3s sleep between them, publishContainer,
+// fetchPermalink -- see instagram-publish-utils.ts), and that worst case matters: the
+// claim RPC stamps publish_processing_at BEFORE any Graph call runs, and an edge-runtime
+// kill bypasses catch/markFailed entirely (AGENTS.md), so a run that overruns the
+// platform's execution limit strands every post it claimed behind the RPC's 10-minute
+// stale-reclaim window instead of retrying on the very next tick.
+//
+// PUBLISH_LIMIT was 10 -- prod data (2026-09-18) showed peak-minute post counts
+// (agencies converging on round-hour schedule slots, e.g. 13:00 UTC) already hitting
+// 13-15 in a single minute across unrelated clients, so posts were spilling into a
+// second/third tick from volume alone, before any Meta-side slowness. Doubled to
+// match CONTAINER_LIMIT's margin over that observed peak. PUBLISH_BATCH_SIZE is raised
+// alongside it (5 -> 10) specifically so the publish phase still runs the SAME number
+// of sequential batches (2) as before this change -- more per-tick throughput without
+// a longer worst-case chain of batches to get killed mid-run.
 const CONTAINER_LIMIT = 25;
-const PUBLISH_LIMIT = 10;
+const PUBLISH_LIMIT = 20;
+const PUBLISH_BATCH_SIZE = 10;
 const RETRY_LIMIT = 10;
 
 interface ClaimedPost {
@@ -418,7 +436,7 @@ Deno.serve(createPublishCronHandler({
       const publishPosts = await claimPosts(db, "publish", PUBLISH_LIMIT);
       if (publishPosts.length > 0) {
         console.log(`[IG-PUBLISH] Phase 2: ${publishPosts.length} posts to publish`);
-        const r2 = await processBatch(publishPosts, 5, 1000, async (post) => {
+        const r2 = await processBatch(publishPosts, PUBLISH_BATCH_SIZE, 1000, async (post) => {
           try {
             await processPublish(db, post);
           } catch (err: any) {

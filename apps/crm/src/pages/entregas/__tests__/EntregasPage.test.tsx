@@ -15,6 +15,7 @@ const storeMocks = vi.hoisted(() => ({
   getStandalonePost: vi.fn(),
   // Used by the provisional card built from a "mover para outro fluxo" seed.
   getDeadlineInfo: vi.fn(() => ({ estourado: false, urgente: false })),
+  isFinalClientApprovalCycle: vi.fn(() => true),
 }));
 vi.mock('../../../store', () => storeMocks);
 

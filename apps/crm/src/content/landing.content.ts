@@ -38,11 +38,11 @@ export const LANDING: {
   faq: LandingFaqItem[];
 } = {
   hero: {
-    titleBefore: 'Sua agência de social media ',
-    titleEm: 'sem caos',
-    titleAfter: ', sem planilha, sem grupo de WhatsApp.',
-    sub: 'Mesaas é o CRM feito para gestores e agências de social media. Clientes, entregas, aprovações, agendamento automático no Instagram e métricas — em um só lugar.',
-    note: '30 dias grátis em qualquer plano. Sem cartão de crédito.',
+    titleBefore: 'Chega de gerenciar clientes de social media em planilha e grupo de WhatsApp.',
+    titleEm: '',
+    titleAfter: '',
+    sub: 'O Mesaas reúne clientes, entregas, aprovações, agendamento no Instagram e métricas em um único lugar. Feito para quem gerencia social media, sozinho ou com equipe.',
+    note: '30 dias grátis em qualquer plano.',
   },
   ticker: [
     'Clientes + contratos',
@@ -51,145 +51,145 @@ export const LANDING: {
     'Portal do cliente',
     'Publicação automática',
     'Calendário editorial',
-    'Métricas reais',
+    'Métricas do Instagram',
     'Financeiro',
     'Equipe + tarefas',
     'Aprovações por link',
     'Feed, Reels e Carrossel',
-    'Integração Meta API',
+    'API oficial do Meta',
   ],
-  featuresTitle: 'Tudo que sua agência já faz — só que organizado.',
+  featuresTitle: 'Tudo que você já faz hoje. Só que organizado.',
   featuresSub:
-    'Cada módulo foi desenhado com quem passa o dia gerenciando social media. Menos abas abertas, mais entrega.',
+    'Cada módulo foi criado com quem vive de social media. Menos abas abertas, mais tempo para produzir.',
   features: [
     {
       title: 'Kanban de entregas que sua equipe entende no primeiro dia',
       description:
-        'Arraste cada post pelas etapas — da ideia à publicação. Cada cliente, cada tipo de conteúdo, cada prazo em um só fluxo visual.',
+        'Arraste cada post da ideia até a publicação. Todos os clientes, formatos e prazos em um único fluxo visual.',
       bullets: [
-        '<strong>5 etapas padrão</strong> — ideia, produção, aprovação, agendado, publicado',
-        'Cards mostram <strong>cliente, tipo, prazo e status</strong> em um olhar',
-        '<strong>Cards atrasados</strong> ficam destacados em vermelho automaticamente',
+        '5 etapas prontas: ideia, produção, aprovação, agendado, publicado',
+        'Cliente, formato, prazo e status visíveis no card',
+        'Post atrasado fica vermelho sozinho, sem você precisar conferir',
         'Filtre por cliente ou tipo de conteúdo com um clique',
       ],
     },
     {
-      title: 'Agende e publique no Instagram — sem sair do Mesaas.',
+      title: 'Agende e publique no Instagram sem sair do Mesaas.',
       description:
-        'Escolha o dia e horário, escreva a legenda e pronto: o Mesaas publica automaticamente no perfil do seu cliente via API oficial do Meta. Feed, Reels e Carrossel — sem aplicativos externos, sem alarmes no celular.',
+        'Escolha dia e horário, escreva a legenda e pronto: o post vai ao ar no perfil do seu cliente pela API oficial do Meta. Feed, Reels e Carrossel, sem app de terceiros e sem alarme no celular.',
       bullets: [
-        '<strong>Publicação automática</strong> — o post vai ao ar sozinho no dia e hora marcados',
-        'Suporta <strong>Feed, Reels e Carrossel</strong> com validação de mídia',
-        'Opção de <strong>publicar agora</strong> para posts urgentes',
+        'O post é publicado sozinho na data e hora marcadas',
+        'Feed, Reels e Carrossel, com a mídia validada antes de agendar',
+        'Botão de publicar agora para os urgentes',
       ],
     },
     {
-      title: 'Métricas reais do Instagram — prontas para o relatório.',
+      title: 'Métricas do Instagram prontas para o relatório do cliente.',
       description:
-        'Seguidores, alcance, engajamento e top posts atualizados todo dia. Conecte a conta via API oficial e tenha dados confiáveis para mostrar o valor do seu trabalho ao cliente.',
+        'Seguidores, alcance, engajamento e top posts atualizados todo dia, direto da API oficial. Dados confiáveis para provar o resultado do seu trabalho.',
       bullets: [
-        '<strong>API oficial do Meta</strong> — dados confiáveis, sem scraping',
+        'Dados da API oficial do Meta, sem scraping',
         'Crescimento de seguidores, <strong>alcance e engajamento</strong> por período',
-        'Top posts da semana destacados automaticamente',
-        'Relatório em PDF para enviar ao cliente em um clique',
+        'Top posts da semana em destaque',
+        'Relatório em PDF gerado em um clique',
       ],
     },
     {
-      title: 'Portal do cliente que o cliente realmente usa',
+      title: 'Seu cliente aprova por um link. Sem login, sem app.',
       description:
-        'Seu cliente aprova posts, vê o calendário e conversa com a equipe por um link único — <strong>sem login, sem app, sem fricção</strong>. Design editorial pensado para a marca dele, não para a sua CRM.',
+        'Seu cliente aprova posts, acompanha o calendário e fala com a equipe por um link único. O portal leva a marca dele, não a do Mesaas, e ele nunca precisa criar conta.',
       bullets: [
-        'Link único <strong>sem necessidade de conta</strong> para o cliente',
-        'Aprovar, pedir ajustes ou comentar em cada post',
-        'Calendário editorial e biblioteca de <strong>identidade de marca</strong>',
-        'Notificação automática quando algo precisa de decisão',
+        'Acesso por link único, sem criar conta',
+        'Aprova, pede ajuste ou comenta em cada post',
+        'Calendário editorial e biblioteca de marca do cliente',
+        'Aviso automático quando um post está esperando a decisão dele',
       ],
     },
     {
-      title: 'Calendário editorial por cliente ou unificado',
+      title: 'Calendário editorial por cliente ou da operação inteira',
       description:
-        'Veja tudo que foi planejado, agendado e publicado em um mês. Troque entre clientes ou visualize toda a operação de uma vez para identificar semanas vazias antes que virem problema.',
+        'Veja o que foi planejado, agendado e publicado no mês. Alterne entre clientes ou enxergue toda a operação de uma vez e descubra semanas vazias antes que virem problema.',
       bullets: [
         'Visão <strong>mensal, semanal e por cliente</strong>',
-        'Cores por tipo de conteúdo: Feed, Reels, Story, Carrossel',
-        'Arraste para <strong>reagendar</strong> em segundos',
-        'Integração direta com o agendamento automático',
+        'Uma cor para cada formato: Feed, Reels, Story e Carrossel',
+        'Arraste para reagendar',
+        'Reagendou no calendário, a publicação automática acompanha',
       ],
     },
     {
-      title: 'Comentou a palavra-chave, recebeu no direct. Sozinho.',
+      title: 'Comentou a palavra-chave, o link chega no direct. Sem ninguém precisar responder.',
       description:
-        'Defina um gatilho por post ou para o perfil inteiro. O Mesaas responde o comentário em público e manda a DM com link ou cartão, na hora, 24 por 7. Disponível nos planos Pro e Max.',
+        'Crie um gatilho para um post ou para o perfil inteiro. O Mesaas responde o comentário em público e envia a DM com link ou cartão na mesma hora, a qualquer horário do dia. Disponível nos planos Pro e Max.',
       bullets: [
         'Gatilho por <strong>palavra-chave</strong> em Feed e Reels',
-        'Respostas públicas com <strong>variações</strong>, sem parecer robô',
+        'Respostas públicas variadas, para não soar automático',
         'DM com <strong>cartão, imagem e botão</strong> de link',
-        'Configurado direto no post, dentro do Mesaas',
+        'Tudo configurado no próprio post, dentro do Mesaas',
       ],
     },
   ],
   agente: {
     title: 'Um agente de conteúdo que escreve com a voz de cada cliente.',
     paragraphs: [
-      'Conecte seu Mesaas ao Claude e gere carrosséis, roteiros de Reels e legendas sob medida — a partir do briefing, da marca e dos posts que mais performaram. Sem sair do seu fluxo.',
+      'Conecte o Mesaas ao Claude e gere carrosséis, roteiros de Reels e legendas a partir do briefing, da identidade e dos posts que mais performaram de cada cliente. Sem sair do seu fluxo de trabalho.',
     ],
     bullets: [
       'Aprende o briefing e a identidade de cada marca',
-      'Usa o que já performou como referência',
-      'Conecta com claude.ai, Claude Desktop ou API',
+      'Usa os posts que mais performaram como referência',
+      'Funciona com claude.ai, Claude Desktop ou via API',
     ],
   },
   how: {
-    title: 'Três passos entre você e uma operação organizada.',
+    title: 'Três passos para organizar sua operação.',
     steps: [
       {
         n: '01',
         title: 'Cadastre sua agência',
         description:
-          'Crie sua conta grátis, importe seus clientes e configure templates de contrato. Simples como digitar um e-mail.',
+          'Crie sua conta grátis, importe seus clientes por planilha e configure os modelos de contrato.',
       },
       {
         n: '02',
         title: 'Monte o fluxo de entregas',
         description:
-          'Arraste os posts pelo kanban. Atribua à equipe, defina prazos, conecte o Instagram de cada cliente.',
+          'Conecte o Instagram de cada cliente, distribua as tarefas para a equipe e defina os prazos no kanban.',
       },
       {
         n: '03',
-        title: 'Compartilhe o link do Hub',
+        title: 'Envie o link do portal para o cliente',
         description:
-          'Seu cliente aprova posts, acompanha o calendário e vê métricas — tudo por um link único, sem precisar criar conta.',
+          'Ele aprova posts, acompanha o calendário e vê as métricas por um único link, sem criar conta.',
       },
     ],
   },
   faq: [
     {
       q: 'O Mesaas tem plano gratuito?',
-      a: 'Sim. O plano Free permite começar sem custo. Para ver os limites, recursos e condições atuais de cada opção, compare os planos exibidos acima e escolha o que melhor atende à sua operação.',
+      a: 'Sim. O plano Free não tem custo e serve para conhecer a plataforma. Os limites e recursos de cada plano estão na tabela acima.',
     },
     {
       q: 'Preciso instalar alguma coisa?',
-      a: 'Não. O Mesaas é 100% web e funciona em qualquer navegador moderno, no computador ou no celular. Nada para baixar, nada para configurar.',
+      a: 'Não. O Mesaas roda no navegador, no computador ou no celular. Não tem nada para baixar nem instalar.',
     },
     {
-      q: 'Meu cliente precisa criar uma conta para usar o Hub?',
-      a: 'Não. O portal de aprovação é acessado por um link único que você envia ao cliente. Ele abre, aprova, comenta — sem login, sem senha, sem app.',
+      q: 'Meu cliente precisa criar uma conta para usar o portal?',
+      a: 'Não. Você envia um link único para o cliente. Ele abre, aprova e comenta, sem login e sem senha.',
     },
     {
       q: 'Como funciona a integração com o Instagram?',
-      a: 'Você conecta a conta do seu cliente via API oficial do Meta. A partir daí, o Mesaas puxa métricas de seguidores, alcance, engajamento e posts automaticamente. Além disso, você pode agendar posts para publicação automática — escolha o dia e horário, e o sistema publica direto no perfil. Suporta Feed, Reels e Carrossel. Nada de scraping — dados e publicações 100% via API oficial.',
+      a: 'Você conecta a conta do cliente pela API oficial do Meta. A partir daí, o Mesaas puxa seguidores, alcance, engajamento e posts automaticamente, e você pode agendar publicações de Feed, Reels e Carrossel para sair direto no perfil no dia e horário escolhidos. Nada de scraping: métricas e publicações passam 100% pela API oficial.',
     },
     {
       q: 'Consigo importar meus clientes de uma planilha?',
-      a: 'Sim. Você pode cadastrar cliente por cliente em segundos, ou importar via planilha. Em minutos sua base inteira está dentro do sistema.',
+      a: 'Sim. Dá para cadastrar um por um ou importar todos de uma vez por planilha. Em poucos minutos sua base inteira está no Mesaas.',
     },
     {
       q: 'Funciona para freelancer ou só para agência?',
-      a: 'Para os dois. O plano Start atende freelancers começando, e o Max suporta agências com dezenas de clientes e uma equipe inteira.',
+      a: 'Para os dois. O Start atende freelancers que estão começando; o Max, agências com dezenas de clientes e equipe completa.',
     },
     {
       q: 'Posso cancelar quando quiser?',
-      a: 'Sim, a qualquer momento. Sem multa, sem burocracia. Seus dados continuam exportáveis por mais 30 dias após o cancelamento.',
+      a: 'Sim, a qualquer momento, sem multa. Seus dados ficam disponíveis para exportar por 30 dias após o cancelamento.',
     },
   ],
 };

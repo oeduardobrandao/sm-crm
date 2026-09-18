@@ -222,7 +222,12 @@ describe('BriefingPage audio', () => {
       fireEvent.click(screen.getAllByText('fake-record')[0]);
     });
 
-    expect(submitBriefingAnswer).toHaveBeenCalledWith('token-publico', 'q1', 'Digitando rápido');
+    expect(submitBriefingAnswer).toHaveBeenCalledWith(
+      'token-publico',
+      'q1',
+      'Digitando rápido',
+      expect.any(AbortSignal),
+    );
     expect(uploadBriefingAudio).toHaveBeenCalled();
     const submitOrder = vi.mocked(submitBriefingAnswer).mock.invocationCallOrder[0];
     const uploadOrder = vi.mocked(uploadBriefingAudio).mock.invocationCallOrder[0];
@@ -281,7 +286,12 @@ describe('BriefingPage audio', () => {
       fireEvent.click(screen.getAllByText('fake-record')[0]);
     });
 
-    expect(submitBriefingAnswer).toHaveBeenCalledWith('token-publico', 'q1', 'Digitando rápido');
+    expect(submitBriefingAnswer).toHaveBeenCalledWith(
+      'token-publico',
+      'q1',
+      'Digitando rápido',
+      expect.any(AbortSignal),
+    );
     expect(uploadBriefingAudio).not.toHaveBeenCalled();
     expect(screen.getByText(/não foi possível salvar o texto/i)).toBeInTheDocument();
     expect(textareas[0]).not.toBeDisabled();
@@ -313,6 +323,46 @@ describe('BriefingPage audio', () => {
       });
     });
     await waitFor(() => expect(textareas[1]).not.toBeDisabled());
+  });
+
+  it('abandons a save that is still pending when a newer edit supersedes it, and never marks it as an error', async () => {
+    // First save hangs (as a 429 backoff would) until its signal is aborted,
+    // then rejects the way the API client does for a superseded request.
+    // Second save succeeds.
+    vi.mocked(submitBriefingAnswer)
+      .mockImplementationOnce(
+        (_t, _q, _a, signal) =>
+          new Promise((_, reject) => {
+            signal?.addEventListener('abort', () =>
+              reject(new DOMException('superseded', 'AbortError')),
+            );
+          }),
+      )
+      .mockResolvedValueOnce({ ok: true });
+    renderPage(<BriefingPage />);
+    await screen.findByText('Marca?');
+    vi.useFakeTimers();
+    const textarea = screen.getAllByRole('textbox')[0];
+
+    fireEvent.change(textarea, { target: { value: 'versão antiga' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(900);
+    });
+    expect(submitBriefingAnswer).toHaveBeenCalledTimes(1);
+    const firstSignal = vi.mocked(submitBriefingAnswer).mock.calls[0][3] as AbortSignal;
+    expect(firstSignal.aborted).toBe(false);
+
+    fireEvent.change(textarea, { target: { value: 'versão nova' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(900);
+    });
+
+    expect(firstSignal.aborted).toBe(true);
+    expect(submitBriefingAnswer).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(submitBriefingAnswer).mock.calls[1][2]).toBe('versão nova');
+    expect(screen.queryByText(/não foi possível salvar/i)).not.toBeInTheDocument();
+    expect(screen.getByText('✓ Salvo')).toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it('surfaces text-save failures instead of swallowing them', async () => {

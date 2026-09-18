@@ -62,6 +62,7 @@ const store = vi.hoisted(() => ({
   getWorkflowAwaitingClientePostsCounts: vi.fn(),
   getWorkflowPostResponsaveis: vi.fn(),
   getWorkspaceSlug: vi.fn(),
+  isFinalClientApprovalCycle: vi.fn(() => true),
 }));
 vi.mock('../../../../store', () => store);
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));

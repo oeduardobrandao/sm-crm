@@ -14,7 +14,12 @@ vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 
-vi.mock('@/store', () => ({ updateWorkflowPost: vi.fn(), reorderBoardPosts: vi.fn() }));
+vi.mock('@/store', () => ({
+  updateWorkflowPost: vi.fn(),
+  reorderBoardPosts: vi.fn(),
+  isFinalClientApprovalCycle: vi.fn(() => true),
+  cardAutoScheduleGates: vi.fn(() => ({ autoPublishOnApproval: true, isFinalApprovalCycle: true })),
+}));
 
 // Mock dnd-kit so tests don't need to simulate real pointer/touch events in
 // jsdom (same approach as WorkflowCalendarView.test.tsx / CalendarGrid.test.tsx):

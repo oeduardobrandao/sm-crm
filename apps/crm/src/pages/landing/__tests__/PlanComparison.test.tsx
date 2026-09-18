@@ -68,7 +68,7 @@ describe('PlanComparison', () => {
       'scope',
       'rowgroup',
     );
-    expect(within(rowGroups[1]).getAllByRole('row')).toHaveLength(8);
+    expect(within(rowGroups[1]).getAllByRole('row')).toHaveLength(10);
     expect(within(rowGroups[1]).queryByText('Capacidade')).not.toBeInTheDocument();
   });
 

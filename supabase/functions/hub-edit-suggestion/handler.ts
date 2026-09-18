@@ -74,13 +74,15 @@ export function createHubEditSuggestionHandler(deps: HubEditSuggestionHandlerDep
       return json({ error: "Link inválido." }, 404);
     }
 
-    const okRead = await deps.rateLimit(
-      db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
-    );
-    if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
-
+    // No `hub-read` debit here: that key is one pool shared by every Hub
+    // function, and this endpoint only writes. Charging it too would cap
+    // autosave at half the shared read pool.
+    // Autosave budget (120 per 5 min), not the 30/h budget of discrete actions:
+    // the Hub editor saves ~1.5s after each typing pause, and 30/h locked clients
+    // out of saving for the rest of the hour (Sep 2026). Same value as the
+    // hub-briefing text answer.
     const okWrite = await deps.rateLimit(
-      db, `hub-write:hub-edit-suggestion:${hubToken.conta_id}:${hubToken.cliente_id}`, 30, 3600,
+      db, `hub-write:hub-edit-suggestion:${hubToken.conta_id}:${hubToken.cliente_id}`, 120, 300,
     );
     if (!okWrite) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 

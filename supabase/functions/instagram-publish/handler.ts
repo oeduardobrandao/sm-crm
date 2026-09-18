@@ -15,6 +15,7 @@ import {
   publishReadyStorySegments,
   selectStoryMediaId,
   advanceCarouselContainer,
+  INTERACTIVE_GRAPH_TIMEOUT_MS,
 } from "../_shared/instagram-publish-utils.ts";
 
 type DbClient = {
@@ -121,6 +122,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             useCover: post.publish_retry_count === 0,
             tipo: post.tipo,
             trialStrategy: post.ig_trial_strategy,
+            timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
           });
           await svcDb.from("workflow_posts").update({
             instagram_container_id: containerId,
@@ -212,9 +214,11 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         const igUserId = validation.account!.instagram_user_id;
 
         if (post.tipo === "stories") {
-          await createMissingStorySegmentContainers(svcDb, { postId, igUserId, token });
+          await createMissingStorySegmentContainers(svcDb, {
+            postId, igUserId, token, timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
+          });
           const { segments, allDone } = await publishReadyStorySegments(svcDb, {
-            postId, igUserId, token, maxPolls: 12, intervalMs: 3000,
+            postId, igUserId, token, maxPolls: 12, intervalMs: 3000, timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
           });
           if (!allDone) {
             await svcDb.from("workflow_posts").update({
@@ -269,7 +273,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             const msg = (markErr as { message?: string })?.message ?? String(markErr);
             throw new Error(`mark_platform_published failed: ${msg}`);
           }
-          const permalink = await fetchPermalink(firstMediaId, token);
+          const permalink = await fetchPermalink(firstMediaId, token, INTERACTIVE_GRAPH_TIMEOUT_MS);
           if (permalink) {
             await svcDb.from("workflow_posts").update({ instagram_permalink: permalink }).eq("id", postId);
           }
@@ -293,6 +297,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             trialStrategy: post.ig_trial_strategy,
             maxPolls: 12,
             intervalMs: 3000,
+            timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
           });
           if (!advanced.allReady) {
             await svcDb.from("workflow_posts").update({
@@ -317,6 +322,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             useCover: true,
             tipo: post.tipo,
             trialStrategy: post.ig_trial_strategy,
+            timeoutMs: INTERACTIVE_GRAPH_TIMEOUT_MS,
           });
           containerId = created.containerId;
           coverVideoUrl = created.coverVideoUrl;
@@ -326,7 +332,9 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           instagram_container_id: containerId,
         }).eq("id", postId);
 
-        let containerStatus = await pollContainerReady(containerId, token, 12, 3000);
+        let containerStatus = await pollContainerReady(
+          containerId, token, 12, 3000, INTERACTIVE_GRAPH_TIMEOUT_MS,
+        );
 
         // A cover Instagram can't process surfaces as ERROR during async
         // processing (the Graph cover detail is not exposed). Retry once without
@@ -336,13 +344,15 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             ? post.ig_trial_strategy
             : null;
           const retry = await createVideoContainer(
-            igUserId, token, coverVideoUrl, post.ig_caption, undefined, trial,
+            igUserId, token, coverVideoUrl, post.ig_caption, undefined, trial, INTERACTIVE_GRAPH_TIMEOUT_MS,
           );
           containerId = retry.id;
           await svcDb.from("workflow_posts").update({
             instagram_container_id: containerId,
           }).eq("id", postId);
-          containerStatus = await pollContainerReady(containerId, token, 12, 3000);
+          containerStatus = await pollContainerReady(
+            containerId, token, 12, 3000, INTERACTIVE_GRAPH_TIMEOUT_MS,
+          );
         }
 
         if (containerStatus === "ERROR") {
@@ -360,7 +370,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           });
         }
 
-        const result = await publishContainer(igUserId, token, containerId);
+        const result = await publishContainer(igUserId, token, containerId, INTERACTIVE_GRAPH_TIMEOUT_MS);
 
         const { error: markErr } = await svcDb.rpc("mark_platform_published", {
           p_post_id: postId,
@@ -379,7 +389,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
 
         console.log(`[IG-PUBLISH-NOW] Published post ${postId}, media_id: ${result.id}`);
 
-        const permalink = await fetchPermalink(result.id, token);
+        const permalink = await fetchPermalink(result.id, token, INTERACTIVE_GRAPH_TIMEOUT_MS);
         if (permalink) {
           await svcDb.from("workflow_posts").update({ instagram_permalink: permalink }).eq("id", postId);
         }
