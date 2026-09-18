@@ -183,6 +183,14 @@ describe('PostDetailDialog', () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
+  it('Corrigir from the Histórico tab switches back to the content tab and shows the panel', () => {
+    renderDialog(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'Histórico e comentários' }));
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+    expect(screen.getByRole('tab', { name: 'Legenda' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: /Enviar correção/ })).toBeInTheDocument();
+  });
+
   it('Fechar without changes returns to the reading mode and re-enables Aprovar', () => {
     renderDialog(1);
     fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));

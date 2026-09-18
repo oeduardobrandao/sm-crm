@@ -570,7 +570,10 @@ function PostDetailContent({
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setPanelOpen(true)}
+                        onClick={() => {
+                          setTab('content');
+                          setPanelOpen(true);
+                        }}
                         disabled={submitting || edit.hasPendingSuggestion}
                         className="flex-1 flex items-center justify-center gap-1.5 hub-btn-secondary rounded-[var(--hub-r-ctl)] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
                       >
