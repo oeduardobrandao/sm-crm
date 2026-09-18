@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { PostTile } from '../PostTile';
+import { isFeedSelectable, PostTile } from '../PostTile';
 import type { HubPost, HubPostMedia } from '../../../types';
 
 function media(over: Partial<HubPostMedia> = {}): HubPostMedia {
@@ -152,5 +152,60 @@ describe('PostTile', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     const btn = screen.getByRole('button', { name: /Abrir/ });
     expect(btn).toBeDisabled();
+  });
+
+  it('does not render a type glyph badge for a single-image feed post', () => {
+    const { container } = render(
+      <PostTile
+        post={post({ tipo: 'feed', media: [media({ id: 1 })] })}
+        mode="browse"
+        selected={false}
+        onOpen={noop}
+        onToggle={noop}
+      />,
+    );
+    expect(container.querySelector('.bg-black\\/45')).not.toBeInTheDocument();
+    expect(container.querySelector('svg.lucide-images')).not.toBeInTheDocument();
+    expect(container.querySelector('svg.lucide-play')).not.toBeInTheDocument();
+    expect(container.querySelector('svg.lucide-circle')).not.toBeInTheDocument();
+  });
+
+  it('renders a type glyph badge for a carrossel post (2+ media)', () => {
+    const { container } = render(
+      <PostTile post={post()} mode="browse" selected={false} onOpen={noop} onToggle={noop} />,
+    );
+    expect(container.querySelector('.bg-black\\/45')).toBeInTheDocument();
+    expect(container.querySelector('svg.lucide-images')).toBeInTheDocument();
+  });
+
+  it('keeps the autoclean external link reachable and separate from the disabled open button', () => {
+    const onOpen = vi.fn();
+    render(
+      <PostTile
+        post={post({
+          media: [],
+          status: 'postado',
+          media_autocleaned_at: '2026-08-05T05:30:00Z',
+          instagram_permalink: 'https://instagram.com/p/abc',
+        })}
+        mode="select"
+        selected={false}
+        onOpen={onOpen}
+        onToggle={noop}
+      />,
+    );
+    const openButton = screen.getByRole('button', { name: /Abrir/ });
+    expect(openButton).toBeDisabled();
+    const link = screen.getByRole('link', { name: /Ver no Instagram/ });
+    expect(link).toHaveAttribute('href', 'https://instagram.com/p/abc');
+    expect(link.closest('button')).toBeNull();
+    fireEvent.click(link);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  describe('isFeedSelectable', () => {
+    it('is false for stories even when media is present', () => {
+      expect(isFeedSelectable(post({ tipo: 'stories', media: [media()] }))).toBe(false);
+    });
   });
 });

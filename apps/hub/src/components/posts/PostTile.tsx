@@ -25,7 +25,7 @@ export function isFeedSelectable(post: HubPost): boolean {
   return (post.media?.length ?? 0) > 0 && post.tipo !== 'stories';
 }
 
-function TypeGlyph({ post }: { post: HubPost }) {
+function typeGlyph(post: HubPost): ReactNode {
   if (post.tipo === 'carrossel' || (post.media?.length ?? 0) > 1)
     return <Images size={13} aria-hidden="true" />;
   if (post.tipo === 'reels' || post.media?.[0]?.kind === 'video')
@@ -52,7 +52,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         : null
     : null;
 
-  const glyph = <TypeGlyph post={post} />;
+  const glyph = typeGlyph(post);
 
   const overlays = (
     <>
@@ -74,21 +74,25 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         {cover.media_lost_at ? (
           <MediaUnavailable size="full" />
         ) : cover.kind === 'image' ? (
-          <OptimizedImage
-            src={cover.url ?? ''}
-            alt=""
-            role="img"
-            aria-hidden="true"
-            width={cover.width ?? undefined}
-            height={cover.height ?? undefined}
-            blurDataURL={cover.blur_data_url ?? undefined}
-            sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
-            priority={priority}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        ) : (
+          cover.url ? (
+            <OptimizedImage
+              src={cover.url}
+              alt=""
+              role="img"
+              aria-hidden="true"
+              width={cover.width ?? undefined}
+              height={cover.height ?? undefined}
+              blurDataURL={cover.blur_data_url ?? undefined}
+              sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+              priority={priority}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
+            <MediaUnavailable size="full" />
+          )
+        ) : cover.thumbnail_url ? (
           <img
-            src={cover.thumbnail_url ?? ''}
+            src={cover.thumbnail_url}
             alt=""
             role="img"
             aria-hidden="true"
@@ -97,6 +101,8 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
             draggable={false}
             className="absolute inset-0 w-full h-full object-cover"
           />
+        ) : (
+          <MediaUnavailable size="full" />
         )}
         {overlays}
         <span className="absolute inset-x-0 bottom-0 z-10 px-2.5 pt-8 pb-2 bg-gradient-to-t from-black/65 to-transparent text-white text-[12px] font-medium truncate">
@@ -113,19 +119,6 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
           {t('posts.mediaRemoved', 'Mídia removida')}
         </span>
         <span className="text-[12px] hub-txt font-display line-clamp-2">{post.titulo}</span>
-        {autocleanedLink && (
-          <a
-            href={sanitizeExternalUrl(autocleanedLink.href)}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 text-[11px] font-semibold"
-            style={{ color: 'var(--hub-acc)' }}
-          >
-            {autocleanedLink.label}
-            <ExternalLink size={10} aria-hidden="true" />
-          </a>
-        )}
       </div>
     );
   } else {
@@ -147,8 +140,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
     );
   }
 
-  const base =
-    'relative block w-full aspect-[4/5] rounded-xl overflow-hidden text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none';
+  const base = 'relative w-full aspect-[4/5] rounded-xl overflow-hidden ring-1 ring-black/5';
 
   if (selecting && selectable) {
     return (
@@ -158,7 +150,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         aria-checked={selected}
         aria-label={t('instagramCard.selectAriaLabel', 'Selecionar publicação')}
         onClick={() => onToggle(post.id)}
-        className={`${base} ${selected ? 'ring-[3px] ring-[#0095f6]' : 'ring-1 ring-black/5'}`}
+        className={`${base} block text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ${selected ? 'ring-[3px] ring-[#0095f6]' : ''}`}
       >
         {body}
         <span
@@ -180,14 +172,29 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
   }
 
   return (
-    <button
-      type="button"
-      aria-label={openLabel}
-      disabled={inert}
-      onClick={() => onOpen(post.id)}
-      className={`${base} ${inert ? 'opacity-50 cursor-default' : 'hover:-translate-y-0.5 hover:shadow-lg'} ring-1 ring-black/5`}
-    >
-      {body}
-    </button>
+    <div className={base}>
+      <button
+        type="button"
+        aria-label={openLabel}
+        disabled={inert}
+        onClick={() => onOpen(post.id)}
+        className={`absolute inset-0 text-left transition-[transform,box-shadow,opacity] hub-focus-accent focus:outline-none ${inert ? 'opacity-50 cursor-default' : 'hover:-translate-y-0.5 hover:shadow-lg'}`}
+      >
+        {body}
+      </button>
+      {autocleanedLink && (
+        <a
+          href={sanitizeExternalUrl(autocleanedLink.href)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute z-20 bottom-2 inset-x-0 flex justify-center items-center gap-1 text-[11px] font-semibold"
+          style={{ color: 'var(--hub-acc)' }}
+        >
+          {autocleanedLink.label}
+          <ExternalLink size={10} aria-hidden="true" />
+        </a>
+      )}
+    </div>
   );
 }
