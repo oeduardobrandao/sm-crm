@@ -4,6 +4,7 @@ import {
   Check,
   Clapperboard,
   CircleDashed,
+  Copy,
   ExternalLink,
   FileText,
   FolderMinus,
@@ -19,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
+import { copyAppLink } from '@/lib/copyAppLink';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { PostEntity } from '../boardEntity';
@@ -132,9 +134,9 @@ export function PostProcessCard({
   const cliente = entity.cliente;
   const TipoIcon = TIPO_ICONS[post.tipo];
 
-  const hasKebabItems = Boolean(
-    onClick || (canRevert && onRevertClick) || onRemoveProcessClick || onDeleteClick,
-  );
+  // Copiar link do post está sempre disponível num card real; só o clone
+  // efêmero do DragOverlay (sem props de ação) fica sem kebab.
+  const hasKebabItems = !isDragOverlay;
   const showFooter = Boolean(dragHandle || onForwardClick || hasKebabItems);
 
   return (
@@ -427,6 +429,15 @@ export function PostProcessCard({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    copyAppLink(`/entregas?post=${post.id}`);
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copiar link do post
+                </DropdownMenuItem>
                 {onClick && (
                   <DropdownMenuItem
                     onClick={(e) => {

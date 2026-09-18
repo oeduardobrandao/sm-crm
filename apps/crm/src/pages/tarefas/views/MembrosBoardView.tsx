@@ -10,6 +10,11 @@ interface MembrosBoardViewProps {
   membros: Membro[];
   onTarefaClick: (tarefa: TarefaWithRelations) => void;
   onRefresh: () => void;
+  /** Restricts the rendered columns to this membro (plus "Sem responsável")
+   *  -- the Minhas tarefas scope. The full `membros` list still reaches
+   *  TarefaBoard/TarefaCard so avatar resolution and the reassign dropdown
+   *  keep every teammate as an option. */
+  onlyMembroId?: number | null;
 }
 
 /** One column per team member (plus "Sem responsável"); drag a card to reassign. */
@@ -18,11 +23,14 @@ export function MembrosBoardView({
   membros,
   onTarefaClick,
   onRefresh,
+  onlyMembroId = null,
 }: MembrosBoardViewProps) {
   const { merged, applyOverride, clearOverride } = useOptimisticTarefas(tarefas);
   const now = new Date();
 
   const open = merged.filter((t) => t.status !== 'concluida');
+  const columnMembros =
+    onlyMembroId != null ? membros.filter((m) => m.id === onlyMembroId) : membros;
 
   const columns: BoardColumn[] = [
     {
@@ -30,7 +38,7 @@ export function MembrosBoardView({
       title: 'Sem responsável',
       tarefas: open.filter((t) => t.responsavel_id == null).sort(sortTarefas),
     },
-    ...membros
+    ...columnMembros
       .filter((m) => m.id != null)
       .map((m) => ({
         dropId: buildDropId({ kind: 'membro', membroId: m.id! }),

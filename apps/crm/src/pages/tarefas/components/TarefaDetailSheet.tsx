@@ -349,7 +349,7 @@ export function TarefaDetailSheet({
                     type="button"
                     aria-label="Remover subtarefa"
                     onClick={() => handleDeleteSubtarefa(s.id!)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
                     style={{
                       background: 'none',
                       border: 'none',

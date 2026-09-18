@@ -16,7 +16,15 @@ import {
   Search,
   ArrowUpDown,
   MoreVertical,
+  SlidersHorizontal,
 } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -147,6 +155,7 @@ export default function ClientesPage() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'nome' | 'valor_mensal' | 'data_pagamento'>('nome');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -377,7 +386,19 @@ export default function ClientesPage() {
           </span>
           {canEditClients && (
             <FeatureGate flag="feature_csv_import" label="Importação CSV">
-              <Button variant="outline" onClick={handleCSVImport}>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleCSVImport}
+                className="header-actions-icon-only"
+              >
+                <Upload className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleCSVImport}
+                className="header-actions-full-only"
+              >
                 <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
                 {tc('actions.importCsv')}
               </Button>
@@ -425,7 +446,10 @@ export default function ClientesPage() {
           />
         </div>
 
-        <div className="flex items-center gap-1.5">
+        {/* Desktop: status + sort inline. Below 901px they'd otherwise wrap
+            into 1-2 extra rows below the search box -- collapsed into the
+            single "Filtros" button/sheet next to it instead. */}
+        <div className="hidden min-[901px]:flex items-center gap-1.5">
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {tc('filter.status')}
           </span>
@@ -443,7 +467,7 @@ export default function ClientesPage() {
           </Select>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="hidden min-[901px]:flex items-center gap-1.5">
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {tc('filter.sortBy')}
           </span>
@@ -469,7 +493,82 @@ export default function ClientesPage() {
             <ArrowUpDown className="h-4 w-4" />
           </Button>
         </div>
+
+        <Button
+          variant="outline"
+          className="flex min-[901px]:hidden h-9 rounded-full px-3 text-xs gap-1.5 font-normal shrink-0"
+          onClick={() => setFilterSheetOpen(true)}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          {tc('filter.status')}
+          {filter !== 'todos' && (
+            <span
+              className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
+              style={{
+                background: 'var(--primary-color)',
+                color: '#000',
+                width: '1.1rem',
+                height: '1.1rem',
+              }}
+            >
+              1
+            </span>
+          )}
+        </Button>
       </div>
+
+      <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
+        <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="text-base">Filtros</SheetTitle>
+            <SheetDescription className="sr-only">Filtre e ordene os clientes</SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+              {tc('filter.status')}
+              <Select value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
+                <SelectTrigger className="h-9 w-full text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(['todos', 'ativo', 'pausado', 'encerrado'] as FilterStatus[]).map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {tc(`status.${f}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+              {tc('filter.sortBy')}
+              <div className="flex items-center gap-1.5">
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+                  <SelectTrigger className="h-9 w-full text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nome">{tc('sort.name')}</SelectItem>
+                    {canSeeFinancials === true && (
+                      <SelectItem value="valor_mensal">{t('sort.monthlyValue')}</SelectItem>
+                    )}
+                    <SelectItem value="data_pagamento">{t('sort.paymentDay')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 mb-0"
+                  onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                  title={sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                </Button>
+              </div>
+            </label>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {isLoading ? (
         <div className="flex justify-center p-8">

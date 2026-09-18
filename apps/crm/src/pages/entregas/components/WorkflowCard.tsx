@@ -9,6 +9,7 @@ import {
   ExternalLink,
   MoreHorizontal,
   Trash2,
+  Copy,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -17,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
+import { copyAppLink } from '@/lib/copyAppLink';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 import { sanitizeUrl } from '@/utils/security';
@@ -682,6 +684,17 @@ export function WorkflowCard({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
+            {!isDragOverlay && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  copyAppLink(`/entregas?drawer=${card.workflow.id}`);
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Copiar link do fluxo
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();

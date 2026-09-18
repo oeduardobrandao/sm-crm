@@ -3226,9 +3226,14 @@ select.form-input option {
     gap: 0.75rem;
   }
 
-  /* Same fused block as desktop, just two columns wide */
+  /*
+   * Same fused block as desktop, just two columns wide. minmax(0, 1fr), not
+   * plain 1fr: a bare 1fr track's minimum is its content's min-content width,
+   * so an unbroken value like "R$ 49.500,00" pushed the track wider than the
+   * viewport instead of wrapping.
+   */
   .kpi-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /*
@@ -3603,7 +3608,12 @@ select.form-input option {
     z-index: 40;
     left: max(12px, env(safe-area-inset-left));
     right: max(12px, env(safe-area-inset-right));
-    bottom: max(10px, env(safe-area-inset-bottom));
+    /* env(safe-area-inset-bottom) only covers the home-indicator inset -- it does not
+       account for Safari's own collapsible toolbar, which is a separate, dynamically
+       sized overlay. --mobile-nav-chrome-offset (set from window.visualViewport in
+       MobileNav.tsx) carries that extra height so the pill clears the toolbar even
+       when it's expanded; it's 0px whenever there's no such overlay to clear. */
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + var(--mobile-nav-chrome-offset, 0px));
     display: block;
     min-height: 72px;
     padding: 6px;
@@ -3623,7 +3633,7 @@ select.form-input option {
 
   .mobile-more-sheet {
     right: max(20px, env(safe-area-inset-right, 0px));
-    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px));
     left: max(20px, env(safe-area-inset-left, 0px));
     width: auto;
   }
@@ -5916,6 +5926,23 @@ body.role-agent input[name='valor_total'] {
   border-radius: 2rem;
 }
 
+/*
+ * The list-view row's deadline pill carries an unbounded "N dias de atraso"
+ * label with no flex-shrink -- a task overdue by 100+ days can push the row
+ * past the viewport, and the row's overflow-x:hidden ancestors then clip the
+ * assignee avatar right off it. Cap it and let it ellipsize on narrow
+ * screens; desktop has room to show the full label.
+ */
+@media (max-width: 640px) {
+  .tarefa-list-row .board-card-deadline {
+    display: inline-block;
+    max-width: 7.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .board-card-prazo-type {
   font-size: 0.65rem;
   color: var(--text-muted);
@@ -6442,6 +6469,13 @@ body.role-agent input[name='valor_total'] {
     align-items: flex-start;
     gap: 1rem;
     margin-bottom: 2rem;
+  }
+
+  /* Same override as the 900px breakpoint above -- this narrower block
+     redeclares .header's margin-bottom too, so --flush needs repeating here
+     or it gets silently undone below 768px. */
+  .header--flush {
+    margin-bottom: 0;
   }
 
   .header-actions {
@@ -11684,6 +11718,34 @@ a.hub-fill__row-inner:hover {
   min-height: 44px;
   gap: 0.45rem;
   color: var(--text-muted);
+}
+
+/* Below 768px the row would otherwise be the first thing every page renders
+   -- a full-width line before the title. Pull it out of flow entirely (fixed,
+   floating under the topbar) instead, and collapse it to an icon-only pill so
+   it reads as a small badge, not a header row competing with the page's own. */
+@media (max-width: 767px) {
+  .context-help {
+    position: fixed;
+    top: calc(var(--topbar-height) + var(--banner-height, 0px) + 10px);
+    right: 14px;
+    z-index: 45;
+    min-height: 0;
+    margin-bottom: 0;
+  }
+
+  .context-help__trigger {
+    min-height: 36px;
+    padding: 0.4rem 0.55rem;
+    border-radius: 999px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .context-help__label {
+    display: none;
+  }
 }
 
 .context-help__count {

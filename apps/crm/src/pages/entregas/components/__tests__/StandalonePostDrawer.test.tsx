@@ -272,6 +272,19 @@ describe('StandalonePostDrawer', () => {
     expect(screen.getByText('Marca X', { exact: false })).toBeInTheDocument();
   });
 
+  it('copies the universal CRM link (?post=) for the post', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copiar link do post' }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/entregas?post=5`),
+    );
+  });
+
   it("renders a Histórico button populated with the post's real status events", async () => {
     mockGetPostStatusEvents.mockResolvedValue([
       {

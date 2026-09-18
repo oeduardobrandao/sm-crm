@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,12 +17,20 @@ import {
   LayoutTemplate,
   Milestone,
   Shapes,
+  SlidersHorizontal,
   UserCheck,
   UserPen,
   Users,
   type LucideIcon,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { avatarColorClass } from '@/lib/avatarColor';
 import type { Cliente, Membro, WorkflowPost, WorkflowTemplate } from '../../../store';
 import { TIPO_ORDER, TIPO_LABELS, TIPO_COLORS } from '../postLabels';
@@ -423,6 +432,7 @@ export function EntregasFilters({
   mode = 'entregas',
 }: EntregasFiltersProps) {
   const isPosts = mode === 'posts';
+  const [sheetOpen, setSheetOpen] = useState(false);
   const statusRegistry = useStatusRegistry();
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
@@ -453,119 +463,173 @@ export function EntregasFilters({
     color: o.color,
   }));
 
-  return (
-    <div className="flex flex-wrap items-center gap-2 mb-0 animate-up flex-1 min-w-[240px]">
-      {/* Primary filters, always on the toolbar. The busca input lives on the
-          VistasTabs row above (EntregasPage renders it), not here. */}
-      {isPosts ? (
-        <>
-          <MultiSelectFilter
-            placeholder="Cliente"
-            icon={Users}
-            options={clienteOptions}
-            selected={filters.filterClientes}
-            onSelectedChange={(filterClientes) => onChange({ ...filters, filterClientes })}
-            isStacked={false}
-          />
-          <MultiSelectFilter
-            placeholder="Status do post"
-            icon={CircleDot}
-            options={postStatusOptions}
-            selected={filters.filterPostStatus}
-            onSelectedChange={(filterPostStatus) => onChange({ ...filters, filterPostStatus })}
-            isStacked={false}
-          />
-          <MultiSelectFilter
-            placeholder="Responsável"
-            icon={UserCheck}
-            options={membroOptions}
-            selected={filters.filterMembros}
-            onSelectedChange={(filterMembros) => onChange({ ...filters, filterMembros })}
-            isStacked={false}
-          />
-          <MultiSelectFilter
-            placeholder="Todas as etapas"
-            icon={Milestone}
-            options={etapaOptions}
-            selected={filters.filterEtapas}
-            onSelectedChange={(filterEtapas) => onChange({ ...filters, filterEtapas })}
-            isStacked={false}
-          />
-          <MultiSelectFilter
-            placeholder="Todos os tipos"
-            icon={Shapes}
-            options={tipoOptions}
-            selected={filters.filterTipos}
-            onSelectedChange={(filterTipos) => onChange({ ...filters, filterTipos })}
-            isStacked={false}
-          />
-          <PrazoEtapaFilter filters={filters} onChange={onChange} isStacked={false} />
-        </>
-      ) : (
-        <>
-          <MultiSelectFilter
-            placeholder="Status"
-            icon={Gauge}
-            options={STATUS_OPTIONS}
-            selected={filters.filterStatus}
-            onSelectedChange={(filterStatus) => onChange({ ...filters, filterStatus })}
-            isStacked={false}
-          />
-          <MultiSelectFilter
-            placeholder="Cliente"
-            icon={Users}
-            options={clienteOptions}
-            selected={filters.filterClientes}
-            onSelectedChange={(filterClientes) => onChange({ ...filters, filterClientes })}
-            isStacked={false}
-          />
-          <MultiSelectFilter
-            placeholder="Responsável"
-            icon={UserCheck}
-            options={membroOptions}
-            selected={filters.filterMembros}
-            onSelectedChange={(filterMembros) => onChange({ ...filters, filterMembros })}
-            isStacked={false}
-          />
-          <MultiSelectFilter
-            placeholder="Responsável do post"
-            icon={UserPen}
-            options={membroOptions}
-            selected={filters.filterPostResponsaveis}
-            onSelectedChange={(filterPostResponsaveis) =>
-              onChange({ ...filters, filterPostResponsaveis })
-            }
-            isStacked={false}
-          />
-          <MultiSelectFilter
-            placeholder="Todas as etapas"
-            icon={Milestone}
-            options={etapaOptions}
-            selected={filters.filterEtapas}
-            onSelectedChange={(filterEtapas) => onChange({ ...filters, filterEtapas })}
-            isStacked={false}
-          />
-          <MultiSelectFilter
-            placeholder="Todos os templates"
-            icon={LayoutTemplate}
-            options={templateOptions}
-            selected={filters.filterTemplates}
-            onSelectedChange={(filterTemplates) => onChange({ ...filters, filterTemplates })}
-            isStacked={false}
-          />
-          <PrazoEtapaFilter filters={filters} onChange={onChange} isStacked={false} />
-        </>
-      )}
+  // Same set of dropdowns rendered two ways: inline pills on desktop
+  // (isStacked=false) and stacked full-width rows inside the mobile sheet
+  // (isStacked=true) -- mirrors the pattern already shipped in TarefasFilters.
+  const renderControls = (isStacked: boolean) =>
+    isPosts ? (
+      <>
+        <MultiSelectFilter
+          placeholder="Cliente"
+          icon={Users}
+          options={clienteOptions}
+          selected={filters.filterClientes}
+          onSelectedChange={(filterClientes) => onChange({ ...filters, filterClientes })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Status do post"
+          icon={CircleDot}
+          options={postStatusOptions}
+          selected={filters.filterPostStatus}
+          onSelectedChange={(filterPostStatus) => onChange({ ...filters, filterPostStatus })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Responsável"
+          icon={UserCheck}
+          options={membroOptions}
+          selected={filters.filterMembros}
+          onSelectedChange={(filterMembros) => onChange({ ...filters, filterMembros })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Todas as etapas"
+          icon={Milestone}
+          options={etapaOptions}
+          selected={filters.filterEtapas}
+          onSelectedChange={(filterEtapas) => onChange({ ...filters, filterEtapas })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Todos os tipos"
+          icon={Shapes}
+          options={tipoOptions}
+          selected={filters.filterTipos}
+          onSelectedChange={(filterTipos) => onChange({ ...filters, filterTipos })}
+          isStacked={isStacked}
+        />
+        <PrazoEtapaFilter filters={filters} onChange={onChange} isStacked={isStacked} />
+      </>
+    ) : (
+      <>
+        <MultiSelectFilter
+          placeholder="Status"
+          icon={Gauge}
+          options={STATUS_OPTIONS}
+          selected={filters.filterStatus}
+          onSelectedChange={(filterStatus) => onChange({ ...filters, filterStatus })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Cliente"
+          icon={Users}
+          options={clienteOptions}
+          selected={filters.filterClientes}
+          onSelectedChange={(filterClientes) => onChange({ ...filters, filterClientes })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Responsável"
+          icon={UserCheck}
+          options={membroOptions}
+          selected={filters.filterMembros}
+          onSelectedChange={(filterMembros) => onChange({ ...filters, filterMembros })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Responsável do post"
+          icon={UserPen}
+          options={membroOptions}
+          selected={filters.filterPostResponsaveis}
+          onSelectedChange={(filterPostResponsaveis) =>
+            onChange({ ...filters, filterPostResponsaveis })
+          }
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Todas as etapas"
+          icon={Milestone}
+          options={etapaOptions}
+          selected={filters.filterEtapas}
+          onSelectedChange={(filterEtapas) => onChange({ ...filters, filterEtapas })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Todos os templates"
+          icon={LayoutTemplate}
+          options={templateOptions}
+          selected={filters.filterTemplates}
+          onSelectedChange={(filterTemplates) => onChange({ ...filters, filterTemplates })}
+          isStacked={isStacked}
+        />
+        <PrazoEtapaFilter filters={filters} onChange={onChange} isStacked={isStacked} />
+      </>
+    );
 
-      {activeCount > 0 && (
+  return (
+    <>
+      {/* Desktop: every dropdown inline on the toolbar. The busca input lives
+          on the VistasTabs row above (EntregasPage renders it), not here. */}
+      <div className="hidden min-[901px]:flex flex-wrap items-center gap-2 mb-0 animate-up flex-1 min-w-[240px]">
+        {renderControls(false)}
+        {activeCount > 0 && (
+          <Button
+            variant="ghost"
+            className="h-9 px-3 text-xs font-normal mb-0 shrink-0"
+            onClick={() => onChange({ ...EMPTY_FILTERS, filterSearch: filters.filterSearch })}
+          >
+            Limpar filtros
+          </Button>
+        )}
+      </div>
+
+      {/* Mobile: a single "Filtros" button opening a bottom sheet, instead of
+          every pill wrapping across two or three lines of the first fold. */}
+      <div className="flex min-[901px]:hidden items-center animate-up shrink-0">
         <Button
-          variant="ghost"
-          className="h-9 px-3 text-xs font-normal mb-0 shrink-0"
-          onClick={() => onChange({ ...EMPTY_FILTERS, filterSearch: filters.filterSearch })}
+          variant="outline"
+          className="h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm shrink-0 mb-0"
+          onClick={() => setSheetOpen(true)}
         >
-          Limpar filtros
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Filtros
+          {activeCount > 0 && (
+            <span
+              className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
+              style={{
+                background: 'var(--primary-color)',
+                color: '#000',
+                width: '1.1rem',
+                height: '1.1rem',
+              }}
+            >
+              {activeCount}
+            </span>
+          )}
         </Button>
-      )}
-    </div>
+      </div>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="text-base">Filtros</SheetTitle>
+            <SheetDescription className="sr-only">
+              Filtre {isPosts ? 'os posts' : 'os fluxos'}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-3">{renderControls(true)}</div>
+          {activeCount > 0 && (
+            <Button
+              variant="ghost"
+              className="w-full mt-4 text-xs"
+              onClick={() => onChange({ ...EMPTY_FILTERS, filterSearch: filters.filterSearch })}
+            >
+              Limpar filtros
+            </Button>
+          )}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

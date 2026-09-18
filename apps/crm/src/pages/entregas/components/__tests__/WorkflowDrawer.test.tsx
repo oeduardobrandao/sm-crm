@@ -859,6 +859,36 @@ describe('WorkflowDrawer desmembrar do fluxo (Task 15)', () => {
     await waitFor(() => expect(mockDetach).toHaveBeenCalledWith([2], false));
   });
 
+  it('o cabeçalho copia o link do fluxo (?drawer=<workflowId>)', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copiar link do fluxo' }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/entregas?drawer=10`),
+    );
+  });
+
+  it('o kebab de um post copia o link universal (?post=) do post, não o `?drawer=&post=`', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    const checkboxB = await screen.findByRole('checkbox', { name: 'Selecionar Post B' });
+    const rowB = checkboxB.closest('.drawer-post-item') as HTMLElement;
+    fireEvent.click(within(rowB).getByText('Copiar link do post'));
+
+    // Universal `?post=` form (not `?drawer=<workflowId>&post=<id>`): resolves correctly
+    // even if the post is later moved to another fluxo before the link is opened.
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/entregas?post=2`),
+    );
+  });
+
   it('ao concluir sem arquivar: toasta, limpa a seleção e chama refresh() + onRefresh()', async () => {
     mockDetach.mockResolvedValue({ ok: true, detached: 1, archived_workflow_ids: [] } as never);
     const onRefresh = vi.fn();

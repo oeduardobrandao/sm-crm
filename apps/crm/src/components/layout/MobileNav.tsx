@@ -48,7 +48,7 @@ export default function MobileNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile, signOut, workspaceRole, can } = useAuth();
-  const { features: rawFeatures } = useWorkspaceLimits();
+  const { features: rawFeatures, planName } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
   const guide = useGuide();
@@ -80,6 +80,37 @@ export default function MobileNav() {
 
     phoneMedia.addEventListener('change', closeOutsidePhone);
     return () => phoneMedia.removeEventListener('change', closeOutsidePhone);
+  }, []);
+
+  // `env(safe-area-inset-bottom)` only covers the home-indicator inset, not Safari's
+  // own collapsible bottom toolbar -- a separate overlay that shrinks the visible
+  // (visual) viewport without moving the layout viewport `.mobile-nav-glass` is fixed
+  // against. When Safari's toolbar is expanded, that gap can fully hide the pill
+  // behind it. window.visualViewport tracks the actually-visible area, so the gap
+  // between its bottom edge and the layout viewport's bottom edge is exactly the
+  // extra clearance the pill needs -- 0px whenever there's no such overlay (Chrome,
+  // the standalone home-screen app, or Safari with its toolbar collapsed).
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const updateChromeOffset = () => {
+      const gap = window.innerHeight - (viewport.offsetTop + viewport.height);
+      document.documentElement.style.setProperty(
+        '--mobile-nav-chrome-offset',
+        `${Math.max(0, Math.round(gap))}px`,
+      );
+    };
+
+    updateChromeOffset();
+    viewport.addEventListener('resize', updateChromeOffset);
+    viewport.addEventListener('scroll', updateChromeOffset);
+
+    return () => {
+      viewport.removeEventListener('resize', updateChromeOffset);
+      viewport.removeEventListener('scroll', updateChromeOffset);
+      document.documentElement.style.setProperty('--mobile-nav-chrome-offset', '0px');
+    };
   }, []);
 
   const go = (route: string) => {
@@ -168,9 +199,7 @@ export default function MobileNav() {
               <div className="mobile-more-profile-name" id="mobile-user-name">
                 {profile?.nome || 'Minha Conta'}
               </div>
-              <div className="mobile-more-profile-plan">
-                {(profile?.plano as string | undefined)?.toUpperCase() || 'FREE'}
-              </div>
+              <div className="mobile-more-profile-plan">{planName?.toUpperCase() || 'FREE'}</div>
             </div>
           </div>
 

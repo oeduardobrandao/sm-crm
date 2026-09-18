@@ -76,7 +76,7 @@ export function ContextHelpLinks() {
   const trigger = (
     <Button variant="ghost" size="sm" className="context-help__trigger">
       <BookOpen className="h-4 w-4" aria-hidden="true" />
-      Artigos relacionados
+      <span className="context-help__label">Artigos relacionados</span>
       <span className="context-help__count">{validLinks.length}</span>
     </Button>
   );

@@ -143,9 +143,13 @@ describe('PostProcessCard', () => {
     expect(screen.queryByRole('button', { name: 'Voltar etapa' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Concluir processo' })).toBeInTheDocument();
   });
-  it('sem handlers (leitura) não renderiza botão nenhum: DOM da fase 3', () => {
+  it('sem handlers (leitura) só mostra o kebab de copiar link, nenhuma ação de mutação', () => {
+    // "Copiar link do post" não depende de handler nenhum -- é sempre oferecido,
+    // mesmo num render puramente de leitura (fase 3). O contrato de zero
+    // interatividade da fase 3 vale só para AÇÕES (editar/excluir/mover).
     render(<PostProcessCard entity={makeEntity()} />);
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.queryAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('menuitem', { name: /copiar link do post/i })).toBeInTheDocument();
   });
 
   it('card compacto (spec §4): badge "Individual" fica só ícone, e a barra de progresso não mostra "N/total" visível', () => {

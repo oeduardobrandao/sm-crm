@@ -19,3 +19,26 @@ export function persistTarefasCalendarioModo(contaId: string, modo: TarefasCalen
     // Private browsing / storage full -- the preference just doesn't survive a reload.
   }
 }
+
+export type TarefasEscopo = 'minhas' | 'todas';
+
+const escopoKey = (contaId: string, userId: string) => `tarefas_escopo_${contaId}_${userId}`;
+
+/** Last Minhas/Todas scope the user left the Tarefas list filtered to, per
+ *  conta + user. Falls back to 'todas' (unfiltered) on a missing key or any
+ *  storage failure -- the safer default, since it matches pre-toggle behaviour. */
+export function loadTarefasEscopo(contaId: string, userId: string): TarefasEscopo {
+  try {
+    return localStorage.getItem(escopoKey(contaId, userId)) === 'minhas' ? 'minhas' : 'todas';
+  } catch {
+    return 'todas';
+  }
+}
+
+export function persistTarefasEscopo(contaId: string, userId: string, escopo: TarefasEscopo): void {
+  try {
+    localStorage.setItem(escopoKey(contaId, userId), escopo);
+  } catch {
+    // Private browsing / storage full -- the preference just doesn't survive a reload.
+  }
+}

@@ -14,6 +14,7 @@ import {
   createMissingStorySegmentContainers,
   publishReadyStorySegments,
   selectStoryMediaId,
+  advanceCarouselContainer,
 } from "../_shared/instagram-publish-utils.ts";
 
 type DbClient = {
@@ -102,11 +103,15 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       // Best-effort: on any failure leave instagram_container_id null and let the
       // cron create it later. Mirrors cron Phase 1 cover semantics (deferred
       // coverless retry via retry_count), NOT publish-now's immediate retry.
+      // Stories and carousels are skipped: both keep per-item state that the cron
+      // advances under the publish_processing_at lock, which this path does not
+      // hold, and the cron picks the post up within a minute anyway.
       try {
         const dueInMs = post.scheduled_at
           ? new Date(post.scheduled_at).getTime() - Date.now()
           : Infinity;
-        if (dueInMs <= 3_600_000 && validation.account && post.tipo !== "stories") {
+        const isCarousel = (validation.media?.length ?? 0) > 1;
+        if (dueInMs <= 3_600_000 && validation.account && post.tipo !== "stories" && !isCarousel) {
           const token = await decryptToken(validation.account.encrypted_access_token);
           const { containerId } = await createContainerForPost(svcDb, {
             igUserId: validation.account.instagram_user_id,
@@ -147,6 +152,10 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           publish_error_code: null,
         },
       });
+      // carousel_children is outside record_post_status_change's p_fields allowlist
+      // (20260807000001): clear it separately so a re-scheduled carousel rebuilds
+      // its children instead of assembling a parent from stale (possibly expired) ones.
+      await svcDb.from("workflow_posts").update({ carousel_children: null }).eq("id", postId);
       return json({ ok: true, status: "aprovado_cliente" });
     }
 
@@ -167,6 +176,10 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           publish_processing_at: null,
         },
       });
+      // carousel_children is outside record_post_status_change's p_fields allowlist
+      // (20260807000001): clear it separately so a re-scheduled carousel rebuilds
+      // its children instead of assembling a parent from stale (possibly expired) ones.
+      await svcDb.from("workflow_posts").update({ carousel_children: null }).eq("id", postId);
       return json({ ok: true, status: "agendado" });
     }
 
@@ -263,19 +276,51 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           return json({ ok: true, status: "postado", instagram_permalink: permalink });
         }
 
-        // publish-now always attaches the cover when present (useCover:true) and does
-        // an IMMEDIATE coverless retry below if Instagram rejects it during processing.
-        const created = await createContainerForPost(svcDb, {
-          igUserId,
-          token,
-          postId,
-          caption: post.ig_caption ?? "",
-          useCover: true,
-          tipo: post.tipo,
-          trialStrategy: post.ig_trial_strategy,
-        });
-        let containerId = created.containerId;
-        const coverVideoUrl = created.coverVideoUrl; // set only when a cover was used
+        let containerId: string;
+        let coverVideoUrl: string | undefined; // set only when a single-video cover was used
+
+        if ((validation.media?.length ?? 0) > 1) {
+          // Carousel: resumable per-child state (carousel_children). Create the
+          // children, wait up to the same 12 x 3s budget the parent poll below uses,
+          // and assemble the parent only when every child is FINISHED. Not ready is
+          // not a failure: leave the post agendado for the cron to finish, exactly
+          // like the IN_PROGRESS exit below and the stories !allDone exit above.
+          const advanced = await advanceCarouselContainer(svcDb, {
+            postId,
+            igUserId,
+            token,
+            caption: post.ig_caption ?? "",
+            trialStrategy: post.ig_trial_strategy,
+            maxPolls: 12,
+            intervalMs: 3000,
+          });
+          if (!advanced.allReady) {
+            await svcDb.from("workflow_posts").update({
+              scheduled_at: new Date().toISOString(),
+              publish_processing_at: null,
+            }).eq("id", postId);
+            return json({
+              ok: true,
+              status: "agendado",
+              message: "Mídia ainda processando no Instagram. O post será publicado automaticamente em alguns minutos.",
+            });
+          }
+          containerId = advanced.containerId!;
+        } else {
+          // publish-now always attaches the cover when present (useCover:true) and does
+          // an IMMEDIATE coverless retry below if Instagram rejects it during processing.
+          const created = await createContainerForPost(svcDb, {
+            igUserId,
+            token,
+            postId,
+            caption: post.ig_caption ?? "",
+            useCover: true,
+            tipo: post.tipo,
+            trialStrategy: post.ig_trial_strategy,
+          });
+          containerId = created.containerId;
+          coverVideoUrl = created.coverVideoUrl;
+        }
 
         await svcDb.from("workflow_posts").update({
           instagram_container_id: containerId,
@@ -375,6 +420,15 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
               const cleared = segments.map((seg) => (seg.media_id ? seg : { ...seg, container_id: null }));
               await svcDb.from("workflow_posts").update({ story_segments: cleared }).eq("id", postId);
             }
+          } catch (_) { /* best-effort */ }
+        }
+
+        if (errorCode === "CONTAINER_EXPIRED" && post.tipo !== "stories") {
+          // Carousel children live in carousel_children, not in the top-level
+          // instagram_container_id cleared above: drop them so the retry rebuilds
+          // every child instead of assembling a parent from expired ones.
+          try {
+            await svcDb.from("workflow_posts").update({ carousel_children: null }).eq("id", postId);
           } catch (_) { /* best-effort */ }
         }
 
