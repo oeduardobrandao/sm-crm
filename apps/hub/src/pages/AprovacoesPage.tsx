@@ -202,7 +202,7 @@ export function AprovacoesPage() {
               <button
                 type="button"
                 onClick={() => setMode((m) => (m === 'select' ? 'browse' : 'select'))}
-                className="rounded-[var(--hub-r-ctl)] border hub-border px-3 py-2 text-[13px] font-semibold hub-tx2"
+                className="rounded-[4px] border hub-border px-3 py-2 text-[13px] font-semibold hub-tx2"
               >
                 {mode === 'select' ? t('posts.done', 'Concluir') : t('posts.select', 'Selecionar')}
               </button>

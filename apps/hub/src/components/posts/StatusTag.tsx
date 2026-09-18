@@ -6,7 +6,7 @@ export function StatusTag({ status, size = 'sm' }: { status: string; size?: 'sm'
   const color = STATUS_COLORS[status] ?? '#94a3b8';
   return (
     <span
-      className="inline-flex items-center rounded-md font-semibold tracking-[0.02em] whitespace-nowrap"
+      className="inline-flex items-center rounded-[4px] font-semibold tracking-[0.02em] whitespace-nowrap"
       style={{
         fontSize: size === 'md' ? '0.72rem' : '0.65rem',
         color,

@@ -288,7 +288,7 @@ export function CorrectionPanel({
                 <button
                   type="button"
                   onClick={submitStaged}
-                  className="hub-btn-secondary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold transition-colors"
+                  className="hub-btn-secondary rounded-[4px] py-2 px-3 text-[12px] font-semibold transition-colors"
                 >
                   {t('shared.retrySave', 'Tentar novamente')}
                 </button>
@@ -296,7 +296,7 @@ export function CorrectionPanel({
               <button
                 type="button"
                 onClick={discardFailedEdit}
-                className="hub-btn-secondary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold transition-colors"
+                className="hub-btn-secondary rounded-[4px] py-2 px-3 text-[12px] font-semibold transition-colors"
               >
                 {t('shared.discardFailedEdit', 'Descartar edição')}
               </button>
@@ -306,7 +306,7 @@ export function CorrectionPanel({
             type="button"
             onClick={submitStaged}
             disabled={(!contentDirty && !dirty) || saveState === 'saving'}
-            className="hub-btn-primary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
+            className="hub-btn-primary rounded-[4px] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
           >
             {saveState === 'saving'
               ? t('shared.saving', 'Salvando...')
@@ -336,7 +336,7 @@ export function CorrectionPanel({
             type="button"
             onClick={() => onSubmitCorrection(comentario.trim(), motivo)}
             disabled={submitting || approvalBlocked || dirty || contentDirty}
-            className="flex items-center gap-1.5 hub-btn-secondary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 hub-btn-secondary rounded-[4px] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
           >
             <AlertCircle size={14} /> {t('shared.enviarCorrecao', 'Enviar correção')}
           </button>

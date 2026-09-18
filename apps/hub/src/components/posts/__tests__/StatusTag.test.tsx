@@ -19,4 +19,11 @@ describe('StatusTag', () => {
     expect(sm).toBe('0.65rem');
     expect(md).toBe('0.72rem');
   });
+
+  it('uses a squared 4px corner, not the round pill or the theme radius', () => {
+    render(<StatusTag status="enviado_cliente" />);
+    const cls = screen.getByText('Aguardando aprovação').className;
+    expect(cls).toContain('rounded-[4px]');
+    expect(cls).not.toContain('rounded-full');
+  });
 });

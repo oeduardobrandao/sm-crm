@@ -174,6 +174,15 @@ describe('PostDetailDialog', () => {
     expect(screen.getByRole('list', { name: 'Outros posts' })).toBeInTheDocument();
   });
 
+  it('squares the footer action buttons to 4px', () => {
+    renderDialog(1);
+    for (const name of [/Aprovar/, /Corrigir/]) {
+      const cls = screen.getByRole('button', { name }).className;
+      expect(cls).toContain('rounded-[4px]');
+      expect(cls).not.toContain('hub-r-ctl');
+    }
+  });
+
   it('hides Aprovar/Corrigir for a non-pending post and shows the status once', () => {
     renderDialog(2);
     expect(screen.queryByRole('button', { name: /Aprovar/ })).not.toBeInTheDocument();

@@ -112,7 +112,7 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
           <button
             type="button"
             onClick={() => onNavigate(null)}
-            className="hub-btn-secondary rounded-[var(--hub-r-ctl)] px-4 py-2 text-[13px] font-semibold"
+            className="hub-btn-secondary rounded-[4px] px-4 py-2 text-[13px] font-semibold"
           >
             {t('shared.fechar', 'Fechar')}
           </button>
@@ -704,7 +704,7 @@ function PostDetailContent({
                       type="button"
                       onClick={closePanel}
                       disabled={dirty && !saveFailed}
-                      className="flex-1 rounded-[var(--hub-r-ctl)] border hub-border py-2.5 min-h-[44px] text-[13px] font-semibold hub-tx2 disabled:opacity-50"
+                      className="flex-1 rounded-[4px] border hub-border py-2.5 min-h-[44px] text-[13px] font-semibold hub-tx2 disabled:opacity-50"
                     >
                       {t('shared.fechar', 'Fechar')}
                     </button>
@@ -716,7 +716,7 @@ function PostDetailContent({
                         setPanelOpen(true);
                       }}
                       disabled={submitting || locked || edit.hasPendingSuggestion}
-                      className="flex-1 flex items-center justify-center gap-1.5 hub-btn-secondary rounded-[var(--hub-r-ctl)] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
+                      className="flex-1 flex items-center justify-center gap-1.5 hub-btn-secondary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
                     >
                       <AlertCircle size={15} /> {t('posts.correct', 'Corrigir')}
                     </button>
@@ -725,7 +725,7 @@ function PostDetailContent({
                     type="button"
                     onClick={() => submit('aprovado')}
                     disabled={submitting || locked || approvalBlocked || dirty || panelDirty}
-                    className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded-[var(--hub-r-ctl)] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
                   >
                     <CheckCircle size={15} />{' '}
                     {saveState === 'saving'
