@@ -40,6 +40,8 @@ export function CorrectionPanel({
     saveState,
     approvalBlocked,
     dirty,
+    saveFailed,
+    discardFailedSave,
     draftConteudo,
     draftConteudoPlain,
     draftIgCaption,
@@ -52,7 +54,7 @@ export function CorrectionPanel({
   const [stagedCaption, setStagedCaption] = useState(captionBaseline);
   const [comentario, setComentario] = useState('');
   const [motivo, setMotivo] = useState<CorrectionReason | null>(null);
-  // Suppresses the "failed, retry" message for the ~1.5s debounce window between
+  // Suppresses the "failed, retry" UI for the ~1.5s debounce window between
   // clicking Save and `saveState` actually leaving 'idle' for 'saving' -- during that
   // window `edit.dirty` is already true (set synchronously by saveSuggestion) while
   // saveState hasn't moved yet, which would otherwise read identically to a genuine
@@ -71,6 +73,12 @@ export function CorrectionPanel({
   useEffect(() => {
     if (saveState !== 'idle') setSaveRequested(false);
   }, [saveState]);
+  // A request that fails fast can go idle -> saving -> idle inside one React batch, so
+  // the effect above never sees 'saving'. The hook flipping `saveFailed` to true is the
+  // other reliable end-of-attempt signal (it is reset to false the moment a save is queued).
+  useEffect(() => {
+    if (saveFailed) setSaveRequested(false);
+  }, [saveFailed]);
 
   // The panel is only remounted when the post ID changes (key={post.id} in the
   // dialog), not when the SAME post's data refetches (window-focus refetch, the
@@ -109,6 +117,28 @@ export function CorrectionPanel({
     lastSyncedConteudoPlainRef.current = draftConteudoPlain;
   }
 
+  // Resubmits whatever is currently staged. Shared by Salvar edição and the failed-save retry.
+  function submitStaged() {
+    setSaveRequested(true);
+    saveSuggestion(
+      isText ? stagedConteudo : draftConteudo,
+      isText ? stagedConteudoPlain : (post.conteudo_plain ?? ''),
+      showCaptionField ? stagedCaption : '',
+    );
+  }
+
+  // Way out of a failed save: forget the failure on the hook (which clears `dirty`) and
+  // drop this panel's own staged edit back to the baseline, remounting the TipTap editor
+  // (it only reads `content` as its initial value) so it shows the restored body.
+  function discardFailedEdit() {
+    discardFailedSave();
+    setSaveRequested(false);
+    setStagedConteudo(draftConteudo);
+    setStagedConteudoPlain(draftConteudoPlain);
+    setStagedCaption(captionBaseline);
+    setContentVersion((v) => v + 1);
+  }
+
   // The caption field itself is hidden under this same condition (below) when
   // there's neither an explicit ig_caption nor a draft/suggested one -- in that
   // case stagedCaption is still seeded from captionBaseline's conteudo_plain
@@ -142,6 +172,11 @@ export function CorrectionPanel({
       </div>
     );
   }
+
+  // `saveFailed` is only true once the last attempt settled as a failure (never during the
+  // debounce window or in flight), so it is the gate; `!saveRequested` just keeps the UI
+  // from lingering for the instant between a click and the hook's state catching up.
+  const showFailure = saveFailed && saveState === 'idle' && !saveRequested;
 
   const reasons: CorrectionReason[] = isText
     ? ['texto', 'legenda', 'outro']
@@ -204,7 +239,7 @@ export function CorrectionPanel({
                 'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar',
               )}
         </p>
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {saveState === 'saving' && (
             <span className="text-[11px] hub-tx3">
               {t('shared.savingSuggestion', 'Salvando sugestão...')}
@@ -215,21 +250,30 @@ export function CorrectionPanel({
               {t('shared.suggestionSaved', 'Sugestão salva')}
             </span>
           )}
-          {dirty && saveState === 'idle' && !saveRequested && (
-            <span className="text-[11px] text-rose-600 dark:text-rose-400">
-              {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
-            </span>
+          {showFailure && (
+            <>
+              <span className="text-[11px] text-rose-600 dark:text-rose-400">
+                {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
+              </span>
+              <button
+                type="button"
+                onClick={submitStaged}
+                className="hub-btn-secondary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold transition-colors"
+              >
+                {t('shared.retrySave', 'Tentar novamente')}
+              </button>
+              <button
+                type="button"
+                onClick={discardFailedEdit}
+                className="hub-btn-secondary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold transition-colors"
+              >
+                {t('shared.discardFailedEdit', 'Descartar edição')}
+              </button>
+            </>
           )}
           <button
             type="button"
-            onClick={() => {
-              setSaveRequested(true);
-              saveSuggestion(
-                isText ? stagedConteudo : draftConteudo,
-                isText ? stagedConteudoPlain : (post.conteudo_plain ?? ''),
-                showCaptionField ? stagedCaption : '',
-              );
-            }}
+            onClick={submitStaged}
             disabled={(!contentDirty && !dirty) || saveState === 'saving'}
             className="hub-btn-primary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
           >

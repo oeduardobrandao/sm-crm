@@ -1,14 +1,16 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { HubContext } from '../../../HubContext';
+import { resetEditSuggestionFailuresForTests } from '../../../hooks/useEditSuggestion';
 import { PostDetailDialog } from '../PostDetailDialog';
 import type { HubPost, HubPostMedia } from '../../../types';
 
 const submitApprovalMock = vi.hoisted(() => vi.fn());
+const submitEditSuggestionMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../api', () => ({
   submitApproval: submitApprovalMock,
-  submitEditSuggestion: vi.fn(),
+  submitEditSuggestion: submitEditSuggestionMock,
   fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
 }));
 
@@ -103,6 +105,10 @@ function renderDialog(
 describe('PostDetailDialog', () => {
   beforeEach(() => {
     submitApprovalMock.mockReset();
+    submitEditSuggestionMock.mockReset();
+    // The failed-save memory is module-level in useEditSuggestion (survives unmounts on
+    // purpose); wipe it so one test's failure never leaks into the next.
+    resetEditSuggestionFailuresForTests();
     vi.restoreAllMocks();
   });
 
@@ -374,6 +380,191 @@ describe('PostDetailDialog', () => {
         posts: [post({ id: 1, media: [], ig_caption: null, instagram_permalink: 'https://x/p/1' })],
       });
       expect(screen.queryByText(BANNER)).not.toBeInTheDocument();
+    });
+  });
+  describe('failed edit save (no lockout)', () => {
+    const FAILED = 'Não foi possível salvar. Tente novamente.';
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // Opens the panel on post 1, edits the caption and clicks Salvar edição.
+    function stageAndSave() {
+      fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+      fireEvent.change(screen.getByDisplayValue('Legenda um'), {
+        target: { value: 'Legenda editada' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+    }
+
+    async function settleDebounce() {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+    }
+
+    async function openWithFailedSave(over: Parameters<typeof renderDialog>[1] = {}) {
+      submitEditSuggestionMock.mockRejectedValue(new Error('boom'));
+      const view = renderDialog(1, over);
+      stageAndSave();
+      await settleDebounce();
+      expect(screen.getByText(FAILED)).toBeInTheDocument();
+      return view;
+    }
+
+    it('keeps navigation blocked and shows no failure UI while the save is debounced or in flight', async () => {
+      submitEditSuggestionMock.mockReturnValue(new Promise(() => {}));
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { onNavigate } = renderDialog(1);
+      stageAndSave();
+
+      const expectBlockedAndQuiet = () => {
+        expect(screen.getByRole('button', { name: 'Próximo post' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Ir para Segundo' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Fechar' })).toBeDisabled();
+        expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Descartar edição' })).not.toBeInTheDocument();
+      };
+      // Debounce window.
+      expectBlockedAndQuiet();
+      // In flight (the request never settles).
+      await settleDebounce();
+      expect(submitEditSuggestionMock).toHaveBeenCalledTimes(1);
+      expectBlockedAndQuiet();
+
+      // The guard blocks the keyboard/X/Esc paths too, without even asking.
+      fireEvent.keyDown(window, { key: 'ArrowRight' });
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
+      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+      expect(confirm).not.toHaveBeenCalled();
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it('after a failed save, Fechar/X/next/strip are enabled and ask to discard; cancelling stays, confirming leaves', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const { onNavigate } = await openWithFailedSave();
+
+      const next = screen.getByRole('button', { name: 'Próximo post' });
+      const strip = screen.getByRole('button', { name: 'Ir para Segundo' });
+      const fechar = screen.getByRole('button', { name: 'Fechar' });
+      expect(next).toBeEnabled();
+      expect(strip).toBeEnabled();
+      expect(fechar).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Fechar postagem' })).toBeEnabled();
+
+      // Cancelling stays put, everywhere.
+      fireEvent.click(next);
+      fireEvent.click(strip);
+      fireEvent.click(fechar);
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
+      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+      fireEvent.keyDown(window, { key: 'ArrowRight' });
+      expect(confirm).toHaveBeenCalledTimes(6);
+      expect(confirm).toHaveBeenCalledWith('Descartar as alterações não enviadas?');
+      expect(onNavigate).not.toHaveBeenCalled();
+      expect(screen.getByText(FAILED)).toBeInTheDocument();
+
+      // Confirming navigates, exactly one confirm for that click.
+      confirm.mockClear();
+      confirm.mockReturnValue(true);
+      fireEvent.click(next);
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith(2);
+    });
+
+    it('confirming the discard on X closes and forgets the failure (no second confirm on the next attempt)', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { onNavigate } = await openWithFailedSave();
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith(null);
+      // The failure was discarded on the hook, so the failed message is gone. The panel's
+      // own staged edit is still there (the mocked onNavigate never unmounts it), which
+      // is the panelDirty confirm, not a second confirm for the same click.
+      expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+    });
+
+    it('asks only once when both a failed save and other unsent input exist', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { onNavigate } = await openWithFailedSave();
+      fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
+        target: { value: 'comentário' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith(null);
+    });
+
+    it('the panel offers Tentar novamente and Descartar edição; Descartar resets the text and re-enables Aprovar', async () => {
+      await openWithFailedSave();
+      expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Descartar edição' }));
+
+      expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue('Legenda um')).toBeInTheDocument();
+      expect(screen.queryByDisplayValue('Legenda editada')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Próximo post' })).toBeEnabled();
+      // No confirm is needed to leave now that nothing is unsent.
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
+      expect(confirm).not.toHaveBeenCalled();
+    });
+
+    it('Tentar novamente resubmits the staged content', async () => {
+      await openWithFailedSave();
+      submitEditSuggestionMock.mockResolvedValue({ ok: true, pending_suggestion: null });
+      fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+      // Failure UI hides right away (no flash while the retry is queued).
+      expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+      await settleDebounce();
+      expect(submitEditSuggestionMock).toHaveBeenCalledTimes(2);
+      expect(submitEditSuggestionMock.mock.calls[1]).toEqual(
+        submitEditSuggestionMock.mock.calls[0],
+      );
+      expect(submitEditSuggestionMock.mock.calls[1][4]).toBe('Legenda editada');
+    });
+
+    it('a retry that fails again still leaves the client a way out', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { onNavigate } = await openWithFailedSave();
+      fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+      await settleDebounce();
+      expect(submitEditSuggestionMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(FAILED)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith(null);
+    });
+
+    it('reopening the post after a failed save shows the failure (module memory) and it is dismissible', async () => {
+      submitEditSuggestionMock.mockRejectedValue(new Error('boom'));
+      renderDialog(1);
+      stageAndSave();
+      await settleDebounce();
+      cleanup();
+
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { onNavigate } = renderDialog(1);
+      // Remembered from the previous mount: Aprovar is blocked, but no exit is.
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Próximo post' })).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+      expect(screen.getByText(FAILED)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Descartar edição' }));
+      expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
+      expect(confirm).not.toHaveBeenCalled();
+      expect(onNavigate).toHaveBeenCalledWith(2);
     });
   });
 });

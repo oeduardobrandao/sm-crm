@@ -137,7 +137,17 @@ function PostDetailContent({
   const stripRef = useRef<HTMLUListElement>(null);
 
   const edit = useEditSuggestion({ token, post, onSaved: onApprovalSubmitted });
-  const { dirty, approvalBlocked, saveState, draftConteudo, draftIgCaption } = edit;
+  const {
+    dirty,
+    saveFailed,
+    discardFailedSave,
+    approvalBlocked,
+    saveState,
+    draftConteudo,
+    draftIgCaption,
+  } = edit;
+  // Unsent-edit lock for navigation controls: only while a save is queued/in flight.
+  const navLocked = submitting || (dirty && !saveFailed);
   const caption = deriveCaption(post, edit.isEditable ? draftIgCaption : post.ig_caption);
   const showPanel = panelOpen && isPending;
 
@@ -145,14 +155,21 @@ function PostDetailContent({
 
   const handleDirtyChange = useCallback((d: boolean) => setPanelDirty(d), []);
 
-  // Navigation/close guard: blocked while a save is in flight or failed; confirm when unsent input exists.
+  // Navigation/close guard. Blocked while a save is queued or in flight (`dirty` without
+  // `saveFailed`): leaving would drop it. A SETTLED failure must not lock the client in,
+  // so it (like any other unsent input) only asks for confirmation, and confirming forgets
+  // the failure. One confirm total, even when both a failure and unsent input exist.
   const guard = useCallback((): boolean => {
-    if (dirty || submitting) return false;
-    if (!panelDirty) return true;
-    return window.confirm(
-      t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'),
-    );
-  }, [dirty, submitting, panelDirty, t]);
+    if (submitting) return false;
+    if (dirty && !saveFailed) return false;
+    if (!saveFailed && !panelDirty) return true;
+    if (
+      !window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'))
+    )
+      return false;
+    if (saveFailed) discardFailedSave();
+    return true;
+  }, [dirty, saveFailed, discardFailedSave, submitting, panelDirty, t]);
 
   const go = useCallback(
     (target: HubPost | null) => {
@@ -346,7 +363,7 @@ function PostDetailContent({
         aria-label={
           dir === 'prev' ? t('posts.previous', 'Post anterior') : t('posts.next', 'Próximo post')
         }
-        disabled={!target || dirty || submitting}
+        disabled={!target || navLocked}
         onClick={() => go(target)}
         className={`absolute z-30 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 text-[#222] flex items-center justify-center shadow disabled:opacity-30 disabled:cursor-default ${
           dir === 'prev' ? 'left-2 md:-left-14' : 'right-2 md:-right-14'
@@ -487,7 +504,7 @@ function PostDetailContent({
                       type="button"
                       aria-label={t('posts.goToPost', 'Ir para {{title}}', { title: p.titulo })}
                       aria-current={isCurrent ? 'true' : undefined}
-                      disabled={dirty || submitting}
+                      disabled={navLocked}
                       onClick={() => (isCurrent ? undefined : go(p))}
                       className={`block w-[30px] h-[38px] rounded-md overflow-hidden ${isCurrent ? 'ring-2 ring-[var(--hub-txt)] ring-offset-1 ring-offset-[var(--hub-card)]' : 'opacity-60 hover:opacity-100'}`}
                     >
@@ -523,7 +540,7 @@ function PostDetailContent({
                       <button
                         type="button"
                         onClick={closePanel}
-                        disabled={dirty}
+                        disabled={dirty && !saveFailed}
                         className="flex-1 rounded-[var(--hub-r-ctl)] border hub-border py-2.5 min-h-[44px] text-[13px] font-semibold hub-tx2 disabled:opacity-50"
                       >
                         {t('shared.fechar', 'Fechar')}

@@ -15,6 +15,8 @@ function makeEdit(over: Partial<Edit> = {}): Edit {
     saveState: 'idle',
     approvalBlocked: false,
     dirty: false,
+    saveFailed: false,
+    discardFailedSave: vi.fn(),
     draftConteudo: null,
     draftConteudoPlain: 'Corpo do post',
     draftIgCaption: 'Legenda original',
@@ -161,7 +163,7 @@ describe('CorrectionPanel', () => {
     render(
       <CorrectionPanel
         post={post()}
-        edit={makeEdit({ dirty: true, saveState: 'idle' })}
+        edit={makeEdit({ dirty: true, saveFailed: true, saveState: 'idle' })}
         submitting={false}
         onSubmitCorrection={onSubmitCorrection}
         onDirtyChange={onDirtyChange}
@@ -174,7 +176,7 @@ describe('CorrectionPanel', () => {
     render(
       <CorrectionPanel
         post={post()}
-        edit={makeEdit({ dirty: true, saveState: 'idle' })}
+        edit={makeEdit({ dirty: true, saveFailed: true, saveState: 'idle' })}
         submitting={false}
         onSubmitCorrection={onSubmitCorrection}
         onDirtyChange={onDirtyChange}
@@ -189,13 +191,121 @@ describe('CorrectionPanel', () => {
     render(
       <CorrectionPanel
         post={post()}
-        edit={makeEdit({ dirty: true, saveState: 'idle' })}
+        edit={makeEdit({ dirty: true, saveFailed: true, saveState: 'idle' })}
         submitting={false}
         onSubmitCorrection={onSubmitCorrection}
         onDirtyChange={onDirtyChange}
       />,
     );
     expect(screen.getByRole('button', { name: /Salvar edição/ })).toBeEnabled();
+  });
+
+  describe('failed save recovery', () => {
+    const FAILED = 'Não foi possível salvar. Tente novamente.';
+
+    it('offers Tentar novamente and Descartar edição only once the save has settled as failed', () => {
+      const { rerender } = render(
+        <CorrectionPanel
+          post={post()}
+          edit={makeEdit({ dirty: true, saveFailed: false, saveState: 'idle' })}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      // Debounce window: dirty but not a failure.
+      expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Descartar edição' })).not.toBeInTheDocument();
+
+      rerender(
+        <CorrectionPanel
+          post={post()}
+          edit={makeEdit({ dirty: true, saveFailed: true, saveState: 'idle' })}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      expect(screen.getByText(FAILED)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Descartar edição' })).toBeEnabled();
+    });
+
+    it('Tentar novamente resubmits the staged caption exactly like Salvar edição', () => {
+      const edit = makeEdit({ dirty: true, saveFailed: true, saveState: 'idle' });
+      render(
+        <CorrectionPanel
+          post={post()}
+          edit={edit}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      fireEvent.change(screen.getByDisplayValue('Legenda original'), {
+        target: { value: 'Legenda editada' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+      expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo do post', 'Legenda editada');
+      // No failure flash between the click and saveState leaving idle.
+      expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument();
+    });
+
+    it('Descartar edição calls discardFailedSave and resets the staged caption to the baseline', () => {
+      const edit = makeEdit({ dirty: true, saveFailed: true, saveState: 'idle' });
+      render(
+        <CorrectionPanel
+          post={post()}
+          edit={edit}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      fireEvent.change(screen.getByDisplayValue('Legenda original'), {
+        target: { value: 'Legenda editada' },
+      });
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Descartar edição' }));
+      expect(edit.discardFailedSave).toHaveBeenCalledTimes(1);
+      expect(screen.getByDisplayValue('Legenda original')).toBeInTheDocument();
+      expect(screen.queryByDisplayValue('Legenda editada')).not.toBeInTheDocument();
+      expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it('Descartar edição restores a text post body and remounts the editor', async () => {
+      const doc = (text: string) => ({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+      });
+      const edit = makeEdit({
+        dirty: true,
+        saveFailed: true,
+        saveState: 'idle',
+        draftConteudo: doc('Corpo original'),
+        draftConteudoPlain: 'Corpo original',
+      });
+      render(
+        <CorrectionPanel
+          post={post({
+            media: [],
+            conteudo: doc('Corpo original'),
+            conteudo_plain: 'Corpo original',
+          })}
+          edit={edit}
+          submitting={false}
+          onSubmitCorrection={onSubmitCorrection}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      expect(await screen.findByText('Corpo original')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Descartar edição' }));
+      expect(edit.discardFailedSave).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText('Corpo original')).toBeInTheDocument();
+      expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    });
   });
 
   it('resyncs staged caption to a refetched baseline instead of going dirty, when untouched', () => {
