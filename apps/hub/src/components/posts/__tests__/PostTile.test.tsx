@@ -203,6 +203,49 @@ describe('PostTile', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
+  it('falls back to the TikTok link when the autocleaned post has no Instagram permalink', () => {
+    render(
+      <PostTile
+        post={post({
+          media: [],
+          status: 'postado',
+          media_autocleaned_at: '2026-08-05T05:30:00Z',
+          instagram_permalink: null,
+          tiktok_post_url: 'https://www.tiktok.com/@x/video/1',
+        })}
+        mode="browse"
+        selected={false}
+        onOpen={noop}
+        onToggle={noop}
+      />,
+    );
+    expect(screen.getByRole('link', { name: /Ver no TikTok/ })).toHaveAttribute(
+      'href',
+      'https://www.tiktok.com/@x/video/1',
+    );
+    expect(screen.queryByRole('link', { name: /Ver no Instagram/ })).not.toBeInTheDocument();
+  });
+
+  it('renders no autoclean link when the post has neither an Instagram nor a TikTok URL', () => {
+    render(
+      <PostTile
+        post={post({
+          media: [],
+          status: 'postado',
+          media_autocleaned_at: '2026-08-05T05:30:00Z',
+          instagram_permalink: null,
+          tiktok_post_url: null,
+        })}
+        mode="browse"
+        selected={false}
+        onOpen={noop}
+        onToggle={noop}
+      />,
+    );
+    expect(screen.getByText('Mídia removida')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
   it('does not render the autoclean link when a cover image is present', () => {
     render(
       <PostTile

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { HubContext } from '../../../HubContext';
@@ -272,5 +272,77 @@ describe('PostDetailDialog', () => {
     const { onNavigate } = renderDialog(1);
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onNavigate).toHaveBeenCalledWith(null);
+  });
+
+  it('shows the "Reel de teste" chip when ig_trial_strategy is set', () => {
+    renderDialog(1, {
+      posts: [post({ id: 1, tipo: 'reels', ig_trial_strategy: 'auto' })],
+    });
+    expect(screen.getByText('Reel de teste')).toBeInTheDocument();
+  });
+
+  it('does not show the "Reel de teste" chip on a normal post', () => {
+    renderDialog(1);
+    expect(screen.queryByText('Reel de teste')).not.toBeInTheDocument();
+  });
+
+  // Storage auto-clean placeholder (spec 2026-08-10): a published post whose
+  // media was deleted reads as a text post; the banner must say why and keep a
+  // path to the live publication.
+  describe('auto-clean banner', () => {
+    function cleaned(over: Partial<HubPost>): HubPost[] {
+      return [
+        post({
+          id: 1,
+          status: 'postado',
+          media: [],
+          ig_caption: null,
+          media_autocleaned_at: '2026-08-05T05:30:00Z',
+          ...over,
+        }),
+      ];
+    }
+    const BANNER = 'Mídia removida para liberar espaço';
+
+    it('shows the removal banner with the Instagram link', () => {
+      renderDialog(1, {
+        posts: cleaned({ instagram_permalink: 'https://www.instagram.com/p/abc/' }),
+      });
+      const banner = screen.getByText(BANNER).parentElement as HTMLElement;
+      expect(within(banner).getByRole('link', { name: /Ver no Instagram/ })).toHaveAttribute(
+        'href',
+        'https://www.instagram.com/p/abc/',
+      );
+    });
+
+    it('falls back to the TikTok link when there is no Instagram permalink', () => {
+      renderDialog(1, {
+        posts: cleaned({
+          instagram_permalink: null,
+          tiktok_post_url: 'https://www.tiktok.com/@x/video/1',
+        }),
+      });
+      const banner = screen.getByText(BANNER).parentElement as HTMLElement;
+      expect(within(banner).getByRole('link', { name: /Ver no TikTok/ })).toHaveAttribute(
+        'href',
+        'https://www.tiktok.com/@x/video/1',
+      );
+      expect(within(banner).queryByRole('link', { name: /Ver no Instagram/ })).toBeNull();
+    });
+
+    it('shows the banner without any link when no URL exists', () => {
+      renderDialog(1, {
+        posts: cleaned({ instagram_permalink: null, tiktok_post_url: null }),
+      });
+      const banner = screen.getByText(BANNER).parentElement as HTMLElement;
+      expect(within(banner).queryByRole('link')).toBeNull();
+    });
+
+    it('never shows the banner on a post that was not cleaned', () => {
+      renderDialog(1, {
+        posts: [post({ id: 1, media: [], ig_caption: null, instagram_permalink: 'https://x/p/1' })],
+      });
+      expect(screen.queryByText(BANNER)).not.toBeInTheDocument();
+    });
   });
 });

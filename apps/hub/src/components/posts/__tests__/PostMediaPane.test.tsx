@@ -82,4 +82,57 @@ describe('PostMediaPane', () => {
     );
     expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
   });
+
+  // jsdom has no IntersectionObserver, so VideoPrewarm warms immediately and
+  // the hidden <video> carries the src the pane handed it.
+  describe('video prewarm', () => {
+    const video = (id: number) =>
+      m(id, {
+        kind: 'video',
+        mime_type: 'video/quicktime',
+        url: `https://cdn.example.com/${id}.mov`,
+        thumbnail_url: `https://cdn.example.com/${id}-thumb.jpg`,
+      });
+
+    it('prewarms the post video so the lightbox opens without stutter', () => {
+      const { container } = render(
+        <PostMediaPane
+          post={post({ tipo: 'reels', media: [video(5)] })}
+          onOpenLightbox={vi.fn()}
+        />,
+      );
+      expect(container.querySelector('video')).toHaveAttribute(
+        'src',
+        'https://cdn.example.com/5.mov',
+      );
+    });
+
+    it('prewarms the story video in the story layout', () => {
+      const { container } = render(
+        <PostMediaPane
+          post={post({ tipo: 'stories', media: [video(6)] })}
+          onOpenLightbox={vi.fn()}
+        />,
+      );
+      expect(container.querySelector('video')).toHaveAttribute(
+        'src',
+        'https://cdn.example.com/6.mov',
+      );
+    });
+
+    it('does not prewarm anything for an image-only post', () => {
+      const { container } = render(<PostMediaPane post={post()} onOpenLightbox={vi.fn()} />);
+      expect(container.querySelector('video')).toBeNull();
+    });
+
+    it('does not prewarm anything for an image-only story', () => {
+      const { container } = render(
+        <PostMediaPane
+          post={post({ tipo: 'stories', media: [m(1), m(2)] })}
+          onOpenLightbox={vi.fn()}
+        />,
+      );
+      expect(container.querySelector('video')).toBeNull();
+    });
+  });
 });
