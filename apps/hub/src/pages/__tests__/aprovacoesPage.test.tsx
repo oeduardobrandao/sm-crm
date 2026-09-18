@@ -254,4 +254,29 @@ describe('AprovacoesPage', () => {
     // fetchInstagramFeed resolves asynchronously through a real useQuery.
     expect(await screen.findByTestId('grid-selected-count')).toHaveTextContent('1');
   });
+
+  it('leaves select mode when a refetch empties the pending list', async () => {
+    mockedFetchPosts
+      .mockResolvedValueOnce(
+        response({
+          posts: [post({ id: 1, titulo: 'A' }), post({ id: 2, titulo: 'B' })],
+          instagramProfile: { username: 'clinica', profilePictureUrl: null },
+        }),
+      )
+      .mockResolvedValue(
+        response({
+          posts: [post({ id: 1, titulo: 'A', status: 'aprovado_cliente' })],
+          instagramProfile: { username: 'clinica', profilePictureUrl: null },
+        }),
+      );
+    const { qc } = renderPage(BASE);
+    fireEvent.click(await screen.findByRole('button', { name: 'Selecionar' }));
+    const hint = 'Selecione posts para visualizar como ficarão no feed do Instagram.';
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
+    expect(
+      await screen.findByText('Tudo em dia. Nenhum post aguardando aprovação.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+  });
 });

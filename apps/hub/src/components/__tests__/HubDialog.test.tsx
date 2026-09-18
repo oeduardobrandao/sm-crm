@@ -51,7 +51,37 @@ describe('HubDialog', () => {
     );
     fireEvent.click(screen.getByText('x'));
     expect(onRequestClose).not.toHaveBeenCalled();
+    const scrim = screen.getByTestId('hub-dialog-scrim');
+    fireEvent.pointerDown(scrim);
+    fireEvent.click(scrim);
+    expect(onRequestClose).toHaveBeenCalledWith('outside');
+  });
+
+  it('does not close when the press started inside the card and the click lands on the scrim', () => {
+    const onRequestClose = vi.fn();
+    render(
+      <HubDialog open onRequestClose={onRequestClose} title="T">
+        <p>x</p>
+      </HubDialog>,
+    );
+    // A text-selection drag: pointerdown on the caption, release over the scrim. The
+    // resulting click is dispatched on the common ancestor, the scrim wrapper.
+    fireEvent.pointerDown(screen.getByText('x'));
     fireEvent.click(screen.getByTestId('hub-dialog-scrim'));
+    expect(onRequestClose).not.toHaveBeenCalled();
+  });
+
+  it('closes on a press and click that both happen on the scrim', () => {
+    const onRequestClose = vi.fn();
+    render(
+      <HubDialog open onRequestClose={onRequestClose} title="T">
+        <p>x</p>
+      </HubDialog>,
+    );
+    const scrim = screen.getByTestId('hub-dialog-scrim');
+    fireEvent.pointerDown(scrim);
+    fireEvent.click(scrim);
+    expect(onRequestClose).toHaveBeenCalledTimes(1);
     expect(onRequestClose).toHaveBeenCalledWith('outside');
   });
 

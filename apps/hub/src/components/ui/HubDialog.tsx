@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 
 export type HubDialogCloseReason = 'escape' | 'outside' | 'button';
@@ -31,6 +31,10 @@ export function HubDialog({
   className = '',
   overlayClassName = '',
 }: HubDialogProps) {
+  // A text-selection drag that starts in the card and ends on the scrim still fires a
+  // `click`, dispatched on the common ancestor (this wrapper). Only close when the press
+  // itself began on the scrim.
+  const pressStartedOnScrim = useRef(false);
   const container =
     typeof document !== 'undefined'
       ? (document.querySelector<HTMLElement>('.hub-root') ?? document.body)
@@ -57,8 +61,13 @@ export function HubDialog({
           <div
             data-testid="hub-dialog-scrim"
             className="w-full h-full flex items-center justify-center p-0 md:p-6"
+            onPointerDown={(e) => {
+              pressStartedOnScrim.current = e.target === e.currentTarget;
+            }}
             onClick={(e) => {
-              if (e.target === e.currentTarget) onRequestClose('outside');
+              const startedOnScrim = pressStartedOnScrim.current;
+              pressStartedOnScrim.current = false;
+              if (e.target === e.currentTarget && startedOnScrim) onRequestClose('outside');
             }}
           >
             {children}

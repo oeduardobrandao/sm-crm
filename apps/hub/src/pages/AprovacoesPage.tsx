@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -53,6 +53,14 @@ export function AprovacoesPage() {
       sortPostsChronologically((data?.posts ?? []).filter((p) => p.status === 'enviado_cliente')),
     [data?.posts],
   );
+  // A refetch can empty the queue while in select mode; the toggle is hidden then, so
+  // without this reset the client would be stuck in a mode they cannot leave.
+  useEffect(() => {
+    if (pending.length === 0) {
+      setMode('browse');
+      setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+    }
+  }, [pending.length]);
   const selectedPosts = useMemo(
     () => pending.filter((p) => isFeedSelectable(p) && selectedIds.has(p.id)),
     [pending, selectedIds],

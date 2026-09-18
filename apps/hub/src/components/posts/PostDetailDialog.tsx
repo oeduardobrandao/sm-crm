@@ -46,14 +46,22 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
   const open = currentId !== null;
   // The flash outlives the per-post content (which remounts via key on auto-advance):
   // the Hub has no toast library, so the confirmation rides along to the next post.
-  const [flash, setFlash] = useState<Flash | null>(null);
+  // Stored as an object with a fresh id per call so firing the same kind twice inside
+  // 3 s (approve A, then B) is a new state value and restarts the clear timer.
+  const [flashState, setFlashState] = useState<{ kind: Flash; id: number } | null>(null);
+  const flashSeq = useRef(0);
+  const flash = flashState?.kind ?? null;
+  const onFlash = useCallback((kind: Flash) => {
+    flashSeq.current += 1;
+    setFlashState({ kind, id: flashSeq.current });
+  }, []);
   useEffect(() => {
-    if (!flash) return;
-    const id = window.setTimeout(() => setFlash(null), 3000);
+    if (!flashState) return;
+    const id = window.setTimeout(() => setFlashState(null), 3000);
     return () => window.clearTimeout(id);
-  }, [flash]);
+  }, [flashState]);
   useEffect(() => {
-    if (!open) setFlash(null);
+    if (!open) setFlashState(null);
   }, [open]);
 
   if (open && !nav.current) {
@@ -92,7 +100,7 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
       post={nav.current}
       nav={nav}
       flash={flash}
-      onFlash={setFlash}
+      onFlash={onFlash}
     />
   );
 }
@@ -388,7 +396,7 @@ function PostDetailContent({
             {flashText && (
               <p
                 role="status"
-                className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-emerald-50 text-emerald-800 border-b border-emerald-200/60"
+                className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-b border-emerald-200/60 dark:border-emerald-800/40"
               >
                 <CheckCircle size={14} aria-hidden="true" /> {flashText}
               </p>
@@ -505,7 +513,7 @@ function PostDetailContent({
             {(isPending || (post.status === 'postado' && post.instagram_permalink)) && (
               <div className="px-4 py-3 border-t hub-border hub-bg-soft shrink-0 space-y-2">
                 {error && (
-                  <p className="text-[12px] text-rose-700 bg-rose-50 rounded-lg px-3 py-2">
+                  <p className="text-[12px] text-rose-700 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-300 rounded-lg px-3 py-2">
                     {error}
                   </p>
                 )}

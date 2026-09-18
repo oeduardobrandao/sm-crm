@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { HubContext } from '../../../HubContext';
@@ -210,6 +210,37 @@ describe('PostDetailDialog', () => {
     expect(
       await screen.findByText('Post aprovado e agendado para publicação!'),
     ).toBeInTheDocument();
+  });
+
+  it('restarts the flash timer when the same flash fires again within 3s', async () => {
+    submitApprovalMock.mockResolvedValue({ ok: true });
+    renderDialog(1);
+    vi.useFakeTimers();
+    try {
+      const approve = async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+      };
+      await approve();
+      expect(screen.getByText('Post aprovado!')).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      await approve();
+      // 4s after the first flash, 2s after the second: the second timer is still running.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(screen.getByText('Post aprovado!')).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100);
+      });
+      expect(screen.queryByText('Post aprovado!')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('Esc with the lightbox open closes only the lightbox', () => {

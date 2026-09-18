@@ -137,7 +137,7 @@ export function CorrectionPanel({
 
   if (hasPendingSuggestion) {
     return (
-      <div className="rounded-lg px-4 py-3 text-[13px] font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200/60 text-center">
+      <div className="rounded-lg px-4 py-3 text-[13px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/60 dark:ring-amber-800/40 text-center">
         {t('shared.suggestionPendingReviewFull', 'Sugestão enviada para revisão da equipe')}
       </div>
     );
@@ -191,7 +191,9 @@ export function CorrectionPanel({
             />
           </>
         )}
-        <p className={`text-[11px] ${wasRejected ? 'text-amber-800' : 'hub-tx3'}`}>
+        <p
+          className={`text-[11px] ${wasRejected ? 'text-amber-800 dark:text-amber-300' : 'hub-tx3'}`}
+        >
           {wasRejected
             ? t(
                 'shared.rejectedSuggestionWarning',
@@ -209,12 +211,12 @@ export function CorrectionPanel({
             </span>
           )}
           {saveState === 'saved' && (
-            <span className="text-[11px] text-emerald-600 font-medium">
+            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
               {t('shared.suggestionSaved', 'Sugestão salva')}
             </span>
           )}
           {dirty && saveState === 'idle' && !saveRequested && (
-            <span className="text-[11px] text-rose-600">
+            <span className="text-[11px] text-rose-600 dark:text-rose-400">
               {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
             </span>
           )}
