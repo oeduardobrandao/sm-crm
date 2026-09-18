@@ -54,6 +54,8 @@ export function StoryPostCard({
     saveState,
     approvalBlocked,
     dirty,
+    saveFailed,
+    discardFailedSave,
     draftIgCaption,
   } = useEditSuggestion({
     token,
@@ -133,6 +135,19 @@ export function StoryPostCard({
     setComentario('');
     setMotivo(null);
     setStagedCaption(caption);
+  }
+
+  function handleDiscardFailedEdit() {
+    if (contentDirty) {
+      if (
+        !window.confirm(
+          t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'),
+        )
+      )
+        return;
+    }
+    setStagedCaption(caption);
+    discardFailedSave();
   }
 
   function handleSaveEdicao() {
@@ -377,7 +392,9 @@ export function StoryPostCard({
               >
                 {saveState === 'saving'
                   ? t('shared.saving', 'Salvando...')
-                  : t('shared.salvarEdicao', 'Salvar edição')}
+                  : saveFailed
+                    ? t('shared.retrySave', 'Tentar novamente')
+                    : t('shared.salvarEdicao', 'Salvar edição')}
               </button>
               {saveState === 'saving' && (
                 <span className="text-[10px] text-stone-400">
@@ -389,10 +406,19 @@ export function StoryPostCard({
                   {t('shared.suggestionSaved', 'Sugestão salva')}
                 </span>
               )}
-              {dirty && saveState === 'idle' && !contentDirty && (
-                <span className="text-[10px] text-rose-600">
-                  {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
-                </span>
+              {saveFailed && (
+                <>
+                  <span role="alert" className="text-[10px] text-rose-600">
+                    {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleDiscardFailedEdit}
+                    className="text-[10px] font-medium text-stone-500 hover:text-stone-700 underline"
+                  >
+                    {t('shared.discardFailedEdit', 'Descartar edição')}
+                  </button>
+                </>
               )}
             </div>
           )}

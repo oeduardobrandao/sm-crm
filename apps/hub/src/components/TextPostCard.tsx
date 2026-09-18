@@ -53,6 +53,8 @@ export function TextPostCard({
     saveState,
     approvalBlocked,
     dirty,
+    saveFailed,
+    discardFailedSave,
     draftConteudo,
     draftConteudoPlain,
     draftIgCaption,
@@ -140,6 +142,21 @@ export function TextPostCard({
     setStagedConteudo(draftConteudo);
     setStagedConteudoPlain(draftConteudoPlain);
     setStagedIgCaption(draftIgCaption ?? '');
+  }
+
+  function handleDiscardFailedEdit() {
+    if (contentDirty) {
+      if (
+        !window.confirm(
+          t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'),
+        )
+      )
+        return;
+    }
+    setStagedConteudo(draftConteudo);
+    setStagedConteudoPlain(draftConteudoPlain);
+    setStagedIgCaption(draftIgCaption ?? '');
+    discardFailedSave();
   }
 
   function handleSaveEdicao() {
@@ -277,7 +294,9 @@ export function TextPostCard({
               >
                 {saveState === 'saving'
                   ? t('shared.saving', 'Salvando...')
-                  : t('shared.salvarEdicao', 'Salvar edição')}
+                  : saveFailed
+                    ? t('shared.retrySave', 'Tentar novamente')
+                    : t('shared.salvarEdicao', 'Salvar edição')}
               </button>
               {saveState === 'saving' && (
                 <span className="text-[11px] hub-tx3">
@@ -289,10 +308,19 @@ export function TextPostCard({
                   {t('shared.suggestionSaved', 'Sugestão salva')}
                 </span>
               )}
-              {dirty && saveState === 'idle' && !contentDirty && (
-                <span className="text-[11px] text-rose-600">
-                  {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
-                </span>
+              {saveFailed && (
+                <>
+                  <span role="alert" className="text-[11px] text-rose-600">
+                    {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleDiscardFailedEdit}
+                    className="text-[11px] font-medium hub-tx3 hover:underline"
+                  >
+                    {t('shared.discardFailedEdit', 'Descartar edição')}
+                  </button>
+                </>
               )}
             </div>
           )}

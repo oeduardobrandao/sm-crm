@@ -19,7 +19,9 @@
     "enviarCorrecao": "Enviar correção",
     "fechar": "Fechar",
     "discardCorrectionConfirm": "Descartar as alterações não enviadas?",
-    "saveFailedRetry": "Não foi possível salvar. Tente novamente."
+    "saveFailedRetry": "Não foi possível salvar. Tente novamente.",
+    "retrySave": "Tentar novamente",
+    "discardFailedEdit": "Descartar edição"
   },
   "aprovacoes": {
     "title": "Aprovações",

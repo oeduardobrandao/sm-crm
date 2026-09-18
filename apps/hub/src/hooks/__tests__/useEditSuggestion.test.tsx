@@ -562,4 +562,158 @@ describe('useEditSuggestion', () => {
     const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
     expect(lastActive()).toBe(true);
   });
+
+  describe('saveFailed / discardFailedSave', () => {
+    const ok = { ok: true, pending_suggestion: null };
+
+    it('is false through the debounce window and in flight, true only once the request fails, and keeps blocking a silent reload', async () => {
+      const first = deferred<typeof ok>();
+      mockedSubmit.mockReturnValueOnce(first.promise);
+      const { result } = renderHook(() =>
+        useEditSuggestion({ token: 'tok', post: makePost(), onSaved: vi.fn() }),
+      );
+      const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
+
+      act(() => {
+        result.current.saveSuggestion(null, 'x', 'nova');
+      });
+      // Debounce window: dirty, but not a failure.
+      expect(result.current.dirty).toBe(true);
+      expect(result.current.saveFailed).toBe(false);
+
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      expect(result.current.saveState).toBe('saving');
+      expect(result.current.saveFailed).toBe(false);
+
+      await act(async () => {
+        first.reject(new Error('network error'));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(result.current.saveState).toBe('idle');
+      expect(result.current.saveFailed).toBe(true);
+      // An unresolved failure must still hold the app's silent reload back.
+      expect(result.current.dirty).toBe(true);
+      expect(lastActive()).toBe(true);
+    });
+
+    it('clears saveFailed and dirty (and releases the reload block) once a retry succeeds', async () => {
+      mockedSubmit.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(ok);
+      const { result } = renderHook(() =>
+        useEditSuggestion({ token: 'tok', post: makePost(), onSaved: vi.fn() }),
+      );
+      const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
+
+      act(() => {
+        result.current.saveSuggestion(null, 'x', 'nova');
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(result.current.saveFailed).toBe(true);
+
+      act(() => {
+        result.current.saveSuggestion(null, 'x', 'nova');
+      });
+      // Retrying hides the banner right away; dirty stays true until it lands.
+      expect(result.current.saveFailed).toBe(false);
+      expect(result.current.dirty).toBe(true);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+
+      expect(mockedSubmit).toHaveBeenCalledTimes(2);
+      expect(mockedSubmit.mock.calls[1]).toEqual(mockedSubmit.mock.calls[0]);
+      expect(result.current.saveFailed).toBe(false);
+      expect(result.current.dirty).toBe(false);
+      expect(lastActive()).toBe(false);
+    });
+
+    it('a re-failed retry shows the failure again', async () => {
+      mockedSubmit.mockRejectedValue(new Error('boom'));
+      const { result } = renderHook(() =>
+        useEditSuggestion({ token: 'tok', post: makePost(), onSaved: vi.fn() }),
+      );
+      for (let i = 0; i < 2; i++) {
+        act(() => {
+          result.current.saveSuggestion(null, 'x', 'nova');
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1500);
+        });
+        expect(result.current.saveFailed).toBe(true);
+      }
+      expect(mockedSubmit).toHaveBeenCalledTimes(2);
+    });
+
+    it('discardFailedSave forgets the failure, including for a freshly mounted instance', async () => {
+      mockedSubmit.mockRejectedValueOnce(new Error('boom'));
+      const post = makePost();
+      const { result, unmount } = renderHook(() =>
+        useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+      );
+      const lastActive = () => useUnsavedWorkMock.mock.calls.at(-1)?.[0];
+
+      act(() => {
+        result.current.saveSuggestion(null, 'x', 'nova');
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(result.current.saveFailed).toBe(true);
+
+      act(() => {
+        result.current.discardFailedSave();
+      });
+      expect(result.current.saveFailed).toBe(false);
+      expect(result.current.dirty).toBe(false);
+      expect(lastActive()).toBe(false);
+      expect(mockedSubmit).toHaveBeenCalledTimes(1);
+
+      unmount();
+      const fresh = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
+      expect(fresh.result.current.saveFailed).toBe(false);
+      expect(fresh.result.current.dirty).toBe(false);
+    });
+
+    it('a failure remembered from a previous mount reads as saveFailed on reopen', async () => {
+      mockedSubmit.mockRejectedValueOnce(new Error('boom'));
+      const post = makePost();
+      const first = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
+      act(() => {
+        first.result.current.saveSuggestion(null, 'x', 'nova');
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      first.unmount();
+
+      const second = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
+      expect(second.result.current.saveFailed).toBe(true);
+      expect(second.result.current.dirty).toBe(true);
+    });
+
+    it('discardFailedSave does not drop an edit that is queued or in flight', () => {
+      const first = deferred<typeof ok>();
+      mockedSubmit.mockReturnValueOnce(first.promise);
+      const { result } = renderHook(() =>
+        useEditSuggestion({ token: 'tok', post: makePost(), onSaved: vi.fn() }),
+      );
+
+      act(() => {
+        result.current.saveSuggestion(null, 'x', 'nova');
+      });
+      act(() => {
+        result.current.discardFailedSave();
+      });
+      expect(result.current.dirty).toBe(true);
+
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    });
+  });
 });

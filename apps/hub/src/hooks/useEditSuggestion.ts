@@ -94,6 +94,11 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   );
   const [hasPendingSuggestion, setHasPendingSuggestion] = useState(!!suggestion);
   const [dirty, setDirty] = useState(() => isDirtyFor(post.id));
+  // `dirty` alone can't drive the "save failed" UI: it is also true during the 1.5s
+  // debounce window and while a request is in flight. `saveFailed` is true only once
+  // the last attempt for the displayed post has settled as a failure, until a new
+  // attempt is queued (retry), succeeds, or is explicitly discarded.
+  const [saveFailed, setSaveFailed] = useState(() => failedPostIds.has(post.id));
 
   const draftConteudo = useMemo(
     () => suggestion?.suggested_conteudo ?? post.conteudo,
@@ -129,6 +134,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     currentPostIdRef.current = post.id;
     setSaveState(isSavingFor(post.id) ? 'saving' : 'idle');
     setDirty(isDirtyFor(post.id));
+    setSaveFailed(failedPostIds.has(post.id) && !isSavingFor(post.id));
     setHasPendingSuggestion(!!suggestion);
     // The cosmetic "saved -> idle" timer belongs to the post being left; if left
     // running, it would fire later and could stomp the newly-displayed post's own,
@@ -217,12 +223,15 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         setHasPendingSuggestion(!!currentPostOutcome.pendingSuggestion);
         setSaveState('saved');
         setDirty(false);
+        setSaveFailed(false);
         savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
       } else {
         // Swallowed on purpose, so `dirty` is the only signal left that the edit
         // never made it to the server: it stays true (set in saveSuggestion, never
-        // cleared here).
+        // cleared here) -- `saveFailed` is what tells the UI it is a failure rather
+        // than the debounce window before the request goes out.
         setSaveState('idle');
+        setSaveFailed(true);
       }
     }
   }, [token, onSaved]);
@@ -230,6 +239,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   const saveSuggestion = useCallback(
     (conteudo: Record<string, unknown> | null, conteudoPlain: string, igCaption: string | null) => {
       setDirty(true);
+      setSaveFailed(false);
       pendingRef.current.set(post.id, { postId: post.id, conteudo, conteudoPlain, igCaption });
       if (timerRef.current) clearTimeout(timerRef.current);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
@@ -240,6 +250,17 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     },
     [flush, post.id],
   );
+
+  // Explicit way out of a failed save: forgets the failure (module memory included) so
+  // `dirty` clears and the card's actions unblock. The caller is responsible for
+  // resetting its own staged edit. No-op while work is queued or in flight -- that is
+  // not a failure yet, and discarding it would drop an unsent edit.
+  const discardFailedSave = useCallback(() => {
+    if (pendingRef.current.has(post.id) || inFlightPostIdRef.current === post.id) return;
+    failedPostIds.delete(post.id);
+    setSaveFailed(false);
+    setDirty(false);
+  }, [post.id]);
 
   const approvalBlocked = saveState === 'saving' || hasPendingSuggestion;
   const wasRejected = !hasPendingSuggestion && !!post.suggestion_rejected_at;
@@ -254,6 +275,8 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     saveState,
     approvalBlocked,
     dirty,
+    saveFailed,
+    discardFailedSave,
     draftConteudo,
     draftConteudoPlain,
     draftIgCaption,

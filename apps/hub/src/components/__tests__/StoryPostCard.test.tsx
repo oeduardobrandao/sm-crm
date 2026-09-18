@@ -1,13 +1,16 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetEditSuggestionFailuresForTests } from '../../hooks/useEditSuggestion';
 import { StoryPostCard } from '../StoryPostCard';
 import { fetchPostHistory, submitApproval } from '../../api';
 import type { HubPost, HubPostMedia, InstagramProfile } from '../../types';
 
 const submitApprovalMock = vi.hoisted(() => vi.fn());
+const submitEditSuggestionMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api', () => ({
   submitApproval: submitApprovalMock,
+  submitEditSuggestion: submitEditSuggestionMock,
   fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
 }));
 
@@ -59,6 +62,8 @@ const profile: InstagramProfile = {
 describe('StoryPostCard', () => {
   beforeEach(() => {
     mockedSubmitApproval.mockReset();
+    submitEditSuggestionMock.mockReset();
+    resetEditSuggestionFailuresForTests();
   });
 
   it('prewarms the story video so the lightbox opens without stutter', () => {
@@ -229,5 +234,132 @@ describe('StoryPostCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Histórico e comentários/ }));
     fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
     expect(screen.getByPlaceholderText(placeholder)).toHaveValue('');
+  });
+
+  describe('failed edit save', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    const original = 'Legenda original';
+    const edited = 'Legenda editada pelo cliente';
+    const makeEditPost = () => makePost({ ig_caption: original });
+
+    function renderCard(post: HubPost) {
+      return render(
+        <StoryPostCard
+          post={post}
+          token="token-publico"
+          approvals={[]}
+          instagramProfile={profile}
+          onApprovalSubmitted={vi.fn()}
+        />,
+      );
+    }
+
+    // Opens the correction panel, types an edit and fires the debounced save.
+    async function editAndSave() {
+      fireEvent.click(screen.getByRole('button', { name: /Correção/ }));
+      fireEvent.change(screen.getByDisplayValue(original), { target: { value: edited } });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição|Tentar novamente/ }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+    }
+
+    async function retry() {
+      fireEvent.click(screen.getByRole('button', { name: /Tentar novamente/ }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+    }
+
+    it('shows the failure banner and a retry action right after a single failed save', async () => {
+      vi.useFakeTimers();
+      submitEditSuggestionMock.mockRejectedValueOnce(new Error('network'));
+      renderCard(makeEditPost());
+
+      fireEvent.click(screen.getByRole('button', { name: /Correção/ }));
+      fireEvent.change(screen.getByDisplayValue(original), { target: { value: edited } });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+
+      // Debounce window: the request has not gone out, so this is not a failure yet.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+
+      expect(screen.getByRole('alert')).toHaveTextContent(/Não foi possível salvar/);
+      expect(screen.getByRole('button', { name: /Tentar novamente/ })).toBeEnabled();
+      expect(screen.getByRole('button', { name: /Descartar edição/ })).toBeEnabled();
+      // The unsent edit is protected: nothing can leave the panel or move on.
+      expect(screen.getByRole('button', { name: /Fechar/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Enviar correção/ })).toBeDisabled();
+    });
+
+    it('resubmits the same content on retry and unblocks approval once it succeeds', async () => {
+      vi.useFakeTimers();
+      submitEditSuggestionMock
+        .mockRejectedValueOnce(new Error('network'))
+        .mockResolvedValueOnce({ ok: true, pending_suggestion: null });
+      const post = makeEditPost();
+      const { rerender } = renderCard(post);
+
+      await editAndSave();
+      expect(submitEditSuggestionMock).toHaveBeenCalledTimes(1);
+
+      await retry();
+
+      expect(submitEditSuggestionMock).toHaveBeenCalledTimes(2);
+      expect(submitEditSuggestionMock.mock.calls[1]).toEqual(
+        submitEditSuggestionMock.mock.calls[0],
+      );
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+      // The server now returns the saved caption (onSaved triggers a refetch in the app).
+      rerender(
+        <StoryPostCard
+          post={{ ...post, ig_caption: edited }}
+          token="token-publico"
+          approvals={[]}
+          instagramProfile={profile}
+          onApprovalSubmitted={vi.fn()}
+        />,
+      );
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeEnabled();
+    });
+
+    it('lets the user discard a failed edit, which restores the original and unblocks Fechar', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      submitEditSuggestionMock.mockRejectedValueOnce(new Error('network'));
+      renderCard(makeEditPost());
+
+      await editAndSave();
+
+      fireEvent.click(screen.getByRole('button', { name: /Descartar edição/ }));
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue(original)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Fechar/ })).toBeEnabled();
+      expect(submitEditSuggestionMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the failed edit when the discard confirmation is declined', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
+      submitEditSuggestionMock.mockRejectedValueOnce(new Error('network'));
+      renderCard(makeEditPost());
+
+      await editAndSave();
+
+      fireEvent.click(screen.getByRole('button', { name: /Descartar edição/ }));
+
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByDisplayValue(edited)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Fechar/ })).toBeDisabled();
+    });
   });
 });

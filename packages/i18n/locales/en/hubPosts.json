@@ -19,7 +19,9 @@
     "enviarCorrecao": "Send correction",
     "fechar": "Close",
     "discardCorrectionConfirm": "Discard the unsent changes?",
-    "saveFailedRetry": "Couldn't save. Try again."
+    "saveFailedRetry": "Couldn't save. Try again.",
+    "retrySave": "Retry",
+    "discardFailedEdit": "Discard edit"
   },
   "aprovacoes": {
     "title": "Approvals",
