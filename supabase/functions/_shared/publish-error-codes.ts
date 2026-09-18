@@ -42,6 +42,7 @@ const MEDIA_UNSUPPORTED_SUBCODES = new Set([2207026]);
 interface ClassifiableError {
   message?: string;
   code?: string;
+  name?: string;
   graphCode?: number;
   graphSubcode?: number;
 }
@@ -50,6 +51,15 @@ export function classifyPublishError(err: unknown): PublishErrorCode {
   const e = (err ?? {}) as ClassifiableError;
   const msg = (typeof e.message === "string" ? e.message : String(err ?? "")).toLowerCase();
   const graphCode = typeof e.graphCode === "number" ? e.graphCode : undefined;
+
+  // AbortSignal.timeout() no nosso fetch (nao um erro vindo da Meta): nao ha
+  // resposta HTTP pra classificar, so um DOMException local. Trata como
+  // instabilidade transiente -- o cron ja reprocessa no proximo tick, e o
+  // que estourou foi nossa wall-clock de 10s, nao necessariamente o Instagram.
+  if (
+    e.name === "TimeoutError" || e.name === "AbortError" ||
+    msg.includes("signal timed out")
+  ) return "IG_TRANSIENT";
 
   if (e.code === "TOKEN_EXPIRED" || graphCode === 190) return "TOKEN_EXPIRED";
   if (msg.includes("reduce the amount of data")) return "MEDIA_TOO_LARGE";
