@@ -693,7 +693,7 @@ describe('AuthProvider Crisp identification', () => {
     // resolve, with a signature -- the worst case (a validly signed push for
     // the wrong identity).
     await act(async () => {
-      resolveInvoke({ data: { signature: 'abc' }, error: null });
+      resolveInvoke({ data: { signature: 'abc', crispToken: 'tok-outgoing' }, error: null });
     });
 
     await waitFor(() => {
@@ -705,6 +705,14 @@ describe('AuthProvider Crisp identification', () => {
       (call) => call[0]?.[0] === 'set' && call[0]?.[1] === 'user:email',
     );
     expect(emailPushesAfterReset).toHaveLength(0);
+    // The continuity reconciliation Task 5 added must be gated by the SAME
+    // crispResetGeneration guard as the identity-verification push above --
+    // otherwise a token minted for the identity that just signed out could
+    // bind the NEXT person on a shared machine. Nothing in this test sets up
+    // a cache entry, so if the guard were bypassed, this response's token
+    // would look "absent from cache" and trigger a live rebind.
+    expect(window.CRISP_TOKEN_ID).toBeNull();
+    expect(readCache()).toBeNull();
   });
 
   it('still identifies when an unrelated auth event (TOKEN_REFRESHED) lands mid-invoke', async () => {
@@ -858,6 +866,36 @@ describe('AuthProvider Crisp identification', () => {
     });
   });
 
+  it('rebinds when the server returns a new token for the same user (token rotation)', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile(OWNER_PROFILE);
+    // Same user as the cached pair, but the server now hands back a
+    // DIFFERENT token (e.g. the row was rotated some other way) -- this is
+    // the one case the userId-and-token comparison exists to catch; a
+    // userId-only comparison would wrongly treat this as a match and skip
+    // the rebind, leaving the widget bound to a token the server no longer
+    // considers current.
+    localStorage.setItem(
+      CRISP_SESSION_STORAGE_KEY,
+      JSON.stringify({ userId: 'user-1', token: 'tok-old' }),
+    );
+    mockedSupabase.__queueFunctionsInvokeResponse({
+      data: { signature: 'abc', crispToken: 'tok-new' },
+      error: null,
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+    });
+    expect(window.CRISP_TOKEN_ID).toBe('tok-new');
+    await waitFor(() => {
+      expect(readCache()).toEqual({ userId: 'user-1', token: 'tok-new' });
+    });
+  });
+
   it('leaves an existing binding untouched when crispToken is absent (a failure is not a mismatch)', async () => {
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
@@ -897,5 +935,93 @@ describe('AuthProvider Crisp identification', () => {
     expect(crispPush).not.toHaveBeenCalledWith(['do', 'session:reset']);
     expect(window.CRISP_TOKEN_ID).toBeUndefined();
     expect(readCache()).toBeNull();
+  });
+
+  it('nulls CRISP_TOKEN_ID and clears the cache synchronously on sign-out, before supabaseSignOut() resolves', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile(OWNER_PROFILE);
+    mockedSupabase.__queueFunctionsInvokeResponse({
+      data: { signature: 'abc', crispToken: 'tok-1' },
+      error: null,
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(window.CRISP_TOKEN_ID).toBe('tok-1');
+    });
+    await waitFor(() => {
+      expect(readCache()).toEqual({ userId: 'user-1', token: 'tok-1' });
+    });
+    crispPush.mockClear();
+
+    // Sync act() overload: runs only the synchronous prefix of signOut()
+    // (everything before its first `await`) without draining microtasks --
+    // the same technique the in-flight-signing race test above uses. The
+    // mocked supabaseSignOut() has therefore NOT resolved yet at the
+    // assertions below, which is what proves the whole teardown -- the local
+    // clears AND the reset push itself -- happens before the await rather
+    // than after it. If that await ever rejected or hung, anything placed
+    // after it would silently leave the next person on this machine bound to
+    // this user's token, across reloads, not just one render.
+    act(() => {
+      screen.getByText('sair').click();
+    });
+    expect(window.CRISP_TOKEN_ID).toBeNull();
+    expect(readCache()).toBeNull();
+    // The reset push now lives in this SAME synchronous prefix, precisely so
+    // a hung/rejected supabaseSignOut() can't leave it unpushed -- unlike the
+    // local clears alone, Crisp's own cookie-persisted binding is the thing
+    // an unpushed reset would leave exposed.
+    expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+    const resetCallCountBeforeAwait = crispPush.mock.calls.filter(
+      ([call]) => JSON.stringify(call) === JSON.stringify(['do', 'session:reset']),
+    ).length;
+    expect(resetCallCountBeforeAwait).toBe(1);
+
+    await act(async () => {});
+    // Only ever pushed once per sign-out -- there is no second, post-await
+    // reset to wait for now that both live in the pre-await block above.
+    const resetCallCountAfterAwait = crispPush.mock.calls.filter(
+      ([call]) => JSON.stringify(call) === JSON.stringify(['do', 'session:reset']),
+    ).length;
+    expect(resetCallCountAfterAwait).toBe(1);
+  });
+
+  it('drops the binding on an in-place user change (A -> B) before B is identified', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile(OWNER_PROFILE);
+    mockedSupabase.__queueFunctionsInvokeResponse({
+      data: { signature: 'abc', crispToken: 'tok-1' },
+      error: null,
+    });
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(window.CRISP_TOKEN_ID).toBe('tok-1');
+    });
+    await waitFor(() => {
+      expect(readCache()).toEqual({ userId: 'user-1', token: 'tok-1' });
+    });
+    crispPush.mockClear();
+
+    // B's own crisp-identity call gets the mock's default { data: null }
+    // (no token), so nothing may re-bind after the clear below.
+    await act(async () => {
+      mockedSupabase.__emitAuthChange('SIGNED_IN', {
+        user: { id: 'user-2', email: 'bruna@example.com' },
+      });
+    });
+
+    expect(window.CRISP_TOKEN_ID).toBeNull();
+    expect(readCache()).toBeNull();
+    expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+    // B is identified on the reset, anonymous session, never on A's binding.
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['bruna@example.com']]);
+    });
   });
 });
