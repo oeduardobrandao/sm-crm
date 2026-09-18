@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest';
 import { toast } from 'sonner';
@@ -417,5 +417,59 @@ describe('PostsKanbanView auto-schedule nudge (drag path)', () => {
     dndHandlers.onDragEnd?.({ active: { id: '910' }, over: { id: 'col:aprovado_cliente' } });
 
     expect(await screen.findByTestId('nudge')).toHaveTextContent('910');
+  });
+});
+
+// Task 5 fix round 1 (external review): the persistent card-face badge and the
+// DragOverlay clone (spec piece 3) re-derive the same shouldOfferAutoSchedule gate
+// independently inside PostBoardCardContent, rather than sharing a tested helper
+// with WorkflowDrawer's copy. The review confirmed the gate is wired correctly
+// today, but nothing on this surface caught it if it weren't -- these two cases
+// close that hole. Every fixture sets post.status directly to aprovado_cliente (no
+// drag-triggered write): the badge has to reach the existing backlog, not just
+// newly-approved posts.
+describe('persistent indicator on the card face (spec piece 3, kanban surface)', () => {
+  // The direct kanban-side mirror of
+  // WorkflowDrawerAutoScheduleNudge.test.tsx's "hides the badge in the first cycle
+  // of a dual-approval fluxo" -- the PR #400 regression surface, now checked on
+  // this surface too.
+  it('hides the badge on the card face in the first cycle of a dual-approval fluxo', async () => {
+    const post = makePost({ id: 950, status: 'aprovado_cliente' });
+    const cards = new Map([[7, makeCard({ allEtapas: TWO_OPEN_APPROVALS })]]);
+    renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[post]} cardsByWorkflowId={cards} schedulingEnabled />,
+    );
+
+    // Confirms the card actually rendered (so the absence below isn't just a
+    // render failure) before asserting the badge itself is missing.
+    await screen.findByText('Post Base');
+    expect(screen.queryByRole('button', { name: /Agendar/ })).toBeNull();
+  });
+
+  it('renders the DragOverlay clone as the static (non-button) badge variant, not the interactive one', async () => {
+    const post = makePost({ id: 951, status: 'aprovado_cliente' });
+    const { container } = renderWithQuery(
+      <PostsKanbanView {...baseProps} posts={[post]} schedulingEnabled />,
+    );
+
+    // Live card: every gate passes (default ONE_OPEN_APPROVAL + auto_publish_on_approval
+    // true + schedulingEnabled) -> the interactive <button> badge renders on the card face.
+    expect(await screen.findByRole('button', { name: /Agendar/ })).toBeInTheDocument();
+
+    // Starting a drag mounts the DragOverlay clone -- a second PostBoardCardContent for
+    // the same post, rendered by PostsKanbanView without onAutoScheduleClick -- alongside
+    // the still-mounted live card (dnd-kit itself is mocked, so nothing unmounts it here).
+    act(() => {
+      dndHandlers.onDragStart?.({ active: { id: '951', rect: { current: null } } });
+    });
+
+    const overlay = container.querySelector('.board-post-card--overlay');
+    expect(overlay).not.toBeNull();
+    expect(within(overlay as HTMLElement).getByText(/Agendar/)).toBeInTheDocument();
+    expect(within(overlay as HTMLElement).queryByRole('button', { name: /Agendar/ })).toBeNull();
+
+    // The live card's own badge is unaffected by the drag start -- still the
+    // clickable button, and still the only <button> badge in the document.
+    expect(screen.getAllByRole('button', { name: /Agendar/ })).toHaveLength(1);
   });
 });
