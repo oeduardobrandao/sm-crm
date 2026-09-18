@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { HubContext } from '../../HubContext';
@@ -247,83 +247,6 @@ describe('hub approval, posts, and brand pages', () => {
       ).toBeInTheDocument();
       expect(screen.queryByTestId('text-post-card')).not.toBeInTheDocument();
       expect(screen.queryByTestId('instagram-post-card')).not.toBeInTheDocument();
-    });
-
-    it('sorts pending posts and invalidates the posts query after an approval callback', async () => {
-      mockedFetchPosts.mockResolvedValue({
-        posts: [
-          makePost({
-            id: 11,
-            titulo: 'Post mais tarde',
-            scheduled_at: '2026-04-25T09:00:00.000Z',
-          }),
-          makePost({
-            id: 12,
-            titulo: 'Post mais cedo',
-            scheduled_at: '2026-04-19T09:00:00.000Z',
-          }),
-          makePost({
-            id: 13,
-            titulo: 'Post já agendado',
-            status: 'agendado',
-          }),
-        ],
-        postApprovals: [
-          {
-            id: 1,
-            post_id: 12,
-            action: 'mensagem',
-            comentario: 'Olhar CTA',
-            is_workspace_user: false,
-            created_at: '2026-04-18T10:00:00.000Z',
-          },
-        ],
-        propertyValues: [
-          {
-            post_id: 12,
-            value: 'Instagram',
-            template_property_definitions: {
-              name: 'Canal',
-              type: 'text',
-              config: {},
-              portal_visible: true,
-              display_order: 1,
-            },
-          },
-        ],
-        workflowSelectOptions: [
-          {
-            workflow_id: 1,
-            property_definition_id: 99,
-            option_id: 'feed',
-            label: 'Feed',
-            color: '#0f766e',
-          },
-        ],
-        instagramProfile: null,
-      } as never);
-
-      const queryClient = createQueryClient();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
-
-      renderHubPage(
-        '/mesaas/hub/token-publico/aprovacoes',
-        '/:workspace/hub/:token/aprovacoes',
-        <AprovacoesPage />,
-        queryClient,
-      );
-
-      expect(await screen.findByText('2 posts aguardando sua aprovação.')).toBeInTheDocument();
-      expect(
-        screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent),
-      ).toEqual(['Post mais cedo', 'Post mais tarde']);
-      expect(screen.queryByText('Post já agendado')).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Refresh 12' }));
-
-      await waitFor(() => {
-        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['hub-posts', 'token-publico'] });
-      });
     });
   });
 

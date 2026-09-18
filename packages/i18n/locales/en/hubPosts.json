@@ -28,6 +28,7 @@
     "emptyDescription": "All caught up. No post awaiting approval.",
     "pendingDescription": "{{count}} post{{plural}} awaiting your approval.",
     "selectHint": "Select posts to preview how they'll look in the Instagram feed.",
+    "loadError": "Error loading approvals.",
     "storiesHeader": "Stories",
     "noMediaHeader": "Posts without media"
   },

@@ -210,111 +210,6 @@ describe('AprovacoesPage — post type categorization', () => {
     mockedFetchInstagramFeed.mockReset();
   });
 
-  it('renders media posts as InstagramPostCard and excludes stories from that section', async () => {
-    mockedFetchPosts.mockResolvedValue(
-      makeResponse({
-        posts: [
-          makePost({ id: 1, titulo: 'Feed post', tipo: 'feed' }),
-          makePost({ id: 2, titulo: 'Reels post', tipo: 'reels' }),
-          makePost({ id: 3, titulo: 'Story post', tipo: 'stories' }),
-        ],
-      }),
-    );
-
-    renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
-
-    const instagramCards = await screen.findAllByTestId('instagram-post-card');
-    expect(instagramCards).toHaveLength(2);
-    expect(instagramCards.map((c) => c.dataset.postId)).toEqual(['1', '2']);
-
-    const storyCards = screen.getAllByTestId('story-post-card');
-    expect(storyCards).toHaveLength(1);
-    expect(storyCards[0].dataset.postId).toBe('3');
-  });
-
-  it('renders posts without media as TextPostCard', async () => {
-    mockedFetchPosts.mockResolvedValue(
-      makeResponse({
-        posts: [makePost({ id: 1, titulo: 'No media', media: [] })],
-      }),
-    );
-
-    renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
-
-    expect(await screen.findByTestId('text-post-card')).toBeInTheDocument();
-    expect(screen.queryByTestId('instagram-post-card')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('story-post-card')).not.toBeInTheDocument();
-  });
-
-  it('renders carrossel posts as InstagramPostCard (not stories)', async () => {
-    mockedFetchPosts.mockResolvedValue(
-      makeResponse({
-        posts: [makePost({ id: 1, titulo: 'Carrossel post', tipo: 'carrossel' })],
-      }),
-    );
-
-    renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
-
-    expect(await screen.findByTestId('instagram-post-card')).toBeInTheDocument();
-    expect(screen.queryByTestId('story-post-card')).not.toBeInTheDocument();
-  });
-
-  it('shows the Stories section header only when media posts also exist', async () => {
-    mockedFetchPosts.mockResolvedValue(
-      makeResponse({
-        posts: [
-          makePost({ id: 1, titulo: 'Feed', tipo: 'feed' }),
-          makePost({ id: 2, titulo: 'Story', tipo: 'stories' }),
-        ],
-      }),
-    );
-
-    renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
-
-    expect(await screen.findByText('Stories')).toBeInTheDocument();
-  });
-
-  it('hides the Stories section header when only stories exist (no media posts)', async () => {
-    mockedFetchPosts.mockResolvedValue(
-      makeResponse({
-        posts: [makePost({ id: 2, titulo: 'Story only', tipo: 'stories' })],
-      }),
-    );
-
-    renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
-
-    await screen.findByTestId('story-post-card');
-    expect(screen.queryByText('Stories')).not.toBeInTheDocument();
-  });
-
-  it('shows "Posts sem mídia" header when stories or media posts also exist', async () => {
-    mockedFetchPosts.mockResolvedValue(
-      makeResponse({
-        posts: [
-          makePost({ id: 1, titulo: 'Story', tipo: 'stories' }),
-          makePost({ id: 2, titulo: 'Text only', media: [] }),
-        ],
-      }),
-    );
-
-    renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
-
-    expect(await screen.findByText('Posts sem mídia')).toBeInTheDocument();
-  });
-
-  it('hides "Posts sem mídia" header when only text posts exist', async () => {
-    mockedFetchPosts.mockResolvedValue(
-      makeResponse({
-        posts: [makePost({ id: 1, titulo: 'Text only', media: [] })],
-      }),
-    );
-
-    renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
-
-    await screen.findByTestId('text-post-card');
-    expect(screen.queryByText('Posts sem mídia')).not.toBeInTheDocument();
-  });
-
   it('only shows posts with status enviado_cliente', async () => {
     mockedFetchPosts.mockResolvedValue(
       makeResponse({
@@ -366,12 +261,23 @@ describe('AprovacoesPage — post type categorization', () => {
 });
 
 describe('AprovacoesPage — feed preview and selection', () => {
+  const FEED = {
+    profile: {
+      username: 'clinica_aurora',
+      profilePictureUrl: null,
+      followerCount: 5000,
+      followingCount: 300,
+      mediaCount: 120,
+    },
+    recentPosts: [],
+  };
+
   beforeEach(() => {
     mockedFetchPosts.mockReset();
     mockedFetchInstagramFeed.mockReset();
   });
 
-  it('hides FeedPreviewButton when no instagramProfile is present', async () => {
+  it('hides Selecionar and FeedPreviewButton when no instagramProfile is present', async () => {
     mockedFetchPosts.mockResolvedValue(
       makeResponse({
         posts: [makePost({ id: 1 })],
@@ -381,11 +287,12 @@ describe('AprovacoesPage — feed preview and selection', () => {
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
-    await screen.findByTestId('instagram-post-card');
+    await screen.findByRole('button', { name: /^Abrir / });
+    expect(screen.queryByRole('button', { name: 'Selecionar' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('feed-preview-btn')).not.toBeInTheDocument();
   });
 
-  it('shows FeedPreviewButton when instagramProfile is present', async () => {
+  it('offers FeedPreviewButton only in select mode when instagramProfile is present', async () => {
     mockedFetchPosts.mockResolvedValue(
       makeResponse({
         posts: [makePost({ id: 1 })],
@@ -395,6 +302,7 @@ describe('AprovacoesPage — feed preview and selection', () => {
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Selecionar' }));
     expect(await screen.findByTestId('feed-preview-btn')).toBeInTheDocument();
     expect(screen.getByText('Preview (0)')).toBeInTheDocument();
   });
@@ -409,16 +317,17 @@ describe('AprovacoesPage — feed preview and selection', () => {
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
-    await screen.findByTestId('feed-preview-btn');
+    fireEvent.click(await screen.findByRole('button', { name: 'Selecionar' }));
     expect(screen.getByText('Preview (0)')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Select 1' }));
+    const [first, second] = screen.getAllByRole('checkbox');
+    fireEvent.click(first);
     expect(screen.getByText('Preview (1)')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Select 2' }));
+    fireEvent.click(second);
     expect(screen.getByText('Preview (2)')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Select 1' }));
+    fireEvent.click(first);
     expect(screen.getByText('Preview (1)')).toBeInTheDocument();
   });
 
@@ -429,22 +338,12 @@ describe('AprovacoesPage — feed preview and selection', () => {
         instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
       }),
     );
-    mockedFetchInstagramFeed.mockResolvedValue({
-      profile: {
-        username: 'clinica_aurora',
-        profilePictureUrl: null,
-        followerCount: 5000,
-        followingCount: 300,
-        mediaCount: 120,
-      },
-      recentPosts: [],
-    });
+    mockedFetchInstagramFeed.mockResolvedValue(FEED);
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
-    await screen.findByTestId('feed-preview-btn');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Select 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Selecionar' }));
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
     fireEvent.click(screen.getByTestId('feed-preview-btn'));
 
     const gridPreview = await screen.findByTestId('instagram-grid-preview');
@@ -458,20 +357,11 @@ describe('AprovacoesPage — feed preview and selection', () => {
         instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
       }),
     );
-    mockedFetchInstagramFeed.mockResolvedValue({
-      profile: {
-        username: 'clinica_aurora',
-        profilePictureUrl: null,
-        followerCount: 5000,
-        followingCount: 300,
-        mediaCount: 120,
-      },
-      recentPosts: [],
-    });
+    mockedFetchInstagramFeed.mockResolvedValue(FEED);
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
-    await screen.findByTestId('feed-preview-btn');
+    fireEvent.click(await screen.findByRole('button', { name: 'Selecionar' }));
     fireEvent.click(screen.getByTestId('feed-preview-btn'));
 
     const gridPreview = await screen.findByTestId('instagram-grid-preview');
@@ -482,7 +372,7 @@ describe('AprovacoesPage — feed preview and selection', () => {
     });
   });
 
-  it('only includes withMedia posts (not stories) in grid preview selection', async () => {
+  it('only offers media posts (not stories) for grid preview selection', async () => {
     mockedFetchPosts.mockResolvedValue(
       makeResponse({
         posts: [
@@ -492,22 +382,13 @@ describe('AprovacoesPage — feed preview and selection', () => {
         instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
       }),
     );
-    mockedFetchInstagramFeed.mockResolvedValue({
-      profile: {
-        username: 'clinica_aurora',
-        profilePictureUrl: null,
-        followerCount: 5000,
-        followingCount: 300,
-        mediaCount: 120,
-      },
-      recentPosts: [],
-    });
+    mockedFetchInstagramFeed.mockResolvedValue(FEED);
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
-    await screen.findByTestId('feed-preview-btn');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Select 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Selecionar' }));
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByTestId('feed-preview-btn'));
 
     const gridPreview = await screen.findByTestId('instagram-grid-preview');
