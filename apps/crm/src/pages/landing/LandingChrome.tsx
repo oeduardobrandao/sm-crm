@@ -73,9 +73,12 @@ export function LandingHeader({ variant }: { variant: 'landing' | 'subpage' }) {
               ))}
         </nav>
         <div className="hdr-actions">
-          <button onClick={toggleTheme} className="theme-toggle" aria-label="Alternar tema">
-            {isDark ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+          {/* The redesigned landing is always dark; the toggle only applies to subpages. */}
+          {variant === 'subpage' && (
+            <button onClick={toggleTheme} className="theme-toggle" aria-label="Alternar tema">
+              {isDark ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+          )}
           {!loading &&
             (user ? (
               <a href="/dashboard" className="lp-btn lp-btn-primary">
@@ -175,7 +178,8 @@ export function LandingFooter() {
       </div>
       <div className="footer-bottom">
         <span>
-          © 2026 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS
+          © {new Date().getFullYear()} Mesaas. Todos os direitos reservados. · CNPJ
+          63.758.902/0001-01 — EBS IT SOLUTIONS
         </span>
         <div className="footer-socials">
           <a href="https://www.instagram.com/mesaas.com.br/" aria-label="Instagram do Mesaas">

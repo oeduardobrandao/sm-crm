@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/context/AuthContext', () => ({
@@ -32,5 +32,20 @@ describe('landing chrome links', () => {
     unmount();
     render(<LandingHeader variant="landing" />);
     expect(screen.getAllByRole('link', { name: 'Mesaas' })[0]).toHaveAttribute('href', '#top');
+  });
+
+  it('the subpage header toggles the document theme; the landing header has no toggle', () => {
+    document.documentElement.removeAttribute('data-theme');
+    const { unmount } = render(<LandingHeader variant="subpage" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alternar tema' }));
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alternar tema' }));
+    expect(document.documentElement).not.toHaveAttribute('data-theme');
+    unmount();
+
+    render(<LandingHeader variant="landing" />);
+    expect(screen.queryByRole('button', { name: 'Alternar tema' })).not.toBeInTheDocument();
   });
 });

@@ -28,6 +28,8 @@ const PAID_FEATURES = {
   feature_contracts: true,
   feature_brand_customization: true,
   feature_mcp: true,
+  feature_instagram_automation: true,
+  feature_briefing_audio: true,
 } as const;
 
 const PRICING_PLANS: PublicPricingPlan[] = [
@@ -50,6 +52,8 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     feature_contracts: false,
     feature_brand_customization: false,
     feature_mcp: false,
+    feature_instagram_automation: false,
+    feature_briefing_audio: false,
     pagarme_12x_enabled: false,
     pagarme_installment_cents: null,
   },
@@ -182,14 +186,10 @@ describe('LandingPage', () => {
     expect(document.body).not.toHaveClass('landing-page');
   });
 
-  it('toggles the document theme between light and dark', () => {
+  it('has no theme toggle: the landing is always dark', () => {
     renderLandingPage();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Alternar tema' }));
-    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Alternar tema' }));
-    expect(document.documentElement).not.toHaveAttribute('data-theme');
+    expect(screen.queryByRole('button', { name: 'Alternar tema' })).not.toBeInTheDocument();
   });
 
   it('shows the promo banner and hides it (persisted) after dismissing', () => {
@@ -255,7 +255,10 @@ describe('LandingPage', () => {
       '/login?tab=register&plan=start&interval=month',
     ]);
 
-    expect(screen.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/login');
+    // Header "Entrar" plus the final CTA's secondary "Entrar" both go to login.
+    for (const link of screen.getAllByRole('link', { name: 'Entrar' })) {
+      expect(link).toHaveAttribute('href', '/login');
+    }
   });
 
   it('routes authenticated pricing and comparison actions to the dashboard or billing', async () => {
@@ -577,7 +580,7 @@ describe('LandingPage', () => {
 
     expect(freeQuestion).toHaveAttribute('aria-expanded', 'false');
     expect(installQuestion).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByText(/serve para conhecer a plataforma/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/não tem custo/i)).not.toBeInTheDocument();
     expect(
       screen.getByText(
         'Não. O Mesaas roda no navegador, no computador ou no celular. Não tem nada para baixar nem instalar.',

@@ -1070,18 +1070,12 @@ export default function EntregasPage() {
         }
       />
 
-      {/* Filters + view/mode/entity toggles share one row -- filters wrap onto
-          their own line on desktop when the pill set is long, but on mobile
-          the compact "Filtros" button sits right next to the view toggles
-          instead of eating a whole row of its own. */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: '0.75rem',
-        }}
-      >
+      {/* Below 901px the compact "Filtros" button and the view/mode/entity
+          toggles share one row. From 901px up the full pill set takes its own
+          row (EntregasFilters is basis-full there) and the toggles wrap onto
+          the next one -- without that they split the row 50/50 and the
+          toggles get clipped. */}
+      <div className="flex flex-wrap items-center gap-3 min-[901px]:gap-y-6">
         {showFilters && (
           <EntregasFilters
             filters={filters}
