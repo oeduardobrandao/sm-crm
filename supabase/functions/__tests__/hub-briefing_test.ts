@@ -335,6 +335,25 @@ Deno.test("hub-briefing POST de texto usa o orçamento de autosave (120 por 5 mi
   const write = seen.find(([k]) => k.startsWith("hub-write:hub-briefing:"));
   assertEquals(write?.[1], 120);
   assertEquals(write?.[2], 300);
+  // The shared Hub-wide read pool is only debited by GET.
+  assertEquals(seen.some(([k]) => k.startsWith("hub-read:")), false);
+});
+
+Deno.test("hub-briefing GET debita o pool compartilhado hub-read", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("briefings", "select", { data: [], error: null });
+  db.queue("hub_briefing_questions", "select", { data: [], error: null });
+  const seen: string[] = [];
+  const handler = makeHandler(db, {
+    rateLimit: (k) => {
+      seen.push(k);
+      return true;
+    },
+  });
+  const res = await handler(new Request("https://x.test/hub-briefing?token=t"));
+  assertEquals(res.status, 200);
+  assertEquals(seen.some((k) => k.startsWith("hub-read:")), true);
 });
 
 // ── Gate de plano (feature_briefing_audio) ─────────────────────────────

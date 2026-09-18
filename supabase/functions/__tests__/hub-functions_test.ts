@@ -2283,6 +2283,8 @@ Deno.test("hub-edit-suggestion write budget is the autosave one (120 por 5 min),
   const write = seen.find(([k]) => k.startsWith("hub-write:hub-edit-suggestion:"));
   assertEquals(write?.[1], 120);
   assertEquals(write?.[2], 300);
+  // Write-only endpoint: must not debit the Hub-wide shared read pool.
+  assertEquals(seen.some(([k]) => k.startsWith("hub-read:")), false);
 });
 
 Deno.test("hub-edit-suggestion accepts a suggestion for a post attached to a workflow", async () => {
