@@ -42,7 +42,9 @@
     "clickToExpand": "click to expand",
     "filter": {
       "label": "Filter by status",
-      "all": "All"
+      "all": "All",
+      "fluxoLabel": "Filter by workflow",
+      "avulsas": "Standalone"
     },
     "status": {
       "enviadoCliente": "Awaiting approval",
@@ -86,6 +88,31 @@
   "textCard": {
     "mediaRemoved": "Media removed to free up space",
     "instagramCaptionLabel": "Instagram caption"
+  },
+  "posts": {
+    "select": "Select",
+    "done": "Done",
+    "previous": "Previous post",
+    "next": "Next post",
+    "counter": "{{current}} of {{total}}",
+    "closeDialog": "Close post",
+    "openTile": "Open {{title}}",
+    "openStory": "View story {{title}}",
+    "tabCaption": "Caption",
+    "tabText": "Text",
+    "tabHistory": "History and comments",
+    "editCaption": "Edit caption",
+    "editText": "Edit text",
+    "requestCorrection": "Request a correction",
+    "mediaRemoved": "Media removed",
+    "noMedia": "No media",
+    "slides": "{{count}} slides",
+    "storyFrames": "Story · {{count}}",
+    "storiesRailLabel": "Stories",
+    "stripLabel": "Other posts",
+    "goToPost": "Go to {{title}}",
+    "notAvailable": "This post is not available.",
+    "submitError": "Could not send. Try again."
   },
   "history": {
     "toggle": "History and comments",

@@ -47,14 +47,32 @@ describe('hubPosts locale files', () => {
       'correctionReason.texto',
       'correctionReason.legenda',
       'correctionReason.outro',
-      'postagens.filter.all',
+      'posts.select',
+      'posts.done',
+      'posts.previous',
+      'posts.next',
+      'posts.counter',
+      'posts.closeDialog',
+      'posts.tabCaption',
+      'posts.tabText',
+      'posts.tabHistory',
+      'posts.editCaption',
+      'posts.editText',
+      'posts.requestCorrection',
+      'posts.mediaRemoved',
+      'posts.notAvailable',
       'postagens.filter.label',
+      'postagens.filter.all',
+      'postagens.filter.fluxoLabel',
+      'postagens.filter.avulsas',
     ]) {
       expect(keys, key).toContain(key);
     }
   });
 
   it('has no em-dash in any user-facing string', () => {
-    expect(JSON.stringify(pt.history) + JSON.stringify(pt.correctionReason)).not.toMatch(/—/);
+    expect(
+      JSON.stringify(pt.history) + JSON.stringify(pt.correctionReason) + JSON.stringify(pt.posts),
+    ).not.toMatch(/—/);
   });
 });

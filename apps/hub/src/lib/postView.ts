@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { HubPost } from '../types';
+import type { HubPost, HubPostMedia } from '../types';
 
 /** Statuses a client is allowed to see in the Hub (mirrors PostagensPage). */
 export const VISIBLE_STATUSES = new Set<HubPost['status']>([
@@ -65,4 +65,61 @@ export function getTipoLabel(t: TFunction, tipo: string): string {
     carrossel: t('hubPostCard:tipo.carrossel', 'Carrossel'),
   };
   return labels[tipo] ?? tipo;
+}
+
+/** Status colours shared by the tile pill and the dialog header (moved from PostagensPage). */
+export const STATUS_COLORS: Record<string, string> = {
+  enviado_cliente: '#f5a342',
+  aprovado_cliente: '#3ecf8e',
+  correcao_cliente: '#f55a42',
+  agendado: '#42c8f5',
+  publicando: '#E1306C',
+  postado: '#525252',
+  falha_publicacao: '#f55a42',
+};
+
+/**
+ * Presentational-only state (not a DB status): an `agendado` post whose scheduled
+ * time already passed is being published right now.
+ */
+export function getPostPublishState(p: {
+  status: HubPost['status'];
+  scheduled_at: string | null;
+}): string {
+  return p.status === 'agendado' && !!p.scheduled_at && new Date(p.scheduled_at) <= new Date()
+    ? 'publicando'
+    : p.status;
+}
+
+/** Tile/strip image: the flagged cover, else the first media item. */
+export function getPostCover(post: HubPost): HubPostMedia | null {
+  return post.cover_media ?? post.media?.[0] ?? null;
+}
+
+/**
+ * The caption the client actually sees: the explicit caption when non-empty,
+ * otherwise the text after "LEGENDA" in `conteudo_plain`, otherwise the whole
+ * `conteudo_plain`. Same rule the old cards used, kept in one place.
+ */
+export function deriveCaption(post: HubPost, igCaption: string | null): string {
+  if (igCaption) return igCaption;
+  const rawText = post.conteudo_plain ?? '';
+  const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
+  return legendaIdx !== -1
+    ? rawText
+        .slice(legendaIdx + 'LEGENDA'.length)
+        .replace(/^[:\s\n]+/, '')
+        .trim()
+    : rawText;
+}
+
+/** scheduled_at ascending, unscheduled last, `ordem` as the tiebreaker. Returns a copy. */
+export function sortPostsChronologically(posts: HubPost[]): HubPost[] {
+  return [...posts].sort((a, b) => {
+    if (!a.scheduled_at && !b.scheduled_at) return a.ordem - b.ordem;
+    if (!a.scheduled_at) return 1;
+    if (!b.scheduled_at) return -1;
+    const diff = a.scheduled_at.localeCompare(b.scheduled_at);
+    return diff !== 0 ? diff : a.ordem - b.ordem;
+  });
 }

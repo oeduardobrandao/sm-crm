@@ -42,7 +42,9 @@
     "clickToExpand": "clique para expandir",
     "filter": {
       "label": "Filtrar por status",
-      "all": "Todos"
+      "all": "Todos",
+      "fluxoLabel": "Filtrar por fluxo",
+      "avulsas": "Avulsas"
     },
     "status": {
       "enviadoCliente": "Aguardando aprovação",
@@ -86,6 +88,31 @@
   "textCard": {
     "mediaRemoved": "Mídia removida para liberar espaço",
     "instagramCaptionLabel": "Legenda do Instagram"
+  },
+  "posts": {
+    "select": "Selecionar",
+    "done": "Concluir",
+    "previous": "Post anterior",
+    "next": "Próximo post",
+    "counter": "{{current}} de {{total}}",
+    "closeDialog": "Fechar postagem",
+    "openTile": "Abrir {{title}}",
+    "openStory": "Ver story {{title}}",
+    "tabCaption": "Legenda",
+    "tabText": "Texto",
+    "tabHistory": "Histórico e comentários",
+    "editCaption": "Editar legenda",
+    "editText": "Editar texto",
+    "requestCorrection": "Solicitar correção",
+    "mediaRemoved": "Mídia removida",
+    "noMedia": "Sem mídia",
+    "slides": "{{count}} slides",
+    "storyFrames": "Story · {{count}}",
+    "storiesRailLabel": "Stories",
+    "stripLabel": "Outros posts",
+    "goToPost": "Ir para {{title}}",
+    "notAvailable": "Esta postagem não está disponível.",
+    "submitError": "Não foi possível enviar. Tente novamente."
   },
   "history": {
     "toggle": "Histórico e comentários",
