@@ -5577,6 +5577,30 @@ body.role-agent input[name='valor_total'] {
   background: rgba(234, 179, 8, 0.14);
 }
 
+/* Persistent auto-schedule indicator (spec peça 3): drawer row, drawer header
+   summary and kanban card face all share this look. #f5a342 is the legacy
+   --warning token value (see DESIGN_SYSTEM.md), used as a literal to match
+   the neighbouring pills in this file, which do the same. */
+.auto-schedule-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #f5a342;
+  background: rgba(245, 163, 66, 0.12);
+  border: none;
+  white-space: nowrap;
+}
+.auto-schedule-badge--action {
+  cursor: pointer;
+}
+.auto-schedule-badge--action:hover {
+  background: rgba(245, 163, 66, 0.22);
+}
+
 .board-post-card .item-title {
   font-size: 0.8rem;
   font-weight: 500;
