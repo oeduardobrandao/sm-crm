@@ -105,6 +105,23 @@ describe('hub api client', () => {
       expect(fetchHarness.calls).toHaveLength(4);
     });
 
+    it('stops retrying once its abort signal fires (a newer autosave superseded it)', async () => {
+      vi.useFakeTimers();
+      fetchHarness.queueResponse({ ok: false, status: 429, json: { error: 'Muitas tentativas.' } });
+      fetchHarness.queueResponse({ json: { ok: true } });
+
+      const ac = new AbortController();
+      const pending = submitBriefingAnswer('token-hub', 'q1', 'versão antiga', ac.signal);
+      const outcome = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(500);
+      ac.abort();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await outcome;
+
+      // The stale payload was never replayed.
+      expect(fetchHarness.calls).toHaveLength(1);
+    });
+
     it('does not retry non-429 failures', async () => {
       fetchHarness.queueResponse({ ok: false, status: 500, json: { error: 'boom' } });
       await expect(submitBriefingAnswer('token-hub', 'q1', 'x')).rejects.toThrow('boom');
