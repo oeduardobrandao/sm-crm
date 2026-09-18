@@ -182,6 +182,11 @@ export function CorrectionPanel({
   useEffect(() => {
     onDirtyChange(panelDirty);
   }, [panelDirty, onDirtyChange]);
+  // The panel can unmount without going through the host's own close path (the post stops
+  // being pending on a refetch); without this the host would keep a stale "unsent" flag.
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+  useEffect(() => () => onDirtyChangeRef.current(false), []);
 
   // A successful save makes the staged values the new baseline (draft* update via
   // pending_suggestion on refetch); until then the fields keep what was typed.

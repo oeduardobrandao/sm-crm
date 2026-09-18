@@ -106,6 +106,24 @@ describe('CorrectionPanel', () => {
     expect(onSubmitCorrection).toHaveBeenCalledWith('Trocar a data', 'texto');
   });
 
+  it('clears the parent dirty flag when it unmounts with unsent input', () => {
+    const { unmount } = render(
+      <CorrectionPanel
+        post={post()}
+        edit={makeEdit()}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
+      target: { value: 'Trocar a data' },
+    });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    unmount();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('hides the Mídia chip on a post without media', () => {
     render(
       <CorrectionPanel
