@@ -18,7 +18,10 @@ export interface LandingFaqItem {
 export interface LandingFeature {
   title: string;
   description: string;
+  /** Extra detail. Rendered only when `showBullets` is true; the SEO mirror
+   * follows the same flag so crawlers never see copy visitors do not. */
   bullets: string[];
+  showBullets?: boolean;
 }
 
 export interface LandingHowStep {
@@ -75,6 +78,7 @@ export const LANDING: {
     },
     {
       title: 'Agende e publique no Instagram sem sair do Mesaas.',
+      showBullets: true,
       description:
         'Escolha dia e horário, escreva a legenda e pronto: o post vai ao ar no perfil do seu cliente pela API oficial do Meta. Feed, Reels e Carrossel, sem app de terceiros e sem alarme no celular.',
       bullets: [
@@ -118,6 +122,7 @@ export const LANDING: {
     },
     {
       title: 'Comentou a palavra-chave, o link chega no direct. Sem ninguém precisar responder.',
+      showBullets: true,
       description:
         'Crie um gatilho para um post ou para o perfil inteiro. O Mesaas responde o comentário em público e envia a DM com link ou cartão na mesma hora, a qualquer horário do dia. Disponível nos planos Pro e Max.',
       bullets: [

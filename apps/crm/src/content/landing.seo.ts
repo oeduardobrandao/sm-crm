@@ -26,7 +26,7 @@ export function renderLandingHtml(): string {
   const featureBlocks = features
     .map(
       (f) =>
-        `<article><h3>${esc(f.title)}</h3><p>${emph(f.description)}</p>${bullets(f.bullets)}</article>`,
+        `<article><h3>${esc(f.title)}</h3><p>${emph(f.description)}</p>${f.showBullets ? bullets(f.bullets) : ''}</article>`,
     )
     .join('');
   const steps = how.steps

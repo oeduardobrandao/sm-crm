@@ -247,7 +247,6 @@ const FEATURE_VISUALS: {
   eyebrow: string;
   icon: ReactNode;
   span: 1 | 2;
-  showBullets?: boolean;
   visual?: ReactNode;
 }[] = [
   {
@@ -270,7 +269,6 @@ const FEATURE_VISUALS: {
     eyebrow: 'Agendamento',
     icon: <CalendarCheck size={20} />,
     span: 1,
-    showBullets: true,
   },
   {
     eyebrow: 'Métricas',
@@ -314,7 +312,6 @@ const FEATURE_VISUALS: {
     eyebrow: 'Automações',
     icon: <MessageCircle size={20} />,
     span: 2,
-    showBullets: true,
     visual: <DmVisual />,
   },
 ];
@@ -330,7 +327,7 @@ function Features() {
 
         <div className="lp2-bento">
           {LANDING.features.map((feature, i) => {
-            const { eyebrow, icon, span, showBullets, visual } = FEATURE_VISUALS[i];
+            const { eyebrow, icon, span, visual } = FEATURE_VISUALS[i];
             const classes = [
               'lp2-card',
               span === 2 ? 'lp2-card--wide' : '',
@@ -349,7 +346,7 @@ function Features() {
                   </span>
                   <h3>{feature.title}</h3>
                   <p>{withEmphasis(feature.description)}</p>
-                  {showBullets && feature.bullets.length > 0 && (
+                  {feature.showBullets && feature.bullets.length > 0 && (
                     <ul className="lp2-bullets">
                       {feature.bullets.map((bullet, j) => (
                         <li key={j}>{withEmphasis(bullet)}</li>

@@ -34,7 +34,9 @@ describe('renderLandingHtml', () => {
   });
 
   test('renders embedded <strong> markers as real tags, never escaped text', () => {
-    expect(html).toContain('<strong>5 etapas prontas</strong>');
+    expect(html).toContain('<strong>publicado sozinho</strong>');
+    // Bullets hidden on the page (showBullets unset) are hidden here too.
+    expect(html).not.toContain('5 etapas prontas');
     expect(html).not.toContain('&lt;strong&gt;');
   });
 });
