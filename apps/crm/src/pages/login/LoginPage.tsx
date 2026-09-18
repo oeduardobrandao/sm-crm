@@ -65,6 +65,18 @@ export default function LoginPage() {
     navigate(intentQuery ? `/comecar?${intentQuery}` : from, { replace: true });
   }, [authLoading, user, intentQuery, from, navigate]);
 
+  // /login is not nested under AppLayout (see App.tsx's route tree), so
+  // AppLayout's own chat:hide-on-mount effect never runs here. A Crisp
+  // session bound on a PRIOR visit persists via Crisp's own cookie,
+  // independent of Supabase auth state, so without this a shared machine
+  // could show a previous user's identified conversation, unhidden, to
+  // whoever loads this page next. Unconditional and un-gated on `user`/
+  // `authLoading`: the exposure this closes exists precisely BEFORE auth
+  // resolves, so it cannot wait for either.
+  useEffect(() => {
+    window.$crisp?.push(['do', 'chat:hide']);
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
