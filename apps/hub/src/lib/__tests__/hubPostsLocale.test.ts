@@ -15,7 +15,7 @@ describe('hubPosts locale files', () => {
     expect(flattenKeys(en).sort()).toEqual(flattenKeys(pt).sort());
   });
 
-  it('carries the history, correctionReason and postagens.filter keys', () => {
+  it('carries the history, correctionReason, postagens.filter and aprovacoes filter/sort keys', () => {
     const keys = flattenKeys(pt);
     for (const key of [
       'history.toggle',
@@ -66,6 +66,13 @@ describe('hubPosts locale files', () => {
       'postagens.filter.all',
       'postagens.filter.fluxoLabel',
       'postagens.filter.avulsas',
+      'aprovacoes.noResults',
+      'aprovacoes.mediaFilter.label',
+      'aprovacoes.mediaFilter.with',
+      'aprovacoes.mediaFilter.without',
+      'aprovacoes.sort.label',
+      'aprovacoes.sort.oldest',
+      'aprovacoes.sort.newest',
     ]) {
       expect(keys, key).toContain(key);
     }

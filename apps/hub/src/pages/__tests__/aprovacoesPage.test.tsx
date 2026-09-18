@@ -279,4 +279,168 @@ describe('AprovacoesPage', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
   });
+
+  describe('media filter and sort', () => {
+    // Oldest to newest: Cedo (media), Meio (text only), Tarde (media), Fim (text only).
+    const mixed = () =>
+      response({
+        posts: [
+          post({ id: 1, titulo: 'Tarde', scheduled_at: '2026-04-22T10:00:00.000Z' }),
+          post({ id: 2, titulo: 'Cedo', scheduled_at: '2026-04-20T10:00:00.000Z' }),
+          post({ id: 3, titulo: 'Meio', scheduled_at: '2026-04-21T10:00:00.000Z', media: [] }),
+          post({ id: 4, titulo: 'Fim', scheduled_at: '2026-04-23T10:00:00.000Z', media: [] }),
+          post({ id: 5, titulo: 'Aprovado', status: 'aprovado_cliente' }),
+        ],
+      });
+    const tileLabels = () =>
+      screen
+        .getAllByRole('button', { name: /^Abrir /, hidden: true })
+        .map((b) => b.getAttribute('aria-label'))
+        // The open dialog also has an "Abrir mídia N" lightbox button; keep only grid tiles.
+        .filter((label) => !label?.startsWith('Abrir mídia'));
+
+    it('renders the media chips with counts from the pending posts, defaulting to Todos', async () => {
+      renderPage(BASE, mixed());
+      await screen.findAllByRole('button', { name: /^Abrir / });
+      expect(screen.getByRole('group', { name: 'Filtrar por mídia' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Todos (4)' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.getByRole('button', { name: 'Com mídia (2)' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Sem mídia (2)' })).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: 'Ordenar por' })).toBeInTheDocument();
+    });
+
+    it('shows neither chips nor sort when nothing is pending', async () => {
+      renderPage(BASE, response({ posts: [post({ id: 3, status: 'postado' })] }));
+      await screen.findByText('Tudo em dia. Nenhum post aguardando aprovação.');
+      expect(screen.queryByRole('group', { name: 'Filtrar por mídia' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'Ordenar por' })).not.toBeInTheDocument();
+    });
+
+    it('"Sem mídia" shows only text posts and "Com mídia" the reverse, keeping the total description', async () => {
+      renderPage(BASE, mixed());
+      await screen.findAllByRole('button', { name: /^Abrir / });
+      fireEvent.click(screen.getByRole('button', { name: 'Sem mídia (2)' }));
+      expect(tileLabels()).toEqual(['Abrir Meio', 'Abrir Fim']);
+      expect(screen.getByRole('button', { name: 'Sem mídia (2)' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      // Counts stay computed from the unfiltered pending list; header keeps the total.
+      expect(screen.getByRole('button', { name: 'Todos (4)' })).toBeInTheDocument();
+      expect(screen.getByText('4 posts aguardando sua aprovação.')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Com mídia (2)' }));
+      expect(tileLabels()).toEqual(['Abrir Cedo', 'Abrir Tarde']);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Todos (4)' }));
+      expect(tileLabels()).toEqual(['Abrir Cedo', 'Abrir Meio', 'Abrir Tarde', 'Abrir Fim']);
+    });
+
+    it('defaults to oldest first and "Mais recentes" reverses the tiles', async () => {
+      renderPage(BASE, mixed());
+      await screen.findAllByRole('button', { name: /^Abrir / });
+      expect(screen.getByRole('button', { name: 'Mais antigos' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(tileLabels()).toEqual(['Abrir Cedo', 'Abrir Meio', 'Abrir Tarde', 'Abrir Fim']);
+      fireEvent.click(screen.getByRole('button', { name: 'Mais recentes' }));
+      expect(screen.getByRole('button', { name: 'Mais recentes' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.getByRole('button', { name: 'Mais antigos' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      expect(tileLabels()).toEqual(['Abrir Fim', 'Abrir Tarde', 'Abrir Meio', 'Abrir Cedo']);
+      fireEvent.click(screen.getByRole('button', { name: 'Mais antigos' }));
+      expect(tileLabels()).toEqual(['Abrir Cedo', 'Abrir Meio', 'Abrir Tarde', 'Abrir Fim']);
+    });
+
+    it('the dialog next button follows the filtered and sorted order', async () => {
+      renderPage(BASE, mixed());
+      await screen.findAllByRole('button', { name: /^Abrir / });
+      fireEvent.click(screen.getByRole('button', { name: 'Com mídia (2)' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Mais recentes' }));
+      // Newest first among media posts: Tarde, Cedo.
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir Tarde' }));
+      expect(screen.getByRole('dialog', { name: 'Tarde' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
+      await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}/2`));
+      expect(screen.getByRole('dialog', { name: 'Cedo' })).toBeInTheDocument();
+      // Meio (text only) was skipped and there is nothing after Cedo.
+      expect(screen.getByRole('button', { name: 'Próximo post' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Post anterior' })).toBeEnabled();
+    });
+
+    it('keeps the chips and sort and shows a message when the filter matches nothing', async () => {
+      renderPage(BASE, response({ posts: [post({ id: 1, titulo: 'A' })] }));
+      await screen.findByRole('button', { name: 'Abrir A' });
+      fireEvent.click(screen.getByRole('button', { name: 'Sem mídia (0)' }));
+      expect(screen.getByText('Nenhum post encontrado para este filtro.')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Abrir / })).not.toBeInTheDocument();
+      expect(screen.getByRole('group', { name: 'Filtrar por mídia' })).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: 'Ordenar por' })).toBeInTheDocument();
+      // The header still reports the pending queue, not "Tudo em dia".
+      expect(screen.getByText('1 post aguardando sua aprovação.')).toBeInTheDocument();
+      expect(screen.queryByText(/Tudo em dia/)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Todos (1)' }));
+      expect(screen.getByRole('button', { name: 'Abrir A' })).toBeInTheDocument();
+    });
+
+    it('a background refetch that moves the open post out of the media filter resets it to Todos', async () => {
+      const before = [
+        post({ id: 1, titulo: 'A', media: [] }),
+        post({ id: 2, titulo: 'B', media: [] }),
+      ];
+      // The agency attaches media to B meanwhile, so it no longer matches "Sem mídia".
+      const after = [post({ id: 1, titulo: 'A', media: [] }), post({ id: 2, titulo: 'B' })];
+      mockedFetchPosts
+        .mockResolvedValueOnce(response({ posts: before }))
+        .mockResolvedValue(response({ posts: after }));
+      const { qc } = renderPage(BASE);
+      await screen.findByRole('button', { name: 'Abrir B' });
+      fireEvent.click(screen.getByRole('button', { name: 'Sem mídia (2)' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir B' }));
+      expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
+      await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Todos \(/, hidden: true })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        ),
+      );
+      expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
+      expect(tileLabels()).toEqual(['Abrir A', 'Abrir B']);
+    });
+
+    it('select mode keeps selected posts that the media filter hides', async () => {
+      mockedFetchInstagramFeed.mockResolvedValue({
+        profile: {
+          username: 'clinica',
+          profilePictureUrl: null,
+          followerCount: 0,
+          followingCount: 0,
+          mediaCount: 0,
+        },
+        recentPosts: [],
+      });
+      renderPage(
+        BASE,
+        response({
+          posts: [post({ id: 1, titulo: 'A' }), post({ id: 3, titulo: 'T', media: [] })],
+          instagramProfile: { username: 'clinica', profilePictureUrl: null },
+        }),
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Selecionar' }));
+      fireEvent.click(screen.getByRole('checkbox'));
+      fireEvent.click(screen.getByRole('button', { name: 'Sem mídia (1)' }));
+      fireEvent.click(screen.getByRole('button', { name: /Visualizar no Feed \(1\)/ }));
+      expect(await screen.findByTestId('grid-selected-count')).toHaveTextContent('1');
+    });
+  });
 });

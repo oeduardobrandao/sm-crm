@@ -6,12 +6,59 @@ import { useHub } from '../HubContext';
 import { fetchPosts, fetchInstagramFeed } from '../api';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { PageHeader } from '../components/PageHeader';
+import { MediaFilterChips, type MediaFilter } from '../components/MediaFilterChips';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { PostGrid } from '../components/posts/PostGrid';
 import { PostDetailDialog } from '../components/posts/PostDetailDialog';
 import { isFeedSelectable, type TileMode } from '../components/posts/PostTile';
 import { isAutoPublishActive } from '../lib/autoPublish';
-import { sortPostsChronologically } from '../lib/postView';
+import {
+  sortPostsByScheduled,
+  sortPostsChronologically,
+  type PostSortDirection,
+} from '../lib/postView';
+
+function SortToggle({
+  value,
+  onChange,
+}: {
+  value: PostSortDirection;
+  onChange: (value: PostSortDirection) => void;
+}) {
+  const { t } = useTranslation('hubPosts');
+  const options: { key: PostSortDirection; label: string }[] = [
+    { key: 'asc', label: t('aprovacoes.sort.oldest', 'Mais antigos') },
+    { key: 'desc', label: t('aprovacoes.sort.newest', 'Mais recentes') },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label={t('aprovacoes.sort.label', 'Ordenar por')}
+      className="inline-flex overflow-hidden rounded-full border"
+      style={{ borderColor: 'var(--hub-bd)' }}
+    >
+      {options.map((opt) => {
+        const selected = value === opt.key;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(opt.key)}
+            className="px-3 py-1 text-[12px] font-semibold transition-colors"
+            style={
+              selected
+                ? { background: 'var(--hub-txt)', color: 'var(--hub-card)' }
+                : { color: 'var(--hub-tx2)' }
+            }
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function AprovacoesPage() {
   const { t } = useTranslation('hubPosts');
@@ -30,6 +77,8 @@ export function AprovacoesPage() {
   const [mode, setMode] = useState<TileMode>('browse');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showGrid, setShowGrid] = useState(false);
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
+  const [sortDir, setSortDir] = useState<PostSortDirection>('asc');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
@@ -59,8 +108,34 @@ export function AprovacoesPage() {
     if (pending.length === 0) {
       setMode('browse');
       setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+      setMediaFilter('all');
     }
   }, [pending.length]);
+  const mediaCounts = useMemo(() => {
+    const withMedia = pending.filter((p) => p.media.length > 0).length;
+    return { all: pending.length, withMedia, withoutMedia: pending.length - withMedia };
+  }, [pending]);
+  // What the grid AND the dialog receive, so prev/next, the strip and auto-advance follow
+  // the on-screen order. `selectedPosts` below deliberately stays on the full pending list.
+  const visiblePosts = useMemo(
+    () =>
+      sortPostsByScheduled(
+        mediaFilter === 'all'
+          ? pending
+          : pending.filter((p) => p.media.length > 0 === (mediaFilter === 'with')),
+        sortDir,
+      ),
+    [pending, mediaFilter, sortDir],
+  );
+  // The filter starts at "Todos", so a deep link never lands on a hidden post. What can:
+  // a background refetch moving the OPEN post out of the active filter (the agency added or
+  // removed its media meanwhile). Reset so the strip and prev/next match the grid.
+  useEffect(() => {
+    if (currentId === null || currentId === -1) return;
+    if (!pending.some((p) => p.id === currentId)) return;
+    if (visiblePosts.some((p) => p.id === currentId)) return;
+    setMediaFilter('all');
+  }, [currentId, pending, visiblePosts]);
   const selectedPosts = useMemo(
     () => pending.filter((p) => isFeedSelectable(p) && selectedIds.has(p.id)),
     [pending, selectedIds],
@@ -146,15 +221,31 @@ export function AprovacoesPage() {
         </div>
       ) : (
         <>
-          <PostGrid
-            posts={pending}
-            mode={mode}
-            selectedIds={selectedIds}
-            onOpen={handleOpen}
-            onToggle={handleToggleSelect}
-          />
+          {pending.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              <MediaFilterChips
+                value={mediaFilter}
+                counts={mediaCounts}
+                onChange={setMediaFilter}
+              />
+              <SortToggle value={sortDir} onChange={setSortDir} />
+            </div>
+          )}
+          {pending.length > 0 && visiblePosts.length === 0 ? (
+            <p className="text-sm hub-tx2">
+              {t('aprovacoes.noResults', 'Nenhum post encontrado para este filtro.')}
+            </p>
+          ) : (
+            <PostGrid
+              posts={visiblePosts}
+              mode={mode}
+              selectedIds={selectedIds}
+              onOpen={handleOpen}
+              onToggle={handleToggleSelect}
+            />
+          )}
           <PostDetailDialog
-            posts={pending}
+            posts={visiblePosts}
             currentId={currentId}
             token={token}
             approvals={approvals}

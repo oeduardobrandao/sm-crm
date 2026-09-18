@@ -6,6 +6,7 @@ import {
   isClientVisible,
   pickPostCardKind,
   sortPostsChronologically,
+  sortPostsByScheduled,
   VISIBLE_STATUSES,
 } from '../postView';
 import type { HubPost, HubPostMedia } from '../../types';
@@ -129,5 +130,27 @@ describe('sortPostsChronologically', () => {
     const out = sortPostsChronologically(input);
     expect(out.map((p) => p.id)).toEqual([4, 3, 2, 5, 1]);
     expect(input[0].id).toBe(1);
+  });
+});
+
+describe('sortPostsByScheduled', () => {
+  const input = [
+    post({ id: 1, scheduled_at: null, ordem: 2 }),
+    post({ id: 2, scheduled_at: '2026-04-02T00:00:00.000Z', ordem: 1 }),
+    post({ id: 3, scheduled_at: '2026-04-01T00:00:00.000Z', ordem: 5 }),
+    post({ id: 4, scheduled_at: '2026-04-01T00:00:00.000Z', ordem: 1 }),
+    post({ id: 5, scheduled_at: null, ordem: 1 }),
+  ];
+
+  it('asc matches sortPostsChronologically', () => {
+    expect(sortPostsByScheduled(input, 'asc').map((p) => p.id)).toEqual(
+      sortPostsChronologically(input).map((p) => p.id),
+    );
+  });
+
+  it('desc puts the newest first, unscheduled still last, ordem descending as tiebreaker, without mutating', () => {
+    const out = sortPostsByScheduled(input, 'desc');
+    expect(out.map((p) => p.id)).toEqual([2, 3, 4, 1, 5]);
+    expect(input.map((p) => p.id)).toEqual([1, 2, 3, 4, 5]);
   });
 });

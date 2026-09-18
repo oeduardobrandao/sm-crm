@@ -6,7 +6,7 @@ export function StatusTag({ status, size = 'sm' }: { status: string; size?: 'sm'
   const color = STATUS_COLORS[status] ?? '#94a3b8';
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-md font-semibold tracking-[0.02em] whitespace-nowrap"
+      className="inline-flex items-center rounded-md font-semibold tracking-[0.02em] whitespace-nowrap"
       style={{
         fontSize: size === 'md' ? '0.72rem' : '0.65rem',
         color,
@@ -16,9 +16,6 @@ export function StatusTag({ status, size = 'sm' }: { status: string; size?: 'sm'
         backdropFilter: 'blur(6px)',
       }}
     >
-      <span
-        style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }}
-      />
       {getClientStatusLabel(t, status)}
     </span>
   );

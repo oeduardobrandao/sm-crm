@@ -26,7 +26,18 @@
     "emptyDescription": "All caught up. No post awaiting approval.",
     "pendingDescription": "{{count}} post{{plural}} awaiting your approval.",
     "selectHint": "Select posts to preview how they'll look in the Instagram feed.",
-    "loadError": "Error loading approvals."
+    "loadError": "Error loading approvals.",
+    "noResults": "No posts found for this filter.",
+    "mediaFilter": {
+      "label": "Filter by media",
+      "with": "With media",
+      "without": "Without media"
+    },
+    "sort": {
+      "label": "Sort by",
+      "oldest": "Oldest first",
+      "newest": "Newest first"
+    }
   },
   "postagens": {
     "title": "Posts",
