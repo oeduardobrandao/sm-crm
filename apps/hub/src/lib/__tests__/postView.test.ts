@@ -148,9 +148,14 @@ describe('sortPostsByScheduled', () => {
     );
   });
 
-  it('desc puts the newest first, unscheduled still last, ordem descending as tiebreaker, without mutating', () => {
+  it('desc is the exact reverse of asc (unscheduled first), without mutating', () => {
     const out = sortPostsByScheduled(input, 'desc');
-    expect(out.map((p) => p.id)).toEqual([2, 3, 4, 1, 5]);
+    expect(out.map((p) => p.id)).toEqual([1, 5, 2, 3, 4]);
+    expect(out.map((p) => p.id)).toEqual(
+      sortPostsByScheduled(input, 'asc')
+        .map((p) => p.id)
+        .reverse(),
+    );
     expect(input.map((p) => p.id)).toEqual([1, 2, 3, 4, 5]);
   });
 });

@@ -187,6 +187,17 @@ describe('PostHistoryPanel', () => {
     expect(screen.queryByText('oi')).not.toBeInTheDocument();
   });
 
+  it('embedded: fetches on mount and renders no toggle header', async () => {
+    mockedFetch.mockResolvedValue(fullHistory);
+    render(<PostHistoryPanel embedded post={makePost()} token="tok" approvals={listApprovals} />);
+    expect(await screen.findByText('v1: enviado para aprovação')).toBeInTheDocument();
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('button', { name: /Histórico e comentários/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Histórico' })).toBeInTheDocument();
+  });
+
   it('shows "sem dados ainda" instead of 0 when no send has a response', async () => {
     mockedFetch.mockResolvedValue({ events: [], approvals: [] });
     render(<PostHistoryPanel post={makePost()} token="tok" approvals={[]} />);

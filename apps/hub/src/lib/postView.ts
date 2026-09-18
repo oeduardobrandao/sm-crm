@@ -116,19 +116,17 @@ export function deriveCaption(post: HubPost, igCaption: string | null): string {
 export type PostSortDirection = 'asc' | 'desc';
 
 /**
- * Sorts by scheduled_at in the given direction. Unscheduled posts are always last, and
- * `ordem` breaks ties in the same direction, so 'desc' is the exact reverse of 'asc' for
- * every scheduled post. Returns a copy.
+ * 'asc' is scheduled_at ascending, unscheduled last, `ordem` as the tiebreaker. 'desc' is the
+ * exact reverse of that list, so unscheduled posts come first. Returns a copy.
  */
 export function sortPostsByScheduled(posts: HubPost[], direction: PostSortDirection): HubPost[] {
-  const sign = direction === 'asc' ? 1 : -1;
-  return [...posts].sort((a, b) => {
-    if (!a.scheduled_at && !b.scheduled_at) return sign * (a.ordem - b.ordem);
+  const asc = [...posts].sort((a, b) => {
+    if (!a.scheduled_at && !b.scheduled_at) return a.ordem - b.ordem;
     if (!a.scheduled_at) return 1;
     if (!b.scheduled_at) return -1;
-    const diff = a.scheduled_at.localeCompare(b.scheduled_at);
-    return diff !== 0 ? sign * diff : sign * (a.ordem - b.ordem);
+    return a.scheduled_at.localeCompare(b.scheduled_at) || a.ordem - b.ordem;
   });
+  return direction === 'asc' ? asc : asc.reverse();
 }
 
 /** scheduled_at ascending, unscheduled last, `ordem` as the tiebreaker. Returns a copy. */

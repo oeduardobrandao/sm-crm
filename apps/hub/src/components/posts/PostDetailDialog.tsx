@@ -484,7 +484,7 @@ function PostDetailContent({
                     approvals={approvals}
                     onCommentSent={onApprovalSubmitted}
                     onDirtyChange={handleHistoryDirtyChange}
-                    defaultOpen
+                    embedded
                   />
                 </div>
               )}

@@ -20,7 +20,8 @@ interface PostHistoryPanelProps {
   token: string;
   approvals: PostApproval[];
   onCommentSent?: () => void;
-  defaultOpen?: boolean;
+  /** Rendered inside a host that already labels it (a tab): no toggle header, always expanded. */
+  embedded?: boolean;
   /** Reports whether an unsent comment (typed or in flight) exists, so the host can guard navigation. */
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -57,12 +58,13 @@ export function PostHistoryPanel({
   token,
   approvals,
   onCommentSent,
-  defaultOpen,
+  embedded,
   onDirtyChange,
 }: PostHistoryPanelProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
-  const [open, setOpen] = useState(!!defaultOpen);
+  const [expanded, setExpanded] = useState(false);
+  const open = !!embedded || expanded;
   const [tab, setTab] = useState<'history' | 'comments'>('history');
   const [load, setLoad] = useState<LoadState>({ status: 'idle' });
   const [reloadKey, setReloadKey] = useState(0);
@@ -217,24 +219,26 @@ export function PostHistoryPanel({
   const kpis = data ? computePostKpis(data) : null;
 
   return (
-    <div className="border-t hub-border px-4 py-2">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 py-1.5 text-left"
-      >
-        <span className="text-[12px] font-semibold hub-txt">
-          {t('history.toggle', 'Histórico e comentários')}
-        </span>
-        <span className="flex items-center gap-2 text-[11px] hub-tx3">
-          {t('history.summary', '{{decisions}} decisões · {{comments}} comentários', {
-            decisions: decisionCount,
-            comments: commentCount,
-          })}
-          <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-        </span>
-      </button>
+    <div className={embedded ? undefined : 'border-t hub-border px-4 py-2'}>
+      {!embedded && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setExpanded((o) => !o)}
+          className="flex w-full items-center justify-between gap-2 py-1.5 text-left"
+        >
+          <span className="text-[12px] font-semibold hub-txt">
+            {t('history.toggle', 'Histórico e comentários')}
+          </span>
+          <span className="flex items-center gap-2 text-[11px] hub-tx3">
+            {t('history.summary', '{{decisions}} decisões · {{comments}} comentários', {
+              decisions: decisionCount,
+              comments: commentCount,
+            })}
+            <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+          </span>
+        </button>
+      )}
 
       {open && (
         <div className="pb-2 space-y-3">
