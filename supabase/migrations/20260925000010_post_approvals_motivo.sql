@@ -1,5 +1,5 @@
 -- =====================================================================
--- 20260924000001_post_approvals_motivo.sql
+-- 20260925000010_post_approvals_motivo.sql
 -- Correction-reason tag on post_approvals, required only for
 -- action = 'correcao', and record_client_approval widened to accept it.
 -- Spec: docs/superpowers/specs/2026-09-17-post-approval-history-design.md (§3)

@@ -1,8 +1,8 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Valida 20260924000001_post_approvals_motivo.sql e
--- 20260924000002_post_status_events_send_snapshot.sql.
+-- Valida 20260925000010_post_approvals_motivo.sql e
+-- 20260925000011_post_status_events_send_snapshot.sql.
 --   A.1 uma unica record_client_approval existe (7 args); chamada com 6 args nao e ambigua
 --   A.2 correcao com motivo grava motivo e move o status; evento liga post_approval_id
 --   A.3 fase 1: correcao sem motivo ainda e aceita (motivo null) -- a obrigatoriedade chega na fase 3

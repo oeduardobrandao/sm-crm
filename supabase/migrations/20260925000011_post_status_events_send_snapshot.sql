@@ -1,5 +1,5 @@
 -- =====================================================================
--- 20260924000002_post_status_events_send_snapshot.sql
+-- 20260925000011_post_status_events_send_snapshot.sql
 -- Snapshot of the caption/plain text on every "sent to client" event, so
 -- the Hub can diff what the client saw in send N-1 vs send N. Copied from
 -- NEW.* inside the status trigger: immutable by construction. A foreign key

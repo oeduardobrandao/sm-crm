@@ -4,7 +4,7 @@
 
 **Goal:** Give the client, inside each of the three real Hub post cards (`InstagramPostCard`, `StoryPostCard`, `TextPostCard`), a shared history panel with two tabs (Histórico: approvals `aprovado`/`correcao` plus status events without `post_approval_id`; Comentários: `mensagem` rows plus a new composer), a per-post KPI line (rounds + average response time), a caption diff between consecutive sends, a required correction-reason tag (Legenda / Imagem-vídeo / Data / Outro) when requesting a correction, and status filter chips on Postagens only.
 
-**Architecture:** Three migrations in a three-phase rollout (spec §3). Phase 1, `20260924000001`, adds `post_approvals.motivo` with a *permissive* CHECK (`motivo IS NULL OR motivo IN (...)`, value validated, presence not yet required) and *replaces* (drop + create, never overload) `record_client_approval` with a 7-argument signature whose trailing `p_motivo text default null` keeps the still-deployed 6-argument `hub-approve` call working until it is redeployed. Phase 2 redeploys `hub-approve` and ships the three card UIs sending the tag. Phase 3, `20260925000001` in a follow-up PR (Task 16), swaps the CHECK for the mandatory one (`action <> 'correcao' OR (motivo IS NOT NULL AND motivo IN (...))`) created `NOT VALID`; shipping the mandatory CHECK together with the column would reject every correction sent by the old `hub-approve` bundle between the migration push and the function redeploy. `20260924000002` implements spec §1 option (a) "explicit reference between the send event and the content": it adds `snapshot_conteudo_plain`/`snapshot_ig_caption` to `post_status_events`, stamped by `record_post_status_event()` from `NEW.*` only when `NEW.status = 'enviado_cliente'`. A snapshot copied from the row being updated is immutable; a foreign key to `post_content_versions` is not, because `record_post_content_version()` coalesces a later edit by the same actor into the tip row for 5 minutes (`20260923000001_post_content_versions.sql:119-140`), so an FK could silently point at text the client never saw. A new token-authenticated edge function `hub-post-history` (GET `?token&post_id`) reuses the `hub-approve` ownership check (`post.cliente_id === hubToken.cliente_id && post.conta_id === hubToken.conta_id`), applies the `to_status` allowlist, drops `from_status = to_status` rows (the `20260805000001` trigger guard also fires on custom-status-only moves), applies the temporal floor at the first `to_status = 'enviado_cliente'` event, and returns a sanitized DTO (no `from_status`, no actor names, no TipTap JSON). `hub-posts` keeps shipping `postApprovals` in the list payload (the collapsed panel header uses it for its counts; the full history loads only when a panel is opened), but Task 4b filters that query's result server-side with the same rule as `hub-post-history`: today `hub-posts/handler.ts:139-145` returns every `post_approvals` row verbatim, so internal team `mensagem` rows reach the browser on every page load. The shared predicate lives in `supabase/functions/_shared/hub-approvals.ts` (`isClientVisibleApproval`) and both endpoints use it. `hub-approve` gains server-side validation for `mensagem` (trimmed, non-empty, at most 4000 chars) and for `correcao` (`motivo` required, one of four values). Client side: the CRM word-diff moves into a shared `packages/text-diff` workspace package (CRM keeps a re-export shim); `apps/hub/src/lib/postHistory.ts` holds the pure merge/KPI state machine; `PostHistoryPanel`, `CorrectionReasonChips` and `StatusFilterChips` are new components; the three cards and `PostagensPage` wire them in.
+**Architecture:** Three migrations in a three-phase rollout (spec §3). Phase 1, `20260925000010`, adds `post_approvals.motivo` with a *permissive* CHECK (`motivo IS NULL OR motivo IN (...)`, value validated, presence not yet required) and *replaces* (drop + create, never overload) `record_client_approval` with a 7-argument signature whose trailing `p_motivo text default null` keeps the still-deployed 6-argument `hub-approve` call working until it is redeployed. Phase 2 redeploys `hub-approve` and ships the three card UIs sending the tag. Phase 3, `20260925000012` in a follow-up PR (Task 16), swaps the CHECK for the mandatory one (`action <> 'correcao' OR (motivo IS NOT NULL AND motivo IN (...))`) created `NOT VALID`; shipping the mandatory CHECK together with the column would reject every correction sent by the old `hub-approve` bundle between the migration push and the function redeploy. `20260925000011` implements spec §1 option (a) "explicit reference between the send event and the content": it adds `snapshot_conteudo_plain`/`snapshot_ig_caption` to `post_status_events`, stamped by `record_post_status_event()` from `NEW.*` only when `NEW.status = 'enviado_cliente'`. A snapshot copied from the row being updated is immutable; a foreign key to `post_content_versions` is not, because `record_post_content_version()` coalesces a later edit by the same actor into the tip row for 5 minutes (`20260923000001_post_content_versions.sql:119-140`), so an FK could silently point at text the client never saw. A new token-authenticated edge function `hub-post-history` (GET `?token&post_id`) reuses the `hub-approve` ownership check (`post.cliente_id === hubToken.cliente_id && post.conta_id === hubToken.conta_id`), applies the `to_status` allowlist, drops `from_status = to_status` rows (the `20260805000001` trigger guard also fires on custom-status-only moves), applies the temporal floor at the first `to_status = 'enviado_cliente'` event, and returns a sanitized DTO (no `from_status`, no actor names, no TipTap JSON). `hub-posts` keeps shipping `postApprovals` in the list payload (the collapsed panel header uses it for its counts; the full history loads only when a panel is opened), but Task 4b filters that query's result server-side with the same rule as `hub-post-history`: today `hub-posts/handler.ts:139-145` returns every `post_approvals` row verbatim, so internal team `mensagem` rows reach the browser on every page load. The shared predicate lives in `supabase/functions/_shared/hub-approvals.ts` (`isClientVisibleApproval`) and both endpoints use it. `hub-approve` gains server-side validation for `mensagem` (trimmed, non-empty, at most 4000 chars) and for `correcao` (`motivo` required, one of four values). Client side: the CRM word-diff moves into a shared `packages/text-diff` workspace package (CRM keeps a re-export shim); `apps/hub/src/lib/postHistory.ts` holds the pure merge/KPI state machine; `PostHistoryPanel`, `CorrectionReasonChips` and `StatusFilterChips` are new components; the three cards and `PostagensPage` wire them in.
 
 **Tech Stack:** Postgres (plpgsql triggers/RPCs, psql SQL test suites run by `npm run test:db`), Deno edge functions (tests via `npm run test:functions`, types via `npm run check:functions`), React 19 + TypeScript + Vite (Hub), Vitest + Testing Library (jsdom), react-i18next (`packages/i18n/locales/{pt,en}/hubPosts.json`), `diff-match-patch`.
 
@@ -16,11 +16,11 @@
 - **Temporal floor (spec §1):** events before the first `to_status = 'enviado_cliente'` event of that post never enter the response. Posts predating `20260606000001` simply have no events: the UI shows an empty/partial Histórico, never a reconstruction. The floor applies to `post_status_events` only. It is never applied to `post_approvals`: client-authored rows (`is_workspace_user = false`, which is every `aprovado`/`correcao` row `hub-approve` writes and every `mensagem` the new composer writes) are safe by definition and must survive even when the post has no send event at all.
 - **Team messages never reach the Hub (spec §1, revision notes 8 and 10):** both Hub endpoints that read `post_approvals` drop every row with `action = 'mensagem' AND is_workspace_user = true` server-side through the shared predicate `isClientVisibleApproval` in `supabase/functions/_shared/hub-approvals.ts`: `hub-post-history` inside `sanitizeHistoryApprovals` (Task 4) and `hub-posts` on its `postApprovals` list payload (Task 4b). Those rows come from the CRM's `replyToPostApproval` (internal coordination, notifies owner/admin only). No new column (`visivel_cliente` or similar) is added: the Hub has no team identity, so every `mensagem` this feature writes is `is_workspace_user = false` by construction. The Hub's `selectComments` and the collapsed-header comment count apply the same rule as a second line of defense, but the API contract itself never carries team messages.
 - **Actor names:** team actors are shown only as the generic label "Equipe"; system as "Sistema". The DTO never carries `actor_name`, `actor_user_id`, `token`, `author_user_id`, `from_custom_nome`, `to_custom_nome`, or the `conteudo` JSON tree (so `commentHighlight`, `threadId`, `resolved` cannot leak).
-- **Motivo (spec §3, three phases):** column `motivo text` nullable. Phase 1 (`20260924000001`) constraint: `CHECK (motivo IS NULL OR motivo IN ('legenda','imagem_video','data','outro'))` (permissive on presence). Phase 3 (`20260925000001`, Task 16, only after `hub-approve` and the Hub bundle are live in production): drop it and add `CHECK (action <> 'correcao' OR (motivo IS NOT NULL AND motivo IN ('legenda','imagem_video','data','outro'))) NOT VALID` (the explicit `IS NOT NULL` matters: `NULL IN (...)` is `NULL`, and a CHECK only rejects `FALSE`). `record_client_approval` is dropped and recreated with exactly one 7-argument signature; `REVOKE ALL ... FROM PUBLIC` then `GRANT EXECUTE ... TO service_role` on that exact signature (REVOKE FROM PUBLIC also strips service_role, so the grant is mandatory).
+- **Motivo (spec §3, three phases):** column `motivo text` nullable. Phase 1 (`20260925000010`) constraint: `CHECK (motivo IS NULL OR motivo IN ('legenda','imagem_video','data','outro'))` (permissive on presence). Phase 3 (`20260925000012`, Task 16, only after `hub-approve` and the Hub bundle are live in production): drop it and add `CHECK (action <> 'correcao' OR (motivo IS NOT NULL AND motivo IN ('legenda','imagem_video','data','outro'))) NOT VALID` (the explicit `IS NOT NULL` matters: `NULL IN (...)` is `NULL`, and a CHECK only rejects `FALSE`). `record_client_approval` is dropped and recreated with exactly one 7-argument signature; `REVOKE ALL ... FROM PUBLIC` then `GRANT EXECUTE ... TO service_role` on that exact signature (REVOKE FROM PUBLIC also strips service_role, so the grant is mandatory).
 - **KPI state machine (spec §3):** rounds = client `correcao` approvals + `correcao_cliente` status events with `post_approval_id IS NULL`; response time = for each send event (`to_status = 'enviado_cliente'`), the first client response (`aprovado` or `correcao` approval with `is_workspace_user = false`) whose `(created_at, id)` is at or after the send and before the next send. Case (c) approval straight from `correcao_cliente` without a resend and case (d) a second/third correction while already `correcao_cliente` are explicitly *not* new samples (they answer a send that already has a sample). Zero samples renders as "Sem dados ainda", never 0. Ordering everywhere is `(created_at, id)`.
 - **Comment composer** is enabled in every client-visible status (the panel only renders for posts in `VISIBLE_STATUSES`), and `hub-approve` enforces the same rule server-side: a `mensagem` on a post whose `status ∉ VISIBLE_STATUSES` (`rascunho`, `revisao_interna`, `aprovado_interno`, ...) is rejected with 400 before any insert, because client-authored `post_approvals` rows are never floor-filtered and such a comment would otherwise surface permanently, timestamped before the send, once the post was eventually sent (spec §1). Its `useUnsavedWork(text.trim() !== '' || sending)` call is mandatory (silent-update rule in CLAUDE.md).
 - No em-dashes in user-facing copy. Keys go into both `pt` and `en` JSON files; `test/vitest.setup.ts` loads the real `pt` JSON, so tests assert the Portuguese strings.
-- Migration prefixes `20260924000001` and `20260924000002` are above the current tail `20260923000008` (also `origin/main`'s tail as of 2026-09-17). Re-check with `ls supabase/migrations | tail -1` before opening the PR and renumber above main's tail if needed.
+- Migration prefixes `20260925000010` and `20260925000011` are above the current tail `20260923000008` (also `origin/main`'s tail as of 2026-09-17). Re-check with `ls supabase/migrations | tail -1` before opening the PR and renumber above main's tail if needed.
 - Deploy order (last task): `npx supabase db push --linked` (migrations) → `npx supabase functions deploy hub-post-history --use-api --no-verify-jwt` → `npx supabase functions deploy hub-posts --use-api --no-verify-jwt` (pure narrowing of the list payload, safe with either bundle) → merge (Vercel deploys the Hub bundle on merge) → confirm the new bundle is live → `npx supabase functions deploy hub-approve --use-api --no-verify-jwt`. `hub-approve` goes LAST on purpose: the new one answers 400 "Informe o motivo da correção." to the old bundle (which never sends `motivo`), while the old `hub-approve` ignores the extra `motivo` field from the new bundle and its 6-argument RPC call still resolves against the 7-argument function (Task 1 case A.1), so the only thing lost in that order is the tag on corrections sent during the gap, which the phase-1 CHECK allows. Staging first, then production.
 - Before every commit run `npm run format` on touched files. Before the PR run `npm run lint`, `npm run format:check`, `npx tsc -p apps/crm/tsconfig.json --noEmit`, `npx tsc -p apps/hub/tsconfig.json --noEmit`, `npx tsc -p apps/admin/tsconfig.json --noEmit`, `npx tsc -p tsconfig.scripts.json`, `npm run test`, `npm run check:functions`, `npm run test:functions`, and `npm run test:db` (needs Docker/colima; CI runs it regardless).
 - Work on branch `claude/post-approval-history-5938fa` in this worktree. Never use bare `git stash`.
@@ -30,9 +30,9 @@
 
 | Path | Action | Responsibility |
 |---|---|---|
-| `supabase/migrations/20260924000001_post_approvals_motivo.sql` | Create | `motivo` column + permissive value CHECK + replace `record_client_approval` (7 args) + grants |
-| `supabase/migrations/20260925000001_post_approvals_motivo_required.sql` | Create (Task 16, follow-up PR) | swap to the mandatory conditional CHECK, `NOT VALID` |
-| `supabase/migrations/20260924000002_post_status_events_send_snapshot.sql` | Create | `snapshot_conteudo_plain`/`snapshot_ig_caption` on `post_status_events`; `record_post_status_event()` stamps them on sends |
+| `supabase/migrations/20260925000010_post_approvals_motivo.sql` | Create | `motivo` column + permissive value CHECK + replace `record_client_approval` (7 args) + grants |
+| `supabase/migrations/20260925000012_post_approvals_motivo_required.sql` | Create (Task 16, follow-up PR) | swap to the mandatory conditional CHECK, `NOT VALID` |
+| `supabase/migrations/20260925000011_post_status_events_send_snapshot.sql` | Create | `snapshot_conteudo_plain`/`snapshot_ig_caption` on `post_status_events`; `record_post_status_event()` stamps them on sends |
 | `supabase/tests/post_approval_history.sql` | Create | psql suite for the migrations (RPC replacement, CHECK, grants, snapshot stamping; phase-3 case appended in Task 16) |
 | `supabase/functions/hub-approve/handler.ts` | Modify | validate `mensagem` text and `correcao` motivo; pass `p_motivo`; generic insert error |
 | `supabase/functions/_shared/hub-approvals.ts` | Create | `isClientVisibleApproval(row)` shared predicate (team `mensagem` rows never leave the server) |
@@ -63,7 +63,7 @@
 ### Task 1: Migration: `post_approvals.motivo` + replace `record_client_approval`
 
 **Files:**
-- Create: `supabase/migrations/20260924000001_post_approvals_motivo.sql`
+- Create: `supabase/migrations/20260925000010_post_approvals_motivo.sql`
 - Create: `supabase/tests/post_approval_history.sql`
 
 **Interfaces:**
@@ -78,8 +78,8 @@ Create `supabase/tests/post_approval_history.sql`:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Valida 20260924000001_post_approvals_motivo.sql e
--- 20260924000002_post_status_events_send_snapshot.sql.
+-- Valida 20260925000010_post_approvals_motivo.sql e
+-- 20260925000011_post_status_events_send_snapshot.sql.
 --   A.1 uma unica record_client_approval existe (7 args); chamada com 6 args nao e ambigua
 --   A.2 correcao com motivo grava motivo e move o status; evento liga post_approval_id
 --   A.3 fase 1: correcao sem motivo ainda e aceita (motivo null) -- a obrigatoriedade chega na fase 3
@@ -182,11 +182,11 @@ Expected: `FAIL supabase/tests/post_approval_history.sql` with `column "motivo" 
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/20260924000001_post_approvals_motivo.sql`:
+Create `supabase/migrations/20260925000010_post_approvals_motivo.sql`:
 
 ```sql
 -- =====================================================================
--- 20260924000001_post_approvals_motivo.sql
+-- 20260925000010_post_approvals_motivo.sql
 -- Correction-reason tag on post_approvals, required only for
 -- action = 'correcao', and record_client_approval widened to accept it.
 -- Spec: docs/superpowers/specs/2026-09-17-post-approval-history-design.md (§3)
@@ -197,7 +197,7 @@ alter table post_approvals add column if not exists motivo text;
 -- Phase 1 of 3 (spec §3): validate the VALUE when present, do not require
 -- presence yet. The deployed hub-approve still calls the RPC with 6 args
 -- (motivo = NULL) until it is redeployed; a mandatory CHECK here would
--- reject every correction in that window. Phase 3 (20260925000001) swaps
+-- reject every correction in that window. Phase 3 (20260925000012) swaps
 -- this for the conditional NOT VALID constraint once hub-approve and the
 -- Hub bundle are live.
 alter table post_approvals drop constraint if exists post_approvals_motivo_value_check;
@@ -256,7 +256,7 @@ Expected: `PASS supabase/tests/post_approval_history.sql` and every other file s
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260924000001_post_approvals_motivo.sql supabase/tests/post_approval_history.sql
+git add supabase/migrations/20260925000010_post_approvals_motivo.sql supabase/tests/post_approval_history.sql
 git commit -m "feat(db): post_approvals.motivo + single 7-arg record_client_approval
 
 Phase 1 of the motivo rollout: adds the column with a permissive value
@@ -273,7 +273,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ### Task 2: Migration: caption snapshot on send events
 
 **Files:**
-- Create: `supabase/migrations/20260924000002_post_status_events_send_snapshot.sql`
+- Create: `supabase/migrations/20260925000011_post_status_events_send_snapshot.sql`
 - Modify: `supabase/tests/post_approval_history.sql` (append cases B.1 to B.3)
 
 **Interfaces:**
@@ -337,11 +337,11 @@ Expected: `FAIL supabase/tests/post_approval_history.sql` at B.1 with `record "v
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/20260924000002_post_status_events_send_snapshot.sql`:
+Create `supabase/migrations/20260925000011_post_status_events_send_snapshot.sql`:
 
 ```sql
 -- =====================================================================
--- 20260924000002_post_status_events_send_snapshot.sql
+-- 20260925000011_post_status_events_send_snapshot.sql
 -- Snapshot of the caption/plain text on every "sent to client" event, so
 -- the Hub can diff what the client saw in send N-1 vs send N. Copied from
 -- NEW.* inside the status trigger: immutable by construction. A foreign key
@@ -428,7 +428,7 @@ Expected: `PASS supabase/tests/post_approval_history.sql`; `ran=N failures=0`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260924000002_post_status_events_send_snapshot.sql supabase/tests/post_approval_history.sql
+git add supabase/migrations/20260925000011_post_status_events_send_snapshot.sql supabase/tests/post_approval_history.sql
 git commit -m "feat(db): snapshot caption/plain text on enviado_cliente status events
 
 Immutable per-send text for the Hub history diff (spec option a). Copied
@@ -599,7 +599,7 @@ In `supabase/functions/hub-approve/handler.ts`, add these constants right after 
 
 ```ts
 // Mirrors hub-mensagens' MAX_CONTENT and the post_approvals motivo CHECK
-// (20260924000001 value rule, 20260925000001 presence rule): the DB rejects
+// (20260925000010 value rule, 20260925000012 presence rule): the DB rejects
 // anything else, this turns that into a 400 instead of a 500.
 const MAX_COMMENT_LENGTH = 4000;
 const CORRECTION_REASONS = ["legenda", "imagem_video", "data", "outro"];
@@ -3769,7 +3769,7 @@ git ls-tree --name-only origin/main supabase/migrations/ | sort | tail -1
 ls supabase/migrations | sort | tail -3
 ```
 
-Expected: main's tail is `20260923000008_post_content_versions_baseline_same_update.sql` or lower than `20260924000001`. If main now has a `20260924*` file, rename both new migrations (and the references inside their header comments, the SQL test header comment and this plan) to the next free `202609240000NN` prefixes and amend the two migration commits.
+Expected: main's tail is `20260923000008_post_content_versions_baseline_same_update.sql` or lower than `20260925000010`. If main now has a `20260924*` file, rename both new migrations (and the references inside their header comments, the SQL test header comment and this plan) to the next free `202609240000NN` prefixes and amend the two migration commits.
 
 - [ ] **Step 3: Staging rollout (migration first, then functions)**
 
@@ -3784,7 +3784,7 @@ npx supabase functions deploy hub-posts --project-ref wlyzhyfondykzpsiqsce --use
 npx supabase functions deploy hub-approve --project-ref wlyzhyfondykzpsiqsce --use-api --no-verify-jwt
 ```
 
-Expected: `migration list` shows no remote-only versions (if it does, see `db push` refusal handling in the staging ops memory: apply out of band with `db query --linked --file`); `db push` lists exactly `20260924000001` and `20260924000002`; the three deploys succeed. Staging deploys `hub-approve` right away because no client is on the staging bundle; production (Step 5) deploys it after the merge. Smoke on staging (`npm run dev:hub:staging`, requires `.env.staging` in this worktree): open a client hub token on Postagens, expand a card, open "Histórico e comentários", confirm the Histórico tab lists at least the sends/approvals, send a comment from the Comentários tab and see it appear; on Aprovações request a correction and confirm the button stays disabled until a motivo chip is picked. Verify in the DB that the new row has `motivo` set:
+Expected: `migration list` shows no remote-only versions (if it does, see `db push` refusal handling in the staging ops memory: apply out of band with `db query --linked --file`); `db push` lists exactly `20260925000010` and `20260925000011`; the three deploys succeed. Staging deploys `hub-approve` right away because no client is on the staging bundle; production (Step 5) deploys it after the merge. Smoke on staging (`npm run dev:hub:staging`, requires `.env.staging` in this worktree): open a client hub token on Postagens, expand a card, open "Histórico e comentários", confirm the Histórico tab lists at least the sends/approvals, send a comment from the Comentários tab and see it appear; on Aprovações request a correction and confirm the button stays disabled until a motivo chip is picked. Verify in the DB that the new row has `motivo` set:
 
 ```bash
 npx supabase db query --linked "select id, action, motivo, comentario from post_approvals order by id desc limit 3"
@@ -3807,7 +3807,7 @@ Spec: docs/superpowers/specs/2026-09-17-post-approval-history-design.md
 Plan: docs/superpowers/plans/2026-09-17-post-approval-history.md
 
 ## Deploy
-Migrations 20260924000001/2 e as functions `hub-post-history` + `hub-posts` + `hub-approve` já estão em staging. Em produção, nesta ordem: `db push` + deploy de `hub-post-history` e `hub-posts` ANTES do merge (o bundle novo chama `hub-post-history`); merge; confirmar o bundle novo no ar; só então deploy de `hub-approve`. A `hub-approve` nova responde 400 ao bundle antigo (não manda `motivo`), enquanto a antiga aceita o bundle novo (ignora `motivo`, chamada de 6 args resolve na função de 7), então ela vai por último.
+Migrations 20260925000010/2 e as functions `hub-post-history` + `hub-posts` + `hub-approve` já estão em staging. Em produção, nesta ordem: `db push` + deploy de `hub-post-history` e `hub-posts` ANTES do merge (o bundle novo chama `hub-post-history`); merge; confirmar o bundle novo no ar; só então deploy de `hub-approve`. A `hub-approve` nova responde 400 ao bundle antigo (não manda `motivo`), enquanto a antiga aceita o bundle novo (ignora `motivo`, chamada de 6 args resolve na função de 7), então ela vai por último.
 
 ## Test plan
 - [ ] `npm run test`, `npm run test:functions`, `npm run check:functions`, `npm run test:db`, lint, format, 4x tsc
@@ -3847,7 +3847,7 @@ Expected: deploy succeeds. Between the merge and this deploy, a correction sent 
 ### Task 16: Phase 3: make `motivo` mandatory on `correcao` (follow-up PR)
 
 **Files:**
-- Create: `supabase/migrations/20260925000001_post_approvals_motivo_required.sql`
+- Create: `supabase/migrations/20260925000012_post_approvals_motivo_required.sql`
 - Modify: `supabase/tests/post_approval_history.sql` (append case C.1; rewrite case A.3)
 
 **Interfaces:**
@@ -3923,11 +3923,11 @@ Expected: `FAIL supabase/tests/post_approval_history.sql` at A.3 (`esperava chec
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/20260925000001_post_approvals_motivo_required.sql`:
+Create `supabase/migrations/20260925000012_post_approvals_motivo_required.sql`:
 
 ```sql
 -- =====================================================================
--- 20260925000001_post_approvals_motivo_required.sql
+-- 20260925000012_post_approvals_motivo_required.sql
 -- Phase 3 of the correction-reason rollout (spec §3). Runs only after
 -- hub-approve (which validates motivo and passes p_motivo) and the Hub
 -- bundle (which sends it) are live in production; the phase-1 constraint
@@ -3957,7 +3957,7 @@ Expected: `PASS supabase/tests/post_approval_history.sql` (A.1, A.2, A.3, A.4, A
 - [ ] **Step 5: Commit, push to staging and production, open the follow-up PR**
 
 ```bash
-git add supabase/migrations/20260925000001_post_approvals_motivo_required.sql supabase/tests/post_approval_history.sql
+git add supabase/migrations/20260925000012_post_approvals_motivo_required.sql supabase/tests/post_approval_history.sql
 git commit -m "feat(db): require motivo on correcao (phase 3, NOT VALID)
 
 hub-approve and the Hub bundle already send the correction reason; swap
@@ -3988,4 +3988,4 @@ EOF
 )"
 ```
 
-Expected: both `db push` runs apply exactly `20260925000001`; both queries return one row `post_approvals_motivo_check | f`; PR URL printed.
+Expected: both `db push` runs apply exactly `20260925000012`; both queries return one row `post_approvals_motivo_check | f`; PR URL printed.
