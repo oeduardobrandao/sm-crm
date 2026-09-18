@@ -13,7 +13,9 @@ type FeatureKey =
   | 'feature_financial'
   | 'feature_contracts'
   | 'feature_brand_customization'
-  | 'feature_mcp';
+  | 'feature_mcp'
+  | 'feature_instagram_automation'
+  | 'feature_briefing_audio';
 
 export interface PlanComparisonAction {
   href: string;
@@ -41,6 +43,8 @@ const FEATURE_ROWS: ReadonlyArray<{ key: FeatureKey; label: string }> = [
   { key: 'feature_contracts', label: 'Contratos' },
   { key: 'feature_brand_customization', label: 'Personalização de marca' },
   { key: 'feature_mcp', label: 'Integração com agentes (MCP)' },
+  { key: 'feature_instagram_automation', label: 'Automações' },
+  { key: 'feature_briefing_audio', label: 'Briefing por áudio' },
 ];
 
 function cellClass(plan: PublicPricingPlan): string {
