@@ -39,6 +39,11 @@ export function TextPostCard({
   const [expanded, setExpanded] = useState(false);
   const [comentario, setComentario] = useState('');
   const [motivo, setMotivo] = useState<CorrectionReason | null>(null);
+  // `useEditor` reads `content` only at construction and is reused across the editable /
+  // read-only branches below (same component type, same tree position), so resetting the
+  // staged state alone leaves the old typed document on screen. Bumping this remounts the
+  // editor from the current draft whenever an edit session ends or starts.
+  const [editSession, setEditSession] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -100,7 +105,14 @@ export function TextPostCard({
   // `hasPendingSuggestion` will flip true on the same render and freeze the flow anyway,
   // so closing here just avoids a stale open panel if the suggestion is later rejected.
   useEffect(() => {
-    if (saveState === 'saved') setPanelOpen(false);
+    if (saveState === 'saved') {
+      setPanelOpen(false);
+      // Same reset `closePanel` does, so a comment/reason typed alongside the edit
+      // doesn't resurface pre-filled if the suggestion is later rejected and the
+      // panel is reopened.
+      setComentario('');
+      setMotivo(null);
+    }
   }, [saveState]);
 
   // `postagens/:postId` has no `key`, so React Router can reuse this component
@@ -110,6 +122,7 @@ export function TextPostCard({
   const postIdRef = useRef(post.id);
   if (postIdRef.current !== post.id) {
     postIdRef.current = post.id;
+    setEditSession((n) => n + 1);
     setPanelOpen(false);
     setComentario('');
     setMotivo(null);
@@ -119,6 +132,7 @@ export function TextPostCard({
   }
 
   function openPanel() {
+    setEditSession((n) => n + 1);
     setStagedConteudo(draftConteudo);
     setStagedConteudoPlain(draftConteudoPlain);
     setStagedIgCaption(draftIgCaption ?? '');
@@ -134,6 +148,7 @@ export function TextPostCard({
       )
         return;
     }
+    setEditSession((n) => n + 1);
     setPanelOpen(false);
     setComentario('');
     setMotivo(null);
@@ -153,6 +168,7 @@ export function TextPostCard({
       )
         return;
     }
+    setEditSession((n) => n + 1);
     setStagedConteudo(draftConteudo);
     setStagedConteudoPlain(draftConteudoPlain);
     setStagedIgCaption(draftIgCaption ?? '');
@@ -263,6 +279,7 @@ export function TextPostCard({
         <div className="px-5 pb-5 pt-1 border-t hub-border space-y-4">
           {editingContent && stagedConteudo ? (
             <RichTextContent
+              key={`${post.id}-${editSession}`}
               content={stagedConteudo}
               className="text-[13px] hub-tx2 leading-relaxed"
               editable
@@ -274,6 +291,7 @@ export function TextPostCard({
             />
           ) : draftConteudo ? (
             <RichTextContent
+              key={`${post.id}-${editSession}`}
               content={draftConteudo}
               className="text-[13px] hub-tx2 leading-relaxed"
               editable={false}

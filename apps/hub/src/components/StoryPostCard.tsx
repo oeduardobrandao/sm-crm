@@ -102,7 +102,14 @@ export function StoryPostCard({
   useUnsavedWork(comentario.trim() !== '' || submitting || contentDirty);
 
   useEffect(() => {
-    if (saveState === 'saved') setPanelOpen(false);
+    if (saveState === 'saved') {
+      setPanelOpen(false);
+      // Same reset `closePanel` does, so a comment/reason typed alongside the edit
+      // doesn't resurface pre-filled if the suggestion is later rejected and the
+      // panel is reopened.
+      setComentario('');
+      setMotivo(null);
+    }
   }, [saveState]);
 
   // `postagens/:postId` has no `key`, so React Router can reuse this component

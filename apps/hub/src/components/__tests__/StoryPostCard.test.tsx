@@ -347,6 +347,28 @@ describe('StoryPostCard', () => {
       expect(submitEditSuggestionMock).toHaveBeenCalledTimes(1);
     });
 
+    it('does not bring back a stale comment or motivo after a saved edit auto-closes the panel', async () => {
+      vi.useFakeTimers();
+      submitEditSuggestionMock.mockResolvedValueOnce({ ok: true, pending_suggestion: null });
+      renderCard(makeEditPost());
+
+      fireEvent.click(screen.getByRole('button', { name: /Correção/ }));
+      fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
+        target: { value: 'Comentário antigo' },
+      });
+      fireEvent.change(screen.getByDisplayValue(original), { target: { value: edited } });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      // Saved: the panel closed itself.
+      expect(screen.queryByPlaceholderText(/Descreva o que precisa mudar/)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Correção/ }));
+
+      expect(screen.getByPlaceholderText(/Descreva o que precisa mudar/)).toHaveValue('');
+    });
+
     it('keeps the failed edit when the discard confirmation is declined', async () => {
       vi.useFakeTimers();
       vi.spyOn(window, 'confirm').mockReturnValue(false);
