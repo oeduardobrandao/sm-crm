@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { AlertCircle } from 'lucide-react';
 import type { CorrectionReason, HubPost } from '../../types';
 import type { useEditSuggestion } from '../../hooks/useEditSuggestion';
@@ -8,6 +9,34 @@ import { RichTextContent } from '../RichTextContent';
 import { CorrectionReasonChips } from '../CorrectionReasonChips';
 
 export type EditSuggestion = ReturnType<typeof useEditSuggestion>;
+
+/** "Sugestão enviada para revisão": replaces the whole panel, and explains the disabled footer actions in the reading view. */
+export function SuggestionPendingNotice() {
+  const { t } = useTranslation('hubPosts');
+  return (
+    <div className="rounded-lg px-4 py-3 text-[13px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/60 dark:ring-amber-800/40 text-center">
+      {t('shared.suggestionPendingReviewFull', 'Sugestão enviada para revisão da equipe')}
+    </div>
+  );
+}
+
+/** Rejected-suggestion warning copy, for the panel's info line and the reading view's nudge. */
+export function rejectedSuggestionWarningText(t: TFunction<'hubPosts'>): string {
+  return t(
+    'shared.rejectedSuggestionWarning',
+    '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.',
+  );
+}
+
+/** Low-noise nudge shown in the reading view to open Corrigir and retry. */
+export function RejectedSuggestionNotice() {
+  const { t } = useTranslation('hubPosts');
+  return (
+    <p className="mb-3 rounded-lg px-3 py-2 text-[12px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-200/60 dark:ring-amber-800/40">
+      {rejectedSuggestionWarningText(t)}
+    </p>
+  );
+}
 
 interface CorrectionPanelProps {
   post: HubPost;
@@ -166,11 +195,7 @@ export function CorrectionPanel({
   }, [saveState]);
 
   if (hasPendingSuggestion) {
-    return (
-      <div className="rounded-lg px-4 py-3 text-[13px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/60 dark:ring-amber-800/40 text-center">
-        {t('shared.suggestionPendingReviewFull', 'Sugestão enviada para revisão da equipe')}
-      </div>
-    );
+    return <SuggestionPendingNotice />;
   }
 
   // `saveFailed` is only true once the last attempt settled as a failure (never during the
@@ -230,10 +255,7 @@ export function CorrectionPanel({
           className={`text-[11px] ${wasRejected ? 'text-amber-800 dark:text-amber-300' : 'hub-tx3'}`}
         >
           {wasRejected
-            ? t(
-                'shared.rejectedSuggestionWarning',
-                '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.',
-              )
+            ? rejectedSuggestionWarningText(t)
             : t(
                 'shared.suggestionInfoNote',
                 'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar',

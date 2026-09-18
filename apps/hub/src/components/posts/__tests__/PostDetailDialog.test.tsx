@@ -664,4 +664,54 @@ describe('PostDetailDialog', () => {
       expect(onNavigate).not.toHaveBeenCalled();
     });
   });
+  describe('pending / rejected suggestion notice in the reading view', () => {
+    const PENDING_NOTICE = 'Sugestão enviada para revisão da equipe';
+    const REJECTED_NOTICE = /Sua sugestão anterior foi rejeitada pela equipe/;
+    const suggestion = {
+      id: 9,
+      suggested_conteudo: null,
+      suggested_conteudo_plain: 'Corpo editado',
+      suggested_ig_caption: 'Legenda editada',
+      changed_fields: ['ig_caption'],
+      updated_at: '2026-04-28T10:00:00.000Z',
+    };
+
+    it('explains a pending suggestion without opening Corrigir, with both actions disabled', () => {
+      renderDialog(1, { posts: [post({ id: 1, pending_suggestion: suggestion })] });
+      expect(screen.getByText(PENDING_NOTICE)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Corrigir/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
+      expect(screen.queryByText(REJECTED_NOTICE)).not.toBeInTheDocument();
+    });
+
+    it('nudges after a rejected suggestion in the reading view while Corrigir stays enabled', () => {
+      renderDialog(1, {
+        posts: [post({ id: 1, suggestion_rejected_at: '2026-04-27T10:00:00.000Z' })],
+      });
+      expect(screen.getByText(REJECTED_NOTICE)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Corrigir/ })).toBeEnabled();
+      expect(screen.queryByText(PENDING_NOTICE)).not.toBeInTheDocument();
+    });
+
+    it('shows neither notice for a normal pending post', () => {
+      renderDialog(1, { posts: [post({ id: 1 })] });
+      expect(screen.queryByText(PENDING_NOTICE)).not.toBeInTheDocument();
+      expect(screen.queryByText(REJECTED_NOTICE)).not.toBeInTheDocument();
+    });
+
+    it('shows neither notice for a non-pending post, even with a stale suggestion', () => {
+      renderDialog(1, {
+        posts: [
+          post({
+            id: 1,
+            status: 'aprovado_cliente',
+            pending_suggestion: suggestion,
+            suggestion_rejected_at: '2026-04-27T10:00:00.000Z',
+          }),
+        ],
+      });
+      expect(screen.queryByText(PENDING_NOTICE)).not.toBeInTheDocument();
+      expect(screen.queryByText(REJECTED_NOTICE)).not.toBeInTheDocument();
+    });
+  });
 });

@@ -23,7 +23,11 @@ import { SharePostButton } from '../SharePostButton';
 import { MediaUnavailable } from '../MediaUnavailable';
 import { StatusTag } from './StatusTag';
 import { PostMediaPane } from './PostMediaPane';
-import { CorrectionPanel } from './CorrectionPanel';
+import {
+  CorrectionPanel,
+  RejectedSuggestionNotice,
+  SuggestionPendingNotice,
+} from './CorrectionPanel';
 
 interface PostDetailDialogProps {
   posts: HubPost[];
@@ -495,6 +499,12 @@ function PostDetailContent({
                 />
               ) : (
                 <>
+                  {isPending && edit.hasPendingSuggestion && (
+                    <div className="mb-3">
+                      <SuggestionPendingNotice />
+                    </div>
+                  )}
+                  {isPending && edit.wasRejected && <RejectedSuggestionNotice />}
                   {readingBody}
                   {autoPublishNote}
                 </>
