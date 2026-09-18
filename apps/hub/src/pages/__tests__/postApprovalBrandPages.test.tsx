@@ -244,7 +244,7 @@ describe('hub approval, posts, and brand pages', () => {
       expect(await screen.findByText('Nenhuma postagem disponível ainda.')).toBeInTheDocument();
     });
 
-    it('sorts visible posts chronologically into one flattened grid, with a fluxo dropdown per workflow', async () => {
+    it('sorts visible posts chronologically into one flattened grid, with a publish-month dropdown', async () => {
       mockedFetchPosts.mockResolvedValue({
         posts: [
           makePost({
@@ -317,10 +317,10 @@ describe('hub approval, posts, and brand pages', () => {
         'Abrir Sem data',
       ]);
 
-      fireEvent.click(screen.getByRole('button', { name: 'Fluxos' }));
-      const fluxoOptions = await screen.findByRole('group', { name: 'Filtrar por fluxo' });
-      expect(fluxoOptions).toHaveTextContent('Atendimento');
-      expect(fluxoOptions).toHaveTextContent('Branding');
+      fireEvent.click(screen.getByRole('button', { name: 'Todos os meses' }));
+      await screen.findByRole('menu', { name: 'Filtrar por mês' });
+      expect(screen.getByRole('menuitemradio', { name: 'Abril de 2026 (3)' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitemradio', { name: 'Sem data (1)' })).toBeInTheDocument();
 
       expect(screen.queryByText('Rascunho oculto')).not.toBeInTheDocument();
     });

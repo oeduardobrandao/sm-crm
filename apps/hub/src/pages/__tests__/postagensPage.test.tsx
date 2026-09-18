@@ -120,39 +120,28 @@ function renderPage(path: string, resp?: HubPostsResponse) {
 
 const BASE = '/mesaas/hub/token-publico/postagens';
 
-/** Opens the fluxo dropdown (its trigger reads "Fluxos" / the picked label / "N fluxos"). */
-function openFluxoMenu(name: string | RegExp = 'Fluxos') {
+/** Opens the month dropdown (its trigger reads "Todos os meses" or the picked month). */
+function openMonthMenu(name: string | RegExp = 'Todos os meses') {
   fireEvent.click(screen.getByRole('button', { name }));
 }
-/** Toggles one fluxo checkbox inside the open menu. */
-function toggleFluxo(name: string | RegExp) {
-  fireEvent.click(screen.getByRole('checkbox', { name }));
+/** Picks one month option inside the open menu; the menu closes on pick. */
+function pickMonth(name: string | RegExp) {
+  fireEvent.click(screen.getByRole('menuitemradio', { name }));
 }
 
 describe('PostagensPage', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders one flattened chronological grid with the fluxo dropdown and status chips', async () => {
+  it('renders one flattened chronological grid with the month dropdown and status chips in one row', async () => {
     renderPage(
       BASE,
       response({
         posts: [
-          post({
-            id: 1,
-            titulo: 'Segundo',
-            scheduled_at: '2026-04-22T10:00:00.000Z',
-            workflow_id: 2,
-            workflow_titulo: 'Campanha',
-          }),
-          post({ id: 2, titulo: 'Primeiro', scheduled_at: '2026-04-20T10:00:00.000Z' }),
-          post({
-            id: 3,
-            titulo: 'Avulso',
-            scheduled_at: null,
-            workflow_id: null,
-            workflow_titulo: null,
-          }),
+          post({ id: 1, titulo: 'Segundo', scheduled_at: '2026-04-22T15:00:00.000Z' }),
+          post({ id: 2, titulo: 'Primeiro', scheduled_at: '2026-04-20T15:00:00.000Z' }),
+          post({ id: 3, titulo: 'Avulso', scheduled_at: null, workflow_id: null }),
           post({ id: 4, titulo: 'Rascunho', status: 'rascunho' }),
+          post({ id: 5, titulo: 'Setembro', scheduled_at: '2026-09-10T15:00:00.000Z' }),
         ],
       }),
     );
@@ -160,64 +149,96 @@ describe('PostagensPage', () => {
     expect(tiles.map((b) => b.getAttribute('aria-label'))).toEqual([
       'Abrir Primeiro',
       'Abrir Segundo',
+      'Abrir Setembro',
       'Abrir Avulso',
     ]);
-    openFluxoMenu();
-    const group = await screen.findByRole('group', { name: 'Filtrar por fluxo' });
-    expect(group).toHaveTextContent('Editorial');
-    expect(group).toHaveTextContent('Campanha');
-    expect(group).toHaveTextContent('Avulsas');
-    expect(screen.getByRole('group', { name: 'Filtrar por status' })).toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: 'Todos os meses' });
+    const statusGroup = screen.getByRole('group', { name: 'Filtrar por status' });
+    // Same flex row: the trigger and the status group (display: contents) share one parent,
+    // trigger first, and the row wraps instead of stacking on a row of its own.
+    const row = trigger.parentElement as HTMLElement;
+    expect(statusGroup.parentElement).toBe(row);
+    expect(row.className).toContain('flex-wrap');
+    expect(row.firstElementChild).toBe(trigger);
+    expect(row.children[1]).toBe(statusGroup);
+    // Newest month first, dateless last, counts per month.
+    openMonthMenu();
+    const items = screen.getAllByRole('menuitemradio');
+    ['Todos os meses', 'Setembro de 2026 (1)', 'Abril de 2026 (2)', 'Sem data (1)'].forEach(
+      (name, i) => expect(items[i]).toHaveAccessibleName(name),
+    );
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('Filtrar por fluxo')).not.toBeInTheDocument();
   });
 
-  it('filters by fluxo and status together', async () => {
+  it('filters by month and status together, each side counting the other', async () => {
     renderPage(
       BASE,
       response({
         posts: [
-          post({ id: 1, titulo: 'A', workflow_id: 1 }),
+          post({ id: 1, titulo: 'A', scheduled_at: '2026-04-15T15:00:00.000Z' }),
           post({
             id: 2,
             titulo: 'B',
-            workflow_id: 2,
-            workflow_titulo: 'Campanha',
+            scheduled_at: '2026-09-15T15:00:00.000Z',
             status: 'aprovado_cliente',
           }),
-          post({ id: 3, titulo: 'C', workflow_id: 2, workflow_titulo: 'Campanha' }),
+          post({ id: 3, titulo: 'C', scheduled_at: '2026-09-16T15:00:00.000Z' }),
         ],
       }),
     );
     await screen.findByRole('button', { name: 'Abrir A' });
-    openFluxoMenu();
-    toggleFluxo(/Campanha/);
+    openMonthMenu();
+    pickMonth(/Setembro de 2026/);
     expect(screen.queryByRole('button', { name: 'Abrir A' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Setembro de 2026' })).toBeInTheDocument();
+    // Status chips now count only September posts.
+    expect(screen.getByRole('button', { name: 'Todos (2)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aguardando aprovação (1)' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Aprovado \(/ }));
     expect(screen.getByRole('button', { name: 'Abrir B' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Abrir C' })).not.toBeInTheDocument();
+    // Month counts respect the selected status: April has no approved post.
+    fireEvent.click(screen.getByRole('button', { name: 'Setembro de 2026' }));
+    expect(screen.getByRole('menuitemradio', { name: 'Setembro de 2026 (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitemradio', { name: 'Abril de 2026 (0)' })).toBeInTheDocument();
   });
 
-  it('shows the union of several selected fluxos and everything again after Limpar', async () => {
+  it('shows only dateless posts for Sem data and everything again after Todos os meses', async () => {
     renderPage(
       BASE,
       response({
         posts: [
-          post({ id: 1, titulo: 'A', workflow_id: 1, workflow_titulo: 'Editorial' }),
-          post({ id: 2, titulo: 'B', workflow_id: 2, workflow_titulo: 'Campanha' }),
-          post({ id: 3, titulo: 'C', workflow_id: null, workflow_titulo: null }),
+          post({ id: 1, titulo: 'A', scheduled_at: '2026-04-15T15:00:00.000Z' }),
+          post({ id: 2, titulo: 'B', scheduled_at: '2026-09-15T15:00:00.000Z' }),
+          post({ id: 3, titulo: 'C', scheduled_at: null }),
         ],
       }),
     );
     await screen.findByRole('button', { name: 'Abrir A' });
-    openFluxoMenu();
-    toggleFluxo(/Editorial/);
-    toggleFluxo(/Avulsas/);
-    expect(screen.getByRole('button', { name: 'Abrir A' })).toBeInTheDocument();
+    openMonthMenu();
+    pickMonth(/Sem data/);
     expect(screen.getByRole('button', { name: 'Abrir C' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir A' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Abrir B' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '2 fluxos' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Limpar' }));
-    expect(screen.getByRole('button', { name: 'Abrir B' })).toBeInTheDocument();
+    openMonthMenu('Sem data');
+    pickMonth('Todos os meses');
     expect(screen.getAllByRole('button', { name: /^Abrir / })).toHaveLength(3);
+  });
+
+  it('hides the month dropdown when every post falls in one month', async () => {
+    renderPage(
+      BASE,
+      response({
+        posts: [
+          post({ id: 1, titulo: 'A', scheduled_at: '2026-04-15T15:00:00.000Z' }),
+          post({ id: 2, titulo: 'B', scheduled_at: '2026-04-20T15:00:00.000Z' }),
+        ],
+      }),
+    );
+    await screen.findByRole('button', { name: 'Abrir A' });
+    expect(screen.queryByRole('button', { name: 'Todos os meses' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Filtrar por status' })).toBeInTheDocument();
   });
 
   it('shows an empty-state message (chips still visible) when a filter combination yields zero posts', async () => {
@@ -228,32 +249,30 @@ describe('PostagensPage', () => {
           post({
             id: 1,
             titulo: 'A',
-            workflow_id: 1,
-            workflow_titulo: 'Editorial',
+            scheduled_at: '2026-04-15T15:00:00.000Z',
             status: 'enviado_cliente',
           }),
           post({
             id: 2,
             titulo: 'B',
-            workflow_id: 2,
-            workflow_titulo: 'Campanha',
+            scheduled_at: '2026-09-15T15:00:00.000Z',
             status: 'aprovado_cliente',
           }),
         ],
       }),
     );
     await screen.findByRole('button', { name: 'Abrir A' });
-    // Narrow to the "Campanha" fluxo (only post B, status aprovado_cliente)...
-    openFluxoMenu();
-    toggleFluxo(/Campanha/);
-    // ...then to the "Aguardando aprovação" status, which has zero overlap with Campanha.
+    // Narrow to September (only post B, status aprovado_cliente)...
+    openMonthMenu();
+    pickMonth(/Setembro de 2026/);
+    // ...then to the "Aguardando aprovação" status, which has zero overlap with September.
     fireEvent.click(screen.getByRole('button', { name: /Aguardando aprovação \(/ }));
     expect(
       await screen.findByText('Nenhuma postagem encontrada para este filtro.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Abrir /, hidden: true })).not.toBeInTheDocument();
     // The controls stay mounted and interactive so the user can change the filter back.
-    expect(screen.getByRole('button', { name: 'Campanha' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Setembro de 2026' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Filtrar por status' })).toBeInTheDocument();
   });
 
@@ -333,47 +352,45 @@ describe('PostagensPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('resets a fluxo filter whose option disappears after a refetch', async () => {
+  it('resets a month filter whose option disappears after a refetch', async () => {
     const both = [
-      post({ id: 1, titulo: 'A' }),
-      post({ id: 2, titulo: 'Solta', workflow_id: null, workflow_titulo: null }),
+      post({ id: 1, titulo: 'A', scheduled_at: '2026-04-15T15:00:00.000Z' }),
+      post({ id: 2, titulo: 'Setembrina', scheduled_at: '2026-09-15T15:00:00.000Z' }),
     ];
-    const avulsoGone = [post({ id: 1, titulo: 'A' })];
+    const septGone = [post({ id: 1, titulo: 'A', scheduled_at: '2026-04-15T15:00:00.000Z' })];
     mockedFetchPosts
       .mockResolvedValueOnce(response({ posts: both }))
-      .mockResolvedValue(response({ posts: avulsoGone }));
+      .mockResolvedValue(response({ posts: septGone }));
     const { qc } = renderPage(BASE);
-    await screen.findByRole('button', { name: 'Abrir Solta' });
-    openFluxoMenu();
-    toggleFluxo(/Avulsas/);
+    await screen.findByRole('button', { name: 'Abrir Setembrina' });
+    openMonthMenu();
+    pickMonth(/Setembro de 2026/);
     expect(screen.queryByRole('button', { name: 'Abrir A' })).not.toBeInTheDocument();
-    // The agency removes the avulso post; the fluxo dropdown unmounts (one option left).
+    // The agency unpublishes the September post; the dropdown unmounts (one month left).
     await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
     expect(await screen.findByRole('button', { name: 'Abrir A' })).toBeInTheDocument();
     expect(screen.queryByText(/Nenhuma postagem encontrada/)).not.toBeInTheDocument();
   });
 
-  it('drops only the vanished fluxo keys from a multi selection after a refetch', async () => {
+  it('keeps a still-valid month selected across a refetch', async () => {
     const three = [
-      post({ id: 1, titulo: 'A', workflow_id: 1, workflow_titulo: 'Editorial' }),
-      post({ id: 2, titulo: 'B', workflow_id: 2, workflow_titulo: 'Campanha' }),
-      post({ id: 3, titulo: 'C', workflow_id: 3, workflow_titulo: 'Outro' }),
+      post({ id: 1, titulo: 'A', scheduled_at: '2026-04-15T15:00:00.000Z' }),
+      post({ id: 2, titulo: 'B', scheduled_at: '2026-09-15T15:00:00.000Z' }),
+      post({ id: 3, titulo: 'C', scheduled_at: '2026-07-15T15:00:00.000Z' }),
     ];
-    const campanhaGone = three.filter((p) => p.id !== 2);
+    const julyGone = three.filter((p) => p.id !== 3);
     mockedFetchPosts
       .mockResolvedValueOnce(response({ posts: three }))
-      .mockResolvedValue(response({ posts: campanhaGone }));
+      .mockResolvedValue(response({ posts: julyGone }));
     const { qc } = renderPage(BASE);
     await screen.findByRole('button', { name: 'Abrir A' });
-    openFluxoMenu();
-    toggleFluxo(/Editorial/);
-    toggleFluxo(/Campanha/);
-    expect(screen.queryByRole('button', { name: 'Abrir C' })).not.toBeInTheDocument();
+    openMonthMenu();
+    pickMonth(/Abril de 2026/);
     await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
-    // Campanha vanished; Editorial stays picked, so C is still filtered out.
-    expect(await screen.findByRole('button', { name: 'Editorial' })).toBeInTheDocument();
+    // July vanished; April stays picked, so B is still filtered out.
+    expect(await screen.findByRole('button', { name: 'Abril de 2026' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Abrir A' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Abrir C' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir B' })).not.toBeInTheDocument();
   });
 
   it('select mode toggles checkboxes and opens the feed preview', async () => {

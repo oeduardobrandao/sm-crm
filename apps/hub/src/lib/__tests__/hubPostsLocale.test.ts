@@ -64,11 +64,10 @@ describe('hubPosts locale files', () => {
       'posts.notAvailable',
       'postagens.filter.label',
       'postagens.filter.all',
-      'postagens.filter.fluxoLabel',
-      'postagens.filter.avulsas',
-      'postagens.fluxoFilter.trigger',
-      'postagens.fluxoFilter.selected',
-      'postagens.fluxoFilter.clear',
+      'postagens.monthFilter.label',
+      'postagens.monthFilter.trigger',
+      'postagens.monthFilter.all',
+      'postagens.monthFilter.none',
       'aprovacoes.noResults',
       'aprovacoes.mediaFilter.label',
       'aprovacoes.mediaFilter.with',
@@ -79,6 +78,11 @@ describe('hubPosts locale files', () => {
     ]) {
       expect(keys, key).toContain(key);
     }
+  });
+
+  it('no longer carries the removed fluxo filter keys', () => {
+    const keys = flattenKeys(pt);
+    expect(keys.filter((k) => /fluxo|avulsas/i.test(k))).toEqual([]);
   });
 
   it('has no em-dash in any user-facing string', () => {

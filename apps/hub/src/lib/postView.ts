@@ -133,3 +133,55 @@ export function sortPostsByScheduled(posts: HubPost[], direction: PostSortDirect
 export function sortPostsChronologically(posts: HubPost[]): HubPost[] {
   return sortPostsByScheduled(posts, 'asc');
 }
+
+/** Filter value meaning "no month filter". Never collides with a `YYYY-MM` key or `none`. */
+export const ALL_MONTHS = 'all';
+/** Bucket key for posts without a usable date. */
+export const NO_MONTH = 'none';
+
+/**
+ * `YYYY-MM` of the date the Hub shows on the post (`scheduled_at`, the same field the tile
+ * and dialog chips format), or `none`. Read in the viewer's local timezone because that is
+ * what `formatDate` (toLocaleDateString without a timeZone) renders, so a post shown as
+ * "30 de abr." is never filed under May just because its UTC instant crossed midnight.
+ */
+export function getPostMonthKey(post: { scheduled_at: string | null }): string {
+  if (!post.scheduled_at) return NO_MONTH;
+  const d = new Date(post.scheduled_at);
+  if (Number.isNaN(d.getTime())) return NO_MONTH;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function countPostsByMonth(posts: { scheduled_at: string | null }[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const p of posts) {
+    const key = getPostMonthKey(p);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export interface PostMonthGroup {
+  key: string;
+  count: number;
+}
+
+/** One group per month with a post, newest month first; the dateless bucket goes last. */
+export function groupPostsByMonth(posts: { scheduled_at: string | null }[]): PostMonthGroup[] {
+  return [...countPostsByMonth(posts)]
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => {
+      if (a.key === NO_MONTH) return 1;
+      if (b.key === NO_MONTH) return -1;
+      return b.key.localeCompare(a.key);
+    });
+}
+
+/** "Setembro de 2026" for `2026-09`: localized long month + year, first letter capitalized. */
+export function formatMonthKey(key: string, lang: string): string {
+  const [year, month] = key.split('-').map(Number);
+  const label = new Intl.DateTimeFormat(lang, { month: 'long', year: 'numeric' }).format(
+    new Date(year, month - 1, 1),
+  );
+  return label.charAt(0).toLocaleUpperCase(lang) + label.slice(1);
+}

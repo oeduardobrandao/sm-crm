@@ -48,14 +48,13 @@
     "noResults": "Nenhuma postagem encontrada para este filtro.",
     "filter": {
       "label": "Filtrar por status",
-      "all": "Todos",
-      "fluxoLabel": "Filtrar por fluxo",
-      "avulsas": "Avulsas"
+      "all": "Todos"
     },
-    "fluxoFilter": {
-      "trigger": "Fluxos",
-      "selected": "{{count}} fluxos",
-      "clear": "Limpar"
+    "monthFilter": {
+      "label": "Filtrar por mês",
+      "trigger": "Todos os meses",
+      "all": "Todos os meses",
+      "none": "Sem data"
     },
     "status": {
       "enviadoCliente": "Aguardando aprovação",

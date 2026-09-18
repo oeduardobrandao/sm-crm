@@ -8,22 +8,20 @@ import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { PageHeader } from '../components/PageHeader';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { StatusFilterChips, type StatusFilter } from '../components/StatusFilterChips';
-import {
-  FluxoFilterDropdown,
-  type FluxoKey,
-  type FluxoFilterOption,
-} from '../components/FluxoFilterDropdown';
+import { MonthFilterDropdown, type MonthFilterOption } from '../components/MonthFilterDropdown';
 import { PostGrid } from '../components/posts/PostGrid';
 import { PostDetailDialog } from '../components/posts/PostDetailDialog';
 import { isFeedSelectable, type TileMode } from '../components/posts/PostTile';
-import { VISIBLE_STATUSES, getPostPublishState, sortPostsChronologically } from '../lib/postView';
+import {
+  ALL_MONTHS,
+  VISIBLE_STATUSES,
+  countPostsByMonth,
+  getPostMonthKey,
+  getPostPublishState,
+  groupPostsByMonth,
+  sortPostsChronologically,
+} from '../lib/postView';
 import { isAutoPublishActive } from '../lib/autoPublish';
-
-/** Stable empty selection ("all fluxos") so resets do not churn the filter memo. */
-const NO_FLUXOS: FluxoKey[] = [];
-
-const fluxoKeyOf = (p: { workflow_id: number | null }): FluxoKey =>
-  p.workflow_id != null ? `wf-${p.workflow_id}` : 'avulso';
 
 export function PostagensPage() {
   const { t } = useTranslation('hubPosts');
@@ -43,7 +41,7 @@ export function PostagensPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showGrid, setShowGrid] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [fluxoFilter, setFluxoFilter] = useState<FluxoKey[]>(NO_FLUXOS);
+  const [monthFilter, setMonthFilter] = useState<string>(ALL_MONTHS);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
@@ -65,38 +63,35 @@ export function PostagensPage() {
       sortPostsChronologically((data?.posts ?? []).filter((p) => VISIBLE_STATUSES.has(p.status))),
     [data?.posts],
   );
+  // The two filters are cross-faceted: each control's counts reflect the other's selection,
+  // so a chip or month never advertises posts the current combination would hide.
+  const inMonth = (p: { scheduled_at: string | null }) =>
+    monthFilter === ALL_MONTHS || getPostMonthKey(p) === monthFilter;
+  const monthScoped = allVisible.filter(inMonth);
   const filterCounts: Record<StatusFilter, number> = {
-    all: allVisible.length,
-    enviado_cliente: allVisible.filter((p) => p.status === 'enviado_cliente').length,
-    correcao_cliente: allVisible.filter((p) => p.status === 'correcao_cliente').length,
-    aprovado_cliente: allVisible.filter((p) => p.status === 'aprovado_cliente').length,
+    all: monthScoped.length,
+    enviado_cliente: monthScoped.filter((p) => p.status === 'enviado_cliente').length,
+    correcao_cliente: monthScoped.filter((p) => p.status === 'correcao_cliente').length,
+    aprovado_cliente: monthScoped.filter((p) => p.status === 'aprovado_cliente').length,
   };
-  const fluxoOptions = useMemo<FluxoFilterOption[]>(() => {
-    const map = new Map<FluxoKey, FluxoFilterOption>();
-    for (const p of allVisible) {
-      const key = fluxoKeyOf(p);
-      const existing = map.get(key);
-      if (existing) existing.count += 1;
-      else
-        map.set(key, {
-          key,
-          label:
-            key === 'avulso' ? t('postagens.filter.avulsas', 'Avulsas') : (p.workflow_titulo ?? ''),
-          count: 1,
-        });
-    }
-    return [...map.values()];
-  }, [allVisible, t]);
-
-  const visiblePosts = useMemo(() => {
-    // Empty selection = no fluxo filter; otherwise a post passes when its fluxo is picked.
-    const picked = new Set<FluxoKey>(fluxoFilter);
-    return allVisible.filter(
-      (p) =>
-        (statusFilter === 'all' || p.status === statusFilter) &&
-        (picked.size === 0 || picked.has(fluxoKeyOf(p))),
+  // Which months exist comes from every visible post (so choosing a status never removes the
+  // selected month from under the user); each month's count respects the status filter.
+  const monthOptions = useMemo<MonthFilterOption[]>(() => {
+    const counts = countPostsByMonth(
+      allVisible.filter((p) => statusFilter === 'all' || p.status === statusFilter),
     );
-  }, [allVisible, statusFilter, fluxoFilter]);
+    return groupPostsByMonth(allVisible).map(({ key }) => ({ key, count: counts.get(key) ?? 0 }));
+  }, [allVisible, statusFilter]);
+
+  const visiblePosts = useMemo(
+    () =>
+      allVisible.filter(
+        (p) =>
+          (statusFilter === 'all' || p.status === statusFilter) &&
+          (monthFilter === ALL_MONTHS || getPostMonthKey(p) === monthFilter),
+      ),
+    [allVisible, statusFilter, monthFilter],
+  );
 
   // Filters start at "Todos", so a deep link never lands on a hidden post. What can:
   // a background refetch moving the OPEN post out of the active status filter
@@ -106,20 +101,17 @@ export function PostagensPage() {
     if (!allVisible.some((p) => p.id === currentId)) return;
     if (visiblePosts.some((p) => p.id === currentId)) return;
     setStatusFilter('all');
-    setFluxoFilter(NO_FLUXOS);
+    setMonthFilter(ALL_MONTHS);
   }, [currentId, allVisible, visiblePosts]);
 
-  // FluxoFilterDropdown unmounts itself with a single option, so a selected fluxo that
-  // vanishes in a refetch (its last post was deleted or unpublished) would leave the
-  // grid empty with no control to clear it. Drop just the vanished keys; if none are
-  // left the selection is empty, i.e. every fluxo shows again.
+  // MonthFilterDropdown unmounts itself with a single option, so a selected month that
+  // vanishes in a refetch (its last post was deleted, unpublished or rescheduled) would leave
+  // the grid empty with no control to clear it. Fall back to every month.
   useEffect(() => {
-    if (fluxoFilter.every((k) => fluxoOptions.some((o) => o.key === k))) return;
-    setFluxoFilter((prev) => {
-      const kept = prev.filter((k) => fluxoOptions.some((o) => o.key === k));
-      return kept.length === 0 ? NO_FLUXOS : kept;
-    });
-  }, [fluxoFilter, fluxoOptions]);
+    if (monthFilter === ALL_MONTHS) return;
+    if (monthOptions.length > 1 && monthOptions.some((o) => o.key === monthFilter)) return;
+    setMonthFilter(ALL_MONTHS);
+  }, [monthFilter, monthOptions]);
 
   const approvals = data?.postApprovals ?? [];
   const instagramProfile = data?.instagramProfile ?? null;
@@ -209,16 +201,19 @@ export function PostagensPage() {
         </p>
       ) : (
         <>
-          <FluxoFilterDropdown
-            value={fluxoFilter}
-            options={fluxoOptions}
-            onChange={setFluxoFilter}
-          />
-          <StatusFilterChips
-            value={statusFilter}
-            counts={filterCounts}
-            onChange={setStatusFilter}
-          />
+          <div className="mb-6 flex flex-wrap items-center gap-1.5">
+            <MonthFilterDropdown
+              value={monthFilter}
+              options={monthOptions}
+              onChange={setMonthFilter}
+            />
+            <StatusFilterChips
+              value={statusFilter}
+              counts={filterCounts}
+              onChange={setStatusFilter}
+              className="contents"
+            />
+          </div>
           {visiblePosts.length === 0 ? (
             <p className="text-sm hub-tx2">
               {t('postagens.noResults', 'Nenhuma postagem encontrada para este filtro.')}

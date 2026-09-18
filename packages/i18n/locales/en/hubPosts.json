@@ -48,14 +48,13 @@
     "noResults": "No posts found for this filter.",
     "filter": {
       "label": "Filter by status",
-      "all": "All",
-      "fluxoLabel": "Filter by workflow",
-      "avulsas": "Standalone"
+      "all": "All"
     },
-    "fluxoFilter": {
-      "trigger": "Workflows",
-      "selected": "{{count}} workflows",
-      "clear": "Clear"
+    "monthFilter": {
+      "label": "Filter by month",
+      "trigger": "All months",
+      "all": "All months",
+      "none": "No date"
     },
     "status": {
       "enviadoCliente": "Awaiting approval",

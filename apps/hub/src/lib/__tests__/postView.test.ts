@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
+  countPostsByMonth,
   deriveCaption,
+  formatMonthKey,
   getPostCover,
+  getPostMonthKey,
+  groupPostsByMonth,
   getPostPublishState,
   isClientVisible,
   pickPostCardKind,
@@ -157,5 +161,77 @@ describe('sortPostsByScheduled', () => {
         .reverse(),
     );
     expect(input.map((p) => p.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe('getPostMonthKey', () => {
+  const originalTz = process.env.TZ;
+  afterEach(() => {
+    if (originalTz === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTz;
+  });
+
+  it("returns 'none' when the post has no (or an unparseable) date", () => {
+    expect(getPostMonthKey(post({ scheduled_at: null }))).toBe('none');
+    expect(getPostMonthKey(post({ scheduled_at: 'not-a-date' }))).toBe('none');
+  });
+
+  it('returns YYYY-MM with a zero-padded month', () => {
+    expect(getPostMonthKey(post({ scheduled_at: '2026-04-20T15:00:00.000Z' }))).toBe('2026-04');
+    expect(getPostMonthKey(post({ scheduled_at: '2026-11-15T15:00:00.000Z' }))).toBe('2026-11');
+  });
+
+  it('buckets by the viewer local month, the same clock the tile date uses (behind UTC)', () => {
+    process.env.TZ = 'America/Sao_Paulo';
+    // 02:30Z on May 1 is still 23:30 on April 30 in Sao Paulo (UTC-3).
+    expect(getPostMonthKey(post({ scheduled_at: '2026-05-01T02:30:00.000Z' }))).toBe('2026-04');
+    expect(getPostMonthKey(post({ scheduled_at: '2026-05-01T03:30:00.000Z' }))).toBe('2026-05');
+  });
+
+  it('buckets by the viewer local month (ahead of UTC)', () => {
+    process.env.TZ = 'Pacific/Auckland';
+    // 12:30Z on April 30 is already 00:30 on May 1 in Auckland (UTC+12 in April).
+    expect(getPostMonthKey(post({ scheduled_at: '2026-04-30T12:30:00.000Z' }))).toBe('2026-05');
+    expect(getPostMonthKey(post({ scheduled_at: '2026-04-30T11:30:00.000Z' }))).toBe('2026-04');
+  });
+});
+
+describe('countPostsByMonth / groupPostsByMonth', () => {
+  const posts = [
+    post({ id: 1, scheduled_at: '2026-04-20T15:00:00.000Z' }),
+    post({ id: 2, scheduled_at: '2026-09-10T15:00:00.000Z' }),
+    post({ id: 3, scheduled_at: null }),
+    post({ id: 4, scheduled_at: '2026-09-25T15:00:00.000Z' }),
+    post({ id: 5, scheduled_at: '2025-12-15T15:00:00.000Z' }),
+  ];
+
+  it('counts posts per month key, dateless ones under none', () => {
+    expect(Object.fromEntries(countPostsByMonth(posts))).toEqual({
+      '2026-04': 1,
+      '2026-09': 2,
+      none: 1,
+      '2025-12': 1,
+    });
+  });
+
+  it('orders newest month first with the dateless bucket last', () => {
+    expect(groupPostsByMonth(posts)).toEqual([
+      { key: '2026-09', count: 2 },
+      { key: '2026-04', count: 1 },
+      { key: '2025-12', count: 1 },
+      { key: 'none', count: 1 },
+    ]);
+  });
+
+  it('is empty for no posts and has no none bucket when every post is dated', () => {
+    expect(groupPostsByMonth([])).toEqual([]);
+    expect(groupPostsByMonth([posts[0]])).toEqual([{ key: '2026-04', count: 1 }]);
+  });
+});
+
+describe('formatMonthKey', () => {
+  it('capitalizes the localized long month and year', () => {
+    expect(formatMonthKey('2026-09', 'pt-BR')).toBe('Setembro de 2026');
+    expect(formatMonthKey('2026-01', 'en-US')).toBe('January 2026');
   });
 });
