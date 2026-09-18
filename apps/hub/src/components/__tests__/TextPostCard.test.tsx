@@ -165,7 +165,7 @@ describe('TextPostCard', () => {
     });
     expect(correctionButton).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Data' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Texto' }));
     expect(correctionButton).toBeEnabled();
     fireEvent.click(correctionButton);
 
@@ -175,7 +175,7 @@ describe('TextPostCard', () => {
         10,
         'correcao',
         'Trocar a data',
-        'data',
+        'texto',
       ),
     );
   });

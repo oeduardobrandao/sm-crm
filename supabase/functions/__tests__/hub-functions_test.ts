@@ -587,7 +587,7 @@ Deno.test("hub-approve calls notification RPC with comentario for corrections", 
 
   const response = await handler(new Request("https://example.test/hub-approve", {
     method: "POST",
-    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem", motivo: "imagem_video" }),
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem", motivo: "midia" }),
   }));
 
   assertEquals(response.status, 200);
@@ -596,7 +596,7 @@ Deno.test("hub-approve calls notification RPC with comentario for corrections", 
   assertEquals(rpcCall.payload, { p_post_id: 99, p_action: "correcao", p_comentario: "Trocar imagem" });
   const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
   assert(approvalRpc, "record_client_approval should be called");
-  assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, "imagem_video");
+  assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, "midia");
 });
 
 Deno.test("hub-approve rejects invalid approval actions", async () => {

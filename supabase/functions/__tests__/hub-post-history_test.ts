@@ -65,7 +65,7 @@ const rawApprovals = [
   // team note written on the CRM Mensagens page BEFORE the first send: must be dropped
   // (team mensagem), and NOT because of any floor
   { id: 500, action: "mensagem", comentario: "Ana, revisa o CTA antes de enviar", motivo: null, is_workspace_user: true, token: null, author_user_id: "u-1", created_at: "2026-09-01T12:00:00.000Z" },
-  { id: 501, action: "correcao", comentario: "Trocar a foto", motivo: "imagem_video", is_workspace_user: false, token: "hub-123", author_user_id: null, created_at: "2026-09-03T09:00:00.000Z" },
+  { id: 501, action: "correcao", comentario: "Trocar a foto", motivo: "midia", is_workspace_user: false, token: "hub-123", author_user_id: null, created_at: "2026-09-03T09:00:00.000Z" },
   // team reply via replyToPostApproval: internal, never shown to the client
   { id: 502, action: "mensagem", comentario: "Cliente reclamou de novo, alguém olha?", motivo: null, is_workspace_user: true, token: null, author_user_id: "u-2", created_at: "2026-09-05T11:00:00.000Z" },
   // client comment from the new composer: kept
@@ -106,7 +106,7 @@ Deno.test("hub-post-history returns sanitized events and approvals for an owned 
   assertEquals(response.status, 200);
   assertEquals(body.events.map((e: { id: number }) => e.id), [2, 4, 6]);
   assertEquals(body.approvals.map((a: { id: number }) => a.id), [501, 503]);
-  assertEquals(body.approvals[0].motivo, "imagem_video");
+  assertEquals(body.approvals[0].motivo, "midia");
   assert(!body.approvals.some((a: { is_workspace_user: boolean; action: string }) => a.action === "mensagem" && a.is_workspace_user), "team messages must not leak");
   assert(!("token" in body.approvals[0]), "token must not leak");
   assert(!("author_user_id" in body.approvals[0]), "author_user_id must not leak");

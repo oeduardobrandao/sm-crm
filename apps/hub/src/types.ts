@@ -137,7 +137,7 @@ export interface PostApproval {
   motivo?: CorrectionReason | null;
 }
 
-export type CorrectionReason = 'legenda' | 'imagem_video' | 'data' | 'outro';
+export type CorrectionReason = 'midia' | 'texto' | 'legenda' | 'outro';
 
 /** hub-post-history DTO. Sanitized server-side: no from_status, no actor names, no TipTap JSON. */
 export interface PostHistoryEvent {

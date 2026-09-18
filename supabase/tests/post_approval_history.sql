@@ -1,12 +1,13 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Valida 20260925000010_post_approvals_motivo.sql e
--- 20260925000011_post_status_events_send_snapshot.sql.
+-- Valida 20260925000010_post_approvals_motivo.sql,
+-- 20260925000011_post_status_events_send_snapshot.sql e
+-- 20260925000013_post_approvals_motivo_reasons.sql.
 --   A.1 uma unica record_client_approval existe (7 args); chamada com 6 args nao e ambigua
 --   A.2 correcao com motivo grava motivo e move o status; evento liga post_approval_id
 --   A.3 fase 1: correcao sem motivo ainda e aceita (motivo null) -- a obrigatoriedade chega na fase 3
---   A.4 motivo fora dos quatro valores viola o CHECK (23514)
+--   A.4 motivo fora dos quatro valores (midia/texto/legenda/outro) viola o CHECK (23514)
 --   A.5 EXECUTE: service_role sim, authenticated/anon nao
 --   B.1 transicao para enviado_cliente grava snapshot do texto de NEW
 --   B.2 transicao para aprovado_cliente nao grava snapshot
@@ -46,8 +47,8 @@ do $$
 declare f record; v_id bigint; v_ev record;
 begin
   select * into f from pg_temp.pah_fixture();
-  select record_client_approval(f.post, 'tok', 'correcao', 'trocar imagem', false, 'correcao_cliente', 'imagem_video') into v_id;
-  assert (select motivo from post_approvals where id = v_id) = 'imagem_video';
+  select record_client_approval(f.post, 'tok', 'correcao', 'trocar imagem', false, 'correcao_cliente', 'midia') into v_id;
+  assert (select motivo from post_approvals where id = v_id) = 'midia';
   assert (select status from workflow_posts where id = f.post) = 'correcao_cliente';
   select * into v_ev from post_status_events where post_id = f.post order by created_at desc, id desc limit 1;
   assert v_ev.post_approval_id = v_id, 'evento de status deve apontar para a aprovacao';

@@ -145,7 +145,7 @@ describe('StoryPostCard', () => {
       target: { value: 'Trocar a imagem' },
     });
     expect(correctionButton).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Imagem/vídeo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mídia' }));
     expect(correctionButton).toBeEnabled();
     fireEvent.click(correctionButton);
     await waitFor(() =>
@@ -154,7 +154,7 @@ describe('StoryPostCard', () => {
         7,
         'correcao',
         'Trocar a imagem',
-        'imagem_video',
+        'midia',
       ),
     );
   });

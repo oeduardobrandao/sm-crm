@@ -117,9 +117,9 @@
   "correctionReason": {
     "title": "Motivo da correção",
     "required": "Escolha o motivo e deixe um comentário para solicitar correção",
+    "midia": "Mídia",
+    "texto": "Texto",
     "legenda": "Legenda",
-    "imagem_video": "Imagem/vídeo",
-    "data": "Data",
     "outro": "Outro"
   }
 }

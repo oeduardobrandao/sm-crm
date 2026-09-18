@@ -3,9 +3,9 @@ import { CORRECTION_REASONS } from '../lib/postHistory';
 import type { CorrectionReason } from '../types';
 
 const FALLBACK_LABELS: Record<CorrectionReason, string> = {
+  midia: 'Mídia',
+  texto: 'Texto',
   legenda: 'Legenda',
-  imagem_video: 'Imagem/vídeo',
-  data: 'Data',
   outro: 'Outro',
 };
 
@@ -22,7 +22,7 @@ export function CorrectionReasonChips({ value, onChange, disabled }: CorrectionR
     <div
       role="group"
       aria-label={t('correctionReason.title', 'Motivo da correção')}
-      className="flex flex-wrap gap-1.5"
+      className="flex flex-nowrap gap-1.5 overflow-x-auto"
     >
       {CORRECTION_REASONS.map((reason) => {
         const selected = value === reason;
@@ -33,7 +33,7 @@ export function CorrectionReasonChips({ value, onChange, disabled }: CorrectionR
             aria-pressed={selected}
             disabled={disabled}
             onClick={() => onChange(reason)}
-            className="rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50"
+            className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50"
             style={
               selected
                 ? {

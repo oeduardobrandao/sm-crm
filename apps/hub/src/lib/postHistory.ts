@@ -6,9 +6,9 @@ import type {
 } from '../types';
 
 export const CORRECTION_REASONS: readonly CorrectionReason[] = [
+  'midia',
+  'texto',
   'legenda',
-  'imagem_video',
-  'data',
   'outro',
 ];
 

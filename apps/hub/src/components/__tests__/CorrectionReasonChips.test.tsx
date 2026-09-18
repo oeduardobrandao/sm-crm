@@ -5,14 +5,14 @@ import { CorrectionReasonChips } from '../CorrectionReasonChips';
 describe('CorrectionReasonChips', () => {
   it('renders the four reasons inside a labelled group and reports the pressed one', () => {
     const onChange = vi.fn();
-    render(<CorrectionReasonChips value="data" onChange={onChange} />);
+    render(<CorrectionReasonChips value="texto" onChange={onChange} />);
 
     const group = screen.getByRole('group', { name: 'Motivo da correção' });
     expect(group).toBeInTheDocument();
-    for (const label of ['Legenda', 'Imagem/vídeo', 'Data', 'Outro']) {
+    for (const label of ['Mídia', 'Texto', 'Legenda', 'Outro']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
-    expect(screen.getByRole('button', { name: 'Data' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Texto' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Legenda' })).toHaveAttribute(
       'aria-pressed',
       'false',

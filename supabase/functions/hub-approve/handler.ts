@@ -9,10 +9,10 @@ type DbClient = {
 };
 
 // Mirrors hub-mensagens' MAX_CONTENT and the post_approvals motivo CHECK
-// (20260925000010 value rule, mandatory-presence rule follow-up migration):
+// (20260925000013 value rule, mandatory-presence rule follow-up migration):
 // the DB rejects anything else, this turns that into a 400 instead of a 500.
 const MAX_COMMENT_LENGTH = 4000;
-const CORRECTION_REASONS = ["legenda", "imagem_video", "data", "outro"];
+const CORRECTION_REASONS = ["legenda", "midia", "texto", "outro"];
 // Same list as apps/hub/src/lib/postView.ts VISIBLE_STATUSES and the
 // hub-post-history allowlist: the client may only comment on a post it can
 // see. A comment on an internal draft would be a client-authored

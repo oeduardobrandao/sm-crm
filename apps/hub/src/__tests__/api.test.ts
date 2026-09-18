@@ -289,13 +289,13 @@ describe('hub api client', () => {
 
   it('sends motivo with a correcao and omits it otherwise', async () => {
     fetchHarness.queueResponse({ json: { ok: true } });
-    await submitApproval('token-hub', 12, 'correcao', 'Trocar foto', 'imagem_video');
+    await submitApproval('token-hub', 12, 'correcao', 'Trocar foto', 'midia');
     expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
       token: 'token-hub',
       post_id: 12,
       action: 'correcao',
       comentario: 'Trocar foto',
-      motivo: 'imagem_video',
+      motivo: 'midia',
     });
 
     fetchHarness.queueResponse({ json: { ok: true } });
