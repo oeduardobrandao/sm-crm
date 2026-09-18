@@ -128,7 +128,7 @@ describe('StoryPostCard', () => {
     expect(screen.getByText('Mídia indisponível')).toBeInTheDocument();
   });
 
-  it('requires a motivo chip before "Correção" is enabled and sends it', async () => {
+  it('opens the Corrigir panel and sends a correction without requiring a motivo', async () => {
     mockedSubmitApproval.mockResolvedValue({ ok: true });
     render(
       <StoryPostCard
@@ -140,14 +140,42 @@ describe('StoryPostCard', () => {
         onApprovalSubmitted={vi.fn()}
       />,
     );
-    const correctionButton = screen.getByRole('button', { name: /Correção/ });
-    fireEvent.change(screen.getByPlaceholderText(/Comente aqui/), {
+    fireEvent.click(screen.getByRole('button', { name: /Correção/ }));
+    const sendButton = screen.getByRole('button', { name: /Enviar correção/ });
+    expect(sendButton).toBeEnabled();
+    fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
       target: { value: 'Trocar a imagem' },
     });
-    expect(correctionButton).toBeDisabled();
+    fireEvent.click(sendButton);
+    await waitFor(() =>
+      expect(mockedSubmitApproval).toHaveBeenCalledWith(
+        'token-publico',
+        7,
+        'correcao',
+        'Trocar a imagem',
+        undefined,
+      ),
+    );
+  });
+
+  it('sends the chosen motivo when one is selected', async () => {
+    mockedSubmitApproval.mockResolvedValue({ ok: true });
+    render(
+      <StoryPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={null}
+        workspaceName="Mesaas"
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Correção/ }));
+    fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
+      target: { value: 'Trocar a imagem' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Mídia' }));
-    expect(correctionButton).toBeEnabled();
-    fireEvent.click(correctionButton);
+    fireEvent.click(screen.getByRole('button', { name: /Enviar correção/ }));
     await waitFor(() =>
       expect(mockedSubmitApproval).toHaveBeenCalledWith(
         'token-publico',

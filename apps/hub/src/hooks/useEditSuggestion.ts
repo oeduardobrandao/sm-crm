@@ -253,6 +253,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     saveSuggestion,
     saveState,
     approvalBlocked,
+    dirty,
     draftConteudo,
     draftConteudoPlain,
     draftIgCaption,

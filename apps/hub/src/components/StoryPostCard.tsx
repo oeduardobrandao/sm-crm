@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
@@ -39,7 +39,7 @@ export function StoryPostCard({
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
-  useUnsavedWork(comentario.trim() !== '' || submitting);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const isPending = !readOnly && post.status === 'enviado_cliente';
   const media = post.media ?? [];
@@ -53,6 +53,7 @@ export function StoryPostCard({
     saveSuggestion,
     saveState,
     approvalBlocked,
+    dirty,
     draftIgCaption,
   } = useEditSuggestion({
     token,
@@ -60,9 +61,14 @@ export function StoryPostCard({
     onSaved: () => onApprovalSubmitted?.(),
   });
   const isEditable = canEdit && !readOnly;
-  const igCaptionRef = useRef(draftIgCaption ?? '');
+  const editingContent = panelOpen && isEditable && !hasPendingSuggestion;
 
   const effectiveIgCaption = isEditable ? (draftIgCaption ?? post.ig_caption) : post.ig_caption;
+  // The displayed caption falls back to text parsed out of conteudo_plain when
+  // there's no explicit ig_caption/suggestion. Staging must start from -- and
+  // compare dirtiness against -- this fully-derived value, not the raw
+  // effectiveIgCaption, or opening Corrigir on such a post shows a blank field
+  // instead of the text the client is actually looking at.
   const caption = effectiveIgCaption
     ? effectiveIgCaption
     : (() => {
@@ -75,6 +81,46 @@ export function StoryPostCard({
               .trim()
           : rawText;
       })();
+  const [stagedCaption, setStagedCaption] = useState(caption);
+  const contentDirty = stagedCaption !== caption;
+
+  useUnsavedWork(comentario.trim() !== '' || submitting || contentDirty);
+
+  useEffect(() => {
+    if (saveState === 'saved') setPanelOpen(false);
+  }, [saveState]);
+
+  // `postagens/:postId` has no `key`, so React Router can reuse this component
+  // instance across different posts -- reset local flow state so it doesn't
+  // carry over onto the newly displayed one.
+  const postIdRef = useRef(post.id);
+  if (postIdRef.current !== post.id) {
+    postIdRef.current = post.id;
+    setPanelOpen(false);
+    setComentario('');
+    setMotivo(null);
+    setStagedCaption(caption);
+  }
+
+  function openPanel() {
+    setStagedCaption(caption);
+    setPanelOpen(true);
+  }
+
+  function closePanel() {
+    if (contentDirty || comentario.trim() !== '' || motivo) {
+      if (!window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?')))
+        return;
+    }
+    setPanelOpen(false);
+    setComentario('');
+    setMotivo(null);
+    setStagedCaption(caption);
+  }
+
+  function handleSaveEdicao() {
+    saveSuggestion(null, post.conteudo_plain ?? '', stagedCaption);
+  }
 
   const currentMedia = media[currentSlide];
   const prewarmVideoUrl = media.find((m) => m.kind === 'video')?.url ?? null;
@@ -256,13 +302,10 @@ export function StoryPostCard({
         {/* Caption overlay */}
         {caption && (
           <div className="absolute bottom-14 left-3 right-3 z-20">
-            {isEditable ? (
+            {editingContent ? (
               <textarea
-                defaultValue={draftIgCaption ?? ''}
-                onChange={(e) => {
-                  igCaptionRef.current = e.target.value;
-                  saveSuggestion(null, post.conteudo_plain ?? '', e.target.value);
-                }}
+                value={stagedCaption}
+                onChange={(e) => setStagedCaption(e.target.value)}
                 className="w-full text-white text-[13px] leading-[1.4] bg-black/50 backdrop-blur-sm rounded-2xl px-4 py-2.5 break-words border border-dashed border-white/40 focus:border-white/70 focus:border-solid focus:outline-none resize-none min-h-[60px] placeholder:text-white/50 transition-colors"
               />
             ) : (
@@ -306,22 +349,33 @@ export function StoryPostCard({
       </div>
 
       {/* Save indicator + info banner */}
-      {isEditable && (saveState !== 'idle' || true) && (
+      {isEditable && !hasPendingSuggestion && (
         <div className="bg-white dark:bg-[#1a1a1a] px-3 py-2 -mt-2 pt-4 space-y-1.5">
-          {saveState !== 'idle' && (
-            <div className="flex items-center gap-1.5">
+          {editingContent && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSaveEdicao}
+                disabled={!contentDirty || saveState === 'saving'}
+                className="rounded-[4px] hub-btn-secondary py-1.5 px-2.5 text-[11px] font-semibold disabled:opacity-50 transition-colors"
+              >
+                {saveState === 'saving'
+                  ? t('shared.saving', 'Salvando...')
+                  : t('shared.salvarEdicao', 'Salvar edição')}
+              </button>
               {saveState === 'saving' && (
                 <span className="text-[10px] text-stone-400">
                   {t('shared.savingSuggestion', 'Salvando sugestão...')}
                 </span>
               )}
               {saveState === 'saved' && (
-                <>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[10px] text-emerald-600 font-medium">
-                    {t('shared.suggestionSaved', 'Sugestão salva')}
-                  </span>
-                </>
+                <span className="text-[10px] text-emerald-600 font-medium">
+                  {t('shared.suggestionSaved', 'Sugestão salva')}
+                </span>
+              )}
+              {dirty && saveState === 'idle' && !contentDirty && (
+                <span className="text-[10px] text-rose-600">
+                  {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
+                </span>
               )}
             </div>
           )}
@@ -350,15 +404,32 @@ export function StoryPostCard({
             <div className="rounded-lg px-3 py-2 text-[11px] font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200/60 text-center">
               {t('shared.suggestionPendingReviewFull', 'Sugestão enviada para revisão da equipe')}
             </div>
+          ) : !panelOpen ? (
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => handleAction('aprovado')}
+                disabled={submitting || approvalBlocked || dirty || contentDirty}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-primary text-[13px] font-semibold disabled:opacity-50 transition-colors"
+              >
+                <CheckCircle size={16} />{' '}
+                {saveState === 'saving'
+                  ? t('shared.saving', 'Salvando...')
+                  : t('shared.aprovar', 'Aprovar')}
+              </button>
+              <button
+                onClick={openPanel}
+                disabled={submitting}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-secondary text-[13px] font-medium disabled:opacity-50 transition-colors"
+              >
+                <AlertCircle size={16} /> {t('shared.correcaoShort', 'Correção')}
+              </button>
+            </div>
           ) : (
             <>
               <textarea
                 value={comentario}
                 onChange={(e) => setComentario(e.target.value)}
-                placeholder={t(
-                  'shared.commentPlaceholder',
-                  'Comente aqui ou corrija o texto diretamente no campo acima',
-                )}
+                placeholder={t('shared.commentPlaceholder', 'Descreva o que precisa mudar')}
                 className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
               />
               <CorrectionReasonChips
@@ -368,29 +439,18 @@ export function StoryPostCard({
               />
               <div className="flex gap-1.5">
                 <button
-                  onClick={() => handleAction('aprovado')}
-                  disabled={submitting || approvalBlocked}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-primary text-[13px] font-semibold disabled:opacity-50 transition-colors"
-                >
-                  <CheckCircle size={16} />{' '}
-                  {saveState === 'saving'
-                    ? t('shared.saving', 'Salvando...')
-                    : t('shared.aprovar', 'Aprovar')}
-                </button>
-                <button
                   onClick={() => handleAction('correcao')}
-                  disabled={submitting || approvalBlocked || !comentario.trim() || !motivo}
-                  title={
-                    !comentario.trim() || !motivo
-                      ? t(
-                          'correctionReason.required',
-                          'Escolha o motivo e deixe um comentário para solicitar correção',
-                        )
-                      : undefined
-                  }
+                  disabled={submitting || approvalBlocked || dirty || contentDirty}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-secondary text-[13px] font-medium disabled:opacity-50 transition-colors"
                 >
-                  <AlertCircle size={16} /> {t('shared.correcaoShort', 'Correção')}
+                  <AlertCircle size={16} /> {t('shared.enviarCorrecao', 'Enviar correção')}
+                </button>
+                <button
+                  onClick={closePanel}
+                  disabled={dirty}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] border border-stone-200 dark:border-[#333] text-[13px] font-medium disabled:opacity-50 transition-colors"
+                >
+                  {t('shared.fechar', 'Fechar')}
                 </button>
               </div>
             </>

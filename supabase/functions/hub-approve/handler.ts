@@ -9,8 +9,9 @@ type DbClient = {
 };
 
 // Mirrors hub-mensagens' MAX_CONTENT and the post_approvals motivo CHECK
-// (20260925000013 value rule, mandatory-presence rule follow-up migration):
-// the DB rejects anything else, this turns that into a 400 instead of a 500.
+// (20260925000013 value rule; motivo itself stays optional here, no DB
+// migration needed for that -- the CHECK already allows NULL): the DB
+// rejects any other value, this turns that into a 400 instead of a 500.
 const MAX_COMMENT_LENGTH = 4000;
 const CORRECTION_REASONS = ["legenda", "midia", "texto", "outro"];
 // Same list as apps/hub/src/lib/postView.ts VISIBLE_STATUSES and the
@@ -106,9 +107,18 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
       if (!mensagemText) return json({ error: "Escreva um comentário." }, 400);
       if (mensagemText.length > MAX_COMMENT_LENGTH) return json({ error: "Comentário muito longo." }, 400);
     }
-    if (action === "correcao" && !CORRECTION_REASONS.includes(motivo)) {
-      return json({ error: "Informe o motivo da correção." }, 400);
+    // motivo is optional for correcao; only its value is validated when present.
+    if (action === "correcao" && motivo != null && !CORRECTION_REASONS.includes(motivo)) {
+      return json({ error: "Motivo inválido." }, 400);
     }
+    // Same coercion mensagemText already applies (non-string silently becomes ""),
+    // except an empty trimmed comentario becomes null here: unlike mensagem, an
+    // omitted comentario is a valid, common case for correcao.
+    const correcaoComentarioRaw = typeof comentario === "string" ? comentario.trim() : "";
+    if (action === "correcao" && correcaoComentarioRaw.length > MAX_COMMENT_LENGTH) {
+      return json({ error: "Comentário muito longo." }, 400);
+    }
+    const correcaoComentario = correcaoComentarioRaw || null;
 
     const db = deps.createDb();
 
@@ -171,10 +181,10 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         p_post_id: post_id,
         p_token: token,
         p_action: action,
-        p_comentario: comentario ?? null,
+        p_comentario: action === "correcao" ? correcaoComentario : (comentario ?? null),
         p_is_workspace_user: false,
         p_new_status: newStatus,
-        p_motivo: action === "correcao" ? motivo : null,
+        p_motivo: action === "correcao" ? (motivo ?? null) : null,
       });
       if (approvalErr) return json({ error: "Erro ao registrar aprovação." }, 500);
     }
@@ -220,7 +230,8 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     const { error: notifErr } = await db.rpc("create_post_approval_notification", {
       p_post_id: post_id,
       p_action: action,
-      p_comentario: action === "mensagem" ? mensagemText : (comentario ?? null),
+      p_comentario:
+        action === "mensagem" ? mensagemText : action === "correcao" ? correcaoComentario : (comentario ?? null),
     });
     if (notifErr) {
       console.error("[hub-approve] notification creation failed:", notifErr);

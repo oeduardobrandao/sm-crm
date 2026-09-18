@@ -11,11 +11,11 @@ const FALLBACK_LABELS: Record<CorrectionReason, string> = {
 
 interface CorrectionReasonChipsProps {
   value: CorrectionReason | null;
-  onChange: (value: CorrectionReason) => void;
+  onChange: (value: CorrectionReason | null) => void;
   disabled?: boolean;
 }
 
-/** Four fixed reasons; required by hub-approve (and the DB CHECK) on every correcao. */
+/** Four fixed reasons, optional; clicking the selected chip again deselects it. */
 export function CorrectionReasonChips({ value, onChange, disabled }: CorrectionReasonChipsProps) {
   const { t } = useTranslation('hubPosts');
   return (
@@ -32,7 +32,7 @@ export function CorrectionReasonChips({ value, onChange, disabled }: CorrectionR
             type="button"
             aria-pressed={selected}
             disabled={disabled}
-            onClick={() => onChange(reason)}
+            onClick={() => onChange(selected ? null : reason)}
             className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50"
             style={
               selected

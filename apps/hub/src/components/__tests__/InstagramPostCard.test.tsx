@@ -274,7 +274,7 @@ describe('InstagramPostCard', () => {
     expect(screen.queryByRole('button', { name: /ver menos/i })).not.toBeInTheDocument();
   });
 
-  it('reads a pending caption first, with an "Editar legenda" action and no open editor', () => {
+  it('reads a pending caption first, with no open editor until Correção is opened', () => {
     render(
       <InstagramPostCard
         post={makePost({ status: 'enviado_cliente', ig_caption: 'Olá pessoal do feed' })}
@@ -286,12 +286,12 @@ describe('InstagramPostCard', () => {
     );
 
     expect(screen.getByText(/Olá pessoal do feed/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /editar legenda/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Correção/ })).toBeInTheDocument();
     // The caption editor is a distinct, labelled textarea — closed by default.
     expect(screen.queryByLabelText(/legenda do post/i)).not.toBeInTheDocument();
   });
 
-  it('reveals the caption editor on "Editar legenda" and closes it on "Concluir"', () => {
+  it('reveals the caption editor on "Correção" and closes it on "Fechar"', () => {
     render(
       <InstagramPostCard
         post={makePost({ status: 'enviado_cliente', ig_caption: 'Olá' })}
@@ -302,10 +302,11 @@ describe('InstagramPostCard', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /editar legenda/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Correção/ }));
     expect(screen.getByLabelText(/legenda do post/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Salvar edição/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /concluir/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Fechar/ }));
     expect(screen.queryByLabelText(/legenda do post/i)).not.toBeInTheDocument();
   });
 
@@ -403,7 +404,7 @@ describe('InstagramPostCard', () => {
     expect(screen.queryByText('Reel de teste')).toBeNull();
   });
 
-  it('requires a motivo chip before "Correção" is enabled and sends it', async () => {
+  it('opens the Corrigir panel and sends a correction without requiring a motivo', async () => {
     mockedSubmitApproval.mockResolvedValue({ ok: true } as never);
     render(
       <InstagramPostCard
@@ -414,14 +415,41 @@ describe('InstagramPostCard', () => {
         onApprovalSubmitted={vi.fn()}
       />,
     );
-    const correctionButton = screen.getByRole('button', { name: /Correção/ });
-    fireEvent.change(screen.getByPlaceholderText(/Comente aqui/), {
+    fireEvent.click(screen.getByRole('button', { name: /Correção/ }));
+    const sendButton = screen.getByRole('button', { name: /Enviar correção/ });
+    expect(sendButton).toBeEnabled();
+    fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
       target: { value: 'Ajustar legenda' },
     });
-    expect(correctionButton).toBeDisabled();
+    fireEvent.click(sendButton);
+    await waitFor(() =>
+      expect(mockedSubmitApproval).toHaveBeenCalledWith(
+        'token-publico',
+        7,
+        'correcao',
+        'Ajustar legenda',
+        undefined,
+      ),
+    );
+  });
+
+  it('sends the chosen motivo when one is selected', async () => {
+    mockedSubmitApproval.mockResolvedValue({ ok: true } as never);
+    render(
+      <InstagramPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Correção/ }));
+    fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
+      target: { value: 'Ajustar legenda' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Legenda' }));
-    expect(correctionButton).toBeEnabled();
-    fireEvent.click(correctionButton);
+    fireEvent.click(screen.getByRole('button', { name: /Enviar correção/ }));
     await waitFor(() =>
       expect(mockedSubmitApproval).toHaveBeenCalledWith(
         'token-publico',

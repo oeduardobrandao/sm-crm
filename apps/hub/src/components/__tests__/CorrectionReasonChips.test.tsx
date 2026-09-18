@@ -22,6 +22,13 @@ describe('CorrectionReasonChips', () => {
     expect(onChange).toHaveBeenCalledWith('legenda');
   });
 
+  it('deselects the currently selected chip when clicked again', () => {
+    const onChange = vi.fn();
+    render(<CorrectionReasonChips value="texto" onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Texto' }));
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
   it('disables every chip when disabled', () => {
     render(<CorrectionReasonChips value={null} onChange={vi.fn()} disabled />);
     expect(screen.getByRole('button', { name: 'Outro' })).toBeDisabled();

@@ -65,7 +65,7 @@ describe('TextPostCard', () => {
 
     expect(screen.getByText(/Nada de preguiça/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Aprovar/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Solicitar correção/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Correção/i })).toBeInTheDocument();
   });
 
   it('collapses when clicked again', () => {
@@ -147,7 +147,7 @@ describe('TextPostCard', () => {
     expect(screen.queryByText('Reel de teste')).toBeNull();
   });
 
-  it('requires a motivo chip before "Solicitar correção" is enabled and sends it', async () => {
+  it('opens the Corrigir panel and sends a correction without requiring a motivo', async () => {
     mockedSubmitApproval.mockResolvedValue({ ok: true } as never);
     render(
       <TextPostCard
@@ -158,16 +158,43 @@ describe('TextPostCard', () => {
       />,
     );
     fireEvent.click(screen.getByText('Texto motivacional segunda-feira'));
+    fireEvent.click(screen.getByRole('button', { name: /Correção/i }));
 
-    const correctionButton = screen.getByRole('button', { name: /Solicitar correção/i });
-    fireEvent.change(screen.getByPlaceholderText(/Comente aqui/), {
+    const correctionButton = screen.getByRole('button', { name: /Enviar correção/i });
+    expect(correctionButton).toBeEnabled();
+    fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
       target: { value: 'Trocar a data' },
     });
-    expect(correctionButton).toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Texto' }));
-    expect(correctionButton).toBeEnabled();
     fireEvent.click(correctionButton);
+
+    await waitFor(() =>
+      expect(mockedSubmitApproval).toHaveBeenCalledWith(
+        'token-publico',
+        10,
+        'correcao',
+        'Trocar a data',
+        undefined,
+      ),
+    );
+  });
+
+  it('sends the chosen motivo when one is selected', async () => {
+    mockedSubmitApproval.mockResolvedValue({ ok: true } as never);
+    render(
+      <TextPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Texto motivacional segunda-feira'));
+    fireEvent.click(screen.getByRole('button', { name: /Correção/i }));
+    fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
+      target: { value: 'Trocar a data' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Texto' }));
+    fireEvent.click(screen.getByRole('button', { name: /Enviar correção/i }));
 
     await waitFor(() =>
       expect(mockedSubmitApproval).toHaveBeenCalledWith(
@@ -178,6 +205,46 @@ describe('TextPostCard', () => {
         'texto',
       ),
     );
+  });
+
+  it('Fechar discards a staged caption edit so Aprovar is not left disabled', () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(
+      <TextPostCard
+        post={makePost({ ig_caption: 'Legenda original' })}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Texto motivacional segunda-feira'));
+    fireEvent.click(screen.getByRole('button', { name: /Correção/i }));
+
+    fireEvent.change(screen.getByDisplayValue('Legenda original'), {
+      target: { value: 'Legenda editada' },
+    });
+    expect(screen.getByRole('button', { name: /Fechar/i })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: /Fechar/i }));
+
+    expect(screen.getByRole('button', { name: /Aprovar/i })).toBeEnabled();
+  });
+
+  it('Fechar returns to the collapsed buttons and discards an untouched comentario', () => {
+    render(
+      <TextPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Texto motivacional segunda-feira'));
+    fireEvent.click(screen.getByRole('button', { name: /Correção/i }));
+    expect(screen.getByRole('button', { name: /Fechar/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Fechar/i }));
+    expect(screen.getByRole('button', { name: /Aprovar/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Enviar correção/i })).not.toBeInTheDocument();
   });
 
   it('renders the history panel toggle when expanded, also in read-only mode', () => {

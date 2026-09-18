@@ -670,15 +670,33 @@ function hubApproveHandlerFor(db: ReturnType<typeof createSupabaseQueryMock>) {
   });
 }
 
-Deno.test("hub-approve rejects a correcao without motivo with 400 and never calls the RPC", async () => {
+Deno.test("hub-approve accepts a correcao without motivo and sends p_motivo: null", async () => {
   const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
   const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
     method: "POST",
     body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem" }),
   }));
-  assertEquals(response.status, 400);
-  assertEquals((await readJson(response)).error, "Informe o motivo da correção.");
-  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc, "record_client_approval should be called");
+  assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, null);
+});
+
+Deno.test("hub-approve accepts a correcao with no comentario and sends p_comentario: null", async () => {
+  const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", motivo: "midia" }),
+  }));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc, "record_client_approval should be called");
+  assertEquals((approvalRpc.payload as { p_comentario: unknown }).p_comentario, null);
+  const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
+  assert(notif);
+  assertEquals((notif.payload as { p_comentario: unknown }).p_comentario, null);
 });
 
 Deno.test("hub-approve rejects a correcao whose motivo is outside the four allowed values", async () => {
@@ -688,6 +706,17 @@ Deno.test("hub-approve rejects a correcao whose motivo is outside the four allow
     body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "x", motivo: "preco" }),
   }));
   assertEquals(response.status, 400);
+});
+
+Deno.test("hub-approve rejects a correcao comentario longer than 4000 characters", async () => {
+  const db = hubApproveDbForPost();
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "a".repeat(4001), motivo: "midia" }),
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Comentário muito longo.");
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
 });
 
 Deno.test("hub-approve sends p_motivo: null for an approval", async () => {

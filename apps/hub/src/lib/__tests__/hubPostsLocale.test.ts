@@ -43,7 +43,6 @@ describe('hubPosts locale files', () => {
       'history.sendError',
       'history.motivoLabel',
       'correctionReason.title',
-      'correctionReason.required',
       'correctionReason.midia',
       'correctionReason.texto',
       'correctionReason.legenda',
