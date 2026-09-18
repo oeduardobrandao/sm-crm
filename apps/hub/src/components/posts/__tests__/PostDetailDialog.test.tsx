@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -103,6 +104,26 @@ function renderDialog(
   return { onNavigate, onApprovalSubmitted };
 }
 
+function StatefulDialog({ initialId }: { initialId: number }) {
+  const [currentId, setCurrentId] = useState<number | null>(initialId);
+  return (
+    <HubContext.Provider value={hubValue}>
+      <MemoryRouter>
+        <PostDetailDialog
+          posts={posts}
+          currentId={currentId}
+          token="token-publico"
+          approvals={[]}
+          instagramProfile={null}
+          isAutoPublish={() => false}
+          onNavigate={setCurrentId}
+          onApprovalSubmitted={() => undefined}
+        />
+      </MemoryRouter>
+    </HubContext.Provider>
+  );
+}
+
 describe('PostDetailDialog', () => {
   beforeEach(() => {
     submitApprovalMock.mockReset();
@@ -203,6 +224,30 @@ describe('PostDetailDialog', () => {
       'ajustar a legenda',
     );
     expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
+  });
+
+  describe('slide-in between posts', () => {
+    it('does not animate the first open', () => {
+      render(<StatefulDialog initialId={1} />);
+      expect(document.querySelector('.hub-slide-in-next, .hub-slide-in-prev')).toBeNull();
+    });
+
+    it('slides in from the right on next and from the left on previous', () => {
+      render(<StatefulDialog initialId={1} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
+      expect(document.querySelector('.hub-slide-in-next')).not.toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Post anterior' }));
+      expect(document.querySelector('.hub-slide-in-prev')).not.toBeNull();
+      expect(document.querySelector('.hub-slide-in-next')).toBeNull();
+    });
+
+    it('slides in from the right after approving and auto-advancing', async () => {
+      submitApprovalMock.mockResolvedValue({ scheduled: false });
+      render(<StatefulDialog initialId={1} />);
+      fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+      await waitFor(() => expect(screen.getByText('Texto do terceiro')).toBeInTheDocument());
+      expect(document.querySelector('.hub-slide-in-next')).not.toBeNull();
+    });
   });
 
   it('Fechar without changes returns to the reading mode and re-enables Aprovar', () => {

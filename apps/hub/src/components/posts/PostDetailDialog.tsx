@@ -43,6 +43,9 @@ interface PostDetailDialogProps {
 
 type Flash = 'approved' | 'approvedScheduled' | 'correctionSent';
 
+/** Which way the card slides in after a post-to-post move; scoped to the target post so a stale value never animates a URL-driven change. */
+type Enter = { id: number; dir: 'next' | 'prev' };
+
 export function PostDetailDialog(props: PostDetailDialogProps) {
   const { posts, currentId, onNavigate } = props;
   const { t } = useTranslation('hubPosts');
@@ -55,6 +58,7 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
   const [flashState, setFlashState] = useState<{ kind: Flash; id: number } | null>(null);
   const flashSeq = useRef(0);
   const flash = flashState?.kind ?? null;
+  const [enter, setEnter] = useState<Enter | null>(null);
   const onFlash = useCallback((kind: Flash) => {
     flashSeq.current += 1;
     setFlashState({ kind, id: flashSeq.current });
@@ -65,7 +69,10 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
     return () => window.clearTimeout(id);
   }, [flashState]);
   useEffect(() => {
-    if (!open) setFlashState(null);
+    if (!open) {
+      setFlashState(null);
+      setEnter(null);
+    }
   }, [open]);
 
   if (open && !nav.current) {
@@ -105,6 +112,8 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
       nav={nav}
       flash={flash}
       onFlash={onFlash}
+      enter={enter?.id === nav.current.id ? enter.dir : null}
+      onEnter={setEnter}
     />
   );
 }
@@ -114,6 +123,8 @@ type ContentProps = PostDetailDialogProps & {
   nav: ReturnType<typeof usePostNavigation>;
   flash: Flash | null;
   onFlash: (f: Flash) => void;
+  enter: Enter['dir'] | null;
+  onEnter: (e: Enter) => void;
 };
 
 function PostDetailContent({
@@ -127,6 +138,8 @@ function PostDetailContent({
   onApprovalSubmitted,
   flash,
   onFlash,
+  enter,
+  onEnter,
 }: ContentProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -183,9 +196,10 @@ function PostDetailContent({
   const go = useCallback(
     (target: HubPost | null) => {
       if (!target || !guard()) return;
+      onEnter({ id: target.id, dir: posts.indexOf(target) < nav.index ? 'prev' : 'next' });
       onNavigate(target.id);
     },
-    [guard, onNavigate],
+    [guard, onNavigate, onEnter, posts, nav.index],
   );
   const close = useCallback(() => {
     // Radix reports Esc / scrim clicks even when the lightbox (portalled to body,
@@ -228,6 +242,7 @@ function PostDetailContent({
       // Snapshot BEFORE invalidation: on Aprovações the post leaves the list and indices shift.
       const next = nav.nextPending;
       setPanelDirty(false);
+      if (next) onEnter({ id: next.id, dir: 'next' });
       onFlash(
         action === 'correcao'
           ? 'correctionSent'
@@ -401,6 +416,8 @@ function PostDetailContent({
         {navButton('next')}
         <div
           className={`hub-bg-card md:rounded-[4px] overflow-hidden flex flex-col md:grid w-full h-full md:h-[min(92vh,820px)] ${
+            enter ? `hub-slide-in-${enter}` : ''
+          } ${
             singleColumn
               ? 'md:w-[min(560px,calc(100vw-7rem))] md:grid-cols-[minmax(0,1fr)]'
               : 'md:w-[min(1040px,calc(100vw-7rem))] md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'
