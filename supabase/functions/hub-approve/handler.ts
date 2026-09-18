@@ -9,7 +9,7 @@ type DbClient = {
 };
 
 // Mirrors hub-mensagens' MAX_CONTENT and the post_approvals motivo CHECK
-// (20260925000013 value rule; motivo itself stays optional here, no DB
+// (20260925000014 value rule; motivo itself stays optional here, no DB
 // migration needed for that -- the CHECK already allows NULL): the DB
 // rejects any other value, this turns that into a 400 instead of a 500.
 const MAX_COMMENT_LENGTH = 4000;

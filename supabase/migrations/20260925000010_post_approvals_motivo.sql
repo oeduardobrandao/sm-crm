@@ -13,7 +13,7 @@ alter table post_approvals add column if not exists motivo text;
 -- reject every correction in that window. The mandatory
 -- conditional NOT VALID constraint (Phase 3 in the plan) is NOT in any
 -- migration yet: add it in a new migration once hub-approve and the Hub
--- bundle are live. 20260925000013 only fixes the allowed value set.
+-- bundle are live. 20260925000014 only fixes the allowed value set.
 alter table post_approvals drop constraint if exists post_approvals_motivo_value_check;
 alter table post_approvals
   add constraint post_approvals_motivo_value_check

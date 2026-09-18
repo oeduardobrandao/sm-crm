@@ -3,7 +3,7 @@
 
 -- Valida 20260925000010_post_approvals_motivo.sql,
 -- 20260925000011_post_status_events_send_snapshot.sql e
--- 20260925000013_post_approvals_motivo_reasons.sql.
+-- 20260925000014_post_approvals_motivo_reasons.sql.
 --   A.1 uma unica record_client_approval existe (7 args); chamada com 6 args nao e ambigua
 --   A.2 correcao com motivo grava motivo e move o status; evento liga post_approval_id
 --   A.3 fase 1: correcao sem motivo ainda e aceita (motivo null) -- a obrigatoriedade chega na fase 3
