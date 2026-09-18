@@ -71,10 +71,6 @@
     "previewButton": "Visualizar no Feed ({{count}})",
     "previewAria": "Pré-visualização do feed de {{name}}"
   },
-  "openPost": {
-    "ariaLabel": "Abrir postagem em nova aba",
-    "label": "Abrir"
-  },
   "sharePost": {
     "ariaLabel": "Copiar link da postagem",
     "copied": "Copiado!",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import { computeWordDiff } from '@mesaas/text-diff';
@@ -11,7 +11,7 @@ import {
   selectComments,
   type HistoryEntry,
 } from '../lib/postHistory';
-import { getClientStatusLabel, VISIBLE_STATUSES } from '../lib/postView';
+import { getClientStatusLabel, pickPostCardKind, VISIBLE_STATUSES } from '../lib/postView';
 import { formatDate } from './PostCard';
 import type { HubPost, PostApproval, PostHistoryResponse } from '../types';
 
@@ -20,6 +20,10 @@ interface PostHistoryPanelProps {
   token: string;
   approvals: PostApproval[];
   onCommentSent?: () => void;
+  /** Rendered inside a host that already labels it (a tab): no toggle header, always expanded. */
+  embedded?: boolean;
+  /** Reports whether an unsent comment (typed or in flight) exists, so the host can guard navigation. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 type LoadState =
@@ -49,10 +53,18 @@ export function TextDiff({ before, after }: { before: string; after: string }) {
   );
 }
 
-export function PostHistoryPanel({ post, token, approvals, onCommentSent }: PostHistoryPanelProps) {
+export function PostHistoryPanel({
+  post,
+  token,
+  approvals,
+  onCommentSent,
+  embedded,
+  onDirtyChange,
+}: PostHistoryPanelProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
-  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const open = !!embedded || expanded;
   const [tab, setTab] = useState<'history' | 'comments'>('history');
   const [load, setLoad] = useState<LoadState>({ status: 'idle' });
   const [reloadKey, setReloadKey] = useState(0);
@@ -60,7 +72,17 @@ export function PostHistoryPanel({ post, token, approvals, onCommentSent }: Post
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
   const [openDiffs, setOpenDiffs] = useState<Set<string>>(new Set());
-  useUnsavedWork(text.trim() !== '' || sending);
+  const [openVersions, setOpenVersions] = useState<Set<string>>(new Set());
+  const dirty = text.trim() !== '' || sending;
+  useUnsavedWork(dirty);
+  // Ref so a new callback identity never re-fires the effect; the unmount cleanup below
+  // must always reach the latest one and clear the parent's flag.
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+  useEffect(() => {
+    onDirtyChangeRef.current?.(dirty);
+  }, [dirty]);
+  useEffect(() => () => onDirtyChangeRef.current?.(false), []);
 
   const visible = VISIBLE_STATUSES.has(post.status);
 
@@ -113,6 +135,15 @@ export function PostHistoryPanel({ post, token, approvals, onCommentSent }: Post
     });
   }
 
+  function toggleVersion(key: string) {
+    setOpenVersions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   function actorLabel(source: 'client' | 'team' | 'system' | boolean): string {
     if (source === 'client' || source === false) return t('history.actor.you', 'Você');
     if (source === 'system') return t('history.actor.system', 'Sistema');
@@ -122,6 +153,9 @@ export function PostHistoryPanel({ post, token, approvals, onCommentSent }: Post
   function renderEntry(entry: HistoryEntry) {
     const when = formatDate(entry.at, dateLang);
     if (entry.kind === 'send') {
+      // A text-only post shows its whole body on the Texto tab; media posts show the caption.
+      const versionText =
+        pickPostCardKind(post) === 'text' ? (entry.content ?? entry.text) : entry.text;
       return (
         <li key={entry.key} className="space-y-1">
           <div className="flex items-baseline justify-between gap-2">
@@ -133,6 +167,26 @@ export function PostHistoryPanel({ post, token, approvals, onCommentSent }: Post
             <span className="text-[11px] hub-tx3">{when}</span>
           </div>
           <span className="text-[11px] hub-tx3">{actorLabel('team')}</span>
+          {versionText && (
+            <div>
+              <button
+                type="button"
+                aria-expanded={openVersions.has(entry.key)}
+                onClick={() => toggleVersion(entry.key)}
+                className="text-[11px] font-semibold underline-offset-2 hover:underline"
+                style={{ color: 'var(--hub-acc)' }}
+              >
+                {openVersions.has(entry.key)
+                  ? t('history.hideVersion', 'Ocultar versão')
+                  : t('history.showVersion', 'Ver versão completa')}
+              </button>
+              {openVersions.has(entry.key) && (
+                <p className="mt-1.5 rounded-[4px] hub-bg-soft px-3 py-2 text-[12px] hub-txt whitespace-pre-wrap">
+                  {versionText}
+                </p>
+              )}
+            </div>
+          )}
           {entry.diff && (
             <div>
               <button
@@ -143,7 +197,9 @@ export function PostHistoryPanel({ post, token, approvals, onCommentSent }: Post
               >
                 {openDiffs.has(entry.key)
                   ? t('history.hideDiff', 'Ocultar alterações')
-                  : t('history.showDiff', 'Ver alterações na legenda')}
+                  : isTextPost
+                    ? t('history.showDiffText', 'Ver alterações no texto')
+                    : t('history.showDiff', 'Ver alterações na legenda')}
               </button>
               {openDiffs.has(entry.key) && (
                 <TextDiff before={entry.diff.before} after={entry.diff.after} />
@@ -193,29 +249,32 @@ export function PostHistoryPanel({ post, token, approvals, onCommentSent }: Post
   }
 
   const data = load.status === 'ready' ? load.data : null;
-  const entries = data ? buildHistoryEntries(data) : [];
+  const isTextPost = pickPostCardKind(post) === 'text';
+  const entries = data ? buildHistoryEntries(data, { bodyPost: isTextPost }) : [];
   const comments = data ? selectComments(data) : [];
   const kpis = data ? computePostKpis(data) : null;
 
   return (
-    <div className="border-t hub-border px-4 py-2">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 py-1.5 text-left"
-      >
-        <span className="text-[12px] font-semibold hub-txt">
-          {t('history.toggle', 'Histórico e comentários')}
-        </span>
-        <span className="flex items-center gap-2 text-[11px] hub-tx3">
-          {t('history.summary', '{{decisions}} decisões · {{comments}} comentários', {
-            decisions: decisionCount,
-            comments: commentCount,
-          })}
-          <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-        </span>
-      </button>
+    <div className={embedded ? undefined : 'border-t hub-border px-4 py-2'}>
+      {!embedded && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setExpanded((o) => !o)}
+          className="flex w-full items-center justify-between gap-2 py-1.5 text-left"
+        >
+          <span className="text-[12px] font-semibold hub-txt">
+            {t('history.toggle', 'Histórico e comentários')}
+          </span>
+          <span className="flex items-center gap-2 text-[11px] hub-tx3">
+            {t('history.summary', '{{decisions}} decisões · {{comments}} comentários', {
+              decisions: decisionCount,
+              comments: commentCount,
+            })}
+            <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+          </span>
+        </button>
+      )}
 
       {open && (
         <div className="pb-2 space-y-3">

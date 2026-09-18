@@ -29,4 +29,18 @@ describe('StatusFilterChips', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Correção solicitada (1)' }));
     expect(onChange).toHaveBeenCalledWith('correcao_cliente');
   });
+
+  it('lets a parent fold the group into its own flex row via className', () => {
+    render(
+      <StatusFilterChips
+        value="all"
+        counts={{ all: 1, enviado_cliente: 1, correcao_cliente: 0, aprovado_cliente: 0 }}
+        onChange={vi.fn()}
+        className="contents"
+      />,
+    );
+    const group = screen.getByRole('group', { name: 'Filtrar por status' });
+    expect(group.className).toBe('contents');
+    expect(group.className).not.toContain('mb-6');
+  });
 });

@@ -15,7 +15,7 @@ describe('hubPosts locale files', () => {
     expect(flattenKeys(en).sort()).toEqual(flattenKeys(pt).sort());
   });
 
-  it('carries the history, correctionReason and postagens.filter keys', () => {
+  it('carries the history, correctionReason, postagens.filter and aprovacoes filter/sort keys', () => {
     const keys = flattenKeys(pt);
     for (const key of [
       'history.toggle',
@@ -34,6 +34,9 @@ describe('hubPosts locale files', () => {
       'history.actor.you',
       'history.showDiff',
       'history.hideDiff',
+      'history.showVersion',
+      'history.showDiffText',
+      'history.hideVersion',
       'history.kpi.rounds',
       'history.kpi.avgResponse',
       'history.kpi.noData',
@@ -47,14 +50,47 @@ describe('hubPosts locale files', () => {
       'correctionReason.texto',
       'correctionReason.legenda',
       'correctionReason.outro',
-      'postagens.filter.all',
+      'posts.select',
+      'posts.done',
+      'posts.previous',
+      'posts.next',
+      'posts.counter',
+      'posts.closeDialog',
+      'posts.tabCaption',
+      'posts.tabText',
+      'posts.tabHistory',
+      'posts.editCaption',
+      'posts.editText',
+      'posts.correct',
+      'posts.requestCorrection',
+      'posts.mediaRemoved',
+      'posts.notAvailable',
       'postagens.filter.label',
+      'postagens.filter.all',
+      'postagens.monthFilter.label',
+      'postagens.monthFilter.trigger',
+      'postagens.monthFilter.all',
+      'postagens.monthFilter.none',
+      'aprovacoes.noResults',
+      'aprovacoes.mediaFilter.label',
+      'aprovacoes.mediaFilter.with',
+      'aprovacoes.mediaFilter.without',
+      'aprovacoes.sort.label',
+      'aprovacoes.sort.oldest',
+      'aprovacoes.sort.newest',
     ]) {
       expect(keys, key).toContain(key);
     }
   });
 
+  it('no longer carries the removed fluxo filter keys', () => {
+    const keys = flattenKeys(pt);
+    expect(keys.filter((k) => /fluxo|avulsas/i.test(k))).toEqual([]);
+  });
+
   it('has no em-dash in any user-facing string', () => {
-    expect(JSON.stringify(pt.history) + JSON.stringify(pt.correctionReason)).not.toMatch(/—/);
+    expect(
+      JSON.stringify(pt.history) + JSON.stringify(pt.correctionReason) + JSON.stringify(pt.posts),
+    ).not.toMatch(/—/);
   });
 });

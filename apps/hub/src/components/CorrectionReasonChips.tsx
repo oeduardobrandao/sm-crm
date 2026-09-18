@@ -13,10 +13,17 @@ interface CorrectionReasonChipsProps {
   value: CorrectionReason | null;
   onChange: (value: CorrectionReason | null) => void;
   disabled?: boolean;
+  /** Subset to show; defaults to all four. */
+  reasons?: readonly CorrectionReason[];
 }
 
 /** Four fixed reasons, optional; clicking the selected chip again deselects it. */
-export function CorrectionReasonChips({ value, onChange, disabled }: CorrectionReasonChipsProps) {
+export function CorrectionReasonChips({
+  value,
+  onChange,
+  disabled,
+  reasons = CORRECTION_REASONS,
+}: CorrectionReasonChipsProps) {
   const { t } = useTranslation('hubPosts');
   return (
     <div
@@ -24,7 +31,7 @@ export function CorrectionReasonChips({ value, onChange, disabled }: CorrectionR
       aria-label={t('correctionReason.title', 'Motivo da correção')}
       className="flex flex-nowrap gap-1.5 overflow-x-auto"
     >
-      {CORRECTION_REASONS.map((reason) => {
+      {reasons.map((reason) => {
         const selected = value === reason;
         return (
           <button

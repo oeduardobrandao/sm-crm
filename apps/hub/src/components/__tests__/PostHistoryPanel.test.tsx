@@ -166,7 +166,13 @@ describe('PostHistoryPanel', () => {
 
   it('fetches once on expand and renders the Histórico tab with KPIs, versions, motivo and a caption diff', async () => {
     mockedFetch.mockResolvedValue(fullHistory);
-    render(<PostHistoryPanel post={makePost()} token="tok" approvals={listApprovals} />);
+    render(
+      <PostHistoryPanel
+        post={makePost({ media: [{ id: 1 } as never] })}
+        token="tok"
+        approvals={listApprovals}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /Histórico e comentários/ }));
     expect(await screen.findByText('v1: enviado para aprovação')).toBeInTheDocument();
@@ -185,6 +191,100 @@ describe('PostHistoryPanel', () => {
     expect(screen.getByText('v1').tagName).toBe('DEL');
     expect(screen.getByText('v2').tagName).toBe('INS');
     expect(screen.queryByText('oi')).not.toBeInTheDocument();
+  });
+
+  it('lets the client open the full text of every sent version, including the first', async () => {
+    mockedFetch.mockResolvedValue(fullHistory);
+    render(
+      <PostHistoryPanel
+        embedded
+        post={makePost({ media: [{ id: 1 } as never] })}
+        token="tok"
+        approvals={listApprovals}
+      />,
+    );
+    await screen.findByText('v1: enviado para aprovação');
+
+    const buttons = screen.getAllByRole('button', { name: 'Ver versão completa' });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[0]);
+    expect(screen.getByText('legenda v1', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ocultar versão' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ver versão completa' })[0]);
+    expect(screen.getByText('legenda v2', { selector: 'p' })).toBeInTheDocument();
+  });
+
+  it('shows the whole body of a text-only post, even when it has no caption', async () => {
+    mockedFetch.mockResolvedValue({
+      events: [
+        {
+          id: 1,
+          to_status: 'enviado_cliente',
+          source: 'team',
+          created_at: '2026-09-11T12:30:00.000Z',
+          post_approval_id: null,
+          snapshot: { conteudo_plain: 'TELA 1: CAPA\nSe eu tivesse melasma', ig_caption: null },
+        },
+      ],
+      approvals: [],
+    });
+    render(
+      <PostHistoryPanel
+        embedded
+        post={makePost({ media: [], ig_caption: null })}
+        token="tok"
+        approvals={[]}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver versão completa' }));
+    expect(
+      screen.getByText(
+        (_, el) => el?.tagName === 'P' && !!el.textContent?.includes('TELA 1: CAPA'),
+      ),
+    ).toHaveTextContent('Se eu tivesse melasma');
+  });
+
+  it('diffs a text-only post on its whole body, with a matching label', async () => {
+    const send = (id: number, at: string, body: string) => ({
+      id,
+      to_status: 'enviado_cliente' as const,
+      source: 'team' as const,
+      created_at: at,
+      post_approval_id: null,
+      snapshot: { conteudo_plain: body, ig_caption: null },
+    });
+    mockedFetch.mockResolvedValue({
+      events: [
+        send(1, '2026-09-11T12:00:00.000Z', 'TELA 1\nprimeiro texto'),
+        send(2, '2026-09-12T12:00:00.000Z', 'TELA 1\nsegundo texto'),
+      ],
+      approvals: [],
+    });
+    render(
+      <PostHistoryPanel
+        embedded
+        post={makePost({ media: [], ig_caption: null })}
+        token="tok"
+        approvals={[]}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver alterações no texto' }));
+    expect(screen.getByText('primeiro').tagName).toBe('DEL');
+    expect(screen.getByText('segundo').tagName).toBe('INS');
+  });
+
+  it('embedded: fetches on mount and renders no toggle header', async () => {
+    mockedFetch.mockResolvedValue(fullHistory);
+    render(<PostHistoryPanel embedded post={makePost()} token="tok" approvals={listApprovals} />);
+    expect(await screen.findByText('v1: enviado para aprovação')).toBeInTheDocument();
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('button', { name: /Histórico e comentários/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Histórico' })).toBeInTheDocument();
   });
 
   it('shows "sem dados ainda" instead of 0 when no send has a response', async () => {
