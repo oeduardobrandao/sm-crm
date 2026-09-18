@@ -402,8 +402,8 @@ function PostDetailContent({
         <div
           className={`hub-bg-card md:rounded-2xl overflow-hidden flex flex-col md:grid w-full h-full md:h-[min(92vh,820px)] ${
             singleColumn
-              ? 'md:w-[min(560px,calc(100vw-7rem))]'
-              : 'md:w-[min(1040px,calc(100vw-7rem))] md:grid-cols-[1.15fr_1fr]'
+              ? 'md:w-[min(560px,calc(100vw-7rem))] md:grid-cols-[minmax(0,1fr)]'
+              : 'md:w-[min(1040px,calc(100vw-7rem))] md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'
           }`}
         >
           {!singleColumn && (
