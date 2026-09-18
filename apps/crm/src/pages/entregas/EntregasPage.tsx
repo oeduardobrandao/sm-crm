@@ -136,6 +136,12 @@ export default function EntregasPage() {
   // gate tudo que é exibição e operação de processos existentes.
   const postProcessesEnabled = features?.feature_post_processes === true;
 
+  // Aviso de agendamento automático (spec 2026-09-17): schedulingEnabled é o
+  // gate incondicional (feature_post_scheduling); tiktokEnabled é o gate
+  // ADICIONAL só para post tiktok/both (decisão 5 da spec).
+  const schedulingEnabled = features?.feature_post_scheduling === true;
+  const tiktokEnabled = features?.feature_tiktok === true;
+
   const { isAtLimit } = useEntitlements();
 
   const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
@@ -1218,6 +1224,9 @@ export default function EntregasPage() {
                 captureEvent('entregas_tour_dismissed', { step: -1 });
                 markTourDone();
               }}
+              schedulingEnabled={schedulingEnabled}
+              tiktokEnabled={tiktokEnabled}
+              recurringWfId={recurringWfId}
             />
             {semProcessoMode && (
               <SemProcessoSection
@@ -1245,6 +1254,8 @@ export default function EntregasPage() {
             columnSorts={boardColumnSorts}
             onColumnSortChange={handleBoardColumnSortChange}
             processEtapaByPostId={processEtapaByPostId}
+            schedulingEnabled={schedulingEnabled}
+            tiktokEnabled={tiktokEnabled}
           />
         ))}
       {activeView === 'chart' && (

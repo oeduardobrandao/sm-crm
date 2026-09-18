@@ -43,7 +43,7 @@ const FEATURE_ROWS: ReadonlyArray<{ key: FeatureKey; label: string }> = [
   { key: 'feature_contracts', label: 'Contratos' },
   { key: 'feature_brand_customization', label: 'Personalização de marca' },
   { key: 'feature_mcp', label: 'Integração com agentes (MCP)' },
-  { key: 'feature_instagram_automation', label: 'Automações de comentário e DM' },
+  { key: 'feature_instagram_automation', label: 'Automações' },
   { key: 'feature_briefing_audio', label: 'Briefing por áudio' },
 ];
 

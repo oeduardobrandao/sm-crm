@@ -32,28 +32,65 @@ function edgeUrl(fn: string, params: Record<string, string>) {
   return url.toString();
 }
 
-async function get<T>(fn: string, params: Record<string, string>): Promise<T> {
-  const res = await fetch(edgeUrl(fn, params), {
-    headers: { apikey: ANON },
+// Backoff schedule for HTTP 429. The Hub edge functions rate-limit per client
+// with a sliding window and reject BEFORE doing any work, so a 429'd request
+// had no side effect and can be replayed verbatim. Autosave (briefing answers,
+// edit suggestions) is what trips the limit in practice: the retry lets a burst
+// drain instead of surfacing "Não foi possível salvar" on a healthy connection.
+const RETRY_AFTER_429_MS = [2_000, 6_000, 15_000];
+
+// Resolves after `ms`, or as soon as `signal` aborts (the caller then checks
+// the signal and bails), so an abandoned request never lingers in a backoff.
+function sleep(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done, { once: true });
+    function done() {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    }
   });
-  if (!res.ok) {
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw new DOMException('Request superseded', 'AbortError');
+}
+
+// `signal` is checked BEFORE each attempt, not passed to fetch: aborting an
+// in-flight fetch can't undo what the server already applied, but an aborted
+// signal must never let a stale payload be REPLAYED after a newer request for
+// the same resource has gone out (autosave: the older text would overwrite
+// the newer one). Callers that autosave pass one AbortController per resource
+// and abort the previous one on every new edit.
+async function request<T>(input: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    throwIfAborted(signal);
+    const res = await fetch(input, init);
+    if (res.ok) return res.json() as Promise<T>;
+    if (res.status === 429 && attempt < RETRY_AFTER_429_MS.length) {
+      await sleep(RETRY_AFTER_429_MS[attempt], signal);
+      continue;
+    }
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
   }
-  return res.json() as Promise<T>;
 }
 
-async function post<T>(fn: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}/functions/v1/${fn}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: ANON },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}));
-    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<T>;
+function get<T>(fn: string, params: Record<string, string>): Promise<T> {
+  return request<T>(edgeUrl(fn, params), { headers: { apikey: ANON } });
+}
+
+function post<T>(fn: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  return request<T>(
+    `${BASE}/functions/v1/${fn}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: ANON },
+      body: JSON.stringify(body),
+    },
+    signal,
+  );
 }
 
 export function fetchBootstrap(workspace: string, token: string) {
@@ -127,8 +164,13 @@ export function fetchBriefing(token: string) {
   return get<{ briefings: Briefing[] }>('hub-briefing', { token });
 }
 
-export function submitBriefingAnswer(token: string, question_id: string, answer: string) {
-  return post<{ ok: boolean }>('hub-briefing', { token, question_id, answer });
+export function submitBriefingAnswer(
+  token: string,
+  question_id: string,
+  answer: string,
+  signal?: AbortSignal,
+) {
+  return post<{ ok: boolean }>('hub-briefing', { token, question_id, answer }, signal);
 }
 
 export function presignBriefingAudio(
@@ -160,33 +202,20 @@ export function deleteBriefingAudio(token: string, questionId: string) {
   return del<{ ok: boolean }>('hub-briefing', `${questionId}/audio`, token);
 }
 
-async function patch<T>(fn: string, id: string, token: string, body: unknown): Promise<T> {
+function patch<T>(fn: string, id: string, token: string, body: unknown): Promise<T> {
   const url = new URL(`${BASE}/functions/v1/${fn}/${id}`);
   url.searchParams.set('token', token);
-  const res = await fetch(url.toString(), {
+  return request<T>(url.toString(), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', apikey: ANON },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}));
-    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<T>;
 }
 
-async function del<T>(fn: string, id: string, token: string): Promise<T> {
+function del<T>(fn: string, id: string, token: string): Promise<T> {
   const url = new URL(`${BASE}/functions/v1/${fn}/${id}`);
   url.searchParams.set('token', token);
-  const res = await fetch(url.toString(), {
-    method: 'DELETE',
-    headers: { apikey: ANON },
-  });
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}));
-    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<T>;
+  return request<T>(url.toString(), { method: 'DELETE', headers: { apikey: ANON } });
 }
 
 export function fetchIdeias(token: string) {

@@ -19,17 +19,16 @@ import { validatePostMedia } from '../instagramLimits';
 import { getPublishErrorDisplay } from '../publishErrorCopy';
 import type { Platform } from './PlatformSelector';
 import {
-  scheduleInstagramPost,
   cancelInstagramSchedule,
   retryInstagramPublish,
   publishInstagramPostNow,
 } from '../../../services/instagram';
 import {
-  scheduleTikTokPost,
   cancelTikTokSchedule,
   publishTikTokPostNow,
   retryTikTokPublish,
 } from '../../../services/tiktok';
+import { scheduleApprovedPost, scheduleSuccessMessage } from '../scheduleApprovedPost';
 
 // =============================================================================
 // Platform-aware publishing button (Task C3, TikTok integration Phase C).
@@ -139,12 +138,6 @@ function publishingProgressLabel(platform: Platform): string {
   if (platform === 'both') return 'Enviando para o Instagram e o TikTok…';
   if (platform === 'tiktok') return 'Enviando para o TikTok…';
   return 'Enviando para o Instagram…';
-}
-
-function scheduleSuccessMessage(platform: Platform): string {
-  if (platform === 'both') return 'Post agendado para publicação no Instagram e no TikTok';
-  if (platform === 'tiktok') return 'Post agendado para publicação no TikTok';
-  return 'Post agendado para publicação no Instagram';
 }
 
 interface ScheduleButtonProps {
@@ -323,11 +316,9 @@ export function ScheduleButton({
   const handleSchedule = async () => {
     setLoading(true);
     try {
-      if (targetsTikTok) {
-        await scheduleTikTokPost(post.id!, post.scheduled_at!);
-      } else {
-        await scheduleInstagramPost(post.id!);
-      }
+      // Mesma regra de plataforma que os avisos de agendamento automático usam
+      // (pages/entregas/scheduleApprovedPost.ts) -- uma fonte só.
+      await scheduleApprovedPost(post);
       toast.success(scheduleSuccessMessage(platform));
       onStatusChange();
     } catch (err: any) {

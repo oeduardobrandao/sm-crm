@@ -135,7 +135,7 @@ export function PricingSection() {
             momento.
           </p>
           <div className="pricing-promo-note">
-            30 dias grátis em qualquer plano pago. Sem cupom, sem cartão. Cancele quando quiser.
+            30 dias grátis em qualquer plano pago. Sem cupom. Cancele quando quiser.
           </div>
         </div>
 
