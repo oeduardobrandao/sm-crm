@@ -299,6 +299,7 @@ function mockCounts(cleared: number) {
 describe('EntregasTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFeatures = null;
     mockedGetWorkflowsByCliente.mockResolvedValue([workflow()]);
     mockedGetWorkflowEtapas.mockResolvedValue([approvalEtapa, nextEtapa]);
     mockedGetDeadlineInfo.mockReturnValue({

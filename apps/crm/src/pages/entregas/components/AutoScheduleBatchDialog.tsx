@@ -96,9 +96,7 @@ export function AutoScheduleBatchDialog({
   );
 
   // Decisão 5 da spec, por post: um post tiktok/both só é agendável com
-  // feature_tiktok. Sem o add-on ele desce para a lista manual em vez de ganhar
-  // um balde próprio na UI -- do ponto de vista de quem usa, é a mesma ação
-  // ("resolva esse à mão").
+  // feature_tiktok.
   const blockedByTikTok = (p: { platform?: string | null }) =>
     targetsTikTokService(p.platform) && !tiktokFeatureEnabled;
   const eligible = byDate.eligible.filter((p) => !blockedByTikTok(p));
