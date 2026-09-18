@@ -11,6 +11,7 @@ import {
   Link2,
   MessageCircle,
   Plug,
+  Sparkles,
   TrendingUp,
   X,
   Eye,
@@ -367,11 +368,15 @@ function Features() {
   );
 }
 
+/* Icons are positional against LANDING.agente.bullets; a bullet beyond the
+ * list falls back to the generic sparkle so a copy-only edit never renders
+ * a chip without an icon. */
 const AGENT_CHIP_ICONS = [
   <BookOpen size={40} strokeWidth={1.6} key="briefing" />,
   <TrendingUp size={40} strokeWidth={1.6} key="performance" />,
   <Plug size={40} strokeWidth={1.6} key="connect" />,
 ];
+const AGENT_CHIP_FALLBACK_ICON = <Sparkles size={40} strokeWidth={1.6} />;
 
 function AgentSection() {
   return (
@@ -387,7 +392,7 @@ function AgentSection() {
         <ul className="lp2-chips reveal">
           {LANDING.agente.bullets.map((bullet, i) => (
             <li key={i} className="lp2-chip">
-              {AGENT_CHIP_ICONS[i]}
+              {AGENT_CHIP_ICONS[i] ?? AGENT_CHIP_FALLBACK_ICON}
               <span>{withEmphasis(bullet)}</span>
             </li>
           ))}
