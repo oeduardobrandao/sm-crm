@@ -366,6 +366,62 @@ describe('buildHistoryEntries', () => {
       diff: { before: 'texto a', after: 'texto b' },
     });
   });
+
+  it('diffs only the text after LEGENDA when ig_caption is empty', () => {
+    const h = history(
+      [
+        ev({
+          id: 1,
+          to_status: 'enviado_cliente',
+          created_at: '2026-09-01T10:00:00.000Z',
+          snapshot: {
+            conteudo_plain: 'GANCHO: segredo interno\nLEGENDA: legenda antiga',
+            ig_caption: '',
+          },
+        }),
+        ev({
+          id: 2,
+          to_status: 'enviado_cliente',
+          created_at: '2026-09-02T10:00:00.000Z',
+          snapshot: {
+            conteudo_plain: 'GANCHO: outro segredo interno\nLegenda:\n\nlegenda nova',
+            ig_caption: null,
+          },
+        }),
+      ],
+      [],
+    );
+    const entries = buildHistoryEntries(h);
+    expect(entries[1]).toMatchObject({
+      kind: 'send',
+      version: 2,
+      diff: { before: 'legenda antiga', after: 'legenda nova' },
+    });
+  });
+
+  it('produces no diff when only the pre-LEGENDA internal notes changed', () => {
+    const h = history(
+      [
+        ev({
+          id: 1,
+          to_status: 'enviado_cliente',
+          created_at: '2026-09-01T10:00:00.000Z',
+          snapshot: { conteudo_plain: 'notas v1\nLEGENDA: mesma legenda', ig_caption: '' },
+        }),
+        ev({
+          id: 2,
+          to_status: 'enviado_cliente',
+          created_at: '2026-09-02T10:00:00.000Z',
+          snapshot: {
+            conteudo_plain: 'notas v2 bem diferentes\nLEGENDA: mesma legenda',
+            ig_caption: '',
+          },
+        }),
+      ],
+      [],
+    );
+    expect(buildHistoryEntries(h)[1]).toMatchObject({ kind: 'send', version: 2, diff: null });
+  });
 });
 
 describe('selectComments', () => {
