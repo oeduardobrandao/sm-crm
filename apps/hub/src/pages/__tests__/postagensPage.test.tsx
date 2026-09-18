@@ -274,6 +274,25 @@ describe('PostagensPage', () => {
     expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
   });
 
+  it('resets a fluxo filter whose option disappears after a refetch', async () => {
+    const both = [
+      post({ id: 1, titulo: 'A' }),
+      post({ id: 2, titulo: 'Solta', workflow_id: null, workflow_titulo: null }),
+    ];
+    const avulsoGone = [post({ id: 1, titulo: 'A' })];
+    mockedFetchPosts
+      .mockResolvedValueOnce(response({ posts: both }))
+      .mockResolvedValue(response({ posts: avulsoGone }));
+    const { qc } = renderPage(BASE);
+    await screen.findByRole('button', { name: 'Abrir Solta' });
+    fireEvent.click(screen.getByRole('button', { name: /Avulsas \(/ }));
+    expect(screen.queryByRole('button', { name: 'Abrir A' })).not.toBeInTheDocument();
+    // The agency removes the avulso post; the fluxo chips unmount (one option left).
+    await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
+    expect(await screen.findByRole('button', { name: 'Abrir A' })).toBeInTheDocument();
+    expect(screen.queryByText(/Nenhuma postagem encontrada/)).not.toBeInTheDocument();
+  });
+
   it('select mode toggles checkboxes and opens the feed preview', async () => {
     mockedFetchInstagramFeed.mockResolvedValue({
       profile: {

@@ -101,6 +101,15 @@ export function PostagensPage() {
     setFluxoFilter('all');
   }, [currentId, allVisible, visiblePosts]);
 
+  // FluxoFilterChips unmounts itself with a single option, so a selected fluxo that
+  // vanishes in a refetch (its last post was deleted or unpublished) would leave the
+  // grid empty with no control to clear it. Fall back to "Todos".
+  useEffect(() => {
+    if (fluxoFilter !== 'all' && !fluxoOptions.some((o) => o.key === fluxoFilter)) {
+      setFluxoFilter('all');
+    }
+  }, [fluxoFilter, fluxoOptions]);
+
   const approvals = data?.postApprovals ?? [];
   const instagramProfile = data?.instagramProfile ?? null;
 
