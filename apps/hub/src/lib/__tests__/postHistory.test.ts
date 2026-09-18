@@ -340,6 +340,32 @@ describe('buildHistoryEntries', () => {
       diff: { before: 'texto a', after: 'texto b' },
     });
   });
+
+  it('falls back to conteudo_plain when ig_caption is an empty string, not just null', () => {
+    const h = history(
+      [
+        ev({
+          id: 1,
+          to_status: 'enviado_cliente',
+          created_at: '2026-09-01T10:00:00.000Z',
+          snapshot: { conteudo_plain: 'texto a', ig_caption: '' },
+        }),
+        ev({
+          id: 2,
+          to_status: 'enviado_cliente',
+          created_at: '2026-09-02T10:00:00.000Z',
+          snapshot: { conteudo_plain: 'texto b', ig_caption: '' },
+        }),
+      ],
+      [],
+    );
+    const entries = buildHistoryEntries(h);
+    expect(entries[1]).toMatchObject({
+      kind: 'send',
+      version: 2,
+      diff: { before: 'texto a', after: 'texto b' },
+    });
+  });
 });
 
 describe('selectComments', () => {

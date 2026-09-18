@@ -67,7 +67,7 @@ function sortedApprovals(history: PostHistoryResponse): PostHistoryApproval[] {
 
 function snapshotText(event: PostHistoryEvent): string | null {
   if (!event.snapshot) return null;
-  return event.snapshot.ig_caption ?? event.snapshot.conteudo_plain ?? '';
+  return event.snapshot.ig_caption || event.snapshot.conteudo_plain || '';
 }
 
 const KIND_ORDER: Record<HistoryEntry['kind'], number> = { send: 0, approval: 1, status: 2 };
