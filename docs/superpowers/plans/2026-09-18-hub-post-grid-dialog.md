@@ -12,7 +12,12 @@
 
 ## Global Constraints
 
-- Branch off the correction-flow branch (`claude/post-approval-history-5938fa`), stacked: this plan depends on `useEditSuggestion.dirty`, the optional-motivo `CorrectionReasonChips` and the `shared.salvarEdicao` / `shared.enviarCorrecao` / `shared.fechar` / `shared.discardCorrectionConfirm` / `shared.saveFailedRetry` i18n keys that exist there.
+- **Step 0 (before Task 1):** the correction-flow rework on `claude/post-approval-history-5938fa` is still **uncommitted** (15 modified files: `CorrectionReasonChips.tsx`, the three cards and their tests, `useEditSuggestion.ts`, `hubPostsLocale.test.ts`, both `hubPosts.json`, spec 2026-09-17, `hub-functions_test.ts`, `hub-approve/handler.ts`). Commit them on that branch first (`git add -A && git commit`), then create the stacked branch for this plan from it. This plan depends on `useEditSuggestion.dirty`, the optional-motivo `CorrectionReasonChips` and the `shared.salvarEdicao` / `shared.enviarCorrecao` / `shared.fechar` / `shared.discardCorrectionConfirm` / `shared.saveFailedRetry` i18n keys that exist there.
+- Successful Aprovar / Enviar correção shows a flash banner (`shared.postApproved`, `instagramCard.postApprovedAndScheduled` when `res.scheduled`, `shared.correctionSent`: the existing keys the cards use today) at the top of the next post's panel for 3 s; the Hub has no toast library, so the outer `PostDetailDialog` owns this state (it survives the `key` change). Those three keys stay in the JSON (Task 11 must not delete them).
+- `PostMediaLightbox` opens on top of a **modal** Radix dialog: Radix sets `body { pointer-events: none }` and would close the dialog on Esc / outside pointerdown. So: the lightbox root gets `pointer-events-auto`, and the dialog's `close()` returns early while `lightboxIdx !== null` (both Esc paths and the scrim then only close the lightbox).
+- `Dialog.Content` is `fixed inset-0`, so the scrim is Content, not Overlay: overlay-click-to-close is a `onClick={(e) => e.target === e.currentTarget && close()}` on the wrapper inside Content, not `onPointerDownOutside`.
+- Prev/next arrows render **once** (one pair; CSS repositions them on `md:`), the header X is labelled `posts.closeDialog` ("Fechar postagem"), and `StatusTag` is rendered once in the dialog (header only): jsdom ignores responsive classes, so duplicated controls make `getByRole` throw.
+- Closing the dialog navigates with `{ replace: true }` (both open and close replace), so browser Back from the list leaves the page instead of reopening the post.
 - No em-dashes in any user-facing string (i18n JSON, fallbacks, aria labels). Use a period, colon or "·".
 - `←`/`→` inside the dialog always mean previous/next **post**, never slides.
 - Aprovar gate: `submitting || approvalBlocked || dirty || panelDirty` (where `panelDirty` = staged content differs, or comentário typed, or motivo chosen). Fechar/Esc/prev/next/strip: disabled while `dirty` (save in flight or failed); otherwise ask `shared.discardCorrectionConfirm` when `panelDirty`.
@@ -37,7 +42,8 @@
 | `packages/i18n/locales/{pt,en}/hubPosts.json` | new `posts.*` and `postagens.filter.fluxo*` keys; removed dead card keys (Task 11) |
 | `apps/hub/src/lib/postView.ts` | adds `STATUS_COLORS`, `getPostPublishState`, `getPostCover`, `deriveCaption`, `sortPostsChronologically` |
 | `apps/hub/src/hooks/usePostNavigation.ts` | pure prev/next/nextPending over a post array |
-| `apps/hub/src/components/ui/HubDialog.tsx` | Radix Dialog wrapper: portal to body, overlay, guarded close |
+| `apps/hub/src/components/ui/HubDialog.tsx` | Radix Dialog wrapper: portal into `.hub-root`, overlay, guarded close |
+| `apps/hub/src/components/PostMediaLightbox.tsx` | gains `pointer-events-auto` on its root so it works above the modal dialog (Task 8) |
 | `apps/hub/src/components/posts/StatusTag.tsx` | status pill moved out of `PostagensPage` |
 | `apps/hub/src/components/posts/PostTile.tsx` | one 4:5 tile (media / text / autocleaned / lost) |
 | `apps/hub/src/components/posts/StoriesRail.tsx` | ring avatars for stories |
@@ -76,8 +82,9 @@ In `packages/i18n/locales/pt/hubPosts.json`, add a top-level `"posts"` object af
     "previous": "Post anterior",
     "next": "Próximo post",
     "counter": "{{current}} de {{total}}",
-    "close": "Fechar",
+    "closeDialog": "Fechar postagem",
     "openTile": "Abrir {{title}}",
+    "openStory": "Ver story {{title}}",
     "tabCaption": "Legenda",
     "tabText": "Texto",
     "tabHistory": "Histórico e comentários",
@@ -116,8 +123,9 @@ Same shape in `packages/i18n/locales/en/hubPosts.json`:
     "previous": "Previous post",
     "next": "Next post",
     "counter": "{{current}} of {{total}}",
-    "close": "Close",
+    "closeDialog": "Close post",
     "openTile": "Open {{title}}",
+    "openStory": "View story {{title}}",
     "tabCaption": "Caption",
     "tabText": "Text",
     "tabHistory": "History and comments",
@@ -155,6 +163,7 @@ In `apps/hub/src/lib/__tests__/hubPostsLocale.test.ts`, add to the key list insi
       'posts.previous',
       'posts.next',
       'posts.counter',
+      'posts.closeDialog',
       'posts.tabCaption',
       'posts.tabText',
       'posts.tabHistory',
@@ -563,6 +572,19 @@ describe('HubDialog', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
+  it('reports outside for a click on the scrim but not on content', () => {
+    const onRequestClose = vi.fn();
+    render(
+      <HubDialog open onRequestClose={onRequestClose} title="T">
+        <p>x</p>
+      </HubDialog>,
+    );
+    fireEvent.click(screen.getByText('x'));
+    expect(onRequestClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('hub-dialog-scrim'));
+    expect(onRequestClose).toHaveBeenCalledWith('outside');
+  });
+
   it('renders nothing when closed', () => {
     render(
       <HubDialog open={false} onRequestClose={vi.fn()} title="T">
@@ -632,16 +654,23 @@ export function HubDialog({
             e.preventDefault();
             onRequestClose('escape');
           }}
-          onPointerDownOutside={(e) => {
-            e.preventDefault();
-            onRequestClose('outside');
-          }}
+          // Content is fixed inset-0, so it IS the scrim: Radix's "outside" events
+          // never fire. Swallow them and detect scrim clicks on the wrapper below.
+          onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
-          className={`fixed inset-0 z-[9000] flex items-center justify-center p-0 md:p-6 focus:outline-none ${className}`}
+          className={`fixed inset-0 z-[9000] focus:outline-none ${className}`}
         >
           <Dialog.Title className="sr-only">{title}</Dialog.Title>
           <Dialog.Description className="sr-only">{title}</Dialog.Description>
-          {children}
+          <div
+            data-testid="hub-dialog-scrim"
+            className="w-full h-full flex items-center justify-center p-0 md:p-6"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) onRequestClose('outside');
+            }}
+          >
+            {children}
+          </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -1149,7 +1178,7 @@ describe('PostGrid', () => {
     render(
       <PostGrid posts={posts} mode="browse" selectedIds={new Set()} onOpen={onOpen} onToggle={vi.fn()} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir Story B' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver story Story B' }));
     expect(onOpen).toHaveBeenCalledWith(2);
   });
 
@@ -1160,7 +1189,7 @@ describe('PostGrid', () => {
     const boxes = screen.getAllByRole('checkbox');
     expect(boxes).toHaveLength(1);
     expect(boxes[0]).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('button', { name: 'Abrir Story B' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ver story Story B' })).toBeDisabled();
   });
 });
 ```
@@ -1204,7 +1233,7 @@ export function StoriesRail({ posts, onOpen, dimmed }: StoriesRailProps) {
             <button
               type="button"
               disabled={dimmed}
-              aria-label={t('posts.openTile', 'Abrir {{title}}', { title: post.titulo })}
+              aria-label={t('posts.openStory', 'Ver story {{title}}', { title: post.titulo })}
               onClick={() => onOpen(post.id)}
               className="relative w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-[#feda75] via-[#d62976] to-[#4f5bd5] hub-focus-accent focus:outline-none disabled:cursor-default"
             >
@@ -2009,6 +2038,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `apps/hub/src/components/posts/PostDetailDialog.tsx`
+- Modify: `apps/hub/src/components/PostHistoryPanel.tsx` (`defaultOpen` prop)
+- Modify: `apps/hub/src/components/PostMediaLightbox.tsx:90` (`pointer-events-auto`)
 - Test: `apps/hub/src/components/posts/__tests__/PostDetailDialog.test.tsx`
 
 **Interfaces:**
@@ -2120,10 +2151,17 @@ describe('PostDetailDialog', () => {
     expect(screen.getByRole('list', { name: 'Outros posts' })).toBeInTheDocument();
   });
 
-  it('hides Aprovar/Corrigir for a non-pending post', () => {
+  it('hides Aprovar/Corrigir for a non-pending post and shows the status once', () => {
     renderDialog(2);
     expect(screen.queryByRole('button', { name: /Aprovar/ })).not.toBeInTheDocument();
-    expect(screen.getByText('Aprovado')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Corrigir/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Aprovado')).toHaveLength(1);
+  });
+
+  it('renders exactly one prev and one next control', () => {
+    renderDialog(2);
+    expect(screen.getAllByRole('button', { name: 'Post anterior' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Próximo post' })).toHaveLength(1);
   });
 
   it('navigates with arrows, keys and the strip', () => {
@@ -2182,6 +2220,25 @@ describe('PostDetailDialog', () => {
     await waitFor(() => expect(submitApprovalMock).toHaveBeenCalledWith('token-publico', 3, 'aprovado', undefined));
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(5));
     expect(calls).toEqual(['navigate', 'invalidate']);
+    expect(screen.getByText('Post aprovado!')).toBeInTheDocument();
+  });
+
+  it('shows the scheduled flash when the approval auto-scheduled the post', async () => {
+    submitApprovalMock.mockResolvedValue({ ok: true, scheduled: true });
+    renderDialog(1);
+    fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
+    expect(await screen.findByText('Post aprovado e agendado para publicação!')).toBeInTheDocument();
+  });
+
+  it('Esc with the lightbox open closes only the lightbox', () => {
+    const { onNavigate } = renderDialog(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir mídia 1' }));
+    // PostMediaLightbox is its own role="dialog" (unnamed) portalled into body.
+    expect(screen.getAllByRole('dialog')).toHaveLength(2);
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Primeiro' }), { key: 'Escape' });
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getByRole('dialog', { name: 'Primeiro' })).toBeInTheDocument();
   });
 
   it('closes after the action when no other pending post remains', async () => {
@@ -2191,6 +2248,14 @@ describe('PostDetailDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /Enviar correção/ }));
     await waitFor(() => expect(submitApprovalMock).toHaveBeenCalledWith('token-publico', 1, 'correcao', '', undefined));
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(null));
+  });
+
+  it('shows the correction flash on the next post', async () => {
+    submitApprovalMock.mockResolvedValue({ ok: true });
+    renderDialog(1);
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Enviar correção/ }));
+    expect(await screen.findByText('Correção enviada!')).toBeInTheDocument();
   });
 
   it('shows the error and stays when submit fails', async () => {
@@ -2260,11 +2325,24 @@ interface PostDetailDialogProps {
   onApprovalSubmitted: () => void;
 }
 
+type Flash = 'approved' | 'approvedScheduled' | 'correctionSent';
+
 export function PostDetailDialog(props: PostDetailDialogProps) {
   const { posts, currentId, onNavigate } = props;
   const { t } = useTranslation('hubPosts');
   const nav = usePostNavigation(posts, currentId);
   const open = currentId !== null;
+  // The flash outlives the per-post content (which remounts via key on auto-advance):
+  // the Hub has no toast library, so the confirmation rides along to the next post.
+  const [flash, setFlash] = useState<Flash | null>(null);
+  useEffect(() => {
+    if (!flash) return;
+    const id = window.setTimeout(() => setFlash(null), 3000);
+    return () => window.clearTimeout(id);
+  }, [flash]);
+  useEffect(() => {
+    if (!open) setFlash(null);
+  }, [open]);
 
   if (open && !nav.current) {
     return (
@@ -2272,7 +2350,7 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
         <div className="hub-bg-card rounded-2xl w-[min(420px,calc(100vw-2rem))] p-6 text-center space-y-4">
           <p className="text-[14px] hub-tx2">{t('posts.notAvailable', 'Esta postagem não está disponível.')}</p>
           <button type="button" onClick={() => onNavigate(null)} className="hub-btn-secondary rounded-[var(--hub-r-ctl)] px-4 py-2 text-[13px] font-semibold">
-            {t('posts.close', 'Fechar')}
+            {t('shared.fechar', 'Fechar')}
           </button>
         </div>
       </HubDialog>
@@ -2281,13 +2359,18 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
 
   if (!nav.current) return null;
   // key={post.id}: every piece of per-post state (edit hook, panel, tabs, lightbox) resets on navigation.
-  return <PostDetailContent key={nav.current.id} {...props} post={nav.current} nav={nav} />;
+  return <PostDetailContent key={nav.current.id} {...props} post={nav.current} nav={nav} flash={flash} onFlash={setFlash} />;
 }
 
-type ContentProps = PostDetailDialogProps & { post: HubPost; nav: ReturnType<typeof usePostNavigation> };
+type ContentProps = PostDetailDialogProps & {
+  post: HubPost;
+  nav: ReturnType<typeof usePostNavigation>;
+  flash: Flash | null;
+  onFlash: (f: Flash) => void;
+};
 
 function PostDetailContent({
-  posts, post, nav, token, approvals, workspaceName, isAutoPublish, onNavigate, onApprovalSubmitted,
+  posts, post, nav, token, approvals, isAutoPublish, onNavigate, onApprovalSubmitted, flash, onFlash,
 }: ContentProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -2325,8 +2408,11 @@ function PostDetailContent({
     [guard, onNavigate],
   );
   const close = useCallback(() => {
+    // Radix reports Esc / scrim clicks even when the lightbox (portalled to body,
+    // above us) is what the user is dismissing: let the lightbox handle those.
+    if (lightboxIdx !== null) return;
     if (guard()) onNavigate(null);
-  }, [guard, onNavigate]);
+  }, [guard, onNavigate, lightboxIdx]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -2348,11 +2434,13 @@ function PostDetailContent({
     setSubmitting(true);
     setError(null);
     try {
-      if (action === 'correcao') await submitApproval(token, post.id, 'correcao', comentario, motivo ?? undefined);
-      else await submitApproval(token, post.id, 'aprovado', undefined);
+      let res: { scheduled?: boolean } | undefined;
+      if (action === 'correcao') res = await submitApproval(token, post.id, 'correcao', comentario, motivo ?? undefined);
+      else res = await submitApproval(token, post.id, 'aprovado', undefined);
       // Snapshot BEFORE invalidation: on Aprovações the post leaves the list and indices shift.
       const next = nav.nextPending;
       setPanelDirty(false);
+      onFlash(action === 'correcao' ? 'correctionSent' : res?.scheduled ? 'approvedScheduled' : 'approved');
       onNavigate(next?.id ?? null);
       onApprovalSubmitted();
     } catch {
@@ -2441,6 +2529,9 @@ function PostDetailContent({
     </p>
   );
 
+  // One pair only (jsdom ignores responsive classes, so a mobile + desktop pair
+  // would double every getByRole). Absolute inside the relative wrapper: on the
+  // dialog's edges at mid-height on phones, outside the card on md+.
   const navButton = (dir: 'prev' | 'next') => {
     const target = dir === 'prev' ? nav.prev : nav.next;
     return (
@@ -2449,7 +2540,9 @@ function PostDetailContent({
         aria-label={dir === 'prev' ? t('posts.previous', 'Post anterior') : t('posts.next', 'Próximo post')}
         disabled={!target || dirty}
         onClick={() => go(target)}
-        className="w-10 h-10 rounded-full bg-white/90 text-[#222] flex items-center justify-center shadow disabled:opacity-30 disabled:cursor-default"
+        className={`absolute z-30 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 text-[#222] flex items-center justify-center shadow disabled:opacity-30 disabled:cursor-default ${
+          dir === 'prev' ? 'left-2 md:-left-14' : 'right-2 md:-right-14'
+        }`}
       >
         {dir === 'prev' ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
       </button>
@@ -2458,10 +2551,20 @@ function PostDetailContent({
 
   const singleColumn = kind === 'text';
 
+  const flashText =
+    flash === 'approved'
+      ? t('shared.postApproved', 'Post aprovado!')
+      : flash === 'approvedScheduled'
+        ? t('instagramCard.postApprovedAndScheduled', 'Post aprovado e agendado para publicação!')
+        : flash === 'correctionSent'
+          ? t('shared.correctionSent', 'Correção enviada!')
+          : null;
+
   return (
     <HubDialog open onRequestClose={close} title={post.titulo}>
-      <div className="relative w-full h-full md:h-auto md:w-auto flex items-center justify-center gap-3">
-        <span className="hidden md:block">{navButton('prev')}</span>
+      <div className="relative w-full h-full md:h-auto md:w-auto flex items-center justify-center">
+        {navButton('prev')}
+        {navButton('next')}
         <div
           className={`hub-bg-card md:rounded-2xl overflow-hidden flex flex-col md:grid w-full h-full md:h-[min(92vh,820px)] ${
             singleColumn ? 'md:w-[min(560px,calc(100vw-7rem))]' : 'md:w-[min(1040px,calc(100vw-7rem))] md:grid-cols-[1.15fr_1fr]'
@@ -2477,8 +2580,12 @@ function PostDetailContent({
           )}
 
           <div className="flex flex-col min-h-0 flex-1">
+            {flashText && (
+              <p role="status" className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-emerald-50 text-emerald-800 border-b border-emerald-200/60">
+                <CheckCircle size={14} aria-hidden="true" /> {flashText}
+              </p>
+            )}
             <div className="flex items-start gap-3 px-4 pt-4 pb-3 border-b hub-border">
-              <div className="md:hidden flex items-center gap-1 -ml-1">{navButton('prev')}{navButton('next')}</div>
               <div className="flex-1 min-w-0 space-y-2">
                 <h3 className="font-display text-[18px] leading-[1.15] hub-txt">{post.titulo}</h3>
                 {chips}
@@ -2490,7 +2597,7 @@ function PostDetailContent({
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <SharePostButton postId={post.id} />
-                <button type="button" onClick={close} aria-label={t('posts.close', 'Fechar')} className="w-8 h-8 rounded-full hub-bg-soft hub-tx2 flex items-center justify-center">
+                <button type="button" onClick={close} aria-label={t('posts.closeDialog', 'Fechar postagem')} className="w-8 h-8 rounded-full hub-bg-soft hub-tx2 flex items-center justify-center">
                   <X size={16} />
                 </button>
               </div>
@@ -2563,6 +2670,7 @@ function PostDetailContent({
               })}
             </ul>
 
+            {(isPending || (post.status === 'postado' && post.instagram_permalink)) && (
             <div className="px-4 py-3 border-t hub-border hub-bg-soft shrink-0 space-y-2">
               {error && <p className="text-[12px] text-rose-700 bg-rose-50 rounded-lg px-3 py-2">{error}</p>}
               {isPending ? (
@@ -2585,20 +2693,18 @@ function PostDetailContent({
                     <CheckCircle size={15} /> {saveState === 'saving' ? t('shared.saving', 'Salvando...') : t('shared.aprovar', 'Aprovar')}
                   </button>
                 </div>
-              ) : (
-                <div className="flex items-center justify-between gap-2">
-                  <StatusTag status={getPostPublishState(post)} size="md" />
-                  {post.status === 'postado' && post.instagram_permalink && (
-                    <a href={sanitizeExternalUrl(post.instagram_permalink)} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold" style={{ color: 'var(--hub-acc)' }}>
-                      {t('shared.viewOnInstagram', 'Ver no Instagram')}
-                    </a>
-                  )}
+              ) : post.status === 'postado' && post.instagram_permalink ? (
+                // The status already sits in the header chips; only the permalink lives here.
+                <div className="flex items-center justify-end">
+                  <a href={sanitizeExternalUrl(post.instagram_permalink)} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold" style={{ color: 'var(--hub-acc)' }}>
+                    {t('shared.viewOnInstagram', 'Ver no Instagram')}
+                  </a>
                 </div>
-              )}
+              ) : null}
             </div>
+            )}
           </div>
         </div>
-        <span className="hidden md:block">{navButton('next')}</span>
       </div>
 
       {lightboxIdx !== null && post.media.length > 0 && (
@@ -2611,7 +2717,11 @@ function PostDetailContent({
 
 Add the missing key `posts.correct` to both locale files (`"correct": "Corrigir"` / `"correct": "Correct"`) and to the key list in `hubPostsLocale.test.ts`.
 
-`PostHistoryPanel` currently renders collapsed behind its own toggle. Add an optional `defaultOpen?: boolean` prop to `apps/hub/src/components/PostHistoryPanel.tsx` that seeds its `open` state (find the `useState(false)` that controls the toggle and change it to `useState(!!defaultOpen)`), so the Histórico tab shows the content immediately. `workspaceName` is accepted for parity with the old cards but unused by the dialog; drop it from the destructuring if lint flags it.
+`PostHistoryPanel` currently renders collapsed behind its own toggle. Add an optional `defaultOpen?: boolean` prop to `apps/hub/src/components/PostHistoryPanel.tsx` that seeds its `open` state: the toggle is the single `const [open, setOpen] = useState(false);` at line 55; change it to `useState(!!defaultOpen)`, so the Histórico tab shows the content immediately. Its toggle button text is "Histórico e comentários" (line 209), the same as the dialog's tab: the tests above query the tab with `getByRole('tab', ...)` and never `getByRole('button', { name: 'Histórico e comentários' })`; keep it that way.
+
+`workspaceName` stays in `PostDetailDialogProps` (the pages pass it) but is intentionally NOT destructured in `PostDetailContent`: an unused destructured binding fails `npm run lint`.
+
+`PostMediaLightbox` portals into `document.body`, and Radix sets `pointer-events: none` on `body` while the modal dialog is open, which would make every click in the lightbox dead. In `apps/hub/src/components/PostMediaLightbox.tsx` add `pointer-events-auto` to the root div's className (line 90: `"fixed inset-0 z-[9005] pointer-events-auto flex items-center justify-center bg-black/90"`). The dialog's `close()` early-returns while the lightbox is open, so Esc and scrim clicks only dismiss the lightbox.
 
 - [ ] **Step 4: Run the test**
 
@@ -2626,7 +2736,7 @@ Expected: clean. If duplicate `@tiptap/core` errors appear, run `npm ci` and ret
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/hub/src/components/posts/PostDetailDialog.tsx apps/hub/src/components/posts/__tests__/PostDetailDialog.test.tsx apps/hub/src/components/PostHistoryPanel.tsx packages/i18n/locales/pt/hubPosts.json packages/i18n/locales/en/hubPosts.json apps/hub/src/lib/__tests__/hubPostsLocale.test.ts
+git add apps/hub/src/components/posts/PostDetailDialog.tsx apps/hub/src/components/posts/__tests__/PostDetailDialog.test.tsx apps/hub/src/components/PostHistoryPanel.tsx apps/hub/src/components/PostMediaLightbox.tsx packages/i18n/locales/pt/hubPosts.json packages/i18n/locales/en/hubPosts.json apps/hub/src/lib/__tests__/hubPostsLocale.test.ts
 git commit -m "feat(hub): PostDetailDialog with split pane, strip, correction panel and auto-advance
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -2652,7 +2762,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { HubContext } from '../../HubContext';
@@ -2707,10 +2817,10 @@ function LocationProbe() {
   return <span data-testid="location">{loc.pathname}</span>;
 }
 
-function renderPage(path: string, resp: HubPostsResponse) {
-  mockedFetchPosts.mockResolvedValue(resp);
+function renderPage(path: string, resp?: HubPostsResponse) {
+  if (resp) mockedFetchPosts.mockResolvedValue(resp);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={qc}>
       <HubContext.Provider value={hubValue}>
         <MemoryRouter initialEntries={[path]}>
@@ -2722,6 +2832,7 @@ function renderPage(path: string, resp: HubPostsResponse) {
       </HubContext.Provider>
     </QueryClientProvider>,
   );
+  return { ...result, qc };
 }
 
 const BASE = '/mesaas/hub/token-publico/postagens';
@@ -2769,7 +2880,7 @@ describe('PostagensPage', () => {
     expect(screen.getByRole('dialog', { name: 'A' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
     expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}/2`);
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getByTestId('location')).toHaveTextContent(BASE);
   });
@@ -2785,22 +2896,19 @@ describe('PostagensPage', () => {
     expect(await screen.findByText('Esta postagem não está disponível.')).toBeInTheDocument();
   });
 
-  it('deep link to a post hidden by a filter resets the filters', async () => {
-    renderPage(BASE, response({
-      posts: [post({ id: 1, titulo: 'A' }), post({ id: 2, titulo: 'B', status: 'aprovado_cliente' })],
-    }));
-    await screen.findByRole('button', { name: 'Abrir A' });
+  it('a background refetch that moves the open post out of the active filter resets the filters', async () => {
+    const pending = [post({ id: 1, titulo: 'A' }), post({ id: 2, titulo: 'B' })];
+    const afterApproval = [post({ id: 1, titulo: 'A' }), post({ id: 2, titulo: 'B', status: 'aprovado_cliente' })];
+    mockedFetchPosts.mockResolvedValueOnce(response({ posts: pending })).mockResolvedValue(response({ posts: afterApproval }));
+    const { qc } = renderPage(BASE);
+    await screen.findByRole('button', { name: 'Abrir B' });
     fireEvent.click(screen.getByRole('button', { name: /Aguardando aprovação \(/ }));
-    expect(screen.queryByRole('button', { name: 'Abrir B' })).not.toBeInTheDocument();
-    // Simulate arriving at /2 while the filter hides it (e.g. via the strip in another tab):
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir A' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Todos \(/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Abrir B' }));
-    fireEvent.click(screen.getByRole('button', { name: /Aguardando aprovação \(/, hidden: true }));
     expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Todos \(/, hidden: true })).toHaveAttribute('aria-pressed', 'true');
+    // The agency approves B elsewhere; the next refetch drops it out of the "Aguardando" filter.
+    await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Todos \(/, hidden: true })).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
   });
 
   it('select mode toggles checkboxes and opens the feed preview', async () => {
@@ -2965,8 +3073,9 @@ export function PostagensPage() {
     [allVisible, statusFilter, fluxoFilter],
   );
 
-  // A deep link (or the strip) can land on a post the active filters hide: reset them
-  // so the dialog's strip and prev/next match what the grid shows.
+  // Filters start at "Todos", so a deep link never lands on a hidden post. What can:
+  // a background refetch moving the OPEN post out of the active status filter
+  // (the agency approved it meanwhile). Reset so the strip and prev/next match the grid.
   useEffect(() => {
     if (currentId === null || currentId === -1) return;
     if (!allVisible.some((p) => p.id === currentId)) return;
@@ -3003,7 +3112,7 @@ export function PostagensPage() {
   const handleCloseGrid = useCallback(() => setShowGrid(false), []);
   const handleOpen = useCallback((id: number) => navigate(`${base}/${id}`), [navigate, base]);
   const handleNavigate = useCallback(
-    (id: number | null) => (id === null ? navigate(base) : navigate(`${base}/${id}`, { replace: true })),
+    (id: number | null) => (id === null ? navigate(base, { replace: true }) : navigate(`${base}/${id}`, { replace: true })),
     [navigate, base],
   );
 
@@ -3095,7 +3204,7 @@ Also add a route-shape test to `postagensPage.test.tsx`:
     await screen.findByRole('button', { name: 'Abrir A' });
     fireEvent.click(screen.getByRole('button', { name: /Aprovado \(/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Abrir B' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Aprovado \(/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('button', { name: 'Abrir A' })).not.toBeInTheDocument();
@@ -3105,7 +3214,7 @@ Also add a route-shape test to `postagensPage.test.tsx`:
 - [ ] **Step 6: Run the tests**
 
 Run: `npx vitest run apps/hub/src/pages/__tests__/postagensPage.test.tsx`
-Expected: PASS. The "hidden by a filter" test exercises the reset effect through the strip: if it proves awkward, replace its body with a direct render at `${BASE}/2` after seeding `statusFilter` via a query param is NOT available; instead assert the simpler contract: render at `${BASE}/2` with post 2 `aprovado_cliente`, then confirm the dialog shows and both "Todos" chips are `aria-pressed="true"`.
+Expected: PASS. Filters are page-local state that starts at "Todos", so a deep link can never land on a filtered-out post; the only real trigger for the filter-reset effect is a background refetch changing the open post's status while a filter is active, which is what the refetch test exercises via `qc.invalidateQueries`.
 
 - [ ] **Step 7: Commit**
 
@@ -3248,7 +3357,7 @@ export function AprovacoesPage() {
   const handleCloseGrid = useCallback(() => setShowGrid(false), []);
   const handleOpen = useCallback((id: number) => navigate(`${base}/${id}`), [navigate, base]);
   const handleNavigate = useCallback(
-    (id: number | null) => (id === null ? navigate(base) : navigate(`${base}/${id}`, { replace: true })),
+    (id: number | null) => (id === null ? navigate(base, { replace: true }) : navigate(`${base}/${id}`, { replace: true })),
     [navigate, base],
   );
 
@@ -3347,7 +3456,7 @@ Expected: only the two spec docs mention them (leave the docs). Fix any code hit
 
 - [ ] **Step 3: Remove dead i18n keys**
 
-From both `hubPosts.json` files delete: `aprovacoes.storiesHeader`, `aprovacoes.noMediaHeader`, `postagens.clickToExpand`, `postagens.postCount`, `postagens.avulsoGroupTitle`, `instagramCard.editCaptionHint`, `instagramCard.likeAriaLabel`, `instagramCard.suggestionRejected`, `instagramCard.verMenos`, `instagramCard.verMais`, `instagramCard.scheduledPrefix`, `instagramCard.scheduledBannerTitle`, `instagramCard.publishedBannerTitle`, `instagramCard.postApprovedAndScheduled`, `storyCard.replyPlaceholder`, `shared.suggestionPendingReviewShort`, `shared.postApproved`, `shared.correctionSent`, `shared.correcaoShort`, `postagemFoco.backLink`, `postagemFoco.loadError`, `postagemFoco.retry`, `postagemFoco.notAvailable` (the whole `postagemFoco` object).
+From both `hubPosts.json` files delete: `aprovacoes.storiesHeader`, `aprovacoes.noMediaHeader`, `postagens.clickToExpand`, `postagens.postCount`, `postagens.avulsoGroupTitle`, `instagramCard.editCaptionHint`, `instagramCard.likeAriaLabel`, `instagramCard.suggestionRejected`, `instagramCard.verMenos`, `instagramCard.verMais`, `instagramCard.scheduledPrefix`, `instagramCard.scheduledBannerTitle`, `instagramCard.publishedBannerTitle`, `storyCard.replyPlaceholder`, `shared.suggestionPendingReviewShort`, `shared.correcaoShort`, `postagemFoco.backLink`, `postagemFoco.loadError`, `postagemFoco.retry`, `postagemFoco.notAvailable` (the whole `postagemFoco` object).
 
 Before deleting each key, confirm with `grep -rn "<key>" apps/hub/src packages/ui` that nothing else reads it; keep any key that is still referenced (e.g. by the Mensagens hover preview). Update the key list in `hubPostsLocale.test.ts` if it named a removed key.
 

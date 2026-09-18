@@ -98,7 +98,7 @@ The staged-edit + correction flow from the three cards, once. Owns `useEditSugge
 - Aprovar gate: `submitting || approvalBlocked || dirty || contentDirty`, as in the rework spec. Fechar disabled while `dirty` (save in flight); Fechar with anything else dirty asks `discardCorrectionConfirm`.
 - Prev/next: arrows outside the panel on desktop, in the header on phones; disabled at the ends. Counter "3 de 12" over the media.
 - Keys: `←`/`→` always mean previous/next **post**. Slides use dots, swipe and the on-media arrows only. `Esc` closes. Both guarded by the dirty confirm. The dialog's keydown handler ignores events whose target is an `input`, `textarea` or `contenteditable` (caret movement in the comentário, caption and TipTap fields must work), and is inactive while `PostMediaLightbox` is open (the lightbox owns `←`/`→`/`Esc` for its slides; two window listeners must not both fire).
-- After `submitApproval` resolves: `toast.success`, compute `nextPending` = first post after the current one (wrapping) with `status === 'enviado_cliente'` from the `posts` array **as it was before the action**, call `onNavigate(nextPending?.id ?? null)`, then `onApprovalSubmitted()` (query invalidation). Order matters: invalidation on Aprovações removes the post from the list and shifts indices.
+- After `submitApproval` resolves: set the flash (`shared.postApproved`, or `instagramCard.postApprovedAndScheduled` when the response has `scheduled: true`, or `shared.correctionSent`; the Hub has no toast library, so the outer dialog renders it as a banner above the next post's header for 3 s), compute `nextPending` = first post after the current one (wrapping) with `status === 'enviado_cliente'` from the `posts` array **as it was before the action**, call `onNavigate(nextPending?.id ?? null)`, then `onApprovalSubmitted()` (query invalidation). Order matters: invalidation on Aprovações removes the post from the list and shifts indices.
 
 ### `usePostNavigation(posts, currentId)`
 
@@ -150,7 +150,7 @@ No schema, RPC or edge-function changes. Uses `fetchPosts`, `submitApproval`, `f
 | Case | Behaviour |
 |---|---|
 | Tile/pane media fails to load | `MediaUnavailable`; dialog stays usable |
-| `submitApproval` rejects | `toast.error`, stay on the post, buttons re-enable |
+| `submitApproval` rejects | inline error banner in the footer (`posts.submitError`), stay on the post, buttons re-enable |
 | Deep link to unknown/hidden post | notAvailable state in the dialog |
 | Navigation while the correction panel is dirty | `discardCorrectionConfirm`; cancel keeps the post |
 | Save in flight (`dirty`) | Fechar, prev/next and Esc disabled until it settles |
