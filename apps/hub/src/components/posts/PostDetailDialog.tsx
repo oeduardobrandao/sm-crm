@@ -131,6 +131,10 @@ function PostDetailContent({
   const [tab, setTab] = useState<'content' | 'history'>('content');
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelDirty, setPanelDirty] = useState(false);
+  const [historyDirty, setHistoryDirty] = useState(false);
+  // Lazy first visit, then kept mounted (hidden) so a typed comment, the loaded data and
+  // open diffs survive a tab flip, and flipping does not refetch hub-post-history.
+  const [historyVisited, setHistoryVisited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -151,9 +155,10 @@ function PostDetailContent({
   const caption = deriveCaption(post, edit.isEditable ? draftIgCaption : post.ig_caption);
   const showPanel = panelOpen && isPending;
 
-  useUnsavedWork(panelDirty || submitting);
+  useUnsavedWork(panelDirty || historyDirty || submitting);
 
   const handleDirtyChange = useCallback((d: boolean) => setPanelDirty(d), []);
+  const handleHistoryDirtyChange = useCallback((d: boolean) => setHistoryDirty(d), []);
 
   // Navigation/close guard. Blocked while a save is queued or in flight (`dirty` without
   // `saveFailed`): leaving would drop it. A SETTLED failure must not lock the client in,
@@ -162,14 +167,14 @@ function PostDetailContent({
   const guard = useCallback((): boolean => {
     if (submitting) return false;
     if (dirty && !saveFailed) return false;
-    if (!saveFailed && !panelDirty) return true;
+    if (!saveFailed && !panelDirty && !historyDirty) return true;
     if (
       !window.confirm(t('shared.discardCorrectionConfirm', 'Descartar as alterações não enviadas?'))
     )
       return false;
     if (saveFailed) discardFailedSave();
     return true;
-  }, [dirty, saveFailed, discardFailedSave, submitting, panelDirty, t]);
+  }, [dirty, saveFailed, discardFailedSave, submitting, panelDirty, historyDirty, t]);
 
   const go = useCallback(
     (target: HubPost | null) => {
@@ -451,7 +456,10 @@ function PostDetailContent({
                   role="tab"
                   type="button"
                   aria-selected={tab === key}
-                  onClick={() => setTab(key)}
+                  onClick={() => {
+                    if (key === 'history') setHistoryVisited(true);
+                    setTab(key);
+                  }}
                   className={`py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors ${tab === key ? 'hub-txt border-[var(--hub-txt)]' : 'hub-tx3 border-transparent'}`}
                 >
                   {key === 'history'
@@ -464,15 +472,19 @@ function PostDetailContent({
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
-              {tab === 'history' ? (
-                <PostHistoryPanel
-                  post={post}
-                  token={token}
-                  approvals={approvals}
-                  onCommentSent={onApprovalSubmitted}
-                  defaultOpen
-                />
-              ) : showPanel ? (
+              {historyVisited && (
+                <div hidden={tab !== 'history'}>
+                  <PostHistoryPanel
+                    post={post}
+                    token={token}
+                    approvals={approvals}
+                    onCommentSent={onApprovalSubmitted}
+                    onDirtyChange={handleHistoryDirtyChange}
+                    defaultOpen
+                  />
+                </div>
+              )}
+              {tab === 'history' ? null : showPanel ? (
                 <CorrectionPanel
                   key={post.id}
                   post={post}

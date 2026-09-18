@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import { computeWordDiff } from '@mesaas/text-diff';
@@ -21,6 +21,8 @@ interface PostHistoryPanelProps {
   approvals: PostApproval[];
   onCommentSent?: () => void;
   defaultOpen?: boolean;
+  /** Reports whether an unsent comment (typed or in flight) exists, so the host can guard navigation. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 type LoadState =
@@ -56,6 +58,7 @@ export function PostHistoryPanel({
   approvals,
   onCommentSent,
   defaultOpen,
+  onDirtyChange,
 }: PostHistoryPanelProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -67,7 +70,16 @@ export function PostHistoryPanel({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
   const [openDiffs, setOpenDiffs] = useState<Set<string>>(new Set());
-  useUnsavedWork(text.trim() !== '' || sending);
+  const dirty = text.trim() !== '' || sending;
+  useUnsavedWork(dirty);
+  // Ref so a new callback identity never re-fires the effect; the unmount cleanup below
+  // must always reach the latest one and clear the parent's flag.
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+  useEffect(() => {
+    onDirtyChangeRef.current?.(dirty);
+  }, [dirty]);
+  useEffect(() => () => onDirtyChangeRef.current?.(false), []);
 
   const visible = VISIBLE_STATUSES.has(post.status);
 

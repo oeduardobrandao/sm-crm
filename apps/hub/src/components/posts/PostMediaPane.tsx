@@ -204,7 +204,7 @@ export function PostMediaPane({ post, onOpenLightbox, priority }: PostMediaPaneP
               />
               <button
                 type="button"
-                onClick={() => goTo(current + 1)}
+                onClick={() => (current >= media.length - 1 ? openAt(current) : goTo(current + 1))}
                 className="absolute right-0 top-0 w-1/3 h-full z-10"
                 aria-label={t('storyCard.nextAriaLabel', 'Próximo')}
               />

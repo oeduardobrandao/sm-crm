@@ -73,6 +73,22 @@ describe('PostMediaPane', () => {
     expect(screen.getByText('2 / 2')).toBeInTheDocument();
   });
 
+  it('story: a right tap advances, and on the last frame opens the lightbox instead of no-op', () => {
+    const onOpenLightbox = vi.fn();
+    render(
+      <PostMediaPane
+        post={post({ tipo: 'stories', media: [m(1), m(2)] })}
+        onOpenLightbox={onOpenLightbox}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+    expect(onOpenLightbox).not.toHaveBeenCalled();
+    expect(screen.getByText('2 / 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
+    expect(onOpenLightbox).toHaveBeenCalledTimes(1);
+    expect(onOpenLightbox).toHaveBeenCalledWith(1);
+  });
+
   it('shows MediaUnavailable for a lost file', () => {
     render(
       <PostMediaPane

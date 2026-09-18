@@ -8,10 +8,11 @@ import type { HubPost, HubPostMedia } from '../../../types';
 
 const submitApprovalMock = vi.hoisted(() => vi.fn());
 const submitEditSuggestionMock = vi.hoisted(() => vi.fn());
+const fetchPostHistoryMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../api', () => ({
   submitApproval: submitApprovalMock,
   submitEditSuggestion: submitEditSuggestionMock,
-  fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
+  fetchPostHistory: fetchPostHistoryMock,
 }));
 
 const hubValue = {
@@ -110,6 +111,8 @@ describe('PostDetailDialog', () => {
     // purpose); wipe it so one test's failure never leaks into the next.
     resetEditSuggestionFailuresForTests();
     vi.restoreAllMocks();
+    fetchPostHistoryMock.mockReset();
+    fetchPostHistoryMock.mockResolvedValue({ events: [], approvals: [] });
   });
 
   it('is closed when currentId is null', () => {
@@ -565,6 +568,100 @@ describe('PostDetailDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
       expect(confirm).not.toHaveBeenCalled();
       expect(onNavigate).toHaveBeenCalledWith(2);
+    });
+  });
+  describe('unsent history comment', () => {
+    const DRAFT_PLACEHOLDER = 'Escreva um comentário sobre este post';
+
+    async function typeHistoryDraft(value = 'rascunho') {
+      fireEvent.click(screen.getByRole('tab', { name: 'Histórico e comentários' }));
+      fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+      fireEvent.change(await screen.findByPlaceholderText(DRAFT_PLACEHOLDER), {
+        target: { value },
+      });
+    }
+
+    it.each([
+      ['next', () => screen.getByRole('button', { name: 'Próximo post' }), 2],
+      ['strip', () => screen.getByRole('button', { name: 'Ir para Segundo' }), 2],
+      ['close (X)', () => screen.getByRole('button', { name: 'Fechar postagem' }), null],
+    ])('asks to discard on %s; cancel stays, confirm leaves', async (_label, getBtn, target) => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const { onNavigate } = renderDialog(1);
+      await typeHistoryDraft();
+      fireEvent.click(getBtn());
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(confirm).toHaveBeenCalledWith('Descartar as alterações não enviadas?');
+      expect(onNavigate).not.toHaveBeenCalled();
+      expect(screen.getByPlaceholderText(DRAFT_PLACEHOLDER)).toHaveValue('rascunho');
+
+      confirm.mockClear();
+      confirm.mockReturnValue(true);
+      fireEvent.click(getBtn());
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith(target);
+    });
+
+    it('asks to discard on prev', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const { onNavigate } = renderDialog(2);
+      await typeHistoryDraft();
+      fireEvent.click(screen.getByRole('button', { name: 'Post anterior' }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it('asks once when both the history draft and the correction panel are dirty', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { onNavigate } = renderDialog(1);
+      fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+      fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
+        target: { value: 'x' },
+      });
+      await typeHistoryDraft();
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith(2);
+    });
+
+    it('navigates without a confirm when the composer is empty or whitespace', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const { onNavigate } = renderDialog(1);
+      await typeHistoryDraft('   ');
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
+      expect(confirm).not.toHaveBeenCalled();
+      expect(onNavigate).toHaveBeenCalledWith(2);
+    });
+
+    it('keeps the draft and the loaded history across Conteúdo -> Histórico -> Conteúdo -> Histórico', async () => {
+      renderDialog(1);
+      await typeHistoryDraft('meu rascunho');
+      expect(fetchPostHistoryMock).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Legenda' }));
+      // Hidden, not unmounted: the panel's own content is out of the accessibility tree.
+      expect(screen.queryByPlaceholderText(DRAFT_PLACEHOLDER)).not.toBeVisible();
+      expect(screen.getByText('Legenda um')).toBeVisible();
+      fireEvent.click(screen.getByRole('tab', { name: 'Histórico e comentários' }));
+
+      expect(screen.getByPlaceholderText(DRAFT_PLACEHOLDER)).toBeVisible();
+      expect(screen.getByPlaceholderText(DRAFT_PLACEHOLDER)).toHaveValue('meu rascunho');
+      expect(fetchPostHistoryMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fetch the history until the Histórico tab is first visited', () => {
+      renderDialog(1);
+      expect(fetchPostHistoryMock).not.toHaveBeenCalled();
+    });
+
+    it('still guards a draft typed while the panel is hidden behind the Conteúdo tab', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const { onNavigate } = renderDialog(1);
+      await typeHistoryDraft();
+      fireEvent.click(screen.getByRole('tab', { name: 'Legenda' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Próximo post' }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onNavigate).not.toHaveBeenCalled();
     });
   });
 });
