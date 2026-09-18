@@ -170,6 +170,21 @@ describe('CorrectionPanel', () => {
     expect(screen.getByText('Não foi possível salvar. Tente novamente.')).toBeInTheDocument();
   });
 
+  it('hides the retry message right after clicking Salvar edição, before saveState leaves idle', () => {
+    render(
+      <CorrectionPanel
+        post={post()}
+        edit={makeEdit({ dirty: true, saveState: 'idle' })}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    expect(screen.getByText('Não foi possível salvar. Tente novamente.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+    expect(screen.queryByText('Não foi possível salvar. Tente novamente.')).not.toBeInTheDocument();
+  });
+
   it('keeps the Salvar edição button enabled to allow retrying a failed save with no local edit', () => {
     render(
       <CorrectionPanel

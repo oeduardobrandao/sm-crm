@@ -52,6 +52,18 @@ export function CorrectionPanel({
   const [stagedCaption, setStagedCaption] = useState(captionBaseline);
   const [comentario, setComentario] = useState('');
   const [motivo, setMotivo] = useState<CorrectionReason | null>(null);
+  // Suppresses the "failed, retry" message for the ~1.5s debounce window between
+  // clicking Save and `saveState` actually leaving 'idle' for 'saving' -- during that
+  // window `edit.dirty` is already true (set synchronously by saveSuggestion) while
+  // saveState hasn't moved yet, which would otherwise read identically to a genuine
+  // stuck failure and flash the rose message on every successful save. Cleared as
+  // soon as saveState leaves 'idle', so a REAL failure (which brings saveState back
+  // to 'idle' afterwards) still shows the message.
+  const [saveRequested, setSaveRequested] = useState(false);
+
+  useEffect(() => {
+    if (saveState !== 'idle') setSaveRequested(false);
+  }, [saveState]);
 
   const contentDirty =
     (isText && stagedConteudoPlain !== draftConteudoPlain) || stagedCaption !== captionBaseline;
@@ -149,20 +161,21 @@ export function CorrectionPanel({
               {t('shared.suggestionSaved', 'Sugestão salva')}
             </span>
           )}
-          {dirty && saveState === 'idle' && (
+          {dirty && saveState === 'idle' && !saveRequested && (
             <span className="text-[11px] text-rose-600">
               {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
             </span>
           )}
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
+              setSaveRequested(true);
               saveSuggestion(
                 isText ? stagedConteudo : draftConteudo,
                 isText ? stagedConteudoPlain : (post.conteudo_plain ?? ''),
                 stagedCaption,
-              )
-            }
+              );
+            }}
             disabled={(!contentDirty && !dirty) || saveState === 'saving'}
             className="hub-btn-primary rounded-[var(--hub-r-ctl)] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
           >
