@@ -9,15 +9,21 @@ import { PageHeader } from '../components/PageHeader';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { StatusFilterChips, type StatusFilter } from '../components/StatusFilterChips';
 import {
-  FluxoFilterChips,
-  type FluxoFilter,
+  FluxoFilterDropdown,
+  type FluxoKey,
   type FluxoFilterOption,
-} from '../components/FluxoFilterChips';
+} from '../components/FluxoFilterDropdown';
 import { PostGrid } from '../components/posts/PostGrid';
 import { PostDetailDialog } from '../components/posts/PostDetailDialog';
 import { isFeedSelectable, type TileMode } from '../components/posts/PostTile';
 import { VISIBLE_STATUSES, getPostPublishState, sortPostsChronologically } from '../lib/postView';
 import { isAutoPublishActive } from '../lib/autoPublish';
+
+/** Stable empty selection ("all fluxos") so resets do not churn the filter memo. */
+const NO_FLUXOS: FluxoKey[] = [];
+
+const fluxoKeyOf = (p: { workflow_id: number | null }): FluxoKey =>
+  p.workflow_id != null ? `wf-${p.workflow_id}` : 'avulso';
 
 export function PostagensPage() {
   const { t } = useTranslation('hubPosts');
@@ -37,7 +43,7 @@ export function PostagensPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showGrid, setShowGrid] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [fluxoFilter, setFluxoFilter] = useState<FluxoFilter>('all');
+  const [fluxoFilter, setFluxoFilter] = useState<FluxoKey[]>(NO_FLUXOS);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
@@ -66,9 +72,9 @@ export function PostagensPage() {
     aprovado_cliente: allVisible.filter((p) => p.status === 'aprovado_cliente').length,
   };
   const fluxoOptions = useMemo<FluxoFilterOption[]>(() => {
-    const map = new Map<FluxoFilter, FluxoFilterOption>();
+    const map = new Map<FluxoKey, FluxoFilterOption>();
     for (const p of allVisible) {
-      const key: FluxoFilter = p.workflow_id != null ? `wf-${p.workflow_id}` : 'avulso';
+      const key = fluxoKeyOf(p);
       const existing = map.get(key);
       if (existing) existing.count += 1;
       else
@@ -82,18 +88,15 @@ export function PostagensPage() {
     return [...map.values()];
   }, [allVisible, t]);
 
-  const visiblePosts = useMemo(
-    () =>
-      allVisible.filter(
-        (p) =>
-          (statusFilter === 'all' || p.status === statusFilter) &&
-          (fluxoFilter === 'all' ||
-            (fluxoFilter === 'avulso'
-              ? p.workflow_id == null
-              : `wf-${p.workflow_id}` === fluxoFilter)),
-      ),
-    [allVisible, statusFilter, fluxoFilter],
-  );
+  const visiblePosts = useMemo(() => {
+    // Empty selection = no fluxo filter; otherwise a post passes when its fluxo is picked.
+    const picked = new Set<FluxoKey>(fluxoFilter);
+    return allVisible.filter(
+      (p) =>
+        (statusFilter === 'all' || p.status === statusFilter) &&
+        (picked.size === 0 || picked.has(fluxoKeyOf(p))),
+    );
+  }, [allVisible, statusFilter, fluxoFilter]);
 
   // Filters start at "Todos", so a deep link never lands on a hidden post. What can:
   // a background refetch moving the OPEN post out of the active status filter
@@ -103,16 +106,19 @@ export function PostagensPage() {
     if (!allVisible.some((p) => p.id === currentId)) return;
     if (visiblePosts.some((p) => p.id === currentId)) return;
     setStatusFilter('all');
-    setFluxoFilter('all');
+    setFluxoFilter(NO_FLUXOS);
   }, [currentId, allVisible, visiblePosts]);
 
-  // FluxoFilterChips unmounts itself with a single option, so a selected fluxo that
+  // FluxoFilterDropdown unmounts itself with a single option, so a selected fluxo that
   // vanishes in a refetch (its last post was deleted or unpublished) would leave the
-  // grid empty with no control to clear it. Fall back to "Todos".
+  // grid empty with no control to clear it. Drop just the vanished keys; if none are
+  // left the selection is empty, i.e. every fluxo shows again.
   useEffect(() => {
-    if (fluxoFilter !== 'all' && !fluxoOptions.some((o) => o.key === fluxoFilter)) {
-      setFluxoFilter('all');
-    }
+    if (fluxoFilter.every((k) => fluxoOptions.some((o) => o.key === k))) return;
+    setFluxoFilter((prev) => {
+      const kept = prev.filter((k) => fluxoOptions.some((o) => o.key === k));
+      return kept.length === 0 ? NO_FLUXOS : kept;
+    });
   }, [fluxoFilter, fluxoOptions]);
 
   const approvals = data?.postApprovals ?? [];
@@ -203,7 +209,11 @@ export function PostagensPage() {
         </p>
       ) : (
         <>
-          <FluxoFilterChips value={fluxoFilter} options={fluxoOptions} onChange={setFluxoFilter} />
+          <FluxoFilterDropdown
+            value={fluxoFilter}
+            options={fluxoOptions}
+            onChange={setFluxoFilter}
+          />
           <StatusFilterChips
             value={statusFilter}
             counts={filterCounts}

@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { HubContext } from '../../HubContext';
@@ -244,7 +244,7 @@ describe('hub approval, posts, and brand pages', () => {
       expect(await screen.findByText('Nenhuma postagem disponível ainda.')).toBeInTheDocument();
     });
 
-    it('sorts visible posts chronologically into one flattened grid, with fluxo chips per workflow', async () => {
+    it('sorts visible posts chronologically into one flattened grid, with a fluxo dropdown per workflow', async () => {
       mockedFetchPosts.mockResolvedValue({
         posts: [
           makePost({
@@ -317,9 +317,10 @@ describe('hub approval, posts, and brand pages', () => {
         'Abrir Sem data',
       ]);
 
-      const fluxoChips = screen.getByRole('group', { name: 'Filtrar por fluxo' });
-      expect(fluxoChips).toHaveTextContent('Atendimento');
-      expect(fluxoChips).toHaveTextContent('Branding');
+      fireEvent.click(screen.getByRole('button', { name: 'Fluxos' }));
+      const fluxoOptions = await screen.findByRole('group', { name: 'Filtrar por fluxo' });
+      expect(fluxoOptions).toHaveTextContent('Atendimento');
+      expect(fluxoOptions).toHaveTextContent('Branding');
 
       expect(screen.queryByText('Rascunho oculto')).not.toBeInTheDocument();
     });

@@ -52,6 +52,11 @@
       "fluxoLabel": "Filtrar por fluxo",
       "avulsas": "Avulsas"
     },
+    "fluxoFilter": {
+      "trigger": "Fluxos",
+      "selected": "{{count}} fluxos",
+      "clear": "Limpar"
+    },
     "status": {
       "enviadoCliente": "Aguardando aprovação",
       "aprovadoCliente": "Aprovado",

@@ -120,10 +120,19 @@ function renderPage(path: string, resp?: HubPostsResponse) {
 
 const BASE = '/mesaas/hub/token-publico/postagens';
 
+/** Opens the fluxo dropdown (its trigger reads "Fluxos" / the picked label / "N fluxos"). */
+function openFluxoMenu(name: string | RegExp = 'Fluxos') {
+  fireEvent.click(screen.getByRole('button', { name }));
+}
+/** Toggles one fluxo checkbox inside the open menu. */
+function toggleFluxo(name: string | RegExp) {
+  fireEvent.click(screen.getByRole('checkbox', { name }));
+}
+
 describe('PostagensPage', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders one flattened chronological grid with fluxo and status chips', async () => {
+  it('renders one flattened chronological grid with the fluxo dropdown and status chips', async () => {
     renderPage(
       BASE,
       response({
@@ -153,9 +162,11 @@ describe('PostagensPage', () => {
       'Abrir Segundo',
       'Abrir Avulso',
     ]);
-    expect(screen.getByRole('group', { name: 'Filtrar por fluxo' })).toHaveTextContent('Editorial');
-    expect(screen.getByRole('group', { name: 'Filtrar por fluxo' })).toHaveTextContent('Campanha');
-    expect(screen.getByRole('group', { name: 'Filtrar por fluxo' })).toHaveTextContent('Avulsas');
+    openFluxoMenu();
+    const group = await screen.findByRole('group', { name: 'Filtrar por fluxo' });
+    expect(group).toHaveTextContent('Editorial');
+    expect(group).toHaveTextContent('Campanha');
+    expect(group).toHaveTextContent('Avulsas');
     expect(screen.getByRole('group', { name: 'Filtrar por status' })).toBeInTheDocument();
   });
 
@@ -177,11 +188,36 @@ describe('PostagensPage', () => {
       }),
     );
     await screen.findByRole('button', { name: 'Abrir A' });
-    fireEvent.click(screen.getByRole('button', { name: /Campanha/ }));
+    openFluxoMenu();
+    toggleFluxo(/Campanha/);
     expect(screen.queryByRole('button', { name: 'Abrir A' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Aprovado \(/ }));
     expect(screen.getByRole('button', { name: 'Abrir B' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Abrir C' })).not.toBeInTheDocument();
+  });
+
+  it('shows the union of several selected fluxos and everything again after Limpar', async () => {
+    renderPage(
+      BASE,
+      response({
+        posts: [
+          post({ id: 1, titulo: 'A', workflow_id: 1, workflow_titulo: 'Editorial' }),
+          post({ id: 2, titulo: 'B', workflow_id: 2, workflow_titulo: 'Campanha' }),
+          post({ id: 3, titulo: 'C', workflow_id: null, workflow_titulo: null }),
+        ],
+      }),
+    );
+    await screen.findByRole('button', { name: 'Abrir A' });
+    openFluxoMenu();
+    toggleFluxo(/Editorial/);
+    toggleFluxo(/Avulsas/);
+    expect(screen.getByRole('button', { name: 'Abrir A' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir C' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir B' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2 fluxos' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar' }));
+    expect(screen.getByRole('button', { name: 'Abrir B' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Abrir / })).toHaveLength(3);
   });
 
   it('shows an empty-state message (chips still visible) when a filter combination yields zero posts', async () => {
@@ -208,15 +244,16 @@ describe('PostagensPage', () => {
     );
     await screen.findByRole('button', { name: 'Abrir A' });
     // Narrow to the "Campanha" fluxo (only post B, status aprovado_cliente)...
-    fireEvent.click(screen.getByRole('button', { name: /Campanha/ }));
+    openFluxoMenu();
+    toggleFluxo(/Campanha/);
     // ...then to the "Aguardando aprovação" status, which has zero overlap with Campanha.
     fireEvent.click(screen.getByRole('button', { name: /Aguardando aprovação \(/ }));
     expect(
       await screen.findByText('Nenhuma postagem encontrada para este filtro.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Abrir /, hidden: true })).not.toBeInTheDocument();
-    // The chips stay mounted and interactive so the user can change the filter back.
-    expect(screen.getByRole('group', { name: 'Filtrar por fluxo' })).toBeInTheDocument();
+    // The controls stay mounted and interactive so the user can change the filter back.
+    expect(screen.getByRole('button', { name: 'Campanha' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Filtrar por status' })).toBeInTheDocument();
   });
 
@@ -307,12 +344,36 @@ describe('PostagensPage', () => {
       .mockResolvedValue(response({ posts: avulsoGone }));
     const { qc } = renderPage(BASE);
     await screen.findByRole('button', { name: 'Abrir Solta' });
-    fireEvent.click(screen.getByRole('button', { name: /Avulsas \(/ }));
+    openFluxoMenu();
+    toggleFluxo(/Avulsas/);
     expect(screen.queryByRole('button', { name: 'Abrir A' })).not.toBeInTheDocument();
-    // The agency removes the avulso post; the fluxo chips unmount (one option left).
+    // The agency removes the avulso post; the fluxo dropdown unmounts (one option left).
     await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
     expect(await screen.findByRole('button', { name: 'Abrir A' })).toBeInTheDocument();
     expect(screen.queryByText(/Nenhuma postagem encontrada/)).not.toBeInTheDocument();
+  });
+
+  it('drops only the vanished fluxo keys from a multi selection after a refetch', async () => {
+    const three = [
+      post({ id: 1, titulo: 'A', workflow_id: 1, workflow_titulo: 'Editorial' }),
+      post({ id: 2, titulo: 'B', workflow_id: 2, workflow_titulo: 'Campanha' }),
+      post({ id: 3, titulo: 'C', workflow_id: 3, workflow_titulo: 'Outro' }),
+    ];
+    const campanhaGone = three.filter((p) => p.id !== 2);
+    mockedFetchPosts
+      .mockResolvedValueOnce(response({ posts: three }))
+      .mockResolvedValue(response({ posts: campanhaGone }));
+    const { qc } = renderPage(BASE);
+    await screen.findByRole('button', { name: 'Abrir A' });
+    openFluxoMenu();
+    toggleFluxo(/Editorial/);
+    toggleFluxo(/Campanha/);
+    expect(screen.queryByRole('button', { name: 'Abrir C' })).not.toBeInTheDocument();
+    await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
+    // Campanha vanished; Editorial stays picked, so C is still filtered out.
+    expect(await screen.findByRole('button', { name: 'Editorial' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir A' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir C' })).not.toBeInTheDocument();
   });
 
   it('select mode toggles checkboxes and opens the feed preview', async () => {

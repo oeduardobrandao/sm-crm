@@ -52,6 +52,11 @@
       "fluxoLabel": "Filter by workflow",
       "avulsas": "Standalone"
     },
+    "fluxoFilter": {
+      "trigger": "Workflows",
+      "selected": "{{count}} workflows",
+      "clear": "Clear"
+    },
     "status": {
       "enviadoCliente": "Awaiting approval",
       "aprovadoCliente": "Approved",
