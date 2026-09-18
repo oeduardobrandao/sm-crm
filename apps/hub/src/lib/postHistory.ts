@@ -19,6 +19,8 @@ export type HistoryEntry =
       key: string;
       at: string;
       version: number;
+      /** Full text the client saw on this send (caption, or the text of a text-only post); null when the send has no snapshot or no text. */
+      text: string | null;
       diff: { before: string; after: string } | null;
     }
   | {
@@ -93,6 +95,7 @@ export function buildHistoryEntries(history: PostHistoryResponse): HistoryEntry[
         key: `send-${event.id}`,
         at: event.created_at,
         version,
+        text: text || null,
         diff,
         id: event.id,
       });

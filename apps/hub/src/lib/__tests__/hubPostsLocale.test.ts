@@ -34,6 +34,8 @@ describe('hubPosts locale files', () => {
       'history.actor.you',
       'history.showDiff',
       'history.hideDiff',
+      'history.showVersion',
+      'history.hideVersion',
       'history.kpi.rounds',
       'history.kpi.avgResponse',
       'history.kpi.noData',

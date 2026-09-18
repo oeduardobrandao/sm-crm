@@ -129,6 +129,8 @@
     },
     "showDiff": "Ver alterações na legenda",
     "hideDiff": "Ocultar alterações",
+    "showVersion": "Ver versão completa",
+    "hideVersion": "Ocultar versão",
     "kpi": {
       "rounds": "{{count}} rodada(s) de correção",
       "avgResponse": "Tempo médio de resposta: {{value}}",

@@ -187,6 +187,23 @@ describe('PostHistoryPanel', () => {
     expect(screen.queryByText('oi')).not.toBeInTheDocument();
   });
 
+  it('lets the client open the full text of every sent version, including the first', async () => {
+    mockedFetch.mockResolvedValue(fullHistory);
+    render(<PostHistoryPanel embedded post={makePost()} token="tok" approvals={listApprovals} />);
+    await screen.findByText('v1: enviado para aprovação');
+
+    const buttons = screen.getAllByRole('button', { name: 'Ver versão completa' });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[0]);
+    expect(screen.getByText('legenda v1', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ocultar versão' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ver versão completa' })[0]);
+    expect(screen.getByText('legenda v2', { selector: 'p' })).toBeInTheDocument();
+  });
+
   it('embedded: fetches on mount and renders no toggle header', async () => {
     mockedFetch.mockResolvedValue(fullHistory);
     render(<PostHistoryPanel embedded post={makePost()} token="tok" approvals={listApprovals} />);

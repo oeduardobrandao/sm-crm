@@ -72,6 +72,7 @@ export function PostHistoryPanel({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
   const [openDiffs, setOpenDiffs] = useState<Set<string>>(new Set());
+  const [openVersions, setOpenVersions] = useState<Set<string>>(new Set());
   const dirty = text.trim() !== '' || sending;
   useUnsavedWork(dirty);
   // Ref so a new callback identity never re-fires the effect; the unmount cleanup below
@@ -134,6 +135,15 @@ export function PostHistoryPanel({
     });
   }
 
+  function toggleVersion(key: string) {
+    setOpenVersions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   function actorLabel(source: 'client' | 'team' | 'system' | boolean): string {
     if (source === 'client' || source === false) return t('history.actor.you', 'Você');
     if (source === 'system') return t('history.actor.system', 'Sistema');
@@ -154,6 +164,26 @@ export function PostHistoryPanel({
             <span className="text-[11px] hub-tx3">{when}</span>
           </div>
           <span className="text-[11px] hub-tx3">{actorLabel('team')}</span>
+          {entry.text && (
+            <div>
+              <button
+                type="button"
+                aria-expanded={openVersions.has(entry.key)}
+                onClick={() => toggleVersion(entry.key)}
+                className="text-[11px] font-semibold underline-offset-2 hover:underline"
+                style={{ color: 'var(--hub-acc)' }}
+              >
+                {openVersions.has(entry.key)
+                  ? t('history.hideVersion', 'Ocultar versão')
+                  : t('history.showVersion', 'Ver versão completa')}
+              </button>
+              {openVersions.has(entry.key) && (
+                <p className="mt-1.5 rounded-[4px] hub-bg-soft px-3 py-2 text-[12px] hub-txt whitespace-pre-wrap">
+                  {entry.text}
+                </p>
+              )}
+            </div>
+          )}
           {entry.diff && (
             <div>
               <button

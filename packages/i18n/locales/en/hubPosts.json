@@ -129,6 +129,8 @@
     },
     "showDiff": "Show caption changes",
     "hideDiff": "Hide changes",
+    "showVersion": "Show full version",
+    "hideVersion": "Hide version",
     "kpi": {
       "rounds": "{{count}} correction round(s)",
       "avgResponse": "Average response time: {{value}}",
