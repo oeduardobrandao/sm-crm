@@ -1,36 +1,41 @@
 # Hub correction flow rework — Design
 
-**Goal:** Replace the always-visible correction UI (inline caption/content editing that autosaves as a "sugestão" per keystroke, plus a separate comentario+motivo block) on all three Hub post cards with a collapsed Aprovar/Corrigir button pair. Corrigir expands a single correction panel with an explicit submit, so clients always know what they have and haven't sent.
+**Goal:** Replace the always-visible correction UI on all three Hub post cards with a collapsed Aprovar/Corrigir button pair. Corrigir expands a panel with two separate, explicit actions instead of always-visible autosave.
 
 ## Background
 
-`TextPostCard.tsx`, `StoryPostCard.tsx` and `InstagramPostCard.tsx` currently share one pattern:
+`TextPostCard.tsx`, `StoryPostCard.tsx` and `InstagramPostCard.tsx` share one pattern:
 
-- `useEditSuggestion` makes `conteudo`/`ig_caption` inline-editable when `isEditable` (no pending/rejected suggestion blocking it). Every keystroke calls `saveSuggestion(...)`, persisting a draft "sugestão" for the team to review — this is the auto-save the client-facing confusion is about.
-- Independently, when `isPending` (`post.status === 'enviado_cliente'`), a `comentario` textarea + `CorrectionReasonChips` + Aprovar/Solicitar correção buttons are always rendered. `Solicitar correção` is already gated on both `comentario` and `motivo` being non-empty, and already requires an explicit click — this part already works like a submit, but it stays visible even when the client isn't correcting anything, and it's disconnected from the inline content edits above.
-- `hub-approve/handler.ts` server-side validates `motivo` as one of `CORRECTION_REASONS` and currently **requires** it be present for `action === 'correcao'` (400s otherwise).
+- `useEditSuggestion` makes `conteudo`/`ig_caption` inline-editable when `isEditable`. Every keystroke calls `saveSuggestion(...)`, persisting a draft "sugestão" for the team to review. Only `TextPostCard` and `StoryPostCard` expose this always-on; `InstagramPostCard` already gates it behind a `captionMode: 'preview' | 'edit'` toggle.
+- Independently, when `isPending` (`post.status === 'enviado_cliente'`), a `comentario` textarea + `CorrectionReasonChips` + Aprovar/Solicitar correção buttons are always rendered. `Solicitar correção` already requires an explicit click, gated today on both `comentario` and `motivo` being non-empty.
+- `hub-approve/handler.ts` requires `motivo` be present and valid for `action === 'correcao'` (400s otherwise).
 
-## Approved design (see mockup, agreed in conversation)
+**Rejected design:** a single "Enviar correção" combining the content-edit save and the comentario/motivo submit into one action. `record_client_approval` changes `workflow_posts.status`, and `trg_auto_reject_pending_suggestion` ([20260521000001_post_edit_suggestions.sql:272](supabase/migrations/20260521000001_post_edit_suggestions.sql)) auto-rejects any pending suggestion on that post the instant its status changes — so a suggestion saved just before (or even atomically with) a correction submit would be silently discarded. Fixing that needs a new backend RPC; out of scope for now. Decision: keep the two actions separate, at the UI level too.
 
-**Collapsed state (default, per post card, when `isPending`):** just two buttons, Aprovar and Corrigir. No comentario field, no chips, no editable content visible.
+## Approved design
 
-**Corrigir expands the card** into a correction panel:
-- Media cards (Instagram/Story): the existing media/caption view stays read-only; the panel adds `CorrectionReasonChips` (now optional — no chip pre-selected, and clicking a selected chip deselects it) + a comentario textarea, both optional. A "Legenda" chip is still one of the four reasons — media-card caption changes go through the comentario field, not inline editing.
-- Text card: the panel makes the existing `conteudo`/`ig_caption` fields inline-editable (same editor as today) **plus** a separate comentario textarea, both optional, **plus** the same optional reason chips.
-- All three: "Enviar correção" (primary) and "Cancelar" (secondary) buttons.
+**Collapsed state (default, per post card, when `isPending` and no pending/rejected suggestion blocks it):** just two buttons, Aprovar and Corrigir.
 
-**Enviar correção is one combined submit:** in the same click, (a) if the inline content was edited (text card only), stage it into one `saveSuggestion(...)` call — not per-keystroke — and (b) submit the `correcao` approval via `submitApproval` with whatever `comentario`/`motivo` were provided (both optional now). A correction with no content edit, no comentario, and no motivo is still a valid empty-reason correction request (matches today's "just click Solicitar correção" affordance, now reachable with nothing filled in).
+**Corrigir expands the card into a panel with two independent sections:**
 
-**Cancelar** discards any staged inline edits (revert the editor to the last-saved draft/post content) and clears comentario/motivo, then collapses back to the two-button state. No `saveSuggestion` or `submitApproval` call.
+1. **Content edit** (text/story cards only — media cards have no inline content to edit): the existing `conteudo`/`ig_caption` editors, but staged locally instead of autosaving per keystroke, with their own **"Salvar edição"** button. Clicking it calls `saveSuggestion(...)` once with the staged values. `saveSuggestion` is still debounced 1500ms internally (fire-and-forget, `void` return) — calling it once on click still means a ~1.5s delay before `saveState` flips to `'saving'`; this is an accepted quirk, not something to work around by touching `useEditSuggestion.ts`'s timer.
+2. **Correction request**: comentario textarea + `CorrectionReasonChips`, both optional now, with its own **"Enviar correção"** button that calls `submitApproval(token, post.id, 'correcao', comentario.trim(), motivo ?? undefined)`. An empty trimmed comentario is sent as `undefined` (not `""`), matching how `motivo ?? undefined` already normalizes.
+3. Instagram/Story media cards render only section 2 (no content editor) — same as today's caption handling for those cards outside of `captionMode: 'edit'`.
+4. A single **"Fechar"** collapses the panel back to the two-button state without discarding anything already saved/submitted; unsaved staged content-edit text or an unsent comentario/motivo selection is cleared (with a native `confirm()` if either is non-empty, mirroring `useUnsavedWork`'s existing silent-update-safety pattern).
 
-**Aprovar** stays a single click, no panel. On click: submit immediately, then show a brief inline "Aprovado" confirmation (existing `result` state, already implemented) before the card settles into its collapsed/read-only state — this part doesn't change from today's behavior, just needs to read as "brief" rather than replacing the buttons row instantly (cosmetic: keep both visible for ~1s, per the mockup).
+`CorrectionReasonChips`'s `onChange` type needs `(value: CorrectionReason | null) => void` to support deselecting a chip (click again to clear).
 
-**Existing pending/rejected-suggestion states are unaffected:** if `hasPendingSuggestion` is true, the card still shows "Sugestão enviada para revisão da equipe" instead of the Aprovar/Corrigir buttons, same as today. `wasRejected` still shows its banner once the client re-opens Corrigir to try again.
+**Aprovar** stays a single click, no panel: submit immediately, show the existing inline "Aprovado" `result` confirmation. No timing change — the existing behavior (result replaces the buttons row on the next render, tied to the mutation's own resolution, not a fixed delay) already reads as immediate; do not add an artificial delay that would leave the UI showing stale controls if `onApprovalSubmitted`'s refetch settles first.
+
+**Existing pending/rejected-suggestion states are unaffected:** `hasPendingSuggestion` still short-circuits to "Sugestão enviada para revisão"; `wasRejected` still shows its banner inside the expanded content-edit section.
 
 ## Backend change
 
-`hub-approve/handler.ts`: `motivo` becomes fully optional for `action === 'correcao'` — validate the value against `CORRECTION_REASONS` only when present (`motivo == null || CORRECTION_REASONS.includes(motivo)`), never require presence. No DB migration needed (the CHECK constraint is already permissive on presence). Requires redeploying `hub-approve` to staging, then production, same deploy-ordering discipline as before (old and new `hub-approve` must both tolerate whatever the currently-live Hub bundle sends).
+`hub-approve/handler.ts`:
+- `motivo` becomes optional for `action === 'correcao'`: validate the value against `CORRECTION_REASONS` only when present (`motivo == null || CORRECTION_REASONS.includes(motivo)`), never require presence.
+- Apply the existing `MAX_COMMENT_LENGTH` (4000, trim, non-empty-if-present) check to `correcao`'s `comentario` too, not just `mensagem` — today it's `correcao`-exempt, and the new UI makes this textarea more prominent.
+- No DB migration. Redeploy `hub-approve` to staging, then production (old and new bundles/handlers must keep tolerating each other, same as before).
 
 ## Scope
 
-Touches: `TextPostCard.tsx`, `StoryPostCard.tsx`, `InstagramPostCard.tsx`, `CorrectionReasonChips.tsx` (deselect support), `supabase/functions/hub-approve/handler.ts`, plus their test suites. No new files, no migration, no change to `postHistory.ts`'s state machine (approvals/events already tolerate `motivo: null`).
+Touches: `TextPostCard.tsx`, `StoryPostCard.tsx`, `InstagramPostCard.tsx`, `CorrectionReasonChips.tsx`, `hub-approve/handler.ts`, plus every test file covering these. `useEditSuggestion.ts` itself is unchanged — `saveSuggestion` already works fine called once from an onClick instead of onChange. No new files, no migration.
