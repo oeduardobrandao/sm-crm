@@ -13,18 +13,12 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/HomePage')).HomePage }),
       },
       {
-        path: 'aprovacoes',
+        path: 'aprovacoes/:postId?',
         lazy: async () => ({ Component: (await import('./pages/AprovacoesPage')).AprovacoesPage }),
       },
       {
-        path: 'postagens',
+        path: 'postagens/:postId?',
         lazy: async () => ({ Component: (await import('./pages/PostagensPage')).PostagensPage }),
-      },
-      {
-        path: 'postagens/:postId',
-        lazy: async () => ({
-          Component: (await import('./pages/PostagemFocoPage')).PostagemFocoPage,
-        }),
       },
       {
         path: 'marca',

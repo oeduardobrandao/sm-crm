@@ -37,6 +37,7 @@
     "defaultDescription": "Todos os posts do seu calendário de conteúdo.",
     "loadError": "Erro ao carregar postagens.",
     "empty": "Nenhuma postagem disponível ainda.",
+    "noResults": "Nenhuma postagem encontrada para este filtro.",
     "avulsoGroupTitle": "Publicações avulsas",
     "postCount": "{{count}} {{noun}}",
     "clickToExpand": "clique para expandir",

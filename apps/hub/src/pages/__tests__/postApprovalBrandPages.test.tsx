@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { HubContext } from '../../HubContext';
@@ -377,7 +377,7 @@ describe('hub approval, posts, and brand pages', () => {
       expect(screen.queryByTestId('story-post-card')).not.toBeInTheDocument();
     });
 
-    it('groups and sorts visible posts in read-only mode', async () => {
+    it('sorts visible posts chronologically into one flattened grid, with fluxo chips per workflow', async () => {
       mockedFetchPosts.mockResolvedValue({
         posts: [
           makePost({
@@ -437,34 +437,22 @@ describe('hub approval, posts, and brand pages', () => {
         <PostagensPage />,
       );
 
-      expect(await screen.findByText('Branding')).toBeInTheDocument();
+      expect(
+        await screen.findByRole('button', { name: 'Abrir Aprovado hoje' }),
+      ).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
 
-      const groupHeadings = screen.getAllByRole('heading', { level: 3 });
-      expect(groupHeadings.map((heading) => heading.textContent)).toEqual([
-        'Atendimento',
-        'Branding',
+      const tiles = screen.getAllByRole('button', { name: /^Abrir / });
+      expect(tiles.map((b) => b.getAttribute('aria-label'))).toEqual([
+        'Abrir Aprovado hoje',
+        'Abrir Mais cedo',
+        'Abrir Mais tarde',
+        'Abrir Sem data',
       ]);
 
-      const atendimentoSection = groupHeadings[0].closest('section');
-      const brandingSection = groupHeadings[1].closest('section');
-
-      expect(atendimentoSection).not.toBeNull();
-      expect(brandingSection).not.toBeNull();
-      expect(
-        within(atendimentoSection as HTMLElement)
-          .getAllByRole('heading', { level: 4 })
-          .map((heading) => heading.textContent),
-      ).toEqual(['Aprovado hoje']);
-
-      // Branding is the second group and is collapsed by default — expand it first
-      fireEvent.click(screen.getByRole('button', { name: /Branding/ }));
-
-      expect(
-        within(brandingSection as HTMLElement)
-          .getAllByRole('heading', { level: 4 })
-          .map((heading) => heading.textContent),
-      ).toEqual(['Mais cedo', 'Mais tarde', 'Sem data']);
+      const fluxoChips = screen.getByRole('group', { name: 'Filtrar por fluxo' });
+      expect(fluxoChips).toHaveTextContent('Atendimento');
+      expect(fluxoChips).toHaveTextContent('Branding');
 
       expect(screen.queryByText('Rascunho oculto')).not.toBeInTheDocument();
     });

@@ -37,6 +37,7 @@
     "defaultDescription": "All posts in your content calendar.",
     "loadError": "Error loading posts.",
     "empty": "No posts available yet.",
+    "noResults": "No posts found for this filter.",
     "avulsoGroupTitle": "Standalone posts",
     "postCount": "{{count}} {{noun}}",
     "clickToExpand": "click to expand",
