@@ -31,6 +31,9 @@ interface HubBriefingHandlerDeps {
   randomUUID?: () => string;
 }
 
+// See the text-answer POST below for why this is not the 30/h action budget.
+const AUTOSAVE_WRITE_MAX = 120;
+const AUTOSAVE_WRITE_WINDOW = 300;
 const AUDIO_WRITE_MAX = 20;
 const AUDIO_WRITE_WINDOW = 3600;
 
@@ -253,11 +256,16 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       if (resolved instanceof Response) return resolved;
       const hubToken = resolved;
 
+      // Autosave budget: the Hub saves ~1s after each typing pause, so a client
+      // writing a long answer sends dozens of POSTs per session. 30/h (the
+      // budget for discrete actions like approve) locked real clients out for
+      // the rest of the hour (Sep 2026). 120 per 5 min tolerates continuous
+      // typing and, when hit, clears in minutes instead of an hour.
       const okWrite = await deps.rateLimit(
         db,
         `hub-write:hub-briefing:${hubToken.conta_id}:${hubToken.cliente_id}`,
-        30,
-        3600,
+        AUTOSAVE_WRITE_MAX,
+        AUTOSAVE_WRITE_WINDOW,
       );
       if (!okWrite) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 

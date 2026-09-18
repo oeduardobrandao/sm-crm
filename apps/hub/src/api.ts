@@ -32,28 +32,38 @@ function edgeUrl(fn: string, params: Record<string, string>) {
   return url.toString();
 }
 
-async function get<T>(fn: string, params: Record<string, string>): Promise<T> {
-  const res = await fetch(edgeUrl(fn, params), {
-    headers: { apikey: ANON },
-  });
-  if (!res.ok) {
+// Backoff schedule for HTTP 429. The Hub edge functions rate-limit per client
+// with a sliding window and reject BEFORE doing any work, so a 429'd request
+// had no side effect and can be replayed verbatim. Autosave (briefing answers,
+// edit suggestions) is what trips the limit in practice: the retry lets a burst
+// drain instead of surfacing "Não foi possível salvar" on a healthy connection.
+const RETRY_AFTER_429_MS = [2_000, 6_000, 15_000];
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+async function request<T>(input: string, init: RequestInit): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(input, init);
+    if (res.ok) return res.json() as Promise<T>;
+    if (res.status === 429 && attempt < RETRY_AFTER_429_MS.length) {
+      await sleep(RETRY_AFTER_429_MS[attempt]);
+      continue;
+    }
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
   }
-  return res.json() as Promise<T>;
 }
 
-async function post<T>(fn: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}/functions/v1/${fn}`, {
+function get<T>(fn: string, params: Record<string, string>): Promise<T> {
+  return request<T>(edgeUrl(fn, params), { headers: { apikey: ANON } });
+}
+
+function post<T>(fn: string, body: unknown): Promise<T> {
+  return request<T>(`${BASE}/functions/v1/${fn}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: ANON },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}));
-    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<T>;
 }
 
 export function fetchBootstrap(workspace: string, token: string) {
@@ -160,33 +170,20 @@ export function deleteBriefingAudio(token: string, questionId: string) {
   return del<{ ok: boolean }>('hub-briefing', `${questionId}/audio`, token);
 }
 
-async function patch<T>(fn: string, id: string, token: string, body: unknown): Promise<T> {
+function patch<T>(fn: string, id: string, token: string, body: unknown): Promise<T> {
   const url = new URL(`${BASE}/functions/v1/${fn}/${id}`);
   url.searchParams.set('token', token);
-  const res = await fetch(url.toString(), {
+  return request<T>(url.toString(), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', apikey: ANON },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}));
-    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<T>;
 }
 
-async function del<T>(fn: string, id: string, token: string): Promise<T> {
+function del<T>(fn: string, id: string, token: string): Promise<T> {
   const url = new URL(`${BASE}/functions/v1/${fn}/${id}`);
   url.searchParams.set('token', token);
-  const res = await fetch(url.toString(), {
-    method: 'DELETE',
-    headers: { apikey: ANON },
-  });
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}));
-    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<T>;
+  return request<T>(url.toString(), { method: 'DELETE', headers: { apikey: ANON } });
 }
 
 export function fetchIdeias(token: string) {
