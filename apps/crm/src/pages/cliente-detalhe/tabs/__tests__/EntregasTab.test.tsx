@@ -417,6 +417,76 @@ describe('EntregasTab', () => {
     });
   });
 
+  // Fix A (revisão final): antes deste describe, `mockFeatures` era declarado
+  // mas NUNCA reatribuído para longe de `null` em nenhum teste deste arquivo,
+  // então schedulingEnabled/tiktokEnabled eram sempre false e
+  // handleApproveInternally jamais abria o AutoScheduleBatchDialog sob teste --
+  // zero cobertura comportamental para essa superfície nesta aba, apesar do
+  // mock (`mockFeatures`) já existir pronto para ligar. AutoScheduleBatchDialog
+  // NÃO é mockado neste arquivo (ao contrário de
+  // KanbanBatchAutoScheduleNudge.test.tsx), então os casos abaixo procuram o
+  // conteúdo real do AlertDialog.
+  describe('batch auto-schedule nudge after "Aprovar internamente" (spec peça 2 / fix A)', () => {
+    const futureIso = () => new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+
+    function approvedPost(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 1,
+        titulo: 'Post A',
+        status: 'aprovado_cliente',
+        platform: 'instagram',
+        scheduled_at: futureIso(),
+        ...overrides,
+      };
+    }
+
+    it('opens the batch dialog once scheduling is enabled, the client auto-publishes, and the approval is not a rearm', async () => {
+      mockFeatures = { feature_post_scheduling: true };
+      // hasLaterApprovalEtapa -> false makes decideApprovalAdvance's willRearm
+      // false (approvalAdvance.ts: willRearm = temAprovacaoAdiante), the
+      // !willRearm half of the gate this test exercises. Mirrors how
+      // KanbanBatchAutoScheduleNudge.test.tsx's makeCard()/renderBoard()
+      // construct the non-rearm case for KanbanView's equivalent handler.
+      mockedHasLaterApprovalEtapa.mockReturnValue(false);
+      mockedGetWorkflowPosts.mockResolvedValue([approvedPost()] as never);
+      renderTab({ ...CLIENTE, auto_publish_on_approval: true });
+
+      // mockCounts(0) from beforeEach -> cleared !== total -> approval-choice dialog.
+      fireEvent.click(await screen.findByText('forward-card-1'));
+      fireEvent.click(await screen.findByText('Avançar'));
+      fireEvent.click(await screen.findByText('Aprovar internamente'));
+
+      await waitFor(() => expect(mockedApprovePostsInternally).toHaveBeenCalledWith(1));
+      expect(await screen.findByText('Agendar os posts aprovados?')).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /Agendar 1 post/ })).toBeInTheDocument();
+    });
+
+    it('does not end up open when the same advance also completes a recorrente workflow cycle', async () => {
+      mockFeatures = { feature_post_scheduling: true };
+      mockedHasLaterApprovalEtapa.mockReturnValue(false);
+      mockedGetWorkflowPosts.mockResolvedValue([approvedPost()] as never);
+      mockedGetWorkflowsByCliente.mockResolvedValue([workflow({ recorrente: true })]);
+      mockedCompleteEtapaWithRearm.mockResolvedValue({
+        workflow: workflow({ status: 'concluido', recorrente: true }),
+        etapas: [],
+        rearmed: false,
+        rearmFailed: false,
+      });
+      renderTab({ ...CLIENTE, auto_publish_on_approval: true });
+
+      fireEvent.click(await screen.findByText('forward-card-1'));
+      fireEvent.click(await screen.findByText('Avançar'));
+      fireEvent.click(await screen.findByText('Aprovar internamente'));
+
+      await waitFor(() => expect(mockedApprovePostsInternally).toHaveBeenCalledWith(1));
+      // The recurring-completion dialog wins (its own workflowId={recurringWfId
+      // == null ? ... : null} render-time gate) -- settled state never shows
+      // both AlertDialogs at once.
+      expect(await screen.findByText('Criar Novo Ciclo')).toBeInTheDocument();
+      expect(screen.queryByText('Agendar os posts aprovados?')).not.toBeInTheDocument();
+    });
+  });
+
   it('reverts an etapa and refreshes the board', async () => {
     const { invalidateSpy } = renderTab();
     fireEvent.click(await screen.findByText('revert-card-1'));
