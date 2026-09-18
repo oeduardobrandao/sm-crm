@@ -20,6 +20,7 @@ interface PostHistoryPanelProps {
   token: string;
   approvals: PostApproval[];
   onCommentSent?: () => void;
+  defaultOpen?: boolean;
 }
 
 type LoadState =
@@ -49,10 +50,16 @@ export function TextDiff({ before, after }: { before: string; after: string }) {
   );
 }
 
-export function PostHistoryPanel({ post, token, approvals, onCommentSent }: PostHistoryPanelProps) {
+export function PostHistoryPanel({
+  post,
+  token,
+  approvals,
+  onCommentSent,
+  defaultOpen,
+}: PostHistoryPanelProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
   const [tab, setTab] = useState<'history' | 'comments'>('history');
   const [load, setLoad] = useState<LoadState>({ status: 'idle' });
   const [reloadKey, setReloadKey] = useState(0);

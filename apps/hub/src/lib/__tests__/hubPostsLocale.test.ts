@@ -58,6 +58,7 @@ describe('hubPosts locale files', () => {
       'posts.tabHistory',
       'posts.editCaption',
       'posts.editText',
+      'posts.correct',
       'posts.requestCorrection',
       'posts.mediaRemoved',
       'posts.notAvailable',
