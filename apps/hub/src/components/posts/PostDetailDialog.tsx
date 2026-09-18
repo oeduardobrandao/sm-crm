@@ -528,7 +528,7 @@ function PostDetailContent({
                       aria-current={isCurrent ? 'true' : undefined}
                       disabled={navLocked}
                       onClick={() => (isCurrent ? undefined : go(p))}
-                      className={`block w-[30px] h-[38px] rounded-md overflow-hidden ${isCurrent ? 'ring-2 ring-[var(--hub-txt)] ring-offset-1 ring-offset-[var(--hub-card)]' : 'opacity-60 hover:opacity-100'}`}
+                      className={`block w-[30px] h-[38px] rounded-[2px] overflow-hidden ${isCurrent ? 'ring-2 ring-[var(--hub-txt)] ring-offset-1 ring-offset-[var(--hub-card)]' : 'opacity-60 hover:opacity-100'}`}
                     >
                       {cover && !cover.media_lost_at && src ? (
                         <img
