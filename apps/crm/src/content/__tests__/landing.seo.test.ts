@@ -11,7 +11,7 @@ describe('renderLandingHtml', () => {
 
   test('has exactly one h1 with the hero copy', () => {
     expect(html.match(/<h1/g)).toHaveLength(1);
-    expect(html).toContain('Sua agência de social media');
+    expect(html).toContain('Chega de gerenciar clientes de social media');
   });
 
   test('never skips a heading level', () => {
@@ -34,7 +34,7 @@ describe('renderLandingHtml', () => {
   });
 
   test('renders embedded <strong> markers as real tags, never escaped text', () => {
-    expect(html).toContain('<strong>5 etapas padrão</strong>');
+    expect(html).toContain('<strong>5 etapas prontas</strong>');
     expect(html).not.toContain('&lt;strong&gt;');
   });
 });

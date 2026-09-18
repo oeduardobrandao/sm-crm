@@ -1,28 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ArrowRight, Sparkles, X } from 'lucide-react';
+import {
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  Calendar,
+  CalendarCheck,
+  ChevronRight,
+  Kanban,
+  Link2,
+  MessageCircle,
+  Plug,
+  TrendingUp,
+  X,
+  Eye,
+  Heart,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { LANDING } from '@/content/landing.content';
 import { usePageMeta } from '@/lib/usePageMeta';
 
-import {
-  AgentVisual,
-  AutomacaoVisual,
-  Calendar as CalendarIcon,
-  FeatureShot,
-  HeroDevices,
-  IconSquare,
-  Instagram as InstagramIcon,
-  LayoutGrid,
-  MessageCircle,
-  Send,
-  Users,
-} from './landing-visuals';
+import { HeroDevicesDark } from './landing-visuals';
 import { LandingHeader, LandingFooter, useLandingChrome, scrollTo } from './LandingChrome';
 import { PricingSection } from './PricingSection';
 import { FaqSection } from './FaqSection';
 
 import './landing.css';
+import './landing-v2.css';
 
 /** Some landing.content.ts strings embed literal `<strong>…</strong>` markup
  * (kept from the original inline JSX emphasis, e.g. "<strong>5 etapas
@@ -34,6 +39,19 @@ function withEmphasis(text: string): ReactNode[] {
     const match = /^<strong>(.*)<\/strong>$/.exec(part);
     return match ? <strong key={i}>{match[1]}</strong> : part;
   });
+}
+
+/** Splits "Sentence one. Sentence two." so the second sentence renders muted
+ * (the two-tone section heading). A title without a second sentence renders
+ * as-is. */
+function twoTone(title: string): ReactNode {
+  const match = /^(.*?\.)\s+(.+)$/.exec(title);
+  if (!match) return title;
+  return (
+    <>
+      {match[1]} <span className="lp2-muted">{match[2]}</span>
+    </>
+  );
 }
 
 export default function LandingPage() {
@@ -69,25 +87,8 @@ export default function LandingPage() {
     document.getElementById(id)?.scrollIntoView();
   }, []);
 
-  // Chromium never lazy-loads an <img> whose box was hidden when the lazy
-  // observer first saw it, so the dark screenshot variants would stay blank
-  // after a theme toggle. Promote them to eager the moment dark mode turns on.
-  useEffect(() => {
-    const root = document.documentElement;
-    const promote = () => {
-      if (root.getAttribute('data-theme') !== 'dark') return;
-      document
-        .querySelectorAll<HTMLImageElement>('img.hd-dark[loading="lazy"]')
-        .forEach((img) => (img.loading = 'eager'));
-    };
-    promote();
-    const observer = new MutationObserver(promote);
-    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
-  }, []);
-
   return (
-    <div ref={rootRef} className="lp-root">
+    <div ref={rootRef} className="lp-root lp-v2">
       <PromoBanner />
       <LandingHeader variant="landing" />
       <main>
@@ -114,7 +115,8 @@ function PromoBanner() {
   return (
     <div className="promo-banner" role="region" aria-label="Oferta de lançamento">
       <span className="promo-banner-text">
-        <strong>30 dias grátis</strong> em qualquer plano pago. Sem código, cancele quando quiser.
+        <strong>30 dias grátis</strong> em qualquer plano pago. Sem cupom, sem cartão. Cancele
+        quando quiser.
       </span>
       <a href="/login?tab=register" className="promo-banner-cta">
         Começar teste grátis
@@ -139,14 +141,15 @@ function Hero() {
   return (
     <section className="hero-wrap" id="top">
       <div className="lp-container">
-        <div className="hero-grid">
-          <div>
-            <h1 className="hero-title">
-              {LANDING.hero.titleBefore}
-              <em>{LANDING.hero.titleEm}</em>
-              {LANDING.hero.titleAfter}
-            </h1>
-            <p className="hero-sub">{LANDING.hero.sub}</p>
+        <div className="lp2-hero">
+          <h1 className="hero-title">
+            {LANDING.hero.titleBefore}
+            <em>{LANDING.hero.titleEm}</em>
+            {LANDING.hero.titleAfter}
+          </h1>
+          <p className="hero-sub">{LANDING.hero.sub}</p>
+          <div className="lp2-offer">
+            <span className="lp2-offer-text">{LANDING.hero.note}</span>
             <div className="hero-ctas">
               {!loading &&
                 (user ? (
@@ -162,10 +165,9 @@ function Hero() {
                 Ver como funciona
               </button>
             </div>
-            <p className="hero-note">{LANDING.hero.note}</p>
           </div>
           <div className="hero-stage">
-            <HeroDevices />
+            <HeroDevicesDark />
           </div>
         </div>
       </div>
@@ -180,7 +182,6 @@ function Ticker() {
       <div className="ticker-track">
         {doubled.map((t, i) => (
           <span className="ticker-item" key={i}>
-            <span className="bullet" />
             {t}
           </span>
         ))}
@@ -189,146 +190,212 @@ function Ticker() {
   );
 }
 
-const FEATURE_VISUALS: { icon: ReactNode; color: string; visual: ReactNode }[] = [
-  {
-    icon: <LayoutGrid size={22} />,
-    color: '#FFBF30',
-    visual: (
-      <FeatureShot
-        src="/landing/feat-entregas.webp"
-        srcDark="/landing/feat-entregas-dark.webp"
-        width={1400}
-        height={1095}
-        alt="Kanban de entregas do Mesaas com fluxos por etapa"
-        url="mesaas.com.br/entregas"
-      />
-    ),
-  },
-  {
-    icon: <Send size={22} />,
-    color: '#3984FF',
-    visual: (
-      <FeatureShot
-        src="/landing/feat-agendamento.webp"
-        srcDark="/landing/feat-agendamento-dark.webp"
-        width={1400}
-        height={1095}
-        alt="Agendamento de post no Instagram dentro do Mesaas"
-        url="mesaas.com.br/post-express"
-      />
-    ),
-  },
-  {
-    icon: <InstagramIcon size={22} />,
-    color: '#f542c8',
-    visual: (
-      <FeatureShot
-        src="/landing/feat-analytics.webp"
-        srcDark="/landing/feat-analytics-dark.webp"
+const METRIC_TILES = [
+  { icon: <Users size={16} />, label: 'Seguidores', value: '45.798', delta: '+12%' },
+  { icon: <Eye size={16} />, label: 'Alcance (28d)', value: '96.826', delta: '+8%' },
+  { icon: <Heart size={16} />, label: 'Engajamento', value: '4,6%', delta: '+0,4 pp' },
+  { icon: <TrendingUp size={16} />, label: 'Visualizações', value: '242.080', delta: '+19%' },
+];
+
+function MetricsVisual() {
+  return (
+    <div className="lp2-metrics">
+      <ul className="lp2-kpis" aria-hidden>
+        {METRIC_TILES.map((tile) => (
+          <li key={tile.label} className="lp2-kpi">
+            <span className="lp2-kpi-head">
+              {tile.icon}
+              {tile.label}
+            </span>
+            <span className="lp2-kpi-value">{tile.value}</span>
+            <span className="lp2-kpi-delta">{tile.delta}</span>
+          </li>
+        ))}
+      </ul>
+      <img
+        className="lp2-shot lp2-shot--right"
+        src="/landing/feat-analytics-dark.webp"
         width={1400}
         height={1095}
         alt="Métricas do Instagram no Mesaas: seguidores, alcance e engajamento"
-        url="mesaas.com.br/analytics"
+        loading="lazy"
+        decoding="async"
+      />
+    </div>
+  );
+}
+
+function DmVisual() {
+  return (
+    <div className="lp2-dm" aria-hidden="true">
+      <div className="lp2-dm-comment">
+        quero <span>(comentário)</span>
+      </div>
+      <div className="lp2-dm-reply">
+        Oi! Tá aqui o guia do cardápio de inverno. Baixe grátis e escolha o seu favorito.
+      </div>
+      <div className="lp2-dm-btn">
+        Abrir link <ArrowRight size={14} />
+      </div>
+    </div>
+  );
+}
+
+/** Per-feature presentation for the bento grid: the eyebrow label + icon,
+ * the grid cell span and the visual. Copy comes from landing.content.ts. */
+const FEATURE_VISUALS: {
+  eyebrow: string;
+  icon: ReactNode;
+  span: 1 | 2;
+  showBullets?: boolean;
+  visual?: ReactNode;
+}[] = [
+  {
+    eyebrow: 'Entregas',
+    icon: <Kanban size={20} />,
+    span: 2,
+    visual: (
+      <img
+        className="lp2-shot lp2-shot--bottom"
+        src="/landing/feat-entregas-dark.webp"
+        width={1400}
+        height={1095}
+        alt="Kanban de entregas do Mesaas com fluxos por etapa"
+        loading="lazy"
+        decoding="async"
       />
     ),
   },
   {
-    icon: <Users size={22} />,
-    color: '#42c8f5',
+    eyebrow: 'Agendamento',
+    icon: <CalendarCheck size={20} />,
+    span: 1,
+    showBullets: true,
+  },
+  {
+    eyebrow: 'Métricas',
+    icon: <BarChart3 size={20} />,
+    span: 2,
+    visual: <MetricsVisual />,
+  },
+  {
+    eyebrow: 'Portal do cliente',
+    icon: <Link2 size={20} />,
+    span: 1,
     visual: (
-      <FeatureShot
-        src="/landing/feat-hub.webp"
-        srcDark="/landing/feat-hub-dark.webp"
+      <img
+        className="lp2-shot lp2-shot--bleed"
+        src="/landing/feat-hub-dark.webp"
         width={1400}
         height={1050}
         alt="Portal do cliente do Mesaas com aprovações por link"
-        url="cliente.mesaas.com.br"
+        loading="lazy"
+        decoding="async"
       />
     ),
   },
   {
-    icon: <CalendarIcon size={22} />,
-    color: '#3ecf8e',
+    eyebrow: 'Calendário',
+    icon: <Calendar size={20} />,
+    span: 1,
     visual: (
-      <FeatureShot
-        src="/landing/feat-calendario.webp"
-        srcDark="/landing/feat-calendario-dark.webp"
+      <img
+        className="lp2-shot lp2-shot--bleed"
+        src="/landing/feat-calendario-dark.webp"
         width={1400}
         height={1095}
         alt="Calendário editorial mensal do Mesaas"
-        url="mesaas.com.br/calendario"
+        loading="lazy"
+        decoding="async"
       />
     ),
   },
-  { icon: <MessageCircle size={22} />, color: '#f5a342', visual: <AutomacaoVisual /> },
+  {
+    eyebrow: 'Automações',
+    icon: <MessageCircle size={20} />,
+    span: 2,
+    showBullets: true,
+    visual: <DmVisual />,
+  },
 ];
 
 function Features() {
   return (
     <section className="lp-pad" id="features">
       <div className="lp-container">
-        <div className="section-head reveal">
-          <h2>{LANDING.featuresTitle}</h2>
+        <div className="lp2-section-head reveal">
+          <h2>{twoTone(LANDING.featuresTitle)}</h2>
           <p>{LANDING.featuresSub}</p>
         </div>
 
-        {LANDING.features.map((feature, i) => {
-          const { icon, color, visual } = FEATURE_VISUALS[i];
-          const reverse = i % 2 === 1;
-          return (
-            <div key={feature.title} className={`feat-row${reverse ? ' reverse' : ''} reveal`}>
-              <div className="feat-copy">
-                <IconSquare icon={icon} color={color} />
-                <h3>{feature.title}</h3>
-                <p>{withEmphasis(feature.description)}</p>
-                {feature.bullets.length > 0 && (
-                  <ul className="feat-bullets">
-                    {feature.bullets.map((bullet, j) => (
-                      <li key={j}>
-                        <span className="check">✓</span>
-                        <span>{withEmphasis(bullet)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="feat-visual">{visual}</div>
-            </div>
-          );
-        })}
+        <div className="lp2-bento">
+          {LANDING.features.map((feature, i) => {
+            const { eyebrow, icon, span, showBullets, visual } = FEATURE_VISUALS[i];
+            const classes = [
+              'lp2-card',
+              span === 2 ? 'lp2-card--wide' : '',
+              visual ? 'lp2-card--visual' : '',
+              i === 5 ? 'lp2-card--dm' : '',
+              'reveal',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            return (
+              <article key={feature.title} className={classes}>
+                <div className="lp2-card-copy">
+                  <span className="lp2-eyebrow">
+                    {icon}
+                    {eyebrow}
+                  </span>
+                  <h3>{feature.title}</h3>
+                  <p>{withEmphasis(feature.description)}</p>
+                  {showBullets && feature.bullets.length > 0 && (
+                    <ul className="lp2-bullets">
+                      {feature.bullets.map((bullet, j) => (
+                        <li key={j}>{withEmphasis(bullet)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {visual && <div className="lp2-card-visual">{visual}</div>}
+              </article>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
 }
 
+const AGENT_CHIP_ICONS = [
+  <BookOpen size={40} strokeWidth={1.6} key="briefing" />,
+  <TrendingUp size={40} strokeWidth={1.6} key="performance" />,
+  <Plug size={40} strokeWidth={1.6} key="connect" />,
+];
+
 function AgentSection() {
   return (
     <section className="agent-wrap" id="agente">
       <div className="lp-container">
-        <div className="agent-grid reveal">
-          <div className="agent-copy">
-            <span className="agent-label">
-              <Sparkles size={14} /> Novo · Agente de IA
-            </span>
-            <h2>{LANDING.agente.title}</h2>
-            {LANDING.agente.paragraphs.map((paragraph, i) => (
-              <p key={i}>{withEmphasis(paragraph)}</p>
-            ))}
-            <ul className="agent-bullets">
-              {LANDING.agente.bullets.map((bullet, i) => (
-                <li key={i}>
-                  <span className="check">✓</span>
-                  <span>{withEmphasis(bullet)}</span>
-                </li>
-              ))}
-            </ul>
-            <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
-              Começar teste grátis <ArrowRight size={16} />
-            </a>
-          </div>
-          <div className="agent-visual">
-            <AgentVisual />
-          </div>
+        <div className="lp2-section-head lp2-section-head--center reveal">
+          <span className="lp2-eyebrow">Agente de conteúdo</span>
+          <h2>{LANDING.agente.title}</h2>
+          {LANDING.agente.paragraphs.map((paragraph, i) => (
+            <p key={i}>{withEmphasis(paragraph)}</p>
+          ))}
+        </div>
+        <ul className="lp2-chips reveal">
+          {LANDING.agente.bullets.map((bullet, i) => (
+            <li key={i} className="lp2-chip">
+              {AGENT_CHIP_ICONS[i]}
+              <span>{withEmphasis(bullet)}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="lp2-center reveal">
+          <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
+            Começar teste grátis <ArrowRight size={16} />
+          </a>
         </div>
       </div>
     </section>
@@ -339,9 +406,9 @@ function HowItWorks() {
   return (
     <section className="lp-pad lp-pad-alt" id="how">
       <div className="lp-container">
-        <div className="section-head reveal">
-          <h2>{LANDING.how.title}</h2>
-          <p>Do zero em 5 minutos.</p>
+        <div className="lp2-section-head reveal">
+          <h2>{twoTone(LANDING.how.title)}</h2>
+          <p>Do zero ao primeiro post agendado em 5 minutos.</p>
         </div>
         <div className="how-grid">
           {LANDING.how.steps.map((s, i) => (
@@ -386,47 +453,38 @@ function CtaFinal() {
     <section className="cta-final-wrap">
       <div className="lp-container">
         <div className="cta-final-card reveal">
-          <img
-            src="/icon.svg"
-            width={250}
-            height={170}
-            style={{ height: 44, width: 'auto', margin: '0 auto 22px', display: 'block' }}
-            alt=""
-          />
           {user ? (
             <>
               <h2>Bem-vindo de volta!</h2>
-              <p>Sua conta já está ativa. Acesse seu painel e continue organizando sua agência.</p>
+              <p>Sua conta está ativa. Acesse o painel e continue de onde parou.</p>
             </>
           ) : (
             <>
-              <h2>Pronto para sair das planilhas?</h2>
+              <h2>
+                Pronto para sair <em>das planilhas?</em>
+              </h2>
               <p>
-                Crie sua conta grátis e comece a organizar sua agência hoje. Sem cartão, sem
-                compromisso.
+                Crie sua conta grátis e organize seus clientes ainda hoje. Sem cartão de crédito,
+                sem compromisso.
               </p>
             </>
           )}
-          {!loading &&
-            (user ? (
-              <a href="/dashboard" className="lp-btn lp-btn-primary lg">
-                Acessar painel <ArrowRight size={16} />
-              </a>
-            ) : (
-              <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
-                Começar teste grátis <ArrowRight size={16} />
-              </a>
-            ))}
-          <div
-            style={{
-              marginTop: 18,
-              fontSize: '.8rem',
-              color: '#9ca3af',
-              fontFamily: "-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif",
-              letterSpacing: '.08em',
-            }}
-          >
-            Comece grátis · sem cartão de crédito
+          <div className="lp2-cta-row">
+            {!loading &&
+              (user ? (
+                <a href="/dashboard" className="lp-btn lp-btn-cta lg">
+                  Acessar painel <ArrowRight size={16} />
+                </a>
+              ) : (
+                <>
+                  <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
+                    Começar teste grátis <ArrowRight size={16} />
+                  </a>
+                  <a href="/login" className="lp-btn lp-btn-outline lg">
+                    Entrar <ChevronRight size={16} />
+                  </a>
+                </>
+              ))}
           </div>
         </div>
       </div>
