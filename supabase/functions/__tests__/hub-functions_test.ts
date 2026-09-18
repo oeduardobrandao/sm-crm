@@ -2250,6 +2250,43 @@ Deno.test("hub-posts: skips R2 keys not found in files table", async () => {
 // hub-edit-suggestion
 // ---------------------------------------------------------------------------
 
+Deno.test("hub-edit-suggestion write budget is the autosave one (120 por 5 min), não 30/h", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", conteudo: null, conta_id: "conta-1", cliente_id: 14 },
+    error: null,
+  });
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "insert", is_new: true, suggestion: { id: "s1", post_id: 99 } },
+    error: null,
+  });
+  const seen: Array<[string, number, number]> = [];
+  const handler = createHubEditSuggestionHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    rateLimit: async (_db, key, max, win) => {
+      seen.push([key, max, win]);
+      return true;
+    },
+  });
+
+  const response = await handler(new Request("https://example.test/hub-edit-suggestion", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, suggested_conteudo_plain: "Nova legenda" }),
+  }));
+  assertEquals(response.status, 200);
+  const write = seen.find(([k]) => k.startsWith("hub-write:hub-edit-suggestion:"));
+  assertEquals(write?.[1], 120);
+  assertEquals(write?.[2], 300);
+  // Write-only endpoint: must not debit the Hub-wide shared read pool.
+  assertEquals(seen.some(([k]) => k.startsWith("hub-read:")), false);
+});
+
 Deno.test("hub-edit-suggestion accepts a suggestion for a post attached to a workflow", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {

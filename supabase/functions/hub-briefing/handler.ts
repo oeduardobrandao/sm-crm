@@ -31,6 +31,9 @@ interface HubBriefingHandlerDeps {
   randomUUID?: () => string;
 }
 
+// See the text-answer POST below for why this is not the 30/h action budget.
+const AUTOSAVE_WRITE_MAX = 120;
+const AUTOSAVE_WRITE_WINDOW = 300;
 const AUDIO_WRITE_MAX = 20;
 const AUDIO_WRITE_WINDOW = 3600;
 
@@ -53,7 +56,14 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
     const isAudio = !!questionId && seg.length === 2 && seg[1] === "audio";
     const isTranscribe = !!questionId && seg.length === 3 && seg[1] === "audio" && seg[2] === "transcribe";
 
-    const resolveOrReject = async (token: string | null | undefined): Promise<HubToken | Response> => {
+    // `hub-read` is ONE pool shared by every Hub function (the key has no
+    // function name). Only the GET debits it: the write paths each carry
+    // their own `hub-write:*` budget, and charging them here as well would
+    // silently cap autosave at half the shared read pool, across all Hub pages.
+    const resolveOrReject = async (
+      token: string | null | undefined,
+      opts: { debitRead: boolean },
+    ): Promise<HubToken | Response> => {
       if (!token) return json({ error: "token required" }, 400);
       const hubToken = await resolveHubToken(db as never, token, deps.now());
       if (!hubToken) {
@@ -61,8 +71,10 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
         if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
         return json({ error: "Link inválido." }, 404);
       }
-      const okRead = await deps.rateLimit(db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300);
-      if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+      if (opts.debitRead) {
+        const okRead = await deps.rateLimit(db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300);
+        if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+      }
       return hubToken;
     };
 
@@ -81,7 +93,7 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       const token = req.method === "DELETE"
         ? url.searchParams.get("token")
         : (typeof body.token === "string" ? body.token : null);
-      const resolved = await resolveOrReject(token);
+      const resolved = await resolveOrReject(token, { debitRead: false });
       if (resolved instanceof Response) return resolved;
       const hubToken = resolved;
 
@@ -169,7 +181,7 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
     }
 
     if (req.method === "GET") {
-      const resolved = await resolveOrReject(url.searchParams.get("token"));
+      const resolved = await resolveOrReject(url.searchParams.get("token"), { debitRead: true });
       if (resolved instanceof Response) return resolved;
       const hubToken = resolved;
 
@@ -249,15 +261,20 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       if (!token || !question_id || answer === undefined) {
         return json({ error: "token, question_id, and answer are required" }, 400);
       }
-      const resolved = await resolveOrReject(token);
+      const resolved = await resolveOrReject(token, { debitRead: false });
       if (resolved instanceof Response) return resolved;
       const hubToken = resolved;
 
+      // Autosave budget: the Hub saves ~1s after each typing pause, so a client
+      // writing a long answer sends dozens of POSTs per session. 30/h (the
+      // budget for discrete actions like approve) locked real clients out for
+      // the rest of the hour (Sep 2026). 120 per 5 min tolerates continuous
+      // typing and, when hit, clears in minutes instead of an hour.
       const okWrite = await deps.rateLimit(
         db,
         `hub-write:hub-briefing:${hubToken.conta_id}:${hubToken.cliente_id}`,
-        30,
-        3600,
+        AUTOSAVE_WRITE_MAX,
+        AUTOSAVE_WRITE_WINDOW,
       );
       if (!okWrite) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
