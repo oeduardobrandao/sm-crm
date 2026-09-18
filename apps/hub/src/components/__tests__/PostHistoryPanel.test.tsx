@@ -166,7 +166,13 @@ describe('PostHistoryPanel', () => {
 
   it('fetches once on expand and renders the Histórico tab with KPIs, versions, motivo and a caption diff', async () => {
     mockedFetch.mockResolvedValue(fullHistory);
-    render(<PostHistoryPanel post={makePost()} token="tok" approvals={listApprovals} />);
+    render(
+      <PostHistoryPanel
+        post={makePost({ media: [{ id: 1 } as never] })}
+        token="tok"
+        approvals={listApprovals}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /Histórico e comentários/ }));
     expect(await screen.findByText('v1: enviado para aprovação')).toBeInTheDocument();
@@ -239,6 +245,35 @@ describe('PostHistoryPanel', () => {
         (_, el) => el?.tagName === 'P' && !!el.textContent?.includes('TELA 1: CAPA'),
       ),
     ).toHaveTextContent('Se eu tivesse melasma');
+  });
+
+  it('diffs a text-only post on its whole body, with a matching label', async () => {
+    const send = (id: number, at: string, body: string) => ({
+      id,
+      to_status: 'enviado_cliente' as const,
+      source: 'team' as const,
+      created_at: at,
+      post_approval_id: null,
+      snapshot: { conteudo_plain: body, ig_caption: null },
+    });
+    mockedFetch.mockResolvedValue({
+      events: [
+        send(1, '2026-09-11T12:00:00.000Z', 'TELA 1\nprimeiro texto'),
+        send(2, '2026-09-12T12:00:00.000Z', 'TELA 1\nsegundo texto'),
+      ],
+      approvals: [],
+    });
+    render(
+      <PostHistoryPanel
+        embedded
+        post={makePost({ media: [], ig_caption: null })}
+        token="tok"
+        approvals={[]}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver alterações no texto' }));
+    expect(screen.getByText('primeiro').tagName).toBe('DEL');
+    expect(screen.getByText('segundo').tagName).toBe('INS');
   });
 
   it('embedded: fetches on mount and renders no toggle header', async () => {

@@ -129,6 +129,7 @@
     },
     "showDiff": "Show caption changes",
     "hideDiff": "Hide changes",
+    "showDiffText": "Show text changes",
     "showVersion": "Show full version",
     "hideVersion": "Hide version",
     "kpi": {

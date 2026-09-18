@@ -197,7 +197,9 @@ export function PostHistoryPanel({
               >
                 {openDiffs.has(entry.key)
                   ? t('history.hideDiff', 'Ocultar alterações')
-                  : t('history.showDiff', 'Ver alterações na legenda')}
+                  : isTextPost
+                    ? t('history.showDiffText', 'Ver alterações no texto')
+                    : t('history.showDiff', 'Ver alterações na legenda')}
               </button>
               {openDiffs.has(entry.key) && (
                 <TextDiff before={entry.diff.before} after={entry.diff.after} />
@@ -247,7 +249,8 @@ export function PostHistoryPanel({
   }
 
   const data = load.status === 'ready' ? load.data : null;
-  const entries = data ? buildHistoryEntries(data) : [];
+  const isTextPost = pickPostCardKind(post) === 'text';
+  const entries = data ? buildHistoryEntries(data, { bodyPost: isTextPost }) : [];
   const comments = data ? selectComments(data) : [];
   const kpis = data ? computePostKpis(data) : null;
 

@@ -70,15 +70,24 @@ function sortedApprovals(history: PostHistoryResponse): PostHistoryApproval[] {
   return [...history.approvals].sort(byCreatedAtThenId);
 }
 
-function snapshotText(event: PostHistoryEvent): string | null {
+function snapshotText(event: PostHistoryEvent, body: boolean): string | null {
   if (!event.snapshot) return null;
+  // A text-only post has no caption: the client reads (and the diff compares) its whole body.
+  if (body) return event.snapshot.conteudo_plain?.trim() || null;
   // Compare what the client saw as the caption, not the internal script.
   return event.snapshot.ig_caption || extractCaptionFromScript(event.snapshot.conteudo_plain ?? '');
 }
 
 const KIND_ORDER: Record<HistoryEntry['kind'], number> = { send: 0, approval: 1, status: 2 };
 
-export function buildHistoryEntries(history: PostHistoryResponse): HistoryEntry[] {
+/**
+ * `bodyPost` is true for a text-only post: its versions are compared on the whole body
+ * (conteudo_plain) instead of the caption.
+ */
+export function buildHistoryEntries(
+  history: PostHistoryResponse,
+  { bodyPost = false }: { bodyPost?: boolean } = {},
+): HistoryEntry[] {
   const events = sortedEvents(history);
   const entries: Array<HistoryEntry & { id: number }> = [];
 
@@ -87,7 +96,7 @@ export function buildHistoryEntries(history: PostHistoryResponse): HistoryEntry[
   for (const event of events) {
     if (event.to_status === 'enviado_cliente') {
       version += 1;
-      const text = snapshotText(event);
+      const text = snapshotText(event, bodyPost);
       const diff =
         text !== null && previousSendText !== null && text !== previousSendText
           ? { before: previousSendText, after: text }
