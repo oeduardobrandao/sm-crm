@@ -488,27 +488,29 @@ function PostDetailContent({
                   />
                 </div>
               )}
-              {tab === 'history' ? null : showPanel ? (
-                <CorrectionPanel
-                  key={post.id}
-                  post={post}
-                  edit={edit}
-                  submitting={submitting}
-                  onSubmitCorrection={(c, m) => submit('correcao', c, m)}
-                  onDirtyChange={handleDirtyChange}
-                />
-              ) : (
-                <>
-                  {isPending && edit.hasPendingSuggestion && (
-                    <div className="mb-3">
-                      <SuggestionPendingNotice />
-                    </div>
-                  )}
-                  {isPending && edit.wasRejected && <RejectedSuggestionNotice />}
-                  {readingBody}
-                  {autoPublishNote}
-                </>
-              )}
+              <div hidden={tab === 'history'}>
+                {showPanel ? (
+                  <CorrectionPanel
+                    key={post.id}
+                    post={post}
+                    edit={edit}
+                    submitting={submitting}
+                    onSubmitCorrection={(c, m) => submit('correcao', c, m)}
+                    onDirtyChange={handleDirtyChange}
+                  />
+                ) : (
+                  <>
+                    {isPending && edit.hasPendingSuggestion && (
+                      <div className="mb-3">
+                        <SuggestionPendingNotice />
+                      </div>
+                    )}
+                    {isPending && edit.wasRejected && <RejectedSuggestionNotice />}
+                    {readingBody}
+                    {autoPublishNote}
+                  </>
+                )}
+              </div>
             </div>
 
             <ul

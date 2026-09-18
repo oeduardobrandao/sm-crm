@@ -191,6 +191,20 @@ describe('PostDetailDialog', () => {
     expect(screen.getByRole('button', { name: /Enviar correção/ })).toBeInTheDocument();
   });
 
+  it('keeps a typed correction when flipping to Histórico and back', () => {
+    renderDialog(1);
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+    fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
+      target: { value: 'ajustar a legenda' },
+    });
+    fireEvent.click(screen.getByRole('tab', { name: 'Histórico e comentários' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Legenda' }));
+    expect(screen.getByPlaceholderText(/Descreva o que precisa mudar/)).toHaveValue(
+      'ajustar a legenda',
+    );
+    expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
+  });
+
   it('Fechar without changes returns to the reading mode and re-enables Aprovar', () => {
     renderDialog(1);
     fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
