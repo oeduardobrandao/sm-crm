@@ -27,8 +27,8 @@ shown in the Hub.
 
 ## Data
 
-Migration (unique timestamp above main's tail, currently `20260925000015`; renumber
-again at PR-open time if main has moved):
+Migration `20260925000016_post_comment_threads_caption_anchors.sql` (main's tail is
+already `20260925000015`; re-check and renumber above main's tail at PR-open time):
 
 ```sql
 ALTER TABLE post_comment_threads
@@ -46,6 +46,9 @@ ALTER TABLE post_comment_threads
 
 - Offsets are **UTF-16 code-unit indices** into the caption string (JS `String`
   indices, what `selectionStart/End` return). Never code points.
+- Orphaning is terminal: `remapAnchors` never flips `orphaned` back to false. Because
+  remap runs against the last *persisted* caption (see Persistence), an undo inside the
+  1.5s debounce window never reaches the DB, so it never orphans.
 - Orphaned threads ignore their offsets; `quoted_text` is the display fallback.
 - RLS, `post_comments`, mentions and notification triggers unchanged.
 - Existing rows default to `field='conteudo'`. `data-import` guard unaffected.
@@ -66,33 +69,75 @@ delta `d = newEnd - oldEnd`:
   Hub suggestion): keep a thread anchored only if `newText.slice(start, end) === quoted_text`
   at the stored range, else orphan.
 
-Persistence: offsets/orphaned flags update in the same debounced save as the caption
-(`updateThreadAnchors(threads)` batch, sent alongside `onFieldChange('ig_caption', ...)`)
-so text and anchors cannot drift. Caption changes originating outside the field
-(Hub suggestion accept, version restore) run the same remap against the server-returned text.
+Persistence: the caption text and the remapped anchors must commit atomically. The
+generic `onFieldChange` is field-agnostic (`updateWorkflowPost(id, { [field]: value })`,
+duplicated in both drawers) and stays untouched. Instead:
+
+- New RPC `save_ig_caption(p_post_id bigint, p_caption text, p_anchors jsonb)`,
+  `SECURITY INVOKER` (RLS applies), explicit `GRANT EXECUTE ... TO authenticated` and
+  `REVOKE ... FROM anon`. One transaction updates `workflow_posts.ig_caption` and the
+  `anchor_start/anchor_end/orphaned` of the listed threads (each thread must belong to
+  `p_post_id`).
+- New dedicated prop `onCaptionSave(text, anchors)` threaded to `InstagramCaptionField`
+  (both drawers implement it; posts with no caption threads pass an empty `anchors`).
+- `remapAnchors` always diffs from the **last persisted** caption (the baseline is
+  advanced only after the RPC resolves), so a failed or out-of-order save never leaves
+  anchors describing text the DB doesn't hold; the next save re-diffs from the
+  baseline that matches the DB anchors.
+- Caption changes from outside the field (Hub suggestion accept, version restore,
+  MCP/other writers) bypass the RPC. The field, on receiving a new `value` prop that
+  differs from its baseline, runs `remapAnchors(baseline, value, threads)` and persists
+  the result through `updateThreadAnchors` (best effort, non-blocking); on any
+  mismatch the quoted-text check orphans the thread.
 
 ## UI
 
 `InstagramCaptionField`:
 
-- Mirror div behind a transparent-background textarea: identical font, padding,
-  wrapping (`white-space: pre-wrap; overflow-wrap: anywhere`), scroll synced. Paints
+- The textarea keeps today's auto-grow (`resize-none overflow-hidden`, height from
+  `scrollHeight`), so there is no inner scroll to sync. A mirror div, absolutely
+  positioned behind a transparent-background textarea, uses identical font, padding and
+  wrapping (`white-space: pre-wrap; overflow-wrap: anywhere`) and is re-rendered on
+  every keystroke and on width change (the existing `ResizeObserver`). Paints
   `<mark class="comment-highlight">` for **active, non-orphaned** threads (union of
   overlaps). Resolved and orphaned threads are not painted.
-- Selecting text (non-empty selection) shows a "Comentar" button near the selection;
-  it opens the existing add-comment popover (`MentionTextarea`) and calls
-  `createCommentThread({ field: 'ig_caption', anchorStart, anchorEnd })`.
-- Click/caret inside a highlight opens `PostCommentPopover`. Target resolution: most
-  recently created thread covering the caret offset (pure helper, unit tested).
-- Locked caption: textarea read-only; commenting and highlights still work.
+- A "Comentar" button in the field header is enabled while the textarea has a
+  non-empty selection (tracked via `selectionchange`, offsets captured on click). No
+  floating button at the selection: a textarea exposes no selection pixel coordinates,
+  multi-line selections have no single anchor point, and on touch the native selection
+  menu would collide. The button opens the existing add-comment popover
+  (`MentionTextarea`), anchored below the header.
+- Click/caret inside a highlight opens `PostCommentPopover`, anchored to that `<mark>`'s
+  bounding rect in the mirror (`getBoundingClientRect`, first line). Target resolution:
+  most recently created thread covering the caret offset (pure helper, unit tested).
+- Locked caption (`agendado`): swap the native `disabled` for `readOnly` on the
+  textarea. A `disabled` control can't be focused or selected, which would make
+  commenting and highlight clicks unreachable. shadcn's `Textarea` styles the locked look
+  off `:disabled`, which `readOnly` doesn't trigger, so add `read-only:opacity-70
+  read-only:cursor-default` (Tailwind `read-only:` variant) to keep the affordance. The
+  lock icon and tooltip stay.
+- **Deliberate divergence from `PostEditor`**, where `disabled` also hides the comment
+  toolbar and passes `readOnly={disabled}` to `PostCommentPopover`. For the caption the
+  popover is never `readOnly` because of the lock; commenting is allowed in every
+  status. (Do not copy that `PostEditor` wiring.)
 - `PostCommentSummary`: "Legenda" chip on caption threads, "texto removido" badge for
-  orphans; `onThreadClick` scrolls to and focuses the caption highlight (currently a
-  no-op).
+  orphans. `onThreadClick` is a no-op for every thread today (`PostEditorBody.tsx:662`);
+  this work makes it functional for caption threads only: `InstagramCaptionField` is a
+  `forwardRef` exposing `focusThread(threadId)` (scroll into view, focus the textarea,
+  select the range, open the popover). `PostEditorBody` calls it when the clicked thread's
+  `field === 'ig_caption'`; content threads stay a no-op.
 
 ## Wiring
 
-- `store/comments.ts`: extend `createCommentThread` with `{ field, anchorStart, anchorEnd }`;
-  add `updateThreadAnchors`. `getPostCommentThreads` already selects `*`.
+- `store/comments.ts`: `createCommentThread(postId, quotedText, firstComment, anchor?)`
+  where `anchor?: { field: 'ig_caption'; start: number; end: number }` (a 4th optional
+  param; omitted means today's content thread). Add `updateThreadAnchors(threads)` and
+  the `saveIgCaption(postId, text, anchors)` RPC wrapper. `getPostCommentThreads`
+  already selects `*`.
+- The callback `onCreateComment: (postId, quotedText, comment) => Promise<number>` gains
+  the same optional 4th `anchor` param in `WorkflowDrawer` (`:1268`, `:769`),
+  `StandalonePostDrawer` (`:425`) and `PostEditorBody` (`:119`, `:590`). `PostEditor`
+  (content) keeps calling it without an anchor.
 - Thread handlers in `WorkflowDrawer.tsx` and `StandalonePostDrawer.tsx` (duplicated
   today) are passed through `PostEditorBody.tsx` to the caption field. The content
   editor keeps filtering to `field = 'conteudo'` for its mark sync; caption threads
@@ -112,7 +157,9 @@ so text and anchors cannot drift. Caption changes originating outside the field
 
 ## Risks
 
-- Mirror/textarea misalignment (font metrics, scrollbar width, iOS padding). Mitigated
-  by copying computed styles and testing wrap edge cases.
+- Mirror/textarea misalignment (font metrics, scrollbar width, iOS padding), and the
+  mirror's soft-wrap points must match the textarea's on every keystroke, not just at
+  rest; the click-to-open and `<mark>` rects depend on it. Mitigated by copying computed
+  styles, re-rendering synchronously on input, and testing wrap edge cases.
 - Concurrent edits by two members can desync offsets; the next save re-derives from the
   saved text, and the quoted-text check orphans clear mismatches.
