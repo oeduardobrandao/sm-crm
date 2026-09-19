@@ -45,6 +45,22 @@ begin
   exception when check_violation then v_rejected := true; end;
   assert v_rejected, 'cliente_links: url nao-http(s) foi aceita';
 
+  -- Credenciais embutidas (userinfo antes da primeira / ? #) sao recusadas.
+  v_rejected := false;
+  begin
+    insert into cliente_links (cliente_id, conta_id, titulo, url)
+      values (v_cli_a, v_ws_a, 'creds', 'https://u:p@example.com');
+  exception when check_violation then v_rejected := true; end;
+  assert v_rejected, 'cliente_links: url com credenciais embutidas foi aceita';
+
+  -- ... mas `@` no path (perfil/handle) continua valido. Sub-bloco que desfaz
+  -- a linha para nao alterar as contagens de visibilidade abaixo.
+  begin
+    insert into cliente_links (cliente_id, conta_id, titulo, url)
+      values (v_cli_a, v_ws_a, 'handle', 'https://www.tiktok.com/@x');
+    raise exception 'rollback-handle-probe' using errcode = 'P0001';
+  exception when sqlstate 'P0001' then null; end;
+
   v_rejected := false;
   begin
     insert into cliente_links (cliente_id, conta_id, titulo, url)
@@ -84,7 +100,7 @@ begin
   begin
     insert into cliente_links (cliente_id, conta_id, titulo, url)
       values (v_cli_b, v_ws_a, 'cross', 'https://x.example.com');
-  exception when others then v_rejected := true; end;
+  exception when insufficient_privilege then v_rejected := true; end;
   assert v_rejected, 'cliente_links: insert com cliente_id de outro workspace NAO foi rejeitado';
 
   -- Re-apontar cliente_id via UPDATE: rejeitado.
@@ -92,7 +108,7 @@ begin
   begin
     update cliente_links set cliente_id = v_cli_b
      where conta_id = v_ws_a and titulo = 'A-renamed';
-  exception when others then v_rejected := true; end;
+  exception when insufficient_privilege then v_rejected := true; end;
   assert v_rejected, 'cliente_links: update re-apontando cliente_id NAO foi rejeitado';
 
   -- anon nao pode ler a tabela. Assertamos o PRIVILEGIO (nao a contagem de

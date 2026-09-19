@@ -21,7 +21,11 @@ CREATE TABLE IF NOT EXISTS public.cliente_links (
   CONSTRAINT cliente_links_titulo_check
     CHECK (char_length(btrim(titulo)) BETWEEN 1 AND 120),
   CONSTRAINT cliente_links_url_check
-    CHECK (char_length(url) <= 2048 AND url ~* '^https?://[^[:space:]]+$'),
+    CHECK (char_length(url) <= 2048
+           AND url ~* '^https?://[^[:space:]]+$'
+           -- Sem credenciais embutidas: userinfo e so o que fica antes da
+           -- primeira `/`, `?` ou `#` (assim `.../@handle` continua valido).
+           AND url !~* '^https?://[^/?#]*@'),
   CONSTRAINT cliente_links_descricao_check
     CHECK (descricao IS NULL OR char_length(descricao) <= 300)
 );
