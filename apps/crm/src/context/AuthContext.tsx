@@ -194,12 +194,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionReady, setSessionReady] = useState(false);
   const authGeneration = useRef(0);
   /**
-   * Counts CRISP IDENTITY RESETS only — bumped at exactly the two places that
-   * push `['do', 'session:reset']` for an OUTGOING identity (the user-change
-   * branch of onAuthStateChange, and signOut) and nowhere else.
+   * Counts CRISP IDENTITY RESETS only. It is bumped at exactly three places: the user-change
+   * branch of onAuthStateChange, signOut, and the consent-revoke effect (support consent
+   * withdrawn). Each bump goes with a `['do', 'session:reset']` push for an OUTGOING identity.
    *
-   * There is a THIRD session:reset push site, the Session Continuity rebind
-   * inside the identify effect, and it deliberately does NOT bump this
+   * There are FOUR session:reset push sites in total: those three plus the Session Continuity
+   * rebind inside the identify effect. That fourth one deliberately does NOT bump this
    * counter. That reset is a same-identity self-correction (binding the
    * widget to the current user's own token), not an identity going away, so
    * there is no in-flight response for a stale identity to fence off. Bumping
