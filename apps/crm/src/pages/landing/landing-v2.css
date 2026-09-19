@@ -1025,8 +1025,14 @@ body.landing-page:has(.lp-v2) {
 .lp-v2 .quote-card {
   background: var(--lp2-card);
   border-radius: var(--lp2-radius);
-  max-width: 1144px;
+  /* stay inside the 28px / 20px page gutter instead of touching the viewport edge */
+  max-width: min(1144px, calc(100% - 56px));
   padding: clamp(40px, 5vw, 72px) 28px;
+}
+@media (max-width: 720px) {
+  .lp-v2 .quote-card {
+    max-width: calc(100% - 40px);
+  }
 }
 .lp-v2 .quote-mark {
   font-family: var(--lp2-font);
@@ -1039,6 +1045,143 @@ body.landing-page:has(.lp-v2) {
   letter-spacing: -0.02em;
   font-size: clamp(1.4rem, 2.6vw, 2.2rem);
   color: var(--lp2-text);
+}
+
+/* testimonial carousel: slides share one grid cell, so the card is as tall as the longest quote */
+.lp-v2 .quote-card {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.lp-v2 .quote-slides {
+  display: grid;
+}
+.lp-v2 .quote-slide {
+  grid-area: 1 / 1;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(var(--from, 0));
+  transition:
+    opacity 0.5s ease,
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.6s;
+}
+.lp-v2 .quote-slide[data-pos='prev'] {
+  --from: -40px;
+}
+.lp-v2 .quote-slide[data-pos='next'] {
+  --from: 40px;
+}
+.lp-v2 .quote-slide[data-pos='active'] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+}
+.lp-v2 .quote-avatar {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  overflow: hidden;
+}
+.lp-v2 .quote-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.lp-v2 .quote-who .n {
+  font-size: 1rem;
+}
+.lp-v2 .quote-who .r {
+  font-size: 0.875rem;
+  color: var(--lp2-text-3);
+}
+.lp-v2 .quote-nav {
+  display: none;
+  position: absolute;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--lp2-text-2);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+.lp-v2 .quote-nav:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--lp2-text);
+}
+.lp-v2 .quote-nav--prev {
+  left: 20px;
+}
+.lp-v2 .quote-nav--next {
+  right: 20px;
+}
+.lp-v2 .quote-dots {
+  display: flex;
+  justify-content: center;
+  margin-top: 36px;
+}
+.lp-v2 .quote-dot {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.lp-v2 .quote-dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--lp2-text-3);
+  opacity: 0.5;
+  transition:
+    width 0.3s ease,
+    background 0.3s ease,
+    opacity 0.3s ease;
+}
+.lp-v2 .quote-dot[aria-current='true']::before {
+  width: 24px;
+  background: var(--lp2-accent);
+  opacity: 1;
+}
+.lp-v2 .quote-nav:focus-visible,
+.lp-v2 .quote-dot:focus-visible {
+  outline: 2px solid var(--lp2-accent);
+  outline-offset: 2px;
+}
+@media (min-width: 900px) {
+  .lp-v2 .quote-nav {
+    display: inline-flex;
+  }
+  /* keep the quote clear of the arrows */
+  .lp-v2 .quote-slide {
+    padding-inline: 64px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-v2 .quote-slide[data-pos] {
+    --from: 0px;
+    transition-duration: 0.2s;
+  }
 }
 
 /* pricing */

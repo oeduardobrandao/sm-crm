@@ -26,6 +26,7 @@ import { HeroDevicesDark } from './landing-visuals';
 import { LandingHeader, LandingFooter, useLandingChrome, scrollTo } from './LandingChrome';
 import { PricingSection } from './PricingSection';
 import { FaqSection } from './FaqSection';
+import { Testimonials } from './Testimonials';
 
 import './landing.css';
 import './landing-v2.css';
@@ -98,7 +99,7 @@ export default function LandingPage() {
         <Features />
         <AgentSection />
         <HowItWorks />
-        <Testimonial />
+        <Testimonials />
         <PricingSection />
         <FaqSection items={[...LANDING.faq]} />
         <CtaFinal />
@@ -420,28 +421,6 @@ function HowItWorks() {
             </div>
           ))}
         </div>
-      </div>
-    </section>
-  );
-}
-
-function Testimonial() {
-  return (
-    <section className="quote-wrap">
-      <div className="quote-card reveal">
-        <div className="quote-mark">"</div>
-        <blockquote>
-          O Mesaas mudou completamente a forma como gerencio meus clientes. Antes eu vivia perdida
-          em planilhas e grupos de WhatsApp — agora tudo fica em um só lugar e consigo entregar com
-          muito mais qualidade e no prazo.
-        </blockquote>
-        <cite>
-          <div className="quote-avatar">DK</div>
-          <div className="quote-who">
-            <div className="n">Débora Kristin</div>
-            <div className="r">Founder · DK Marketing Médico</div>
-          </div>
-        </cite>
       </div>
     </section>
   );
