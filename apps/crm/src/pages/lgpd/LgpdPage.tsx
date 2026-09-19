@@ -301,24 +301,40 @@ export default function LgpdPage() {
             content: (
               <>
                 <p>
-                  Usamos armazenamento do navegador (cookies e localStorage) para duas finalidades:
-                  o que é essencial para o Mesaas funcionar e o que é opcional e depende do seu
-                  consentimento (art. 7º, I, da LGPD). Você escolhe no banner exibido na primeira
-                  visita e pode mudar de ideia a qualquer momento.
+                  Usamos armazenamento do navegador (cookies e localStorage) e ferramentas de
+                  terceiros em duas categorias: as sempre ativas, necessárias para o Mesaas
+                  funcionar e se manter seguro, e as opcionais, que dependem do seu consentimento
+                  (art. 7º, I, da LGPD). Você escolhe no banner exibido na primeira visita e pode
+                  mudar de ideia a qualquer momento.
                 </p>
                 <p style={{ marginTop: '0.5rem' }}>
-                  <strong>Essenciais (sempre ativos):</strong> sessão de login, idioma, tema, a
-                  proteção contra versões desatualizadas do app e o registro desta escolha.
+                  <strong>Sempre ativas:</strong> sessão de login, idioma, tema, a proteção contra
+                  versões desatualizadas do app e o registro desta escolha (essenciais para o
+                  funcionamento), além do monitoramento de erros (Sentry) e da medição agregada de
+                  acessos (Vercel Analytics), que se apoiam em legítimo interesse (art. 7º, IX).
                   Preferências de interface (por exemplo, guias e tours já concluídos) ficam apenas
-                  no seu navegador e não são usadas para rastreamento.
+                  no seu navegador e não são usadas para rastreamento. Você pode se opor ao
+                  tratamento baseado em legítimo interesse a qualquer momento escrevendo para{' '}
+                  <a
+                    href="mailto:privacidade@mesaas.com.br"
+                    style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                  >
+                    privacidade@mesaas.com.br
+                  </a>
+                  .
                 </p>
                 <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                    <caption className="sr-only">
+                      Ferramentas de terceiros usadas no Mesaas, o que cada uma coleta e a base
+                      legal do tratamento
+                    </caption>
                     <thead>
                       <tr>
                         {['Ferramenta', 'Para que serve', 'O que coleta', 'Base legal'].map((h) => (
                           <th
                             key={h}
+                            scope="col"
                             style={{
                               textAlign: 'left',
                               padding: '0.5rem',
@@ -335,24 +351,52 @@ export default function LgpdPage() {
                         [
                           <>
                             <strong>PostHog</strong> (União Europeia). Categoria: análise e
-                            diagnóstico. Depende do seu consentimento.
+                            diagnóstico. Depende do seu consentimento. Política:{' '}
+                            <a
+                              href="https://posthog.com/privacy"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              posthog.com/privacy
+                            </a>
+                            .
                           </>,
                           'Entender como o produto é usado e corrigir problemas, incluindo gravação de sessão e mapas de calor.',
-                          'Páginas e ações no app, identificador do usuário e do workspace, gravação da tela durante o uso, e um identificador guardado no navegador (cookie e localStorage). Retenção no fornecedor conforme a política do PostHog: posthog.com/privacy.',
+                          'Páginas e ações no app, identificador do usuário e do workspace, gravação da tela durante o uso, e um identificador guardado no navegador (cookie e localStorage). Retenção no fornecedor conforme a política do PostHog.',
                           'Consentimento (art. 7º, I).',
                         ],
                         [
                           <>
                             <strong>Crisp</strong>. Categoria: chat de suporte. Depende do seu
-                            consentimento.
+                            consentimento. Política:{' '}
+                            <a
+                              href="https://crisp.chat/en/privacy/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              crisp.chat/en/privacy
+                            </a>
+                            .
                           </>,
                           'Conversar com a nossa equipe de suporte.',
-                          'Mensagens, e-mail e nome de quem está logado, e um cookie de sessão do chat. Retenção conforme a política do Crisp: crisp.chat/en/privacy.',
+                          'Mensagens, e-mail e nome de quem está logado. Para manter a conversa, o chat guarda um cookie de sessão e registros no localStorage do navegador (as chaves crisp-client/session/… do Crisp, e a chave crisp_session_v1 do próprio Mesaas). Retenção conforme a política do Crisp.',
                           'Consentimento (art. 7º, I).',
                         ],
                         [
                           <>
-                            <strong>Sentry</strong>. Categoria: essencial.
+                            <strong>Sentry</strong> (Estados Unidos). Categoria: sempre ativa
+                            (legítimo interesse, art. 7º, IX). Política:{' '}
+                            <a
+                              href="https://sentry.io/privacy/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              sentry.io/privacy
+                            </a>
+                            .
                           </>,
                           'Detectar e corrigir erros do aplicativo.',
                           'Detalhes técnicos de erros e de desempenho. Não gravamos a tela e removemos códigos de convite dos endereços enviados.',
@@ -360,7 +404,17 @@ export default function LgpdPage() {
                         ],
                         [
                           <>
-                            <strong>Vercel Analytics</strong>. Categoria: essencial.
+                            <strong>Vercel Analytics</strong>. Categoria: sempre ativa (legítimo
+                            interesse, art. 7º, IX). Política:{' '}
+                            <a
+                              href="https://vercel.com/legal/privacy-policy"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              vercel.com/legal/privacy-policy
+                            </a>
+                            .
                           </>,
                           'Medir acessos de forma agregada.',
                           'Página, país e tipo de dispositivo, sem cookies.',
@@ -368,12 +422,13 @@ export default function LgpdPage() {
                         ],
                         [
                           <>
-                            <strong>Vídeos incorporados (YouTube)</strong>. Somente em artigos da
-                            central de ajuda, para usuários logados.
+                            <strong>Conteúdo incorporado de terceiros</strong> (YouTube, Loom,
+                            Arcade e Scribe). Aparece somente em artigos da Central de Ajuda, dentro
+                            do app logado.
                           </>,
-                          'Exibir vídeos de ajuda dentro dos artigos.',
-                          'O YouTube pode definir cookies próprios ao reproduzir o vídeo.',
-                          'Sua ação de reproduzir o vídeo.',
+                          'Exibir vídeos e tutoriais interativos de ajuda dentro dos artigos.',
+                          'Esses serviços podem definir cookies próprios e receber seu endereço IP assim que o conteúdo é carregado na página, sem que você precise reproduzi-lo. Os vídeos do YouTube usam o modo de privacidade aprimorado (youtube-nocookie.com) nos artigos novos; artigos antigos podem ainda usar o endereço padrão. Para evitar, basta não abrir artigos com vídeos.',
+                          'Legítimo interesse, para prestar o serviço de ajuda que você abriu (art. 7º, IX).',
                         ],
                       ].map((row, i) => (
                         <tr key={i}>
@@ -397,9 +452,9 @@ export default function LgpdPage() {
                 <p style={{ marginTop: '1rem' }}>
                   <strong>Como retirar o consentimento:</strong> use o botão{' '}
                   <CookiePreferencesLink /> e desative a ferramenta. Ao retirar, paramos de enviar
-                  dados na hora e apagamos o identificador guardado no seu navegador; o efeito é
-                  aplicado por completo ao recarregar a página. Retirar o consentimento não afeta o
-                  uso do Mesaas, apenas desliga a análise de uso e o chat de suporte.
+                  dados na hora e apagamos o identificador atual guardado no seu navegador; o efeito
+                  é aplicado por completo ao recarregar a página. Retirar o consentimento não afeta
+                  o uso do Mesaas, apenas desliga a análise de uso e o chat de suporte.
                 </p>
               </>
             ),

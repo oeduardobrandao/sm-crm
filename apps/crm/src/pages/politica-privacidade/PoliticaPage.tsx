@@ -120,9 +120,10 @@ export default function PoliticaPage() {
             title: '6. Cookies e armazenamento',
             content: (
               <p>
-                Usamos cookies essenciais e, somente com o seu consentimento, ferramentas de análise
-                e de chat de suporte. Veja a lista completa e como retirar o consentimento na nossa{' '}
-                <a href="/lgpd">página de LGPD</a>.
+                Usamos armazenamento essencial e ferramentas de monitoramento de erros e de medição
+                agregada de acessos, com base em legítimo interesse. Ferramentas de análise e de
+                chat de suporte só são ativadas com o seu consentimento. Veja a lista completa e
+                como retirar o consentimento na nossa <a href="/lgpd">página de LGPD</a>.
               </p>
             ),
           },
