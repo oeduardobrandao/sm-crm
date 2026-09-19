@@ -33,20 +33,26 @@ function purge(prefixes: string[], exactKeys: string[] = []): void {
   } catch {
     // Cookie access can be blocked; never let cleanup break the app.
   }
-  try {
-    // Collect first, remove after: removing while iterating skips entries.
-    const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) keys.push(key);
-    }
-    for (const key of keys) {
-      if (prefixes.some((prefix) => key.startsWith(prefix)) || exactKeys.includes(key)) {
-        localStorage.removeItem(key);
+  // sessionStorage too: PostHog keeps a per-tab `ph_<token>_window_id` (and `_primary_window_exists`)
+  // there, and posthog.reset() leaves them behind. Each store gets its own try/catch so one being
+  // blocked never skips the other.
+  for (const store of ['localStorage', 'sessionStorage'] as const) {
+    try {
+      const storage = window[store];
+      // Collect first, remove after: removing while iterating skips entries.
+      const keys: string[] = [];
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (key) keys.push(key);
       }
+      for (const key of keys) {
+        if (prefixes.some((prefix) => key.startsWith(prefix)) || exactKeys.includes(key)) {
+          storage.removeItem(key);
+        }
+      }
+    } catch {
+      // Storage can be blocked; never let cleanup break the app.
     }
-  } catch {
-    // Storage can be blocked; never let cleanup break the app.
   }
 }
 
@@ -56,9 +62,9 @@ export function purgeAnalyticsStorage(): void {
 }
 
 /**
- * Crisp storage plus Mesaas's own reconciliation cache. Crisp's docs describe a cookie family
- * under `crisp-client`; the prefix scan also covers localStorage in case that is wrong. Task 10
- * confirms the real keys in a browser.
+ * Crisp storage plus Mesaas's own reconciliation cache. Verified in a real browser: the widget
+ * writes localStorage keys `crisp-client/session/<website-id>` (+ `:e`) and a cookie
+ * `crisp-client%2Fsession%2F<website-id>`, all under the `crisp-client` prefix.
  */
 export function purgeSupportStorage(): void {
   purge(['crisp-client'], [CRISP_SESSION_STORAGE_KEY]);

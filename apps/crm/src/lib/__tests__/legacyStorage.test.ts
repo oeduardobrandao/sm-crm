@@ -12,6 +12,7 @@ function cookieNames(): string[] {
 describe('legacy storage purge', () => {
   afterEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     for (const name of cookieNames()) document.cookie = `${name}=; Max-Age=0; path=/`;
   });
 
@@ -29,6 +30,18 @@ describe('legacy storage purge', () => {
     expect(localStorage.getItem('theme')).toBe('dark');
     expect(cookieNames()).not.toContain('ph_phc_test_posthog');
     expect(cookieNames()).toContain('session_hint');
+  });
+
+  it('removes PostHog per-tab keys from sessionStorage but keeps unrelated ones', () => {
+    sessionStorage.setItem('ph_phc_test_window_id', '"w"');
+    sessionStorage.setItem('ph_phc_test_primary_window_exists', 'true');
+    sessionStorage.setItem('wizard_step', '2');
+
+    purgeAnalyticsStorage();
+
+    expect(sessionStorage.getItem('ph_phc_test_window_id')).toBeNull();
+    expect(sessionStorage.getItem('ph_phc_test_primary_window_exists')).toBeNull();
+    expect(sessionStorage.getItem('wizard_step')).toBe('2');
   });
 
   it('removes Crisp cookies/keys and the Mesaas-owned crisp session cache', () => {
