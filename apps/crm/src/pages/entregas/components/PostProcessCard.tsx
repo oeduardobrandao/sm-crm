@@ -76,17 +76,17 @@ interface PostProcessCardProps {
 }
 
 /**
- * Card de um post individual no quadro de Fluxos (spec §4.2). Fase "cards
- * compactos" (docs/superpowers/specs/2026-09-12-fluxos-posts-individuais-ux-design.md
- * §4): silhueta curta -- thumb 26px (capa do post ou ícone do tipo) + cliente
- * + badge "Individual" ícone-only; título; uma linha combinando a pill de
- * prazo (texto + tipo_prazo) e o chip de tipo+status; rodapé com responsável
- * sem borda, alça de arrastar, kebab (abrir, voltar etapa, encerrar processo,
- * excluir post) e o botão de avançar fora do kebab;
- * barra de progresso de 4px sem rótulo visível (o texto "N/total" vira
- * tooltip). A marcação espelha WorkflowCard para que os dois tipos fiquem
- * visualmente na mesma família; o tipo é identificado por texto e ícone, a
- * cor é complementar.
+ * Card de um post individual no quadro de Fluxos (spec §4.2), silhueta
+ * compacta em quatro linhas: cabeçalho com thumb 28px (capa do post ou ícone
+ * do tipo) + título numa linha só (truncado, texto completo no title) +
+ * subtítulo "cliente · tipo" + badge "Individual" ícone-only; uma linha com a
+ * pill de prazo (texto + tipo_prazo) e o chip de status; uma linha com o nome
+ * da etapa, a barra de progresso de 4px e o contador "N/total" (aria-hidden:
+ * o progressbar já anuncia o mesmo valor); rodapé de 26px com responsável,
+ * alça de arrastar, kebab (abrir, voltar etapa, encerrar processo, excluir
+ * post) e o botão de avançar fora do kebab. A marcação espelha WorkflowCard
+ * para que os dois tipos fiquem visualmente na mesma família; o tipo é
+ * identificado por texto e ícone, a cor é complementar.
  *
  * Não há item "editar processo" no kebab: essa capacidade não existe (a única
  * RPC de edição mexe em responsável/prazo de uma etapa por vez, dentro do
@@ -146,8 +146,8 @@ export function PostProcessCard({
       style={{
         opacity: isDragOverlay ? 0.85 : 1,
         position: 'relative',
-        padding: '0.7rem',
-        gap: '0.45rem',
+        padding: '0.6rem 0.65rem',
+        gap: '0.4rem',
         borderRadius: '10px',
       }}
       onClick={onClick}
@@ -155,119 +155,142 @@ export function PostProcessCard({
       <div
         style={{
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
-          gap: '0.4rem',
+          gap: '0.45rem',
         }}
       >
-        <span
-          className="board-card-client"
+        <div
           style={{
-            borderLeft: 'none',
-            paddingLeft: 0,
-            fontSize: '0.74rem',
-            fontWeight: 500,
-            textTransform: 'none',
-            color: 'var(--text-muted)',
-            display: 'inline-flex',
+            width: 28,
+            height: 28,
+            borderRadius: '7px',
+            overflow: 'hidden',
+            flexShrink: 0,
+            background: 'var(--surface-hover)',
+            display: 'flex',
             alignItems: 'center',
-            gap: '0.35rem',
-            minWidth: 0,
+            justifyContent: 'center',
           }}
         >
+          {entity.cover && entity.cover.media_lost_at ? (
+            <MediaUnavailable size="compact" />
+          ) : entity.cover ? (
+            <img
+              src={entity.cover.thumbnail_url ?? entity.cover.url}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          ) : (
+            <TipoIcon size={13} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+          )}
+        </div>
+        <div style={{ minWidth: 0, flex: '1 1 auto', display: 'flex', flexDirection: 'column' }}>
           <div
+            className="board-card-title"
+            title={entity.titulo || 'Post sem título'}
             style={{
-              width: 26,
-              height: 26,
-              borderRadius: '7px',
+              fontSize: '0.86rem',
+              fontWeight: 700,
+              lineHeight: 1.3,
+              color: 'var(--text-main)',
               overflow: 'hidden',
-              flexShrink: 0,
-              background: 'var(--surface-hover)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
-            {entity.cover && entity.cover.media_lost_at ? (
-              <MediaUnavailable size="compact" />
-            ) : entity.cover ? (
-              <img
-                src={entity.cover.thumbnail_url ?? entity.cover.url}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-            ) : (
-              <TipoIcon size={13} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
-            )}
+            {entity.titulo || 'Post sem título'}
           </div>
-          {cliente ? (
-            <>
-              {entity.clienteAvatarUrl ? (
-                <img
-                  src={entity.clienteAvatarUrl}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    background: cliente.cor || 'var(--surface-hover)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.45rem',
-                    fontWeight: 800,
-                    color: '#fff',
-                    flexShrink: 0,
-                  }}
-                >
-                  {getInitials(cliente.nome)}
-                </div>
-              )}
-              <span
-                role="link"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/clientes/${cliente.id}`);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+          <span
+            className="board-card-client"
+            style={{
+              borderLeft: 'none',
+              paddingLeft: 0,
+              fontSize: '0.68rem',
+              fontWeight: 500,
+              lineHeight: 1.3,
+              textTransform: 'none',
+              color: 'var(--text-muted)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+              minWidth: 0,
+            }}
+          >
+            {cliente ? (
+              <>
+                {entity.clienteAvatarUrl ? (
+                  <img
+                    src={entity.clienteAvatarUrl}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      flexShrink: 0,
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      background: cliente.cor || 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.4rem',
+                      fontWeight: 800,
+                      color: '#fff',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {getInitials(cliente.nome)}
+                  </div>
+                )}
+                <span
+                  role="link"
+                  tabIndex={0}
+                  onClick={(e) => {
                     e.stopPropagation();
                     navigate(`/clientes/${cliente.id}`);
-                  }
-                }}
-                style={{
-                  cursor: 'pointer',
-                  color: cliente.cor || 'var(--text-muted)',
-                  opacity: 0.85,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {cliente.nome}
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.stopPropagation();
+                      navigate(`/clientes/${cliente.id}`);
+                    }
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    color: cliente.cor || 'var(--text-muted)',
+                    opacity: 0.85,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {cliente.nome}
+                </span>
+              </>
+            ) : (
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {post.cliente_nome || '—'}
               </span>
-            </>
-          ) : (
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {post.cliente_nome || '—'}
+            )}
+            <span aria-hidden="true" style={{ opacity: 0.6 }}>
+              ·
             </span>
-          )}
-        </span>
+            <span className="board-card-type-status-chip-label" style={{ fontSize: 'inherit' }}>
+              {TIPO_LABELS[post.tipo]}
+            </span>
+          </span>
+        </div>
         <span
           className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual post-fluxo-tag--icon-only"
           role="img"
@@ -280,28 +303,24 @@ export function PostProcessCard({
       </div>
 
       <div
-        className="board-card-title"
-        style={{ fontSize: '0.9rem', fontWeight: 700, lineHeight: 1.35, color: 'var(--text-main)' }}
-      >
-        {entity.titulo || 'Post sem título'}
-      </div>
-
-      <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '0.5rem',
-          flexWrap: 'wrap',
+          gap: '0.4rem',
         }}
       >
         <span
           className={`board-card-deadline board-card-deadline-pill ${hasDeadline ? deadlineClass : 'deadline-ok'}`}
           style={{
-            fontSize: '0.7rem',
+            fontSize: '0.66rem',
             fontWeight: 700,
-            padding: '0.2rem 0.6rem',
+            padding: '0.12rem 0.5rem',
             borderRadius: '999px',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
         >
           {deadlineText}
@@ -311,14 +330,23 @@ export function PostProcessCard({
             </span>
           )}
         </span>
-        <span className="board-card-type-status-chip">
-          <span className="board-card-type-status-chip-label">{TIPO_LABELS[post.tipo]}</span>
+        <span className="board-card-type-status-chip" style={{ flexShrink: 0 }}>
           <PostStatusChip post={post} registry={registry} />
         </span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-        <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-main)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        <span
+          style={{
+            fontSize: '0.66rem',
+            fontWeight: 600,
+            color: 'var(--text-main)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            maxWidth: '55%',
+          }}
+        >
           {entity.etapaNome}
         </span>
         <div
@@ -332,6 +360,7 @@ export function PostProcessCard({
           aria-label="Progresso do processo"
           title={`${entity.etapaNome} ${etapaIdx + 1}/${total}`}
           style={{
+            flex: '1 1 auto',
             height: '4px',
             background: 'var(--surface-hover)',
             borderRadius: '999px',
@@ -348,6 +377,18 @@ export function PostProcessCard({
             }}
           />
         </div>
+        <span
+          aria-hidden="true"
+          style={{
+            fontSize: '0.62rem',
+            fontWeight: 600,
+            color: 'var(--text-muted)',
+            whiteSpace: 'nowrap',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {etapaIdx + 1}/{total}
+        </span>
       </div>
 
       {showFooter && (
@@ -357,7 +398,7 @@ export function PostProcessCard({
             display: 'flex',
             alignItems: 'center',
             gap: '0.35rem',
-            paddingTop: '0.45rem',
+            paddingTop: '0.35rem',
             borderTop: '1px solid var(--border-color)',
           }}
         >
@@ -422,7 +463,7 @@ export function PostProcessCard({
                   className="btn-edit-workflow board-card-kebab"
                   aria-label="Mais opções"
                   title="Mais opções"
-                  style={{ padding: '0.35rem 0.55rem', borderRadius: '8px', flexShrink: 0 }}
+                  style={{ height: 26, padding: '0 0.5rem', borderRadius: '8px', flexShrink: 0 }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
@@ -493,7 +534,8 @@ export function PostProcessCard({
               aria-label={forwardLabel ?? 'Avançar etapa'}
               title={forwardLabel ?? 'Avançar etapa'}
               style={{
-                padding: '0.35rem 0.55rem',
+                height: 26,
+                padding: '0 0.5rem',
                 borderRadius: '8px',
                 flexShrink: 0,
                 marginLeft: 'auto',

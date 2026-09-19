@@ -152,15 +152,16 @@ describe('PostProcessCard', () => {
     expect(screen.getByRole('menuitem', { name: /copiar link do post/i })).toBeInTheDocument();
   });
 
-  it('card compacto (spec §4): badge "Individual" fica só ícone, e a barra de progresso não mostra "N/total" visível', () => {
+  it('card compacto: badge "Individual" fica só ícone, e a barra de progresso leva o contador "N/total" ao lado', () => {
     render(<PostProcessCard entity={makeEntity()} />);
     // O texto "Individual" não deve mais existir como nó de texto solto --
     // só o ícone, com o rótulo completo em aria-label/title.
     expect(screen.queryByText('Individual')).toBeNull();
     expect(screen.getByLabelText('Processo individual')).toBeInTheDocument();
 
-    // "N/total" não aparece mais como texto visível; vira tooltip na barra.
-    expect(screen.queryByText('1/2')).toBeNull();
+    // "N/total" fica visível ao lado da barra (aria-hidden: o progressbar já
+    // anuncia o mesmo valor), e a barra repete etapa + contador no title.
+    expect(screen.getByText('1/2')).toHaveAttribute('aria-hidden', 'true');
     const bar = screen.getByTestId('post-progress-bar');
     expect(bar).toHaveAttribute('title', 'Copy 1/2');
     // ...e o mesmo texto chega ao leitor de tela pelo progressbar, não só pelo
