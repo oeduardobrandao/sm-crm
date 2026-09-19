@@ -4,13 +4,21 @@ const DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
 
 /**
  * Sentry stays on under legitimate interest (error reporting, tracing), so it must not carry
- * secrets in URLs: `/conectar/:token` puts an invite token in the path. Replay is deliberately
- * NOT installed; adding it later is a new consent decision (see the cookie-consent spec).
+ * secrets in URLs. The invite token appears in two URL shapes:
+ *  - the page route `/conectar/:token` (location, navigation breadcrumbs, transaction names);
+ *  - the edge function calls `.../instagram-connect-link/public/:token[/start]` made by
+ *    services/connectLink.ts (fetch breadcrumbs, http.client spans).
+ * Both are matched on the path suffix, never the host: VITE_SUPABASE_URL differs per environment.
+ * Replay is deliberately NOT installed; adding it later is a new consent decision (see the
+ * cookie-consent spec).
  */
 const INVITE_TOKEN_PATH = /\/conectar\/[^/?#]+/g;
+const CONNECT_LINK_FN_PATH = /\/instagram-connect-link\/public\/[^/?#]+/g;
 
 export function scrubInviteToken(value: string): string {
-  return value.replace(INVITE_TOKEN_PATH, '/conectar/:token');
+  return value
+    .replace(INVITE_TOKEN_PATH, '/conectar/:token')
+    .replace(CONNECT_LINK_FN_PATH, '/instagram-connect-link/public/:token');
 }
 
 type Data = Record<string, unknown>;

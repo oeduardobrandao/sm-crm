@@ -65,4 +65,24 @@ describe('sentry', () => {
     });
     expect(event.contexts?.trace?.data).toEqual({ url: '/conectar/:token' });
   });
+
+  it('replaces the invite token in the instagram-connect-link function URLs', async () => {
+    const { scrubInviteToken } = await import('../sentry');
+    const base = 'https://x.supabase.co/functions/v1/instagram-connect-link/public';
+    expect(scrubInviteToken(`${base}/abc%2Fdef`)).toBe(`${base}/:token`);
+    expect(scrubInviteToken(`${base}/abc%2Fdef/start`)).toBe(`${base}/:token/start`);
+  });
+
+  it('scrubs the function URL from fetch breadcrumbs and http spans', async () => {
+    const { scrubEvent } = await import('../sentry');
+    const url = 'https://x.supabase.co/functions/v1/instagram-connect-link/public/abc%2Fdef';
+    const scrubbed = 'https://x.supabase.co/functions/v1/instagram-connect-link/public/:token';
+    const event = scrubEvent({
+      breadcrumbs: [{ category: 'fetch', data: { method: 'GET', url } }],
+      spans: [{ description: `GET ${url}`, data: { 'http.url': url } }],
+    });
+    expect(event.breadcrumbs?.[0].data).toEqual({ method: 'GET', url: scrubbed });
+    expect(event.spans?.[0].description).toBe(`GET ${scrubbed}`);
+    expect(event.spans?.[0].data).toEqual({ 'http.url': scrubbed });
+  });
 });
