@@ -297,7 +297,115 @@ export default function LgpdPage() {
             ),
           },
           {
-            title: '11. Atualizações',
+            title: '11. Cookies e armazenamento',
+            content: (
+              <>
+                <p>
+                  Usamos armazenamento do navegador (cookies e localStorage) para duas finalidades:
+                  o que é essencial para o Mesaas funcionar e o que é opcional e depende do seu
+                  consentimento (art. 7º, I, da LGPD). Você escolhe no banner exibido na primeira
+                  visita e pode mudar de ideia a qualquer momento.
+                </p>
+                <p style={{ marginTop: '0.5rem' }}>
+                  <strong>Essenciais (sempre ativos):</strong> sessão de login, idioma, tema, a
+                  proteção contra versões desatualizadas do app e o registro desta escolha.
+                  Preferências de interface (por exemplo, guias e tours já concluídos) ficam apenas
+                  no seu navegador e não são usadas para rastreamento.
+                </p>
+                <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                    <thead>
+                      <tr>
+                        {['Ferramenta', 'Para que serve', 'O que coleta', 'Base legal'].map((h) => (
+                          <th
+                            key={h}
+                            style={{
+                              textAlign: 'left',
+                              padding: '0.5rem',
+                              borderBottom: '1px solid var(--border-color)',
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        [
+                          <>
+                            <strong>PostHog</strong> (União Europeia). Categoria: análise e
+                            diagnóstico. Depende do seu consentimento.
+                          </>,
+                          'Entender como o produto é usado e corrigir problemas, incluindo gravação de sessão e mapas de calor.',
+                          'Páginas e ações no app, identificador do usuário e do workspace, gravação da tela durante o uso, e um identificador guardado no navegador (cookie e localStorage). Retenção no fornecedor conforme a política do PostHog: posthog.com/privacy.',
+                          'Consentimento (art. 7º, I).',
+                        ],
+                        [
+                          <>
+                            <strong>Crisp</strong>. Categoria: chat de suporte. Depende do seu
+                            consentimento.
+                          </>,
+                          'Conversar com a nossa equipe de suporte.',
+                          'Mensagens, e-mail e nome de quem está logado, e um cookie de sessão do chat. Retenção conforme a política do Crisp: crisp.chat/en/privacy.',
+                          'Consentimento (art. 7º, I).',
+                        ],
+                        [
+                          <>
+                            <strong>Sentry</strong>. Categoria: essencial.
+                          </>,
+                          'Detectar e corrigir erros do aplicativo.',
+                          'Detalhes técnicos de erros e de desempenho. Não gravamos a tela e removemos códigos de convite dos endereços enviados.',
+                          'Legítimo interesse (art. 7º, IX).',
+                        ],
+                        [
+                          <>
+                            <strong>Vercel Analytics</strong>. Categoria: essencial.
+                          </>,
+                          'Medir acessos de forma agregada.',
+                          'Página, país e tipo de dispositivo, sem cookies.',
+                          'Legítimo interesse (art. 7º, IX).',
+                        ],
+                        [
+                          <>
+                            <strong>Vídeos incorporados (YouTube)</strong>. Somente em artigos da
+                            central de ajuda, para usuários logados.
+                          </>,
+                          'Exibir vídeos de ajuda dentro dos artigos.',
+                          'O YouTube pode definir cookies próprios ao reproduzir o vídeo.',
+                          'Sua ação de reproduzir o vídeo.',
+                        ],
+                      ].map((row, i) => (
+                        <tr key={i}>
+                          {row.map((cell, j) => (
+                            <td
+                              key={j}
+                              style={{
+                                verticalAlign: 'top',
+                                padding: '0.5rem',
+                                borderBottom: '1px solid var(--border-color)',
+                              }}
+                            >
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p style={{ marginTop: '1rem' }}>
+                  <strong>Como retirar o consentimento:</strong> use o botão{' '}
+                  <CookiePreferencesLink /> e desative a ferramenta. Ao retirar, paramos de enviar
+                  dados na hora e apagamos o identificador guardado no seu navegador; o efeito é
+                  aplicado por completo ao recarregar a página. Retirar o consentimento não afeta o
+                  uso do Mesaas, apenas desliga a análise de uso e o chat de suporte.
+                </p>
+              </>
+            ),
+          },
+          {
+            title: '12. Atualizações',
             content: (
               <p>
                 Este documento pode ser atualizado periodicamente para refletir mudanças nas nossas

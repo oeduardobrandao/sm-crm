@@ -117,7 +117,17 @@ export default function PoliticaPage() {
             ),
           },
           {
-            title: '6. Alterações nesta Política',
+            title: '6. Cookies e armazenamento',
+            content: (
+              <p>
+                Usamos cookies essenciais e, somente com o seu consentimento, ferramentas de análise
+                e de chat de suporte. Veja a lista completa e como retirar o consentimento na nossa{' '}
+                <a href="/lgpd">página de LGPD</a>.
+              </p>
+            ),
+          },
+          {
+            title: '7. Alterações nesta Política',
             content: (
               <p>
                 Podemos atualizar esta política periodicamente. Avisaremos sobre mudanças
