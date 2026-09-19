@@ -7835,6 +7835,21 @@ body.role-agent input[name='valor_total'] {
   color: var(--text-color);
 }
 
+/* Texto colado (Google Docs, Word, ChatGPT) chega com `color: rgb(0,0,0)` inline,
+   que o TipTap Color preserva: preto sobre fundo escuro. No tema escuro, qualquer
+   cor inline que NÃO seja uma das escolhidas na paleta do editor (TEXT_COLORS em
+   PostEditor.tsx) volta a herdar a cor do tema. */
+[data-theme='dark']
+  .post-editor-content
+  .ProseMirror
+  span[style*='color']:not([style*='#787774' i]):not([style*='#9F6B53' i]):not(
+    [style*='#D9730D' i]
+  ):not([style*='#CB912F' i]):not([style*='#448361' i]):not([style*='#337EA9' i]):not(
+    [style*='#9065B0' i]
+  ):not([style*='#C14C8A' i]) {
+  color: inherit !important;
+}
+
 .post-editor-content .ProseMirror p {
   margin: 0 0 0.4em;
 }
