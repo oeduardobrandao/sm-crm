@@ -19,7 +19,10 @@ CREATE TABLE IF NOT EXISTS public.cliente_links (
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT cliente_links_titulo_check
-    CHECK (char_length(btrim(titulo)) BETWEEN 1 AND 120),
+    -- Limite no valor CRU (como url/descricao); o btrim so exige que nao seja
+    -- em branco. Limitar apenas o valor aparado deixaria passar 'x' + 1 MB de
+    -- espacos.
+    CHECK (char_length(titulo) <= 120 AND char_length(btrim(titulo)) >= 1),
   CONSTRAINT cliente_links_url_check
     CHECK (char_length(url) <= 2048
            AND url ~* '^https?://[^[:space:]]+$'

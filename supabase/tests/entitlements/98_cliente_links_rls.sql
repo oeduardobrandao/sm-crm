@@ -69,6 +69,30 @@ begin
   exception when check_violation then v_rejected := true; end;
   assert v_rejected, 'cliente_links: titulo em branco foi aceito';
 
+  -- O limite de 120 vale para o valor CRU: um titulo de 1 caractere seguido de
+  -- espacos em massa (trim = 1) nao pode passar armazenando o excesso.
+  v_rejected := false;
+  begin
+    insert into cliente_links (cliente_id, conta_id, titulo, url)
+      values (v_cli_a, v_ws_a, 'x' || repeat(' ', 200), 'https://a.example.com');
+  exception when check_violation then v_rejected := true; end;
+  assert v_rejected, 'cliente_links: titulo com 201 caracteres crus (trim = 1) foi aceito';
+
+  v_rejected := false;
+  begin
+    insert into cliente_links (cliente_id, conta_id, titulo, url)
+      values (v_cli_a, v_ws_a, repeat('x', 121), 'https://a.example.com');
+  exception when check_violation then v_rejected := true; end;
+  assert v_rejected, 'cliente_links: titulo com 121 caracteres foi aceito';
+
+  -- ... e exatamente 120 continua valido. Sub-bloco que desfaz a linha para nao
+  -- alterar as contagens de visibilidade abaixo.
+  begin
+    insert into cliente_links (cliente_id, conta_id, titulo, url)
+      values (v_cli_a, v_ws_a, repeat('x', 120), 'https://a.example.com');
+    raise exception 'rollback-titulo-120-probe' using errcode = 'P0001';
+  exception when sqlstate 'P0001' then null; end;
+
   -- ---- agir como o usuario: membro dos DOIS workspaces, ATIVO = A ----
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
