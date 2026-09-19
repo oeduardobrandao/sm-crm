@@ -54,8 +54,11 @@ const card: CSSProperties = {
 
 const muted: CSSProperties = { color: 'var(--text-muted, #374151)' };
 
+// minHeight além de height: num flex-col, `flex-1` (basis 0%) num pai de altura
+// automática colapsa o botão ao tamanho do texto no Safari/iOS; o piso mantém o alvo de toque.
 const btnBase: CSSProperties = {
   height: 40,
+  minHeight: 40,
   padding: '0 16px',
   borderRadius: 10,
   fontSize: 14,
@@ -266,11 +269,11 @@ export function PopupCard({
             )}
             <div className="flex flex-col gap-2.5 sm:flex-row">
               {hasCta && (
-                <Btn kind={ctaStyle} onClick={fireCta} className="flex-1">
+                <Btn kind={ctaStyle} onClick={fireCta} className="sm:flex-1">
                   {pageCtaLabel}
                 </Btn>
               )}
-              <Btn kind="ghost" onClick={onSecondary} className="flex-1">
+              <Btn kind="ghost" onClick={onSecondary} className="sm:flex-1">
                 {secondaryLabel}
               </Btn>
             </div>
