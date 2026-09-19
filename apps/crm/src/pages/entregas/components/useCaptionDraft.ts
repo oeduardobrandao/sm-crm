@@ -30,6 +30,12 @@ interface Args {
  * text). Typing creates a draft that shadows props; inbound props never overwrite it
  * while it exists. Saves are debounced, serialized, read the draft when they RUN, and
  * commit text + anchors together through `onSave`.
+ *
+ * One instance per post: the consumer must remount it per post (`key={post.id}`); there
+ * is no post identity in the args, so a swapped post would inherit a pending draft.
+ *
+ * `onSave` owns error reporting (the caller toasts); the hook swallows the rejection,
+ * keeps the draft and does not retry: the next keystroke or `flush()` retries.
  */
 export function useCaptionDraft({ value, threads, onSave }: Args) {
   const serverAnchors = useMemo(
@@ -38,6 +44,8 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
   );
 
   const [draft, setDraft] = useState<Draft | null>(null);
+  // Forces the catch-up effect below to re-run when a save settles after props already
+  // caught up; deleting it makes the draft stick.
   const [, setTick] = useState(0);
   const draftRef = useRef<Draft | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -84,6 +92,16 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
     return next;
   }, [runSave]);
 
+  // (Re)arms the debounce. The timer deliberately survives unmount so a late edit still
+  // saves.
+  const armTimer = useCallback(() => {
+    if (timerRef.current !== undefined) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = undefined;
+      void enqueueSave();
+    }, SAVE_DEBOUNCE_MS);
+  }, [enqueueSave]);
+
   const change = useCallback(
     (next: string) => {
       if (next.length > MAX_CAPTION_CHARS) return;
@@ -101,17 +119,22 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
         return;
       }
 
-      const prev = draftRef.current ?? {
-        text: persisted,
-        anchors: latest.current.serverAnchors,
-      };
-      setDraftBoth({ text: next, anchors: remapAnchors(prev.text, next, prev.anchors) });
-      timerRef.current = setTimeout(() => {
-        timerRef.current = undefined;
-        void enqueueSave();
-      }, SAVE_DEBOUNCE_MS);
+      if (next === persisted) {
+        // Cannot drop the draft (the server holds different saved text), so it must still
+        // be saved, but from the persisted anchors: a local orphan from the earlier draft
+        // would otherwise be persisted although the quote is back. Valid by construction
+        // since next === value.
+        setDraftBoth({ text: next, anchors: latest.current.serverAnchors });
+      } else {
+        const prev = draftRef.current ?? {
+          text: persisted,
+          anchors: latest.current.serverAnchors,
+        };
+        setDraftBoth({ text: next, anchors: remapAnchors(prev.text, next, prev.anchors) });
+      }
+      armTimer();
     },
-    [enqueueSave, setDraftBoth],
+    [armTimer, setDraftBoth],
   );
 
   const flush = useCallback((): Promise<boolean> => {
@@ -123,6 +146,17 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
   }, [enqueueSave]);
 
   const getText = useCallback(() => draftRef.current?.text ?? latest.current.value, []);
+
+  // Threads that arrive (or are created) while a draft exists are merged in, validated
+  // against the draft text. Anchors already in the draft are never touched.
+  useEffect(() => {
+    const d = draftRef.current;
+    if (!d) return;
+    const known = new Set(d.anchors.map((a) => a.id));
+    const missing = anchorsFromThreads(threads).filter((a) => !known.has(a.id));
+    if (missing.length === 0) return;
+    setDraftBoth({ text: d.text, anchors: [...d.anchors, ...validateAnchors(d.text, missing)] });
+  }, [threads, setDraftBoth]);
 
   // Props caught up with a saved draft: go back to reading from props.
   useEffect(() => {

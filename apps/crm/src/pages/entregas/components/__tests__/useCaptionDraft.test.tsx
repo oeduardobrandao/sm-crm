@@ -183,4 +183,126 @@ describe('useCaptionDraft', () => {
     act(() => result.current.change('hello!'));
     expect(result.current.getText()).toBe('hello!');
   });
+
+  it('merges threads that arrive after a draft exists and saves them', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender } = renderHook(
+      (p: { threads: CommentThread[] }) =>
+        useCaptionDraft({ value: 'hello brave world', threads: p.threads, onSave }),
+      { initialProps: { threads: [] as CommentThread[] } },
+    );
+    act(() => result.current.change('oh hello brave world'));
+    expect(result.current.anchors).toEqual([]);
+    // Thread offsets are relative to the persisted text, so they are stale for the draft.
+    rerender({ threads: [thread()] });
+    expect(result.current.anchors).toEqual([
+      { id: 1, start: 9, end: 14, quotedText: 'brave', orphaned: false },
+    ]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(onSave).toHaveBeenCalledWith('oh hello brave world', [
+      { id: 1, anchor_start: 9, anchor_end: 14, orphaned: false, quoted_text: 'brave' },
+    ]);
+  });
+
+  it('orphans a late thread whose quote is gone from the draft text', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender } = renderHook(
+      (p: { threads: CommentThread[] }) =>
+        useCaptionDraft({ value: 'hello brave world', threads: p.threads, onSave }),
+      { initialProps: { threads: [] as CommentThread[] } },
+    );
+    act(() => result.current.change('hello  world'));
+    rerender({ threads: [thread()] });
+    expect(result.current.anchors).toMatchObject([{ id: 1, orphaned: true }]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(onSave).toHaveBeenCalledWith('hello  world', [
+      { id: 1, anchor_start: null, anchor_end: null, orphaned: true },
+    ]);
+  });
+
+  it('does not touch anchors already in the draft when threads change', () => {
+    const { result, rerender } = renderHook(
+      (p: { threads: CommentThread[] }) =>
+        useCaptionDraft({ value: 'hello brave world', threads: p.threads, onSave: vi.fn() }),
+      { initialProps: { threads: [thread()] } },
+    );
+    act(() => result.current.change('hello  world')); // orphans thread 1 locally
+    rerender({
+      threads: [
+        thread(),
+        thread({ id: 2, quoted_text: 'world', anchor_start: 12, anchor_end: 17 }),
+      ],
+    });
+    expect(result.current.anchors.find((a) => a.id === 1)?.orphaned).toBe(true);
+    expect(result.current.anchors.find((a) => a.id === 2)).toMatchObject({
+      start: 7,
+      end: 12,
+      orphaned: false,
+    });
+  });
+
+  it('rebases anchors on the persisted ones when typed back while a save is unacknowledged', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useCaptionDraft({ value: 'hello brave world', threads: [thread()], onSave }),
+    );
+    act(() => result.current.change('hello brave world!'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500); // save lands; props are not rerendered
+    });
+    act(() => result.current.change('hello  world!')); // delete "brave": orphaned locally
+    expect(result.current.anchors[0].orphaned).toBe(true);
+    act(() => result.current.change('hello brave world')); // back to the persisted text
+    expect(result.current.anchors[0]).toMatchObject({ start: 6, end: 11, orphaned: false });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave.mock.calls[1][0]).toBe('hello brave world');
+    expect(onSave.mock.calls[1][1]).toEqual([
+      { id: 1, anchor_start: 6, anchor_end: 11, orphaned: false, quoted_text: 'brave' },
+    ]);
+  });
+
+  it('a save after a rejected save still runs', async () => {
+    const onSave = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue(undefined);
+    const { result } = renderHook(() => useCaptionDraft({ value: 'a', threads: [], onSave }));
+    act(() => result.current.change('ab'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.flush();
+    });
+    expect(ok).toBe(true);
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave.mock.calls[1][0]).toBe('ab');
+  });
+
+  it('flush with no draft resolves true and never calls onSave', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useCaptionDraft({ value: 'a', threads: [], onSave }));
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.flush();
+    });
+    expect(ok).toBe(true);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('accepts exactly 2200 chars and rejects 2201', () => {
+    const { result } = renderHook(() =>
+      useCaptionDraft({ value: 'a', threads: [], onSave: vi.fn() }),
+    );
+    act(() => result.current.change('x'.repeat(2200)));
+    expect(result.current.text).toHaveLength(2200);
+    act(() => result.current.change('x'.repeat(2201)));
+    expect(result.current.text).toHaveLength(2200);
+  });
 });
