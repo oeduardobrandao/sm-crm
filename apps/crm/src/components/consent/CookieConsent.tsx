@@ -60,9 +60,9 @@ export default function CookieConsent() {
           role="region"
           aria-live="polite"
           aria-label={t('cookies.banner.title')}
-          className="cookie-banner fixed inset-x-4 bottom-4 z-[9000] mx-auto max-w-3xl rounded-xl border bg-card p-4 text-card-foreground shadow-lg sm:flex sm:items-center sm:gap-4"
+          className="cookie-banner fixed inset-x-4 bottom-4 z-[9000] mx-auto max-w-6xl rounded-2xl border bg-card px-5 py-3 text-card-foreground shadow-lg sm:flex sm:items-center sm:gap-6"
         >
-          <div className="flex-1 text-sm">
+          <div className="flex-1 text-xs sm:text-sm">
             <p className="font-medium">{t('cookies.banner.title')}</p>
             <p className="text-muted-foreground">
               {t('cookies.banner.body')}{' '}
@@ -71,10 +71,11 @@ export default function CookieConsent() {
               </Link>
             </p>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2 sm:mt-0 sm:shrink-0">
+          <div className="mt-3 flex flex-wrap gap-2 min-[360px]:grid min-[360px]:grid-cols-3 sm:mt-0 sm:flex sm:shrink-0">
             <Button
               variant="ghost"
               size="sm"
+              className="px-2 sm:px-3"
               onClick={() => {
                 rememberOpener();
                 setFocus(undefined);
@@ -87,6 +88,7 @@ export default function CookieConsent() {
             <Button
               variant="outline"
               size="sm"
+              className="px-2 sm:px-3"
               onClick={() => setConsent({ analytics: false, support: false })}
             >
               {t('cookies.banner.rejectAll')}
@@ -94,6 +96,7 @@ export default function CookieConsent() {
             <Button
               variant="outline"
               size="sm"
+              className="px-2 sm:px-3"
               onClick={() => setConsent({ analytics: true, support: true })}
             >
               {t('cookies.banner.acceptAll')}
