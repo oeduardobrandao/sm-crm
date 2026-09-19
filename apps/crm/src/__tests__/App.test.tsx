@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Outlet } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import i18n from 'i18next';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../context/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -52,11 +53,22 @@ function renderApp(pathname: string) {
 }
 
 describe('App', () => {
+  afterEach(() => localStorage.clear());
+
   it('renders the public landing route at the root path', async () => {
     renderApp('/');
 
     expect(await screen.findByText('Landing page')).toBeInTheDocument();
     expect(screen.getByText('Toaster')).toBeInTheDocument();
+  });
+
+  it('mounts the cookie consent banner for an undecided visitor', async () => {
+    localStorage.clear();
+    renderApp('/');
+
+    expect(
+      await screen.findByRole('region', { name: i18n.t('cookies.banner.title') }),
+    ).toBeInTheDocument();
   });
 
   it('renders protected dashboard routes inside the app layout', async () => {
