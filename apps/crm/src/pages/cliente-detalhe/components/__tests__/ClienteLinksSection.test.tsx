@@ -100,6 +100,30 @@ describe('ClienteLinksSection', () => {
     expect(within(anchor).getByText('drive.google.com')).toBeInTheDocument();
   });
 
+  it('associates each form label with its input and flags the invalid title', async () => {
+    renderSection();
+    const dialog = await openAddDialog();
+
+    expect(within(dialog).getByLabelText('Título *')).toHaveAttribute(
+      'placeholder',
+      'Ex: Google Drive',
+    );
+    expect(within(dialog).getByLabelText('URL *')).toHaveAttribute(
+      'placeholder',
+      'https://drive.google.com/...',
+    );
+    expect(within(dialog).getByLabelText('Descrição')).toHaveAttribute(
+      'placeholder',
+      'Ex: Pasta de criativos aprovados',
+    );
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Adicionar' }));
+    const error = await within(dialog).findByText('Informe um título.');
+    const titulo = within(dialog).getByLabelText('Título *');
+    expect(titulo).toHaveAttribute('aria-invalid', 'true');
+    expect(titulo).toHaveAttribute('aria-describedby', error.id);
+  });
+
   it('rejects an empty title without calling the store', async () => {
     renderSection();
     const dialog = await openAddDialog();

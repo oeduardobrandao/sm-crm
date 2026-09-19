@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -73,6 +73,7 @@ export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
   const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
   const queryClient = useQueryClient();
+  const fieldId = useId();
 
   const { data: links, isLoading } = useQuery({
     queryKey: ['clienteLinks', clienteId],
@@ -262,36 +263,49 @@ export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
           <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
             <div className="space-y-3">
               <div className="space-y-1">
-                <Label>{t('detail.linkTitle')}</Label>
+                <Label htmlFor={`${fieldId}-titulo`}>{t('detail.linkTitle')}</Label>
                 <Input
+                  id={`${fieldId}-titulo`}
                   placeholder={t('detail.linkTitlePlaceholder')}
                   maxLength={120}
+                  aria-invalid={!!errors.titulo}
+                  aria-describedby={errors.titulo ? `${fieldId}-titulo-erro` : undefined}
                   {...form.register('titulo')}
                 />
                 {errors.titulo && (
-                  <p style={{ color: 'var(--danger-text)', fontSize: '0.8rem' }}>
+                  <p
+                    id={`${fieldId}-titulo-erro`}
+                    style={{ color: 'var(--danger-text)', fontSize: '0.8rem' }}
+                  >
                     {errors.titulo.message}
                   </p>
                 )}
               </div>
               <div className="space-y-1">
-                <Label>{t('detail.linkUrl')}</Label>
+                <Label htmlFor={`${fieldId}-url`}>{t('detail.linkUrl')}</Label>
                 <Input
+                  id={`${fieldId}-url`}
                   placeholder={t('detail.linkUrlPlaceholder')}
+                  aria-invalid={!!errors.url}
+                  aria-describedby={errors.url ? `${fieldId}-url-erro` : undefined}
                   inputMode="url"
                   autoCapitalize="none"
                   autoCorrect="off"
                   {...form.register('url')}
                 />
                 {errors.url && (
-                  <p style={{ color: 'var(--danger-text)', fontSize: '0.8rem' }}>
+                  <p
+                    id={`${fieldId}-url-erro`}
+                    style={{ color: 'var(--danger-text)', fontSize: '0.8rem' }}
+                  >
                     {errors.url.message}
                   </p>
                 )}
               </div>
               <div className="space-y-1">
-                <Label>{t('detail.linkDescription')}</Label>
+                <Label htmlFor={`${fieldId}-descricao`}>{t('detail.linkDescription')}</Label>
                 <Input
+                  id={`${fieldId}-descricao`}
                   placeholder={t('detail.linkDescriptionPlaceholder')}
                   maxLength={300}
                   {...form.register('descricao')}
