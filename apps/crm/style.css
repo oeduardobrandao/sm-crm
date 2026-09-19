@@ -7838,15 +7838,20 @@ body.role-agent input[name='valor_total'] {
 /* Texto colado (Google Docs, Word, ChatGPT) chega com `color: rgb(0,0,0)` inline,
    que o TipTap Color preserva: preto sobre fundo escuro. No tema escuro, qualquer
    cor inline que NÃO seja uma das escolhidas na paleta do editor (TEXT_COLORS em
-   PostEditor.tsx) volta a herdar a cor do tema. */
+   PostEditor.tsx) volta a herdar a cor do tema. Cada cor da paleta aparece em hex E
+   em rgb(): o navegador reescreve hex para rgb() ao copiar/colar. */
 [data-theme='dark']
   .post-editor-content
   .ProseMirror
-  span[style*='color']:not([style*='#787774' i]):not([style*='#9F6B53' i]):not(
-    [style*='#D9730D' i]
-  ):not([style*='#CB912F' i]):not([style*='#448361' i]):not([style*='#337EA9' i]):not(
-    [style*='#9065B0' i]
-  ):not([style*='#C14C8A' i]) {
+  span[style*='color']:not([style*='#787774' i]):not([style*='rgb(120, 119, 116)' i]):not(
+    [style*='#9F6B53' i]
+  ):not([style*='rgb(159, 107, 83)' i]):not([style*='#D9730D' i]):not(
+    [style*='rgb(217, 115, 13)' i]
+  ):not([style*='#CB912F' i]):not([style*='rgb(203, 145, 47)' i]):not([style*='#448361' i]):not(
+    [style*='rgb(68, 131, 97)' i]
+  ):not([style*='#337EA9' i]):not([style*='rgb(51, 126, 169)' i]):not([style*='#9065B0' i]):not(
+    [style*='rgb(144, 101, 176)' i]
+  ):not([style*='#C14C8A' i]):not([style*='rgb(193, 76, 138)' i]) {
   color: inherit !important;
 }
 
