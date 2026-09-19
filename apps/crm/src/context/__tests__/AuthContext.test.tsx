@@ -46,6 +46,8 @@ import * as supabaseModule from '../../lib/supabase';
 import { resetAnalytics } from '../../lib/analytics';
 import { AuthProvider, useAuth } from '../AuthContext';
 import { CRISP_SESSION_STORAGE_KEY } from '../../lib/crispSession';
+import { seedConsent } from '../../test/consent';
+import { CONSENT_STORAGE_KEY, setConsent } from '../../lib/consent';
 
 const mockedResetAnalytics = vi.mocked(resetAnalytics);
 
@@ -484,13 +486,19 @@ describe('AuthProvider', () => {
 // below it.
 describe('AuthProvider Crisp identification', () => {
   let crispPush: ReturnType<typeof vi.spyOn>;
+  // The mock's functions.invoke is a plain async function, not a vi.fn, so it
+  // is spied on per case (and restored in afterEach) for the consent tests.
+  let invokeSpyFn: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     window.$crisp = [];
     crispPush = vi.spyOn(window.$crisp, 'push');
+    invokeSpyFn = vi.spyOn(supabaseModule.supabase.functions, 'invoke');
     // Session Continuity state is per-browser (localStorage + a window
     // property), so it would leak between cases without this.
     localStorage.clear();
+    // Crisp only identifies with the visitor's support consent.
+    seedConsent({ support: true });
     delete (window as { CRISP_TOKEN_ID?: unknown }).CRISP_TOKEN_ID;
   });
 
@@ -498,6 +506,7 @@ describe('AuthProvider Crisp identification', () => {
     delete (window as { $crisp?: unknown }).$crisp;
     delete (window as { CRISP_TOKEN_ID?: unknown }).CRISP_TOKEN_ID;
     localStorage.clear();
+    invokeSpyFn.mockRestore();
   });
 
   // CRISP_TOKEN_ID is a plain window property assignment, not a $crisp.push,
@@ -1023,5 +1032,94 @@ describe('AuthProvider Crisp identification', () => {
     await waitFor(() => {
       expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['bruna@example.com']]);
     });
+  });
+
+  const invokeSpy = () => invokeSpyFn;
+
+  function signedInOwner() {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1', email: 'eduardo@example.com' });
+    mockedSupabase.__setCurrentProfile(OWNER_PROFILE);
+  }
+
+  it('does not call crisp-identity or push identity without support consent', async () => {
+    localStorage.removeItem(CONSENT_STORAGE_KEY);
+    signedInOwner();
+
+    renderWithAuth();
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
+
+    expect(invokeSpy()).not.toHaveBeenCalledWith('crisp-identity', expect.anything());
+    expect(crispPush).not.toHaveBeenCalledWith(['set', 'user:email', expect.anything()]);
+    expect(crispPush).not.toHaveBeenCalledWith(['set', 'user:nickname', expect.anything()]);
+  });
+
+  it('identifies once when support consent is granted mid-session', async () => {
+    localStorage.removeItem(CONSENT_STORAGE_KEY);
+    signedInOwner();
+
+    renderWithAuth();
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
+    expect(crispPush).not.toHaveBeenCalledWith(['set', 'user:email', expect.anything()]);
+
+    await act(async () => {
+      setConsent({ analytics: false, support: true });
+    });
+
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com']]);
+    });
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:nickname', ['Eduardo Souza']]);
+    });
+  });
+
+  it('revoking support consent tears the Crisp session down like sign-out does', async () => {
+    signedInOwner();
+    window.CRISP_TOKEN_ID = 'tok-1';
+    localStorage.setItem(
+      CRISP_SESSION_STORAGE_KEY,
+      JSON.stringify({ userId: 'user-1', token: 'tok-1' }),
+    );
+
+    renderWithAuth();
+    await waitFor(() => {
+      expect(crispPush).toHaveBeenCalledWith(['set', 'user:email', ['eduardo@example.com']]);
+    });
+    crispPush.mockClear();
+
+    await act(async () => {
+      setConsent({ analytics: false, support: false });
+    });
+
+    expect(crispPush).toHaveBeenCalledWith(['do', 'session:reset']);
+    expect(crispPush).toHaveBeenCalledWith(['do', 'chat:hide']);
+    expect(window.CRISP_TOKEN_ID).toBeNull();
+    expect(localStorage.getItem(CRISP_SESSION_STORAGE_KEY)).toBeNull();
+  });
+
+  it('discards an in-flight crisp-identity response that lands after the consent was revoked', async () => {
+    signedInOwner();
+    let resolveInvoke!: (value: { data: unknown; error?: unknown }) => void;
+    mockedSupabase.__queueFunctionsInvokeResponse(
+      new Promise((resolve) => {
+        resolveInvoke = resolve;
+      }),
+    );
+
+    renderWithAuth();
+    await waitFor(() => {
+      expect(invokeSpy()).toHaveBeenCalledWith('crisp-identity', expect.anything());
+    });
+
+    await act(async () => {
+      setConsent({ analytics: false, support: false });
+    });
+    crispPush.mockClear();
+    await act(async () => {
+      resolveInvoke({ data: { signature: 'abc' }, error: null });
+    });
+
+    expect(crispPush).not.toHaveBeenCalledWith(['set', 'user:email', expect.anything()]);
   });
 });

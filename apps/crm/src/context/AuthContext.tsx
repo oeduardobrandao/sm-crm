@@ -32,6 +32,9 @@ import {
   readCrispSessionCache,
   writeCrispSessionCache,
 } from '../lib/crispSession';
+import { getConsent } from '../lib/consent';
+import { useConsent } from '../lib/useConsent';
+import { purgeSupportStorage } from '../lib/legacyStorage';
 
 interface Profile {
   id: string;
@@ -219,6 +222,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const profileRequestId = useRef(0);
   const activeUserId = useRef<string | null>(null);
   const userId = user?.id;
+
+  // Crisp only runs with the visitor's support consent (cookie-consent spec). Read reactively so
+  // a grant through the dialog re-runs the identify effects below without a reload.
+  const supportConsent = useConsent()?.support === true;
+  const prevSupportConsent = useRef(supportConsent);
+
+  // Revoke: mirror signOut's Crisp teardown, in the same order and for the same reason. The
+  // generation bump comes first so a crisp-identity response already in flight can never
+  // re-identify the reset session; the token/cache go next (crisp_session_v1 is Mesaas-owned,
+  // so a leftover would make the `matches` check in the identify effect skip the rebind on a
+  // later re-grant); only then the widget reset and hide. The widget script cannot be unloaded,
+  // so this is best effort until the next reload, where consentEffects purges what is left.
+  useEffect(() => {
+    const revoked = prevSupportConsent.current && !supportConsent;
+    prevSupportConsent.current = supportConsent;
+    if (!revoked) return;
+    crispResetGeneration.current += 1;
+    window.CRISP_TOKEN_ID = null;
+    clearCrispSessionCache();
+    try {
+      window.$crisp?.push(['do', 'session:reset']);
+      window.$crisp?.push(['do', 'chat:hide']);
+    } catch {
+      // Never let a support-tooling nicety break auth.
+    }
+    purgeSupportStorage();
+  }, [supportConsent]);
 
   useEffect(() => {
     let active = true;
@@ -456,8 +486,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // TOKEN_REFRESHED arriving mid-invoke made this guard drop a valid push and,
   // because the deps below do not change on a refresh, left the user
   // unidentified in Crisp for the entire mount.
+  //
+  // Consent: this effect is inert without support consent (no crisp-identity invoke, no pushes,
+  // no cache writes) and re-runs on a grant. The post-await getConsent() check covers a revoke
+  // that lands mid-flight in addition to the generation guard.
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !supportConsent) return;
     let active = true;
     const initialCrispResetGeneration = crispResetGeneration.current;
 
@@ -492,7 +526,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // unmount race, `crispResetGeneration` closes the session:reset race
       // (see the comment above this effect) that `active` cannot, because it
       // is only cleared asynchronously by React's own cleanup.
-      if (!active || crispResetGeneration.current !== initialCrispResetGeneration) return;
+      if (
+        !active ||
+        crispResetGeneration.current !== initialCrispResetGeneration ||
+        getConsent()?.support !== true
+      ) {
+        return;
+      }
 
       // Session Continuity reconciliation. Placed AFTER the guard above on
       // purpose: a write before it could let a response for an already
@@ -560,10 +600,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [userId, user?.email]);
+  }, [userId, user?.email, supportConsent]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !supportConsent) return;
     if (profile?.nome) {
       try {
         window.$crisp?.push(['set', 'user:nickname', [profile.nome]]);
@@ -571,7 +611,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Never let a support-tooling nicety break auth.
       }
     }
-  }, [userId, profile?.nome]);
+  }, [userId, profile?.nome, supportConsent]);
 
   // Backstop mirror: keeps the ref in sync with every OTHER setCanSeeFinancials
   // call site (the userChanged reset, both branches of the hydration effect,
