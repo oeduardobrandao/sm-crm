@@ -29,9 +29,8 @@ Vercel Analytics is cookieless and stays on under legitimate interest, but it is
    **support** (Crisp).
 4. **PostHog session replay stays enabled** (no `disable_session_recording` added), gated by the
    analytics toggle and disclosed by name in the dialog and on `/lgpd`. `analytics.ts` sets no
-   override today, so this preserves current behaviour. *Open for the user to confirm at spec
-   review: if replay is not actually wanted, disabling it shrinks the consent surface and the
-   disclosure.*
+   override today, so this preserves current behaviour for users who consent. Confirmed by the
+   user on 2026-09-19.
 
 ## Design
 
