@@ -506,6 +506,7 @@ async function guardReferencedTemplates(db: DbClient, conta_id: string, ids: str
  *   tiktok_accounts        client_id   (none)        20260718000001_tiktok_core.sql:6
  *   cliente_enderecos      cliente_id  conta_id      20260727000001_reconcile_adopt_client_tables.sql:40
  *   cliente_datas          cliente_id  conta_id      20260727000001_reconcile_adopt_client_tables.sql:68
+ *   cliente_links          cliente_id  conta_id      20260925000016_cliente_links.sql:12
  *
  * The last two are the exact failure this list's warning predicts, and they are
  * worth understanding rather than just patching. They back the live Endereços
@@ -562,6 +563,7 @@ const CLIENTE_CASCADE_CHILDREN: Array<{ table: string; column: string; scopeCol:
   { table: "hub_pages", column: "cliente_id", scopeCol: "conta_id" },
   { table: "cliente_enderecos", column: "cliente_id", scopeCol: "conta_id" },
   { table: "cliente_datas", column: "cliente_id", scopeCol: "conta_id" },
+  { table: "cliente_links", column: "cliente_id", scopeCol: "conta_id" },
 ];
 
 /**

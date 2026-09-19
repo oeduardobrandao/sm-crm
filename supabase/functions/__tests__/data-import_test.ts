@@ -1877,6 +1877,9 @@ Deno.test("data-import: undo still deletes a template with no workflow and no pr
 // had no migration behind them until 20260727000001 adopted them, so no amount of
 // grepping supabase/migrations/ could have surfaced them earlier — see the longer
 // note on CLIENTE_CASCADE_CHILDREN in handler.ts.
+//
+// cliente_links (Links uteis section, migration 20260925000016) was added on
+// 2026-09-19 with the feature itself; it is a plain migration-backed table.
 const CLIENTE_CASCADE_CHILDREN: Array<{ table: string; column: string; scope: string | null }> = [
   { table: "workflows", column: "cliente_id", scope: "conta_id" },
   { table: "ideias", column: "cliente_id", scope: "workspace_id" },
@@ -1891,6 +1894,7 @@ const CLIENTE_CASCADE_CHILDREN: Array<{ table: string; column: string; scope: st
   { table: "hub_pages", column: "cliente_id", scope: "conta_id" },
   { table: "cliente_enderecos", column: "cliente_id", scope: "conta_id" },
   { table: "cliente_datas", column: "cliente_id", scope: "conta_id" },
+  { table: "cliente_links", column: "cliente_id", scope: "conta_id" },
 ];
 
 for (const child of CLIENTE_CASCADE_CHILDREN) {
