@@ -52,6 +52,17 @@ export interface ClienteEndereco {
   updated_at?: string;
 }
 
+export interface ClienteLink {
+  id?: number;
+  cliente_id: number;
+  conta_id?: string;
+  titulo: string;
+  url: string;
+  descricao?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ClienteData {
   id?: number;
   cliente_id: number;
@@ -226,6 +237,52 @@ export async function updateClienteEndereco(
 
 export async function removeClienteEndereco(id: number): Promise<void> {
   const { error } = await supabase.from('cliente_enderecos').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// =============================================
+// CLIENTE LINKS CRUD
+// =============================================
+
+export async function getClienteLinks(clienteId: number): Promise<ClienteLink[]> {
+  const { data, error } = await supabase
+    .from('cliente_links')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addClienteLink(
+  l: Omit<ClienteLink, 'id' | 'conta_id' | 'created_at' | 'updated_at'>,
+): Promise<ClienteLink> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('cliente_links')
+    .insert({ ...l, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateClienteLink(
+  id: number,
+  l: Partial<Omit<ClienteLink, 'id' | 'conta_id' | 'created_at' | 'updated_at'>>,
+): Promise<ClienteLink> {
+  const { data, error } = await supabase
+    .from('cliente_links')
+    .update({ ...l, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeClienteLink(id: number): Promise<void> {
+  const { error } = await supabase.from('cliente_links').delete().eq('id', id);
   if (error) throw error;
 }
 
