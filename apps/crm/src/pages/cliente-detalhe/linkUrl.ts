@@ -19,11 +19,18 @@ export function normalizeLinkUrl(raw: string): string | null {
   try {
     const parsed = new URL(candidate);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    // Credenciais embutidas. Só olhar username/password não basta: userinfo
+    // vazio (`https://@x.com`, `https://:@x.com`) e `\@` (o parser troca a
+    // barra invertida por `/`) deixam ambos vazios.
     if (parsed.username || parsed.password) return null;
     if (!parsed.hostname.includes('.')) return null;
     // O CHECK do banco exige a barra dupla literal; `https:/x.com` passa no
     // new URL mas seria recusado pelo banco.
     if (!/^https?:\/\//i.test(candidate)) return null;
+    // Espelha o CHECK do banco (`url !~* '^https?://[^/?#]*@'`): qualquer `@`
+    // na autoridade, antes da primeira `/`, `?` ou `#`, é recusado. `@` no
+    // caminho, query ou fragmento (`/@handle`, `?x=@y`, `#@y`) segue válido.
+    if (/^https?:\/\/[^/?#]*@/i.test(candidate)) return null;
     return candidate;
   } catch {
     return null;

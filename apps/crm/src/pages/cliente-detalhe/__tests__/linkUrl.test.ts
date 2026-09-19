@@ -27,6 +27,15 @@ describe('normalizeLinkUrl', () => {
   it('accepts @handle paths', () => {
     expect(normalizeLinkUrl('https://www.tiktok.com/@x')).toBe('https://www.tiktok.com/@x');
     expect(normalizeLinkUrl('medium.com/@user')).toBe('https://medium.com/@user');
+    expect(normalizeLinkUrl('https://medium.com/@user')).toBe('https://medium.com/@user');
+    expect(normalizeLinkUrl('https://www.tiktok.com/@handle')).toBe(
+      'https://www.tiktok.com/@handle',
+    );
+  });
+
+  it('accepts @ after the first /, ? or # (not userinfo)', () => {
+    expect(normalizeLinkUrl('https://a.com/?x=@y')).toBe('https://a.com/?x=@y');
+    expect(normalizeLinkUrl('https://a.com#@y')).toBe('https://a.com#@y');
   });
 
   it('trims surrounding whitespace', () => {
@@ -52,6 +61,11 @@ describe('normalizeLinkUrl', () => {
     '//exemplo.com',
     'https://user:pass@exemplo.com',
     'https://u:p@example.com',
+    '@example.com',
+    'https://@example.com',
+    'https://:@example.com',
+    'https://example.com\\@evil.com',
+    'https://a.com@evil.com',
     'mailto:a@b.com',
     'https:/example.com',
     'https:example.com',
