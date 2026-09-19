@@ -123,7 +123,7 @@ duplicated in both drawers) and stays untouched. Instead:
 - The textarea keeps today's auto-grow (`resize-none overflow-hidden`, height from
   `scrollHeight`), so there is no inner scroll to sync. A mirror div, absolutely
   positioned behind a transparent-background textarea, uses identical font, padding and
-  wrapping (`white-space: pre-wrap; overflow-wrap: anywhere`) copied from the textarea's computed style, `aria-hidden`, `pointer-events: none`,
+  wrapping (`white-space: pre-wrap`, `overflow-wrap` and all metrics) copied from the textarea's computed style, `aria-hidden`, `pointer-events: none`,
   `color: transparent` on text with only the `<mark>` background visible, and a trailing
   zero-width space so a final newline gets a line box; it is re-rendered on
   every keystroke and on width change (the existing `ResizeObserver`). Paints
@@ -133,7 +133,8 @@ duplicated in both drawers) and stays untouched. Instead:
   non-empty selection (tracked via `selectionchange`, offsets captured on click). No
   floating button at the selection: a textarea exposes no selection pixel coordinates,
   multi-line selections have no single anchor point, and on touch the native selection
-  menu would collide. The button opens the existing add-comment popover
+  menu would collide. The button opens an add-comment popover; that UI is inline JSX in `PostEditor.tsx:756-795`
+  today, so it gets extracted into a shared `AddCommentPopover` used by both editors
   (`MentionTextarea`), anchored below the header.
 - A click (not caret movement, so arrowing through a highlight doesn't pop it) inside a
   highlight opens `PostCommentPopover`, anchored to that `<mark>`'s
