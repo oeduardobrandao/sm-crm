@@ -16,6 +16,7 @@
 - Caption threads are **internal only**: the Hub never sees them; no Hub/edge-function/MCP changes.
 - Commenting stays enabled while the caption is locked (status `agendado`). The lock swaps `disabled` for `readOnly` on the textarea. **Do not** copy `PostEditor`'s `readOnly={disabled}` on `PostCommentPopover`.
 - Orphaning is terminal in `remapAnchors`/`validateAnchors`; only "text equals the last persisted text" resets anchors to the persisted ones.
+- **As executed (Task 1 landed with review fixes; the repo's migration/suite are the source of truth, the SQL in Task 1 below is the pre-review draft):** `save_ig_caption` also raises `anchor_out_of_range` (22023) when a non-orphaned anchor's `anchor_end` exceeds the caption's UTF-16 length, and the CHECK requires NULL offsets when `orphaned`. **Contract for the client:** `p_anchors` must contain ONLY this post's `ig_caption` threads (an out-of-range entry for any listed thread aborts the whole save).
 - Caption text + anchors commit atomically via `save_ig_caption`; `onFieldChange('ig_caption', ...)` is no longer used for the caption.
 - Portuguese UI copy; **no em-dashes in user-facing copy** (period or colon instead). Toasts via `sonner`.
 - Migration version prefix must be unique and above main's tail (`20260925000015` at planning time; re-check `ls supabase/migrations | tail -3` and renumber before opening the PR).
@@ -976,6 +977,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `anchorsFromThreads`, `patchesFromAnchors`, `remapAnchors`, `validateAnchors`, `CaptionAnchor` (Task 2); `CaptionAnchorPatch`, `CommentThread` (Task 3); `useUnsavedWork` from `@mesaas/app-lifecycle`.
 - Produces: `useCaptionDraft`, `MAX_CAPTION_CHARS`.
+
+Known, accepted behavior: undoing a deletion *after* the save that persisted the deletion has started is a retype after a persisted delete, so the orphaned thread stays orphaned (terminal by design). Only an undo inside the debounce window, before anything reaches the DB, restores the anchor.
 
 Behavior contract (from the spec):
 - `text`/`anchors` come from props (validated) until the user types; then from a local **draft**.
