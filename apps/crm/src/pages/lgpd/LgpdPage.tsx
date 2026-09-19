@@ -368,8 +368,8 @@ export default function LgpdPage() {
                         ],
                         [
                           <>
-                            <strong>Crisp</strong>. Categoria: chat de suporte. Depende do seu
-                            consentimento. Política:{' '}
+                            <strong>Crisp</strong> (União Europeia). Categoria: chat de suporte.
+                            Depende do seu consentimento. Política:{' '}
                             <a
                               href="https://crisp.chat/en/privacy/"
                               target="_blank"
@@ -381,7 +381,7 @@ export default function LgpdPage() {
                             .
                           </>,
                           'Conversar com a nossa equipe de suporte.',
-                          'Mensagens, e-mail e nome de quem está logado. Para manter a conversa, o chat guarda um cookie de sessão e registros no localStorage do navegador (as chaves crisp-client/session/… do Crisp, e a chave crisp_session_v1 do próprio Mesaas). Retenção conforme a política do Crisp.',
+                          'Mensagens, e-mail e nome de quem está logado. Para manter a conversa, o chat guarda um cookie de sessão e registros no localStorage do navegador (as chaves crisp-client/session/… do Crisp, e a chave crisp_session_v1 do próprio Mesaas). As conversas ficam guardadas por até 1 ano.',
                           'Consentimento (art. 7º, I).',
                         ],
                         [
@@ -404,8 +404,8 @@ export default function LgpdPage() {
                         ],
                         [
                           <>
-                            <strong>Vercel Analytics</strong>. Categoria: sempre ativa (legítimo
-                            interesse, art. 7º, IX). Política:{' '}
+                            <strong>Vercel Analytics</strong> (Estados Unidos). Categoria: sempre
+                            ativa (legítimo interesse, art. 7º, IX). Política:{' '}
                             <a
                               href="https://vercel.com/legal/privacy-policy"
                               target="_blank"
