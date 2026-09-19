@@ -2,10 +2,16 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from 'i18next';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getConsent, openConsentPreferences, setConsent } from '@/lib/consent';
+import { clearPendingSupportChat } from '@/lib/supportChat';
 import { seedConsent } from '../../../test/consent';
 import CookieConsent from '../CookieConsent';
+
+vi.mock('@/lib/supportChat', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/supportChat')>()),
+  clearPendingSupportChat: vi.fn(),
+}));
 
 const t = (key: string) => i18n.t(key);
 
@@ -18,7 +24,10 @@ function renderBanner() {
 }
 
 describe('CookieConsent', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(clearPendingSupportChat).mockClear();
+  });
   afterEach(() => localStorage.clear());
 
   it('shows the banner only while the visitor is undecided', () => {
@@ -109,5 +118,31 @@ describe('CookieConsent', () => {
       within(dialog).getByRole('switch', { name: t('cookies.dialog.supportTitle') }),
     ).toBeChecked();
     expect(within(dialog).getByText(t('cookies.dialog.supportNeeded'))).toBeInTheDocument();
+  });
+
+  it('does not carry a support focus over to a later Customize open', async () => {
+    renderBanner();
+    act(() => openConsentPreferences('support'));
+    let dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(t('cookies.dialog.supportNeeded'))).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.cancel') }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    await userEvent.click(screen.getByRole('button', { name: t('cookies.banner.customize') }));
+    dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByRole('switch', { name: t('cookies.dialog.supportTitle') }),
+    ).not.toBeChecked();
+    expect(within(dialog).queryByText(t('cookies.dialog.supportNeeded'))).toBeNull();
+  });
+
+  it('clears the pending chat request when a support-focused dialog is dismissed unsaved', async () => {
+    seedConsent({ analytics: false, support: false });
+    renderBanner();
+    act(() => openConsentPreferences('support'));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.cancel') }));
+    expect(clearPendingSupportChat).toHaveBeenCalled();
+    expect(getConsent()).toMatchObject({ analytics: false, support: false });
   });
 });

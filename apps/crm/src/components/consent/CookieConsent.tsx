@@ -30,7 +30,11 @@ export default function CookieConsent() {
   const handleOpenChange = (open: boolean) => {
     setDialogOpen(open);
     // A dismissed dialog must not leave a chat-open request waiting for some later grant.
-    if (!open) clearPendingSupportChat();
+    if (!open) {
+      clearPendingSupportChat();
+      // Covers Save, Cancel, X, Esc and overlay click: a later open must not inherit the focus.
+      setFocus(undefined);
+    }
   };
 
   return (
@@ -51,7 +55,14 @@ export default function CookieConsent() {
             </p>
           </div>
           <div className="mt-3 flex flex-wrap gap-2 sm:mt-0 sm:shrink-0">
-            <Button variant="ghost" size="sm" onClick={() => setDialogOpen(true)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFocus(undefined);
+                setDialogOpen(true);
+              }}
+            >
               {t('cookies.banner.customize')}
             </Button>
             {/* Same variant on purpose: rejecting must not look less clickable than accepting. */}
