@@ -7851,8 +7851,22 @@ body.role-agent input[name='valor_total'] {
     [style*='rgb(68, 131, 97)' i]
   ):not([style*='#337EA9' i]):not([style*='rgb(51, 126, 169)' i]):not([style*='#9065B0' i]):not(
     [style*='rgb(144, 101, 176)' i]
-  ):not([style*='#C14C8A' i]):not([style*='rgb(193, 76, 138)' i]) {
+  ):not([style*='#C14C8A' i]):not([style*='rgb(193, 76, 138)' i]):not([style*='#be123c' i]):not(
+    [style*='rgb(190, 18, 60)' i]
+  ) {
   color: inherit !important;
+}
+
+/* Diff do histórico de versões (utils/tiptapDiff.ts): remoção = texto #be123c
+   riscado, inserção = highlight #bbf7d0. Ambos são pensados para fundo claro;
+   no tema escuro a inserção ficava texto claro sobre verde claro. */
+[data-theme='dark'] .post-editor-content .ProseMirror mark[data-color='#bbf7d0' i] {
+  background-color: rgba(34, 197, 94, 0.25) !important;
+  color: #86efac !important;
+}
+[data-theme='dark'] .post-editor-content .ProseMirror span[style*='#be123c' i],
+[data-theme='dark'] .post-editor-content .ProseMirror span[style*='rgb(190, 18, 60)' i] {
+  color: #fb7185 !important;
 }
 
 .post-editor-content .ProseMirror p {
