@@ -539,6 +539,7 @@ Em `packages/i18n/locales/pt/clients.json`, dentro de `detail`, depois da linha 
     "linkDescription": "Descrição",
     "linkDescriptionPlaceholder": "Ex: Pasta de criativos aprovados",
     "linkTitleRequired": "Informe um título.",
+    "linkTitleTooLong": "O título pode ter no máximo 120 caracteres.",
     "linkUrlInvalid": "Informe uma URL válida (http ou https).",
     "linkAdded": "Link adicionado!",
     "linkUpdated": "Link atualizado!",
@@ -563,6 +564,7 @@ Em `packages/i18n/locales/en/clients.json`, no mesmo ponto:
     "linkDescription": "Description",
     "linkDescriptionPlaceholder": "E.g. Approved creatives folder",
     "linkTitleRequired": "Enter a title.",
+    "linkTitleTooLong": "The title can have at most 120 characters.",
     "linkUrlInvalid": "Enter a valid URL (http or https).",
     "linkAdded": "Link added!",
     "linkUpdated": "Link updated!",
@@ -867,7 +869,7 @@ function buildLinkSchema(t: TFunction) {
       .string()
       .trim()
       .min(1, t('detail.linkTitleRequired'))
-      .max(120, t('detail.linkTitleRequired')),
+      .max(120, t('detail.linkTitleTooLong')),
     url: z
       .string()
       .trim()
