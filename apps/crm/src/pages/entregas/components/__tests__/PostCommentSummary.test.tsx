@@ -29,6 +29,10 @@ function makeThread(overrides?: Partial<CommentThreadWithComments>): CommentThre
     resolved_by: null,
     created_at: new Date().toISOString(),
     resolved_at: null,
+    field: 'conteudo',
+    anchor_start: null,
+    anchor_end: null,
+    orphaned: false,
     post_comments: [
       {
         id: 100,
