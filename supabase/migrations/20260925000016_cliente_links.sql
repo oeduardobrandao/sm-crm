@@ -48,13 +48,17 @@ DECLARE
     '             WHERE c.id = cliente_links.cliente_id '
     '               AND c.conta_id = cliente_links.conta_id)';
 BEGIN
+  EXECUTE 'DROP POLICY IF EXISTS workspace_select_links ON public.cliente_links';
   EXECUTE format('CREATE POLICY workspace_select_links ON public.cliente_links '
                  'FOR SELECT TO authenticated USING (%s)', predicate);
+  EXECUTE 'DROP POLICY IF EXISTS workspace_insert_links ON public.cliente_links';
   EXECUTE format('CREATE POLICY workspace_insert_links ON public.cliente_links '
                  'FOR INSERT TO authenticated WITH CHECK (%s)', check_predicate);
+  EXECUTE 'DROP POLICY IF EXISTS workspace_update_links ON public.cliente_links';
   EXECUTE format('CREATE POLICY workspace_update_links ON public.cliente_links '
                  'FOR UPDATE TO authenticated USING (%s) WITH CHECK (%s)',
                  predicate, check_predicate);
+  EXECUTE 'DROP POLICY IF EXISTS workspace_delete_links ON public.cliente_links';
   EXECUTE format('CREATE POLICY workspace_delete_links ON public.cliente_links '
                  'FOR DELETE TO authenticated USING (%s)', predicate);
 END $$;
