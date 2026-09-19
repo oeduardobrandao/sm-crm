@@ -13,20 +13,24 @@ function showChat(): void {
  * The single entry point for "open the support chat". Without support consent the widget is not
  * loaded, so a bare `$crisp.push(['do','chat:open'])` would be a silent dead click; instead we
  * open the consent dialog focused on the support toggle and open the chat once it is granted.
+ * Returns true when the chat was actually opened, false when only the consent dialog was.
  */
-export function openSupportChat(): void {
+export function openSupportChat(): boolean {
   if (getConsent()?.support !== true) {
     pendingOpen = true;
     openConsentPreferences('support');
-    return;
+    return false;
   }
   showChat();
+  return true;
 }
 
 /** Called by consent handling when support consent is granted. */
 export function resumePendingSupportChat(): void {
   if (!pendingOpen) return;
   pendingOpen = false;
+  // Re-check: the grant that triggered this may have been revoked again before we run.
+  if (getConsent()?.support !== true) return;
   showChat();
 }
 

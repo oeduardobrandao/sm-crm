@@ -14,7 +14,7 @@ describe('supportChat', () => {
     const handler = vi.fn();
     window.addEventListener(OPEN_PREFERENCES_EVENT, handler);
     const { openSupportChat } = await import('../supportChat');
-    openSupportChat();
+    expect(openSupportChat()).toBe(false);
     window.removeEventListener(OPEN_PREFERENCES_EVENT, handler);
     expect((handler.mock.calls[0][0] as CustomEvent).detail).toEqual({ focus: 'support' });
     expect(window.$crisp).toEqual([]);
@@ -23,7 +23,7 @@ describe('supportChat', () => {
   it('shows and opens the chat when support consent is granted', async () => {
     seedConsent({ support: true });
     const { openSupportChat } = await import('../supportChat');
-    openSupportChat();
+    expect(openSupportChat()).toBe(true);
     expect(window.$crisp).toEqual([
       ['do', 'chat:show'],
       ['do', 'chat:open'],
@@ -43,6 +43,14 @@ describe('supportChat', () => {
     openSupportChat();
     clearPendingSupportChat();
     seedConsent({ support: true });
+    resumePendingSupportChat();
+    expect(window.$crisp).toEqual([]);
+  });
+
+  it('does not open the chat on resume when consent was revoked again in the meantime', async () => {
+    const { openSupportChat, resumePendingSupportChat } = await import('../supportChat');
+    openSupportChat();
+    seedConsent({ support: false });
     resumePendingSupportChat();
     expect(window.$crisp).toEqual([]);
   });

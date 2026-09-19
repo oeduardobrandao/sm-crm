@@ -50,4 +50,45 @@ describe('crispLoader', () => {
     vi.advanceTimersByTime(5000);
     expect(document.head.querySelector(`script[src="${CRISP_SCRIPT_SRC}"]`)).toBeNull();
   });
+
+  it('resets the requested flag and removes the script when l.js fails, so a retry injects again', async () => {
+    const { loadCrisp, CRISP_SCRIPT_SRC } = await import('../crispLoader');
+    loadCrisp();
+    const first = document.head.querySelector(
+      `script[src="${CRISP_SCRIPT_SRC}"]`,
+    ) as HTMLScriptElement;
+    first.onerror?.(new Event('error'));
+    expect(document.head.querySelector(`script[src="${CRISP_SCRIPT_SRC}"]`)).toBeNull();
+    loadCrisp();
+    expect(document.head.querySelectorAll(`script[src="${CRISP_SCRIPT_SRC}"]`)).toHaveLength(1);
+  });
+
+  it('tears the widget down when consent was revoked while l.js was downloading', async () => {
+    seedConsent({ support: true });
+    localStorage.setItem('crisp-client/session/abc', 'x');
+    const { loadCrisp, CRISP_SCRIPT_SRC } = await import('../crispLoader');
+    loadCrisp();
+    const script = document.head.querySelector(
+      `script[src="${CRISP_SCRIPT_SRC}"]`,
+    ) as HTMLScriptElement;
+    seedConsent({ support: false });
+    localStorage.setItem('crisp-client/session/abc', 'x');
+    script.onload?.(new Event('load'));
+    expect(window.$crisp).toEqual([
+      ['do', 'session:reset'],
+      ['do', 'chat:hide'],
+    ]);
+    expect(localStorage.getItem('crisp-client/session/abc')).toBeNull();
+  });
+
+  it('leaves the widget alone when consent still holds at load time', async () => {
+    seedConsent({ support: true });
+    const { loadCrisp, CRISP_SCRIPT_SRC } = await import('../crispLoader');
+    loadCrisp();
+    const script = document.head.querySelector(
+      `script[src="${CRISP_SCRIPT_SRC}"]`,
+    ) as HTMLScriptElement;
+    script.onload?.(new Event('load'));
+    expect(window.$crisp).toEqual([]);
+  });
 });

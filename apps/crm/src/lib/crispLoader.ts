@@ -1,4 +1,5 @@
 import { getConsent } from './consent';
+import { purgeSupportStorage } from './legacyStorage';
 
 export const CRISP_SCRIPT_SRC = 'https://client.crisp.chat/l.js';
 
@@ -16,6 +17,26 @@ export function loadCrisp(): void {
   const script = document.createElement('script');
   script.src = CRISP_SCRIPT_SRC;
   script.async = true;
+  // A failed l.js fetch (offline, ad blocker) must not leave `requested` stuck: a later
+  // consenting click on Chat retries instead of being a silent dead click.
+  script.onerror = () => {
+    requested = false;
+    script.remove();
+  };
+  // Consent can be revoked while l.js is downloading. AuthContext's revoke effect already ran by
+  // then and found no widget to reset, so the widget would boot with a live session the visitor
+  // said no to. Do the minimal teardown here (the identity-generation fencing stays in
+  // AuthContext; this only needs to reset and hide what the script just booted).
+  script.onload = () => {
+    if (getConsent()?.support === true) return;
+    try {
+      window.$crisp?.push(['do', 'session:reset']);
+      window.$crisp?.push(['do', 'chat:hide']);
+    } catch {
+      // Never let a support-tooling nicety throw out of a script handler.
+    }
+    purgeSupportStorage();
+  };
   document.head.appendChild(script);
 }
 
