@@ -517,6 +517,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 Background (verified against posthog-js 1.402.3, load-bearing): `reset()` deletes the SDK's opt-in/out flag, so **`reset()` must run before `opt_out_capturing()`**; the opt-out flag persists across page loads so a fresh `init` after a past revoke needs `opt_in_capturing()`; `opt_out_persistence_by_default: true` makes opt-out also clear the `ph_*` identifier; `opt_in_capturing()` emits a `$opt_in` event unless `captureEventName: false`.
 
+Review addendum (fix round 1): `reset()` ends with `reloadFeatureFlags()`, an ungated `/flags/` POST that would carry the pre-revoke device id ~5ms after a revoke. The CRM uses no PostHog feature flags, so `posthog.init` also sets `advanced_disable_feature_flags: true`, with a test. NOT `advanced_disable_flags`: that also stops remote config from loading, which would kill session replay and heatmaps. Re-verify the `reloadFeatureFlags` gate on any posthog-js upgrade.
+
 - [ ] **Step 1: Extend the mock and write the failing tests**
 
 In `apps/crm/src/lib/__tests__/analytics.test.ts`, replace the `posthogMock` block and the `beforeEach`:
@@ -972,10 +974,12 @@ Create `apps/crm/src/lib/__tests__/crispLoader.test.ts`:
 
 ```ts
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedConsent } from '../../test/consent';
 
 describe('crispLoader', () => {
   beforeEach(() => {
     vi.resetModules();
+    localStorage.clear();
     document.head.querySelectorAll('script').forEach((s) => s.remove());
     delete (window as { $crisp?: unknown }).$crisp;
   });
@@ -1004,11 +1008,22 @@ describe('crispLoader', () => {
 
   it('loadCrispWhenIdle defers the load (setTimeout fallback in jsdom)', async () => {
     vi.useFakeTimers();
+    seedConsent({ support: true });
     const { loadCrispWhenIdle, CRISP_SCRIPT_SRC } = await import('../crispLoader');
     loadCrispWhenIdle();
     expect(document.head.querySelector(`script[src="${CRISP_SCRIPT_SRC}"]`)).toBeNull();
     vi.advanceTimersByTime(2500);
     expect(document.head.querySelector(`script[src="${CRISP_SCRIPT_SRC}"]`)).not.toBeNull();
+  });
+
+  it('loadCrispWhenIdle does not inject the script if consent was revoked before it fires', async () => {
+    vi.useFakeTimers();
+    seedConsent({ support: true });
+    const { loadCrispWhenIdle, CRISP_SCRIPT_SRC } = await import('../crispLoader');
+    loadCrispWhenIdle();
+    seedConsent({ support: false });
+    vi.advanceTimersByTime(5000);
+    expect(document.head.querySelector(`script[src="${CRISP_SCRIPT_SRC}"]`)).toBeNull();
   });
 });
 ```
@@ -1134,6 +1149,14 @@ describe('installConsentEffects', () => {
     expect(m.purgeSupportStorage).not.toHaveBeenCalled();
   });
 
+  it('does not start analytics if consent is revoked before the deferred boot init fires', async () => {
+    seedConsent({ analytics: true, support: true });
+    const { setConsent } = await boot();
+    setConsent({ analytics: false, support: false });
+    vi.advanceTimersByTime(5000);
+    expect(m.initAnalytics).not.toHaveBeenCalled();
+  });
+
   it('starts analytics immediately when the visitor accepts after boot', async () => {
     const { setConsent } = await boot();
     setConsent({ analytics: true, support: false });
@@ -1187,6 +1210,8 @@ Expected: FAIL (modules do not exist).
 Create `apps/crm/src/lib/crispLoader.ts`:
 
 ```ts
+import { getConsent } from './consent';
+
 export const CRISP_SCRIPT_SRC = 'https://client.crisp.chat/l.js';
 
 let requested = false;
@@ -1206,12 +1231,19 @@ export function loadCrisp(): void {
   document.head.appendChild(script);
 }
 
-/** Same as loadCrisp but off the critical path (PageSpeed: third-party payload). */
+/**
+ * Same as loadCrisp but off the critical path (PageSpeed: third-party payload). The deferral
+ * window is up to 4s, so the callback re-reads consent when it fires: a visitor who revokes
+ * inside that window must not get the widget injected after saying no.
+ */
 export function loadCrispWhenIdle(): void {
+  const loadIfStillConsented = () => {
+    if (getConsent()?.support === true) loadCrisp();
+  };
   if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => loadCrisp(), { timeout: 4000 });
+    requestIdleCallback(loadIfStillConsented, { timeout: 4000 });
   } else {
-    setTimeout(loadCrisp, 2500);
+    setTimeout(loadIfStillConsented, 2500);
   }
 }
 ```
@@ -1269,11 +1301,18 @@ import { resumePendingSupportChat } from './supportChat';
 // PostHog pulls in ~108 KiB of lazy extensions (recorder, surveys, web-vitals) as soon as it
 // boots. At page load, with consent already stored, keep that off the critical path (PageSpeed:
 // third-party payload). A user clicking "Aceitar" is different: start right away.
+//
+// The window is up to 3s, so the callback re-reads consent when it fires: a returning visitor who
+// revokes right after load must not get PostHog initialised afterwards (disableAnalytics() is a
+// no-op against an SDK that has not started yet, so it cannot undo a late init).
 function initAnalyticsWhenIdle(): void {
+  const initIfStillConsented = () => {
+    if (getConsent()?.analytics === true) initAnalytics();
+  };
   if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => initAnalytics(), { timeout: 3000 });
+    requestIdleCallback(initIfStillConsented, { timeout: 3000 });
   } else {
-    setTimeout(() => initAnalytics(), 1500);
+    setTimeout(initIfStillConsented, 1500);
   }
 }
 
@@ -1648,12 +1687,12 @@ In `en/common.json` append the English equivalent (same keys):
 Create `apps/crm/src/components/consent/__tests__/CookieConsent.test.tsx`:
 
 ```tsx
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from 'i18next';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getConsent, openConsentPreferences } from '@/lib/consent';
+import { getConsent, openConsentPreferences, setConsent } from '@/lib/consent';
 import { seedConsent } from '../../../test/consent';
 import CookieConsent from '../CookieConsent';
 
@@ -1726,6 +1765,30 @@ describe('CookieConsent', () => {
     await userEvent.click(analytics);
     await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.save') }));
     expect(getConsent()).toMatchObject({ analytics: false, support: true });
+  });
+
+  it('starts from the stored choice on every open, never from a previous abandoned edit', async () => {
+    // Guards the mount-lifecycle assumption: PreferencesForm lives inside Radix Content, which
+    // unmounts on close, so its useState initialisers must re-run on each open.
+    seedConsent({ analytics: false, support: false });
+    renderBanner();
+    act(() => openConsentPreferences());
+    let dialog = await screen.findByRole('dialog');
+    await userEvent.click(
+      within(dialog).getByRole('switch', { name: t('cookies.dialog.supportTitle') }),
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.cancel') }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    act(() => setConsent({ analytics: true, support: false }));
+    act(() => openConsentPreferences());
+    dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByRole('switch', { name: t('cookies.dialog.analyticsTitle') }),
+    ).toBeChecked();
+    expect(
+      within(dialog).getByRole('switch', { name: t('cookies.dialog.supportTitle') }),
+    ).not.toBeChecked();
   });
 
   it('pre-enables the support switch when opened from a blocked chat click', async () => {
