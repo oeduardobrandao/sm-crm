@@ -168,7 +168,9 @@ export async function deleteCommentThread(threadId: number): Promise<void> {
 
 /**
  * Saves the Instagram caption AND re-anchors its comment threads in one
- * transaction (RPC), so the stored offsets can never describe text the DB doesn't hold.
+ * transaction (RPC), so re-anchored offsets never describe text the DB doesn't hold.
+ * Thread creation (`createCommentThread`) is not range-checked against the caption: the UI
+ * flushes and re-verifies the quoted slice first, and `validateAnchors` orphans a stray one.
  *
  * `anchors` must contain ONLY this post's `ig_caption` threads. The RPC range-checks every
  * non-orphaned entry (`anchor_end` <= UTF-16 length of the caption) BEFORE it filters by
