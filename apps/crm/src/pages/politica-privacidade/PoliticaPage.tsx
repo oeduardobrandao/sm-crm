@@ -1,4 +1,5 @@
 import { usePageMeta } from '../../lib/usePageMeta';
+import { CookiePreferencesLink } from '../../components/consent/CookiePreferencesLink';
 
 export default function PoliticaPage() {
   usePageMeta('/politica-de-privacidade');
@@ -154,6 +155,10 @@ export default function PoliticaPage() {
         Última atualização: {new Date().toLocaleDateString('pt-BR')}
         <br />
         Mesaas - Gestão Inteligente
+      </p>
+
+      <p style={{ textAlign: 'center', marginTop: '1rem' }}>
+        <CookiePreferencesLink />
       </p>
     </div>
   );

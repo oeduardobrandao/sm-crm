@@ -12,6 +12,7 @@ import GlobalSearchDialog from './GlobalSearchDialog';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { avatarColorClass } from '@/lib/avatarColor';
 import { useGuide } from '../guide/GuideContext';
+import { openSupportChat } from '@/lib/supportChat';
 
 declare global {
   interface Window {
@@ -239,7 +240,7 @@ export default function MobileNav() {
           <button
             className="mobile-more-item"
             onClick={() => {
-              window.$crisp?.push(['do', 'chat:open']);
+              openSupportChat();
               setMoreOpen(false);
             }}
             type="button"

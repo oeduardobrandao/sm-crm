@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MessageCircle } from 'lucide-react';
 import NotificationBell from './NotificationBell';
+import { openSupportChat } from '@/lib/supportChat';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 declare global {
@@ -21,8 +22,8 @@ export default function TopBarActions() {
   const [crispUnread, setCrispUnread] = useState(false);
 
   const openCrisp = useCallback(() => {
-    window.$crisp?.push(['do', 'chat:show']);
-    window.$crisp?.push(['do', 'chat:open']);
+    // Gated: without support consent this opens the consent dialog instead of a dead click.
+    openSupportChat();
     setCrispUnread(false);
   }, []);
 

@@ -272,10 +272,12 @@
 .lp-v2 .ft-label {
   color: #6b7280;
 }
-.lp-v2 .footer-col a {
+.lp-v2 .footer-col a,
+.lp-v2 .footer-col button.cookie-prefs-link {
   color: #94a3b8;
 }
-.lp-v2 .footer-col a:hover {
+.lp-v2 .footer-col a:hover,
+.lp-v2 .footer-col button.cookie-prefs-link:hover {
   color: #e8eaf0;
 }
 .lp-v2 .footer-tag {

@@ -1,4 +1,5 @@
 import { usePageMeta } from '../../lib/usePageMeta';
+import { CookiePreferencesLink } from '../../components/consent/CookiePreferencesLink';
 
 export default function LgpdPage() {
   usePageMeta('/lgpd');
@@ -335,6 +336,10 @@ export default function LgpdPage() {
         Última atualização: abril de 2025
         <br />
         Mesaas — EBS IT SOLUTIONS · CNPJ 63.758.902/0001-01
+      </p>
+
+      <p style={{ textAlign: 'center', marginTop: '1rem' }}>
+        <CookiePreferencesLink />
       </p>
     </div>
   );

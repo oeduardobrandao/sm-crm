@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { OPEN_PREFERENCES_EVENT } from '@/lib/consent';
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: null, loading: false, profile: null, role: 'owner' }),
@@ -11,6 +12,15 @@ describe('landing chrome links', () => {
   it('footer links to the blog', () => {
     render(<LandingFooter />);
     expect(screen.getByRole('link', { name: 'Blog' })).toHaveAttribute('href', '/blog');
+  });
+
+  it('footer has a cookie preferences button that opens the consent dialog', () => {
+    const handler = vi.fn();
+    window.addEventListener(OPEN_PREFERENCES_EVENT, handler);
+    render(<LandingFooter />);
+    fireEvent.click(screen.getByRole('button', { name: 'Preferências de cookies' }));
+    window.removeEventListener(OPEN_PREFERENCES_EVENT, handler);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it('footer section links work from a subpage (absolute hashes)', () => {
