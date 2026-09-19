@@ -22,6 +22,14 @@
 - Icons: `lucide-react` only. Never use `useBlocker`.
 - Before pushing: `npm run lint`, `npm run format:check`, the four `tsc` commands, `npm run test`, `npm run check:functions`, `npm run test:functions`.
 
+## Execution Order
+
+Run the tasks in this order so **every commit typechecks and passes its own tests**:
+**1 → 3 → 2 → 4 → 5 → 6 + 7 (one commit) → 8.**
+Task 2's module imports types added by Task 3; Task 6's rewritten field breaks its only
+caller until Task 7 lands, so Tasks 6 and 7 are committed together (Task 6 Step 6 is
+deferred to Task 7's commit).
+
 ## File Structure
 
 | File | Responsibility |
@@ -347,7 +355,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Test: `apps/crm/src/pages/entregas/utils/__tests__/captionAnchors.test.ts`
 
 **Interfaces:**
-- Consumes: `CommentThread`, `CaptionAnchorPatch` from `@/store` (Task 3 adds the new fields; until then this task's tests define local thread fixtures and cast, and Task 3 makes types line up. To avoid a typecheck gap, **do Task 3 Steps 1-3 first if `tsc` complains**; otherwise proceed in order).
+- Consumes: `CommentThread`, `CaptionAnchorPatch` from `@/store` (added by Task 3; **run Task 3 first**, see Execution Order).
 - Produces: everything under `// utils/captionAnchors.ts` in the Interfaces block above.
 
 - [ ] **Step 1: Write the failing tests**
@@ -487,8 +495,8 @@ describe('validateAnchors', () => {
     const t = 'la la land';
     const list = [{ id: 1, start: 0, end: 2, quotedText: 'zz', orphaned: false }];
     expect(validateAnchors(t, list)[0].orphaned).toBe(true);
-    const dup = [{ id: 2, start: 5, end: 7, quotedText: 'la', orphaned: false }]; // slice(5,7)="la"? "la la land": 5..7 = "la"
-    expect(validateAnchors(t, dup)[0].orphaned).toBe(false); // slice matches, so kept
+    const dup = [{ id: 2, start: 3, end: 5, quotedText: 'la', orphaned: false }]; // slice(3,5) = "la"
+    expect(validateAnchors(t, dup)[0].orphaned).toBe(false); // slice matches, so kept even though the quote is repeated
     const stale = [{ id: 3, start: 0, end: 3, quotedText: 'la', orphaned: false }]; // slice "la " != "la", "la" occurs 3x
     expect(validateAnchors(t, stale)[0].orphaned).toBe(true);
   });
@@ -972,7 +980,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 Behavior contract (from the spec):
 - `text`/`anchors` come from props (validated) until the user types; then from a local **draft**.
 - While a draft exists, inbound `value`/`threads` props never overwrite it.
-- Typing back to exactly the persisted `value` drops the draft (anchors reset to the persisted ones, no save).
+- Typing back to exactly the persisted `value` drops the draft (anchors reset to the persisted ones, no save), **unless** a save has succeeded that props haven't reflected yet (`unackedRef`): then the server holds different text and the edit must still be saved.
 - Saves are debounced 1.5s, serialized (one in flight), and read the draft **when they fire**. `flush()` saves now and resolves `true`/`false`.
 - The draft is dropped once props catch up (`value === draft.text`) and nothing is pending.
 
@@ -1148,6 +1156,22 @@ describe('useCaptionDraft', () => {
     expect(result.current.text).toBe('hello! (edited elsewhere)');
   });
 
+  it('still saves when typed back to the persisted text before props reflect a save', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useCaptionDraft({ value: 'a', threads: [], onSave }));
+    act(() => result.current.change('ab'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    act(() => result.current.change('a')); // props still say 'a': the server now holds 'ab'
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave.mock.calls[1][0]).toBe('a');
+  });
+
   it('getText returns the draft text, else the prop value', () => {
     const { result } = renderHook(() =>
       useCaptionDraft({ value: 'hello', threads: [], onSave: vi.fn() }),
@@ -1214,6 +1238,10 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inFlightRef = useRef(false);
   const chainRef = useRef<Promise<unknown>>(Promise.resolve());
+  // Text of the last successful save that `value` (props) has not reflected yet.
+  // While set, "typed back to `value`" is NOT "back to persisted": the server holds
+  // the saved text, so that edit must still be saved.
+  const unackedRef = useRef<string | null>(null);
   const latest = useRef({ value, serverAnchors, onSave });
 
   useEffect(() => {
@@ -1231,6 +1259,7 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
     inFlightRef.current = true;
     try {
       await latest.current.onSave(d.text, patchesFromAnchors(d.anchors));
+      unackedRef.current = d.text;
       return true;
     } catch {
       return false;
@@ -1258,7 +1287,7 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
 
       // Back to exactly what is persisted (e.g. an undo inside the debounce window):
       // nothing to save, and anchors reset to the persisted ones.
-      if (next === persisted) {
+      if (next === persisted && unackedRef.current === null && !inFlightRef.current) {
         setDraftBoth(null);
         return;
       }
@@ -1294,6 +1323,7 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
       timerRef.current === undefined &&
       !inFlightRef.current
     ) {
+      unackedRef.current = null;
       setDraftBoth(null);
     }
   });
@@ -1641,12 +1671,13 @@ Cases (write each as its own `it`):
 4. **Comentar button is disabled without a selection and enabled with one**: `screen.getByRole('button', { name: /Comentar/ })` disabled; then `textarea().setSelectionRange(6, 11); fireEvent.select(textarea())` → enabled.
 5. **creates an anchored thread**: select `[6, 11]` → click Comentar → type in the popover placeholder `Escreva seu comentário...` → click the popover's submit (the second "Comentar" button: `screen.getAllByRole('button', { name: 'Comentar' }).at(-1)`) → `onCreateThread` called with `('brave', 'ajustar', { field: 'ig_caption', start: 6, end: 11 })`. Also assert `onSave` was called first only if there was a draft (here no draft, so `onSave` not called).
 6. **flushes a pending edit before creating the thread**: `fireEvent.change(textarea(), { target: { value: 'oh ' + caption } })` (use fake timers not needed), then select `[9, 14]`, comment; assert `onSave` was called (with text starting `oh hello`) **before** `onCreateThread` (compare `mock.invocationCallOrder`).
-7. **aborts and toasts when the flush fails**: `onSave` rejects → `onCreateThread` not called (`vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))`, assert `toast.error` called).
+7. **aborts when the flush fails**: `onSave` rejects → `onCreateThread` not called (the drawer, not the field, toasts a failed save).
 8. **opens the thread popover on a click inside a highlight**: stub `HTMLElement.prototype.getClientRects` for the mark to `[{ left: 0, right: 100, top: 0, bottom: 20 }]` (`vi.spyOn(mark, 'getClientRects').mockReturnValue([...] as unknown as DOMRectList)`), collapsed selection, `fireEvent.click(textarea(), { clientX: 10, clientY: 10 })` → `screen.getByText('trocar')` visible (PostCommentPopover content).
 9. **does not open the popover for a click that ends a drag selection** (selection start ≠ end).
-10. **locked field is readOnly, not disabled, and still allows commenting**: `disabled` prop true → `expect(textarea()).toHaveAttribute('readonly')`, `expect(textarea()).not.toBeDisabled()`, Comentar enabled after a selection; typing (`fireEvent.change`) does not call `onSave` after 1.5s. The lock icon renders when `lockedMessage` given.
+10. **locked field is readOnly, not disabled, and still allows commenting**: `disabled` prop true → `expect(textarea()).toHaveAttribute('readonly')`, `expect(textarea()).not.toBeDisabled()`, Comentar enabled after a selection; with `vi.useFakeTimers()`, `fireEvent.change(textarea(), { target: { value: caption + '!' } })` followed by `vi.advanceTimersByTime(2000)` does NOT call `onSave` (the component ignores `onChange` while `disabled`). The lock icon renders when `lockedMessage` is given.
 11. **char counter and 2200 cap**: counter shows `21 / 2200`.
-12. **focusThread**: with a ref, `act(() => ref.current!.focusThread(1))` selects `[6, 11]` (`textarea().selectionStart === 6`) and shows the thread popover.
+12. **the highlight follows edits**: `fireEvent.change(textarea(), { target: { value: 'oh ' + caption } })` → `mark[data-thread-ids="1"]` still has text `brave` (its range shifted).
+13. **focusThread**: with a ref, `act(() => ref.current!.focusThread(1))` selects `[6, 11]` (`textarea().selectionStart === 6`) and shows the thread popover.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1746,6 +1777,7 @@ export const InstagramCaptionField = forwardRef<
   const mirrorRef = useRef<HTMLDivElement>(null);
   const lastWidthRef = useRef<number | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const commentBtnRef = useRef<HTMLButtonElement>(null);
 
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
   const [adding, setAdding] = useState<{
@@ -1881,11 +1913,9 @@ export const InstagramCaptionField = forwardRef<
   const submitAdd = async (comment: string) => {
     if (!adding || !comments) return;
     // The new thread row must reference text the server already has.
+    // (a failed save is already toasted by the drawer's onSave)
     const saved = await flush();
-    if (!saved) {
-      toast.error('Não foi possível salvar a legenda. Tente de novo.');
-      return;
-    }
+    if (!saved) return;
     if (getText().slice(adding.start, adding.end) !== adding.quoted) {
       toast.error('O texto mudou. Selecione o trecho de novo.');
       setAdding(null);
@@ -1916,26 +1946,34 @@ export const InstagramCaptionField = forwardRef<
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Lock className="h-3.5 w-3.5 ml-auto" style={{ color: 'var(--text-light)' }} />
+                <Lock
+                  className={comments ? 'h-3.5 w-3.5' : 'h-3.5 w-3.5 ml-auto'}
+                  style={{ color: 'var(--text-light)' }}
+                />
               </TooltipTrigger>
               <TooltipContent>{lockedMessage}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
         {comments && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="ml-auto h-7 gap-1 px-2 text-xs"
-            disabled={!selection}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={openAdd}
-            title="Selecione um trecho da legenda para comentar"
+          <span
+            className="ml-auto"
+            title={selection ? undefined : 'Selecione um trecho da legenda para comentar'}
           >
-            <MessageSquare className="h-3.5 w-3.5" />
-            Comentar
-          </Button>
+            <Button
+              ref={commentBtnRef}
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mb-0 h-7 gap-1 px-2 text-xs"
+              disabled={!selection}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={openAdd}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Comentar
+            </Button>
+          </span>
         )}
         <span
           className={comments ? 'text-xs' : 'ml-auto text-xs'}
@@ -1965,12 +2003,14 @@ export const InstagramCaptionField = forwardRef<
               <span key={i}>{seg.text}</span>
             ),
           )}
-          {'​'}
+          {'\u200B'}
         </div>
         <Textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => change(e.target.value)}
+          onChange={(e) => {
+            if (!disabled) change(e.target.value); // readOnly can still fire onChange in tests
+          }}
           onSelect={syncSelection}
           onKeyUp={syncSelection}
           onMouseUp={syncSelection}
@@ -1990,6 +2030,7 @@ export const InstagramCaptionField = forwardRef<
           position={{ top: adding.top, left: adding.left }}
           onSubmit={submitAdd}
           onClose={() => setAdding(null)}
+          ignoreRefs={[commentBtnRef]}
         />
       )}
 
@@ -2024,6 +2065,8 @@ export const InstagramCaptionField = forwardRef<
 Notes for the implementer:
 - `mark` gets `className="comment-highlight"` for the existing yellow highlight; `.caption-mirror mark { color: transparent }` (Step 3) hides its glyphs. Hover styling is irrelevant (the mirror has `pointer-events-none`).
 - The mirror's `border-transparent` + the shared `FIELD_CLASS` (`border px-3 py-2 text-base md:text-sm min-h-[80px]`) give it the same box as the `Textarea`; `bg-background` moved from the textarea to the wrapper (`Textarea` gets `bg-transparent`, merged by `cn`).
+- The header button is wrapped in a `<span title>` because a `disabled` button gets `pointer-events-none` (its own `title` would never show); `mb-0` cancels the `Button` base class's `mb-2`. `ignoreRefs={[commentBtnRef]}` keeps a mousedown on the header button from closing (and discarding) an open add-comment popover.
+- The `{'\u200B'}` at the end of the mirror is a zero-width space typed as an escape sequence: keep it as `\u200B` text, never a pasted invisible character, so a trailing newline still gets a line box.
 - The `useImperativeHandle` eslint-disable is intentional: `openThread` only reads refs and setters.
 
 - [ ] **Step 5: Run to verify tests pass**
@@ -2031,22 +2074,16 @@ Notes for the implementer:
 Run: `npx vitest run apps/crm/src/pages/entregas/components/__tests__/InstagramCaptionField.test.tsx`
 Expected: PASS. If case 8 fails only because jsdom returns no client rects, confirm the `getClientRects` stub is applied to the actual `mark` element found via `document.querySelector`.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Do NOT commit yet**
 
-```bash
-git add apps/crm/src/pages/entregas/components/InstagramCaptionField.tsx apps/crm/src/pages/entregas/components/__tests__/InstagramCaptionField.test.tsx apps/crm/style.css
-git commit -m "feat(entregas): comment on Instagram caption text with highlights
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-```
-
-(This commit will not typecheck the callers yet: `PostEditorBody` still passes the old props. Do Task 7 immediately; do not push between.)
+The rewritten field breaks its only caller (`PostEditorBody` still passes `onChange`), so the tree does not typecheck until Task 7. Continue straight into Task 7; Task 7's commit includes this task's files:
+`InstagramCaptionField.tsx`, its test, and `apps/crm/style.css`.
 
 ---
 
 ### Task 7: Wiring (`PostEditorBody`, both drawers, summary list)
 
-**Files:**
+**Files (this commit also includes Task 6's files):**
 - Modify: `apps/crm/src/pages/entregas/components/PostCommentSummary.tsx`
 - Modify: `apps/crm/src/pages/entregas/components/PostEditorBody.tsx` (`:119` prop type, `:160` destructure, `:590`, `:605-611`, `:659-663`)
 - Modify: `apps/crm/src/pages/entregas/components/WorkflowDrawer.tsx` (`:69` import, `:769` handler, `:1064`, `:1268`, `:1321`, `:1493`)
@@ -2209,8 +2246,10 @@ Expected: PASS.
     [refetchComments],
   );
 
-  // Caption text + anchors commit atomically; awaited BEFORE the refetch so the
-  // highlights never snap back to pre-save offsets.
+  // Caption text + anchors commit atomically. Refetch the THREADS first and refresh the
+  // post second: the field's draft keeps shadowing props until the post refetch lands,
+  // by which time the threads already carry the saved offsets (the other order lets the
+  // draft drop while threads are stale, orphaning repeated quotes in memory).
   const handleSaveCaption = useCallback(
     async (postId: number, text: string, anchors: CaptionAnchorPatch[]) => {
       try {
@@ -2219,8 +2258,8 @@ Expected: PASS.
         toast.error('Erro ao atualizar post');
         throw err;
       }
-      refresh();
       await refetchComments();
+      refresh();
     },
     [refresh, refetchComments],
   );
@@ -2260,8 +2299,8 @@ Same two changes: import `saveIgCaption`, `CommentAnchor`, `CaptionAnchorPatch`;
         toast.error('Erro ao atualizar post');
         throw err;
       }
+      await refetchComments(); // threads first, then the post (see WorkflowDrawer)
       refresh();
-      await refetchComments();
     },
     [refresh, refetchComments],
   );
@@ -2289,7 +2328,7 @@ Expected: all exit 0 / PASS. Fix any remaining fixture type errors by adding the
 
 ```bash
 git add apps/crm
-git commit -m "feat(entregas): wire caption comments through drawers and summary
+git commit -m "feat(entregas): comment on Instagram caption text (field, wiring, summary)
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```

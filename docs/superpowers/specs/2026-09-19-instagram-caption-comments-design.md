@@ -97,7 +97,7 @@ duplicated in both drawers) and stays untouched. Instead:
   `REVOKE ... FROM anon`. One transaction updates `workflow_posts.ig_caption` and the
   `anchor_start/anchor_end/orphaned` of the listed threads (each thread must belong to
   `p_post_id`).
-- New dedicated prop `onCaptionSave(text, anchors)` threaded to `InstagramCaptionField`
+- New dedicated prop `onSaveCaption(text, anchors)` threaded to `InstagramCaptionField`
   (both drawers implement it; posts with no caption threads pass an empty `anchors`).
 - The debounced save reads the current `(text, anchors, quoted_text)` at fire time (not
   the closure of the keystroke that armed it). While a save is pending, inbound
