@@ -71,7 +71,7 @@ export default function CookieConsent() {
               </Link>
             </p>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-0 sm:flex sm:shrink-0">
+          <div className="mt-3 flex flex-wrap gap-2 min-[360px]:grid min-[360px]:grid-cols-3 sm:mt-0 sm:flex sm:shrink-0">
             <Button
               variant="ghost"
               size="sm"
