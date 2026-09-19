@@ -94,6 +94,7 @@ vi.mock('@/store', () => ({
   completeEtapa: vi.fn(),
   getPostCommentThreads: vi.fn(async () => []),
   createCommentThread: vi.fn(),
+  saveIgCaption: vi.fn(),
   addPostComment: vi.fn(),
   updatePostComment: vi.fn(),
   deletePostComment: vi.fn(),

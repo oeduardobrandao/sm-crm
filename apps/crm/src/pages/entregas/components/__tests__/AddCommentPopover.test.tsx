@@ -50,6 +50,19 @@ describe('AddCommentPopover', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('ajustar o gancho'));
   });
 
+  it('stays open and re-enables submit when onSubmit rejects', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('boom'));
+    const onClose = vi.fn();
+    render(<AddCommentPopover position={position} onSubmit={onSubmit} onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText('Escreva seu comentário...'), {
+      target: { value: 'ajustar' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Comentar' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Comentar' })).toBeEnabled());
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('closes on Escape', () => {
     const onClose = vi.fn();
     render(<AddCommentPopover position={position} onSubmit={vi.fn()} onClose={onClose} />);

@@ -40,6 +40,8 @@ export function AddCommentPopover({
     setSubmitting(true);
     try {
       await onSubmit(value);
+    } catch {
+      // The caller already reported the failure; stay open so the text is not lost.
     } finally {
       setSubmitting(false);
     }

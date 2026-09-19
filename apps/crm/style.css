@@ -8342,6 +8342,17 @@ a.mention-chip:hover {
   background-color: rgba(255, 255, 255, 0.08);
 }
 
+/* ── Instagram caption: comment highlight mirror ────────────── */
+/* Sits behind a transparent textarea and repeats its text so only the
+   highlight backgrounds are visible; the textarea's own text shows through. */
+.caption-mirror {
+  color: transparent;
+  overflow-wrap: break-word;
+}
+.caption-mirror mark {
+  color: transparent;
+}
+
 /* ── Comment thread popover ─────────────────────────────────── */
 .comment-popover-anchor {
   position: relative;
@@ -8731,6 +8742,23 @@ a.mention-chip:hover {
   font-size: 0.72rem;
   font-style: italic;
   color: var(--text-muted);
+}
+.comment-summary-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.comment-summary-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-2, #eceef2);
+  color: var(--text-muted);
+}
+.comment-summary-chip--muted {
+  font-weight: 500;
+  opacity: 0.85;
 }
 .comment-summary-preview {
   display: block;

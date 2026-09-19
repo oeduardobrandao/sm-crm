@@ -12,6 +12,8 @@ import {
   type PostEditSuggestion,
   type ClientePost,
   type PostProcess,
+  type CaptionAnchorPatch,
+  type CommentAnchor,
 } from '../../../store';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
@@ -26,7 +28,7 @@ import {
 } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
-import { InstagramCaptionField } from './InstagramCaptionField';
+import { InstagramCaptionField, type InstagramCaptionFieldHandle } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
 import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import { TrialReelPanel } from './TrialReelPanel';
@@ -116,7 +118,13 @@ export interface PostEditorBodyProps {
   onReplyChange: (text: string) => void;
   onReplySend: () => void;
   onRefresh: () => void;
-  onCreateComment: (postId: number, quotedText: string, comment: string) => Promise<number>;
+  onCreateComment: (
+    postId: number,
+    quotedText: string,
+    comment: string,
+    anchor?: CommentAnchor,
+  ) => Promise<number>;
+  onSaveCaption: (postId: number, text: string, anchors: CaptionAnchorPatch[]) => Promise<void>;
   onReplyToComment: (threadId: number, content: string) => Promise<void>;
   onResolveThread: (threadId: number) => Promise<void>;
   onReopenThread: (threadId: number) => Promise<void>;
@@ -158,6 +166,7 @@ export function PostEditorBody({
   onReplySend,
   onRefresh,
   onCreateComment,
+  onSaveCaption,
   onReplyToComment,
   onResolveThread,
   onReopenThread,
@@ -208,6 +217,7 @@ export function PostEditorBody({
   // Local state for title to avoid input lag / letter-replacement from the
   // round-trip through updateWorkflowPost + refresh on every keystroke.
   const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
+  const captionRef = useRef<InstagramCaptionFieldHandle>(null);
   const tituloDirty = useRef(false);
   // Hold the latest onFieldChange in a ref so the debounce effect below does
   // not re-run (and reset its timer) every time the parent re-renders with a
@@ -603,10 +613,29 @@ export function PostEditorBody({
         </p>
       ) : hasInstagramAccount ? (
         <InstagramCaptionField
+          key={post.id}
+          ref={captionRef}
           value={post.ig_caption ?? ''}
-          onChange={(val) => onFieldChange('ig_caption', val)}
+          threads={commentThreads}
           disabled={isScheduleLocked}
           lockedMessage="Cancelar agendamento para editar"
+          onSave={(text, anchors) => onSaveCaption(post.id!, text, anchors)}
+          comments={
+            currentUserId
+              ? {
+                  membros,
+                  workspaceUsers,
+                  currentUserId,
+                  onCreateThread: (quotedText, comment, anchor) =>
+                    onCreateComment(post.id!, quotedText, comment, anchor),
+                  onReply: onReplyToComment,
+                  onResolve: onResolveThread,
+                  onReopen: onReopenThread,
+                  onEditComment,
+                  onDeleteComment,
+                }
+              : undefined
+          }
         />
       ) : null}
 
@@ -659,7 +688,10 @@ export function PostEditorBody({
         threads={commentThreads}
         membros={membros}
         workspaceUsers={workspaceUsers}
-        onThreadClick={() => {}}
+        onThreadClick={(threadId) => {
+          const thread = commentThreads.find((t) => t.id === threadId);
+          if (thread?.field === 'ig_caption') captionRef.current?.focusThread(threadId);
+        }}
       />
 
       {approvals.length > 0 && (

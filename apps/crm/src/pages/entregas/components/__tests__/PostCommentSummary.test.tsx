@@ -255,4 +255,35 @@ describe('PostCommentSummary', () => {
     expect(dots[0].className).toContain('comment-summary-dot--active');
     expect(dots[1].className).toContain('comment-summary-dot--resolved');
   });
+
+  it('shows a "Legenda" chip on caption threads only', () => {
+    render(
+      <PostCommentSummary
+        {...defaultProps}
+        threads={[
+          makeThread({ id: 1, field: 'ig_caption', anchor_start: 0, anchor_end: 3 }),
+          makeThread({ id: 2 }),
+        ]}
+      />,
+    );
+    expect(screen.getAllByText('Legenda')).toHaveLength(1);
+  });
+
+  it('shows "texto removido" for an orphaned caption thread', () => {
+    render(
+      <PostCommentSummary
+        {...defaultProps}
+        threads={[
+          makeThread({
+            id: 1,
+            field: 'ig_caption',
+            anchor_start: null,
+            anchor_end: null,
+            orphaned: true,
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText('texto removido')).toBeInTheDocument();
+  });
 });

@@ -26,6 +26,7 @@ const store = vi.hoisted(() => ({
   replyToPostApproval: vi.fn(),
   getPostCommentThreads: vi.fn().mockResolvedValue([]),
   createCommentThread: vi.fn(),
+  saveIgCaption: vi.fn(),
   addPostComment: vi.fn(),
   updatePostComment: vi.fn(),
   deletePostComment: vi.fn(),
