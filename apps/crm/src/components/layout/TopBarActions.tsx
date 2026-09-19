@@ -23,8 +23,8 @@ export default function TopBarActions() {
 
   const openCrisp = useCallback(() => {
     // Gated: without support consent this opens the consent dialog instead of a dead click.
-    openSupportChat();
-    setCrispUnread(false);
+    // The unread dot only clears when the chat really opened, not when only the dialog did.
+    if (openSupportChat()) setCrispUnread(false);
   }, []);
 
   useEffect(() => {

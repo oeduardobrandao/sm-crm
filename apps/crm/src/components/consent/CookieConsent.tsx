@@ -58,6 +58,7 @@ export default function CookieConsent() {
       {consent === null && (
         <section
           role="region"
+          aria-live="polite"
           aria-label={t('cookies.banner.title')}
           className="cookie-banner fixed inset-x-4 bottom-4 z-[9000] mx-auto max-w-3xl rounded-xl border bg-card p-4 text-card-foreground shadow-lg sm:flex sm:items-center sm:gap-4"
         >
