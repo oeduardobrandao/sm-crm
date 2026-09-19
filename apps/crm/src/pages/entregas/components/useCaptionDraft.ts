@@ -55,6 +55,10 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
   // While set, "typed back to `value`" is NOT "back to persisted": the server holds
   // the saved text, so that edit must still be saved.
   const unackedRef = useRef<string | null>(null);
+  // Signature (text + anchor patches) of the last payload `onSave` accepted, so `flush()`
+  // does not re-send an identical payload while props have not caught up yet. Cleared
+  // whenever the draft is dropped, so a later real edit back to an old value still saves.
+  const lastSavedSigRef = useRef<string | null>(null);
   const latest = useRef({ value, serverAnchors, onSave });
 
   useEffect(() => {
@@ -63,20 +67,25 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
 
   const setDraftBoth = useCallback((next: Draft | null) => {
     draftRef.current = next;
+    if (next === null) lastSavedSigRef.current = null;
     setDraft(next);
   }, []);
 
   const runSave = useCallback(async (): Promise<boolean> => {
     const d = draftRef.current;
     if (!d) return true;
+    const patches = patchesFromAnchors(validateAnchors(d.text, d.anchors));
+    const sig = JSON.stringify([d.text, patches]);
+    if (sig === lastSavedSigRef.current) return true; // already persisted, nothing new to send
     inFlightRef.current = true;
     try {
       // Defense in depth (Task 2 review): remapAnchors trusts in-range input, and an
       // out-of-range non-orphaned anchor makes save_ig_caption raise. Re-validate the
       // draft's anchors against the exact text being saved: re-anchor on a unique quote,
       // else orphan. A no-op for anchors that are already consistent.
-      await latest.current.onSave(d.text, patchesFromAnchors(validateAnchors(d.text, d.anchors)));
+      await latest.current.onSave(d.text, patches);
       unackedRef.current = d.text;
+      lastSavedSigRef.current = sig;
       return true;
     } catch {
       return false;

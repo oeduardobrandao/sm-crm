@@ -65,6 +65,7 @@ export const InstagramCaptionField = forwardRef<
   const lastWidthRef = useRef<number | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const commentBtnRef = useRef<HTMLButtonElement>(null);
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
 
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
   const [adding, setAdding] = useState<{
@@ -135,7 +136,10 @@ export const InstagramCaptionField = forwardRef<
 
   const openThread = (threadId: number) => {
     const mark = mirrorRef.current?.querySelector(`mark[data-thread-ids~="${threadId}"]`);
-    const rect = (mark ?? textareaRef.current)?.getBoundingClientRect();
+    // A wrapped highlight has one client rect per line; anchor to the first line, not the
+    // union bounding box (which would put the popover far from where the text starts).
+    const first = (mark as HTMLElement | null)?.getClientRects()[0];
+    const rect = first ?? (mark ?? textareaRef.current)?.getBoundingClientRect();
     if (!rect) return;
     setPopoverPos(placeNear(rect));
     setActiveThreadId(threadId);
@@ -155,7 +159,14 @@ export const InstagramCaptionField = forwardRef<
 
   const handleClick = (e: ReactMouseEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget;
-    if (el.selectionStart !== el.selectionEnd) return; // end of a drag-select, not a click
+    const down = pointerDownRef.current;
+    pointerDownRef.current = null;
+    if (el.selectionStart !== el.selectionEnd) {
+      // A non-collapsed selection is the end of a drag-select, unless the pointer did not
+      // move: a click inside an already-selected passage keeps the selection intact.
+      const moved = !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 4;
+      if (moved) return;
+    }
     const hits: number[][] = [];
     mirrorRef.current?.querySelectorAll<HTMLElement>('mark[data-thread-ids]').forEach((mark) => {
       const inside = Array.from(mark.getClientRects()).some(
@@ -210,6 +221,7 @@ export const InstagramCaptionField = forwardRef<
     if (getText().slice(adding.start, adding.end) !== adding.quoted) {
       toast.error('O texto mudou. Selecione o trecho de novo.');
       setAdding(null);
+      setSelection(null);
       return;
     }
     try {
@@ -234,9 +246,12 @@ export const InstagramCaptionField = forwardRef<
       className="mt-3 rounded-lg border-2 p-3"
       style={{ borderColor: 'var(--border-color)', background: 'var(--surface-hover)' }}
     >
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
         <Instagram className="h-4 w-4" style={{ color: '#E1306C' }} />
-        <span className="text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
+        <span
+          className="whitespace-nowrap text-sm font-semibold"
+          style={{ color: 'var(--text-main)' }}
+        >
           Legenda do Instagram
         </span>
         {disabled && lockedMessage && (
@@ -273,7 +288,7 @@ export const InstagramCaptionField = forwardRef<
           </span>
         )}
         <span
-          className={comments ? 'text-xs' : 'ml-auto text-xs'}
+          className={comments ? 'whitespace-nowrap text-xs' : 'ml-auto whitespace-nowrap text-xs'}
           style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}
         >
           {text.length} / {MAX_CAPTION_CHARS}
@@ -284,7 +299,7 @@ export const InstagramCaptionField = forwardRef<
         <div
           ref={mirrorRef}
           aria-hidden="true"
-          className={`caption-mirror pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap border-transparent ${FIELD_CLASS}`}
+          className={`caption-mirror pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap border-transparent ${FIELD_CLASS}${disabled ? ' opacity-70' : ''}`}
           style={FIELD_STYLE}
         >
           {segments.map((seg, i) =>
@@ -307,6 +322,9 @@ export const InstagramCaptionField = forwardRef<
           onSelect={syncSelection}
           onKeyUp={syncSelection}
           onMouseUp={syncSelection}
+          onMouseDown={(e) => {
+            pointerDownRef.current = { x: e.clientX, y: e.clientY };
+          }}
           onClick={handleClick}
           readOnly={disabled}
           placeholder="Texto exato que será publicado no Instagram. Suporta emojis e hashtags."

@@ -169,6 +169,11 @@ export async function deleteCommentThread(threadId: number): Promise<void> {
 /**
  * Saves the Instagram caption AND re-anchors its comment threads in one
  * transaction (RPC), so the stored offsets can never describe text the DB doesn't hold.
+ *
+ * `anchors` must contain ONLY this post's `ig_caption` threads. The RPC range-checks every
+ * non-orphaned entry (`anchor_end` <= UTF-16 length of the caption) BEFORE it filters by
+ * post/field, so a foreign or stale entry aborts the whole save (`anchor_out_of_range`)
+ * and rolls the caption back too.
  */
 export async function saveIgCaption(
   postId: number,

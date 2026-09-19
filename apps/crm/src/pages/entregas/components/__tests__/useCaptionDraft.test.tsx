@@ -175,6 +175,47 @@ describe('useCaptionDraft', () => {
     expect(onSave.mock.calls[1][0]).toBe('a');
   });
 
+  it('flush does not re-send a payload the debounced save already persisted', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useCaptionDraft({ value: 'hello brave world', threads: [thread()], onSave }),
+    );
+    act(() => result.current.change('oh hello brave world'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500); // save lands; props are not updated
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.flush();
+    });
+    expect(ok).toBe(true);
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('flush still saves when a late thread changed only the anchors', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender } = renderHook(
+      (p: { threads: CommentThread[] }) =>
+        useCaptionDraft({ value: 'hello brave world', threads: p.threads, onSave }),
+      { initialProps: { threads: [] as CommentThread[] } },
+    );
+    act(() => result.current.change('oh hello brave world'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    rerender({ threads: [thread()] });
+    await act(async () => {
+      await result.current.flush();
+    });
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave.mock.calls[1]).toEqual([
+      'oh hello brave world',
+      [{ id: 1, anchor_start: 9, anchor_end: 14, orphaned: false, quoted_text: 'brave' }],
+    ]);
+  });
+
   it('getText returns the draft text, else the prop value', () => {
     const { result } = renderHook(() =>
       useCaptionDraft({ value: 'hello', threads: [], onSave: vi.fn() }),

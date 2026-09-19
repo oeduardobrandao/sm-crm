@@ -255,6 +255,108 @@ describe('InstagramCaptionField', () => {
     expect(screen.queryByText('trocar')).not.toBeInTheDocument();
   });
 
+  const stubRects = (mark: Element, rects: Partial<DOMRect>[]) =>
+    vi.spyOn(mark, 'getClientRects').mockReturnValue(rects as unknown as DOMRectList);
+
+  it('opens the thread on the first click inside an already-selected passage', () => {
+    render(
+      <InstagramCaptionField
+        value={caption}
+        threads={[threadFor()]}
+        onSave={vi.fn()}
+        comments={handlers()}
+      />,
+    );
+    stubRects(document.querySelector('.caption-mirror mark')!, [
+      { left: 0, right: 100, top: 0, bottom: 20 },
+    ]);
+    textarea().setSelectionRange(6, 11);
+    fireEvent.mouseDown(textarea(), { clientX: 10, clientY: 10 });
+    fireEvent.click(textarea(), { clientX: 10, clientY: 10 });
+    expect(screen.getByText('trocar')).toBeInTheDocument();
+  });
+
+  it('still ignores a click that ends a real drag (pointer moved 4px or more)', () => {
+    render(
+      <InstagramCaptionField
+        value={caption}
+        threads={[threadFor()]}
+        onSave={vi.fn()}
+        comments={handlers()}
+      />,
+    );
+    stubRects(document.querySelector('.caption-mirror mark')!, [
+      { left: 0, right: 100, top: 0, bottom: 20 },
+    ]);
+    textarea().setSelectionRange(6, 11);
+    fireEvent.mouseDown(textarea(), { clientX: 10, clientY: 10 });
+    fireEvent.click(textarea(), { clientX: 60, clientY: 10 });
+    expect(screen.queryByText('trocar')).not.toBeInTheDocument();
+  });
+
+  it('anchors the thread popover to the first line rect of a wrapped highlight', () => {
+    render(
+      <InstagramCaptionField
+        value={caption}
+        threads={[threadFor()]}
+        onSave={vi.fn()}
+        comments={handlers()}
+      />,
+    );
+    const mark = document.querySelector('.caption-mirror mark')!;
+    stubRects(mark, [
+      { left: 30, right: 100, top: 40, bottom: 60 },
+      { left: 0, right: 50, top: 60, bottom: 80 },
+    ]);
+    vi.spyOn(mark, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      right: 100,
+      top: 40,
+      bottom: 500,
+    } as DOMRect);
+    textarea().setSelectionRange(8, 8);
+    fireEvent.click(textarea(), { clientX: 40, clientY: 50 });
+    const wrapper = screen.getByText('trocar').closest('div[style*="position: fixed"]');
+    expect(wrapper).toHaveStyle({ top: '66px', left: '30px' }); // first rect: bottom 60 + 6
+  });
+
+  it('clears the selection when the text changed before the comment was submitted', async () => {
+    const comments = handlers();
+    render(
+      <InstagramCaptionField
+        value={caption}
+        threads={[]}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        comments={comments}
+      />,
+    );
+    select(6, 11);
+    fireEvent.click(screen.getByRole('button', { name: /Comentar/ }));
+    fireEvent.change(screen.getByPlaceholderText('Escreva seu comentário...'), {
+      target: { value: 'ajustar' },
+    });
+    fireEvent.change(textarea(), { target: { value: 'XX' + caption } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Comentar' }).at(-1)!);
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('O texto mudou. Selecione o trecho de novo.'),
+    );
+    expect(comments.onCreateThread).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Comentar/ })).toBeDisabled();
+  });
+
+  it('dims the highlight mirror when the caption is locked', () => {
+    render(
+      <InstagramCaptionField
+        value={caption}
+        threads={[threadFor()]}
+        disabled
+        onSave={vi.fn()}
+        comments={handlers()}
+      />,
+    );
+    expect(document.querySelector('.caption-mirror')).toHaveClass('opacity-70');
+  });
+
   it('locked field is readOnly, not disabled, and still allows commenting', () => {
     vi.useFakeTimers();
     const onSave = vi.fn().mockResolvedValue(undefined);
