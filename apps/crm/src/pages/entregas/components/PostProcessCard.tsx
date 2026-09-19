@@ -240,7 +240,7 @@ export function PostProcessCard({
                       width: 14,
                       height: 14,
                       borderRadius: '50%',
-                      background: cliente.cor || 'var(--text-muted)',
+                      background: cliente.cor || '#6b7280',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
