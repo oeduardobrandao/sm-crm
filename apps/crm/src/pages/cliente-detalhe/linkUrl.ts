@@ -11,7 +11,7 @@ const MAX_LINK_URL_LENGTH = 2048;
 export function normalizeLinkUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed || /\s/.test(trimmed) || trimmed.startsWith('//')) return null;
-  const hasScheme = /^[a-z][a-z\d+.-]*:/i.test(trimmed);
+  const hasScheme = /^[a-z][a-z\d+-]*:/i.test(trimmed);
   const candidate = hasScheme ? trimmed : `https://${trimmed}`;
   // Mede a string que vai para o banco (com o https:// prefixado), para casar
   // com o CHECK char_length(url) <= 2048 de cliente_links.
@@ -21,6 +21,9 @@ export function normalizeLinkUrl(raw: string): string | null {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
     if (parsed.username || parsed.password) return null;
     if (!parsed.hostname.includes('.')) return null;
+    // O CHECK do banco exige a barra dupla literal; `https:/x.com` passa no
+    // new URL mas seria recusado pelo banco.
+    if (!/^https?:\/\//i.test(candidate)) return null;
     return candidate;
   } catch {
     return null;

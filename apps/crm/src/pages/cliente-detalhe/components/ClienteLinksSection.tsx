@@ -208,7 +208,13 @@ export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
                       {l.descricao}
                     </p>
                   )}
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>
+                  <p
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-light)',
+                      overflowWrap: 'anywhere',
+                    }}
+                  >
                     {linkDomain(l.url)}
                   </p>
                 </a>

@@ -16,6 +16,19 @@ describe('normalizeLinkUrl', () => {
     expect(normalizeLinkUrl('drive.google.com/x')).toBe('https://drive.google.com/x');
   });
 
+  it('accepts host:port without a scheme as scheme-less', () => {
+    expect(normalizeLinkUrl('exemplo.com:8080/painel')).toBe('https://exemplo.com:8080/painel');
+    expect(normalizeLinkUrl('app.example.com:8080/dashboard')).toBe(
+      'https://app.example.com:8080/dashboard',
+    );
+    expect(normalizeLinkUrl('grafana.internal:3000')).toBe('https://grafana.internal:3000');
+  });
+
+  it('accepts @handle paths', () => {
+    expect(normalizeLinkUrl('https://www.tiktok.com/@x')).toBe('https://www.tiktok.com/@x');
+    expect(normalizeLinkUrl('medium.com/@user')).toBe('https://medium.com/@user');
+  });
+
   it('trims surrounding whitespace', () => {
     expect(normalizeLinkUrl('  notion.so/aurora  ')).toBe('https://notion.so/aurora');
   });
@@ -38,6 +51,11 @@ describe('normalizeLinkUrl', () => {
     'ftp://exemplo.com',
     '//exemplo.com',
     'https://user:pass@exemplo.com',
+    'https://u:p@example.com',
+    'mailto:a@b.com',
+    'https:/example.com',
+    'https:example.com',
+    'http:/\\example.com',
     'localhost',
     'não é url',
     'https://exemplo.com/a b',
