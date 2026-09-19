@@ -33,11 +33,11 @@ import { MentionNode } from '@/components/mentions/MentionNode';
 import { mentionHref } from '@/components/mentions/mentionHref';
 import { MentionSuggestion } from '@/components/mentions/mentionSuggestion';
 import { useMentionSearch, type MentionSection } from '@/components/mentions/useMentionSearch';
-import { MentionTextarea } from '@/components/mentions/MentionTextarea';
 import type { MentionEntityType } from '@/components/mentions/types';
 import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
 import PostCommentPopover from './PostCommentPopover';
+import { AddCommentPopover } from './AddCommentPopover';
 import type { CommentThreadWithComments, Membro } from '@/store';
 
 // Mensagem mostrada quando o usuário tenta aplicar um link que a política recusa
@@ -183,15 +183,12 @@ export function PostEditor({
   const highlightRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
   const [commentAddOpen, setCommentAddOpen] = useState(false);
-  const [commentAddText, setCommentAddText] = useState('');
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentAddPos, setCommentAddPos] = useState<{ top: number; left: number } | null>(null);
   const [threadPopoverPos, setThreadPopoverPos] = useState<{ top: number; left: number } | null>(
     null,
   );
   const commentBtnRef = useRef<HTMLButtonElement>(null);
-  const commentAddRef = useRef<HTMLDivElement>(null);
   const commentAddWrapperRef = useRef<HTMLDivElement>(null);
   const commentPopoverRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -292,11 +289,6 @@ export function PostEditor({
       ) {
         setHighlightOpen(false);
       }
-      if (commentAddOpen) {
-        const inPortal = commentAddRef.current?.contains(e.target as Node);
-        const inWrapper = commentAddWrapperRef.current?.contains(e.target as Node);
-        if (!inPortal && !inWrapper) setCommentAddOpen(false);
-      }
       if (
         activeThreadId != null &&
         commentPopoverRef.current &&
@@ -307,7 +299,7 @@ export function PostEditor({
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [textColorOpen, highlightOpen, commentAddOpen, activeThreadId]);
+  }, [textColorOpen, highlightOpen, activeThreadId]);
 
   const openLinkPopover = useCallback(() => {
     if (!editor) return;
@@ -374,22 +366,18 @@ export function PostEditor({
     [editor],
   );
 
-  const handleAddComment = useCallback(async () => {
-    if (!editor || !onCreateComment || !commentAddText.trim()) return;
-    const { from, to } = editor.state.selection;
-    const quotedText = editor.state.doc.textBetween(from, to, ' ');
-    if (!quotedText.trim()) return;
-
-    setCommentSubmitting(true);
-    try {
-      const threadId = await onCreateComment(quotedText, commentAddText.trim());
+  const handleAddComment = useCallback(
+    async (text: string) => {
+      if (!editor || !onCreateComment) return;
+      const { from, to } = editor.state.selection;
+      const quotedText = editor.state.doc.textBetween(from, to, ' ');
+      if (!quotedText.trim()) return;
+      const threadId = await onCreateComment(quotedText, text);
       editor.chain().focus().setCommentHighlight({ threadId }).run();
       setCommentAddOpen(false);
-      setCommentAddText('');
-    } finally {
-      setCommentSubmitting(false);
-    }
-  }, [editor, onCreateComment, commentAddText]);
+    },
+    [editor, onCreateComment],
+  );
 
   // Click handler for comment-highlighted text and @-mention chips
   useEffect(() => {
@@ -753,46 +741,14 @@ export function PostEditor({
 
       <EditorContent editor={editor} className="post-editor-content" />
 
-      {commentAddOpen &&
-        commentAddPos &&
-        createPortal(
-          <div
-            ref={commentAddRef}
-            className="comment-add-popover"
-            style={{
-              position: 'fixed',
-              top: commentAddPos.top,
-              left: commentAddPos.left,
-              zIndex: 9999,
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="comment-add-label">Adicionar comentário</div>
-            <MentionTextarea
-              className="comment-add-input"
-              placeholder="Escreva seu comentário..."
-              value={commentAddText}
-              onValueChange={setCommentAddText}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleAddComment();
-                }
-                if (e.key === 'Escape') setCommentAddOpen(false);
-              }}
-              autoFocus
-            />
-            <button
-              type="button"
-              className="comment-add-submit"
-              onClick={handleAddComment}
-              disabled={!commentAddText.trim() || commentSubmitting}
-            >
-              Comentar
-            </button>
-          </div>,
-          document.body,
-        )}
+      {commentAddOpen && commentAddPos && (
+        <AddCommentPopover
+          position={commentAddPos}
+          onSubmit={handleAddComment}
+          onClose={() => setCommentAddOpen(false)}
+          ignoreRefs={[commentAddWrapperRef]}
+        />
+      )}
 
       {activeThreadId != null &&
         threadPopoverPos &&
