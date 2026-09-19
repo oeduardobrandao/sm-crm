@@ -40,7 +40,8 @@ ALTER TABLE post_comment_threads
   ADD CONSTRAINT post_comment_threads_anchor_chk CHECK (
     (field = 'conteudo' AND anchor_start IS NULL AND anchor_end IS NULL AND NOT orphaned)
     OR (field = 'ig_caption' AND (orphaned
-        OR (anchor_start IS NOT NULL AND anchor_end > anchor_start AND anchor_start >= 0)))
+        OR (anchor_start IS NOT NULL AND anchor_end IS NOT NULL
+            AND anchor_start >= 0 AND anchor_end > anchor_start)))
   );
 ```
 
@@ -57,17 +58,35 @@ ALTER TABLE post_comment_threads
 
 Pure module `apps/crm/src/pages/entregas/utils/captionAnchors.ts`:
 
-`remapAnchors(oldText, newText, threads) -> threads` using a common-prefix /
-common-suffix diff to find the edited window `[p, oldEnd)` replaced by `[p, newEnd)`,
-delta `d = newEnd - oldEnd`:
+Two mechanisms, both pure and unit tested:
+
+**1. `remapAnchors(oldText, newText, threads) -> threads`** (live typing). Common-prefix /
+common-suffix diff, with the suffix bound `suffix <= min(oldLen, newLen) - prefix` (so
+`"aa"` -> `"aaa"` is an insertion, not a delete). Edited window `[p, oldEnd)` replaced by
+`[p, newEnd)`, delta `d = newEnd - oldEnd`:
 
 - range entirely before `p`: unchanged.
 - range entirely at/after `oldEnd`: shift by `d`.
 - edit overlaps the range: clamp to the surviving parts; grow/shrink around the edit.
 - surviving length 0 (whole passage removed): `orphaned = true`.
-- Whole-text replacement (no common prefix/suffix, e.g. version restore or accepted
-  Hub suggestion): keep a thread anchored only if `newText.slice(start, end) === quoted_text`
-  at the stored range, else orphan.
+- Boundaries match the content editor's mark: an insertion exactly at `anchor_start`
+  shifts the range (does not grow it); an insertion exactly at `anchor_end` grows it.
+- Repeated text is ambiguous for a prefix/suffix diff (`"abcabc"` -> `"abc"` always
+  reads as deleting the second copy). Accepted for typing; mechanism 2 catches drift.
+
+**2. `validateAnchors(text, threads)`** (any time text arrives that wasn't remapped
+edit-by-edit: drawer open, an inbound `value` change, MCP `update_post`, Hub suggestion
+accept). For each active caption thread check `text.slice(start, end) === quoted_text`.
+On mismatch: if `quoted_text` occurs exactly once in `text`, re-anchor there; otherwise
+`orphaned = true`. This replaces any "whole-text replacement" special case, and it is the
+only defence against writers that never touch the field (`supabase/functions/mcp/queries.ts`
+writes `ig_caption` with no drawer open). Concurrent editors stay last-write-wins on
+text and offsets, as the caption already is; validation is the mitigation.
+
+**`quoted_text` is refreshed** to the current `text.slice(start, end)` in every save that
+carries anchors (an in-range edit would otherwise make every later validation fail and
+orphan the thread). The first-comment display keeps the original quote in the comment
+thread UI only via the summary's current `quoted_text`; that is acceptable.
 
 Persistence: the caption text and the remapped anchors must commit atomically. The
 generic `onFieldChange` is field-agnostic (`updateWorkflowPost(id, { [field]: value })`,
@@ -80,15 +99,22 @@ duplicated in both drawers) and stays untouched. Instead:
   `p_post_id`).
 - New dedicated prop `onCaptionSave(text, anchors)` threaded to `InstagramCaptionField`
   (both drawers implement it; posts with no caption threads pass an empty `anchors`).
+- The debounced save reads the current `(text, anchors, quoted_text)` at fire time (not
+  the closure of the keystroke that armed it). While a save is pending, inbound
+  `threads`/`value` props (e.g. a `refresh()` from an earlier save) must not overwrite
+  local text or anchors; `InstagramCaptionField` clears/re-arms `timerRef` when it
+  adopts a new `value`. **Creating a thread flushes the pending save first**, so the new
+  thread never references text the server doesn't have. After the RPC resolves the
+  drawer awaits it *before* `refresh()`, so highlights don't snap back to old offsets.
 - `remapAnchors` always diffs from the **last persisted** caption (the baseline is
   advanced only after the RPC resolves), so a failed or out-of-order save never leaves
   anchors describing text the DB doesn't hold; the next save re-diffs from the
   baseline that matches the DB anchors.
-- Caption changes from outside the field (Hub suggestion accept, version restore,
-  MCP/other writers) bypass the RPC. The field, on receiving a new `value` prop that
-  differs from its baseline, runs `remapAnchors(baseline, value, threads)` and persists
-  the result through `updateThreadAnchors` (best effort, non-blocking); on any
-  mismatch the quoted-text check orphans the thread.
+- Caption changes from outside the field (Hub suggestion accept, MCP `update_post`,
+  other writers; there is no version restore, `PostVersionHistorySheet` is read-only)
+  bypass the RPC. On drawer open and whenever an inbound `value` differs from the
+  baseline, the field runs `validateAnchors`; corrected anchors/orphans are persisted by
+  the next save through the same RPC (nothing is written just from viewing).
 
 ## UI
 
@@ -97,7 +123,9 @@ duplicated in both drawers) and stays untouched. Instead:
 - The textarea keeps today's auto-grow (`resize-none overflow-hidden`, height from
   `scrollHeight`), so there is no inner scroll to sync. A mirror div, absolutely
   positioned behind a transparent-background textarea, uses identical font, padding and
-  wrapping (`white-space: pre-wrap; overflow-wrap: anywhere`) and is re-rendered on
+  wrapping (`white-space: pre-wrap; overflow-wrap: anywhere`) copied from the textarea's computed style, `aria-hidden`, `pointer-events: none`,
+  `color: transparent` on text with only the `<mark>` background visible, and a trailing
+  zero-width space so a final newline gets a line box; it is re-rendered on
   every keystroke and on width change (the existing `ResizeObserver`). Paints
   `<mark class="comment-highlight">` for **active, non-orphaned** threads (union of
   overlaps). Resolved and orphaned threads are not painted.
@@ -107,7 +135,8 @@ duplicated in both drawers) and stays untouched. Instead:
   multi-line selections have no single anchor point, and on touch the native selection
   menu would collide. The button opens the existing add-comment popover
   (`MentionTextarea`), anchored below the header.
-- Click/caret inside a highlight opens `PostCommentPopover`, anchored to that `<mark>`'s
+- A click (not caret movement, so arrowing through a highlight doesn't pop it) inside a
+  highlight opens `PostCommentPopover`, anchored to that `<mark>`'s
   bounding rect in the mirror (`getBoundingClientRect`, first line). Target resolution:
   most recently created thread covering the caret offset (pure helper, unit tested).
 - Locked caption (`agendado`): swap the native `disabled` for `readOnly` on the
@@ -125,7 +154,10 @@ duplicated in both drawers) and stays untouched. Instead:
   this work makes it functional for caption threads only: `InstagramCaptionField` is a
   `forwardRef` exposing `focusThread(threadId)` (scroll into view, focus the textarea,
   select the range, open the popover). `PostEditorBody` calls it when the clicked thread's
-  `field === 'ig_caption'`; content threads stay a no-op.
+  `field === 'ig_caption'`; content threads stay a no-op. Where `InstagramCaptionField` is
+  not mounted (`HistoryDrawer`'s read-only summary, posts without an Instagram account,
+  story posts) the ref is absent, so the click is a no-op and the row still shows the
+  "Legenda" chip and quoted text.
 
 ## Wiring
 
@@ -139,19 +171,25 @@ duplicated in both drawers) and stays untouched. Instead:
   `StandalonePostDrawer` (`:425`) and `PostEditorBody` (`:119`, `:590`). `PostEditor`
   (content) keeps calling it without an anchor.
 - Thread handlers in `WorkflowDrawer.tsx` and `StandalonePostDrawer.tsx` (duplicated
-  today) are passed through `PostEditorBody.tsx` to the caption field. The content
-  editor keeps filtering to `field = 'conteudo'` for its mark sync; caption threads
-  never touch `PostEditor`'s resolve/delete mark logic.
+  today) are passed through `PostEditorBody.tsx` to the caption field. `PostEditor` uses
+  `threads` only for popover lookup and the delete-last-comment count; it applies marks
+  from its own document, so caption threads are inert there (`unsetCommentHighlight` on
+  one is a harmless no-op). The comment-count badge (`WorkflowDrawer.tsx:1408`)
+  counting caption threads is intended.
 - Deleting the last comment in a thread deletes the thread (unchanged).
 
 ## Testing
 
-- Vitest: `remapAnchors` (insert before/inside/after, partial and full delete,
+- Existing tests call/mock `createCommentThread` positionally
+  (`store.comments.test.ts`, `WorkflowDrawer*.test.tsx`, `StandalonePostDrawer.test.tsx`);
+  the optional 4th param keeps them green.
+- Vitest: `validateAnchors` (mismatch re-anchors on unique match, orphans otherwise),
+  `quoted_text` refresh, `"aa"` -> `"aaa"`, boundary inserts; `remapAnchors` (insert before/inside/after, partial and full delete,
   replace-all, emoji/surrogate pairs), click-target resolver, overlap union.
 - Component test: create a thread, type before the range, highlight shifts; delete the
   passage, thread orphaned and listed with badge.
-- Entitlement SQL: new columns honor existing RLS; CHECK rejects a caption thread
-  without valid offsets and a content thread with offsets.
+- Entitlement SQL (call `et_grant_hosted_parity()` first, per suite convention): new columns honor existing RLS; CHECK rejects a caption thread
+  with a NULL `anchor_end` or missing offsets and a content thread with offsets.
 - Browser verification (desktop + mobile): mirror/textarea alignment with wrapping,
   long words, scroll, emoji, locked state.
 
@@ -161,5 +199,5 @@ duplicated in both drawers) and stays untouched. Instead:
   mirror's soft-wrap points must match the textarea's on every keystroke, not just at
   rest; the click-to-open and `<mark>` rects depend on it. Mitigated by copying computed
   styles, re-rendering synchronously on input, and testing wrap edge cases.
-- Concurrent edits by two members can desync offsets; the next save re-derives from the
-  saved text, and the quoted-text check orphans clear mismatches.
+- Concurrent edits by two members, and out-of-band writers (MCP `update_post`), can
+  desync offsets. Last-write-wins as today; `validateAnchors` re-anchors or orphans.
