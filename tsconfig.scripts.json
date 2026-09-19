@@ -33,7 +33,11 @@
     "apps/crm/src/content/**/*.tsx",
     "apps/crm/src/pages/politica-privacidade/**/*.tsx",
     "apps/crm/src/pages/termos-de-uso/**/*.tsx",
-    "apps/crm/src/pages/lgpd/**/*.tsx"
+    "apps/crm/src/pages/lgpd/**/*.tsx",
+    // tsx applies the jsx setting above only to files matched by "include", while tsc follows
+    // imports regardless. Any .tsx imported by a prerendered page must therefore be listed here,
+    // or it falls back to the classic JSX transform and throws "React is not defined".
+    "apps/crm/src/components/consent/CookiePreferencesLink.tsx"
   ],
   "exclude": ["apps/crm/src/content/blog.client.ts", "apps/crm/src/content/__tests__/**"]
 }
