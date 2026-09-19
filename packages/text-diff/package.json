@@ -1,0 +1,7 @@
+{
+  "name": "@mesaas/text-diff",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "index.ts"
+}

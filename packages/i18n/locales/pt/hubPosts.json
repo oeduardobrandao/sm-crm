@@ -5,26 +5,39 @@
     "savingSuggestion": "Salvando sugestão...",
     "suggestionSaved": "Sugestão salva",
     "aprovar": "Aprovar",
-    "correcaoShort": "Correção",
-    "correcaoLong": "Solicitar correção",
-    "suggestionPendingReviewShort": "Sugestão enviada para revisão",
     "suggestionPendingReviewFull": "Sugestão enviada para revisão da equipe",
-    "commentPlaceholder": "Comente aqui ou corrija o texto diretamente no campo acima",
-    "correctionCommentRequired": "Deixe um comentário para solicitar correção",
+    "commentPlaceholder": "Descreva o que precisa mudar",
     "rejectedSuggestionWarning": "⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.",
     "suggestionInfoNote": "ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar",
     "postApproved": "Post aprovado!",
     "correctionSent": "Correção enviada!",
     "viewOnInstagram": "Ver no Instagram",
-    "viewOnTikTok": "Ver no TikTok"
+    "viewOnTikTok": "Ver no TikTok",
+    "salvarEdicao": "Salvar edição",
+    "enviarCorrecao": "Enviar correção",
+    "fechar": "Fechar",
+    "discardCorrectionConfirm": "Descartar as alterações não enviadas?",
+    "saveFailedRetry": "Não foi possível salvar. Tente novamente.",
+    "retrySave": "Tentar novamente",
+    "discardFailedEdit": "Descartar edição"
   },
   "aprovacoes": {
     "title": "Aprovações",
     "emptyDescription": "Tudo em dia. Nenhum post aguardando aprovação.",
     "pendingDescription": "{{count}} post{{plural}} aguardando sua aprovação.",
     "selectHint": "Selecione posts para visualizar como ficarão no feed do Instagram.",
-    "storiesHeader": "Stories",
-    "noMediaHeader": "Posts sem mídia"
+    "loadError": "Erro ao carregar aprovações.",
+    "noResults": "Nenhum post encontrado para este filtro.",
+    "mediaFilter": {
+      "label": "Filtrar por mídia",
+      "with": "Com mídia",
+      "without": "Sem mídia"
+    },
+    "sort": {
+      "label": "Ordenar por",
+      "oldest": "Mais antigos",
+      "newest": "Mais recentes"
+    }
   },
   "postagens": {
     "title": "Postagens",
@@ -32,9 +45,17 @@
     "defaultDescription": "Todos os posts do seu calendário de conteúdo.",
     "loadError": "Erro ao carregar postagens.",
     "empty": "Nenhuma postagem disponível ainda.",
-    "avulsoGroupTitle": "Publicações avulsas",
-    "postCount": "{{count}} {{noun}}",
-    "clickToExpand": "clique para expandir",
+    "noResults": "Nenhuma postagem encontrada para este filtro.",
+    "filter": {
+      "label": "Filtrar por status",
+      "all": "Todos"
+    },
+    "monthFilter": {
+      "label": "Filtrar por mês",
+      "trigger": "Todos os meses",
+      "all": "Todos os meses",
+      "none": "Sem data"
+    },
     "status": {
       "enviadoCliente": "Aguardando aprovação",
       "aprovadoCliente": "Aprovado",
@@ -45,39 +66,88 @@
       "falhaPublicacao": "Falha na publicação"
     }
   },
-  "postagemFoco": {
-    "backLink": "Ver todas as postagens",
-    "loadError": "Não foi possível carregar esta postagem.",
-    "retry": "Tentar novamente",
-    "notAvailable": "Esta postagem não está disponível."
-  },
   "instagramCard": {
     "selectAriaLabel": "Selecionar publicação",
     "openMediaAriaLabel": "Abrir mídia {{index}}",
     "prevSlideAriaLabel": "Slide anterior",
     "nextSlideAriaLabel": "Próximo slide",
-    "likeAriaLabel": "Curtir",
-    "suggestionRejected": "⚠️ Sugestão rejeitada — edite novamente",
-    "editCaptionHint": "✏️ Edite a legenda abaixo",
     "captionAriaLabel": "Legenda do post",
-    "concluir": "Concluir",
-    "verMenos": "ver menos",
-    "verMais": "… mais",
-    "editarLegenda": "Editar legenda",
-    "scheduledPrefix": "Agendado · {{date}}",
-    "scheduledBannerTitle": "Agendado para publicação",
-    "publishedBannerTitle": "Publicado",
     "postApprovedAndScheduled": "Post aprovado e agendado para publicação!",
     "autoPublishScheduled": "Ao aprovar, este post será publicado automaticamente no Instagram em {{date}}.",
     "autoPublishUnscheduled": "Ao aprovar, este post será agendado para publicação automática no Instagram."
   },
   "storyCard": {
     "prevAriaLabel": "Anterior",
-    "nextAriaLabel": "Próximo",
-    "replyPlaceholder": "Responder para {{name}}..."
+    "nextAriaLabel": "Próximo"
   },
   "textCard": {
     "mediaRemoved": "Mídia removida para liberar espaço",
     "instagramCaptionLabel": "Legenda do Instagram"
+  },
+  "posts": {
+    "select": "Selecionar",
+    "done": "Concluir",
+    "previous": "Post anterior",
+    "next": "Próximo post",
+    "counter": "{{current}} de {{total}}",
+    "closeDialog": "Fechar postagem",
+    "openTile": "Abrir {{title}}",
+    "openStory": "Ver story {{title}}",
+    "tabCaption": "Legenda",
+    "tabText": "Texto",
+    "tabHistory": "Histórico e comentários",
+    "editCaption": "Editar legenda",
+    "editText": "Editar texto",
+    "correct": "Corrigir",
+    "requestCorrection": "Solicitar correção",
+    "mediaRemoved": "Mídia removida",
+    "noMedia": "Sem mídia",
+    "slides": "{{count}} slides",
+    "storyFrames": "Story · {{count}}",
+    "storiesRailLabel": "Stories",
+    "stripLabel": "Outros posts",
+    "goToPost": "Ir para {{title}}",
+    "notAvailable": "Esta postagem não está disponível.",
+    "submitError": "Não foi possível enviar. Tente novamente."
+  },
+  "history": {
+    "toggle": "Histórico e comentários",
+    "summary": "{{decisions}} decisões · {{comments}} comentários",
+    "tabHistory": "Histórico",
+    "tabComments": "Comentários",
+    "loading": "Carregando histórico...",
+    "loadError": "Não foi possível carregar o histórico.",
+    "empty": "Nenhum evento registrado ainda.",
+    "emptyComments": "Nenhum comentário ainda. Escreva o primeiro.",
+    "sentVersion": "v{{version}}: enviado para aprovação",
+    "approved": "Aprovado",
+    "correctionRequested": "Correção solicitada",
+    "actor": {
+      "team": "Equipe",
+      "system": "Sistema",
+      "you": "Você"
+    },
+    "showDiff": "Ver alterações na legenda",
+    "hideDiff": "Ocultar alterações",
+    "showDiffText": "Ver alterações no texto",
+    "showVersion": "Ver versão completa",
+    "hideVersion": "Ocultar versão",
+    "kpi": {
+      "rounds": "{{count}} rodada(s) de correção",
+      "avgResponse": "Tempo médio de resposta: {{value}}",
+      "noData": "Tempo médio de resposta: sem dados ainda"
+    },
+    "composerPlaceholder": "Escreva um comentário sobre este post",
+    "send": "Enviar",
+    "sending": "Enviando...",
+    "sendError": "Não foi possível enviar o comentário.",
+    "motivoLabel": "Motivo"
+  },
+  "correctionReason": {
+    "title": "Motivo da correção",
+    "midia": "Mídia",
+    "texto": "Texto",
+    "legenda": "Legenda",
+    "outro": "Outro"
   }
 }

@@ -87,7 +87,7 @@ export function PostMediaLightbox({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[9005] flex items-center justify-center bg-black/90"
+      className="fixed inset-0 z-[9005] pointer-events-auto flex items-center justify-center bg-black/90"
       onClick={onClose}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}

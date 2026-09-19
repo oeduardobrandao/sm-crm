@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { HubPost } from '../types';
+import type { HubPost, HubPostMedia } from '../types';
 
 /** Statuses a client is allowed to see in the Hub (mirrors PostagensPage). */
 export const VISIBLE_STATUSES = new Set<HubPost['status']>([
@@ -65,4 +65,123 @@ export function getTipoLabel(t: TFunction, tipo: string): string {
     carrossel: t('hubPostCard:tipo.carrossel', 'Carrossel'),
   };
   return labels[tipo] ?? tipo;
+}
+
+/** Status colours shared by the tile pill and the dialog header (moved from PostagensPage). */
+export const STATUS_COLORS: Record<string, string> = {
+  enviado_cliente: '#f5a342',
+  aprovado_cliente: '#3ecf8e',
+  correcao_cliente: '#f55a42',
+  agendado: '#42c8f5',
+  publicando: '#E1306C',
+  postado: '#525252',
+  falha_publicacao: '#f55a42',
+};
+
+/**
+ * Presentational-only state (not a DB status): an `agendado` post whose scheduled
+ * time already passed is being published right now.
+ */
+export function getPostPublishState(p: {
+  status: HubPost['status'];
+  scheduled_at: string | null;
+}): string {
+  return p.status === 'agendado' && !!p.scheduled_at && new Date(p.scheduled_at) <= new Date()
+    ? 'publicando'
+    : p.status;
+}
+
+/** Tile/strip image: the flagged cover, else the first media item. */
+export function getPostCover(post: HubPost): HubPostMedia | null {
+  return post.cover_media ?? post.media?.[0] ?? null;
+}
+
+/**
+ * The caption the client actually sees: the explicit caption when non-empty,
+ * otherwise the text after "LEGENDA" in `conteudo_plain`, otherwise the whole
+ * `conteudo_plain`. Same rule the old cards used, kept in one place.
+ */
+export function deriveCaption(post: HubPost, igCaption: string | null): string {
+  if (igCaption) return igCaption;
+  const rawText = post.conteudo_plain ?? '';
+  const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
+  return legendaIdx !== -1
+    ? rawText
+        .slice(legendaIdx + 'LEGENDA'.length)
+        .replace(/^[:\s\n]+/, '')
+        .trim()
+    : rawText;
+}
+
+export type PostSortDirection = 'asc' | 'desc';
+
+/**
+ * 'asc' is scheduled_at ascending, unscheduled last, `ordem` as the tiebreaker. 'desc' is the
+ * exact reverse of that list, so unscheduled posts come first. Returns a copy.
+ */
+export function sortPostsByScheduled(posts: HubPost[], direction: PostSortDirection): HubPost[] {
+  const asc = [...posts].sort((a, b) => {
+    if (!a.scheduled_at && !b.scheduled_at) return a.ordem - b.ordem;
+    if (!a.scheduled_at) return 1;
+    if (!b.scheduled_at) return -1;
+    return a.scheduled_at.localeCompare(b.scheduled_at) || a.ordem - b.ordem;
+  });
+  return direction === 'asc' ? asc : asc.reverse();
+}
+
+/** scheduled_at ascending, unscheduled last, `ordem` as the tiebreaker. Returns a copy. */
+export function sortPostsChronologically(posts: HubPost[]): HubPost[] {
+  return sortPostsByScheduled(posts, 'asc');
+}
+
+/** Filter value meaning "no month filter". Never collides with a `YYYY-MM` key or `none`. */
+export const ALL_MONTHS = 'all';
+/** Bucket key for posts without a usable date. */
+export const NO_MONTH = 'none';
+
+/**
+ * `YYYY-MM` of the date the Hub shows on the post (`scheduled_at`, the same field the tile
+ * and dialog chips format), or `none`. Read in the viewer's local timezone because that is
+ * what `formatDate` (toLocaleDateString without a timeZone) renders, so a post shown as
+ * "30 de abr." is never filed under May just because its UTC instant crossed midnight.
+ */
+export function getPostMonthKey(post: { scheduled_at: string | null }): string {
+  if (!post.scheduled_at) return NO_MONTH;
+  const d = new Date(post.scheduled_at);
+  if (Number.isNaN(d.getTime())) return NO_MONTH;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function countPostsByMonth(posts: { scheduled_at: string | null }[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const p of posts) {
+    const key = getPostMonthKey(p);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export interface PostMonthGroup {
+  key: string;
+  count: number;
+}
+
+/** One group per month with a post, newest month first; the dateless bucket goes last. */
+export function groupPostsByMonth(posts: { scheduled_at: string | null }[]): PostMonthGroup[] {
+  return [...countPostsByMonth(posts)]
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => {
+      if (a.key === NO_MONTH) return 1;
+      if (b.key === NO_MONTH) return -1;
+      return b.key.localeCompare(a.key);
+    });
+}
+
+/** "Setembro de 2026" for `2026-09`: localized long month + year, first letter capitalized. */
+export function formatMonthKey(key: string, lang: string): string {
+  const [year, month] = key.split('-').map(Number);
+  const label = new Intl.DateTimeFormat(lang, { month: 'long', year: 'numeric' }).format(
+    new Date(year, month - 1, 1),
+  );
+  return label.charAt(0).toLocaleUpperCase(lang) + label.slice(1);
 }

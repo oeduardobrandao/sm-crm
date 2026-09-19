@@ -46,6 +46,9 @@ verify_jwt = false
 [functions.hub-approve]
 verify_jwt = false
 
+[functions.hub-post-history]
+verify_jwt = false
+
 [functions.hub-brand]
 verify_jwt = false
 

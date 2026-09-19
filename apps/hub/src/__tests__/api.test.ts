@@ -8,6 +8,7 @@ import {
   deleteIdeiaAudio,
   fetchBootstrap,
   fetchBriefing,
+  fetchPostHistory,
   fetchPosts,
   finalizeBriefingAudio,
   finalizeIdeiaAudio,
@@ -338,5 +339,38 @@ describe('hub api client', () => {
     await deleteIdeiaAudio('tok', 'i1');
     expect(String(fetchHarness.calls[3].input)).toContain('/hub-ideias/i1/audio?token=tok');
     expect(fetchHarness.calls[3].init?.method).toBe('DELETE');
+  });
+
+  it('fetches a post history through hub-post-history with token and post_id', async () => {
+    fetchHarness.queueResponse({ json: { events: [], approvals: [] } });
+
+    const result = await fetchPostHistory('token-hub', 42);
+
+    expect(result).toEqual({ events: [], approvals: [] });
+    const url = new URL(String(fetchHarness.calls[0].input));
+    expect(url.pathname).toBe('/functions/v1/hub-post-history');
+    expect(url.searchParams.get('token')).toBe('token-hub');
+    expect(url.searchParams.get('post_id')).toBe('42');
+    expect(fetchHarness.calls[0].init?.method).toBeUndefined();
+  });
+
+  it('sends motivo with a correcao and omits it otherwise', async () => {
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'correcao', 'Trocar foto', 'midia');
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      token: 'token-hub',
+      post_id: 12,
+      action: 'correcao',
+      comentario: 'Trocar foto',
+      motivo: 'midia',
+    });
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('token-hub', 12, 'aprovado');
+    expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toEqual({
+      token: 'token-hub',
+      post_id: 12,
+      action: 'aprovado',
+    });
   });
 });

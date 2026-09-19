@@ -71,10 +71,6 @@
     "previewButton": "Preview in Feed ({{count}})",
     "previewAria": "Feed preview for {{name}}"
   },
-  "openPost": {
-    "ariaLabel": "Open post in new tab",
-    "label": "Open"
-  },
   "sharePost": {
     "ariaLabel": "Copy post link",
     "copied": "Copied!",

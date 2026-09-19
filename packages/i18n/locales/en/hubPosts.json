@@ -5,26 +5,39 @@
     "savingSuggestion": "Saving suggestion...",
     "suggestionSaved": "Suggestion saved",
     "aprovar": "Approve",
-    "correcaoShort": "Correction",
-    "correcaoLong": "Request correction",
-    "suggestionPendingReviewShort": "Suggestion sent for review",
     "suggestionPendingReviewFull": "Suggestion sent for the team to review",
-    "commentPlaceholder": "Comment here or edit the text directly in the field above",
-    "correctionCommentRequired": "Leave a comment to request a correction",
+    "commentPlaceholder": "Describe what needs to change",
     "rejectedSuggestionWarning": "⚠️ Your previous suggestion was rejected by the team. Edit it again to send a new one.",
     "suggestionInfoNote": "ℹ️ Your edits will be sent as a suggestion for the team to review",
     "postApproved": "Post approved!",
     "correctionSent": "Correction sent!",
     "viewOnInstagram": "View on Instagram",
-    "viewOnTikTok": "View on TikTok"
+    "viewOnTikTok": "View on TikTok",
+    "salvarEdicao": "Save edit",
+    "enviarCorrecao": "Send correction",
+    "fechar": "Close",
+    "discardCorrectionConfirm": "Discard the unsent changes?",
+    "saveFailedRetry": "Couldn't save. Try again.",
+    "retrySave": "Retry",
+    "discardFailedEdit": "Discard edit"
   },
   "aprovacoes": {
     "title": "Approvals",
     "emptyDescription": "All caught up. No post awaiting approval.",
     "pendingDescription": "{{count}} post{{plural}} awaiting your approval.",
     "selectHint": "Select posts to preview how they'll look in the Instagram feed.",
-    "storiesHeader": "Stories",
-    "noMediaHeader": "Posts without media"
+    "loadError": "Error loading approvals.",
+    "noResults": "No posts found for this filter.",
+    "mediaFilter": {
+      "label": "Filter by media",
+      "with": "With media",
+      "without": "Without media"
+    },
+    "sort": {
+      "label": "Sort by",
+      "oldest": "Oldest first",
+      "newest": "Newest first"
+    }
   },
   "postagens": {
     "title": "Posts",
@@ -32,9 +45,17 @@
     "defaultDescription": "All posts in your content calendar.",
     "loadError": "Error loading posts.",
     "empty": "No posts available yet.",
-    "avulsoGroupTitle": "Standalone posts",
-    "postCount": "{{count}} {{noun}}",
-    "clickToExpand": "click to expand",
+    "noResults": "No posts found for this filter.",
+    "filter": {
+      "label": "Filter by status",
+      "all": "All"
+    },
+    "monthFilter": {
+      "label": "Filter by month",
+      "trigger": "All months",
+      "all": "All months",
+      "none": "No date"
+    },
     "status": {
       "enviadoCliente": "Awaiting approval",
       "aprovadoCliente": "Approved",
@@ -45,39 +66,88 @@
       "falhaPublicacao": "Publishing failed"
     }
   },
-  "postagemFoco": {
-    "backLink": "See all posts",
-    "loadError": "Could not load this post.",
-    "retry": "Try again",
-    "notAvailable": "This post is not available."
-  },
   "instagramCard": {
     "selectAriaLabel": "Select post",
     "openMediaAriaLabel": "Open media {{index}}",
     "prevSlideAriaLabel": "Previous slide",
     "nextSlideAriaLabel": "Next slide",
-    "likeAriaLabel": "Like",
-    "suggestionRejected": "⚠️ Suggestion rejected — edit again",
-    "editCaptionHint": "✏️ Edit the caption below",
     "captionAriaLabel": "Post caption",
-    "concluir": "Done",
-    "verMenos": "less",
-    "verMais": "… more",
-    "editarLegenda": "Edit caption",
-    "scheduledPrefix": "Scheduled · {{date}}",
-    "scheduledBannerTitle": "Scheduled for publication",
-    "publishedBannerTitle": "Published",
     "postApprovedAndScheduled": "Post approved and scheduled for publication!",
     "autoPublishScheduled": "Once approved, this post will be published automatically on Instagram at {{date}}.",
     "autoPublishUnscheduled": "Once approved, this post will be scheduled for automatic publication on Instagram."
   },
   "storyCard": {
     "prevAriaLabel": "Previous",
-    "nextAriaLabel": "Next",
-    "replyPlaceholder": "Reply to {{name}}..."
+    "nextAriaLabel": "Next"
   },
   "textCard": {
     "mediaRemoved": "Media removed to free up space",
     "instagramCaptionLabel": "Instagram caption"
+  },
+  "posts": {
+    "select": "Select",
+    "done": "Done",
+    "previous": "Previous post",
+    "next": "Next post",
+    "counter": "{{current}} of {{total}}",
+    "closeDialog": "Close post",
+    "openTile": "Open {{title}}",
+    "openStory": "View story {{title}}",
+    "tabCaption": "Caption",
+    "tabText": "Text",
+    "tabHistory": "History and comments",
+    "editCaption": "Edit caption",
+    "editText": "Edit text",
+    "correct": "Correct",
+    "requestCorrection": "Request a correction",
+    "mediaRemoved": "Media removed",
+    "noMedia": "No media",
+    "slides": "{{count}} slides",
+    "storyFrames": "Story · {{count}}",
+    "storiesRailLabel": "Stories",
+    "stripLabel": "Other posts",
+    "goToPost": "Go to {{title}}",
+    "notAvailable": "This post is not available.",
+    "submitError": "Could not send. Try again."
+  },
+  "history": {
+    "toggle": "History and comments",
+    "summary": "{{decisions}} decisions · {{comments}} comments",
+    "tabHistory": "History",
+    "tabComments": "Comments",
+    "loading": "Loading history...",
+    "loadError": "Could not load the history.",
+    "empty": "No events recorded yet.",
+    "emptyComments": "No comments yet. Write the first one.",
+    "sentVersion": "v{{version}}: sent for approval",
+    "approved": "Approved",
+    "correctionRequested": "Correction requested",
+    "actor": {
+      "team": "Team",
+      "system": "System",
+      "you": "You"
+    },
+    "showDiff": "Show caption changes",
+    "hideDiff": "Hide changes",
+    "showDiffText": "Show text changes",
+    "showVersion": "Show full version",
+    "hideVersion": "Hide version",
+    "kpi": {
+      "rounds": "{{count}} correction round(s)",
+      "avgResponse": "Average response time: {{value}}",
+      "noData": "Average response time: no data yet"
+    },
+    "composerPlaceholder": "Write a comment about this post",
+    "send": "Send",
+    "sending": "Sending...",
+    "sendError": "Could not send the comment.",
+    "motivoLabel": "Reason"
+  },
+  "correctionReason": {
+    "title": "Correction reason",
+    "midia": "Media",
+    "texto": "Text",
+    "legenda": "Caption",
+    "outro": "Other"
   }
 }

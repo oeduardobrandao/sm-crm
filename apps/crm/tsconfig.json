@@ -8,7 +8,8 @@
       "@mesaas/report-blocks/*": ["../../packages/report-blocks/*"],
       "@mesaas/import-parsers": ["../../packages/import-parsers/index.ts"],
       "@mesaas/app-lifecycle": ["../../packages/app-lifecycle/index.ts"],
-      "@mesaas/link-policy": ["../../packages/link-policy/index.ts"]
+      "@mesaas/link-policy": ["../../packages/link-policy/index.ts"],
+      "@mesaas/text-diff": ["../../packages/text-diff/index.ts"]
     },
     "target": "ES2021",
     "useDefineForClassFields": true,

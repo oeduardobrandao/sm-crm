@@ -134,6 +134,40 @@ export interface PostApproval {
   comentario: string | null;
   is_workspace_user: boolean;
   created_at: string;
+  motivo?: CorrectionReason | null;
+}
+
+export type CorrectionReason = 'midia' | 'texto' | 'legenda' | 'outro';
+
+/** hub-post-history DTO. Sanitized server-side: no from_status, no actor names, no TipTap JSON. */
+export interface PostHistoryEvent {
+  id: number;
+  to_status:
+    | 'enviado_cliente'
+    | 'aprovado_cliente'
+    | 'correcao_cliente'
+    | 'agendado'
+    | 'postado'
+    | 'falha_publicacao';
+  source: 'client' | 'team' | 'system';
+  created_at: string;
+  post_approval_id: number | null;
+  /** Present only on enviado_cliente events: the text the client saw on that send. */
+  snapshot: { conteudo_plain: string | null; ig_caption: string | null } | null;
+}
+
+export interface PostHistoryApproval {
+  id: number;
+  action: 'aprovado' | 'correcao' | 'mensagem';
+  comentario: string | null;
+  motivo: CorrectionReason | null;
+  is_workspace_user: boolean;
+  created_at: string;
+}
+
+export interface PostHistoryResponse {
+  events: PostHistoryEvent[];
+  approvals: PostHistoryApproval[];
 }
 
 export interface HubBrand {

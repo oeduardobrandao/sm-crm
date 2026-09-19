@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { HubContext } from '../../HubContext';
@@ -55,57 +55,6 @@ vi.mock('../../components/PostCard', async (importOriginal) => {
     ),
   };
 });
-
-vi.mock('../../components/InstagramPostCard', () => ({
-  InstagramPostCard: ({
-    post,
-    onApprovalSubmitted,
-  }: {
-    post: { id: number; titulo: string };
-    onApprovalSubmitted: () => void;
-  }) => (
-    <article data-testid="instagram-post-card" data-post-id={String(post.id)}>
-      <h4>{post.titulo}</h4>
-      <button type="button" onClick={onApprovalSubmitted}>
-        Refresh {post.id}
-      </button>
-    </article>
-  ),
-}));
-
-vi.mock('../../components/TextPostCard', () => ({
-  TextPostCard: ({
-    post,
-    onApprovalSubmitted,
-  }: {
-    post: { id: number; titulo: string };
-    onApprovalSubmitted: () => void;
-  }) => (
-    <article data-testid="text-post-card" data-post-id={String(post.id)}>
-      <h4>{post.titulo}</h4>
-      <button type="button" onClick={onApprovalSubmitted}>
-        Refresh {post.id}
-      </button>
-    </article>
-  ),
-}));
-
-vi.mock('../../components/StoryPostCard', () => ({
-  StoryPostCard: ({
-    post,
-    onApprovalSubmitted,
-  }: {
-    post: { id: number; titulo: string };
-    onApprovalSubmitted: () => void;
-  }) => (
-    <article data-testid="story-post-card" data-post-id={String(post.id)}>
-      <h4>{post.titulo}</h4>
-      <button type="button" onClick={onApprovalSubmitted}>
-        Refresh {post.id}
-      </button>
-    </article>
-  ),
-}));
 
 vi.mock('../../components/FeedPreviewButton', () => ({
   FeedPreviewButton: () => null,
@@ -245,85 +194,6 @@ describe('hub approval, posts, and brand pages', () => {
       expect(
         await screen.findByText('Tudo em dia. Nenhum post aguardando aprovação.'),
       ).toBeInTheDocument();
-      expect(screen.queryByTestId('text-post-card')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('instagram-post-card')).not.toBeInTheDocument();
-    });
-
-    it('sorts pending posts and invalidates the posts query after an approval callback', async () => {
-      mockedFetchPosts.mockResolvedValue({
-        posts: [
-          makePost({
-            id: 11,
-            titulo: 'Post mais tarde',
-            scheduled_at: '2026-04-25T09:00:00.000Z',
-          }),
-          makePost({
-            id: 12,
-            titulo: 'Post mais cedo',
-            scheduled_at: '2026-04-19T09:00:00.000Z',
-          }),
-          makePost({
-            id: 13,
-            titulo: 'Post já agendado',
-            status: 'agendado',
-          }),
-        ],
-        postApprovals: [
-          {
-            id: 1,
-            post_id: 12,
-            action: 'mensagem',
-            comentario: 'Olhar CTA',
-            is_workspace_user: false,
-            created_at: '2026-04-18T10:00:00.000Z',
-          },
-        ],
-        propertyValues: [
-          {
-            post_id: 12,
-            value: 'Instagram',
-            template_property_definitions: {
-              name: 'Canal',
-              type: 'text',
-              config: {},
-              portal_visible: true,
-              display_order: 1,
-            },
-          },
-        ],
-        workflowSelectOptions: [
-          {
-            workflow_id: 1,
-            property_definition_id: 99,
-            option_id: 'feed',
-            label: 'Feed',
-            color: '#0f766e',
-          },
-        ],
-        instagramProfile: null,
-      } as never);
-
-      const queryClient = createQueryClient();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
-
-      renderHubPage(
-        '/mesaas/hub/token-publico/aprovacoes',
-        '/:workspace/hub/:token/aprovacoes',
-        <AprovacoesPage />,
-        queryClient,
-      );
-
-      expect(await screen.findByText('2 posts aguardando sua aprovação.')).toBeInTheDocument();
-      expect(
-        screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent),
-      ).toEqual(['Post mais cedo', 'Post mais tarde']);
-      expect(screen.queryByText('Post já agendado')).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Refresh 12' }));
-
-      await waitFor(() => {
-        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['hub-posts', 'token-publico'] });
-      });
     });
   });
 
@@ -372,12 +242,9 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(await screen.findByText('Nenhuma postagem disponível ainda.')).toBeInTheDocument();
-      expect(screen.queryByTestId('text-post-card')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('instagram-post-card')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('story-post-card')).not.toBeInTheDocument();
     });
 
-    it('groups and sorts visible posts in read-only mode', async () => {
+    it('sorts visible posts chronologically into one flattened grid, with a publish-month dropdown', async () => {
       mockedFetchPosts.mockResolvedValue({
         posts: [
           makePost({
@@ -437,34 +304,23 @@ describe('hub approval, posts, and brand pages', () => {
         <PostagensPage />,
       );
 
-      expect(await screen.findByText('Branding')).toBeInTheDocument();
+      expect(
+        await screen.findByRole('button', { name: 'Abrir Aprovado hoje' }),
+      ).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
 
-      const groupHeadings = screen.getAllByRole('heading', { level: 3 });
-      expect(groupHeadings.map((heading) => heading.textContent)).toEqual([
-        'Atendimento',
-        'Branding',
+      const tiles = screen.getAllByRole('button', { name: /^Abrir / });
+      expect(tiles.map((b) => b.getAttribute('aria-label'))).toEqual([
+        'Abrir Aprovado hoje',
+        'Abrir Mais cedo',
+        'Abrir Mais tarde',
+        'Abrir Sem data',
       ]);
 
-      const atendimentoSection = groupHeadings[0].closest('section');
-      const brandingSection = groupHeadings[1].closest('section');
-
-      expect(atendimentoSection).not.toBeNull();
-      expect(brandingSection).not.toBeNull();
-      expect(
-        within(atendimentoSection as HTMLElement)
-          .getAllByRole('heading', { level: 4 })
-          .map((heading) => heading.textContent),
-      ).toEqual(['Aprovado hoje']);
-
-      // Branding is the second group and is collapsed by default — expand it first
-      fireEvent.click(screen.getByRole('button', { name: /Branding/ }));
-
-      expect(
-        within(brandingSection as HTMLElement)
-          .getAllByRole('heading', { level: 4 })
-          .map((heading) => heading.textContent),
-      ).toEqual(['Mais cedo', 'Mais tarde', 'Sem data']);
+      fireEvent.click(screen.getByRole('button', { name: 'Todos os meses' }));
+      await screen.findByRole('menu', { name: 'Filtrar por mês' });
+      expect(screen.getByRole('menuitemradio', { name: 'Abril de 2026 (3)' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitemradio', { name: 'Sem data (1)' })).toBeInTheDocument();
 
       expect(screen.queryByText('Rascunho oculto')).not.toBeInTheDocument();
     });

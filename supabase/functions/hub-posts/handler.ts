@@ -1,6 +1,7 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
+import { isClientVisibleApproval } from "../_shared/hub-approvals.ts";
 
 function extractR2Keys(content: any): string[] {
   const keys: string[] = [];
@@ -136,13 +137,18 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     const postIds = flatPosts.map((post: { id: number }) => post.id);
 
-    const { data: postApprovals } = postIds.length > 0
+    const { data: rawPostApprovals } = postIds.length > 0
       ? await db
           .from("post_approvals")
           .select("id, post_id, action, comentario, is_workspace_user, created_at")
           .in("post_id", postIds)
           .order("created_at", { ascending: true })
       : { data: [] };
+    // Internal team notes (replyToPostApproval) never leave the server; same
+    // rule as hub-post-history. Filtered in code rather than with a PostgREST
+    // .or() so the rule has exactly one definition (_shared/hub-approvals.ts).
+    const postApprovals = ((rawPostApprovals ?? []) as { action: string; is_workspace_user: boolean | null }[])
+      .filter(isClientVisibleApproval);
 
     const { data: pendingSuggestions } = postIds.length > 0
       ? await db
@@ -395,7 +401,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     return json({
       posts: postsWithResolvedContent,
-      postApprovals: postApprovals ?? [],
+      postApprovals,
       propertyValues: propertyValues ?? [],
       workflowSelectOptions: workflowSelectOptions ?? [],
       instagramProfile: igAccount

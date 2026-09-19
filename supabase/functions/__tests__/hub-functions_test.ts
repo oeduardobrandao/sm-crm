@@ -167,6 +167,53 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
   assertEquals(body.posts[0].cover_media.playback, null);
 });
 
+Deno.test("hub-posts never ships team-authored mensagem rows in postApprovals", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      { id: 99, titulo: "Post principal", tipo: "feed", status: "enviado_cliente", ordem: 0, conteudo_plain: "x", scheduled_at: "2026-04-20T10:00:00.000Z", platform: "instagram", workflow_id: 7, workflows: { titulo: "Calendário Abril" } },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", {
+    data: [
+      // internal note from the CRM Mensagens page (replyToPostApproval): must be dropped
+      { id: 1, post_id: 99, action: "mensagem", comentario: "Ana, o CTA está fraco", is_workspace_user: true, created_at: "2026-04-10T10:00:00.000Z" },
+      { id: 2, post_id: 99, action: "correcao", comentario: "Trocar a foto", is_workspace_user: false, created_at: "2026-04-11T10:00:00.000Z" },
+      { id: 3, post_id: 99, action: "mensagem", comentario: "Ficou ótimo", is_workspace_user: false, created_at: "2026-04-12T10:00:00.000Z" },
+      // team-authored approval rows do not exist in practice (hub-approve hardcodes false) but are not messages: kept
+      { id: 4, post_id: 99, action: "aprovado", comentario: null, is_workspace_user: true, created_at: "2026-04-13T10:00:00.000Z" },
+    ],
+    error: null,
+  });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    rateLimit: async () => true,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.postApprovals.map((a: { id: number }) => a.id), [2, 3, 4]);
+  assert(
+    !body.postApprovals.some((a: { action: string; is_workspace_user: boolean }) => a.action === "mensagem" && a.is_workspace_user),
+    "team mensagem rows must not leave hub-posts",
+  );
+});
+
 Deno.test("hub-posts omits signed URLs and returns media_lost_at for a permanently lost file", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {
@@ -540,13 +587,16 @@ Deno.test("hub-approve calls notification RPC with comentario for corrections", 
 
   const response = await handler(new Request("https://example.test/hub-approve", {
     method: "POST",
-    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem" }),
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem", motivo: "midia" }),
   }));
 
   assertEquals(response.status, 200);
   const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
   assert(rpcCall, "notification RPC should be called for corrections");
   assertEquals(rpcCall.payload, { p_post_id: 99, p_action: "correcao", p_comentario: "Trocar imagem" });
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc, "record_client_approval should be called");
+  assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, "midia");
 });
 
 Deno.test("hub-approve rejects invalid approval actions", async () => {
@@ -600,6 +650,177 @@ function queueValidateForScheduling(
     error: null,
   });
 }
+
+function hubApproveDbForPost(status = "enviado_cliente") {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status, cliente_id: 14, conta_id: "conta-1" },
+    error: null,
+  });
+  return db;
+}
+
+function hubApproveHandlerFor(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    rateLimit: async () => true,
+  });
+}
+
+Deno.test("hub-approve accepts a correcao without motivo and sends p_motivo: null", async () => {
+  const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem" }),
+  }));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc, "record_client_approval should be called");
+  assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, null);
+});
+
+Deno.test("hub-approve accepts a correcao with no comentario and sends p_comentario: null", async () => {
+  const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", motivo: "midia" }),
+  }));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc, "record_client_approval should be called");
+  assertEquals((approvalRpc.payload as { p_comentario: unknown }).p_comentario, null);
+  const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
+  assert(notif);
+  assertEquals((notif.payload as { p_comentario: unknown }).p_comentario, null);
+});
+
+Deno.test("hub-approve rejects a correcao whose motivo is outside the four allowed values", async () => {
+  const db = hubApproveDbForPost();
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "x", motivo: "preco" }),
+  }));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-approve rejects a correcao comentario longer than 4000 characters", async () => {
+  const db = hubApproveDbForPost();
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "a".repeat(4001), motivo: "midia" }),
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Comentário muito longo.");
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+});
+
+Deno.test("hub-approve rejects an aprovado comentario longer than 4000 characters", async () => {
+  const db = hubApproveDbForPost();
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: "a".repeat(4001) }),
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Comentário muito longo.");
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+});
+
+Deno.test("hub-approve trims an aprovado comentario and nulls a blank one", async () => {
+  for (const [input, expected] of [["  ótimo  ", "ótimo"], ["   ", null]] as const) {
+    const db = hubApproveDbForPost();
+    db.queue("workflow_posts", "update", { data: null, error: null });
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: input }),
+    }));
+    assertEquals(response.status, 200);
+    const rpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+    assert(rpc);
+    assertEquals((rpc.payload as { p_comentario: unknown }).p_comentario, expected);
+  }
+});
+
+Deno.test("hub-approve sends p_motivo: null for an approval", async () => {
+  const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", motivo: "legenda" }),
+  }));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  assert(approvalRpc);
+  assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, null);
+});
+
+Deno.test("hub-approve rejects an empty or whitespace-only mensagem with 400", async () => {
+  for (const comentario of [undefined, "", "   \n"]) {
+    const db = hubApproveDbForPost("aprovado_cliente");
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario }),
+    }));
+    assertEquals(response.status, 400);
+    assertEquals((await readJson(response)).error, "Escreva um comentário.");
+    assert(!db.calls.some((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert"));
+  }
+});
+
+Deno.test("hub-approve rejects a mensagem longer than 4000 characters", async () => {
+  const db = hubApproveDbForPost("aprovado_cliente");
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario: "a".repeat(4001) }),
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Comentário muito longo.");
+});
+
+Deno.test("hub-approve stores a trimmed mensagem in any client-visible status and notifies with the trimmed text", async () => {
+  const db = hubApproveDbForPost("postado");
+  db.queue("post_approvals", "insert", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario: "  Ficou ótimo!  " }),
+  }));
+  assertEquals(response.status, 200);
+  const insert = db.calls.find((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert");
+  assert(insert);
+  assertEquals(insert.payload, { post_id: 99, token: "hub-123", action: "mensagem", comentario: "Ficou ótimo!", is_workspace_user: false });
+  const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
+  assert(notif);
+  assertEquals(notif.payload, { p_post_id: 99, p_action: "mensagem", p_comentario: "Ficou ótimo!" });
+});
+
+Deno.test("hub-approve returns a generic message when the mensagem insert fails", async () => {
+  const db = hubApproveDbForPost("aprovado_cliente");
+  db.queue("post_approvals", "insert", { data: null, error: { message: "duplicate key value violates unique constraint" } });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario: "oi" }),
+  }));
+  assertEquals(response.status, 500);
+  assertEquals((await readJson(response)).error, "Erro ao registrar comentário.");
+});
+
+Deno.test("hub-approve rejects a mensagem on a post the client has not received yet and never inserts", async () => {
+  for (const status of ["rascunho", "revisao_interna", "aprovado_interno"]) {
+    const db = hubApproveDbForPost(status);
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action: "mensagem", comentario: "Posso ver esse post?" }),
+    }));
+    assertEquals(response.status, 400, `status ${status}`);
+    assertEquals((await readJson(response)).error, "Post ainda não foi enviado para o cliente.");
+    assert(!db.calls.some((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert"));
+    assert(!db.calls.some((c: { table: string }) => c.table === "rpc:create_post_approval_notification"));
+  }
+});
 
 Deno.test("hub-approve auto-schedules an approved express post despite the missing date", async () => {
   const db = createSupabaseQueryMock();
