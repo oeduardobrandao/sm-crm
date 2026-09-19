@@ -6,7 +6,9 @@
 -- `authenticated` (o dono da tabela ignora RLS).
 
 begin;
-select et_grant_hosted_parity();
+-- cliente_links fica de fora: o helper daria ALL a anon e desfaria o REVOKE
+-- da migration, que e justamente o que o bloco anon abaixo assere.
+select et_grant_hosted_parity(array['cliente_links']);
 
 do $$
 declare
@@ -93,17 +95,16 @@ begin
   exception when others then v_rejected := true; end;
   assert v_rejected, 'cliente_links: update re-apontando cliente_id NAO foi rejeitado';
 
-  -- anon nao pode ler nada. Localmente o helper de paridade devolve ALL a anon
-  -- (a RLS sem politica para anon filtra tudo); no hosted o REVOKE da migration
-  -- vale (permission denied). Os dois desfechos sao aceitos, uma linha visivel nao.
+  -- anon nao pode ler a tabela. Assertamos o PRIVILEGIO (nao a contagem de
+  -- linhas): a RLS sem politica para anon tambem devolveria 0 linhas, entao a
+  -- contagem passaria mesmo sem o REVOKE da migration.
   execute 'reset role';
   execute 'set local role anon';
+  v_rejected := false;
   begin
-    select count(*) into v_seen from cliente_links;
-  exception when insufficient_privilege then
-    v_seen := 0;
-  end;
-  assert v_seen = 0, 'cliente_links: anon consegue ler linhas';
+    perform 1 from cliente_links limit 1;
+  exception when insufficient_privilege then v_rejected := true; end;
+  assert v_rejected, 'cliente_links: anon ainda tem SELECT na tabela';
   execute 'reset role';
 
   select count(*) into v_seen from cliente_links
