@@ -319,6 +319,18 @@ describe('store core helpers and CRUD', () => {
       ],
     },
     {
+      name: 'getClienteLinks',
+      operation: 'select' as const,
+      table: 'cliente_links',
+      run: () => store.getClienteLinks(42),
+      response: [{ id: 1, titulo: 'Drive da marca' }],
+      expected: [{ id: 1, titulo: 'Drive da marca' }],
+      modifiers: [
+        { method: 'eq', args: ['cliente_id', 42] },
+        { method: 'order', args: ['created_at', { ascending: false }] },
+      ],
+    },
+    {
       name: 'getClienteDatas',
       operation: 'select' as const,
       table: 'cliente_datas',
@@ -530,6 +542,24 @@ describe('store core helpers and CRUD', () => {
       },
     },
     {
+      name: 'addClienteLink',
+      table: 'cliente_links',
+      run: () =>
+        store.addClienteLink({
+          cliente_id: 12,
+          titulo: 'Drive da marca',
+          url: 'https://drive.google.com/drive/folders/abc',
+          descricao: 'Pasta com os materiais',
+        }),
+      payload: {
+        cliente_id: 12,
+        titulo: 'Drive da marca',
+        url: 'https://drive.google.com/drive/folders/abc',
+        descricao: 'Pasta com os materiais',
+        conta_id: 'conta-1',
+      },
+    },
+    {
       name: 'addClienteData',
       table: 'cliente_datas',
       run: () =>
@@ -687,6 +717,13 @@ describe('store core helpers and CRUD', () => {
       eq: ['id', 9],
     },
     {
+      name: 'updateClienteLink',
+      table: 'cliente_links',
+      run: () => store.updateClienteLink(7, { titulo: 'x' }),
+      payloadMatcher: { titulo: 'x', updated_at: expect.any(String) },
+      eq: ['id', 7],
+    },
+    {
       name: 'updateClienteData',
       table: 'cliente_datas',
       run: () => store.updateClienteData(3, { titulo: 'Reunião de pauta' }),
@@ -744,6 +781,12 @@ describe('store core helpers and CRUD', () => {
       eq: ['id', 9],
     },
     {
+      name: 'removeClienteLink',
+      table: 'cliente_links',
+      run: () => store.removeClienteLink(7),
+      eq: ['id', 7],
+    },
+    {
       name: 'removeClienteData',
       table: 'cliente_datas',
       run: () => store.removeClienteData(3),
@@ -771,5 +814,68 @@ describe('store core helpers and CRUD', () => {
     const call = getLastCall(table);
     expect(call.operation).toBe('delete');
     expect(call.modifiers).toContainEqual({ method: 'eq', args: eq });
+  });
+
+  describe('cliente_links edge cases', () => {
+    it('getClienteLinks returns [] when the query resolves with null data', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'select', { data: null, error: null });
+
+      await expect(store.getClienteLinks(42)).resolves.toEqual([]);
+    });
+
+    it('getClienteLinks throws the supabase error', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'select', {
+        data: null,
+        error: new Error('select links failed'),
+      });
+
+      await expect(store.getClienteLinks(42)).rejects.toThrow('select links failed');
+    });
+
+    it('addClienteLink throws the supabase error', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'insert', {
+        data: null,
+        error: new Error('insert link failed'),
+      });
+
+      await expect(
+        store.addClienteLink({ cliente_id: 12, titulo: 'Drive', url: 'https://example.com' }),
+      ).rejects.toThrow('insert link failed');
+    });
+
+    it('updateClienteLink stamps a fresh ISO updated_at and returns the row', async () => {
+      const row = { id: 7, cliente_id: 12, titulo: 'x', url: 'https://example.com' };
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'update', { data: row, error: null });
+
+      const before = Date.now();
+      const result = await store.updateClienteLink(7, { titulo: 'x' });
+      const after = Date.now();
+
+      expect(result).toEqual(row);
+      const payload = getLastCall('cliente_links').payload as { updated_at: string };
+      expect(new Date(payload.updated_at).toISOString()).toBe(payload.updated_at);
+      expect(new Date(payload.updated_at).getTime()).toBeGreaterThanOrEqual(before);
+      expect(new Date(payload.updated_at).getTime()).toBeLessThanOrEqual(after);
+    });
+
+    it('updateClienteLink throws the supabase error', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'update', {
+        data: null,
+        error: new Error('update link failed'),
+      });
+
+      await expect(store.updateClienteLink(7, { titulo: 'x' })).rejects.toThrow(
+        'update link failed',
+      );
+    });
+
+    it('removeClienteLink throws the supabase error', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'delete', {
+        data: null,
+        error: new Error('delete link failed'),
+      });
+
+      await expect(store.removeClienteLink(7)).rejects.toThrow('delete link failed');
+    });
   });
 });
