@@ -97,8 +97,13 @@ export function Testimonials() {
     <section
       className="quote-wrap"
       aria-roledescription="carousel"
-      aria-label="Depoimentos de clientes"
+      aria-labelledby="depoimentos-title"
     >
+      <div className="lp-container">
+        <div className="lp2-section-head lp2-section-head--center reveal">
+          <h2 id="depoimentos-title">Veja o que estão falando sobre nós:</h2>
+        </div>
+      </div>
       <div
         className="quote-card reveal"
         onMouseEnter={() => setHovered(true)}
