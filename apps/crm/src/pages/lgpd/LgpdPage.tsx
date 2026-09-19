@@ -302,10 +302,10 @@ export default function LgpdPage() {
               <>
                 <p>
                   Usamos armazenamento do navegador (cookies e localStorage) e ferramentas de
-                  terceiros em duas categorias: as sempre ativas, necessárias para o Mesaas
-                  funcionar e se manter seguro, e as opcionais, que dependem do seu consentimento
-                  (art. 7º, I, da LGPD). Você escolhe no banner exibido na primeira visita e pode
-                  mudar de ideia a qualquer momento.
+                  terceiros em duas categorias: as sempre ativas, necessárias ou de legítimo
+                  interesse para o Mesaas funcionar, se manter seguro e medir falhas e acessos, e as
+                  opcionais, que dependem do seu consentimento (art. 7º, I, da LGPD). Você escolhe
+                  no banner exibido na primeira visita e pode mudar de ideia a qualquer momento.
                 </p>
                 <p style={{ marginTop: '0.5rem' }}>
                   <strong>Sempre ativas:</strong> sessão de login, idioma, tema, a proteção contra
@@ -427,7 +427,7 @@ export default function LgpdPage() {
                             do app logado.
                           </>,
                           'Exibir vídeos e tutoriais interativos de ajuda dentro dos artigos.',
-                          'Esses serviços podem definir cookies próprios e receber seu endereço IP assim que o conteúdo é carregado na página, sem que você precise reproduzi-lo. Os vídeos do YouTube usam o modo de privacidade aprimorado (youtube-nocookie.com) nos artigos novos; artigos antigos podem ainda usar o endereço padrão. Para evitar, basta não abrir artigos com vídeos.',
+                          'Esses serviços podem definir cookies próprios e receber seu endereço IP assim que o conteúdo é carregado na página, sem que você precise reproduzi-lo. Os vídeos do YouTube usam o modo de privacidade aprimorado (youtube-nocookie.com) sempre que possível, mas um vídeo inserido pelo endereço de incorporação padrão ainda pode carregar do endereço comum. Para evitar, basta não abrir artigos com vídeos.',
                           'Legítimo interesse, para prestar o serviço de ajuda que você abriu (art. 7º, IX).',
                         ],
                       ].map((row, i) => (

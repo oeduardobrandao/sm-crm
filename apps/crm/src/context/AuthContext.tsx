@@ -198,13 +198,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * branch of onAuthStateChange, signOut, and the consent-revoke effect (support consent
    * withdrawn). Each bump goes with a `['do', 'session:reset']` push for an OUTGOING identity.
    *
-   * There are FOUR session:reset push sites in total: those three plus the Session Continuity
-   * rebind inside the identify effect. That fourth one deliberately does NOT bump this
-   * counter. That reset is a same-identity self-correction (binding the
-   * widget to the current user's own token), not an identity going away, so
-   * there is no in-flight response for a stale identity to fence off. Bumping
-   * it there would make the effect's own post-await guard reject the very
-   * pushes the rebind is about to make. Do not "fix" it into bumping.
+   * There are FIVE session:reset push sites in total: those three, the Session Continuity
+   * rebind inside the identify effect, and the mid-download teardown in lib/crispLoader.ts.
+   * The last two deliberately do NOT bump this counter. The rebind is a same-identity
+   * self-correction (binding the widget to the current user's own token), not an identity
+   * going away, so there is no in-flight response for a stale identity to fence off. Bumping
+   * it there would make the effect's own post-await guard reject the very pushes the rebind is
+   * about to make. The loader's teardown only runs after the consent-revoke effect above has
+   * already bumped for that same revoke. Do not "fix" either into bumping.
    *
    * Deliberately NOT `authGeneration`, which the Crisp identify effect used to
    * compare against. `authGeneration` moves on EVERY onAuthStateChange event —

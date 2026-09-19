@@ -120,8 +120,8 @@ export default function PoliticaPage() {
             title: '6. Cookies e armazenamento',
             content: (
               <p>
-                Usamos armazenamento essencial e ferramentas de monitoramento de erros e de medição
-                agregada de acessos, com base em legítimo interesse. Ferramentas de análise e de
+                Usamos armazenamento essencial e, com base em legítimo interesse, ferramentas de
+                monitoramento de erros e de medição agregada de acessos. Ferramentas de análise e de
                 chat de suporte só são ativadas com o seu consentimento. Veja a lista completa e
                 como retirar o consentimento na nossa <a href="/lgpd">página de LGPD</a>.
               </p>
