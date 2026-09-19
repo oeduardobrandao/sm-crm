@@ -35,7 +35,7 @@ deferred to Task 7's commit).
 
 | File | Responsibility |
 |---|---|
-| `supabase/migrations/20260925000016_post_comment_threads_caption_anchors.sql` | Columns + CHECK on `post_comment_threads`; `save_ig_caption` RPC |
+| `supabase/migrations/20260925000020_post_comment_threads_caption_anchors.sql` | Columns + CHECK on `post_comment_threads`; `save_ig_caption` RPC |
 | `supabase/tests/entitlements/98_caption_comment_anchors.sql` | psql suite: CHECK, RPC atomicity, tenant isolation, grants |
 | `apps/crm/src/store/comments.ts` | Thread type fields, `createCommentThread(..., anchor?)`, `saveIgCaption` |
 | `apps/crm/src/pages/entregas/utils/captionAnchors.ts` | Pure anchor logic: remap, validate, mirror segments, hit pick |
@@ -87,7 +87,7 @@ export interface InstagramCaptionFieldHandle { focusThread(threadId: number): vo
 ### Task 1: Migration, RPC and psql suite
 
 **Files:**
-- Create: `supabase/migrations/20260925000016_post_comment_threads_caption_anchors.sql`
+- Create: `supabase/migrations/20260925000020_post_comment_threads_caption_anchors.sql`
 - Create: `supabase/tests/entitlements/98_caption_comment_anchors.sql`
 
 **Interfaces:**
@@ -106,7 +106,7 @@ Create `supabase/tests/entitlements/98_caption_comment_anchors.sql`:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Suite for 20260925000016_post_comment_threads_caption_anchors.sql:
+-- Suite for 20260925000020_post_comment_threads_caption_anchors.sql:
 --   1. The anchor CHECK constraint (NULL anchor_end must be rejected).
 --   2. save_ig_caption updates the caption and the listed threads' anchors in one call.
 --   3. Tenant isolation: a member of conta A can neither save a caption on, nor
@@ -270,7 +270,7 @@ Expected: `98_caption_comment_anchors.sql` FAIL (column `field` does not exist).
 
 - [ ] **Step 4: Write the migration**
 
-Create `supabase/migrations/20260925000016_post_comment_threads_caption_anchors.sql`:
+Create `supabase/migrations/20260925000020_post_comment_threads_caption_anchors.sql`:
 
 ```sql
 -- Comment threads on the Instagram caption (workflow_posts.ig_caption).
@@ -341,7 +341,7 @@ Expected: `98_caption_comment_anchors.sql` PASS with notices `PASS 98.1` through
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20260925000016_post_comment_threads_caption_anchors.sql supabase/tests/entitlements/98_caption_comment_anchors.sql
+git add supabase/migrations/20260925000020_post_comment_threads_caption_anchors.sql supabase/tests/entitlements/98_caption_comment_anchors.sql
 git commit -m "feat(db): caption comment thread anchors and save_ig_caption RPC
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"

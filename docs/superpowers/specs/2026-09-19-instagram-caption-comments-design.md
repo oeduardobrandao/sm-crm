@@ -27,7 +27,7 @@ shown in the Hub.
 
 ## Data
 
-Migration `20260925000016_post_comment_threads_caption_anchors.sql` (main's tail is
+Migration `20260925000020_post_comment_threads_caption_anchors.sql` (main's tail is
 already `20260925000015`; re-check and renumber above main's tail at PR-open time):
 
 ```sql

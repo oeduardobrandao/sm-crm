@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Suite for 20260925000016_post_comment_threads_caption_anchors.sql:
+-- Suite for 20260925000020_post_comment_threads_caption_anchors.sql:
 --   1. The anchor CHECK constraint (NULL anchor_end must be rejected).
 --   2. save_ig_caption updates the caption and the listed threads' anchors in one call.
 --   3. Tenant isolation: a member of conta A can neither save a caption on, nor
