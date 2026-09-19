@@ -363,7 +363,7 @@ export default function LgpdPage() {
                             .
                           </>,
                           'Entender como o produto é usado e corrigir problemas, incluindo gravação de sessão e mapas de calor.',
-                          'Páginas e ações no app, identificador do usuário e do workspace, gravação da tela durante o uso, e um identificador guardado no navegador (cookie e localStorage). Retenção no fornecedor conforme a política do PostHog.',
+                          'Páginas e ações no app, identificador do usuário e do workspace, gravação da tela durante o uso, e um identificador guardado no navegador (cookie e localStorage). Eventos ficam guardados por até 1 ano e as gravações de sessão por até 3 semanas.',
                           'Consentimento (art. 7º, I).',
                         ],
                         [
@@ -399,7 +399,7 @@ export default function LgpdPage() {
                             .
                           </>,
                           'Detectar e corrigir erros do aplicativo.',
-                          'Detalhes técnicos de erros e de desempenho. Não gravamos a tela e removemos códigos de convite dos endereços enviados.',
+                          'Detalhes técnicos de erros e de desempenho, guardados por até 30 dias. Não gravamos a tela e removemos códigos de convite dos endereços enviados.',
                           'Legítimo interesse (art. 7º, IX).',
                         ],
                         [
@@ -417,7 +417,7 @@ export default function LgpdPage() {
                             .
                           </>,
                           'Medir acessos de forma agregada.',
-                          'Página, país e tipo de dispositivo, sem cookies.',
+                          'Página, país e tipo de dispositivo, sem cookies. O identificador de visita é descartado em 24 horas.',
                           'Legítimo interesse (art. 7º, IX).',
                         ],
                         [
