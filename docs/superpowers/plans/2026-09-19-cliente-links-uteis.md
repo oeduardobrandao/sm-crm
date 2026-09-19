@@ -69,7 +69,9 @@ Create `supabase/tests/entitlements/98_cliente_links_rls.sql`:
 -- `authenticated` (o dono da tabela ignora RLS).
 
 begin;
-select et_grant_hosted_parity();
+-- cliente_links fica de fora: o helper daria ALL a anon e desfaria o REVOKE
+-- da migration, que este teste precisa cobrir (ver _helpers.sql, p_exclude).
+select et_grant_hosted_parity(array['cliente_links']);
 
 do $$
 declare
@@ -156,17 +158,18 @@ begin
   exception when others then v_rejected := true; end;
   assert v_rejected, 'cliente_links: update re-apontando cliente_id NAO foi rejeitado';
 
-  -- anon nao pode ler nada. Localmente o helper de paridade devolve ALL a anon
-  -- (a RLS sem politica para anon filtra tudo); no hosted o REVOKE da migration
-  -- vale (permission denied). Os dois desfechos sao aceitos, uma linha visivel nao.
+  -- anon nao tem privilegio nenhum na tabela (REVOKE ALL da migration; o helper
+  -- de paridade exclui cliente_links de proposito). Assertar o privilegio, nao
+  -- "0 linhas": a RLS sem politica para anon tambem daria 0 linhas.
   execute 'reset role';
   execute 'set local role anon';
+  v_rejected := false;
   begin
-    select count(*) into v_seen from cliente_links;
+    perform 1 from cliente_links limit 1;
   exception when insufficient_privilege then
-    v_seen := 0;
+    v_rejected := true;
   end;
-  assert v_seen = 0, 'cliente_links: anon consegue ler linhas';
+  assert v_rejected, 'cliente_links: anon ainda tem SELECT na tabela';
   execute 'reset role';
 
   select count(*) into v_seen from cliente_links
