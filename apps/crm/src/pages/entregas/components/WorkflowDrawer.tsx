@@ -67,6 +67,7 @@ import {
   replyToPostApproval,
   getPostCommentThreads,
   createCommentThread,
+  saveIgCaption,
   addPostComment,
   updatePostComment,
   deletePostComment,
@@ -90,6 +91,8 @@ import {
   type Membro,
   type PostPropertyValue,
   type CommentThreadWithComments,
+  type CaptionAnchorPatch,
+  type CommentAnchor,
   type PostEditSuggestion,
   type ClientePost,
   type DetachPostsResult,
@@ -765,12 +768,30 @@ export function WorkflowDrawer({
   // ── Comment thread handlers ───────────────────────────────────────────────
 
   const handleCreateComment = useCallback(
-    async (postId: number, quotedText: string, comment: string) => {
-      const thread = await createCommentThread(postId, quotedText, comment);
+    async (postId: number, quotedText: string, comment: string, anchor?: CommentAnchor) => {
+      const thread = await createCommentThread(postId, quotedText, comment, anchor);
       await refetchComments();
       return thread.id;
     },
     [refetchComments],
+  );
+
+  // Caption text + anchors commit atomically. Refetch the THREADS first and refresh the
+  // post second: the field's draft keeps shadowing props until the post refetch lands,
+  // by which time the threads already carry the saved offsets (the other order lets the
+  // draft drop while threads are stale, orphaning repeated quotes in memory).
+  const handleSaveCaption = useCallback(
+    async (postId: number, text: string, anchors: CaptionAnchorPatch[]) => {
+      try {
+        await saveIgCaption(postId, text, anchors);
+      } catch (err) {
+        toast.error('Erro ao atualizar post');
+        throw err;
+      }
+      await refetchComments();
+      refresh();
+    },
+    [refresh, refetchComments],
   );
 
   const handleReplyToComment = useCallback(
@@ -1062,6 +1083,7 @@ export function WorkflowDrawer({
                           onReplySend={() => handleReply(post.id!)}
                           onRefresh={refresh}
                           onCreateComment={handleCreateComment}
+                          onSaveCaption={handleSaveCaption}
                           onReplyToComment={handleReplyToComment}
                           onResolveThread={handleResolveThread}
                           onReopenThread={handleReopenThread}
@@ -1265,7 +1287,13 @@ interface SortablePostItemProps {
   onReplyChange: (text: string) => void;
   onReplySend: () => void;
   onRefresh: () => void;
-  onCreateComment: (postId: number, quotedText: string, comment: string) => Promise<number>;
+  onCreateComment: (
+    postId: number,
+    quotedText: string,
+    comment: string,
+    anchor?: CommentAnchor,
+  ) => Promise<number>;
+  onSaveCaption: (postId: number, text: string, anchors: CaptionAnchorPatch[]) => Promise<void>;
   onReplyToComment: (threadId: number, content: string) => Promise<void>;
   onResolveThread: (threadId: number) => Promise<void>;
   onReopenThread: (threadId: number) => Promise<void>;
@@ -1319,6 +1347,7 @@ function SortablePostItem({
   onReplySend,
   onRefresh,
   onCreateComment,
+  onSaveCaption,
   onReplyToComment,
   onResolveThread,
   onReopenThread,
@@ -1491,6 +1520,7 @@ function SortablePostItem({
         onReplySend={onReplySend}
         onRefresh={onRefresh}
         onCreateComment={onCreateComment}
+        onSaveCaption={onSaveCaption}
         onReplyToComment={onReplyToComment}
         onResolveThread={onResolveThread}
         onReopenThread={onReopenThread}

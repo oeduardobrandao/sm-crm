@@ -71,6 +71,7 @@ vi.mock('@/store', () => ({
   removeWorkflowPost: vi.fn(),
   replyToPostApproval: vi.fn(),
   createCommentThread: vi.fn(),
+  saveIgCaption: vi.fn(),
   addPostComment: vi.fn(),
   updatePostComment: vi.fn(),
   deletePostComment: vi.fn(),

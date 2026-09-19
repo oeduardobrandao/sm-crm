@@ -38,6 +38,7 @@ import {
   removeWorkflowPost,
   replyToPostApproval,
   createCommentThread,
+  saveIgCaption,
   addPostComment,
   updatePostComment,
   deletePostComment,
@@ -52,6 +53,8 @@ import {
   type Membro,
   type PostEditSuggestion,
   type WorkflowPost,
+  type CaptionAnchorPatch,
+  type CommentAnchor,
 } from '../../../store';
 import { supabase } from '@/lib/supabase';
 import { buildUsableTokenMap } from '@/lib/hubTokenMap';
@@ -421,12 +424,26 @@ export function StandalonePostDrawer({
   // ── Comment threads ───────────────────────────────────────────────────────────
 
   const handleCreateComment = useCallback(
-    async (targetPostId: number, quotedText: string, comment: string) => {
-      const thread = await createCommentThread(targetPostId, quotedText, comment);
+    async (targetPostId: number, quotedText: string, comment: string, anchor?: CommentAnchor) => {
+      const thread = await createCommentThread(targetPostId, quotedText, comment, anchor);
       await refetchComments();
       return thread.id;
     },
     [refetchComments],
+  );
+
+  const handleSaveCaption = useCallback(
+    async (targetPostId: number, text: string, anchors: CaptionAnchorPatch[]) => {
+      try {
+        await saveIgCaption(targetPostId, text, anchors);
+      } catch (err) {
+        toast.error('Erro ao atualizar post');
+        throw err;
+      }
+      await refetchComments(); // threads first, then the post (see WorkflowDrawer)
+      refresh();
+    },
+    [refresh, refetchComments],
   );
 
   const handleReplyToComment = useCallback(
@@ -670,6 +687,7 @@ export function StandalonePostDrawer({
               onReplySend={handleReplySend}
               onRefresh={refresh}
               onCreateComment={handleCreateComment}
+              onSaveCaption={handleSaveCaption}
               onReplyToComment={handleReplyToComment}
               onResolveThread={handleResolveThread}
               onReopenThread={handleReopenThread}
