@@ -106,10 +106,12 @@ duplicated in both drawers) and stays untouched. Instead:
   adopts a new `value`. **Creating a thread flushes the pending save first**, so the new
   thread never references text the server doesn't have. After the RPC resolves the
   drawer awaits it *before* `refresh()`, so highlights don't snap back to old offsets.
-- `remapAnchors` always diffs from the **last persisted** caption (the baseline is
-  advanced only after the RPC resolves), so a failed or out-of-order save never leaves
-  anchors describing text the DB doesn't hold; the next save re-diffs from the
-  baseline that matches the DB anchors.
+- `remapAnchors` runs incrementally on each change (from the previous local text).
+  Because text and anchors commit atomically, a failed save leaves the DB consistent
+  (old text + old anchors) and the next save writes a consistent pair. When the local
+  text becomes exactly equal to the last persisted `value` (e.g. an undo inside the
+  debounce window), the draft is dropped and anchors reset to the persisted ones, so
+  nothing is saved and nothing is orphaned.
 - Caption changes from outside the field (Hub suggestion accept, MCP `update_post`,
   other writers; there is no version restore, `PostVersionHistorySheet` is read-only)
   bypass the RPC. On drawer open and whenever an inbound `value` differs from the
@@ -138,8 +140,10 @@ duplicated in both drawers) and stays untouched. Instead:
   (`MentionTextarea`), anchored below the header.
 - A click (not caret movement, so arrowing through a highlight doesn't pop it) inside a
   highlight opens `PostCommentPopover`, anchored to that `<mark>`'s
-  bounding rect in the mirror (`getBoundingClientRect`, first line). Target resolution:
-  most recently created thread covering the caret offset (pure helper, unit tested).
+  bounding rect in the mirror (`getBoundingClientRect`, first line). Target resolution
+  is a pointer hit-test against the mirror `<mark>` client rects (a caret offset is
+  ambiguous at range edges); among overlapping hits the newest thread (highest id)
+  wins (`pickThreadId`, unit tested). A click that ends a drag-selection is ignored.
 - Locked caption (`agendado`): swap the native `disabled` for `readOnly` on the
   textarea. A `disabled` control can't be focused or selected, which would make
   commenting and highlight clicks unreachable. shadcn's `Textarea` styles the locked look
@@ -164,8 +168,10 @@ duplicated in both drawers) and stays untouched. Instead:
 
 - `store/comments.ts`: `createCommentThread(postId, quotedText, firstComment, anchor?)`
   where `anchor?: { field: 'ig_caption'; start: number; end: number }` (a 4th optional
-  param; omitted means today's content thread). Add `updateThreadAnchors(threads)` and
-  the `saveIgCaption(postId, text, anchors)` RPC wrapper. `getPostCommentThreads`
+  param; omitted means today's content thread). Add the
+  `saveIgCaption(postId, text, anchors)` RPC wrapper. There is no separate
+  `updateThreadAnchors`: corrections from `validateAnchors` are computed on load and
+  persisted by the next save through the RPC (nothing is written just from viewing). `getPostCommentThreads`
   already selects `*`.
 - The callback `onCreateComment: (postId, quotedText, comment) => Promise<number>` gains
   the same optional 4th `anchor` param in `WorkflowDrawer` (`:1268`, `:769`),
