@@ -17,6 +17,7 @@ Spec: `docs/superpowers/specs/2026-09-19-cliente-links-uteis-design.md`.
 - INSERT/UPDATE exigem que `cliente_id` pertença ao mesmo `conta_id` da linha (anti-corrupção da `20260728000004`).
 - URL sem protocolo ganha `https://` antes de validar; só http/https.
 - Links renderizados com `sanitizeUrl()`, `target="_blank"`, `rel="noopener noreferrer"`.
+- O Dialog de adicionar/editar precisa de `confirmClose` (dirty ou salvando) junto de `onConfirmClose`; sem ele o guard de trabalho não salvo não liga.
 - Toasts via `toast()` de `sonner`. Ícones só `lucide-react`. Sem travessão nos textos ao usuário.
 - Textos em `packages/i18n/locales/{pt,en}/clients.json`, dentro de `detail`.
 - Migration com versão única acima da cauda de `main` (`20260925000015`).
@@ -331,6 +332,16 @@ describe('normalizeLinkUrl', () => {
     expect(normalizeLinkUrl('  notion.so/aurora  ')).toBe('https://notion.so/aurora');
   });
 
+  it('caps the normalized url at 2048 characters', () => {
+    const atLimit = `https://exemplo.com/${'a'.repeat(2048 - 'https://exemplo.com/'.length)}`;
+    expect(normalizeLinkUrl(atLimit)).toBe(atLimit);
+    expect(normalizeLinkUrl(`${atLimit}a`)).toBeNull();
+    // Scheme-less: the prepended https:// counts toward the limit.
+    const bare = atLimit.slice('https://'.length);
+    expect(normalizeLinkUrl(bare)).toBe(atLimit);
+    expect(normalizeLinkUrl(`${bare}a`)).toBeNull();
+  });
+
   it.each([
     '',
     '   ',
@@ -368,10 +379,13 @@ Expected: FAIL (`Failed to resolve import "../linkUrl"`).
 Create `apps/crm/src/pages/cliente-detalhe/linkUrl.ts`:
 
 ```ts
+const MAX_LINK_URL_LENGTH = 2048;
+
 /**
  * Normaliza a URL digitada num link útil. Devolve a string a salvar, ou null
  * quando não dá para aceitar. Só http/https, sem credenciais embutidas, sem
- * espaços, com host contendo ponto. URL sem protocolo ganha `https://`.
+ * espaços, com host contendo ponto e até 2048 caracteres já normalizada. URL sem
+ * protocolo ganha `https://`.
  * Mantém o texto como digitado (não reserializa) para o usuário reconhecer o
  * que salvou.
  */
@@ -380,6 +394,9 @@ export function normalizeLinkUrl(raw: string): string | null {
   if (!trimmed || /\s/.test(trimmed) || trimmed.startsWith('//')) return null;
   const hasScheme = /^[a-z][a-z\d+.-]*:/i.test(trimmed);
   const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+  // Mede a string que vai para o banco (com o https:// prefixado), para casar
+  // com o CHECK char_length(url) <= 2048 de cliente_links.
+  if (candidate.length > MAX_LINK_URL_LENGTH) return null;
   try {
     const parsed = new URL(candidate);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
@@ -701,6 +718,23 @@ describe('ClienteLinksSection', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
+  it('asks for confirmation before discarding typed input, and closes a pristine dialog directly', async () => {
+    renderSection();
+
+    const pristine = await openAddDialog();
+    fireEvent.click(within(pristine).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+
+    const dialog = await openAddDialog();
+    fireEvent.change(within(dialog).getByPlaceholderText('Ex: Google Drive'), {
+      target: { value: 'Rascunho' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Novo link' })).toBeInTheDocument();
+  });
+
   it('saves an empty description as null', async () => {
     mockedAdd.mockResolvedValue(link({ id: 2 }));
     renderSection();
@@ -834,7 +868,6 @@ function buildLinkSchema(t: TFunction) {
     url: z
       .string()
       .trim()
-      .max(2048, t('detail.linkUrlInvalid'))
       .refine((v) => normalizeLinkUrl(v) !== null, t('detail.linkUrlInvalid')),
     descricao: z.string().trim().max(300),
   });
@@ -846,8 +879,9 @@ type LinkFormValues = z.infer<ReturnType<typeof buildLinkSchema>>;
  * "Links úteis" card for the client's "Visão geral" tab: Drive, Notion, Figma
  * and similar links, each with a title, URL and optional description. Owns its
  * own `['clienteLinks', clienteId]` query, like the Datas and Endereços
- * sections next to it. The Dialog uses `confirmClose`, so an edit in flight is
- * already covered by the unsaved-work guard.
+ * sections next to it. `confirmClose` (typed-but-unsaved input or a save in
+ * flight) is what arms the Dialog's unsaved-work guard: without it neither the
+ * silent-update hold nor the Escape/outside-click prompt is active.
  */
 export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
   const { t } = useTranslation('clients');
@@ -868,7 +902,7 @@ export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
     resolver: zodResolver(buildLinkSchema(t)),
     defaultValues: EMPTY_FORM,
   });
-  const { errors, isSubmitting } = form.formState;
+  const { errors, isDirty, isSubmitting } = form.formState;
 
   const closeDialog = () => {
     setDialogOpen(false);
@@ -1025,7 +1059,11 @@ export function ClienteLinksSection({ clienteId }: ClienteLinksSectionProps) {
           if (!open) closeDialog();
         }}
       >
-        <DialogContent style={{ maxWidth: 440 }} onConfirmClose={closeDialog}>
+        <DialogContent
+          style={{ maxWidth: 440 }}
+          confirmClose={isDirty || isSubmitting}
+          onConfirmClose={closeDialog}
+        >
           <DialogHeader>
             <DialogTitle>{editing ? t('detail.editLink') : t('detail.newLink')}</DialogTitle>
           </DialogHeader>
@@ -1109,7 +1147,7 @@ export default ClienteLinksSection;
 - [ ] **Step 5: Rodar e ver passar**
 
 Run: `npx vitest run apps/crm/src/pages/cliente-detalhe/components/__tests__/ClienteLinksSection.test.tsx`
-Expected: PASS (9 testes). Se falhar por detalhe de infraestrutura (nome acessível do link, import de `TFunction`), ajuste o componente; não afrouxe as asserções de segurança do link (`target`, `rel`, `href`).
+Expected: PASS (10 testes). Se falhar por detalhe de infraestrutura (nome acessível do link, import de `TFunction`), ajuste o componente; não afrouxe as asserções de segurança do link (`target`, `rel`, `href`).
 
 - [ ] **Step 6: Typecheck**
 
@@ -1246,7 +1284,7 @@ O merge publica o frontend na hora (Vercel), então **a migration precisa estar 
 - Posição antes de Datas: Task 4 (código e teste de ordem).
 - Tabela, limites, CHECKs, RLS com anti-corrupção, grants, índices: Task 1. Versão livre: Task 1 Step 1.
 - Store (4 funções, `created_at desc`, exportado via `export *`): Task 2.
-- UI (lista, domínio, link seguro, Dialog rhf+zod, editar, excluir com confirmação, vazio, `https://` automático, toasts, i18n pt/en, `confirmClose`): Task 3.
+- UI (lista, domínio, link seguro, Dialog rhf+zod, editar, excluir com confirmação, vazio, `https://` automático, toasts, i18n pt/en, `confirmClose={isDirty || isSubmitting}` com teste): Task 3. O limite de 2048 vale para a URL já normalizada (helper da Task 2).
 - Testes (componente, helper, RLS psql, browser): Tasks 1 a 4.
 - Fora do escopo respeitado (sem ordenação, categorias, Hub).
 - Nomes consistentes entre tarefas: `ClienteLink`, `getClienteLinks`, `addClienteLink`, `updateClienteLink`, `removeClienteLink`, `normalizeLinkUrl`, `linkDomain`, `ClienteLinksSection`, query key `['clienteLinks', clienteId]`, ids `sec-links`.
