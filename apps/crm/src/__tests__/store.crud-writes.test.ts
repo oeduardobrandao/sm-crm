@@ -384,6 +384,59 @@ describe('store CRUD write operations', () => {
     });
   });
 
+  describe('cliente links', () => {
+    it('addClienteLink inserts the same fields plus conta_id', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'insert', {
+        data: { id: 80, titulo: 'Drive', url: 'https://drive.google.com/x' },
+        error: null,
+      });
+
+      const result = await store.addClienteLink({
+        cliente_id: 1,
+        titulo: 'Drive',
+        url: 'https://drive.google.com/x',
+        descricao: 'Materiais',
+      });
+
+      expect(result).toMatchObject({ id: 80, titulo: 'Drive' });
+      const call = getLastCall('cliente_links');
+      expect(call.operation).toBe('insert');
+      expect(call.payload).toEqual({
+        cliente_id: 1,
+        titulo: 'Drive',
+        url: 'https://drive.google.com/x',
+        descricao: 'Materiais',
+        conta_id: 'conta-1',
+      });
+    });
+
+    it('updateClienteLink sets updated_at and targets the id', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'update', {
+        data: { id: 80, titulo: 'Novo' },
+        error: null,
+      });
+
+      const result = await store.updateClienteLink(80, { titulo: 'Novo' });
+
+      expect(result).toMatchObject({ id: 80, titulo: 'Novo' });
+      const call = getLastCall('cliente_links');
+      expect(call.operation).toBe('update');
+      expect(call.payload).toHaveProperty('updated_at');
+      expect(call.payload).toMatchObject({ titulo: 'Novo' });
+      expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 80] });
+    });
+
+    it('removeClienteLink deletes by id', async () => {
+      mockedSupabase.__queueSupabaseResult('cliente_links', 'delete', { data: null, error: null });
+
+      await store.removeClienteLink(80);
+
+      const call = getLastCall('cliente_links');
+      expect(call.operation).toBe('delete');
+      expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 80] });
+    });
+  });
+
   describe('cliente datas', () => {
     it('addClienteData inserts with conta_id', async () => {
       mockedSupabase.__queueSupabaseResult('cliente_datas', 'insert', {
