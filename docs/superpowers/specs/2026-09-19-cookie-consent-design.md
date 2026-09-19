@@ -103,8 +103,11 @@ load-bearing.
   is a new consent decision and needs a spec amendment.
 - `tracesSampleRate` / `browserTracingIntegration` stay as-is (no personal storage).
 - Data minimisation, small and adjacent: `httpContextIntegration` sends the page URL and
-  `/conectar/:token` carries an invite token in the path. Scrub it in `beforeSend`/`beforeBreadcrumb`
-  as part of this work, since the spec claims legitimate interest for Sentry.
+  `/conectar/:token` carries an invite token in the path. Scrub it as part of this work, since the
+  spec claims legitimate interest for Sentry. Sentry runs `beforeSend` for error events only;
+  `browserTracingIntegration` names transactions from `location.pathname` and attaches the URL as
+  `request.url` and span data, and those go through `beforeSendTransaction`. Both hooks share one
+  scrubber that also covers the transaction name, breadcrumb and span data, and trace context.
 - `Sentry.ErrorBoundary` in `App.tsx` is unaffected.
 
 **Crisp** — `apps/crm/index.html` + new `lib/crispLoader.ts`
