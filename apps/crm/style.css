@@ -13386,3 +13386,12 @@ a.hub-fill__row-inner:hover {
   color: var(--text-main);
   text-decoration: underline;
 }
+
+/* Cookie consent banner (components/consent/CookieConsent.tsx). Fixed to the bottom only, so the
+   sidebar breakpoint rules do not apply. On phones the floating nav pill (.mobile-nav-glass, 72px
+   tall, z-index 40) sits at the bottom, so lift the banner above it when that nav is rendered. */
+@media (max-width: 900px) {
+  body:has(.mobile-nav-glass) .cookie-banner {
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px));
+  }
+}

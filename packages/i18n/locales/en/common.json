@@ -136,5 +136,30 @@
     "somethingWentWrong": "Something went wrong",
     "reloadToRetry": "Reload the page to try again.",
     "reloadPage": "Reload page"
+  },
+  "cookies": {
+    "banner": {
+      "title": "Cookies and privacy",
+      "body": "We use essential storage so Mesaas works. With your permission we also use usage analytics (including session recording and heatmaps) and the support chat.",
+      "learnMore": "See details on the data protection page",
+      "acceptAll": "Accept all",
+      "rejectAll": "Reject all",
+      "customize": "Customize"
+    },
+    "dialog": {
+      "title": "Cookie preferences",
+      "description": "Choose which optional tools may use your browser's storage. You can change this at any time.",
+      "essentialTitle": "Essential",
+      "essentialDescription": "Login session, language, theme and this choice. Always on: Mesaas does not work without them.",
+      "analyticsTitle": "Analytics and diagnostics",
+      "analyticsDescription": "PostHog: usage metrics, session recording and heatmaps so we can improve the product.",
+      "supportTitle": "Support chat",
+      "supportDescription": "Crisp: chat with our team. Without this the chat does not load.",
+      "supportNeeded": "To open the support chat, keep Support chat enabled and save.",
+      "revokeNote": "Turning a tool off takes full effect after you reload the page.",
+      "save": "Save preferences",
+      "cancel": "Cancel"
+    },
+    "link": "Cookie preferences"
   }
 }
