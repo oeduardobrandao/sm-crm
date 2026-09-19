@@ -13457,3 +13457,28 @@ a.hub-fill__row-inner:hover {
     bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px));
   }
 }
+
+/* The banner is mounted outside .lp-v2, so the landing's --lp2-* tokens are not in scope. The
+   landing forces a black page, so mirror its card palette (landing-v2.css) here instead of the
+   app's light card. Same rules for both buttons: rejecting must not look weaker than accepting. */
+body.landing-page:has(.lp-v2) .cookie-banner {
+  background: rgba(29, 29, 31, 0.92);
+  color: #f5f5f7;
+  border-color: #2a2a2c;
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+body.landing-page:has(.lp-v2) .cookie-banner p.text-muted-foreground {
+  color: #a1a1a6;
+}
+body.landing-page:has(.lp-v2) .cookie-banner a {
+  color: #f5f5f7;
+}
+body.landing-page:has(.lp-v2) .cookie-banner button {
+  background: transparent;
+  color: #f5f5f7;
+  border-color: #3a3a3c;
+}
+body.landing-page:has(.lp-v2) .cookie-banner button:hover {
+  background: #2a2a2e;
+}
