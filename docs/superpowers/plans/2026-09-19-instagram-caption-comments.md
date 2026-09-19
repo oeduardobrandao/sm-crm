@@ -1261,7 +1261,11 @@ export function useCaptionDraft({ value, threads, onSave }: Args) {
     if (!d) return true;
     inFlightRef.current = true;
     try {
-      await latest.current.onSave(d.text, patchesFromAnchors(d.anchors));
+      // Defense in depth (Task 2 review): remapAnchors trusts in-range input, and an
+      // out-of-range non-orphaned anchor makes save_ig_caption raise. Re-validate the
+      // draft's anchors against the exact text being saved: re-anchor on a unique quote,
+      // else orphan. A no-op for anchors that are already consistent.
+      await latest.current.onSave(d.text, patchesFromAnchors(validateAnchors(d.text, d.anchors)));
       unackedRef.current = d.text;
       return true;
     } catch {
