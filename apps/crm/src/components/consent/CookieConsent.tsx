@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -17,9 +17,25 @@ export default function CookieConsent() {
   const consent = useConsent();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [focus, setFocus] = useState<ConsentCategory | undefined>();
+  // The dialog has no Radix <Trigger> (any link on any page opens it by event), so Radix has nothing
+  // to hand focus back to and it would fall to <body>. Remember the opener ourselves.
+  const openerRef = useRef<HTMLElement | null>(null);
+  const rememberOpener = () => {
+    const el = document.activeElement;
+    openerRef.current = el instanceof HTMLElement && el !== document.body ? el : null;
+  };
+  const restoreOpener = (event: Event) => {
+    const el = openerRef.current;
+    openerRef.current = null;
+    if (el?.isConnected) {
+      event.preventDefault();
+      el.focus();
+    }
+  };
 
   useEffect(() => {
     const onOpen = (event: Event) => {
+      rememberOpener();
       setFocus((event as CustomEvent<{ focus?: ConsentCategory }>).detail?.focus);
       setDialogOpen(true);
     };
@@ -59,6 +75,7 @@ export default function CookieConsent() {
               variant="ghost"
               size="sm"
               onClick={() => {
+                rememberOpener();
                 setFocus(undefined);
                 setDialogOpen(true);
               }}
@@ -83,7 +100,12 @@ export default function CookieConsent() {
           </div>
         </section>
       )}
-      <CookiePreferencesDialog open={dialogOpen} onOpenChange={handleOpenChange} focus={focus} />
+      <CookiePreferencesDialog
+        open={dialogOpen}
+        onOpenChange={handleOpenChange}
+        focus={focus}
+        onCloseAutoFocus={restoreOpener}
+      />
     </>
   );
 }

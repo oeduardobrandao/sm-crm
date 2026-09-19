@@ -19,6 +19,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** Category to pre-enable (a blocked chat click asks for `support`). */
   focus?: ConsentCategory;
+  /** Radix close-autofocus hook: lets the owner hand focus back to whatever opened the dialog. */
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 // Mounted only while the dialog is open (inside DialogContent), so the switches always start from
@@ -83,11 +85,11 @@ function PreferencesForm({ focus, onClose }: { focus?: ConsentCategory; onClose:
   );
 }
 
-export function CookiePreferencesDialog({ open, onOpenChange, focus }: Props) {
+export function CookiePreferencesDialog({ open, onOpenChange, focus, onCloseAutoFocus }: Props) {
   const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md overflow-y-auto">
+      <DialogContent className="max-w-md overflow-y-auto" onCloseAutoFocus={onCloseAutoFocus}>
         <DialogHeader>
           <DialogTitle>{t('cookies.dialog.title')}</DialogTitle>
           <DialogDescription>{t('cookies.dialog.description')}</DialogDescription>

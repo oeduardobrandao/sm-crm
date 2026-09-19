@@ -109,6 +109,24 @@ describe('CookieConsent', () => {
     ).not.toBeChecked();
   });
 
+  it('hands focus back to whatever opened the dialog (there is no Radix trigger to do it)', async () => {
+    seedConsent({ analytics: true, support: true });
+    render(
+      <MemoryRouter>
+        <button onClick={() => openConsentPreferences()}>opener</button>
+        <CookieConsent />
+      </MemoryRouter>,
+    );
+    const opener = screen.getByRole('button', { name: 'opener' });
+    await userEvent.click(opener);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+
+    await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.cancel') }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
   it('pre-enables the support switch when opened from a blocked chat click', async () => {
     seedConsent({ analytics: false, support: false });
     renderBanner();
