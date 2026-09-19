@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, Instagram, Linkedin, LogIn, Moon, Sun, Youtube } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
 
 export function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -171,6 +172,9 @@ export function LandingFooter() {
               </li>
               <li>
                 <a href="/lgpd">LGPD</a>
+              </li>
+              <li>
+                <CookiePreferencesLink className="cookie-prefs-link" />
               </li>
             </ul>
           </div>

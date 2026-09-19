@@ -1,4 +1,5 @@
 import { usePageMeta } from '../../lib/usePageMeta';
+import { CookiePreferencesLink } from '../../components/consent/CookiePreferencesLink';
 
 export default function LgpdPage() {
   usePageMeta('/lgpd');
@@ -296,7 +297,170 @@ export default function LgpdPage() {
             ),
           },
           {
-            title: '11. Atualizações',
+            title: '11. Cookies e armazenamento',
+            content: (
+              <>
+                <p>
+                  Usamos armazenamento do navegador (cookies e localStorage) e ferramentas de
+                  terceiros em duas categorias: as sempre ativas, necessárias ou de legítimo
+                  interesse para o Mesaas funcionar, se manter seguro e medir falhas e acessos, e as
+                  opcionais, que dependem do seu consentimento (art. 7º, I, da LGPD). Você escolhe
+                  no banner exibido na primeira visita e pode mudar de ideia a qualquer momento.
+                </p>
+                <p style={{ marginTop: '0.5rem' }}>
+                  <strong>Sempre ativas:</strong> sessão de login, idioma, tema, a proteção contra
+                  versões desatualizadas do app e o registro desta escolha (essenciais para o
+                  funcionamento), além do monitoramento de erros (Sentry) e da medição agregada de
+                  acessos (Vercel Analytics), que se apoiam em legítimo interesse (art. 7º, IX).
+                  Preferências de interface (por exemplo, guias e tours já concluídos) ficam apenas
+                  no seu navegador e não são usadas para rastreamento. Você pode se opor ao
+                  tratamento baseado em legítimo interesse a qualquer momento escrevendo para{' '}
+                  <a
+                    href="mailto:privacidade@mesaas.com.br"
+                    style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                  >
+                    privacidade@mesaas.com.br
+                  </a>
+                  .
+                </p>
+                <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                    <caption className="sr-only">
+                      Ferramentas de terceiros usadas no Mesaas, o que cada uma coleta e a base
+                      legal do tratamento
+                    </caption>
+                    <thead>
+                      <tr>
+                        {['Ferramenta', 'Para que serve', 'O que coleta', 'Base legal'].map((h) => (
+                          <th
+                            key={h}
+                            scope="col"
+                            style={{
+                              textAlign: 'left',
+                              padding: '0.5rem',
+                              borderBottom: '1px solid var(--border-color)',
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        [
+                          <>
+                            <strong>PostHog</strong> (União Europeia). Categoria: análise e
+                            diagnóstico. Depende do seu consentimento. Política:{' '}
+                            <a
+                              href="https://posthog.com/privacy"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              posthog.com/privacy
+                            </a>
+                            .
+                          </>,
+                          'Entender como o produto é usado e corrigir problemas, incluindo gravação de sessão e mapas de calor.',
+                          'Páginas e ações no app, identificador do usuário e do workspace, gravação da tela durante o uso, e um identificador guardado no navegador (cookie e localStorage). Eventos ficam guardados por até 1 ano e as gravações de sessão por até 3 semanas.',
+                          'Consentimento (art. 7º, I).',
+                        ],
+                        [
+                          <>
+                            <strong>Crisp</strong> (União Europeia). Categoria: chat de suporte.
+                            Depende do seu consentimento. Política:{' '}
+                            <a
+                              href="https://crisp.chat/en/privacy/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              crisp.chat/en/privacy
+                            </a>
+                            .
+                          </>,
+                          'Conversar com a nossa equipe de suporte.',
+                          'Mensagens, e-mail e nome de quem está logado. Para manter a conversa, o chat guarda um cookie de sessão e registros no localStorage do navegador (as chaves crisp-client/session/… do Crisp, e a chave crisp_session_v1 do próprio Mesaas). As conversas ficam guardadas por até 1 ano.',
+                          'Consentimento (art. 7º, I).',
+                        ],
+                        [
+                          <>
+                            <strong>Sentry</strong> (Estados Unidos). Categoria: sempre ativa
+                            (legítimo interesse, art. 7º, IX). Política:{' '}
+                            <a
+                              href="https://sentry.io/privacy/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              sentry.io/privacy
+                            </a>
+                            .
+                          </>,
+                          'Detectar e corrigir erros do aplicativo.',
+                          'Detalhes técnicos de erros e de desempenho, guardados por até 30 dias. Não gravamos a tela e removemos códigos de convite dos endereços enviados.',
+                          'Legítimo interesse (art. 7º, IX).',
+                        ],
+                        [
+                          <>
+                            <strong>Vercel Analytics</strong> (Estados Unidos). Categoria: sempre
+                            ativa (legítimo interesse, art. 7º, IX). Política:{' '}
+                            <a
+                              href="https://vercel.com/legal/privacy-policy"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              vercel.com/legal/privacy-policy
+                            </a>
+                            .
+                          </>,
+                          'Medir acessos de forma agregada.',
+                          'Página, país e tipo de dispositivo, sem cookies. O identificador de visita é descartado em 24 horas.',
+                          'Legítimo interesse (art. 7º, IX).',
+                        ],
+                        [
+                          <>
+                            <strong>Conteúdo incorporado de terceiros</strong> (YouTube, Loom,
+                            Arcade e Scribe). Aparece somente em artigos da Central de Ajuda, dentro
+                            do app logado.
+                          </>,
+                          'Exibir vídeos e tutoriais interativos de ajuda dentro dos artigos.',
+                          'Esses serviços podem definir cookies próprios e receber seu endereço IP assim que o conteúdo é carregado na página, sem que você precise reproduzi-lo. Os vídeos do YouTube usam o modo de privacidade aprimorado (youtube-nocookie.com) sempre que possível, mas um vídeo inserido pelo endereço de incorporação padrão ainda pode carregar do endereço comum. Para evitar, basta não abrir artigos com vídeos.',
+                          'Legítimo interesse, para prestar o serviço de ajuda que você abriu (art. 7º, IX).',
+                        ],
+                      ].map((row, i) => (
+                        <tr key={i}>
+                          {row.map((cell, j) => (
+                            <td
+                              key={j}
+                              style={{
+                                verticalAlign: 'top',
+                                padding: '0.5rem',
+                                borderBottom: '1px solid var(--border-color)',
+                              }}
+                            >
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p style={{ marginTop: '1rem' }}>
+                  <strong>Como retirar o consentimento:</strong> use o botão{' '}
+                  <CookiePreferencesLink /> e desative a ferramenta. Ao retirar, paramos de enviar
+                  dados na hora e apagamos o identificador atual guardado no seu navegador; o efeito
+                  é aplicado por completo ao recarregar a página. Retirar o consentimento não afeta
+                  o uso do Mesaas, apenas desliga a análise de uso e o chat de suporte.
+                </p>
+              </>
+            ),
+          },
+          {
+            title: '12. Atualizações',
             content: (
               <p>
                 Este documento pode ser atualizado periodicamente para refletir mudanças nas nossas
@@ -335,6 +499,10 @@ export default function LgpdPage() {
         Última atualização: abril de 2025
         <br />
         Mesaas — EBS IT SOLUTIONS · CNPJ 63.758.902/0001-01
+      </p>
+
+      <p style={{ textAlign: 'center', marginTop: '1rem' }}>
+        <CookiePreferencesLink />
       </p>
     </div>
   );

@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { openConsentPreferences } from '@/lib/consent';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { getInitials } from '../../../store';
@@ -244,6 +245,18 @@ export default function PerfilTab() {
             <span className="client-info-value">{user.app_metadata?.provider ?? 'email'}</span>
           </div>
         </div>
+      </div>
+
+      {/* Privacy */}
+      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <h3 className="config-title">Privacidade</h3>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+          Escolha quais ferramentas opcionais (análise de uso e chat de suporte) podem usar o
+          armazenamento do seu navegador.
+        </p>
+        <Button variant="outline" onClick={() => openConsentPreferences()}>
+          Preferências de cookies
+        </Button>
       </div>
 
       {/* Logout */}

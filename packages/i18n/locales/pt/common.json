@@ -136,5 +136,30 @@
     "somethingWentWrong": "Algo deu errado",
     "reloadToRetry": "Recarregue a página para tentar novamente.",
     "reloadPage": "Recarregar página"
+  },
+  "cookies": {
+    "banner": {
+      "title": "Cookies e privacidade",
+      "body": "Usamos armazenamento essencial para o Mesaas funcionar. Com a sua permissão, também usamos análise de uso (incluindo gravação de sessão e mapas de calor) e o chat de suporte.",
+      "learnMore": "Ver detalhes na página de LGPD",
+      "acceptAll": "Aceitar todos",
+      "rejectAll": "Rejeitar todos",
+      "customize": "Personalizar"
+    },
+    "dialog": {
+      "title": "Preferências de cookies",
+      "description": "Escolha quais ferramentas opcionais podem usar o armazenamento do seu navegador. Você pode mudar isso quando quiser.",
+      "essentialTitle": "Essenciais",
+      "essentialDescription": "Sessão de login, idioma, tema e esta escolha. Sempre ativos: o Mesaas não funciona sem eles.",
+      "analyticsTitle": "Análise e diagnóstico",
+      "analyticsDescription": "PostHog: métricas de uso, gravação de sessão e mapas de calor para melhorarmos o produto.",
+      "supportTitle": "Chat de suporte",
+      "supportDescription": "Crisp: chat com a nossa equipe. Sem isto o chat não carrega.",
+      "supportNeeded": "Para abrir o chat de suporte, mantenha o Chat de suporte ativado e salve.",
+      "revokeNote": "Ao desativar uma ferramenta, o efeito é aplicado por completo ao recarregar a página.",
+      "save": "Salvar preferências",
+      "cancel": "Cancelar"
+    },
+    "link": "Preferências de cookies"
   }
 }

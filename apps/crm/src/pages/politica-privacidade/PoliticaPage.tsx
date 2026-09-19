@@ -1,4 +1,5 @@
 import { usePageMeta } from '../../lib/usePageMeta';
+import { CookiePreferencesLink } from '../../components/consent/CookiePreferencesLink';
 
 export default function PoliticaPage() {
   usePageMeta('/politica-de-privacidade');
@@ -116,7 +117,18 @@ export default function PoliticaPage() {
             ),
           },
           {
-            title: '6. Alterações nesta Política',
+            title: '6. Cookies e armazenamento',
+            content: (
+              <p>
+                Usamos armazenamento essencial e, com base em legítimo interesse, ferramentas de
+                monitoramento de erros e de medição agregada de acessos. Ferramentas de análise e de
+                chat de suporte só são ativadas com o seu consentimento. Veja a lista completa e
+                como retirar o consentimento na nossa <a href="/lgpd">página de LGPD</a>.
+              </p>
+            ),
+          },
+          {
+            title: '7. Alterações nesta Política',
             content: (
               <p>
                 Podemos atualizar esta política periodicamente. Avisaremos sobre mudanças
@@ -154,6 +166,10 @@ export default function PoliticaPage() {
         Última atualização: {new Date().toLocaleDateString('pt-BR')}
         <br />
         Mesaas - Gestão Inteligente
+      </p>
+
+      <p style={{ textAlign: 'center', marginTop: '1rem' }}>
+        <CookiePreferencesLink />
       </p>
     </div>
   );

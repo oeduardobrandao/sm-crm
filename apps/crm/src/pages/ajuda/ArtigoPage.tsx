@@ -59,7 +59,7 @@ export default function ArtigoPage() {
       Highlight.configure({ multicolor: true }),
       LinkExt.configure({ openOnClick: true }),
       CalloutExtension,
-      Youtube.configure({ inline: false }),
+      Youtube.configure({ inline: false, nocookie: true }),
       IframeExtension,
       createInlineImageExtension(dummyUpload),
     ],

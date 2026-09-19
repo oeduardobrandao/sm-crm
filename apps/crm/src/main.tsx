@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { installDeployRecovery, installSilentUpdate } from '@mesaas/app-lifecycle';
 import { initSentry } from '@/lib/sentry';
-import { initAnalytics } from './lib/analytics';
+import { installConsentEffects } from './lib/consentEffects';
 import { initI18n } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
@@ -29,15 +29,9 @@ installDeployRecovery();
 
 initSentry();
 
-// PostHog pulls in ~108 KiB of lazy extensions (recorder, surveys, web-vitals) as soon as it
-// boots. Initializing on idle keeps all of that off the landing page's critical path without
-// losing any feature: `capture_pageview` still fires on init with the current URL, and every
-// capture/identify helper no-ops safely until then (PageSpeed: third-party payload).
-if ('requestIdleCallback' in window) {
-  requestIdleCallback(() => initAnalytics(), { timeout: 3000 });
-} else {
-  setTimeout(() => initAnalytics(), 1500);
-}
+// PostHog and the Crisp widget start only after the visitor's consent (lib/consentEffects.ts);
+// with consent already stored they still load on idle, off the landing page's critical path.
+installConsentEffects();
 
 initI18n({
   pt: {

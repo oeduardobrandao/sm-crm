@@ -12,6 +12,7 @@ import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
 import { signIn, signUp, resetPassword } from '../../lib/supabase';
 import { captureEvent, identifySignup } from '@/lib/analytics';
 import { useAuth } from '@/context/AuthContext';
+import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
 import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 
 type TabKey = 'login' | 'register' | 'forgot';
@@ -401,6 +402,9 @@ export default function LoginPage() {
           )}
 
           <p className="auth-footer">{t('footer')}</p>
+          <p className="auth-footer">
+            <CookiePreferencesLink />
+          </p>
         </div>
       </div>
 
