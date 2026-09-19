@@ -2,14 +2,15 @@ import { useOutletContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Cake } from 'lucide-react';
 import { sanitizeUrl } from '@/utils/security';
+import { ClienteLinksSection } from '../components/ClienteLinksSection';
 import { ClienteDatasSection } from '../components/ClienteDatasSection';
 import { ClienteEnderecosSection } from '../components/ClienteEnderecosSection';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 /**
  * "Visão geral" tab: cadastral info card ported verbatim from the pre-split
- * ClienteDetalhePage (see git history at d30adeea), plus the important-dates
- * and addresses sections. `clienteId`/`cliente` come from the layout via
+ * ClienteDetalhePage (see git history at d30adeea), plus the useful-links,
+ * important-dates and addresses sections. `clienteId`/`cliente` come from the layout via
  * `<Outlet context>` — this tab never fetches the cliente row itself.
  */
 export default function VisaoGeralTab() {
@@ -87,6 +88,7 @@ export default function VisaoGeralTab() {
         </div>
       </div>
 
+      <ClienteLinksSection clienteId={clienteId} />
       <ClienteDatasSection clienteId={clienteId} />
       <ClienteEnderecosSection clienteId={clienteId} />
     </>

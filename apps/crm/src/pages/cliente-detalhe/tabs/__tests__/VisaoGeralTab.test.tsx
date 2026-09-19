@@ -5,14 +5,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/store')>()),
+  getClienteLinks: vi.fn(),
   getClienteDatas: vi.fn(),
   getClienteEnderecos: vi.fn(),
 }));
 
-import { getClienteDatas, getClienteEnderecos, type Cliente } from '@/store';
+import { getClienteLinks, getClienteDatas, getClienteEnderecos, type Cliente } from '@/store';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 import VisaoGeralTab from '../VisaoGeralTab';
 
+const mockedGetLinks = vi.mocked(getClienteLinks);
 const mockedGetDatas = vi.mocked(getClienteDatas);
 const mockedGetEnderecos = vi.mocked(getClienteEnderecos);
 
@@ -58,6 +60,7 @@ function renderTab(cliente: Cliente = CLIENTE) {
 describe('VisaoGeralTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedGetLinks.mockResolvedValue([]);
     mockedGetDatas.mockResolvedValue([]);
     mockedGetEnderecos.mockResolvedValue([]);
   });
@@ -91,13 +94,28 @@ describe('VisaoGeralTab', () => {
     expect(screen.queryByRole('link', { name: 'Abrir no Notion' })).not.toBeInTheDocument();
   });
 
-  it('renders both the important-dates and addresses empty states', async () => {
+  it('renders the links, important-dates and addresses empty states', async () => {
     renderTab();
+    expect(await screen.findByText('Nenhum link cadastrado')).toBeInTheDocument();
     expect(await screen.findByText('Nenhuma data importante cadastrada')).toBeInTheDocument();
     expect(screen.getByText('Nenhum endereço cadastrado')).toBeInTheDocument();
   });
 
-  it('queries only clienteDatas and clienteEnderecos — nothing from Entregas, Instagram, Hub or Financeiro', async () => {
+  it('renders Links úteis after the info card and before Datas Importantes', async () => {
+    const { container } = renderTab();
+    await screen.findByText('Nenhum link cadastrado');
+    await screen.findByText('Nenhuma data importante cadastrada');
+
+    const [info, links, datas] = ['sec-info', 'sec-links', 'sec-datas'].map((id) => {
+      const el = container.querySelector(`#${id}`);
+      expect(el, `#${id} missing`).not.toBeNull();
+      return el as Element;
+    });
+    expect(info.compareDocumentPosition(links) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(links.compareDocumentPosition(datas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('queries only clienteLinks, clienteDatas and clienteEnderecos — nothing from Entregas, Instagram, Hub or Financeiro', async () => {
     const { queryClient } = renderTab();
     await screen.findByText('Nenhuma data importante cadastrada');
     await screen.findByText('Nenhum endereço cadastrado');
@@ -107,7 +125,7 @@ describe('VisaoGeralTab', () => {
         .getQueryCache()
         .getAll()
         .map((q) => q.queryKey[0]);
-      expect(new Set(keys)).toEqual(new Set(['clienteDatas', 'clienteEnderecos']));
+      expect(new Set(keys)).toEqual(new Set(['clienteLinks', 'clienteDatas', 'clienteEnderecos']));
     });
   });
 });
