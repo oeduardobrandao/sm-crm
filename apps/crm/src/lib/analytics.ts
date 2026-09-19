@@ -116,6 +116,11 @@ export function initAnalytics(): void {
       // Opting out must also drop the ph_* identifier from storage. Without this, opt-out stops
       // capture but leaves distinct_id/device_id behind.
       opt_out_persistence_by_default: true,
+      // reset() (run on revoke) ends with reloadFeatureFlags(), a /flags POST scheduled 5ms out
+      // that carries the pre-revoke $device_id and is NOT gated on opt-out. The CRM uses no
+      // feature flags, so skip that reload. Deliberately NOT `advanced_disable_flags`: that one
+      // also stops remote config from loading, which is what starts session replay and heatmaps.
+      advanced_disable_feature_flags: true,
     });
     initialized = true;
   }

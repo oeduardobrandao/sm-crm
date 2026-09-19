@@ -113,6 +113,17 @@ describe('analytics', () => {
     );
   });
 
+  it('skips the feature-flag reload that reset() would fire with the pre-revoke device id', async () => {
+    // reset() ends with reloadFeatureFlags(); its /flags POST is not gated on opt-out. The CRM uses
+    // no flags. advanced_disable_flags must NOT be set: it would also stop remote config (replay).
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    const { initAnalytics } = await import('../analytics');
+    initAnalytics();
+    const config = posthogMock.init.mock.calls[0][1];
+    expect(config).toEqual(expect.objectContaining({ advanced_disable_feature_flags: true }));
+    expect(config).not.toHaveProperty('advanced_disable_flags');
+  });
+
   it('disableAnalytics resets BEFORE opting out (reset() deletes the opt-out flag)', async () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, disableAnalytics } = await import('../analytics');
