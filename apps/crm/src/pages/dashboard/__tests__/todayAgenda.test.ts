@@ -27,6 +27,7 @@ function tarefa(over: Partial<TarefaWithRelations>): TarefaWithRelations {
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
     cliente_nome: 'Cliente X',
+    serie: null,
     ...over,
   } as TarefaWithRelations;
 }

@@ -77,6 +77,7 @@ describe('AgentPendingSection', () => {
         tags: [],
         subtarefas_total: 0,
         subtarefas_concluidas: 0,
+        serie: null,
       },
       // Someone else's task must NOT show
       {
@@ -89,6 +90,7 @@ describe('AgentPendingSection', () => {
         tags: [],
         subtarefas_total: 0,
         subtarefas_concluidas: 0,
+        serie: null,
       },
       // My concluded task must NOT show
       {
@@ -101,6 +103,7 @@ describe('AgentPendingSection', () => {
         tags: [],
         subtarefas_total: 0,
         subtarefas_concluidas: 0,
+        serie: null,
       },
     ]);
     getEtapasMock.mockResolvedValue([
