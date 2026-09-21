@@ -406,7 +406,8 @@ CREATE POLICY tarefa_series_service_role_bypass ON public.tarefa_series
 -- INSERT/UPDATE/DELETE would leave TRUNCATE/REFERENCES/TRIGGER with
 -- authenticated (TRUNCATE ignores RLS), so revoke everything and re-grant
 -- exactly what is needed (same shape as 20260918000002_post_processes_schema.sql;
--- the REVOKE also removes service_role's grant, hence the re-GRANT).
+-- service_role keeps its access through the explicit GRANT ALL below, which
+-- local/CI needs because they lack the hosted default ACL).
 REVOKE ALL ON TABLE public.tarefa_series FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.tarefa_series TO authenticated;
 GRANT ALL ON TABLE public.tarefa_series TO service_role;
