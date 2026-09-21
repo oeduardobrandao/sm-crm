@@ -466,3 +466,138 @@ CREATE POLICY tarefas_tenant_all ON public.tarefas
       )
     )
   );
+
+-- ============ (3) MATERIALIZATION + TRIGGERS ============
+
+-- The only writer of GENERATED occurrences. Takes a bare series id, so it is
+-- revoked from authenticated (it would let any user write into any series).
+CREATE OR REPLACE FUNCTION public.tarefa_serie_materializar(p_serie_id bigint, p_data date) RETURNS bigint
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  s record;
+  v_id bigint;
+BEGIN
+  SELECT * INTO s FROM tarefa_series WHERE id = p_serie_id;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+
+  INSERT INTO tarefas (conta_id, user_id, titulo, descricao, descricao_rich, status,
+                       responsavel_id, cliente_id, data_limite, serie_id)
+  VALUES (s.conta_id, s.user_id, s.titulo, s.descricao, s.descricao_rich, 'pendente',
+          s.responsavel_id, s.cliente_id, p_data, s.id)
+  ON CONFLICT ON CONSTRAINT tarefas_serie_data_uq DO NOTHING
+  RETURNING id INTO v_id;
+  IF v_id IS NULL THEN RETURN NULL; END IF;   -- already existed: children untouched
+
+  INSERT INTO subtarefas (tarefa_id, conta_id, titulo, concluida, ordem)
+  SELECT v_id, s.conta_id, e.value, false, (e.ordinality - 1)::int
+    FROM jsonb_array_elements_text(s.subtarefas) WITH ORDINALITY AS e(value, ordinality);
+
+  -- deleted or foreign tag ids simply produce no link
+  INSERT INTO tarefa_tag_links (tarefa_id, tag_id, conta_id)
+  SELECT v_id, t.id, s.conta_id
+    FROM tarefa_tags t
+   WHERE t.id = ANY (s.tag_ids) AND t.conta_id = s.conta_id;
+
+  RETURN v_id;
+END;
+$$;
+
+-- ao_concluir: "make sure the series has exactly one open occurrence".
+CREATE OR REPLACE FUNCTION public.tarefa_serie_garantir_aberta(p_serie_id bigint, p_after date) RETURNS bigint
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  s record;
+  v_next date;
+BEGIN
+  SELECT * INTO s FROM tarefa_series WHERE id = p_serie_id FOR UPDATE;
+  IF NOT FOUND OR s.modo <> 'ao_concluir' OR s.pausada OR s.encerrada_em IS NOT NULL THEN
+    RETURN NULL;
+  END IF;
+  -- any open occurrence, whatever its date, is "the next"
+  IF EXISTS (SELECT 1 FROM tarefas WHERE serie_id = p_serie_id AND status <> 'concluida') THEN
+    RETURN NULL;
+  END IF;
+  v_next := tarefa_next_date(s.freq, s.intervalo, s.dias_semana, s.dia_mes, s.mes, s.inicio,
+                             greatest(p_after, tarefa_hoje_sp()));
+  IF v_next IS NULL OR (s.fim IS NOT NULL AND v_next > s.fim) THEN
+    RETURN NULL;
+  END IF;
+  RETURN tarefa_serie_materializar(p_serie_id, v_next);
+END;
+$$;
+
+-- Completion trigger. Reads modo without a lock first so completing a
+-- calendario occurrence never waits on the cron's scan.
+CREATE OR REPLACE FUNCTION public.tarefas_serie_ao_concluir_fn() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_modo text;
+BEGIN
+  SELECT modo INTO v_modo FROM tarefa_series WHERE id = NEW.serie_id;
+  IF v_modo IS DISTINCT FROM 'ao_concluir' THEN RETURN NULL; END IF;
+  PERFORM tarefa_serie_garantir_aberta(NEW.serie_id, NEW.data_limite);
+  RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER tarefas_serie_ao_concluir
+  AFTER UPDATE OF status ON public.tarefas
+  FOR EACH ROW
+  WHEN (NEW.serie_id IS NOT NULL AND NEW.status = 'concluida' AND OLD.status IS DISTINCT FROM 'concluida')
+  EXECUTE FUNCTION public.tarefas_serie_ao_concluir_fn();
+
+-- "Somente esta" delete of an OPEN occurrence means "skip this one": the next
+-- is created immediately. Two early returns: (a) the workspace is mid-deletion
+-- (cascade order between tarefas and tarefa_series is unspecified); (b) the
+-- series is already gone or ended (tarefa_serie_excluir ends it first).
+CREATE OR REPLACE FUNCTION public.tarefas_serie_ao_excluir_fn() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM workspaces WHERE id = OLD.conta_id) THEN RETURN NULL; END IF;
+  IF NOT EXISTS (SELECT 1 FROM tarefa_series WHERE id = OLD.serie_id) THEN RETURN NULL; END IF;
+  PERFORM tarefa_serie_garantir_aberta(OLD.serie_id, OLD.data_limite);
+  RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER tarefas_serie_ao_excluir
+  AFTER DELETE ON public.tarefas
+  FOR EACH ROW
+  WHEN (OLD.serie_id IS NOT NULL AND OLD.status <> 'concluida')
+  EXECUTE FUNCTION public.tarefas_serie_ao_excluir_fn();
+
+-- Resume of an ao_concluir series whose last occurrence was completed while
+-- paused: without this it would stay dormant forever.
+CREATE OR REPLACE FUNCTION public.tarefa_series_apos_retomar_fn() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM tarefa_serie_garantir_aberta(NEW.id, tarefa_hoje_sp() - 1);
+  RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER tarefa_series_apos_retomar
+  AFTER UPDATE OF pausada ON public.tarefa_series
+  FOR EACH ROW
+  WHEN (OLD.pausada AND NOT NEW.pausada AND NEW.modo = 'ao_concluir')
+  EXECUTE FUNCTION public.tarefa_series_apos_retomar_fn();
+
+-- Internal helpers: service_role only. Triggers fire without an EXECUTE check
+-- at fire time (the suite proves it by completing as authenticated).
+REVOKE ALL ON FUNCTION public.tarefa_serie_materializar(bigint, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.tarefa_serie_materializar(bigint, date) TO service_role;
+REVOKE ALL ON FUNCTION public.tarefa_serie_garantir_aberta(bigint, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.tarefa_serie_garantir_aberta(bigint, date) TO service_role;
+REVOKE ALL ON FUNCTION public.tarefas_serie_ao_concluir_fn() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.tarefas_serie_ao_excluir_fn() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.tarefa_series_apos_retomar_fn() FROM PUBLIC, anon, authenticated;
