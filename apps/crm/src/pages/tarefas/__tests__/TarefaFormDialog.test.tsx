@@ -1,8 +1,9 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TarefaWithRelations } from '../../../store';
 
 const {
   addTarefaMock,
@@ -12,6 +13,7 @@ const {
   getTarefasMock,
   searchPostsForMentionMock,
   uploadInlineImageMock,
+  criarTarefaSerieMock,
 } = vi.hoisted(() => ({
   addTarefaMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -28,6 +30,7 @@ const {
   getTarefasMock: vi.fn(),
   searchPostsForMentionMock: vi.fn(),
   uploadInlineImageMock: vi.fn(),
+  criarTarefaSerieMock: vi.fn(),
 }));
 
 vi.mock('../../../store', () => ({
@@ -38,6 +41,37 @@ vi.mock('../../../store', () => ({
   getMembros: getMembrosMock,
   getClientes: getClientesMock,
   getTarefas: getTarefasMock,
+  criarTarefaSerie: criarTarefaSerieMock,
+  aplicarEdicaoSerie: vi.fn(),
+  definirEstadoSerie: vi.fn(),
+  deleteTarefaSerieCompleta: vi.fn(),
+  isSerieDateConflict: () => false,
+  isSerieSemPrazo: () => false,
+}));
+// jsdom cannot drive Radix Select; a native stand-in (same reasoning as the
+// dropdown-menu mock in TarefaCard.test.tsx).
+vi.mock('@/components/ui/select', () => ({
+  Select: ({
+    value,
+    onValueChange,
+    disabled,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (v: string) => void;
+    disabled?: boolean;
+    children: React.ReactNode;
+  }) => (
+    <select value={value} disabled={disabled} onChange={(e) => onValueChange?.(e.target.value)}>
+      {children}
+    </select>
+  ),
+  SelectTrigger: () => null,
+  SelectValue: () => null,
+  SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => (
+    <option value={value}>{children}</option>
+  ),
 }));
 vi.mock('@/store/posts', () => ({
   searchPostsForMention: searchPostsForMentionMock,
@@ -73,6 +107,37 @@ function renderDialog(ui: React.ReactElement) {
       <MemoryRouter>{ui}</MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+/** The <select> that owns an option with this label (the Select mock renders native selects). */
+function selectWithOption(label: string): HTMLSelectElement {
+  const match = screen
+    .getAllByRole('combobox')
+    .find((el) => within(el).queryByRole('option', { name: label }));
+  if (!match) throw new Error(`no select with option ${label}`);
+  return match as HTMLSelectElement;
+}
+
+function makeEditing(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRelations {
+  return {
+    id: 42,
+    titulo: 'Tarefa',
+    descricao: null,
+    descricao_rich: null,
+    status: 'pendente',
+    responsavel_id: null,
+    cliente_id: null,
+    data_limite: '2099-01-05',
+    concluida_em: null,
+    created_at: '2026-07-01T10:00:00',
+    tags: [],
+    subtarefas_total: 0,
+    subtarefas_concluidas: 0,
+    cliente_nome: null,
+    cliente_cor: null,
+    serie: null,
+    ...overrides,
+  };
 }
 
 const CLIENTES = [
@@ -319,5 +384,144 @@ describe('TarefaFormDialog due-date prefill', () => {
       />,
     );
     expect(screen.getByText('Sem prazo')).toBeInTheDocument();
+  });
+});
+
+describe('TarefaFormDialog Repetir', () => {
+  const baseProps = {
+    open: true,
+    onClose: () => {},
+    membros: [],
+    clientes: CLIENTES,
+    tags: [],
+    onSaved: () => {},
+    onTagCreated: () => {},
+  };
+
+  it('is hidden in conversion mode (onCreate)', () => {
+    renderDialog(<TarefaFormDialog {...baseProps} editing={null} onCreate={vi.fn()} />);
+    expect(screen.queryByText('Repetir')).not.toBeInTheDocument();
+  });
+
+  it('creates a series through criarTarefaSerie (not addTarefa) with the rule derived from Prazo', async () => {
+    criarTarefaSerieMock.mockResolvedValue({ serie_id: 1, tarefa_id: 2 });
+    const onSaved = vi.fn();
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        editing={null}
+        onSaved={onSaved}
+        initialValues={{ titulo: 'Fechamento', data_limite: '2099-01-31' }}
+      />,
+    );
+    fireEvent.change(selectWithOption('Mensalmente'), { target: { value: 'monthly' } });
+    expect(await screen.findByText('Todo dia 31 (ou último dia)')).toBeInTheDocument();
+    // ToggleGroup type="single" renders its items with role="radio" (Radix)
+    fireEvent.click(screen.getByRole('radio', { name: 'Criar em toda data da regra' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Criar tarefa' }));
+    await waitFor(() => expect(criarTarefaSerieMock).toHaveBeenCalledTimes(1));
+    const [regra, payload, tagIds, subtarefas, tarefaId] = criarTarefaSerieMock.mock.calls[0];
+    expect(regra).toEqual({
+      freq: 'monthly',
+      intervalo: 1,
+      dias_semana: null,
+      dia_mes: 31,
+      mes: null,
+      modo: 'calendario',
+      fim: null,
+    });
+    expect(payload).toMatchObject({
+      titulo: 'Fechamento',
+      data_limite: '2099-01-31',
+      status: 'pendente',
+    });
+    expect(tagIds).toEqual([]);
+    expect(subtarefas).toEqual([]);
+    expect(tarefaId).toBeUndefined();
+    expect(addTarefaMock).not.toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it('validates: weekly needs a day, rule needs a due date', async () => {
+    renderDialog(
+      <TarefaFormDialog {...baseProps} editing={null} initialValues={{ titulo: 'x' }} />,
+    );
+    fireEvent.change(selectWithOption('Semanalmente'), { target: { value: 'weekly' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Criar tarefa' }));
+    expect(
+      await screen.findByText('Defina um prazo: ele será a primeira ocorrência.'),
+    ).toBeInTheDocument();
+    expect(criarTarefaSerieMock).not.toHaveBeenCalled();
+  });
+
+  it('promotes a standalone task: criarTarefaSerie receives the task id and no scope dialog opens', async () => {
+    criarTarefaSerieMock.mockResolvedValue({ serie_id: 1, tarefa_id: 42 });
+    renderDialog(<TarefaFormDialog {...baseProps} editing={makeEditing()} />);
+    fireEvent.change(selectWithOption('Diariamente'), { target: { value: 'daily' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(criarTarefaSerieMock).toHaveBeenCalledTimes(1));
+    expect(criarTarefaSerieMock.mock.calls[0][4]).toBe(42);
+    expect(screen.queryByText('Aplicar a quais tarefas?')).not.toBeInTheDocument();
+  });
+
+  it('disables Repetir with a hint when editing a concluida standalone task', () => {
+    renderDialog(
+      <TarefaFormDialog {...baseProps} editing={makeEditing({ status: 'concluida' })} />,
+    );
+    expect(selectWithOption('Diariamente')).toBeDisabled();
+    expect(screen.getByText('Reabra a tarefa para torná-la recorrente.')).toBeInTheDocument();
+  });
+
+  it('keeps the series landing day when Prazo changes in edit mode', async () => {
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        editing={makeEditing({
+          data_limite: '2026-02-28',
+          serie: {
+            id: 9,
+            freq: 'monthly',
+            intervalo: 1,
+            dias_semana: null,
+            dia_mes: 31,
+            mes: null,
+            modo: 'ao_concluir',
+            fim: null,
+            inicio: '2026-01-31',
+            pausada: false,
+            encerrada_em: null,
+            proxima_data: null,
+          },
+        })}
+      />,
+    );
+    expect(await screen.findByText('Todo dia 31 (ou último dia)')).toBeInTheDocument();
+  });
+
+  it('does not render a degraded summary while the rule is incomplete', async () => {
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        editing={null}
+        initialValues={{ titulo: 'x', data_limite: '2099-01-05' }}
+      />,
+    );
+    fireEvent.change(selectWithOption('Semanalmente'), { target: { value: 'weekly' } });
+    // weekly with no weekday chip selected: no summary, no dangling "Toda "
+    await screen.findByRole('button', { name: 'segunda' });
+    expect(screen.queryByTestId('recorrencia-resumo')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'segunda' }));
+    expect(await screen.findByTestId('recorrencia-resumo')).toHaveTextContent(
+      'Toda segunda · cria a próxima ao concluir',
+    );
+
+    // emptied interval input: no "A cada NaN semanas"
+    fireEvent.change(screen.getByLabelText('Intervalo'), { target: { value: '' } });
+    await waitFor(() => expect(screen.queryByTestId('recorrencia-resumo')).not.toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Intervalo'), { target: { value: '2' } });
+    expect(await screen.findByTestId('recorrencia-resumo')).toHaveTextContent(
+      'A cada 2 semanas, na segunda',
+    );
   });
 });

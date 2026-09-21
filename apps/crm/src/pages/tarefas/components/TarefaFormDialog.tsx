@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { captureEvent } from '@/lib/analytics';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +31,8 @@ import {
 import { DatePicker } from '@/components/ui/date-picker';
 import {
   addTarefa,
+  criarTarefaSerie,
+  isSerieDateConflict,
   updateTarefa,
   setTarefaTags,
   type Cliente,
@@ -40,6 +41,9 @@ import {
   type TarefaWithRelations,
 } from '../../../store';
 import { parseDateOnly, toDateOnlyString, STATUS_LABELS, STATUS_ORDER } from '../tarefasLogic';
+import { tarefaFormSchema, BLANK_TAREFA_FORM, type TarefaFormValues } from './tarefaFormSchema';
+import { RecorrenciaFields } from './RecorrenciaFields';
+import { regraFromForm } from '../recorrenciaLogic';
 import { TagPicker } from './TagPicker';
 import { TarefaDescriptionEditor } from './TarefaDescriptionEditor';
 import {
@@ -48,26 +52,6 @@ import {
   sanitizeTarefaDescriptionDoc,
   type TarefaDescriptionDoc,
 } from '../tarefaDescription';
-
-const tarefaSchema = z.object({
-  titulo: z.string().trim().min(1, 'Informe o título da tarefa'),
-  descricao: z.string(),
-  responsavel_id: z.string(),
-  cliente_id: z.string(),
-  data_limite: z.date().optional(),
-  status: z.enum(['pendente', 'em_andamento', 'concluida']),
-});
-
-type TarefaFormValues = z.infer<typeof tarefaSchema>;
-
-const BLANK: TarefaFormValues = {
-  titulo: '',
-  descricao: '',
-  responsavel_id: 'none',
-  cliente_id: 'none',
-  data_limite: undefined,
-  status: 'pendente',
-};
 
 export type TarefaFormPayload = {
   titulo: string;
@@ -78,6 +62,25 @@ export type TarefaFormPayload = {
   cliente_id: number | null;
   data_limite: string | null;
 };
+
+/** RPC failures carry a pt-BR RAISE message worth showing; PostgREST table
+ *  errors do not. Errors from criarTarefaSerie/aplicarEdicaoSerie are
+ *  PostgrestError objects whose message is the RAISE text. */
+function mensagemErro(e: unknown, fallback: string, fromOnCreate: boolean): string {
+  if (isSerieDateConflict(e)) return 'Já existe uma ocorrência desta série nesse dia.';
+  const msg =
+    e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : '';
+  const conhecida =
+    msg.startsWith('Para repetir') ||
+    msg.startsWith('Tarefas de uma série') ||
+    msg.startsWith('A data final') ||
+    msg.startsWith('Reabra a tarefa') ||
+    msg.startsWith('Esta tarefa já pertence') ||
+    msg.startsWith('Responsável não encontrado') ||
+    msg.startsWith('Cliente não encontrado');
+  if (conhecida || (fromOnCreate && msg)) return msg;
+  return fallback;
+}
 
 interface TarefaFormDialogProps {
   open: boolean;
@@ -128,8 +131,8 @@ export function TarefaFormDialog({
   const [editorRevision, setEditorRevision] = useState(0);
 
   const form = useForm<TarefaFormValues>({
-    resolver: zodResolver(tarefaSchema),
-    defaultValues: BLANK,
+    resolver: zodResolver(tarefaFormSchema),
+    defaultValues: BLANK_TAREFA_FORM,
   });
 
   // Destructure to primitives: initialValues is naturally passed as an inline object
@@ -145,6 +148,7 @@ export function TarefaFormDialog({
     if (editing) {
       const richDescription =
         editing.descricao_rich ?? plainTextToTarefaDescriptionDoc(editing.descricao ?? '');
+      const serie = editing.serie;
       form.reset({
         titulo: editing.titulo,
         descricao: editing.descricao ?? '',
@@ -152,6 +156,12 @@ export function TarefaFormDialog({
         cliente_id: editing.cliente_id != null ? String(editing.cliente_id) : 'none',
         data_limite: editing.data_limite ? parseDateOnly(editing.data_limite) : undefined,
         status: editing.status,
+        repetir: serie ? serie.freq : 'never',
+        intervalo: serie ? String(serie.intervalo) : '1',
+        dias_semana: serie?.dias_semana ?? [],
+        fim: serie?.fim ? parseDateOnly(serie.fim) : undefined,
+        modo: serie?.modo ?? 'ao_concluir',
+        serie_nova: !serie,
       });
       setDescriptionDoc(richDescription);
       setEditorInitialContent(richDescription);
@@ -161,7 +171,7 @@ export function TarefaFormDialog({
     } else {
       const richDescription = plainTextToTarefaDescriptionDoc(initialDescricao ?? '');
       form.reset({
-        ...BLANK,
+        ...BLANK_TAREFA_FORM,
         titulo: initialTitulo ?? '',
         descricao: initialDescricao ?? '',
         cliente_id: initialClienteId != null ? String(initialClienteId) : 'none',
@@ -183,11 +193,17 @@ export function TarefaFormDialog({
     .sort((a, b) => a.nome.localeCompare(b.nome));
   const sortedMembros = [...membros].sort((a, b) => a.nome.localeCompare(b.nome));
 
+  const isOcorrencia = !!editing?.serie;
+  const repetirBloqueado = !!editing && !editing.serie && editing.status === 'concluida';
+  const landing = editing?.serie
+    ? { dia_mes: editing.serie.dia_mes, mes: editing.serie.mes }
+    : null;
+
   const onSubmit = async (values: TarefaFormValues) => {
     if (imageUploading) return;
     setSaving(true);
     const sanitizedDescription = sanitizeTarefaDescriptionDoc(descriptionDoc);
-    const payload = {
+    const payload: TarefaFormPayload = {
       titulo: values.titulo.trim(),
       descricao: values.descricao.trim() || null,
       descricao_rich: isTarefaDescriptionEmpty(sanitizedDescription) ? null : sanitizedDescription,
@@ -196,13 +212,29 @@ export function TarefaFormDialog({
       cliente_id: values.cliente_id === 'none' ? null : parseInt(values.cliente_id, 10),
       data_limite: values.data_limite ? toDateOnlyString(values.data_limite) : null,
     };
+    // Conversion mode has no recurrence inputs (the section is hidden there).
+    const regra =
+      !onCreate && values.data_limite ? regraFromForm(values, values.data_limite, landing) : null;
     try {
-      if (editing) {
+      if (editing && isOcorrencia) {
+        // Task 9 replaces this with the scope dialog; a plain update until then.
+        await updateTarefa(editing.id!, payload);
+        await setTarefaTags(editing.id!, tagIds);
+        toast.success('Tarefa atualizada!');
+      } else if (editing && regra) {
+        // standalone task promoted to a series: no scope dialog
+        await criarTarefaSerie(regra, payload, tagIds, [], editing.id!);
+        toast.success('Tarefa atualizada!');
+      } else if (editing) {
         await updateTarefa(editing.id!, payload);
         await setTarefaTags(editing.id!, tagIds);
         toast.success('Tarefa atualizada!');
       } else if (onCreate) {
         await onCreate(payload, tagIds);
+      } else if (regra) {
+        await criarTarefaSerie(regra, payload, tagIds, []);
+        captureEvent('task_created', { status: values.status, recorrente: true });
+        toast.success('Tarefa criada!');
       } else {
         await addTarefa(payload, tagIds);
         captureEvent('task_created', { status: values.status });
@@ -211,9 +243,9 @@ export function TarefaFormDialog({
       onSaved();
       onClose();
     } catch (e) {
-      const fallback = editing ? 'Erro ao atualizar tarefa' : 'Erro ao criar tarefa';
-      const message = onCreate && e instanceof Error && e.message ? e.message : fallback;
-      toast.error(message);
+      toast.error(
+        mensagemErro(e, editing ? 'Erro ao atualizar tarefa' : 'Erro ao criar tarefa', !!onCreate),
+      );
     } finally {
       setSaving(false);
     }
@@ -373,6 +405,16 @@ export function TarefaFormDialog({
                 />
               )}
             </div>
+            {!onCreate && (
+              <RecorrenciaFields
+                form={form}
+                landing={landing}
+                disabled={repetirBloqueado}
+                disabledHint={
+                  repetirBloqueado ? 'Reabra a tarefa para torná-la recorrente.' : undefined
+                }
+              />
+            )}
             <div>
               <FormLabel className="mb-2 block">Tags</FormLabel>
               <TagPicker
