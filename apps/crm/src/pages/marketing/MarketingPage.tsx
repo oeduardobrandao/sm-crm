@@ -11,7 +11,7 @@ export default function MarketingPage({ page }: { page: MarketingPageContent }) 
   return (
     <>
       <LandingHeader variant="subpage" />
-      <main id="main-content">
+      <main id="main-content" tabIndex={-1}>
         <section className="lp-pad" id="top">
           <div className="lp-container">
             <div className="section-head">

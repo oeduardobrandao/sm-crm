@@ -2319,3 +2319,8 @@ section.lp-pad-alt {
   outline: 2px solid #ffbf30;
   outline-offset: 2px;
 }
+
+/* Focus target of the skip link; no ring around the whole page. */
+main#main-content:focus {
+  outline: none;
+}
