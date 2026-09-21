@@ -3,6 +3,7 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { signGetUrl } from "../_shared/r2.ts";
 import { McpKeyContext, McpInputError } from "../_shared/mcp-token.ts";
 import { MCP_PROP_MODO, MCP_PROP_ANOTACAO } from "./seed.ts";
+import { throwTaskWriteError } from "./task-errors.ts";
 import {
   allowlistClient,
   allowlistMember,
@@ -788,7 +789,7 @@ function flattenTaskRow(row: any) {
 }
 
 const TASK_SELECT =
-  "id, titulo, descricao, status, responsavel_id, cliente_id, data_limite, concluida_em, created_at, updated_at";
+  "id, titulo, descricao, status, responsavel_id, cliente_id, data_limite, concluida_em, serie_id, created_at, updated_at";
 
 async function assertMembroInWorkspace(d: Deps, membroId: number): Promise<void> {
   const { data } = await d.db
@@ -897,7 +898,7 @@ export async function updateTask(
     .eq("id", args.task_id)
     .select(TASK_SELECT)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throwTaskWriteError(error);
   if (!data) throw new McpInputError("Tarefa não encontrada neste workspace.");
   return data;
 }
