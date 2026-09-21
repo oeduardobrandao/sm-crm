@@ -127,7 +127,7 @@ function RichTextEditor({
   return (
     <div className={className}>
       {editable && !focused && !editor?.isFocused && (
-        <p className="text-[11px] text-stone-400 mb-1 flex items-center gap-1">
+        <p className="text-[12px] text-stone-400 mb-1 flex items-center gap-1">
           <span className="opacity-70">✏️</span> {t('editHint', 'Clique no texto para editar')}
         </p>
       )}

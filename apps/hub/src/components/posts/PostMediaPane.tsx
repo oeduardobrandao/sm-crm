@@ -128,7 +128,7 @@ export function PostMediaPane({ post, onOpenLightbox, priority }: PostMediaPaneP
   }
 
   const counter = media.length > 1 && (
-    <span className="absolute top-3 right-3 z-20 rounded-full bg-black/45 text-white text-[11px] px-2 py-0.5 tabular-nums">
+    <span className="absolute top-3 right-3 z-20 rounded-full bg-black/45 text-white text-[12px] px-2 py-0.5 tabular-nums">
       {current + 1} / {media.length}
     </span>
   );

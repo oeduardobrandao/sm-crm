@@ -31,7 +31,7 @@ function DocCard({ doc, base }: { doc: DocReport; base: string }) {
         </span>
         <div className="flex-1 min-w-0">
           <p className="font-medium hub-txt text-[15px] leading-tight">{doc.title}</p>
-          <p className="text-[11px] hub-tx3 mt-0.5">{formatMonth(doc.month, dateLocale)}</p>
+          <p className="text-[12px] hub-tx3 mt-0.5">{formatMonth(doc.month, dateLocale)}</p>
         </div>
       </div>
 
@@ -85,7 +85,7 @@ function ReportCard({ report, base }: { report: LegacyReport; base: string }) {
             {formatMonth(report.month, dateLocale)}
           </p>
           {report.generated_at && (
-            <p className="text-[11px] hub-tx3 mt-0.5">
+            <p className="text-[12px] hub-tx3 mt-0.5">
               {t('generatedAt', 'Gerado em')}{' '}
               {new Date(report.generated_at).toLocaleDateString(dateLocale, {
                 day: '2-digit',
@@ -96,7 +96,7 @@ function ReportCard({ report, base }: { report: LegacyReport; base: string }) {
           )}
         </div>
         {isReady && (
-          <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 flex-shrink-0">
+          <span className="text-[12px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 flex-shrink-0">
             {t('status.ready', 'Pronto')}
           </span>
         )}

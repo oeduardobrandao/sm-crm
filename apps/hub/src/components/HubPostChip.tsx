@@ -102,13 +102,13 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
             <div className="text-sm font-semibold hub-txt">{post.titulo}</div>
             <div className="flex flex-wrap items-center gap-1.5">
               <span
-                className="rounded-full px-2 py-0.5 text-[11px] font-semibold hub-tx2"
+                className="rounded-full px-2 py-0.5 text-[12px] font-semibold hub-tx2"
                 style={{ boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
               >
                 {getTipoLabel(t, post.tipo)}
               </span>
               <span
-                className="rounded-full px-2 py-0.5 text-[11px] font-semibold hub-tx2"
+                className="rounded-full px-2 py-0.5 text-[12px] font-semibold hub-tx2"
                 style={{ boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
               >
                 {getClientStatusLabel(t, post.status)}

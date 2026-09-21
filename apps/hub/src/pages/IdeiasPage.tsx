@@ -439,7 +439,7 @@ function IdeiaAudioBlock({
           />
           {audio.transcript && (
             <div className="rounded-lg hub-bg-soft px-3 py-2">
-              <p className="text-[11px] hub-tx3 font-semibold uppercase tracking-wide mb-1">
+              <p className="text-[12px] hub-tx3 font-semibold uppercase tracking-wide mb-1">
                 {t('audio.transcript', 'Transcrição')}
               </p>
               <p className="text-sm hub-tx2 whitespace-pre-wrap">{audio.transcript}</p>
@@ -531,17 +531,17 @@ function IdeiaCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <span
-            className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ${STATUS_COLOR[ideia.status]}`}
+            className={`inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full mb-2 ${STATUS_COLOR[ideia.status]}`}
           >
             {t(`status.${ideia.status}`, STATUS_LABEL[ideia.status])}
           </span>
           {ideia.tipo === 'solicitacao' && (
-            <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 border hub-border hub-tx2">
+            <span className="inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 border hub-border hub-tx2">
               {t('tipoLabel.solicitacao', 'Solicitação')}
             </span>
           )}
           {ideia.origem === 'agencia' && (
-            <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 hub-btn-primary">
+            <span className="inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full mb-2 ml-1.5 hub-btn-primary">
               {t('card.agencySuggestion', 'Sugestão da agência')}
             </span>
           )}
@@ -918,6 +918,8 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
               : t(`tipo.${tipo}.novo`, TIPO_COPY[tipo].novo)}
           </h2>
           <button
+            type="button"
+            aria-label={t('modal.close', 'Fechar')}
             onClick={onClose}
             className="hub-icon-btn p-1.5 rounded-md transition-colors hub-tx3"
           >
@@ -947,7 +949,7 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
                 </button>
               ))}
             </div>
-            <p className="text-[11.5px] hub-tx3 mt-1">
+            <p className="text-[12px] hub-tx3 mt-1">
               {t(
                 'modal.tipoHint',
                 'Ideia: sugestão de conteúdo. Solicitação: pedido para a agência executar.',
@@ -956,10 +958,14 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
           </div>
 
           <div>
-            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
+            <label
+              htmlFor="ideia-titulo"
+              className="text-[12.5px] font-semibold hub-tx2 mb-1 block"
+            >
               {t('modal.tituloLabel', 'Título')}
             </label>
             <input
+              id="ideia-titulo"
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 ${errors.titulo ? 'border-red-400' : 'hub-border'}`}
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
@@ -969,7 +975,10 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
           </div>
 
           <div>
-            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
+            <label
+              htmlFor="ideia-descricao"
+              className="text-[12.5px] font-semibold hub-tx2 mb-1 block"
+            >
               {t('modal.descricaoLabel', 'Descrição')}
               {audioSupported && !current && (
                 <span className="hub-tx3 font-normal">
@@ -979,6 +988,7 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
               )}
             </label>
             <textarea
+              id="ideia-descricao"
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'hub-border'}`}
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
@@ -1043,7 +1053,7 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
                   sendLabel={t('audio.useThisRecording', 'Usar este áudio')}
                 />
               )}
-              <p className="text-[11.5px] hub-tx3">
+              <p className="text-[12px] hub-tx3">
                 {t(
                   'audio.transcriptAppearsHint',
                   'A transcrição aparece na ideia logo depois de enviar.',
@@ -1062,6 +1072,7 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
             {links.map((link, i) => (
               <div key={i} className="flex gap-2 mb-2">
                 <input
+                  aria-label={t('modal.linkPlaceholder', 'https://...')}
                   className="flex-1 border hub-border rounded-lg px-3 py-2 text-sm outline-none hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] hub-focus-accent focus:ring-2"
                   value={link}
                   onChange={(e) =>
@@ -1071,6 +1082,8 @@ function IdeiaModal({ token, editing, audioEnabled, onClose, onSaved }: ModalPro
                 />
                 {links.length > 1 && (
                   <button
+                    type="button"
+                    aria-label={t('modal.removeLink', 'Remover link')}
                     onClick={() => setLinks((ls) => ls.filter((_, j) => j !== i))}
                     className="hub-icon-btn p-2 rounded-md hub-tx3 transition-colors"
                   >

@@ -7,6 +7,7 @@
     "aprovar": "Approve",
     "suggestionPendingReviewFull": "Suggestion sent for the team to review",
     "commentPlaceholder": "Describe what needs to change",
+    "contentAriaLabel": "Post content",
     "rejectedSuggestionWarning": "⚠️ Your previous suggestion was rejected by the team. Edit it again to send a new one.",
     "suggestionInfoNote": "ℹ️ Your edits will be sent as a suggestion for the team to review",
     "postApproved": "Post approved!",

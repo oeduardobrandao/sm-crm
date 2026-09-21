@@ -103,6 +103,8 @@
     "linksLabel": "Links de referência",
     "optional": "(opcional)",
     "linkPlaceholder": "https://...",
+    "close": "Fechar",
+    "removeLink": "Remover link",
     "addLink": "+ Adicionar outro link",
     "imagesLabel": "Imagens",
     "upToTen": "(até 10)",

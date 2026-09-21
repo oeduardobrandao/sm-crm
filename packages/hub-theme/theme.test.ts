@@ -73,7 +73,7 @@ describe('resolveHubTheme', () => {
       expect(t.vars['--hub-card']).toBe('#FFFFFF');
       expect(t.vars['--hub-txt']).toBe('#171717');
       expect(t.vars['--hub-tx2']).toBe('#525252');
-      expect(t.vars['--hub-tx3']).toBe('#8A8A8A');
+      expect(t.vars['--hub-tx3']).toBe('#707070');
       expect(t.vars['--hub-bd']).toBe('rgba(0,0,0,.08)');
       expect(t.vars['--hub-bd2']).toBe('rgba(0,0,0,.2)');
       expect(t.vars['--hub-soft']).toBe('#F4F4F4');
@@ -92,7 +92,7 @@ describe('resolveHubTheme', () => {
       expect(t.vars['--hub-card']).toBe('#181818');
       expect(t.vars['--hub-txt']).toBe('#F5F5F5');
       expect(t.vars['--hub-tx2']).toBe('#B3B3B3');
-      expect(t.vars['--hub-tx3']).toBe('#8A8A8A');
+      expect(t.vars['--hub-tx3']).toBe('#8D8D8D');
       expect(t.vars['--hub-bd']).toBe('rgba(255,255,255,.09)');
       expect(t.vars['--hub-bd2']).toBe('rgba(255,255,255,.22)');
       expect(t.vars['--hub-soft']).toBe('#242424');
@@ -359,4 +359,27 @@ describe('font allowlist sync (mirrors supabase/migrations/20260731000001_hub_br
       'public-sans',
     ]);
   });
+});
+
+describe('surface presets: tx3 contrast (WCAG AA)', () => {
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const lum = (hex: string) => {
+    const n = parseInt(hex.slice(1), 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => lin(v / 255));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const ratio = (a: string, b: string) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  for (const [surface, modes] of Object.entries(PALETTES)) {
+    for (const [mode, p] of Object.entries(modes)) {
+      it(`${surface} ${mode}: tx3 is >= 4.5:1 on bg, card and soft`, () => {
+        for (const bg of [p.bg, p.card, p.soft]) {
+          expect(ratio(p.tx3, bg)).toBeGreaterThanOrEqual(4.5);
+        }
+      });
+    }
+  }
 });

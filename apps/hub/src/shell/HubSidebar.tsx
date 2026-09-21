@@ -36,7 +36,7 @@ export function HubSidebar() {
         {isWordmarkStyle(bootstrap) ? (
           <div className="min-w-0 flex-1">
             <WorkspaceMark />
-            <div className="text-[11.5px] hub-tx3">{t('hub.clientPortal', 'Hub do cliente')}</div>
+            <div className="text-[12px] hub-tx3">{t('hub.clientPortal', 'Hub do cliente')}</div>
           </div>
         ) : (
           <>
@@ -45,7 +45,7 @@ export function HubSidebar() {
               <div className="font-semibold text-[14.5px] tracking-tight truncate hub-txt">
                 {bootstrap.workspace.name}
               </div>
-              <div className="text-[11.5px] hub-tx3">{t('hub.clientPortal', 'Hub do cliente')}</div>
+              <div className="text-[12px] hub-tx3">{t('hub.clientPortal', 'Hub do cliente')}</div>
             </div>
           </>
         )}
@@ -68,7 +68,7 @@ export function HubSidebar() {
               <Icon size={17} strokeWidth={active ? 2.25 : 1.75} />
               <span className="flex-1">{t(labelKey, label)}</span>
               {!!badge && (
-                <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center hub-btn-primary">
+                <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[12px] font-bold flex items-center justify-center hub-btn-primary">
                   {badge}
                 </span>
               )}

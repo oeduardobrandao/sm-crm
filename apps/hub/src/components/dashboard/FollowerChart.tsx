@@ -131,7 +131,7 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
         </span>
         {delta !== 0 && (
           <span
-            className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${
+            className={`text-[12px] font-semibold px-1.5 py-0.5 rounded ${
               delta > 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
             }`}
           >

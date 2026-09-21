@@ -126,7 +126,7 @@ export function HubMobileNav() {
             )}
           </span>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] hub-tx3 truncate max-w-[100px]">
+            <span className="text-[12px] hub-tx3 truncate max-w-[100px]">
               {bootstrap.cliente_nome}
             </span>
             <button
@@ -197,7 +197,7 @@ export function HubMobileNav() {
                     <Icon size={18} strokeWidth={active ? 2.25 : 1.75} />
                     <span className="flex-1 text-[15px]">{t(labelKey, label)}</span>
                     {!!badge && (
-                      <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center hub-btn-primary">
+                      <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[12px] font-bold flex items-center justify-center hub-btn-primary">
                         {badge}
                       </span>
                     )}

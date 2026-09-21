@@ -137,32 +137,32 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
                     <div className="w-[60px] h-[60px] rounded-lg bg-white/15" />
                   </div>
                 )}
-                <span className="absolute top-2 left-2 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                <span className="absolute top-2 left-2 bg-black/50 text-white text-[12px] px-1.5 py-0.5 rounded font-semibold">
                   {tipoLabel(post.mediaType)}
                 </span>
               </div>
               <div className="p-3 space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                  <span className="text-[12px] text-stone-500 dark:text-stone-400">
                     {t('topPosts.stats.views', 'Visualizações')}
                   </span>
-                  <span className="text-[11px] font-bold text-stone-900 dark:text-stone-100">
+                  <span className="text-[12px] font-bold text-stone-900 dark:text-stone-100">
                     {formatNumber(post.impressions)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                  <span className="text-[12px] text-stone-500 dark:text-stone-400">
                     {t('topPosts.stats.engagement', 'Engajamento')}
                   </span>
-                  <span className="text-[11px] font-bold text-emerald-500">
+                  <span className="text-[12px] font-bold text-emerald-500">
                     {post.engagementRate}%
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                  <span className="text-[12px] text-stone-500 dark:text-stone-400">
                     {t('topPosts.stats.saved', 'Salvos')}
                   </span>
-                  <span className="text-[11px] font-bold text-stone-900 dark:text-stone-100">
+                  <span className="text-[12px] font-bold text-stone-900 dark:text-stone-100">
                     {post.saved}
                   </span>
                 </div>
