@@ -21,7 +21,7 @@ declare
   v_membro bigint; v_cli bigint;
   v_tag1 bigint; v_tag2 bigint;
   v_serie bigint; v_t1 bigint; v_t2 bigint; v_t3 bigint;
-  v_n bigint; v_date date; v_status text;
+  v_n bigint; v_good bigint; v_date date; v_status text;
   v_rejected boolean;
   v_serie2 bigint;
   v_fn text;
@@ -144,7 +144,7 @@ begin
   select id into v_t2 from tarefas where serie_id = v_serie and status <> 'concluida';
   perform 1 from tarefas where id = v_t2 and data_limite > v_date;
   assert found, '(j) spawned occurrence is not after the deleted one';
-  select id into v_t3 from tarefas where serie_id = v_serie and status = 'concluida' limit 1;
+  select id into v_t3 from tarefas where serie_id = v_serie and status = 'concluida' order by id limit 1;
   delete from tarefas where id = v_t3;
   assert pg_temp.et_abertas(v_serie) = 1, '(j) deleting a completed occurrence spawned something';
 
@@ -381,8 +381,98 @@ begin
   assert found, '(n) p_encerrar did not detach the occurrence';
   perform 1 from tarefa_series where id = v_serie and encerrada_em is not null;
   assert found, '(n) p_encerrar did not end the series';
-  select count(*) into v_n from tarefas where serie_id = v_serie and status <> 'concluida' and data_limite > '2026-03-31';
+
+  -- (n) p_encerrar on a FRESH single-occurrence series: completing with p_encerrar
+  -- must leave zero open occurrences AND end the series. (The series above already
+  -- had an open occurrence, so garantir_aberta returned early whatever p_encerrar
+  -- said; here ignoring p_encerrar would spawn the next one.)
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Encerra ao concluir', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], '{}'::text[]);
+  perform public.tarefa_serie_aplicar_edicao(v_t1,
+    jsonb_build_object('titulo', 'Encerra ao concluir', 'descricao', null, 'descricao_rich', null, 'status', 'concluida',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[],
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    true);
+  assert pg_temp.et_abertas(v_serie) = 0, '(n) p_encerrar left an open occurrence';
+  perform 1 from tarefa_series where id = v_serie and encerrada_em is not null;
+  assert found, '(n) p_encerrar did not end the fresh series';
+  select count(*) into v_n from tarefas where titulo = 'Encerra ao concluir' and status <> 'concluida';
   assert v_n = 0, '(n) p_encerrar spawned an occurrence';
+
+  -- (q) aplicar_edicao and the prazo. Explicit JSON null in the p_encerrar branch
+  -- clears the occurrence's data_limite ("Nao repete" + cleared Prazo); serie_id
+  -- goes NULL in the same UPDATE, so tarefas_serie_exige_prazo is satisfied.
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Limpa prazo', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], '{}'::text[]);
+  perform public.tarefa_serie_aplicar_edicao(v_t1,
+    jsonb_build_object('titulo', 'Limpa prazo', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', null),
+    '{}'::bigint[],
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    true);
+  perform 1 from tarefas where id = v_t1 and data_limite is null and serie_id is null;
+  assert found, '(q) explicit null data_limite + encerrar did not clear the prazo / detach';
+  perform 1 from tarefa_series where id = v_serie and encerrada_em is not null;
+  assert found, '(q) explicit null data_limite + encerrar did not end the series';
+  assert pg_temp.et_abertas(v_serie) = 0, '(q) explicit null + encerrar left an open occurrence';
+
+  -- omitted key + encerrar keeps the old prazo
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Mantem prazo', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], '{}'::text[]);
+  perform public.tarefa_serie_aplicar_edicao(v_t1,
+    jsonb_build_object('titulo', 'Mantem prazo', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null),
+    '{}'::bigint[],
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    true);
+  perform 1 from tarefas where id = v_t1 and data_limite = '2026-01-05' and serie_id is null;
+  assert found, '(q) omitted data_limite + encerrar did not keep the old prazo';
+
+  -- explicit null WITHOUT encerrar raises (a series occurrence needs a prazo); omitted key keeps the prazo
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Exige prazo', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], '{}'::text[]);
+  v_rejected := false; v_status := null;
+  begin
+    perform public.tarefa_serie_aplicar_edicao(v_t1,
+      jsonb_build_object('titulo', 'Exige prazo', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', null, 'cliente_id', null, 'data_limite', null),
+      '{}'::bigint[],
+      '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      false);
+  exception when others then v_rejected := true; v_status := sqlerrm; end;
+  assert v_rejected and v_status = 'Tarefas de uma série precisam de prazo.',
+    format('(q) explicit null without encerrar: rejected=%s msg=%s', v_rejected, v_status);
+  perform public.tarefa_serie_aplicar_edicao(v_t1,
+    jsonb_build_object('titulo', 'Exige prazo v2', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null),
+    '{}'::bigint[],
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    false);
+  perform 1 from tarefas where id = v_t1 and titulo = 'Exige prazo v2' and data_limite = '2026-01-05' and serie_id = v_serie;
+  assert found, '(q) omitted data_limite without encerrar did not keep the prazo';
+
+  -- (r) criar drops blank / NULL subtasks on the plain path (no raw 23514 from the table CHECK)
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Subs em branco', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], array['  ', 'Um', '', null, 'Dois']);
+  perform 1 from tarefa_series where id = v_serie and subtarefas = '["Um", "Dois"]'::jsonb;
+  assert found, '(r) blank subtasks reached the template';
+  select count(*) into v_n from subtarefas where tarefa_id = v_t1; assert v_n = 2, format('(r) expected 2 subtasks, got %s', v_n);
 
   -- (n2) definir_estado per the states table; encerrar twice raises
   select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
@@ -411,10 +501,16 @@ begin
                        'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
     '{}'::bigint[], '{}'::text[]);
   update tarefas set status = 'concluida' where id = v_t1;            -- spawns 01-06
+  select id into v_t2 from tarefas where serie_id = v_serie and status <> 'concluida';
+  update tarefas set status = 'concluida' where id = v_t2;            -- spawns 01-07: 2 completed + 1 open
+  assert pg_temp.et_abertas(v_serie) = 1, '(j) setup: expected 1 open occurrence';
   perform public.tarefa_serie_excluir(v_serie);
   select count(*) into v_n from tarefas where serie_id = v_serie; assert v_n = 0, '(j) rows still linked after excluir';
   perform 1 from tarefas where id = v_t1 and serie_id is null and status = 'concluida';
   assert found, '(j) completed occurrence was deleted or stayed linked';
+  perform 1 from tarefas where id = v_t2 and serie_id is null and status = 'concluida';
+  assert found, '(j) second completed occurrence was deleted or stayed linked';
+  select count(*) into v_n from tarefas where titulo = 'Apagar' and status = 'concluida'; assert v_n = 2, format('(j) expected 2 surviving completed occurrences, got %s', v_n);
   select count(*) into v_n from tarefas where titulo = 'Apagar' and status <> 'concluida'; assert v_n = 0, '(j) open occurrence survived excluir';
   perform 1 from tarefa_series where id = v_serie; assert not found, '(j) series row survived excluir';
 
@@ -557,11 +653,48 @@ begin
   perform set_config('app.tarefa_cursor_writer', '', true);
   select proxima_data into v_date from tarefa_series where id = v_serie; assert v_date = '2026-03-08', '(i) bad row setup';
   insert into tarefa_series (conta_id, user_id, freq, modo, inicio, titulo)
-    values (v_ws, v_user, 'daily', 'calendario', '2026-03-01', 'Good row') returning id into v_n;
+    values (v_ws, v_user, 'daily', 'calendario', '2026-03-01', 'Good row') returning id into v_good;
   perform set_config('app.tarefa_hoje', '2026-03-10', true);
   perform public.generate_recurring_tarefas();                                -- must not raise
   select proxima_data into v_date from tarefa_series where id = v_serie; assert v_date is null, '(i) bad row not exhausted';
-  select count(*) into v_n from tarefas where serie_id = v_n; assert v_n = 1, '(i) good row not processed in the same run as the bad row';
+  select count(*) into v_n from tarefas where serie_id = v_serie; assert v_n = 0, format('(i) bad row materialized %s occurrence(s)', v_n);
+  select count(*) into v_n from tarefas where serie_id = v_good; assert v_n = 1, '(i) good row not processed in the same run as the bad row';
+
+  -- (i2) generator predicates: a PAUSED and an ENDED calendario series are not
+  -- generated and keep their cursor; an ao_concluir series is not touched even
+  -- when its cursor is forced (only the calendario predicate excludes it)
+  perform set_config('app.tarefa_hoje', '2026-03-20', true);
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, pausada, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-03-01', true, 'Cal paused') returning id into v_serie;
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, encerrada_em, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-03-01', now(), 'Cal ended') returning id into v_serie2;
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, titulo)
+    values (v_ws, v_user, 'daily', 'ao_concluir', '2026-03-01', 'Ao concluir forced') returning id into v_good;
+  perform set_config('app.tarefa_cursor_writer', 'on', true);
+  update tarefa_series set proxima_data = '2026-03-02' where id = v_good;
+  perform set_config('app.tarefa_cursor_writer', '', true);
+  perform public.generate_recurring_tarefas();
+  select count(*) into v_n from tarefas where serie_id in (v_serie, v_serie2, v_good);
+  assert v_n = 0, format('(i2) paused/ended/ao_concluir series generated %s occurrence(s)', v_n);
+  select count(*) into v_n from tarefa_series
+   where (id in (v_serie, v_serie2) and proxima_data = '2026-03-02')
+      or (id = v_good and proxima_data = '2026-03-02');
+  assert v_n = 3, format('(i2) cursor of a skipped series moved (%s of 3 untouched)', v_n);
+
+  -- (i3) ON CONFLICT re-run path: the occurrence for the due date already exists
+  -- (e.g. created by hand or by an earlier run that died before the cursor moved).
+  -- The generator creates nothing new and still advances the cursor. Every other
+  -- series is paused so the run's total is exactly this series' contribution.
+  update tarefa_series set pausada = true where conta_id = v_ws;
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-03-15', 'Cal preexisting') returning id into v_serie;
+  insert into tarefas (conta_id, user_id, titulo, status, data_limite, serie_id)
+    values (v_ws, v_user, 'Cal preexisting', 'pendente', '2026-03-20', v_serie);
+  select ocorrencias_criadas into v_n from public.generate_recurring_tarefas();
+  assert v_n = 0, format('(i3) ON CONFLICT re-run created %s occurrence(s)', v_n);
+  select count(*) into v_n from tarefas where serie_id = v_serie; assert v_n = 1, format('(i3) expected 1 occurrence, got %s', v_n);
+  select proxima_data into v_date from tarefa_series where id = v_serie;
+  assert v_date = '2026-03-21', format('(i3) cursor expected 2026-03-21, got %s', v_date);
 
   -- (l) cursor recompute on pause/resume/rule change and (m) the tarefas CHECK
   -- and UNIQUE are covered in 99_tarefa_series_rls.

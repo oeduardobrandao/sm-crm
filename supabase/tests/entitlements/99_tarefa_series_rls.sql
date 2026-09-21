@@ -11,10 +11,11 @@ select et_grant_hosted_parity(array['tarefa_series']);
 -- Defensive, as in 97_crisp_sessions: 92_reorder_fluxos_board.sql calls
 -- et_grant_hosted_parity() outside any transaction, so its ALL grants on every
 -- public table commit permanently and tarefa_series inherits them in a full
--- harness run. Strip the write privileges the migration also revokes (rolled
--- back with this transaction). Run standalone on a freshly reset DB this line
--- is a no-op and the assertions below test the migration's own REVOKE.
-revoke insert, update, delete on public.tarefa_series from anon, authenticated;
+-- harness run. Strip everything the migration also revokes (REVOKE ALL, not
+-- only the write privileges: TRUNCATE/REFERENCES/TRIGGER too; rolled back with
+-- this transaction). Run standalone on a freshly reset DB this line is a no-op
+-- and the assertions below test the migration's own REVOKE ALL + GRANT SELECT.
+revoke all on public.tarefa_series from anon, authenticated;
 -- Hosted projects grant SELECT (and ALL to service_role) through the default
 -- ACL; locally we grant exactly that by hand so the REVOKE is what is tested.
 grant select on public.tarefa_series to anon, authenticated;
@@ -245,6 +246,16 @@ begin
   exception when others then v_rejected := true; end;
   assert v_rejected, 'user_id change accepted';
   execute 'reset role';
+
+  -- ---- table privileges: authenticated holds exactly SELECT ----
+  -- (the exact set, not "no write privileges": TRUNCATE ignores RLS and
+  -- REFERENCES/TRIGGER are also in the hosted default ACL's ALL)
+  assert has_table_privilege('authenticated', 'public.tarefa_series', 'SELECT'), 'authenticated lost SELECT on tarefa_series';
+  foreach v_state in array array['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] loop
+    assert has_table_privilege('authenticated', 'public.tarefa_series', v_state) = false,
+      format('authenticated holds %s on tarefa_series', v_state);
+  end loop;
+  assert has_table_privilege('service_role', 'public.tarefa_series', 'INSERT'), 'service_role lost INSERT on tarefa_series';
 
   -- ---- as authenticated: SELECT-only, writes are permission denied ----
   perform set_config('request.jwt.claims',

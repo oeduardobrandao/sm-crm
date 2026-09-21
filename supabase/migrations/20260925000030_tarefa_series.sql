@@ -303,7 +303,9 @@ CREATE INDEX tarefa_series_cron_idx ON public.tarefa_series (proxima_data)
   WHERE modo = 'calendario' AND NOT pausada AND encerrada_em IS NULL AND proxima_data IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION public.set_tarefa_series_updated_at() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
 BEGIN
   NEW.updated_at = now();
   RETURN NEW;
@@ -400,9 +402,42 @@ CREATE POLICY tarefa_series_tenant_select ON public.tarefa_series
 CREATE POLICY tarefa_series_service_role_bypass ON public.tarefa_series
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
--- The hosted default ACL grants ALL on new tables; without this REVOKE a
--- missing policy would deny by filtering (0 rows) instead of raising.
-REVOKE INSERT, UPDATE, DELETE ON public.tarefa_series FROM anon, authenticated;
+-- The hosted default ACL grants ALL on new tables. Revoking only
+-- INSERT/UPDATE/DELETE would leave TRUNCATE/REFERENCES/TRIGGER with
+-- authenticated (TRUNCATE ignores RLS), so revoke everything and re-grant
+-- exactly what is needed (same shape as 20260918000002_post_processes_schema.sql;
+-- the REVOKE also removes service_role's grant, hence the re-GRANT).
+REVOKE ALL ON TABLE public.tarefa_series FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.tarefa_series TO authenticated;
+GRANT ALL ON TABLE public.tarefa_series TO service_role;
+
+DO $$
+DECLARE
+  v_extra text;
+BEGIN
+  SELECT string_agg(privilege_type, ', ' ORDER BY privilege_type) INTO v_extra
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public' AND table_name = 'tarefa_series'
+     AND grantee = 'authenticated' AND privilege_type <> 'SELECT';
+  IF v_extra IS NOT NULL THEN
+    RAISE EXCEPTION 'tarefa_series: authenticated holds more than SELECT (%)', v_extra;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants
+     WHERE table_schema = 'public' AND table_name = 'tarefa_series'
+       AND grantee = 'authenticated' AND privilege_type = 'SELECT'
+  ) THEN
+    RAISE EXCEPTION 'tarefa_series: authenticated lost SELECT';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants
+     WHERE table_schema = 'public' AND table_name = 'tarefa_series'
+       AND grantee = 'anon'
+  ) THEN
+    RAISE EXCEPTION 'tarefa_series: anon holds a privilege';
+  END IF;
+END
+$$;
 
 -- ---- tarefas ----
 ALTER TABLE public.tarefas
@@ -703,7 +738,11 @@ BEGIN
   PERFORM tarefa_serie_validar_refs(v_conta, v_resp, v_cli);
   SELECT coalesce(array_agg(t.id ORDER BY t.id), '{}') INTO v_tags
     FROM tarefa_tags t WHERE t.id = ANY (coalesce(p_tag_ids, '{}')) AND t.conta_id = v_conta;
-  v_subs := coalesce(p_subtarefas, '{}');
+  -- blank / NULL entries are dropped (same filter as the promotion path below),
+  -- so they never reach tarefa_series_subtarefas_chk as a raw 23514
+  SELECT coalesce(array_agg(u.t ORDER BY u.o), '{}') INTO v_subs
+    FROM unnest(coalesce(p_subtarefas, '{}')) WITH ORDINALITY AS u(t, o)
+   WHERE btrim(u.t) <> '';
   v_titulo := btrim(coalesce(p_tarefa->>'titulo', ''));
   v_descricao := NULLIF(btrim(coalesce(p_tarefa->>'descricao', '')), '');
   v_rich := NULLIF(p_tarefa->'descricao_rich', 'null'::jsonb);
@@ -791,8 +830,18 @@ BEGIN
   IF v_t.serie_id IS NULL THEN RAISE EXCEPTION 'Esta tarefa não pertence a uma série.'; END IF;
   PERFORM 1 FROM tarefa_series WHERE id = v_t.serie_id AND conta_id = v_conta FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Série não encontrada neste workspace.'; END IF;
-  v_data := coalesce((p_tarefa->>'data_limite')::date, v_t.data_limite);
-  IF v_data IS NULL THEN RAISE EXCEPTION 'Tarefas de uma série precisam de prazo.'; END IF;
+  -- Effective due date. An OMITTED key keeps the stored value. A key present
+  -- with JSON null is an explicit "clear the prazo": honoured only when the
+  -- occurrence is being detached from the series (p_encerrar, "Nao repete"),
+  -- because a series occurrence must have a prazo; otherwise it raises.
+  IF p_tarefa ? 'data_limite' THEN
+    v_data := (p_tarefa->>'data_limite')::date;
+  ELSE
+    v_data := v_t.data_limite;
+  END IF;
+  IF v_data IS NULL AND NOT p_encerrar THEN
+    RAISE EXCEPTION 'Tarefas de uma série precisam de prazo.';
+  END IF;
 
   v_resp := (p_tarefa->>'responsavel_id')::bigint;
   v_cli := (p_tarefa->>'cliente_id')::bigint;
@@ -829,7 +878,10 @@ BEGIN
      WHERE id = v_t.serie_id;
   END IF;
 
-  -- (2) the occurrence (status included: the completion trigger fires here)
+  -- (2) the occurrence (status included: the completion trigger fires here).
+  -- In the p_encerrar branch serie_id = NULL and a NULL data_limite land in the
+  -- same UPDATE, so tarefas_serie_exige_prazo (serie_id IS NULL OR data_limite
+  -- IS NOT NULL) is satisfied: the row is a standalone task by then.
   UPDATE tarefas
      SET titulo = v_titulo, descricao = v_descricao, descricao_rich = v_rich,
          status = coalesce(p_tarefa->>'status', status),
@@ -886,11 +938,24 @@ DECLARE
   v_user uuid := auth.uid();
 BEGIN
   IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'Sessao sem workspace ativo.'; END IF;
+  -- Lock order: ALL occurrences (completed ones included, no status filter),
+  -- then the series row: the same tarefas -> series order as
+  -- tarefa_serie_aplicar_edicao and the completion/delete triggers. The final
+  -- DELETE of the series fires ON DELETE SET NULL, an UPDATE on EVERY
+  -- occurrence, completed ones too; without this pre-lock, excluir (series ->
+  -- tarefas) can cycle with an edit of a completed occurrence (tarefas -> series)
+  -- and die with 40P01. Precedent: 20260830000004_post_detach_attach_rpcs.sql.
+  -- Accepted residual: an occurrence spawned after this SELECT and locked by a
+  -- third session before the DELETE still resolves through Postgres' own 40P01
+  -- deadlock detection, which is acceptable for such a narrow window.
+  PERFORM t.id FROM tarefas t
+   WHERE t.serie_id = p_serie_id AND t.conta_id = v_conta
+   ORDER BY t.id FOR UPDATE;
   PERFORM 1 FROM tarefa_series WHERE id = p_serie_id AND conta_id = v_conta FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Série não encontrada neste workspace.'; END IF;
   -- mandatory order: end (disarms the delete trigger) -> delete open -> delete series
   UPDATE tarefa_series SET encerrada_em = coalesce(encerrada_em, now()) WHERE id = p_serie_id;
-  DELETE FROM tarefas WHERE serie_id = p_serie_id AND status <> 'concluida';
+  DELETE FROM tarefas WHERE serie_id = p_serie_id AND conta_id = v_conta AND status <> 'concluida';
   DELETE FROM tarefa_series WHERE id = p_serie_id;   -- FK SET NULL unlinks the completed ones
 END;
 $$;
