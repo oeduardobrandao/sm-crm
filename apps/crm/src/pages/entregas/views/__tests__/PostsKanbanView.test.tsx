@@ -185,6 +185,7 @@ function makeBoardCard(overrides: Record<string, unknown> = {}): BoardCard {
     membro: { id: 7, nome: 'Ana Silva' },
     cliente: { id: 1, nome: 'Aurora', cor: '#0f766e' },
     clienteAvatarUrl: undefined,
+    allEtapas: [],
     deadline: { estourado: false, urgente: false, diasRestantes: 2, horasRestantes: 0 },
     ...overrides,
   } as BoardCard;
@@ -298,6 +299,68 @@ describe('PostsKanbanView', () => {
       (el) => el.textContent,
     );
     expect(pills).toEqual(['Publicando…']);
+  });
+
+  describe('selo "Aguarda aprovação"', () => {
+    const etapa = (ordem: number, nome: string, tipo: string, status: string) => ({
+      ordem,
+      nome,
+      tipo,
+      status,
+    });
+    const twoOpenApprovals = [
+      etapa(1, 'Aprovação da Copy', 'aprovacao_cliente', 'ativo'),
+      etapa(2, 'Mídia', 'padrao', 'pendente'),
+      etapa(3, 'Aprovação da Mídia', 'aprovacao_cliente', 'pendente'),
+    ];
+
+    it('shows on an approved flow post while a later client approval is still open', () => {
+      renderWithQuery(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[makePost({ status: 'aprovado_cliente' })]}
+          cardsByWorkflowId={new Map([[10, makeBoardCard({ allEtapas: twoOpenApprovals })]])}
+        />,
+      );
+      expect(screen.getByText(/Aguarda aprovação/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Aprovação da Mídia/)).toBeInTheDocument();
+    });
+
+    it('is absent once this is the last open approval, or when the post is not approved', () => {
+      const lastApproval = [
+        etapa(1, 'Aprovação da Copy', 'aprovacao_cliente', 'concluido'),
+        etapa(3, 'Aprovação da Mídia', 'aprovacao_cliente', 'ativo'),
+      ];
+      const { rerender } = renderWithQuery(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[makePost({ status: 'aprovado_cliente' })]}
+          cardsByWorkflowId={new Map([[10, makeBoardCard({ allEtapas: lastApproval })]])}
+        />,
+      );
+      expect(screen.queryByText(/Aguarda aprovação/)).toBeNull();
+
+      rerender(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[makePost({ status: 'enviado_cliente' })]}
+          cardsByWorkflowId={new Map([[10, makeBoardCard({ allEtapas: twoOpenApprovals })]])}
+        />,
+      );
+      expect(screen.queryByText(/Aguarda aprovação/)).toBeNull();
+    });
+
+    it('shows on an avulso post from the awaited-approval map', () => {
+      const avulso = makePost({ workflow_id: null, status: 'aprovado_cliente' });
+      renderWithQuery(
+        <PostsKanbanView
+          {...baseProps}
+          posts={[avulso]}
+          awaitedApprovalByPostId={new Map([[avulso.id, 'Aprovação da Mídia']])}
+        />,
+      );
+      expect(screen.getByText(/Aguarda aprovação/)).toBeInTheDocument();
+    });
   });
 
   it('shows the client avatar (img when cached, initials fallback otherwise)', () => {

@@ -71,6 +71,7 @@ import { matchesEtapaPrazo } from './etapaPrazo';
 import { matchesPostEntityFilters } from './entityFilters';
 import { filtersToReveal } from './revealFilters';
 import type { PostEntity } from './boardEntity';
+import { nextApprovalAwaited } from './autoScheduleNudge';
 import {
   parseEntregasQuery,
   serializeEntregasQuery,
@@ -878,6 +879,27 @@ export default function EntregasPage() {
     return new Map(postEntities.map((e) => [e.process.post_id, e.etapaNome]));
   }, [postEntities]);
 
+  // Selo "Aguarda aprovação" (Kanban): avulso aprovado pelo cliente cujo processo
+  // ainda tem outra aprovação pela frente. Só clientes com agendamento
+  // automático entram: para os demais o post espera agendamento manual e o
+  // selo seria ruído.
+  const awaitedApprovalByPostId = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const e of postEntities) {
+      if (e.cliente?.auto_publish_on_approval !== true) continue;
+      const awaited = nextApprovalAwaited(
+        e.process.steps.map((s) => ({
+          ordem: s.ordem,
+          nome: s.nome,
+          tipo: s.tipo,
+          open: s.estado === 'pendente' || s.estado === 'ativo',
+        })),
+      );
+      if (awaited) map.set(e.process.post_id, awaited);
+    }
+    return map;
+  }, [postEntities]);
+
   // Spec §4.1: desmembrar mantendo etapas / aplicar processo abrem Fluxos em
   // Kanban, selecionam Todos e revelam o card, removendo só os filtros que o
   // esconderiam, com aviso. Um post abre o drawer; vários só revelam.
@@ -1248,6 +1270,7 @@ export default function EntregasPage() {
             columnSorts={boardColumnSorts}
             onColumnSortChange={handleBoardColumnSortChange}
             processEtapaByPostId={processEtapaByPostId}
+            awaitedApprovalByPostId={awaitedApprovalByPostId}
             schedulingEnabled={schedulingEnabled}
             tiktokEnabled={tiktokEnabled}
           />

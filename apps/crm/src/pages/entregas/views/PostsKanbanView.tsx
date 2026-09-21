@@ -37,12 +37,18 @@ import {
 } from 'lucide-react';
 import { cardAutoScheduleGates, reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
-import { shouldOfferAutoSchedule, isEligibleToScheduleNow } from '../autoScheduleNudge';
+import {
+  shouldOfferAutoSchedule,
+  shouldShowAwaitingApproval,
+  nextApprovalAwaited,
+  isEligibleToScheduleNow,
+} from '../autoScheduleNudge';
 import {
   AutoSchedulePromptDialog,
   type AutoSchedulePromptPost,
 } from '../components/AutoSchedulePromptDialog';
 import { AutoScheduleBadge } from '../components/AutoScheduleBadge';
+import { AwaitingApprovalBadge } from '../components/AwaitingApprovalBadge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
@@ -158,6 +164,10 @@ interface PostsKanbanViewProps {
   /** post id → etapa ativa do processo individual (spec §4.4). Só posts
    *  avulsos aparecem aqui. */
   processEtapaByPostId?: Map<number, string>;
+  /** post id → nome da próxima aprovação do cliente que um avulso aprovado ainda
+   *  espera (selo "Aguarda aprovação"). Só entram avulsos de clientes com
+   *  agendamento automático. */
+  awaitedApprovalByPostId?: Map<number, string>;
   /** features?.feature_post_scheduling === true, vindo da EntregasPage. Gate do
    *  aviso de agendamento automático: instagram-publish devolve 403
    *  feature_disabled para action "schedule" sem esse flag no plano
@@ -194,6 +204,7 @@ function PostBoardCardContent({
   registry,
   card,
   processEtapa,
+  awaitedApproval,
   onAutoScheduleClick,
   schedulingEnabled,
   tiktokEnabled,
@@ -202,6 +213,9 @@ function PostBoardCardContent({
   registry: StatusRegistry;
   card: BoardCard | undefined;
   processEtapa?: string;
+  /** Próxima aprovação esperada por um avulso (já filtrada por cliente com
+   *  agendamento automático). Posts de fluxo derivam isso de `card`. */
+  awaitedApproval?: string;
   /** Abre o aviso de agendamento automático para este post. Ausente no clone do
    *  DragOverlay, que renderiza o badge estático. */
   onAutoScheduleClick?: () => void;
@@ -222,6 +236,26 @@ function PostBoardCardContent({
     schedulingFeatureEnabled: schedulingEnabled === true,
     tiktokFeatureEnabled: tiktokEnabled === true,
     ...cardAutoScheduleGates(card),
+  });
+
+  const awaitedApprovalName =
+    post.workflow_id != null
+      ? card
+        ? nextApprovalAwaited(
+            card.allEtapas.map((e) => ({
+              ordem: e.ordem,
+              nome: e.nome,
+              tipo: e.tipo ?? 'padrao',
+              open: e.status !== 'concluido',
+            })),
+          )
+        : null
+      : (awaitedApproval ?? null);
+  const showAwaitingApproval = shouldShowAwaitingApproval({
+    status: post.status,
+    autoPublishOnApproval:
+      post.workflow_id != null ? cardAutoScheduleGates(card).autoPublishOnApproval : true,
+    awaitedApproval: awaitedApprovalName,
   });
 
   return (
@@ -246,6 +280,9 @@ function PostBoardCardContent({
             >
               {prazo.shortLabel}
             </span>
+          )}
+          {showAwaitingApproval && awaitedApprovalName && (
+            <AwaitingApprovalBadge approvalName={awaitedApprovalName} />
           )}
           {offerAutoSchedule && (
             <AutoScheduleBadge
@@ -356,6 +393,7 @@ const PostBoardCard = memo(function PostBoardCard({
   openable,
   onPostClick,
   processEtapa,
+  awaitedApproval,
   onAutoScheduleClick,
   schedulingEnabled,
   tiktokEnabled,
@@ -366,6 +404,7 @@ const PostBoardCard = memo(function PostBoardCard({
   openable: boolean;
   onPostClick: (post: ActivePost) => void;
   processEtapa?: string;
+  awaitedApproval?: string;
   onAutoScheduleClick?: (post: ActivePost) => void;
   schedulingEnabled?: boolean;
   tiktokEnabled?: boolean;
@@ -400,6 +439,7 @@ const PostBoardCard = memo(function PostBoardCard({
         registry={registry}
         card={card}
         processEtapa={processEtapa}
+        awaitedApproval={awaitedApproval}
         onAutoScheduleClick={onAutoScheduleClick ? () => onAutoScheduleClick(post) : undefined}
         schedulingEnabled={schedulingEnabled}
         tiktokEnabled={tiktokEnabled}
@@ -429,6 +469,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
   sort,
   onColumnSortChange,
   processEtapaByPostId,
+  awaitedApprovalByPostId,
   onAutoScheduleClick,
   schedulingEnabled,
   tiktokEnabled,
@@ -454,6 +495,10 @@ const PostBoardColumn = memo(function PostBoardColumn({
   onColumnSortChange?: (columnKey: string, sort: BoardColumnSort) => void;
   /** post id → etapa ativa do processo individual (spec §4.4). */
   processEtapaByPostId?: Map<number, string>;
+  /** post id → nome da próxima aprovação do cliente que um avulso aprovado ainda
+   *  espera (selo "Aguarda aprovação"). Só entram avulsos de clientes com
+   *  agendamento automático. */
+  awaitedApprovalByPostId?: Map<number, string>;
   /** Stable callback (spec peça 3) -- same identity guarantee as
    *  onColumnSortChange above. */
   onAutoScheduleClick?: (post: ActivePost) => void;
@@ -576,6 +621,7 @@ const PostBoardColumn = memo(function PostBoardColumn({
                     openable={isPostOpenable(p, openableWorkflowIds)}
                     onPostClick={onPostClick}
                     processEtapa={processEtapaByPostId?.get(p.id)}
+                    awaitedApproval={awaitedApprovalByPostId?.get(p.id)}
                     onAutoScheduleClick={onAutoScheduleClick}
                     schedulingEnabled={schedulingEnabled}
                     tiktokEnabled={tiktokEnabled}
@@ -614,6 +660,7 @@ export function PostsKanbanView({
   columnSorts,
   onColumnSortChange,
   processEtapaByPostId,
+  awaitedApprovalByPostId,
   schedulingEnabled,
   tiktokEnabled,
 }: PostsKanbanViewProps) {
@@ -992,6 +1039,7 @@ export function PostsKanbanView({
                 sort={columnSortFor(option.key)}
                 onColumnSortChange={onColumnSortChange}
                 processEtapaByPostId={processEtapaByPostId}
+                awaitedApprovalByPostId={awaitedApprovalByPostId}
                 onAutoScheduleClick={handleAutoScheduleClick}
                 schedulingEnabled={schedulingEnabled}
                 tiktokEnabled={tiktokEnabled}
@@ -1011,6 +1059,7 @@ export function PostsKanbanView({
                     : undefined
                 }
                 processEtapa={processEtapaByPostId?.get(activePost.id)}
+                awaitedApproval={awaitedApprovalByPostId?.get(activePost.id)}
                 schedulingEnabled={schedulingEnabled}
                 tiktokEnabled={tiktokEnabled}
               />

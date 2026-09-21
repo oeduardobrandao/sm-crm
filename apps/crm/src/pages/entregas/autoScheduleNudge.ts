@@ -111,3 +111,45 @@ export function partitionByScheduleEligibility<T extends { scheduled_at: string 
   }
   return { eligible, missingDate };
 }
+
+export interface ApprovalStepLike {
+  ordem: number;
+  nome: string;
+  tipo: string;
+  /** Etapa ainda não concluída: fluxo `status !== 'concluido'`; processo
+   *  individual `estado` pendente ou ativo (herdado/ignorado não contam). */
+  open: boolean;
+}
+
+/**
+ * Nome da PRÓXIMA aprovação de cliente quando a atual não é a final, ou null.
+ * Espelha isFinalApprovalCycle do hub-approve (duas ou mais etapas
+ * aprovacao_cliente abertas = ciclo anterior): é exatamente o caso em que o
+ * servidor pula o agendamento automático, e o post fica em aprovado_cliente
+ * sem ninguém dizer por quê. A aprovação que acabou de chegar é a primeira
+ * aberta; a que o post ainda espera é a segunda.
+ */
+export function nextApprovalAwaited(steps: readonly ApprovalStepLike[]): string | null {
+  const open = steps
+    .filter((s) => s.tipo === 'aprovacao_cliente' && s.open)
+    .sort((a, b) => a.ordem - b.ordem);
+  return open.length >= 2 ? open[1].nome : null;
+}
+
+/**
+ * Gate do selo "Aguardando <aprovação>": post aprovado_cliente, cliente com
+ * agendamento automático e uma aprovação posterior ainda aberta. Sem os dois
+ * primeiros o post simplesmente espera um agendamento manual e o selo seria
+ * ruído; com os três, o selo explica por que nada foi agendado.
+ */
+export function shouldShowAwaitingApproval(input: {
+  status: string | null | undefined;
+  autoPublishOnApproval: boolean;
+  awaitedApproval: string | null;
+}): boolean {
+  return (
+    input.status === 'aprovado_cliente' &&
+    input.autoPublishOnApproval &&
+    input.awaitedApproval !== null
+  );
+}
