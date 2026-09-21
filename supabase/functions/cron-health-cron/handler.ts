@@ -16,6 +16,13 @@ export interface ScanDeps {
   fetchFailures: () => Promise<CronFailureRow[]>;
   /** Emit one alert for a failing job. */
   report: (jobname: string, firstLine: string, row: CronFailureRow) => Promise<void>;
+  /**
+   * True when this failed run was already alerted by an earlier tick. The scan
+   * window (70 min) deliberately overlaps the hourly cadence so a job firing at
+   * the same instant as the monitor is never missed, which means the overlap
+   * would otherwise re-alert.
+   */
+  alreadyReported?: (jobname: string, firstLine: string, row: CronFailureRow) => Promise<boolean>;
   /** The monitor's own job name, excluded to avoid self-referential alerts. */
   selfJobName?: string;
 }
@@ -42,6 +49,7 @@ export async function scanAndReport(
     const firstLine = (row.return_message ?? "cron run failed")
       .split("\n")[0]
       .slice(0, 500);
+    if (deps.alreadyReported && (await deps.alreadyReported(jobname, firstLine, row))) continue;
     await deps.report(jobname, firstLine, row);
     reported.push(jobname);
   }

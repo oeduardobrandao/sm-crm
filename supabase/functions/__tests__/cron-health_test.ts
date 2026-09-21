@@ -87,6 +87,24 @@ Deno.test("scanAndReport collapses multi-line messages to the first line", async
   assertEquals(captured, "ERROR:  function vault.decrypted_secret(unknown) does not exist");
 });
 
+Deno.test("scanAndReport skips runs an earlier tick already alerted", async () => {
+  const reportedJobs: string[] = [];
+  const { reported } = await scanAndReport({
+    fetchFailures: () =>
+      Promise.resolve([
+        row("job-a", "ERROR: boom", "2026-06-25T18:55:00Z"),
+        row("job-b", "ERROR: boom", "2026-06-25T18:56:00Z"),
+      ]),
+    alreadyReported: (jobname) => Promise.resolve(jobname === "job-a"),
+    report: (jobname) => {
+      reportedJobs.push(jobname);
+      return Promise.resolve();
+    },
+  });
+  assertEquals(reported, ["job-b"]);
+  assertEquals(reportedJobs, ["job-b"]);
+});
+
 Deno.test("scanAndReport falls back to a default message when return_message is null", async () => {
   let captured = "";
   await scanAndReport({
