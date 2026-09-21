@@ -23,7 +23,13 @@ import { LANDING } from '@/content/landing.content';
 import { usePageMeta } from '@/lib/usePageMeta';
 
 import { HeroDevicesDark } from './landing-visuals';
-import { LandingHeader, LandingFooter, useLandingChrome, scrollTo } from './LandingChrome';
+import {
+  LandingHeader,
+  LandingFooter,
+  SkipLink,
+  useLandingChrome,
+  scrollTo,
+} from './LandingChrome';
 import { PricingSection } from './PricingSection';
 import { FaqSection } from './FaqSection';
 import { Testimonials } from './Testimonials';
@@ -91,9 +97,10 @@ export default function LandingPage() {
 
   return (
     <div ref={rootRef} className="lp-root lp-v2">
+      <SkipLink />
       <PromoBanner />
-      <LandingHeader variant="landing" />
-      <main>
+      <LandingHeader variant="landing" skipLink={false} />
+      <main id="main-content" tabIndex={-1}>
         <Hero />
         <Ticker />
         <Features />

@@ -24,7 +24,23 @@ const NAV_ITEMS = [
   { id: 'faq', label: 'FAQ' },
 ];
 
-export function LandingHeader({ variant }: { variant: 'landing' | 'subpage' }) {
+export function SkipLink() {
+  return (
+    <a className="skip-link" href="#main-content">
+      Pular para o conteúdo
+    </a>
+  );
+}
+
+/** `skipLink={false}` when the page renders <SkipLink /> itself, ahead of content that
+ * precedes the header in tab order (the landing promo banner). */
+export function LandingHeader({
+  variant,
+  skipLink = true,
+}: {
+  variant: 'landing' | 'subpage';
+  skipLink?: boolean;
+}) {
   const { user, loading } = useAuth();
   const [isDark, setIsDark] = useState(
     document.documentElement.getAttribute('data-theme') === 'dark',
@@ -38,67 +54,70 @@ export function LandingHeader({ variant }: { variant: 'landing' | 'subpage' }) {
   };
 
   return (
-    <header className="site-hdr">
-      <div className="hdr-inner">
-        <a
-          href={variant === 'landing' ? '#top' : '/'}
-          aria-label="Mesaas"
-          style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
-        >
-          <img
-            src="/logo-black.svg"
-            width={1468}
-            height={186}
-            className="hdr-logo logo-light"
-            alt=""
-          />
-          <img
-            src="/logo-white.svg"
-            width={1468}
-            height={186}
-            className="hdr-logo logo-dark"
-            alt=""
-          />
-        </a>
-        <nav className="hdr-nav">
-          {variant === 'landing'
-            ? NAV_ITEMS.map((item) => (
-                <button key={item.id} onClick={() => scrollTo(item.id)}>
-                  {item.label}
-                </button>
-              ))
-            : NAV_ITEMS.map((item) => (
-                <a key={item.id} href={`/#${item.id}`}>
-                  {item.label}
+    <>
+      {skipLink && <SkipLink />}
+      <header className="site-hdr">
+        <div className="hdr-inner">
+          <a
+            href={variant === 'landing' ? '#top' : '/'}
+            aria-label="Mesaas"
+            style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
+          >
+            <img
+              src="/logo-black.svg"
+              width={1468}
+              height={186}
+              className="hdr-logo logo-light"
+              alt=""
+            />
+            <img
+              src="/logo-white.svg"
+              width={1468}
+              height={186}
+              className="hdr-logo logo-dark"
+              alt=""
+            />
+          </a>
+          <nav className="hdr-nav">
+            {variant === 'landing'
+              ? NAV_ITEMS.map((item) => (
+                  <button key={item.id} onClick={() => scrollTo(item.id)}>
+                    {item.label}
+                  </button>
+                ))
+              : NAV_ITEMS.map((item) => (
+                  <a key={item.id} href={`/#${item.id}`}>
+                    {item.label}
+                  </a>
+                ))}
+          </nav>
+          <div className="hdr-actions">
+            {/* The redesigned landing is always dark; the toggle only applies to subpages. */}
+            {variant === 'subpage' && (
+              <button onClick={toggleTheme} className="theme-toggle" aria-label="Alternar tema">
+                {isDark ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+            )}
+            {!loading &&
+              (user ? (
+                <a href="/dashboard" className="lp-btn lp-btn-primary">
+                  Acessar painel <ArrowRight size={14} />
                 </a>
+              ) : (
+                <>
+                  <a href="/login" className="link">
+                    <LogIn size={15} />
+                    Entrar
+                  </a>
+                  <a href="/login?tab=register" className="lp-btn lp-btn-primary">
+                    Criar conta grátis
+                  </a>
+                </>
               ))}
-        </nav>
-        <div className="hdr-actions">
-          {/* The redesigned landing is always dark; the toggle only applies to subpages. */}
-          {variant === 'subpage' && (
-            <button onClick={toggleTheme} className="theme-toggle" aria-label="Alternar tema">
-              {isDark ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-          )}
-          {!loading &&
-            (user ? (
-              <a href="/dashboard" className="lp-btn lp-btn-primary">
-                Acessar painel <ArrowRight size={14} />
-              </a>
-            ) : (
-              <>
-                <a href="/login" className="link">
-                  <LogIn size={15} />
-                  Entrar
-                </a>
-                <a href="/login?tab=register" className="lp-btn lp-btn-primary">
-                  Criar conta grátis
-                </a>
-              </>
-            ))}
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+    </>
   );
 }
 
