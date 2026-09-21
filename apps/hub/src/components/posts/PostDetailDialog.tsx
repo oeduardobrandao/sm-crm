@@ -518,6 +518,9 @@ function PostDetailContent({
   };
 
   const singleColumn = kind === 'text';
+  // Reels and stories are 9:16: on md+ the media column is sized to the card height so the
+  // frame fits edge to edge instead of sitting in a wider pane with black side bars.
+  const reelColumn = post.tipo === 'reels' || post.tipo === 'stories';
 
   const flashText =
     flash === 'approved'
@@ -548,11 +551,17 @@ function PostDetailContent({
         className={`hub-bg-card md:rounded-[4px] overflow-hidden flex flex-col md:grid w-full h-full md:h-[min(92vh,820px)] outline-none ${slideClass} ${
           singleColumn
             ? 'md:w-[min(560px,calc(100vw-7rem))] md:grid-cols-[minmax(0,1fr)]'
-            : 'md:w-[min(1040px,calc(100vw-7rem))] md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'
+            : reelColumn
+              ? 'md:w-[min(1040px,calc(100vw-7rem))] md:grid-cols-[auto_minmax(0,1fr)]'
+              : 'md:w-[min(1040px,calc(100vw-7rem))] md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'
         }`}
       >
         {!singleColumn && (
-          <div className="relative h-[55svh] md:h-full min-h-0 shrink-0">
+          <div
+            className={`relative h-[55svh] md:h-full min-h-0 shrink-0 ${
+              reelColumn ? 'md:w-[calc(min(92vh,820px)*9/16)]' : ''
+            }`}
+          >
             <span className="absolute top-3 left-3 z-20 rounded-full bg-black/45 text-white text-[11px] px-2 py-0.5">
               {t('posts.counter', '{{current}} de {{total}}', {
                 current: nav.index + 1,
