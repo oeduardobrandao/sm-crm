@@ -55,7 +55,12 @@ declare
     'public.import_commit_row(uuid, bigint, text, text, jsonb)',
     'public.import_resolve_cliente(uuid, bigint, jsonb)',
     'public.effective_plan_limit(uuid, text)',
-    'public.expire_and_cleanup_invites()'
+    'public.expire_and_cleanup_invites()',
+    'public.tarefa_serie_materializar(bigint, date)',
+    'public.tarefa_serie_garantir_aberta(bigint, date)',
+    'public.tarefas_serie_ao_concluir_fn()',
+    'public.tarefas_serie_ao_excluir_fn()',
+    'public.tarefa_series_apos_retomar_fn()'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down

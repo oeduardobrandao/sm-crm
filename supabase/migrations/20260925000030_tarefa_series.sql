@@ -554,15 +554,22 @@ CREATE TRIGGER tarefas_serie_ao_concluir
 
 -- "Somente esta" delete of an OPEN occurrence means "skip this one": the next
 -- is created immediately. Two early returns: (a) the workspace is mid-deletion
--- (cascade order between tarefas and tarefa_series is unspecified); (b) the
--- series is already gone or ended (tarefa_serie_excluir ends it first).
+-- (cascade order between tarefas and tarefa_series is unspecified); (b) modo is
+-- read WITHOUT a lock and anything but ao_concluir returns (this also covers a
+-- series that is already gone). Same pre-check as the completion trigger:
+-- garantir_aberta locks the series row before it looks at modo, so without it a
+-- delete of a calendario occurrence would wait on the generator's scan (and
+-- could deadlock with it on the same (serie_id, data_limite)).
 CREATE OR REPLACE FUNCTION public.tarefas_serie_ao_excluir_fn() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_modo text;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM workspaces WHERE id = OLD.conta_id) THEN RETURN NULL; END IF;
-  IF NOT EXISTS (SELECT 1 FROM tarefa_series WHERE id = OLD.serie_id) THEN RETURN NULL; END IF;
+  SELECT modo INTO v_modo FROM tarefa_series WHERE id = OLD.serie_id;
+  IF v_modo IS DISTINCT FROM 'ao_concluir' THEN RETURN NULL; END IF;
   PERFORM tarefa_serie_garantir_aberta(OLD.serie_id, OLD.data_limite);
   RETURN NULL;
 END;
@@ -581,6 +588,8 @@ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  -- garantir_aberta floors p_after at greatest(p_after, today), so any value <= today
+  -- is equivalent here: resuming an ao_concluir series creates the FOLLOWING rule date.
   PERFORM tarefa_serie_garantir_aberta(NEW.id, tarefa_hoje_sp() - 1);
   RETURN NULL;
 END;
@@ -599,5 +608,8 @@ GRANT EXECUTE ON FUNCTION public.tarefa_serie_materializar(bigint, date) TO serv
 REVOKE ALL ON FUNCTION public.tarefa_serie_garantir_aberta(bigint, date) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.tarefa_serie_garantir_aberta(bigint, date) TO service_role;
 REVOKE ALL ON FUNCTION public.tarefas_serie_ao_concluir_fn() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.tarefas_serie_ao_concluir_fn() TO service_role;
 REVOKE ALL ON FUNCTION public.tarefas_serie_ao_excluir_fn() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.tarefas_serie_ao_excluir_fn() TO service_role;
 REVOKE ALL ON FUNCTION public.tarefa_series_apos_retomar_fn() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.tarefa_series_apos_retomar_fn() TO service_role;

@@ -23,6 +23,8 @@ declare
   v_serie bigint; v_t1 bigint; v_t2 bigint; v_t3 bigint;
   v_n bigint; v_date date; v_status text;
   v_rejected boolean;
+  v_serie2 bigint;
+  v_fn text;
 begin
   perform set_config('app.tarefa_hoje', '2026-01-05', true);
 
@@ -94,6 +96,20 @@ begin
   update tarefas set status = 'concluida' where id = v_t3;
   assert pg_temp.et_abertas(v_serie) = 0, '(g) occurrence created past fim';
 
+  -- (j0) series active with ZERO open occurrences (fim cleared alone; an ao_concluir
+  --      guard just nulls proxima_data, nothing generates). Today moves to 02-04 so
+  --      the next rule date (02-09) is free: at 01-27 it would be 02-02, which the
+  --      completed t3 already occupies and ON CONFLICT would hide a broken trigger.
+  --      Deleting a COMPLETED occurrence must spawn nothing: a broken
+  --      WHEN (OLD.status <> 'concluida') would spawn 02-09 here and fail.
+  execute 'reset role';
+  perform set_config('app.tarefa_hoje', '2026-02-04', true);
+  update tarefa_series set fim = null where id = v_serie;
+  assert pg_temp.et_abertas(v_serie) = 0, '(j0) setup: series should have no open occurrence';
+  execute 'set local role authenticated';
+  delete from tarefas where id = v_t1;                                  -- completed 01-05 occurrence
+  assert pg_temp.et_abertas(v_serie) = 0, '(j0) deleting a completed occurrence spawned something';
+
   -- (f) paused series does not generate; resuming an ao_concluir series with no open occurrence generates
   execute 'reset role';
   update tarefa_series set fim = null, pausada = true where id = v_serie;
@@ -143,6 +159,63 @@ begin
   select data_limite into v_date from tarefas where serie_id = v_serie and status <> 'concluida';
   assert v_date = '2026-09-22', format('(e2) expected 2026-09-22, got %s', v_date);
   execute 'reset role';
+
+  -- (l) calendario series: deleting an open occurrence creates nothing (the
+  --     delete trigger returns on an unlocked modo pre-check, so it never takes
+  --     the series row lock the generator's scan holds)
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-09-21', 'Cal daily') returning id into v_serie2;
+  insert into tarefas (conta_id, user_id, titulo, status, data_limite, serie_id)
+    values (v_ws, v_user, 'Cal daily', 'pendente', '2026-09-21', v_serie2) returning id into v_t1;
+  execute 'set local role authenticated';
+  delete from tarefas where id = v_t1;
+  assert pg_temp.et_abertas(v_serie2) = 0, '(l) deleting a calendario occurrence spawned something';
+  perform 1 from tarefa_series where id = v_serie2;
+  assert found, '(l) calendario series vanished';
+  execute 'reset role';
+
+  -- (m) internal helpers are not callable by tenants (cross-tenant write primitive)
+  v_rejected := false;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform tarefa_serie_materializar(v_serie, '2030-01-01');
+  exception when insufficient_privilege then v_rejected := true; end;
+  assert v_rejected, '(m) authenticated called tarefa_serie_materializar';
+  v_rejected := false;
+  begin
+    perform tarefa_serie_garantir_aberta(v_serie, '2030-01-01');
+  exception when insufficient_privilege then v_rejected := true; end;
+  assert v_rejected, '(m) authenticated called tarefa_serie_garantir_aberta';
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  execute 'set local role anon';
+  v_rejected := false;
+  begin
+    perform tarefa_serie_materializar(v_serie, '2030-01-01');
+  exception when insufficient_privilege then v_rejected := true; end;
+  assert v_rejected, '(m) anon called tarefa_serie_materializar';
+  v_rejected := false;
+  begin
+    perform tarefa_serie_garantir_aberta(v_serie, '2030-01-01');
+  exception when insufficient_privilege then v_rejected := true; end;
+  assert v_rejected, '(m) anon called tarefa_serie_garantir_aberta';
+  execute 'reset role';
+  perform 1 from tarefas where serie_id = v_serie and data_limite = '2030-01-01';
+  assert not found, '(m) a rejected call still wrote a row';
+
+  -- (n) grant surface of every function this migration adds in section 3
+  foreach v_fn in array array[
+    'public.tarefa_serie_materializar(bigint, date)',
+    'public.tarefa_serie_garantir_aberta(bigint, date)',
+    'public.tarefas_serie_ao_concluir_fn()',
+    'public.tarefas_serie_ao_excluir_fn()',
+    'public.tarefa_series_apos_retomar_fn()'] loop
+    assert has_function_privilege('anon', v_fn, 'EXECUTE') = false, format('(n) anon can execute %s', v_fn);
+    assert has_function_privilege('authenticated', v_fn, 'EXECUTE') = false, format('(n) authenticated can execute %s', v_fn);
+    assert has_function_privilege('service_role', v_fn, 'EXECUTE') = true, format('(n) service_role cannot execute %s', v_fn);
+  end loop;
 
   -- (k) DELETE FROM workspaces with a series + open occurrence does not fail
   delete from workspaces where id = v_ws;
