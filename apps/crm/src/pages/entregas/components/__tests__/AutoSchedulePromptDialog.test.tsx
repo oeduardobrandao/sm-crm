@@ -21,7 +21,9 @@ vi.mock('../../scheduleApprovedPost', () => ({
 
 // The real DateTimePicker is a Popover + Calendar; in jsdom it is simpler and
 // more robust to drive a stub that exposes one button emitting a fixed Date.
-const PICKED = new Date('2026-09-20T15:00:00.000Z');
+// Relative to now: the dialog only enables "Definir e agendar" for a future date, so a
+// hard-coded timestamp silently turns these tests red once the calendar passes it.
+const PICKED = new Date(Date.now() + 24 * 60 * 60 * 1000);
 vi.mock('@/components/ui/date-time-picker', () => ({
   DateTimePicker: ({
     value,
