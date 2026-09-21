@@ -154,6 +154,7 @@ export function TarefaFormDialog({
 
   useEffect(() => {
     if (!open) return;
+    setEscopo(null);
     if (editing) {
       const richDescription =
         editing.descricao_rich ?? plainTextToTarefaDescriptionDoc(editing.descricao ?? '');

@@ -16,6 +16,7 @@ const {
   criarTarefaSerieMock,
   aplicarEdicaoSerieMock,
   updateTarefaMock,
+  isSerieDateConflictMock,
 } = vi.hoisted(() => ({
   addTarefaMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -35,6 +36,8 @@ const {
   criarTarefaSerieMock: vi.fn(),
   aplicarEdicaoSerieMock: vi.fn(),
   updateTarefaMock: vi.fn(),
+  // falsy by default (bare vi.fn returns undefined); a test opts in with mockReturnValue(true)
+  isSerieDateConflictMock: vi.fn(),
 }));
 
 vi.mock('../../../store', () => ({
@@ -49,7 +52,7 @@ vi.mock('../../../store', () => ({
   aplicarEdicaoSerie: aplicarEdicaoSerieMock,
   definirEstadoSerie: vi.fn(),
   deleteTarefaSerieCompleta: vi.fn(),
-  isSerieDateConflict: () => false,
+  isSerieDateConflict: isSerieDateConflictMock,
   isSerieSemPrazo: () => false,
 }));
 // jsdom cannot drive Radix Select; a native stand-in (same reasoning as the
@@ -629,6 +632,26 @@ describe('TarefaFormDialog Repetir', () => {
     expect(criarTarefaSerieMock).not.toHaveBeenCalled();
   });
 
+  it('"Esta e as próximas" with a changed rule sends the form rule (not the stored one)', async () => {
+    aplicarEdicaoSerieMock.mockResolvedValue(undefined);
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        editing={makeEditing({ data_limite: '2026-01-12', serie: SERIE })}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Intervalo'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await screen.findByText('Aplicar a quais tarefas?');
+    expect(screen.getByRole('button', { name: 'Somente esta' })).toBeDisabled();
+    expect(screen.getByText('A regra de repetição vale para toda a série.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Esta e as próximas' }));
+    await waitFor(() => expect(aplicarEdicaoSerieMock).toHaveBeenCalledTimes(1));
+    expect(aplicarEdicaoSerieMock.mock.calls[0][3]).toMatchObject({ freq: 'weekly', intervalo: 2 });
+    expect(aplicarEdicaoSerieMock.mock.calls[0][4]).toBe(false);
+    expect(updateTarefaMock).not.toHaveBeenCalled();
+  });
+
   it('"Não repete" on an occurrence skips the dialog and ends the series (encerrar = true)', async () => {
     aplicarEdicaoSerieMock.mockResolvedValue(undefined);
     const onSaved = vi.fn();
@@ -667,6 +690,33 @@ describe('TarefaFormDialog Repetir', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Esta e as próximas' }));
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('Erro ao atualizar tarefa'));
     expect(onSaved).not.toHaveBeenCalled();
+    // dialog and form both survive so the user can retry
+    expect(screen.getByText('Aplicar a quais tarefas?')).toBeInTheDocument();
+    expect(screen.getByLabelText('Título')).toBeInTheDocument();
+  });
+
+  it('a series date conflict on "Esta e as próximas" shows the pt-BR message and keeps dialog and form open', async () => {
+    isSerieDateConflictMock.mockReturnValue(true);
+    aplicarEdicaoSerieMock.mockRejectedValue({ code: '23505', message: 'duplicate key' });
+    const onSaved = vi.fn();
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        onSaved={onSaved}
+        editing={makeEditing({ data_limite: '2026-01-12', serie: SERIE })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await screen.findByText('Aplicar a quais tarefas?');
+    fireEvent.click(screen.getByRole('button', { name: 'Esta e as próximas' }));
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'Já existe uma ocorrência desta série nesse dia.',
+      ),
+    );
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(screen.getByText('Aplicar a quais tarefas?')).toBeInTheDocument();
+    expect(screen.getByLabelText('Título')).toBeInTheDocument();
   });
 
   it('editing an occurrence with an unchanged rule never calls criarTarefaSerie', async () => {
