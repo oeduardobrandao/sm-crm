@@ -5600,6 +5600,12 @@ body.role-agent input[name='valor_total'] {
 .auto-schedule-badge--action:hover {
   background: rgba(245, 163, 66, 0.22);
 }
+/* Informational variant (no action): muted, so it never competes with the
+   amber "Agendar" call to action. */
+.auto-schedule-badge--waiting {
+  color: var(--text-muted);
+  background: rgba(128, 128, 128, 0.14);
+}
 
 .board-post-card .item-title {
   font-size: 0.8rem;

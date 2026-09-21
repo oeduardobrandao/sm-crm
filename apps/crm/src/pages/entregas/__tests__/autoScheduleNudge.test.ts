@@ -3,8 +3,10 @@ import {
   SCHEDULE_MIN_FUTURE_MS,
   SCHEDULE_SAFETY_MARGIN_MS,
   isEligibleToScheduleNow,
+  nextApprovalAwaited,
   partitionByScheduleEligibility,
   shouldOfferAutoSchedule,
+  shouldShowAwaitingApproval,
   targetsTikTokService,
 } from '../autoScheduleNudge';
 
@@ -142,5 +144,64 @@ describe('partitionByScheduleEligibility', () => {
 
   it('returns two empty arrays for an empty input', () => {
     expect(partitionByScheduleEligibility([], NOW)).toEqual({ eligible: [], missingDate: [] });
+  });
+});
+
+describe('nextApprovalAwaited', () => {
+  const step = (ordem: number, nome: string, tipo: string, open: boolean) => ({
+    ordem,
+    nome,
+    tipo,
+    open,
+  });
+
+  it('names the second open approval when two are open (the case the server skips)', () => {
+    expect(
+      nextApprovalAwaited([
+        step(1, 'Aprovação da Copy', 'aprovacao_cliente', true),
+        step(2, 'Mídia', 'padrao', true),
+        step(3, 'Aprovação da Mídia', 'aprovacao_cliente', true),
+      ]),
+    ).toBe('Aprovação da Mídia');
+  });
+
+  it('is null when this is the last open approval', () => {
+    expect(
+      nextApprovalAwaited([
+        step(1, 'Aprovação da Copy', 'aprovacao_cliente', false),
+        step(3, 'Aprovação da Mídia', 'aprovacao_cliente', true),
+      ]),
+    ).toBeNull();
+  });
+
+  it('is null with no approval steps, or none open', () => {
+    expect(nextApprovalAwaited([])).toBeNull();
+    expect(nextApprovalAwaited([step(1, 'Mídia', 'padrao', true)])).toBeNull();
+  });
+
+  it('orders by ordem regardless of input order', () => {
+    expect(
+      nextApprovalAwaited([
+        step(5, 'Aprovação final', 'aprovacao_cliente', true),
+        step(1, 'Aprovação da Copy', 'aprovacao_cliente', true),
+        step(3, 'Aprovação intermediária', 'aprovacao_cliente', true),
+      ]),
+    ).toBe('Aprovação intermediária');
+  });
+});
+
+describe('shouldShowAwaitingApproval', () => {
+  const base = {
+    status: 'aprovado_cliente',
+    autoPublishOnApproval: true,
+    awaitedApproval: 'Aprovação da Mídia',
+  };
+
+  it('shows only when approved, auto-publish is on and a later approval is awaited', () => {
+    expect(shouldShowAwaitingApproval(base)).toBe(true);
+    expect(shouldShowAwaitingApproval({ ...base, status: 'enviado_cliente' })).toBe(false);
+    expect(shouldShowAwaitingApproval({ ...base, status: 'agendado' })).toBe(false);
+    expect(shouldShowAwaitingApproval({ ...base, autoPublishOnApproval: false })).toBe(false);
+    expect(shouldShowAwaitingApproval({ ...base, awaitedApproval: null })).toBe(false);
   });
 });
