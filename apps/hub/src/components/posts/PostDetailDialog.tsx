@@ -552,7 +552,7 @@ function PostDetailContent({
         }`}
       >
         {!singleColumn && (
-          <div className="relative h-[55vh] md:h-full min-h-0">
+          <div className="relative h-[55svh] md:h-full min-h-0 shrink-0">
             <span className="absolute top-3 left-3 z-20 rounded-full bg-black/45 text-white text-[11px] px-2 py-0.5">
               {t('posts.counter', '{{current}} de {{total}}', {
                 current: nav.index + 1,
@@ -572,89 +572,98 @@ function PostDetailContent({
               <CheckCircle size={14} aria-hidden="true" /> {flashText}
             </p>
           )}
-          <div className="flex items-start gap-3 px-4 pt-4 pb-3 border-b hub-border">
-            <div className="flex-1 min-w-0 space-y-2">
-              <h3 className="font-display text-[18px] leading-[1.15] hub-txt">{post.titulo}</h3>
-              {chips}
-              {singleColumn && (
-                <span className="text-[11px] hub-tx3">
-                  {t('posts.counter', '{{current}} de {{total}}', {
-                    current: nav.index + 1,
-                    total: posts.length,
-                  })}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <SharePostButton postId={post.id} />
-              <button
-                type="button"
-                onClick={close}
-                aria-label={t('posts.closeDialog', 'Fechar postagem')}
-                className="w-8 h-8 rounded-full hub-bg-soft hub-tx2 flex items-center justify-center"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          <div role="tablist" className="flex gap-5 px-4 border-b hub-border">
-            {(['content', 'history'] as const).map((key) => (
-              <button
-                key={key}
-                role="tab"
-                type="button"
-                aria-selected={tab === key}
-                onClick={() => {
-                  if (key === 'history') setHistoryVisited(true);
-                  setTab(key);
-                }}
-                className={`py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors ${tab === key ? 'hub-txt border-[var(--hub-txt)]' : 'hub-tx3 border-transparent'}`}
-              >
-                {key === 'history'
-                  ? t('posts.tabHistory', 'Histórico e comentários')
-                  : kind === 'text'
-                    ? t('posts.tabText', 'Texto')
-                    : t('posts.tabCaption', 'Legenda')}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
-            {historyVisited && (
-              <div hidden={tab !== 'history'}>
-                <PostHistoryPanel
-                  post={post}
-                  token={token}
-                  approvals={approvals}
-                  onCommentSent={onApprovalSubmitted}
-                  onDirtyChange={handleHistoryDirtyChange}
-                  embedded
-                />
+          {/* On phones the header, tabs and body share ONE scroll region so the strip and
+              the action footer below always stay inside the card, whatever the title and
+              chip rows cost. On md+ `contents` dissolves the wrapper and the three stay
+              direct column items, exactly as before. */}
+          <div className="flex-1 min-h-0 overflow-y-auto md:contents">
+            <div className="flex items-start gap-3 px-4 pt-4 pb-3 border-b hub-border">
+              <div className="flex-1 min-w-0 space-y-2">
+                <h3 className="font-display text-[18px] leading-[1.15] hub-txt">{post.titulo}</h3>
+                {chips}
+                {singleColumn && (
+                  <span className="text-[11px] hub-tx3">
+                    {t('posts.counter', '{{current}} de {{total}}', {
+                      current: nav.index + 1,
+                      total: posts.length,
+                    })}
+                  </span>
+                )}
               </div>
-            )}
-            <div hidden={tab === 'history'}>
-              {showPanel ? (
-                <CorrectionPanel
-                  key={post.id}
-                  post={post}
-                  edit={edit}
-                  submitting={submitting || locked}
-                  onSubmitCorrection={(c, m) => submit('correcao', c, m)}
-                  onDirtyChange={handleDirtyChange}
-                />
-              ) : (
-                <>
-                  {isPending && edit.hasPendingSuggestion && (
-                    <div className="mb-3">
-                      <SuggestionPendingNotice />
-                    </div>
-                  )}
-                  {isPending && edit.wasRejected && <RejectedSuggestionNotice />}
-                  {readingBody}
-                  {autoPublishNote}
-                </>
+              <div className="flex items-center gap-2 shrink-0">
+                <SharePostButton postId={post.id} />
+                <button
+                  type="button"
+                  onClick={close}
+                  aria-label={t('posts.closeDialog', 'Fechar postagem')}
+                  className="w-8 h-8 rounded-full hub-bg-soft hub-tx2 flex items-center justify-center"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div
+              role="tablist"
+              className="sticky top-0 z-10 hub-bg-card md:static flex gap-5 px-4 border-b hub-border"
+            >
+              {(['content', 'history'] as const).map((key) => (
+                <button
+                  key={key}
+                  role="tab"
+                  type="button"
+                  aria-selected={tab === key}
+                  onClick={() => {
+                    if (key === 'history') setHistoryVisited(true);
+                    setTab(key);
+                  }}
+                  className={`py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors ${tab === key ? 'hub-txt border-[var(--hub-txt)]' : 'hub-tx3 border-transparent'}`}
+                >
+                  {key === 'history'
+                    ? t('posts.tabHistory', 'Histórico e comentários')
+                    : kind === 'text'
+                      ? t('posts.tabText', 'Texto')
+                      : t('posts.tabCaption', 'Legenda')}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+              {historyVisited && (
+                <div hidden={tab !== 'history'}>
+                  <PostHistoryPanel
+                    post={post}
+                    token={token}
+                    approvals={approvals}
+                    onCommentSent={onApprovalSubmitted}
+                    onDirtyChange={handleHistoryDirtyChange}
+                    embedded
+                  />
+                </div>
               )}
+              <div hidden={tab === 'history'}>
+                {showPanel ? (
+                  <CorrectionPanel
+                    key={post.id}
+                    post={post}
+                    edit={edit}
+                    submitting={submitting || locked}
+                    onSubmitCorrection={(c, m) => submit('correcao', c, m)}
+                    onDirtyChange={handleDirtyChange}
+                  />
+                ) : (
+                  <>
+                    {isPending && edit.hasPendingSuggestion && (
+                      <div className="mb-3">
+                        <SuggestionPendingNotice />
+                      </div>
+                    )}
+                    {isPending && edit.wasRejected && <RejectedSuggestionNotice />}
+                    {readingBody}
+                    {autoPublishNote}
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
