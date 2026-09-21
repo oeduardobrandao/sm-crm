@@ -719,6 +719,27 @@ describe('TarefaFormDialog Repetir', () => {
     expect(screen.getByLabelText('Título')).toBeInTheDocument();
   });
 
+  it.each([
+    'Esta tarefa não pertence a uma série.',
+    'Tarefa não encontrada neste workspace.',
+    'Série não encontrada neste workspace.',
+  ])(
+    'shows the RPC message "%s" instead of the generic toast (concurrent-tab race)',
+    async (msg) => {
+      aplicarEdicaoSerieMock.mockRejectedValue({ code: 'P0001', message: msg });
+      renderDialog(
+        <TarefaFormDialog
+          {...baseProps}
+          editing={makeEditing({ data_limite: '2026-01-12', serie: SERIE })}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+      await screen.findByText('Aplicar a quais tarefas?');
+      fireEvent.click(screen.getByRole('button', { name: 'Esta e as próximas' }));
+      await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith(msg));
+    },
+  );
+
   it('editing an occurrence with an unchanged rule never calls criarTarefaSerie', async () => {
     aplicarEdicaoSerieMock.mockResolvedValue(undefined);
     updateTarefaMock.mockResolvedValue({});

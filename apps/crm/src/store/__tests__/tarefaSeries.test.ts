@@ -73,6 +73,14 @@ describe('tarefa series store', () => {
     expect(mockSyncMentions).toHaveBeenCalledWith('tarefa', 42, [7]);
   });
 
+  it('criarTarefaSerie throws (and syncs nothing) when the RPC returns no row', async () => {
+    mockRpc.mockResolvedValue({ data: [], error: null });
+    await expect(criarTarefaSerie(REGRA, PAYLOAD, [], [])).rejects.toThrow(/returned no row/);
+    mockRpc.mockResolvedValue({ data: null, error: null });
+    await expect(criarTarefaSerie(REGRA, PAYLOAD, [], [])).rejects.toThrow(/returned no row/);
+    expect(mockSyncMentions).not.toHaveBeenCalled();
+  });
+
   it('criarTarefaSerie throws the RPC error (message and code preserved)', async () => {
     mockRpc.mockResolvedValue({
       data: null,

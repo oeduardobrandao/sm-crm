@@ -79,6 +79,9 @@ function mensagemErro(e: unknown, fallback: string, fromOnCreate: boolean): stri
     msg.startsWith('A data final') ||
     msg.startsWith('Reabra a tarefa') ||
     msg.startsWith('Esta tarefa já pertence') ||
+    msg.startsWith('Esta tarefa não pertence') ||
+    msg.startsWith('Tarefa não encontrada') ||
+    msg.startsWith('Série não encontrada') ||
     msg.startsWith('Responsável não encontrado') ||
     msg.startsWith('Cliente não encontrado');
   if (conhecida || (fromOnCreate && msg)) return msg;

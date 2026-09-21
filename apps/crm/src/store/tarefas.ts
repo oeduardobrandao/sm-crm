@@ -133,7 +133,10 @@ export async function getTarefas(): Promise<TarefaWithRelations[]> {
 }
 
 export async function addTarefa(
-  t: Omit<Tarefa, 'id' | 'user_id' | 'conta_id' | 'concluida_em' | 'created_at' | 'updated_at'>,
+  t: Omit<
+    Tarefa,
+    'id' | 'user_id' | 'conta_id' | 'concluida_em' | 'serie_id' | 'created_at' | 'updated_at'
+  >,
   tagIds: number[] = [],
 ): Promise<Tarefa> {
   const user_id = await getUserId();
@@ -156,7 +159,7 @@ export async function addTarefa(
 
 export async function updateTarefa(
   id: number,
-  patch: Partial<Omit<Tarefa, 'id' | 'user_id' | 'conta_id' | 'concluida_em'>>,
+  patch: Partial<Omit<Tarefa, 'id' | 'user_id' | 'conta_id' | 'concluida_em' | 'serie_id'>>,
 ): Promise<Tarefa> {
   const { data, error } = await supabase
     .from('tarefas')
@@ -293,7 +296,8 @@ export async function criarTarefaSerie(
     p_tarefa_id: tarefaId ?? null,
   });
   if (error) throw error;
-  const row = (data as { serie_id: number; tarefa_id: number }[])[0];
+  const row = (data as { serie_id: number; tarefa_id: number }[] | null)?.[0];
+  if (!row) throw new Error('tarefa_serie_criar returned no row');
   await syncMentions(
     'tarefa',
     row.tarefa_id,
