@@ -208,3 +208,261 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- ============ (2) TAREFA_SERIES + TAREFAS CHANGES + GUARDS ============
+
+-- Template shape is enforced at the row (CHECK), never at generation time:
+-- the cron is all-or-nothing per run, so one malformed template would make
+-- generate_recurring_tarefas() raise for every series.
+CREATE OR REPLACE FUNCTION public.tarefa_serie_subtarefas_validas(p jsonb) RETURNS boolean
+LANGUAGE sql IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT CASE
+    WHEN p IS NULL OR jsonb_typeof(p) <> 'array' THEN false
+    ELSE jsonb_array_length(p) <= 50
+     AND NOT EXISTS (
+       SELECT 1 FROM jsonb_array_elements(p) e
+       WHERE jsonb_typeof(e) <> 'string'
+          OR btrim(e #>> '{}') = ''
+          OR length(e #>> '{}') > 200
+     )
+  END;
+$$;
+
+-- weekly: 1..7 distinct values in 0..6, no NULLs.
+CREATE OR REPLACE FUNCTION public.tarefa_serie_dias_semana_validos(p int[]) RETURNS boolean
+LANGUAGE sql IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT CASE
+    WHEN p IS NULL OR cardinality(p) NOT BETWEEN 1 AND 7 OR array_position(p, NULL) IS NOT NULL THEN false
+    ELSE (SELECT count(DISTINCT d) = cardinality(p) AND bool_and(d BETWEEN 0 AND 6) FROM unnest(p) d)
+  END;
+$$;
+
+-- jsonb array of numbers -> int[]; NULL for anything else. Used by the RPCs.
+CREATE OR REPLACE FUNCTION public.tarefa_serie_jsonb_int_array(p jsonb) RETURNS int[]
+LANGUAGE sql IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT CASE
+    WHEN p IS NULL OR jsonb_typeof(p) <> 'array' THEN NULL
+    ELSE (SELECT coalesce(array_agg(e::int ORDER BY ord), '{}') FROM jsonb_array_elements_text(p) WITH ORDINALITY AS t(e, ord))
+  END;
+$$;
+
+CREATE TABLE public.tarefa_series (
+  id             bigserial PRIMARY KEY,
+  conta_id       uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id        uuid NOT NULL,
+  freq           text NOT NULL,
+  intervalo      int  NOT NULL DEFAULT 1,
+  dias_semana    int[],
+  dia_mes        int,
+  mes            int,
+  modo           text NOT NULL,
+  inicio         date NOT NULL,
+  fim            date,
+  pausada        boolean NOT NULL DEFAULT false,
+  encerrada_em   timestamptz,
+  proxima_data   date,
+  titulo         text NOT NULL,
+  descricao      text,
+  descricao_rich jsonb,
+  responsavel_id bigint REFERENCES public.membros(id)  ON DELETE SET NULL,
+  cliente_id     bigint REFERENCES public.clientes(id) ON DELETE SET NULL,
+  tag_ids        bigint[] NOT NULL DEFAULT '{}',
+  subtarefas     jsonb NOT NULL DEFAULT '[]',
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT tarefa_series_id_conta_uq UNIQUE (id, conta_id),
+  CONSTRAINT tarefa_series_freq_chk CHECK (freq IN ('daily', 'weekly', 'monthly', 'yearly')),
+  CONSTRAINT tarefa_series_intervalo_chk CHECK (intervalo BETWEEN 1 AND 99),
+  CONSTRAINT tarefa_series_dias_semana_chk CHECK (
+    CASE WHEN freq = 'weekly' THEN public.tarefa_serie_dias_semana_validos(dias_semana)
+         ELSE dias_semana IS NULL END),
+  CONSTRAINT tarefa_series_dia_mes_chk CHECK (
+    CASE WHEN freq IN ('monthly', 'yearly') THEN dia_mes IS NOT NULL AND dia_mes BETWEEN 1 AND 31
+         ELSE dia_mes IS NULL END),
+  CONSTRAINT tarefa_series_mes_chk CHECK (
+    CASE WHEN freq = 'yearly' THEN mes IS NOT NULL AND mes BETWEEN 1 AND 12
+         ELSE mes IS NULL END),
+  CONSTRAINT tarefa_series_modo_chk CHECK (modo IN ('ao_concluir', 'calendario')),
+  CONSTRAINT tarefa_series_fim_chk CHECK (fim IS NULL OR fim >= inicio),
+  CONSTRAINT tarefa_series_titulo_chk CHECK (btrim(titulo) <> '' AND length(titulo) <= 200),
+  CONSTRAINT tarefa_series_descricao_rich_chk CHECK (descricao_rich IS NULL OR jsonb_typeof(descricao_rich) = 'object'),
+  CONSTRAINT tarefa_series_tag_ids_chk CHECK (array_position(tag_ids, NULL) IS NULL AND cardinality(tag_ids) <= 50),
+  CONSTRAINT tarefa_series_subtarefas_chk CHECK (public.tarefa_serie_subtarefas_validas(subtarefas))
+);
+
+CREATE INDEX tarefa_series_conta_idx ON public.tarefa_series (conta_id);
+CREATE INDEX tarefa_series_cron_idx ON public.tarefa_series (proxima_data)
+  WHERE modo = 'calendario' AND NOT pausada AND encerrada_em IS NULL AND proxima_data IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.set_tarefa_series_updated_at() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER set_tarefa_series_updated_at
+  BEFORE UPDATE ON public.tarefa_series
+  FOR EACH ROW EXECUTE FUNCTION public.set_tarefa_series_updated_at();
+
+-- proxima_data is DB-owned. The primary barrier is privileges (REVOKE below);
+-- this guard is identity-free defence in depth for service_role, the owner
+-- and future RPC paths. It is SECURITY INVOKER on purpose (no data access
+-- beyond NEW/OLD) and NEVER branches on current_user: inside a SECURITY
+-- DEFINER chain current_user is the owner for every caller
+-- (20260817000001_cliente_foto_manual_upload.sql, lines ~105-155).
+CREATE OR REPLACE FUNCTION public.tarefa_series_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_hoje date := public.tarefa_hoje_sp();
+  v_after date;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    v_after := NEW.inicio;
+  ELSE
+    IF NEW.conta_id IS DISTINCT FROM OLD.conta_id OR NEW.user_id IS DISTINCT FROM OLD.user_id THEN
+      RAISE EXCEPTION 'tarefa_series: conta_id e user_id sao imutaveis';
+    END IF;
+    IF OLD.encerrada_em IS NOT NULL
+       AND (NEW.encerrada_em IS NULL OR NEW.encerrada_em < OLD.encerrada_em) THEN
+      RAISE EXCEPTION 'tarefa_series: encerrada_em nao pode ser limpo nem recuar';
+    END IF;
+    IF NEW.freq IS DISTINCT FROM OLD.freq
+       OR NEW.intervalo IS DISTINCT FROM OLD.intervalo
+       OR NEW.dias_semana IS DISTINCT FROM OLD.dias_semana
+       OR NEW.dia_mes IS DISTINCT FROM OLD.dia_mes
+       OR NEW.mes IS DISTINCT FROM OLD.mes
+       OR NEW.inicio IS DISTINCT FROM OLD.inicio
+       OR NEW.modo IS DISTINCT FROM OLD.modo
+       OR NEW.fim IS DISTINCT FROM OLD.fim THEN
+      -- rule changed: nothing in the past is generated
+      v_after := greatest(NEW.inicio, v_hoje);
+    ELSIF OLD.pausada AND NOT NEW.pausada THEN
+      -- resumed: today counts, missed dates during the pause are skipped
+      v_after := greatest(NEW.inicio, v_hoje - 1);
+    END IF;
+  END IF;
+
+  IF v_after IS NOT NULL THEN
+    -- BEFORE triggers run ahead of the table CHECKs. A malformed rule must
+    -- reach them and fail there as check_violation, not raise from inside
+    -- tarefa_next_date(); so only derive the cursor for a well-formed rule
+    -- (this mirrors the freq/intervalo/dias_semana/dia_mes/mes CHECKs).
+    IF NEW.inicio IS NULL
+       OR NEW.freq IS NULL OR NEW.freq NOT IN ('daily', 'weekly', 'monthly', 'yearly')
+       OR NEW.intervalo IS NULL OR NEW.intervalo NOT BETWEEN 1 AND 99
+       OR (NEW.freq = 'weekly' AND NOT coalesce(public.tarefa_serie_dias_semana_validos(NEW.dias_semana), false))
+       OR (NEW.freq IN ('monthly', 'yearly') AND (NEW.dia_mes IS NULL OR NEW.dia_mes NOT BETWEEN 1 AND 31))
+       OR (NEW.freq = 'yearly' AND (NEW.mes IS NULL OR NEW.mes NOT BETWEEN 1 AND 12)) THEN
+      NEW.proxima_data := NULL;
+      RETURN NEW;
+    END IF;
+    IF NEW.modo = 'calendario' THEN
+      NEW.proxima_data := public.tarefa_next_date(
+        NEW.freq, NEW.intervalo, NEW.dias_semana, NEW.dia_mes, NEW.mes, NEW.inicio, v_after);
+      IF NEW.fim IS NOT NULL AND NEW.proxima_data > NEW.fim THEN
+        NEW.proxima_data := NULL;
+      END IF;
+    ELSE
+      NEW.proxima_data := NULL;
+    END IF;
+  ELSIF coalesce(current_setting('app.tarefa_cursor_writer', true), '') <> 'on' THEN
+    -- any other UPDATE retains the cursor; only generate_recurring_tarefas()
+    -- sets the flag (transaction-local) right before its cursor UPDATE
+    NEW.proxima_data := OLD.proxima_data;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER tarefa_series_guard
+  BEFORE INSERT OR UPDATE ON public.tarefa_series
+  FOR EACH ROW EXECUTE FUNCTION public.tarefa_series_guard();
+
+ALTER TABLE public.tarefa_series ENABLE ROW LEVEL SECURITY;
+
+-- SELECT-only for tenants. There is deliberately no INSERT/UPDATE/DELETE
+-- policy: every write goes through the SECURITY DEFINER RPCs in section 4.
+CREATE POLICY tarefa_series_tenant_select ON public.tarefa_series
+  FOR SELECT USING (conta_id IN (SELECT public.get_my_conta_id()));
+
+CREATE POLICY tarefa_series_service_role_bypass ON public.tarefa_series
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- The hosted default ACL grants ALL on new tables; without this REVOKE a
+-- missing policy would deny by filtering (0 rows) instead of raising.
+REVOKE INSERT, UPDATE, DELETE ON public.tarefa_series FROM anon, authenticated;
+
+-- ---- tarefas ----
+ALTER TABLE public.tarefas
+  ADD COLUMN serie_id bigint REFERENCES public.tarefa_series(id) ON DELETE SET NULL;
+-- Simple FK on purpose: a composite (serie_id, conta_id) ON DELETE SET NULL
+-- would null the NOT NULL conta_id. The WITH CHECK EXISTS below is the
+-- tenant tie instead.
+ALTER TABLE public.tarefas
+  ADD CONSTRAINT tarefas_serie_data_uq UNIQUE (serie_id, data_limite),
+  ADD CONSTRAINT tarefas_serie_exige_prazo CHECK (serie_id IS NULL OR data_limite IS NOT NULL);
+CREATE INDEX tarefas_serie_idx ON public.tarefas (serie_id) WHERE serie_id IS NOT NULL;
+
+-- serie_id is linked/unlinked only by the RPCs. SECURITY INVOKER in the exact
+-- shape of guard_financial_write() (20260728000002): current_user is the real
+-- caller here, while a write issued from inside a SECURITY DEFINER RPC runs
+-- as the owner and passes. Never make this DEFINER, never use session_user.
+CREATE OR REPLACE FUNCTION public.tarefas_serie_id_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF current_user IN ('authenticated', 'anon') THEN
+    IF (TG_OP = 'INSERT' AND NEW.serie_id IS NOT NULL)
+       OR (TG_OP = 'UPDATE' AND NEW.serie_id IS DISTINCT FROM OLD.serie_id) THEN
+      RAISE EXCEPTION 'serie_id so pode ser alterado pelas RPCs de serie'
+        USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER tarefas_serie_id_guard
+  BEFORE INSERT OR UPDATE OF serie_id ON public.tarefas
+  FOR EACH ROW EXECUTE FUNCTION public.tarefas_serie_id_guard();
+
+-- Second barrier: WITH CHECK ties serie_id to the row's own workspace, same
+-- pattern as responsavel_id/cliente_id. Policy text repeated in full.
+DROP POLICY tarefas_tenant_all ON public.tarefas;
+CREATE POLICY tarefas_tenant_all ON public.tarefas
+  FOR ALL USING (conta_id IN (SELECT public.get_my_conta_id()))
+  WITH CHECK (
+    conta_id IN (SELECT public.get_my_conta_id())
+    AND (
+      responsavel_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM public.membros m
+        WHERE m.id = tarefas.responsavel_id AND m.conta_id = tarefas.conta_id
+      )
+    )
+    AND (
+      cliente_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM public.clientes c
+        WHERE c.id = tarefas.cliente_id AND c.conta_id = tarefas.conta_id
+      )
+    )
+    AND (
+      serie_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM public.tarefa_series s
+        WHERE s.id = tarefas.serie_id AND s.conta_id = tarefas.conta_id
+      )
+    )
+  );
