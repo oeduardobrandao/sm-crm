@@ -31,19 +31,22 @@ import {
 import { DatePicker } from '@/components/ui/date-picker';
 import {
   addTarefa,
+  aplicarEdicaoSerie,
   criarTarefaSerie,
   isSerieDateConflict,
   updateTarefa,
   setTarefaTags,
   type Cliente,
   type Membro,
+  type TarefaSerieRegra,
   type TarefaTag,
   type TarefaWithRelations,
 } from '../../../store';
 import { parseDateOnly, toDateOnlyString, STATUS_LABELS, STATUS_ORDER } from '../tarefasLogic';
 import { tarefaFormSchema, BLANK_TAREFA_FORM, type TarefaFormValues } from './tarefaFormSchema';
 import { RecorrenciaFields } from './RecorrenciaFields';
-import { regraFromForm } from '../recorrenciaLogic';
+import { regraFromForm, regraIgual } from '../recorrenciaLogic';
+import { EscopoEdicaoDialog } from './EscopoEdicaoDialog';
 import { TagPicker } from './TagPicker';
 import { TarefaDescriptionEditor } from './TarefaDescriptionEditor';
 import {
@@ -129,6 +132,12 @@ export function TarefaFormDialog({
     plainTextToTarefaDescriptionDoc(''),
   );
   const [editorRevision, setEditorRevision] = useState(0);
+  // Pending occurrence edit awaiting the scope choice (spec: Scope dialogs > Edit).
+  const [escopo, setEscopo] = useState<{
+    payload: TarefaFormPayload;
+    regra: TarefaSerieRegra;
+    regraAlterada: boolean;
+  } | null>(null);
 
   const form = useForm<TarefaFormValues>({
     resolver: zodResolver(tarefaFormSchema),
@@ -217,10 +226,24 @@ export function TarefaFormDialog({
       !onCreate && values.data_limite ? regraFromForm(values, values.data_limite, landing) : null;
     try {
       if (editing && isOcorrencia) {
-        // Task 9 replaces this with the scope dialog; a plain update until then.
-        await updateTarefa(editing.id!, payload);
-        await setTarefaTags(editing.id!, tagIds);
-        toast.success('Tarefa atualizada!');
+        const serieAtual = editing.serie!;
+        const regraAtual: TarefaSerieRegra = {
+          freq: serieAtual.freq,
+          intervalo: serieAtual.intervalo,
+          dias_semana: serieAtual.dias_semana,
+          dia_mes: serieAtual.dia_mes,
+          mes: serieAtual.mes,
+          modo: serieAtual.modo,
+          fim: serieAtual.fim,
+        };
+        if (values.repetir === 'never' || !regra) {
+          // "Não repete": "Esta e as próximas" by construction, so no dialog
+          await aplicarEdicaoSerie(editing.id!, payload, tagIds, regraAtual, true);
+          toast.success('Tarefa atualizada!');
+        } else {
+          setEscopo({ payload, regra, regraAlterada: !regraIgual(regra, regraAtual) });
+          return; // the dialog's handlers finish the save; `finally` clears saving
+        }
       } else if (editing && regra) {
         // standalone task promoted to a series: no scope dialog
         await criarTarefaSerie(regra, payload, tagIds, [], editing.id!);
@@ -251,140 +274,90 @@ export function TarefaFormDialog({
     }
   };
 
+  const finalizarEscopo = async (run: () => Promise<void>) => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await run();
+      toast.success('Tarefa atualizada!');
+      setEscopo(null);
+      onSaved();
+      onClose();
+    } catch (e) {
+      toast.error(mensagemErro(e, 'Erro ao atualizar tarefa', false));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const salvarSomenteEsta = () =>
+    finalizarEscopo(async () => {
+      await updateTarefa(editing!.id!, escopo!.payload);
+      await setTarefaTags(editing!.id!, tagIds);
+    });
+
+  const salvarEstaEProximas = () =>
+    finalizarEscopo(() =>
+      aplicarEdicaoSerie(editing!.id!, escopo!.payload, tagIds, escopo!.regra, false),
+    );
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && !saving && !imageUploading && onClose()}>
-      <DialogContent className="sm:max-w-[640px]">
-        <DialogHeader>
-          <DialogTitle>
-            {editing ? 'Editar tarefa' : onCreate ? 'Converter em tarefa' : 'Nova tarefa'}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            {editing
-              ? 'Edite os campos da tarefa'
-              : onCreate
-                ? 'Preencha os campos para converter a solicitação em tarefa'
-                : 'Preencha os campos da nova tarefa'}
-          </DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
-            <FormField
-              control={form.control}
-              name="titulo"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Título</FormLabel>
-                  <FormControl>
-                    <Input placeholder="O que precisa ser feito?" autoFocus {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="descricao"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descrição</FormLabel>
-                  <TarefaDescriptionEditor
-                    key={editorRevision}
-                    initialContent={editorInitialContent}
-                    onUpdate={(doc, plainText) => {
-                      setDescriptionDoc(sanitizeTarefaDescriptionDoc(doc));
-                      field.onChange(plainText);
-                    }}
-                    onUploadStateChange={setImageUploading}
-                  />
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <div className="grid grid-cols-2 gap-3">
+    <>
+      <Dialog open={open} onOpenChange={(o) => !o && !saving && !imageUploading && onClose()}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>
+              {editing ? 'Editar tarefa' : onCreate ? 'Converter em tarefa' : 'Nova tarefa'}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              {editing
+                ? 'Edite os campos da tarefa'
+                : onCreate
+                  ? 'Preencha os campos para converter a solicitação em tarefa'
+                  : 'Preencha os campos da nova tarefa'}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
               <FormField
                 control={form.control}
-                name="responsavel_id"
+                name="titulo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Responsável</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">Sem responsável</SelectItem>
-                        {sortedMembros
-                          .filter((m) => m.id != null)
-                          .map((m) => (
-                            <SelectItem key={m.id} value={String(m.id)}>
-                              {m.nome}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="cliente_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cliente</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={lockCliente}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">Sem cliente</SelectItem>
-                        {activeClientes
-                          .filter((c) => c.id != null)
-                          .map((c) => (
-                            <SelectItem key={c.id} value={String(c.id)}>
-                              {c.nome}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="data_limite"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Prazo</FormLabel>
+                    <FormLabel>Título</FormLabel>
                     <FormControl>
-                      <DatePicker
-                        value={field.value}
-                        onChange={field.onChange}
-                        placeholder="Sem prazo"
-                      />
+                      <Input placeholder="O que precisa ser feito?" autoFocus {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              {editing && (
+              <FormField
+                control={form.control}
+                name="descricao"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descrição</FormLabel>
+                    <TarefaDescriptionEditor
+                      key={editorRevision}
+                      initialContent={editorInitialContent}
+                      onUpdate={(doc, plainText) => {
+                        setDescriptionDoc(sanitizeTarefaDescriptionDoc(doc));
+                        field.onChange(plainText);
+                      }}
+                      onUploadStateChange={setImageUploading}
+                    />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-3">
                 <FormField
                   control={form.control}
-                  name="status"
+                  name="responsavel_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="block">Status</FormLabel>
+                      <FormLabel>Responsável</FormLabel>
                       <Select value={field.value} onValueChange={field.onChange}>
                         <FormControl>
                           <SelectTrigger>
@@ -392,60 +365,147 @@ export function TarefaFormDialog({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {STATUS_ORDER.map((s) => (
-                            <SelectItem key={s} value={s}>
-                              {STATUS_LABELS[s]}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="none">Sem responsável</SelectItem>
+                          {sortedMembros
+                            .filter((m) => m.id != null)
+                            .map((m) => (
+                              <SelectItem key={m.id} value={String(m.id)}>
+                                {m.nome}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="cliente_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cliente</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={lockCliente}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Sem cliente</SelectItem>
+                          {activeClientes
+                            .filter((c) => c.id != null)
+                            .map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {c.nome}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="data_limite"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Prazo</FormLabel>
+                      <FormControl>
+                        <DatePicker
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder="Sem prazo"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {editing && (
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="block">Status</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {STATUS_ORDER.map((s) => (
+                              <SelectItem key={s} value={s}>
+                                {STATUS_LABELS[s]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+              {!onCreate && (
+                <RecorrenciaFields
+                  form={form}
+                  landing={landing}
+                  disabled={repetirBloqueado}
+                  disabledHint={
+                    repetirBloqueado ? 'Reabra a tarefa para torná-la recorrente.' : undefined
+                  }
+                />
               )}
-            </div>
-            {!onCreate && (
-              <RecorrenciaFields
-                form={form}
-                landing={landing}
-                disabled={repetirBloqueado}
-                disabledHint={
-                  repetirBloqueado ? 'Reabra a tarefa para torná-la recorrente.' : undefined
-                }
-              />
-            )}
-            <div>
-              <FormLabel className="mb-2 block">Tags</FormLabel>
-              <TagPicker
-                tags={tags}
-                selectedIds={tagIds}
-                onSelectedChange={setTagIds}
-                onTagCreated={onTagCreated}
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-                disabled={saving || imageUploading}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={saving || imageUploading}>
-                {imageUploading
-                  ? 'Enviando imagem...'
-                  : saving
-                    ? 'Salvando...'
-                    : editing
-                      ? 'Salvar'
-                      : 'Criar tarefa'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+              <div>
+                <FormLabel className="mb-2 block">Tags</FormLabel>
+                <TagPicker
+                  tags={tags}
+                  selectedIds={tagIds}
+                  onSelectedChange={setTagIds}
+                  onTagCreated={onTagCreated}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={saving || imageUploading}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={saving || imageUploading}>
+                  {imageUploading
+                    ? 'Enviando imagem...'
+                    : saving
+                      ? 'Salvando...'
+                      : editing
+                        ? 'Salvar'
+                        : 'Criar tarefa'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+      <EscopoEdicaoDialog
+        open={escopo !== null}
+        regraAlterada={escopo?.regraAlterada ?? false}
+        saving={saving}
+        onSomenteEsta={salvarSomenteEsta}
+        onEstaEProximas={salvarEstaEProximas}
+        onCancel={() => setEscopo(null)}
+      />
+    </>
   );
 }

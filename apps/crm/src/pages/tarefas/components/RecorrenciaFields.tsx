@@ -13,6 +13,7 @@ import {
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   describeRecorrencia,
+  modoLabel,
   regraFromForm,
   REPETIR_LABELS,
   unidadeIntervalo,
@@ -135,6 +136,8 @@ export function RecorrenciaFields({
                   <FormControl>
                     <ToggleGroup
                       type="multiple"
+                      variant="outline"
+                      aria-label="Dias da semana"
                       className="justify-start"
                       value={field.value.map(String)}
                       onValueChange={(vals: string[]) => field.onChange(vals.map(Number))}
@@ -144,7 +147,7 @@ export function RecorrenciaFields({
                           key={day}
                           value={String(day)}
                           aria-label={WEEKDAY_NAMES[day]}
-                          className="h-8 w-8 rounded-full text-xs"
+                          className="h-8 w-8 min-w-0 rounded-full px-0 text-xs"
                         >
                           {letter}
                         </ToggleGroupItem>
@@ -187,16 +190,24 @@ export function RecorrenciaFields({
                 <FormControl>
                   <ToggleGroup
                     type="single"
+                    variant="outline"
+                    aria-label="Modo de geração"
                     className="grid grid-cols-2 gap-2"
                     value={field.value}
                     onValueChange={(v: string) => {
                       if (v) field.onChange(v);
                     }}
                   >
-                    <ToggleGroupItem value="ao_concluir" className="h-9">
+                    <ToggleGroupItem
+                      value="ao_concluir"
+                      className="h-auto min-h-9 min-w-0 py-1.5 text-center"
+                    >
                       Criar a próxima ao concluir
                     </ToggleGroupItem>
-                    <ToggleGroupItem value="calendario" className="h-9">
+                    <ToggleGroupItem
+                      value="calendario"
+                      className="h-auto min-h-9 min-w-0 py-1.5 text-center"
+                    >
                       Criar em toda data da regra
                     </ToggleGroupItem>
                   </ToggleGroup>
@@ -213,7 +224,7 @@ export function RecorrenciaFields({
             <p className="text-sm font-medium" data-testid="recorrencia-resumo">
               {describeRecorrencia(regra)}
               {' · '}
-              {modo === 'ao_concluir' ? 'cria a próxima ao concluir' : 'cria em toda data da regra'}
+              {modoLabel(modo)}
             </p>
           )}
         </>

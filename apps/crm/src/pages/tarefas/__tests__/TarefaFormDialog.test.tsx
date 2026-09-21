@@ -14,6 +14,8 @@ const {
   searchPostsForMentionMock,
   uploadInlineImageMock,
   criarTarefaSerieMock,
+  aplicarEdicaoSerieMock,
+  updateTarefaMock,
 } = vi.hoisted(() => ({
   addTarefaMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -31,18 +33,20 @@ const {
   searchPostsForMentionMock: vi.fn(),
   uploadInlineImageMock: vi.fn(),
   criarTarefaSerieMock: vi.fn(),
+  aplicarEdicaoSerieMock: vi.fn(),
+  updateTarefaMock: vi.fn(),
 }));
 
 vi.mock('../../../store', () => ({
   addTarefa: addTarefaMock,
-  updateTarefa: vi.fn(),
+  updateTarefa: updateTarefaMock,
   setTarefaTags: vi.fn(),
   addTarefaTag: vi.fn(),
   getMembros: getMembrosMock,
   getClientes: getClientesMock,
   getTarefas: getTarefasMock,
   criarTarefaSerie: criarTarefaSerieMock,
-  aplicarEdicaoSerie: vi.fn(),
+  aplicarEdicaoSerie: aplicarEdicaoSerieMock,
   definirEstadoSerie: vi.fn(),
   deleteTarefaSerieCompleta: vi.fn(),
   isSerieDateConflict: () => false,
@@ -460,7 +464,11 @@ describe('TarefaFormDialog Repetir', () => {
     fireEvent.change(selectWithOption('Diariamente'), { target: { value: 'daily' } });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(criarTarefaSerieMock).toHaveBeenCalledTimes(1));
-    expect(criarTarefaSerieMock.mock.calls[0][4]).toBe(42);
+    const [regra, payload, tagIds, , tarefaId] = criarTarefaSerieMock.mock.calls[0];
+    expect(regra).toMatchObject({ freq: 'daily', intervalo: 1, modo: 'ao_concluir', fim: null });
+    expect(payload).toMatchObject({ titulo: 'Tarefa', data_limite: '2099-01-05' });
+    expect(tagIds).toEqual([]);
+    expect(tarefaId).toBe(42);
     expect(screen.queryByText('Aplicar a quais tarefas?')).not.toBeInTheDocument();
   });
 
@@ -523,5 +531,172 @@ describe('TarefaFormDialog Repetir', () => {
     expect(await screen.findByTestId('recorrencia-resumo')).toHaveTextContent(
       'A cada 2 semanas, na segunda',
     );
+  });
+
+  const SERIE = {
+    id: 9,
+    freq: 'weekly' as const,
+    intervalo: 1,
+    dias_semana: [1],
+    dia_mes: null,
+    mes: null,
+    modo: 'ao_concluir' as const,
+    fim: null,
+    inicio: '2026-01-05',
+    pausada: false,
+    encerrada_em: null,
+    proxima_data: null,
+  };
+
+  it('editing an occurrence opens the scope dialog; "Esta e as próximas" sends the full payload, tags and whole rule', async () => {
+    aplicarEdicaoSerieMock.mockResolvedValue(undefined);
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        editing={makeEditing({
+          data_limite: '2026-01-12',
+          serie: SERIE,
+          tags: [{ id: 3, nome: 't', cor: '#000' }],
+        })}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Novo título' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(await screen.findByText('Aplicar a quais tarefas?')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'As próximas tarefas criadas usarão estas alterações. Tarefas que já existem não mudam.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Somente esta' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Esta e as próximas' }));
+    await waitFor(() => expect(aplicarEdicaoSerieMock).toHaveBeenCalledTimes(1));
+    const [id, payload, tagIds, regra, encerrar] = aplicarEdicaoSerieMock.mock.calls[0];
+    expect(id).toBe(42);
+    expect(payload).toEqual({
+      titulo: 'Novo título',
+      descricao: null,
+      descricao_rich: null,
+      status: 'pendente',
+      responsavel_id: null,
+      cliente_id: null,
+      data_limite: '2026-01-12',
+    });
+    expect(tagIds).toEqual([3]);
+    expect(regra).toEqual({
+      freq: 'weekly',
+      intervalo: 1,
+      dias_semana: [1],
+      dia_mes: null,
+      mes: null,
+      modo: 'ao_concluir',
+      fim: null,
+    });
+    expect(encerrar).toBe(false);
+    expect(updateTarefaMock).not.toHaveBeenCalled();
+    expect(criarTarefaSerieMock).not.toHaveBeenCalled();
+  });
+
+  it('"Somente esta" is disabled with the helper when the rule changed, enabled otherwise and uses updateTarefa', async () => {
+    updateTarefaMock.mockResolvedValue({});
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        editing={makeEditing({ data_limite: '2026-01-12', serie: SERIE })}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Intervalo'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await screen.findByText('Aplicar a quais tarefas?');
+    expect(screen.getByRole('button', { name: 'Somente esta' })).toBeDisabled();
+    expect(screen.getByText('A regra de repetição vale para toda a série.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() =>
+      expect(screen.queryByText('Aplicar a quais tarefas?')).not.toBeInTheDocument(),
+    );
+
+    fireEvent.change(screen.getByLabelText('Intervalo'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await screen.findByText('Aplicar a quais tarefas?');
+    fireEvent.click(screen.getByRole('button', { name: 'Somente esta' }));
+    await waitFor(() =>
+      expect(updateTarefaMock).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ titulo: 'Tarefa' }),
+      ),
+    );
+    expect(aplicarEdicaoSerieMock).not.toHaveBeenCalled();
+    expect(criarTarefaSerieMock).not.toHaveBeenCalled();
+  });
+
+  it('"Não repete" on an occurrence skips the dialog and ends the series (encerrar = true)', async () => {
+    aplicarEdicaoSerieMock.mockResolvedValue(undefined);
+    const onSaved = vi.fn();
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        onSaved={onSaved}
+        editing={makeEditing({ data_limite: '2026-01-12', serie: SERIE })}
+      />,
+    );
+    fireEvent.change(selectWithOption('Não repete'), { target: { value: 'never' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(aplicarEdicaoSerieMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Aplicar a quais tarefas?')).not.toBeInTheDocument();
+    expect(aplicarEdicaoSerieMock.mock.calls[0][4]).toBe(true);
+    // the stored rule is sent unchanged, not the (hidden) form fields
+    expect(aplicarEdicaoSerieMock.mock.calls[0][3]).toMatchObject({
+      freq: 'weekly',
+      dias_semana: [1],
+    });
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+  });
+
+  it('a failed scope save keeps the form open and surfaces the error', async () => {
+    aplicarEdicaoSerieMock.mockRejectedValue(new Error('boom'));
+    const onSaved = vi.fn();
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        onSaved={onSaved}
+        editing={makeEditing({ data_limite: '2026-01-12', serie: SERIE })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await screen.findByText('Aplicar a quais tarefas?');
+    fireEvent.click(screen.getByRole('button', { name: 'Esta e as próximas' }));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('Erro ao atualizar tarefa'));
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it('editing an occurrence with an unchanged rule never calls criarTarefaSerie', async () => {
+    aplicarEdicaoSerieMock.mockResolvedValue(undefined);
+    updateTarefaMock.mockResolvedValue({});
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        editing={makeEditing({ data_limite: '2026-01-12', serie: SERIE })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await screen.findByText('Aplicar a quais tarefas?');
+    expect(screen.getByRole('button', { name: 'Somente esta' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Somente esta' }));
+    await waitFor(() => expect(updateTarefaMock).toHaveBeenCalledTimes(1));
+    expect(criarTarefaSerieMock).not.toHaveBeenCalled();
+    expect(aplicarEdicaoSerieMock).not.toHaveBeenCalled();
+  });
+
+  it('labels the weekday group and the mode group for assistive tech', async () => {
+    renderDialog(
+      <TarefaFormDialog
+        {...baseProps}
+        editing={null}
+        initialValues={{ titulo: 'x', data_limite: '2099-01-05' }}
+      />,
+    );
+    fireEvent.change(selectWithOption('Semanalmente'), { target: { value: 'weekly' } });
+    expect(await screen.findByRole('group', { name: 'Dias da semana' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Modo de geração' })).toBeInTheDocument();
   });
 });
