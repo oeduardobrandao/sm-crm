@@ -24,7 +24,23 @@ const NAV_ITEMS = [
   { id: 'faq', label: 'FAQ' },
 ];
 
-export function LandingHeader({ variant }: { variant: 'landing' | 'subpage' }) {
+export function SkipLink() {
+  return (
+    <a className="skip-link" href="#main-content">
+      Pular para o conteúdo
+    </a>
+  );
+}
+
+/** `skipLink={false}` when the page renders <SkipLink /> itself, ahead of content that
+ * precedes the header in tab order (the landing promo banner). */
+export function LandingHeader({
+  variant,
+  skipLink = true,
+}: {
+  variant: 'landing' | 'subpage';
+  skipLink?: boolean;
+}) {
   const { user, loading } = useAuth();
   const [isDark, setIsDark] = useState(
     document.documentElement.getAttribute('data-theme') === 'dark',
@@ -39,9 +55,7 @@ export function LandingHeader({ variant }: { variant: 'landing' | 'subpage' }) {
 
   return (
     <>
-      <a className="skip-link" href="#main-content">
-        Pular para o conteúdo
-      </a>
+      {skipLink && <SkipLink />}
       <header className="site-hdr">
         <div className="hdr-inner">
           <a
