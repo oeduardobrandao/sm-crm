@@ -8,6 +8,8 @@ import {
   serieEstado,
   serieEstadoLabel,
   unidadeIntervalo,
+  WEEKDAY_CHIPS,
+  WEEKDAY_NAMES,
 } from '../recorrenciaLogic';
 import { tarefaFormSchema, BLANK_TAREFA_FORM } from '../components/tarefaFormSchema';
 
@@ -47,6 +49,24 @@ describe('describeRecorrencia', () => {
       'Toda segunda, quarta e domingo',
     );
   });
+  it('weekly uses the masculine article/preposition for domingo and sábado', () => {
+    expect(describeRecorrencia({ ...base, freq: 'weekly', dias_semana: [0] })).toBe('Todo domingo');
+    expect(describeRecorrencia({ ...base, freq: 'weekly', dias_semana: [6] })).toBe('Todo sábado');
+    expect(describeRecorrencia({ ...base, freq: 'weekly', dias_semana: [6, 0] })).toBe(
+      'Todo sábado e domingo',
+    );
+    expect(describeRecorrencia({ ...base, freq: 'weekly', intervalo: 2, dias_semana: [0] })).toBe(
+      'A cada 2 semanas, no domingo',
+    );
+    expect(
+      describeRecorrencia({ ...base, freq: 'weekly', intervalo: 2, dias_semana: [1, 3] }),
+    ).toBe('A cada 2 semanas, na segunda e quarta');
+  });
+  it('weekly summary ignores duplicated days', () => {
+    expect(describeRecorrencia({ ...base, freq: 'weekly', dias_semana: [1, 1, 3] })).toBe(
+      'Toda segunda e quarta',
+    );
+  });
   it('monthly, with the last-day hint for days above 28', () => {
     expect(describeRecorrencia({ ...base, freq: 'monthly', dia_mes: 15 })).toBe('Todo dia 15');
     expect(describeRecorrencia({ ...base, freq: 'monthly', intervalo: 3, dia_mes: 31 })).toBe(
@@ -70,6 +90,18 @@ describe('labels and states', () => {
     expect(unidadeIntervalo('daily', 2)).toBe('dias');
     expect(unidadeIntervalo('monthly', 1)).toBe('mês');
     expect(unidadeIntervalo('monthly', 2)).toBe('meses');
+  });
+  it('weekday chips and names are indexed by dias_semana (0 = domingo)', () => {
+    expect([...WEEKDAY_CHIPS]).toEqual(['D', 'S', 'T', 'Q', 'Q', 'S', 'S']);
+    expect([...WEEKDAY_NAMES]).toEqual([
+      'domingo',
+      'segunda',
+      'terça',
+      'quarta',
+      'quinta',
+      'sexta',
+      'sábado',
+    ]);
   });
   it('modoLabel', () => {
     expect(modoLabel('ao_concluir')).toBe('cria a próxima ao concluir');
@@ -96,6 +128,10 @@ describe('labels and states', () => {
     expect(serieEstado(serie({ modo: 'calendario', proxima_data: '2026-01-06' }), TODAY)).toBe(
       'ativa',
     );
+    // calendario with an exhausted cursor is Concluída even when not paused
+    expect(
+      serieEstado(serie({ modo: 'calendario', proxima_data: null, pausada: false }), TODAY),
+    ).toBe('concluida');
     // ao_concluir never reads proxima_data
     expect(serieEstado(serie({ modo: 'ao_concluir', proxima_data: null }), TODAY)).toBe('ativa');
   });
@@ -155,6 +191,37 @@ describe('regraFromForm / regraIgual', () => {
       modo: 'calendario',
       fim: '2026-12-31',
     });
+  });
+  it('weekly dedupes repeated days', () => {
+    expect(
+      regraFromForm({ ...values, repetir: 'weekly', dias_semana: [1, 1, 3] }, TODAY, null)
+        ?.dias_semana,
+    ).toEqual([1, 3]);
+  });
+  it('falls back to the due date when the landing has null fields', () => {
+    expect(
+      regraFromForm(values, new Date(2026, 1, 28), { dia_mes: null, mes: null }),
+    ).toMatchObject({ dia_mes: 28, mes: null });
+    expect(
+      regraFromForm({ ...values, repetir: 'yearly' }, new Date(2026, 2, 10), {
+        dia_mes: null,
+        mes: null,
+      }),
+    ).toMatchObject({ dia_mes: 10, mes: 3 });
+    expect(
+      regraFromForm({ ...values, repetir: 'yearly' }, new Date(2026, 2, 10), {
+        dia_mes: 5,
+        mes: null,
+      }),
+    ).toMatchObject({ dia_mes: 5, mes: 3 });
+  });
+  it('regraIgual ignores duplicated days', () => {
+    expect(
+      regraIgual(
+        { ...base, freq: 'weekly', dias_semana: [1, 1] },
+        { ...base, freq: 'weekly', dias_semana: [1] },
+      ),
+    ).toBe(true);
   });
   it('regraIgual ignores day order', () => {
     expect(

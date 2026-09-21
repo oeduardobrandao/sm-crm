@@ -47,9 +47,9 @@ export function unidadeIntervalo(freq: TarefaSerieFreq, n: number): string {
   }
 }
 
-/** Mon..Sun order (Sunday last), matching the DB's date_trunc('week') weeks. */
+/** Distinct days in Mon..Sun order (Sunday last), matching the DB's date_trunc('week') weeks. */
 function sortWeekdays(days: number[]): number[] {
-  return [...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+  return [...new Set(days)].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
 }
 
 function joinNomes(days: number[]): string {
@@ -70,8 +70,14 @@ export function describeRecorrencia(regra: TarefaSerieRegra): string {
       base = n === 1 ? 'Todo dia' : `A cada ${n} dias`;
       break;
     case 'weekly': {
-      const nomes = joinNomes(regra.dias_semana ?? []);
-      base = n === 1 ? `Toda ${nomes}` : `A cada ${n} semanas, na ${nomes}`;
+      const dias = sortWeekdays(regra.dias_semana ?? []);
+      const nomes = joinNomes(dias);
+      // domingo (0) and sábado (6) are masculine; the article follows the first listed day.
+      const masc = dias[0] === 0 || dias[0] === 6;
+      base =
+        n === 1
+          ? `${masc ? 'Todo' : 'Toda'} ${nomes}`
+          : `A cada ${n} semanas, ${masc ? 'no' : 'na'} ${nomes}`;
       break;
     }
     case 'monthly': {
