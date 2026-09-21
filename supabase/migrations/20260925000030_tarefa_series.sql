@@ -903,3 +903,63 @@ REVOKE ALL ON FUNCTION public.tarefa_serie_definir_estado(bigint, text) FROM PUB
 GRANT EXECUTE ON FUNCTION public.tarefa_serie_definir_estado(bigint, text) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION public.tarefa_serie_excluir(bigint) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.tarefa_serie_excluir(bigint) TO authenticated, service_role;
+
+-- ============ (5) CALENDARIO GENERATOR ============
+
+-- Hourly job body. Catch-up creates ONLY the most recent missed date (owner
+-- decision, spec "Product decision"). No per-series EXCEPTION block: a
+-- failure marks the run failed and cron-health alerts within 70 min.
+CREATE OR REPLACE FUNCTION public.generate_recurring_tarefas()
+RETURNS TABLE (series_processadas int, ocorrencias_criadas int)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_hoje date := tarefa_hoje_sp();
+  s record;
+  v_d date;
+  v_next date;
+  v_id bigint;
+  v_proc int := 0;
+  v_created int := 0;
+BEGIN
+  -- the only place that may move the cursor through the guard (transaction-local)
+  PERFORM set_config('app.tarefa_cursor_writer', 'on', true);
+
+  FOR s IN
+    SELECT * FROM tarefa_series
+     WHERE modo = 'calendario' AND NOT pausada AND encerrada_em IS NULL
+       AND proxima_data IS NOT NULL AND proxima_data <= v_hoje
+     FOR UPDATE SKIP LOCKED
+  LOOP
+    v_proc := v_proc + 1;
+    -- most recent rule date <= today AND <= fim. proxima_data is a rule date
+    -- <= today and <= fim (the cursor is NULL once it would pass fim), so
+    -- v_d >= proxima_data always holds: never skip, always materialize.
+    v_d := tarefa_prev_date(s.freq, s.intervalo, s.dias_semana, s.dia_mes, s.mes, s.inicio,
+                            least(v_hoje, coalesce(s.fim, v_hoje)));
+    IF v_d IS NULL OR v_d < s.proxima_data THEN
+      -- A row the guard did not produce (hand-edited cursor past fim, or a
+      -- rule changed underneath it). Exhausted is a defined state, not an
+      -- error: never materialize with a NULL date, never abort the run.
+      UPDATE tarefa_series SET proxima_data = NULL WHERE id = s.id;
+      CONTINUE;
+    END IF;
+
+    v_id := tarefa_serie_materializar(s.id, v_d);
+    IF v_id IS NOT NULL THEN v_created := v_created + 1; END IF;
+
+    v_next := tarefa_next_date(s.freq, s.intervalo, s.dias_semana, s.dia_mes, s.mes, s.inicio, v_d);
+    IF s.fim IS NOT NULL AND v_next > s.fim THEN v_next := NULL; END IF;
+    UPDATE tarefa_series SET proxima_data = v_next WHERE id = s.id;
+  END LOOP;
+
+  PERFORM set_config('app.tarefa_cursor_writer', '', true);
+  series_processadas := v_proc;
+  ocorrencias_criadas := v_created;
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.generate_recurring_tarefas() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.generate_recurring_tarefas() TO service_role;

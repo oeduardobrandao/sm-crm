@@ -60,7 +60,9 @@ declare
     'public.tarefa_serie_garantir_aberta(bigint, date)',
     'public.tarefas_serie_ao_concluir_fn()',
     'public.tarefas_serie_ao_excluir_fn()',
-    'public.tarefa_series_apos_retomar_fn()'
+    'public.tarefa_series_apos_retomar_fn()',
+    'public.tarefa_serie_validar_refs(uuid, bigint, bigint)',
+    'public.generate_recurring_tarefas()'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down

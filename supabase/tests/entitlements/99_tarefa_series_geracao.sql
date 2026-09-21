@@ -473,7 +473,98 @@ begin
   assert pg_temp.et_abertas(v_serie) = 0, '(p3) editing a paused series generated';
 
   execute 'reset role';
-  -- CALENDARIO_BLOCK (Task 5 appends here)
+  -- ---- calendario generator (as the owner: the job runs as postgres) ----
+  perform set_config('app.tarefa_hoje', '2026-01-05', true);
+
+  -- (i) cursor on INSERT strictly after inicio
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-01-05', 'Cal daily') returning id into v_serie;
+  select proxima_data into v_date from tarefa_series where id = v_serie;
+  assert v_date = '2026-01-06', format('(i) cursor expected 2026-01-06, got %s', v_date);
+
+  -- (i) cursor 10 days back: only the most recent due date, cursor moves past today.
+  -- Assertions count per series: the promoted "Solta" calendario series from (a)
+  -- is also due on this run, so the function's total is not what is under test.
+  perform set_config('app.tarefa_hoje', '2026-01-16', true);
+  perform public.generate_recurring_tarefas();
+  select count(*) into v_n from tarefas where serie_id = v_serie;
+  assert v_n = 1, format('(i) expected 1 occurrence, got %s', v_n);
+  select data_limite into v_date from tarefas where serie_id = v_serie;
+  assert v_date = '2026-01-16', format('(i) expected the occurrence on 2026-01-16, got %s', v_date);
+  select proxima_data into v_date from tarefa_series where id = v_serie;
+  assert v_date = '2026-01-17', format('(i) cursor expected 2026-01-17, got %s', v_date);
+  -- second call creates 0
+  select ocorrencias_criadas into v_n from public.generate_recurring_tarefas();
+  assert v_n = 0, format('(i) second run created %s', v_n);
+
+  -- (i) cursor 3 years back (daily): exactly one occurrence, instantly
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2023-01-01', 'Old cal') returning id into v_serie;
+  perform public.generate_recurring_tarefas();
+  select count(*) into v_n from tarefas where serie_id = v_serie; assert v_n = 1, format('(i) 3-year catch-up expected 1, got %s', v_n);
+  select data_limite into v_date from tarefas where serie_id = v_serie; assert v_date = '2026-01-16', '(i) 3-year catch-up wrong date';
+
+  -- (i) fim -> proxima_data NULL after the last eligible date
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, fim, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-01-16', '2026-01-17', 'Ends soon') returning id into v_serie;
+  perform set_config('app.tarefa_hoje', '2026-01-17', true);
+  perform public.generate_recurring_tarefas();
+  select proxima_data into v_date from tarefa_series where id = v_serie;
+  assert v_date is null, format('(i) cursor should be NULL past fim, got %s', v_date);
+  select count(*) into v_n from tarefas where serie_id = v_serie and data_limite = '2026-01-17'; assert v_n = 1, '(i) last date before fim missing';
+
+  -- (i) recovery after fim: daily, fim 01-31, cursor 01-25, first run on 02-02 -> exactly 01-31, cursor NULL
+  perform set_config('app.tarefa_hoje', '2026-01-24', true);
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, fim, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-01-24', '2026-01-31', 'Recover') returning id into v_serie;
+  select proxima_data into v_date from tarefa_series where id = v_serie; assert v_date = '2026-01-25', '(i) recover: cursor setup';
+  perform set_config('app.tarefa_hoje', '2026-02-02', true);
+  select ocorrencias_criadas into v_n from public.generate_recurring_tarefas();
+  select count(*) into v_n from tarefas where serie_id = v_serie; assert v_n = 1, format('(i) recover: expected 1 occurrence, got %s', v_n);
+  select data_limite into v_date from tarefas where serie_id = v_serie; assert v_date = '2026-01-31', format('(i) recover: expected 2026-01-31, got %s', v_date);
+  select proxima_data into v_date from tarefa_series where id = v_serie; assert v_date is null, '(i) recover: cursor not NULL';
+  select ocorrencias_criadas into v_n from public.generate_recurring_tarefas();
+  select count(*) into v_n from tarefas where serie_id = v_serie; assert v_n = 1, '(i) recover: second run created more';
+
+  -- (i) recovery after fim, weekly Monday with fim between rule dates: last rule date <= fim
+  perform set_config('app.tarefa_hoje', '2026-01-05', true);
+  insert into tarefa_series (conta_id, user_id, freq, dias_semana, modo, inicio, fim, titulo)
+    values (v_ws, v_user, 'weekly', '{1}', 'calendario', '2026-01-05', '2026-01-21', 'Recover weekly') returning id into v_serie;
+  perform set_config('app.tarefa_hoje', '2026-02-10', true);
+  perform public.generate_recurring_tarefas();
+  select count(*) into v_n from tarefas where serie_id = v_serie; assert v_n = 1, '(i) recover weekly: expected 1';
+  select data_limite into v_date from tarefas where serie_id = v_serie; assert v_date = '2026-01-19', format('(i) recover weekly: expected 2026-01-19, got %s', v_date);
+  select proxima_data into v_date from tarefa_series where id = v_serie; assert v_date is null, '(i) recover weekly: cursor not NULL';
+
+  -- (i) fim before the run day but cursor == fim still materializes it
+  perform set_config('app.tarefa_hoje', '2026-01-05', true);
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, fim, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-01-05', '2026-01-06', 'Cursor is fim') returning id into v_serie;
+  select proxima_data into v_date from tarefa_series where id = v_serie; assert v_date = '2026-01-06', '(i) cursor==fim setup';
+  perform set_config('app.tarefa_hoje', '2026-01-09', true);
+  perform public.generate_recurring_tarefas();
+  select count(*) into v_n from tarefas where serie_id = v_serie and data_limite = '2026-01-06'; assert v_n = 1, '(i) cursor==fim not materialized';
+  select proxima_data into v_date from tarefa_series where id = v_serie; assert v_date is null, '(i) cursor==fim: cursor not NULL';
+
+  -- (i) a hand-forced bad row (cursor past fim, written with the cron flag as the
+  -- owner) is exhausted without raising, and another due series in the same run
+  -- is still processed
+  perform set_config('app.tarefa_hoje', '2026-03-01', true);
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, fim, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-03-01', '2026-03-03', 'Bad row') returning id into v_serie;
+  perform set_config('app.tarefa_cursor_writer', 'on', true);
+  update tarefa_series set proxima_data = '2026-03-08' where id = v_serie;   -- > fim, bypasses normalization on purpose
+  perform set_config('app.tarefa_cursor_writer', '', true);
+  select proxima_data into v_date from tarefa_series where id = v_serie; assert v_date = '2026-03-08', '(i) bad row setup';
+  insert into tarefa_series (conta_id, user_id, freq, modo, inicio, titulo)
+    values (v_ws, v_user, 'daily', 'calendario', '2026-03-01', 'Good row') returning id into v_n;
+  perform set_config('app.tarefa_hoje', '2026-03-10', true);
+  perform public.generate_recurring_tarefas();                                -- must not raise
+  select proxima_data into v_date from tarefa_series where id = v_serie; assert v_date is null, '(i) bad row not exhausted';
+  select count(*) into v_n from tarefas where serie_id = v_n; assert v_n = 1, '(i) good row not processed in the same run as the bad row';
+
+  -- (l) cursor recompute on pause/resume/rule change and (m) the tarefas CHECK
+  -- and UNIQUE are covered in 99_tarefa_series_rls.
 
   raise notice 'PASS 99_tarefa_series_geracao';
 end $$;
