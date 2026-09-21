@@ -34,12 +34,26 @@ import { captureEvent } from '@/lib/analytics';
 import { stripFinancialFields } from '@/lib/financialAccess';
 import { supabase } from '@/lib/supabase';
 import { inviteUser } from '@/services/invite';
-import { addMembro, getWorkspaceUsers, setMembroCrmUser, updateMembro, type Membro } from '@/store';
+import {
+  addMembro,
+  getWorkspaceRoles,
+  getWorkspaceUsers,
+  setMembroCrmUser,
+  updateMembro,
+  updateWorkspaceUserRole,
+  type Membro,
+} from '@/store';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { inviteSuccessMessage } from '../configuracao/inviteHelpers';
 import { InviteSection } from './InviteSection';
 import { computeSeatState, derivePendingInvites, membroInviteErrorMessage } from './inviteSupport';
 import { MEMBRO_FORM_DEFAULTS, membroSchema, type MembroFormValues } from './membroForm';
+
+type WorkspaceUserRow = { id: string; nome?: string; role: string; role_id: string | null };
+
+// 'admin' | 'agent' | 'custom:<uuid>' -- a custom papel always carries role_id
+// (the server pins its chassis role to 'agent'), so role_id decides the form.
+const encodeRole = (u: WorkspaceUserRow) => (u.role_id ? `custom:${u.role_id}` : u.role);
 
 interface MembroFormDialogProps {
   open: boolean;
@@ -50,7 +64,7 @@ interface MembroFormDialogProps {
 
 export function MembroFormDialog({ open, membro, membros, onOpenChange }: MembroFormDialogProps) {
   const qc = useQueryClient();
-  const { canSeeFinancials, can, workspaceRole, profile } = useAuth();
+  const { canSeeFinancials, can, workspaceRole, profile, user } = useAuth();
   const canManageWorkspace = can('equipe', 'editar') === true;
   const canAssignRoles = workspaceRole === 'owner' || workspaceRole === 'admin';
   const [saving, setSaving] = useState(false);
@@ -82,6 +96,20 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
     () => workspaceUsers.filter((u: { id: string }) => !linkedElsewhere.has(u.id)),
     [workspaceUsers, linkedElsewhere],
   );
+  const { data: workspaceRoles = [] } = useQuery({
+    queryKey: ['workspace-roles'],
+    queryFn: getWorkspaceRoles,
+    enabled: canAssignRoles,
+  });
+  // update-role is owner/admin only, and the server refuses to touch yourself
+  // or an owner unless the caller is an owner (MembrosTab's canActOnMember).
+  const linkedUser = (workspaceUsers as WorkspaceUserRow[]).find((u) => u.id === crmUserId);
+  const canEditLinkedRole =
+    canAssignRoles &&
+    !!linkedUser &&
+    linkedUser.id !== user?.id &&
+    (linkedUser.role !== 'owner' || workspaceRole === 'owner');
+  const currentLinkedRole = linkedUser ? encodeRole(linkedUser) : '';
   const { limits, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
   const { data: pendingInviteRows = [] } = useQuery({
     queryKey: ['invites', 'equipe-pending', profile?.conta_id],
@@ -171,6 +199,29 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
         membroId = created.id;
       }
 
+      let roleFailed = false;
+      const desiredRole = values.crmRole;
+      if (
+        canEditLinkedRole &&
+        desiredCrmUser !== null &&
+        desiredRole &&
+        desiredRole !== currentLinkedRole
+      ) {
+        try {
+          await updateWorkspaceUserRole(
+            desiredCrmUser,
+            desiredRole.startsWith('custom:')
+              ? { roleId: desiredRole.slice(7) }
+              : { role: desiredRole as 'admin' | 'agent' },
+          );
+        } catch (err) {
+          roleFailed = true;
+          toast.error(
+            'Membro salvo, mas não foi possível alterar a função: ' + (err as Error).message,
+          );
+        }
+      }
+
       const wantsInvite =
         values.inviteEnabled && canManageWorkspace && membroId != null && desiredCrmUser === null;
       if (wantsInvite) {
@@ -186,7 +237,7 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
         } catch (err) {
           toast.error(membroInviteErrorMessage(err));
         }
-      } else {
+      } else if (!roleFailed) {
         toast.success(membro?.id ? 'Membro atualizado' : 'Membro adicionado');
       }
 
@@ -298,7 +349,10 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                     <FormLabel>Conta CRM</FormLabel>
                     <Select
                       value={field.value ? field.value : '__none__'}
-                      onValueChange={(value) => field.onChange(value === '__none__' ? '' : value)}
+                      onValueChange={(value) => {
+                        field.onChange(value === '__none__' ? '' : value);
+                        form.setValue('crmRole', '');
+                      }}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -318,6 +372,34 @@ export function MembroFormDialog({ open, membro, membros, onOpenChange }: Membro
                       Vincular um membro a um usuário do workspace permite que ele acesse o CRM e
                       veja suas atribuições.
                     </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+            {canEditLinkedRole && (
+              <FormField
+                control={form.control}
+                name="crmRole"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Função no workspace</FormLabel>
+                    <Select value={field.value || currentLinkedRole} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="agent">Agente</SelectItem>
+                        {workspaceRoles.map((r) => (
+                          <SelectItem key={r.id} value={`custom:${r.id}`}>
+                            {r.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

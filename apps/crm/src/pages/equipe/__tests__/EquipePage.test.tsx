@@ -46,6 +46,8 @@ vi.mock('@/store', async () => {
     updateMembro: vi.fn(),
     removeMembro: vi.fn(),
     getWorkspaceUsers: vi.fn(),
+    getWorkspaceRoles: vi.fn(),
+    updateWorkspaceUserRole: vi.fn(),
     setMembroCrmUser: vi.fn(),
   };
 });
@@ -76,6 +78,8 @@ const mockedUpdateMembro = vi.mocked(store.updateMembro);
 const mockedSetMembroCrmUser = vi.mocked(store.setMembroCrmUser);
 const mockedGetWorkspaceUsers = vi.mocked(store.getWorkspaceUsers);
 const mockedInviteUser = vi.mocked(inviteService.inviteUser);
+const mockedGetWorkspaceRoles = vi.mocked(store.getWorkspaceRoles);
+const mockedUpdateWorkspaceUserRole = vi.mocked(store.updateWorkspaceUserRole);
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -108,6 +112,7 @@ describe('EquipePage — onSubmit invite orchestration', () => {
     });
     mockedGetMembros.mockResolvedValue([]);
     mockedGetWorkspaceUsers.mockResolvedValue([{ id: 'u1', nome: 'Ana' }] as never);
+    mockedGetWorkspaceRoles.mockResolvedValue([]);
   });
 
   it('keeps the saved membro when the invite call fails: no membro-save toast is lost, and the invite failure never masquerades as a save failure', async () => {
@@ -221,6 +226,95 @@ describe('EquipePage — onSubmit invite orchestration', () => {
     await waitFor(() => {
       expect(toastSuccessMock).toHaveBeenCalledWith('Membro atualizado');
     });
+  });
+});
+
+describe('EquipePage — função no workspace for a linked membro', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'owner' })),
+      workspaceRole: 'owner',
+      user: { id: 'me' },
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    mockUseWorkspaceLimits.mockReturnValue({
+      limits: { max_team_members: 10 },
+      features: null,
+      planName: 'Pro',
+      isLoading: false,
+      isUnlimited: false,
+    });
+    mockedGetMembros.mockResolvedValue([
+      {
+        id: 7,
+        nome: 'Pessoa Vinculada',
+        cargo: 'Designer',
+        tipo: 'clt',
+        avatar_url: '',
+        crm_user_id: 'u1',
+      },
+    ] as never);
+    mockedGetWorkspaceUsers.mockResolvedValue([
+      { id: 'u1', nome: 'Ana', role: 'agent', role_id: null },
+    ] as never);
+    mockedGetWorkspaceRoles.mockResolvedValue([
+      { id: 'r1', nome: 'Social', permissions: {}, created_at: '' },
+    ]);
+    mockedUpdateMembro.mockResolvedValue(undefined as never);
+    mockedUpdateWorkspaceUserRole.mockResolvedValue(undefined);
+  });
+
+  async function openEdit() {
+    const nameEl = await screen.findByText('Pessoa Vinculada');
+    const card = nameEl.closest('.team-card') as HTMLElement;
+    fireEvent.click(within(card).getAllByRole('button')[1]);
+    return screen.findByRole('dialog');
+  }
+
+  it('changes the linked account role on save', async () => {
+    renderPage();
+    const dialog = await openEdit();
+
+    fireEvent.click(await within(dialog).findByRole('combobox', { name: 'Função no workspace' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Social' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => {
+      expect(mockedUpdateWorkspaceUserRole).toHaveBeenCalledWith('u1', { roleId: 'r1' });
+    });
+    expect(mockedUpdateMembro).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call update-role when the função is left untouched', async () => {
+    renderPage();
+    const dialog = await openEdit();
+    await within(dialog).findByRole('combobox', { name: 'Função no workspace' });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => {
+      expect(mockedUpdateMembro).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedUpdateWorkspaceUserRole).not.toHaveBeenCalled();
+  });
+
+  it('hides the função select for a non owner/admin caller', async () => {
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(fakeMembership({ role: 'owner' })),
+      workspaceRole: 'agent',
+      user: { id: 'me' },
+      profile: { id: 'me', nome: 'Eu', conta_id: 'ws-1' },
+    });
+    renderPage();
+    const dialog = await openEdit();
+    await within(dialog).findByRole('combobox', { name: 'Conta CRM' });
+
+    expect(
+      within(dialog).queryByRole('combobox', { name: 'Função no workspace' }),
+    ).not.toBeInTheDocument();
   });
 });
 
