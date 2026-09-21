@@ -25,3 +25,26 @@ Deno.test("sendCronFailureEmail escapes error text in the HTML body", async () =
   assert(payload.html.includes("&lt;script&gt;"), "error text not escaped");
   assert(!payload.html.includes("<script>alert"), "raw script tag leaked into html");
 });
+
+Deno.test("sendCronFailureEmail shows the run start time when the caller supplies one", async () => {
+  const original = globalThis.fetch;
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  Deno.env.set("ALERT_EMAIL", "alerts@example.test");
+  let capturedBody = "";
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = String(init?.body ?? "");
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await sendCronFailureEmail("notification-email-cron", {
+      total: 1,
+      failed: 1,
+      errors: [{ accountId: "notification-email-cron", error: "connection failed" }],
+      context: { run_start_time: "2026-09-21T19:25:00.008035+00:00" },
+    });
+  } finally {
+    globalThis.fetch = original;
+  }
+  const { html } = JSON.parse(capturedBody);
+  assert(html.includes("Run started:</strong> 2026-09-21T19:25:00.008035+00:00"), "run start missing");
+});

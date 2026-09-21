@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
+  buildFailureDetail,
   type CronFailureRow,
   createCronHealthHandler,
   scanAndReport,
@@ -138,4 +139,14 @@ Deno.test("createCronHealthHandler runs when the cron secret matches", async () 
   const res = await handler(new Request("https://x/", { headers: { "x-cron-secret": "right" } }));
   assertEquals(res.status, 200);
   assertEquals(await res.text(), "ran");
+});
+
+Deno.test("buildFailureDetail names the failed job and carries the run start time", () => {
+  const detail = buildFailureDetail(
+    "notification-email-cron",
+    "connection failed",
+    row("notification-email-cron", "connection failed", "2026-09-21T19:25:00.008035+00:00"),
+  );
+  assertEquals(detail.errors, [{ accountId: "notification-email-cron", error: "connection failed" }]);
+  assertEquals(detail.context.run_start_time, "2026-09-21T19:25:00.008035+00:00");
 });
