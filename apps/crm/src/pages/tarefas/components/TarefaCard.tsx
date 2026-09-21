@@ -86,7 +86,7 @@ export function TarefaCard({
             textDecoration: tarefa.status === 'concluida' ? 'line-through' : undefined,
             opacity: tarefa.status === 'concluida' ? 0.6 : 1,
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             gap: '0.3rem',
           }}
         >
@@ -95,7 +95,12 @@ export function TarefaCard({
               role="img"
               aria-label="Tarefa recorrente"
               title={describeRecorrencia(tarefa.serie)}
-              style={{ display: 'inline-flex', color: 'var(--text-muted)', flexShrink: 0 }}
+              style={{
+                display: 'inline-flex',
+                color: 'var(--text-muted)',
+                flexShrink: 0,
+                marginTop: '0.2rem',
+              }}
             >
               <Repeat className="h-3 w-3" />
             </span>

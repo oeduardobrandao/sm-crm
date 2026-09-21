@@ -115,11 +115,11 @@ beforeEach(() => {
 
 describe('TarefaDetailSheet series', () => {
   it('shows the Repetição row with summary, mode and hint under Subtarefas', async () => {
-    renderSheet(makeTarefa({ serie: { ...SERIE, fim: '2026-12-31' } }));
+    renderSheet(makeTarefa({ serie: { ...SERIE, fim: '2099-12-31' } }));
     expect(
-      screen.getByText('Repete: Toda segunda até 31/12/2026 · cria a próxima ao concluir'),
+      screen.getByText('Repete: Toda segunda até 31/12/2099 · cria a próxima ao concluir'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Termina em 31/12/2026')).toBeInTheDocument();
+    expect(screen.getByText('Termina em 31/12/2099')).toBeInTheDocument();
     expect(
       screen.getByText(
         'As próximas ocorrências usam a lista da série. Para mudar, edite a tarefa e escolha Esta e as próximas.',
@@ -132,7 +132,8 @@ describe('TarefaDetailSheet series', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pausar série' }));
     await waitFor(() => expect(definirEstadoMock).toHaveBeenCalledWith(9, 'pausar'));
     expect(onRefresh).toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Retomar série' })).not.toBeInTheDocument();
+    expect(toastSuccessMock).toHaveBeenCalledWith('Série pausada!');
+    expect(screen.getByRole('button', { name: 'Encerrar série' })).toBeInTheDocument();
   });
 
   it('paused: Retomar calls retomar; Encerrar asks for confirmation first', async () => {
@@ -186,5 +187,29 @@ describe('TarefaDetailSheet series', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
     expect(await screen.findByText('Excluir tarefa?')).toBeInTheDocument();
     expect(screen.queryByText('Toda a série')).not.toBeInTheDocument();
+  });
+
+  it('"Toda a série" fires once when clicked twice while the request is pending', async () => {
+    let resolve!: () => void;
+    deleteSerieMock.mockReturnValueOnce(new Promise<void>((r) => (resolve = r)));
+    renderSheet(makeTarefa({ serie: SERIE }));
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
+    await screen.findByText('Excluir tarefa recorrente?');
+    const btn = screen.getByRole('button', { name: 'Toda a série' });
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    expect(deleteSerieMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Somente esta' })).toBeDisabled();
+    resolve();
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('Série excluída!'));
+  });
+
+  it('shows the "próxima ocorrência" hint only while the series is active', async () => {
+    renderSheet(makeTarefa({ serie: { ...SERIE, pausada: true } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
+    await screen.findByText('Excluir tarefa recorrente?');
+    expect(
+      screen.queryByText('A próxima ocorrência será criada normalmente.'),
+    ).not.toBeInTheDocument();
   });
 });

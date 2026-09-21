@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -92,6 +92,9 @@ export function TarefaDetailSheet({
   const badge = dueBadge(tarefa, now);
   const [confirmEncerrar, setConfirmEncerrar] = useState(false);
   const [serieBusy, setSerieBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  // Ref guard too: state alone would let two clicks in the same tick both through.
+  const deleteInFlight = useRef(false);
   const serie = tarefa.serie;
   const estado = serie ? serieEstado(serie, now) : null;
   const estadoLabel = serie ? serieEstadoLabel(serie, now) : null;
@@ -153,6 +156,9 @@ export function TarefaDetailSheet({
   };
 
   const handleDeleteTarefa = async () => {
+    if (deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    setDeleteBusy(true);
     try {
       await deleteTarefa(tarefa.id!);
       toast.success('Tarefa excluída!');
@@ -161,11 +167,14 @@ export function TarefaDetailSheet({
       onRefresh();
     } catch {
       toast.error('Erro ao excluir tarefa');
+    } finally {
+      deleteInFlight.current = false;
+      setDeleteBusy(false);
     }
   };
 
   const handleSerieEstado = async (verbo: 'pausar' | 'retomar' | 'encerrar') => {
-    if (!serie) return;
+    if (!serie || serieBusy) return;
     setSerieBusy(true);
     try {
       await definirEstadoSerie(serie.id, verbo);
@@ -186,7 +195,9 @@ export function TarefaDetailSheet({
   };
 
   const handleDeleteSerie = async () => {
-    if (!serie) return;
+    if (!serie || deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    setDeleteBusy(true);
     try {
       await deleteTarefaSerieCompleta(serie.id);
       toast.success('Série excluída!');
@@ -195,6 +206,9 @@ export function TarefaDetailSheet({
       onRefresh();
     } catch {
       toast.error('Erro ao excluir a série');
+    } finally {
+      deleteInFlight.current = false;
+      setDeleteBusy(false);
     }
   };
 
@@ -544,20 +558,24 @@ export function TarefaDetailSheet({
                       type="button"
                       variant="outline"
                       className="w-full"
+                      disabled={deleteBusy}
                       onClick={handleDeleteTarefa}
                     >
                       Somente esta
                     </Button>
-                    {tarefa.status !== 'concluida' && serie.modo === 'ao_concluir' && (
-                      <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                        A próxima ocorrência será criada normalmente.
-                      </p>
-                    )}
+                    {tarefa.status !== 'concluida' &&
+                      serie.modo === 'ao_concluir' &&
+                      estado === 'ativa' && (
+                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                          A próxima ocorrência será criada normalmente.
+                        </p>
+                      )}
                   </div>
                   <div>
                     <Button
                       type="button"
                       className="w-full bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+                      disabled={deleteBusy}
                       onClick={handleDeleteSerie}
                     >
                       Toda a série
@@ -605,6 +623,7 @@ export function TarefaDetailSheet({
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
               <AlertDialogAction
+                disabled={serieBusy}
                 onClick={(e) => {
                   e.preventDefault();
                   handleSerieEstado('encerrar');
