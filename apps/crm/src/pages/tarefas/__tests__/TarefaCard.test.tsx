@@ -218,4 +218,36 @@ describe('TarefaCard', () => {
     );
     expect(screen.queryByTitle('Ana Silva')).not.toBeInTheDocument();
   });
+
+  it('shows the repeat icon with the rule summary for an occurrence', () => {
+    render(
+      <TarefaCard
+        tarefa={makeTarefa({
+          serie: {
+            id: 1,
+            freq: 'weekly',
+            intervalo: 1,
+            dias_semana: [1],
+            dia_mes: null,
+            mes: null,
+            modo: 'ao_concluir',
+            fim: null,
+            inicio: '2026-01-05',
+            pausada: false,
+            encerrada_em: null,
+            proxima_data: null,
+          },
+        })}
+        membro={null}
+        now={NOW}
+        onClick={() => {}}
+        membros={[]}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(screen.getByRole('img', { name: 'Tarefa recorrente' })).toHaveAttribute(
+      'title',
+      'Toda segunda',
+    );
+  });
 });

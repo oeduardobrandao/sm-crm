@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
 import type { Membro, TarefaWithRelations } from '../../../store';
-import { updateTarefa } from '../../../store';
+import { isSerieDateConflict, updateTarefa } from '../../../store';
 import { buildDropId, groupByBoardColumn, parseDropId } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
 import { TarefaBoard, type BoardColumn, type BoardColumnAccent } from './boardShared';
@@ -52,14 +52,22 @@ export function BoardView({
     const target = parseDropId(dropId);
     if (!target || target.kind !== 'day') return;
     if (tarefa.data_limite === target.date) return;
+    if (target.date === null && tarefa.serie) {
+      toast.error('Tarefas de uma série precisam de prazo.');
+      return;
+    }
     applyOverride(tarefa.id!, { data_limite: target.date });
     try {
       await updateTarefa(tarefa.id!, { data_limite: target.date });
       toast.success(target.date ? 'Prazo atualizado!' : 'Prazo removido!');
       onRefresh();
-    } catch {
+    } catch (e) {
       clearOverride(tarefa.id!);
-      toast.error('Erro ao atualizar prazo');
+      toast.error(
+        isSerieDateConflict(e)
+          ? 'Já existe uma ocorrência desta série nesse dia.'
+          : 'Erro ao atualizar prazo',
+      );
     }
   };
 

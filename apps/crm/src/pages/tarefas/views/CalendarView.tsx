@@ -13,7 +13,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { toast } from 'sonner';
 import { MonthGrid } from '@/components/ui/month-grid';
-import { updateTarefa, type TarefaWithRelations } from '../../../store';
+import { isSerieDateConflict, updateTarefa, type TarefaWithRelations } from '../../../store';
 import { buildDropId, parseDropId, sortTarefas, toDateOnlyString } from '../tarefasLogic';
 import { useOptimisticTarefas } from '../hooks/useOptimisticTarefas';
 import { useAuth } from '@/context/AuthContext';
@@ -240,14 +240,22 @@ export function CalendarView({
     const target = parseDropId(String(over.id));
     if (!target || target.kind !== 'day') return;
     if (tarefa.data_limite === target.date || (!tarefa.data_limite && target.date === null)) return;
+    if (target.date === null && tarefa.serie) {
+      toast.error('Tarefas de uma série precisam de prazo.');
+      return;
+    }
     applyOverride(tarefa.id!, { data_limite: target.date });
     try {
       await updateTarefa(tarefa.id!, { data_limite: target.date });
       toast.success(target.date ? 'Prazo atualizado!' : 'Prazo removido!');
       onRefresh();
-    } catch {
+    } catch (e) {
       clearOverride(tarefa.id!);
-      toast.error('Erro ao atualizar prazo');
+      toast.error(
+        isSerieDateConflict(e)
+          ? 'Já existe uma ocorrência desta série nesse dia.'
+          : 'Erro ao atualizar prazo',
+      );
     }
   };
 
