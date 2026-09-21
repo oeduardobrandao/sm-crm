@@ -93,7 +93,7 @@ export default function LandingPage() {
     <div ref={rootRef} className="lp-root lp-v2">
       <PromoBanner />
       <LandingHeader variant="landing" />
-      <main>
+      <main id="main-content">
         <Hero />
         <Ticker />
         <Features />

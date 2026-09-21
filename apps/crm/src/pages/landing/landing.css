@@ -2299,3 +2299,23 @@ section.lp-pad-alt {
   font-size: 0.82rem;
   margin-bottom: 0.35rem;
 }
+
+/* ---- skip link: off-screen until keyboard focus ---- */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10000;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #12151a;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+.skip-link:focus {
+  transform: none;
+  outline: 2px solid #ffbf30;
+  outline-offset: 2px;
+}

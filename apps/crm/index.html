@@ -7,6 +7,7 @@
     <meta name="description" content="CRM para social media: clientes, aprovação de posts por link, agendamento automático no Instagram, relatórios e financeiro em um só lugar. Comece grátis." />
     <meta name="theme-color" content="#12151a" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#12151a" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -24,8 +25,12 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script defer src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Non-blocking: the stack falls back to SF Pro/system-ui, so the swap is cosmetic. -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"></noscript>
+    <!-- Pinned (an unpinned URL 302s to whatever is latest) + SRI. The script only injects the
+         jsdelivr stylesheets for the same pinned version; bump the version and the hash together. -->
+    <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.2/src/index.js" integrity="sha384-J7cw2fbG1T4C5MirTVUxsZGaMfw2m0XsCgOQEqUvB1OF9VIsHWuZF1GmyVRzs7eu" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="/style.css">
     <!-- Crisp: only the $crisp queue and the website id live here. The widget script is injected
          by lib/crispLoader.ts after the visitor consents to the support category. $crisp queues
