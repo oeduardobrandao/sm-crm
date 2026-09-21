@@ -44,6 +44,7 @@ const markdownComponents = {
   img: (props: React.ComponentProps<'img'>) => (
     <img
       {...props}
+      alt={props.alt ?? ''}
       src={sanitizeExternalUrl(props.src)}
       className="rounded-xl max-w-full my-5 border hub-border"
     />

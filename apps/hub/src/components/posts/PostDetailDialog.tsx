@@ -387,7 +387,7 @@ function PostDetailContent({
   const chips = (
     <div className="flex flex-wrap items-center gap-1.5">
       <StatusTag status={getPostPublishState(post)} size="md" />
-      <span className="rounded-full hub-bg-soft hub-tx2 text-[11px] px-2 py-0.5">
+      <span className="rounded-full hub-bg-soft hub-tx2 text-[12px] px-2 py-0.5">
         {kind === 'story'
           ? t('posts.storyFrames', 'Story · {{count}}', { count: post.media.length })
           : kind === 'text'
@@ -399,17 +399,17 @@ function PostDetailContent({
       <PlatformBadge platform={post.platform} />
       {post.ig_trial_strategy && (
         <span
-          className="rounded-full border text-[11px] px-2 py-0.5"
+          className="rounded-full border text-[12px] px-2 py-0.5"
           style={{ color: 'var(--hub-acc)', borderColor: 'var(--hub-acc)' }}
         >
           {t('shared.reelDeTeste', 'Reel de teste')}
         </span>
       )}
-      <span className="rounded-full hub-bg-soft hub-tx2 text-[11px] px-2 py-0.5">
+      <span className="rounded-full hub-bg-soft hub-tx2 text-[12px] px-2 py-0.5">
         {formatDate(post.scheduled_at, dateLang)}
       </span>
       {post.workflow_titulo && (
-        <span className="rounded-full hub-bg-soft hub-tx2 text-[11px] px-2 py-0.5">
+        <span className="rounded-full hub-bg-soft hub-tx2 text-[12px] px-2 py-0.5">
           {post.workflow_titulo}
         </span>
       )}
@@ -460,7 +460,7 @@ function PostDetailContent({
         )}
         {(draftIgCaption || post.ig_caption) && (
           <div className="border-t hub-border pt-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
               {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
             </p>
             <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">
@@ -562,7 +562,7 @@ function PostDetailContent({
               reelColumn ? 'md:w-[calc(min(92vh,820px)*9/16)]' : ''
             }`}
           >
-            <span className="absolute top-3 left-3 z-20 rounded-full bg-black/45 text-white text-[11px] px-2 py-0.5">
+            <span className="absolute top-3 left-3 z-20 rounded-full bg-black/45 text-white text-[12px] px-2 py-0.5">
               {t('posts.counter', '{{current}} de {{total}}', {
                 current: nav.index + 1,
                 total: posts.length,
@@ -591,7 +591,7 @@ function PostDetailContent({
                 <h3 className="font-display text-[18px] leading-[1.15] hub-txt">{post.titulo}</h3>
                 {chips}
                 {singleColumn && (
-                  <span className="text-[11px] hub-tx3">
+                  <span className="text-[12px] hub-tx3">
                     {t('posts.counter', '{{current}} de {{total}}', {
                       current: nav.index + 1,
                       total: posts.length,

@@ -183,7 +183,7 @@ export function MensagensPage() {
             return (
               <div key={itemKey(m)} className={`max-w-[78%] ${mine ? 'self-end' : 'self-start'}`}>
                 {!mine && (
-                  <div className="mb-0.5 flex items-center gap-1.5 text-[11px] font-semibold hub-tx3">
+                  <div className="mb-0.5 flex items-center gap-1.5 text-[12px] font-semibold hub-tx3">
                     {m.author_avatar_url ? (
                       <img
                         src={m.author_avatar_url}
@@ -194,7 +194,7 @@ export function MensagensPage() {
                     ) : (
                       <span
                         aria-hidden="true"
-                        className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[9px] font-bold hub-txt"
+                        className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[12px] font-bold hub-txt"
                         style={{
                           background: 'var(--hub-soft)',
                           boxShadow: 'inset 0 0 0 1px var(--hub-bd)',
@@ -243,7 +243,7 @@ export function MensagensPage() {
                   {m.content}
                 </div>
                 <div
-                  className={`mt-1 flex items-center gap-2 text-[11px] hub-tx3 ${mine ? 'justify-end' : ''}`}
+                  className={`mt-1 flex items-center gap-2 text-[12px] hub-tx3 ${mine ? 'justify-end' : ''}`}
                 >
                   <span>{formatTime(m.created_at, dateLocale)}</span>
                   {m.post_id != null && (
@@ -280,6 +280,11 @@ export function MensagensPage() {
           )}
           <div className="flex gap-2">
             <input
+              aria-label={
+                replyTo
+                  ? t('composer.placeholderReply', 'Responder sobre o post…')
+                  : t('composer.placeholderDefault', 'Enviar mensagem…')
+              }
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -290,7 +295,7 @@ export function MensagensPage() {
                   ? t('composer.placeholderReply', 'Responder sobre o post…')
                   : t('composer.placeholderDefault', 'Enviar mensagem…')
               }
-              className="flex-1 px-[18px] py-3 rounded-full border hub-border-strong text-sm outline-none"
+              className="hub-focus-accent flex-1 px-[18px] py-3 rounded-full border hub-border-strong text-sm outline-none focus:ring-4"
               style={{ background: 'var(--hub-bg)', color: 'var(--hub-txt)' }}
             />
             <button

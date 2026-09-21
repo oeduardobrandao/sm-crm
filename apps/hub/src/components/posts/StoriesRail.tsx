@@ -50,7 +50,7 @@ export function StoriesRail({ posts, onOpen, dimmed }: StoriesRailProps) {
                 aria-hidden="true"
               />
             </button>
-            <span className="text-[11px] hub-tx2 truncate w-full text-center">{post.titulo}</span>
+            <span className="text-[12px] hub-tx2 truncate w-full text-center">{post.titulo}</span>
           </li>
         );
       })}

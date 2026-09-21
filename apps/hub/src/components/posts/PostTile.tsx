@@ -133,7 +133,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         <span className="text-[12px] leading-[1.4] hub-tx2 line-clamp-4">
           {post.ig_caption || post.conteudo_plain}
         </span>
-        <span className="mt-auto text-[11px] hub-tx3">
+        <span className="mt-auto text-[12px] hub-tx3">
           {getTipoLabel(t, post.tipo)} · {formatDate(post.scheduled_at, dateLang)}
         </span>
       </div>
@@ -188,7 +188,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="absolute z-20 bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 text-[11px] font-semibold"
+          className="absolute z-20 bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 text-[12px] font-semibold"
           style={{ color: 'var(--hub-acc)' }}
         >
           {autocleanedLink.label}

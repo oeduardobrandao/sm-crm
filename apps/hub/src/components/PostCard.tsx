@@ -60,7 +60,7 @@ export function PlatformBadge({
       : 'bg-stone-100 text-stone-500 ring-1 ring-stone-200/70 dark:bg-stone-800 dark:text-stone-400 dark:ring-stone-700/60';
   return (
     <span
-      className={`inline-flex items-center shrink-0 whitespace-nowrap text-[10px] font-medium px-1.5 py-0.5 rounded-full ${toneClass}`}
+      className={`inline-flex items-center shrink-0 whitespace-nowrap text-[12px] font-medium px-1.5 py-0.5 rounded-full ${toneClass}`}
     >
       {label}
     </span>
@@ -340,7 +340,7 @@ export function PostCard({
             <circle cx="8.5" cy="8.5" r="1.5" />
             <path d="M21 15l-5-5L5 21" />
           </svg>
-          <span className="text-[11.5px] font-medium">
+          <span className="text-[12px] font-medium">
             {t('emptyState.noImage', 'Nenhuma imagem adicionada')}
           </span>
         </div>
@@ -351,11 +351,11 @@ export function PostCard({
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-[11px] font-semibold hub-btn-primary px-2 py-0.5 rounded-full">
+            <span className="text-[12px] font-semibold hub-btn-primary px-2 py-0.5 rounded-full">
               {getTipoLabel(t, post.tipo)}
             </span>
             {post.status === 'agendado' ? (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60">
+              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60">
                 {getPostStatusLabel(t, post.status)}
               </span>
             ) : (
@@ -408,14 +408,14 @@ export function PostCard({
           {isEditable && saveState !== 'idle' && (
             <div className="flex items-center gap-1.5">
               {saveState === 'saving' && (
-                <span className="text-[11px] hub-tx3">
+                <span className="text-[12px] hub-tx3">
                   {t('suggestion.saving', 'Salvando sugestão...')}
                 </span>
               )}
               {saveState === 'saved' && (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[11px] text-emerald-600 font-medium">
+                  <span className="text-[12px] text-emerald-600 font-medium">
                     {t('suggestion.saved', 'Sugestão salva')}
                   </span>
                 </>
@@ -428,7 +428,7 @@ export function PostCard({
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg ring-1 ${wasRejected ? 'bg-amber-50 ring-amber-200/40' : 'bg-emerald-50 ring-emerald-200/40'}`}
             >
               <span
-                className={`text-[11px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}
+                className={`text-[12px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}
               >
                 {wasRejected
                   ? t(
@@ -533,11 +533,11 @@ export function PostCard({
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <span
-                        className={`font-semibold text-[11.5px] ${isTeam ? 'hub-acc-text' : 'hub-txt'}`}
+                        className={`font-semibold text-[12px] ${isTeam ? 'hub-acc-text' : 'hub-txt'}`}
                       >
                         {label}
                       </span>
-                      <span className="text-[11px] hub-tx3">{date}</span>
+                      <span className="text-[12px] hub-tx3">{date}</span>
                     </div>
                     {a.comentario && (
                       <p className="text-[13.5px] leading-relaxed hub-txt">{a.comentario}</p>
@@ -551,6 +551,7 @@ export function PostCard({
           {!isPending && (
             <div className="flex items-center gap-2">
               <input
+                aria-label={t('placeholders.replyMessage', 'Enviar mensagem…')}
                 className="hub-focus-accent flex-1 rounded-full border hub-border hub-bg-card px-4 py-2.5 text-[13.5px] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
                 placeholder={t('placeholders.replyMessage', 'Enviar mensagem…')}
                 value={replyText}
@@ -582,6 +583,7 @@ export function PostCard({
               ) : (
                 <>
                   <textarea
+                    aria-label={t('placeholders.comment', 'Comentário (opcional)…')}
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
                     placeholder={t('placeholders.comment', 'Comentário (opcional)…')}

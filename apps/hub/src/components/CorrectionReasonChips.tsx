@@ -40,7 +40,7 @@ export function CorrectionReasonChips({
             aria-pressed={selected}
             disabled={disabled}
             onClick={() => onChange(selected ? null : reason)}
-            className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50"
+            className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors disabled:opacity-50"
             style={
               selected
                 ? {

@@ -108,7 +108,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
         <span className="text-lg font-bold text-stone-900 dark:text-stone-100">
           {formatAbbrev(totalReach)}
         </span>
-        <span className="text-[11px] text-stone-500 dark:text-stone-400">
+        <span className="text-[12px] text-stone-500 dark:text-stone-400">
           {t('reachChart.totalLabel', 'total no período')}
         </span>
       </div>

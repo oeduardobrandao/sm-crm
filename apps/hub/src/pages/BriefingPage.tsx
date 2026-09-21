@@ -386,7 +386,7 @@ function QuestionItem({
     <div className="hub-card p-5 sm:p-6 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <p className="text-[14px] font-semibold hub-txt leading-snug">{question.question}</p>
-        <span className="shrink-0 text-[11px] font-medium min-w-[56px] text-right">
+        <span className="shrink-0 text-[12px] font-medium min-w-[56px] text-right">
           {status === 'saving' && (
             <span className="hub-tx3">{t('question.saving', 'Salvando…')}</span>
           )}
@@ -401,6 +401,7 @@ function QuestionItem({
         </span>
       </div>
       <textarea
+        aria-label={t('question.placeholder', 'Digite sua resposta ou grave um áudio…')}
         className="hub-focus-accent w-full border hub-border rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-[color-mix(in_srgb,var(--hub-soft)_40%,transparent)] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:bg-[var(--hub-card)] focus:border-[var(--hub-bd2)] focus:ring-4 transition-all disabled:opacity-60"
         value={answer}
         disabled={locked}

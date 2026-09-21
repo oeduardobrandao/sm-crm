@@ -16,7 +16,7 @@ function ColorSwatch({ color, label }: { color: string; label: string }) {
       />
       <div>
         <p className="text-[13.5px] font-semibold hub-txt">{label}</p>
-        <p className="text-[11.5px] hub-tx3 mt-0.5">{color}</p>
+        <p className="text-[12px] hub-tx3 mt-0.5">{color}</p>
       </div>
     </div>
   );

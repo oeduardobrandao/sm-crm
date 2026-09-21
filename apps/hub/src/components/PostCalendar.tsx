@@ -190,7 +190,7 @@ export function PostCalendar({ posts }: Props) {
             {WEEKDAYS_SHORT_PT.map((d, i) => (
               <div
                 key={d}
-                className="text-center text-[12px] md:text-[10px] font-medium md:font-semibold tracking-normal md:uppercase md:tracking-[0.12em] hub-tx3 py-1"
+                className="text-center text-[12px] md:text-[12px] font-medium md:font-semibold tracking-normal md:uppercase md:tracking-[0.12em] hub-tx3 py-1"
               >
                 {weekdayShortLabel(i)}
               </div>
@@ -278,7 +278,7 @@ export function PostCalendar({ posts }: Props) {
                       // byte-identical to pre-customization.
                       <div
                         key={tipo}
-                        className="text-[10px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"
+                        className="text-[12px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"
                         style={{
                           background: `${TIPO_COLOR[tipo] ?? '#78716c'}1c`,
                           color: TIPO_COLOR[tipo] ?? '#78716c',
@@ -359,7 +359,7 @@ export function PostCalendar({ posts }: Props) {
                   {/* Desktop: type + status pills */}
                   <div className="hidden md:flex items-center gap-1.5 flex-wrap">
                     <span
-                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                      className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
                       style={{
                         background: `${TIPO_COLOR[p.tipo] ?? '#78716c'}1c`,
                         color: TIPO_COLOR[p.tipo] ?? '#78716c',
@@ -367,7 +367,7 @@ export function PostCalendar({ posts }: Props) {
                     >
                       {tipoLabel(p.tipo)}
                     </span>
-                    <span className="text-[10px] hub-tx2 px-2 py-0.5 rounded-full hub-bg-soft">
+                    <span className="text-[12px] hub-tx2 px-2 py-0.5 rounded-full hub-bg-soft">
                       {statusLabel(p.status)}
                     </span>
                   </div>
@@ -379,7 +379,7 @@ export function PostCalendar({ posts }: Props) {
                   )}
 
                   {p.scheduled_at && (
-                    <p className="hidden md:block text-[11px] hub-tx2">
+                    <p className="hidden md:block text-[12px] hub-tx2">
                       {new Date(p.scheduled_at).toLocaleDateString(
                         i18n.language === 'en' ? 'en-US' : 'pt-BR',
                         {

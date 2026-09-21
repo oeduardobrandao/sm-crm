@@ -215,7 +215,7 @@ export function CorrectionPanel({
   return (
     <div className="space-y-3">
       <section className="rounded-xl border hub-border hub-bg-soft p-3 space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] hub-tx3">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3">
           {isText ? t('posts.editText', 'Editar texto') : t('posts.editCaption', 'Editar legenda')}
         </p>
         {isText && stagedConteudo && (
@@ -233,6 +233,7 @@ export function CorrectionPanel({
         )}
         {isText && !stagedConteudo && (
           <textarea
+            aria-label={t('shared.contentAriaLabel', 'Conteúdo do post')}
             value={stagedConteudoPlain}
             onChange={(e) => {
               setStagedConteudo(null);
@@ -244,7 +245,7 @@ export function CorrectionPanel({
         {showCaptionField && (
           <>
             {isText && (
-              <p className="text-[11px] hub-tx3 font-medium">
+              <p className="text-[12px] hub-tx3 font-medium">
                 {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
               </p>
             )}
@@ -257,7 +258,7 @@ export function CorrectionPanel({
           </>
         )}
         <p
-          className={`text-[11px] ${wasRejected ? 'text-amber-800 dark:text-amber-300' : 'hub-tx3'}`}
+          className={`text-[12px] ${wasRejected ? 'text-amber-800 dark:text-amber-300' : 'hub-tx3'}`}
         >
           {wasRejected
             ? rejectedSuggestionWarningText(t)
@@ -268,18 +269,18 @@ export function CorrectionPanel({
         </p>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {saveState === 'saving' && (
-            <span className="text-[11px] hub-tx3">
+            <span className="text-[12px] hub-tx3">
               {t('shared.savingSuggestion', 'Salvando sugestão...')}
             </span>
           )}
           {saveState === 'saved' && (
-            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+            <span className="text-[12px] text-emerald-600 dark:text-emerald-400 font-medium">
               {t('shared.suggestionSaved', 'Sugestão salva')}
             </span>
           )}
           {showFailure && (
             <>
-              <span className="text-[11px] text-rose-600 dark:text-rose-400">
+              <span className="text-[12px] text-rose-600 dark:text-rose-400">
                 {t('shared.saveFailedRetry', 'Não foi possível salvar. Tente novamente.')}
               </span>
               {/* A failure remembered from an earlier mount leaves nothing staged here, and
@@ -316,7 +317,7 @@ export function CorrectionPanel({
       </section>
 
       <section className="rounded-xl border hub-border hub-bg-soft p-3 space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] hub-tx3">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3">
           {t('posts.requestCorrection', 'Solicitar correção')}
         </p>
         <CorrectionReasonChips
@@ -326,6 +327,7 @@ export function CorrectionPanel({
           reasons={reasons}
         />
         <textarea
+          aria-label={t('shared.commentPlaceholder', 'Descreva o que precisa mudar')}
           value={comentario}
           onChange={(e) => setComentario(e.target.value)}
           placeholder={t('shared.commentPlaceholder', 'Descreva o que precisa mudar')}

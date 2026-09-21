@@ -164,16 +164,16 @@ export function PostHistoryPanel({
                 version: entry.version,
               })}
             </span>
-            <span className="text-[11px] hub-tx3">{when}</span>
+            <span className="text-[12px] hub-tx3">{when}</span>
           </div>
-          <span className="text-[11px] hub-tx3">{actorLabel('team')}</span>
+          <span className="text-[12px] hub-tx3">{actorLabel('team')}</span>
           {versionText && (
             <div>
               <button
                 type="button"
                 aria-expanded={openVersions.has(entry.key)}
                 onClick={() => toggleVersion(entry.key)}
-                className="text-[11px] font-semibold underline-offset-2 hover:underline"
+                className="text-[12px] font-semibold underline-offset-2 hover:underline"
                 style={{ color: 'var(--hub-acc)' }}
               >
                 {openVersions.has(entry.key)
@@ -192,7 +192,7 @@ export function PostHistoryPanel({
               <button
                 type="button"
                 onClick={() => toggleDiff(entry.key)}
-                className="text-[11px] font-semibold underline-offset-2 hover:underline"
+                className="text-[12px] font-semibold underline-offset-2 hover:underline"
                 style={{ color: 'var(--hub-acc)' }}
               >
                 {openDiffs.has(entry.key)
@@ -220,11 +220,11 @@ export function PostHistoryPanel({
                 ? t('history.approved', 'Aprovado')
                 : t('history.correctionRequested', 'Correção solicitada')}
             </span>
-            <span className="text-[11px] hub-tx3">{when}</span>
+            <span className="text-[12px] hub-tx3">{when}</span>
           </div>
-          <span className="text-[11px] hub-tx3">{actorLabel(entry.byTeam)}</span>
+          <span className="text-[12px] hub-tx3">{actorLabel(entry.byTeam)}</span>
           {entry.motivo && (
-            <p className="text-[11px] hub-tx2">
+            <p className="text-[12px] hub-tx2">
               {t('history.motivoLabel', 'Motivo')}:{' '}
               {t(`correctionReason.${entry.motivo}`, entry.motivo)}
             </p>
@@ -241,9 +241,9 @@ export function PostHistoryPanel({
           <span className="text-[12px] font-semibold hub-txt">
             {getClientStatusLabel(t, entry.to_status)}
           </span>
-          <span className="text-[11px] hub-tx3">{when}</span>
+          <span className="text-[12px] hub-tx3">{when}</span>
         </div>
-        <span className="text-[11px] hub-tx3">{actorLabel(entry.source)}</span>
+        <span className="text-[12px] hub-tx3">{actorLabel(entry.source)}</span>
       </li>
     );
   }
@@ -266,7 +266,7 @@ export function PostHistoryPanel({
           <span className="text-[12px] font-semibold hub-txt">
             {t('history.toggle', 'Histórico e comentários')}
           </span>
-          <span className="flex items-center gap-2 text-[11px] hub-tx3">
+          <span className="flex items-center gap-2 text-[12px] hub-tx3">
             {t('history.summary', '{{decisions}} decisões · {{comments}} comentários', {
               decisions: decisionCount,
               comments: commentCount,
@@ -312,7 +312,7 @@ export function PostHistoryPanel({
           {data && tab === 'history' && (
             <div className="space-y-3">
               {kpis && (
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] hub-tx2">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] hub-tx2">
                   <span>
                     {t('history.kpi.rounds', '{{count}} rodada(s) de correção', {
                       count: kpis.rounds,
@@ -348,10 +348,10 @@ export function PostHistoryPanel({
                   {comments.map((c) => (
                     <li key={c.id} className="space-y-0.5">
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-[11px] font-semibold hub-tx3">
+                        <span className="text-[12px] font-semibold hub-tx3">
                           {actorLabel(c.is_workspace_user)}
                         </span>
-                        <span className="text-[11px] hub-tx3">
+                        <span className="text-[12px] hub-tx3">
                           {formatDate(c.created_at, dateLang)}
                         </span>
                       </div>
@@ -362,6 +362,10 @@ export function PostHistoryPanel({
               )}
               <div className="space-y-1.5">
                 <textarea
+                  aria-label={t(
+                    'history.composerPlaceholder',
+                    'Escreva um comentário sobre este post',
+                  )}
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   maxLength={4000}
@@ -372,7 +376,7 @@ export function PostHistoryPanel({
                   className="hub-focus-accent w-full rounded border hub-border px-3 py-2 text-[12px] resize-none min-h-[60px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none"
                 />
                 {sendError && (
-                  <p className="text-[11px] text-rose-700">
+                  <p className="text-[12px] text-rose-700">
                     {t('history.sendError', 'Não foi possível enviar o comentário.')}
                   </p>
                 )}
