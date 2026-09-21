@@ -17,7 +17,8 @@ export interface ScanDeps {
   /** Emit one alert for a failing job. */
   report: (jobname: string, firstLine: string, row: CronFailureRow) => Promise<void>;
   /**
-   * True when this failed run was already alerted by an earlier tick. The scan
+   * True when this exact failed run (identified by its start_time) was already
+   * alerted by an earlier tick. The scan
    * window (70 min) deliberately overlaps the hourly cadence so a job firing at
    * the same instant as the monitor is never missed, which means the overlap
    * would otherwise re-alert.

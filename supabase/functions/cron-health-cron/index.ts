@@ -32,7 +32,9 @@ Deno.serve(createCronHealthHandler({
             .from("cron_failures")
             .select("id")
             .eq("signature_hash", hash)
-            .gt("occurred_at", row.start_time)
+            // Exact run identity, not alert timing: a newer run still executing
+            // at the previous tick must not be mistaken for an already-alerted one.
+            .eq("error_detail->context->>run_start_time", row.start_time)
             .limit(1)
             .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
           // Fail open: a duplicate alert is better than a missed one.
@@ -42,11 +44,12 @@ Deno.serve(createCronHealthHandler({
           }
           return (data?.length ?? 0) > 0;
         },
-        report: async (jobname, firstLine) => {
+        report: async (jobname, firstLine, row) => {
           await reportCronFailure(supabase, jobname, {
             total: 1,
             failed: 1,
             errors: [{ error: firstLine }],
+            context: { run_start_time: row.start_time },
           });
         },
         selfJobName: SELF_JOB_NAME,
