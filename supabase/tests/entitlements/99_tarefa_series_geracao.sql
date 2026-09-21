@@ -25,6 +25,7 @@ declare
   v_rejected boolean;
   v_serie2 bigint;
   v_fn text;
+  v_code text;
 begin
   perform set_config('app.tarefa_hoje', '2026-01-05', true);
 
@@ -222,7 +223,256 @@ begin
   select count(*) into v_n from tarefa_series where conta_id = v_ws;
   assert v_n = 0, '(k) series survived the workspace delete';
 
-  -- RPC_BLOCK (Task 4 appends here)
+  -- ---- RPCs (fresh workspace: the previous one was deleted in (k)) ----
+  -- Case (m) above left request.jwt.claims on role anon; every block below runs
+  -- as the workspace user again, so re-set claims before anything else.
+  v_ws := et_make_workspace('start');
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into membros (user_id, conta_id, nome) values (v_user, v_ws, 'M2') returning id into v_membro;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_user, v_ws, 'C2', 'C2', '#000') returning id into v_cli;
+  insert into tarefa_tags (conta_id, nome) values (v_ws, 'u1') returning id into v_tag1;
+  insert into tarefa_tags (conta_id, nome) values (v_ws, 'u2') returning id into v_tag2;
+  perform set_config('app.tarefa_hoje', '2026-01-05', true);
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  assert auth.uid() = v_user, 'RPC block: auth.uid() is not the workspace user after re-setting claims';
+
+  -- (a) criar: series + first occurrence with tags and subtasks in one call
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"weekly","intervalo":1,"dias_semana":[1],"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Semanal', 'descricao', 'd', 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', v_membro, 'cliente_id', v_cli, 'data_limite', '2026-01-05'),
+    array[v_tag1, v_tag2], array['Passo 1', 'Passo 2']);
+  assert v_serie is not null and v_t1 is not null, '(a) criar returned nulls';
+  perform 1 from tarefas where id = v_t1 and serie_id = v_serie and data_limite = '2026-01-05' and status = 'pendente';
+  assert found, '(a) first occurrence not linked or wrong date';
+  select count(*) into v_n from subtarefas where tarefa_id = v_t1; assert v_n = 2, '(a) subtasks not created';
+  select count(*) into v_n from tarefa_tag_links where tarefa_id = v_t1; assert v_n = 2, '(a) tag links not created';
+  perform 1 from tarefa_series where id = v_serie and subtarefas = '["Passo 1", "Passo 2"]'::jsonb and tag_ids = array[v_tag1, v_tag2];
+  assert found, '(a) template not stored';
+
+  -- (a) promotion links an existing open standalone task and snapshots its subtasks
+  insert into tarefas (conta_id, user_id, titulo, status, data_limite) values (v_ws, v_user, 'Solta', 'pendente', '2026-01-06') returning id into v_t2;
+  insert into subtarefas (tarefa_id, conta_id, titulo, ordem) values (v_t2, v_ws, 'Existente', 0);
+  select serie_id into v_n from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":2,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"calendario","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Solta', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-06'),
+    '{}'::bigint[], '{}'::text[], v_t2);
+  perform 1 from tarefas where id = v_t2 and serie_id = v_n;
+  assert found, '(a) promotion did not link';
+  perform 1 from tarefa_series where id = v_n and subtarefas = '["Existente"]'::jsonb and inicio = '2026-01-06' and proxima_data = '2026-01-08';
+  assert found, '(a) promotion did not snapshot subtasks / cursor';
+
+  -- (a) promotion rejects a concluida task and a task already in a series
+  insert into tarefas (conta_id, user_id, titulo, status, data_limite) values (v_ws, v_user, 'Feita', 'concluida', '2026-01-06') returning id into v_t3;
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_criar(
+      '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      jsonb_build_object('titulo', 'Feita', 'descricao', null, 'descricao_rich', null, 'status', 'concluida',
+                         'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-06'),
+      '{}'::bigint[], '{}'::text[], v_t3);
+  exception when others then v_rejected := true; end;
+  assert v_rejected, '(a) promotion accepted a concluida task';
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_criar(
+      '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      jsonb_build_object('titulo', 'Solta', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-06'),
+      '{}'::bigint[], '{}'::text[], v_t2);
+  exception when others then v_rejected := true; end;
+  assert v_rejected, '(a) promotion accepted a task that is already an occurrence';
+
+  -- (n) aplicar_edicao that completes and changes the template creates the next from the NEW template
+  perform public.tarefa_serie_aplicar_edicao(v_t1,
+    jsonb_build_object('titulo', 'Semanal v2', 'descricao', null, 'descricao_rich', null, 'status', 'concluida',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    array[v_tag1],
+    '{"freq":"weekly","intervalo":1,"dias_semana":[1],"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    false);
+  select id, data_limite into v_t3, v_date from tarefas where serie_id = v_serie and status <> 'concluida';
+  assert v_date = '2026-01-12', format('(n) expected next 2026-01-12, got %s', v_date);
+  perform 1 from tarefas where id = v_t3 and titulo = 'Semanal v2' and responsavel_id is null;
+  assert found, '(n) next occurrence not built from the new template';
+  select count(*) into v_n from tarefa_tag_links where tarefa_id = v_t3; assert v_n = 1, '(n) new tag set not applied';
+
+  -- (n) "Somente esta" change (direct update) then aplicar_edicao promotes that state
+  update tarefas set titulo = 'Semanal v3' where id = v_t3;
+  perform public.tarefa_serie_aplicar_edicao(v_t3,
+    jsonb_build_object('titulo', 'Semanal v3', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-12'),
+    array[v_tag1],
+    '{"freq":"weekly","intervalo":1,"dias_semana":[1],"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    false);
+  perform 1 from tarefa_series where id = v_serie and titulo = 'Semanal v3';
+  assert found, '(n) template did not take the occurrence state';
+
+  -- (n) moving the due date re-anchors inicio; fim before it is rejected
+  perform public.tarefa_serie_aplicar_edicao(v_t3,
+    jsonb_build_object('titulo', 'Semanal v3', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-14'),
+    array[v_tag1],
+    '{"freq":"weekly","intervalo":1,"dias_semana":[1],"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    false);
+  perform 1 from tarefa_series where id = v_serie and inicio = '2026-01-14';
+  assert found, '(n) inicio not re-anchored on the new due date';
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_aplicar_edicao(v_t3,
+      jsonb_build_object('titulo', 'Semanal v3', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-14'),
+      array[v_tag1],
+      '{"freq":"weekly","intervalo":1,"dias_semana":[1],"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":"2026-01-13"}'::jsonb,
+      false);
+  exception when others then v_rejected := true; end;
+  assert v_rejected, '(n) fim before the due date accepted';
+
+  -- (n) a malformed dias_semana on edit raises 22023 from the RPC's own validation
+  v_rejected := false; v_code := null;
+  begin
+    perform public.tarefa_serie_aplicar_edicao(v_t3,
+      jsonb_build_object('titulo', 'Semanal v3', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-14'),
+      array[v_tag1],
+      '{"freq":"weekly","intervalo":1,"dias_semana":["x"],"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      false);
+  exception when others then v_rejected := true; v_code := sqlstate; end;
+  assert v_rejected and v_code = '22023', format('(n) malformed dias_semana on edit: rejected=%s code=%s', v_rejected, v_code);
+
+  -- (o) re-anchoring on a clamped date keeps dia_mes/mes (cases 19/20 end to end)
+  select serie_id, tarefa_id into v_n, v_t2 from public.tarefa_serie_criar(
+    '{"freq":"monthly","intervalo":1,"dias_semana":null,"dia_mes":31,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Fechamento', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-31'),
+    '{}'::bigint[], '{}'::text[]);
+  update tarefas set status = 'concluida' where id = v_t2;            -- spawns 2026-02-28
+  select id, data_limite into v_t3, v_date from tarefas where serie_id = v_n and status <> 'concluida';
+  assert v_date = '2026-02-28', format('(o) expected 2026-02-28, got %s', v_date);
+  perform public.tarefa_serie_aplicar_edicao(v_t3,
+    jsonb_build_object('titulo', 'Fechamento', 'descricao', null, 'descricao_rich', null, 'status', 'concluida',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-02-28'),
+    '{}'::bigint[],
+    '{"freq":"monthly","intervalo":1,"dias_semana":null,"dia_mes":31,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    false);
+  select data_limite into v_date from tarefas where serie_id = v_n and status <> 'concluida';
+  assert v_date = '2026-03-31', format('(o) expected 2026-03-31 after re-anchoring on 02-28, got %s', v_date);
+
+  -- (n) completing with p_encerrar creates nothing and detaches the occurrence.
+  -- v_t3 (the 02-28 occurrence) is concluida from (o): reopen it first through
+  -- the same RPC, then complete it with p_encerrar.
+  perform public.tarefa_serie_aplicar_edicao(v_t3,
+    jsonb_build_object('titulo', 'Fechamento', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-02-28'),
+    '{}'::bigint[],
+    '{"freq":"monthly","intervalo":1,"dias_semana":null,"dia_mes":31,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    false);
+  select serie_id into v_serie from tarefas where id = v_t3;
+  perform public.tarefa_serie_aplicar_edicao(v_t3,
+    jsonb_build_object('titulo', 'Fechamento', 'descricao', null, 'descricao_rich', null, 'status', 'concluida',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-02-28'),
+    '{}'::bigint[],
+    '{"freq":"monthly","intervalo":1,"dias_semana":null,"dia_mes":31,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    true);
+  perform 1 from tarefas where id = v_t3 and serie_id is null and status = 'concluida';
+  assert found, '(n) p_encerrar did not detach the occurrence';
+  perform 1 from tarefa_series where id = v_serie and encerrada_em is not null;
+  assert found, '(n) p_encerrar did not end the series';
+  select count(*) into v_n from tarefas where serie_id = v_serie and status <> 'concluida' and data_limite > '2026-03-31';
+  assert v_n = 0, '(n) p_encerrar spawned an occurrence';
+
+  -- (n2) definir_estado per the states table; encerrar twice raises
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Diaria', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], '{}'::text[]);
+  perform public.tarefa_serie_definir_estado(v_serie, 'pausar');
+  perform 1 from tarefa_series where id = v_serie and pausada; assert found, '(n2) pausar failed';
+  update tarefas set status = 'concluida' where id = v_t1;
+  assert pg_temp.et_abertas(v_serie) = 0, '(n2) paused series generated';
+  perform public.tarefa_serie_definir_estado(v_serie, 'retomar');
+  assert pg_temp.et_abertas(v_serie) = 1, '(n2) resume did not generate';
+  perform public.tarefa_serie_definir_estado(v_serie, 'encerrar');
+  perform 1 from tarefa_series where id = v_serie and encerrada_em is not null; assert found, '(n2) encerrar failed';
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_definir_estado(v_serie, 'encerrar');
+  exception when others then v_rejected := true; end;
+  assert v_rejected, '(n2) encerrar twice did not raise';
+
+  -- (j) excluir deletes open occurrences, keeps completed ones unlinked, spawns nothing
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Apagar', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], '{}'::text[]);
+  update tarefas set status = 'concluida' where id = v_t1;            -- spawns 01-06
+  perform public.tarefa_serie_excluir(v_serie);
+  select count(*) into v_n from tarefas where serie_id = v_serie; assert v_n = 0, '(j) rows still linked after excluir';
+  perform 1 from tarefas where id = v_t1 and serie_id is null and status = 'concluida';
+  assert found, '(j) completed occurrence was deleted or stayed linked';
+  select count(*) into v_n from tarefas where titulo = 'Apagar' and status <> 'concluida'; assert v_n = 0, '(j) open occurrence survived excluir';
+  perform 1 from tarefa_series where id = v_serie; assert not found, '(j) series row survived excluir';
+
+  -- (p) an ao_concluir series whose last occurrence is completed and past fim
+  --     is revived by aplicar_edicao clearing fim (no dormant series)
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":"2026-01-05"}'::jsonb,
+    jsonb_build_object('titulo', 'Com fim', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], '{}'::text[]);
+  update tarefas set status = 'concluida' where id = v_t1;            -- next 01-06 is past fim: nothing
+  assert pg_temp.et_abertas(v_serie) = 0, '(p) setup: occurrence created past fim';
+  perform public.tarefa_serie_aplicar_edicao(v_t1,
+    jsonb_build_object('titulo', 'Com fim', 'descricao', null, 'descricao_rich', null, 'status', 'concluida',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[],
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    false);
+  select data_limite into v_date from tarefas where serie_id = v_serie and status <> 'concluida';
+  assert v_date = '2026-01-06', format('(p) extending fim did not revive the series (got %s)', v_date);
+
+  -- (p2) calendario -> ao_concluir switch with every occurrence already completed:
+  --      the completion trigger saw calendario, so aplicar_edicao must create the open one
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"calendario","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Troca de modo', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], '{}'::text[]);
+  update tarefas set status = 'concluida' where id = v_t1;            -- calendario: nothing spawns
+  assert pg_temp.et_abertas(v_serie) = 0, '(p2) setup: calendario completion spawned';
+  perform public.tarefa_serie_aplicar_edicao(v_t1,
+    jsonb_build_object('titulo', 'Troca de modo', 'descricao', null, 'descricao_rich', null, 'status', 'concluida',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[],
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    false);
+  select data_limite into v_date from tarefas where serie_id = v_serie and status <> 'concluida';
+  assert v_date = '2026-01-06', format('(p2) modo switch left the series dormant (got %s)', v_date);
+  perform 1 from tarefa_series where id = v_serie and modo = 'ao_concluir' and proxima_data is null;
+  assert found, '(p2) cursor not cleared on the switch to ao_concluir';
+
+  -- (p3) aplicar_edicao on a paused series does not generate; resume does
+  select serie_id, tarefa_id into v_serie, v_t1 from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'Pausada', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[], '{}'::text[]);
+  perform public.tarefa_serie_definir_estado(v_serie, 'pausar');
+  update tarefas set status = 'concluida' where id = v_t1;
+  perform public.tarefa_serie_aplicar_edicao(v_t1,
+    jsonb_build_object('titulo', 'Pausada v2', 'descricao', null, 'descricao_rich', null, 'status', 'concluida',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+    '{}'::bigint[],
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    false);
+  assert pg_temp.et_abertas(v_serie) = 0, '(p3) editing a paused series generated';
+
+  execute 'reset role';
   -- CALENDARIO_BLOCK (Task 5 appends here)
 
   raise notice 'PASS 99_tarefa_series_geracao';

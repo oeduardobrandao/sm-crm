@@ -32,6 +32,9 @@ declare
   v_rejected boolean;
   v_state text;
   v_proxima date;
+  v_msg text; v_code text;
+  v_tag_b bigint; v_tarefa_b bigint; v_tarefa_b2 bigint;
+  v_serie_a2 bigint; v_tarefa_new bigint;
 begin
   perform set_config('app.tarefa_hoje', '2026-01-05', true);
 
@@ -303,7 +306,175 @@ begin
   assert v_seen = 0, 'anon can read tarefa_series';
   execute 'reset role';
 
-  -- RPC_SCOPING_BLOCK (Task 4 appends here)
+  -- ---- RPC grants ----
+  foreach v_state in array array[
+    'public.tarefa_serie_criar(jsonb, jsonb, bigint[], text[], bigint)',
+    'public.tarefa_serie_aplicar_edicao(bigint, jsonb, bigint[], jsonb, boolean)',
+    'public.tarefa_serie_definir_estado(bigint, text)',
+    'public.tarefa_serie_excluir(bigint)'
+  ] loop
+    assert has_function_privilege('authenticated', v_state, 'EXECUTE'), format('authenticated must execute %s', v_state);
+    assert has_function_privilege('anon', v_state, 'EXECUTE') = false, format('anon must not execute %s', v_state);
+  end loop;
+  foreach v_state in array array[
+    'public.tarefa_serie_materializar(bigint, date)',
+    'public.tarefa_serie_garantir_aberta(bigint, date)',
+    'public.tarefa_serie_validar_refs(uuid, bigint, bigint)',
+    'public.tarefa_serie_parse_dias_semana(jsonb)'
+  ] loop
+    assert has_function_privilege('authenticated', v_state, 'EXECUTE') = false, format('authenticated must not execute %s', v_state);
+    assert has_function_privilege('anon', v_state, 'EXECUTE') = false, format('anon must not execute %s', v_state);
+    assert has_function_privilege('service_role', v_state, 'EXECUTE'), format('service_role must execute %s', v_state);
+  end loop;
+
+  -- foreign-workspace fixtures (as owner): a tag, a standalone task and an occurrence in workspace B
+  insert into tarefa_tags (conta_id, nome) values (v_ws_b, 'foreign') returning id into v_tag_b;
+  insert into tarefas (conta_id, user_id, titulo, status, data_limite)
+    values (v_ws_b, v_user, 'B standalone', 'pendente', '2026-01-06') returning id into v_tarefa_b;
+  insert into tarefas (conta_id, user_id, titulo, status, data_limite, serie_id)
+    values (v_ws_b, v_user, 'B occurrence', 'pendente', '2026-01-05', v_serie_b) returning id into v_tarefa_b2;
+
+  -- ---- RPC tenant scoping, as authenticated (active workspace = A) ----
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+
+  -- foreign responsavel raises
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_criar(
+      '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      jsonb_build_object('titulo', 'x', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', v_membro_b, 'cliente_id', null, 'data_limite', '2026-01-05'),
+      '{}'::bigint[], '{}'::text[]);
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected, 'criar accepted a responsavel from another workspace';
+  assert v_msg = 'Responsável não encontrado neste workspace.', format('unexpected error for foreign responsavel: %s', v_msg);
+
+  -- foreign cliente raises
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_criar(
+      '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      jsonb_build_object('titulo', 'x', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', null, 'cliente_id', v_cli_b, 'data_limite', '2026-01-05'),
+      '{}'::bigint[], '{}'::text[]);
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected, 'criar accepted a cliente from another workspace';
+  assert v_msg = 'Cliente não encontrado neste workspace.', format('unexpected error for foreign cliente: %s', v_msg);
+
+  -- past inicio raises
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_criar(
+      '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      jsonb_build_object('titulo', 'x', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-04'),
+      '{}'::bigint[], '{}'::text[]);
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected, 'criar accepted a past inicio';
+  assert v_msg = 'Para repetir, o prazo precisa ser hoje ou depois.', format('unexpected error for past inicio: %s', v_msg);
+
+  -- a malformed dias_semana payload is rejected by the RPC's own validation
+  -- (SQLSTATE 22023), not by a cast failure (22P02) inside a helper
+  foreach v_state in array array['["x"]', '[1.5]', '[7]', '"1"', '[[1]]', '[null]', '[true]'] loop
+    v_rejected := false; v_code := null;
+    begin
+      perform public.tarefa_serie_criar(
+        format('{"freq":"weekly","intervalo":1,"dias_semana":%s,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}', v_state)::jsonb,
+        jsonb_build_object('titulo', 'x', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                           'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+        '{}'::bigint[], '{}'::text[]);
+    exception when others then v_rejected := true; v_code := sqlstate; end;
+    assert v_rejected, format('criar accepted dias_semana %s', v_state);
+    assert v_code = '22023', format('dias_semana %s raised %s instead of 22023', v_state, v_code);
+  end loop;
+
+  -- a tag of another workspace is dropped silently (no link, not stored in the template)
+  select serie_id, tarefa_id into v_serie_a2, v_tarefa_new from public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'tag scope', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-07'),
+    array[v_tag_b], '{}'::text[]);
+  select count(*) into v_seen from tarefa_tag_links where tarefa_id = v_tarefa_new; assert v_seen = 0, 'criar linked a foreign tag';
+  perform 1 from tarefa_series where id = v_serie_a2 and tag_ids = '{}'; assert found, 'criar stored a foreign tag in the template';
+
+  -- promotion cannot take a task of another workspace
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_criar(
+      '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      jsonb_build_object('titulo', 'B standalone', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-06'),
+      '{}'::bigint[], '{}'::text[], v_tarefa_b);
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected, 'criar promoted a task from another workspace';
+  assert v_msg = 'Tarefa não encontrada neste workspace.', format('unexpected error promoting foreign task: %s', v_msg);
+
+  -- other workspace's rows are "not found" for edit / state / delete
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_definir_estado(v_serie_b, 'pausar');
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected, 'definir_estado touched another workspace''s series';
+  assert v_msg = 'Série não encontrada neste workspace.', format('unexpected error for foreign series: %s', v_msg);
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_excluir(v_serie_b);
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected, 'excluir touched another workspace''s series';
+  assert v_msg = 'Série não encontrada neste workspace.', format('unexpected error for foreign series: %s', v_msg);
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_aplicar_edicao(v_tarefa_b2,
+      jsonb_build_object('titulo', 'x', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-05'),
+      '{}'::bigint[],
+      '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      false);
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected, 'aplicar_edicao edited an occurrence from another workspace';
+  assert v_msg = 'Tarefa não encontrada neste workspace.', format('unexpected error editing foreign occurrence: %s', v_msg);
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_aplicar_edicao(v_tarefa_a2,
+      jsonb_build_object('titulo', 'x', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                         'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-06'),
+      '{}'::bigint[],
+      '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+      false);
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected, 'aplicar_edicao accepted a standalone task';
+  assert v_msg = 'Esta tarefa não pertence a uma série.', format('unexpected error for standalone task: %s', v_msg);
+
+  -- a state outside the enum raises
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_definir_estado(v_serie_a, 'apagar');
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected and v_msg = 'Estado inválido.', 'definir_estado accepted an unknown state';
+
+  -- a write to tarefas.serie_id from inside a DEFINER RPC passes the guard
+  -- (promotion of the standalone task), while the same as authenticated raised above
+  perform public.tarefa_serie_criar(
+    '{"freq":"daily","intervalo":1,"dias_semana":null,"dia_mes":null,"mes":null,"modo":"ao_concluir","fim":null}'::jsonb,
+    jsonb_build_object('titulo', 'A standalone', 'descricao', null, 'descricao_rich', null, 'status', 'pendente',
+                       'responsavel_id', null, 'cliente_id', null, 'data_limite', '2026-01-06'),
+    '{}'::bigint[], '{}'::text[], v_tarefa_a2);
+  perform 1 from tarefas where id = v_tarefa_a2 and serie_id is not null;
+  assert found, 'promotion through the RPC did not link the task';
+  execute 'reset role';
+
+  -- a session with no workspace raises
+  perform set_config('request.jwt.claims', json_build_object('sub', gen_random_uuid(), 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_rejected := false;
+  begin
+    perform public.tarefa_serie_definir_estado(v_serie_a, 'pausar');
+  exception when others then v_rejected := true; v_msg := sqlerrm; end;
+  assert v_rejected, 'RPC ran without an active workspace';
+  assert v_msg = 'Sessao sem workspace ativo.', format('unexpected error without a workspace: %s', v_msg);
+  execute 'reset role';
 
   raise notice 'PASS 99_tarefa_series_rls';
 end $$;

@@ -241,7 +241,9 @@ AS $$
   END;
 $$;
 
--- jsonb array of numbers -> int[]; NULL for anything else. Used by the RPCs.
+-- jsonb array of numbers -> int[]; NULL when p is NULL or not an array. A
+-- non-numeric element RAISES 22P02 (and 1.0 does too), so callers validate the
+-- shape first: the RPCs go through tarefa_serie_parse_dias_semana().
 CREATE OR REPLACE FUNCTION public.tarefa_serie_jsonb_int_array(p jsonb) RETURNS int[]
 LANGUAGE sql IMMUTABLE
 SET search_path = public
@@ -613,3 +615,291 @@ REVOKE ALL ON FUNCTION public.tarefas_serie_ao_excluir_fn() FROM PUBLIC, anon, a
 GRANT EXECUTE ON FUNCTION public.tarefas_serie_ao_excluir_fn() TO service_role;
 REVOKE ALL ON FUNCTION public.tarefa_series_apos_retomar_fn() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.tarefa_series_apos_retomar_fn() TO service_role;
+
+-- ============ (4) CLIENT-FACING RPCs ============
+
+-- Payload validation for a client-supplied dias_semana (jsonb). The RPCs own
+-- the shape check: tarefa_serie_jsonb_int_array() raises 22P02 on a non-numeric
+-- element and lets `"1"` / `[null]` / `[7]` through to the table CHECK, so it
+-- is only called after this has accepted the payload. Returns NULL for SQL NULL
+-- or a JSON null (freq other than weekly); otherwise an array of 0..6 integers
+-- (distinctness / 1..7 length stay with the table CHECK).
+CREATE OR REPLACE FUNCTION public.tarefa_serie_parse_dias_semana(p jsonb) RETURNS int[]
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) = 'null' THEN RETURN NULL; END IF;
+  IF jsonb_typeof(p) <> 'array' OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p) e
+    WHERE jsonb_typeof(e) <> 'number' OR (e #>> '{}') !~ '^[0-6]$'
+  ) THEN
+    RAISE EXCEPTION 'Dias da semana inválidos.' USING ERRCODE = '22023';
+  END IF;
+  RETURN tarefa_serie_jsonb_int_array(p);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.tarefa_serie_parse_dias_semana(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.tarefa_serie_parse_dias_semana(jsonb) TO service_role;
+
+-- Tenant validation shared by the RPCs: responsavel/cliente must live in the
+-- caller's workspace (resolve_notification_targets reads membros by id
+-- without a conta_id check, and generated occurrences inherit the template).
+CREATE OR REPLACE FUNCTION public.tarefa_serie_validar_refs(p_conta uuid, p_responsavel_id bigint, p_cliente_id bigint)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_responsavel_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM membros WHERE id = p_responsavel_id AND conta_id = p_conta) THEN
+    RAISE EXCEPTION 'Responsável não encontrado neste workspace.';
+  END IF;
+  IF p_cliente_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM clientes WHERE id = p_cliente_id AND conta_id = p_conta) THEN
+    RAISE EXCEPTION 'Cliente não encontrado neste workspace.';
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.tarefa_serie_validar_refs(uuid, bigint, bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.tarefa_serie_validar_refs(uuid, bigint, bigint) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.tarefa_serie_criar(
+  p_serie jsonb, p_tarefa jsonb, p_tag_ids bigint[], p_subtarefas text[], p_tarefa_id bigint DEFAULT NULL
+) RETURNS TABLE (serie_id bigint, tarefa_id bigint)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conta uuid := get_my_conta_id();
+  v_user uuid := auth.uid();
+  v_hoje date := tarefa_hoje_sp();
+  v_inicio date;
+  v_fim date;
+  v_resp bigint;
+  v_cli bigint;
+  v_tags bigint[];
+  v_subs text[];
+  v_titulo text;
+  v_descricao text;
+  v_rich jsonb;
+  v_dias int[];
+  v_existing record;
+  v_serie_id bigint;
+  v_tarefa_id bigint;
+BEGIN
+  IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'Sessao sem workspace ativo.'; END IF;
+
+  v_inicio := (p_tarefa->>'data_limite')::date;
+  IF v_inicio IS NULL THEN RAISE EXCEPTION 'Tarefas de uma série precisam de prazo.'; END IF;
+  IF v_inicio < v_hoje THEN RAISE EXCEPTION 'Para repetir, o prazo precisa ser hoje ou depois.'; END IF;
+  v_fim := (p_serie->>'fim')::date;
+  IF v_fim IS NOT NULL AND v_fim < v_inicio THEN
+    RAISE EXCEPTION 'A data final precisa ser igual ou depois do prazo.';
+  END IF;
+
+  v_resp := (p_tarefa->>'responsavel_id')::bigint;
+  v_cli := (p_tarefa->>'cliente_id')::bigint;
+  PERFORM tarefa_serie_validar_refs(v_conta, v_resp, v_cli);
+  SELECT coalesce(array_agg(t.id ORDER BY t.id), '{}') INTO v_tags
+    FROM tarefa_tags t WHERE t.id = ANY (coalesce(p_tag_ids, '{}')) AND t.conta_id = v_conta;
+  v_subs := coalesce(p_subtarefas, '{}');
+  v_titulo := btrim(coalesce(p_tarefa->>'titulo', ''));
+  v_descricao := NULLIF(btrim(coalesce(p_tarefa->>'descricao', '')), '');
+  v_rich := NULLIF(p_tarefa->'descricao_rich', 'null'::jsonb);
+  v_dias := tarefa_serie_parse_dias_semana(p_serie->'dias_semana');
+
+  -- RETURNS TABLE (serie_id, tarefa_id) makes `serie_id` and `tarefa_id`
+  -- plpgsql variables, and plpgsql.variable_conflict defaults to `error`.
+  -- Every bare column reference to those names below is therefore
+  -- table-qualified (t.serie_id, st.tarefa_id, l.tarefa_id); the aliases are
+  -- load-bearing, not style.
+  IF p_tarefa_id IS NOT NULL THEN
+    -- promotion: lock first, then validate
+    SELECT t.id, t.serie_id, t.status INTO v_existing
+      FROM tarefas t WHERE t.id = p_tarefa_id AND t.conta_id = v_conta FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Tarefa não encontrada neste workspace.'; END IF;
+    IF v_existing.serie_id IS NOT NULL THEN RAISE EXCEPTION 'Esta tarefa já pertence a uma série.'; END IF;
+    IF v_existing.status = 'concluida' THEN RAISE EXCEPTION 'Reabra a tarefa para torná-la recorrente.'; END IF;
+    SELECT coalesce(array_agg(st.titulo ORDER BY st.ordem, st.id), '{}') INTO v_subs
+      FROM subtarefas st WHERE st.tarefa_id = p_tarefa_id AND btrim(st.titulo) <> '';
+  END IF;
+
+  INSERT INTO tarefa_series (conta_id, user_id, freq, intervalo, dias_semana, dia_mes, mes, modo, inicio, fim,
+                             titulo, descricao, descricao_rich, responsavel_id, cliente_id, tag_ids, subtarefas)
+  VALUES (v_conta, v_user, p_serie->>'freq', coalesce((p_serie->>'intervalo')::int, 1),
+          v_dias,
+          (p_serie->>'dia_mes')::int, (p_serie->>'mes')::int, p_serie->>'modo', v_inicio, v_fim,
+          v_titulo, v_descricao, v_rich, v_resp, v_cli, v_tags, to_jsonb(v_subs))
+  RETURNING id INTO v_serie_id;
+
+  IF p_tarefa_id IS NULL THEN
+    INSERT INTO tarefas (conta_id, user_id, titulo, descricao, descricao_rich, status,
+                         responsavel_id, cliente_id, data_limite, serie_id)
+    VALUES (v_conta, v_user, v_titulo, v_descricao, v_rich, 'pendente', v_resp, v_cli, v_inicio, v_serie_id)
+    RETURNING id INTO v_tarefa_id;
+    INSERT INTO subtarefas (tarefa_id, conta_id, titulo, concluida, ordem)
+    SELECT v_tarefa_id, v_conta, s.t, false, (s.o - 1)::int
+      FROM unnest(v_subs) WITH ORDINALITY AS s(t, o);
+  ELSE
+    v_tarefa_id := p_tarefa_id;
+    UPDATE tarefas t
+       SET titulo = v_titulo, descricao = v_descricao, descricao_rich = v_rich,
+           status = coalesce(p_tarefa->>'status', t.status),
+           responsavel_id = v_resp, cliente_id = v_cli, data_limite = v_inicio, serie_id = v_serie_id
+     WHERE t.id = p_tarefa_id;
+    DELETE FROM tarefa_tag_links l WHERE l.tarefa_id = p_tarefa_id;
+  END IF;
+
+  INSERT INTO tarefa_tag_links (tarefa_id, tag_id, conta_id)
+  SELECT v_tarefa_id, tg, v_conta FROM unnest(v_tags) tg;
+
+  -- plpgsql assignments to the OUT columns (not SQL): unaffected by the rule above
+  serie_id := v_serie_id;
+  tarefa_id := v_tarefa_id;
+  RETURN NEXT;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.tarefa_serie_aplicar_edicao(
+  p_tarefa_id bigint, p_tarefa jsonb, p_tag_ids bigint[], p_regra jsonb, p_encerrar boolean DEFAULT false
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conta uuid := get_my_conta_id();
+  v_user uuid := auth.uid();
+  v_t record;
+  v_data date;
+  v_fim date;
+  v_resp bigint;
+  v_cli bigint;
+  v_tags bigint[];
+  v_subs text[];
+  v_titulo text;
+  v_descricao text;
+  v_rich jsonb;
+  v_dias int[];
+BEGIN
+  IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'Sessao sem workspace ativo.'; END IF;
+
+  -- (0) lock the occurrence and the series; effective due date up front
+  SELECT id, serie_id, data_limite INTO v_t
+    FROM tarefas WHERE id = p_tarefa_id AND conta_id = v_conta FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Tarefa não encontrada neste workspace.'; END IF;
+  IF v_t.serie_id IS NULL THEN RAISE EXCEPTION 'Esta tarefa não pertence a uma série.'; END IF;
+  PERFORM 1 FROM tarefa_series WHERE id = v_t.serie_id AND conta_id = v_conta FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Série não encontrada neste workspace.'; END IF;
+  v_data := coalesce((p_tarefa->>'data_limite')::date, v_t.data_limite);
+  IF v_data IS NULL THEN RAISE EXCEPTION 'Tarefas de uma série precisam de prazo.'; END IF;
+
+  v_resp := (p_tarefa->>'responsavel_id')::bigint;
+  v_cli := (p_tarefa->>'cliente_id')::bigint;
+  PERFORM tarefa_serie_validar_refs(v_conta, v_resp, v_cli);
+  SELECT coalesce(array_agg(t.id ORDER BY t.id), '{}') INTO v_tags
+    FROM tarefa_tags t WHERE t.id = ANY (coalesce(p_tag_ids, '{}')) AND t.conta_id = v_conta;
+  SELECT coalesce(array_agg(titulo ORDER BY ordem, id), '{}') INTO v_subs
+    FROM subtarefas WHERE tarefa_id = p_tarefa_id AND btrim(titulo) <> '';
+  v_titulo := btrim(coalesce(p_tarefa->>'titulo', ''));
+  v_descricao := NULLIF(btrim(coalesce(p_tarefa->>'descricao', '')), '');
+  v_rich := NULLIF(p_tarefa->'descricao_rich', 'null'::jsonb);
+
+  -- (1) series first, so the completion trigger in (2) sees the new template / closed series
+  IF p_encerrar THEN
+    UPDATE tarefa_series SET encerrada_em = coalesce(encerrada_em, now()) WHERE id = v_t.serie_id;
+  ELSE
+    v_fim := (p_regra->>'fim')::date;
+    v_dias := tarefa_serie_parse_dias_semana(p_regra->'dias_semana');
+    IF v_fim IS NOT NULL AND v_fim < v_data THEN
+      RAISE EXCEPTION 'A data final precisa ser igual ou depois do prazo.';
+    END IF;
+    UPDATE tarefa_series
+       SET freq = p_regra->>'freq',
+           intervalo = coalesce((p_regra->>'intervalo')::int, 1),
+           dias_semana = v_dias,
+           dia_mes = (p_regra->>'dia_mes')::int,
+           mes = (p_regra->>'mes')::int,
+           modo = p_regra->>'modo',
+           inicio = v_data,          -- re-anchors the phase; dia_mes/mes come from p_regra
+           fim = v_fim,
+           titulo = v_titulo, descricao = v_descricao, descricao_rich = v_rich,
+           responsavel_id = v_resp, cliente_id = v_cli,
+           tag_ids = v_tags, subtarefas = to_jsonb(v_subs)
+     WHERE id = v_t.serie_id;
+  END IF;
+
+  -- (2) the occurrence (status included: the completion trigger fires here)
+  UPDATE tarefas
+     SET titulo = v_titulo, descricao = v_descricao, descricao_rich = v_rich,
+         status = coalesce(p_tarefa->>'status', status),
+         responsavel_id = v_resp, cliente_id = v_cli, data_limite = v_data,
+         serie_id = CASE WHEN p_encerrar THEN NULL ELSE serie_id END
+   WHERE id = p_tarefa_id;
+
+  -- (3) tags of this occurrence; its subtasks are untouched
+  DELETE FROM tarefa_tag_links WHERE tarefa_id = p_tarefa_id;
+  INSERT INTO tarefa_tag_links (tarefa_id, tag_id, conta_id)
+  SELECT p_tarefa_id, t, v_conta FROM unnest(v_tags) t;
+
+  -- (4) an ao_concluir series whose last occurrence is already completed and
+  -- whose rule / fim / modo just changed would otherwise stay dormant: the
+  -- completion trigger only fires on the status transition. No-op when an open
+  -- occurrence exists, the series is paused or ended, or the next date is past fim.
+  IF NOT p_encerrar THEN
+    PERFORM tarefa_serie_garantir_aberta(v_t.serie_id, v_data);
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.tarefa_serie_definir_estado(p_serie_id bigint, p_estado text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conta uuid := get_my_conta_id();
+  v_user uuid := auth.uid();
+  v_encerrada timestamptz;
+BEGIN
+  IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'Sessao sem workspace ativo.'; END IF;
+  IF p_estado NOT IN ('pausar', 'retomar', 'encerrar') THEN RAISE EXCEPTION 'Estado inválido.'; END IF;
+  SELECT encerrada_em INTO v_encerrada
+    FROM tarefa_series WHERE id = p_serie_id AND conta_id = v_conta FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Série não encontrada neste workspace.'; END IF;
+  IF v_encerrada IS NOT NULL THEN RAISE EXCEPTION 'Esta série já foi encerrada.'; END IF;
+  IF p_estado = 'pausar' THEN
+    UPDATE tarefa_series SET pausada = true WHERE id = p_serie_id;
+  ELSIF p_estado = 'retomar' THEN
+    UPDATE tarefa_series SET pausada = false WHERE id = p_serie_id;   -- guard + apos_retomar do the rest
+  ELSE
+    UPDATE tarefa_series SET encerrada_em = now() WHERE id = p_serie_id;
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.tarefa_serie_excluir(p_serie_id bigint) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conta uuid := get_my_conta_id();
+  v_user uuid := auth.uid();
+BEGIN
+  IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'Sessao sem workspace ativo.'; END IF;
+  PERFORM 1 FROM tarefa_series WHERE id = p_serie_id AND conta_id = v_conta FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Série não encontrada neste workspace.'; END IF;
+  -- mandatory order: end (disarms the delete trigger) -> delete open -> delete series
+  UPDATE tarefa_series SET encerrada_em = coalesce(encerrada_em, now()) WHERE id = p_serie_id;
+  DELETE FROM tarefas WHERE serie_id = p_serie_id AND status <> 'concluida';
+  DELETE FROM tarefa_series WHERE id = p_serie_id;   -- FK SET NULL unlinks the completed ones
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.tarefa_serie_criar(jsonb, jsonb, bigint[], text[], bigint) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.tarefa_serie_criar(jsonb, jsonb, bigint[], text[], bigint) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.tarefa_serie_aplicar_edicao(bigint, jsonb, bigint[], jsonb, boolean) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.tarefa_serie_aplicar_edicao(bigint, jsonb, bigint[], jsonb, boolean) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.tarefa_serie_definir_estado(bigint, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.tarefa_serie_definir_estado(bigint, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.tarefa_serie_excluir(bigint) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.tarefa_serie_excluir(bigint) TO authenticated, service_role;
