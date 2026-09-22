@@ -31,6 +31,15 @@ const REFRESH_TOKEN_WARNING_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // soonest-to-expire accounts always go first, and the cadence (this cron runs well inside the
 // 12h access-token window) retries whatever didn't fit. This is why this select deliberately
 // does NOT use fetchAllRows.
+//
+// A cap alone starves, though: an account that fails refresh with a transient error (or is in
+// an internal workspace and gets filtered below) never advances access_token_expires_at, so it
+// keeps sorting at the head of this window and re-consumes the whole batch every run forever —
+// exactly the failure mode instagram-sync-cron/select.ts documents and fixes with attempt
+// stamping. last_refresh_attempt_at is the primary sort key for the same reason: it's stamped
+// for the WHOLE selected batch (see below) regardless of outcome, so a persistently failing —
+// or internal, or filtered-for-any-reason — account rotates to the back on the very next run
+// instead of pinning the head.
 const REFRESH_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get("REFRESH_BATCH_LIMIT") || "200", 10) || 200);
 
 export interface TikTokRefreshCronDeps {
@@ -65,6 +74,7 @@ interface RefreshCandidateRow {
   avatar_url: string | null;
   access_token_expires_at: string | null;
   refresh_token_expires_at: string | null;
+  last_refresh_attempt_at?: string | null;
   clientes: { conta_id: string } | Array<{ conta_id: string }>;
 }
 
@@ -139,10 +149,11 @@ export async function runTikTokRefreshCron(deps: TikTokRefreshCronDeps): Promise
     const { data: accounts, error } = await svc
       .from("tiktok_accounts")
       .select(
-        "id, client_id, avatar_url, access_token_expires_at, refresh_token_expires_at, clientes!inner(conta_id)",
+        "id, client_id, avatar_url, access_token_expires_at, refresh_token_expires_at, last_refresh_attempt_at, clientes!inner(conta_id)",
       )
       .eq("authorization_status", "active")
       .lte("access_token_expires_at", accessWindowIso)
+      .order("last_refresh_attempt_at", { ascending: true, nullsFirst: true })
       .order("access_token_expires_at", { ascending: true, nullsFirst: false })
       .order("id", { ascending: true })
       .limit(REFRESH_BATCH_LIMIT);
@@ -152,6 +163,23 @@ export async function runTikTokRefreshCron(deps: TikTokRefreshCronDeps): Promise
     const candidates = (accounts ?? []) as RefreshCandidateRow[];
     if (candidates.length === 0) {
       return json({ success: true, refreshed: 0, failed: 0 }, 200);
+    }
+
+    // Stamp the attempt for the WHOLE selected batch BEFORE any refresh work or the internal-
+    // workspace filter below — mirrors instagram-sync-cron/index.ts's "stamp before syncing"
+    // fix for the same starvation mode (see the rationale comment on REFRESH_BATCH_LIMIT above).
+    // Stamping before, not after, means an account whose refresh kills the invocation still
+    // rotates to the back on the next run. Stamping BEFORE the internal filter is deliberate
+    // too: an internal-workspace account that gets skipped below is just as capable of pinning
+    // the head of this ordering forever as a transient-failure account is, so it must rotate
+    // exactly the same way. A stamp failure is logged but not fatal — the next run re-reads the
+    // real ordering either way.
+    const { error: stampError } = await svc
+      .from("tiktok_accounts")
+      .update({ last_refresh_attempt_at: now.toISOString() })
+      .in("id", candidates.map((a) => a.id));
+    if (stampError) {
+      console.error(`[${CRON_NAME}] Failed to stamp last_refresh_attempt_at:`, stampError.message);
     }
 
     // Internal/seed workspaces are skipped: their credentials are placeholders,
