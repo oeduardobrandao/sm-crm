@@ -15,6 +15,12 @@ function fixedNow(ms: number) {
 
 Deno.test("purgeTrash resumes from startToken and returns the next one", async () => {
   const NOW = 1_700_000_000_000;
+  // Call sequence: cutoff, startedAt, the per-object deadline check ahead of
+  // trash/a's delete (not yet exceeded), then the trailing between-pages
+  // check (exceeded) so the test sees exactly one listPage call.
+  const times = [NOW, NOW, NOW, NOW + 60_000];
+  let i = 0;
+  const nowFn = () => (i < times.length ? times[i++] : times[times.length - 1]);
   const calls: Array<string | undefined> = [];
   const listPage = (token: string | undefined): Promise<TrashPage> => {
     calls.push(token);
@@ -30,10 +36,9 @@ Deno.test("purgeTrash resumes from startToken and returns the next one", async (
   const deleted: string[] = [];
   const result = await purgeTrash(30, {
     startToken: "page-2",
-    deadlineMs: 0, // stop right after this page so the test only sees one listPage call
     listPage,
     deleteFn: (key) => { deleted.push(key); return Promise.resolve(); },
-    nowFn: fixedNow(NOW),
+    nowFn,
   });
   assertEquals(calls, ["page-2"]);
   assertEquals(deleted, ["trash/a"]);
@@ -87,18 +92,19 @@ Deno.test("cap reached mid-page returns the CURRENT page's producing token, not 
   assertEquals(result, { purged: 1, nextToken: null, cycleCompleted: false });
 });
 
-Deno.test("deadline exceeded stops between pages and preserves resume token", async () => {
+Deno.test("deadline exceeded between pages (after finishing a page's deletes) stops before fetching the next page", async () => {
   const NOW = 1_700_000_000_000;
-  let elapsed = 0;
-  const nowFn = () => NOW + elapsed;
+  // Call sequence inside purgeTrash for a single-object page: cutoff, startedAt,
+  // the per-object deadline check (not yet exceeded, so the delete happens),
+  // then the trailing between-pages check (exceeded) before a second listPage.
+  const times = [NOW, NOW, NOW, NOW + 60_000];
+  let i = 0;
+  const nowFn = () => (i < times.length ? times[i++] : times[times.length - 1]);
   let pageCalls = 0;
   const listPage = (_token: string | undefined): Promise<TrashPage> => {
     pageCalls++;
-    elapsed += 60_000; // simulate each page taking 60s, past the 55s deadline
-    return Promise.resolve({
-      objects: [obj(`trash/${pageCalls}`, 40, NOW)],
-      nextToken: `page-${pageCalls + 1}`,
-    });
+    if (pageCalls > 1) throw new Error("should not fetch a second page: deadline hit between pages");
+    return Promise.resolve({ objects: [obj("trash/1", 40, NOW)], nextToken: "page-2" });
   };
   const deleted: string[] = [];
   const result = await purgeTrash(30, {
@@ -109,6 +115,39 @@ Deno.test("deadline exceeded stops between pages and preserves resume token", as
   assertEquals(pageCalls, 1);
   assertEquals(deleted, ["trash/1"]);
   assertEquals(result, { purged: 1, nextToken: "page-2", cycleCompleted: false });
+});
+
+Deno.test("deadline exceeded mid-page stops deleting further objects in the SAME page and returns the producing token", async () => {
+  const NOW = 1_700_000_000_000;
+  // Call sequence: cutoff, startedAt, obj-a's deadline check (not yet
+  // exceeded -> deleted), obj-b's deadline check (exceeded -> stop, obj-b and
+  // obj-c are never even age-checked).
+  const times = [NOW, NOW, NOW, NOW + 60_000];
+  let i = 0;
+  const nowFn = () => (i < times.length ? times[i++] : times[times.length - 1]);
+  let pageCalls = 0;
+  const listPage = (_token: string | undefined): Promise<TrashPage> => {
+    pageCalls++;
+    if (pageCalls > 1) throw new Error("should not fetch a second page: deadline hit mid page 1");
+    return Promise.resolve({
+      objects: [obj("trash/a", 40, NOW), obj("trash/b", 40, NOW), obj("trash/c", 40, NOW)],
+      nextToken: "page-2",
+    });
+  };
+  const deleted: string[] = [];
+  const result = await purgeTrash(30, {
+    listPage,
+    deleteFn: (key) => { deleted.push(key); return Promise.resolve(); },
+    nowFn,
+  });
+  assertEquals(pageCalls, 1);
+  // Only trash/a is deleted before the deadline check ahead of trash/b trips;
+  // trash/b and trash/c are left untouched this run.
+  assertEquals(deleted, ["trash/a"]);
+  // Resume token is the one that PRODUCED this page (null, since we started
+  // fresh) — the whole page is re-listed next run, so trash/b and trash/c
+  // aren't skipped by resuming from page.nextToken instead.
+  assertEquals(result, { purged: 1, nextToken: null, cycleCompleted: false });
 });
 
 Deno.test("invalid startToken (listPage throws on first call with a token) retries once from null", async () => {

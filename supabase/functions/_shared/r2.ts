@@ -225,6 +225,14 @@ export async function purgeTrash(olderThanDays: number, opts: PurgeTrashOpts = {
     }
     for (const obj of page.objects) {
       if (purged >= maxPerRun) return { purged, nextToken: pageToken, cycleCompleted: false };
+      // Checked before EVERY delete, not just between pages: a single page can
+      // hold ~1000 aged objects, and at worst case ~10s per delete (see
+      // deleteObject's own timeout) a page can blow well past the deadline on
+      // its own. Exiting mid-page returns `pageToken` — the token that
+      // PRODUCED this page, same as the cap-exit above — so the interrupted
+      // page is re-listed in full next run rather than skipping the objects
+      // after the one we stopped on.
+      if (nowFn() - startedAt >= deadlineMs) return { purged, nextToken: pageToken, cycleCompleted: false };
       if (obj.lastModified.getTime() < cutoff) {
         await deleteFn(obj.key);
         purged++;
@@ -232,6 +240,9 @@ export async function purgeTrash(olderThanDays: number, opts: PurgeTrashOpts = {
     }
     if (page.nextToken === null) return { purged, nextToken: null, cycleCompleted: true };
     pageToken = page.nextToken;
+    // Belt for a page with few/no aged objects (the per-delete check above
+    // never ran, or ran only briefly): still bound how long a run keeps
+    // listing before returning.
     if (nowFn() - startedAt >= deadlineMs) return { purged, nextToken: pageToken, cycleCompleted: false };
   }
 }
