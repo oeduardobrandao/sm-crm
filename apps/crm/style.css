@@ -10626,6 +10626,62 @@ body.landing-page #root {
   overflow: visible;
 }
 
+/* Landing page prerendered markup (landing.seo.ts, for crawlers and the
+   window before React mounts): a bare <main>/<nav> land directly under
+   #root, replaced once LandingPage's `.lp-root` wrapper mounts — so this
+   never matches the hydrated page. Without it, that window paints as an
+   unstyled wall of text instead of readable copy. */
+#root > main,
+#root > nav {
+  display: block;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  line-height: 1.6;
+}
+
+#root > main h1 {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+#root > main h2 {
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 32px 0 12px;
+}
+
+#root > main h3 {
+  font-weight: 600;
+  margin: 20px 0 8px;
+}
+
+#root > main p,
+#root > main li {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+
+#root > main ul {
+  padding-left: 20px;
+  margin-bottom: 16px;
+}
+
+#root > nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 16px 24px;
+  font-size: 0.9rem;
+}
+
+#root > nav a {
+  color: var(--text-muted);
+}
+
 /* Indeterminate loading bar (CSV import read/parse) */
 @keyframes csv-indeterminate {
   0% {
