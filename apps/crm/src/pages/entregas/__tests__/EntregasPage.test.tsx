@@ -2267,3 +2267,89 @@ describe('EntregasPage — painel "Como funciona"', () => {
     expect(screen.getByRole('heading', { name: /quem vê o quê/i })).toBeTruthy();
   });
 });
+
+describe('Publicações: filtros que falam de etapa leem o processo individual', () => {
+  /** Avulso com processo ativo numa etapa de `responsavelId`, e o post cru que a
+   *  aba Publicações lista (o mesmo post_id dos dois lados). */
+  function comProcesso(opts: { responsavelId: number | null; nome?: string; prazo?: string }) {
+    const process = {
+      ...vigenteFixture,
+      steps: [
+        {
+          ...vigenteFixture.steps[0],
+          nome: opts.nome ?? 'Copy',
+          responsavel_id: opts.responsavelId,
+          prazo_efetivo: opts.prazo ?? null,
+        },
+      ],
+    } as unknown as PostProcessWithPost;
+    return {
+      process,
+      entity: toPostEntity(process, { clientes: [], membros: [{ id: 7, nome: 'Ana' } as never] })!,
+    };
+  }
+
+  function mountPublicacoes(process: PostProcessWithPost, entity: ReturnType<typeof toPostEntity>) {
+    mockedUseActivePosts.mockReturnValue({ posts: [process.post], isLoading: false } as never);
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [{ id: 7, nome: 'Ana' }],
+      templates: [],
+      cards: [],
+      activeWorkflows: [],
+      postEntities: [entity],
+      processByPostId: new Map([[77, process]]),
+      concludedPostProcesses: [],
+      activePostProcessCount: 1,
+      postProcessesVisible: true,
+      isLoading: false,
+      refresh: vi.fn(),
+    } as never);
+    renderPage('/entregas?view=list&mode=publicacoes');
+  }
+
+  beforeEach(() => {
+    limitsMock.features = { feature_post_processes: true };
+    localStorage.clear();
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
+  });
+
+  it('mantém o avulso quando o responsável filtrado é o da etapa ativa do processo', () => {
+    const { process, entity } = comProcesso({ responsavelId: 7 });
+    mountPublicacoes(process, entity);
+    expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Filter member'));
+
+    // A regressão que este teste tranca: o filtro lia só o card do fluxo, então um
+    // avulso em produção sumia da lista por não ter fluxo nenhum.
+    expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+  });
+
+  it('descarta o avulso quando a etapa ativa é de outro responsável', () => {
+    const { process, entity } = comProcesso({ responsavelId: 99 });
+    mountPublicacoes(process, entity);
+
+    fireEvent.click(screen.getByText('Filter member'));
+
+    expect(screen.getByText('Posts list view: 0')).toBeInTheDocument();
+  });
+
+  it('casa o filtro de etapa com o nome da etapa ativa do processo', () => {
+    const { process, entity } = comProcesso({ responsavelId: 7, nome: 'Design' });
+    mountPublicacoes(process, entity);
+
+    fireEvent.click(screen.getByText('Filter etapa Design'));
+
+    expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+  });
+
+  it('casa o filtro de prazo com o prazo da etapa ativa do processo', () => {
+    const { process, entity } = comProcesso({ responsavelId: 7, prazo: isoInDays(-3) });
+    mountPublicacoes(process, entity);
+
+    fireEvent.click(screen.getByText('Filter prazo atrasado'));
+
+    expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+  });
+});

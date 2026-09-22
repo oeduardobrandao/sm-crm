@@ -72,9 +72,11 @@ export const EMPTY_FILTERS: FilterState = {
   filterPrazoTo: '',
 };
 
-/** 'posts': the Publicações modes — only busca, cliente and responsável do post
- *  apply to posts; the workflow-shaped dropdowns (status, membros, etapas,
- *  templates) are hidden and their state is simply not read. */
+/** 'posts': the Publicações modes — busca, cliente, status do post, tipo,
+ *  responsável, etapa and prazo are shown; "Responsável" and "Todas as etapas"
+ *  read the etapa the post is IN (postStageOf: a do fluxo, ou a do processo
+ *  individual), not the post's own responsavel_id. Só "Responsável do post",
+ *  templates e o status de prazo ficam escondidos, com o estado preservado. */
 export type FiltersMode = 'entregas' | 'posts';
 
 interface EntregasFiltersProps {

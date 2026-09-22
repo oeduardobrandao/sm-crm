@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { formatPostDate } from '@/utils/postDate';
-import { etapaDeadlineDate, formatEtapaDeadlineDay, formatEtapaPrazo } from '../etapaPrazo';
+import { formatEtapaDeadlineDay, formatEtapaPrazo } from '../etapaPrazo';
+import { postStageOf } from '../postStage';
+import type { PostEntity } from '../boardEntity';
 import { POST_STATUS_ORDER, TIPO_LABELS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { PostStatusChip } from '../components/PostStatusChip';
@@ -26,9 +28,10 @@ interface PostsListViewProps {
   filtersActive: boolean;
   /** Opens NewAvulsoDialog from the unfiltered empty state's CTA. */
   onCreateAvulso: () => void;
-  /** post id → etapa ativa do processo individual (spec §4.4). Só posts
-   *  avulsos aparecem aqui. */
-  processEtapaByPostId?: Map<number, string>;
+  /** post id → processo individual ativo (spec §4.4). Só posts avulsos
+   *  aparecem aqui; é daqui que saem a etapa, o responsável e o prazo de um
+   *  avulso em produção, que não tem card de fluxo para consultar. */
+  postEntityByPostId?: Map<number, PostEntity>;
 }
 
 type Column = { key: string; label: string };
@@ -72,7 +75,7 @@ export function PostsListView({
   cardsByWorkflowId,
   filtersActive,
   onCreateAvulso,
-  processEtapaByPostId,
+  postEntityByPostId,
 }: PostsListViewProps) {
   const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'agendado',
@@ -81,24 +84,34 @@ export function PostsListView({
   const statusRegistry = useStatusRegistry();
 
   // A post avulso has no workflow_id to look up -- undefined here means the same
-  // "no card" state every caller below already treats as "no etapa/prazo/fluxo".
+  // "no card" state every caller below already treats as "no fluxo".
   const cardOf = (p: ActivePost) =>
     p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined;
-  const membroNome = (p: ActivePost) => cardOf(p)?.membro?.nome || '';
+  // Etapa, responsável e prazo saem da MESMA projeção que a barra de filtros usa
+  // (postStageOf): o fluxo para um post amarrado, o processo individual para um
+  // avulso. Ler card e processo por caminhos diferentes aqui e lá era o que
+  // deixava a linha visível com o filtro de responsável achando que ela não existe.
+  const stageOf = (p: ActivePost) =>
+    postStageOf(cardOf(p), p.workflow_id == null ? postEntityByPostId?.get(p.id) : undefined);
+  const membroNome = (p: ActivePost) => stageOf(p)?.responsavelNome || '';
 
   const sorted = useMemo(() => {
     const dir = sort.direction === 'asc' ? 1 : -1;
     const column = sort.column;
-    // A post avulso has no workflow_id to look up -- undefined here sinks it to
-    // the end of the etapa/prazo sorts and empties its responsável, same as any
-    // other workflow with no matching card.
-    const cardForSort = (p: ActivePost) =>
-      p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined;
-    const nome = (p: ActivePost) => cardForSort(p)?.membro?.nome || '';
-    const etapaNome = (p: ActivePost) => cardForSort(p)?.etapa.nome || '';
-    // Sort key for the etapa deadline: overdue first, then soonest; posts whose
-    // workflow has no card/deadline sink to the end in BOTH directions.
-    const prazoDias = (p: ActivePost) => cardForSort(p)?.deadline.diasRestantes;
+    // Um post sem fluxo carregado E sem processo individual não está em etapa
+    // nenhuma: afunda no fim das ordenações de etapa/prazo nos DOIS sentidos e
+    // fica com o responsável vazio, como já acontecia.
+    const stageForSort = (p: ActivePost) =>
+      postStageOf(
+        p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined,
+        p.workflow_id == null ? postEntityByPostId?.get(p.id) : undefined,
+      );
+    const nome = (p: ActivePost) => stageForSort(p)?.responsavelNome || '';
+    const etapaNome = (p: ActivePost) => stageForSort(p)?.etapaNome || '';
+    const prazoDias = (p: ActivePost) => {
+      const stage = stageForSort(p);
+      return stage?.hasPrazo ? stage.deadline.diasRestantes : undefined;
+    };
     return [...posts].sort((a, b) => {
       switch (column) {
         case 'titulo':
@@ -134,7 +147,7 @@ export function PostsListView({
           return 0;
       }
     });
-  }, [posts, sort, cardsByWorkflowId]);
+  }, [posts, sort, cardsByWorkflowId, postEntityByPostId]);
 
   if (isLoading) {
     return (
@@ -216,9 +229,11 @@ export function PostsListView({
             // depends on its workflow still being an active, loaded card.
             const openable = workflowId == null || openableWorkflowIds.has(workflowId);
             const card = cardOf(p);
-            const processEtapa = workflowId == null ? processEtapaByPostId?.get(p.id) : undefined;
-            const prazo = card ? formatEtapaPrazo(card.deadline) : null;
-            const prazoDate = card ? etapaDeadlineDate(card) : null;
+            const stage = stageOf(p);
+            const processEtapa =
+              workflowId == null ? postEntityByPostId?.get(p.id)?.etapaNome : undefined;
+            const prazo = stage?.hasPrazo ? formatEtapaPrazo(stage.deadline) : null;
+            const prazoDate = stage?.prazoDate ?? null;
             return (
               <tr
                 key={p.id}
@@ -293,7 +308,7 @@ export function PostsListView({
                   )}
                 </td>
                 <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
-                  {card?.etapa.nome || processEtapa || '—'}
+                  {stage?.etapaNome || '—'}
                 </td>
                 <td style={{ padding: '0.6rem 1rem' }}>
                   <span className="post-tipo-badge">{TIPO_LABELS[p.tipo]}</span>
@@ -306,7 +321,7 @@ export function PostsListView({
                 </td>
                 <td
                   style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}
-                  title={card ? `Etapa: ${card.etapa.nome}` : undefined}
+                  title={stage ? `Etapa: ${stage.etapaNome}` : undefined}
                 >
                   {membroNome(p) || '—'}
                 </td>

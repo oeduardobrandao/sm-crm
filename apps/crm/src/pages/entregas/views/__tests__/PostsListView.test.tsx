@@ -11,6 +11,38 @@ vi.mock('@/hooks/useStatusRegistry', async () => {
 import { PostsListView } from '../PostsListView';
 import type { ActivePost } from '@/store';
 import type { BoardCard } from '../../hooks/useEntregasData';
+import type { PostEntity } from '../../boardEntity';
+
+/** Processo individual ativo de um avulso: só os campos que a Lista projeta. */
+function postEntity(
+  postId: number,
+  etapaNome: string,
+  opts: { responsavelNome?: string; prazoEfetivo?: Date | null; estourado?: boolean } = {},
+): PostEntity {
+  return {
+    kind: 'post',
+    id: `post:${postId}`,
+    process: { id: postId, post_id: postId, steps: [] } as never,
+    step: { ordem: 1, nome: etapaNome, responsavel_id: 42 } as never,
+    templateId: null,
+    steps: [{ ordem: 1, nome: etapaNome, tipo: 'padrao' }],
+    etapaOrdem: 1,
+    etapaNome,
+    responsavel: opts.responsavelNome
+      ? ({ id: 42, nome: opts.responsavelNome } as never)
+      : undefined,
+    prazoEfetivo: opts.prazoEfetivo ?? null,
+    posicao: 0,
+    deadline: {
+      diasRestantes: opts.estourado ? -3 : 2,
+      horasRestantes: 0,
+      estourado: !!opts.estourado,
+      urgente: false,
+    },
+    cliente: undefined,
+    titulo: 'Post individual',
+  };
+}
 
 let nextId = 1;
 function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
@@ -424,11 +456,55 @@ describe('PostsListView', () => {
         cardsByWorkflowId={new Map()}
         filtersActive={false}
         onCreateAvulso={vi.fn()}
-        processEtapaByPostId={new Map([[1, 'Design']])}
+        postEntityByPostId={new Map([[1, postEntity(1, 'Design')]])}
       />,
     );
     expect(screen.getByText('Individual · Design')).toBeInTheDocument();
     expect(screen.queryByText('Avulso')).toBeNull();
     expect(screen.getAllByText('Design')).not.toHaveLength(0); // célula "Etapa atual"
+  });
+
+  it('preenche responsável e prazo do avulso a partir da etapa ativa do processo', () => {
+    const avulso = makePost({
+      id: 1,
+      workflow_id: null,
+      workflow_titulo: null,
+      responsavel_id: null,
+    });
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[avulso]}
+        cardsByWorkflowId={new Map()}
+        postEntityByPostId={
+          new Map([
+            [
+              1,
+              postEntity(1, 'Mídia', {
+                responsavelNome: 'Nathalie',
+                prazoEfetivo: new Date('2026-09-19T12:00:00Z'),
+                estourado: true,
+              }),
+            ],
+          ])
+        }
+      />,
+    );
+    expect(screen.getByText('Nathalie')).toBeInTheDocument();
+    expect(screen.getByText('3d atrasado')).toBeInTheDocument();
+  });
+
+  it('deixa prazo vazio quando a etapa do processo não tem prazo efetivo', () => {
+    const avulso = makePost({ id: 1, workflow_id: null, workflow_titulo: null });
+    render(
+      <PostsListView
+        {...baseProps}
+        posts={[avulso]}
+        cardsByWorkflowId={new Map()}
+        postEntityByPostId={new Map([[1, postEntity(1, 'Mídia', { responsavelNome: 'Nathalie' })]])}
+      />,
+    );
+    // deadline zerado não pode virar "0h restantes" na coluna de prazo
+    expect(screen.queryByText(/restantes|atrasado/)).toBeNull();
   });
 });
