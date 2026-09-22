@@ -305,7 +305,10 @@ Deno.test({
     const zipEntries = await zipReader.getEntries();
     const manifestEntry = zipEntries.find((e) => e.filename === "LEIA-ME-arquivos-faltando.txt");
     assert(manifestEntry, "manifest entry missing");
-    const manifestText = await manifestEntry!.getData!(new TextWriter());
+    assert(!manifestEntry.directory, "manifest entry must be a file, not a directory");
+    // The `!manifestEntry.directory` check above narrows the Entry union to
+    // FileEntry, which is the only variant that has getData.
+    const manifestText = await manifestEntry.getData(new TextWriter());
     await zipReader.close();
 
     const names = zipEntries.map((e) => e.filename).sort();
