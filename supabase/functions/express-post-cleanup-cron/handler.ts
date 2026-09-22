@@ -1,4 +1,5 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { chunk, fetchAllRows } from "../_shared/paginate.ts";
 
 // ---------------------------------------------------------------------------
 // Auth wrapper: checks `x-cron-secret` BEFORE any work and delegates to `run`.
@@ -47,6 +48,8 @@ export interface FilterChain<T>
   lt(column: string, value: string): FilterChain<T>;
   lte(column: string, value: number): FilterChain<T>;
   in(column: string, values: unknown[]): FilterChain<T>;
+  order(column: string, options?: { ascending?: boolean }): FilterChain<T>;
+  range(from: number, to: number): FilterChain<T>;
 }
 
 export interface MutationChain extends PromiseLike<{ error: DbError | null }> {
@@ -114,29 +117,34 @@ export async function runExpressPostCleanupCron(
   // workflow to conclude) -- without it the first published avulso express
   // injects `null` into the `.in("id", candidateIds)` lookup below.
   let concluded = 0;
-  const { data: expressPostRows, error: expressErr } = await db
-    .from("workflow_posts")
-    .select("workflow_id")
-    .eq("is_express", true)
-    .eq("status", "postado")
-    .not("workflow_id", "is", null);
+  const expressPostRows = await fetchAllRows<{ workflow_id: number }>((from, to) =>
+    db
+      .from("workflow_posts")
+      .select("workflow_id")
+      .eq("is_express", true)
+      .eq("status", "postado")
+      .not("workflow_id", "is", null)
+      .order("workflow_id", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
-  if (expressErr) throw expressErr;
-
-  const candidateIds = [
-    ...new Set((expressPostRows ?? []).map((r: { workflow_id: number }) => r.workflow_id)),
-  ];
+  const candidateIds = [...new Set(expressPostRows.map((r) => r.workflow_id))];
 
   if (candidateIds.length > 0) {
-    const { data: activeExpress, error: activeErr } = await db
-      .from("workflows")
-      .select("id")
-      .in("id", candidateIds)
-      .eq("status", "ativo");
+    const activeExpress: Array<{ id: number }> = [];
+    for (const idsChunk of chunk(candidateIds)) {
+      const { data, error: activeErr } = await db
+        .from("workflows")
+        .select("id")
+        .in("id", idsChunk)
+        .eq("status", "ativo");
 
-    if (activeErr) throw activeErr;
+      if (activeErr) throw activeErr;
+      activeExpress.push(...((data ?? []) as Array<{ id: number }>));
+    }
 
-    for (const wf of (activeExpress ?? []) as Array<{ id: number }>) {
+    for (const wf of activeExpress) {
       const { data: posts } = await db
         .from("workflow_posts")
         .select("id, status, is_express")
@@ -172,16 +180,18 @@ export async function runExpressPostCleanupCron(
   let skipped = 0;
   let failed = 0;
 
-  const { data: orphanWorkflows, error: fetchErr } = await db
-    .from("workflows")
-    .select("id")
-    .like("titulo", "Post Express -%")
-    .eq("status", "ativo")
-    .lt("created_at", cutoff);
+  const orphanWorkflows = await fetchAllRows<{ id: number }>((from, to) =>
+    db
+      .from("workflows")
+      .select("id")
+      .like("titulo", "Post Express -%")
+      .eq("status", "ativo")
+      .lt("created_at", cutoff)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
-  if (fetchErr) throw fetchErr;
-
-  for (const wf of (orphanWorkflows ?? []) as Array<{ id: number }>) {
+  for (const wf of orphanWorkflows) {
     const { data: posts } = await db
       .from("workflow_posts")
       .select("id, status")
@@ -239,17 +249,19 @@ export async function runExpressPostCleanupCron(
   // drafts silently stuck around forever.
   let avulsoFailed = 0;
 
-  const { data: avulsoDrafts, error: avulsoErr } = await db
-    .from("workflow_posts")
-    .select("id")
-    .eq("is_express", true)
-    .is("workflow_id", null)
-    .eq("status", "rascunho")
-    .lt("created_at", cutoff);
+  const avulsoDrafts = await fetchAllRows<{ id: number }>((from, to) =>
+    db
+      .from("workflow_posts")
+      .select("id")
+      .eq("is_express", true)
+      .is("workflow_id", null)
+      .eq("status", "rascunho")
+      .lt("created_at", cutoff)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
-  if (avulsoErr) throw avulsoErr;
-
-  const avulsoPostIds = (avulsoDrafts ?? []).map((p: { id: number }) => p.id);
+  const avulsoPostIds = avulsoDrafts.map((p) => p.id);
 
   // Rascunho com processo individual ativo nao e abandono: alguem esta
   // produzindo nele. A RLS nao protege aqui (service_role), entao o filtro
