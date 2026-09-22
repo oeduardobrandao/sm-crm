@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { chunk } from "../_shared/paginate.ts";
+import { chunk, fetchAllRows } from "../_shared/paginate.ts";
 import { withTimeout } from "./pricing.ts";
 
 const OWNER_LOOKUP_CONCURRENCY = 8;
@@ -34,15 +34,31 @@ export async function fetchOwnerContacts(
 
   const members: Array<{ workspace_id: string; user_id: string; joined_at: string }> = [];
   for (const ids of chunk(workspaceIds)) {
-    const { data: memberRows, error: membersError } = await svc
-      .from("workspace_members")
-      .select("workspace_id, user_id, joined_at")
-      .in("workspace_id", ids)
-      .eq("role", "owner")
-      .order("joined_at", { ascending: true })
-      .order("user_id", { ascending: true });
-    if (membersError) throw membersError;
-    members.push(...(memberRows ?? []));
+    // A 500-workspace chunk is bounded on the request side by `chunk`, but the
+    // response is not: role='owner' allows more than one member row per
+    // workspace, so a chunk can still hold >1000 owner rows and PostgREST
+    // would silently truncate an un-ranged select. fetchAllRows pages this
+    // one query with .range(). The order must be a total order with a unique
+    // tiebreak -- workspace_members only guarantees UNIQUE(user_id,
+    // workspace_id), so joined_at/user_id alone can theoretically collide
+    // across two different workspaces; adding workspace_id as the final
+    // column makes the ordering key unique per the table's own constraint.
+    const memberRows = await fetchAllRows<{
+      workspace_id: string;
+      user_id: string;
+      joined_at: string;
+    }>((from, to) =>
+      svc
+        .from("workspace_members")
+        .select("workspace_id, user_id, joined_at")
+        .in("workspace_id", ids)
+        .eq("role", "owner")
+        .order("joined_at", { ascending: true })
+        .order("user_id", { ascending: true })
+        .order("workspace_id", { ascending: true })
+        .range(from, to)
+    );
+    members.push(...memberRows);
   }
 
   const workspaces: Array<{ id: string; created_by: string | null }> = [];
