@@ -32,6 +32,11 @@
          jsdelivr stylesheets for the same pinned version; bump the version and the hash together. -->
     <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.2/src/index.js" integrity="sha384-J7cw2fbG1T4C5MirTVUxsZGaMfw2m0XsCgOQEqUvB1OF9VIsHWuZF1GmyVRzs7eu" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="/style.css">
+    <!-- style.css hides #lp-ssr (the landing page's prerendered crawler/SEO
+         mirror) by default so it never flashes before React mounts. Without
+         JS there's no mount to replace it, so force it back on — readable,
+         not blank. -->
+    <noscript><style>#lp-ssr { display: block !important; }</style></noscript>
     <!-- Crisp: only the $crisp queue and the website id live here. The widget script is injected
          by lib/crispLoader.ts after the visitor consents to the support category. $crisp queues
          calls immediately, so every window.$crisp.push in the app is harmless until then. -->
@@ -39,6 +44,19 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Fallback for a bundle that fails to download, is blocked, or throws
+      // before createRoot() ever runs (the <noscript> rule above only fires
+      // when scripting itself is off, not when JS is enabled but broken):
+      // reveal the prerendered #lp-ssr mirror instead of leaving the page
+      // blank forever. A successful mount already replaces #root's content
+      // — #lp-ssr included — well before this fires, so it's a no-op on
+      // every normal load.
+      setTimeout(function () {
+        var el = document.getElementById('lp-ssr');
+        if (el) el.style.display = 'block';
+      }, 8000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

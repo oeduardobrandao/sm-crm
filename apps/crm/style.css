@@ -10644,63 +10644,60 @@ body.landing-page #root {
   overflow: visible;
 }
 
-/* Landing page prerendered markup (landing.seo.ts, for crawlers and the
-   window before React mounts): wrapped in #lp-ssr, replaced wholesale once
-   LandingPage mounts — so this never matches the hydrated page. Scoped to
-   that wrapper id rather than a bare `#root > main`, since PrecosPage,
-   MarketingRoute and blog pages render their own real <main> as a direct
-   child of #root once mounted (no wrapper div like LandingPage's
-   `.lp-root`), and would otherwise get boxed into this too. Without this
-   rule at all, the pre-mount window paints as an unstyled wall of text
-   instead of readable copy. */
-#lp-ssr > main,
-#lp-ssr > nav {
-  display: block;
+/* Landing page prerendered markup (landing.seo.ts): present in the initial
+   HTML so crawlers get real copy, but createRoot().render() always wipes
+   #root once React mounts — a real user with working JS never needs to see
+   it, so it's hidden by default rather than styled as a placeholder (a
+   styled swap still "flashes"). index.html's <noscript> forces it back to
+   `display: block` when there's no JS to ever replace it, so those visitors
+   get this readable version instead of a permanently blank page. */
+#lp-ssr {
+  display: none;
   max-width: 720px;
   margin: 0 auto;
   padding: 48px 24px;
   line-height: 1.6;
 }
 
-#lp-ssr > main h1 {
+#lp-ssr h1 {
   font-family: var(--font-heading);
   font-size: 2rem;
   font-weight: 700;
   margin-bottom: 16px;
 }
 
-#lp-ssr > main h2 {
+#lp-ssr h2 {
   font-family: var(--font-heading);
   font-size: 1.4rem;
   font-weight: 600;
   margin: 32px 0 12px;
 }
 
-#lp-ssr > main h3 {
+#lp-ssr h3 {
   font-weight: 600;
   margin: 20px 0 8px;
 }
 
-#lp-ssr > main p,
-#lp-ssr > main li {
+#lp-ssr p,
+#lp-ssr li {
   margin-bottom: 8px;
   color: var(--text-muted);
 }
 
-#lp-ssr > main ul {
+#lp-ssr ul {
   padding-left: 20px;
   margin-bottom: 16px;
 }
 
-#lp-ssr > nav {
+#lp-ssr nav {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 16px;
-  padding: 16px 24px;
+  padding-top: 16px;
   font-size: 0.9rem;
 }
 
-#lp-ssr > nav a {
+#lp-ssr nav a {
   color: var(--text-muted);
 }
 
