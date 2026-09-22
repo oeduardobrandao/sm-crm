@@ -67,7 +67,8 @@ import { VistasTabs } from './components/VistasTabs';
 import { useActivePosts } from './hooks/useActivePosts';
 import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } from './semProcesso';
 import { useOpenParam } from '../../hooks/useOpenParam';
-import { matchesEtapaPrazo } from './etapaPrazo';
+import { matchesDeadlineFilter, matchesEtapaPrazo } from './etapaPrazo';
+import { postStageOf } from './postStage';
 import { matchesPostEntityFilters } from './entityFilters';
 import { filtersToReveal } from './revealFilters';
 import type { PostEntity } from './boardEntity';
@@ -112,6 +113,7 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 const EMPTY_POST_ENTITIES: PostEntity[] = [];
 const EMPTY_CARDS: BoardCard[] = [];
 const EMPTY_ETAPA_MAP: Map<number, string> = new Map();
+const EMPTY_POST_ENTITY_MAP: Map<number, PostEntity> = new Map();
 
 export default function EntregasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -729,15 +731,28 @@ export default function EntregasPage() {
   const showFilters =
     activeView !== 'concluded' && !(activeView === 'calendar' && mode === 'publicacoes');
 
-  // Posts-mode filtering: only busca / cliente / responsável do post apply; the
-  // workflow-shaped filters (status, membros, etapas, templates) are not read here
-  // but stay in state so flipping back to Entregas restores them.
+  // Processo individual ativo de cada avulso, pela projeção que o quadro de
+  // Fluxos já resolve (etapa ativa, responsável e prazo). Declarado ANTES de
+  // filteredPosts de propósito: aquele useMemo lê este mapa durante o render.
+  const postEntityByPostId = useMemo(() => {
+    if (postEntities.length === 0) return EMPTY_POST_ENTITY_MAP;
+    return new Map(postEntities.map((e) => [e.process.post_id, e]));
+  }, [postEntities]);
+
+  // Posts-mode filtering: busca / cliente / status / tipo aplicam ao post; etapa,
+  // responsável e prazo aplicam à etapa em que ele está -- a do fluxo para um post
+  // amarrado, a do processo individual para um avulso que tenha um (postStageOf).
+  // Templates e o status de prazo são de fluxo e não são lidos aqui, mas ficam no
+  // estado para voltarem intactos ao alternar para Etapas.
   const filteredPosts = useMemo(() => {
-    // A post avulso has no workflow_id to look up -- undefined here means the same
-    // "no card" state matchesEtapaPrazo and the membro/etapa filters below already
-    // treat as "excluded while that filter is active".
-    const cardOfPost = (p: ActivePost) =>
-      p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined;
+    // Sem fluxo e sem processo individual o post não está em etapa nenhuma:
+    // postStageOf devolve undefined e os filtros de etapa/responsável/prazo o
+    // excluem enquanto estiverem ativos, como já faziam.
+    const stageOfPost = (p: ActivePost) =>
+      postStageOf(
+        p.workflow_id != null ? cardsByWorkflowId.get(p.workflow_id) : undefined,
+        p.workflow_id == null ? postEntityByPostId.get(p.id) : undefined,
+      );
     let ps = activePosts;
     if (filters.filterSearch) {
       const q = filters.filterSearch.toLowerCase();
@@ -745,41 +760,43 @@ export default function EntregasPage() {
     }
     if (filters.filterClientes.length)
       ps = ps.filter((p) => p.cliente_id != null && filters.filterClientes.includes(p.cliente_id));
-    // "Responsável" here means the CURRENT ETAPA's responsible for a wired post --
-    // the same dimension the posts views display. A post avulso has no etapa, so
-    // it falls back to its own post-level responsavel_id instead of being excluded
-    // outright whenever this filter is active.
+    // "Responsável" aqui é quem está com o post AGORA: o responsável da etapa
+    // atual do fluxo, ou o da etapa ativa do processo individual. Um avulso sem
+    // processo não tem etapa e cai no responsavel_id do próprio post, em vez de
+    // ser excluído de saída enquanto este filtro estiver ativo.
     if (filters.filterMembros.length)
       ps = ps.filter((p) => {
-        const respId =
-          p.workflow_id != null ? cardOfPost(p)?.etapa.responsavel_id : p.responsavel_id;
+        const stage = stageOfPost(p);
+        const respId = stage ? stage.responsavelId : p.responsavel_id;
         return respId != null && filters.filterMembros.includes(respId);
       });
-    // A post "is in" its workflow's current etapa -- a post avulso has none, so
-    // this filter (like prazo below) excludes it whenever it is active.
+    // Um post "está em" a etapa do seu fluxo ou a do seu processo individual;
+    // sem nenhum dos dois este filtro (como o de prazo abaixo) o exclui.
     if (filters.filterEtapas.length)
       ps = ps.filter((p) => {
-        const etapaNome = cardOfPost(p)?.etapa.nome;
+        const etapaNome = stageOfPost(p)?.etapaNome;
         return etapaNome != null && filters.filterEtapas.includes(etapaNome);
       });
     if (filters.filterTipos.length) ps = ps.filter((p) => filters.filterTipos.includes(p.tipo));
     if (filters.filterPostStatus.length)
       ps = ps.filter((p) => postMatchesStatusFilter(p, filters.filterPostStatus));
-    // Same exclusion as filterEtapas above: matchesEtapaPrazo returns false for an
-    // undefined card (post avulso) whenever a prazo preset/range is active, and
-    // true unconditionally when the filter itself is empty.
-    ps = ps.filter((p) =>
-      matchesEtapaPrazo(
-        cardOfPost(p),
+    // Mesma exclusão do filterEtapas acima: sem etapa (nem de fluxo nem de
+    // processo) matchesDeadlineFilter devolve false enquanto um preset/intervalo
+    // estiver ativo, e true incondicionalmente com o filtro vazio.
+    ps = ps.filter((p) => {
+      const stage = stageOfPost(p);
+      return matchesDeadlineFilter(
+        stage ? { deadline: stage.deadline, date: stage.prazoDate } : undefined,
         filters.filterPrazo,
         filters.filterPrazoFrom,
         filters.filterPrazoTo,
-      ),
-    );
+      );
+    });
     return ps;
   }, [
     activePosts,
     cardsByWorkflowId,
+    postEntityByPostId,
     filters.filterSearch,
     filters.filterClientes,
     filters.filterMembros,
@@ -876,9 +893,9 @@ export default function EntregasPage() {
   // Publicações (Kanban/Lista): "Individual · <etapa>" no card de um avulso
   // com processo ativo (spec §4.4). Vazio e estável com a flag desligada.
   const processEtapaByPostId = useMemo(() => {
-    if (postEntities.length === 0) return EMPTY_ETAPA_MAP;
-    return new Map(postEntities.map((e) => [e.process.post_id, e.etapaNome]));
-  }, [postEntities]);
+    if (postEntityByPostId.size === 0) return EMPTY_ETAPA_MAP;
+    return new Map([...postEntityByPostId].map(([postId, e]) => [postId, e.etapaNome]));
+  }, [postEntityByPostId]);
 
   // Selo "Aguarda aprovação" (Kanban): avulso aprovado pelo cliente cujo processo
   // ainda tem outra aprovação pela frente. Só clientes com agendamento
@@ -1342,7 +1359,7 @@ export default function EntregasPage() {
               setAvulsoTemplateId(null);
               setNewAvulsoOpen(true);
             }}
-            processEtapaByPostId={processEtapaByPostId}
+            postEntityByPostId={postEntityByPostId}
           />
         ))}
       {activeView === 'concluded' && (
