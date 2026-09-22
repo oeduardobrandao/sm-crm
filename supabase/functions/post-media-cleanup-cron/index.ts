@@ -17,6 +17,7 @@ import { runOrphanScan, type OrphanScanDeps } from "./orphan-scan.ts";
 import { runIntegrityCanary } from "./canary.ts";
 
 const CRON_NAME = "post-media-cleanup-cron";
+const PURGE_SCAN_KEY = "trash-purge:trash/";
 
 // Listing pages the orphan scan may consume per target per run. See
 // orphan-scan.ts: the scan is checkpointed, so this bounds ONE run's memory and
@@ -31,12 +32,55 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
 
+// Watchdog for an SDK call whose own transport is a known edge-runtime hang
+// risk (see r2.ts's presign+fetch comments). Resolves `null` on timeout
+// instead of the operation's own return type, so callers can tell "timed out"
+// apart from "completed with a falsy/zero result" and skip writing a
+// checkpoint for a run that may still be in flight.
+function withWatchdog<T>(ms: number, run: () => Promise<T>): Promise<T | null> {
+  return new Promise<T | null>((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    run().then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); resolve(Promise.reject(e)); },
+    );
+  });
+}
+
 Deno.serve(createPostMediaCleanupCronHandler({
   buildCorsHeaders,
   cronSecret: CRON_SECRET,
   timingSafeEqual,
   run: async (_req, json) => {
     const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Checkpoint I/O against cron_scan_state (migration 20260913000001),
+    // shared by the orphan scan and the trash purge below. A missing row is
+    // not an error: it means "start a fresh cycle".
+    const readCheckpoint = async (scanKey: string): Promise<string | null> => {
+      const { data, error } = await svc
+        .from("cron_scan_state")
+        .select("continuation_token")
+        .eq("scan_key", scanKey)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return (data?.continuation_token as string | null) ?? null;
+    };
+    // One RPC, not an upsert plus a counter write: a completed cycle has to
+    // move the position, restart the cycle clock and bump the counter as a
+    // unit, or the telemetry starts disagreeing with the cursor.
+    const writeCheckpoint = async (
+      scanKey: string,
+      token: string | null,
+      opts: { cycleCompleted: boolean },
+    ): Promise<void> => {
+      const { error } = await svc.rpc("record_scan_checkpoint", {
+        p_scan_key: scanKey,
+        p_token: token,
+        p_cycle_completed: opts.cycleCompleted,
+      });
+      if (error) throw new Error(error.message);
+    };
 
     let deleted = 0;
     let failed = 0;
@@ -138,45 +182,27 @@ Deno.serve(createPostMediaCleanupCronHandler({
       listOrphanKeyPage,
       trashObject,
       pagesPerRun: ORPHAN_SCAN_PAGES_PER_RUN,
-      // Checkpoint I/O against cron_scan_state (migration 20260912000001).
-      // A missing row is not an error: it means "start a fresh cycle".
-      readCheckpoint: async (scanKey) => {
-        const { data, error } = await svc
-          .from("cron_scan_state")
-          .select("continuation_token")
-          .eq("scan_key", scanKey)
-          .maybeSingle();
-        if (error) throw new Error(error.message);
-        return (data?.continuation_token as string | null) ?? null;
-      },
-      // One RPC, not an upsert plus a counter write: a completed cycle has to
-      // move the position, restart the cycle clock and bump the counter as a
-      // unit, or the telemetry starts disagreeing with the cursor.
-      writeCheckpoint: async (scanKey, token, { cycleCompleted }) => {
-        const { error } = await svc.rpc("record_scan_checkpoint", {
-          p_scan_key: scanKey,
-          p_token: token,
-          p_cycle_completed: cycleCompleted,
-        });
-        if (error) throw new Error(error.message);
-      },
+      readCheckpoint,
+      writeCheckpoint,
     });
 
-    // Purge trash/ entries past their 30-day undo window (bounded per run).
+    // Purge trash/ entries past their 30-day undo window (bounded per run,
+    // checkpointed in cron_scan_state like the orphan scan above). The 55s
+    // internal deadline (purgeTrash's default) is the primary bound; this 90s
+    // watchdog is a true last resort for a wedged SDK call, which is why it no
+    // longer needs to match the OLD 60s "whole thing might hang" budget. On a
+    // watchdog timeout the checkpoint is deliberately NOT written, so the next
+    // run resumes from the previous token instead of losing position.
     let trashPurged = 0;
     try {
-      // SDK-independent watchdog: listings have worked reliably on this runtime,
-      // but a wedged purge must never block the canary/alert stages behind it.
-      trashPurged = await new Promise<number>((resolve) => {
-        const watchdog = setTimeout(() => {
-          console.error("post-media-cleanup:purge-trash timed out");
-          resolve(0);
-        }, 60_000);
-        purgeTrash(30).then(
-          (n) => { clearTimeout(watchdog); resolve(n); },
-          (e) => { clearTimeout(watchdog); console.error("post-media-cleanup:purge-trash", e); resolve(0); },
-        );
-      });
+      const startToken = await readCheckpoint(PURGE_SCAN_KEY);
+      const result = await withWatchdog(90_000, () => purgeTrash(30, { startToken }));
+      if (result) {
+        trashPurged = result.purged;
+        await writeCheckpoint(PURGE_SCAN_KEY, result.nextToken, { cycleCompleted: result.cycleCompleted });
+      } else {
+        console.error("post-media-cleanup:purge-trash timed out");
+      }
     } catch (e) {
       console.error("post-media-cleanup:purge-trash", e);
     }

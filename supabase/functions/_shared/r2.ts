@@ -150,28 +150,90 @@ export async function trashObject(key: string): Promise<void> {
   await deleteObject(key);
 }
 
+export interface TrashPage {
+  objects: Array<{ key: string; lastModified: Date }>;
+  nextToken: string | null;
+}
+
+/** ONE page of the trash/ prefix, same shape/bound as listOrphanKeyPage's
+ * underlying listing: a 30s abort against a runtime known to hang on a
+ * stalled fetch. Real implementation for purgeTrash's `listPage` seam. */
+async function realListTrashPage(token: string | undefined): Promise<TrashPage> {
+  const res = await getR2().send(
+    new ListObjectsV2Command({ Bucket: getBucket(), Prefix: "trash/", ContinuationToken: token }),
+    { abortSignal: AbortSignal.timeout(30_000) },
+  );
+  const objects: Array<{ key: string; lastModified: Date }> = [];
+  for (const obj of res.Contents ?? []) {
+    if (obj.Key && obj.LastModified) objects.push({ key: obj.Key, lastModified: obj.LastModified });
+  }
+  return {
+    objects,
+    nextToken: res.IsTruncated ? (res.NextContinuationToken ?? null) : null,
+  };
+}
+
+export interface PurgeTrashOpts {
+  maxPerRun?: number;
+  startToken?: string | null;
+  deadlineMs?: number;
+  // test seams; default to the real implementations
+  listPage?: (token: string | undefined) => Promise<TrashPage>;
+  deleteFn?: (key: string) => Promise<void>;
+  nowFn?: () => number;
+}
+
+export interface PurgeTrashResult {
+  purged: number;
+  nextToken: string | null;
+  cycleCompleted: boolean;
+}
+
 /** Permanently removes trash/ entries older than `olderThanDays`, at most
- * `maxPerRun` per call. Bounded and last-resort-safe: a listing error deletes
- * nothing. Returns the number purged. */
-export async function purgeTrash(olderThanDays: number, maxPerRun = 200): Promise<number> {
-  const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+ * `maxPerRun` per call (default 500), bounded by `deadlineMs` (default 55s)
+ * checked between pages so a slow/large trash/ prefix can't blow the caller's
+ * own watchdog. Checkpointed via `startToken`/`nextToken` — see
+ * post-media-cleanup-cron/index.ts, which persists the returned `nextToken`
+ * in `cron_scan_state` the same way the orphan scan does. A listing error on
+ * a stale/invalid continuation token is retried once from the head of the
+ * prefix before propagating. */
+export async function purgeTrash(olderThanDays: number, opts: PurgeTrashOpts = {}): Promise<PurgeTrashResult> {
+  const { maxPerRun = 500, deadlineMs = 55_000, nowFn = Date.now } = opts;
+  const listPage = opts.listPage ?? realListTrashPage;
+  const deleteFn = opts.deleteFn ?? deleteObject;
+  const cutoff = nowFn() - olderThanDays * 24 * 60 * 60 * 1000;
+  const startedAt = nowFn();
   let purged = 0;
-  let token: string | undefined;
-  do {
-    const res = await getR2().send(
-      new ListObjectsV2Command({ Bucket: getBucket(), Prefix: "trash/", ContinuationToken: token }),
-      { abortSignal: AbortSignal.timeout(30_000) },
-    );
-    for (const obj of res.Contents ?? []) {
-      if (purged >= maxPerRun) return purged;
-      if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) {
-        await deleteObject(obj.Key);
+  // Token that PRODUCED the page currently being processed. Persisting this
+  // (not nextToken) on an early exit means an interrupted page is re-listed,
+  // never skipped: deletes are idempotent (deleteObject treats 404 as done).
+  let pageToken: string | null = opts.startToken ?? null;
+  let retriedFromNull = false;
+  while (true) {
+    let page: TrashPage;
+    try {
+      page = await listPage(pageToken ?? undefined);
+    } catch (e) {
+      if (pageToken !== null && !retriedFromNull) {
+        // Stale/invalid continuation token (R2 InvalidArgument): restart cycle.
+        console.error("purgeTrash: list failed with token, restarting from head", e);
+        pageToken = null;
+        retriedFromNull = true;
+        continue;
+      }
+      throw e;
+    }
+    for (const obj of page.objects) {
+      if (purged >= maxPerRun) return { purged, nextToken: pageToken, cycleCompleted: false };
+      if (obj.lastModified.getTime() < cutoff) {
+        await deleteFn(obj.key);
         purged++;
       }
     }
-    token = res.IsTruncated ? res.NextContinuationToken : undefined;
-  } while (token);
-  return purged;
+    if (page.nextToken === null) return { purged, nextToken: null, cycleCompleted: true };
+    pageToken = page.nextToken;
+    if (nowFn() - startedAt >= deadlineMs) return { purged, nextToken: pageToken, cycleCompleted: false };
+  }
 }
 
 export async function deleteObject(key: string): Promise<void> {
