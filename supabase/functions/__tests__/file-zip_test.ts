@@ -318,6 +318,52 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name:
+    "a selected file whose path collides with the manifest name is skipped, not a duplicate-name crash",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    // The manifest name is reserved in seenPaths up front, so a user file at
+    // that exact root path takes the duplicate-skip branch (and lands in the
+    // manifest itself) instead of reaching zipWriter.add("LEIA-ME...") after
+    // it was already used for the real manifest -- which would throw a
+    // duplicate-name error from zip.js and abort the whole zip.
+    const entries: ZipPlanEntry[] = [
+      { name: "LEIA-ME-arquivos-faltando.txt", r2Key: "r2/collide", path: "LEIA-ME-arquivos-faltando.txt", size_bytes: 3 },
+      { name: "gone.txt", r2Key: "r2/gone", path: "folder/gone.txt", size_bytes: 3 },
+    ];
+    const objects: Record<string, Uint8Array> = {
+      "r2/collide": new TextEncoder().encode("aaa"),
+      // "r2/gone" intentionally missing -> getObjectStream resolves null
+    };
+    const deps: FileZipDeps = {
+      db: makeFakeDb({ files: [], folders: [] }),
+      contaId: "conta-1",
+      getObjectStream: makeFakeGetObjectStream(objects),
+    };
+
+    const stream = buildZipStream(deps, entries);
+    const zipBytes = await collectStream(stream);
+
+    const zipReader = new ZipReader(new Uint8ArrayReader(zipBytes));
+    const zipEntries = await zipReader.getEntries();
+    const manifestEntry = zipEntries.find((e) => e.filename === "LEIA-ME-arquivos-faltando.txt");
+    assert(manifestEntry, "manifest entry missing");
+    assert(!manifestEntry.directory, "manifest entry must be a file, not a directory");
+    const manifestText = await manifestEntry.getData(new TextWriter());
+    await zipReader.close();
+
+    // Only one entry with that name in the zip -- the build succeeded, and
+    // it's the real manifest (not the user's colliding file).
+    const names = zipEntries.map((e) => e.filename);
+    assertEquals(names.filter((n) => n === "LEIA-ME-arquivos-faltando.txt").length, 1);
+    assertEquals(names.length, 1);
+    assert(manifestText.includes("LEIA-ME-arquivos-faltando.txt"), "colliding file must be listed as skipped");
+    assert(manifestText.includes("folder/gone.txt"));
+  },
+});
+
 Deno.test("collectFolderEntries paginates file pages and stops at depth cap", async () => {
   const folders: Row[] = [];
   const files: Row[] = [];

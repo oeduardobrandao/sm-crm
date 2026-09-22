@@ -179,6 +179,8 @@ export function withStallGuard(
  * hanging (a bare `zipWriter.close()` after an internal add failure is not
  * guaranteed to produce a valid trailer either).
  */
+const MANIFEST_FILENAME = "LEIA-ME-arquivos-faltando.txt";
+
 export function buildZipStream(
   deps: FileZipDeps,
   entries: ZipPlanEntry[],
@@ -189,7 +191,11 @@ export function buildZipStream(
 
   (async () => {
     const skipped: string[] = [];
-    const seenPaths = new Set<string>();
+    // Reserved up front so a selected file whose root path collides with the
+    // manifest name takes the duplicate-skip path below instead of reaching
+    // zipWriter.add("LEIA-ME...") and throwing a duplicate-name error there,
+    // which would route through the catastrophic-abort branch.
+    const seenPaths = new Set<string>([MANIFEST_FILENAME]);
     try {
       for (const entry of entries) {
         if (seenPaths.has(entry.path)) {
@@ -226,7 +232,7 @@ export function buildZipStream(
       if (skipped.length > 0) {
         const manifest =
           "Os arquivos abaixo nao puderam ser incluidos neste zip:\n" + skipped.join("\n") + "\n";
-        await zipWriter.add("LEIA-ME-arquivos-faltando.txt", new TextReader(manifest));
+        await zipWriter.add(MANIFEST_FILENAME, new TextReader(manifest));
       }
 
       await zipWriter.close();

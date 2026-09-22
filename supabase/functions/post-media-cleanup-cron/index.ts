@@ -44,10 +44,14 @@ Deno.serve(createPostMediaCleanupCronHandler({
     // shared by the orphan scan and the trash purge below. A missing row is
     // not an error: it means "start a fresh cycle".
     const readCheckpoint = async (scanKey: string): Promise<string | null> => {
+      // Bounded: a hung read stalls the run before the purge watchdog even
+      // starts, blocking the canary and alert stages downstream — same hang
+      // class the dead-letter counts below are already bound against.
       const { data, error } = await svc
         .from("cron_scan_state")
         .select("continuation_token")
         .eq("scan_key", scanKey)
+        .abortSignal(AbortSignal.timeout(10_000))
         .maybeSingle();
       if (error) throw new Error(error.message);
       return (data?.continuation_token as string | null) ?? null;
@@ -64,7 +68,7 @@ Deno.serve(createPostMediaCleanupCronHandler({
         p_scan_key: scanKey,
         p_token: token,
         p_cycle_completed: opts.cycleCompleted,
-      });
+      }).abortSignal(AbortSignal.timeout(10_000));
       if (error) throw new Error(error.message);
     };
 
@@ -232,20 +236,26 @@ Deno.serve(createPostMediaCleanupCronHandler({
     // of the SAME run, never collapses this alert across runs. This will page
     // every run while dead-lettered rows exist; that's intentional — weekly
     // noise beats silent, permanent data loss.
-    const { count: deadLegacyRows } = await svc
+    const { count: deadLegacyRows, error: deadLegacyError } = await svc
       .from("post_media_deletions")
       .select("id", { count: "exact", head: true })
       .gte("attempts", 6)
       .abortSignal(AbortSignal.timeout(10_000));
+    if (deadLegacyError) {
+      console.error(`post-media-cleanup: dead-letter count query failed: ${deadLegacyError.message}`);
+    }
     if ((deadLegacyRows ?? 0) > 0) {
       console.error(`post-media-cleanup: ${deadLegacyRows} post_media_deletions rows past attempt cap`);
       alerts.push({ error: "post_media_deletions has dead-lettered rows past the attempt cap" });
     }
-    const { count: deadFileRows } = await svc
+    const { count: deadFileRows, error: deadFileError } = await svc
       .from("file_deletions")
       .select("id", { count: "exact", head: true })
       .gte("attempts", 5)
       .abortSignal(AbortSignal.timeout(10_000));
+    if (deadFileError) {
+      console.error(`post-media-cleanup: dead-letter count query failed: ${deadFileError.message}`);
+    }
     if ((deadFileRows ?? 0) > 0) {
       console.error(`post-media-cleanup: ${deadFileRows} file_deletions rows past attempt cap`);
       alerts.push({ error: "file_deletions has dead-lettered rows past the attempt cap" });
