@@ -9472,33 +9472,51 @@ a.mention-chip:hover {
 }
 
 /* ConcludedView */
-.concluded-client-group {
-  margin-bottom: 1rem;
+.concluded-client-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
 }
 
-.concluded-client-header {
+.concluded-client-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.concluded-client-card:hover {
+  border-color: var(--primary-color, #eab308);
+  background: var(--surface-hover, #f8fafc);
+}
+
+.concluded-client-card-top {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0;
-  cursor: pointer;
-  user-select: none;
+  gap: 0.6rem;
+}
+
+.concluded-client-card-name {
   font-weight: 600;
   font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.concluded-client-header:hover {
-  opacity: 0.8;
-}
-
-.concluded-client-count {
-  font-weight: 400;
-  color: var(--text-secondary, #718096);
+.concluded-client-card-stats {
   font-size: 0.8rem;
+  color: var(--text-muted, #718096);
 }
 
 .concluded-client-workflows {
-  margin-left: 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -10624,6 +10642,63 @@ a.mention-chip:hover {
 body.landing-page #root {
   height: auto;
   overflow: visible;
+}
+
+/* Landing page prerendered markup (landing.seo.ts): present in the initial
+   HTML so crawlers get real copy, but createRoot().render() always wipes
+   #root once React mounts — a real user with working JS never needs to see
+   it, so it's hidden by default rather than styled as a placeholder (a
+   styled swap still "flashes"). index.html's <noscript> forces it back to
+   `display: block` when there's no JS to ever replace it, so those visitors
+   get this readable version instead of a permanently blank page. */
+#lp-ssr {
+  display: none;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  line-height: 1.6;
+}
+
+#lp-ssr h1 {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+#lp-ssr h2 {
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 32px 0 12px;
+}
+
+#lp-ssr h3 {
+  font-weight: 600;
+  margin: 20px 0 8px;
+}
+
+#lp-ssr p,
+#lp-ssr li {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+
+#lp-ssr ul {
+  padding-left: 20px;
+  margin-bottom: 16px;
+}
+
+#lp-ssr nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-top: 16px;
+  font-size: 0.9rem;
+}
+
+#lp-ssr nav a {
+  color: var(--text-muted);
 }
 
 /* Indeterminate loading bar (CSV import read/parse) */

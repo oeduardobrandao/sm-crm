@@ -23,6 +23,21 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 vi.mock('../../components/HistoryDrawer', () => ({
   HistoryDrawer: () => <div>HistoryDrawer</div>,
 }));
+const igAvatarsMock = vi.hoisted(() => ({
+  rows: [] as { client_id: number; profile_picture_url: string }[],
+}));
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    from: (table: string) => ({
+      select: () => ({
+        in: () => ({
+          not: () =>
+            Promise.resolve({ data: table === 'instagram_accounts' ? igAvatarsMock.rows : [] }),
+        }),
+      }),
+    }),
+  },
+}));
 const limitsMock = vi.hoisted(() => ({ features: null as Record<string, boolean> | null }));
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({
@@ -68,6 +83,14 @@ const concluded = {
   },
 };
 
+const concludedWorkflow = {
+  id: 42,
+  cliente_id: 3,
+  titulo: 'Campanha de Lançamento',
+  status: 'concluido',
+  created_at: '2026-09-01T12:00:00Z',
+};
+
 function renderView(onOpenPost = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -82,6 +105,7 @@ describe('ConcludedView com processos individuais', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     limitsMock.features = null;
+    igAvatarsMock.rows = [];
   });
 
   it('flag desligada: consulta processos; sem linhas mantém a cópia vazia de sempre', async () => {
@@ -108,11 +132,82 @@ describe('ConcludedView com processos individuais', () => {
     expect(screen.getByText('Post concluído')).toBeInTheDocument();
     expect(screen.getByText('Post individual')).toBeInTheDocument();
     expect(screen.getByText(/1 post individual/)).toBeInTheDocument();
+    // Task 9: existe o botão "Reabrir processo" na linha do post individual
+    // concluído.
+    expect(screen.getByTitle('Reabrir processo')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Post concluído'));
     expect(onOpenPost).toHaveBeenCalledWith(77);
-    // Task 9: agora existe o botão "Reabrir processo" na linha do post
-    // individual concluído (antes desta task não havia nenhum).
-    expect(screen.getByTitle('Reabrir processo')).toBeInTheDocument();
+    // O painel do cliente fecha ao abrir o post, para não ficar atrás do
+    // StandalonePostDrawer (mesmo z-index do HistoryDrawer).
+    expect(screen.queryByText('Post concluído')).toBeNull();
+  });
+
+  it('clicar num fluxo concluído fecha o painel do cliente antes de abrir o histórico', async () => {
+    store.getConcludedWorkflows.mockResolvedValueOnce([concludedWorkflow] as never);
+    renderView();
+    fireEvent.click(await screen.findByText('Aurora'));
+    expect(await screen.findByText('Campanha de Lançamento')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Campanha de Lançamento'));
+    expect(await screen.findByText('HistoryDrawer')).toBeInTheDocument();
+    // O painel do cliente fecha ao abrir o histórico, para não ficar atrás
+    // dele (mesmo z-index de sheet, HistoryDrawer usa um z-index menor).
+    expect(screen.queryByText('Campanha de Lançamento')).toBeNull();
+  });
+
+  it('prioriza o avatar do Instagram sincronizado sobre o foto_url manual do cliente', async () => {
+    store.getClientes.mockResolvedValueOnce([
+      { id: 3, nome: 'Aurora', cor: '#000', foto_url: 'manual.jpg' },
+    ] as never);
+    igAvatarsMock.rows = [{ client_id: 3, profile_picture_url: 'ig.jpg' }];
+    store.getConcludedWorkflows.mockResolvedValueOnce([concludedWorkflow] as never);
+    renderView();
+    await screen.findByText('Aurora');
+    const avatar = await screen.findByTestId('cliente-avatar-foto');
+    expect(avatar).toHaveAttribute('src', 'ig.jpg');
+  });
+
+  it('busca de clientes (controlada por EntregasPage via prop) filtra o grid pelo nome', async () => {
+    store.getClientes.mockResolvedValueOnce([
+      { id: 3, nome: 'Aurora', cor: '#000' },
+      { id: 4, nome: 'Zebra Studio', cor: '#111' },
+    ] as never);
+    store.getConcludedWorkflows.mockResolvedValueOnce([
+      concludedWorkflow,
+      { ...concludedWorkflow, id: 43, cliente_id: 4, titulo: 'Outro fluxo' },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <ConcludedView clientSearch="" />
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Aurora');
+    expect(screen.getByText('Zebra Studio')).toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={qc}>
+        <ConcludedView clientSearch="zebra" />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByText('Aurora')).toBeNull();
+    expect(screen.getByText('Zebra Studio')).toBeInTheDocument();
+  });
+
+  it('busca de fluxos filtra a lista dentro do painel do cliente', async () => {
+    store.getConcludedWorkflows.mockResolvedValueOnce([
+      concludedWorkflow,
+      { ...concludedWorkflow, id: 43, titulo: 'Reels de julho' },
+    ] as never);
+    renderView();
+    fireEvent.click(await screen.findByText('Aurora'));
+    await screen.findByText('Campanha de Lançamento');
+    expect(screen.getByText('Reels de julho')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Buscar fluxo...'), {
+      target: { value: 'reels' },
+    });
+    expect(screen.queryByText('Campanha de Lançamento')).toBeNull();
+    expect(screen.getByText('Reels de julho')).toBeInTheDocument();
   });
 
   it('flag ligada e nada concluído: cópia vazia inclui posts individuais', async () => {
@@ -154,6 +249,27 @@ describe('ConcludedView com processos individuais', () => {
     });
     fireEvent.click(await screen.findByText('Aurora'));
     expect(await screen.findByText('Post individual')).toBeInTheDocument();
+  });
+
+  it('fluxo concluído existe mas o resumo (etapas/posts) ainda carrega: não mostra o vazio prematuro', async () => {
+    store.getConcludedWorkflows.mockResolvedValueOnce([concludedWorkflow] as never);
+    let resolveEtapas: (value: unknown[]) => void = () => {};
+    store.getWorkflowEtapas.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveEtapas = resolve;
+        }),
+    );
+    renderView();
+
+    await waitFor(() => expect(store.getWorkflowEtapas).toHaveBeenCalled());
+    expect(screen.queryByText('Nenhum fluxo concluído ainda.')).toBeNull();
+    expect(screen.getByText('Carregando...')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveEtapas([]);
+    });
+    expect(await screen.findByText('Aurora')).toBeInTheDocument();
   });
 
   it('Reabrir processo: confirma e chama transition_post_process com reabrir', async () => {

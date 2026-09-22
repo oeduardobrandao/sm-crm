@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
   copyToStream,
+  createStreamRetryBudget,
   deleteStreamVideo,
   getStreamVideoStatus,
   isStreamCleanupEnabled,
@@ -395,7 +396,7 @@ Deno.test("stream-shared: listStreamVideos paginates until a short page, carryin
 Deno.test("stream-shared: listStreamVideos rejects on a non-2xx page instead of returning a short list", async () => {
   clearStreamEnv();
   setStreamEnv();
-  const fetchFn = (() => Promise.resolve(new Response("rate limited", { status: 429 }))) as typeof fetch;
+  const fetchFn = (() => Promise.resolve(new Response("server error", { status: 500 }))) as typeof fetch;
 
   let message = "";
   try {
@@ -403,7 +404,97 @@ Deno.test("stream-shared: listStreamVideos rejects on a non-2xx page instead of 
   } catch (e) {
     message = e instanceof Error ? e.message : String(e);
   }
+  assert(message.includes("500"), `expected the status in: ${message}`);
+  clearStreamEnv();
+});
+
+// ---------------------------------------------------------------------------
+// fetchStreamWithRetry (via listStreamVideos — exercises every code path)
+// ---------------------------------------------------------------------------
+
+const noSleep = async (_ms: number) => {};
+
+Deno.test("stream-shared: listStreamVideos retries a 429 with backoff and succeeds once Cloudflare stops throttling", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  let calls = 0;
+  const slept: number[] = [];
+  const fetchFn = (() => {
+    calls++;
+    if (calls < 3) return Promise.resolve(new Response("rate limited", { status: 429 }));
+    return Promise.resolve(new Response(JSON.stringify({ result: [] }), { status: 200 }));
+  }) as typeof fetch;
+
+  const videos = await listStreamVideos(fetchFn, async (ms) => {
+    slept.push(ms);
+  });
+
+  assertEquals(videos, []);
+  assertEquals(calls, 3, "expected 2 retries before the 3rd call succeeded");
+  assertEquals(slept.length, 2);
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: listStreamVideos honors a numeric Retry-After header", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  let calls = 0;
+  const slept: number[] = [];
+  const fetchFn = (() => {
+    calls++;
+    if (calls === 1) {
+      return Promise.resolve(
+        new Response("rate limited", { status: 429, headers: { "retry-after": "2" } }),
+      );
+    }
+    return Promise.resolve(new Response(JSON.stringify({ result: [] }), { status: 200 }));
+  }) as typeof fetch;
+
+  await listStreamVideos(fetchFn, async (ms) => {
+    slept.push(ms);
+  });
+
+  assertEquals(slept, [2000]);
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: listStreamVideos gives up after exhausting retries on a sustained 429", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  let calls = 0;
+  const fetchFn = (() => {
+    calls++;
+    return Promise.resolve(new Response("rate limited", { status: 429 }));
+  }) as typeof fetch;
+
+  let message = "";
+  try {
+    await listStreamVideos(fetchFn, noSleep);
+  } catch (e) {
+    message = e instanceof Error ? e.message : String(e);
+  }
   assert(message.includes("429"), `expected the status in: ${message}`);
+  assertEquals(calls, 4, "expected the initial try plus 3 retries, then give up");
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: deleteStreamVideo does not retry a 500 (only 429 is retried)", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  let calls = 0;
+  const fetchFn = (() => {
+    calls++;
+    return Promise.resolve(new Response("server error", { status: 500 }));
+  }) as typeof fetch;
+
+  let threw = false;
+  try {
+    await deleteStreamVideo("video-uid-1", fetchFn, noSleep);
+  } catch (_e) {
+    threw = true;
+  }
+  assert(threw, "expected deleteStreamVideo to throw on 500");
+  assertEquals(calls, 1, "a 500 must not be retried");
   clearStreamEnv();
 });
 
@@ -451,5 +542,73 @@ Deno.test("stream-shared: listStreamVideos rejects when the second page 500s, di
   }
   assert(threw, "expected listStreamVideos to reject rather than return page 1 alone");
   assertEquals(calls.length, 2, "the failure must come from the second page, not the first");
+  clearStreamEnv();
+});
+
+// ---------------------------------------------------------------------------
+// StreamRetryBudget (caps total retry-wait time across a whole cron run, not
+// just per call — the fix for a sustained 429 multiplying across a large
+// sequential batch, e.g. post-media-cleanup-cron's 500-row deletion drain)
+// ---------------------------------------------------------------------------
+
+Deno.test("stream-shared: createStreamRetryBudget reserves up to its total and then refuses", () => {
+  const budget = createStreamRetryBudget(1000);
+  assertEquals(budget.reserve(400), true);
+  assertEquals(budget.reserve(400), true);
+  assertEquals(budget.reserve(300), false, "only 200ms left — must refuse a 300ms reservation");
+  assertEquals(budget.reserve(200), true, "the refused reservation must not have been deducted");
+});
+
+Deno.test("stream-shared: listStreamVideos stops retrying once the budget is exhausted, failing fast instead of sleeping", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  let calls = 0;
+  const slept: number[] = [];
+  const fetchFn = (() => {
+    calls++;
+    return Promise.resolve(new Response("rate limited", { status: 429 }));
+  }) as typeof fetch;
+  // Budget covers less than one backoff wait, so the very first 429 already exhausts it.
+  const budget = createStreamRetryBudget(10);
+
+  let message = "";
+  try {
+    await listStreamVideos(fetchFn, async (ms) => {
+      slept.push(ms);
+    }, budget);
+  } catch (e) {
+    message = e instanceof Error ? e.message : String(e);
+  }
+
+  assert(message.includes("429"), `expected the status in: ${message}`);
+  assertEquals(calls, 1, "budget exhausted on the first 429 — must fail fast, no further attempts");
+  assertEquals(slept.length, 0, "must never sleep once the budget refuses the reservation");
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: a shared budget is spent across separate calls, so a second call fails fast once the first exhausted it", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  const slept: number[] = [];
+  // The first backoff wait is always < 350ms (250ms base + up to 100ms jitter), so 350
+  // deterministically covers exactly the first call's first wait and nothing more: what's left
+  // afterward is under 100ms, less than any possible next wait (min 250ms) — so both the first
+  // call's second retry AND the second call's first wait are deterministically refused,
+  // regardless of the jitter's actual value.
+  const budget = createStreamRetryBudget(350);
+  const fetchFn = (() => Promise.resolve(new Response("rate limited", { status: 429 }))) as typeof fetch;
+  const sleepFn = async (ms: number) => {
+    slept.push(ms);
+  };
+
+  await deleteStreamVideo("uid-1", fetchFn, sleepFn, budget).catch(() => {});
+  assertEquals(slept.length, 1, "the first call spends its one deterministic reservation");
+
+  await deleteStreamVideo("uid-2", fetchFn, sleepFn, budget).catch(() => {});
+  assertEquals(
+    slept.length,
+    1,
+    "the second call must not sleep at all — the shared budget was already exhausted by the first",
+  );
   clearStreamEnv();
 });
