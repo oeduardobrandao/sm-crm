@@ -222,6 +222,35 @@ Deno.serve(createPostMediaCleanupCronHandler({
     }
     if (failed > 0) alerts.push({ error: `deletion drain: ${failed} rows failed this run` });
     if (streamErrors > 0) alerts.push({ error: `stream sweeps: ${streamErrors} step errors` });
+
+    // Dead-letter visibility: rows past their attempt cap are silently excluded
+    // from the drains above forever (post_media_deletions: attempts < 6;
+    // file_deletions: attempts < 5). The alert TEXT is deliberately stable (no
+    // counts) — but cron-health-cron's alreadyReported dedups on signature_hash
+    // AND an exact error_detail->context->>run_start_time match
+    // (cron-health-cron/index.ts:29-42), so it only suppresses a double-report
+    // of the SAME run, never collapses this alert across runs. This will page
+    // every run while dead-lettered rows exist; that's intentional — weekly
+    // noise beats silent, permanent data loss.
+    const { count: deadLegacyRows } = await svc
+      .from("post_media_deletions")
+      .select("id", { count: "exact", head: true })
+      .gte("attempts", 6)
+      .abortSignal(AbortSignal.timeout(10_000));
+    if ((deadLegacyRows ?? 0) > 0) {
+      console.error(`post-media-cleanup: ${deadLegacyRows} post_media_deletions rows past attempt cap`);
+      alerts.push({ error: "post_media_deletions has dead-lettered rows past the attempt cap" });
+    }
+    const { count: deadFileRows } = await svc
+      .from("file_deletions")
+      .select("id", { count: "exact", head: true })
+      .gte("attempts", 5)
+      .abortSignal(AbortSignal.timeout(10_000));
+    if ((deadFileRows ?? 0) > 0) {
+      console.error(`post-media-cleanup: ${deadFileRows} file_deletions rows past attempt cap`);
+      alerts.push({ error: "file_deletions has dead-lettered rows past the attempt cap" });
+    }
+
     if (alerts.length > 0) {
       await reportCronFailure(svc, CRON_NAME, { failed: alerts.length, errors: alerts });
     }
