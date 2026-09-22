@@ -15,6 +15,7 @@ import { createPostMediaCleanupCronHandler } from "./handler.ts";
 import { runStreamSweeps } from "./stream-steps.ts";
 import { runOrphanScan, type OrphanScanDeps } from "./orphan-scan.ts";
 import { runIntegrityCanary } from "./canary.ts";
+import { withWatchdog } from "./watchdog.ts";
 
 const CRON_NAME = "post-media-cleanup-cron";
 const PURGE_SCAN_KEY = "trash-purge:trash/";
@@ -31,21 +32,6 @@ const ORPHAN_SCAN_PAGES_PER_RUN = Math.max(
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
-
-// Watchdog for an SDK call whose own transport is a known edge-runtime hang
-// risk (see r2.ts's presign+fetch comments). Resolves `null` on timeout
-// instead of the operation's own return type, so callers can tell "timed out"
-// apart from "completed with a falsy/zero result" and skip writing a
-// checkpoint for a run that may still be in flight.
-function withWatchdog<T>(ms: number, run: () => Promise<T>): Promise<T | null> {
-  return new Promise<T | null>((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms);
-    run().then(
-      (v) => { clearTimeout(timer); resolve(v); },
-      (e) => { clearTimeout(timer); resolve(Promise.reject(e)); },
-    );
-  });
-}
 
 Deno.serve(createPostMediaCleanupCronHandler({
   buildCorsHeaders,
