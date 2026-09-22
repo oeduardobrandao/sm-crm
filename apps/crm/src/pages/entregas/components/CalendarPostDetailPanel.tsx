@@ -26,6 +26,8 @@ export interface CalendarPostDetailPanelProps {
   post: ClientePost;
   hubUrl?: string;
   membros: Membro[];
+  /** "O post é nosso": no calendário de um fluxo, `workflow_id === currentWorkflowId`;
+   *  no calendário de um post avulso, todo post avulso do cliente é nosso. */
   isCurrentWorkflow: boolean;
   isLocked: boolean;
   lockReason?: string;
@@ -199,7 +201,7 @@ export function CalendarPostDetailPanel({
             <ExternalLink className="h-4 w-4" /> Abrir post completo
           </button>
         )}
-        {isAvulso && (
+        {isAvulso && !isCurrentWorkflow && (
           <button
             className="calendar-detail-btn calendar-detail-btn--primary"
             onClick={() => navigate(`/entregas?post=${post.id}`)}

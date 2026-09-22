@@ -25,12 +25,20 @@ import { resolveCalendarDrop, formatRescheduleToast } from '../calendarDrop';
 interface WorkflowCalendarViewProps {
   clienteId: number;
   clienteNome: string;
-  currentWorkflowId: number;
-  currentWorkflowTitulo: string;
+  /** Qual conjunto de posts é "nosso" -- o que decide a barra lateral "Sem data",
+   *  o realce de estrangeiro e quem pode ser desagendado. Um id de fluxo no
+   *  drawer de fluxo; `null` no drawer de post avulso, onde os posts avulsos do
+   *  cliente (`workflow_id === null`) é que são os nossos. */
+  currentWorkflowId: number | null;
+  currentWorkflowTitulo?: string;
   onBack: () => void;
   membros?: Membro[];
   onOpenPost?: (postId: number) => void;
   hubUrl?: string;
+  /** Chamado depois de toda mudança de data, junto das invalidações internas:
+   *  quem hospeda a view (o drawer do post avulso) revalida as próprias queries,
+   *  que não passam pela chave ['clientePosts', clienteId]. */
+  onPostsChanged?: () => void;
 }
 
 interface PendingDrop {
@@ -48,6 +56,7 @@ export function WorkflowCalendarView({
   membros = [],
   onOpenPost,
   hubUrl,
+  onPostsChanged,
 }: WorkflowCalendarViewProps) {
   const qc = useQueryClient();
   const [currentMonth, setCurrentMonth] = useState(
@@ -89,13 +98,16 @@ export function WorkflowCalendarView({
   const invalidateQueries = useCallback(
     (workflowId?: number | null) => {
       qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
-      qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', currentWorkflowId] });
+      if (currentWorkflowId != null) {
+        qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', currentWorkflowId] });
+      }
       if (workflowId != null && workflowId !== currentWorkflowId) {
         qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
       }
       qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+      onPostsChanged?.();
     },
-    [qc, clienteId, currentWorkflowId],
+    [qc, clienteId, currentWorkflowId, onPostsChanged],
   );
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -224,9 +236,9 @@ export function WorkflowCalendarView({
       {!hintDismissed && (
         <div className="calendar-hint-banner">
           <span className="calendar-hint-text">
-            💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar —
-            inclusive posts de outros workflows. Arraste de volta para remover a data (apenas posts
-            deste workflow).
+            {currentWorkflowId === null
+              ? '💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar — inclusive posts de fluxos. Arraste de volta para remover a data (apenas posts avulsos).'
+              : '💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar — inclusive posts de outros workflows. Arraste de volta para remover a data (apenas posts deste workflow).'}
           </span>
           <button onClick={dismissHint} className="calendar-hint-close" aria-label="Fechar dica">
             <X className="h-3.5 w-3.5" />
