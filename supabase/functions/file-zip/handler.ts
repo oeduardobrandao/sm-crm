@@ -1,8 +1,9 @@
 import { TextReader, ZipWriter } from "npm:@zip.js/zip.js@2";
-import { chunk, fetchAllRows } from "../_shared/paginate.ts";
+import { chunk } from "../_shared/paginate.ts";
 import {
   MAX_FILE_SIZE_BYTES,
   MAX_FOLDER_DEPTH,
+  MAX_ZIP_FOLDERS,
   MAX_ZIP_ENTRIES,
   MAX_ZIP_TOTAL_BYTES,
   sanitizeZipPath,
@@ -51,14 +52,15 @@ export class ZipBudgetExceededError extends Error {
 }
 
 /** Walks a folder tree, resolving every nested file into a flat entry list.
- * File pages are fetched with an explicit page loop (not fetchAllRows) so
- * the entry/size budget is enforced AFTER EVERY PAGE: collection stops at
- * most one page past the cap instead of paging an arbitrarily large folder
- * into memory before checkZipBudget ever runs. Subfolder pages still use
- * fetchAllRows (folder rows are two small columns and bounded by the same
- * entry budget indirectly). Descent stops at MAX_FOLDER_DEPTH (root =
- * depth 0, matching file-manage's copyFolderRecursive); a capped subtree is
- * recorded in skippedPaths, never silently dropped. */
+ * Both file and subfolder pages use an id-keyset page loop so (a) the
+ * entry/size budget is enforced AFTER EVERY PAGE -- collection stops at most
+ * one page past the cap instead of paging an arbitrarily large folder into
+ * memory before checkZipBudget ever runs -- and (b) a row deleted from an
+ * earlier page mid-collection can't shift an offset window and silently drop
+ * a still-existing row. MAX_ZIP_FOLDERS bounds the traversal itself (empty
+ * folders never trip the file budget). Descent stops at MAX_FOLDER_DEPTH
+ * (root = depth 0, matching file-manage's copyFolderRecursive); a capped
+ * subtree is recorded in skippedPaths, never silently dropped. */
 export async function collectFolderEntries(
   deps: FileZipDeps,
   folderId: number,
@@ -73,27 +75,45 @@ export async function collectFolderEntries(
     }
   };
 
+  let foldersVisited = 0;
+
   async function walkFolder(fId: number, pathPrefix: string, depth: number) {
     if (depth > MAX_FOLDER_DEPTH) {
       console.error(`[file-zip] Depth limit exceeded for folder ${fId}`);
       skippedPaths.push(`${pathPrefix}** (subpasta alem do limite de profundidade)`);
       return;
     }
+    // Traversal budget independent of the FILE budget: a wide tree of empty
+    // folders never trips assertBudget, so without this a pathological tree
+    // could keep the walk issuing queries until the worker dies.
+    if (++foldersVisited > MAX_ZIP_FOLDERS) throw new ZipBudgetExceededError();
 
+    // Keyset pagination (id cursor), not offset: a file deleted from an
+    // earlier page mid-collection shifts an offset window and silently drops
+    // a still-existing row from the zip (the exact race documented on
+    // fetchAllRows in _shared/paginate.ts). The id seek can only ever
+    // re-serve or skip DELETED rows, never live ones.
     const PAGE = 1000;
-    let from = 0;
+    let lastFileId = 0;
     while (true) {
       const { data, error } = await deps.db
         .from("files")
-        .select("name, r2_key, size_bytes")
+        .select("id, name, r2_key, size_bytes")
         .eq("folder_id", fId)
         .eq("conta_id", deps.contaId)
+        .gt("id", lastFileId)
         .order("id")
-        .range(from, from + PAGE - 1);
+        .limit(PAGE);
       if (error) {
         throw new Error(`[file-zip] collectFolderEntries files page failed: ${error.message}`);
       }
-      const rows = (data ?? []) as { name: string; r2_key: string; size_bytes: number | null }[];
+      const rows = (data ?? []) as {
+        id: number;
+        name: string;
+        r2_key: string;
+        size_bytes: number | null;
+      }[];
+      if (rows.length === 0) break;
       for (const f of rows) {
         entries.push({
           name: f.name,
@@ -105,23 +125,40 @@ export async function collectFolderEntries(
         // per-file max so a legacy row can't sneak the total past the cap.
         totalBytes += f.size_bytes ?? MAX_FILE_SIZE_BYTES;
       }
+      const newLast = rows[rows.length - 1].id;
+      if (newLast <= lastFileId) {
+        throw new Error("[file-zip] collectFolderEntries file cursor did not advance");
+      }
+      lastFileId = newLast;
       assertBudget();
-      if (rows.length === 0) break;
-      from += rows.length;
     }
 
-    const subs = await fetchAllRows<{ id: number; name: string }>(
-      (from, to) =>
-        deps.db
-          .from("folders")
-          .select("id, name")
-          .eq("parent_id", fId)
-          .eq("conta_id", deps.contaId)
-          .order("id")
-          .range(from, to),
-    );
-    for (const sub of subs) {
-      await walkFolder(sub.id, pathPrefix + sanitizeZipPath(sub.name) + "/", depth + 1);
+    // Same keyset cursor for subfolder pages, processed page by page: the
+    // sibling set is never fully retained, so a wide level costs one page of
+    // memory at a time (the MAX_ZIP_FOLDERS budget above bounds the total).
+    let lastFolderId = 0;
+    while (true) {
+      const { data, error } = await deps.db
+        .from("folders")
+        .select("id, name")
+        .eq("parent_id", fId)
+        .eq("conta_id", deps.contaId)
+        .gt("id", lastFolderId)
+        .order("id")
+        .limit(PAGE);
+      if (error) {
+        throw new Error(`[file-zip] collectFolderEntries folders page failed: ${error.message}`);
+      }
+      const subs = (data ?? []) as { id: number; name: string }[];
+      if (subs.length === 0) break;
+      for (const sub of subs) {
+        await walkFolder(sub.id, pathPrefix + sanitizeZipPath(sub.name) + "/", depth + 1);
+      }
+      const newLast = subs[subs.length - 1].id;
+      if (newLast <= lastFolderId) {
+        throw new Error("[file-zip] collectFolderEntries folder cursor did not advance");
+      }
+      lastFolderId = newLast;
     }
   }
 

@@ -10,7 +10,7 @@ import {
   ZipBudgetExceededError,
   type ZipPlanEntry,
 } from "../file-zip/handler.ts";
-import { MAX_FILE_SIZE_BYTES, MAX_ZIP_ENTRIES, MAX_ZIP_TOTAL_BYTES } from "../file-zip/utils.ts";
+import { MAX_FILE_SIZE_BYTES, MAX_ZIP_ENTRIES, MAX_ZIP_FOLDERS, MAX_ZIP_TOTAL_BYTES } from "../file-zip/utils.ts";
 
 type Row = Record<string, unknown>;
 
@@ -26,10 +26,11 @@ function makeFakeDb(tables: { files: Row[]; folders: Row[] }): FileZipDeps["db"]
   return {
     from(table: string) {
       const rows = (tables as Record<string, Row[]>)[table] ?? [];
-      const filters: Array<{ column: string; kind: "eq" | "in"; value: unknown }> = [];
+      const filters: Array<{ column: string; kind: "eq" | "in" | "gt"; value: unknown }> = [];
       let orderCol: string | null = null;
       let rangeFrom: number | null = null;
       let rangeTo: number | null = null;
+      let limitN: number | null = null;
       // deno-lint-ignore no-explicit-any
       const chain: any = {
         select() {
@@ -43,6 +44,10 @@ function makeFakeDb(tables: { files: Row[]; folders: Row[] }): FileZipDeps["db"]
           filters.push({ column, kind: "in", value: values });
           return chain;
         },
+        gt(column: string, value: unknown) {
+          filters.push({ column, kind: "gt", value });
+          return chain;
+        },
         order(column: string) {
           orderCol = column;
           return chain;
@@ -52,10 +57,18 @@ function makeFakeDb(tables: { files: Row[]; folders: Row[] }): FileZipDeps["db"]
           rangeTo = to;
           return chain;
         },
+        limit(n: number) {
+          limitN = n;
+          return chain;
+        },
         then(onFulfilled: (v: { data: Row[] | null; error: null }) => unknown) {
           let data = rows.filter((r) =>
             filters.every((f) =>
-              f.kind === "eq" ? r[f.column] === f.value : (f.value as unknown[]).includes(r[f.column])
+              f.kind === "eq"
+                ? r[f.column] === f.value
+                : f.kind === "gt"
+                ? (r[f.column] as number) > (f.value as number)
+                : (f.value as unknown[]).includes(r[f.column])
             )
           );
           if (orderCol) {
@@ -68,6 +81,9 @@ function makeFakeDb(tables: { files: Row[]; folders: Row[] }): FileZipDeps["db"]
           }
           if (rangeFrom !== null && rangeTo !== null) {
             data = data.slice(rangeFrom, rangeTo + 1);
+          }
+          if (limitN !== null) {
+            data = data.slice(0, limitN);
           }
           return Promise.resolve(onFulfilled({ data, error: null }));
         },
@@ -468,6 +484,75 @@ Deno.test("collectFolderEntries throws ZipBudgetExceededError once the running s
     thrown = e;
   }
   assert(thrown instanceof ZipBudgetExceededError, "expected ZipBudgetExceededError");
+});
+
+Deno.test("collectFolderEntries throws ZipBudgetExceededError past the folder traversal budget", async () => {
+  // Root + MAX_ZIP_FOLDERS empty children: no file ever trips the entry/size
+  // budget, so only the traversal budget can stop the walk.
+  const folders: Row[] = [{ id: 1, name: "root", parent_id: null, conta_id: "conta-1" }];
+  for (let i = 0; i < MAX_ZIP_FOLDERS; i++) {
+    folders.push({ id: 10 + i, name: `empty${i}`, parent_id: 1, conta_id: "conta-1" });
+  }
+  const deps: FileZipDeps = {
+    db: makeFakeDb({ files: [], folders }),
+    contaId: "conta-1",
+    getObjectStream: makeFakeGetObjectStream({}),
+  };
+
+  let thrown: unknown = null;
+  try {
+    await collectFolderEntries(deps, 1);
+  } catch (e) {
+    thrown = e;
+  }
+  assert(thrown instanceof ZipBudgetExceededError, "expected ZipBudgetExceededError");
+});
+
+Deno.test("collectFolderEntries keyset paging survives a concurrent deletion without skipping live rows", async () => {
+  // 1500 files -> two keyset pages. Delete an id from the FIRST page's range
+  // after that page is served; with offset paging the second window would
+  // shift left and silently drop a live row. With the id cursor every
+  // remaining live row must still be collected.
+  const folders: Row[] = [{ id: 1, name: "root", parent_id: null, conta_id: "conta-1" }];
+  const files: Row[] = [];
+  for (let i = 0; i < 1500; i++) {
+    files.push({
+      id: 1 + i,
+      name: `f${i}.txt`,
+      r2_key: `r2/f${i}`,
+      size_bytes: 1,
+      folder_id: 1,
+      conta_id: "conta-1",
+    });
+  }
+  const base = makeFakeDb({ files, folders });
+  let pagesServed = 0;
+  const db: FileZipDeps["db"] = {
+    from(table: string) {
+      if (table === "files") {
+        pagesServed++;
+        if (pagesServed === 2) {
+          // Simulate a deletion between page 1 and page 2.
+          const idx = files.findIndex((f) => f.id === 500);
+          if (idx >= 0) files.splice(idx, 1);
+        }
+      }
+      return base.from(table);
+    },
+  };
+  const deps: FileZipDeps = { db, contaId: "conta-1", getObjectStream: makeFakeGetObjectStream({}) };
+
+  const { entries } = await collectFolderEntries(deps, 1);
+
+  // The row deleted mid-collection was already served on page 1, so it stays
+  // in the plan (it was live when read). What keyset paging guarantees -- and
+  // offset paging violates here (the deletion shifts the second window left,
+  // dropping the row that moved into position 999) -- is that every STILL
+  // LIVE row is collected.
+  assertEquals(entries.length, 1500);
+  for (const i of [500, 999, 1000, 1499]) {
+    assert(entries.some((e) => e.r2Key === `r2/f${i}`), `live row f${i} must be collected`);
+  }
 });
 
 Deno.test("collectFileEntries throws ZipBudgetExceededError past the entry cap", async () => {

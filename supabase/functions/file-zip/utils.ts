@@ -11,3 +11,7 @@ export function sanitizeZipPath(name: string): string {
     .replace(/^\/+/, "")
     .replace(/\\/g, "/");
 }
+// Traversal budget for the folder walk (visited folders, files aside): a wide
+// tree of empty folders never trips the entry/size budget, so this is what
+// stops a pathological tree from issuing queries until the worker dies.
+export const MAX_ZIP_FOLDERS = 2000;
