@@ -808,6 +808,18 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
     );
   });
 
+  // Sugerir o nome do template de origem produzia um modelo NOVO homônimo, que no
+  // quadro de Fluxos vira uma segunda aba indistinguível da original.
+  it('coming from a template, the suggested model name is not the template name', () => {
+    renderWizardAtStep4({ preset: 'Fluxo Padrão de Post' });
+    fireEvent.click(screen.getByText('Continuar →'));
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect((screen.getByLabelText(/nome do modelo/i) as HTMLInputElement).value).toBe(
+      'Fluxo Padrão de Post (cópia)',
+    );
+    expect(screen.getByText(/cria um modelo separado/i)).toBeTruthy();
+  });
+
   it('surfaces the template warning as a separate toast', async () => {
     createWorkflowFromWizardMock.mockResolvedValue({
       workflow: { id: 1 },

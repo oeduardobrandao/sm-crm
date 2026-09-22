@@ -52,11 +52,17 @@ export function StepReview({
     prazosValor += ` · entrega em ${entrega.toLocaleDateString('pt-BR')}`;
   }
 
+  // Vindo de um template, o padrão NÃO pode ser o nome do próprio template: a
+  // caixa cria um modelo novo, nunca atualiza o de origem, e sugerir o mesmo
+  // nome produzia um duplicado homônimo — que no quadro vira uma segunda aba
+  // indistinguível do original. Sufixo explícito para que o nome já diga que é
+  // outro modelo.
+  const sourceTemplateNome = state.source?.kind === 'template' ? state.source.templateNome : null;
   const defaultTemplateName =
     state.source?.kind === 'preset'
       ? `${state.source.presetNome} — ${cliente?.nome ?? ''}`.trim()
-      : state.source?.kind === 'template'
-        ? state.source.templateNome
+      : sourceTemplateNome
+        ? `${sourceTemplateNome} (cópia)`
         : state.nome;
 
   return (
@@ -103,9 +109,11 @@ export function StepReview({
           }
         />
         <span>
-          <b>Salvar estas etapas como modelo</b>
+          <b>Salvar estas etapas como um modelo novo</b>
           <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            A receita fica disponível no passo 1 para os próximos fluxos.
+            {sourceTemplateNome
+              ? `Cria um modelo separado. O modelo "${sourceTemplateNome}" não é alterado: para mudar o original, use Gerenciar Templates no quadro de Fluxos.`
+              : 'A receita fica disponível no passo 1 para os próximos fluxos.'}
           </span>
         </span>
       </label>

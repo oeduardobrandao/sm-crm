@@ -125,6 +125,8 @@ Regra de valor inicial e persistência:
 
 O quadro mantém linhas por processo compatível. Um post individual ocupa a coluna da sua própria etapa; um fluxo ocupa a coluna da etapa compartilhada. Nunca mostrar o post como card independente e dentro da contagem de um fluxo ao mesmo tempo.
 
+> **Corrigido em 2026-09-22.** A assinatura na chave das linhas COM template foi revertida: divergir é a norma, não a exceção (`propagate_template_to_workflows` só atualiza etapas `pendente`/`ativo`, então editar um template forka para sempre a assinatura de todo fluxo com uma etapa concluída), e cada snapshot divergente virava uma aba a mais com o MESMO rótulo — o nome do template —, indistinguível de um template duplicado. Cliente em produção concluiu que o produto criava templates sozinho e apagou o template original para "limpar". Hoje a chave com template é só `template:<id>`; a assinatura fica nas linhas SEM template (`custom#<assinatura>`), onde substitui os nomes unidos. As colunas de uma linha de template vêm das etapas do template.
+
 Identidade de linha: `template:<id>` mais assinatura ordenada das etapas `(ordem, nome, tipo)`. Hoje a chave é só `template:<id>` (ou os nomes unidos quando não há template) e dois fluxos do mesmo template com etapas divergentes já compartilham linha usando a ordem do primeiro card visto. A assinatura corrige isso para fluxos e posts. Linha sem template usa a assinatura como chave e o rótulo "Etapas personalizadas". Colunas usam identidade por posição (pré-requisito 1).
 
 Consequência aceita: `TABS_THRESHOLD = 1` faz o quadro virar abas assim que existe mais de uma linha. Um snapshot divergente cria linha própria e, portanto, abas. Não mudar o threshold nesta entrega; registrar como follow-up de UX.
