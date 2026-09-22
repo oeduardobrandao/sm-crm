@@ -1,5 +1,5 @@
 import { assertEquals } from "./assert.ts";
-import { purgeTrash, type PurgeTrashOpts, type TrashPage } from "../_shared/r2.ts";
+import { parseListObjectsXml, purgeTrash, type PurgeTrashOpts, type TrashPage } from "../_shared/r2.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -211,3 +211,40 @@ Deno.test("cycleCompleted true only when the final page reports no continuation"
 // referenced so tsc catches a signature drift here, not just at the call site).
 const _typeCheck: PurgeTrashOpts = {};
 void _typeCheck;
+
+Deno.test("parseListObjectsXml parses keys, dates, truncation and XML entities", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+  <IsTruncated>true</IsTruncated>
+  <NextContinuationToken>tok&amp;123==</NextContinuationToken>
+  <Contents>
+    <Key>trash/contas/a &amp; b.png</Key>
+    <LastModified>2026-08-01T00:00:00.000Z</LastModified>
+    <Size>10</Size>
+  </Contents>
+  <Contents>
+    <Key>trash/briefing-audio/x.webm</Key>
+    <LastModified>2026-09-01T12:30:00.000Z</LastModified>
+  </Contents>
+</ListBucketResult>`;
+
+  const page = parseListObjectsXml(xml);
+
+  assertEquals(page.objects.length, 2);
+  assertEquals(page.objects[0].key, "trash/contas/a & b.png");
+  assertEquals(page.objects[0].lastModified.toISOString(), "2026-08-01T00:00:00.000Z");
+  assertEquals(page.objects[1].key, "trash/briefing-audio/x.webm");
+  assertEquals(page.nextToken, "tok&123==");
+});
+
+Deno.test("parseListObjectsXml: not truncated means nextToken null even if a token tag exists", () => {
+  const xml = `<ListBucketResult>
+  <IsTruncated>false</IsTruncated>
+  <Contents><Key>trash/k</Key><LastModified>2026-08-01T00:00:00Z</LastModified></Contents>
+</ListBucketResult>`;
+
+  const page = parseListObjectsXml(xml);
+
+  assertEquals(page.objects.length, 1);
+  assertEquals(page.nextToken, null);
+});

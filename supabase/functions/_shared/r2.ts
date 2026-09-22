@@ -155,22 +155,61 @@ export interface TrashPage {
   nextToken: string | null;
 }
 
-/** ONE page of the trash/ prefix, same shape/bound as listOrphanKeyPage's
- * underlying listing: a 30s abort against a runtime known to hang on a
- * stalled fetch. Real implementation for purgeTrash's `listPage` seam. */
-async function realListTrashPage(token: string | undefined): Promise<TrashPage> {
-  const res = await getR2().send(
-    new ListObjectsV2Command({ Bucket: getBucket(), Prefix: "trash/", ContinuationToken: token }),
-    { abortSignal: AbortSignal.timeout(30_000) },
-  );
+/** Minimal XML entity unescape for ListObjectsV2 response fields. R2 escapes
+ * the five predefined entities (and may use numeric references) in <Key> and
+ * <NextContinuationToken>; anything fancier does not occur in an S3 listing. */
+function unescapeXml(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+/** Parses a ListObjectsV2 XML body into purgeTrash's page shape. Exported
+ * for tests only. Regex over a schema'd, flat S3 listing (no nested
+ * <Contents>), not a general XML parser. */
+export function parseListObjectsXml(xml: string): TrashPage {
   const objects: Array<{ key: string; lastModified: Date }> = [];
-  for (const obj of res.Contents ?? []) {
-    if (obj.Key && obj.LastModified) objects.push({ key: obj.Key, lastModified: obj.LastModified });
+  for (const m of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+    const block = m[1];
+    const key = block.match(/<Key>([\s\S]*?)<\/Key>/)?.[1];
+    const lastModified = block.match(/<LastModified>([\s\S]*?)<\/LastModified>/)?.[1];
+    if (!key || !lastModified) continue;
+    const when = new Date(unescapeXml(lastModified));
+    if (isNaN(when.getTime())) continue;
+    objects.push({ key: unescapeXml(key), lastModified: when });
   }
+  const truncated = /<IsTruncated>\s*true\s*<\/IsTruncated>/.test(xml);
+  const nextToken = xml.match(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/)?.[1];
   return {
     objects,
-    nextToken: res.IsTruncated ? (res.NextContinuationToken ?? null) : null,
+    nextToken: truncated ? (nextToken != null ? unescapeXml(nextToken) : null) : null,
   };
+}
+
+/** ONE page of the trash/ prefix. Presign + plain fetch + AbortSignal, NOT
+ * getR2().send(): the aws-sdk transport is the documented edge-runtime hang
+ * path (AGENTS.md; same rationale as deleteObject/getObjectBytes below), so
+ * the listing goes out as a presigned GET and the XML comes back through
+ * fetch with a hard 30s bound. Real implementation for purgeTrash's
+ * `listPage` seam. */
+async function realListTrashPage(token: string | undefined): Promise<TrashPage> {
+  const cmd = new ListObjectsV2Command({
+    Bucket: getBucket(),
+    Prefix: "trash/",
+    ContinuationToken: token,
+  });
+  const url = await getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`r2 trash list failed: ${res.status}${text ? ` ${text.slice(0, 300)}` : ""}`);
+  }
+  return parseListObjectsXml(text);
 }
 
 export interface PurgeTrashOpts {
