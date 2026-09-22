@@ -138,6 +138,18 @@ describe('CalendarPostDetailPanel', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/entregas?post=42');
     });
 
+    it('no calendário de um post avulso (avulso = nosso) oferece só "Abrir post completo", sem duplicar com "Abrir publicação"', () => {
+      const onOpenPost = vi.fn();
+      renderPanel({ post: avulsoPost, isCurrentWorkflow: true, onOpenPost });
+
+      expect(screen.queryByRole('button', { name: /Abrir publicação/ })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /Abrir post completo/ }));
+      expect(onOpenPost).toHaveBeenCalled();
+      expect(mockNavigate).not.toHaveBeenCalled();
+      // E o avulso passa a poder perder a data, como qualquer post nosso.
+      expect(screen.getByRole('button', { name: /Remover data/ })).toBeInTheDocument();
+    });
+
     it('still allows rescheduling (drag/picker) an unlocked post avulso, but hides "Remover data"', () => {
       renderPanel({ post: avulsoPost, isCurrentWorkflow: false, isLocked: false });
       expect(screen.getByText('Reagendar')).toBeInTheDocument();

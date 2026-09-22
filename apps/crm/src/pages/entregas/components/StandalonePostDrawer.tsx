@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
@@ -14,6 +15,8 @@ import {
   Check,
   RotateCcw,
   CircleOff,
+  Calendar as CalendarIcon,
+  FileText,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -68,6 +71,7 @@ import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { PostEditorBody } from './PostEditorBody';
 import { PostTimelinePopover } from './PostTimelinePopover';
+import { WorkflowCalendarView } from './WorkflowCalendarView';
 import { AttachToFluxoDialog } from './AttachToFluxoDialog';
 import { ApplyProcessDialog } from './ApplyProcessDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
@@ -98,9 +102,10 @@ export interface StandalonePostDrawerProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /** The home for a post avulso (fora de um fluxo): same drawer shell as
- *  WorkflowDrawer, but scoped to a single post with no fluxo tabs (calendar/
- *  grade/histórico) and an extra "Vincular a um fluxo" action. Keyed by
- *  postId at every call site, so a new target always remounts fresh. */
+ *  WorkflowDrawer, but scoped to a single post -- sem as abas Grade/Histórico do
+ *  fluxo, com a aba Calendário do cliente e uma ação extra "Vincular a um
+ *  fluxo". Keyed by postId at every call site, so a new target always remounts
+ *  fresh. */
 export function StandalonePostDrawer({
   postId,
   membros,
@@ -110,6 +115,7 @@ export function StandalonePostDrawer({
   onProcessApplied,
 }: StandalonePostDrawerProps) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: post, isLoading } = useQuery({
     queryKey: ['standalone-post', postId],
@@ -222,6 +228,9 @@ export function StandalonePostDrawer({
     });
   }, []);
 
+  /** Mesmo par de abas do drawer de fluxo, reduzido ao que faz sentido para um
+   *  post sozinho: o editor e o calendário do cliente. */
+  const [drawerView, setDrawerView] = useState<'post' | 'calendar'>('post');
   const [attachOpen, setAttachOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
@@ -622,6 +631,32 @@ export function StandalonePostDrawer({
                 <button className="drawer-add-post-btn" onClick={() => setAttachOpen(true)}>
                   <Link2 className="h-3.5 w-3.5" /> Vincular a um fluxo
                 </button>
+                {clienteId != null && (
+                  <div className="drawer-view-toggle" role="tablist">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={drawerView === 'post'}
+                      className={`drawer-calendar-btn${drawerView === 'post' ? ' active' : ''}`}
+                      onClick={() => setDrawerView('post')}
+                      title="Ver o post"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      Post
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={drawerView === 'calendar'}
+                      className={`drawer-calendar-btn${drawerView === 'calendar' ? ' active' : ''}`}
+                      onClick={() => setDrawerView('calendar')}
+                      title="Ver calendário do cliente"
+                    >
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      Calendário
+                    </button>
+                  </div>
+                )}
                 <PostTimelinePopover
                   post={post}
                   events={statusEvents}
@@ -652,11 +687,27 @@ export function StandalonePostDrawer({
           </div>
         </div>
 
-        <div className="drawer-body">
+        <div className={`drawer-body${drawerView === 'calendar' ? ' drawer-body--calendar' : ''}`}>
           {isLoading ? (
             <div className="drawer-empty">Carregando...</div>
           ) : !post ? (
             <div className="drawer-empty">Este post não existe mais.</div>
+          ) : drawerView === 'calendar' && clienteId != null ? (
+            <WorkflowCalendarView
+              clienteId={clienteId}
+              clienteNome={post.cliente_nome || '—'}
+              currentWorkflowId={null}
+              membros={membros}
+              hubUrl={hubUrl}
+              onBack={() => setDrawerView('post')}
+              onPostsChanged={refresh}
+              onOpenPost={(id) => {
+                // Este post volta para o editor ao lado; qualquer outro passa pelo
+                // deep link universal, que o EntregasPage resolve no drawer certo.
+                if (id === postId) setDrawerView('post');
+                else navigate(`/entregas?post=${id}`);
+              }}
+            />
           ) : (
             <PostEditorBody
               post={post}

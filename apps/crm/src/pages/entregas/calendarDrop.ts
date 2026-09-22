@@ -14,6 +14,10 @@ export type CalendarDropResult =
  * workflows. Unscheduling stays scoped to the current workflow, because the
  * sidebar only lists this workflow's backlog — an unscheduled foreign post would
  * drop out of every visible surface.
+ *
+ * `currentWorkflowId: null` is the post-avulso context (StandalonePostDrawer's
+ * calendar): posts avulsos carry `workflow_id === null`, so the same identity
+ * comparison makes *they* the owned set and every fluxo post foreign.
  */
 export function resolveCalendarDrop({
   post,
@@ -22,7 +26,7 @@ export function resolveCalendarDrop({
 }: {
   post: ClientePost | undefined;
   overId: string | undefined;
-  currentWorkflowId: number;
+  currentWorkflowId: number | null;
 }): CalendarDropResult {
   if (!post || !overId) return { kind: 'noop' };
 
@@ -53,7 +57,8 @@ export function resolveCalendarDrop({
  * Success copy for both reschedule paths (drag-drop confirm and the detail panel picker).
  * Names the owning workflow when the post isn't ours, so the user knows what they touched.
  * A post avulso has no workflow to name -- "Post de «null»" would be a real bug there, so
- * it gets its own "Post avulso" form instead. A missing post (deleted in another tab
+ * it gets its own "Post avulso" form instead (also in the avulso context, where an avulso
+ * IS ours -- "Post avulso" reads right either way). A missing post (deleted in another tab
  * mid-flow) degrades to the plain form.
  */
 export function formatRescheduleToast({
@@ -65,7 +70,7 @@ export function formatRescheduleToast({
   post: Pick<ClientePost, 'workflow_id' | 'workflow_titulo'> | undefined;
   datetime: Date;
   verb: 'agendado' | 'reagendado';
-  currentWorkflowId: number;
+  currentWorkflowId: number | null;
 }): string {
   const hh = String(datetime.getHours()).padStart(2, '0');
   const mm = String(datetime.getMinutes()).padStart(2, '0');

@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { makeCan, fakeMembership } from '@/test/makeCan';
@@ -145,6 +146,13 @@ vi.mock('@/pages/entregas/components/ReadOnlyTipTap', () => ({
 vi.mock('../AttachToFluxoDialog', () => ({
   AttachToFluxoDialog: () => <div data-testid="attach-to-fluxo-stub" />,
 }));
+// A view do calendário tem DnD, queries próprias e grade de mês -- só interessa
+// aqui QUE ela é montada, e com qual escopo de posse (currentWorkflowId).
+vi.mock('../WorkflowCalendarView', () => ({
+  WorkflowCalendarView: ({ currentWorkflowId }: { currentWorkflowId: number | null }) => (
+    <div data-testid="calendar-view-stub" data-current-workflow={String(currentWorkflowId)} />
+  ),
+}));
 
 import { StandalonePostDrawer } from '../StandalonePostDrawer';
 import {
@@ -188,16 +196,18 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
   const onRefresh = vi.fn();
   const onAttached = vi.fn();
   const utils = render(
-    <QueryClientProvider client={qc}>
-      <StandalonePostDrawer
-        postId={5}
-        membros={[]}
-        onClose={onClose}
-        onRefresh={onRefresh}
-        onAttached={onAttached}
-        {...props}
-      />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <StandalonePostDrawer
+          postId={5}
+          membros={[]}
+          onClose={onClose}
+          onRefresh={onRefresh}
+          onAttached={onAttached}
+          {...props}
+        />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
   return { ...utils, onClose, onRefresh, onAttached };
 }
@@ -263,6 +273,40 @@ describe('StandalonePostDrawer', () => {
 
     expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
     expect(screen.queryByTestId('property-panel-stub')).not.toBeInTheDocument();
+  });
+
+  describe('aba Calendário', () => {
+    it('troca o editor pelo calendário do cliente e volta, marcando a aba ativa', async () => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      const calendarTab = await screen.findByRole('tab', { name: 'Calendário' });
+      const postTab = screen.getByRole('tab', { name: 'Post' });
+      expect(postTab.getAttribute('aria-selected')).toBe('true');
+      expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
+
+      fireEvent.click(calendarTab);
+
+      expect(screen.getByTestId('calendar-view-stub')).toBeInTheDocument();
+      expect(screen.queryByTestId('post-editor-stub')).not.toBeInTheDocument();
+      expect(calendarTab.getAttribute('aria-selected')).toBe('true');
+
+      fireEvent.click(postTab);
+
+      expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
+      expect(screen.queryByTestId('calendar-view-stub')).not.toBeInTheDocument();
+    });
+
+    it('escopa a posse nos posts avulsos do cliente (currentWorkflowId null), não num fluxo', async () => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Calendário' }));
+
+      expect(screen.getByTestId('calendar-view-stub').getAttribute('data-current-workflow')).toBe(
+        'null',
+      );
+    });
   });
 
   it('shows the Avulso chip in the header subtitle', async () => {

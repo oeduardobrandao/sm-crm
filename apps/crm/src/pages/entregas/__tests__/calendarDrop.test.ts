@@ -16,6 +16,43 @@ function mkPost(over: Partial<ClientePost> = {}): ClientePost {
   };
 }
 
+describe('resolveCalendarDrop no contexto de post avulso (currentWorkflowId null)', () => {
+  it('desagenda um post avulso solto na barra lateral -- ele é o "nosso" aqui', () => {
+    const post = mkPost({
+      workflow_id: null,
+      workflow_titulo: null,
+      scheduled_at: '2026-07-20T13:00:00.000Z',
+    });
+    expect(
+      resolveCalendarDrop({ post, overId: 'unscheduled-zone', currentWorkflowId: null }),
+    ).toEqual({ kind: 'unschedule' });
+  });
+
+  it('recusa desagendar um post de fluxo -- ele é o estrangeiro aqui', () => {
+    const post = mkPost({ scheduled_at: '2026-07-20T13:00:00.000Z' });
+    expect(
+      resolveCalendarDrop({ post, overId: 'unscheduled-zone', currentWorkflowId: null }),
+    ).toEqual({ kind: 'reject-foreign-unschedule' });
+  });
+
+  it('reagenda qualquer post destravado, avulso ou de fluxo', () => {
+    expect(
+      resolveCalendarDrop({ post: mkPost(), overId: 'date-2026-07-24', currentWorkflowId: null }),
+    ).toEqual({ kind: 'schedule', date: new Date(2026, 6, 24) });
+  });
+
+  it('diz "Post avulso" no toast do avulso', () => {
+    expect(
+      formatRescheduleToast({
+        post: { workflow_id: null, workflow_titulo: null },
+        datetime: new Date(2026, 6, 24, 20, 0),
+        verb: 'agendado',
+        currentWorkflowId: null,
+      }),
+    ).toBe('Post avulso agendado para 24/07/2026 às 20:00');
+  });
+});
+
 describe('resolveCalendarDrop', () => {
   it('is a noop when there is no post or no drop target', () => {
     expect(
