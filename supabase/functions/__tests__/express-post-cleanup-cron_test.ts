@@ -471,22 +471,20 @@ Deno.test("pass3: counts avulso_failed and leaves the drafts + file in place whe
   assertEquals(result.failed, 0);
 });
 
-Deno.test("pass3: chunks the post_processes and post_file_links lookups past 500 ids, and every orphan file still reaches deleteOrphanFiles", async () => {
-  // 1200 abandoned avulso drafts -- past the fake's 1000-row db-max-rows cap
-  // (so the draft scan itself must paginate) AND past chunk()'s default
-  // 500-id size (so both post-scan .in() lookups must split into 3 chunks:
-  // 500 + 500 + 200). An errorOn hook fails any post_processes or
-  // post_file_links select whose "in" filter carries more than 500 values,
-  // which would trip if either lookup were sent unchunked. File ids are
-  // spread over 900 distinct files (some shared by more than one draft, as
-  // real orphan files can be) -- kept under the fake's 1000-row db-max-rows
-  // cap deliberately, since deleteOrphanFiles's own unchunked `files` select
-  // is a separate, already-known, explicitly out-of-scope limitation (see
-  // task-6-brief.md's file header); this test targets only the two lookups
-  // this fix round chunks. If file ids were dropped by either of those,
-  // the corresponding file would survive the run.
+Deno.test("pass3: chunks the post_processes, post_file_links and deleteOrphanFiles lookups past 500 ids, and every orphan file still gets deleted", async () => {
+  // 1200 abandoned avulso drafts, each with its own distinct orphan file --
+  // past the fake's 1000-row db-max-rows cap (so the draft scan itself must
+  // paginate) AND past chunk()'s default 500-id size (so every downstream
+  // .in() lookup keyed off this batch -- post_processes, post_file_links,
+  // and deleteOrphanFiles's own files select -- must split into chunks: 500
+  // + 500 + 200). An errorOn hook fails any select on those three tables
+  // whose "in" filter carries more than 500 values, which would trip if any
+  // of them were sent unchunked. Distinct 1:1 file ids (not shared/deduped)
+  // mean the only way all 1200 files end up deleted is if every chunk's
+  // results made it through the full pipeline -- deleteOrphanFiles's read,
+  // in particular, previously returned only its own single (truncated)
+  // page, silently orphaning the rest.
   const draftCount = 1200;
-  const fileCount = 900;
   const workflow_posts: Row[] = [];
   const post_file_links: Row[] = [];
   const files: Row[] = [];
@@ -499,15 +497,14 @@ Deno.test("pass3: chunks the post_processes and post_file_links lookups past 500
       status: "rascunho",
       created_at: OLD,
     });
-    post_file_links.push({ post_id: i, file_id: ((i - 1) % fileCount) + 1 });
-  }
-  for (let i = 1; i <= fileCount; i++) {
+    post_file_links.push({ post_id: i, file_id: i });
     files.push({ id: i, reference_count: 0 });
   }
   const { db, tables } = makeFakeDb(
     { workflow_posts, post_file_links, files },
     (table, op, filters) =>
-      (table === "post_processes" || table === "post_file_links") && op === "select" &&
+      (table === "post_processes" || table === "post_file_links" || table === "files") &&
+        op === "select" &&
         filters.some((f) => f.op === "in" && f.values.length > 500)
         ? { message: "URI too long" }
         : null,
@@ -515,7 +512,7 @@ Deno.test("pass3: chunks the post_processes and post_file_links lookups past 500
   const result = await runExpressPostCleanupCron(db, CUTOFF);
   assertEquals(result.avulso_deleted, draftCount);
   assertEquals(tables.workflow_posts.length, 0);
-  assertEquals(tables.files.length, 0, "every draft's orphan file must reach deleteOrphanFiles");
+  assertEquals(tables.files.length, 0, "all 1200 orphan file ids must reach deletion, none left behind");
 });
 
 Deno.test("pass3: leaves an avulso express draft younger than the cutoff untouched", async () => {

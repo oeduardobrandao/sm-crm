@@ -87,13 +87,20 @@ export interface ExpressPostCleanupCronResult {
  * GC) -- both delete posts first, then sweep the files those posts referenced.
  */
 async function deleteOrphanFiles(db: ExpressPostCleanupDb, fileIds: number[]): Promise<void> {
-  const { data: orphanFiles } = await db
-    .from("files")
-    .select("id")
-    .in("id", fileIds)
-    .lte("reference_count", 0);
+  const orphanFiles: Array<{ id: number }> = [];
+  for (const idsChunk of chunk(fileIds)) {
+    const { data } = await db
+      .from("files")
+      .select("id")
+      .in("id", idsChunk)
+      .lte("reference_count", 0);
+    orphanFiles.push(...((data ?? []) as Array<{ id: number }>));
+  }
 
-  for (const f of (orphanFiles ?? []) as Array<{ id: number }>) {
+  // Deletes are already one row at a time (`.eq("id", f.id)`), never a bulk
+  // `.in()` -- nothing there can hit the same row-cap/URL-length ceiling the
+  // chunked read above exists to avoid.
+  for (const f of orphanFiles) {
     const { error: fileDelErr } = await db.from("files").delete().eq("id", f.id);
     if (fileDelErr) {
       console.error(`Failed to delete orphan file ${f.id}:`, fileDelErr.message);
