@@ -7,6 +7,7 @@ import {
   collectFileEntries,
   collectFolderEntries,
   type FileZipDeps,
+  ZipBudgetExceededError,
   type ZipPlanEntry,
 } from "./handler.ts";
 
@@ -90,17 +91,23 @@ Deno.serve(async (req: Request) => {
     try {
       return { entries: await collect() };
     } catch (err) {
+      // Budget refusal during collection is the SAME contract as the
+      // pre-stream checkZipBudget 413 below, just earlier: collection stops
+      // one page past the cap instead of paging a huge folder into memory.
+      if (err instanceof ZipBudgetExceededError) {
+        return { response: jsonResponse({ error: err.message }, 413) };
+      }
       console.error("[file-zip] Failed to collect entries", err);
       return { response: jsonResponse({ error: "Erro ao preparar o zip" }, 500) };
     }
   }
 
-  function respondZip(entries: ZipPlanEntry[], filename: string): Response {
+  function respondZip(entries: ZipPlanEntry[], filename: string, presetSkipped: string[] = []): Response {
     const budget = checkZipBudget(entries);
     if (!budget.ok) {
       return jsonResponse({ error: budget.error }, 413);
     }
-    const readable = buildZipStream(deps, entries);
+    const readable = buildZipStream(deps, entries, presetSkipped);
     return new Response(readable, {
       status: 200,
       headers: {
@@ -122,10 +129,15 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Folder not found" }, 404);
     }
 
-    const collected = await collectEntriesOrRespond(() => collectFolderEntries(deps, folderId));
+    let skippedPaths: string[] = [];
+    const collected = await collectEntriesOrRespond(async () => {
+      const result = await collectFolderEntries(deps, folderId);
+      skippedPaths = result.skippedPaths;
+      return result.entries;
+    });
     if ("response" in collected) return collected.response;
 
-    return respondZip(collected.entries, `${folder.name}.zip`);
+    return respondZip(collected.entries, `${folder.name}.zip`, skippedPaths);
   } else if (payload.file_ids) {
     const fileIds = payload.file_ids as number[];
 

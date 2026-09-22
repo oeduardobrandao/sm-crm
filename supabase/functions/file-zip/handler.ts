@@ -31,40 +31,83 @@ export interface ZipPlanEntry {
   size_bytes: number | null;
 }
 
+export interface FolderCollectResult {
+  entries: ZipPlanEntry[];
+  /** Subtrees the walk did NOT descend into (depth cap). Fed into the zip's
+   * LEIA-ME manifest so a deep tree yields a zip that SAYS what it omitted
+   * instead of a silently short one. */
+  skippedPaths: string[];
+}
+
+/** Thrown as soon as a collection pass exceeds the export budget, so a huge
+ * folder is refused after ~one page past the cap instead of being fully
+ * paged into memory first (the edge worker has 256MB total). index.ts maps
+ * it to the same 413 as checkZipBudget. */
+export class ZipBudgetExceededError extends Error {
+  constructor() {
+    super(ZIP_TOO_LARGE_ERROR);
+    this.name = "ZipBudgetExceededError";
+  }
+}
+
 /** Walks a folder tree, resolving every nested file into a flat entry list.
- * Both the files page and the subfolders page go through fetchAllRows so a
- * folder holding more than the PostgREST page cap (1000 rows) doesn't
- * silently lose entries. Descent stops at MAX_FOLDER_DEPTH (root = depth 0,
- * matching file-manage's copyFolderRecursive) to bound worst-case recursion. */
+ * File pages are fetched with an explicit page loop (not fetchAllRows) so
+ * the entry/size budget is enforced AFTER EVERY PAGE: collection stops at
+ * most one page past the cap instead of paging an arbitrarily large folder
+ * into memory before checkZipBudget ever runs. Subfolder pages still use
+ * fetchAllRows (folder rows are two small columns and bounded by the same
+ * entry budget indirectly). Descent stops at MAX_FOLDER_DEPTH (root =
+ * depth 0, matching file-manage's copyFolderRecursive); a capped subtree is
+ * recorded in skippedPaths, never silently dropped. */
 export async function collectFolderEntries(
   deps: FileZipDeps,
   folderId: number,
-): Promise<ZipPlanEntry[]> {
+): Promise<FolderCollectResult> {
   const entries: ZipPlanEntry[] = [];
+  const skippedPaths: string[] = [];
+  let totalBytes = 0;
+
+  const assertBudget = () => {
+    if (entries.length > MAX_ZIP_ENTRIES || totalBytes > MAX_ZIP_TOTAL_BYTES) {
+      throw new ZipBudgetExceededError();
+    }
+  };
 
   async function walkFolder(fId: number, pathPrefix: string, depth: number) {
     if (depth > MAX_FOLDER_DEPTH) {
       console.error(`[file-zip] Depth limit exceeded for folder ${fId}`);
+      skippedPaths.push(`${pathPrefix}** (subpasta alem do limite de profundidade)`);
       return;
     }
 
-    const files = await fetchAllRows<{ name: string; r2_key: string; size_bytes: number | null }>(
-      (from, to) =>
-        deps.db
-          .from("files")
-          .select("name, r2_key, size_bytes")
-          .eq("folder_id", fId)
-          .eq("conta_id", deps.contaId)
-          .order("id")
-          .range(from, to),
-    );
-    for (const f of files) {
-      entries.push({
-        name: f.name,
-        r2Key: f.r2_key,
-        path: pathPrefix + sanitizeZipPath(f.name),
-        size_bytes: f.size_bytes ?? null,
-      });
+    const PAGE = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await deps.db
+        .from("files")
+        .select("name, r2_key, size_bytes")
+        .eq("folder_id", fId)
+        .eq("conta_id", deps.contaId)
+        .order("id")
+        .range(from, from + PAGE - 1);
+      if (error) {
+        throw new Error(`[file-zip] collectFolderEntries files page failed: ${error.message}`);
+      }
+      const rows = (data ?? []) as { name: string; r2_key: string; size_bytes: number | null }[];
+      for (const f of rows) {
+        entries.push({
+          name: f.name,
+          r2Key: f.r2_key,
+          path: pathPrefix + sanitizeZipPath(f.name),
+          size_bytes: f.size_bytes ?? null,
+        });
+        // Same null-size convention as checkZipBudget: count unknown as the
+        // per-file max so a legacy row can't sneak the total past the cap.
+        totalBytes += f.size_bytes ?? MAX_FILE_SIZE_BYTES;
+      }
+      assertBudget();
+      if (rows.length === 0) break;
+      from += rows.length;
     }
 
     const subs = await fetchAllRows<{ id: number; name: string }>(
@@ -83,7 +126,7 @@ export async function collectFolderEntries(
   }
 
   await walkFolder(folderId, "", 0);
-  return entries;
+  return { entries, skippedPaths };
 }
 
 /** Resolves an explicit set of file ids (scoped to the token's conta_id) into
@@ -113,6 +156,9 @@ export async function collectFileEntries(
         size_bytes: f.size_bytes ?? null,
       });
     }
+    // Same early stop as collectFolderEntries: refuse past the entry cap
+    // without resolving the remaining chunks first.
+    if (entries.length > MAX_ZIP_ENTRIES) throw new ZipBudgetExceededError();
   }
   return entries;
 }
@@ -184,13 +230,17 @@ const MANIFEST_FILENAME = "LEIA-ME-arquivos-faltando.txt";
 export function buildZipStream(
   deps: FileZipDeps,
   entries: ZipPlanEntry[],
+  /** Paths already known to be missing before streaming (e.g. depth-capped
+   * subtrees from collectFolderEntries) -- listed in the manifest alongside
+   * the per-entry skips below. */
+  presetSkipped: string[] = [],
 ): ReadableStream<Uint8Array> {
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const zipWriter = new ZipWriter(writable);
   const stallIdleMs = deps.stallIdleMs ?? STALL_IDLE_MS;
 
   (async () => {
-    const skipped: string[] = [];
+    const skipped: string[] = [...presetSkipped];
     // Reserved up front so a selected file whose root path collides with the
     // manifest name takes the duplicate-skip path below instead of reaching
     // zipWriter.add("LEIA-ME...") and throwing a duplicate-name error there,

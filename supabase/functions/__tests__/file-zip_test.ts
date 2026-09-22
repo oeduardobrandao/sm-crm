@@ -7,9 +7,10 @@ import {
   collectFolderEntries,
   MAX_FOLDER_DEPTH,
   type FileZipDeps,
+  ZipBudgetExceededError,
   type ZipPlanEntry,
 } from "../file-zip/handler.ts";
-import { MAX_FILE_SIZE_BYTES, MAX_ZIP_TOTAL_BYTES } from "../file-zip/utils.ts";
+import { MAX_FILE_SIZE_BYTES, MAX_ZIP_ENTRIES, MAX_ZIP_TOTAL_BYTES } from "../file-zip/utils.ts";
 
 type Row = Record<string, unknown>;
 
@@ -142,7 +143,7 @@ Deno.test("collectFolderEntries returns 3 entries with correct nested paths", as
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
-  const entries = await collectFolderEntries(deps, 1);
+  const { entries } = await collectFolderEntries(deps, 1);
 
   assertEquals(entries.length, 3);
   const paths = entries.map((e) => e.path).sort();
@@ -158,7 +159,7 @@ Deno.test("collectFolderEntries scopes to conta_id", async () => {
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
-  const entries = await collectFolderEntries(deps, 1);
+  const { entries } = await collectFolderEntries(deps, 1);
 
   assertEquals(entries.length, 3);
   assert(!entries.some((e) => e.name === "other.txt"));
@@ -199,7 +200,7 @@ Deno.test({
       getObjectStream: makeFakeGetObjectStream(objects),
     };
 
-    const entries = await collectFolderEntries(deps, 1);
+    const { entries } = await collectFolderEntries(deps, 1);
     const stream = buildZipStream(deps, entries);
     const zipBytes = await collectStream(stream);
 
@@ -229,7 +230,7 @@ Deno.test({
       getObjectStream: makeFakeGetObjectStream(objects),
     };
 
-    const entries = await collectFolderEntries(deps, 1);
+    const { entries } = await collectFolderEntries(deps, 1);
     const stream = buildZipStream(deps, entries);
     const zipBytes = await collectStream(stream);
 
@@ -407,13 +408,119 @@ Deno.test("collectFolderEntries paginates file pages and stops at depth cap", as
     getObjectStream: makeFakeGetObjectStream({}),
   };
 
-  const entries = await collectFolderEntries(deps, 1);
+  const { entries, skippedPaths } = await collectFolderEntries(deps, 1);
 
   const wideCount = entries.filter((e) => /^f\d+\.txt$/.test(e.path)).length;
   assertEquals(wideCount, 1100);
   assertEquals(MAX_FOLDER_DEPTH, 10);
   assert(entries.some((e) => e.path.endsWith("depth10.txt")), "depth 10 should be collected");
   assert(!entries.some((e) => e.path.endsWith("depth11.txt")), "depth 11 must not be collected");
+  // The capped subtree is REPORTED, not silently dropped: its prefix ends up
+  // in skippedPaths, which index.ts feeds into the zip's LEIA-ME manifest.
+  assertEquals(skippedPaths.length, 1);
+  assert(skippedPaths[0].includes("d11/"), `skipped path should name the capped subtree: ${skippedPaths[0]}`);
+});
+
+Deno.test("collectFolderEntries throws ZipBudgetExceededError past the entry cap without paging everything", async () => {
+  const folders: Row[] = [{ id: 1, name: "huge", parent_id: null, conta_id: "conta-1" }];
+  const files: Row[] = [];
+  for (let i = 0; i < MAX_ZIP_ENTRIES + 500; i++) {
+    files.push({
+      id: 1000 + i,
+      name: `f${i}.txt`,
+      r2_key: `r2/f${i}`,
+      size_bytes: 1,
+      folder_id: 1,
+      conta_id: "conta-1",
+    });
+  }
+  const deps: FileZipDeps = {
+    db: makeFakeDb({ files, folders }),
+    contaId: "conta-1",
+    getObjectStream: makeFakeGetObjectStream({}),
+  };
+
+  let thrown: unknown = null;
+  try {
+    await collectFolderEntries(deps, 1);
+  } catch (e) {
+    thrown = e;
+  }
+  assert(thrown instanceof ZipBudgetExceededError, "expected ZipBudgetExceededError");
+});
+
+Deno.test("collectFolderEntries throws ZipBudgetExceededError once the running size passes the total cap", async () => {
+  const folders: Row[] = [{ id: 1, name: "big", parent_id: null, conta_id: "conta-1" }];
+  const files: Row[] = [
+    { id: 10, name: "a.bin", r2_key: "r2/a", size_bytes: MAX_ZIP_TOTAL_BYTES, folder_id: 1, conta_id: "conta-1" },
+    { id: 11, name: "b.bin", r2_key: "r2/b", size_bytes: 10, folder_id: 1, conta_id: "conta-1" },
+  ];
+  const deps: FileZipDeps = {
+    db: makeFakeDb({ files, folders }),
+    contaId: "conta-1",
+    getObjectStream: makeFakeGetObjectStream({}),
+  };
+
+  let thrown: unknown = null;
+  try {
+    await collectFolderEntries(deps, 1);
+  } catch (e) {
+    thrown = e;
+  }
+  assert(thrown instanceof ZipBudgetExceededError, "expected ZipBudgetExceededError");
+});
+
+Deno.test("collectFileEntries throws ZipBudgetExceededError past the entry cap", async () => {
+  const folders: Row[] = [];
+  const files: Row[] = [];
+  const ids: number[] = [];
+  for (let i = 0; i < MAX_ZIP_ENTRIES + 10; i++) {
+    files.push({ id: i, name: `f${i}.txt`, r2_key: `r2/f${i}`, size_bytes: 1, folder_id: 1, conta_id: "conta-1" });
+    ids.push(i);
+  }
+  const deps: FileZipDeps = {
+    db: makeFakeDb({ files, folders }),
+    contaId: "conta-1",
+    getObjectStream: makeFakeGetObjectStream({}),
+  };
+
+  let thrown: unknown = null;
+  try {
+    await collectFileEntries(deps, ids);
+  } catch (e) {
+    thrown = e;
+  }
+  assert(thrown instanceof ZipBudgetExceededError, "expected ZipBudgetExceededError");
+});
+
+Deno.test({
+  name: "depth-capped subtree paths land in the LEIA-ME manifest via presetSkipped",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const objects: Record<string, Uint8Array> = { "r2/a": new TextEncoder().encode("aaa") };
+    const deps: FileZipDeps = {
+      db: makeFakeDb({ files: [], folders: [] }),
+      contaId: "conta-1",
+      getObjectStream: makeFakeGetObjectStream(objects),
+    };
+    const entries: ZipPlanEntry[] = [
+      { name: "a.txt", r2Key: "r2/a", path: "a.txt", size_bytes: 3 },
+    ];
+    const preset = ["deep/deeper/** (subpasta alem do limite de profundidade)"];
+
+    const stream = buildZipStream(deps, entries, preset);
+    const zipBytes = await collectStream(stream);
+
+    const zipReader = new ZipReader(new Uint8ArrayReader(zipBytes));
+    const zipEntries = await zipReader.getEntries();
+    const manifestEntry = zipEntries.find((e) => e.filename === "LEIA-ME-arquivos-faltando.txt");
+    assert(manifestEntry, "manifest must exist when presetSkipped is non-empty");
+    assert(!manifestEntry.directory, "manifest entry must be a file, not a directory");
+    const manifestText = await manifestEntry.getData(new TextWriter());
+    await zipReader.close();
+    assert(manifestText.includes("deep/deeper/**"), "manifest must list the capped subtree");
+  },
 });
 
 Deno.test("oversized total is refused before streaming", () => {
