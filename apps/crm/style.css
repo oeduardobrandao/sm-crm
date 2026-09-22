@@ -10971,6 +10971,57 @@ body.landing-page #root {
      one per line. */
   grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
 }
+
+/* Single-row horizontal carousel, unlike the wrapping grid above -- used where the
+   Entregas tab splits deliveries into separate Fluxos / Posts Individuais rails and a
+   row breaking onto a second line per section reads as broken rather than as a grid. */
+.cliente-deliveries-rail--carousel {
+  display: flex;
+  overflow-x: auto;
+  gap: 0.75rem;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.cliente-deliveries-rail--carousel::-webkit-scrollbar {
+  display: none;
+}
+.cliente-deliveries-rail--carousel > .cliente-card-rail__item {
+  flex: 0 0 300px;
+  min-width: 260px;
+  scroll-snap-align: start;
+}
+
+.cliente-rail-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  z-index: 2;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+.cliente-rail-arrow:hover {
+  background: var(--surface-hover);
+  transform: translateY(-50%) scale(1.06);
+}
+.cliente-rail-arrow--right {
+  right: -0.5rem;
+}
+.cliente-rail-arrow--left {
+  left: -0.5rem;
+}
 .cliente-dates-rail {
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 }

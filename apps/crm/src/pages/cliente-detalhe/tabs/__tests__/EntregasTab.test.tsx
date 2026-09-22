@@ -26,6 +26,15 @@ vi.mock('@/store', () => ({
   getWorkspaceSlug: vi.fn(),
   getHubToken: vi.fn(),
   getWorkflowTemplates: vi.fn(),
+  getVigentePostProcessesByCliente: vi.fn(),
+  // Consumed by the real usePostProcessCommands (not mocked — same rationale
+  // as completeEtapa/completeEtapaWithRearm below: this suite pins that the
+  // individual-post forward/revert buttons wire to the same commands the
+  // Fluxos board uses).
+  transitionPostProcess: vi.fn(),
+  removePostProcess: vi.fn(),
+  sendPostToCliente: vi.fn(),
+  CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   // Consumed by the real advanceEtapa.ts (not mocked — the rearm decision
   // itself is covered by advanceEtapa.test.ts / KanbanRearm.test.tsx; this
   // suite pins that EntregasTab wires it exactly the same way).
@@ -68,6 +77,7 @@ vi.mock('@/hooks/useWorkspaceLimits', () => ({
 
 vi.mock('@/services/postMedia', () => ({
   getWorkflowCovers: vi.fn(),
+  getPostCovers: vi.fn(),
 }));
 
 vi.mock('@/pages/entregas/components/PropertyDefinitionPanel', () => ({
@@ -132,6 +142,38 @@ vi.mock('@/pages/entregas/components/WorkflowDrawer', () => ({
   ),
 }));
 
+// Individual posts (post_processes) card/drawer — same "not under test here"
+// rationale as WorkflowCard/WorkflowDrawer above.
+vi.mock('@/pages/entregas/components/PostProcessCard', () => ({
+  PostProcessCard: ({
+    entity,
+    onClick,
+    onForwardClick,
+    onRevertClick,
+  }: {
+    entity: { id: string; titulo: string };
+    onClick?: () => void;
+    onForwardClick?: () => void;
+    onRevertClick?: () => void;
+  }) => (
+    <div>
+      <span>{entity.titulo}</span>
+      <button onClick={onClick}>open-post-{entity.id}</button>
+      <button onClick={onForwardClick}>forward-post-{entity.id}</button>
+      {onRevertClick && <button onClick={onRevertClick}>revert-post-{entity.id}</button>}
+    </div>
+  ),
+}));
+
+vi.mock('@/pages/entregas/components/StandalonePostDrawer', () => ({
+  StandalonePostDrawer: ({ postId, onClose }: { postId: number; onClose: () => void }) => (
+    <div>
+      <span>StandalonePostDrawer open: {postId}</span>
+      <button onClick={onClose}>close-standalone-drawer</button>
+    </div>
+  ),
+}));
+
 vi.mock('@/pages/entregas/components/HistoryDrawer', () => ({
   HistoryDrawer: ({ workflow, onClose }: { workflow: { titulo: string }; onClose: () => void }) => (
     <div>
@@ -163,14 +205,18 @@ import {
   getWorkspaceSlug,
   getHubToken,
   getWorkflowTemplates,
+  getVigentePostProcessesByCliente,
+  transitionPostProcess,
   completeEtapa,
   completeEtapaWithRearm,
   type Cliente,
   type Workflow,
   type WorkflowEtapa,
+  type PostProcessStep,
+  type PostProcessWithPost,
 } from '@/store';
 import { toast } from 'sonner';
-import { getWorkflowCovers } from '@/services/postMedia';
+import { getWorkflowCovers, getPostCovers } from '@/services/postMedia';
 import type { ClienteDetalheOutletContext } from '../../clienteTabs.model';
 import EntregasTab from '../EntregasTab';
 
@@ -198,6 +244,9 @@ const mockedGetWorkspaceSlug = vi.mocked(getWorkspaceSlug);
 const mockedGetHubToken = vi.mocked(getHubToken);
 const mockedGetWorkflowTemplates = vi.mocked(getWorkflowTemplates);
 const mockedGetWorkflowCovers = vi.mocked(getWorkflowCovers);
+const mockedGetVigentePostProcessesByCliente = vi.mocked(getVigentePostProcessesByCliente);
+const mockedGetPostCovers = vi.mocked(getPostCovers);
+const mockedTransitionPostProcess = vi.mocked(transitionPostProcess);
 const mockedCompleteEtapa = vi.mocked(completeEtapa);
 const mockedCompleteEtapaWithRearm = vi.mocked(completeEtapaWithRearm);
 const mockedToast = vi.mocked(toast);
@@ -242,6 +291,93 @@ function workflow(overrides: Partial<Workflow> = {}): Workflow {
     status: 'ativo',
     etapa_atual: 1,
     recorrente: false,
+    ...overrides,
+  };
+}
+
+function processStep(
+  p: Partial<PostProcessStep> & { ordem: number; nome: string },
+): PostProcessStep {
+  return {
+    id: 200 + p.ordem,
+    conta_id: 'c',
+    process_id: 9,
+    tipo: 'padrao',
+    responsavel_id: null,
+    prazo_dias: null,
+    tipo_prazo: null,
+    prazo_efetivo: null,
+    estado: 'pendente',
+    iniciado_em: null,
+    concluido_em: null,
+    interrompido_em: null,
+    origem_etapa_ordem: null,
+    origem_etapa_nome: null,
+    ...p,
+  };
+}
+
+function postProcess(overrides: Partial<PostProcessWithPost> = {}): PostProcessWithPost {
+  return {
+    id: 9,
+    conta_id: 'c',
+    post_id: 77,
+    template_id: 5,
+    template_nome: 'Redes',
+    assinatura: '',
+    origem_workflow_id: null,
+    origem_descricao: null,
+    estado: 'ativo',
+    motivo_encerramento: null,
+    etapa_atual: 1,
+    modo_prazo: 'padrao',
+    board_position: 0,
+    revisao: 1,
+    created_by: null,
+    created_at: '2026-09-10T00:00:00Z',
+    updated_at: '2026-09-10T00:00:00Z',
+    concluido_em: null,
+    steps: [
+      processStep({ ordem: 0, nome: 'Copy', estado: 'ignorado' }),
+      processStep({
+        ordem: 1,
+        nome: 'Design',
+        estado: 'ativo',
+        responsavel_id: null,
+        prazo_efetivo: '2026-07-20T15:00:00.000Z',
+        iniciado_em: '2026-07-18T10:00:00Z',
+      }),
+      // A pending step after the active one keeps canConcluir() false, so the
+      // card's forward button dispatches `avancar` (not `concluir`) — the
+      // path this fixture's tests exercise.
+      processStep({ ordem: 2, nome: 'Publicação', estado: 'pendente' }),
+    ],
+    post: {
+      id: 77,
+      workflow_id: null,
+      cliente_id: 42,
+      cliente_nome: 'Aurora Estética',
+      workflow_titulo: null,
+      titulo: 'Post avulso X',
+      tipo: 'feed',
+      status: 'rascunho',
+      custom_status_id: null,
+      scheduled_at: null,
+      published_at: null,
+      ig_caption: null,
+      instagram_permalink: null,
+      publish_error: null,
+      publish_error_code: null,
+      ordem: 0,
+      responsavel_id: null,
+      platform: 'instagram',
+      tiktok_publish_status: null,
+      tiktok_publish_error: null,
+      tiktok_post_url: null,
+      instagram_media_id: null,
+      ig_trial_strategy: null,
+      board_ordem: null,
+    },
     ...overrides,
   };
 }
@@ -314,6 +450,20 @@ describe('EntregasTab', () => {
     mockedGetWorkflowPosts.mockResolvedValue([]);
     mockedGetWorkflowPostsWithProperties.mockResolvedValue([]);
     mockedGetWorkflowCovers.mockResolvedValue(new Map());
+    mockedGetVigentePostProcessesByCliente.mockResolvedValue([]);
+    mockedGetPostCovers.mockResolvedValue(new Map());
+    mockedTransitionPostProcess.mockResolvedValue({
+      ok: true,
+      process_id: 9,
+      post_id: 77,
+      command: 'avancar',
+      estado: 'ativo',
+      etapa_atual: 1,
+      revisao: 2,
+      post_status: 'rascunho',
+      post_status_changed: false,
+      steps: [],
+    });
     mockedGetClientes.mockResolvedValue([]);
     mockedGetWorkspaceSlug.mockResolvedValue(null);
     mockedGetHubToken.mockResolvedValue(null);
@@ -585,6 +735,8 @@ describe('EntregasTab', () => {
             'workspace-slug',
             'hub-token',
             'auto-schedule-batch-posts',
+            'post-processes-cliente',
+            'post-covers-cliente',
           ]),
         );
       });
@@ -651,6 +803,67 @@ describe('EntregasTab', () => {
       renderTab();
       await screen.findByText('Posts Agosto');
       await waitFor(() => expect(screen.getByTestId('hub-url-1')).toHaveTextContent(''));
+    });
+  });
+
+  describe('individual posts (post_processes)', () => {
+    it('does not fetch or render individual posts when feature_post_processes is off', async () => {
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      expect(screen.queryByText('Post avulso X')).not.toBeInTheDocument();
+      expect(mockedGetVigentePostProcessesByCliente).not.toHaveBeenCalled();
+    });
+
+    it('renders an active individual post card alongside workflow cards when the flag is on', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      expect(await screen.findByText('Post avulso X')).toBeInTheDocument();
+      expect(mockedGetVigentePostProcessesByCliente).toHaveBeenCalledWith(42);
+    });
+
+    it('leaves out concluded individual posts (no history surface for them yet)', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([
+        postProcess({ estado: 'concluido' }),
+      ]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      expect(screen.queryByText('Post avulso X')).not.toBeInTheDocument();
+    });
+
+    it('opens and closes the standalone post drawer from the card', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      fireEvent.click(await screen.findByText('open-post-post:9'));
+      expect(await screen.findByText('StandalonePostDrawer open: 77')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('close-standalone-drawer'));
+      await waitFor(() =>
+        expect(screen.queryByText('StandalonePostDrawer open: 77')).not.toBeInTheDocument(),
+      );
+    });
+
+    it('advances the process etapa via transitionPostProcess and refreshes', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      const { invalidateSpy } = renderTab();
+      await screen.findByText('Posts Agosto');
+      fireEvent.click(await screen.findByText('forward-post-post:9'));
+      fireEvent.click(await screen.findByText('Avançar'));
+      await waitFor(() =>
+        expect(mockedTransitionPostProcess).toHaveBeenCalledWith(
+          expect.objectContaining({ processId: 9, command: 'avancar' }),
+        ),
+      );
+      await waitFor(() =>
+        expect(invalidateSpy).toHaveBeenCalledWith({
+          queryKey: ['post-processes-cliente', 42],
+        }),
+      );
     });
   });
 });

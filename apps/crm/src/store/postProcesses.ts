@@ -163,6 +163,34 @@ export async function getVigentePostProcesses(): Promise<PostProcessWithPost[]> 
   return rows.map(mapProcessWithPostRow);
 }
 
+/**
+ * Processos VIGENTES (ativo + concluido) de um cliente específico, mesma
+ * forma de getVigentePostProcesses mas com o embed do post como `!inner`
+ * (post_processes não tem cliente_id próprio -- só via o post embutido).
+ * `!inner` faz o `.eq` filtrar as linhas-pai, não só o embed, porque todo
+ * processo tem exatamente um post (a FK é obrigatória, ao contrário do braço
+ * avulso de getClientePosts, que precisa de duas consultas por causa de posts
+ * sem workflow algum). Usado pela aba Entregas do cliente-detalhe.
+ */
+export async function getVigentePostProcessesByCliente(
+  clienteId: number,
+): Promise<PostProcessWithPost[]> {
+  const postEmbedInner = `workflow_posts!post_processes_post_same_tenant!inner(${POST_CONTEXT_COLUMNS}, clientes(nome))`;
+  const rows = await fetchAllPaged(async (from, to) => {
+    const { data, error } = await supabase
+      .from('post_processes')
+      .select(`${PROCESS_COLUMNS}, ${STEPS_EMBED}, ${postEmbedInner}`)
+      .eq('workflow_posts.cliente_id', clienteId)
+      .in('estado', VIGENTES)
+      .order('board_position', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as any[];
+  });
+  return rows.map(mapProcessWithPostRow);
+}
+
 /** O processo vigente de um post (no máximo um, índice parcial
  *  post_processes_one_vigente_per_post), sem o embed do post. Para o drawer. */
 export async function getVigentePostProcess(postId: number): Promise<PostProcess | null> {

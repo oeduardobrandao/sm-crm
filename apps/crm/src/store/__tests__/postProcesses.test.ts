@@ -19,6 +19,7 @@ import {
   getPostProcessEvents,
   getVigentePostProcess,
   getVigentePostProcesses,
+  getVigentePostProcessesByCliente,
   removePostProcess,
   reorderFluxosBoard,
   transitionPostProcess,
@@ -96,6 +97,27 @@ describe('getVigentePostProcesses', () => {
   it('propaga o erro do PostgREST', async () => {
     mockFrom.mockReturnValueOnce(chain({ data: null, error: new Error('boom') }));
     await expect(getVigentePostProcesses()).rejects.toThrow('boom');
+  });
+});
+
+describe('getVigentePostProcessesByCliente', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('filtra as linhas-pai pelo cliente_id do post embutido, via inner join', async () => {
+    const q = chain({ data: [processRow], error: null });
+    mockFrom.mockReturnValueOnce(q);
+    const out = await getVigentePostProcessesByCliente(9);
+    expect(mockFrom).toHaveBeenCalledTimes(1);
+    expect(mockFrom).toHaveBeenCalledWith('post_processes');
+    expect(q.eq).toHaveBeenCalledWith('workflow_posts.cliente_id', 9);
+    expect(q.in).toHaveBeenCalledWith('estado', ['ativo', 'concluido']);
+    expect(out).toHaveLength(1);
+    expect(out[0].post.cliente_id).toBe(9);
+  });
+
+  it('propaga o erro do PostgREST', async () => {
+    mockFrom.mockReturnValueOnce(chain({ data: null, error: new Error('boom') }));
+    await expect(getVigentePostProcessesByCliente(9)).rejects.toThrow('boom');
   });
 });
 

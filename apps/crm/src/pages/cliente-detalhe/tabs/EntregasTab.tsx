@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { LayoutList } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutList } from 'lucide-react';
 import {
   getWorkflowsByCliente,
   getWorkflowEtapas,
@@ -27,6 +27,7 @@ import {
   getWorkspaceSlug,
   getHubToken,
   getWorkflowTemplates,
+  getVigentePostProcessesByCliente,
   type Workflow,
   type WorkflowEtapa,
 } from '@/store';
@@ -34,6 +35,8 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { HistoryDrawer } from '@/pages/entregas/components/HistoryDrawer';
 import { WorkflowCard } from '@/pages/entregas/components/WorkflowCard';
 import { WorkflowDrawer } from '@/pages/entregas/components/WorkflowDrawer';
+import { PostProcessCard } from '@/pages/entregas/components/PostProcessCard';
+import { StandalonePostDrawer } from '@/pages/entregas/components/StandalonePostDrawer';
 import { AutoScheduleBatchDialog } from '@/pages/entregas/components/AutoScheduleBatchDialog';
 import {
   EditWorkflowModal,
@@ -44,7 +47,15 @@ import {
 import type { BoardCard } from '@/pages/entregas/hooks/useEntregasData';
 import { completeEtapaForAdvance, notifyRearmOutcome } from '@/pages/entregas/advanceEtapa';
 import { decideApprovalAdvance } from '@/pages/entregas/approvalAdvance';
-import { getWorkflowCovers } from '@/services/postMedia';
+import { toPostEntity, type PostEntity } from '@/pages/entregas/boardEntity';
+import {
+  canConcluir,
+  forwardLabelFor,
+  previousStepOf,
+  type ProcessTarget,
+} from '@/pages/entregas/postProcessCommands';
+import { usePostProcessCommands } from '@/pages/entregas/hooks/usePostProcessCommands';
+import { getWorkflowCovers, getPostCovers } from '@/services/postMedia';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,6 +75,75 @@ interface WorkflowWithEtapas {
   etapas: WorkflowEtapa[];
 }
 
+/** Mesma projeção de PostEntity -> ProcessTarget do quadro de Fluxos
+ *  (views/KanbanView.tsx's targetOf) -- comando e drag chamam o MESMO alvo lá;
+ *  aqui não há drag, só o botão, mas o alvo precisa ser idêntico. */
+function targetOf(p: PostEntity): ProcessTarget {
+  return {
+    process: p.process,
+    post: {
+      id: p.process.post_id,
+      titulo: p.titulo,
+      status: p.process.post.status,
+      cliente_id: p.process.post.cliente_id,
+    },
+  };
+}
+
+/**
+ * Left/right "there's more" affordances for a horizontally-scrolling rail
+ * (.cliente-deliveries-rail--carousel, style.css). The right arrow shows
+ * while the rail overflows and hasn't been scrolled to its end; the left
+ * arrow only appears once the user has actually scrolled right, so at rest
+ * (scrollLeft === 0) there's nothing to go "back" to yet.
+ */
+function RailScrollArrows({ railRef }: { railRef: React.RefObject<HTMLDivElement | null> }) {
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  useEffect(() => {
+    const el = railRef.current;
+    if (!el) return;
+    const update = () => {
+      setCanLeft(el.scrollLeft > 4);
+      setCanRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  }, [railRef]);
+
+  return (
+    <>
+      {canLeft && (
+        <button
+          type="button"
+          className="cliente-rail-arrow cliente-rail-arrow--left"
+          aria-label="Ver anteriores"
+          onClick={() => railRef.current?.scrollBy({ left: -300, behavior: 'smooth' })}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      )}
+      {canRight && (
+        <button
+          type="button"
+          className="cliente-rail-arrow cliente-rail-arrow--right"
+          aria-label="Ver mais"
+          onClick={() => railRef.current?.scrollBy({ left: 300, behavior: 'smooth' })}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      )}
+    </>
+  );
+}
+
 /**
  * "Entregas" tab: active workflow board, post delivery calendar, and
  * concluded-workflow history — ported verbatim from the pre-split
@@ -78,7 +158,12 @@ interface WorkflowWithEtapas {
  * (`workflowsByCliente`, `membros`, the five posts-count queries,
  * `workflow-covers`, `concluded-by-cliente`, `concluded-summaries-cliente`,
  * plus `clientes` — lazily, only once the edit-workflow modal opens, since
- * that modal's client-reassign dropdown needs the full portfolio). It
+ * that modal's client-reassign dropdown needs the full portfolio). Individual
+ * posts (post_processes, spec 2026-09-10) share the same domain and follow
+ * the same gate as the Fluxos board (`feature_post_processes`): only the
+ * client's ACTIVE processes render as cards here (`post-processes-cliente`,
+ * `post-covers-cliente`) — concluded ones stay out of "Histórico de entregas"
+ * for now, since there is no post-process equivalent of HistoryDrawer yet. It
  * deliberately never fetches Instagram (`igSummary`) data — that belongs to
  * the Redes sociais tab — so `BoardCard.clienteAvatarUrl` is always left
  * `undefined` here; `WorkflowCard` already falls back to a colored-initials
@@ -100,8 +185,13 @@ export default function EntregasTab() {
   const { t: tc } = useTranslation();
   const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 
+  const fluxosRailRef = useRef<HTMLDivElement>(null);
+  const postsRailRef = useRef<HTMLDivElement>(null);
+
   const [historyWorkflow, setHistoryWorkflow] = useState<Workflow | null>(null);
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
+  const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | undefined>(undefined);
+  const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
   const [editCardModal, setEditCardModal] = useState<BoardCard | null>(null);
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<BoardCard | null>(null);
@@ -117,6 +207,7 @@ export default function EntregasTab() {
   const { features } = useWorkspaceLimits();
   const schedulingEnabled = features?.feature_post_scheduling === true;
   const tiktokEnabled = features?.feature_tiktok === true;
+  const postProcessesEnabled = features?.feature_post_processes === true;
   // Carrega o booleano do gate de segurança (fix B da revisão final) junto do
   // id, capturado no momento em que !willRearm foi checado em
   // handleApproveInternally -- AutoScheduleBatchDialog agora exige essa prop e
@@ -253,6 +344,37 @@ export default function EntregasTab() {
     queryFn: () => getWorkflowCovers(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
+
+  // Posts individuais (post_processes) deste cliente -- gated pela mesma flag
+  // que o quadro de Fluxos (feature_post_processes). "Vigente" inclui
+  // ativo+concluido; só os ativos entram no rail abaixo, os concluídos ficam
+  // de fora por ora (não há um equivalente de HistoryDrawer para processo
+  // individual ainda).
+  const { data: postProcesses = [] } = useQuery({
+    queryKey: ['post-processes-cliente', clienteId],
+    queryFn: () => getVigentePostProcessesByCliente(clienteId),
+    enabled: !isNaN(clienteId) && postProcessesEnabled,
+  });
+  const activePostProcesses = useMemo(
+    () => postProcesses.filter((p) => p.estado === 'ativo'),
+    [postProcesses],
+  );
+  const activeProcessPostIds = useMemo(
+    () => activePostProcesses.map((p) => p.post_id),
+    [activePostProcesses],
+  );
+  const { data: postCovers } = useQuery({
+    queryKey: ['post-covers-cliente', activeProcessPostIds.join(',')],
+    queryFn: () => getPostCovers(activeProcessPostIds),
+    enabled: activeProcessPostIds.length > 0,
+  });
+
+  const postEntities: PostEntity[] = useMemo(() => {
+    if (!cliente) return [];
+    return activePostProcesses
+      .map((process) => toPostEntity(process, { clientes: [cliente], membros, covers: postCovers }))
+      .filter((e): e is PostEntity => e !== null);
+  }, [activePostProcesses, cliente, membros, postCovers]);
 
   const boardCards: BoardCard[] = useMemo(() => {
     if (!cliente) return [];
@@ -410,8 +532,12 @@ export default function EntregasTab() {
     queryClient.invalidateQueries({ queryKey: ['concluded-by-cliente', clienteId] });
     queryClient.invalidateQueries({ queryKey: ['concluded-summaries-cliente'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-events'] });
+    queryClient.invalidateQueries({ queryKey: ['post-processes-cliente', clienteId] });
+    queryClient.invalidateQueries({ queryKey: ['post-covers-cliente'] });
     refreshPostCalendar();
   };
+
+  const postProcessCommands = usePostProcessCommands({ onRefresh: refreshCards });
 
   useEffect(() => {
     if (drawerCard) {
@@ -564,9 +690,23 @@ export default function EntregasTab() {
     setRecurringWfId(null);
   };
 
+  const handlePostEntityClick = (entity: PostEntity) => {
+    setDrawerCard(null);
+    setDrawerInitialPostId(undefined);
+    setStandalonePostId(entity.process.post_id);
+  };
+
+  const handlePostAttached = (workflowId: number, postId: number) => {
+    setStandalonePostId(null);
+    const card = boardCards.find((c) => c.workflow.id === workflowId);
+    if (!card) return;
+    setDrawerInitialPostId(postId);
+    setDrawerCard(card);
+  };
+
   return (
     <>
-      {boardCards.length === 0 ? (
+      {boardCards.length === 0 && postEntities.length === 0 ? (
         <div id="sec-entregas" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
             {t('detail.activeDeliveries')}
@@ -592,26 +732,81 @@ export default function EntregasTab() {
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
             {t('detail.activeDeliveries')}
           </h3>
-          <ResponsiveCardRail className="cliente-deliveries-rail">
-            {boardCards.map((card) => (
-              <WorkflowCard
-                key={card.workflow.id}
-                card={card}
-                onClick={() => setDrawerCard(card)}
-                onEditClick={() => setEditCardModal(card)}
-                onPostsClick={() => setDrawerCard(card)}
-                onForwardClick={() => handleForwardClick(card)}
-                onRevertClick={() => handleRevertClick(card)}
-                onRefresh={refreshCards}
-                membros={membros}
-                postsCount={postsCounts.get(card.workflow.id!) ?? 0}
-                approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
-                clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
-                revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
-                awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
-              />
-            ))}
-          </ResponsiveCardRail>
+          {boardCards.length > 0 && (
+            <div style={{ marginBottom: postEntities.length > 0 ? '1.5rem' : 0 }}>
+              <h4
+                className="text-sm font-semibold tracking-tight mb-2 text-foreground"
+                style={{ opacity: 0.7 }}
+              >
+                {t('detail.fluxos')}
+              </h4>
+              <div style={{ position: 'relative' }}>
+                <ResponsiveCardRail
+                  ref={fluxosRailRef}
+                  className="cliente-deliveries-rail cliente-deliveries-rail--carousel"
+                >
+                  {boardCards.map((card) => (
+                    <WorkflowCard
+                      key={card.workflow.id}
+                      card={card}
+                      onClick={() => {
+                        setDrawerInitialPostId(undefined);
+                        setDrawerCard(card);
+                      }}
+                      onEditClick={() => setEditCardModal(card)}
+                      onPostsClick={() => {
+                        setDrawerInitialPostId(undefined);
+                        setDrawerCard(card);
+                      }}
+                      onForwardClick={() => handleForwardClick(card)}
+                      onRevertClick={() => handleRevertClick(card)}
+                      onRefresh={refreshCards}
+                      membros={membros}
+                      postsCount={postsCounts.get(card.workflow.id!) ?? 0}
+                      approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
+                      clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
+                      revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
+                      awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
+                    />
+                  ))}
+                </ResponsiveCardRail>
+                <RailScrollArrows railRef={fluxosRailRef} />
+              </div>
+            </div>
+          )}
+          {postEntities.length > 0 && (
+            <div>
+              <h4
+                className="text-sm font-semibold tracking-tight mb-2 text-foreground"
+                style={{ opacity: 0.7 }}
+              >
+                {t('detail.individualPosts')}
+              </h4>
+              <div style={{ position: 'relative' }}>
+                <ResponsiveCardRail
+                  ref={postsRailRef}
+                  className="cliente-deliveries-rail cliente-deliveries-rail--carousel cliente-individual-posts-rail"
+                >
+                  {postEntities.map((entity) => (
+                    <PostProcessCard
+                      key={entity.id}
+                      entity={entity}
+                      onClick={() => handlePostEntityClick(entity)}
+                      onForwardClick={() =>
+                        canConcluir(entity.process)
+                          ? postProcessCommands.concluir(targetOf(entity))
+                          : postProcessCommands.avancar(targetOf(entity))
+                      }
+                      onRevertClick={() => postProcessCommands.voltar(targetOf(entity))}
+                      canRevert={previousStepOf(entity.process) != null}
+                      forwardLabel={forwardLabelFor(entity.process)}
+                    />
+                  ))}
+                </ResponsiveCardRail>
+                <RailScrollArrows railRef={postsRailRef} />
+              </div>
+            </div>
+          )}
 
           <ClientePostCalendar
             events={postCalendarEvents}
@@ -713,8 +908,20 @@ export default function EntregasTab() {
         <WorkflowDrawer
           card={drawerCard}
           membros={membros}
+          initialPostId={drawerInitialPostId}
           onClose={() => setDrawerCard(null)}
           onRefresh={refreshCards}
+        />
+      )}
+
+      {standalonePostId != null && (
+        <StandalonePostDrawer
+          key={standalonePostId}
+          postId={standalonePostId}
+          membros={membros}
+          onClose={() => setStandalonePostId(null)}
+          onRefresh={refreshCards}
+          onAttached={handlePostAttached}
         />
       )}
 
@@ -779,6 +986,7 @@ export default function EntregasTab() {
           refreshCards();
         }}
       />
+      {postProcessCommands.dialogs}
     </>
   );
 }

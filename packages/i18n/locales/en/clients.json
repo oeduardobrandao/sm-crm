@@ -247,6 +247,8 @@
     "activeDeliveries": "Active Deliveries",
     "noActiveDeliveries": "No active deliveries right now.",
     "noActiveDeliveriesHint": "Create a workflow for this client on the Deliveries page to track it here.",
+    "fluxos": "Workflows",
+    "individualPosts": "Individual Posts",
     "complete": "Complete",
     "overdueBy": "Overdue by {{days}} day(s)",
     "daysRemaining": "{{days}} day(s) remaining",
