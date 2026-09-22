@@ -156,6 +156,11 @@ class QueryBuilder {
     return this;
   }
 
+  abortSignal(...args: unknown[]) {
+    this.modifiers.push({ method: 'abortSignal', args });
+    return this;
+  }
+
   single() {
     this.modifiers.push({ method: 'single', args: [] });
     return this.execute();

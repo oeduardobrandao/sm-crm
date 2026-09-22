@@ -4,6 +4,7 @@ import { bucketWorkspace } from "../_shared/radar-logic.ts";
 import { createRetentionRadarCronHandler } from "./handler.ts";
 import { buildRadarEmail, type RadarRow } from "./email.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
+import { chunk, fetchAllRows } from "../_shared/paginate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -17,19 +18,22 @@ Deno.serve(createRetentionRadarCronHandler({
     try {
       // Paying and trialing only. A dormant Free workspace is an activation failure, not churn
       // risk, and would drown the list — PostHog measures that population instead.
-      const { data: subs, error: subsErr } = await supabase
-        .from("workspace_subscriptions")
-        .select("workspace_id, status, plan_id, current_period_end, failed_payment_count")
-        .in("status", ["active", "trialing", "past_due"]);
-      if (subsErr) throw subsErr;
-
-      const subRows = (subs ?? []) as Array<{
+      // workspace_subscriptions' primary key is workspace_id alone (migration 20260609120003) --
+      // there is no separate `id` column, so the pagination order/tiebreak IS workspace_id.
+      const subRows = await fetchAllRows<{
         workspace_id: string;
         status: string | null;
         plan_id: string | null;
         current_period_end: string | null;
         failed_payment_count: number;
-      }>;
+      }>((from, to) =>
+        supabase
+          .from("workspace_subscriptions")
+          .select("workspace_id, status, plan_id, current_period_end, failed_payment_count")
+          .in("status", ["active", "trialing", "past_due"])
+          .order("workspace_id", { ascending: true })
+          .range(from, to),
+      );
       if (subRows.length === 0) {
         return new Response(JSON.stringify({ success: true, reported: 0, failed: 0 }), {
           status: 200, headers: { "Content-Type": "application/json" },
@@ -38,21 +42,26 @@ Deno.serve(createRetentionRadarCronHandler({
 
       const ids = subRows.map((s) => s.workspace_id);
 
-      const { data: wsData, error: wsErr } = await supabase
-        .from("workspaces").select("id, name, created_at").in("id", ids);
-      if (wsErr) throw wsErr;
-      const wsById = new Map(
-        (wsData ?? []).map((w) => [w.id as string, w as { id: string; name: string; created_at: string }]),
-      );
+      const wsById = new Map<string, { id: string; name: string; created_at: string }>();
+      for (const idsChunk of chunk(ids)) {
+        const { data: wsData, error: wsErr } = await supabase
+          .from("workspaces").select("id, name, created_at").in("id", idsChunk);
+        if (wsErr) throw wsErr;
+        for (const w of (wsData ?? []) as Array<{ id: string; name: string; created_at: string }>) {
+          wsById.set(w.id, w);
+        }
+      }
 
       // Reuses the admin's RPC rather than restating its GREATEST-over-work-artifacts logic.
-      const { data: activity, error: actErr } = await supabase
-        .rpc("admin_workspace_last_activity", { workspace_ids: ids });
-      if (actErr) throw actErr;
-      const activityById = new Map(
-        ((activity ?? []) as Array<{ workspace_id: string; last_activity_at: string | null }>)
-          .map((a) => [a.workspace_id, a.last_activity_at]),
-      );
+      const activityById = new Map<string, string | null>();
+      for (const idsChunk of chunk(ids)) {
+        const { data: activity, error: actErr } = await supabase
+          .rpc("admin_workspace_last_activity", { workspace_ids: idsChunk });
+        if (actErr) throw actErr;
+        for (const a of (activity ?? []) as Array<{ workspace_id: string; last_activity_at: string | null }>) {
+          activityById.set(a.workspace_id, a.last_activity_at);
+        }
+      }
 
       const now = new Date();
       const rows: RadarRow[] = [];

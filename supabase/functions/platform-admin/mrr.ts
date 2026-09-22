@@ -1,7 +1,37 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { aggregateMrr, MRR_STATUSES, toMonthlyCents } from "../_shared/billing-logic.ts";
+import { chunk, fetchAllRows } from "../_shared/paginate.ts";
 import { priceSubscriptionRows } from "./pricing.ts";
 import { fetchOwnerContacts } from "./owner-contact.ts";
+
+// workspace_subscriptions' primary key is workspace_id alone (migration
+// 20260609120003) -- there is no separate `id` column, so the pagination
+// order/tiebreak IS workspace_id.
+interface MrrSubRow {
+  workspace_id: string;
+  provider: string | null;
+  status: string | null;
+  plan_id: string | null;
+  billing_interval: string | null;
+  stripe_subscription_id: string | null;
+  amount_cents: number | null;
+  currency: string | null;
+  amount_interval: string | null;
+  discount_label: string | null;
+}
+
+interface TrialSubRow {
+  workspace_id: string;
+  provider: string | null;
+  plan_id: string | null;
+  billing_interval: string | null;
+  stripe_subscription_id: string | null;
+  current_period_end: string | null;
+  amount_cents: number | null;
+  currency: string | null;
+  amount_interval: string | null;
+  discount_label: string | null;
+}
 
 /**
  * last_activity_at per workspace, via the same admin_workspace_last_activity RPC the
@@ -12,16 +42,23 @@ async function fetchLastActivity(
   svc: SupabaseClient,
   workspaceIds: string[],
 ): Promise<Map<string, string | null>> {
-  if (!workspaceIds.length) return new Map();
-  const { data, error } = await svc.rpc("admin_workspace_last_activity", {
-    workspace_ids: workspaceIds,
-  });
-  if (error) throw error;
-  return new Map(
-    ((data ?? []) as Array<{ workspace_id: string; last_activity_at: string | null }>).map(
-      (a) => [a.workspace_id, a.last_activity_at],
-    ),
-  );
+  const result = new Map<string, string | null>();
+  if (!workspaceIds.length) return result;
+  // admin_workspace_last_activity is a setof RPC -- subject to the same PostgREST
+  // row cap as a table select -- so its workspace_ids argument is chunked too.
+  for (const ids of chunk(workspaceIds)) {
+    const { data, error } = await svc.rpc("admin_workspace_last_activity", {
+      workspace_ids: ids,
+    });
+    if (error) throw error;
+    for (const a of (data ?? []) as Array<{
+      workspace_id: string;
+      last_activity_at: string | null;
+    }>) {
+      result.set(a.workspace_id, a.last_activity_at);
+    }
+  }
+  return result;
 }
 
 /**
@@ -42,25 +79,27 @@ export async function handleGetMrr(
   headers: Record<string, string>,
   fetchOwnerContactsFn: typeof fetchOwnerContacts = fetchOwnerContacts,
 ) {
-  const { data: subs, error: subsError } = await svc
-    .from("workspace_subscriptions")
-    .select(
-      "workspace_id, provider, status, plan_id, billing_interval, stripe_subscription_id, amount_cents, currency, amount_interval, discount_label",
-    )
-    .in("status", [...MRR_STATUSES]);
-  if (subsError) throw subsError;
-
-  const rows = subs ?? [];
+  const rows = await fetchAllRows<MrrSubRow>((from, to) =>
+    svc
+      .from("workspace_subscriptions")
+      .select(
+        "workspace_id, provider, status, plan_id, billing_interval, stripe_subscription_id, amount_cents, currency, amount_interval, discount_label",
+      )
+      .in("status", [...MRR_STATUSES])
+      .order("workspace_id", { ascending: true })
+      .range(from, to),
+  );
   const wsIds = rows.map((s) => s.workspace_id);
   const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
 
   const nameByWs = new Map<string, string>();
   const createdByWs = new Map<string, string>();
-  if (wsIds.length) {
-    const { data: wsRows } = await svc
+  for (const ids of chunk(wsIds)) {
+    const { data: wsRows, error: wsErr } = await svc
       .from("workspaces")
       .select("id, name, created_at")
-      .in("id", wsIds);
+      .in("id", ids);
+    if (wsErr) throw wsErr; // was silently ignored; a missing name must not zero a paying row
     for (const w of wsRows ?? []) {
       nameByWs.set(w.id, w.name);
       createdByWs.set(w.id, w.created_at);
@@ -71,11 +110,12 @@ export async function handleGetMrr(
     string,
     { name: string; price_brl: number | null; price_brl_annual: number | null }
   >();
-  if (planIds.length) {
-    const { data: planRows } = await svc
+  for (const ids of chunk(planIds)) {
+    const { data: planRows, error: planErr } = await svc
       .from("plans")
       .select("id, name, price_brl, price_brl_annual")
-      .in("id", planIds);
+      .in("id", ids);
+    if (planErr) throw planErr;
     for (const p of planRows ?? []) {
       planById.set(p.id, {
         name: p.name,
@@ -132,25 +172,27 @@ export async function handleGetTrials(
   headers: Record<string, string>,
   fetchOwnerContactsFn: typeof fetchOwnerContacts = fetchOwnerContacts,
 ) {
-  const { data: subs, error } = await svc
-    .from("workspace_subscriptions")
-    .select(
-      "workspace_id, provider, plan_id, billing_interval, stripe_subscription_id, current_period_end, amount_cents, currency, amount_interval, discount_label",
-    )
-    .eq("status", "trialing");
-  if (error) throw error;
-
-  const rows = subs ?? [];
+  const rows = await fetchAllRows<TrialSubRow>((from, to) =>
+    svc
+      .from("workspace_subscriptions")
+      .select(
+        "workspace_id, provider, plan_id, billing_interval, stripe_subscription_id, current_period_end, amount_cents, currency, amount_interval, discount_label",
+      )
+      .eq("status", "trialing")
+      .order("workspace_id", { ascending: true })
+      .range(from, to),
+  );
   const wsIds = rows.map((s) => s.workspace_id);
   const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
 
   const nameByWs = new Map<string, string>();
   const createdByWs = new Map<string, string>();
-  if (wsIds.length) {
-    const { data: wsRows } = await svc
+  for (const ids of chunk(wsIds)) {
+    const { data: wsRows, error: wsErr } = await svc
       .from("workspaces")
       .select("id, name, created_at")
-      .in("id", wsIds);
+      .in("id", ids);
+    if (wsErr) throw wsErr; // was silently ignored; a missing name must not zero a paying row
     for (const w of wsRows ?? []) {
       nameByWs.set(w.id, w.name);
       createdByWs.set(w.id, w.created_at);
@@ -161,11 +203,12 @@ export async function handleGetTrials(
     string,
     { name: string; price_brl: number | null; price_brl_annual: number | null }
   >();
-  if (planIds.length) {
-    const { data: planRows } = await svc
+  for (const ids of chunk(planIds)) {
+    const { data: planRows, error: planErr } = await svc
       .from("plans")
       .select("id, name, price_brl, price_brl_annual")
-      .in("id", planIds);
+      .in("id", ids);
+    if (planErr) throw planErr;
     for (const p of planRows ?? []) {
       planById.set(p.id, {
         name: p.name,

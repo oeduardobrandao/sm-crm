@@ -1,4 +1,5 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { chunk, fetchAllRows } from "../_shared/paginate.ts";
 
 // ---------------------------------------------------------------------------
 // Auth wrapper: checks `x-cron-secret` BEFORE any work and delegates to `run`.
@@ -47,6 +48,8 @@ export interface FilterChain<T>
   lt(column: string, value: string): FilterChain<T>;
   lte(column: string, value: number): FilterChain<T>;
   in(column: string, values: unknown[]): FilterChain<T>;
+  order(column: string, options?: { ascending?: boolean }): FilterChain<T>;
+  range(from: number, to: number): FilterChain<T>;
 }
 
 export interface MutationChain extends PromiseLike<{ error: DbError | null }> {
@@ -84,13 +87,20 @@ export interface ExpressPostCleanupCronResult {
  * GC) -- both delete posts first, then sweep the files those posts referenced.
  */
 async function deleteOrphanFiles(db: ExpressPostCleanupDb, fileIds: number[]): Promise<void> {
-  const { data: orphanFiles } = await db
-    .from("files")
-    .select("id")
-    .in("id", fileIds)
-    .lte("reference_count", 0);
+  const orphanFiles: Array<{ id: number }> = [];
+  for (const idsChunk of chunk(fileIds)) {
+    const { data } = await db
+      .from("files")
+      .select("id")
+      .in("id", idsChunk)
+      .lte("reference_count", 0);
+    orphanFiles.push(...((data ?? []) as Array<{ id: number }>));
+  }
 
-  for (const f of (orphanFiles ?? []) as Array<{ id: number }>) {
+  // Deletes are already one row at a time (`.eq("id", f.id)`), never a bulk
+  // `.in()` -- nothing there can hit the same row-cap/URL-length ceiling the
+  // chunked read above exists to avoid.
+  for (const f of orphanFiles) {
     const { error: fileDelErr } = await db.from("files").delete().eq("id", f.id);
     if (fileDelErr) {
       console.error(`Failed to delete orphan file ${f.id}:`, fileDelErr.message);
@@ -114,29 +124,34 @@ export async function runExpressPostCleanupCron(
   // workflow to conclude) -- without it the first published avulso express
   // injects `null` into the `.in("id", candidateIds)` lookup below.
   let concluded = 0;
-  const { data: expressPostRows, error: expressErr } = await db
-    .from("workflow_posts")
-    .select("workflow_id")
-    .eq("is_express", true)
-    .eq("status", "postado")
-    .not("workflow_id", "is", null);
+  const expressPostRows = await fetchAllRows<{ workflow_id: number }>((from, to) =>
+    db
+      .from("workflow_posts")
+      .select("workflow_id")
+      .eq("is_express", true)
+      .eq("status", "postado")
+      .not("workflow_id", "is", null)
+      .order("workflow_id", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
-  if (expressErr) throw expressErr;
-
-  const candidateIds = [
-    ...new Set((expressPostRows ?? []).map((r: { workflow_id: number }) => r.workflow_id)),
-  ];
+  const candidateIds = [...new Set(expressPostRows.map((r) => r.workflow_id))];
 
   if (candidateIds.length > 0) {
-    const { data: activeExpress, error: activeErr } = await db
-      .from("workflows")
-      .select("id")
-      .in("id", candidateIds)
-      .eq("status", "ativo");
+    const activeExpress: Array<{ id: number }> = [];
+    for (const idsChunk of chunk(candidateIds)) {
+      const { data, error: activeErr } = await db
+        .from("workflows")
+        .select("id")
+        .in("id", idsChunk)
+        .eq("status", "ativo");
 
-    if (activeErr) throw activeErr;
+      if (activeErr) throw activeErr;
+      activeExpress.push(...((data ?? []) as Array<{ id: number }>));
+    }
 
-    for (const wf of (activeExpress ?? []) as Array<{ id: number }>) {
+    for (const wf of activeExpress) {
       const { data: posts } = await db
         .from("workflow_posts")
         .select("id, status, is_express")
@@ -172,16 +187,18 @@ export async function runExpressPostCleanupCron(
   let skipped = 0;
   let failed = 0;
 
-  const { data: orphanWorkflows, error: fetchErr } = await db
-    .from("workflows")
-    .select("id")
-    .like("titulo", "Post Express -%")
-    .eq("status", "ativo")
-    .lt("created_at", cutoff);
+  const orphanWorkflows = await fetchAllRows<{ id: number }>((from, to) =>
+    db
+      .from("workflows")
+      .select("id")
+      .like("titulo", "Post Express -%")
+      .eq("status", "ativo")
+      .lt("created_at", cutoff)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
-  if (fetchErr) throw fetchErr;
-
-  for (const wf of (orphanWorkflows ?? []) as Array<{ id: number }>) {
+  for (const wf of orphanWorkflows) {
     const { data: posts } = await db
       .from("workflow_posts")
       .select("id, status")
@@ -239,17 +256,19 @@ export async function runExpressPostCleanupCron(
   // drafts silently stuck around forever.
   let avulsoFailed = 0;
 
-  const { data: avulsoDrafts, error: avulsoErr } = await db
-    .from("workflow_posts")
-    .select("id")
-    .eq("is_express", true)
-    .is("workflow_id", null)
-    .eq("status", "rascunho")
-    .lt("created_at", cutoff);
+  const avulsoDrafts = await fetchAllRows<{ id: number }>((from, to) =>
+    db
+      .from("workflow_posts")
+      .select("id")
+      .eq("is_express", true)
+      .is("workflow_id", null)
+      .eq("status", "rascunho")
+      .lt("created_at", cutoff)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
-  if (avulsoErr) throw avulsoErr;
-
-  const avulsoPostIds = (avulsoDrafts ?? []).map((p: { id: number }) => p.id);
+  const avulsoPostIds = avulsoDrafts.map((p) => p.id);
 
   // Rascunho com processo individual ativo nao e abandono: alguem esta
   // produzindo nele. A RLS nao protege aqui (service_role), entao o filtro
@@ -267,23 +286,36 @@ export async function runExpressPostCleanupCron(
   let avulsoSkippedWithProcess = 0;
   let deletableAvulsoIds = avulsoPostIds;
   if (avulsoPostIds.length > 0) {
-    const { data: protectedRows, error: protectedErr } = await db
-      .from("post_processes")
-      .select("post_id")
-      .in("post_id", avulsoPostIds)
-      .eq("estado", "ativo");
-    if (protectedErr) throw protectedErr;
-    const protectedIds = new Set((protectedRows ?? []).map((r: { post_id: number }) => r.post_id));
+    const protectedRows: Array<{ post_id: number }> = [];
+    for (const idsChunk of chunk(avulsoPostIds)) {
+      const { data, error: protectedErr } = await db
+        .from("post_processes")
+        .select("post_id")
+        .in("post_id", idsChunk)
+        .eq("estado", "ativo");
+      if (protectedErr) throw protectedErr;
+      protectedRows.push(...((data ?? []) as Array<{ post_id: number }>));
+    }
+    const protectedIds = new Set(protectedRows.map((r) => r.post_id));
     deletableAvulsoIds = avulsoPostIds.filter((id) => !protectedIds.has(id));
     avulsoSkippedWithProcess = avulsoPostIds.length - deletableAvulsoIds.length;
   }
 
   if (deletableAvulsoIds.length > 0) {
-    const { data: links } = await db
-      .from("post_file_links")
-      .select("file_id")
-      .in("post_id", deletableAvulsoIds);
-    const fileIds = [...new Set((links ?? []).map((l: { file_id: number }) => l.file_id))];
+    // File ids must be fully collected across every chunk BEFORE the RPC
+    // deletes the drafts below -- once a draft is gone there is no way to
+    // recover which files it referenced, so a partial (unchunked, silently
+    // truncated) read here would leak orphan files forever.
+    const links: Array<{ file_id: number }> = [];
+    for (const idsChunk of chunk(deletableAvulsoIds)) {
+      const { data, error: linksErr } = await db
+        .from("post_file_links")
+        .select("file_id")
+        .in("post_id", idsChunk);
+      if (linksErr) throw linksErr;
+      links.push(...((data ?? []) as Array<{ file_id: number }>));
+    }
+    const fileIds = [...new Set(links.map((l) => l.file_id))];
 
     const { data: deletedIds, error: delErr } = await db.rpc(
       "express_cleanup_delete_avulso_drafts",

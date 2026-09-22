@@ -31,6 +31,9 @@ type FilterOp =
   | { op: "lte"; column: string; value: number }
   | { op: "in"; column: string; values: unknown[] };
 
+/** Postgres hosted default: an un-ranged select silently truncates here. */
+const DB_MAX_ROWS = 1000;
+
 function matchesRow(row: Row, filters: FilterOp[]): boolean {
   return filters.every((f) => {
     switch (f.op) {
@@ -60,6 +63,8 @@ type ErrorHook = (table: string, op: "select" | "update" | "delete", filters: Fi
 
 function makeSelectChain(table: string, rows: Row[], errorOn?: ErrorHook) {
   const filters: FilterOp[] = [];
+  const orders: Array<{ column: string; ascending: boolean }> = [];
+  let rangeSpec: { from: number; to: number } | null = null;
   // deno-lint-ignore no-explicit-any
   const chain: any = {
     eq(column: string, value: unknown) {
@@ -90,10 +95,35 @@ function makeSelectChain(table: string, rows: Row[], errorOn?: ErrorHook) {
       filters.push({ op: "in", column, values });
       return chain;
     },
+    order(column: string, options?: { ascending?: boolean }) {
+      orders.push({ column, ascending: options?.ascending ?? true });
+      return chain;
+    },
+    range(from: number, to: number) {
+      rangeSpec = { from, to };
+      return chain;
+    },
     then(onFulfilled: (v: { data: Row[] | null; error: DbError | null }) => unknown) {
       const err = errorOn?.(table, "select", filters) ?? null;
       if (err) return Promise.resolve(onFulfilled({ data: null, error: err }));
-      const data = rows.filter((r) => matchesRow(r, filters));
+      let data = rows.filter((r) => matchesRow(r, filters));
+      if (orders.length > 0) {
+        data = [...data].sort((a, b) => {
+          for (const o of orders) {
+            const av = a[o.column] as number | string;
+            const bv = b[o.column] as number | string;
+            if (av === bv) continue;
+            const cmp = av < bv ? -1 : 1;
+            return o.ascending ? cmp : -cmp;
+          }
+          return 0;
+        });
+      }
+      // Emulate hosted PostgREST's silent db-max-rows truncation: an
+      // un-ranged select never returns more than DB_MAX_ROWS, exactly like
+      // the real database this fake stands in for -- that's the behavior
+      // fetchAllRows's .range() paging exists to work around.
+      data = rangeSpec ? data.slice(rangeSpec.from, rangeSpec.to + 1) : data.slice(0, DB_MAX_ROWS);
       return Promise.resolve(onFulfilled({ data, error: null }));
     },
   };
@@ -278,6 +308,39 @@ Deno.test("pass1: leaves a workflow alone when a post is still rascunho", async 
   assertEquals(tables.workflows[0].status, "ativo");
 });
 
+Deno.test("pass1: paginates past db-max-rows and chunks the workflow id lookup, so tail workflows still get concluded", async () => {
+  // 600 workflows x 2 posts each = 1200 rows, past the fake's 1000-row
+  // db-max-rows cap -- fetchAllRows must page through .range() to see the
+  // tail. 600 candidate ids also exceeds chunk()'s default size of 500, so
+  // the workflows lookup must go out in 2 chunks: an errorOn hook fails any
+  // .in() call carrying more than 500 values, which would trip if the
+  // lookup were sent unchunked.
+  const workflowCount = 600;
+  const workflows: Row[] = [];
+  const workflow_posts: Row[] = [];
+  for (let i = 1; i <= workflowCount; i++) {
+    workflows.push({ id: i, titulo: `Post Express - Cliente ${i}`, status: "ativo", created_at: OLD });
+    workflow_posts.push(
+      { id: i * 10, workflow_id: i, is_express: true, status: "postado", created_at: OLD },
+      { id: i * 10 + 1, workflow_id: i, is_express: true, status: "postado", created_at: OLD },
+    );
+  }
+  const { db, tables } = makeFakeDb(
+    { workflows, workflow_posts },
+    (table, op, filters) =>
+      table === "workflows" && op === "select" &&
+        filters.some((f) => f.op === "in" && f.values.length > 500)
+        ? { message: "URI too long" }
+        : null,
+  );
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.concluded, workflowCount);
+  assert(
+    tables.workflows.every((w) => w.status === "concluido"),
+    "every workflow, including ones past row 1000, must be concluded",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Pass 2: GC abandoned legacy title-prefixed express workflows (unchanged)
 // ---------------------------------------------------------------------------
@@ -406,6 +469,50 @@ Deno.test("pass3: counts avulso_failed and leaves the drafts + file in place whe
   assertEquals(result.deleted, 0);
   assertEquals(result.skipped, 0);
   assertEquals(result.failed, 0);
+});
+
+Deno.test("pass3: chunks the post_processes, post_file_links and deleteOrphanFiles lookups past 500 ids, and every orphan file still gets deleted", async () => {
+  // 1200 abandoned avulso drafts, each with its own distinct orphan file --
+  // past the fake's 1000-row db-max-rows cap (so the draft scan itself must
+  // paginate) AND past chunk()'s default 500-id size (so every downstream
+  // .in() lookup keyed off this batch -- post_processes, post_file_links,
+  // and deleteOrphanFiles's own files select -- must split into chunks: 500
+  // + 500 + 200). An errorOn hook fails any select on those three tables
+  // whose "in" filter carries more than 500 values, which would trip if any
+  // of them were sent unchunked. Distinct 1:1 file ids (not shared/deduped)
+  // mean the only way all 1200 files end up deleted is if every chunk's
+  // results made it through the full pipeline -- deleteOrphanFiles's read,
+  // in particular, previously returned only its own single (truncated)
+  // page, silently orphaning the rest.
+  const draftCount = 1200;
+  const workflow_posts: Row[] = [];
+  const post_file_links: Row[] = [];
+  const files: Row[] = [];
+  for (let i = 1; i <= draftCount; i++) {
+    workflow_posts.push({
+      id: i,
+      workflow_id: null,
+      cliente_id: 5,
+      is_express: true,
+      status: "rascunho",
+      created_at: OLD,
+    });
+    post_file_links.push({ post_id: i, file_id: i });
+    files.push({ id: i, reference_count: 0 });
+  }
+  const { db, tables } = makeFakeDb(
+    { workflow_posts, post_file_links, files },
+    (table, op, filters) =>
+      (table === "post_processes" || table === "post_file_links" || table === "files") &&
+        op === "select" &&
+        filters.some((f) => f.op === "in" && f.values.length > 500)
+        ? { message: "URI too long" }
+        : null,
+  );
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, draftCount);
+  assertEquals(tables.workflow_posts.length, 0);
+  assertEquals(tables.files.length, 0, "all 1200 orphan file ids must reach deletion, none left behind");
 });
 
 Deno.test("pass3: leaves an avulso express draft younger than the cutoff untouched", async () => {
@@ -584,9 +691,10 @@ Deno.test("run: throws when the pass 1 candidate select fails", async () => {
     await runExpressPostCleanupCron(db, CUTOFF);
   } catch (e) {
     threw = true;
-    // The handler re-throws the PostgREST error object as-is (never wraps
-    // it), so the caught value is the `{ message }` shape, not a string.
-    assertEquals((e as DbError).message, "boom");
+    // Pass 1's primary select now goes through fetchAllRows, which wraps
+    // any page error in its own Error rather than rethrowing the PostgREST
+    // error object as-is -- it still carries the original message text.
+    assert((e as Error).message.includes("boom"));
   }
   assert(threw, "expected runExpressPostCleanupCron to throw");
 });
@@ -606,7 +714,8 @@ Deno.test("run: throws when the pass 3 draft select fails", async () => {
     await runExpressPostCleanupCron(db, CUTOFF);
   } catch (e) {
     threw = true;
-    assertEquals((e as DbError).message, "kaput");
+    // Same fetchAllRows wrapping as pass 1's error test above.
+    assert((e as Error).message.includes("kaput"));
   }
   assert(threw, "expected runExpressPostCleanupCron to throw");
 });
