@@ -42,6 +42,12 @@ const REFRESH_TOKEN_WARNING_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // instead of pinning the head.
 const REFRESH_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get("REFRESH_BATCH_LIMIT") || "200", 10) || 200);
 
+// Both the candidates select and the batch attempt-stamp update below are awaited
+// state-relevant PostgREST calls with no bound otherwise — a stalled request hangs until the
+// isolate is killed, bypassing both the non-fatal stamp-failure log branch and the outer
+// catch's reportCronFailure. Matches billing-downgrade-cron/handler.ts's DB_TIMEOUT_MS pattern.
+const DB_TIMEOUT_MS = 10_000;
+
 export interface TikTokRefreshCronDeps {
   /** Created and hoisted by the caller (index.ts) BEFORE the outer try, so a failure here
    * (e.g. the account query itself throwing) can still reach reportCronFailure below. */
@@ -156,7 +162,8 @@ export async function runTikTokRefreshCron(deps: TikTokRefreshCronDeps): Promise
       .order("last_refresh_attempt_at", { ascending: true, nullsFirst: true })
       .order("access_token_expires_at", { ascending: true, nullsFirst: false })
       .order("id", { ascending: true })
-      .limit(REFRESH_BATCH_LIMIT);
+      .limit(REFRESH_BATCH_LIMIT)
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
 
     if (error) throw error;
 
@@ -177,7 +184,8 @@ export async function runTikTokRefreshCron(deps: TikTokRefreshCronDeps): Promise
     const { error: stampError } = await svc
       .from("tiktok_accounts")
       .update({ last_refresh_attempt_at: now.toISOString() })
-      .in("id", candidates.map((a) => a.id));
+      .in("id", candidates.map((a) => a.id))
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
     if (stampError) {
       console.error(`[${CRON_NAME}] Failed to stamp last_refresh_attempt_at:`, stampError.message);
     }
