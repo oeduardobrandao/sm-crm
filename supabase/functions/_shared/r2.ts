@@ -150,28 +150,101 @@ export async function trashObject(key: string): Promise<void> {
   await deleteObject(key);
 }
 
+export interface TrashPage {
+  objects: Array<{ key: string; lastModified: Date }>;
+  nextToken: string | null;
+}
+
+/** ONE page of the trash/ prefix, same shape/bound as listOrphanKeyPage's
+ * underlying listing: a 30s abort against a runtime known to hang on a
+ * stalled fetch. Real implementation for purgeTrash's `listPage` seam. */
+async function realListTrashPage(token: string | undefined): Promise<TrashPage> {
+  const res = await getR2().send(
+    new ListObjectsV2Command({ Bucket: getBucket(), Prefix: "trash/", ContinuationToken: token }),
+    { abortSignal: AbortSignal.timeout(30_000) },
+  );
+  const objects: Array<{ key: string; lastModified: Date }> = [];
+  for (const obj of res.Contents ?? []) {
+    if (obj.Key && obj.LastModified) objects.push({ key: obj.Key, lastModified: obj.LastModified });
+  }
+  return {
+    objects,
+    nextToken: res.IsTruncated ? (res.NextContinuationToken ?? null) : null,
+  };
+}
+
+export interface PurgeTrashOpts {
+  maxPerRun?: number;
+  startToken?: string | null;
+  deadlineMs?: number;
+  // test seams; default to the real implementations
+  listPage?: (token: string | undefined) => Promise<TrashPage>;
+  deleteFn?: (key: string) => Promise<void>;
+  nowFn?: () => number;
+}
+
+export interface PurgeTrashResult {
+  purged: number;
+  nextToken: string | null;
+  cycleCompleted: boolean;
+}
+
 /** Permanently removes trash/ entries older than `olderThanDays`, at most
- * `maxPerRun` per call. Bounded and last-resort-safe: a listing error deletes
- * nothing. Returns the number purged. */
-export async function purgeTrash(olderThanDays: number, maxPerRun = 200): Promise<number> {
-  const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+ * `maxPerRun` per call (default 500), bounded by `deadlineMs` (default 55s)
+ * checked between pages so a slow/large trash/ prefix can't blow the caller's
+ * own watchdog. Checkpointed via `startToken`/`nextToken` — see
+ * post-media-cleanup-cron/index.ts, which persists the returned `nextToken`
+ * in `cron_scan_state` the same way the orphan scan does. A listing error on
+ * a stale/invalid continuation token is retried once from the head of the
+ * prefix before propagating. */
+export async function purgeTrash(olderThanDays: number, opts: PurgeTrashOpts = {}): Promise<PurgeTrashResult> {
+  const { maxPerRun = 500, deadlineMs = 55_000, nowFn = Date.now } = opts;
+  const listPage = opts.listPage ?? realListTrashPage;
+  const deleteFn = opts.deleteFn ?? deleteObject;
+  const cutoff = nowFn() - olderThanDays * 24 * 60 * 60 * 1000;
+  const startedAt = nowFn();
   let purged = 0;
-  let token: string | undefined;
-  do {
-    const res = await getR2().send(
-      new ListObjectsV2Command({ Bucket: getBucket(), Prefix: "trash/", ContinuationToken: token }),
-      { abortSignal: AbortSignal.timeout(30_000) },
-    );
-    for (const obj of res.Contents ?? []) {
-      if (purged >= maxPerRun) return purged;
-      if (obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoff) {
-        await deleteObject(obj.Key);
+  // Token that PRODUCED the page currently being processed. Persisting this
+  // (not nextToken) on an early exit means an interrupted page is re-listed,
+  // never skipped: deletes are idempotent (deleteObject treats 404 as done).
+  let pageToken: string | null = opts.startToken ?? null;
+  let retriedFromNull = false;
+  while (true) {
+    let page: TrashPage;
+    try {
+      page = await listPage(pageToken ?? undefined);
+    } catch (e) {
+      if (pageToken !== null && !retriedFromNull) {
+        // Stale/invalid continuation token (R2 InvalidArgument): restart cycle.
+        console.error("purgeTrash: list failed with token, restarting from head", e);
+        pageToken = null;
+        retriedFromNull = true;
+        continue;
+      }
+      throw e;
+    }
+    for (const obj of page.objects) {
+      if (purged >= maxPerRun) return { purged, nextToken: pageToken, cycleCompleted: false };
+      // Checked before EVERY delete, not just between pages: a single page can
+      // hold ~1000 aged objects, and at worst case ~10s per delete (see
+      // deleteObject's own timeout) a page can blow well past the deadline on
+      // its own. Exiting mid-page returns `pageToken` — the token that
+      // PRODUCED this page, same as the cap-exit above — so the interrupted
+      // page is re-listed in full next run rather than skipping the objects
+      // after the one we stopped on.
+      if (nowFn() - startedAt >= deadlineMs) return { purged, nextToken: pageToken, cycleCompleted: false };
+      if (obj.lastModified.getTime() < cutoff) {
+        await deleteFn(obj.key);
         purged++;
       }
     }
-    token = res.IsTruncated ? res.NextContinuationToken : undefined;
-  } while (token);
-  return purged;
+    if (page.nextToken === null) return { purged, nextToken: null, cycleCompleted: true };
+    pageToken = page.nextToken;
+    // Belt for a page with few/no aged objects (the per-delete check above
+    // never ran, or ran only briefly): still bound how long a run keeps
+    // listing before returning.
+    if (nowFn() - startedAt >= deadlineMs) return { purged, nextToken: pageToken, cycleCompleted: false };
+  }
 }
 
 export async function deleteObject(key: string): Promise<void> {
@@ -283,6 +356,31 @@ export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
     return new Uint8Array(await res.arrayBuffer());
   } catch {
     return null;
+  }
+}
+
+/** Streaming GET via presign + fetch (the SDK transport is the documented
+ * edge-runtime hang path). Bounds time-to-first-byte only; body stalls are
+ * the caller's job (file-zip wraps with a per-chunk stall guard) because a
+ * total AbortSignal would kill legitimately large slow bodies. */
+export async function getObjectStreamSigned(key: string): Promise<ReadableStream<Uint8Array> | null> {
+  const ac = new AbortController();
+  // Cleared in `finally` (not after the await): a fetch that REJECTS before
+  // headers would otherwise leave the timer live for its full 15s, and a zip
+  // over many unavailable objects would pile one orphan timer per failure.
+  const headerTimer = setTimeout(() => ac.abort(), 15_000);
+  try {
+    const url = await signGetUrl(key, 300);
+    const res = await fetch(url, { signal: ac.signal });
+    if (!res.ok) {
+      await res.body?.cancel();
+      return null;
+    }
+    return res.body;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(headerTimer);
   }
 }
 

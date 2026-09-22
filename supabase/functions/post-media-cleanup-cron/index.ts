@@ -16,8 +16,10 @@ import { createPostMediaCleanupCronHandler } from "./handler.ts";
 import { runStreamSweeps } from "./stream-steps.ts";
 import { runOrphanScan, type OrphanScanDeps } from "./orphan-scan.ts";
 import { runIntegrityCanary } from "./canary.ts";
+import { withWatchdog } from "./watchdog.ts";
 
 const CRON_NAME = "post-media-cleanup-cron";
+const PURGE_SCAN_KEY = "trash-purge:trash/";
 
 // Listing pages the orphan scan may consume per target per run. See
 // orphan-scan.ts: the scan is checkpointed, so this bounds ONE run's memory and
@@ -56,6 +58,38 @@ Deno.serve(createPostMediaCleanupCronHandler({
   timingSafeEqual,
   run: async (_req, json) => {
     const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Checkpoint I/O against cron_scan_state (migration 20260913000001),
+    // shared by the orphan scan and the trash purge below. A missing row is
+    // not an error: it means "start a fresh cycle".
+    const readCheckpoint = async (scanKey: string): Promise<string | null> => {
+      // Bounded: a hung read stalls the run before the purge watchdog even
+      // starts, blocking the canary and alert stages downstream — same hang
+      // class the dead-letter counts below are already bound against.
+      const { data, error } = await svc
+        .from("cron_scan_state")
+        .select("continuation_token")
+        .eq("scan_key", scanKey)
+        .abortSignal(AbortSignal.timeout(10_000))
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return (data?.continuation_token as string | null) ?? null;
+    };
+    // One RPC, not an upsert plus a counter write: a completed cycle has to
+    // move the position, restart the cycle clock and bump the counter as a
+    // unit, or the telemetry starts disagreeing with the cursor.
+    const writeCheckpoint = async (
+      scanKey: string,
+      token: string | null,
+      opts: { cycleCompleted: boolean },
+    ): Promise<void> => {
+      const { error } = await svc.rpc("record_scan_checkpoint", {
+        p_scan_key: scanKey,
+        p_token: token,
+        p_cycle_completed: opts.cycleCompleted,
+      }).abortSignal(AbortSignal.timeout(10_000));
+      if (error) throw new Error(error.message);
+    };
 
     let deleted = 0;
     let failed = 0;
@@ -191,45 +225,27 @@ Deno.serve(createPostMediaCleanupCronHandler({
       listOrphanKeyPage,
       trashObject,
       pagesPerRun: ORPHAN_SCAN_PAGES_PER_RUN,
-      // Checkpoint I/O against cron_scan_state (migration 20260912000001).
-      // A missing row is not an error: it means "start a fresh cycle".
-      readCheckpoint: async (scanKey) => {
-        const { data, error } = await svc
-          .from("cron_scan_state")
-          .select("continuation_token")
-          .eq("scan_key", scanKey)
-          .maybeSingle();
-        if (error) throw new Error(error.message);
-        return (data?.continuation_token as string | null) ?? null;
-      },
-      // One RPC, not an upsert plus a counter write: a completed cycle has to
-      // move the position, restart the cycle clock and bump the counter as a
-      // unit, or the telemetry starts disagreeing with the cursor.
-      writeCheckpoint: async (scanKey, token, { cycleCompleted }) => {
-        const { error } = await svc.rpc("record_scan_checkpoint", {
-          p_scan_key: scanKey,
-          p_token: token,
-          p_cycle_completed: cycleCompleted,
-        });
-        if (error) throw new Error(error.message);
-      },
+      readCheckpoint,
+      writeCheckpoint,
     });
 
-    // Purge trash/ entries past their 30-day undo window (bounded per run).
+    // Purge trash/ entries past their 30-day undo window (bounded per run,
+    // checkpointed in cron_scan_state like the orphan scan above). The 55s
+    // internal deadline (purgeTrash's default) is the primary bound; this 90s
+    // watchdog is a true last resort for a wedged SDK call, which is why it no
+    // longer needs to match the OLD 60s "whole thing might hang" budget. On a
+    // watchdog timeout the checkpoint is deliberately NOT written, so the next
+    // run resumes from the previous token instead of losing position.
     let trashPurged = 0;
     try {
-      // SDK-independent watchdog: listings have worked reliably on this runtime,
-      // but a wedged purge must never block the canary/alert stages behind it.
-      trashPurged = await new Promise<number>((resolve) => {
-        const watchdog = setTimeout(() => {
-          console.error("post-media-cleanup:purge-trash timed out");
-          resolve(0);
-        }, 60_000);
-        purgeTrash(30).then(
-          (n) => { clearTimeout(watchdog); resolve(n); },
-          (e) => { clearTimeout(watchdog); console.error("post-media-cleanup:purge-trash", e); resolve(0); },
-        );
-      });
+      const startToken = await readCheckpoint(PURGE_SCAN_KEY);
+      const result = await withWatchdog(90_000, () => purgeTrash(30, { startToken }));
+      if (result) {
+        trashPurged = result.purged;
+        await writeCheckpoint(PURGE_SCAN_KEY, result.nextToken, { cycleCompleted: result.cycleCompleted });
+      } else {
+        console.error("post-media-cleanup:purge-trash timed out");
+      }
     } catch (e) {
       console.error("post-media-cleanup:purge-trash", e);
     }
@@ -263,6 +279,41 @@ Deno.serve(createPostMediaCleanupCronHandler({
     }
     if (failed > 0) alerts.push({ error: `deletion drain: ${failed} rows failed this run` });
     if (streamErrors > 0) alerts.push({ error: `stream sweeps: ${streamErrors} step errors` });
+
+    // Dead-letter visibility: rows past their attempt cap are silently excluded
+    // from the drains above forever (post_media_deletions: attempts < 6;
+    // file_deletions: attempts < 5). The alert TEXT is deliberately stable (no
+    // counts) — but cron-health-cron's alreadyReported dedups on signature_hash
+    // AND an exact error_detail->context->>run_start_time match
+    // (cron-health-cron/index.ts:29-42), so it only suppresses a double-report
+    // of the SAME run, never collapses this alert across runs. This will page
+    // every run while dead-lettered rows exist; that's intentional — weekly
+    // noise beats silent, permanent data loss.
+    const { count: deadLegacyRows, error: deadLegacyError } = await svc
+      .from("post_media_deletions")
+      .select("id", { count: "exact", head: true })
+      .gte("attempts", 6)
+      .abortSignal(AbortSignal.timeout(10_000));
+    if (deadLegacyError) {
+      console.error(`post-media-cleanup: dead-letter count query failed: ${deadLegacyError.message}`);
+    }
+    if ((deadLegacyRows ?? 0) > 0) {
+      console.error(`post-media-cleanup: ${deadLegacyRows} post_media_deletions rows past attempt cap`);
+      alerts.push({ error: "post_media_deletions has dead-lettered rows past the attempt cap" });
+    }
+    const { count: deadFileRows, error: deadFileError } = await svc
+      .from("file_deletions")
+      .select("id", { count: "exact", head: true })
+      .gte("attempts", 5)
+      .abortSignal(AbortSignal.timeout(10_000));
+    if (deadFileError) {
+      console.error(`post-media-cleanup: dead-letter count query failed: ${deadFileError.message}`);
+    }
+    if ((deadFileRows ?? 0) > 0) {
+      console.error(`post-media-cleanup: ${deadFileRows} file_deletions rows past attempt cap`);
+      alerts.push({ error: "file_deletions has dead-lettered rows past the attempt cap" });
+    }
+
     if (alerts.length > 0) {
       await reportCronFailure(svc, CRON_NAME, { failed: alerts.length, errors: alerts });
     }
