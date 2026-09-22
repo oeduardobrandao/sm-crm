@@ -80,7 +80,7 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
     queryFn: getConcludedWorkflows,
   });
 
-  const { data: summaries = [] } = useQuery({
+  const { data: summaries = [], isLoading: summariesLoading } = useQuery({
     queryKey: ['concluded-summaries', concludedWorkflows.map((w) => w.id).join(',')],
     queryFn: async (): Promise<ConcludedWorkflowSummary[]> => {
       return Promise.all(
@@ -122,7 +122,7 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
     () => vigente.filter((p) => p.estado === 'concluido'),
     [vigente],
   );
-  const isLoadingCombined = isLoading || vigenteLoading;
+  const isLoadingCombined = isLoading || vigenteLoading || summariesLoading;
 
   const groups: ClientGroup[] = [];
   const clientMap = new Map<
@@ -238,12 +238,13 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
                 <div
                   key={s.workflow.id}
                   className="concluded-wf-row"
-                  onClick={() =>
+                  onClick={() => {
                     setSelectedWorkflow({
                       workflow: s.workflow,
                       clienteName: selectedGroup.cliente.nome,
-                    })
-                  }
+                    });
+                    setSelectedClienteId(null);
+                  }}
                 >
                   <div>
                     <div className="concluded-wf-title">{s.workflow.titulo}</div>
@@ -277,7 +278,10 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
                 <div
                   key={`proc-${p.id}`}
                   className="concluded-wf-row"
-                  onClick={() => onOpenPost?.(p.post_id)}
+                  onClick={() => {
+                    onOpenPost?.(p.post_id);
+                    setSelectedClienteId(null);
+                  }}
                 >
                   <div>
                     <div className="concluded-wf-title">

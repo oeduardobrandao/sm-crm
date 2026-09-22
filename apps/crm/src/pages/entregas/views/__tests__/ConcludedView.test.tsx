@@ -68,6 +68,14 @@ const concluded = {
   },
 };
 
+const concludedWorkflow = {
+  id: 42,
+  cliente_id: 3,
+  titulo: 'Campanha de Lançamento',
+  status: 'concluido',
+  created_at: '2026-09-01T12:00:00Z',
+};
+
 function renderView(onOpenPost = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -108,11 +116,26 @@ describe('ConcludedView com processos individuais', () => {
     expect(screen.getByText('Post concluído')).toBeInTheDocument();
     expect(screen.getByText('Post individual')).toBeInTheDocument();
     expect(screen.getByText(/1 post individual/)).toBeInTheDocument();
+    // Task 9: existe o botão "Reabrir processo" na linha do post individual
+    // concluído.
+    expect(screen.getByTitle('Reabrir processo')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Post concluído'));
     expect(onOpenPost).toHaveBeenCalledWith(77);
-    // Task 9: agora existe o botão "Reabrir processo" na linha do post
-    // individual concluído (antes desta task não havia nenhum).
-    expect(screen.getByTitle('Reabrir processo')).toBeInTheDocument();
+    // O painel do cliente fecha ao abrir o post, para não ficar atrás do
+    // StandalonePostDrawer (mesmo z-index do HistoryDrawer).
+    expect(screen.queryByText('Post concluído')).toBeNull();
+  });
+
+  it('clicar num fluxo concluído fecha o painel do cliente antes de abrir o histórico', async () => {
+    store.getConcludedWorkflows.mockResolvedValueOnce([concludedWorkflow] as never);
+    renderView();
+    fireEvent.click(await screen.findByText('Aurora'));
+    expect(await screen.findByText('Campanha de Lançamento')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Campanha de Lançamento'));
+    expect(await screen.findByText('HistoryDrawer')).toBeInTheDocument();
+    // O painel do cliente fecha ao abrir o histórico, para não ficar atrás
+    // dele (mesmo z-index de sheet, HistoryDrawer usa um z-index menor).
+    expect(screen.queryByText('Campanha de Lançamento')).toBeNull();
   });
 
   it('flag ligada e nada concluído: cópia vazia inclui posts individuais', async () => {
@@ -154,6 +177,27 @@ describe('ConcludedView com processos individuais', () => {
     });
     fireEvent.click(await screen.findByText('Aurora'));
     expect(await screen.findByText('Post individual')).toBeInTheDocument();
+  });
+
+  it('fluxo concluído existe mas o resumo (etapas/posts) ainda carrega: não mostra o vazio prematuro', async () => {
+    store.getConcludedWorkflows.mockResolvedValueOnce([concludedWorkflow] as never);
+    let resolveEtapas: (value: unknown[]) => void = () => {};
+    store.getWorkflowEtapas.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveEtapas = resolve;
+        }),
+    );
+    renderView();
+
+    await waitFor(() => expect(store.getWorkflowEtapas).toHaveBeenCalled());
+    expect(screen.queryByText('Nenhum fluxo concluído ainda.')).toBeNull();
+    expect(screen.getByText('Carregando...')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveEtapas([]);
+    });
+    expect(await screen.findByText('Aurora')).toBeInTheDocument();
   });
 
   it('Reabrir processo: confirma e chama transition_post_process com reabrir', async () => {
