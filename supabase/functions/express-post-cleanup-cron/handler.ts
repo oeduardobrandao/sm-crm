@@ -279,23 +279,36 @@ export async function runExpressPostCleanupCron(
   let avulsoSkippedWithProcess = 0;
   let deletableAvulsoIds = avulsoPostIds;
   if (avulsoPostIds.length > 0) {
-    const { data: protectedRows, error: protectedErr } = await db
-      .from("post_processes")
-      .select("post_id")
-      .in("post_id", avulsoPostIds)
-      .eq("estado", "ativo");
-    if (protectedErr) throw protectedErr;
-    const protectedIds = new Set((protectedRows ?? []).map((r: { post_id: number }) => r.post_id));
+    const protectedRows: Array<{ post_id: number }> = [];
+    for (const idsChunk of chunk(avulsoPostIds)) {
+      const { data, error: protectedErr } = await db
+        .from("post_processes")
+        .select("post_id")
+        .in("post_id", idsChunk)
+        .eq("estado", "ativo");
+      if (protectedErr) throw protectedErr;
+      protectedRows.push(...((data ?? []) as Array<{ post_id: number }>));
+    }
+    const protectedIds = new Set(protectedRows.map((r) => r.post_id));
     deletableAvulsoIds = avulsoPostIds.filter((id) => !protectedIds.has(id));
     avulsoSkippedWithProcess = avulsoPostIds.length - deletableAvulsoIds.length;
   }
 
   if (deletableAvulsoIds.length > 0) {
-    const { data: links } = await db
-      .from("post_file_links")
-      .select("file_id")
-      .in("post_id", deletableAvulsoIds);
-    const fileIds = [...new Set((links ?? []).map((l: { file_id: number }) => l.file_id))];
+    // File ids must be fully collected across every chunk BEFORE the RPC
+    // deletes the drafts below -- once a draft is gone there is no way to
+    // recover which files it referenced, so a partial (unchunked, silently
+    // truncated) read here would leak orphan files forever.
+    const links: Array<{ file_id: number }> = [];
+    for (const idsChunk of chunk(deletableAvulsoIds)) {
+      const { data, error: linksErr } = await db
+        .from("post_file_links")
+        .select("file_id")
+        .in("post_id", idsChunk);
+      if (linksErr) throw linksErr;
+      links.push(...((data ?? []) as Array<{ file_id: number }>));
+    }
+    const fileIds = [...new Set(links.map((l) => l.file_id))];
 
     const { data: deletedIds, error: delErr } = await db.rpc(
       "express_cleanup_delete_avulso_drafts",

@@ -471,6 +471,53 @@ Deno.test("pass3: counts avulso_failed and leaves the drafts + file in place whe
   assertEquals(result.failed, 0);
 });
 
+Deno.test("pass3: chunks the post_processes and post_file_links lookups past 500 ids, and every orphan file still reaches deleteOrphanFiles", async () => {
+  // 1200 abandoned avulso drafts -- past the fake's 1000-row db-max-rows cap
+  // (so the draft scan itself must paginate) AND past chunk()'s default
+  // 500-id size (so both post-scan .in() lookups must split into 3 chunks:
+  // 500 + 500 + 200). An errorOn hook fails any post_processes or
+  // post_file_links select whose "in" filter carries more than 500 values,
+  // which would trip if either lookup were sent unchunked. File ids are
+  // spread over 900 distinct files (some shared by more than one draft, as
+  // real orphan files can be) -- kept under the fake's 1000-row db-max-rows
+  // cap deliberately, since deleteOrphanFiles's own unchunked `files` select
+  // is a separate, already-known, explicitly out-of-scope limitation (see
+  // task-6-brief.md's file header); this test targets only the two lookups
+  // this fix round chunks. If file ids were dropped by either of those,
+  // the corresponding file would survive the run.
+  const draftCount = 1200;
+  const fileCount = 900;
+  const workflow_posts: Row[] = [];
+  const post_file_links: Row[] = [];
+  const files: Row[] = [];
+  for (let i = 1; i <= draftCount; i++) {
+    workflow_posts.push({
+      id: i,
+      workflow_id: null,
+      cliente_id: 5,
+      is_express: true,
+      status: "rascunho",
+      created_at: OLD,
+    });
+    post_file_links.push({ post_id: i, file_id: ((i - 1) % fileCount) + 1 });
+  }
+  for (let i = 1; i <= fileCount; i++) {
+    files.push({ id: i, reference_count: 0 });
+  }
+  const { db, tables } = makeFakeDb(
+    { workflow_posts, post_file_links, files },
+    (table, op, filters) =>
+      (table === "post_processes" || table === "post_file_links") && op === "select" &&
+        filters.some((f) => f.op === "in" && f.values.length > 500)
+        ? { message: "URI too long" }
+        : null,
+  );
+  const result = await runExpressPostCleanupCron(db, CUTOFF);
+  assertEquals(result.avulso_deleted, draftCount);
+  assertEquals(tables.workflow_posts.length, 0);
+  assertEquals(tables.files.length, 0, "every draft's orphan file must reach deleteOrphanFiles");
+});
+
 Deno.test("pass3: leaves an avulso express draft younger than the cutoff untouched", async () => {
   const { db, tables } = makeFakeDb({
     workflow_posts: [
