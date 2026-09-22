@@ -147,6 +147,7 @@ export default function EntregasPage() {
 
   const [activeView, setActiveView] = useState<ActiveView>(initialQuery.view);
   const [filters, setFilters] = useState<FilterState>(initialQuery.filters);
+  const [concludedClientSearch, setConcludedClientSearch] = useState('');
   const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'titulo',
     direction: 'asc',
@@ -1189,6 +1190,18 @@ export default function EntregasPage() {
                 <EntidadeToggle value={effectiveEntidade} onChange={setEntidade} />
               </div>
             )}
+
+          {activeView === 'concluded' && (
+            <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
+              <Input
+                placeholder="Buscar cliente..."
+                value={concludedClientSearch}
+                onChange={(e) => setConcludedClientSearch(e.target.value)}
+                className="!rounded-full !text-xs h-8 pl-8 pr-4 mb-0 w-full"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -1334,6 +1347,7 @@ export default function EntregasPage() {
         ))}
       {activeView === 'concluded' && (
         <ConcludedView
+          clientSearch={concludedClientSearch}
           onOpenPost={(postId) => {
             setDrawerCard(null);
             setDrawerInitialPostId(null);
