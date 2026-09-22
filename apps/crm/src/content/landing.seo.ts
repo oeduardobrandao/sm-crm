@@ -45,7 +45,13 @@ export function renderLandingHtml(): string {
   ]
     .map(([href, label]) => `<a href="${href}">${label}</a>`)
     .join(' · ');
-  return [
+  // Wrapped in a uniquely-identified div so style.css can target this
+  // pre-hydration markup without also matching the live app: PrecosPage,
+  // MarketingRoute and blog pages render their own <main> as a direct
+  // (unwrapped) child of #root once mounted, unlike LandingPage's
+  // `.lp-root` wrapper — a bare `#root > main` selector would leak onto
+  // their hydrated output too.
+  return `<div id="lp-ssr">${[
     '<main>',
     `<h1>${h1}</h1>`,
     `<p>${esc(hero.sub)}</p>`,
@@ -55,5 +61,5 @@ export function renderLandingHtml(): string {
     `<section><h2>Perguntas frequentes</h2>${faqBlocks}</section>`,
     '</main>',
     `<nav>${nav}</nav>`,
-  ].join('');
+  ].join('')}</div>`;
 }
