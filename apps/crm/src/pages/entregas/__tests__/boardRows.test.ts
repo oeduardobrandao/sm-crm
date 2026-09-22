@@ -248,26 +248,67 @@ describe('buildBoardRows com signatureRows (flag ligada)', () => {
   const SIG =
     '0|Copy|padrao;1|Aprovação|aprovacao_cliente;2|Design|padrao;3|Aprovação|aprovacao_cliente';
 
-  it('chave = template + assinatura; rótulo = nome do template', () => {
+  it('com template a chave é só template:<id>; rótulo = nome do template', () => {
     const rows = buildBoardRows(
       toWorkflowEntities([makeCard(1, 7, DUP, 0)]),
       [{ id: 7, nome: 'Redes', etapas: [] } as never],
       { signatureRows: true },
     );
-    expect(rows[0].key).toBe(`template:7#${SIG}`);
+    expect(rows[0].key).toBe('template:7');
     expect(rows[0].label).toBe('REDES');
   });
 
-  it('dois fluxos do mesmo template com etapas divergentes viram duas linhas', () => {
+  // Regressão: a assinatura na chave fazia dois snapshots do MESMO template
+  // virarem duas abas com o MESMO rótulo — indistinguível de "criaram um
+  // template novo". Divergir é a norma (propagate_template_to_workflows não
+  // renomeia etapas concluídas), então a linha é do template, não do snapshot.
+  it('dois fluxos do mesmo template com etapas divergentes ficam na MESMA linha', () => {
     const longer = [...DUP, { id: 5, ordem: 4, nome: 'Publicação' }];
     const rows = buildBoardRows(
       toWorkflowEntities([makeCard(1, 7, DUP, 0), makeCard(2, 7, longer, 4)]),
-      [],
+      [{ id: 7, nome: 'Redes', etapas: [] } as never],
       { signatureRows: true },
     );
-    expect(rows).toHaveLength(2);
-    expect(rows[0].columns.map((c) => c.ordem)).toEqual([0, 1, 2, 3]);
-    expect(rows[1].columns.map((c) => c.ordem)).toEqual([0, 1, 2, 3, 4]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].columns.map((c) => c.ordem)).toEqual([0, 1, 2, 3, 4]);
+    expect(rows[0].columns[0].cards).toHaveLength(1);
+    expect(rows[0].columns[4].cards).toHaveLength(1);
+  });
+
+  it('o cabeçalho das colunas vem do template, não do primeiro card visto', () => {
+    const tpl = {
+      id: 7,
+      nome: 'Redes',
+      etapas: [
+        { nome: 'Copy novo', prazo_dias: 1, tipo_prazo: 'uteis', tipo: 'padrao' },
+        { nome: 'Aprovação', prazo_dias: 1, tipo_prazo: 'uteis', tipo: 'aprovacao_cliente' },
+      ],
+    } as never;
+    const rows = buildBoardRows(toWorkflowEntities([makeCard(1, 7, DUP, 0)]), [tpl], {
+      signatureRows: true,
+    });
+    expect(rows[0].columns.map((c) => c.nome)).toEqual([
+      'Copy novo',
+      'Aprovação',
+      'Design',
+      'Aprovação',
+    ]);
+  });
+
+  // A linha sintética do template (quadro sem nenhum fluxo dele) precisa casar
+  // byte a byte com a linha que um fluxo desse template cria, senão o template
+  // ganha uma aba fantasma homônima ao lado da aba real.
+  it('a linha sintética do template não duplica a aba de um fluxo divergente', () => {
+    const tpl = {
+      id: 7,
+      nome: 'Redes',
+      etapas: [{ nome: 'Outra', prazo_dias: 1, tipo_prazo: 'uteis', tipo: 'padrao' }],
+    } as never;
+    const rows = buildBoardRows(toWorkflowEntities([makeCard(1, 7, DUP, 0)]), [tpl], {
+      signatureRows: true,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].key).toBe('template:7');
   });
 
   it('sem template: chave custom#assinatura e rótulo "Etapas personalizadas"', () => {

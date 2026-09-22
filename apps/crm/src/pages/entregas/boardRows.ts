@@ -30,10 +30,22 @@ export interface BoardRow {
 }
 
 export interface BuildBoardRowsOptions {
-  /** Spec §4.1: chave `template:<id>#<assinatura>` / `custom#<assinatura>`, de
-   *  modo que snapshots divergentes do mesmo template viram linhas próprias.
-   *  Ligado pela feature_post_processes; desligado, a chave é a de sempre
-   *  (`template:<id>` ou nomes unidos), byte a byte. */
+  /** Spec §4.1, corrigida: a assinatura ordenada das etapas entra na chave
+   *  apenas das linhas SEM template (`custom#<assinatura>`), onde substitui os
+   *  nomes unidos. Com template a chave continua sendo só `template:<id>`.
+   *
+   *  A spec original punha a assinatura na chave dos dois casos, para que
+   *  "snapshots divergentes do mesmo template virassem linhas próprias". Na
+   *  prática isso produzia duas (ou mais) abas com o MESMO rótulo — o nome do
+   *  template —, indistinguíveis de um template duplicado, e divergir é a
+   *  norma e não a exceção: `propagate_template_to_workflows` só atualiza
+   *  etapas `pendente`/`ativo`, então editar um template forka para sempre a
+   *  assinatura de todo fluxo que já tenha uma etapa concluída. As colunas já
+   *  fazem união por `ordem` e `isValidDropTarget` já valida contra as etapas
+   *  do próprio card, então a linha por template comporta os divergentes.
+   *
+   *  Ligado pela feature_post_processes; desligado, a chave sem template é a
+   *  de sempre (nomes unidos), byte a byte. */
   signatureRows?: boolean;
 }
 
@@ -55,12 +67,9 @@ export function parseColumnKey(key: string): { rowKey: string; ordem: number } |
 }
 
 export function rowKeyFor(entity: BoardEntity, signatureRows: boolean): string {
-  if (signatureRows) {
-    const sig = stageSignature(entity.steps);
-    return entity.templateId != null ? `template:${entity.templateId}#${sig}` : `custom#${sig}`;
-  }
-  return entity.templateId != null
-    ? `template:${entity.templateId}`
+  if (entity.templateId != null) return `template:${entity.templateId}`;
+  return signatureRows
+    ? `custom#${stageSignature(entity.steps)}`
     : entity.steps.map((s) => s.nome).join(' → ');
 }
 
@@ -93,11 +102,22 @@ export function buildBoardRows(
   for (const entity of entities) {
     const key = rowKeyFor(entity, signatureRows);
     if (!rowMap.has(key)) {
+      // Colunas da linha de um template nascem das etapas do TEMPLATE, não do
+      // primeiro card visto: a linha é do template e snapshots divergentes
+      // convivem nela, então o cabeçalho tem que ser a versão corrente do
+      // template. Etapas que só o card tem entram depois, pelo laço abaixo.
+      const tpl =
+        entity.templateId != null ? templates.find((t) => t.id === entity.templateId) : undefined;
       rowMap.set(key, {
         key,
         label: rowLabelFor(entity, key, templates, signatureRows),
         templateId: entity.templateId,
-        columns: new Map(),
+        columns: new Map(
+          (tpl?.etapas ?? []).map((e, i) => [
+            i,
+            { ordem: i, nome: e.nome, tipo: e.tipo ?? 'padrao', cards: [], posts: [] },
+          ]),
+        ),
       });
     }
     const row = rowMap.get(key)!;
@@ -144,7 +164,7 @@ export function buildBoardRows(
       tipo: e.tipo ?? 'padrao',
     }));
     rows.push({
-      key: signatureRows ? `template:${t.id}#${stageSignature(steps)}` : `template:${t.id}`,
+      key: `template:${t.id}`,
       label: t.nome.toUpperCase(),
       templateId: t.id,
       columns: steps.map((s) => ({
