@@ -22,10 +22,22 @@ function makeSupabaseStub(opts: StubOpts) {
             return {
               not(col: string, op: string, val: unknown) {
                 calls.notArgs = [col, op, val];
-                return Promise.resolve({
-                  data: opts.accounts,
-                  error: opts.accountsError ?? null,
-                });
+                return {
+                  order(_col: string, _options: Record<string, unknown>) {
+                    return {
+                      range(from: number, to: number) {
+                        if (opts.accountsError) {
+                          return Promise.resolve({ data: null, error: opts.accountsError });
+                        }
+                        const all = opts.accounts ?? [];
+                        return Promise.resolve({
+                          data: all.slice(from, to + 1),
+                          error: null,
+                        });
+                      },
+                    };
+                  },
+                };
               },
             };
           },
@@ -132,6 +144,26 @@ Deno.test("não chama o worker quando nada foi enfileirado", async () => {
   assertEquals(result.queued, 0);
   assertEquals(result.skipped, 1);
   assertEquals(requests.length, 0);
+});
+
+Deno.test("pagina além de 1000 contas: todas as 1100 são enfileiradas", async () => {
+  const accounts = Array.from({ length: 1100 }, (_, i) => ({
+    id: `acc-${i}`,
+    client_id: i,
+  }));
+  const clientes: Record<number, { conta_id: string; include_ai_analysis: boolean }> = {};
+  for (let i = 0; i < 1100; i++) {
+    clientes[i] = { conta_id: `ws-${i}`, include_ai_analysis: false };
+  }
+  const { client, calls } = makeSupabaseStub({ accounts, clientes });
+  const { fetchFn } = makeFetchStub();
+
+  const result = await queueMonthlyReports({ ...BASE_DEPS, supabase: client, fetchFn });
+
+  assert(result.kind === "done");
+  assertEquals(result.total, 1100);
+  assertEquals(result.queued, 1100);
+  assertEquals(calls.upserts.length, 1100);
 });
 
 Deno.test("sem contas conectadas retorna 'empty' sem chamar o worker", async () => {
