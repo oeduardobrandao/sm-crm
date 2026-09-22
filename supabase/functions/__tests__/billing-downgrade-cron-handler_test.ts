@@ -52,15 +52,18 @@ interface DbFx {
   expire?: (
     filters: Array<[string, string, unknown]>,
   ) => { data: unknown; error: { message: string } | null };
-  // Leg C: local link-set reads (both use `.not`, count:"exact"). `linkedCount`/`pendingCount`
-  // default to the fixture rows' own length (no truncation); set higher to simulate PostgREST
-  // silently truncating an unbounded select at db-max-rows.
+  // Leg C: local link-set reads (both use `.not`, paginated via `fetchAllRows`/`.range()`).
+  // `linkedRows`/`pendingRows` hold the FULL fixture set; the fake slices it per `.range(from,
+  // to)` call so multi-page fixtures (>1000 rows) exercise real pagination. `linkedReadError`/
+  // `pendingReadError` fail every page (sufficient for single-page fixtures). `linkedReadErrorOnPage`/
+  // `pendingReadErrorOnPage` (0-indexed, page size 1000 to match `fetchAllRows`'s default) fail
+  // only that page, for asserting a page-N error still aborts the whole leg.
   linkedRows?: Array<{ pagarme_subscription_id: string | null }>;
   linkedReadError?: { message: string } | null;
-  linkedCount?: number;
+  linkedReadErrorOnPage?: number;
   pendingRows?: Array<{ pagarme_subscription_id: string | null }>;
   pendingReadError?: { message: string } | null;
-  pendingCount?: number;
+  pendingReadErrorOnPage?: number;
   // Leg D: switch-marker batch read (`.not` on switched_from_stripe_subscription_id `.or`'d
   // with the switch_checked_at staleness window) -- distinguished from leg C's `.not`-only
   // linked read by `sawOr`. The sweep pages until empty: `markerRows` is served on the FIRST
@@ -79,6 +82,32 @@ interface DbFx {
   clear?: (
     filters: Array<[string, string, unknown]>,
   ) => { data: unknown; error: { message: string } | null };
+}
+
+/**
+ * Serves one `.range(from, to)` page of a fixture array, for the two `fetchAllRows`-driven
+ * leg C reads (`workspace_subscriptions`'s linked-set read, `pagarme_checkout_attempts`'s
+ * pending-set read). `blanketError` fails every page (sufficient for single-page fixtures);
+ * `errorOnPage` (0-indexed, page size 1000 to match `fetchAllRows`'s default) fails only that
+ * page so a multi-page test can assert a page-N failure still aborts the whole leg via
+ * `fetchAllRows`'s throw-on-any-page-error contract.
+ */
+function pagedRead<T>(
+  allRows: T[],
+  blanketError: { message: string } | null | undefined,
+  errorOnPage: number | undefined,
+  rangeFrom: number | undefined,
+  rangeTo: number | undefined,
+): { data: T[] | null; error: { message: string } | null } {
+  if (blanketError) return { data: null, error: blanketError };
+  const from = rangeFrom ?? 0;
+  const to = rangeTo ?? Math.max(allRows.length - 1, 0);
+  if (errorOnPage !== undefined) {
+    const pageSize = to - from + 1;
+    const page = Math.floor(from / pageSize);
+    if (page === errorOnPage) return { data: null, error: { message: "page error" } };
+  }
+  return { data: allRows.slice(from, to + 1), error: null };
 }
 
 /**
@@ -101,6 +130,8 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
     let sawIn = false;
     let sawLte = false;
     let sawOr = false;
+    let rangeFrom: number | undefined;
+    let rangeTo: number | undefined;
     const filters: Array<[string, string, unknown]> = [];
     // deno-lint-ignore no-explicit-any
     const chain: any = {};
@@ -147,6 +178,11 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
     };
     chain.order = () => chain;
     chain.limit = () => chain;
+    chain.range = (from: number, to: number) => {
+      rangeFrom = from;
+      rangeTo = to;
+      return chain;
+    };
     chain.update = (v: Record<string, unknown>) => {
       op = "update";
       values = v;
@@ -192,9 +228,7 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
           return { data: rows, error: null };
         }
         if (sawNot) {
-          const data = fx.linkedRows ?? [];
-          const count = fx.linkedCount !== undefined ? fx.linkedCount : data.length;
-          return { data, error: fx.linkedReadError ?? null, count };
+          return pagedRead(fx.linkedRows ?? [], fx.linkedReadError, fx.linkedReadErrorOnPage, rangeFrom, rangeTo);
         }
         // Leg D's post-enforce re-read: `.eq(workspace_id).maybeSingle()`, no `.not`/`.or`/
         // `.in`/`.lte` at all -- the only remaining shape.
@@ -219,9 +253,7 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
       }
       if (table === "pagarme_checkout_attempts" && op === "read") {
         if (sawNot) {
-          const data = fx.pendingRows ?? [];
-          const count = fx.pendingCount !== undefined ? fx.pendingCount : data.length;
-          return { data, error: fx.pendingReadError ?? null, count };
+          return pagedRead(fx.pendingRows ?? [], fx.pendingReadError, fx.pendingReadErrorOnPage, rangeFrom, rangeTo);
         }
         return { data: fx.staleRows ?? [], error: fx.staleReadError ?? null };
       }
@@ -730,13 +762,15 @@ Deno.test("10c (P0). leg C linked-set read error -> leg aborts, error collected,
   assertEquals(result.orphansCanceled, 0);
 });
 
-Deno.test("10d. leg C: linked read truncated by PostgREST's row cap (count > returned rows) -> aborts, zero cancels", async () => {
+Deno.test("10d. leg C: linked-set read page-2 error -> aborts, zero cancels (pagination can no longer truncate, but a page CAN still error)", async () => {
+  // 1200 rows spans two pages (default fetchAllRows pageSize 1000): page 0 (rows 0-999)
+  // succeeds, page 1 (rows 1000-1199) errors. fetchAllRows throws on any page error, so the
+  // leg must still abort into the catch -- pagination replaces the old count-truncation guard
+  // but must not weaken the fail-closed contract it protected.
+  const linkedRows = Array.from({ length: 1200 }, (_, i) => ({ pagarme_subscription_id: `sub-${i}` }));
   const { result, gwCalls } = await run({
-    linkedRows: [{ pagarme_subscription_id: "sub-a" }],
-    // PostgREST silently truncated an unbounded select at db-max-rows: only 1 row came back
-    // but the exact count says there were really 5 -- must be treated as a failure, not 4
-    // "extra" orphans.
-    linkedCount: 5,
+    linkedRows,
+    linkedReadErrorOnPage: 1,
   }, {
     listSubscriptions: () => ({
       data: [{ id: "sub-would-be-orphan", created_at: OLD_ISO, metadata: { workspace_id: "ws-1" } }],
@@ -744,15 +778,16 @@ Deno.test("10d. leg C: linked read truncated by PostgREST's row cap (count > ret
   });
 
   assertEquals(result.errors.length, 1);
-  assert(result.errors[0].includes("sweep linked read truncated"));
-  assertEquals(gwCalls.length, 0, "truncation must abort before any list/cancel call");
+  assert(result.errors[0].includes("sweep linked read failed"));
+  assertEquals(gwCalls.length, 0, "a page error must abort before any list/cancel call");
   assertEquals(result.orphansCanceled, 0);
 });
 
-Deno.test("10e. leg C: pending-attempt read truncated by PostgREST's row cap -> aborts, zero cancels", async () => {
+Deno.test("10e. leg C: pending-attempt read page-2 error -> aborts, zero cancels", async () => {
+  const pendingRows = Array.from({ length: 1200 }, (_, i) => ({ pagarme_subscription_id: `sub-p-${i}` }));
   const { result, gwCalls } = await run({
-    pendingRows: [{ pagarme_subscription_id: "sub-p" }],
-    pendingCount: 3,
+    pendingRows,
+    pendingReadErrorOnPage: 1,
   }, {
     listSubscriptions: () => ({
       data: [{ id: "sub-would-be-orphan", created_at: OLD_ISO, metadata: { workspace_id: "ws-1" } }],
@@ -760,9 +795,34 @@ Deno.test("10e. leg C: pending-attempt read truncated by PostgREST's row cap -> 
   });
 
   assertEquals(result.errors.length, 1);
-  assert(result.errors[0].includes("sweep pending read truncated"));
-  assertEquals(gwCalls.length, 0, "truncation must abort before any list/cancel call");
+  assert(result.errors[0].includes("sweep pending read failed"));
+  assertEquals(gwCalls.length, 0, "a page error must abort before any list/cancel call");
   assertEquals(result.orphansCanceled, 0);
+});
+
+Deno.test("10f. leg C pagination: 1200 linked ids across two pages -> a tail id (row 1001-1200) is still recognized as linked, not canceled", async () => {
+  // Regression guard for the truncation bug fetchAllRows fixes: a single unbounded read on
+  // hosted Supabase silently caps at 1000 rows, so a linked id living in rows 1001-1200 would
+  // never make it into `linkedIds` and its remote subscription would look orphaned.
+  const linkedRows = Array.from({ length: 1200 }, (_, i) => ({ pagarme_subscription_id: `sub-${i}` }));
+  const tailId = "sub-1150"; // index 1150 -> row 1151, inside the second .range() page.
+  const tailSub: RemoteSubListItem = {
+    id: tailId,
+    created_at: OLD_ISO,
+    metadata: { workspace_id: "ws-tail" },
+  };
+
+  const { result, gwCalls } = await run({ linkedRows }, {
+    listSubscriptions: (status) => (status === "active" ? { data: [tailSub] } : { data: [] }),
+  });
+
+  assertEquals(result.errors, []);
+  assertEquals(result.orphansCanceled, 0);
+  assertEquals(
+    gwCalls.filter((c) => c.method === "cancelSubscription"),
+    [],
+    "a linked id served on the second .range() page must not be canceled",
+  );
 });
 
 Deno.test("11. leg C: list failure on 'active' -> error collected, 'future' still listed", async () => {

@@ -29,6 +29,7 @@ import {
   readStripeSubSnapshot,
   type StripeSwitchGateway,
 } from "../_shared/stripe-switch.ts";
+import { fetchAllRows } from "../_shared/paginate.ts";
 import type { DowngradeCronGateway, RemoteSubListItem } from "./gateway.ts";
 
 const DB_TIMEOUT_MS = 10_000;
@@ -288,43 +289,44 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
     try {
       // Both reads are LOAD-BEARING: a failed read that silently became an empty set would
       // make every remote subscription look unlinked and the sweep would cancel live, paid
-      // subscriptions. MUST throw on error so the whole leg aborts into the catch below.
-      // `{ count: "exact" }` + a length check also guards the read PostgREST itself performs
-      // silently: an unbounded select truncates at db-max-rows (1000 on hosted Supabase),
-      // which is not an error and would otherwise make bound, paid subscriptions look
-      // orphaned. Truncation must be detected by count and treated as a failure too.
-      const { data: linked, error: linkedErr, count: linkedCount } = await deps.db
-        .from("workspace_subscriptions")
-        .select("pagarme_subscription_id", { count: "exact" })
-        .not("pagarme_subscription_id", "is", null)
-        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
-      if (linkedErr) throw new Error(`sweep linked read failed: ${linkedErr.message}`);
-      if (linkedCount !== null && (linked ?? []).length !== linkedCount) {
-        throw new Error(
-          `sweep linked read truncated: got ${(linked ?? []).length} of ${linkedCount}`,
-        );
-      }
+      // subscriptions. Pagination makes truncation impossible (fetchAllRows pages via
+      // `.range()` until an EMPTY page, so db-max-rows can never silently cap the result);
+      // `fetchAllRows` throws on any page error, so the fail-closed contract (abort the
+      // whole leg into the catch below) is unchanged.
+      const linked = await fetchAllRows<{ pagarme_subscription_id: string | null }>(
+        (from, to) =>
+          deps.db
+            .from("workspace_subscriptions")
+            .select("workspace_id, pagarme_subscription_id")
+            .not("pagarme_subscription_id", "is", null)
+            .order("workspace_id", { ascending: true })
+            .range(from, to)
+            .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)),
+      ).catch((e) => {
+        throw new Error(`sweep linked read failed: ${errMessage(e)}`);
+      });
 
-      const { data: pendingAttempts, error: pendingErr, count: pendingCount } = await deps.db
-        .from("pagarme_checkout_attempts")
-        .select("pagarme_subscription_id", { count: "exact" })
-        .eq("state", "pending")
-        .not("pagarme_subscription_id", "is", null)
-        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
-      if (pendingErr) throw new Error(`sweep pending read failed: ${pendingErr.message}`);
-      if (pendingCount !== null && (pendingAttempts ?? []).length !== pendingCount) {
-        throw new Error(
-          `sweep pending read truncated: got ${(pendingAttempts ?? []).length} of ${pendingCount}`,
-        );
-      }
+      const pendingAttempts = await fetchAllRows<{ pagarme_subscription_id: string | null }>(
+        (from, to) =>
+          deps.db
+            .from("pagarme_checkout_attempts")
+            .select("id, pagarme_subscription_id")
+            .eq("state", "pending")
+            .not("pagarme_subscription_id", "is", null)
+            .order("id", { ascending: true })
+            .range(from, to)
+            .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)),
+      ).catch((e) => {
+        throw new Error(`sweep pending read failed: ${errMessage(e)}`);
+      });
 
       const linkedIds = new Set<string>(
-        ((linked ?? []) as Array<{ pagarme_subscription_id: string | null }>)
+        linked
           .map((r) => r.pagarme_subscription_id)
           .filter((x): x is string => !!x),
       );
       const pendingIds = new Set<string>(
-        ((pendingAttempts ?? []) as Array<{ pagarme_subscription_id: string | null }>)
+        pendingAttempts
           .map((r) => r.pagarme_subscription_id)
           .filter((x): x is string => !!x),
       );
