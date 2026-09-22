@@ -25,6 +25,14 @@ type DbClient = any;
 const ACCESS_TOKEN_WINDOW_MS = 12 * 60 * 60 * 1000; // 12 hours
 const REFRESH_TOKEN_WARNING_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
+// This cron does slow serial network work per row (one TikTok API round-trip per account) —
+// draining every eligible row in one isolate trades silent truncation for a wall-clock death.
+// A cap with access_token_expires_at ordering turns overflow into a safe backlog: the
+// soonest-to-expire accounts always go first, and the cadence (this cron runs well inside the
+// 12h access-token window) retries whatever didn't fit. This is why this select deliberately
+// does NOT use fetchAllRows.
+const REFRESH_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get("REFRESH_BATCH_LIMIT") || "200", 10) || 200);
+
 export interface TikTokRefreshCronDeps {
   /** Created and hoisted by the caller (index.ts) BEFORE the outer try, so a failure here
    * (e.g. the account query itself throwing) can still reach reportCronFailure below. */
@@ -134,7 +142,10 @@ export async function runTikTokRefreshCron(deps: TikTokRefreshCronDeps): Promise
         "id, client_id, avatar_url, access_token_expires_at, refresh_token_expires_at, clientes!inner(conta_id)",
       )
       .eq("authorization_status", "active")
-      .lte("access_token_expires_at", accessWindowIso);
+      .lte("access_token_expires_at", accessWindowIso)
+      .order("access_token_expires_at", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true })
+      .limit(REFRESH_BATCH_LIMIT);
 
     if (error) throw error;
 

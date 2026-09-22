@@ -74,13 +74,24 @@ Deno.serve(createInstagramRefreshCronHandler({
 
       const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
+      // This cron does slow serial network work per row (Instagram token refresh + avatar
+      // re-cache, one round-trip per account) — draining every eligible row in one isolate
+      // trades silent truncation for a wall-clock death. A cap with token_expires_at ordering
+      // turns overflow into a safe backlog: the soonest-to-expire accounts always go first, and
+      // the cadence (well inside the 30-day window) retries whatever didn't fit. This is why
+      // this select deliberately does NOT use fetchAllRows.
+      const REFRESH_BATCH_LIMIT = Math.max(1, parseInt(Deno.env.get('REFRESH_BATCH_LIMIT') || '200', 10) || 200);
+
       const { data: candidates, error } = await supabase
         .from('instagram_accounts')
         .select('id, encrypted_access_token, clientes!inner(conta_id)')
         .eq('authorization_status', 'active')
         .not('encrypted_access_token', 'is', null)
         .neq('encrypted_access_token', '')
-        .lte('token_expires_at', thirtyDaysFromNow);
+        .lte('token_expires_at', thirtyDaysFromNow)
+        .order('token_expires_at', { ascending: true, nullsFirst: false })
+        .order('id', { ascending: true })
+        .limit(REFRESH_BATCH_LIMIT);
 
       if (error) throw error;
       if (!candidates || candidates.length === 0) {

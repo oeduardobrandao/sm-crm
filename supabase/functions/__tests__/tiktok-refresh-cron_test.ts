@@ -239,6 +239,55 @@ Deno.test("tiktok-refresh-cron: a broken account query is reported via reportCro
   assertEquals(failureCalls[0].cronName, "tiktok-refresh-cron");
 });
 
+// ── (b2) batch cap + soonest-expiry ordering (Task 7) ───────────────────────────
+
+Deno.test("tiktok-refresh-cron: candidates select is capped at 200 and ordered soonest-expiry-first", async () => {
+  const db = createSupabaseQueryMock();
+  // Pre-sorted soonest-first, as the real `.order("access_token_expires_at", { ascending: true })`
+  // would return from Postgres — the shared mock records modifiers but doesn't itself sort, so
+  // the fixture stands in for what an honored `.order`/`.limit` would produce.
+  db.queue("tiktok_accounts", "select", {
+    data: [
+      { id: "acct-soonest", client_id: 101, avatar_url: null, access_token_expires_at: isoInHours(1), refresh_token_expires_at: isoInDays(200) },
+      { id: "acct-middle", client_id: 102, avatar_url: null, access_token_expires_at: isoInHours(5), refresh_token_expires_at: isoInDays(200) },
+      { id: "acct-latest", client_id: 103, avatar_url: null, access_token_expires_at: isoInHours(11), refresh_token_expires_at: isoInDays(200) },
+    ],
+  });
+
+  const refreshedAccountIds: string[] = [];
+  const { fn: reportCronFailure } = fakeReportCronFailure();
+
+  const response = await runTikTokRefreshCron({
+    svc: db as never,
+    // deno-lint-ignore no-explicit-any
+    getFreshTikTokToken: async (_svc: any, accountId: string) => {
+      refreshedAccountIds.push(accountId);
+      return { accessToken: "fresh-token", openId: "open-1" };
+    },
+    reportCronFailure,
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    refreshedAccountIds,
+    ["acct-soonest", "acct-middle", "acct-latest"],
+    "refresh order must follow the soonest-to-expire-first ordering",
+  );
+
+  const selectCall = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "select");
+  assert(selectCall, "expected a select against tiktok_accounts");
+
+  const orderModifiers = selectCall!.modifiers.filter((m) => m.method === "order");
+  assert(
+    orderModifiers.some((m) => m.args[0] === "access_token_expires_at" && (m.args[1] as { ascending?: boolean })?.ascending === true),
+    "must order by access_token_expires_at ascending",
+  );
+
+  const limitModifiers = selectCall!.modifiers.filter((m) => m.method === "limit");
+  assert(limitModifiers.length > 0, "must apply a limit to the candidates select");
+  assertEquals(limitModifiers[0].args[0], 200, "default REFRESH_BATCH_LIMIT must be 200");
+});
+
 Deno.test("tiktok-refresh-cron: no accounts due for refresh returns 200 without reporting a failure", async () => {
   const db = createSupabaseQueryMock();
   db.queue("tiktok_accounts", "select", { data: [] });
