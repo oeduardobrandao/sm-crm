@@ -103,11 +103,13 @@ export async function sendCronFailureEmail(
       : "";
   }
 
+  const runStart = detail.context?.run_start_time;
   const html = [
     `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:800px;">`,
     `<p>Cron <strong>${escapeHtml(cronName)}</strong> finished with failures.</p>`,
     `<p><strong>Total:</strong> ${escapeHtml(String(detail.total ?? "?"))} &nbsp; `,
     `<strong>Failed:</strong> ${escapeHtml(String(detail.failed ?? "?"))}<br>`,
+    typeof runStart === "string" ? `<strong>Run started:</strong> ${escapeHtml(runStart)}<br>` : "",
     `<strong>Occurred:</strong> ${escapeHtml(new Date().toISOString())}</p>`,
     tableHtml,
     detail.stack ? `<p style="margin-top:16px;"><strong>Stack:</strong></p><pre style="background:#f3f4f6;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px;">${escapeHtml(detail.stack)}</pre>` : "",

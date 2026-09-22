@@ -11,6 +11,21 @@ export interface CronFailureRow {
   start_time: string;
 }
 
+/**
+ * Alert payload for one failed pg_cron run. `accountId` carries the job name so
+ * the email's Account column reads as the failing job instead of "?" (the
+ * monitor has no per-account context), and `run_start_time` is the moment the
+ * run actually failed, not the moment this monitor noticed it.
+ */
+export function buildFailureDetail(jobname: string, firstLine: string, row: CronFailureRow) {
+  return {
+    total: 1,
+    failed: 1,
+    errors: [{ accountId: jobname, error: firstLine }],
+    context: { run_start_time: row.start_time },
+  };
+}
+
 export interface ScanDeps {
   /** Fetch recent FAILED cron runs (newest first). */
   fetchFailures: () => Promise<CronFailureRow[]>;

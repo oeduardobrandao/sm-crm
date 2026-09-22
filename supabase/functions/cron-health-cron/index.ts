@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { computeSignature, reportCronFailure } from "../_shared/triage.ts";
-import { createCronHealthHandler, type CronFailureRow, scanAndReport } from "./handler.ts";
+import { buildFailureDetail, createCronHealthHandler, type CronFailureRow, scanAndReport } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -45,12 +45,7 @@ Deno.serve(createCronHealthHandler({
           return (data?.length ?? 0) > 0;
         },
         report: async (jobname, firstLine, row) => {
-          await reportCronFailure(supabase, jobname, {
-            total: 1,
-            failed: 1,
-            errors: [{ error: firstLine }],
-            context: { run_start_time: row.start_time },
-          });
+          await reportCronFailure(supabase, jobname, buildFailureDetail(jobname, firstLine, row));
         },
         selfJobName: SELF_JOB_NAME,
       });
