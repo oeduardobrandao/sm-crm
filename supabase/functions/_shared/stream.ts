@@ -15,12 +15,86 @@
 // still well under the isolate's own wall-clock budget.
 const STREAM_FETCH_TIMEOUT_MS = 15_000;
 
+// Cloudflare Stream shares one rate-limit budget across copy/status/delete/list on an
+// account+token, and any of the four can trip it under ordinary hourly cron volume (prod
+// 2026-09-22: listStreamVideos 429'd twice in one morning, aborting that run's orphan reap).
+// STREAM_RETRY_MAX_ATTEMPTS is retries AFTER the first try, so a sustained 429 costs 4
+// requests total, not 1.
+const STREAM_RETRY_MAX_ATTEMPTS = 3;
+const STREAM_RETRY_BASE_MS = 250;
+const STREAM_RETRY_MAX_MS = 2_000;
+// Caps a Cloudflare-sent Retry-After so a misbehaving header can't stall a run past what the
+// rest of the cron (orphan scan, canary, alerting) can still afford behind it.
+const STREAM_RETRY_AFTER_CAP_MS = 10_000;
+
+type SleepFn = (ms: number) => Promise<void>;
+const defaultSleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Caps the TOTAL time any caller spends sleeping out 429s across a whole cron invocation, not
+ * just per call. Without this, a per-call retry cap (~30s worst case: 3 backoffs capped at
+ * STREAM_RETRY_AFTER_CAP_MS) still multiplies across a sequential batch -- post-media-cleanup-
+ * cron's file_deletions drain calls deleteStreamVideo for up to 500 rows in a loop, so a
+ * sustained Stream outage could otherwise stall the run for hours and get it silently killed by
+ * the edge runtime before the orphan scan, canary, or alerting stages ever ran (AGENTS.md: "Edge
+ * runtime kills bypass catch"). Once the budget is spent, every subsequent 429 anywhere in the
+ * run fails immediately instead of sleeping -- a sustained outage is not something more retries
+ * can fix, and failing fast lets the caller's existing per-row error handling (mark pending,
+ * backoff, continue) take over instead of stalling the batch.
+ */
+export interface StreamRetryBudget {
+  /** Reserves `ms` of retry-wait time. Returns false (reserving nothing) once the run's total
+   * budget is exhausted -- the caller must then treat the 429 as a normal failure. */
+  reserve(ms: number): boolean;
+}
+
+/** Creates a fresh budget for one cron invocation. Module-level state would leak across warm
+ * isolate reuse between separate invocations, so this must be constructed inside the request
+ * handler, not at module scope. */
+export function createStreamRetryBudget(totalMs = 20_000): StreamRetryBudget {
+  let remainingMs = totalMs;
+  return {
+    reserve(ms: number): boolean {
+      if (ms > remainingMs) return false;
+      remainingMs -= ms;
+      return true;
+    },
+  };
+}
+
 function streamBase(accountId: string): string {
   return `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream`;
 }
 
 function authHeaders(): Record<string, string> {
   return { "Authorization": `Bearer ${Deno.env.get("STREAM_API_TOKEN") ?? ""}` };
+}
+
+/**
+ * Issues one Stream request, retrying ONLY on 429 — every other status (2xx, 4xx, 5xx) is
+ * returned immediately for the caller to interpret, since backoff can't fix a real failure.
+ * Honors a numeric Retry-After header when Cloudflare sends one, otherwise exponential
+ * backoff with jitter. A fresh AbortSignal.timeout is created per attempt so time spent
+ * waiting out a 429 never eats into a single request's own timeout budget. `budget`, when
+ * given, is checked before every sleep — see StreamRetryBudget.
+ */
+async function fetchStreamWithRetry(
+  fetchFn: typeof fetch,
+  url: string,
+  init: { method?: string; headers: Record<string, string>; body?: string },
+  sleepFn: SleepFn,
+  budget?: StreamRetryBudget,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetchFn(url, { ...init, signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS) });
+    if (res.status !== 429 || attempt >= STREAM_RETRY_MAX_ATTEMPTS) return res;
+    const retryAfterSec = Number(res.headers.get("retry-after"));
+    const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+      ? Math.min(retryAfterSec * 1000, STREAM_RETRY_AFTER_CAP_MS)
+      : Math.min(STREAM_RETRY_BASE_MS * 2 ** attempt, STREAM_RETRY_MAX_MS) + Math.random() * 100;
+    if (budget && !budget.reserve(waitMs)) return res;
+    await sleepFn(waitMs);
+  }
 }
 
 /** True once the vars needed to delete/orphan-sweep Stream videos are set. */
@@ -50,14 +124,15 @@ export async function copyToStream(
   sourceUrl: string,
   meta: Record<string, string>,
   fetchFn: typeof fetch = fetch,
+  sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
 ): Promise<string> {
   const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
-  const res = await fetchFn(`${streamBase(accountId)}/copy`, {
+  const res = await fetchStreamWithRetry(fetchFn, `${streamBase(accountId)}/copy`, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ url: sourceUrl, meta, requireSignedURLs: true }),
-    signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS),
-  });
+  }, sleepFn, budget);
   const json = await res.json().catch(() => null) as
     | { success?: boolean; result?: { uid?: string } }
     | null;
@@ -163,13 +238,20 @@ export async function verifyStreamWebhookSignature(
 }
 
 /** Deletes a Stream video. A 404 (already gone) counts as success. */
-export async function deleteStreamVideo(uid: string, fetchFn: typeof fetch = fetch): Promise<void> {
+export async function deleteStreamVideo(
+  uid: string,
+  fetchFn: typeof fetch = fetch,
+  sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
+): Promise<void> {
   const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
-  const res = await fetchFn(`${streamBase(accountId)}/${uid}`, {
-    method: "DELETE",
-    headers: authHeaders(),
-    signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS),
-  });
+  const res = await fetchStreamWithRetry(
+    fetchFn,
+    `${streamBase(accountId)}/${uid}`,
+    { method: "DELETE", headers: authHeaders() },
+    sleepFn,
+    budget,
+  );
   if (res.status === 200 || res.status === 404) return;
   throw new Error("stream delete failed: " + res.status);
 }
@@ -178,12 +260,17 @@ export async function deleteStreamVideo(uid: string, fetchFn: typeof fetch = fet
 export async function getStreamVideoStatus(
   uid: string,
   fetchFn: typeof fetch = fetch,
+  sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
 ): Promise<"ready" | "error" | "inprogress"> {
   const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
-  const res = await fetchFn(`${streamBase(accountId)}/${uid}`, {
-    headers: authHeaders(),
-    signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS),
-  });
+  const res = await fetchStreamWithRetry(
+    fetchFn,
+    `${streamBase(accountId)}/${uid}`,
+    { headers: authHeaders() },
+    sleepFn,
+    budget,
+  );
   const json = await res.json().catch(() => null) as
     | { result?: { status?: { state?: string } } }
     | null;
@@ -194,6 +281,8 @@ export async function getStreamVideoStatus(
 /** Lists every video in the account, paginating the `after` cursor until a short page ends it. */
 export async function listStreamVideos(
   fetchFn: typeof fetch = fetch,
+  sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
 ): Promise<Array<{ uid: string; created: string }>> {
   const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
   const base = streamBase(accountId);
@@ -205,7 +294,7 @@ export async function listStreamVideos(
     const url = after
       ? `${base}?asc=true&after=${encodeURIComponent(after)}`
       : `${base}?asc=true`;
-    const res = await fetchFn(url, { headers, signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS) });
+    const res = await fetchStreamWithRetry(fetchFn, url, { headers }, sleepFn, budget);
     const json = await res.json().catch(() => null) as
       | { success?: boolean; result?: Array<{ uid: string; created: string }> }
       | null;

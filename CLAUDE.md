@@ -171,6 +171,19 @@ Monorepo with npm workspaces:
   the cron reap faster either: `MAX_TRASH_PER_RUN` caps removals at 50 per prefix per run
   regardless. Raise it only when `cron_scan_state.cycle_started_at` shows a sweep taking
   too long
+- `STREAM_INGEST_BATCH` / `STREAM_SETTLE_BATCH` -- throughput dials for post-media-cleanup-cron's
+  Stream ingest-catch-up / settle-pending sweeps (defaults 20 / 50, see stream-steps.ts). Lower
+  these if Cloudflare Stream's shared per-account rate-limit budget keeps 429ing (logged as
+  `stream-steps:ingest`/`stream-steps:settle`/`stream-steps:reap`); `_shared/stream.ts` already
+  retries a lone 429 with backoff, so a 429 reaching these logs means the retry budget was
+  exhausted under sustained throttling, not a one-off blip
+- `STREAM_REAP_INTERVAL_HOURS` -- hours between the same cron's Stream orphan-reap runs (default
+  6). Reap lists the WHOLE Cloudflare Stream account every time it runs -- as the video library
+  grows this is the main driver of the account's Stream API request volume, so it's the lever to
+  raise if 429s persist. Gated via `cron_scan_state` (scan_key `stream-reap`, migration
+  20260913000001 -- reused as-is, `updated_at` alone is the "last successful reap" marker, no new
+  migration needed); a missing/never-written row means reap has never run and it runs immediately
+  regardless of this interval. `cron_scan_state.updated_at` for that key shows the last actual run
 - `SYNC_BATCH_LIMIT` / `SYNC_CONCURRENCY` / `BACKFILL_BATCH_LIMIT` -- throughput dials
   for instagram-sync-cron (defaults 25 / 5 / 3). These, not the customer count, set the
   platform's Instagram capacity: the cron runs hourly, so it performs
