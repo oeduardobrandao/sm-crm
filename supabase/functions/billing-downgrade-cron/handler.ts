@@ -29,7 +29,7 @@ import {
   readStripeSubSnapshot,
   type StripeSwitchGateway,
 } from "../_shared/stripe-switch.ts";
-import { fetchAllRows } from "../_shared/paginate.ts";
+import { fetchAllRowsKeyset } from "../_shared/paginate.ts";
 import type { DowngradeCronGateway, RemoteSubListItem } from "./gateway.ts";
 
 const DB_TIMEOUT_MS = 10_000;
@@ -289,33 +289,45 @@ export async function runBillingDowngradeCron(deps: DowngradeCronDeps): Promise<
     try {
       // Both reads are LOAD-BEARING: a failed read that silently became an empty set would
       // make every remote subscription look unlinked and the sweep would cancel live, paid
-      // subscriptions. Pagination makes truncation impossible (fetchAllRows pages via
-      // `.range()` until an EMPTY page, so db-max-rows can never silently cap the result);
-      // `fetchAllRows` throws on any page error, so the fail-closed contract (abort the
+      // subscriptions. Offset (.range) pagination makes truncation impossible but can still
+      // SKIP a row under concurrent writes: if a row leaves the filtered set between page
+      // requests (e.g. the Stripe-restore path clears pagarme_subscription_id), later rows
+      // shift left and advancing `from` by page length skips one still-linked row -- its
+      // remote sub then looks orphaned and gets canceled. Keyset pagination re-anchors each
+      // page on the last key actually seen, so a concurrent removal can never cause a skip.
+      // `fetchAllRowsKeyset` throws on any page error, so the fail-closed contract (abort the
       // whole leg into the catch below) is unchanged.
-      const linked = await fetchAllRows<{ pagarme_subscription_id: string | null }>(
-        (from, to) =>
-          deps.db
+      const linked = await fetchAllRowsKeyset<{ workspace_id: string; pagarme_subscription_id: string | null }>(
+        (after) => {
+          let q = deps.db
             .from("workspace_subscriptions")
             .select("workspace_id, pagarme_subscription_id")
-            .not("pagarme_subscription_id", "is", null)
+            .not("pagarme_subscription_id", "is", null);
+          if (after !== null) q = q.gt("workspace_id", after);
+          return q
             .order("workspace_id", { ascending: true })
-            .range(from, to)
-            .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)),
+            .limit(1000)
+            .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+        },
+        (row) => row.workspace_id,
       ).catch((e) => {
         throw new Error(`sweep linked read failed: ${errMessage(e)}`);
       });
 
-      const pendingAttempts = await fetchAllRows<{ pagarme_subscription_id: string | null }>(
-        (from, to) =>
-          deps.db
+      const pendingAttempts = await fetchAllRowsKeyset<{ id: string; pagarme_subscription_id: string | null }>(
+        (after) => {
+          let q = deps.db
             .from("pagarme_checkout_attempts")
             .select("id, pagarme_subscription_id")
             .eq("state", "pending")
-            .not("pagarme_subscription_id", "is", null)
+            .not("pagarme_subscription_id", "is", null);
+          if (after !== null) q = q.gt("id", after);
+          return q
             .order("id", { ascending: true })
-            .range(from, to)
-            .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)),
+            .limit(1000)
+            .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+        },
+        (row) => row.id,
       ).catch((e) => {
         throw new Error(`sweep pending read failed: ${errMessage(e)}`);
       });

@@ -52,16 +52,26 @@ interface DbFx {
   expire?: (
     filters: Array<[string, string, unknown]>,
   ) => { data: unknown; error: { message: string } | null };
-  // Leg C: local link-set reads (both use `.not`, paginated via `fetchAllRows`/`.range()`).
-  // `linkedRows`/`pendingRows` hold the FULL fixture set; the fake slices it per `.range(from,
-  // to)` call so multi-page fixtures (>1000 rows) exercise real pagination. `linkedReadError`/
-  // `pendingReadError` fail every page (sufficient for single-page fixtures). `linkedReadErrorOnPage`/
-  // `pendingReadErrorOnPage` (0-indexed, page size 1000 to match `fetchAllRows`'s default) fail
-  // only that page, for asserting a page-N error still aborts the whole leg.
-  linkedRows?: Array<{ pagarme_subscription_id: string | null }>;
+  // Leg C: local link-set reads (both use `.not`, keyset-paginated via `fetchAllRowsKeyset`/
+  // `.gt(keyCol, after)`). `linkedRows`/`pendingRows` hold the FULL fixture set, each row
+  // carrying its real key column (`workspace_id` / `id`) so the fake can filter+sort by key
+  // exactly like the real `.gt().order().limit(1000)` query, INCLUDING re-filtering from
+  // scratch on every page (so a row removed between page requests is correctly reflected,
+  // the behavior the offset-based `.range()` fake could not simulate). `linkedReadError`/
+  // `pendingReadError` fail every page (sufficient for single-page fixtures).
+  // `linkedReadErrorOnPage`/`pendingReadErrorOnPage` (0-indexed, one page = 1000 keyset rows,
+  // matching `fetchAllRowsKeyset`'s default) fail only that page, for asserting a page-N error
+  // still aborts the whole leg.
+  linkedRows?: Array<{ workspace_id: string; pagarme_subscription_id: string | null }>;
   linkedReadError?: { message: string } | null;
   linkedReadErrorOnPage?: number;
-  pendingRows?: Array<{ pagarme_subscription_id: string | null }>;
+  // Simulates a row leaving the filtered set (e.g. the Stripe-restore path clearing
+  // pagarme_subscription_id) BETWEEN two page requests: right before `linkedRows` is queried
+  // for page N (0-indexed), the row at `removeIndex` (in the CURRENT array) is spliced out.
+  // Under offset (`.range()`) pagination this shifts later rows left and skips one; keyset
+  // pagination re-anchors on the last key seen and cannot skip.
+  linkedRemoveBeforePage?: { page: number; removeIndex: number };
+  pendingRows?: Array<{ id: string; pagarme_subscription_id: string | null }>;
   pendingReadError?: { message: string } | null;
   pendingReadErrorOnPage?: number;
   // Leg D: switch-marker batch read (`.not` on switched_from_stripe_subscription_id `.or`'d
@@ -85,29 +95,39 @@ interface DbFx {
 }
 
 /**
- * Serves one `.range(from, to)` page of a fixture array, for the two `fetchAllRows`-driven
- * leg C reads (`workspace_subscriptions`'s linked-set read, `pagarme_checkout_attempts`'s
- * pending-set read). `blanketError` fails every page (sufficient for single-page fixtures);
- * `errorOnPage` (0-indexed, page size 1000 to match `fetchAllRows`'s default) fails only that
- * page so a multi-page test can assert a page-N failure still aborts the whole leg via
- * `fetchAllRows`'s throw-on-any-page-error contract.
+ * Serves one `.gt(keyCol, after).order(keyCol).limit(1000)` page of a fixture array, for the
+ * two `fetchAllRowsKeyset`-driven leg C reads (`workspace_subscriptions`'s linked-set read on
+ * `workspace_id`, `pagarme_checkout_attempts`'s pending-set read on `id`). Re-filters and
+ * re-sorts `allRows` FROM SCRATCH on every call (mirroring a real re-query), so a test can
+ * mutate `allRows` between page requests to simulate a concurrent row removal, exactly the
+ * scenario offset (`.range()`) pagination gets wrong and keyset pagination must not.
+ * `blanketError` fails every page (sufficient for single-page fixtures); `errorOnPage`
+ * (0-indexed) fails only that page so a multi-page test can assert a page-N failure still
+ * aborts the whole leg via `fetchAllRowsKeyset`'s throw-on-any-page-error contract.
  */
-function pagedRead<T>(
+function pagedKeysetRead<T extends Record<string, unknown>>(
   allRows: T[],
+  keyCol: string,
   blanketError: { message: string } | null | undefined,
   errorOnPage: number | undefined,
-  rangeFrom: number | undefined,
-  rangeTo: number | undefined,
+  after: string | null | undefined,
+  pageCounter: { n: number },
+  pageSize = 1000,
 ): { data: T[] | null; error: { message: string } | null } {
   if (blanketError) return { data: null, error: blanketError };
-  const from = rangeFrom ?? 0;
-  const to = rangeTo ?? Math.max(allRows.length - 1, 0);
-  if (errorOnPage !== undefined) {
-    const pageSize = to - from + 1;
-    const page = Math.floor(from / pageSize);
-    if (page === errorOnPage) return { data: null, error: { message: "page error" } };
+  const page = pageCounter.n++;
+  if (errorOnPage !== undefined && page === errorOnPage) {
+    return { data: null, error: { message: "page error" } };
   }
-  return { data: allRows.slice(from, to + 1), error: null };
+  const filtered = after == null
+    ? allRows
+    : allRows.filter((r) => (r[keyCol] as string) > after);
+  const sorted = [...filtered].sort((a, b) => {
+    const ka = a[keyCol] as string;
+    const kb = b[keyCol] as string;
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  return { data: sorted.slice(0, pageSize), error: null };
 }
 
 /**
@@ -122,6 +142,10 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
   // Leg D pages until it reads an empty batch; this counter (shared across every
   // `.from("workspace_subscriptions")` call within one run) tracks which page is being served.
   let markerReadCount = 0;
+  // Leg C's two keyset-paginated reads each need their own page counter, shared across every
+  // `.from(...)` call within one run, for `linkedReadErrorOnPage`/`pendingReadErrorOnPage`.
+  const linkedPageCounter = { n: 0 };
+  const pendingPageCounter = { n: 0 };
   const from = (table: string) => {
     let op = "read";
     let values: Record<string, unknown> | undefined;
@@ -130,8 +154,7 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
     let sawIn = false;
     let sawLte = false;
     let sawOr = false;
-    let rangeFrom: number | undefined;
-    let rangeTo: number | undefined;
+    let gtAfter: string | null | undefined;
     const filters: Array<[string, string, unknown]> = [];
     // deno-lint-ignore no-explicit-any
     const chain: any = {};
@@ -176,13 +199,13 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
       filters.push(["lt", col, val]);
       return chain;
     };
-    chain.order = () => chain;
-    chain.limit = () => chain;
-    chain.range = (from: number, to: number) => {
-      rangeFrom = from;
-      rangeTo = to;
+    chain.gt = (col: string, val: string) => {
+      gtAfter = val;
+      filters.push(["gt", col, val]);
       return chain;
     };
+    chain.order = () => chain;
+    chain.limit = () => chain;
     chain.update = (v: Record<string, unknown>) => {
       op = "update";
       values = v;
@@ -228,7 +251,21 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
           return { data: rows, error: null };
         }
         if (sawNot) {
-          return pagedRead(fx.linkedRows ?? [], fx.linkedReadError, fx.linkedReadErrorOnPage, rangeFrom, rangeTo);
+          if (
+            fx.linkedRemoveBeforePage &&
+            linkedPageCounter.n === fx.linkedRemoveBeforePage.page &&
+            fx.linkedRows
+          ) {
+            fx.linkedRows.splice(fx.linkedRemoveBeforePage.removeIndex, 1);
+          }
+          return pagedKeysetRead(
+            fx.linkedRows ?? [],
+            "workspace_id",
+            fx.linkedReadError,
+            fx.linkedReadErrorOnPage,
+            gtAfter,
+            linkedPageCounter,
+          );
         }
         // Leg D's post-enforce re-read: `.eq(workspace_id).maybeSingle()`, no `.not`/`.or`/
         // `.in`/`.lte` at all -- the only remaining shape.
@@ -253,7 +290,14 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
       }
       if (table === "pagarme_checkout_attempts" && op === "read") {
         if (sawNot) {
-          return pagedRead(fx.pendingRows ?? [], fx.pendingReadError, fx.pendingReadErrorOnPage, rangeFrom, rangeTo);
+          return pagedKeysetRead(
+            fx.pendingRows ?? [],
+            "id",
+            fx.pendingReadError,
+            fx.pendingReadErrorOnPage,
+            gtAfter,
+            pendingPageCounter,
+          );
         }
         return { data: fx.staleRows ?? [], error: fx.staleReadError ?? null };
       }
@@ -668,8 +712,8 @@ Deno.test("9. leg C: linked/pending/young/unrecognized skipped, true orphan canc
   const orphanSub: RemoteSubListItem = { id: "sub-orphan", created_at: OLD_ISO, metadata: { workspace_id: "ws-d" } };
 
   const { result, gwCalls } = await run({
-    linkedRows: [{ pagarme_subscription_id: "sub-linked" }],
-    pendingRows: [{ pagarme_subscription_id: "sub-pending" }],
+    linkedRows: [{ workspace_id: "ws-linked", pagarme_subscription_id: "sub-linked" }],
+    pendingRows: [{ id: "attempt-pending", pagarme_subscription_id: "sub-pending" }],
   }, {
     listSubscriptions: (status) =>
       status === "active"
@@ -763,11 +807,14 @@ Deno.test("10c (P0). leg C linked-set read error -> leg aborts, error collected,
 });
 
 Deno.test("10d. leg C: linked-set read page-2 error -> aborts, zero cancels (pagination can no longer truncate, but a page CAN still error)", async () => {
-  // 1200 rows spans two pages (default fetchAllRows pageSize 1000): page 0 (rows 0-999)
-  // succeeds, page 1 (rows 1000-1199) errors. fetchAllRows throws on any page error, so the
-  // leg must still abort into the catch -- pagination replaces the old count-truncation guard
-  // but must not weaken the fail-closed contract it protected.
-  const linkedRows = Array.from({ length: 1200 }, (_, i) => ({ pagarme_subscription_id: `sub-${i}` }));
+  // 1200 rows spans two keyset pages (default fetchAllRowsKeyset pageSize 1000): page 0
+  // (keys 0000-0999) succeeds, page 1 (keys 1000-1199) errors. fetchAllRowsKeyset throws on
+  // any page error, so the leg must still abort into the catch -- pagination replaces the old
+  // count-truncation guard but must not weaken the fail-closed contract it protected.
+  const linkedRows = Array.from({ length: 1200 }, (_, i) => ({
+    workspace_id: `ws-${String(i).padStart(4, "0")}`,
+    pagarme_subscription_id: `sub-${i}`,
+  }));
   const { result, gwCalls } = await run({
     linkedRows,
     linkedReadErrorOnPage: 1,
@@ -784,7 +831,10 @@ Deno.test("10d. leg C: linked-set read page-2 error -> aborts, zero cancels (pag
 });
 
 Deno.test("10e. leg C: pending-attempt read page-2 error -> aborts, zero cancels", async () => {
-  const pendingRows = Array.from({ length: 1200 }, (_, i) => ({ pagarme_subscription_id: `sub-p-${i}` }));
+  const pendingRows = Array.from({ length: 1200 }, (_, i) => ({
+    id: `attempt-${String(i).padStart(4, "0")}`,
+    pagarme_subscription_id: `sub-p-${i}`,
+  }));
   const { result, gwCalls } = await run({
     pendingRows,
     pendingReadErrorOnPage: 1,
@@ -800,12 +850,15 @@ Deno.test("10e. leg C: pending-attempt read page-2 error -> aborts, zero cancels
   assertEquals(result.orphansCanceled, 0);
 });
 
-Deno.test("10f. leg C pagination: 1200 linked ids across two pages -> a tail id (row 1001-1200) is still recognized as linked, not canceled", async () => {
-  // Regression guard for the truncation bug fetchAllRows fixes: a single unbounded read on
-  // hosted Supabase silently caps at 1000 rows, so a linked id living in rows 1001-1200 would
-  // never make it into `linkedIds` and its remote subscription would look orphaned.
-  const linkedRows = Array.from({ length: 1200 }, (_, i) => ({ pagarme_subscription_id: `sub-${i}` }));
-  const tailId = "sub-1150"; // index 1150 -> row 1151, inside the second .range() page.
+Deno.test("10f. leg C pagination: 1200 linked ids across two keyset pages -> a tail id (row 1001-1200) is still recognized as linked, not canceled", async () => {
+  // Regression guard for the truncation bug fetchAllRowsKeyset fixes: a single unbounded read
+  // on hosted Supabase silently caps at 1000 rows, so a linked id living in rows 1001-1200
+  // would never make it into `linkedIds` and its remote subscription would look orphaned.
+  const linkedRows = Array.from({ length: 1200 }, (_, i) => ({
+    workspace_id: `ws-${String(i).padStart(4, "0")}`,
+    pagarme_subscription_id: `sub-${i}`,
+  }));
+  const tailId = "sub-1150"; // index 1150 -> row 1151, inside the second keyset page.
   const tailSub: RemoteSubListItem = {
     id: tailId,
     created_at: OLD_ISO,
@@ -821,7 +874,44 @@ Deno.test("10f. leg C pagination: 1200 linked ids across two pages -> a tail id 
   assertEquals(
     gwCalls.filter((c) => c.method === "cancelSubscription"),
     [],
-    "a linked id served on the second .range() page must not be canceled",
+    "a linked id served on the second keyset page must not be canceled",
+  );
+});
+
+Deno.test("10g (P1). leg C keyset pagination survives a linked row leaving the set between page requests (no skip)", async () => {
+  // The confirmed external finding: offset (.range()) pagination advances `from` by rows
+  // RECEIVED, so if a row leaves the filtered set between page 1 and page 2 (e.g. the
+  // Stripe-restore path clears pagarme_subscription_id on some earlier workspace), every row
+  // after it shifts left and the old fixed-`from` math skips exactly one still-linked row --
+  // its remote subscription then looks orphaned and gets canceled. Keyset pagination
+  // re-anchors page 2 on the last workspace_id actually seen on page 1, so no shift can ever
+  // cause a skip, independent of anything removed earlier in the set.
+  const linkedRows = Array.from({ length: 1200 }, (_, i) => ({
+    workspace_id: `ws-${String(i).padStart(4, "0")}`,
+    pagarme_subscription_id: `sub-${i}`,
+  }));
+  const tailId = "sub-1150"; // row 1151 (index 1150), inside the second keyset page.
+  const tailSub: RemoteSubListItem = {
+    id: tailId,
+    created_at: OLD_ISO,
+    metadata: { workspace_id: "ws-tail" },
+  };
+
+  const { result, gwCalls } = await run({
+    linkedRows,
+    // Right before page 2 (0-indexed page 1) is requested, remove an EARLIER row (index 500,
+    // already returned on page 1) from the live set -- the concurrent-unlink scenario.
+    linkedRemoveBeforePage: { page: 1, removeIndex: 500 },
+  }, {
+    listSubscriptions: (status) => (status === "active" ? { data: [tailSub] } : { data: [] }),
+  });
+
+  assertEquals(result.errors, []);
+  assertEquals(result.orphansCanceled, 0);
+  assertEquals(
+    gwCalls.filter((c) => c.method === "cancelSubscription"),
+    [],
+    "the tail-linked subscription must not be canceled despite the concurrent removal earlier in the set",
   );
 });
 
