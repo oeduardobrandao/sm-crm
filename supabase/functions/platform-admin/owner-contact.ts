@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { chunk } from "../_shared/paginate.ts";
 import { withTimeout } from "./pricing.ts";
 
 const OWNER_LOOKUP_CONCURRENCY = 8;
@@ -31,32 +32,35 @@ export async function fetchOwnerContacts(
   const result = new Map<string, OwnerContact>();
   if (workspaceIds.length === 0) return result;
 
-  const { data: members, error: membersError } = await svc
-    .from("workspace_members")
-    .select("workspace_id, user_id, joined_at")
-    .in("workspace_id", workspaceIds)
-    .eq("role", "owner")
-    .order("joined_at", { ascending: true })
-    .order("user_id", { ascending: true });
-  if (membersError) throw membersError;
+  const members: Array<{ workspace_id: string; user_id: string; joined_at: string }> = [];
+  for (const ids of chunk(workspaceIds)) {
+    const { data: memberRows, error: membersError } = await svc
+      .from("workspace_members")
+      .select("workspace_id, user_id, joined_at")
+      .in("workspace_id", ids)
+      .eq("role", "owner")
+      .order("joined_at", { ascending: true })
+      .order("user_id", { ascending: true });
+    if (membersError) throw membersError;
+    members.push(...(memberRows ?? []));
+  }
 
-  const { data: workspaces, error: workspacesError } = await svc
-    .from("workspaces")
-    .select("id, created_by")
-    .in("id", workspaceIds);
-  if (workspacesError) throw workspacesError;
+  const workspaces: Array<{ id: string; created_by: string | null }> = [];
+  for (const ids of chunk(workspaceIds)) {
+    const { data: wsRows, error: workspacesError } = await svc
+      .from("workspaces")
+      .select("id, created_by")
+      .in("id", ids);
+    if (workspacesError) throw workspacesError;
+    workspaces.push(...(wsRows ?? []));
+  }
 
-  const createdByByWorkspace = new Map(
-    ((workspaces ?? []) as Array<{ id: string; created_by: string | null }>).map((w) => [
-      w.id,
-      w.created_by,
-    ]),
-  );
+  const createdByByWorkspace = new Map(workspaces.map((w) => [w.id, w.created_by]));
 
   // Group the already joined_at/user_id-sorted owner-role user_ids by workspace,
   // preserving sort order within each group.
   const ownerUserIdsByWorkspace = new Map<string, string[]>();
-  for (const m of (members ?? []) as Array<{ workspace_id: string; user_id: string }>) {
+  for (const m of members) {
     const list = ownerUserIdsByWorkspace.get(m.workspace_id);
     if (list) {
       list.push(m.user_id);
@@ -75,20 +79,22 @@ export async function fetchOwnerContacts(
   const ownerUserIds = [...new Set(ownerByWorkspace.values())];
   if (ownerUserIds.length === 0) return result;
 
-  const { data: profiles, error: profilesError } = await svc
-    .from("profiles")
-    .select("id, nome, telefone, marketing_opt_in")
-    .in("id", ownerUserIds);
-  if (profilesError) throw profilesError;
+  const profiles: Array<{
+    id: string;
+    nome: string | null;
+    telefone: string | null;
+    marketing_opt_in: boolean | null;
+  }> = [];
+  for (const ids of chunk(ownerUserIds)) {
+    const { data: profileRows, error: profilesError } = await svc
+      .from("profiles")
+      .select("id, nome, telefone, marketing_opt_in")
+      .in("id", ids);
+    if (profilesError) throw profilesError;
+    profiles.push(...(profileRows ?? []));
+  }
 
-  const profileById = new Map(
-    ((profiles ?? []) as Array<{
-      id: string;
-      nome: string | null;
-      telefone: string | null;
-      marketing_opt_in: boolean | null;
-    }>).map((p) => [p.id, p]),
-  );
+  const profileById = new Map(profiles.map((p) => [p.id, p]));
 
   const emailById = new Map<string, string | null>();
   for (let i = 0; i < ownerUserIds.length; i += OWNER_LOOKUP_CONCURRENCY) {
