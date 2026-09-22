@@ -11,6 +11,12 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
 
+// The candidates select and the batch attempt-stamp update below are awaited state-relevant
+// PostgREST calls with no bound otherwise — a stalled request hangs until the isolate is
+// killed, bypassing both the non-fatal stamp-failure log branch and the outer catch below.
+// Matches billing-downgrade-cron/handler.ts's DB_TIMEOUT_MS pattern.
+const DB_TIMEOUT_MS = 10_000;
+
 // --- Token Encryption Utility (Duplicated for standalone function) ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
   const enc = new TextEncoder();
@@ -101,7 +107,8 @@ Deno.serve(createInstagramRefreshCronHandler({
         .order('last_refresh_attempt_at', { ascending: true, nullsFirst: true })
         .order('token_expires_at', { ascending: true, nullsFirst: false })
         .order('id', { ascending: true })
-        .limit(REFRESH_BATCH_LIMIT);
+        .limit(REFRESH_BATCH_LIMIT)
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
 
       if (error) throw error;
       if (!candidates || candidates.length === 0) {
@@ -120,7 +127,8 @@ Deno.serve(createInstagramRefreshCronHandler({
       const { error: stampError } = await supabase
         .from('instagram_accounts')
         .update({ last_refresh_attempt_at: new Date().toISOString() })
-        .in('id', candidates.map((a: any) => a.id));
+        .in('id', candidates.map((a: any) => a.id))
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
       if (stampError) {
         console.error(`[IG-REFRESH-CRON] Failed to stamp last_refresh_attempt_at: ${stampError.message}`);
       }

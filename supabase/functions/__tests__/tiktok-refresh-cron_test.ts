@@ -305,6 +305,11 @@ Deno.test("tiktok-refresh-cron: candidates select is capped at 200, ordered by l
   assert(limitModifiers.length > 0, "must apply a limit to the candidates select");
   assertEquals(limitModifiers[0].args[0], 200, "default REFRESH_BATCH_LIMIT must be 200");
 
+  // A stalled candidates select would otherwise hang the isolate until it's killed, bypassing
+  // reportCronFailure entirely (fix round 2) — the select must be bounded.
+  const selectAbortModifiers = selectCall!.modifiers.filter((m) => m.method === "abortSignal");
+  assert(selectAbortModifiers.length > 0, "candidates select must carry an abortSignal");
+
   // The whole batch is stamped in ONE update, before any refresh call — a persistently failing
   // account must rotate to the back on the next run even if this run never gets to refresh it.
   const updateCall = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "update");
@@ -317,6 +322,11 @@ Deno.test("tiktok-refresh-cron: candidates select is capped at 200, ordered by l
     new Set(["acct-never-attempted", "acct-attempted-longest-ago", "acct-attempted-recently"]),
     "stamp update must cover every selected candidate",
   );
+
+  // Same hang class applies to the stamp write: a stalled update would hang the isolate before
+  // the non-fatal stamp-failure log branch ever runs.
+  const updateAbortModifiers = updateCall!.modifiers.filter((m) => m.method === "abortSignal");
+  assert(updateAbortModifiers.length > 0, "batch stamp update must carry an abortSignal");
 
   // db.calls records only DB operations in the order the code awaits them, so the stamp update
   // must appear at index 1 (right after the candidates select at index 0) — strictly before the
