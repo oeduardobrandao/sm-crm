@@ -286,6 +286,27 @@ export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
   }
 }
 
+/** Streaming GET via presign + fetch (the SDK transport is the documented
+ * edge-runtime hang path). Bounds time-to-first-byte only; body stalls are
+ * the caller's job (file-zip wraps with a per-chunk stall guard) because a
+ * total AbortSignal would kill legitimately large slow bodies. */
+export async function getObjectStreamSigned(key: string): Promise<ReadableStream<Uint8Array> | null> {
+  try {
+    const url = await signGetUrl(key, 300);
+    const ac = new AbortController();
+    const headerTimer = setTimeout(() => ac.abort(), 15_000);
+    const res = await fetch(url, { signal: ac.signal });
+    clearTimeout(headerTimer);
+    if (!res.ok) {
+      await res.body?.cancel();
+      return null;
+    }
+    return res.body;
+  } catch {
+    return null;
+  }
+}
+
 export async function putObject(
   key: string,
   bytes: Uint8Array,

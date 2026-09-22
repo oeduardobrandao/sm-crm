@@ -1,26 +1,34 @@
 import { assert, assertEquals } from "./assert.ts";
-import { Uint8ArrayReader, ZipReader } from "npm:@zip.js/zip.js@2";
+import { TextReader, TextWriter, Uint8ArrayReader, ZipReader } from "npm:@zip.js/zip.js@2";
 import {
   buildZipStream,
+  checkZipBudget,
   collectFileEntries,
   collectFolderEntries,
+  MAX_FOLDER_DEPTH,
   type FileZipDeps,
+  type ZipPlanEntry,
 } from "../file-zip/handler.ts";
+import { MAX_FILE_SIZE_BYTES, MAX_ZIP_TOTAL_BYTES } from "../file-zip/utils.ts";
 
 type Row = Record<string, unknown>;
 
 /**
  * Minimal structural fake of the two tables `handler.ts` touches (`files`,
- * `folders`), mirroring the `.select().eq().eq()` / `.select().eq().in()`
- * chains the handler actually issues -- not a generic PostgREST emulator
- * like `ExpressPostCleanupDb`'s, since file-zip only ever filters by
- * equality or membership.
+ * `folders`), mirroring the `.select().eq().eq().order().range()` /
+ * `.select().eq().in()` chains the handler actually issues -- not a generic
+ * PostgREST emulator like `ExpressPostCleanupDb`'s, since file-zip only ever
+ * filters by equality or membership. `order()`/`range()` are needed because
+ * Task 9 drives both walk queries through `fetchAllRows`.
  */
 function makeFakeDb(tables: { files: Row[]; folders: Row[] }): FileZipDeps["db"] {
   return {
     from(table: string) {
       const rows = (tables as Record<string, Row[]>)[table] ?? [];
       const filters: Array<{ column: string; kind: "eq" | "in"; value: unknown }> = [];
+      let orderCol: string | null = null;
+      let rangeFrom: number | null = null;
+      let rangeTo: number | null = null;
       // deno-lint-ignore no-explicit-any
       const chain: any = {
         select() {
@@ -34,12 +42,32 @@ function makeFakeDb(tables: { files: Row[]; folders: Row[] }): FileZipDeps["db"]
           filters.push({ column, kind: "in", value: values });
           return chain;
         },
+        order(column: string) {
+          orderCol = column;
+          return chain;
+        },
+        range(from: number, to: number) {
+          rangeFrom = from;
+          rangeTo = to;
+          return chain;
+        },
         then(onFulfilled: (v: { data: Row[] | null; error: null }) => unknown) {
-          const data = rows.filter((r) =>
+          let data = rows.filter((r) =>
             filters.every((f) =>
               f.kind === "eq" ? r[f.column] === f.value : (f.value as unknown[]).includes(r[f.column])
             )
           );
+          if (orderCol) {
+            const col = orderCol;
+            data = [...data].sort((a, b) => {
+              const av = a[col] as number;
+              const bv = b[col] as number;
+              return av < bv ? -1 : av > bv ? 1 : 0;
+            });
+          }
+          if (rangeFrom !== null && rangeTo !== null) {
+            data = data.slice(rangeFrom, rangeTo + 1);
+          }
           return Promise.resolve(onFulfilled({ data, error: null }));
         },
       };
@@ -210,6 +238,194 @@ Deno.test({
     await zipReader.close();
 
     const names = zipEntries.map((e) => e.filename).sort();
-    assertEquals(names, ["a.txt", "sub/nested/c.txt"]);
+    assertEquals(names, ["LEIA-ME-arquivos-faltando.txt", "a.txt", "sub/nested/c.txt"]);
+  },
+});
+
+Deno.test({
+  name: "buildZipStream streams entries without buffering and stores (level 0)",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const entries: ZipPlanEntry[] = [
+      { name: "big.txt", r2Key: "r2/big", path: "big.txt", size_bytes: 9 },
+    ];
+    // 3-chunk stream: buildZipStream must pipe it through without buffering
+    // the whole object into memory first.
+    const objectStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("aaa"));
+        controller.enqueue(new TextEncoder().encode("bbb"));
+        controller.enqueue(new TextEncoder().encode("ccc"));
+        controller.close();
+      },
+    });
+    const deps: FileZipDeps = {
+      db: makeFakeDb({ files: [], folders: [] }),
+      contaId: "conta-1",
+      getObjectStream: (key: string) => key === "r2/big" ? Promise.resolve(objectStream) : Promise.resolve(null),
+    };
+
+    const stream = buildZipStream(deps, entries);
+    const zipBytes = await collectStream(stream);
+
+    const zipReader = new ZipReader(new Uint8ArrayReader(zipBytes));
+    const zipEntries = await zipReader.getEntries();
+    await zipReader.close();
+
+    assertEquals(zipEntries.length, 1);
+    assertEquals(zipEntries[0].filename, "big.txt");
+    assertEquals(zipEntries[0].compressionMethod, 0);
+  },
+});
+
+Deno.test({
+  name: "zip includes LEIA-ME manifest when an object is missing",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const entries: ZipPlanEntry[] = [
+      { name: "present.txt", r2Key: "r2/present", path: "present.txt", size_bytes: 3 },
+      { name: "gone.txt", r2Key: "r2/gone", path: "folder/gone.txt", size_bytes: 3 },
+    ];
+    const objects: Record<string, Uint8Array> = {
+      "r2/present": new TextEncoder().encode("aaa"),
+      // "r2/gone" intentionally missing -> getObjectStream resolves null
+    };
+    const deps: FileZipDeps = {
+      db: makeFakeDb({ files: [], folders: [] }),
+      contaId: "conta-1",
+      getObjectStream: makeFakeGetObjectStream(objects),
+    };
+
+    const stream = buildZipStream(deps, entries);
+    const zipBytes = await collectStream(stream);
+
+    const zipReader = new ZipReader(new Uint8ArrayReader(zipBytes));
+    const zipEntries = await zipReader.getEntries();
+    const manifestEntry = zipEntries.find((e) => e.filename === "LEIA-ME-arquivos-faltando.txt");
+    assert(manifestEntry, "manifest entry missing");
+    const manifestText = await manifestEntry!.getData!(new TextWriter());
+    await zipReader.close();
+
+    const names = zipEntries.map((e) => e.filename).sort();
+    assertEquals(names, ["LEIA-ME-arquivos-faltando.txt", "present.txt"]);
+    assert(manifestText.startsWith("Os arquivos abaixo nao puderam ser incluidos neste zip:"));
+    assert(manifestText.includes("folder/gone.txt"));
+  },
+});
+
+Deno.test("collectFolderEntries paginates file pages and stops at depth cap", async () => {
+  const folders: Row[] = [];
+  const files: Row[] = [];
+
+  // Wide folder (depth 0) with 1100 files -- exceeds the 1000-row PostgREST
+  // page cap, so collectFolderEntries must page via fetchAllRows to see all
+  // of them.
+  folders.push({ id: 1, name: "wide", parent_id: null, conta_id: "conta-1" });
+  for (let i = 0; i < 1100; i++) {
+    files.push({
+      id: 1000 + i,
+      name: `f${i}.txt`,
+      r2_key: `r2/f${i}`,
+      size_bytes: 1,
+      folder_id: 1,
+      conta_id: "conta-1",
+    });
+  }
+
+  // Chain of 11 nested folders below the root: depth 1 through depth 11.
+  // MAX_FOLDER_DEPTH (10) means depth 11 must never be descended into, so
+  // its file is never collected.
+  let parentId = 1;
+  for (let depth = 1; depth <= 11; depth++) {
+    const folderId = 100 + depth;
+    folders.push({ id: folderId, name: `d${depth}`, parent_id: parentId, conta_id: "conta-1" });
+    files.push({
+      id: 2000 + depth,
+      name: `depth${depth}.txt`,
+      r2_key: `r2/depth${depth}`,
+      size_bytes: 1,
+      folder_id: folderId,
+      conta_id: "conta-1",
+    });
+    parentId = folderId;
+  }
+
+  const deps: FileZipDeps = {
+    db: makeFakeDb({ files, folders }),
+    contaId: "conta-1",
+    getObjectStream: makeFakeGetObjectStream({}),
+  };
+
+  const entries = await collectFolderEntries(deps, 1);
+
+  const wideCount = entries.filter((e) => /^f\d+\.txt$/.test(e.path)).length;
+  assertEquals(wideCount, 1100);
+  assertEquals(MAX_FOLDER_DEPTH, 10);
+  assert(entries.some((e) => e.path.endsWith("depth10.txt")), "depth 10 should be collected");
+  assert(!entries.some((e) => e.path.endsWith("depth11.txt")), "depth 11 must not be collected");
+});
+
+Deno.test("oversized total is refused before streaming", () => {
+  const entries: ZipPlanEntry[] = [
+    { name: "a", r2Key: "r2/a", path: "a", size_bytes: MAX_ZIP_TOTAL_BYTES },
+    { name: "b", r2Key: "r2/b", path: "b", size_bytes: 10 },
+  ];
+
+  const result = checkZipBudget(entries);
+
+  assertEquals(result.ok, false);
+  if (!result.ok) {
+    assertEquals(result.error, "Seleção grande demais para exportar em um único zip");
+  }
+});
+
+Deno.test("checkZipBudget treats a null size_bytes as MAX_FILE_SIZE_BYTES in the total", () => {
+  const entryCount = Math.ceil(MAX_ZIP_TOTAL_BYTES / MAX_FILE_SIZE_BYTES) + 1;
+  const entries: ZipPlanEntry[] = Array.from({ length: entryCount }, (_, i) => ({
+    name: `f${i}`,
+    r2Key: `r2/f${i}`,
+    path: `f${i}`,
+    size_bytes: null,
+  }));
+
+  const result = checkZipBudget(entries);
+
+  assertEquals(result.ok, false);
+});
+
+Deno.test({
+  name: "a stalled object stream errors the zip instead of hanging",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const entries: ZipPlanEntry[] = [
+      { name: "stalled.txt", r2Key: "r2/stalled", path: "stalled.txt", size_bytes: 3 },
+    ];
+    // A stream that never produces a chunk and never closes.
+    const stalledStream = new ReadableStream<Uint8Array>({
+      start() {
+        // never enqueue, never close
+      },
+    });
+    const deps: FileZipDeps = {
+      db: makeFakeDb({ files: [], folders: [] }),
+      contaId: "conta-1",
+      getObjectStream: () => Promise.resolve(stalledStream),
+      stallIdleMs: 20,
+    };
+
+    const stream = buildZipStream(deps, entries);
+    const reader = stream.getReader();
+
+    let rejected = false;
+    try {
+      // deno-lint-ignore no-empty
+      while (!(await reader.read()).done) {}
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, "expected the output stream to error instead of hanging");
   },
 });

@@ -1,11 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { getObject } from "../_shared/r2.ts";
+import { getObjectStreamSigned } from "../_shared/r2.ts";
 import {
   buildZipStream,
+  checkZipBudget,
   collectFileEntries,
   collectFolderEntries,
   type FileZipDeps,
+  type ZipPlanEntry,
 } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -67,8 +69,47 @@ Deno.serve(async (req: Request) => {
   const deps: FileZipDeps = {
     db: svc,
     contaId,
-    getObjectStream: getObject,
+    getObjectStream: getObjectStreamSigned,
   };
+
+  function jsonResponse(body: Record<string, unknown>, status: number): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Never surface the raw collect error to the client (security rule: no raw
+  // error details out of an edge function) -- the JSON 500 below is returned
+  // BEFORE any stream starts, which is also what fixes the old
+  // silent-empty-zip failure mode (a thrown collect used to be indistinguishable
+  // from "no files").
+  async function collectEntriesOrRespond(
+    collect: () => Promise<ZipPlanEntry[]>,
+  ): Promise<{ entries: ZipPlanEntry[] } | { response: Response }> {
+    try {
+      return { entries: await collect() };
+    } catch (err) {
+      console.error("[file-zip] Failed to collect entries", err);
+      return { response: jsonResponse({ error: "Erro ao preparar o zip" }, 500) };
+    }
+  }
+
+  function respondZip(entries: ZipPlanEntry[], filename: string): Response {
+    const budget = checkZipBudget(entries);
+    if (!budget.ok) {
+      return jsonResponse({ error: budget.error }, 413);
+    }
+    const readable = buildZipStream(deps, entries);
+    return new Response(readable, {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
+      },
+    });
+  }
 
   if (payload.folder_id) {
     const folderId = payload.folder_id as number;
@@ -78,41 +119,21 @@ Deno.serve(async (req: Request) => {
       .eq("id", folderId)
       .single();
     if (!folder || folder.conta_id !== contaId) {
-      return new Response(JSON.stringify({ error: "Folder not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Folder not found" }, 404);
     }
 
-    const entries = await collectFolderEntries(deps, folderId);
-    const zipFilename = `${folder.name}.zip`;
-    const readable = buildZipStream(deps, entries);
+    const collected = await collectEntriesOrRespond(() => collectFolderEntries(deps, folderId));
+    if ("response" in collected) return collected.response;
 
-    return new Response(readable, {
-      status: 200,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(zipFilename)}"`,
-      },
-    });
+    return respondZip(collected.entries, `${folder.name}.zip`);
   } else if (payload.file_ids) {
     const fileIds = payload.file_ids as number[];
-    const entries = await collectFileEntries(deps, fileIds);
-    const readable = buildZipStream(deps, entries);
 
-    return new Response(readable, {
-      status: 200,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="arquivos.zip"`,
-      },
-    });
+    const collected = await collectEntriesOrRespond(() => collectFileEntries(deps, fileIds));
+    if ("response" in collected) return collected.response;
+
+    return respondZip(collected.entries, "arquivos.zip");
   }
 
-  return new Response(JSON.stringify({ error: "Invalid token scope" }), {
-    status: 400,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return jsonResponse({ error: "Invalid token scope" }, 400);
 });
