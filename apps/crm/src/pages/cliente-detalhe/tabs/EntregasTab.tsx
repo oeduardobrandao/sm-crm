@@ -698,6 +698,10 @@ export default function EntregasTab() {
 
   const handlePostAttached = (workflowId: number, postId: number) => {
     setStandalonePostId(null);
+    // AttachToFluxoDialog only invalidates ['post-processes'] (the Fluxos-board
+    // key), never this tab's ['post-processes-cliente', clienteId] -- without
+    // this, the now-encerrado process stays rendered as a stale active card.
+    refreshCards();
     const card = boardCards.find((c) => c.workflow.id === workflowId);
     if (!card) return;
     setDrawerInitialPostId(postId);

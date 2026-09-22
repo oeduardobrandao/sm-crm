@@ -166,10 +166,19 @@ vi.mock('@/pages/entregas/components/PostProcessCard', () => ({
 }));
 
 vi.mock('@/pages/entregas/components/StandalonePostDrawer', () => ({
-  StandalonePostDrawer: ({ postId, onClose }: { postId: number; onClose: () => void }) => (
+  StandalonePostDrawer: ({
+    postId,
+    onClose,
+    onAttached,
+  }: {
+    postId: number;
+    onClose: () => void;
+    onAttached: (workflowId: number, postId: number) => void;
+  }) => (
     <div>
       <span>StandalonePostDrawer open: {postId}</span>
       <button onClick={onClose}>close-standalone-drawer</button>
+      <button onClick={() => onAttached(1, postId)}>attach-standalone-post</button>
     </div>
   ),
 }));
@@ -845,6 +854,27 @@ describe('EntregasTab', () => {
       await waitFor(() =>
         expect(screen.queryByText('StandalonePostDrawer open: 77')).not.toBeInTheDocument(),
       );
+    });
+
+    it('refreshes the client process rail once a standalone post is attached to a workflow, so the now-closed process stops rendering as an active card', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      await screen.findByText('Posts Agosto');
+      fireEvent.click(await screen.findByText('open-post-post:9'));
+      await screen.findByText('StandalonePostDrawer open: 77');
+
+      // AttachToFluxoDialog's own onAttached is what encerra'd the process
+      // (motivo_encerramento: 'vinculado'); simulate the next fetch dropping
+      // it from VIGENTES.
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([]);
+      fireEvent.click(screen.getByText('attach-standalone-post'));
+
+      await waitFor(() => expect(mockedGetVigentePostProcessesByCliente).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(screen.queryByText('StandalonePostDrawer open: 77')).not.toBeInTheDocument(),
+      );
+      expect(screen.queryByText('Post avulso X')).not.toBeInTheDocument();
     });
 
     it('advances the process etapa via transitionPostProcess and refreshes', async () => {
