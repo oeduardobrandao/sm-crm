@@ -434,3 +434,147 @@ Deno.test("stream-steps: ingest marks a row error on a 4xx copy failure (dead so
   assertEquals(updates[4].payload, { stream_uid: "uid-good" });
   assertEquals(updates[4].modifiers, [{ method: "eq", args: ["id", 42] }]);
 });
+
+Deno.test("stream-steps: ingest leaves a row pending (never error) on a 429 copy failure — it's a rate limit, not a dead source", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", {
+    data: [
+      { id: 50, r2_key: "contas/a/videos/throttled.mp4", conta_id: "conta-1", created_at: minutesAgoIso(30) },
+    ],
+  });
+  db.queue("files", "update", { data: null, error: null }); // id:50 pending flip
+  db.queue("files", "select", { data: [] }); // reap: files known set
+  db.queue("file_deletions", "select", { data: [] }); // reap: queued set
+
+  const result = await runStreamSweeps(baseDeps(db, {
+    copyToStream: async () => {
+      throw new Error("stream copy failed: 429");
+    },
+    signSourceUrl: async (r2Key) => `https://signed.example/${r2Key}`,
+    listStreamVideos: async () => [],
+    deleteStreamVideo: unreachable("deleteStreamVideo") as unknown as StreamStepsDeps["deleteStreamVideo"],
+  }));
+
+  assertEquals(result.ingested, 0);
+  assertEquals(result.errors, 0, "a per-row failure is not a step failure");
+
+  const updates = callsFor(db, "files", "update");
+  assertEquals(updates.length, 1, "no terminal error mark — only the pending flip");
+  assertEquals(updates[0].payload, { stream_status: "pending" });
+  assertEquals(updates[0].modifiers, [{ method: "eq", args: ["id", 50] }]);
+});
+
+// ── reap cadence gate ────────────────────────────────────────────────────────
+
+Deno.test("stream-steps: reap is skipped when the last checkpoint is inside reapIntervalMs, and no checkpoint write happens", async () => {
+  const db = createSupabaseQueryMock();
+  // No "files"/"file_deletions" select queued for reap — if the gate failed to skip, the mock
+  // would throw on an unqueued call, failing the test.
+
+  let checkpointWrites = 0;
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: unreachable("listStreamVideos") as unknown as StreamStepsDeps["listStreamVideos"],
+    deleteStreamVideo: unreachable("deleteStreamVideo") as unknown as StreamStepsDeps["deleteStreamVideo"],
+    reapIntervalMs: 6 * 60 * 60 * 1000,
+    readReapCheckpoint: async () => hoursAgoIso(2), // ran 2h ago, interval is 6h
+    writeReapCheckpoint: async () => {
+      checkpointWrites++;
+    },
+  }));
+
+  assertEquals(result.reaped, 0);
+  assertEquals(result.errors, 0, "a skipped reap is not a failure");
+  assertEquals(checkpointWrites, 0, "no write when the run was skipped");
+});
+
+Deno.test("stream-steps: reap runs and writes the checkpoint once reapIntervalMs has elapsed", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", { data: [] }); // reap: files known set
+  db.queue("file_deletions", "select", { data: [] }); // reap: queued set
+
+  let checkpointWrites = 0;
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [],
+    reapIntervalMs: 6 * 60 * 60 * 1000,
+    readReapCheckpoint: async () => hoursAgoIso(7), // ran 7h ago, interval is 6h
+    writeReapCheckpoint: async () => {
+      checkpointWrites++;
+    },
+  }));
+
+  assertEquals(result.reaped, 0);
+  assertEquals(result.errors, 0);
+  assertEquals(checkpointWrites, 1, "a completed reap must write the checkpoint exactly once");
+});
+
+Deno.test("stream-steps: reap runs on a cold start (no prior checkpoint) regardless of reapIntervalMs", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", { data: [] }); // reap: files known set
+  db.queue("file_deletions", "select", { data: [] }); // reap: queued set
+
+  let checkpointWrites = 0;
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [],
+    reapIntervalMs: 6 * 60 * 60 * 1000,
+    readReapCheckpoint: async () => null, // never run before
+    writeReapCheckpoint: async () => {
+      checkpointWrites++;
+    },
+  }));
+
+  assertEquals(result.reaped, 0);
+  assertEquals(result.errors, 0);
+  assertEquals(checkpointWrites, 1);
+});
+
+Deno.test("stream-steps: reap always runs when the gate is unconfigured (no reapIntervalMs/readReapCheckpoint) — pre-gate behavior", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", { data: [] }); // reap: files known set
+  db.queue("file_deletions", "select", { data: [] }); // reap: queued set
+
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [],
+  }));
+
+  assertEquals(result.reaped, 0);
+  assertEquals(result.errors, 0);
+});
+
+// ── configurable batch sizes ────────────────────────────────────────────────
+
+Deno.test("stream-steps: ingest honors a custom ingestBatchSize instead of the INGEST_BATCH default", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", { data: [] });
+  db.queue("files", "select", { data: [] }); // reap: files known set
+  db.queue("file_deletions", "select", { data: [] }); // reap: queued set
+
+  await runStreamSweeps(baseDeps(db, {
+    copyToStream: unreachable("copyToStream") as unknown as NonNullable<StreamStepsDeps["copyToStream"]>,
+    signSourceUrl: unreachable("signSourceUrl") as unknown as NonNullable<StreamStepsDeps["signSourceUrl"]>,
+    listStreamVideos: async () => [],
+    ingestBatchSize: 3,
+  }));
+
+  const ingestSelect = callsFor(db, "files", "select")[0];
+  const limitMod = ingestSelect.modifiers.find((m) => m.method === "limit");
+  assertEquals(limitMod?.args, [3]);
+});
+
+Deno.test("stream-steps: settle honors a custom settleBatchSize instead of the SETTLE_BATCH default", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", { data: [] });
+  db.queue("files", "select", { data: [] }); // reap: files known set
+  db.queue("file_deletions", "select", { data: [] }); // reap: queued set
+
+  await runStreamSweeps(baseDeps(db, {
+    getStreamVideoStatus: unreachable("getStreamVideoStatus") as unknown as NonNullable<
+      StreamStepsDeps["getStreamVideoStatus"]
+    >,
+    listStreamVideos: async () => [],
+    settleBatchSize: 7,
+  }));
+
+  const settleSelect = callsFor(db, "files", "select")[0];
+  const limitMod = settleSelect.modifiers.find((m) => m.method === "limit");
+  assertEquals(limitMod?.args, [7]);
+});

@@ -27,6 +27,24 @@ const ORPHAN_SCAN_PAGES_PER_RUN = Math.max(
   parseInt(Deno.env.get("ORPHAN_SCAN_PAGES_PER_RUN") || "10", 10) || 10,
 );
 
+// Throughput dials for the Stream ingest/settle sweeps -- see stream-steps.ts. Lower these if
+// the account's shared Cloudflare Stream rate-limit budget keeps tripping (429s logged as
+// "stream-steps:ingest"/"stream-steps:settle"/"stream-steps:reap"); raise them to clear a
+// backlog faster once headroom allows it. No redeploy needed -- both are plain edge secrets.
+const STREAM_INGEST_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_INGEST_BATCH") || "20", 10) || 20);
+const STREAM_SETTLE_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_SETTLE_BATCH") || "50", 10) || 50);
+
+// Hours between orphanReap runs (see stream-steps.ts:shouldRunReap). Reap lists the WHOLE
+// Stream account every time it runs, so this is the main lever on the account's Stream API
+// request volume as the video library grows -- raise it if 429s persist even after the
+// retry-with-backoff in _shared/stream.ts, lower it if orphaned videos linger too long
+// (cron_scan_state.updated_at for scan_key='stream-reap' shows the last successful run).
+const STREAM_REAP_INTERVAL_HOURS = Math.max(
+  1,
+  parseInt(Deno.env.get("STREAM_REAP_INTERVAL_HOURS") || "6", 10) || 6,
+);
+const STREAM_REAP_SCAN_KEY = "stream-reap";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
@@ -112,6 +130,30 @@ Deno.serve(createPostMediaCleanupCronHandler({
         db: svc,
         deleteStreamVideo,
         listStreamVideos,
+        ingestBatchSize: STREAM_INGEST_BATCH,
+        settleBatchSize: STREAM_SETTLE_BATCH,
+        reapIntervalMs: STREAM_REAP_INTERVAL_HOURS * 60 * 60 * 1000,
+        // Reuses cron_scan_state (migration 20260913000001): its schema is already a generic
+        // '<key> -> last write' checkpoint (continuation_token/cycles_completed exist for the R2
+        // scan's pagination, but nothing here needs them -- updated_at alone is the "last
+        // successful reap" marker this gate needs), so no new migration earns its keep.
+        readReapCheckpoint: async () => {
+          const { data, error } = await svc
+            .from("cron_scan_state")
+            .select("updated_at")
+            .eq("scan_key", STREAM_REAP_SCAN_KEY)
+            .maybeSingle();
+          if (error) throw new Error(error.message);
+          return (data?.updated_at as string | null) ?? null;
+        },
+        writeReapCheckpoint: async () => {
+          const { error } = await svc.rpc("record_scan_checkpoint", {
+            p_scan_key: STREAM_REAP_SCAN_KEY,
+            p_token: null,
+            p_cycle_completed: true,
+          });
+          if (error) throw new Error(error.message);
+        },
         ...(isStreamEnabled()
           ? {
               copyToStream,

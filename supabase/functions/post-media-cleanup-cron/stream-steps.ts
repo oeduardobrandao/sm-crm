@@ -32,6 +32,22 @@ export interface StreamStepsDeps {
   deleteStreamVideo(uid: string): Promise<void>;
   listStreamVideos(): Promise<Array<{ uid: string; created: string }>>;
   nowMs?: () => number;
+  // Throughput dials (env-tunable in index.ts); default to INGEST_BATCH/SETTLE_BATCH when absent
+  // so existing callers/tests that don't set these keep today's behavior.
+  ingestBatchSize?: number;
+  settleBatchSize?: number;
+  // Reap cadence gate: orphanReap lists the WHOLE Stream account every time it runs, so running
+  // it every hourly cron tick is the dominant contributor to the account's Stream API request
+  // volume (prod 2026-09-22: this listing 429'd twice in one morning). Orphans are rare — only
+  // created when a copy succeeds but the index write that records its uid fails — and the 1h
+  // age gate inside orphanReap already defers anything recent, so reaping every run buys
+  // nothing but risk. When both callbacks + reapIntervalMs are provided, reap only actually
+  // runs once reapIntervalMs has elapsed since the last successful reap (persisted via
+  // writeReapCheckpoint); omitting them (as every existing test does) reaps every run, same as
+  // before this gate existed.
+  reapIntervalMs?: number;
+  readReapCheckpoint?(): Promise<string | null>; // ISO timestamp of the last successful reap, or null if never run
+  writeReapCheckpoint?(): Promise<void>;
 }
 
 export interface StreamSweepResult {
@@ -82,13 +98,28 @@ export async function runStreamSweeps(deps: StreamStepsDeps): Promise<StreamSwee
   }
 
   try {
-    result.reaped = await orphanReap(deps, nowMs);
+    if (await shouldRunReap(deps, nowMs)) {
+      result.reaped = await orphanReap(deps, nowMs);
+      if (deps.writeReapCheckpoint) await deps.writeReapCheckpoint();
+    }
   } catch (e) {
     console.error("stream-steps:reap", e);
     result.errors++;
   }
 
   return result;
+}
+
+/** Gates orphanReap to once per `reapIntervalMs`, using `readReapCheckpoint`'s last-run
+ * timestamp. Ungated (interval or checkpoint reader absent) => always run, matching the
+ * pre-gate behavior every existing caller/test relies on. */
+async function shouldRunReap(deps: StreamStepsDeps, nowMs: () => number): Promise<boolean> {
+  if (!deps.reapIntervalMs || !deps.readReapCheckpoint) return true;
+  const lastRunIso = await deps.readReapCheckpoint();
+  if (!lastRunIso) return true; // never run before — cold start
+  const lastRunMs = new Date(lastRunIso).getTime();
+  if (Number.isNaN(lastRunMs)) return true;
+  return nowMs() - lastRunMs >= deps.reapIntervalMs;
 }
 
 /** Selects videoless `files` rows past the 10-minute grace window and re-drives the copy — this
@@ -108,7 +139,7 @@ async function ingestCatchUp(deps: StreamStepsDeps, nowMs: () => number): Promis
     .or("stream_status.is.null,stream_status.eq.pending")
     .lt("created_at", cutoffIso)
     .order("created_at", { ascending: true })
-    .limit(INGEST_BATCH);
+    .limit(deps.ingestBatchSize ?? INGEST_BATCH);
   if (error) throw error;
 
   const rows = ((data ?? []) as IngestRow[]).filter((row) => row.created_at < cutoffIso);
@@ -138,7 +169,11 @@ async function ingestCatchUp(deps: StreamStepsDeps, nowMs: () => number): Promis
         // prod during the 2026-08-13 backfill (20 dead rows starved 169 healthy ones).
         // 4xx = permanent source problem → settle `error` so the row exits the window.
         // Anything else (5xx, timeout, network) stays `pending` for a normal retry.
-        if (copyErr instanceof Error && /: 4\d\d$/.test(copyErr.message)) {
+        // 429 is excluded even though it's a 4xx: copyToStream already retries 429 with
+        // backoff internally, so a 429 reaching here means the retry budget was exhausted
+        // under sustained rate-limiting, not that the source is dead -- marking it `error`
+        // would permanently drop a perfectly healthy video over a transient Stream outage.
+        if (copyErr instanceof Error && /: 4\d\d$/.test(copyErr.message) && !copyErr.message.endsWith(": 429")) {
           const { error: markErr } = await deps.db
             .from("files")
             .update({ stream_status: "error" })
@@ -172,7 +207,7 @@ async function settlePending(deps: StreamStepsDeps, nowMs: () => number): Promis
     .not("stream_uid", "is", null)
     .lt("created_at", cutoffIso)
     .order("created_at", { ascending: true })
-    .limit(SETTLE_BATCH);
+    .limit(deps.settleBatchSize ?? SETTLE_BATCH);
   if (error) throw error;
 
   const rows = ((data ?? []) as SettleRow[]).filter((row) => row.created_at < cutoffIso);
