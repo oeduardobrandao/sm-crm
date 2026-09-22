@@ -317,7 +317,7 @@ export function registerTools(server: any, deps: Deps): void {
     }));
 
   register(server, deps, "update_task", "tarefas:write",
-    "Edita uma tarefa: título, descrição, status, responsável, prazo. Passe null em descricao/responsavel_id/data_limite para limpar o campo; campos omitidos não mudam.",
+    "Edita uma tarefa: título, descrição, status, responsável, prazo. Passe null em descricao/responsavel_id/data_limite para limpar o campo; campos omitidos não mudam. Uma tarefa que pertence a uma série recorrente (serie_id preenchido) não pode ter data_limite nulo.",
     {
       task_id: z.number().int().positive(),
       titulo: z.string().trim().min(1).max(200).optional(),

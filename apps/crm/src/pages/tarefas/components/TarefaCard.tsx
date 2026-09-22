@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Calendar as CalendarIcon, CheckSquare, User2 } from 'lucide-react';
+import { Calendar as CalendarIcon, CheckSquare, Repeat, User2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
 import { avatarColorClass } from '@/lib/avatarColor';
 import { getInitials, updateTarefa, type Membro, type TarefaWithRelations } from '../../../store';
 import { dueBadge } from '../tarefasLogic';
+import { describeRecorrencia } from '../recorrenciaLogic';
 import { TagPill } from './TagPicker';
 
 interface TarefaCardProps {
@@ -84,9 +85,27 @@ export function TarefaCard({
             lineHeight: 1.35,
             textDecoration: tarefa.status === 'concluida' ? 'line-through' : undefined,
             opacity: tarefa.status === 'concluida' ? 0.6 : 1,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '0.3rem',
           }}
         >
-          {tarefa.titulo}
+          {tarefa.serie && (
+            <span
+              role="img"
+              aria-label="Tarefa recorrente"
+              title={describeRecorrencia(tarefa.serie)}
+              style={{
+                display: 'inline-flex',
+                color: 'var(--text-muted)',
+                flexShrink: 0,
+                marginTop: '0.2rem',
+              }}
+            >
+              <Repeat className="h-3 w-3" />
+            </span>
+          )}
+          <span>{tarefa.titulo}</span>
         </div>
         {!hideAssignee && (
           <DropdownMenu

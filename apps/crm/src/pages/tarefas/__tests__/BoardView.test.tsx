@@ -41,6 +41,7 @@ vi.mock('../views/boardShared', () => ({
 }));
 
 import { BoardView } from '../views/BoardView';
+import { buildDropId } from '../tarefasLogic';
 
 const NOW = new Date('2026-07-29T15:00:00'); // a Wednesday
 
@@ -59,6 +60,7 @@ function makeTarefa(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRel
     subtarefas_concluidas: 0,
     cliente_nome: null,
     cliente_cor: null,
+    serie: null,
     ...overrides,
   };
 }
@@ -190,5 +192,49 @@ describe('BoardView', () => {
     getCapturedOnDropCard()(makeTarefa({ id: 42 }), 'status:pendente');
 
     expect(updateTarefaMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses to drop a series occurrence on "Sem data" and shows the toast', async () => {
+    renderBoard({
+      tarefas: [
+        makeTarefa({
+          data_limite: '2026-07-30',
+          serie: {
+            id: 1,
+            freq: 'daily',
+            intervalo: 1,
+            dias_semana: null,
+            dia_mes: null,
+            mes: null,
+            modo: 'calendario',
+            fim: null,
+            inicio: '2026-07-30',
+            pausada: false,
+            encerrada_em: null,
+            proxima_data: '2026-07-31',
+          },
+        }),
+      ],
+    });
+    const onDrop = getCapturedOnDropCard();
+    const tarefa = getCapturedColumns().flatMap((c) => c.tarefas)[0];
+    await act(async () => {
+      await onDrop(tarefa, buildDropId({ kind: 'day', date: null }));
+    });
+    expect(updateTarefaMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith('Tarefas de uma série precisam de prazo.');
+  });
+
+  it('maps 23505 on tarefas_serie_data_uq to the specific toast', async () => {
+    updateTarefaMock.mockRejectedValueOnce({
+      code: '23505',
+      message: 'duplicate key value violates unique constraint "tarefas_serie_data_uq"',
+    });
+    renderBoard({ tarefas: [makeTarefa({ data_limite: '2026-07-30' })] });
+    const tarefa = getCapturedColumns().flatMap((c) => c.tarefas)[0];
+    await act(async () => {
+      await getCapturedOnDropCard()(tarefa, buildDropId({ kind: 'day', date: '2026-07-31' }));
+    });
+    expect(toastErrorMock).toHaveBeenCalledWith('Já existe uma ocorrência desta série nesse dia.');
   });
 });

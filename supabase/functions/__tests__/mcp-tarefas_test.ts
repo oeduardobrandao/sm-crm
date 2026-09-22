@@ -102,6 +102,33 @@ Deno.test("mcp-tarefas: updateTask explicit nulls clear responsavel/data_limite 
   assert(!Object.hasOwn(patch, "descricao"), "omitted descricao not in patch");
 });
 
+Deno.test("mcp-tarefas: updateTask maps series constraint errors to readable pt-BR and selects serie_id", async () => {
+  const { db, calls } = makeFakeDb({
+    tarefas: [
+      { data: { id: 1 }, error: null },
+      {
+        data: null,
+        error: {
+          code: "23514",
+          message: 'new row violates check constraint "tarefas_serie_exige_prazo"',
+        },
+      },
+    ],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let msg = "";
+  try {
+    await updateTask(deps, { task_id: 1, data_limite: null });
+  } catch (e) {
+    assert(e instanceof McpInputError);
+    msg = (e as Error).message;
+  }
+  assertEquals(msg, "Tarefas de uma série precisam de prazo.");
+  const sel = calls.find((c) => c.table === "tarefas" && c.method === "select" &&
+    typeof c.args[0] === "string" && (c.args[0] as string).includes("concluida_em"));
+  assert((sel!.args[0] as string).includes("serie_id"), "TASK_SELECT exposes serie_id");
+});
+
 Deno.test("mcp-tarefas: updateTask plain descricao clears stale rich content", async () => {
   const { db, calls } = makeFakeDb({
     tarefas: [

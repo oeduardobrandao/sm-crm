@@ -1,7 +1,18 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CalendarDays, Pencil, Plus, Trash2, User2, X } from 'lucide-react';
+import {
+  Ban,
+  CalendarDays,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Repeat,
+  Trash2,
+  User2,
+  X,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -31,8 +42,10 @@ import {
 import { avatarColorClass } from '@/lib/avatarColor';
 import {
   addSubtarefa,
+  definirEstadoSerie,
   deleteSubtarefa,
   deleteTarefa,
+  deleteTarefaSerieCompleta,
   getInitials,
   getSubtarefas,
   toggleSubtarefa,
@@ -41,6 +54,7 @@ import {
   type TarefaWithRelations,
 } from '../../../store';
 import { dueBadge, parseDateOnly, STATUS_LABELS, STATUS_ORDER } from '../tarefasLogic';
+import { describeRecorrencia, modoLabel, serieEstado, serieEstadoLabel } from '../recorrenciaLogic';
 import { TagPill } from './TagPicker';
 import { TarefaDescriptionContent } from './TarefaDescriptionContent';
 
@@ -76,6 +90,14 @@ export function TarefaDetailSheet({
 
   const membro = membros.find((m) => m.id === tarefa.responsavel_id) ?? null;
   const badge = dueBadge(tarefa, now);
+  const [confirmEncerrar, setConfirmEncerrar] = useState(false);
+  const [serieBusy, setSerieBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  // Ref guard too: state alone would let two clicks in the same tick both through.
+  const deleteInFlight = useRef(false);
+  const serie = tarefa.serie;
+  const estado = serie ? serieEstado(serie, now) : null;
+  const estadoLabel = serie ? serieEstadoLabel(serie, now) : null;
 
   const handleStatusChange = async (status: TarefaWithRelations['status']) => {
     if (status === tarefa.status) return;
@@ -134,6 +156,9 @@ export function TarefaDetailSheet({
   };
 
   const handleDeleteTarefa = async () => {
+    if (deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    setDeleteBusy(true);
     try {
       await deleteTarefa(tarefa.id!);
       toast.success('Tarefa excluída!');
@@ -142,6 +167,48 @@ export function TarefaDetailSheet({
       onRefresh();
     } catch {
       toast.error('Erro ao excluir tarefa');
+    } finally {
+      deleteInFlight.current = false;
+      setDeleteBusy(false);
+    }
+  };
+
+  const handleSerieEstado = async (verbo: 'pausar' | 'retomar' | 'encerrar') => {
+    if (!serie || serieBusy) return;
+    setSerieBusy(true);
+    try {
+      await definirEstadoSerie(serie.id, verbo);
+      toast.success(
+        verbo === 'pausar'
+          ? 'Série pausada!'
+          : verbo === 'retomar'
+            ? 'Série retomada!'
+            : 'Série encerrada!',
+      );
+      setConfirmEncerrar(false);
+      onRefresh();
+    } catch {
+      toast.error('Erro ao atualizar a série');
+    } finally {
+      setSerieBusy(false);
+    }
+  };
+
+  const handleDeleteSerie = async () => {
+    if (!serie || deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    setDeleteBusy(true);
+    try {
+      await deleteTarefaSerieCompleta(serie.id);
+      toast.success('Série excluída!');
+      setConfirmDelete(false);
+      onClose();
+      onRefresh();
+    } catch {
+      toast.error('Erro ao excluir a série');
+    } finally {
+      deleteInFlight.current = false;
+      setDeleteBusy(false);
     }
   };
 
@@ -294,6 +361,70 @@ export function TarefaDetailSheet({
               </span>
             </div>
 
+            {serie && estado && (
+              <div className="flex items-start gap-2">
+                <span
+                  className="text-xs w-24 shrink-0 pt-0.5"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Repetição
+                </span>
+                <div className="flex flex-col gap-1.5 text-sm">
+                  <span className="inline-flex items-center gap-2 flex-wrap">
+                    <Repeat className="h-3.5 w-3.5" style={{ color: 'var(--text-muted)' }} />
+                    <span>
+                      Repete: {describeRecorrencia(serie)} · {modoLabel(serie.modo)}
+                    </span>
+                    {estadoLabel && (
+                      <span
+                        className="text-xs px-1.5 py-0.5 rounded-md"
+                        style={{ background: 'var(--surface-hover)', color: 'var(--text-muted)' }}
+                      >
+                        {estadoLabel}
+                      </span>
+                    )}
+                  </span>
+                  {(estado === 'ativa' || estado === 'pausada') && (
+                    <div className="flex gap-1.5">
+                      {estado === 'ativa' ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          disabled={serieBusy}
+                          onClick={() => handleSerieEstado('pausar')}
+                        >
+                          <Pause className="h-3 w-3 mr-1" /> Pausar série
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          disabled={serieBusy}
+                          onClick={() => handleSerieEstado('retomar')}
+                        >
+                          <Play className="h-3 w-3 mr-1" /> Retomar série
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        disabled={serieBusy}
+                        onClick={() => setConfirmEncerrar(true)}
+                      >
+                        <Ban className="h-3 w-3 mr-1" /> Encerrar série
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {tarefa.cliente_nome && (
               <div className="flex items-center gap-2">
                 <span className="text-xs w-24 shrink-0" style={{ color: 'var(--text-muted)' }}>
@@ -329,6 +460,12 @@ export function TarefaDetailSheet({
                 </span>
               )}
             </div>
+            {serie && (
+              <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                As próximas ocorrências usam a lista da série. Para mudar, edite a tarefa e escolha
+                Esta e as próximas.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5">
               {subtarefas.map((s) => (
                 <div key={s.id} className="flex items-center gap-2 group">
@@ -407,20 +544,92 @@ export function TarefaDetailSheet({
 
         <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
           <AlertDialogContent>
+            {serie ? (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Excluir tarefa recorrente?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    A tarefa &quot;{tarefa.titulo}&quot; faz parte de uma série.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="flex flex-col gap-3 text-sm">
+                  <div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={deleteBusy}
+                      onClick={handleDeleteTarefa}
+                    >
+                      Somente esta
+                    </Button>
+                    {tarefa.status !== 'concluida' &&
+                      serie.modo === 'ao_concluir' &&
+                      estado === 'ativa' && (
+                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                          A próxima ocorrência será criada normalmente.
+                        </p>
+                      )}
+                  </div>
+                  <div>
+                    <Button
+                      type="button"
+                      className="w-full bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+                      disabled={deleteBusy}
+                      onClick={handleDeleteSerie}
+                    >
+                      Toda a série
+                    </Button>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      Remove a série e as ocorrências abertas. As concluídas ficam.
+                    </p>
+                  </div>
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                </AlertDialogFooter>
+              </>
+            ) : (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Excluir tarefa?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    A tarefa &quot;{tarefa.titulo}&quot; e suas subtarefas serão excluídas. Essa
+                    ação não pode ser desfeita.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+                    onClick={handleDeleteTarefa}
+                  >
+                    Excluir tarefa
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            )}
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={confirmEncerrar} onOpenChange={setConfirmEncerrar}>
+          <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Excluir tarefa?</AlertDialogTitle>
+              <AlertDialogTitle>Encerrar série?</AlertDialogTitle>
               <AlertDialogDescription>
-                A tarefa &quot;{tarefa.titulo}&quot; e suas subtarefas serão excluídas. Essa ação
-                não pode ser desfeita.
+                As ocorrências já criadas continuam como estão. Nenhuma nova será criada.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
-                onClick={handleDeleteTarefa}
+                disabled={serieBusy}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleSerieEstado('encerrar');
+                }}
               >
-                Excluir tarefa
+                Encerrar
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

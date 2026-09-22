@@ -1,7 +1,9 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Grant-surface assertions for 20260924000001_lockdown_definer_function_grants.sql.
+-- Grant-surface assertions for 20260924000001_lockdown_definer_function_grants.sql,
+-- plus the service-role-only helpers/trigger functions/generator added by
+-- 20260925000030_tarefa_series.sql (the last seven entries of the first array).
 --
 -- Locally there is no hosted pg_default_acl granting anon/authenticated EXECUTE
 -- at function-creation time (see _helpers.sql), so `anon`/`authenticated` already
@@ -55,7 +57,14 @@ declare
     'public.import_commit_row(uuid, bigint, text, text, jsonb)',
     'public.import_resolve_cliente(uuid, bigint, jsonb)',
     'public.effective_plan_limit(uuid, text)',
-    'public.expire_and_cleanup_invites()'
+    'public.expire_and_cleanup_invites()',
+    'public.tarefa_serie_materializar(bigint, date)',
+    'public.tarefa_serie_garantir_aberta(bigint, date)',
+    'public.tarefas_serie_ao_concluir_fn()',
+    'public.tarefas_serie_ao_excluir_fn()',
+    'public.tarefa_series_apos_retomar_fn()',
+    'public.tarefa_serie_validar_refs(uuid, bigint, bigint)',
+    'public.generate_recurring_tarefas()'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
