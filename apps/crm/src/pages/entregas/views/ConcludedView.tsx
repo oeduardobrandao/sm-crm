@@ -16,6 +16,7 @@ import {
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { HistoryDrawer } from '../components/HistoryDrawer';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
+import { ClienteAvatar } from '@/pages/mensagens/components/Avatars';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +27,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 
 interface ConcludedWorkflowSummary {
   workflow: Workflow;
@@ -47,7 +55,7 @@ function formatDateShort(iso: string): string {
 }
 
 export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) => void } = {}) {
-  const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
+  const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState<{
     workflow: Workflow;
     clienteName: string;
@@ -139,6 +147,8 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
   }
   groups.sort((a, b) => a.cliente.nome.localeCompare(b.cliente.nome));
 
+  const selectedGroup = groups.find((g) => g.cliente.id === selectedClienteId) ?? null;
+
   const handleReopenConfirm = async () => {
     if (!reopenTarget) return;
     try {
@@ -154,15 +164,6 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
       toast.error('Erro ao reabrir fluxo.');
     }
     setReopenTarget(null);
-  };
-
-  const toggleClient = (id: number) => {
-    setExpandedClients((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   };
 
   if (isLoadingCombined) {
@@ -181,127 +182,147 @@ export function ConcludedView({ onOpenPost }: { onOpenPost?: (postId: number) =>
 
   return (
     <>
-      <div className="animate-up">
-        {groups.map((group) => {
-          const isOpen = expandedClients.has(group.cliente.id!);
-          return (
-            <div key={group.cliente.id} className="concluded-client-group">
-              <div
-                className="concluded-client-header"
-                onClick={() => toggleClient(group.cliente.id!)}
-              >
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {isOpen ? '▾' : '▸'}
-                </span>
-                <div
-                  className="concluded-client-dot"
-                  style={{ background: group.cliente.cor || '#888' }}
-                />
-                <span className="concluded-client-name">{group.cliente.nome}</span>
-                <span className="concluded-client-count">
-                  ({group.workflows.length} fluxo{group.workflows.length !== 1 ? 's' : ''}
-                  {group.processes.length > 0 &&
-                    ` · ${group.processes.length} post${group.processes.length !== 1 ? 's' : ''} individua${group.processes.length !== 1 ? 'is' : 'l'}`}
-                  )
-                </span>
-              </div>
-              {isOpen && (
-                <div className="concluded-client-workflows">
-                  {group.workflows.map((s) => (
-                    <div
-                      key={s.workflow.id}
-                      className="concluded-wf-row"
-                      onClick={() =>
-                        setSelectedWorkflow({
-                          workflow: s.workflow,
-                          clienteName: group.cliente.nome,
-                        })
-                      }
-                    >
-                      <div>
-                        <div className="concluded-wf-title">{s.workflow.titulo}</div>
-                        <div className="concluded-wf-meta">
-                          {s.postCount} post{s.postCount !== 1 ? 's' : ''}
-                          {s.totalDays !== null && (
-                            <>
-                              {' '}
-                              &bull; {s.totalDays} dia{s.totalDays !== 1 ? 's' : ''}
-                            </>
-                          )}
-                          {s.completedAt && <> &bull; Concluído {formatDateShort(s.completedAt)}</>}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <button
-                          className="concluded-reopen-btn"
-                          title="Reabrir fluxo"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReopenTarget({ id: s.workflow.id!, titulo: s.workflow.titulo });
-                          }}
-                        >
-                          <RotateCcw size={14} />
-                        </button>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
-                      </div>
-                    </div>
-                  ))}
-                  {group.processes.map((p) => (
-                    <div
-                      key={`proc-${p.id}`}
-                      className="concluded-wf-row"
-                      onClick={() => onOpenPost?.(p.post_id)}
-                    >
-                      <div>
-                        <div className="concluded-wf-title">
-                          {p.post.titulo || 'Post sem título'}
-                          <span
-                            className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual"
-                            style={{ marginLeft: '0.5rem' }}
-                          >
-                            <FileText size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                            Post individual
-                          </span>
-                        </div>
-                        <div className="concluded-wf-meta">
-                          {p.template_nome ?? 'Etapas personalizadas'}
-                          {p.concluido_em && (
-                            <> &bull; Concluído {formatDateShort(p.concluido_em)}</>
-                          )}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <button
-                          className="concluded-reopen-btn"
-                          title="Reabrir processo"
-                          aria-label="Reabrir processo"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            commands.reabrir({
-                              process: p,
-                              post: {
-                                id: p.post_id,
-                                titulo: p.post.titulo,
-                                status: p.post.status,
-                                cliente_id: p.post.cliente_id,
-                              },
-                            });
-                          }}
-                        >
-                          <RotateCcw size={14} />
-                        </button>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+      <div className="concluded-client-grid animate-up">
+        {groups.map((group) => (
+          <div
+            key={group.cliente.id}
+            className="concluded-client-card"
+            onClick={() => setSelectedClienteId(group.cliente.id!)}
+          >
+            <div className="concluded-client-card-top">
+              <ClienteAvatar
+                nome={group.cliente.nome}
+                fotoUrl={group.cliente.foto_url}
+                cliente={group.cliente}
+                size="lg"
+              />
+              <span className="concluded-client-card-name">{group.cliente.nome}</span>
             </div>
-          );
-        })}
+            <div className="concluded-client-card-stats">
+              {group.workflows.length} fluxo{group.workflows.length !== 1 ? 's' : ''} concluído
+              {group.workflows.length !== 1 ? 's' : ''}
+              {group.processes.length > 0 &&
+                ` · ${group.processes.length} post${group.processes.length !== 1 ? 's' : ''} individua${group.processes.length !== 1 ? 'is' : 'l'}`}
+            </div>
+          </div>
+        ))}
       </div>
 
       {commands.dialogs}
+
+      {selectedGroup && (
+        <Sheet open onOpenChange={(open) => !open && setSelectedClienteId(null)}>
+          <SheetContent
+            className="w-full sm:max-w-[480px] overflow-y-auto"
+            overlayClassName="bg-black/40"
+          >
+            <SheetHeader className="mb-4 pr-8">
+              <div className="concluded-client-card-top">
+                <ClienteAvatar
+                  nome={selectedGroup.cliente.nome}
+                  fotoUrl={selectedGroup.cliente.foto_url}
+                  cliente={selectedGroup.cliente}
+                  size="lg"
+                />
+                <SheetTitle className="text-left leading-snug">
+                  {selectedGroup.cliente.nome}
+                </SheetTitle>
+              </div>
+              <SheetDescription className="sr-only">
+                Fluxos e posts concluídos de {selectedGroup.cliente.nome}
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="concluded-client-workflows">
+              {selectedGroup.workflows.map((s) => (
+                <div
+                  key={s.workflow.id}
+                  className="concluded-wf-row"
+                  onClick={() =>
+                    setSelectedWorkflow({
+                      workflow: s.workflow,
+                      clienteName: selectedGroup.cliente.nome,
+                    })
+                  }
+                >
+                  <div>
+                    <div className="concluded-wf-title">{s.workflow.titulo}</div>
+                    <div className="concluded-wf-meta">
+                      {s.postCount} post{s.postCount !== 1 ? 's' : ''}
+                      {s.totalDays !== null && (
+                        <>
+                          {' '}
+                          &bull; {s.totalDays} dia{s.totalDays !== 1 ? 's' : ''}
+                        </>
+                      )}
+                      {s.completedAt && <> &bull; Concluído {formatDateShort(s.completedAt)}</>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      className="concluded-reopen-btn"
+                      title="Reabrir fluxo"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setReopenTarget({ id: s.workflow.id!, titulo: s.workflow.titulo });
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
+                  </div>
+                </div>
+              ))}
+              {selectedGroup.processes.map((p) => (
+                <div
+                  key={`proc-${p.id}`}
+                  className="concluded-wf-row"
+                  onClick={() => onOpenPost?.(p.post_id)}
+                >
+                  <div>
+                    <div className="concluded-wf-title">
+                      {p.post.titulo || 'Post sem título'}
+                      <span
+                        className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual"
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        <FileText size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+                        Post individual
+                      </span>
+                    </div>
+                    <div className="concluded-wf-meta">
+                      {p.template_nome ?? 'Etapas personalizadas'}
+                      {p.concluido_em && <> &bull; Concluído {formatDateShort(p.concluido_em)}</>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      className="concluded-reopen-btn"
+                      title="Reabrir processo"
+                      aria-label="Reabrir processo"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        commands.reabrir({
+                          process: p,
+                          post: {
+                            id: p.post_id,
+                            titulo: p.post.titulo,
+                            status: p.post.status,
+                            cliente_id: p.post.cliente_id,
+                          },
+                        });
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
 
       {selectedWorkflow && (
         <HistoryDrawer
