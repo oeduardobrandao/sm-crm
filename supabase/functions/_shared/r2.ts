@@ -364,12 +364,14 @@ export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
  * the caller's job (file-zip wraps with a per-chunk stall guard) because a
  * total AbortSignal would kill legitimately large slow bodies. */
 export async function getObjectStreamSigned(key: string): Promise<ReadableStream<Uint8Array> | null> {
+  const ac = new AbortController();
+  // Cleared in `finally` (not after the await): a fetch that REJECTS before
+  // headers would otherwise leave the timer live for its full 15s, and a zip
+  // over many unavailable objects would pile one orphan timer per failure.
+  const headerTimer = setTimeout(() => ac.abort(), 15_000);
   try {
     const url = await signGetUrl(key, 300);
-    const ac = new AbortController();
-    const headerTimer = setTimeout(() => ac.abort(), 15_000);
     const res = await fetch(url, { signal: ac.signal });
-    clearTimeout(headerTimer);
     if (!res.ok) {
       await res.body?.cancel();
       return null;
@@ -377,6 +379,8 @@ export async function getObjectStreamSigned(key: string): Promise<ReadableStream
     return res.body;
   } catch {
     return null;
+  } finally {
+    clearTimeout(headerTimer);
   }
 }
 
