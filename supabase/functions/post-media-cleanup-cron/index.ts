@@ -5,6 +5,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import {
   copyToStream,
+  createStreamRetryBudget,
   deleteStreamVideo,
   getStreamVideoStatus,
   isStreamCleanupEnabled,
@@ -61,6 +62,12 @@ Deno.serve(createPostMediaCleanupCronHandler({
     // Gates the R2+Stream delete order below and the sweep call further down — computed once so
     // both reflect the same env snapshot for this run.
     const cleanupEnabled = isStreamCleanupEnabled();
+    // Shared across EVERY Stream call this invocation makes (the drain loop below, and every
+    // call inside runStreamSweeps) — see StreamRetryBudget in _shared/stream.ts for why a
+    // per-call retry cap isn't enough on its own: it still multiplies across this loop's up to
+    // 500 sequential rows. Must be created fresh per invocation, not at module scope, since a
+    // warm isolate can be reused across separate cron runs.
+    const streamRetryBudget = createStreamRetryBudget();
 
     // Drain post_media_deletions (legacy)
     const { data: legacyPending } = await svc
@@ -100,7 +107,9 @@ Deno.serve(createPostMediaCleanupCronHandler({
         // (when applicable) also succeeds — a failure here goes through the same catch/backoff
         // as an R2 failure. When cleanup isn't enabled (no STREAM_* secrets), stream_uid rows
         // still complete their R2 deletes and are removed exactly as before Stream existed.
-        if (row.stream_uid && cleanupEnabled) await deleteStreamVideo(row.stream_uid);
+        if (row.stream_uid && cleanupEnabled) {
+          await deleteStreamVideo(row.stream_uid, fetch, undefined, streamRetryBudget);
+        }
         await svc.from("file_deletions").delete().eq("id", row.id);
         deleted++;
       } catch (e) {
@@ -128,8 +137,8 @@ Deno.serve(createPostMediaCleanupCronHandler({
     if (cleanupEnabled) {
       const sweep = await runStreamSweeps({
         db: svc,
-        deleteStreamVideo,
-        listStreamVideos,
+        deleteStreamVideo: (uid: string) => deleteStreamVideo(uid, fetch, undefined, streamRetryBudget),
+        listStreamVideos: () => listStreamVideos(fetch, undefined, streamRetryBudget),
         ingestBatchSize: STREAM_INGEST_BATCH,
         settleBatchSize: STREAM_SETTLE_BATCH,
         reapIntervalMs: STREAM_REAP_INTERVAL_HOURS * 60 * 60 * 1000,
@@ -156,9 +165,11 @@ Deno.serve(createPostMediaCleanupCronHandler({
         },
         ...(isStreamEnabled()
           ? {
-              copyToStream,
+              copyToStream: (sourceUrl: string, meta: Record<string, string>) =>
+                copyToStream(sourceUrl, meta, fetch, undefined, streamRetryBudget),
               signSourceUrl: (r2Key: string) => signGetUrl(r2Key, 600),
-              getStreamVideoStatus,
+              getStreamVideoStatus: (uid: string) =>
+                getStreamVideoStatus(uid, fetch, undefined, streamRetryBudget),
             }
           : {}),
       });

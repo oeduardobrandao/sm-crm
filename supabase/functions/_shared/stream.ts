@@ -30,6 +30,38 @@ const STREAM_RETRY_AFTER_CAP_MS = 10_000;
 type SleepFn = (ms: number) => Promise<void>;
 const defaultSleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Caps the TOTAL time any caller spends sleeping out 429s across a whole cron invocation, not
+ * just per call. Without this, a per-call retry cap (~30s worst case: 3 backoffs capped at
+ * STREAM_RETRY_AFTER_CAP_MS) still multiplies across a sequential batch -- post-media-cleanup-
+ * cron's file_deletions drain calls deleteStreamVideo for up to 500 rows in a loop, so a
+ * sustained Stream outage could otherwise stall the run for hours and get it silently killed by
+ * the edge runtime before the orphan scan, canary, or alerting stages ever ran (AGENTS.md: "Edge
+ * runtime kills bypass catch"). Once the budget is spent, every subsequent 429 anywhere in the
+ * run fails immediately instead of sleeping -- a sustained outage is not something more retries
+ * can fix, and failing fast lets the caller's existing per-row error handling (mark pending,
+ * backoff, continue) take over instead of stalling the batch.
+ */
+export interface StreamRetryBudget {
+  /** Reserves `ms` of retry-wait time. Returns false (reserving nothing) once the run's total
+   * budget is exhausted -- the caller must then treat the 429 as a normal failure. */
+  reserve(ms: number): boolean;
+}
+
+/** Creates a fresh budget for one cron invocation. Module-level state would leak across warm
+ * isolate reuse between separate invocations, so this must be constructed inside the request
+ * handler, not at module scope. */
+export function createStreamRetryBudget(totalMs = 20_000): StreamRetryBudget {
+  let remainingMs = totalMs;
+  return {
+    reserve(ms: number): boolean {
+      if (ms > remainingMs) return false;
+      remainingMs -= ms;
+      return true;
+    },
+  };
+}
+
 function streamBase(accountId: string): string {
   return `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream`;
 }
@@ -43,13 +75,15 @@ function authHeaders(): Record<string, string> {
  * returned immediately for the caller to interpret, since backoff can't fix a real failure.
  * Honors a numeric Retry-After header when Cloudflare sends one, otherwise exponential
  * backoff with jitter. A fresh AbortSignal.timeout is created per attempt so time spent
- * waiting out a 429 never eats into a single request's own timeout budget.
+ * waiting out a 429 never eats into a single request's own timeout budget. `budget`, when
+ * given, is checked before every sleep — see StreamRetryBudget.
  */
 async function fetchStreamWithRetry(
   fetchFn: typeof fetch,
   url: string,
   init: { method?: string; headers: Record<string, string>; body?: string },
   sleepFn: SleepFn,
+  budget?: StreamRetryBudget,
 ): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     const res = await fetchFn(url, { ...init, signal: AbortSignal.timeout(STREAM_FETCH_TIMEOUT_MS) });
@@ -58,6 +92,7 @@ async function fetchStreamWithRetry(
     const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
       ? Math.min(retryAfterSec * 1000, STREAM_RETRY_AFTER_CAP_MS)
       : Math.min(STREAM_RETRY_BASE_MS * 2 ** attempt, STREAM_RETRY_MAX_MS) + Math.random() * 100;
+    if (budget && !budget.reserve(waitMs)) return res;
     await sleepFn(waitMs);
   }
 }
@@ -90,13 +125,14 @@ export async function copyToStream(
   meta: Record<string, string>,
   fetchFn: typeof fetch = fetch,
   sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
 ): Promise<string> {
   const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
   const res = await fetchStreamWithRetry(fetchFn, `${streamBase(accountId)}/copy`, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ url: sourceUrl, meta, requireSignedURLs: true }),
-  }, sleepFn);
+  }, sleepFn, budget);
   const json = await res.json().catch(() => null) as
     | { success?: boolean; result?: { uid?: string } }
     | null;
@@ -206,6 +242,7 @@ export async function deleteStreamVideo(
   uid: string,
   fetchFn: typeof fetch = fetch,
   sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
 ): Promise<void> {
   const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
   const res = await fetchStreamWithRetry(
@@ -213,6 +250,7 @@ export async function deleteStreamVideo(
     `${streamBase(accountId)}/${uid}`,
     { method: "DELETE", headers: authHeaders() },
     sleepFn,
+    budget,
   );
   if (res.status === 200 || res.status === 404) return;
   throw new Error("stream delete failed: " + res.status);
@@ -223,6 +261,7 @@ export async function getStreamVideoStatus(
   uid: string,
   fetchFn: typeof fetch = fetch,
   sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
 ): Promise<"ready" | "error" | "inprogress"> {
   const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
   const res = await fetchStreamWithRetry(
@@ -230,6 +269,7 @@ export async function getStreamVideoStatus(
     `${streamBase(accountId)}/${uid}`,
     { headers: authHeaders() },
     sleepFn,
+    budget,
   );
   const json = await res.json().catch(() => null) as
     | { result?: { status?: { state?: string } } }
@@ -242,6 +282,7 @@ export async function getStreamVideoStatus(
 export async function listStreamVideos(
   fetchFn: typeof fetch = fetch,
   sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
 ): Promise<Array<{ uid: string; created: string }>> {
   const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
   const base = streamBase(accountId);
@@ -253,7 +294,7 @@ export async function listStreamVideos(
     const url = after
       ? `${base}?asc=true&after=${encodeURIComponent(after)}`
       : `${base}?asc=true`;
-    const res = await fetchStreamWithRetry(fetchFn, url, { headers }, sleepFn);
+    const res = await fetchStreamWithRetry(fetchFn, url, { headers }, sleepFn, budget);
     const json = await res.json().catch(() => null) as
       | { success?: boolean; result?: Array<{ uid: string; created: string }> }
       | null;
