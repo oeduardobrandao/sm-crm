@@ -450,6 +450,7 @@ e nada pode entrar naquele batch).
 | `pages/entregas/EntregasPage.tsx` | `VIEW_TABS` += fila; `useActivePosts(postsMode \|\| semProcessoMode \|\| activeView === 'fila')` (`:718-720`); `showFilters` exclui `'fila'` (`:731`); estado `filaMembro` semeado de `initialQuery.filaMembro`, incluído em `currentQuery`; `useCurrentMembro()` para o default; `useStatusRegistry()` (já existe em `hooks/useStatusRegistry.ts`); `useMemo(() => buildMinhaFila({cards, posts: activePosts, postEntities}, membroId, new Date()))` só quando `activeView === 'fila'`; render de `<MinhaFilaView>` com `onPostClick={handlePostClick}` (`:649-661`) e `onFluxoClick={handleFluxoClick}` (`:663-667`); `applySavedView` (`:696-704`) também faz `setFilaMembro(parsed.filaMembro)`, senão uma vista salva "fila de X" volta em silêncio para a própria; `captureEvent` de abertura (§ Analytics). |
 | `pages/entregas/components/VistasTabs.tsx` | `VIEW_ICONS.fila`. |
 | `pages/entregas/etapaPrazo.ts` | Receber `dayDiff`/`startOfLocalDay` (hoje em `todayAgenda.ts:140-155`); `todayAgenda.ts` passa a importar de lá (mantendo o re-export para não quebrar `todayAgenda.test.ts`). |
+| `hooks/useCurrentMembro.ts` | Devolver também `isError` e `isSuccess` (§ Estados). |
 | `pages/dashboard/DashboardPage.tsx` | `<MinhaFilaCard />` após `<TodayCard />`. |
 | `pages/dashboard/components/AgentPendingSection.tsx` | Remover seções etapas/posts e suas queries; manter Tarefas e os estados sem membro/vazio. |
 | `packages/i18n/locales/pt/dashboard.json` e `en/dashboard.json` | Chaves `minhaFila.*` do teaser (título, link, vazio, `+{n} na fila`, `publica`). |
@@ -510,6 +511,12 @@ Regra: o estado vazio só aparece quando **todas** resolveram com sucesso; qualq
   passa a devolver `isError` agregado (`workflows || etapasQuery || vigenteQuery`),
   lido só pela vista fila (demais vistas mantêm o comportamento atual). A vista combina
   isso com `isLoading`/`isError` de `useActivePosts` e da query de membros.
+- Membros: `useCurrentMembro` (`hooks/useCurrentMembro.ts:9`) hoje devolve só
+  `{ membro, isLoading }`, e `useEntregasData` troca a query por `EMPTY_MEMBROS` sem expor
+  erro. `useCurrentMembro` passa a devolver também `isError` e `isSuccess` da mesma query
+  `['membros']` (aditivo; chamadores atuais não mudam). É essa a fonte que a vista, o teaser
+  e a reconciliação de `membro=<id>` (§ Membro selecionado) leem: reconciliar só com
+  `isSuccess`; com `isError`, estado de erro e URL intacta.
 - Teaser: `useMinhaFilaData` devolve `isLoading` = OR de `isLoading` das seis queries e
   `isError` = OR de `isError` das seis.
 
