@@ -37,7 +37,8 @@ BEGIN
       ('crisp-sync-cron',              '4-59/15 * * * *'),  -- was */15
       ('lifecycle-email-cron',         '9-59/15 * * * *'),  -- was */15
       ('loops-sync-cron',              '13-59/15 * * * *'), -- was */15 (staging only)
-      ('post-media-cleanup-hourly',    '5 * * * *'),        -- was 0 * * * *
+      ('post-media-cleanup-hourly',    '5 * * * *'),        -- was 0 * * * * (prod)
+      ('post-media-cleanup',           '5 3 * * *'),        -- was 0 3 * * * (staging, fresh DBs)
       ('tarefas-recorrentes-generate', '8 * * * *'),        -- was 7 * * * *
       ('instagram-refresh-cron-6h',    '10 */6 * * *'),     -- was 0 */6 * * *
       ('expire-and-cleanup-invites',   '20 */6 * * *'),     -- was 0 */6 * * *
