@@ -14,6 +14,7 @@ import {
   Search,
   Route,
   CircleDashed,
+  ListChecks,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,6 +58,10 @@ import { ListView } from './views/ListView';
 import { PostsKanbanView } from './views/PostsKanbanView';
 import { PostsListView } from './views/PostsListView';
 import { ConcludedView } from './views/ConcludedView';
+import { MinhaFilaView } from './views/MinhaFilaView';
+import { buildMinhaFila, EMPTY_FILA } from './minhaFila';
+import { useCurrentMembro } from '@/hooks/useCurrentMembro';
+import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { StandalonePostDrawer } from './components/StandalonePostDrawer';
 import { SemProcessoSection } from './components/SemProcessoSection';
@@ -108,6 +113,7 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
   { id: 'calendar', label: 'Calendário', icon: <Calendar className="h-4 w-4" /> },
   { id: 'list', label: 'Lista', icon: <List className="h-4 w-4" /> },
   { id: 'concluded', label: 'Concluídas', icon: <Archive className="h-4 w-4" /> },
+  { id: 'fila', label: 'Minha fila', icon: <ListChecks className="h-4 w-4" /> },
 ];
 
 const EMPTY_POST_ENTITIES: PostEntity[] = [];
@@ -182,6 +188,21 @@ export default function EntregasPage() {
     if (hadEntidadeParam) return initialQuery.entidade;
     return loadLastEntidade(contaId) ?? (hasLastMode(contaId) ? 'fluxos' : 'todos');
   });
+  // Minha fila (spec 2026-09-23): membro escolhido EXPLICITAMENTE no seletor
+  // ou vindo de `?membro=`. null = "o próprio usuário", que é o que uma URL ou
+  // vista salva sem `membro=` significa para quem a abre. O id efetivo é
+  // `filaMembroId` abaixo; a reconciliação com a lista de membros roda só
+  // depois de ['membros'] resolver (efeito após useEntregasData).
+  const [filaMembro, setFilaMembro] = useState<number | null>(initialQuery.filaMembro);
+  const {
+    membro: currentMembro,
+    isLoading: membrosLoading,
+    isSuccess: membrosReady,
+    isError: membrosError,
+  } = useCurrentMembro();
+  const currentMembroId = currentMembro?.id ?? null;
+  const filaMembroId = filaMembro ?? currentMembroId;
+  const registry = useStatusRegistry();
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
   const [standalonePostId, setStandalonePostId] = useState<number | null>(null);
@@ -242,8 +263,20 @@ export default function EntregasPage() {
     postResponsaveis,
     isLoading,
     isFetching,
+    isError: entregasError,
     refresh,
   } = useEntregasData({ postProcessesEnabled });
+
+  // Só valida `membro=<id>` com a lista carregada: antes disso `membros` é []
+  // e todo deep link válido pareceria desconhecido. O próprio id vira null
+  // (o serializador então omite `membro=`); id desconhecido idem. Com erro em
+  // ['membros'] nada é reescrito.
+  useEffect(() => {
+    if (!membrosReady || filaMembro == null) return;
+    if (filaMembro === currentMembroId || !membros.some((m) => m.id === filaMembro)) {
+      setFilaMembro(null);
+    }
+  }, [membrosReady, filaMembro, currentMembroId, membros]);
 
   const templatesAtLimit = isAtLimit('max_workflow_templates', templates.length);
 
@@ -432,8 +465,7 @@ export default function EntregasPage() {
   const currentQuery = serializeEntregasQuery({
     view: activeView,
     mode: activeMode,
-    // Task 6 substitui pelo estado real do seletor de membro.
-    filaMembro: null,
+    filaMembro: activeView === 'fila' ? filaMembro : null,
     entidade:
       activeMode === 'entregas' && (activeView === 'kanban' || activeView === 'list')
         ? effectiveEntidade
@@ -703,6 +735,9 @@ export default function EntregasPage() {
       setEntidade(parsed.entidade);
     }
     setFilters(parsed.filters);
+    // null para qualquer vista que não seja a fila: aplicar uma vista do Kanban
+    // também limpa uma escolha explícita de membro, como uma URL sem `membro=`.
+    setFilaMembro(parsed.filaMembro);
   };
 
   // Publicações mode (Kanban/Lista): every post of every active workflow, fetched
@@ -717,9 +752,12 @@ export default function EntregasPage() {
     activeView === 'kanban' &&
     mode === 'entregas' &&
     effectiveEntidade !== 'fluxos';
-  const { posts: activePosts, isLoading: activePostsLoading } = useActivePosts(
-    postsMode || semProcessoMode,
-  );
+  const filaView = activeView === 'fila';
+  const {
+    posts: activePosts,
+    isLoading: activePostsLoading,
+    isError: activePostsError,
+  } = useActivePosts(postsMode || semProcessoMode || filaView);
   const semProcessoPosts = useMemo(
     () =>
       semProcessoMode
@@ -731,7 +769,9 @@ export default function EntregasPage() {
   // The busca input (on the VistasTabs row) and the filter pills show together:
   // hidden on Concluídas and on the Publicações calendar, where they don't apply.
   const showFilters =
-    activeView !== 'concluded' && !(activeView === 'calendar' && mode === 'publicacoes');
+    activeView !== 'concluded' &&
+    activeView !== 'fila' &&
+    !(activeView === 'calendar' && mode === 'publicacoes');
 
   // Processo individual ativo de cada avulso, pela projeção que o quadro de
   // Fluxos já resolve (etapa ativa, responsável e prazo). Declarado ANTES de
@@ -740,6 +780,42 @@ export default function EntregasPage() {
     if (postEntities.length === 0) return EMPTY_POST_ENTITY_MAP;
     return new Map(postEntities.map((e) => [e.process.post_id, e]));
   }, [postEntities]);
+
+  // Minha fila: derivada só quando a vista está ativa e há um membro efetivo.
+  // EMPTY_FILA é estável para não invalidar o memo da vista à toa.
+  const fila = useMemo(
+    () =>
+      filaView && filaMembroId != null
+        ? buildMinhaFila({ cards, posts: activePosts, postEntities }, filaMembroId, new Date())
+        : EMPTY_FILA,
+    [filaView, filaMembroId, cards, activePosts, postEntities],
+  );
+  // Dependências obrigatórias da fila (spec § Estados): o spinner de página já
+  // cobre workflows/etapas/processos carregando; aqui entram active-posts e
+  // membros. Os três `isError` são "erro SEM dados" (isLoadingError): um
+  // refetch em background que falha com cache presente mantém a fila na tela.
+  const filaLoading = filaView && (activePostsLoading || membrosLoading);
+  const filaError = filaView && (entregasError || activePostsError || membrosError);
+
+  // Um evento por entrada na vista com dados prontos; de novo ao trocar o membro.
+  // A página continua montada ao trocar de aba, então sair da fila zera o ref:
+  // voltar para a fila conta como uma nova abertura.
+  const filaOpenedFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (!filaView) {
+      filaOpenedFor.current = null;
+      return;
+    }
+    if (filaLoading || filaError || filaMembroId == null) return;
+    if (filaOpenedFor.current === filaMembroId) return;
+    filaOpenedFor.current = filaMembroId;
+    captureEvent('minha_fila_opened', {
+      membro_is_self: filaMembroId === currentMembroId,
+      total: fila.counts.total,
+      atrasados: fila.counts.atrasados,
+      chegando: fila.chegando.length,
+    });
+  }, [filaView, filaLoading, filaError, filaMembroId, currentMembroId, fila]);
 
   // Posts-mode filtering: busca / cliente / status / tipo aplicam ao post; etapa,
   // responsável e prazo aplicam à etapa em que ele está -- a do fluxo para um post
@@ -1372,6 +1448,23 @@ export default function EntregasPage() {
             setDrawerInitialPostId(null);
             setStandalonePostId(postId);
           }}
+        />
+      )}
+      {activeView === 'fila' && (
+        <MinhaFilaView
+          // Trocar de membro remonta a vista: expandido/recolhido não vaza
+          // da fila de uma pessoa para a de outra.
+          key={filaMembroId ?? 'none'}
+          fila={fila}
+          membros={membros}
+          membroId={filaMembroId}
+          currentMembroId={currentMembroId}
+          registry={registry}
+          isLoading={filaLoading}
+          isError={filaError}
+          onMembroChange={setFilaMembro}
+          onPostClick={handlePostClick}
+          onFluxoClick={handleFluxoClick}
         />
       )}
 

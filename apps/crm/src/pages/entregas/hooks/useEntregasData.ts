@@ -521,8 +521,11 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
   const isFetching = fetchingWf || etapasQuery.isFetching || vigenteQuery.isFetching;
 
   /** Erro em qualquer dependência obrigatória da fila (spec Minha fila § Estados).
-   *  Só a vista fila lê isto; as demais vistas mantêm o comportamento atual. */
-  const isError = wfQuery.isError || etapasQuery.isError || vigenteQuery.isError;
+   *  Só a vista fila lê isto; as demais vistas mantêm o comportamento atual.
+   *  `isLoadingError` = erro sem dados: um refetch em background que falha com
+   *  cache presente não derruba a fila que já está na tela. */
+  const isError =
+    wfQuery.isLoadingError || etapasQuery.isLoadingError || vigenteQuery.isLoadingError;
 
   // Exibição = flag OU existência de processo. A flag crua fica para as
   // affordances de criação (Aplicar processo, Manter etapas, Sem processo).

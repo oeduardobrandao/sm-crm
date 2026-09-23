@@ -44,4 +44,19 @@ describe('useActivePosts', () => {
     await waitFor(() => expect(result.current.posts).toHaveLength(1));
     expect(result.current.isError).toBe(false);
   });
+
+  it('keeps isError false and the cached posts when a background refetch fails', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const w = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+    store.getActivePosts.mockResolvedValueOnce([{ id: 1, status: 'rascunho', scheduled_at: null }]);
+    const { result } = renderHook(() => useActivePosts(true), { wrapper: w });
+    await waitFor(() => expect(result.current.posts).toHaveLength(1));
+
+    store.getActivePosts.mockRejectedValueOnce(new Error('boom'));
+    await client.refetchQueries({ queryKey: ['active-posts'] });
+    await waitFor(() => expect(client.getQueryState(['active-posts'])?.status).toBe('error'));
+    expect(result.current.isError).toBe(false);
+    expect(result.current.posts).toHaveLength(1);
+  });
 });

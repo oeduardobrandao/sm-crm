@@ -5,9 +5,11 @@ import { useAuth } from '@/context/AuthContext';
 /**
  * Resolves the membro row linked to the logged-in user via membros.crm_user_id.
  * Returns null when the user has no linked membro (an admin links it in Equipe).
- * `isSuccess`/`isError` are the ['membros'] query's own flags: "no membro" only
- * means something once `isSuccess` is true (Minha fila reads them to know when
- * a `membro=<id>` deep link can be validated against the list).
+ * `isSuccess` is the ['membros'] query's own flag: "no membro" only means
+ * something once it is true (Minha fila reads it to know when a `membro=<id>`
+ * deep link can be validated against the list). `isError` is TanStack's
+ * `isLoadingError`: an error with NO cached list. A failed background refetch
+ * keeps the cached list usable instead of flipping consumers to an error state.
  */
 export function useCurrentMembro(): {
   membro: Membro | null;
@@ -19,7 +21,7 @@ export function useCurrentMembro(): {
   const {
     data: membros,
     isLoading,
-    isError,
+    isLoadingError: isError,
     isSuccess,
   } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
   const membro = user ? ((membros ?? []).find((m) => m.crm_user_id === user.id) ?? null) : null;
