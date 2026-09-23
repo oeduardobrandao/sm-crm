@@ -86,7 +86,7 @@ Chegando
   "Individual · <etapa>" das Publicações, `EntregasPage.tsx:893-894`).
 - Tag `responsável pelo post` (pill neutra, `var(--text-muted)`) quando a linha entrou
   pela regra de responsável do post e não pela etapa.
-- Chegando: lista plana abaixo das seções, sem agrupamento e sem card de destaque.
+- Chegando: abaixo das seções, sem card de destaque, agrupado por fluxo como definido em § Chegando (única fonte desse contrato).
 
 ### Responsivo
 
@@ -274,13 +274,13 @@ fila (regras 2/3) e os `agendado`/`postado`.
 - Linha por post: título · `Cliente · Fluxo` (ou `Cliente · Individual`) · `agora em
   {etapa} ({responsável atual})` · `chega ~{formatEtapaDeadlineDay(prazoDate atual)}` ou
   `sem previsão` quando `prazoDate == null`.
-- Ordem: `scheduled_at` asc, nulls por último, desempate por `id`.
+- Ordem (decidido com o usuário em 2026-09-23): `scheduled_at` asc; sem `scheduled_at`, cai para `chegaDate` asc; itens sem nenhum dos dois por último; desempate por `id`. Chave de ordenação = `scheduled_at` e depois `chegaDate`, ambos nulls-last. Assim a urgência de publicação manda, e itens sem data de publicação ainda seguem a ordem de chegada.
 - **Agrupado por fluxo**, como as seções: a etapa de um fluxo é única para todos os seus
   posts (Lacunas), então um fluxo em Copy com 12 posts cuja próxima etapa é Design poria
   12 linhas na Chegando do designer. Grupo de fluxo = uma linha de cabeçalho (`Cliente ·
   Fluxo · agora em {etapa} ({responsável}) · chega ~{data}` + contagem), colapsada por
   padrão, expandível para as linhas de post. Avulsos ficam fora de grupo. Ordem dos grupos:
-  menor `scheduled_at` dos filhos. `ChegandoItem` ganha `card` (já previsto) e a vista
+  o primeiro filho pela mesma chave (os filhos de um fluxo compartilham `chegaDate`). `ChegandoItem` ganha `card` (já previsto) e a vista
   agrupa por `card.workflow.id`; o builder devolve a lista plana ordenada, o agrupamento é
   da vista (mesma divisão de responsabilidade das seções).
 
@@ -553,7 +553,7 @@ Vitest, padrões de `pages/entregas/__tests__/*.test.ts` (fixtures inline como
   = 1); sem `scheduled_at`; sem `prazoDate`; fallback por `scheduled_at` omite o chip.
 - chegando: próxima etapa do fluxo minha; step `pendente` seguinte minha; step `ignorado`
   depois da ativa (fixture artificial) é pulada; post já na fila não entra; agendado não
-  entra; `chegaDate` null → `sem previsão`; ordem por `scheduled_at`.
+  entra; `chegaDate` null → `sem previsão`; ordem por `scheduled_at` com fallback `chegaDate` (item sem publicação e com `chegaDate` vem antes de item sem nenhum dos dois; sem publicação vem depois de com publicação).
 - chip de prazo: `prazoDate` null com `deadline.diasRestantes = 5` (etapa não iniciada)
   não produz chip; idem com o fallback zerado de processo.
 
@@ -666,8 +666,8 @@ inglês é tradução direta; o produto é PT-BR).
 1. `aprovado_cliente` **fica** na fila.
 2. Tag `responsável pelo post` **só** nas linhas de origem `responsavel`; não em linhas de etapa.
 3. Sem membro vinculado, o teaser mostra um card "vincule seu usuário" para todos os papéis.
+4. Chegando ordena por `scheduled_at`, com `chegaDate` como fallback.
 
 ## Perguntas abertas
 
-1. Chegando com `scheduled_at` vazio em todos os itens vira uma lista "sem ordem"; vale
-   ordenar por `chegaDate` antes de `scheduled_at`?
+Nenhuma.
