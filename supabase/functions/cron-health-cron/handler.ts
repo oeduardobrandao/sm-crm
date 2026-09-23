@@ -41,11 +41,17 @@ export function isTransientStartFailure(firstLine: string): boolean {
 /** Transient failures of one job within the window at which we alert anyway. */
 export const TRANSIENT_ALERT_COUNT = 3;
 /**
- * A transient failure younger than this with no success after it is left for
- * the next tick: the job may simply not have run again yet. The 70 min window
- * minus the hourly cadence leaves room for this, so the next tick still sees it.
+ * A single transient failure with no success after it is left for the next
+ * tick until it is this old: an hourly job needs up to an hour to run again and
+ * prove it recovered. The scan window (130 min, index.ts) must stay at least
+ * this plus the monitor's hourly cadence, so the next tick still sees the run.
  */
-export const TRANSIENT_SETTLE_MS = 10 * 60_000;
+export const TRANSIENT_SETTLE_MS = 65 * 60_000;
+/**
+ * Two or more transient failures with no success after the newest alert once
+ * the newest is this old: the job had a chance to recover and did not.
+ */
+export const TRANSIENT_REPEAT_SETTLE_MS = 10 * 60_000;
 
 function firstLineOf(row: CronFailureRow): string {
   return (row.return_message ?? "cron run failed").split("\n")[0].slice(0, 500);
@@ -82,7 +88,8 @@ export interface ScanDeps {
  * report each. A real error (anything not a transient start failure) always
  * alerts, newest one first. A job whose failures are ALL transient alerts only
  * when it failed TRANSIENT_ALERT_COUNT+ times in the window, or when it has not
- * succeeded since its newest failure (a daily job that missed its only run).
+ * succeeded since its newest failure once that failure has settled (a daily
+ * job that missed its only run, or a job that keeps failing).
  * Pure except for the injected deps, so it is unit-testable without a DB.
  */
 export async function scanAndReport(
@@ -127,8 +134,9 @@ export async function scanAndReport(
           suppressed.push(jobname); // recovered on a later tick
           continue;
         }
-        if (now() - newestMs < TRANSIENT_SETTLE_MS) {
-          suppressed.push(jobname); // too early to tell; next tick decides
+        const settleMs = jobRows.length > 1 ? TRANSIENT_REPEAT_SETTLE_MS : TRANSIENT_SETTLE_MS;
+        if (now() - newestMs < settleMs) {
+          suppressed.push(jobname); // too early to tell; a later tick decides
           continue;
         }
       }

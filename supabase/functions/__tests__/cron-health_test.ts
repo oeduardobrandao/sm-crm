@@ -194,10 +194,32 @@ Deno.test("scanAndReport drops a lone connection failure the job recovered from"
 Deno.test("scanAndReport alerts when a transient failure was never followed by a success", async () => {
   // A daily job that missed its only run: there is no later tick to recover on.
   const { reported } = await scanTransient(
-    [row("billing-downgrade-cron", "connection failed", "2026-09-23T12:22:00Z")],
+    [row("billing-downgrade-cron", "connection failed", "2026-09-23T11:22:00Z")],
     {},
   );
   assertEquals(reported, ["billing-downgrade-cron"]);
+});
+
+Deno.test("scanAndReport waits an hour for an hourly job to retry before alerting", async () => {
+  // Failed at :05, monitor runs at :00 -- the job has not had its next run yet.
+  const { reported, suppressed } = await scanTransient(
+    [row("post-media-cleanup-hourly", "connection failed", "2026-09-23T12:05:00Z")],
+    { "post-media-cleanup-hourly": "2026-09-23T11:05:00Z" },
+  );
+  assertEquals(reported, []);
+  assertEquals(suppressed, ["post-media-cleanup-hourly"]);
+});
+
+Deno.test("scanAndReport alerts on two transient failures with no recovery since", async () => {
+  const { reported, reports } = await scanTransient(
+    [
+      row("post-media-cleanup-hourly", "connection failed", "2026-09-23T12:05:00Z"),
+      row("post-media-cleanup-hourly", "connection failed", "2026-09-23T11:05:00Z"),
+    ],
+    { "post-media-cleanup-hourly": "2026-09-23T10:05:00Z" },
+  );
+  assertEquals(reported, ["post-media-cleanup-hourly"]);
+  assertEquals(reports[0].start, "2026-09-23T12:05:00Z");
 });
 
 Deno.test("scanAndReport defers a fresh transient failure with no success yet", async () => {
@@ -239,7 +261,7 @@ Deno.test("scanAndReport reports a real error even when a newer transient one ex
 
 Deno.test("scanAndReport fails open when the last-success lookup throws", async () => {
   const { reported } = await scanTransient(
-    [row("instagram-publish-cron", "connection failed", "2026-09-23T12:45:00Z")],
+    [row("instagram-publish-cron", "connection failed", "2026-09-23T11:45:00Z")],
     () => Promise.reject(new Error("rpc down")),
   );
   assertEquals(reported, ["instagram-publish-cron"]);
