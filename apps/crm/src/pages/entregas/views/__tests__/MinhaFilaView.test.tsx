@@ -32,8 +32,9 @@ vi.mock('@/components/ui/select', () => ({
 import { MinhaFilaView } from '../MinhaFilaView';
 import { buildMinhaFila, EMPTY_FILA } from '../../minhaFila';
 import { buildStatusRegistry } from '../../statusRegistry';
+import { toPostEntity } from '../../boardEntity';
 import type { BoardCard } from '../../hooks/useEntregasData';
-import type { ActivePost, Membro, WorkflowEtapa } from '../../../../store';
+import type { ActivePost, Membro, PostProcessWithPost, WorkflowEtapa } from '../../../../store';
 
 const NOW = new Date(2026, 8, 23, 10, 0, 0);
 const ME = 7;
@@ -154,6 +155,61 @@ function fixture() {
   );
 }
 
+/** Processo individual de um avulso (mesmo formato usado em minhaFila.test.ts):
+ *  step ativa `ordem 0` com responsável `resp`; step seguinte com `nextResp`.
+ *  Usado para construir um item de Chegando SEM card de fluxo (avulso). */
+function processo(opts: {
+  postId: number;
+  resp: number | null;
+  nextResp?: number | null;
+}): PostProcessWithPost {
+  const step = (ordem: number, extra: Record<string, unknown>) => ({
+    id: opts.postId * 10 + ordem,
+    conta_id: 'c',
+    process_id: opts.postId,
+    ordem,
+    nome: ordem === 0 ? 'Copy' : 'Arte',
+    tipo: 'padrao',
+    responsavel_id: null,
+    prazo_dias: null,
+    tipo_prazo: null,
+    prazo_efetivo: null,
+    estado: 'pendente',
+    iniciado_em: null,
+    concluido_em: null,
+    interrompido_em: null,
+    origem_etapa_ordem: null,
+    origem_etapa_nome: null,
+    ...extra,
+  });
+  return {
+    id: opts.postId,
+    conta_id: 'c',
+    post_id: opts.postId,
+    template_id: null,
+    template_nome: null,
+    assinatura: '',
+    origem_workflow_id: null,
+    origem_descricao: null,
+    estado: 'ativo',
+    motivo_encerramento: null,
+    etapa_atual: 0,
+    modo_prazo: 'padrao',
+    board_position: 0,
+    revisao: 1,
+    created_by: null,
+    created_at: '2026-09-10T00:00:00Z',
+    updated_at: '2026-09-10T00:00:00Z',
+    concluido_em: null,
+    steps: [
+      step(0, { estado: 'ativo', responsavel_id: opts.resp }),
+      step(1, { estado: 'pendente', responsavel_id: opts.nextResp ?? null }),
+    ],
+    post: post(opts.postId, { titulo: `Post ${opts.postId}` }),
+  } as unknown as PostProcessWithPost;
+}
+const entityOf = (p: PostProcessWithPost) => toPostEntity(p, { clientes: [], membros: [] })!;
+
 function renderView(over: Partial<React.ComponentProps<typeof MinhaFilaView>> = {}) {
   const props = {
     fila: fixture(),
@@ -237,6 +293,56 @@ describe('MinhaFilaView', () => {
     fireEvent.click(head);
     expect(screen.getByText('Chegando A')).toBeInTheDocument();
     expect(screen.getByText('Chegando B')).toBeInTheDocument();
+    // Chegando B has no scheduled_at: the row falls back to the no-date label.
+    const rowB = screen.getByRole('button', { name: /Chegando B/ });
+    expect(within(rowB).getByText('sem data de publicação')).toBeInTheDocument();
+  });
+
+  it('renders a standalone (avulso) Chegando post outside any fluxo group', () => {
+    const fila = buildMinhaFila(
+      {
+        cards: [],
+        posts: [post(50, { titulo: 'Avulso chegando', scheduled_at: iso(4) })],
+        postEntities: [entityOf(processo({ postId: 50, resp: OTHER, nextResp: ME }))],
+      },
+      ME,
+      NOW,
+    );
+    const { container } = renderView({ fila });
+    const row = screen.getByRole('button', { name: /Avulso chegando/ });
+    expect(row).toHaveClass('fila-row');
+    // Standalone: its wrapper carries no .fila-group-head sibling (that class
+    // only exists for the collapsible fluxo groups).
+    expect(row.parentElement?.querySelector('.fila-group-head')).toBeNull();
+    expect(container.querySelectorAll('.fila-group-head')).toHaveLength(0);
+  });
+
+  it('shows the amber margem chip for a tight margin and the green one for a comfortable one', () => {
+    const c = card({ wf: 99, resp: ME, dataLimiteDias: 3 });
+    const fila = buildMinhaFila(
+      {
+        cards: [c],
+        posts: [
+          post(60, { workflow_id: 99, titulo: 'Margem apertada', scheduled_at: iso(4) }),
+          post(61, { workflow_id: 99, titulo: 'Margem folgada', scheduled_at: iso(8) }),
+        ],
+        postEntities: [],
+      },
+      ME,
+      NOW,
+    );
+    const { container } = renderView({ fila });
+    fireEvent.click(screen.getByRole('button', { name: /Próximos 7 dias/ }));
+    // "Margem apertada" is also the fila.top item ("Comece por aqui" card), so
+    // scope to the row inside the section (the last match in DOM order).
+    const rows = screen.getAllByRole('button', { name: /Margem apertada/ });
+    const apertada = rows[rows.length - 1];
+    expect(within(apertada).getByText('margem 1d')).toHaveClass('fila-margem--curta');
+    // "Margem folgada" publishes 5 days past the deadline: still counts as
+    // "depois" from the deadline's own bucket viewpoint is irrelevant here,
+    // what matters is the margem chip class on the row itself.
+    expect(container.querySelector('.fila-margem--ok')).not.toBeNull();
+    expect(container.querySelector('.fila-margem--ok')).toHaveTextContent('margem 5d');
   });
 
   it('changes the member through the picker; picking yourself emits null', () => {
@@ -271,5 +377,10 @@ describe('MinhaFilaView', () => {
 
     renderView({ fila: EMPTY_FILA, membroId: OTHER });
     expect(screen.getByText('Nada na fila de Bruno Lima.')).toBeInTheDocument();
+  });
+
+  it('falls back to a generic empty message when the picked membroId is not in membros', () => {
+    renderView({ fila: EMPTY_FILA, membroId: 999, currentMembroId: ME });
+    expect(screen.getByText('Nada na fila deste membro.')).toBeInTheDocument();
   });
 });

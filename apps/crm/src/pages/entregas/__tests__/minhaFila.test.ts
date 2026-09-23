@@ -151,7 +151,9 @@ function post(id: number, over: Partial<ActivePost> = {}): ActivePost {
   } as ActivePost;
 }
 
-function etapa(over: Partial<WorkflowEtapa> & { workflow_id: number; ordem: number }): WorkflowEtapa {
+function etapa(
+  over: Partial<WorkflowEtapa> & { workflow_id: number; ordem: number },
+): WorkflowEtapa {
   return {
     id: over.workflow_id * 100 + over.ordem,
     nome: `Etapa ${over.ordem}`,
@@ -368,7 +370,12 @@ describe('buildMinhaFila: prazo da linha', () => {
   });
 
   it('etapa de fluxo sem data (não iniciada) cai em sem_prazo mesmo com diasRestantes no fallback', () => {
-    const c = card({ wf: 1, resp: ME, dataLimiteDias: null, deadline: { ...OK, diasRestantes: 5 } });
+    const c = card({
+      wf: 1,
+      resp: ME,
+      dataLimiteDias: null,
+      deadline: { ...OK, diasRestantes: 5 },
+    });
     const fila = buildMinhaFila(
       { cards: [c], posts: [post(1, { workflow_id: 1 })], postEntities: [] },
       ME,

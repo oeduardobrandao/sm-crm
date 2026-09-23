@@ -13639,6 +13639,10 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
+.fila-summary-danger {
+  color: var(--danger-text);
+  font-weight: 600;
+}
 .fila-note {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -13801,6 +13805,16 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
 .fila-margem--ok {
   background: rgba(62, 207, 142, 0.18);
   color: var(--text-main);
+}
+/* .fila-group tem overflow: hidden (recorta o cabeçalho arredondado), o que
+   também recorta o anel de foco padrão dos botões full-width dentro dele.
+   Anel visível para dentro compensa isso sem exigir overflow visible. */
+.fila-row:focus-visible,
+.fila-group-head:focus-visible,
+.fila-section-head:focus-visible,
+.fila-top:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
 }
 /* Abaixo do breakpoint da barra de filtros (min-[901px]) a data de
    publicação e a margem descem para uma segunda linha sob o título, e o

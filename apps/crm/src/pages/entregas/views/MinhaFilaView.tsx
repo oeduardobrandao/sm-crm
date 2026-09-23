@@ -321,7 +321,7 @@ export function MinhaFilaView({
           <span className="fila-summary" data-testid="fila-summary">
             {`${total} ${total === 1 ? 'post' : 'posts'}`}
             {atrasados > 0 && (
-              <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+              <span className="fila-summary-danger">
                 {` · ${atrasados} ${atrasados === 1 ? 'atrasado' : 'atrasados'}`}
               </span>
             )}
@@ -351,7 +351,9 @@ export function MinhaFilaView({
         <p className="fila-note">
           {isSelf
             ? 'Nada na sua fila. Quando uma etapa ou um post for atribuído a você, ele aparece aqui.'
-            : `Nada na fila de ${membroNome}.`}
+            : membroNome
+              ? `Nada na fila de ${membroNome}.`
+              : 'Nada na fila deste membro.'}
         </p>
       )}
 
