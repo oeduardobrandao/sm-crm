@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 
 vi.mock('../../../../lib/supabase');
@@ -24,6 +24,13 @@ function wrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children);
+}
+
+function clientWrapper() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const Wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client }, children);
+  return { client, Wrapper };
 }
 
 const processo = {
@@ -127,5 +134,39 @@ describe('useMinhaFilaData', () => {
       wrapper: wrapper(),
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+
+  it('keeps rows and isError=false when a background refetch fails with cached data', async () => {
+    const { client, Wrapper } = clientWrapper();
+    const { result } = renderHook(() => useMinhaFilaData({ enabled: true }), {
+      wrapper: Wrapper,
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.posts).toHaveLength(1);
+    expect(result.current.isError).toBe(false);
+
+    store.getActivePosts.mockRejectedValueOnce(new Error('boom'));
+    await client.refetchQueries({ queryKey: ['active-posts'] }).catch(() => {});
+
+    // Controller decision 1: isLoadingError semantics -- an error with cached
+    // data does NOT flip isError, and the rows built from that cached data stay.
+    expect(result.current.isError).toBe(false);
+    expect(result.current.posts).toHaveLength(1);
+  });
+
+  it('reports isLoading true on a paused/offline cold start', () => {
+    onlineManager.setOnline(false);
+    try {
+      const { result } = renderHook(() => useMinhaFilaData({ enabled: true }), {
+        wrapper: wrapper(),
+      });
+      // No data, no error, and fetching is paused (not actively in flight): the
+      // OR of isPending -- gated by `enabled` -- must still report loading so a
+      // paused cold start never renders the empty/no-data state.
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.isError).toBe(false);
+    } finally {
+      onlineManager.setOnline(true);
+    }
   });
 });

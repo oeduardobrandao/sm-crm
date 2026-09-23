@@ -1,4 +1,3 @@
-import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +10,7 @@ vi.mock('../../../../context/AuthContext', () => ({ useAuth: () => ({ ...auth })
 const membroMock = vi.hoisted(() => ({
   membro: null as { id: number; nome: string } | null,
   isLoading: false,
+  isPending: false,
   isError: false,
   isSuccess: true,
 }));
@@ -103,6 +103,7 @@ describe('MinhaFilaCard', () => {
     auth.workspaceRole = 'owner';
     membroMock.membro = { id: ME, nome: 'Ana' };
     membroMock.isLoading = false;
+    membroMock.isPending = false;
     membroMock.isError = false;
     membroMock.isSuccess = true;
     dataMock.cards = [];
@@ -222,5 +223,51 @@ describe('MinhaFilaCard', () => {
     expect(
       screen.getByText('Não foi possível carregar a fila. Recarregue a página.'),
     ).toBeInTheDocument();
+  });
+
+  it('shows the spinner (not the vincule card) on a paused/offline cold start for a linked user', () => {
+    // isPending=true, isLoading=false, membro=null: mirrors TanStack's own
+    // isLoading = isPending && isFetching -- a paused query is pending but not
+    // fetching, so isLoading is false even though there is no membro yet. Reading
+    // isLoading (as round-1 code did) would wrongly fall through to "vincule seu
+    // usuário" for a user who IS linked.
+    membroMock.membro = null;
+    membroMock.isLoading = false;
+    membroMock.isPending = true;
+    renderCard();
+    expect(screen.getByText('Minha fila')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Vincule seu usuário a um membro da equipe para ver sua fila aqui.'),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('.animate-spin')).not.toBeNull();
+  });
+
+  it('shows the rows for a cached membro even after a failed background refetch', () => {
+    // isPending=false (cached data present), isError=false (isLoadingError
+    // semantics: a failed refetch with cached data is NOT isLoadingError), membro
+    // set: the card must render normally, not spin or show an error.
+    membroMock.membro = { id: ME, nome: 'Ana' };
+    membroMock.isPending = false;
+    membroMock.isError = false;
+    dataMock.cards = [fluxoCard(1)];
+    dataMock.posts = [post(1)];
+    renderCard();
+    expect(screen.getByRole('link', { name: /Post 1/ })).toBeInTheDocument();
+    expect(document.querySelector('.animate-spin')).toBeNull();
+    expect(
+      screen.queryByText('Não foi possível carregar a fila. Recarregue a página.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the error, not the spinner, when a query failed while a sibling is still loading', () => {
+    // The loading branch must not win over the error branch, or a failed query
+    // with no data alongside a paused sibling would spin the card forever.
+    dataMock.isError = true;
+    dataMock.isLoading = true;
+    renderCard();
+    expect(
+      screen.getByText('Não foi possível carregar a fila. Recarregue a página.'),
+    ).toBeInTheDocument();
+    expect(document.querySelector('.animate-spin')).toBeNull();
   });
 });

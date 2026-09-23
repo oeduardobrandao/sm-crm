@@ -37,7 +37,7 @@ export function MinhaFilaCard() {
   const { t } = useTranslation('dashboard');
   const { role, workspaceRole } = useAuth();
   const canManageTeam = (workspaceRole ?? role) !== 'agent';
-  const { membro, isLoading: membroLoading, isError: membroError } = useCurrentMembro();
+  const { membro, isPending: membroPending, isError: membroError } = useCurrentMembro();
   const membroId = membro?.id ?? null;
   const data = useMinhaFilaData({ enabled: membroId != null });
 
@@ -79,17 +79,25 @@ export function MinhaFilaCard() {
   );
 
   let body: ReactNode;
-  if (membroLoading || (membroId != null && data.isLoading)) {
-    body = (
-      <div style={{ textAlign: 'center', padding: '1.5rem' }}>
-        <Spinner size="md" />
-      </div>
-    );
-  } else if (membroError || data.isError) {
+  if (membroError || data.isError) {
+    // Checked before loading: a failed query with no cached data must win over a
+    // sibling query that is merely paused (e.g. offline), or the card would spin
+    // forever instead of surfacing the error (fix round 1, finding 2).
     body = (
       <p className="today-note">
         {t('minhaFila.erro', 'Não foi possível carregar a fila. Recarregue a página.')}
       </p>
+    );
+  } else if (membroPending || (membroId != null && data.isLoading)) {
+    // `membroPending` (isPending: no data, no error yet), NOT the derived
+    // `isLoading` (isPending && isFetching): a paused/offline cold start has
+    // isLoading=false with no membro yet, which would otherwise fall through to
+    // the no-membro branch below and wrongly show "vincule seu usuário" to a user
+    // who IS linked (fix round 1, finding 1).
+    body = (
+      <div style={{ textAlign: 'center', padding: '1.5rem' }}>
+        <Spinner size="md" />
+      </div>
     );
   } else if (membroId == null) {
     body = canManageTeam ? (

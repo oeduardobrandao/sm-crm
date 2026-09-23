@@ -49,4 +49,12 @@ describe('useCurrentMembro', () => {
     expect(result.current.isSuccess).toBe(false);
     expect(result.current.membro).toBeNull();
   });
+
+  it('reports isPending true before the query resolves and false after', async () => {
+    store.getMembros.mockResolvedValue([{ id: 7, nome: 'Eu', crm_user_id: 'user-1' }]);
+    const { result } = renderHook(() => useCurrentMembro(), { wrapper: wrapper() });
+    expect(result.current.isPending).toBe(true);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.isPending).toBe(false);
+  });
 });
