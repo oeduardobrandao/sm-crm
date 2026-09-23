@@ -51,10 +51,10 @@ export function nextDeadlineFor(step: PostProcessStep | null, now: Date): string
   return computeDeadlineDate(now.toISOString(), step.prazo_dias, step.tipo_prazo).toISOString();
 }
 
-export const SEND_TO_PORTAL_REASON =
-  'Só posts aprovados internamente podem ser enviados ao cliente.';
+export const SEND_TO_PORTAL_REASON = 'O post já está no portal, aguardando o cliente.';
 
-/** Mesma regra de sendPostsToCliente (status = aprovado_interno), para n = 1 (spec §6.2). */
+/** No processo individual o post vai ao cliente a partir de qualquer status
+ *  ainda não liberado; só não faz sentido reenviar quem já está lá. */
 export function sendToPortalDisabledReasonFor(status: string): string | undefined {
-  return status === 'aprovado_interno' ? undefined : SEND_TO_PORTAL_REASON;
+  return status === 'enviado_cliente' ? SEND_TO_PORTAL_REASON : undefined;
 }

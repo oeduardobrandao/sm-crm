@@ -1253,16 +1253,20 @@ export async function sendPostsToCliente(workflowId: number): Promise<void> {
 }
 
 /**
- * Sends ONE post to the client portal, only from aprovado_interno (mirrors
- * sendPostsToCliente's guard for the individual-process path). A zero-row
- * result means the status already moved -- treated as stale by the caller.
+ * Sends ONE post to the client portal from whatever status the caller saw
+ * (`fromStatus`), so a draft can go straight to the client. The UPDATE is
+ * conditional on that status: a zero-row result means it already moved --
+ * treated as stale by the caller.
  */
-export async function sendPostToCliente(postId: number): Promise<WorkflowPost | null> {
+export async function sendPostToCliente(
+  postId: number,
+  fromStatus: string,
+): Promise<WorkflowPost | null> {
   const { data, error } = await supabase
     .from('workflow_posts')
     .update({ status: 'enviado_cliente' })
     .eq('id', postId)
-    .eq('status', 'aprovado_interno')
+    .eq('status', fromStatus)
     .select()
     .maybeSingle();
   if (error) throw error;

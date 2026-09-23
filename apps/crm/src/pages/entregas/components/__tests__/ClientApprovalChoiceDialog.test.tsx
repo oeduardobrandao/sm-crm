@@ -47,14 +47,12 @@ function setup(extraProps: { willRearm?: boolean } = {}) {
 describe('ClientApprovalChoiceDialog', () => {
   it('renders the advance-without-changes button', () => {
     setup();
-    expect(
-      screen.getByRole('button', { name: 'Avançar etapa sem alterar posts' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Avançar sem aprovação' })).toBeInTheDocument();
   });
 
   it('fires only onAdvanceWithoutChanges when that button is clicked', () => {
     const { onAdvanceWithoutChanges, onApproveInternally, onSendToPortal } = setup();
-    fireEvent.click(screen.getByRole('button', { name: 'Avançar etapa sem alterar posts' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar sem aprovação' }));
     expect(onAdvanceWithoutChanges).toHaveBeenCalledTimes(1);
     expect(onApproveInternally).not.toHaveBeenCalled();
     expect(onSendToPortal).not.toHaveBeenCalled();
@@ -64,17 +62,17 @@ describe('ClientApprovalChoiceDialog', () => {
 describe('ClientApprovalChoiceDialog re-arm note', () => {
   it('shows the next-cycle note when willRearm', () => {
     setup({ willRearm: true });
-    expect(screen.getByText(/voltarão para rascunho/i)).toBeInTheDocument();
+    expect(screen.getByText(/voltam para rascunho/i)).toBeInTheDocument();
   });
 
   it('hides the note when willRearm is false', () => {
     setup({ willRearm: false });
-    expect(screen.queryByText(/voltarão para rascunho/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/voltam para rascunho/i)).not.toBeInTheDocument();
   });
 
   it('hides the note when willRearm is absent', () => {
     setup();
-    expect(screen.queryByText(/voltarão para rascunho/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/voltam para rascunho/i)).not.toBeInTheDocument();
   });
 
   it('post individual: cópia no singular e botão do portal desabilitado com o motivo', () => {
@@ -84,21 +82,17 @@ describe('ClientApprovalChoiceDialog re-arm note', () => {
         entityTitle="Post X"
         entityKind="post"
         willRearm
-        withoutChangesLabel="Avançar etapa sem alterar o post"
-        sendToPortalDisabledReason="Só posts aprovados internamente podem ser enviados ao cliente."
+        withoutChangesLabel="Avançar sem aprovação"
+        sendToPortalDisabledReason="O post já está no portal, aguardando o cliente."
         onApproveInternally={vi.fn()}
         onSendToPortal={vi.fn()}
         onAdvanceWithoutChanges={vi.fn()}
         onCancel={vi.fn()}
       />,
     );
-    expect(screen.getByText(/o post aprovado voltará para rascunho/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Enviar ao portal do cliente' })).toBeDisabled();
-    expect(
-      screen.getByText('Só posts aprovados internamente podem ser enviados ao cliente.'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Avançar etapa sem alterar o post' }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/o post volta para rascunho/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar para o cliente aprovar' })).toBeDisabled();
+    expect(screen.getByText('O post já está no portal, aguardando o cliente.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Avançar sem aprovação' })).toBeInTheDocument();
   });
 });

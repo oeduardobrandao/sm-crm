@@ -538,11 +538,11 @@ describe('EntregasTab', () => {
       );
     });
 
-    it('"Avançar etapa sem alterar posts" uses plain completeEtapa, passes rearm:false, and never notifies', async () => {
+    it('"Avançar sem aprovação" uses plain completeEtapa, passes rearm:false, and never notifies', async () => {
       renderTab();
       fireEvent.click(await screen.findByText('forward-card-1'));
       fireEvent.click(await screen.findByText('Avançar'));
-      fireEvent.click(await screen.findByText('Avançar etapa sem alterar posts'));
+      fireEvent.click(await screen.findByText('Avançar sem aprovação'));
       await waitFor(() => expect(mockedCompleteEtapa).toHaveBeenCalledWith(1, 11));
       expect(mockedCompleteEtapaWithRearm).not.toHaveBeenCalled();
       expect(mockedToast.info).not.toHaveBeenCalled();
@@ -552,7 +552,7 @@ describe('EntregasTab', () => {
       renderTab();
       fireEvent.click(await screen.findByText('forward-card-1'));
       fireEvent.click(await screen.findByText('Avançar'));
-      fireEvent.click(await screen.findByText('Enviar ao portal do cliente'));
+      fireEvent.click(await screen.findByText('Enviar para o cliente aprovar'));
       await waitFor(() => expect(mockedSendPostsToCliente).toHaveBeenCalledWith(1));
       expect(mockedCompleteEtapa).not.toHaveBeenCalled();
       expect(mockedCompleteEtapaWithRearm).not.toHaveBeenCalled();
@@ -565,7 +565,7 @@ describe('EntregasTab', () => {
       renderTab();
       fireEvent.click(await screen.findByText('forward-card-1'));
       fireEvent.click(await screen.findByText('Avançar'));
-      expect(await screen.findByText(/voltarão para rascunho/i)).toBeInTheDocument();
+      expect(await screen.findByText(/voltam para rascunho/i)).toBeInTheDocument();
       expect(mockedHasLaterApprovalEtapa).toHaveBeenCalledWith([approvalEtapa, nextEtapa], 11);
 
       mockedHasLaterApprovalEtapa.mockReturnValue(false);
@@ -573,7 +573,7 @@ describe('EntregasTab', () => {
       fireEvent.click(await screen.findByText('forward-card-1'));
       fireEvent.click(await screen.findByText('Avançar'));
       expect(await screen.findByText('Aprovar internamente')).toBeInTheDocument();
-      expect(screen.queryByText(/voltarão para rascunho/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/voltam para rascunho/i)).not.toBeInTheDocument();
     });
   });
 

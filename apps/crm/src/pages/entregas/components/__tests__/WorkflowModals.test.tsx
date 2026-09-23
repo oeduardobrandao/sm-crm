@@ -286,7 +286,7 @@ describe('WorkflowModals', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reverter' }));
     fireEvent.click(cancelButtons[1]);
     fireEvent.click(screen.getByRole('button', { name: 'Aprovar internamente' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar ao portal do cliente' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar para o cliente aprovar' }));
 
     expect(onConfirmRecurring).toHaveBeenCalled();
     expect(onCancelRevert).toHaveBeenCalled();
