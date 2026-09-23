@@ -123,6 +123,9 @@ seletor de membro ocupa a largura toda. Nada `position: fixed`; nada ancorado à
 | teaser.link | `Ver minha fila` |
 | teaser.empty | `Nada na sua fila.` |
 | teaser.more | `+{n} na fila` |
+| teaser.semMembro | `Vincule seu usuário a um membro da equipe para ver sua fila aqui.` |
+| teaser.abrirEquipe | `Vincular na Equipe` |
+| teaser.semMembroAgent | `Peça a um administrador para vincular seu usuário na página Equipe.` |
 
 Datas de etapa: `formatEtapaDeadlineDay` (`etapaPrazo.ts:186`, "22 set"). Datas de
 publicação: `formatPostDate` (`utils/postDate.ts:19`, "25 set · 14h"). O mockup mostrava
@@ -156,7 +159,7 @@ Um loop, nesta ordem, para o membro `me`:
    tag `responsável pelo post`).
 4. Um post entra **uma vez**: a regra 2 vence a 3 (por construção do `else`).
 
-`aprovado_cliente` continua incluído pela regra 2 (decisão atual; ver Perguntas abertas).
+`aprovado_cliente` continua incluído pela regra 2 (decidido com o usuário em 2026-09-23).
 `aprovado_interno` e `enviado_cliente` idem: se a etapa é minha, o post está comigo.
 
 ## Ordenação e agrupamento
@@ -286,8 +289,9 @@ fila (regras 2/3) e os `agendado`/`postado`.
 ### Decisão
 
 Um componente novo `MinhaFilaCard` renderizado em `pages/dashboard/DashboardPage.tsx`
-logo abaixo de `<TodayCard />`, **para todos os papéis**, que devolve `null` quando o
-usuário não tem membro vinculado (`useCurrentMembro`, `hooks/useCurrentMembro.ts:9`).
+logo abaixo de `<TodayCard />`, **para todos os papéis**. Sem membro vinculado (`useCurrentMembro`,
+`hooks/useCurrentMembro.ts:9`) ele mostra o card "vincule seu usuário" (§ Conteúdo), para
+qualquer papel.
 `AgentPendingSection` (só agents, `DashboardPage.tsx:84`) **perde** as seções "Entregas ·
 etapas" e "Entregas · posts" (`components/AgentPendingSection.tsx:251-302`) e as duas
 queries `agent-pending-etapas`/`agent-pending-posts` que as alimentam (`:148-157`); fica só
@@ -306,6 +310,12 @@ título `Minha fila`, link `Ver minha fila` → `/entregas?view=fila`, até 3 li
 (`formatEtapaPrazo` / `board-card-deadline` com `deadline-overdue|warning|ok` como
 `AgentPendingSection.tsx:200-205`) · `publica {data}`. Abaixo, `+{n} na fila` quando
 `items.length > 3`. Vazio: `Nada na sua fila.` Sem "Chegando" no teaser.
+
+**Sem membro vinculado:** mesmo invólucro, título `Minha fila`, texto `teaser.semMembro`.
+Owner/admin (`AuthContext`) veem o link `teaser.abrirEquipe` → `/equipe`; agent vê
+`teaser.semMembroAgent` (sem link, não gerencia a Equipe). O estado "sem membro" de
+`AgentPendingSection` sai, para o agent não ver o aviso duas vezes; a seção Tarefas
+simplesmente não renderiza sem membro.
 
 Cada linha é um `Link` para `/entregas?view=fila&drawer={workflow_id}&post={id}` (amarrado)
 ou `/entregas?view=fila&post={id}` (avulso), padrão de `postHref`
@@ -452,7 +462,7 @@ e nada pode entrar naquele batch).
 | `pages/entregas/etapaPrazo.ts` | Receber `dayDiff`/`startOfLocalDay` (hoje em `todayAgenda.ts:140-155`); `todayAgenda.ts` passa a importar de lá (mantendo o re-export para não quebrar `todayAgenda.test.ts`). |
 | `hooks/useCurrentMembro.ts` | Devolver também `isError` e `isSuccess` (§ Estados). |
 | `pages/dashboard/DashboardPage.tsx` | `<MinhaFilaCard />` após `<TodayCard />`. |
-| `pages/dashboard/components/AgentPendingSection.tsx` | Remover seções etapas/posts e suas queries; manter Tarefas e os estados sem membro/vazio. |
+| `pages/dashboard/components/AgentPendingSection.tsx` | Remover seções etapas/posts e suas queries e o aviso de sem membro (agora no teaser); manter Tarefas e o vazio. |
 | `packages/i18n/locales/pt/dashboard.json` e `en/dashboard.json` | Chaves `minhaFila.*` do teaser (título, link, vazio, `+{n} na fila`, `publica`). |
 | `lib/analytics.ts:9` | Dois eventos novos na união `AnalyticsEvent`. |
 
@@ -492,7 +502,7 @@ já vêm de `useEntregasData` incondicionalmente. Nenhuma query nova em Entregas
 |---|---|---|
 | Página carregando | Spinner de página já existente (`EntregasPage.tsx:978-986`) | Spinner dentro do card |
 | `active-posts` carregando | Cabeçalho + spinner inline no lugar das seções | idem |
-| Login sem membro vinculado | Seletor com placeholder `Escolha um membro`; corpo com `empty.semMembro`; ao escolher alguém, a fila dessa pessoa | Card não renderiza (`null`) |
+| Login sem membro vinculado | Seletor com placeholder `Escolha um membro`; corpo com `empty.semMembro`; ao escolher alguém, a fila dessa pessoa | Card "vincule seu usuário" (link para `/equipe` só para owner/admin) |
 | Fila vazia (próprio) | `empty.fila` | `teaser.empty` |
 | Fila vazia (outro membro) | `empty.outro` | n/a |
 | Qualquer dependência obrigatória carregando | Cabeçalho + spinner inline; **nunca** o estado vazio | Spinner no card |
@@ -570,7 +580,7 @@ seleciona o membro 12. Esse arquivo mocka `../../../store` com um objeto literal
 extração de `buildBoardCards`; um caso direto para `buildBoardCards` (fallback
 `etapas[etapa_atual]`, membro resolvido).
 
-**`pages/dashboard/components/__tests__/MinhaFilaCard.test.tsx`**: `null` sem membro;
+**`pages/dashboard/components/__tests__/MinhaFilaCard.test.tsx`**: sem membro mostra o card "vincule" (link `/equipe` para owner/admin, sem link para agent);
 3 linhas + `+n na fila`; links com `view=fila`; vazio; erro.
 **`AgentPendingSection.test.tsx`**: remover asserções das seções de etapas/posts.
 **`DashboardPage.test.tsx`**: mock de `../components/MinhaFilaCard`.
@@ -651,16 +661,13 @@ inglês é tradução direta; o produto é PT-BR).
     `revertEtapa`); de processo, com `estado === 'pendente'`.
 11. **Persistência do membro só na URL.** Sem chave nova em `entregasPrefs`.
 
+## Decisões do usuário (2026-09-23)
+
+1. `aprovado_cliente` **fica** na fila.
+2. Tag `responsável pelo post` **só** nas linhas de origem `responsavel`; não em linhas de etapa.
+3. Sem membro vinculado, o teaser mostra um card "vincule seu usuário" para todos os papéis.
+
 ## Perguntas abertas
 
-1. `aprovado_cliente` deve sair da fila? Hoje entra pela regra da etapa. Argumento para
-   sair: o post está pronto e só espera agendamento (automático ou manual). Argumento para
-   ficar: sem agendamento automático alguém ainda precisa agendar, e o fluxo pode ter
-   etapas depois da aprovação. Decisão atual: **fica**.
-2. Tag `responsável pelo post` também nas linhas de origem `etapa` quando
-   `post.responsavel_id === me`? Hoje só na origem `responsavel`. Mostrar sempre dá mais
-   informação, mas repete em quase toda linha de um designer.
-3. Owner/admin sem membro vinculado: o teaser some. Mostrar um card "vincule seu usuário"
-   para owners também, ou deixar isso só no `AgentPendingSection`?
-4. Chegando com `scheduled_at` vazio em todos os itens vira uma lista "sem ordem"; vale
+1. Chegando com `scheduled_at` vazio em todos os itens vira uma lista "sem ordem"; vale
    ordenar por `chegaDate` antes de `scheduled_at`?
