@@ -321,7 +321,7 @@ describe('buildMinhaFila: inclusão', () => {
       post(8, { responsavel_id: OTHER, status: 'rascunho' }),
     ];
     const fila = buildMinhaFila({ cards: [], posts, postEntities: [] }, ME, NOW);
-    expect(ids(fila).sort()).toEqual([1, 2, 3, 4]);
+    expect(ids(fila).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
     expect(fila.items.every((i) => i.origem === 'responsavel')).toBe(true);
   });
 
@@ -417,7 +417,7 @@ describe('buildMinhaFila: prazo da linha', () => {
     expect(fila.items[0].origem).toBe('responsavel');
     expect(fila.items[0].prazoOrigem).toBe('etapa');
     expect(fila.items[0].bucket).toBe('hoje');
-    expect(fila.sections[1].groups[0].kind).toBe('fluxo');
+    expect(fila.sections.find((s) => s.bucket === 'hoje')!.groups[0].kind).toBe('fluxo');
   });
 });
 
@@ -584,5 +584,29 @@ describe('buildMinhaFila: chegando', () => {
       NOW,
     );
     expect(fila.chegando.map((c) => c.post.id)).toEqual([5, 4, 3, 2, 1]);
+  });
+
+  it('empate em scheduled_at (mesmo valor) ainda desempata por chegaDate, não pula direto pro id', () => {
+    // Mesmo scheduled_at nos dois posts: a cadeia é incondicional
+    // (scheduled_at -> chegaDate -> id), então o chegaDate decide mesmo com
+    // scheduled_at não nulo e igual. Ids de propósito invertidos em relação
+    // à ordem esperada por chegaDate, para expor o bug que pulava o
+    // desempate por chegaDate quando scheduled_at não era null.
+    const cedo = card({ wf: 10, resp: OTHER, nextResp: ME, dataLimiteDias: 2 });
+    const tarde = card({ wf: 20, resp: OTHER, nextResp: ME, dataLimiteDias: 5 });
+    const fila = buildMinhaFila(
+      {
+        // id maior (2) chega mais cedo; id menor (1) chega mais tarde.
+        cards: [tarde, cedo],
+        posts: [
+          post(1, { workflow_id: 20, scheduled_at: iso(3) }),
+          post(2, { workflow_id: 10, scheduled_at: iso(3) }),
+        ],
+        postEntities: [],
+      },
+      ME,
+      NOW,
+    );
+    expect(fila.chegando.map((c) => c.post.id)).toEqual([2, 1]);
   });
 });

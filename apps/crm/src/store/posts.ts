@@ -18,7 +18,7 @@ import type { Workflow, WorkflowEtapa } from './workflows';
  * board would render avulsos as a segregated block at the bottom of each
  * column instead of interleaving the two kinds.
  */
-function compareScheduledAtAscNullsLast(
+export function compareScheduledAtAscNullsLast(
   a: { scheduled_at: string | null; id: number },
   b: { scheduled_at: string | null; id: number },
 ): number {

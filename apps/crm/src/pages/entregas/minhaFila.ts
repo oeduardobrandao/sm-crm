@@ -1,5 +1,5 @@
 import type { ActivePost } from '../../store';
-import { ASSIGNEE_PENDING_POST_STATUSES } from '../../store';
+import { ASSIGNEE_PENDING_POST_STATUSES, compareScheduledAtAscNullsLast } from '../../store';
 import type { BoardCard } from './hooks/useEntregasData';
 import type { PostEntity } from './boardEntity';
 import { postStageOf, type PostStage } from './postStage';
@@ -156,19 +156,10 @@ export const EMPTY_FILA: MinhaFila = {
 
 const PENDING_FOR_ASSIGNEE = ASSIGNEE_PENDING_POST_STATUSES as readonly string[];
 
-/** Mesma ordem de compareScheduledAtAscNullsLast (store/posts.ts): scheduled_at
- *  asc, nulls por último, id como desempate. */
-export function compareScheduledAt(
-  a: { scheduled_at: string | null; id: number },
-  b: { scheduled_at: string | null; id: number },
-): number {
-  if (a.scheduled_at == null && b.scheduled_at == null) return a.id - b.id;
-  if (a.scheduled_at == null) return 1;
-  if (b.scheduled_at == null) return -1;
-  if (a.scheduled_at < b.scheduled_at) return -1;
-  if (a.scheduled_at > b.scheduled_at) return 1;
-  return a.id - b.id;
-}
+/** Reexporta compareScheduledAtAscNullsLast (store/posts.ts) sob o nome que a
+ *  fila usa: scheduled_at asc, nulls por último, id como desempate. Não
+ *  duplicar a implementação -- uma única fonte para os dois módulos. */
+export const compareScheduledAt = compareScheduledAtAscNullsLast;
 
 /** Só scheduled_at, nulls por último; 0 quando iguais (ou ambos nulos). */
 function compareScheduledOnly(a: string | null, b: string | null): number {
@@ -283,16 +274,11 @@ function compareGroups(a: FilaGroup, b: FilaGroup): number {
 /** scheduled_at asc (nulls last); sem publicação nos dois, chegaDate asc
  *  (nulls last); depois id. */
 function compareChegando(a: ChegandoItem, b: ChegandoItem): number {
-  const as = a.post.scheduled_at;
-  const bs = b.post.scheduled_at;
-  if (as != null || bs != null) {
-    const c = compareScheduledOnly(as, bs);
-    if (c !== 0) return c;
-  } else {
-    const ad = a.chegaDate?.getTime() ?? Infinity;
-    const bd = b.chegaDate?.getTime() ?? Infinity;
-    if (ad !== bd) return ad - bd;
-  }
+  const bySched = compareScheduledOnly(a.post.scheduled_at, b.post.scheduled_at);
+  if (bySched !== 0) return bySched;
+  const ad = a.chegaDate?.getTime() ?? Infinity;
+  const bd = b.chegaDate?.getTime() ?? Infinity;
+  if (ad !== bd) return ad - bd;
   return a.post.id - b.post.id;
 }
 
