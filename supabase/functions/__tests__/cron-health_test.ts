@@ -261,7 +261,7 @@ Deno.test("scanAndReport reports a real error even when a newer transient one ex
 
 Deno.test("scanAndReport fails open when the last-success lookup throws", async () => {
   const { reported } = await scanTransient(
-    [row("instagram-publish-cron", "connection failed", "2026-09-23T11:45:00Z")],
+    [row("instagram-publish-cron", "connection failed", "2026-09-23T12:58:00Z")],
     () => Promise.reject(new Error("rpc down")),
   );
   assertEquals(reported, ["instagram-publish-cron"]);

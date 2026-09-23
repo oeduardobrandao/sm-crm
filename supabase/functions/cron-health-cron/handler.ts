@@ -62,8 +62,8 @@ export interface ScanDeps {
   fetchFailures: () => Promise<CronFailureRow[]>;
   /**
    * Newest successful run start per job in the window. Used only to drop
-   * transient start failures the job already recovered from. Optional, and a
-   * throw is treated as "no successes known", so the monitor fails open.
+   * transient start failures the job already recovered from. Optional; a throw
+   * disables the filter for that tick, so every failure alerts (fail open).
    */
   fetchLastSuccess?: () => Promise<Map<string, string>>;
   /** Emit one alert for a failing job. */
@@ -105,14 +105,16 @@ export async function scanAndReport(
     else byJob.set(r.jobname, [r]);
   }
 
-  let lastSuccess: Map<string, string> | null = null;
+  // null = lookup failed: then nothing is suppressed and every transient
+  // failure alerts, exactly as before this filter existed (fail open).
+  let lastSuccess: Map<string, string> | null | undefined;
   const loadLastSuccess = async () => {
-    if (lastSuccess) return lastSuccess;
+    if (lastSuccess !== undefined) return lastSuccess;
     try {
       lastSuccess = deps.fetchLastSuccess ? await deps.fetchLastSuccess() : new Map();
     } catch {
       console.error("[CRON-HEALTH] last-success lookup failed");
-      lastSuccess = new Map();
+      lastSuccess = null;
     }
     return lastSuccess;
   };
@@ -127,8 +129,9 @@ export async function scanAndReport(
     let row = jobRows.find((r) => !isTransientStartFailure(firstLineOf(r)));
     if (!row) {
       const newest = jobRows[0];
-      if (jobRows.length < TRANSIENT_ALERT_COUNT) {
-        const succeededAt = (await loadLastSuccess()).get(jobname);
+      const successes = await loadLastSuccess();
+      if (successes && jobRows.length < TRANSIENT_ALERT_COUNT) {
+        const succeededAt = successes.get(jobname);
         const newestMs = Date.parse(newest.start_time);
         if (succeededAt && Date.parse(succeededAt) > newestMs) {
           suppressed.push(jobname); // recovered on a later tick
