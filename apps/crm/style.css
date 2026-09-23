@@ -13614,3 +13614,204 @@ body.landing-page:has(.lp-v2) .cookie-banner button {
 body.landing-page:has(.lp-v2) .cookie-banner button:hover {
   background: #2a2a2e;
 }
+
+/* ── Minha fila (Entregas) ───────────────────────────────────────────────── */
+.fila {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.fila-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.fila-head-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.fila-head-select {
+  min-width: 220px;
+}
+.fila-summary {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.fila-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  max-width: 60ch;
+}
+.fila-top {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--primary-color);
+  background: var(--surface-1);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.fila-top-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.fila-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.fila-section-sub {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.fila-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+}
+.fila-section-head[aria-disabled='true'] {
+  cursor: default;
+  opacity: 0.55;
+}
+.fila-section-head.is-danger {
+  color: var(--danger-text);
+}
+.fila-group {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--card-bg);
+  overflow: hidden;
+}
+.fila-group + .fila-group {
+  margin-top: 0.5rem;
+}
+.fila-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-hover);
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-main);
+  text-align: left;
+}
+.fila-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+.fila-row:last-child {
+  border-bottom: none;
+}
+.fila-row:hover {
+  background: var(--surface-hover);
+}
+.fila-row.is-top {
+  box-shadow: inset 3px 0 0 var(--primary-color);
+}
+.fila-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.fila-row-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+.fila-row-sub {
+  flex-basis: 100%;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.fila-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.fila-tag {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.fila-margem {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.fila-margem--sem {
+  background: rgba(245, 90, 66, 0.16);
+  color: var(--danger-text);
+}
+.fila-margem--curta {
+  background: rgba(245, 163, 66, 0.2);
+  color: var(--text-main);
+}
+.fila-margem--ok {
+  background: rgba(62, 207, 142, 0.18);
+  color: var(--text-main);
+}
+/* Abaixo do breakpoint da barra de filtros (min-[901px]) a data de
+   publicação e a margem descem para uma segunda linha sob o título, e o
+   seletor ocupa a largura toda. */
+@media (max-width: 900px) {
+  .fila-head-select {
+    flex-basis: 100%;
+  }
+  .fila-row-meta {
+    flex-basis: 100%;
+    white-space: normal;
+    flex-wrap: wrap;
+  }
+}
