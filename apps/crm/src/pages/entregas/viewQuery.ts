@@ -6,7 +6,7 @@ import { isStatusKeyToken } from './statusRegistry';
 import type { StatusKey } from './statusRegistry';
 import { PRAZO_PRESET_ORDER } from './etapaPrazo';
 
-export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded';
+export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded' | 'fila';
 
 /** Spec §4.1: filtro de entidade do quadro de Fluxos. `fluxos` é o default do
  *  parser/serializador para que vistas salvas antigas continuem casando por
@@ -14,7 +14,7 @@ export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded';
 export type EntidadeFilter = 'todos' | 'fluxos' | 'posts';
 const ENTIDADES: readonly EntidadeFilter[] = ['todos', 'fluxos', 'posts'];
 
-const VIEWS: readonly ActiveView[] = ['kanban', 'chart', 'calendar', 'list', 'concluded'];
+const VIEWS: readonly ActiveView[] = ['kanban', 'chart', 'calendar', 'list', 'concluded', 'fila'];
 const STATUS_VALUES: readonly StatusFilter[] = ['atrasado', 'urgente', 'em_dia'];
 
 export interface EntregasViewState {
@@ -23,6 +23,10 @@ export interface EntregasViewState {
   mode: EntregasMode;
   /** Only meaningful for kanban/list in mode 'entregas'. */
   entidade: EntidadeFilter;
+  /** Only meaningful for view 'fila': the member chosen EXPLICITLY in the
+   *  picker. null = the logged-in user's own fila, which is what a URL or a
+   *  saved vista without `membro=` means for whoever opens it. */
+  filaMembro: number | null;
   filters: FilterState;
 }
 
@@ -39,6 +43,7 @@ export function serializeEntregasQuery(state: EntregasViewState): string {
   if (state.view !== 'kanban') p.set('view', state.view);
   if (state.mode !== 'entregas') p.set('mode', state.mode);
   if (state.entidade !== 'fluxos') p.set('entidade', state.entidade);
+  if (state.view === 'fila' && state.filaMembro != null) p.set('membro', String(state.filaMembro));
 
   const f = state.filters;
   if (f.filterSearch) p.set('q', f.filterSearch);
@@ -68,6 +73,10 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
   const rawEntidade = p.get('entidade') as EntidadeFilter | null;
   const entidade: EntidadeFilter =
     rawEntidade && ENTIDADES.includes(rawEntidade) ? rawEntidade : 'fluxos';
+
+  const rawMembro = p.get('membro');
+  const parsedMembro = rawMembro ? parseInt(rawMembro, 10) : NaN;
+  const filaMembro = view === 'fila' && !isNaN(parsedMembro) ? parsedMembro : null;
 
   const nums = (key: string) =>
     p
@@ -99,5 +108,5 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
     filterPrazoTo: day('ate'),
   };
 
-  return { view, mode, entidade, filters };
+  return { view, mode, entidade, filaMembro, filters };
 }

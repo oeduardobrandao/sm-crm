@@ -14,6 +14,7 @@ describe('viewQuery', () => {
         view: 'kanban',
         mode: 'entregas',
         entidade: 'fluxos',
+        filaMembro: null,
         filters: EMPTY_FILTERS,
       }),
     ).toBe('');
@@ -24,6 +25,7 @@ describe('viewQuery', () => {
       view: 'list' as const,
       mode: 'publicacoes' as const,
       entidade: 'fluxos' as const,
+      filaMembro: null,
       filters: {
         ...EMPTY_FILTERS,
         filterSearch: 'post de julho',
@@ -62,6 +64,7 @@ describe('viewQuery', () => {
       view: 'kanban' as const,
       mode: 'publicacoes' as const,
       entidade: 'fluxos' as const,
+      filaMembro: null,
       filters: {
         ...EMPTY_FILTERS,
         filterPostStatus: ['revisao_interna' as const, customStatusKey],
@@ -106,5 +109,46 @@ describe('viewQuery', () => {
       expect(serializeEntregasQuery({ ...base, entidade: 'todos' })).toBe('entidade=todos');
       expect(serializeEntregasQuery({ ...base, entidade: 'posts' })).toBe('entidade=posts');
     });
+  });
+
+  it('round-trips view=fila with an explicit membro', () => {
+    const state = {
+      view: 'fila' as const,
+      mode: 'entregas' as const,
+      entidade: 'fluxos' as const,
+      filaMembro: 12,
+      filters: EMPTY_FILTERS,
+    };
+    const qs = serializeEntregasQuery(state);
+    expect(qs).toBe('view=fila&membro=12');
+    expect(parseEntregasQuery(new URLSearchParams(qs))).toEqual(state);
+  });
+
+  it('omits membro for the own fila (null) and ignores it outside view=fila', () => {
+    expect(
+      serializeEntregasQuery({
+        view: 'fila',
+        mode: 'entregas',
+        entidade: 'fluxos',
+        filaMembro: null,
+        filters: EMPTY_FILTERS,
+      }),
+    ).toBe('view=fila');
+    expect(
+      serializeEntregasQuery({
+        view: 'kanban',
+        mode: 'entregas',
+        entidade: 'fluxos',
+        filaMembro: 12,
+        filters: EMPTY_FILTERS,
+      }),
+    ).toBe('');
+    expect(parseEntregasQuery(new URLSearchParams('view=list&membro=12')).filaMembro).toBeNull();
+  });
+
+  it('drops a malformed membro', () => {
+    expect(parseEntregasQuery(new URLSearchParams('view=fila&membro=abc')).filaMembro).toBeNull();
+    expect(parseEntregasQuery(new URLSearchParams('view=fila&membro=')).filaMembro).toBeNull();
+    expect(parseEntregasQuery(new URLSearchParams('view=fila')).filaMembro).toBeNull();
   });
 });

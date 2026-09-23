@@ -432,6 +432,8 @@ export default function EntregasPage() {
   const currentQuery = serializeEntregasQuery({
     view: activeView,
     mode: activeMode,
+    // Task 6 substitui pelo estado real do seletor de membro.
+    filaMembro: null,
     entidade:
       activeMode === 'entregas' && (activeView === 'kanban' || activeView === 'list')
         ? effectiveEntidade
