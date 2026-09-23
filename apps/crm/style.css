@@ -13664,6 +13664,17 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
   font: inherit;
   cursor: pointer;
 }
+/* .fila-row-main/.fila-row-meta's flex-basis (260px / the 900px media's 100%)
+   is meant for the horizontal .fila-row layout. .fila-top stacks them in a
+   column, where flex-basis sets the main-axis size, i.e. HEIGHT: a bare
+   260px reads as a literal 260px-tall child, blowing the card up to ~340px
+   with big gaps between label/title/subtitle/meta. Reset both to their
+   natural content height here; higher specificity (child combinator, two
+   classes) beats the unscoped rules, including inside the 900px block. */
+.fila-top > .fila-row-main,
+.fila-top > .fila-row-meta {
+  flex: 0 0 auto;
+}
 .fila-top-label {
   font-size: 0.68rem;
   font-weight: 700;
