@@ -154,6 +154,25 @@ describe('useMinhaFilaData', () => {
     expect(result.current.posts).toHaveLength(1);
   });
 
+  it('does not surface a cached error from a shared key while disabled', async () => {
+    // Fix round 2: an unlinked user's Dashboard mounts disabled observers on the
+    // same six keys Entregas uses. If ['active-posts'] cold-load-failed earlier
+    // (no data cached), the shared cache entry is `status: 'error'` regardless of
+    // who observes it next. A disabled observer must NOT inherit that error --
+    // isError has to stay gated by `enabled`, same as isLoading.
+    const { client, Wrapper } = clientWrapper();
+    store.getActivePosts.mockRejectedValue(new Error('boom'));
+    const seed = renderHook(() => useMinhaFilaData({ enabled: true }), { wrapper: Wrapper });
+    await waitFor(() => expect(seed.result.current.isError).toBe(true));
+    seed.unmount();
+
+    const { result } = renderHook(() => useMinhaFilaData({ enabled: false }), {
+      wrapper: Wrapper,
+    });
+    expect(result.current.isError).toBe(false);
+    expect(client.getQueryState(['active-posts'])?.status).toBe('error');
+  });
+
   it('reports isLoading true on a paused/offline cold start', () => {
     onlineManager.setOnline(false);
     try {

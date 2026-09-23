@@ -270,4 +270,36 @@ describe('MinhaFilaCard', () => {
     ).toBeInTheDocument();
     expect(document.querySelector('.animate-spin')).toBeNull();
   });
+
+  it('shows the vincule card, not the error, when no membro is linked but a stale data-level error survives', () => {
+    // Fix round 2: even though the real useMinhaFilaData now gates isError by
+    // `enabled` (so this shouldn't happen end-to-end), the card itself also
+    // gates `data.isError` on `membroId != null` -- symmetric with how it
+    // already gates `data.isLoading` -- as defense in depth against a stale
+    // error surviving on a shared cache key while unlinked.
+    membroMock.membro = null;
+    dataMock.isError = true;
+    renderCard();
+    expect(
+      screen.getByText('Vincule seu usuário a um membro da equipe para ver sua fila aqui.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Não foi possível carregar a fila. Recarregue a página.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('still shows the error for a membro-level error even with no membro resolved yet', () => {
+    // useCurrentMembro().isError is never gated: without the membros list we
+    // can't know whether the user is linked at all, so it must always win over
+    // the no-membro branch.
+    membroMock.membro = null;
+    membroMock.isError = true;
+    renderCard();
+    expect(
+      screen.getByText('Não foi possível carregar a fila. Recarregue a página.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Vincule seu usuário a um membro da equipe para ver sua fila aqui.'),
+    ).not.toBeInTheDocument();
+  });
 });

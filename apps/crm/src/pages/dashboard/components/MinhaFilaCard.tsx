@@ -79,7 +79,16 @@ export function MinhaFilaCard() {
   );
 
   let body: ReactNode;
-  if (membroError || data.isError) {
+  if (membroError || (membroId != null && data.isError)) {
+    // `data.isError` is gated by `membroId != null`, same as `data.isLoading`
+    // below (fix round 2): the six queries are `enabled: membroId != null`, but
+    // they read a SHARED cache keyed by e.g. ['active-posts'] -- a disabled
+    // observer still reflects an error left over on that key from an earlier
+    // load (Entregas, or a previous linked session). Without this gate, an
+    // unlinked user would see "couldn't load" instead of "vincule seu usuário".
+    // `membroError` is NOT gated: without the membros list we can't tell if the
+    // user is linked at all, so it always wins.
+    //
     // Checked before loading: a failed query with no cached data must win over a
     // sibling query that is merely paused (e.g. offline), or the card would spin
     // forever instead of surfacing the error (fix round 1, finding 2).

@@ -44,7 +44,12 @@ export interface MinhaFilaData {
   /**
    * Controller decision 1: OR of the six queries' `isLoadingError` (failed
    * AND no cached data). A failed background refetch that still has cached
-   * data does NOT flip this to true, so the rows stay up.
+   * data does NOT flip this to true, so the rows stay up. Gated by `enabled`
+   * (fix round 2): a disabled observer still reflects the SHARED cache state
+   * for its key, so an unlinked user whose Dashboard mounts disabled queries
+   * would otherwise inherit an `isLoadingError` left over from an earlier
+   * failed load of a shared key (e.g. `['active-posts']` from Entregas) and
+   * see "couldn't load" instead of the no-membro guidance.
    */
   isError: boolean;
 }
@@ -107,6 +112,6 @@ export function useMinhaFilaData({ enabled }: UseMinhaFilaDataOptions): MinhaFil
     posts: posts.data ?? EMPTY_POSTS,
     postEntities,
     isLoading: enabled && all.some((q) => q.isPending),
-    isError: all.some((q) => q.isLoadingError),
+    isError: enabled && all.some((q) => q.isLoadingError),
   };
 }
