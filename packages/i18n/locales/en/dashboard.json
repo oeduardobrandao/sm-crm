@@ -5,10 +5,19 @@
     "semVinculo": "Your user is not linked to a team member yet. Ask an administrator to link it on the Team page.",
     "vazio": "All clear! Nothing pending assigned to you.",
     "tarefas": "Tasks",
-    "etapas": "Deliveries · steps",
-    "posts": "Deliveries · posts",
-    "verTodas": "See all",
-    "verEntregas": "See deliveries"
+    "verTodas": "See all"
+  },
+  "minhaFila": {
+    "title": "My queue",
+    "verFila": "See my queue",
+    "vazio": "Nothing in your queue.",
+    "mais": "+{{n}} in the queue",
+    "publica": "publishes {{data}}",
+    "semData": "no publish date",
+    "erro": "Could not load your queue. Reload the page.",
+    "semMembro": "Link your user to a team member to see your queue here.",
+    "abrirEquipe": "Link on the Team page",
+    "semMembroAgent": "Ask an administrator to link your user on the Team page."
   },
   "cards": {
     "today": "Today",
