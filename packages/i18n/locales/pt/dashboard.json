@@ -3,7 +3,7 @@
   "agentPending": {
     "title": "Minhas pendências",
     "semVinculo": "Seu usuário ainda não está vinculado a um membro da equipe. Peça a um administrador para fazer o vínculo na página Equipe.",
-    "vazio": "Tudo em dia! Nenhuma pendência atribuída a você.",
+    "vazio": "Nenhuma tarefa atribuída a você.",
     "tarefas": "Tarefas",
     "verTodas": "Ver todas"
   },

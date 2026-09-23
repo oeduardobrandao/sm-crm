@@ -109,8 +109,6 @@ describe('AgentPendingSection', () => {
   it('shows the empty copy when there are no open tasks', async () => {
     getMembrosMock.mockResolvedValue([{ id: 7, nome: 'Ana', crm_user_id: 'user-1' }]);
     renderSection();
-    expect(
-      await screen.findByText('Tudo em dia! Nenhuma pendência atribuída a você.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Nenhuma tarefa atribuída a você.')).toBeInTheDocument();
   });
 });

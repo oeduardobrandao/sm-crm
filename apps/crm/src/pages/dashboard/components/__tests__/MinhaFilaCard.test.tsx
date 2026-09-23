@@ -4,7 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../../lib/supabase');
 
-const auth = vi.hoisted(() => ({ role: 'owner', workspaceRole: 'owner' as string | null }));
+const auth = vi.hoisted(() => ({
+  role: 'owner',
+  workspaceRole: 'owner' as string | null,
+  membershipResolved: true as boolean | 'error',
+}));
 vi.mock('../../../../context/AuthContext', () => ({ useAuth: () => ({ ...auth }) }));
 
 const membroMock = vi.hoisted(() => ({
@@ -101,6 +105,7 @@ describe('MinhaFilaCard', () => {
   beforeEach(() => {
     auth.role = 'owner';
     auth.workspaceRole = 'owner';
+    auth.membershipResolved = true;
     membroMock.membro = { id: ME, nome: 'Ana' };
     membroMock.isLoading = false;
     membroMock.isPending = false;

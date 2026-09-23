@@ -35,8 +35,13 @@ function itemHref(item: FilaItem): string {
  */
 export function MinhaFilaCard() {
   const { t } = useTranslation('dashboard');
-  const { role, workspaceRole } = useAuth();
-  const canManageTeam = (workspaceRole ?? role) !== 'agent';
+  const { workspaceRole, membershipResolved } = useAuth();
+  // Só decide com o papel do workspace já resolvido: `workspaceRole` cai para
+  // `null` até a consulta de membership terminar, e um agente ainda não
+  // vinculado não pode ver o link para /equipe por um instante com base no
+  // fallback do `role` do profile (achado do review: falso-positivo de acesso).
+  const canManageTeam =
+    membershipResolved === true && (workspaceRole === 'owner' || workspaceRole === 'admin');
   const { membro, isPending: membroPending, isError: membroError } = useCurrentMembro();
   const membroId = membro?.id ?? null;
   const data = useMinhaFilaData({ enabled: membroId != null });

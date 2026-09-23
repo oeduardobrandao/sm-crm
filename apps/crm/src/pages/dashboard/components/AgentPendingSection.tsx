@@ -173,7 +173,7 @@ export function AgentPendingSection() {
 
       {nothingPending && (
         <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-          {t('agentPending.vazio', 'Tudo em dia! Nenhuma pendência atribuída a você.')}
+          {t('agentPending.vazio', 'Nenhuma tarefa atribuída a você.')}
         </p>
       )}
 

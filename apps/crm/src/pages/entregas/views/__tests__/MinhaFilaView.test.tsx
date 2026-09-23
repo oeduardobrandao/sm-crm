@@ -263,6 +263,31 @@ describe('MinhaFilaView', () => {
     expect(within(top).getByText('sem margem')).toBeInTheDocument();
   });
 
+  it('omits the "etapa vence" label on "Comece por aqui" when the prazo comes from the publish-date fallback', () => {
+    // Avulso post directly assigned (no fluxo etapa): prazoOrigem is
+    // 'publicacao', so there is no etapa deadline to show.
+    const fila = buildMinhaFila(
+      {
+        cards: [],
+        posts: [
+          post(70, {
+            titulo: 'Avulso sem etapa',
+            responsavel_id: ME,
+            scheduled_at: iso(-1, 8),
+          }),
+        ],
+        postEntities: [],
+      },
+      ME,
+      NOW,
+    );
+    expect(fila.top?.prazoOrigem).toBe('publicacao');
+    renderView({ fila });
+    const top = screen.getByTestId('fila-top');
+    expect(within(top).getByText('Avulso sem etapa')).toBeInTheDocument();
+    expect(within(top).queryByText(/etapa vence/)).not.toBeInTheDocument();
+  });
+
   it('groups fluxo posts under a clickable header and marks assignee rows', () => {
     const { props } = renderView();
     // The "Comece por aqui" card carries the same context string; the group

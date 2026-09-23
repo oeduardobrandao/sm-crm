@@ -93,6 +93,19 @@ export function computeDeadlineDate(
 }
 
 /**
+ * Parses a 'YYYY-MM-DD' data_limite into a local-midnight Date, same approach
+ * as etapaDeadlineDateOf (pages/entregas/etapaPrazo.ts) and getDeadlineInfo
+ * (store/workflows.ts): `new Date('YYYY-MM-DD')` parses as UTC midnight,
+ * which in a UTC-negative zone like Brazil shifts the date back a day.
+ * Not imported from etapaPrazo.ts to avoid a circular dependency (that module
+ * imports computeDeadlineDate from this one).
+ */
+function dataLimiteToLocalDate(dataLimite: string): Date | null {
+  const [y, m, d] = dataLimite.slice(0, 10).split('-').map(Number);
+  return y && m && d ? new Date(y, m - 1, d) : null;
+}
+
+/**
  * Computes the estimated workflow end date by chaining all remaining etapas
  * from the active one through the last, starting from the active etapa's iniciado_em.
  * When steps have data_limite, uses the last step's data_limite as the end date.
@@ -107,7 +120,8 @@ export function computeWorkflowDeadlineDate(
   // If any steps have data_limite set, use the last step's data_limite
   const lastWithLimit = [...sorted].reverse().find((e) => e.data_limite);
   if (lastWithLimit?.data_limite) {
-    return new Date(lastWithLimit.data_limite);
+    const local = dataLimiteToLocalDate(lastWithLimit.data_limite);
+    if (local) return local;
   }
 
   if (!activeEtapa.iniciado_em) return null;

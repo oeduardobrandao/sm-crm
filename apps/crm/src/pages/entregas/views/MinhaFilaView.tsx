@@ -376,7 +376,7 @@ export function MinhaFilaView({
             </span>
           </span>
           <span className="fila-row-meta">
-            {fila.top.prazoDate && (
+            {fila.top.prazoDate && fila.top.prazoOrigem === 'etapa' && (
               <span>etapa vence {formatEtapaDeadlineDay(fila.top.prazoDate)}</span>
             )}
             <PrazoChip prazoDate={fila.top.prazoDate} deadline={fila.top.deadline} />

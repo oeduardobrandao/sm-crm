@@ -216,6 +216,32 @@ describe('computeWorkflowDeadlineDate', () => {
     const deadline = computeWorkflowDeadlineDate(shuffled, active);
     expect(deadline?.toISOString().slice(0, 10)).toBe('2026-04-13');
   });
+
+  it('parses a step data_limite as a LOCAL date, not UTC (timezone regression)', () => {
+    // Same bug already fixed in getDeadlineInfo (store/workflows.ts): `new
+    // Date('YYYY-MM-DD')` parses as UTC midnight, which in a UTC-negative zone
+    // like Brazil (America/Fortaleza, UTC-3) lands the local date one day
+    // EARLIER than the calendar day data_limite names.
+    const originalTZ = process.env.TZ;
+    process.env.TZ = 'America/Fortaleza';
+    try {
+      const active = makeEtapa({
+        id: 1,
+        ordem: 0,
+        status: 'ativo',
+        iniciado_em: '2026-04-10T00:00:00Z',
+        data_limite: '2026-04-15',
+      });
+      const deadline = computeWorkflowDeadlineDate([active], active);
+      // Under UTC parsing this would come back as 2026-04-14 local (21:00 on
+      // the 14th, UTC-3) instead of the 15th data_limite actually names.
+      expect(deadline?.getFullYear()).toBe(2026);
+      expect(deadline?.getMonth()).toBe(3);
+      expect(deadline?.getDate()).toBe(15);
+    } finally {
+      process.env.TZ = originalTZ;
+    }
+  });
 });
 
 // ── Hook integration test ───────────────────────────────────────────────────

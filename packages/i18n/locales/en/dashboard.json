@@ -3,7 +3,7 @@
   "agentPending": {
     "title": "My pending work",
     "semVinculo": "Your user is not linked to a team member yet. Ask an administrator to link it on the Team page.",
-    "vazio": "All clear! Nothing pending assigned to you.",
+    "vazio": "No tasks assigned to you.",
     "tarefas": "Tasks",
     "verTodas": "See all"
   },
