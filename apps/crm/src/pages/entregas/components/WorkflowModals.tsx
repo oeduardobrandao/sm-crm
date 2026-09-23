@@ -1059,8 +1059,8 @@ export function ClientApprovalChoiceDialog({
             description={
               sendToPortalDisabledReason ??
               (isPost
-                ? 'O post aparece no portal aguardando aprovação. A etapa não avança.'
-                : 'Os posts aparecem no portal aguardando aprovação. A etapa não avança.')
+                ? 'O status muda para "Enviado ao cliente" e o post aparece no portal para aprovação. A etapa não avança.'
+                : 'Os posts aprovados internamente vão para o portal, aguardando o cliente. A etapa não avança.')
             }
             onClick={onSendToPortal}
             disabled={!!sendToPortalDisabledReason}

@@ -141,17 +141,28 @@ describe('usePostProcessCommands', () => {
     });
   });
 
-  it('"Enviar ao portal" desabilitado fora de aprovado_interno; habilitado faz o UPDATE direto e NÃO transiciona', async () => {
-    const t = target([step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')], 'rascunho');
+  it('"Enviar ao portal" desabilitado só quando o post já está com o cliente', async () => {
+    const t = target(
+      [step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')],
+      'enviado_cliente',
+    );
     renderHarness(t);
     fireEvent.click(screen.getByText('avancar'));
     fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
     expect(
       await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }),
     ).toBeDisabled();
-    expect(
-      screen.getByText('Só posts aprovados internamente podem ser enviados ao cliente.'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('O post já está no portal, aguardando o cliente.')).toBeInTheDocument();
+  });
+
+  it('"Enviar ao portal" com rascunho manda direto ao cliente, condicionado ao status visto, sem transicionar', async () => {
+    const t = target([step(1, 'ativo', 'aprovacao_cliente'), step(2, 'pendente')], 'rascunho');
+    renderHarness(t);
+    fireEvent.click(screen.getByText('avancar'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
+    await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77, 'rascunho'));
+    expect(store.transitionPostProcess).not.toHaveBeenCalled();
   });
   it('"Enviar ao portal" com aprovado_interno', async () => {
     const t = target(
@@ -162,7 +173,9 @@ describe('usePostProcessCommands', () => {
     fireEvent.click(screen.getByText('avancar'));
     fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
-    await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77));
+    await waitFor(() =>
+      expect(store.sendPostToCliente).toHaveBeenCalledWith(77, 'aprovado_interno'),
+    );
     expect(store.transitionPostProcess).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith('Post enviado ao portal do cliente.'),
@@ -171,7 +184,7 @@ describe('usePostProcessCommands', () => {
   });
 
   // Standalone fix: sendPostToCliente faz um UPDATE condicional
-  // (.eq('status', 'aprovado_interno')) e retorna null quando zero linhas
+  // (.eq('status', <status visto>)) e retorna null quando zero linhas
   // batem -- o status mudou em outro lugar entre a UI habilitar o botão
   // (snapshot) e o clique de fato (edição em outra aba, agendamento
   // publicado etc.). sendToPortal precisa tratar esse null como o mesmo
@@ -187,7 +200,9 @@ describe('usePostProcessCommands', () => {
     fireEvent.click(screen.getByText('avancar'));
     fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
-    await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77));
+    await waitFor(() =>
+      expect(store.sendPostToCliente).toHaveBeenCalledWith(77, 'aprovado_interno'),
+    );
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
         'O status do post mudou em outro lugar. Recarregue e tente de novo.',
@@ -373,7 +388,9 @@ describe('usePostProcessCommands', () => {
       fireEvent.click(screen.getByText('avancar'));
       fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
-      await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77));
+      await waitFor(() =>
+        expect(store.sendPostToCliente).toHaveBeenCalledWith(77, 'aprovado_interno'),
+      );
       await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
       expect(store.transitionPostProcess).not.toHaveBeenCalled();
     });

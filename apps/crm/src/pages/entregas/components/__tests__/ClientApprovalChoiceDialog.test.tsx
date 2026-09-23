@@ -83,7 +83,7 @@ describe('ClientApprovalChoiceDialog re-arm note', () => {
         entityKind="post"
         willRearm
         withoutChangesLabel="Avançar sem aprovação"
-        sendToPortalDisabledReason="Só posts aprovados internamente podem ser enviados ao cliente."
+        sendToPortalDisabledReason="O post já está no portal, aguardando o cliente."
         onApproveInternally={vi.fn()}
         onSendToPortal={vi.fn()}
         onAdvanceWithoutChanges={vi.fn()}
@@ -92,9 +92,7 @@ describe('ClientApprovalChoiceDialog re-arm note', () => {
     );
     expect(screen.getByText(/o post volta para rascunho/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enviar para o cliente aprovar' })).toBeDisabled();
-    expect(
-      screen.getByText('Só posts aprovados internamente podem ser enviados ao cliente.'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('O post já está no portal, aguardando o cliente.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Avançar sem aprovação' })).toBeInTheDocument();
   });
 });

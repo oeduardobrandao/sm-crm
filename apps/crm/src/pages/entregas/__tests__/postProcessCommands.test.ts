@@ -100,6 +100,7 @@ describe('postProcessCommands helpers', () => {
   });
   it('sendToPortalDisabledReasonFor', () => {
     expect(sendToPortalDisabledReasonFor('aprovado_interno')).toBeUndefined();
-    expect(sendToPortalDisabledReasonFor('rascunho')).toBe(SEND_TO_PORTAL_REASON);
+    expect(sendToPortalDisabledReasonFor('rascunho')).toBeUndefined();
+    expect(sendToPortalDisabledReasonFor('enviado_cliente')).toBe(SEND_TO_PORTAL_REASON);
   });
 });

@@ -194,8 +194,7 @@ function makePostEntity(): PostEntity {
 // Variante com uma etapa de aprovação do cliente ATIVA (ordem 1) e o post já
 // aprovado_interno -- as duas condições que fazem decideApprovalAdvance abrir
 // a escolha (ClientApprovalChoiceDialog) COM "Enviar para o cliente aprovar"
-// habilitado (sendToPortalDisabledReasonFor exige status === 'aprovado_interno'
-// exatamente). Usada só pelo teste de "Enviar ao portal" abaixo -- os demais
+// habilitado (sendToPortalDisabledReasonFor só desabilita em 'enviado_cliente'). Usada só pelo teste de "Enviar ao portal" abaixo -- os demais
 // testes deste arquivo usam STAGE_STEPS (tudo 'padrao') de propósito, para
 // nunca abrir esta escolha.
 const APPROVAL_STAGE_STEPS = [
@@ -403,7 +402,9 @@ describe('KanbanView drag de um post individual (fase 4, Task 8)', () => {
     // 3) Com o fix, "Enviar ao portal" passa por dismissChoice() (mesmo
     // caminho do Cancelar) ANTES de rodar sendToPortal -- pendingInsertRef já
     // deve estar limpo aqui, e nenhuma transição de etapa roda.
-    await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(109));
+    await waitFor(() =>
+      expect(store.sendPostToCliente).toHaveBeenCalledWith(109, 'aprovado_interno'),
+    );
     expect(store.transitionPostProcess).not.toHaveBeenCalled();
 
     // 4) Comando por BOTÃO (não-drag) no MESMO post -- nunca seta

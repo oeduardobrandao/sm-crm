@@ -209,7 +209,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
     async (t: ProcessTarget) => {
       setBusy(true);
       try {
-        const result = await sendPostToCliente(t.post.id);
+        const result = await sendPostToCliente(t.post.id, t.post.status);
         if (!result) {
           toast.error(POST_PROCESS_ERROR_MESSAGES.post_changed);
           invalidate(t);
