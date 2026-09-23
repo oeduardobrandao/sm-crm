@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addDays,
+  dayDiff,
   deadlineFromPrazoEfetivo,
   etapaDeadlineDate,
   etapaDeadlineDateOf,
@@ -7,6 +9,7 @@ import {
   matchesDeadlineFilter,
   matchesEtapaPrazo,
   sortCardsByPrazo,
+  startOfLocalDay,
 } from '../etapaPrazo';
 import type { BoardCard } from '../hooks/useEntregasData';
 
@@ -277,5 +280,27 @@ describe('matchesDeadlineFilter', () => {
         NOW,
       ),
     ).toBe(true);
+  });
+});
+
+describe('day helpers', () => {
+  it('startOfLocalDay drops the time of day', () => {
+    const d = startOfLocalDay(new Date(2026, 8, 23, 23, 59, 59));
+    expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2026, 8, 23]);
+    expect([d.getHours(), d.getMinutes(), d.getSeconds()]).toEqual([0, 0, 0]);
+  });
+
+  it('dayDiff counts whole local days and ignores the hour on both sides', () => {
+    const now = new Date(2026, 8, 22, 23, 59);
+    expect(dayDiff(new Date(2026, 8, 23, 8, 0), now)).toBe(1);
+    expect(dayDiff(new Date(2026, 8, 22, 0, 1), now)).toBe(0);
+    expect(dayDiff(new Date(2026, 8, 20, 12, 0), now)).toBe(-2);
+  });
+
+  it('addDays returns a new Date and crosses month boundaries', () => {
+    const base = new Date(2026, 8, 30, 10, 0);
+    const next = addDays(base, 1);
+    expect(next).not.toBe(base);
+    expect([next.getMonth(), next.getDate()]).toEqual([9, 1]);
   });
 });

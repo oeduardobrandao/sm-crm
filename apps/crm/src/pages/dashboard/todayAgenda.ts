@@ -9,7 +9,10 @@ import type {
   WorkflowEtapa,
 } from '../../store';
 import type { FinancialAccess } from '../../lib/financialAccess';
-import { dayNum, etapaDeadlineDateOf } from '../entregas/etapaPrazo';
+import { dayDiff, dayNum, etapaDeadlineDateOf, startOfLocalDay } from '../entregas/etapaPrazo';
+
+// Re-exported: todayAgenda.test.ts and the dashboard hook import them from here.
+export { dayDiff, startOfLocalDay };
 import { STATUS_LABELS as POST_STATUS_LABELS } from '../entregas/postLabels';
 import type { ResolvablePost } from '../entregas/statusRegistry';
 import { parseDateOnly } from '../tarefas/tarefasLogic';
@@ -136,22 +139,10 @@ function addDays(d: Date, n: number): Date {
   return c;
 }
 
-/** Local start of day; used for ISO range boundaries handed to queries. */
-export function startOfLocalDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
 /** [start of today, start of today + HORIZON_DAYS + 1) as ISO strings. */
 export function agendaRangeISO(now: Date): { startISO: string; endISO: string } {
   const start = startOfLocalDay(now);
   return { startISO: start.toISOString(), endISO: addDays(start, HORIZON_DAYS + 1).toISOString() };
-}
-
-/** Whole local days from `now`'s day to `when`'s day (negative = past). */
-export function dayDiff(when: Date, now: Date): number {
-  const a = startOfLocalDay(now);
-  const b = startOfLocalDay(when);
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
 /** null when outside the horizon (further than HORIZON_DAYS ahead). */
