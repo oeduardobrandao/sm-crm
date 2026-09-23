@@ -1046,7 +1046,7 @@ export function ClientApprovalChoiceDialog({
               : 'Há outra etapa de aprovação adiante — ao concluir esta, os posts aprovados voltarão para rascunho para o próximo ciclo de aprovação.'}
           </p>
         )}
-        <DialogFooter className="flex-col gap-2 sm:flex-col">
+        <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
           <Button className="w-full" onClick={onApproveInternally}>
             Aprovar internamente
           </Button>
