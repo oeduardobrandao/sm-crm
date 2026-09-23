@@ -3113,10 +3113,16 @@ import { useStatusRegistry } from '@/hooks/useStatusRegistry';
   const filaLoading = filaView && (activePostsLoading || (!membrosReady && !membrosError));
   const filaError = filaView && (!!entregasError || activePostsError || membrosError);
 
-  // Um evento por montagem da vista com dados prontos; de novo ao trocar o membro.
+  // Um evento por entrada na vista com dados prontos; de novo ao trocar o membro.
+  // A página continua montada ao trocar de aba, então sair da fila zera o ref:
+  // voltar para a fila conta como uma nova abertura.
   const filaOpenedFor = useRef<number | null>(null);
   useEffect(() => {
-    if (!filaView || filaLoading || filaError || filaMembroId == null) return;
+    if (!filaView) {
+      filaOpenedFor.current = null;
+      return;
+    }
+    if (filaLoading || filaError || filaMembroId == null) return;
     if (filaOpenedFor.current === filaMembroId) return;
     filaOpenedFor.current = filaMembroId;
     captureEvent('minha_fila_opened', {
