@@ -28,6 +28,10 @@ export function useActivePosts(enabled: boolean) {
   return {
     posts: query.data ?? EMPTY_POSTS,
     isLoading: query.isLoading,
+    // Sem dados e sem erro ainda. Cobre o cold start pausado/offline, em que
+    // isLoading (isPending && isFetching) é false. Uma query DESLIGADA também é
+    // pending: quem lê isto precisa checar que a passou `enabled` = true.
+    isPending: query.isPending,
     // Só erro SEM dados (primeira carga falhou). Um refetch em background que
     // falha com cache presente mantém a lista na tela em vez de trocá-la pelo erro.
     isError: query.isLoadingError,

@@ -196,7 +196,7 @@ export default function EntregasPage() {
   const [filaMembro, setFilaMembro] = useState<number | null>(initialQuery.filaMembro);
   const {
     membro: currentMembro,
-    isLoading: membrosLoading,
+    isPending: membrosPending,
     isSuccess: membrosReady,
     isError: membrosError,
   } = useCurrentMembro();
@@ -756,6 +756,7 @@ export default function EntregasPage() {
   const {
     posts: activePosts,
     isLoading: activePostsLoading,
+    isPending: activePostsPending,
     isError: activePostsError,
   } = useActivePosts(postsMode || semProcessoMode || filaView);
   const semProcessoPosts = useMemo(
@@ -794,8 +795,14 @@ export default function EntregasPage() {
   // cobre workflows/etapas/processos carregando; aqui entram active-posts e
   // membros. Os três `isError` são "erro SEM dados" (isLoadingError): um
   // refetch em background que falha com cache presente mantém a fila na tela.
-  const filaLoading = filaView && (activePostsLoading || membrosLoading);
+  // Carregando = isPending (sem dados e sem erro), não isLoading: num cold start
+  // pausado/offline isLoading é false e a fila apareceria como "não vinculado"
+  // ou vazia. active-posts está habilitada sempre que filaView (useActivePosts
+  // acima), então o isPending dela aqui nunca é o de uma query desligada.
+  // Erro vence carregando: uma dependência com erro mostra o erro mesmo que
+  // outra ainda esteja pausada.
   const filaError = filaView && (entregasError || activePostsError || membrosError);
+  const filaLoading = filaView && !filaError && (activePostsPending || membrosPending);
 
   // Um evento por entrada na vista com dados prontos; de novo ao trocar o membro.
   // A página continua montada ao trocar de aba, então sair da fila zera o ref:

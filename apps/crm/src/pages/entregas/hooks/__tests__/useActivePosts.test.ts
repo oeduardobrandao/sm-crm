@@ -38,6 +38,16 @@ describe('useActivePosts', () => {
     expect(result.current.posts).toEqual([]);
   });
 
+  it('reports isPending before the first resolve and not after', async () => {
+    let resolve!: (v: unknown) => void;
+    store.getActivePosts.mockReturnValue(new Promise((r) => (resolve = r)));
+    const { result } = renderHook(() => useActivePosts(true), { wrapper: wrapper() });
+    expect(result.current.isPending).toBe(true);
+    resolve([{ id: 1, status: 'rascunho', scheduled_at: null }]);
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.posts).toHaveLength(1);
+  });
+
   it('returns the posts once resolved', async () => {
     store.getActivePosts.mockResolvedValue([{ id: 1, status: 'rascunho', scheduled_at: null }]);
     const { result } = renderHook(() => useActivePosts(true), { wrapper: wrapper() });

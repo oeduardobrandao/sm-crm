@@ -301,6 +301,7 @@ vi.mock('@/hooks/useStatusRegistry', () => ({
 const currentMembroMock = vi.hoisted(() => ({
   membro: null as { id: number; nome: string } | null,
   isLoading: false,
+  isPending: false,
   isError: false,
   isSuccess: true,
 }));
@@ -778,6 +779,7 @@ describe('EntregasPage', () => {
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
     currentMembroMock.membro = { id: 7, nome: 'Ana' };
     currentMembroMock.isLoading = false;
+    currentMembroMock.isPending = false;
     currentMembroMock.isError = false;
     currentMembroMock.isSuccess = true;
     limitsMock.features = null;
@@ -2461,6 +2463,7 @@ describe('EntregasPage: Minha fila', () => {
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
     currentMembroMock.membro = { id: 7, nome: 'Ana' };
     currentMembroMock.isLoading = false;
+    currentMembroMock.isPending = false;
     currentMembroMock.isError = false;
     currentMembroMock.isSuccess = true;
     analyticsMock.captureEvent.mockReset();
@@ -2511,6 +2514,7 @@ describe('EntregasPage: Minha fila', () => {
     currentMembroMock.membro = null;
     currentMembroMock.isSuccess = false;
     currentMembroMock.isLoading = true;
+    currentMembroMock.isPending = true;
     renderFila('/entregas?view=fila&membro=12', { membros: [] });
     expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
     expect(screen.getByTestId('current-path')).toHaveTextContent(
@@ -2522,6 +2526,7 @@ describe('EntregasPage: Minha fila', () => {
     currentMembroMock.membro = null;
     currentMembroMock.isSuccess = false;
     currentMembroMock.isLoading = true;
+    currentMembroMock.isPending = true;
     const view = renderFila('/entregas?view=fila&membro=12', { membros: [] });
     expect(screen.getByTestId('current-path')).toHaveTextContent(
       /^\/entregas\?view=fila&membro=12$/,
@@ -2549,6 +2554,40 @@ describe('EntregasPage: Minha fila', () => {
     expect(screen.getByTestId('current-path')).toHaveTextContent(
       /^\/entregas\?view=fila&membro=12$/,
     );
+  });
+
+  it('shows loading, not the unlinked state, on a paused membros cold start', () => {
+    // Offline/paused: TanStack isLoading (= isPending && isFetching) is false.
+    currentMembroMock.membro = null;
+    currentMembroMock.isSuccess = false;
+    currentMembroMock.isLoading = false;
+    currentMembroMock.isPending = true;
+    renderFila('/entregas?view=fila', { membros: [] });
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(screen.getByText('Fila view: membro none / self none')).toBeInTheDocument();
+  });
+
+  it('shows loading, not an empty queue, while active-posts is paused', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [],
+      isLoading: false,
+      isPending: true,
+      isError: false,
+    } as never);
+    renderFila('/entregas?view=fila&membro=12');
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(openedCalls()).toHaveLength(0);
+  });
+
+  it('error wins over a paused dependency', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [],
+      isLoading: false,
+      isPending: true,
+      isError: false,
+    } as never);
+    renderFila('/entregas?view=fila', { isError: true });
+    expect(screen.getByText('Fila state: error')).toBeInTheDocument();
   });
 
   it('reports an error when active-posts fails', () => {
@@ -2632,7 +2671,12 @@ describe('EntregasPage: Minha fila', () => {
   });
 
   it('does not fire minha_fila_opened while loading or on error', () => {
-    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: true, isError: false });
+    mockedUseActivePosts.mockReturnValue({
+      posts: [],
+      isLoading: true,
+      isPending: true,
+      isError: false,
+    });
     const loading = renderFila();
     expect(openedCalls()).toHaveLength(0);
     loading.unmount();
