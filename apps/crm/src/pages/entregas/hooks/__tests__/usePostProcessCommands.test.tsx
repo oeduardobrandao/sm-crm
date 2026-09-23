@@ -147,7 +147,7 @@ describe('usePostProcessCommands', () => {
     fireEvent.click(screen.getByText('avancar'));
     fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
     expect(
-      await screen.findByRole('button', { name: 'Enviar ao portal do cliente' }),
+      await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }),
     ).toBeDisabled();
     expect(
       screen.getByText('Só posts aprovados internamente podem ser enviados ao cliente.'),
@@ -161,7 +161,7 @@ describe('usePostProcessCommands', () => {
     const { onRefresh } = renderHarness(t);
     fireEvent.click(screen.getByText('avancar'));
     fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Enviar ao portal do cliente' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
     await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77));
     expect(store.transitionPostProcess).not.toHaveBeenCalled();
     await waitFor(() =>
@@ -186,7 +186,7 @@ describe('usePostProcessCommands', () => {
     const { onRefresh } = renderHarness(t);
     fireEvent.click(screen.getByText('avancar'));
     fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Enviar ao portal do cliente' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
     await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77));
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -258,7 +258,7 @@ describe('usePostProcessCommands', () => {
     );
   });
 
-  it('concluir em aprovação com pendência abre a escolha SEM aviso de re-arm e com rótulo "Concluir sem alterar o post"', async () => {
+  it('concluir em aprovação com pendência abre a escolha SEM aviso de re-arm e com rótulo "Concluir sem aprovação"', async () => {
     const t = target(
       [step(0, 'concluido'), step(1, 'ativo', 'aprovacao_cliente')],
       'enviado_cliente',
@@ -266,7 +266,7 @@ describe('usePostProcessCommands', () => {
     renderHarness(t);
     fireEvent.click(screen.getByText('concluir'));
     fireEvent.click(await screen.findByRole('button', { name: 'Concluir' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Concluir sem alterar o post' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir sem aprovação' }));
     await waitFor(() =>
       expect(store.transitionPostProcess).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -276,7 +276,7 @@ describe('usePostProcessCommands', () => {
         }),
       ),
     );
-    expect(screen.queryByText(/voltará para rascunho/)).toBeNull();
+    expect(screen.queryByText(/volta para rascunho/)).toBeNull();
   });
 
   it('reabrir e remover confirmam e chamam as RPCs certas', async () => {
@@ -372,7 +372,7 @@ describe('usePostProcessCommands', () => {
       renderHarness(t, undefined, onDismiss);
       fireEvent.click(screen.getByText('avancar'));
       fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
-      fireEvent.click(await screen.findByRole('button', { name: 'Enviar ao portal do cliente' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Enviar para o cliente aprovar' }));
       await waitFor(() => expect(store.sendPostToCliente).toHaveBeenCalledWith(77));
       await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
       expect(store.transitionPostProcess).not.toHaveBeenCalled();

@@ -378,7 +378,9 @@ test('primeiro post walkthrough', async ({ page }) => {
   await expect(aprovacaoCard.locator('.board-card-approval')).toBeVisible();
   await expect(aprovacaoCard.locator('.board-card-posts-badge')).toHaveCount(0);
   await forwardDialog2.getByRole('button', { name: 'Avançar' }).click();
-  const approvalDialog = page.getByRole('dialog').filter({ hasText: 'Como deseja prosseguir' });
+  const approvalDialog = page
+    .getByRole('dialog')
+    .filter({ hasText: 'O cliente ainda não aprovou' });
   await approvalDialog.waitFor();
   await shoot(page, SLUG, 27, 'dialogo-de-aprovacao');
   await page.keyboard.press('Escape');

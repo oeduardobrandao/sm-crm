@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Trash2, Edit2, FileText, Settings, ArrowRightLeft } from 'lucide-react';
@@ -1006,8 +1006,8 @@ interface ClientApprovalChoiceDialogProps {
   willRearm?: boolean;
   /** Muda a cópia para o singular no processo individual. */
   entityKind?: 'fluxo' | 'post';
-  /** Rótulo da terceira opção; o processo individual usa "…sem alterar o post"
-   *  ou "Concluir sem alterar o post". */
+  /** Rótulo da terceira opção; o processo individual usa "Avançar sem aprovação"
+   *  ou "Concluir sem aprovação". */
   withoutChangesLabel?: string;
   /** Quando definido, desabilita "Enviar ao portal do cliente" e mostra o motivo
    *  (spec §6.2: com n=1, botão desabilitado com o motivo, nunca sucesso vazio). */
@@ -1025,6 +1025,7 @@ export function ClientApprovalChoiceDialog({
   withoutChangesLabel,
   sendToPortalDisabledReason,
 }: ClientApprovalChoiceDialogProps) {
+  const isPost = entityKind === 'post';
   return (
     <Dialog
       open={open}
@@ -1034,43 +1035,90 @@ export function ClientApprovalChoiceDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Como deseja prosseguir com a aprovação?</DialogTitle>
+          <DialogTitle>
+            {isPost
+              ? 'O cliente ainda não aprovou este post'
+              : 'O cliente ainda não aprovou todos os posts'}
+          </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          "{entityTitle}" está em etapa de aprovação do cliente.
+          "{entityTitle}" está numa etapa que pede a aprovação do cliente. Escolha como seguir:
         </p>
-        {willRearm && (
-          <p className="text-sm" style={{ color: 'var(--warning)' }}>
-            {entityKind === 'post'
-              ? 'Há outra etapa de aprovação adiante. Ao concluir esta, o post aprovado voltará para rascunho para o próximo ciclo de aprovação.'
-              : 'Há outra etapa de aprovação adiante — ao concluir esta, os posts aprovados voltarão para rascunho para o próximo ciclo de aprovação.'}
-          </p>
-        )}
-        <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
-          <Button className="w-full" onClick={onApproveInternally}>
-            Aprovar internamente
-          </Button>
-          <Button
-            className="w-full"
-            variant="outline"
+        <div className="flex flex-col gap-2">
+          <ApprovalChoiceOption
+            title="Aprovar internamente"
+            description={
+              isPost
+                ? 'O post fica aprovado pela equipe e a etapa é concluída.'
+                : 'Os posts ficam aprovados pela equipe e a etapa é concluída.'
+            }
+            onClick={onApproveInternally}
+          />
+          <ApprovalChoiceOption
+            title="Enviar para o cliente aprovar"
+            description={
+              sendToPortalDisabledReason ??
+              (isPost
+                ? 'O post aparece no portal aguardando aprovação. A etapa não avança.'
+                : 'Os posts aparecem no portal aguardando aprovação. A etapa não avança.')
+            }
             onClick={onSendToPortal}
             disabled={!!sendToPortalDisabledReason}
-          >
-            Enviar ao portal do cliente
-          </Button>
-          {sendToPortalDisabledReason && (
-            <p className="text-xs text-muted-foreground" style={{ marginTop: '-0.25rem' }}>
-              {sendToPortalDisabledReason}
-            </p>
-          )}
-          <Button className="w-full" variant="secondary" onClick={onAdvanceWithoutChanges}>
-            {withoutChangesLabel ?? 'Avançar etapa sem alterar posts'}
-          </Button>
-          <Button className="w-full" variant="ghost" onClick={onCancel}>
+          />
+          <ApprovalChoiceOption
+            title={withoutChangesLabel ?? 'Avançar sem aprovação'}
+            description={
+              isPost
+                ? 'A etapa é concluída e o status do post não muda.'
+                : 'A etapa é concluída e o status dos posts não muda.'
+            }
+            onClick={onAdvanceWithoutChanges}
+          />
+        </div>
+        {willRearm && (
+          <p className="text-xs text-muted-foreground">
+            {isPost
+              ? 'A próxima etapa também é de aprovação: ao aprovar, o post volta para rascunho.'
+              : 'A próxima etapa também é de aprovação: ao aprovar, os posts voltam para rascunho.'}
+          </p>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onCancel}>
             Cancelar
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ApprovalChoiceOption({
+  title,
+  description,
+  onClick,
+  disabled,
+}: {
+  title: string;
+  description: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-labelledby={`${id}-title`}
+      aria-describedby={`${id}-desc`}
+      className="w-full rounded-lg border border-border bg-background px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background"
+    >
+      <span id={`${id}-title`} className="block text-sm font-medium text-foreground">
+        {title}
+      </span>
+      <span id={`${id}-desc`} className="mt-0.5 block text-xs text-muted-foreground">
+        {description}
+      </span>
+    </button>
   );
 }

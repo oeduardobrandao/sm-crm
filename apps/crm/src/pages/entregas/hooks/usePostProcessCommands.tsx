@@ -315,9 +315,7 @@ export function usePostProcessCommands(opts: UsePostProcessCommandsOptions): Pos
         entityKind="post"
         willRearm={choice?.willRearm ?? false}
         withoutChangesLabel={
-          choice?.command === 'concluir'
-            ? 'Concluir sem alterar o post'
-            : 'Avançar etapa sem alterar o post'
+          choice?.command === 'concluir' ? 'Concluir sem aprovação' : 'Avançar sem aprovação'
         }
         sendToPortalDisabledReason={
           choice ? sendToPortalDisabledReasonFor(choice.t.post.status) : undefined
