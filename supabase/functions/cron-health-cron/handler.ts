@@ -26,9 +26,46 @@ export function buildFailureDetail(jobname: string, firstLine: string, row: Cron
   };
 }
 
+/**
+ * pg_cron start failures: the scheduler could not open the libpq connection it
+ * runs each job on (typically the instance at max_connections), so the job's
+ * SQL never ran. The next tick usually succeeds, so one of these on its own is
+ * noise; see isTransientStartFailure() below for when it still alerts.
+ */
+const TRANSIENT_START_FAILURES = new Set(["connection failed"]);
+
+export function isTransientStartFailure(firstLine: string): boolean {
+  return TRANSIENT_START_FAILURES.has(firstLine.trim().toLowerCase());
+}
+
+/** Transient failures of one job within the window at which we alert anyway. */
+export const TRANSIENT_ALERT_COUNT = 3;
+/**
+ * A single transient failure with no success after it is left for the next
+ * tick until it is this old: an hourly job needs up to an hour to run again and
+ * prove it recovered. The scan window (130 min, index.ts) must stay at least
+ * this plus the monitor's hourly cadence, so the next tick still sees the run.
+ */
+export const TRANSIENT_SETTLE_MS = 65 * 60_000;
+/**
+ * Two or more transient failures with no success after the newest alert once
+ * the newest is this old: the job had a chance to recover and did not.
+ */
+export const TRANSIENT_REPEAT_SETTLE_MS = 10 * 60_000;
+
+function firstLineOf(row: CronFailureRow): string {
+  return (row.return_message ?? "cron run failed").split("\n")[0].slice(0, 500);
+}
+
 export interface ScanDeps {
   /** Fetch recent FAILED cron runs (newest first). */
   fetchFailures: () => Promise<CronFailureRow[]>;
+  /**
+   * Newest successful run start per job in the window. Used only to drop
+   * transient start failures the job already recovered from. Optional; a throw
+   * disables the filter for that tick, so every failure alerts (fail open).
+   */
+  fetchLastSuccess?: () => Promise<Map<string, string>>;
   /** Emit one alert for a failing job. */
   report: (jobname: string, firstLine: string, row: CronFailureRow) => Promise<void>;
   /**
@@ -41,35 +78,79 @@ export interface ScanDeps {
   alreadyReported?: (jobname: string, firstLine: string, row: CronFailureRow) => Promise<boolean>;
   /** The monitor's own job name, excluded to avoid self-referential alerts. */
   selfJobName?: string;
+  /** Clock, injectable for tests. */
+  now?: () => number;
 }
 
 /**
  * Collapse the window's failed runs to one alert per distinct job (the every-
- * minute publish cron could otherwise produce dozens of rows per window), keep
- * the newest run's message, and report each. Pure except for the injected deps,
- * so it is unit-testable without a DB or network.
+ * minute publish cron could otherwise produce dozens of rows per window) and
+ * report each. A real error (anything not a transient start failure) always
+ * alerts, newest one first. A job whose failures are ALL transient alerts only
+ * when it failed TRANSIENT_ALERT_COUNT+ times in the window, or when it has not
+ * succeeded since its newest failure once that failure has settled (a daily
+ * job that missed its only run, or a job that keeps failing).
+ * Pure except for the injected deps, so it is unit-testable without a DB.
  */
 export async function scanAndReport(
   deps: ScanDeps,
-): Promise<{ scanned: number; reported: string[] }> {
+): Promise<{ scanned: number; reported: string[]; suppressed: string[] }> {
   const rows = await deps.fetchFailures();
-  const byJob = new Map<string, CronFailureRow>();
+  const byJob = new Map<string, CronFailureRow[]>();
   for (const r of rows) {
     if (deps.selfJobName && r.jobname === deps.selfJobName) continue;
-    // rows arrive newest-first; keep the first (latest) per job.
-    if (!byJob.has(r.jobname)) byJob.set(r.jobname, r);
+    // rows arrive newest-first, so each job's list stays newest-first.
+    const list = byJob.get(r.jobname);
+    if (list) list.push(r);
+    else byJob.set(r.jobname, [r]);
   }
 
+  // null = lookup failed: then nothing is suppressed and every transient
+  // failure alerts, exactly as before this filter existed (fail open).
+  let lastSuccess: Map<string, string> | null | undefined;
+  const loadLastSuccess = async () => {
+    if (lastSuccess !== undefined) return lastSuccess;
+    try {
+      lastSuccess = deps.fetchLastSuccess ? await deps.fetchLastSuccess() : new Map();
+    } catch {
+      console.error("[CRON-HEALTH] last-success lookup failed");
+      lastSuccess = null;
+    }
+    return lastSuccess;
+  };
+  const now = deps.now ?? Date.now;
+
   const reported: string[] = [];
-  for (const [jobname, row] of byJob) {
-    const firstLine = (row.return_message ?? "cron run failed")
-      .split("\n")[0]
-      .slice(0, 500);
+  const suppressed: string[] = [];
+  for (const [jobname, jobRows] of byJob) {
+    // A real error wins even over newer transient ones. If it was already
+    // alerted, the dedup below skips the job entirely: it is known broken, so
+    // the newer transient failures add nothing.
+    let row = jobRows.find((r) => !isTransientStartFailure(firstLineOf(r)));
+    if (!row) {
+      const newest = jobRows[0];
+      const successes = await loadLastSuccess();
+      if (successes && jobRows.length < TRANSIENT_ALERT_COUNT) {
+        const succeededAt = successes.get(jobname);
+        const newestMs = Date.parse(newest.start_time);
+        if (succeededAt && Date.parse(succeededAt) > newestMs) {
+          suppressed.push(jobname); // recovered on a later tick
+          continue;
+        }
+        const settleMs = jobRows.length > 1 ? TRANSIENT_REPEAT_SETTLE_MS : TRANSIENT_SETTLE_MS;
+        if (now() - newestMs < settleMs) {
+          suppressed.push(jobname); // too early to tell; a later tick decides
+          continue;
+        }
+      }
+      row = newest;
+    }
+    const firstLine = firstLineOf(row);
     if (deps.alreadyReported && (await deps.alreadyReported(jobname, firstLine, row))) continue;
     await deps.report(jobname, firstLine, row);
     reported.push(jobname);
   }
-  return { scanned: rows.length, reported };
+  return { scanned: rows.length, reported, suppressed };
 }
 
 export interface CronHealthHandlerDeps {
