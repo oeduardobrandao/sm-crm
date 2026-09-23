@@ -263,6 +263,7 @@ export default function EntregasPage() {
     postResponsaveis,
     isLoading,
     isFetching,
+    isPending: entregasPending,
     isError: entregasError,
     refresh,
   } = useEntregasData({ postProcessesEnabled });
@@ -791,9 +792,9 @@ export default function EntregasPage() {
         : EMPTY_FILA,
     [filaView, filaMembroId, cards, activePosts, postEntities],
   );
-  // Dependências obrigatórias da fila (spec § Estados): o spinner de página já
-  // cobre workflows/etapas/processos carregando; aqui entram active-posts e
-  // membros. Os três `isError` são "erro SEM dados" (isLoadingError): um
+  // Dependências obrigatórias da fila (spec § Estados): workflows/etapas/
+  // processos (entregasPending: o spinner de página só vê isLoading, que é
+  // false num cold start pausado), active-posts e membros. Os três `isError` são "erro SEM dados" (isLoadingError): um
   // refetch em background que falha com cache presente mantém a fila na tela.
   // Carregando = isPending (sem dados e sem erro), não isLoading: num cold start
   // pausado/offline isLoading é false e a fila apareceria como "não vinculado"
@@ -802,7 +803,8 @@ export default function EntregasPage() {
   // Erro vence carregando: uma dependência com erro mostra o erro mesmo que
   // outra ainda esteja pausada.
   const filaError = filaView && (entregasError || activePostsError || membrosError);
-  const filaLoading = filaView && !filaError && (activePostsPending || membrosPending);
+  const filaLoading =
+    filaView && !filaError && (entregasPending || activePostsPending || membrosPending);
 
   // Um evento por entrada na vista com dados prontos; de novo ao trocar o membro.
   // A página continua montada ao trocar de aba, então sair da fila zera o ref:

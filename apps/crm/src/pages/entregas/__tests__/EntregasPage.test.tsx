@@ -2579,6 +2579,25 @@ describe('EntregasPage: Minha fila', () => {
     expect(openedCalls()).toHaveLength(0);
   });
 
+  it('shows loading, not an empty queue, while the entregas data is paused', () => {
+    // Offline cold start: workflows/etapas/processos pending but not fetching,
+    // so isLoading (and the page spinner) is false; posts and membros cached.
+    mockedUseActivePosts.mockReturnValue({
+      posts: [{ id: 1, workflow_id: 1, status: 'rascunho', scheduled_at: null }],
+      isLoading: false,
+      isPending: false,
+      isError: false,
+    } as never);
+    renderFila('/entregas?view=fila', {
+      cards: [],
+      activeWorkflows: [],
+      isLoading: false,
+      isPending: true,
+    });
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(openedCalls()).toHaveLength(0);
+  });
+
   it('error wins over a paused dependency', () => {
     mockedUseActivePosts.mockReturnValue({
       posts: [],

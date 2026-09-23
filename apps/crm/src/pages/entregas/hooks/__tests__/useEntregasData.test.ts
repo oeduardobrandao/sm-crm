@@ -695,4 +695,18 @@ describe('useEntregasData: isError', () => {
     const failed = renderHook(() => useEntregasData(), { wrapper: createWrapper().Wrapper });
     await waitFor(() => expect(failed.result.current.isError).toBe(true));
   });
+
+  it('reports isPending until workflows, etapas and processos have data', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+    const store = await import('../../../../store');
+    let resolveWf!: (v: unknown) => void;
+    (store.getWorkflows as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      new Promise((r) => (resolveWf = r)),
+    );
+    const { result } = renderHook(() => useEntregasData(), { wrapper: createWrapper().Wrapper });
+    expect(result.current.isPending).toBe(true);
+    resolveWf([]);
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.isError).toBe(false);
+  });
 });

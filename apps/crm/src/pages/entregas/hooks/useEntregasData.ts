@@ -515,6 +515,11 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
   }
 
   const isLoading = loadingWf || etapasQuery.isLoading || vigenteQuery.isLoading;
+  /** Sem dados e sem erro ainda em alguma dependência obrigatória da fila.
+   *  Diferente de isLoading (isPending && isFetching), cobre o cold start
+   *  pausado/offline. Só a vista fila lê isto; o spinner de página continua
+   *  em isLoading para não mudar as demais vistas. */
+  const isPending = wfQuery.isPending || etapasQuery.isPending || vigenteQuery.isPending;
   /** Verdadeiro também durante refetch em background (cache stale). O resolvedor
    *  de deep link só pode concluir que um fluxo não está no quadro quando isto
    *  e isLoading forem falsos. */
@@ -551,6 +556,7 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
     awaitingClienteCounts,
     postResponsaveis,
     isLoading,
+    isPending,
     isFetching,
     isError,
     refresh,
