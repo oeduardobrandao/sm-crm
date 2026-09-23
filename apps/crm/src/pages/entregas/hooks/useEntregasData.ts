@@ -217,6 +217,79 @@ export function computeDeliveryDeadlines(
   return result;
 }
 
+/**
+ * queryFn de ['all-active-etapas']: linhas -> Map por workflow_id. Exportado
+ * porque o cache do TanStack é por chave, não por observer: quem mais observar
+ * esta chave (useMinhaFilaData no Dashboard) PRECISA usar esta mesma função,
+ * senão o primeiro a montar decide a forma e o outro consumidor quebra.
+ */
+export async function fetchEtapasMap(): Promise<Map<number, WorkflowEtapa[]>> {
+  const rows = await getAllActiveEtapas();
+  const map = new Map<number, WorkflowEtapa[]>();
+  for (const row of rows) {
+    const list = map.get(row.workflow_id);
+    if (list) list.push(row);
+    else map.set(row.workflow_id, [row]);
+  }
+  return map;
+}
+
+export interface BoardCardExtras {
+  covers?: Map<number, PostMedia[]>;
+  clienteAvatars?: Map<number, string>;
+  hubTokens?: Map<number, string>;
+  workspaceSlug?: string | null;
+}
+
+/**
+ * Cards do quadro a partir dos fluxos ativos e do mapa de etapas. Puro: a
+ * página (via useMemo) e o teaser do Dashboard (sem capas/tokens) chamam a
+ * mesma função. `getDeadlineInfo` lê o relógio, então um card é tão fresco
+ * quanto a última chamada.
+ */
+export function buildBoardCards(
+  activeWorkflows: Workflow[],
+  etapasMap: Map<number, WorkflowEtapa[]>,
+  clientes: Cliente[],
+  membros: Membro[],
+  extras: BoardCardExtras = {},
+): BoardCard[] {
+  const { covers, clienteAvatars, hubTokens, workspaceSlug } = extras;
+  const out: BoardCard[] = [];
+  for (const w of activeWorkflows) {
+    const etapas = etapasMap.get(w.id!) || [];
+    let activeEtapa = etapas.find((e) => e.status === 'ativo');
+    if (!activeEtapa && etapas.length > 0) {
+      activeEtapa = etapas[w.etapa_atual] || etapas[0];
+    }
+    if (!activeEtapa) continue;
+    const cliente = clientes.find((c) => c.id === w.cliente_id);
+    const membro = activeEtapa.responsavel_id
+      ? membros.find((m) => m.id === activeEtapa!.responsavel_id)
+      : undefined;
+    const deadline = getDeadlineInfo(activeEtapa);
+    const hubToken = w.cliente_id ? hubTokens?.get(w.cliente_id) : undefined;
+    const hubUrl =
+      hubToken && workspaceSlug
+        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+        : undefined;
+    out.push({
+      workflow: w,
+      etapa: activeEtapa,
+      cliente,
+      membro,
+      deadline,
+      totalEtapas: etapas.length,
+      etapaIdx: activeEtapa.ordem,
+      allEtapas: etapas,
+      postCovers: covers?.get(w.id!),
+      clienteAvatarUrl: w.cliente_id ? clienteAvatars?.get(w.cliente_id) : undefined,
+      hubUrl,
+    });
+  }
+  return out;
+}
+
 export interface UseEntregasDataOptions {
   /** features?.feature_post_processes === true. Desde a fase 4 a flag NÃO gate
    *  a leitura (spec §11 + §12.18: execuções existentes ficam visíveis e
@@ -229,14 +302,13 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
   const postProcessesEnabled = options.postProcessesEnabled === true;
   const qc = useQueryClient();
 
-  const {
-    data: workflows = EMPTY_WORKFLOWS,
-    isLoading: loadingWf,
-    isFetching: fetchingWf,
-  } = useQuery({
+  const wfQuery = useQuery({
     queryKey: ['workflows'],
     queryFn: getWorkflows,
   });
+  const workflows: Workflow[] = wfQuery.data ?? EMPTY_WORKFLOWS;
+  const loadingWf = wfQuery.isLoading;
+  const fetchingWf = wfQuery.isFetching;
   const { data: clientes = EMPTY_CLIENTES } = useQuery({
     queryKey: ['clientes'],
     queryFn: getClientes,
@@ -254,16 +326,7 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
 
   const etapasQuery = useQuery({
     queryKey: ['all-active-etapas'],
-    queryFn: async () => {
-      const rows = await getAllActiveEtapas();
-      const map = new Map<number, WorkflowEtapa[]>();
-      for (const row of rows) {
-        const list = map.get(row.workflow_id);
-        if (list) list.push(row);
-        else map.set(row.workflow_id, [row]);
-      }
-      return map;
-    },
+    queryFn: fetchEtapasMap,
   });
 
   const etapasMap: Map<number, WorkflowEtapa[]> = etapasQuery.data ?? EMPTY_ETAPAS_MAP;
@@ -408,50 +471,25 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
   // card's "3h restantes" is now only as fresh as the last data change instead
   // of the last render. Nothing re-renders this page on a timer anyway, so that
   // was never a real refresh — the numbers move when a query refetches.
-  const cards: BoardCard[] = useMemo(() => {
-    const out: BoardCard[] = [];
-    for (const w of activeWorkflows) {
-      const etapas = etapasMap.get(w.id!) || [];
-      let activeEtapa = etapas.find((e) => e.status === 'ativo');
-      if (!activeEtapa && etapas.length > 0) {
-        activeEtapa = etapas[w.etapa_atual] || etapas[0];
-      }
-      if (!activeEtapa) continue;
-      const cliente = clientes.find((c) => c.id === w.cliente_id);
-      const membro = activeEtapa.responsavel_id
-        ? membros.find((m) => m.id === activeEtapa!.responsavel_id)
-        : undefined;
-      const deadline = getDeadlineInfo(activeEtapa);
-      const hubToken = w.cliente_id ? hubTokens?.get(w.cliente_id) : undefined;
-      const hubUrl =
-        hubToken && workspaceSlug
-          ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
-          : undefined;
-      out.push({
-        workflow: w,
-        etapa: activeEtapa,
-        cliente,
-        membro,
-        deadline,
-        totalEtapas: etapas.length,
-        etapaIdx: activeEtapa.ordem,
-        allEtapas: etapas,
-        postCovers: covers?.get(w.id!),
-        clienteAvatarUrl: w.cliente_id ? clienteAvatars?.get(w.cliente_id) : undefined,
-        hubUrl,
-      });
-    }
-    return out;
-  }, [
-    activeWorkflows,
-    etapasMap,
-    clientes,
-    membros,
-    covers,
-    clienteAvatars,
-    hubTokens,
-    workspaceSlug,
-  ]);
+  const cards: BoardCard[] = useMemo(
+    () =>
+      buildBoardCards(activeWorkflows, etapasMap, clientes, membros, {
+        covers,
+        clienteAvatars,
+        hubTokens,
+        workspaceSlug,
+      }),
+    [
+      activeWorkflows,
+      etapasMap,
+      clientes,
+      membros,
+      covers,
+      clienteAvatars,
+      hubTokens,
+      workspaceSlug,
+    ],
+  );
 
   function refresh() {
     qc.invalidateQueries({ queryKey: ['workflows'] });
@@ -482,6 +520,10 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
    *  e isLoading forem falsos. */
   const isFetching = fetchingWf || etapasQuery.isFetching || vigenteQuery.isFetching;
 
+  /** Erro em qualquer dependência obrigatória da fila (spec Minha fila § Estados).
+   *  Só a vista fila lê isto; as demais vistas mantêm o comportamento atual. */
+  const isError = wfQuery.isError || etapasQuery.isError || vigenteQuery.isError;
+
   // Exibição = flag OU existência de processo. A flag crua fica para as
   // affordances de criação (Aplicar processo, Manter etapas, Sem processo).
   const postProcessesVisible = postProcessesEnabled || vigenteProcesses.length > 0;
@@ -507,6 +549,7 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
     postResponsaveis,
     isLoading,
     isFetching,
+    isError,
     refresh,
   };
 }

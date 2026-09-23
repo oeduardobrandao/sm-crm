@@ -1,14 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-import { getActivePosts } from '../../../store';
+import { getActivePosts, type ActivePost } from '../../../store';
 import { getPostPublishState } from '../postLabels';
+
+/** Estável enquanto a query não resolveu: um `?? []` novo a cada render
+ *  invalidaria todo useMemo que lê `posts` (mesmo aviso de useEntregasData). */
+const EMPTY_POSTS: ActivePost[] = [];
 
 /**
  * Every post of every active workflow (scheduled or not), for the Kanban/Lista
- * "Publicações" modes.
+ * "Publicações" modes, the "Sem processo" section and the "Minha fila" view.
  *
  * `enabled` MUST be passed explicitly: EntregasPage mounts this hook regardless
  * of the active view/mode, so mounting alone does not gate the fetch. Pass
- * true only while a posts mode is actually visible.
+ * true only while one of those consumers is actually visible.
  */
 export function useActivePosts(enabled: boolean) {
   const query = useQuery({
@@ -22,7 +26,8 @@ export function useActivePosts(enabled: boolean) {
   });
 
   return {
-    posts: query.data ?? [],
+    posts: query.data ?? EMPTY_POSTS,
     isLoading: query.isLoading,
+    isError: query.isError,
   };
 }
