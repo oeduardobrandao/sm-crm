@@ -42,58 +42,77 @@ essas três vistas (`:1197`, `:1203-1205`). A barra de filtros e a busca, porém
 
 ### Layout da vista (`MinhaFilaView`)
 
-```
-[Fila de: (Select: membro) ▾]                         12 posts · 3 atrasados
+Revisado em 2026-09-23 para seguir o mockup aprovado pelo usuário (a primeira versão
+tinha cabeçalho próprio com resumo em texto e seções sempre visíveis com `(N)`).
 
-┌ Comece por aqui ─────────────────────────────────────────────────────┐
-│ Carrossel dia das mães            Dra. Marina · Fluxo Maio · Design  │
-│ etapa vence 22 set (1d atrasado)  publica 25 set · 14h   [sem margem]│
+```
+Kanban  Lista  Calendário  Visão geral  [Minha fila]            [👤 Ana (você) ▾]
+
+Atrasados      Vencem hoje      Esta semana      Chegando
+2              3                5                4
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ [ícone]  Comece por aqui                                              │
+│          5 mitos sobre clareamento                     [Abrir post →] │
+│          Dra. Marina · Carrossel · Design atrasado 1d · publica amanhã, 24 set │
 └──────────────────────────────────────────────────────────────────────┘
 
-▾ Atrasado (3)
-  ▸ Dra. Marina · Fluxo Maio · Design · [1d atrasado]            ← cabeçalho de fluxo
-      Carrossel dia das mães        publica 25 set · 14h  [sem margem]
-      Reels bastidores              publica 27 set · 10h  [margem 2d]
-    Post avulso X · Individual · Copy                            ← linha avulsa
-                                    publica 30 set · 09h  [margem 5d]
-▾ Hoje (2)
-▾ Amanhã (0)
-▸ Próximos 7 dias (4)
-▸ Depois (2)
-▸ Sem prazo (1)
+(Atrasado) o prazo já passou
+┌ ⑂ Dra. Marina · Setembro S4   Etapa Design · venceu 22 set   [1d atrasado] ┐
+│ [ícone] 5 mitos sobre clareamento     Publica        [sem margem]          │
+│         Carrossel · Rascunho          qua, 24 set    ████████████          │
+│ [ícone] Antes e depois: lentes        Publica        [margem 2d]           │
+│         Reels                         sex, 26 set    █████░░░░░░░          │
+└────────────────────────────────────────────────────────────────────────────┘
+(Hoje) vence hoje
+Próximos 7 dias   5 posts · recolhido ⌄
 
-Chegando
-    Stories evento         Dra. Marina · Fluxo Maio · agora em Copy (Nathalie) · chega ~24 set
+(Chegando) ainda não é sua vez. Design é a próxima etapa
+┌ [ícone] Guia de cuidados pós-cirurgia   Publica      chega ~24 set ┐
+│         Dr. Paulo · em Copy com Bruno   qui, 2 out                 │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-- Cabeçalho: seletor de membro (shadcn `Select`, mesma altura dos pills de filtro) e um
-  resumo à direita `N posts · M atrasados` (o "M atrasados" só com M > 0, em `--danger`).
-- "Comece por aqui": card destacado (`border-left: 3px solid var(--primary-color)`,
-  `background: var(--surface-1)`) com o primeiro item da fila. O item **continua** na sua
-  seção logo abaixo; a linha correspondente recebe a mesma borda esquerda.
-- Seções na ordem fixa `Atrasado, Hoje, Amanhã, Próximos 7 dias, Depois, Sem prazo`, cada
-  uma colapsável com contagem no título. Seções vazias aparecem colapsadas com `(0)` e sem
-  chevron ativo. Atrasado/Hoje/Amanhã abrem expandidas; as outras três, colapsadas. Estado
-  de expansão é `useState` local (não persiste).
-- Cabeçalho de fluxo (grupo): `Cliente · Título do fluxo · Etapa` + chip de prazo
-  (`formatEtapaPrazo(card.deadline)`, `pages/entregas/etapaPrazo.ts:192`) + contagem de
-  posts. Clicável (abre o drawer do fluxo).
-- Linha de post: título, tag de tipo (`TIPO_LABELS`), chip de status
-  (`PostStatusChip`, `pages/entregas/components/PostStatusChip.tsx:24`, com o registry
-  de `useStatusRegistry`), `publica <formatPostDate(scheduled_at)>` ou
-  `sem data de publicação`, chip de margem (§ Margem). Linha avulsa fora de grupo mostra
-  ainda `Cliente · Individual · Etapa` na segunda linha (mesma convenção
-  "Individual · <etapa>" das Publicações, `EntregasPage.tsx:893-894`).
-- Tag `responsável pelo post` (pill neutra, `var(--text-muted)`) quando a linha entrou
-  pela regra de responsável do post e não pela etapa.
-- Chegando: abaixo das seções, sem card de destaque, agrupado por fluxo como definido em § Chegando (única fonte desse contrato).
+- Seletor de membro (`FilaMembroPicker`) mora na linha das abas, no slot `trailing` do
+  `VistasTabs` (livre porque `showFilters` é falso na fila). O próprio usuário aparece como
+  `{nome} (você)`.
+- Contadores: `Atrasados` (`counts.atrasados`, número em vermelho quando > 0), `Vencem hoje`
+  (seção `hoje`, âmbar quando > 0), `Esta semana` (`amanha` + `proximos7`), `Chegando`
+  (`chegando.length`). Somem nos estados vazio/erro/carregando/sem membro.
+- "Comece por aqui": card horizontal com borda de 2px `--primary-color` (amarelo da marca,
+  não o azul do mockup): ícone do tipo, rótulo, título, uma linha `Cliente · Tipo ·
+  {etapa} atrasado Nd | {etapa} vence hoje | {etapa} vence {dia} · publica hoje/amanhã,
+  {dia}` e o CTA `Abrir post →` (um `span`, o card inteiro já é o botão). O status da
+  etapa só aparece com `prazoOrigem === 'etapa'`. O item continua na sua seção; a linha
+  correspondente recebe borda esquerda `--primary-color`.
+- Seções na ordem fixa `Atrasado, Hoje, Amanhã, Próximos 7 dias, Depois, Sem prazo`
+  (os seis buckets ficam; o mockup juntava Amanhã e Próximos 7 dias em "Esta semana", o que
+  só vale para o contador). **Seções vazias não aparecem.** Aberta: pílula colorida com o
+  nome + descrição (`o prazo já passou`, `vence hoje`, `vence amanhã`, `vence nos próximos
+  7 dias`, `vence depois de 7 dias`, `sem prazo definido`). Recolhida: nome simples +
+  `N posts · recolhido ⌄`. Atrasado/Hoje/Amanhã abrem expandidas. Estado local.
+- Cabeçalho de fluxo: ícone, `Cliente · Fluxo` em negrito, `Etapa X · venceu|vence {dia}`
+  em cinza, chip de prazo (`formatEtapaPrazo`) à direita. Clicável (drawer do fluxo).
+- Linha de post, em grade de 4 colunas: ícone do tipo (`TIPO_ICONS`, `tipoIcons.ts`) ·
+  título + contexto (agrupada: `Tipo`; solta: `Cliente · Tipo · Individual · etapa X` ou
+  `Cliente · Tipo · Fluxo`) com a tag `responsável pelo post` e o `PostStatusChip` ·
+  coluna `Publica` / `qua, 24 set` (`formatPostWeekday`; hora completa no `title`) ou
+  `sem data de publicação` · pílula de margem com barra de pressão decorativa
+  (`aria-hidden`; cheia sem margem, esvazia conforme a margem cresce).
+- Linhas soltas consecutivas dividem um card; cada fluxo tem o seu.
+- Cores de texto no tema claro usam variantes escuras (`#b45309`, `#15803d`, `#0369a1`,
+  `--danger-text`) para passar AA; o tema escuro usa as cores vivas.
+- Chegando: pílula azul `Chegando` + `ainda não é sua vez` (com `. {X} é a próxima etapa`
+  quando todos os itens compartilham a mesma próxima etapa), num card único, agrupado por
+  fluxo como definido em § Chegando.
 
 ### Responsivo
 
 Mesmo contrato de breakpoints de `EntregasFilters` e do próprio Entregas (`min-[901px]`).
-Abaixo de 901px: data de publicação e chip de margem descem para uma segunda linha sob o
-título; o cabeçalho de fluxo quebra em duas linhas (cliente · fluxo / etapa + prazo). O
-seletor de membro ocupa a largura toda. Nada `position: fixed`; nada ancorado à sidebar
+Abaixo de 901px: contadores em 2x2; `Publica` e margem descem para uma segunda linha sob o
+título; o CTA do card de topo vai para baixo do texto; o cabeçalho de fluxo quebra em duas
+linhas. O seletor fica na linha das abas, que já rola na horizontal no celular (como a
+busca nas outras vistas). Nada `position: fixed`; nada ancorado à sidebar
 (DESIGN_SYSTEM.md, seção Layout do CRM).
 
 ### Copy (PT-BR, sem travessão)
@@ -103,18 +122,21 @@ seletor de membro ocupa a largura toda. Nada `position: fixed`; nada ancorado à
 | tab | `Minha fila` |
 | picker.label | `Fila de` |
 | picker.placeholder | `Escolha um membro` |
-| summary | `{n} posts · {m} atrasados` (singular: `1 post`, `1 atrasado`) |
+| picker.self | `{nome} (você)` |
+| stats | `Atrasados` / `Vencem hoje` / `Esta semana` / `Chegando` |
+| top.cta | `Abrir post` |
+| section.collapsed | `{n} posts · recolhido` (singular: `1 post`) |
 | top.title | `Comece por aqui` |
 | section.atrasado / hoje / amanha / proximos7 / depois / sem_prazo | `Atrasado` / `Hoje` / `Amanhã` / `Próximos 7 dias` / `Depois` / `Sem prazo` |
-| row.publica | `publica {data}` (data via `formatPostDate`) |
+| row.publica | `Publica` / `{dia da semana}, {dia} {mês}` (via `formatPostWeekday`) |
 | row.semData | `sem data de publicação` |
 | row.assignee | `responsável pelo post` |
 | margem.sem | `sem margem` |
 | margem.n | `margem {n}d` |
 | chegando.title | `Chegando` |
-| chegando.subtitle | `Posts cuja próxima etapa é sua.` |
-| chegando.row | `agora em {etapa} ({responsável})` · `chega ~{data}` ou `sem previsão` |
-| chegando.semResp | `agora em {etapa} (sem responsável)` |
+| chegando.subtitle | `ainda não é sua vez` (+ `. {etapa} é a próxima etapa` quando única) |
+| chegando.row | `em {etapa} com {responsável}` · `chega ~{data}` ou `sem previsão` |
+| chegando.semResp | `em {etapa}, sem responsável` |
 | empty.fila | `Nada na sua fila. Quando uma etapa ou um post for atribuído a você, ele aparece aqui.` |
 | empty.outro | `Nada na fila de {nome}.` |
 | empty.semMembro | `Seu usuário ainda não está vinculado a um membro da equipe. Peça a um administrador para fazer o vínculo na página Equipe. Você ainda pode ver a fila de outra pessoa pelo seletor acima.` |
@@ -276,14 +298,14 @@ fila (regras 2/3) e os `agendado`/`postado`.
   step.ordem` **e** `estado === 'pendente'`. `ignorado` e `herdado` ficam antes da ativa
   (spec 2026-09-10, linhas 361 e 472), mas o filtro explícito protege contra estados
   futuros.
-- Linha por post: título · `Cliente · Fluxo` (ou `Cliente · Individual`) · `agora em
-  {etapa} ({responsável atual})` · `chega ~{formatEtapaDeadlineDay(prazoDate atual)}` ou
-  `sem previsão` quando `prazoDate == null`.
+- Linha por post: título · `Cliente · Individual · em {etapa} com {responsável atual}`
+  (fluxo de um post só também vira linha solta) · `Publica` · `chega
+  ~{formatEtapaDeadlineDay(prazoDate atual)}` ou `sem previsão` quando `prazoDate == null`.
 - Ordem (decidido com o usuário em 2026-09-23): `scheduled_at` asc; sem `scheduled_at`, cai para `chegaDate` asc; itens sem nenhum dos dois por último; desempate por `id`. Chave de ordenação = `scheduled_at` e depois `chegaDate`, ambos nulls-last. Assim a urgência de publicação manda, e itens sem data de publicação ainda seguem a ordem de chegada.
 - **Agrupado por fluxo**, como as seções: a etapa de um fluxo é única para todos os seus
   posts (Lacunas), então um fluxo em Copy com 12 posts cuja próxima etapa é Design poria
-  12 linhas na Chegando do designer. Grupo de fluxo = uma linha de cabeçalho (`Cliente ·
-  Fluxo · agora em {etapa} ({responsável}) · chega ~{data}` + contagem), colapsada por
+  12 linhas na Chegando do designer. Grupo de fluxo (2+ posts) = uma linha de cabeçalho (`Cliente ·
+  Fluxo`, `em {etapa} com {responsável}`, `chega ~{data}` + contagem), colapsada por
   padrão, expandível para as linhas de post. Avulsos ficam fora de grupo. Ordem dos grupos:
   o primeiro filho pela mesma chave (os filhos de um fluxo compartilham `chegaDate`). `ChegandoItem` ganha `card` (já previsto) e a vista
   agrupa por `card.workflow.id`; o builder devolve a lista plana ordenada, o agrupamento é
