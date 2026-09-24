@@ -26,4 +26,10 @@ describe('StatusTag', () => {
     expect(cls).toContain('rounded-[4px]');
     expect(cls).not.toContain('rounded-full');
   });
+
+  it('renders the em_producao label in purple', () => {
+    render(<StatusTag status="em_producao" />);
+    const tag = screen.getByText('Em produção');
+    expect(tag).toHaveStyle({ color: '#8b5cf6' });
+  });
 });

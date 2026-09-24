@@ -16,7 +16,8 @@
     "publicado": "Published",
     "rascunho": "Draft",
     "revisao_interna": "Internal review",
-    "aprovado_interno": "Internally approved"
+    "aprovado_interno": "Internally approved",
+    "em_producao": "In production"
   },
   "platform": {
     "instagram": "Instagram",

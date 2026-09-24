@@ -7,10 +7,15 @@ import {
   getPostMonthKey,
   groupPostsByMonth,
   getPostPublishState,
+  hasDistinctPostText,
   isClientVisible,
+  isInProduction,
+  isPostClientVisible,
+  clientStatusOf,
   pickPostCardKind,
   sortPostsChronologically,
   sortPostsByScheduled,
+  STATUS_COLORS,
   VISIBLE_STATUSES,
 } from '../postView';
 import type { HubPost, HubPostMedia } from '../../types';
@@ -233,5 +238,63 @@ describe('formatMonthKey', () => {
   it('capitalizes the localized long month and year', () => {
     expect(formatMonthKey('2026-09', 'pt-BR')).toBe('Setembro de 2026');
     expect(formatMonthKey('2026-01', 'en-US')).toBe('January 2026');
+  });
+});
+
+describe('em produção', () => {
+  it('isInProduction needs both an internal status and a reason', () => {
+    expect(isInProduction(post({ status: 'rascunho', em_producao: 'proxima_aprovacao' }))).toBe(
+      true,
+    );
+    expect(isInProduction(post({ status: 'revisao_interna', em_producao: 'correcao' }))).toBe(true);
+    expect(isInProduction(post({ status: 'rascunho' }))).toBe(false);
+    expect(isInProduction(post({ status: 'rascunho', em_producao: null }))).toBe(false);
+    // A stale flag on a client-visible status never wins.
+    expect(isInProduction(post({ status: 'enviado_cliente', em_producao: 'ajuste' }))).toBe(false);
+  });
+
+  it('isPostClientVisible adds in-production posts to the visible set', () => {
+    expect(isPostClientVisible(post({ status: 'rascunho', em_producao: 'ajuste' }))).toBe(true);
+    expect(isPostClientVisible(post({ status: 'rascunho' }))).toBe(false);
+    expect(isPostClientVisible(post({ status: 'postado' }))).toBe(true);
+  });
+
+  it('getPostPublishState and clientStatusOf report em_producao', () => {
+    const p = post({ status: 'aprovado_interno', em_producao: 'proxima_aprovacao' });
+    expect(getPostPublishState(p)).toBe('em_producao');
+    expect(clientStatusOf(p)).toBe('em_producao');
+    expect(clientStatusOf(post({ status: 'agendado' }))).toBe('agendado');
+    expect(STATUS_COLORS.em_producao).toBe('#8b5cf6');
+  });
+});
+
+describe('hasDistinctPostText', () => {
+  it('is true when the body has more than the caption', () => {
+    expect(
+      hasDistinctPostText(post({ conteudo_plain: 'Slide 1\nSlide 2', ig_caption: 'Legenda' })),
+    ).toBe(true);
+  });
+  it('is false for an empty body', () => {
+    expect(hasDistinctPostText(post({ conteudo_plain: '   ', ig_caption: 'Legenda' }))).toBe(false);
+  });
+  it('is false when the body is exactly what the Legenda tab already shows', () => {
+    expect(hasDistinctPostText(post({ conteudo_plain: 'Texto simples', ig_caption: null }))).toBe(
+      false,
+    );
+    expect(hasDistinctPostText(post({ conteudo_plain: ' Igual ', ig_caption: 'Igual' }))).toBe(
+      false,
+    );
+  });
+  it('is false when the body is only a LEGENDA marker with no explicit ig_caption', () => {
+    expect(hasDistinctPostText(post({ conteudo_plain: 'LEGENDA: xyz', ig_caption: null }))).toBe(
+      false,
+    );
+  });
+  it('is true when there is text before the LEGENDA marker', () => {
+    expect(
+      hasDistinctPostText(
+        post({ conteudo_plain: 'Roteiro do vídeo\nLEGENDA: xyz', ig_caption: null }),
+      ),
+    ).toBe(true);
   });
 });

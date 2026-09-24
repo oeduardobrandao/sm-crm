@@ -1069,4 +1069,146 @@ describe('PostDetailDialog', () => {
       expect(screen.queryByText(REJECTED_NOTICE)).not.toBeInTheDocument();
     });
   });
+
+  describe('em produção (read-only)', () => {
+    const prodPosts = [
+      post({
+        id: 11,
+        titulo: 'Feed na arte',
+        status: 'rascunho',
+        em_producao: 'proxima_aprovacao',
+        tipo: 'feed',
+      }),
+      post({
+        id: 12,
+        titulo: 'Reel no vídeo',
+        status: 'rascunho',
+        em_producao: 'proxima_aprovacao',
+        tipo: 'reels',
+      }),
+      post({
+        id: 13,
+        titulo: 'Story',
+        status: 'rascunho',
+        em_producao: 'proxima_aprovacao',
+        tipo: 'stories',
+      }),
+      post({ id: 14, titulo: 'Corrigindo', status: 'revisao_interna', em_producao: 'correcao' }),
+      post({ id: 15, titulo: 'Ajustando', status: 'revisao_interna', em_producao: 'ajuste' }),
+    ];
+
+    it('shows the purple tag, the arte notice and a read-only footer', () => {
+      renderDialog(11, { posts: prodPosts });
+      expect(screen.getByText('Em produção')).toBeInTheDocument();
+      expect(screen.getByText('Você aprovou o texto.')).toBeInTheDocument();
+      expect(screen.getByText(/produzindo a arte deste post/)).toBeInTheDocument();
+      expect(screen.getByText('Em produção: nada para aprovar agora')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Aprovar/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Corrigir/ })).not.toBeInTheDocument();
+    });
+
+    it('says vídeo for reels and conteúdo for stories', () => {
+      renderDialog(12, { posts: prodPosts });
+      expect(screen.getByText(/produzindo o vídeo deste post/)).toBeInTheDocument();
+      cleanup();
+      renderDialog(13, { posts: prodPosts });
+      expect(screen.getByText(/produzindo o conteúdo deste post/)).toBeInTheDocument();
+    });
+
+    it('uses the correction and adjustment notices for the other reasons', () => {
+      renderDialog(14, { posts: prodPosts });
+      expect(
+        screen.getByText('A equipe está fazendo as correções que você pediu.'),
+      ).toBeInTheDocument();
+      cleanup();
+      renderDialog(15, { posts: prodPosts });
+      expect(screen.getByText('A equipe está ajustando este post.')).toBeInTheDocument();
+    });
+
+    it('shows no notice on a normal pending post', () => {
+      renderDialog(1);
+      expect(screen.queryByText('Em produção: nada para aprovar agora')).not.toBeInTheDocument();
+      expect(screen.queryByText('Você aprovou o texto.')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Texto do post tab', () => {
+    it('shows the full post text on a media post when it differs from the caption', () => {
+      renderDialog(1);
+      expect(screen.queryByText('Corpo')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: 'Texto do post' }));
+      expect(screen.getByRole('tab', { name: 'Texto do post' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByText('Corpo')).toBeVisible();
+      expect(screen.getByText('Legenda do Instagram')).toBeInTheDocument();
+    });
+
+    it('is absent when the body equals the caption', () => {
+      renderDialog(1, {
+        posts: [post({ id: 1, conteudo_plain: 'Legenda um', ig_caption: 'Legenda um' })],
+      });
+      expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
+    });
+
+    it('is absent on a text post (the Texto tab already shows everything)', () => {
+      renderDialog(3);
+      expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Texto' })).toBeInTheDocument();
+    });
+
+    it('Corrigir from the Texto do post tab switches back to the content tab', () => {
+      renderDialog(1);
+      fireEvent.click(screen.getByRole('tab', { name: 'Texto do post' }));
+      fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+      expect(screen.getByRole('tab', { name: 'Legenda' })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('falls back to the Legenda tab when a refetch removes the postText tab while selected', () => {
+      const { rerender } = render(<ControlledDialog posts={posts} currentId={1} />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Texto do post' }));
+      expect(screen.getByRole('tab', { name: 'Texto do post' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+
+      const updatedPosts = posts.map((p) =>
+        p.id === 1 ? { ...p, conteudo_plain: p.ig_caption ?? '' } : p,
+      );
+      rerender(<ControlledDialog posts={updatedPosts} currentId={1} />);
+
+      expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Legenda' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByText('Legenda um')).toBeVisible();
+    });
+
+    it('follows the displayed version: a pending suggestion that adds distinct text shows the tab, the original hides it again', () => {
+      renderDialog(1, {
+        posts: [
+          post({
+            id: 1,
+            conteudo_plain: 'Legenda um',
+            ig_caption: 'Legenda um',
+            pending_suggestion: {
+              id: 9,
+              suggested_conteudo: null,
+              suggested_conteudo_plain: 'Legenda um, mais o corpo completo do post.',
+              suggested_ig_caption: 'Legenda um',
+              changed_fields: ['conteudo_plain'],
+              updated_at: '2026-04-28T10:00:00.000Z',
+            },
+          }),
+        ],
+      });
+
+      expect(screen.getByRole('tab', { name: 'Texto do post' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: 'Texto do post' }));
+      expect(screen.getByText('Legenda um, mais o corpo completo do post.')).toBeVisible();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Legenda' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Original' }));
+      expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
+    });
+  });
 });

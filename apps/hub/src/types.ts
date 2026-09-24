@@ -55,6 +55,9 @@ export interface HubPostMedia {
   media_lost_at?: string | null;
 }
 
+/** Why a post the client already saw is back with the agency (Hub-only, never stored). */
+export type EmProducaoReason = 'proxima_aprovacao' | 'correcao' | 'ajuste';
+
 export interface HubPost {
   id: number;
   titulo: string;
@@ -96,6 +99,10 @@ export interface HubPost {
   cover_media: HubPostMedia | null;
   pending_suggestion: PendingEditSuggestion | null;
   suggestion_rejected_at: string | null;
+  /** Set by hub-posts when the post is back in an internal status after the client
+   * saw it. Absent on stale cached payloads and before the function deploy: treat
+   * as null (not in production). */
+  em_producao?: EmProducaoReason | null;
 }
 
 export interface HubPostProperty {

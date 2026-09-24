@@ -2,6 +2,13 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { isClientVisibleApproval } from "../_shared/hub-approvals.ts";
+import { fetchAllRows } from "../_shared/paginate.ts";
+import {
+  computeEmProducaoByPost,
+  INTERNAL_STATUSES,
+  type EmProducaoReason,
+  type StatusEventRow,
+} from "./em-producao.ts";
 
 function extractR2Keys(content: any): string[] {
   const keys: string[] = [];
@@ -136,6 +143,32 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     const workflowIds = [...new Set<number>(flatPosts.map((post: any) => post.workflow_id).filter(Boolean))];
 
     const postIds = flatPosts.map((post: { id: number }) => post.id);
+
+    // "Em produção": posts the client already saw that are back with the
+    // agency. Only internal-status posts are looked up; on error every post
+    // falls back to null (today's behaviour: hidden in the Hub).
+    const internalPostIds = flatPosts
+      .filter((post: { status: string }) => INTERNAL_STATUSES.has(post.status))
+      .map((post: { id: number }) => post.id);
+    let emProducaoByPost = new Map<number, EmProducaoReason>();
+    if (internalPostIds.length > 0) {
+      try {
+        const statusEvents = await fetchAllRows<StatusEventRow>((from, to) =>
+          db
+            .from("post_status_events")
+            .select("id, post_id, from_status, to_status, created_at")
+            .eq("conta_id", hubToken.conta_id)
+            .in("post_id", internalPostIds)
+            .in("to_status", ["enviado_cliente", ...INTERNAL_STATUSES])
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+        emProducaoByPost = computeEmProducaoByPost(statusEvents);
+      } catch (err) {
+        console.error("[hub-posts] status events lookup failed:", err);
+      }
+    }
 
     const { data: rawPostApprovals } = postIds.length > 0
       ? await db
@@ -310,6 +343,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         ...resolvedPost,
         pending_suggestion: resolvedSuggestion,
         suggestion_rejected_at: !resolvedSuggestion ? (rejectedAtByPost[post.id] ?? null) : null,
+        em_producao: emProducaoByPost.get(post.id) ?? null,
       };
     });
 

@@ -1,5 +1,7 @@
 import type { TFunction } from 'i18next';
-import type { HubPost, HubPostMedia } from '../types';
+import type { EmProducaoReason, HubPost, HubPostMedia } from '../types';
+
+export type { EmProducaoReason };
 
 /** Statuses a client is allowed to see in the Hub (mirrors PostagensPage). */
 export const VISIBLE_STATUSES = new Set<HubPost['status']>([
@@ -13,6 +15,30 @@ export const VISIBLE_STATUSES = new Set<HubPost['status']>([
 
 export function isClientVisible(status: HubPost['status']): boolean {
   return VISIBLE_STATUSES.has(status);
+}
+
+/** Statuses the agency works in; hidden from the client unless the post is em produção. */
+export const INTERNAL_STATUSES = new Set<HubPost['status']>([
+  'rascunho',
+  'revisao_interna',
+  'aprovado_interno',
+]);
+
+type ProductionFields = { status: HubPost['status']; em_producao?: EmProducaoReason | null };
+
+/** The client already saw this post and the agency is working on it again. */
+export function isInProduction(p: ProductionFields): boolean {
+  return !!p.em_producao && INTERNAL_STATUSES.has(p.status);
+}
+
+/** Post-level visibility: the status set plus in-production posts (read-only). */
+export function isPostClientVisible(p: ProductionFields): boolean {
+  return VISIBLE_STATUSES.has(p.status) || isInProduction(p);
+}
+
+/** Status key for labels: 'em_producao' for in-production posts, the DB status otherwise. */
+export function clientStatusOf(p: ProductionFields): string {
+  return isInProduction(p) ? 'em_producao' : p.status;
 }
 
 /** Media-first card selection, identical to the Postagens/Aprovações lists. */
@@ -31,6 +57,7 @@ export const CLIENT_STATUS_LABELS: Record<string, string> = {
   publicando: 'Publicando…',
   postado: 'Publicado',
   falha_publicacao: 'Falha na publicação',
+  em_producao: 'Em produção',
 };
 
 export const TIPO_LABELS: Record<HubPost['tipo'], string> = {
@@ -52,6 +79,7 @@ export function getClientStatusLabel(t: TFunction, status: string): string {
     publicando: t('hubPostCard:status.publicando', 'Publicando…'),
     postado: t('hubPostCard:status.postado', 'Publicado'),
     falha_publicacao: t('hubPostCard:status.falha_publicacao', 'Falha na publicação'),
+    em_producao: t('hubPostCard:status.em_producao', 'Em produção'),
   };
   return labels[status] ?? status;
 }
@@ -76,6 +104,7 @@ export const STATUS_COLORS: Record<string, string> = {
   publicando: '#E1306C',
   postado: '#525252',
   falha_publicacao: '#f55a42',
+  em_producao: '#8b5cf6',
 };
 
 /**
@@ -85,7 +114,9 @@ export const STATUS_COLORS: Record<string, string> = {
 export function getPostPublishState(p: {
   status: HubPost['status'];
   scheduled_at: string | null;
+  em_producao?: EmProducaoReason | null;
 }): string {
+  if (isInProduction(p)) return 'em_producao';
   return p.status === 'agendado' && !!p.scheduled_at && new Date(p.scheduled_at) <= new Date()
     ? 'publicando'
     : p.status;
@@ -111,6 +142,26 @@ export function deriveCaption(post: HubPost, igCaption: string | null): string {
         .replace(/^[:\s\n]+/, '')
         .trim()
     : rawText;
+}
+
+/**
+ * A media post's full text is worth its own tab only when it says more than the caption
+ * the Legenda tab already shows.
+ */
+export function hasDistinctPostText(post: HubPost): boolean {
+  const body = (post.conteudo_plain ?? '').trim();
+  if (!body) return false;
+  // When the caption is derived from a LEGENDA marker inside the body itself (no explicit
+  // ig_caption), the body-vs-caption comparison below always differs by construction — the
+  // marker line alone is never part of the caption slice. In that case the tab is only worth
+  // showing when there is real text before the marker; otherwise the body is just the caption
+  // wearing a label, and the derived-caption comparison would wrongly call it distinct.
+  if (!post.ig_caption) {
+    const rawText = post.conteudo_plain ?? '';
+    const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
+    if (legendaIdx !== -1) return rawText.slice(0, legendaIdx).trim() !== '';
+  }
+  return body !== deriveCaption(post, post.ig_caption).trim();
 }
 
 export type PostSortDirection = 'asc' | 'desc';

@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hub · Em produção (preview)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --hub-font-display:'Fraunces',ui-serif,Georgia,serif;
+    --hub-font-sans:'Instrument Sans',ui-sans-serif,system-ui,sans-serif;
+    --hub-bg:#FAFAFA;--hub-card:#FFFFFF;--hub-txt:#171717;--hub-tx2:#525252;--hub-tx3:#707070;
+    --hub-bd:rgba(0,0,0,.08);--hub-bd2:rgba(0,0,0,.2);--hub-soft:#F4F4F4;--hub-acc:#1f6f5c;--hub-acc-fg:#fff;
+    --prod:#8b5cf6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--hub-font-sans);background:var(--hub-bg);color:var(--hub-txt);font-feature-settings:'ss01','cv11';-webkit-font-smoothing:antialiased;padding:32px 16px 80px}
+  .fd{font-family:var(--hub-font-display)}
+  .wrap{max-width:1120px;margin:0 auto}
+  .section-label{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#9a3412;background:#fff7ed;border:1px solid #fed7aa;display:inline-block;padding:4px 10px;border-radius:999px;margin:40px 0 6px}
+  .section-note{font-size:13px;color:var(--hub-tx2);margin-bottom:16px;max-width:760px;line-height:1.5}
+  h1.page{font-family:var(--hub-font-display);font-size:34px;font-weight:500;letter-spacing:-.01em}
+  .sub{color:var(--hub-tx3);font-size:14px;margin-top:4px}
+  .tabsbar{display:flex;gap:8px;margin:20px 0 16px}
+  .pill{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid var(--hub-bd);background:var(--hub-card);color:var(--hub-tx2)}
+  .pill.on{background:var(--hub-txt);color:#fff;border-color:var(--hub-txt)}
+  .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+  @media (max-width:760px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .tile{position:relative;aspect-ratio:4/5;border-radius:4px;overflow:hidden;box-shadow:0 0 0 1px rgba(0,0,0,.05)}
+  .tag{display:inline-flex;align-items:center;gap:4px;border-radius:4px;font-weight:600;letter-spacing:.02em;white-space:nowrap;font-size:.65rem;padding:.2rem .5rem;backdrop-filter:blur(6px)}
+  .tag.md{font-size:.72rem;padding:.25rem .6rem}
+  .t-aprov{color:#f5a342;background:#f5a3421f;border:1px solid #f5a34240}
+  .t-ok{color:#3ecf8e;background:#3ecf8e1f;border:1px solid #3ecf8e40}
+  .t-ag{color:#42c8f5;background:#42c8f51f;border:1px solid #42c8f540}
+  .t-prod{color:var(--prod);background:#8b5cf61f;border:1px solid #8b5cf640}
+  .t-prod-on-img{color:#fff;background:#8b5cf6cc;border:1px solid #ffffff55}
+  .tl{position:absolute;top:8px;left:8px;z-index:2}
+  .tr{position:absolute;top:8px;right:8px;z-index:2;width:24px;height:24px;border-radius:6px;background:rgba(0,0,0,.45);color:#fff;display:flex;align-items:center;justify-content:center}
+  .cap{position:absolute;inset:auto 0 0 0;z-index:2;padding:32px 10px 8px;background:linear-gradient(to top,rgba(0,0,0,.65),transparent);color:#fff;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .textile{position:absolute;inset:0;background:var(--hub-card);border:1px solid var(--hub-bd);display:flex;flex-direction:column;gap:6px;padding:12px}
+  .textile .tt{font-family:var(--hub-font-display);font-size:15px;line-height:1.2;margin-top:4px}
+  .textile .tx{font-size:12px;line-height:1.4;color:var(--hub-tx2);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+  .textile .ft{margin-top:auto;font-size:12px;color:var(--hub-tx3)}
+  .prodveil::after{content:"";position:absolute;inset:0;background:rgba(255,255,255,.0)}
+  /* art mocks */
+  .art{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:18px}
+  .art1{background:linear-gradient(160deg,#0f3d33 0%,#1f6f5c 60%,#2d8f78 100%);color:#fff}
+  .art2{background:linear-gradient(160deg,#f3ede4,#e6dccd);color:#2b2118}
+  .art3{background:radial-gradient(circle at 70% 30%,#f7c59f,#e07a5f 60%,#9c3d2e);color:#fff}
+  .art4{background:linear-gradient(140deg,#1d3557,#457b9d);color:#fff}
+  .art h4{font-family:var(--hub-font-display);font-weight:500;font-size:22px;line-height:1.1}
+  .art p{font-size:11px;opacity:.85;margin-top:8px}
+  .art .kicker{font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.8;margin-bottom:8px}
+  /* dialog */
+  .scrim{background:rgba(10,10,10,.55);border-radius:14px;padding:36px 24px;display:flex;justify-content:center}
+  .dlg{background:var(--hub-card);border-radius:4px;overflow:hidden;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);width:min(1040px,100%);height:640px}
+  @media (max-width:860px){.dlg{grid-template-columns:1fr;height:auto}.dlg .media{height:55vw}}
+  .media{position:relative;background:#111}
+  .counter{position:absolute;top:12px;left:12px;z-index:3;border-radius:999px;background:rgba(0,0,0,.45);color:#fff;font-size:12px;padding:2px 8px}
+  .dots{position:absolute;bottom:14px;left:0;right:0;display:flex;justify-content:center;gap:5px;z-index:3}
+  .dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5)}.dots i.on{background:#fff}
+  .col{display:flex;flex-direction:column;min-height:0}
+  .hdr{display:flex;gap:12px;align-items:flex-start;padding:16px 16px 12px;border-bottom:1px solid var(--hub-bd)}
+  .hdr h3{font-family:var(--hub-font-display);font-weight:400;font-size:18px;line-height:1.15}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+  .chip{border-radius:999px;background:var(--hub-soft);color:var(--hub-tx2);font-size:12px;padding:2px 8px}
+  .iconbtn{width:32px;height:32px;border-radius:999px;background:var(--hub-soft);color:var(--hub-tx2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .tabs{display:flex;gap:20px;padding:0 16px;border-bottom:1px solid var(--hub-bd)}
+  .tabs span{padding:10px 0;font-size:12px;font-weight:600;color:var(--hub-tx3);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs span.on{color:var(--hub-txt);border-color:var(--hub-txt)}
+  .body{flex:1;min-height:0;overflow:auto;padding:16px}
+  .body p.caption{font-size:14px;line-height:1.55;white-space:pre-wrap}
+  .notice{display:flex;gap:10px;align-items:flex-start;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.45;margin-bottom:14px}
+  .notice.prod{background:#8b5cf60f;border:1px solid #8b5cf630;color:#4c1d95}
+  .notice.prod b{font-weight:600}
+  .notice svg{flex-shrink:0;margin-top:1px}
+  .rt h5{font-family:var(--hub-font-display);font-size:16px;font-weight:600;margin:14px 0 6px}
+  .rt p{font-family:var(--hub-font-display);font-size:15.5px;line-height:1.55;margin-bottom:10px}
+  .rt ul{font-family:var(--hub-font-display);font-size:15.5px;line-height:1.55;margin:0 0 10px 20px}
+  .rt .slide{font-family:var(--hub-font-sans);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--hub-tx3);margin-top:14px}
+  .igcap{border-top:1px solid var(--hub-bd);padding-top:12px;margin-top:6px}
+  .igcap .lbl{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--hub-tx3);margin-bottom:4px}
+  .igcap p{font-size:13px;color:var(--hub-tx2);line-height:1.6;white-space:pre-wrap}
+  .footer{padding:12px 16px;border-top:1px solid var(--hub-bd);background:var(--hub-soft);display:flex;gap:8px}
+  .btn{flex:1;height:40px;border-radius:12px;font-weight:600;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--hub-bd2);background:var(--hub-card);color:var(--hub-txt)}
+  .btn.pri{background:var(--hub-acc);color:var(--hub-acc-fg);border-color:transparent}
+  .footer.muted{justify-content:center;font-size:12.5px;color:var(--hub-tx3);gap:6px;align-items:center}
+  .newbadge{font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#fff;background:#ea580c;border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:1px}
+  .hl{outline:2px dashed #ea580c;outline-offset:3px;border-radius:6px}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media (max-width:860px){.pair{grid-template-columns:1fr}}
+  .phone{background:var(--hub-card);border:1px solid var(--hub-bd);border-radius:14px;padding:16px}
+  .legend{font-size:12.5px;color:var(--hub-tx2);line-height:1.6;margin-top:10px}
+  .legend b{color:#ea580c}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div style="font-size:13px;color:var(--hub-tx3)">Preview de design · Hub do cliente · dados fictícios. <span style="color:#ea580c;font-weight:600">Laranja tracejado = o que muda.</span></div>
+
+  <!-- ============ 1. POSTAGENS GRID ============ -->
+  <span class="section-label">1 · Postagens (grade)</span>
+  <p class="section-note">Depois da 1ª aprovação, o post continua na grade com a etiqueta roxa <b>Em produção</b>, em vez de sumir. Hoje ele some da grade. Aparece com o texto (se ainda não tem mídia) ou com a arte (se já tem).</p>
+
+  <div class="phone">
+    <h1 class="page">Postagens</h1>
+    <div class="sub">Outubro · Clínica Dra. Helena Prado</div>
+    <div class="tabsbar"><span class="pill on">Grade</span><span class="pill">Calendário</span><span class="pill">Lista</span></div>
+
+    <div class="grid">
+      <!-- em produção, texto -->
+      <div class="tile hl">
+        <div class="textile">
+          <span class="tag t-prod" style="align-self:flex-start">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            Em produção
+          </span>
+          <span class="tt">5 mitos sobre o protetor solar no inverno</span>
+          <span class="tx">Slide 1: "No inverno não preciso de protetor." Mito! A radiação UVA atravessa nuvens e janelas o ano todo. Slide 2: …</span>
+          <span class="ft">Carrossel · 08 out</span>
+        </div>
+      </div>
+      <!-- em produção, com arte -->
+      <div class="tile hl">
+        <div class="art art1"><div class="kicker">Dermatologia</div><h4>Rotina de skincare em 3 passos</h4><p>Limpeza · Hidratação · Proteção</p></div>
+        <span class="tl"><span class="tag t-prod-on-img">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          Em produção</span></span>
+        <span class="tr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg></span>
+        <span class="cap">Rotina de skincare em 3 passos</span>
+      </div>
+      <!-- aguardando -->
+      <div class="tile">
+        <div class="art art2"><div class="kicker">Bastidores</div><h4>Um dia no consultório</h4></div>
+        <span class="tl"><span class="tag t-aprov">Aguardando aprovação</span></span>
+        <span class="tr"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+        <span class="cap">Um dia no consultório</span>
+      </div>
+      <!-- agendado -->
+      <div class="tile">
+        <div class="art art3"><div class="kicker">Dica rápida</div><h4>Quanto protetor usar no rosto?</h4><p>A regra das duas linhas</p></div>
+        <span class="tl"><span class="tag t-ag">Agendado</span></span>
+        <span class="cap">Quanto protetor usar no rosto?</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 2. DIALOG — EM PRODUÇÃO ============ -->
+  <span class="section-label">2 · Post aberto enquanto está em produção (só leitura)</span>
+  <p class="section-note">Um aviso roxo explica o que está acontecendo. Sem botões de aprovar ou pedir correção, e sem edição: o rodapé vira uma linha informativa. As abas <b>Legenda</b>, <b>Texto do post</b> e <b>Histórico</b> continuam navegáveis.</p>
+
+  <div class="scrim">
+    <div class="dlg">
+      <div class="media">
+        <span class="counter">2 de 4</span>
+        <div class="art art1" style="padding:48px"><div class="kicker">Dermatologia</div><h4 style="font-size:40px">Rotina de skincare em 3 passos</h4><p style="font-size:14px">Limpeza · Hidratação · Proteção</p></div>
+        <div class="dots"><i class="on"></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="col">
+        <div class="hdr">
+          <div style="flex:1;min-width:0">
+            <h3>Rotina de skincare em 3 passos</h3>
+            <div class="chips">
+              <span class="tag md t-prod hl">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                Em produção</span>
+              <span class="chip">Carrossel · 4 slides</span>
+              <span class="chip">10 out</span>
+              <span class="chip">Outubro · Conteúdo mensal</span>
+            </div>
+          </div>
+          <div class="iconbtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8h16v-8M16 6l-4-4-4 4M12 2v14"/></svg></div>
+          <div class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+        </div>
+        <div class="tabs"><span class="on">Legenda</span><span class="hl">Texto do post <span class="newbadge">NOVO</span></span><span>Histórico e comentários</span></div>
+        <div class="body">
+          <div class="notice prod hl">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <div><b>Você aprovou o texto.</b> A equipe está produzindo a arte deste post. Ele volta para <b>Aprovações</b> quando estiver pronto para a próxima aprovação.</div>
+          </div>
+          <p class="caption">Sua pele não precisa de 10 produtos. Precisa de constância. ✨
+
+Deslize para ver a rotina que eu indico para a maioria dos pacientes no consultório:
+
+1️⃣ Limpeza suave, manhã e noite
+2️⃣ Hidratante adequado ao seu tipo de pele
+3️⃣ Protetor solar FPS 50, todos os dias, mesmo em casa
+
+Salve este post e marque quem precisa ver!
+
+#dermatologia #skincare #protetorsolar</p>
+        </div>
+        <div class="footer muted hl">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Em produção: nada para aprovar agora
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pair" style="margin-top:16px">
+    <div class="phone">
+      <div style="font-size:12px;font-weight:600;color:var(--hub-tx3);margin-bottom:8px">Feed e Carrossel</div>
+      <div class="notice prod" style="margin:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><div><b>Você aprovou o texto.</b> A equipe está produzindo a <b>arte</b> deste post. Ele volta para <b>Aprovações</b> quando estiver pronto para a próxima aprovação.</div></div>
+    </div>
+    <div class="phone">
+      <div style="font-size:12px;font-weight:600;color:var(--hub-tx3);margin-bottom:8px">Reels</div>
+      <div class="notice prod" style="margin:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><div><b>Você aprovou o texto.</b> A equipe está produzindo o <b>vídeo</b> deste post. Ele volta para <b>Aprovações</b> quando estiver pronto para a próxima aprovação.</div></div>
+    </div>
+  </div>
+
+  <!-- ============ 3. TEXTO DO POST TAB ============ -->
+  <span class="section-label">3 · Aba "Texto do post" em um post com mídia</span>
+  <p class="section-note">Hoje, quando a arte é anexada, o Hub mostra só a legenda, e o texto completo do post (roteiro dos slides, observações) some. A nova aba <b>Texto do post</b> mostra esse texto ao lado da arte. Ela existe em todo post com mídia que tenha texto além da legenda, incluindo a 2ª aprovação (abaixo), para o cliente conferir se a arte bate com o texto que aprovou.</p>
+
+  <div class="scrim">
+    <div class="dlg">
+      <div class="media">
+        <span class="counter">1 de 3</span>
+        <div class="art art1" style="padding:48px"><div class="kicker">Dermatologia</div><h4 style="font-size:40px">Rotina de skincare em 3 passos</h4><p style="font-size:14px">Limpeza · Hidratação · Proteção</p></div>
+        <div class="dots"><i class="on"></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="col">
+        <div class="hdr">
+          <div style="flex:1;min-width:0">
+            <h3>Rotina de skincare em 3 passos</h3>
+            <div class="chips">
+              <span class="tag md t-aprov">Aguardando aprovação</span>
+              <span class="chip">Carrossel · 4 slides</span>
+              <span class="chip">10 out</span>
+            </div>
+          </div>
+          <div class="iconbtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8h16v-8M16 6l-4-4-4 4M12 2v14"/></svg></div>
+          <div class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+        </div>
+        <div class="tabs"><span>Legenda</span><span class="on hl">Texto do post <span class="newbadge">NOVO</span></span><span>Histórico e comentários</span></div>
+        <div class="body rt">
+          <div class="slide" style="margin-top:0">Slide 1 · Capa</div>
+          <p>Rotina de skincare em 3 passos. Simples, eficaz e aprovada pela sua dermatologista.</p>
+          <div class="slide">Slide 2</div>
+          <p><b>Limpeza.</b> Use um sabonete suave, sem esfoliantes, de manhã e à noite. Água morna, nunca quente.</p>
+          <div class="slide">Slide 3</div>
+          <p><b>Hidratação.</b> Pele oleosa: gel. Pele seca: creme. Todo mundo precisa hidratar.</p>
+          <div class="slide">Slide 4</div>
+          <p><b>Proteção.</b> FPS 50 todos os dias, reaplicando a cada 3 horas se houver exposição.</p>
+          <ul><li>Quantidade: a regra das duas linhas no dedo</li><li>Não esqueça orelhas e pescoço</li></ul>
+          <div class="igcap">
+            <div class="lbl">Legenda do Instagram</div>
+            <p>Sua pele não precisa de 10 produtos. Precisa de constância. ✨ …</p>
+          </div>
+        </div>
+        <div class="footer">
+          <div class="btn">Pedir correção</div>
+          <div class="btn pri">Aprovar</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="legend">Fora do escopo: nada muda no CRM. Na 1ª aprovação o post continua voltando para <i>rascunho</i> internamente. O Hub só passa a mostrá-lo como "Em produção", e ele volta sozinho para <b style="color:inherit">Aprovações</b> quando a agência reenvia.</p>
+</div>
+</body>
+</html>

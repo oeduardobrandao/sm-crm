@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { clientStatusOf } from '../lib/postView';
 import type { HubPost } from '../types';
 
 // Portuguese source text kept as the `months`/`weekdaysShort` common-namespace
@@ -46,6 +47,7 @@ const STATUS_LABEL_PT: Record<string, string> = {
   correcao_cliente: 'Correção',
   agendado: 'Agendado',
   publicado: 'Publicado',
+  em_producao: 'Em produção',
 };
 
 interface Props {
@@ -368,7 +370,7 @@ export function PostCalendar({ posts }: Props) {
                       {tipoLabel(p.tipo)}
                     </span>
                     <span className="text-[12px] hub-tx2 px-2 py-0.5 rounded-full hub-bg-soft">
-                      {statusLabel(p.status)}
+                      {statusLabel(clientStatusOf(p))}
                     </span>
                   </div>
 

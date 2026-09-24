@@ -14,11 +14,11 @@ import { PostDetailDialog } from '../components/posts/PostDetailDialog';
 import { isFeedSelectable, type TileMode } from '../components/posts/PostTile';
 import {
   ALL_MONTHS,
-  VISIBLE_STATUSES,
   countPostsByMonth,
   getPostMonthKey,
   getPostPublishState,
   groupPostsByMonth,
+  isPostClientVisible,
   sortPostsChronologically,
 } from '../lib/postView';
 import { isAutoPublishActive } from '../lib/autoPublish';
@@ -59,8 +59,7 @@ export function PostagensPage() {
   const fatalError = isError && data === undefined;
 
   const allVisible = useMemo(
-    () =>
-      sortPostsChronologically((data?.posts ?? []).filter((p) => VISIBLE_STATUSES.has(p.status))),
+    () => sortPostsChronologically((data?.posts ?? []).filter(isPostClientVisible)),
     [data?.posts],
   );
   // The two filters are cross-faceted: each control's counts reflect the other's selection,
@@ -127,7 +126,7 @@ export function PostagensPage() {
   const selectedPosts = useMemo(
     () =>
       (data?.posts ?? []).filter(
-        (p) => VISIBLE_STATUSES.has(p.status) && isFeedSelectable(p) && selectedIds.has(p.id),
+        (p) => isPostClientVisible(p) && isFeedSelectable(p) && selectedIds.has(p.id),
       ),
     [data?.posts, selectedIds],
   );

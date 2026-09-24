@@ -104,6 +104,7 @@
     "openStory": "View story {{title}}",
     "tabCaption": "Caption",
     "tabText": "Text",
+    "tabPostText": "Post text",
     "tabHistory": "History and comments",
     "editCaption": "Edit caption",
     "editText": "Edit text",
@@ -156,5 +157,16 @@
     "texto": "Text",
     "legenda": "Caption",
     "outro": "Other"
+  },
+  "production": {
+    "nextApprovalTitle": "You approved the text.",
+    "nextApprovalBody_arte": "The team is producing the artwork for this post. It returns to Approvals when it's ready for the next approval.",
+    "nextApprovalBody_video": "The team is producing the video for this post. It returns to Approvals when it's ready for the next approval.",
+    "nextApprovalBody_conteudo": "The team is producing the content for this post. It returns to Approvals when it's ready for the next approval.",
+    "correcaoTitle": "The team is making the changes you requested.",
+    "correcaoBody": "The post returns to Approvals when it's ready.",
+    "ajusteTitle": "The team is adjusting this post.",
+    "ajusteBody": "It returns to Approvals when it's ready.",
+    "footer": "In production: nothing to approve right now"
   }
 }

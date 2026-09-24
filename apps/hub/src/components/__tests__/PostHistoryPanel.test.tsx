@@ -153,6 +153,22 @@ describe('PostHistoryPanel', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('shows history for an em-produção post but no comment composer', async () => {
+    mockedFetch.mockResolvedValue({ events: [], approvals: [] });
+    render(
+      <PostHistoryPanel
+        post={makePost({ status: 'rascunho', em_producao: 'correcao' })}
+        token="tok"
+        approvals={[]}
+        embedded
+      />,
+    );
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+    expect(
+      screen.queryByPlaceholderText('Escreva um comentário sobre este post'),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows counts from the client rows of this post only and does not fetch while collapsed', () => {
     render(<PostHistoryPanel post={makePost()} token="tok" approvals={listApprovals} />);
     expect(screen.getByRole('button', { name: /Histórico e comentários/ })).toHaveAttribute(
@@ -337,6 +353,37 @@ describe('PostHistoryPanel', () => {
     await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(2));
     expect(onCommentSent).toHaveBeenCalledTimes(1);
     expect(screen.getByPlaceholderText('Escreva um comentário sobre este post')).toHaveValue('');
+  });
+
+  it('clears dirty when the post moves into production mid-draft (composer unmounts)', async () => {
+    mockedFetch.mockResolvedValue({ events: [], approvals: [] });
+    const onDirtyChange = vi.fn();
+    const { rerender } = render(
+      <PostHistoryPanel
+        post={makePost({ status: 'enviado_cliente' })}
+        token="tok"
+        approvals={[]}
+        onDirtyChange={onDirtyChange}
+        embedded
+      />,
+    );
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+    fireEvent.change(screen.getByPlaceholderText('Escreva um comentário sobre este post'), {
+      target: { value: 'ainda não terminei' },
+    });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    rerender(
+      <PostHistoryPanel
+        post={makePost({ status: 'rascunho', em_producao: 'correcao' })}
+        token="tok"
+        approvals={[]}
+        onDirtyChange={onDirtyChange}
+        embedded
+      />,
+    );
+
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
 
   it('keeps the draft and shows an error when sending fails', async () => {

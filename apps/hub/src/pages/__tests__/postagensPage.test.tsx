@@ -130,6 +130,21 @@ function pickMonth(name: string | RegExp) {
 }
 
 describe('PostagensPage', () => {
+  it('shows an em-produção post read-only with the purple tag, and still hides plain drafts', async () => {
+    renderPage(
+      BASE,
+      response({
+        posts: [
+          post({ id: 1, titulo: 'Na arte', status: 'rascunho', em_producao: 'proxima_aprovacao' }),
+          post({ id: 2, titulo: 'Rascunho puro', status: 'rascunho' }),
+        ],
+      }),
+    );
+    expect(await screen.findByText('Na arte')).toBeInTheDocument();
+    expect(screen.getByText('Em produção')).toBeInTheDocument();
+    expect(screen.queryByText('Rascunho puro')).not.toBeInTheDocument();
+  });
+
   beforeEach(() => vi.clearAllMocks());
 
   it('renders one flattened chronological grid with the month dropdown and status chips in one row', async () => {

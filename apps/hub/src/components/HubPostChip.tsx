@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpRight, FileText, GitBranch } from 'lucide-react';
 import { fetchPosts } from '../api';
-import { getClientStatusLabel, getTipoLabel } from '../lib/postView';
+import { clientStatusOf, getClientStatusLabel, getTipoLabel } from '../lib/postView';
 
 interface Props {
   postId: number;
@@ -111,7 +111,7 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
                 className="rounded-full px-2 py-0.5 text-[12px] font-semibold hub-tx2"
                 style={{ boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
               >
-                {getClientStatusLabel(t, post.status)}
+                {getClientStatusLabel(t, clientStatusOf(post))}
               </span>
             </div>
             {post.workflow_titulo && (
