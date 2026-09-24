@@ -8,7 +8,7 @@ import {
   type DepositsGateways,
   type StripeDepositsClient,
 } from "../platform-admin/deposits.ts";
-import type { PagarmeRaw, StripeRaw } from "../platform-admin/deposits-logic.ts";
+import { businessToday, type PagarmeRaw, type StripeRaw } from "../platform-admin/deposits-logic.ts";
 
 const TODAY = "2026-09-24";
 const ts = (day: string) => Math.floor(new Date(`${day}T00:00:00Z`).getTime() / 1000);
@@ -137,6 +137,25 @@ Deno.test("handleGetDeposits: 200 JSON with the response body", async () => {
   assertEquals(body.stripe.ok, true);
   assertEquals(body.pagarme.ok, true);
   assertEquals(body.summary.next.provider, "pagarme");
+});
+
+Deno.test("buildDepositsResponse: today omitted falls back to businessToday(), so a Pagar.me payable due today (BRT) isn't dropped as overdue", async () => {
+  const todayBRT = businessToday();
+  const payload: PagarmeRaw = {
+    ...PAGARME_RAW,
+    payables: [
+      { id: 99, status: "waiting_funds", amount: 5000, fee: 0, anticipation_fee: 0, payment_date: `${todayBRT}T03:00:00Z` },
+    ],
+  };
+  const out = await buildDepositsResponse(
+    gateways({
+      stripe: null,
+      today: undefined,
+      pagarme: { fetchRaw: () => Promise.resolve(payload) },
+    }),
+  );
+  const found = out.pagarme.upcoming.next30.some((r) => r.date === todayBRT);
+  assertEquals(found, true);
 });
 
 // ─── nextCursor ─────────────────────────────────────────────────────────────

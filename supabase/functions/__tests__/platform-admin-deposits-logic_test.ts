@@ -1,6 +1,7 @@
 import { assertEquals } from "./assert.ts";
 import {
   addDays,
+  businessToday,
   groupByDay,
   nextBusinessDay,
   notConfigured,
@@ -36,6 +37,12 @@ Deno.test("toDay: null / invalid → null", () => {
   assertEquals(toDay(null), null);
   assertEquals(toDay(undefined), null);
   assertEquals(toDay("not a date"), null);
+});
+
+Deno.test("businessToday: São Paulo calendar date, not UTC", () => {
+  assertEquals(businessToday(new Date("2026-09-25T01:30:00Z")), "2026-09-24"); // 22:30 in São Paulo the day before
+  assertEquals(businessToday(new Date("2026-09-25T03:00:00Z")), "2026-09-25"); // BRT midnight
+  assertEquals(businessToday(new Date("2026-09-25T15:00:00Z")), "2026-09-25");
 });
 
 Deno.test("addDays: crosses month and year boundaries", () => {

@@ -14,6 +14,7 @@ import { withTimeout } from "./pricing.ts";
 import {
   buildPagarmeDeposits,
   buildStripeDeposits,
+  businessToday,
   notConfigured,
   summarize,
   unavailable,
@@ -245,7 +246,7 @@ async function settleProvider(label: string, run: (() => Promise<ProviderDeposit
 }
 
 export async function buildDepositsResponse(g: DepositsGateways): Promise<DepositsResponse> {
-  const today = g.today ?? new Date().toISOString().slice(0, 10);
+  const today = g.today ?? businessToday();
   const pagarmeConfigured = !!g.recipientId && g.pagarmeSecretPresent;
   const [stripe, pagarme] = await Promise.all([
     settleProvider("stripe", g.stripe ? () => g.stripe!.fetchRaw().then((raw) => buildStripeDeposits(raw, today)) : null),

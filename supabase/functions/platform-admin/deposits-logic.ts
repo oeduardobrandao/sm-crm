@@ -81,6 +81,21 @@ export function toDay(value: string | number | null | undefined): string | null 
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/** The panel's "today" is the São Paulo business date, not the UTC one: Pagar.me stamps payables
+ *  at BRT midnight (03:00Z), and Stripe's UTC-midnight `available_on` maps to the same or the
+ *  next BRT day, so anchoring "today" to São Paulo is what makes both providers agree on what
+ *  "today" means. Between 00:00 and 03:00 UTC the UTC calendar date is already tomorrow while
+ *  it's still yesterday evening in São Paulo, which would otherwise make `splitHorizon` drop a
+ *  same-day Pagar.me row as overdue. */
+export function businessToday(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
 function parseDay(day: string): Date {
   return new Date(`${day}T00:00:00Z`);
 }
