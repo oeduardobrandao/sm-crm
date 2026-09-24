@@ -182,4 +182,25 @@ describe('PostCalendar', () => {
 
     expect(getDayButton(21)).toHaveAttribute('aria-current', 'date');
   });
+
+  it('shows an em-produção post with the purple label instead of its internal status', () => {
+    vi.setSystemTime(new Date('2026-04-18T12:00:00.000Z'));
+
+    render(
+      <PostCalendar
+        posts={[
+          makePost({
+            id: 1,
+            titulo: 'Em ajuste após aprovação',
+            status: 'revisao_interna',
+            em_producao: 'correcao',
+            scheduled_at: '2026-04-18T10:00:00.000Z',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Em produção')).toBeInTheDocument();
+    expect(screen.queryByText('Revisão interna')).not.toBeInTheDocument();
+  });
 });

@@ -153,6 +153,22 @@ describe('PostHistoryPanel', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('shows history for an em-produção post but no comment composer', async () => {
+    mockedFetch.mockResolvedValue({ events: [], approvals: [] });
+    render(
+      <PostHistoryPanel
+        post={makePost({ status: 'rascunho', em_producao: 'correcao' })}
+        token="tok"
+        approvals={[]}
+        embedded
+      />,
+    );
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+    expect(
+      screen.queryByPlaceholderText('Escreva um comentário sobre este post'),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows counts from the client rows of this post only and does not fetch while collapsed', () => {
     render(<PostHistoryPanel post={makePost()} token="tok" approvals={listApprovals} />);
     expect(screen.getByRole('button', { name: /Histórico e comentários/ })).toHaveAttribute(

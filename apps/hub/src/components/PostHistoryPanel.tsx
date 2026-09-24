@@ -11,7 +11,12 @@ import {
   selectComments,
   type HistoryEntry,
 } from '../lib/postHistory';
-import { getClientStatusLabel, pickPostCardKind, VISIBLE_STATUSES } from '../lib/postView';
+import {
+  getClientStatusLabel,
+  isInProduction,
+  isPostClientVisible,
+  pickPostCardKind,
+} from '../lib/postView';
 import { formatDate } from './PostCard';
 import type { HubPost, PostApproval, PostHistoryResponse } from '../types';
 
@@ -84,7 +89,9 @@ export function PostHistoryPanel({
   }, [dirty]);
   useEffect(() => () => onDirtyChangeRef.current?.(false), []);
 
-  const visible = VISIBLE_STATUSES.has(post.status);
+  const visible = isPostClientVisible(post);
+  // Em produção is read-only: hub-approve rejects comments on internal statuses.
+  const canComment = !isInProduction(post);
 
   useEffect(() => {
     if (!open || !visible) return;
@@ -360,37 +367,39 @@ export function PostHistoryPanel({
                   ))}
                 </ol>
               )}
-              <div className="space-y-1.5">
-                <textarea
-                  aria-label={t(
-                    'history.composerPlaceholder',
-                    'Escreva um comentário sobre este post',
+              {canComment && (
+                <div className="space-y-1.5">
+                  <textarea
+                    aria-label={t(
+                      'history.composerPlaceholder',
+                      'Escreva um comentário sobre este post',
+                    )}
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    maxLength={4000}
+                    placeholder={t(
+                      'history.composerPlaceholder',
+                      'Escreva um comentário sobre este post',
+                    )}
+                    className="hub-focus-accent w-full rounded border hub-border px-3 py-2 text-[12px] resize-none min-h-[60px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none"
+                  />
+                  {sendError && (
+                    <p className="text-[12px] text-rose-700">
+                      {t('history.sendError', 'Não foi possível enviar o comentário.')}
+                    </p>
                   )}
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  maxLength={4000}
-                  placeholder={t(
-                    'history.composerPlaceholder',
-                    'Escreva um comentário sobre este post',
-                  )}
-                  className="hub-focus-accent w-full rounded border hub-border px-3 py-2 text-[12px] resize-none min-h-[60px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none"
-                />
-                {sendError && (
-                  <p className="text-[12px] text-rose-700">
-                    {t('history.sendError', 'Não foi possível enviar o comentário.')}
-                  </p>
-                )}
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={sending || text.trim() === ''}
-                    className="hub-btn-primary rounded px-4 py-2 min-h-[36px] text-[12px] font-semibold disabled:opacity-50"
-                  >
-                    {sending ? t('history.sending', 'Enviando...') : t('history.send', 'Enviar')}
-                  </button>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={sending || text.trim() === ''}
+                      className="hub-btn-primary rounded px-4 py-2 min-h-[36px] text-[12px] font-semibold disabled:opacity-50"
+                    >
+                      {sending ? t('history.sending', 'Enviando...') : t('history.send', 'Enviar')}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>

@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
+import { isInProduction } from '../lib/postView';
 import { PostCalendar } from '../components/PostCalendar';
 import { DashboardSection } from '../components/dashboard/DashboardSection';
 import { ClientAvatar } from '../components/ClientAvatar';
@@ -52,7 +53,7 @@ export function HomePage() {
 
   const allPosts = data?.posts ?? [];
   const pendingCount = allPosts.filter((p) => p.status === 'enviado_cliente').length;
-  const posts = allPosts.filter((p) => CALENDAR_STATUSES.has(p.status));
+  const posts = allPosts.filter((p) => CALENDAR_STATUSES.has(p.status) || isInProduction(p));
 
   const now = new Date();
   const thisMonthCount = allPosts.filter((p) => {

@@ -59,7 +59,8 @@
       "aprovado_cliente": "Aprovado",
       "correcao_cliente": "Correção",
       "agendado": "Agendado",
-      "publicado": "Publicado"
+      "publicado": "Publicado",
+      "em_producao": "Em produção"
     }
   },
   "dashboard": {

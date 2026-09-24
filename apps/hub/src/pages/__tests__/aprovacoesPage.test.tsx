@@ -126,6 +126,20 @@ const BASE = '/mesaas/hub/token-publico/aprovacoes';
 describe('AprovacoesPage', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('never lists an em-produção post among pending approvals', async () => {
+    renderPage(
+      BASE,
+      response({
+        posts: [
+          post({ id: 1, titulo: 'Pendente' }),
+          post({ id: 2, titulo: 'Na arte', status: 'rascunho', em_producao: 'proxima_aprovacao' }),
+        ],
+      }),
+    );
+    expect(await screen.findByText('Pendente')).toBeInTheDocument();
+    expect(screen.queryByText('Na arte')).not.toBeInTheDocument();
+  });
+
   it('shows only pending posts, sorted by scheduled_at, with the count description', async () => {
     renderPage(
       BASE,
