@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite --config apps/crm/vite.config.ts",
     "dev:env": "node scripts/with-env.mjs npm run dev --",
+    "dev:all:env": "node scripts/with-env.mjs npm run dev:all --",
     "with-env": "node scripts/with-env.mjs",
     "dev:hub": "vite --config apps/hub/vite.config.ts --port 5175",
     "dev:hub:staging": "vite --config apps/hub/vite.config.ts --port 5175 --mode staging",

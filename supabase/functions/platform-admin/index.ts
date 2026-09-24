@@ -6,6 +6,7 @@ import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendIn
 import { handleListWorkspaces } from "./list-workspaces.ts";
 import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
+import { handleGetDeposits } from "./deposits.ts";
 import { handleListPopups, handleCreatePopup, handleUpdatePopup, handleDeletePopup } from "./popups.ts";
 import { normalizeBanner, pickBannerColumns, validateBanner } from "../_shared/admin-banners.ts";
 import {
@@ -88,6 +89,8 @@ Deno.serve(async (req: Request) => {
         return await handleGetMrr(svc, headers);
       case "get-trials":
         return await handleGetTrials(svc, headers);
+      case "get-deposits":
+        return await handleGetDeposits(headers);
       case "create-plan":
         return await handleCreatePlan(svc, body, headers);
       case "update-plan":

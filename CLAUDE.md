@@ -16,6 +16,7 @@ Do NOT run them for small, well-understood changes — UI tweaks, copy changes, 
 # Development (default = PROD via .env; :staging overlays .env.staging)
 npm run dev              # CRM app on :5173      (prod)
 npm run dev:env          # same, but loads VITE_* from the main checkout's .env (git worktrees have none)
+npm run dev:all:env      # CRM + Hub + Admin (prod), same .env fallback for worktrees
 npm run dev:hub          # Hub app on :5175      (prod)
 npm run dev:admin        # Admin app on :5177    (prod)
 npm run dev:staging      # CRM   against staging Supabase
@@ -215,6 +216,12 @@ Monorepo with npm workspaces:
   `/subscriptions/{id}/info` to build the "Abrir no Pagar.me" link on the workspace
   detail. Optional, no default: unset or not `https://` means no link (everything else
   still works). Differs per environment (live account in prod, sandbox account in staging)
+- `PAGARME_RECIPIENT_ID` -- id do recebedor (`rp_…` em contratos antigos, `re_…` nos novos) da conta Pagar.me, usado por
+  platform-admin `get-deposits` para ler saldo, recebíveis (`/payables`) e transferências
+  do painel de Depósitos do Admin. Opcional, sem default: ausente, o cartão Pagar.me da
+  página Métricas mostra "Não configurado" e o resto da página segue normal. Diferente
+  por ambiente (recebedor live em prod, sandbox em staging). O cartão Stripe do mesmo
+  painel usa `STRIPE_SECRET_KEY` (Balance, Payouts, Balance Transactions, Account)
 - `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` -- TikTok Login Kit OAuth (tiktok-integration)
 - `TIKTOK_APP_AUDITED` -- unset until TikTok's Content Posting audit passes; while unset, scheduling enforces SELF_ONLY privacy
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)
