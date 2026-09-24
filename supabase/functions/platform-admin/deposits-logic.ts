@@ -268,8 +268,12 @@ export function summarize(providers: Record<Provider, ProviderDeposits>): Deposi
     let providerEarliest: string | null = null;
     let providerEarliestSum = 0;
     for (const r of p.upcoming.next30) {
-      next_30d_cents += r.net_cents;
       waiting_cents += r.net_cents;
+      // A manual-withdrawal row (transfers disabled, or settings unknown) only becomes
+      // AVAILABLE on deposit_on; nothing reaches the bank on its own. It is still money to
+      // receive, but not a deposit forecast, so it stays out of `next` and the 30-day total.
+      if (r.manual_withdrawal) continue;
+      next_30d_cents += r.net_cents;
       if (providerEarliest === null || r.deposit_on < providerEarliest) {
         providerEarliest = r.deposit_on;
         providerEarliestSum = r.net_cents;

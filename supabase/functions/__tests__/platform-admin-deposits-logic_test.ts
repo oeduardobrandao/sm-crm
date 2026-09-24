@@ -214,6 +214,29 @@ Deno.test("summarize: earliest deposit_on across providers wins; totals sum next
   });
 });
 
+Deno.test("summarize: manual-withdrawal rows count as money to receive but never as a deposit forecast", () => {
+  const pagarme = provider({
+    upcoming: {
+      next30: [{ ...row("2026-09-25", 150), manual_withdrawal: true }],
+      byMonth: [],
+    },
+  });
+  const stripe = provider({ upcoming: { next30: [row("2026-09-30", 300)], byMonth: [] } });
+  assertEquals(summarize({ stripe, pagarme }), {
+    next: { date: "2026-09-30", amount_cents: 300, provider: "stripe" },
+    next_30d_cents: 300,
+    waiting_cents: 450,
+    partial: false,
+  });
+  // only manual rows → nothing is forecast, the funds still show as waiting
+  assertEquals(summarize({ stripe: unavailable(), pagarme }), {
+    next: null,
+    next_30d_cents: 0,
+    waiting_cents: 150,
+    partial: true,
+  });
+});
+
 Deno.test("summarize: a failed provider contributes nothing and marks the summary partial", () => {
   const pagarme = provider({ upcoming: { next30: [row("2026-09-25", 150)], byMonth: [] } });
   assertEquals(summarize({ stripe: unavailable(), pagarme }), {
