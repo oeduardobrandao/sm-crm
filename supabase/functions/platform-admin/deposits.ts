@@ -42,7 +42,8 @@ export interface DepositsGateways {
   /** PAGARME_SECRET_KEY present. pagarmeFetch only fails at call time when it is missing, which
    *  would read as "indisponível"; checking up front makes it "não configurado" instead. */
   pagarmeSecretPresent: boolean;
-  /** YYYY-MM-DD; defaults to today (UTC). Injected so tests are deterministic. */
+  /** YYYY-MM-DD; defaults to today in America/Sao_Paulo (see `businessToday`). Injected so tests
+   *  are deterministic. */
   today?: string;
 }
 
@@ -96,6 +97,9 @@ export async function listPendingTransactions(
   // Stripe stamps available_on at midnight UTC of the availability day, so a transaction
   // available today is already < nowSec after 00:00 UTC while still status:"pending" (the daily
   // payout hasn't been created yet) — the lower bound must be the start of today, not nowSec.
+  // dayStart is the UTC calendar day, while `today` elsewhere in this module is the São Paulo
+  // business date (businessToday). Between 00:00 and 03:00 UTC those two dates differ by one day;
+  // accepted here since this is only a fetch lower bound, not the horizon split itself.
   const dayStart = nowSec - (nowSec % 86400);
   const attempts: Record<string, unknown>[] = [
     { available_on: { gte: dayStart }, limit: STRIPE_PAGE },
@@ -202,31 +206,60 @@ export async function listWaitingPayables(
     const qs = new URLSearchParams({ recipient_id: recipientId, status: "waiting_funds", size: String(PAGARME_PAGE) });
     if (cursor) qs.set("forward_cursor", cursor);
     const res = await fetchPage(`/payables?${qs.toString()}`);
-    rows.push(...(res?.data ?? []));
-    cursor = nextCursor(res?.paging);
-    if (!cursor || (res?.data ?? []).length === 0) break;
+    const data = res?.data ?? [];
+    rows.push(...data);
+    const raw = nextCursor(res?.paging);
+    if (!raw) {
+      // paging.next can be a non-null boilerplate URL even on the last page (e.g. a bare
+      // "?page=2" with no forward_cursor param), so its mere presence does NOT mean more data
+      // exists -- only a FULL page (further rows are plausible) combined with an unextractable
+      // cursor is treated as truncated; a short page is the last page regardless.
+      if (data.length === PAGARME_PAGE && res?.paging?.next) truncated = true;
+      break;
+    }
+    cursor = raw;
+    if (data.length === 0) break;
     if (page === PAGARME_MAX_PAGES - 1) truncated = true;
   }
   return { rows, truncated };
 }
+
+const PAGARME_GATEWAY_TIMEOUT_MS = 5000;
 
 export function createPagarmeDepositsGateway(): PagarmeDepositsGateway {
   return {
     async fetchRaw(recipientId) {
       const id = encodeURIComponent(recipientId);
       const [balance, payablesPage, recipient, transfers] = await Promise.all([
-        pagarmeFetch<unknown>("GET", `/recipients/${id}/balance`),
+        withTimeout(
+          pagarmeFetch<unknown>("GET", `/recipients/${id}/balance`),
+          PAGARME_GATEWAY_TIMEOUT_MS,
+          "pagarme.balance",
+        ),
         listWaitingPayables(recipientId),
-        pagarmeFetch<PagarmeRaw["recipient"]>("GET", `/recipients/${id}`),
-        pagarmeFetch<PagarmeTransfersPage>(
-          "GET",
-          `/transfers?${new URLSearchParams({ recipient_id: recipientId, status: "pending_transfer,processing", count: "50" }).toString()}`,
-        ).then((r) => r?.data ?? []).catch((err) => {
-          // In-flight transfers are a nice-to-have; the endpoint is newer and its filter grammar
-          // is the least documented. Degrade to an empty list rather than fail the card.
-          console.error("[deposits] pagarme transfers failed:", (err as Error).message);
-          return [] as PagarmeRaw["transfers"];
-        }),
+        withTimeout(
+          pagarmeFetch<PagarmeRaw["recipient"]>("GET", `/recipients/${id}`),
+          PAGARME_GATEWAY_TIMEOUT_MS,
+          "pagarme.recipient",
+        ),
+        withTimeout(
+          // Only recipient_id + size: the status filter's grammar (comma-separated? repeated
+          // param?) isn't documented for this endpoint, so we ask for everything and narrow with
+          // IN_FLIGHT_TRANSFER_STATUSES after the fetch instead of guessing the query syntax.
+          pagarmeFetch<PagarmeTransfersPage>(
+            "GET",
+            `/transfers?${new URLSearchParams({ recipient_id: recipientId, size: "100" }).toString()}`,
+          ),
+          PAGARME_GATEWAY_TIMEOUT_MS,
+          "pagarme.transfers",
+        )
+          .then((r) => r?.data ?? [])
+          .catch((err) => {
+            // In-flight transfers are a nice-to-have; the endpoint is newer and its filter grammar
+            // is the least documented. Degrade to an empty list rather than fail the card.
+            console.error("[deposits] pagarme transfers failed:", (err as Error).message);
+            return [] as PagarmeRaw["transfers"];
+          }),
       ]);
       return { balance, payables: payablesPage.rows, recipient, transfers, truncated: payablesPage.truncated };
     },

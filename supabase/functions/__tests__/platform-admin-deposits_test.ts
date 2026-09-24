@@ -375,3 +375,23 @@ Deno.test("listWaitingPayables: hits the page cap when every page has more, mark
   assertEquals(truncated, true);
   assertEquals(calls, 5);
 });
+
+Deno.test("listWaitingPayables: a FULL page whose paging.next carries no extractable forward_cursor is truncated, not silently ended", async () => {
+  const data = Array.from({ length: 100 }, (_, i) => pagarmePayable({ id: i }));
+  const fetchPage = () =>
+    Promise.resolve({ data, paging: { next: "https://api.pagar.me/core/v5/payables?page=2" } });
+
+  const { rows, truncated } = await listWaitingPayables("re_test", fetchPage);
+  assertEquals(truncated, true);
+  assertEquals(rows.length, 100);
+});
+
+Deno.test("listWaitingPayables: a SHORT page with the same unextractable paging.next is just the last page, not truncated", async () => {
+  const data = [pagarmePayable({ id: 1 }), pagarmePayable({ id: 2 })];
+  const fetchPage = () =>
+    Promise.resolve({ data, paging: { next: "https://api.pagar.me/core/v5/payables?page=2" } });
+
+  const { rows, truncated } = await listWaitingPayables("re_test", fetchPage);
+  assertEquals(truncated, false);
+  assertEquals(rows.length, 2);
+});
