@@ -24,12 +24,15 @@ export function formatDayShort(day: string): string {
   return `${weekday}, ${dm}`;
 }
 
+/** "Outubro de 2026": only the month name is capitalised (CSS `capitalize` would also
+ *  uppercase the "de"). */
 export function formatMonth(month: string): string {
-  return parseDay(`${month}-01`).toLocaleDateString('pt-BR', {
+  const label = parseDay(`${month}-01`).toLocaleDateString('pt-BR', {
     month: 'long',
     year: 'numeric',
     timeZone: 'UTC',
   });
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 export function providerName(p: DepositProvider): string {

@@ -290,7 +290,7 @@ function MonthRowItem({ row }: { row: DepositMonthRow }) {
   return (
     <li className="flex items-center justify-between gap-3 py-2 text-sm">
       <span className="flex flex-col">
-        <span className="capitalize">{formatMonth(row.month)}</span>
+        <span>{formatMonth(row.month)}</span>
         <span className="text-xs text-muted-foreground">
           {row.count} {row.count === 1 ? 'item' : 'itens'}
         </span>

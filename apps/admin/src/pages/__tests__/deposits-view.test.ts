@@ -16,7 +16,7 @@ describe('deposits-view', () => {
   it('formatDay / formatDayShort / formatMonth use pt-BR without timezone drift', () => {
     expect(formatDay('2026-09-28')).toBe('28/09/2026');
     expect(formatDayShort('2026-09-28')).toBe('seg, 28/09');
-    expect(formatMonth('2026-11')).toBe('novembro de 2026');
+    expect(formatMonth('2026-11')).toBe('Novembro de 2026');
   });
 
   it('providerName', () => {

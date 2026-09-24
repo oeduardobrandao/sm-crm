@@ -131,13 +131,13 @@ describe('DepositsSection', () => {
     expect(within(stripe).getByText('Deposita em sex, 25/09')).toBeInTheDocument();
     expect(within(stripe).getByText('Deposita em seg, 28/09')).toBeInTheDocument();
     expect(within(stripe).getByText('R$ 9.500,00')).toBeInTheDocument();
-    expect(within(stripe).getByText('novembro de 2026')).toBeInTheDocument();
+    expect(within(stripe).getByText('Novembro de 2026')).toBeInTheDocument();
     expect(within(stripe).getByText('Pago')).toBeInTheDocument();
 
     const pagarme = screen.getByTestId('deposits-card-pagarme');
     expect(within(pagarme).getByRole('heading', { name: 'Pagar.me' })).toBeInTheDocument();
     expect(within(pagarme).getByText('Transferência automática diária')).toBeInTheDocument();
-    expect(within(pagarme).getByText('outubro de 2026')).toBeInTheDocument();
+    expect(within(pagarme).getByText('Outubro de 2026')).toBeInTheDocument();
     expect(within(pagarme).getByText('Transferências em andamento')).toBeInTheDocument();
     expect(within(pagarme).getByText('Em trânsito')).toBeInTheDocument(); // the processing badge
     expect(within(pagarme).getByText('R$ 40,00')).toBeInTheDocument();
