@@ -114,7 +114,20 @@ export function dayNum(d: Date): number {
   return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 }
 
-function addDays(d: Date, n: number): Date {
+/** Local start of day. Shared with the dashboard agenda (todayAgenda.ts re-exports it). */
+export function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** Whole local days from `now`'s day to `when`'s day (negative = past). Hours on
+ *  both sides are ignored, so 22 set 23:59 -> 23 set 08:00 is exactly 1. */
+export function dayDiff(when: Date, now: Date): number {
+  const a = startOfLocalDay(now);
+  const b = startOfLocalDay(when);
+  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
+}
+
+export function addDays(d: Date, n: number): Date {
   const c = new Date(d);
   c.setDate(c.getDate() + n);
   return c;

@@ -8,6 +8,8 @@ import {
   computeDeadlineDate,
   computeWorkflowDeadlineDate,
   useEntregasData,
+  buildBoardCards,
+  fetchEtapasMap,
 } from '../useEntregasData';
 
 // useEntregasData reads `clienteAvatars`/`hubTokens` via two `supabase.from(...)`
@@ -213,6 +215,32 @@ describe('computeWorkflowDeadlineDate', () => {
     const shuffled = [tail, active, head];
     const deadline = computeWorkflowDeadlineDate(shuffled, active);
     expect(deadline?.toISOString().slice(0, 10)).toBe('2026-04-13');
+  });
+
+  it('parses a step data_limite as a LOCAL date, not UTC (timezone regression)', () => {
+    // Same bug already fixed in getDeadlineInfo (store/workflows.ts): `new
+    // Date('YYYY-MM-DD')` parses as UTC midnight, which in a UTC-negative zone
+    // like Brazil (America/Fortaleza, UTC-3) lands the local date one day
+    // EARLIER than the calendar day data_limite names.
+    const originalTZ = process.env.TZ;
+    process.env.TZ = 'America/Fortaleza';
+    try {
+      const active = makeEtapa({
+        id: 1,
+        ordem: 0,
+        status: 'ativo',
+        iniciado_em: '2026-04-10T00:00:00Z',
+        data_limite: '2026-04-15',
+      });
+      const deadline = computeWorkflowDeadlineDate([active], active);
+      // Under UTC parsing this would come back as 2026-04-14 local (21:00 on
+      // the 14th, UTC-3) instead of the 15th data_limite actually names.
+      expect(deadline?.getFullYear()).toBe(2026);
+      expect(deadline?.getMonth()).toBe(3);
+      expect(deadline?.getDate()).toBe(15);
+    } finally {
+      process.env.TZ = originalTZ;
+    }
   });
 });
 
@@ -569,5 +597,142 @@ describe('useEntregasData: processos individuais', () => {
     expect(result.current.activePostProcessCount).toBe(1);
     expect(result.current.concludedPostProcesses.map((p) => p.id)).toEqual([10]);
     expect([...result.current.processByPostId.keys()].sort()).toEqual([77, 78]);
+  });
+});
+
+describe('buildBoardCards / fetchEtapasMap', () => {
+  // Same restoreAllMocks gotcha as 'processos individuais' above: the global
+  // afterEach strips getAllActiveEtapas's mockResolvedValue, so fetchEtapasMap
+  // needs it re-armed here rather than relying on the module-mock's initial value.
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const store = await import('../../../../store');
+    (store.getAllActiveEtapas as any).mockResolvedValue([
+      {
+        id: 100,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+      {
+        id: 200,
+        workflow_id: 2,
+        ordem: 0,
+        nome: 'Etapa 1',
+        tipo: 'padrao',
+        prazo_dias: 3,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: '2026-04-01T00:00:00Z',
+      },
+    ]);
+  });
+
+  const clientes = [{ id: 10, nome: 'Cliente A' }] as any[];
+  const membros = [{ id: 7, nome: 'Ana' }] as any[];
+  const wf = (id: number, etapa_atual = 0) =>
+    ({ id, cliente_id: 10, titulo: `WF-${id}`, status: 'ativo', etapa_atual }) as any;
+  const et = (workflow_id: number, ordem: number, status: 'ativo' | 'pendente') =>
+    ({
+      id: workflow_id * 10 + ordem,
+      workflow_id,
+      ordem,
+      nome: `E${ordem}`,
+      prazo_dias: 2,
+      tipo_prazo: 'corridos',
+      status,
+      responsavel_id: 7,
+    }) as WorkflowEtapa;
+
+  it('uses the ativo etapa, resolves cliente and membro, and skips a workflow without etapas', () => {
+    const map = new Map<number, WorkflowEtapa[]>([[1, [et(1, 0, 'pendente'), et(1, 1, 'ativo')]]]);
+    const cards = buildBoardCards([wf(1), wf(2)], map, clientes, membros);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].etapa.ordem).toBe(1);
+    expect(cards[0].etapaIdx).toBe(1);
+    expect(cards[0].totalEtapas).toBe(2);
+    expect(cards[0].cliente?.nome).toBe('Cliente A');
+    expect(cards[0].membro?.nome).toBe('Ana');
+    expect(cards[0].hubUrl).toBeUndefined();
+  });
+
+  it('falls back to etapas[etapa_atual] when no etapa is ativo', () => {
+    const map = new Map<number, WorkflowEtapa[]>([
+      [1, [et(1, 0, 'pendente'), et(1, 1, 'pendente')]],
+    ]);
+    const cards = buildBoardCards([wf(1, 1)], map, clientes, membros);
+    expect(cards[0].etapa.ordem).toBe(1);
+  });
+
+  it('builds hubUrl only with both a token and a slug', () => {
+    const map = new Map<number, WorkflowEtapa[]>([[1, [et(1, 0, 'ativo')]]]);
+    const withBoth = buildBoardCards([wf(1)], map, clientes, membros, {
+      hubTokens: new Map([[10, 'tok']]),
+      workspaceSlug: 'agencia',
+    });
+    expect(withBoth[0].hubUrl).toBe(`${window.location.origin}/agencia/hub/tok`);
+    const noSlug = buildBoardCards([wf(1)], map, clientes, membros, {
+      hubTokens: new Map([[10, 'tok']]),
+      workspaceSlug: null,
+    });
+    expect(noSlug[0].hubUrl).toBeUndefined();
+  });
+
+  it('fetchEtapasMap groups getAllActiveEtapas rows by workflow_id', async () => {
+    const map = await fetchEtapasMap();
+    expect([...map.keys()].sort()).toEqual([1, 2]);
+    expect(map.get(1)?.[0].id).toBe(100);
+  });
+});
+
+describe('useEntregasData: isError', () => {
+  // Same restoreAllMocks gotcha documented above ('processos individuais',
+  // 'buildBoardCards / fetchEtapasMap'): every mock needs re-arming here.
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const store = await import('../../../../store');
+    (store.getWorkflows as any).mockResolvedValue([
+      { id: 1, cliente_id: 10, titulo: 'WF-1', status: 'ativo', etapa_atual: 0, recorrente: false },
+    ]);
+    (store.getClientes as any).mockResolvedValue([]);
+    (store.getMembros as any).mockResolvedValue([]);
+    (store.getWorkflowTemplates as any).mockResolvedValue([]);
+    (store.getAllActiveEtapas as any).mockResolvedValue([]);
+    (store.getVigentePostProcesses as any).mockResolvedValue([]);
+    const postMedia = await import('../../../../services/postMedia');
+    (postMedia.getWorkflowCovers as any).mockResolvedValue(new Map());
+    (postMedia.getPostCovers as any).mockResolvedValue(new Map());
+  });
+
+  it('is false while everything resolves and true when workflows fail', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+    const store = await import('../../../../store');
+
+    const ok = renderHook(() => useEntregasData(), { wrapper: createWrapper().Wrapper });
+    await waitFor(() => expect(ok.result.current.isLoading).toBe(false));
+    expect(ok.result.current.isError).toBe(false);
+
+    (store.getWorkflows as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
+    const failed = renderHook(() => useEntregasData(), { wrapper: createWrapper().Wrapper });
+    await waitFor(() => expect(failed.result.current.isError).toBe(true));
+  });
+
+  it('reports isPending until workflows, etapas and processos have data', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+    const store = await import('../../../../store');
+    let resolveWf!: (v: unknown) => void;
+    (store.getWorkflows as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      new Promise((r) => (resolveWf = r)),
+    );
+    const { result } = renderHook(() => useEntregasData(), { wrapper: createWrapper().Wrapper });
+    expect(result.current.isPending).toBe(true);
+    resolveWf([]);
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.isError).toBe(false);
   });
 });

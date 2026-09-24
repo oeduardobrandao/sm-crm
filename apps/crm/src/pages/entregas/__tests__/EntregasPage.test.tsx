@@ -16,6 +16,25 @@ const storeMocks = vi.hoisted(() => ({
   // Used by the provisional card built from a "mover para outro fluxo" seed.
   getDeadlineInfo: vi.fn(() => ({ estourado: false, urgente: false })),
   isFinalClientApprovalCycle: vi.fn(() => true),
+  // buildMinhaFila (real in this suite) reads these two pure exports of
+  // store/posts.ts; copies of the originals, since this mock replaces the module.
+  ASSIGNEE_PENDING_POST_STATUSES: [
+    'rascunho',
+    'revisao_interna',
+    'correcao_cliente',
+    'falha_publicacao',
+  ] as const,
+  compareScheduledAtAscNullsLast: (
+    a: { scheduled_at: string | null; id: number },
+    b: { scheduled_at: string | null; id: number },
+  ) => {
+    if (a.scheduled_at == null && b.scheduled_at == null) return a.id - b.id;
+    if (a.scheduled_at == null) return 1;
+    if (b.scheduled_at == null) return -1;
+    if (a.scheduled_at < b.scheduled_at) return -1;
+    if (a.scheduled_at > b.scheduled_at) return 1;
+    return a.id - b.id;
+  },
 }));
 vi.mock('../../../store', () => storeMocks);
 
@@ -34,6 +53,8 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  // VistasTabs' per-vista menu (only rendered once a saved vista exists).
+  DropdownMenuSeparator: () => <hr />,
   DropdownMenuItem: ({
     children,
     onClick,
@@ -273,6 +294,61 @@ vi.mock('@/hooks/useStatusRegistry', () => ({
     }),
     options: [],
   }),
+}));
+
+// useCurrentMembro reads getMembros from `@/store` (the same module the literal
+// `../../../store` mock above replaces, without getMembros): stub the hook.
+const currentMembroMock = vi.hoisted(() => ({
+  membro: null as { id: number; nome: string } | null,
+  isLoading: false,
+  isPending: false,
+  isError: false,
+  isSuccess: true,
+}));
+vi.mock('@/hooks/useCurrentMembro', () => ({
+  useCurrentMembro: () => ({ ...currentMembroMock }),
+}));
+
+// captureEvent is only asserted by the Minha fila analytics tests; the rest of
+// the module stays real.
+const analyticsMock = vi.hoisted(() => ({ captureEvent: vi.fn() }));
+vi.mock('@/lib/analytics', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  captureEvent: analyticsMock.captureEvent,
+}));
+
+vi.mock('../views/MinhaFilaView', () => ({
+  MinhaFilaView: ({
+    fila,
+    membroId,
+    currentMembroId,
+    isLoading,
+    isError,
+  }: {
+    fila: { items: unknown[] };
+    membroId: number | null;
+    currentMembroId: number | null;
+    isLoading: boolean;
+    isError: boolean;
+  }) => (
+    <div>
+      <div>
+        Fila view: membro {membroId ?? 'none'} / self {currentMembroId ?? 'none'}
+      </div>
+      <div>Fila state: {isError ? 'error' : isLoading ? 'loading' : 'ready'}</div>
+      <div>Fila items: {fila.items.length}</div>
+    </div>
+  ),
+}));
+
+// The member picker lives in the VistasTabs row, outside the view.
+vi.mock('../components/FilaMembroPicker', () => ({
+  FilaMembroPicker: ({ onChange }: { onChange: (id: number | null) => void }) => (
+    <>
+      <button onClick={() => onChange(12)}>Pick member 12</button>
+      <button onClick={() => onChange(null)}>Pick self</button>
+    </>
+  ),
 }));
 
 // Mock only startEntregasTour (driver.js can't run in jsdom); tourStorageKey stays real so the
@@ -706,7 +782,12 @@ describe('EntregasPage', () => {
     mockedToast.error.mockReset();
     mockedToast.info.mockReset();
     tourMock.startEntregasTour.mockReset();
-    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false });
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+    currentMembroMock.isLoading = false;
+    currentMembroMock.isPending = false;
+    currentMembroMock.isError = false;
+    currentMembroMock.isSuccess = true;
     limitsMock.features = null;
     localStorage.clear();
     // The "Como funciona" panel is open by default, and its copy names the same
@@ -2351,5 +2432,281 @@ describe('Publicações: filtros que falam de etapa leem o processo individual',
     fireEvent.click(screen.getByText('Filter prazo atrasado'));
 
     expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+  });
+});
+
+describe('EntregasPage: Minha fila', () => {
+  const membros = [
+    { id: 7, nome: 'Ana' },
+    { id: 12, nome: 'Bruno' },
+  ];
+  function renderFila(entry = '/entregas?view=fila', over: Record<string, unknown> = {}) {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros,
+      templates: [],
+      cards: [makeCard()],
+      activeWorkflows: [wfFixture],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
+      postProcessesVisible: false,
+      isLoading: false,
+      isError: false,
+      refresh: vi.fn(),
+      ...over,
+    } as never);
+    return renderPage(entry);
+  }
+  const openedCalls = () =>
+    analyticsMock.captureEvent.mock.calls.filter(([name]) => name === 'minha_fila_opened');
+
+  beforeEach(() => {
+    limitsMock.features = null;
+    localStorage.clear();
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+    currentMembroMock.isLoading = false;
+    currentMembroMock.isPending = false;
+    currentMembroMock.isError = false;
+    currentMembroMock.isSuccess = true;
+    analyticsMock.captureEvent.mockReset();
+  });
+
+  it('has the tab, hides toggles and filters, enables active-posts and writes view=fila', () => {
+    renderFila('/entregas');
+    fireEvent.click(screen.getByRole('tab', { name: 'Minha fila' }));
+    expect(screen.getByText('Fila view: membro 7 / self 7')).toBeInTheDocument();
+    expect(screen.getByText('Fila state: ready')).toBeInTheDocument();
+    expect(screen.queryByText('Etapas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Posts individuais')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Filters:/)).not.toBeInTheDocument();
+    expect(mockedUseActivePosts).toHaveBeenLastCalledWith(true);
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+  });
+
+  it('?view=fila opens with the Minha fila tab active and renders the view', () => {
+    renderFila('/entregas?view=fila');
+    expect(screen.getByRole('tab', { name: 'Minha fila' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('Fila view: membro 7 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+  });
+
+  it('keeps membro=12 from the URL once membros resolved and shows that member', () => {
+    renderFila('/entregas?view=fila&membro=12');
+    expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('normalizes the own id and an unknown id out of the URL', () => {
+    const own = renderFila('/entregas?view=fila&membro=7');
+    expect(screen.getByText('Fila view: membro 7 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+    own.unmount();
+
+    renderFila('/entregas?view=fila&membro=999');
+    expect(screen.getByText('Fila view: membro 7 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+  });
+
+  it('does not touch membro= while membros are still loading, and reports loading', () => {
+    currentMembroMock.membro = null;
+    currentMembroMock.isSuccess = false;
+    currentMembroMock.isLoading = true;
+    currentMembroMock.isPending = true;
+    renderFila('/entregas?view=fila&membro=12', { membros: [] });
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('keeps membro=12 across the membros load, then keeps it once they resolve', () => {
+    currentMembroMock.membro = null;
+    currentMembroMock.isSuccess = false;
+    currentMembroMock.isLoading = true;
+    currentMembroMock.isPending = true;
+    const view = renderFila('/entregas?view=fila&membro=12', { membros: [] });
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+
+    currentMembroMock.membro = { id: 7, nome: 'Ana' };
+    currentMembroMock.isSuccess = true;
+    currentMembroMock.isLoading = false;
+    mockedUseEntregasData.mockReturnValue({
+      ...mockedUseEntregasData.mock.results.at(-1)!.value,
+      membros,
+    } as never);
+    view.rerender(pageTree('/entregas?view=fila&membro=12'));
+    expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('reports an error when membros or active-posts fail, and keeps the URL intact', () => {
+    currentMembroMock.isSuccess = false;
+    currentMembroMock.isError = true;
+    renderFila('/entregas?view=fila&membro=12', { membros: [] });
+    expect(screen.getByText('Fila state: error')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('shows loading, not the unlinked state, on a paused membros cold start', () => {
+    // Offline/paused: TanStack isLoading (= isPending && isFetching) is false.
+    currentMembroMock.membro = null;
+    currentMembroMock.isSuccess = false;
+    currentMembroMock.isLoading = false;
+    currentMembroMock.isPending = true;
+    renderFila('/entregas?view=fila', { membros: [] });
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(screen.getByText('Fila view: membro none / self none')).toBeInTheDocument();
+  });
+
+  it('shows loading, not an empty queue, while active-posts is paused', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [],
+      isLoading: false,
+      isPending: true,
+      isError: false,
+    } as never);
+    renderFila('/entregas?view=fila&membro=12');
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(openedCalls()).toHaveLength(0);
+  });
+
+  it('shows loading, not an empty queue, while the entregas data is paused', () => {
+    // Offline cold start: workflows/etapas/processos pending but not fetching,
+    // so isLoading (and the page spinner) is false; posts and membros cached.
+    mockedUseActivePosts.mockReturnValue({
+      posts: [{ id: 1, workflow_id: 1, status: 'rascunho', scheduled_at: null }],
+      isLoading: false,
+      isPending: false,
+      isError: false,
+    } as never);
+    renderFila('/entregas?view=fila', {
+      cards: [],
+      activeWorkflows: [],
+      isLoading: false,
+      isPending: true,
+    });
+    expect(screen.getByText('Fila state: loading')).toBeInTheDocument();
+    expect(openedCalls()).toHaveLength(0);
+  });
+
+  it('error wins over a paused dependency', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [],
+      isLoading: false,
+      isPending: true,
+      isError: false,
+    } as never);
+    renderFila('/entregas?view=fila', { isError: true });
+    expect(screen.getByText('Fila state: error')).toBeInTheDocument();
+  });
+
+  it('reports an error when active-posts fails', () => {
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: true });
+    renderFila();
+    expect(screen.getByText('Fila state: error')).toBeInTheDocument();
+  });
+
+  it('reports an error when the entregas data fails', () => {
+    renderFila('/entregas?view=fila', { isError: true });
+    expect(screen.getByText('Fila state: error')).toBeInTheDocument();
+  });
+
+  it('picking a member writes membro=; picking yourself drops it', () => {
+    renderFila();
+    fireEvent.click(screen.getByText('Pick member 12'));
+    expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+    fireEvent.click(screen.getByText('Pick self'));
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=fila$/);
+  });
+
+  it('a saved vista with membro=12 selects that member', () => {
+    localStorage.setItem(
+      'entregas_saved_views_conta-1',
+      JSON.stringify([{ name: 'Fila do Bruno', query: 'view=fila&membro=12' }]),
+    );
+    renderFila('/entregas');
+    fireEvent.click(screen.getByRole('button', { name: 'Fila do Bruno' }));
+    expect(screen.getByText('Fila view: membro 12 / self 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=fila&membro=12$/,
+    );
+  });
+
+  it('builds the fila from the page data and passes it to the view', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [
+        {
+          id: 1,
+          workflow_id: 1,
+          cliente_id: 10,
+          cliente_nome: 'Cliente',
+          workflow_titulo: 'Fluxo Editorial',
+          titulo: 'Post do fluxo',
+          tipo: 'feed',
+          status: 'rascunho',
+          custom_status_id: null,
+          scheduled_at: null,
+          responsavel_id: null,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    } as never);
+    // makeCard(): etapa.responsavel_id 7 = the logged-in membro.
+    renderFila('/entregas?view=fila', {
+      cards: [makeCard({ allEtapas: [], etapa: { ordem: 0, nome: 'Design', responsavel_id: 7 } })],
+    });
+    expect(screen.getByText('Fila items: 1')).toBeInTheDocument();
+  });
+
+  it('fires minha_fila_opened once per entry: fila, kanban, fila again = twice', () => {
+    renderFila('/entregas?view=fila');
+    expect(openedCalls()).toHaveLength(1);
+    expect(openedCalls()[0][1]).toMatchObject({ membro_is_self: true });
+    fireEvent.click(screen.getByRole('tab', { name: 'Kanban' }));
+    expect(openedCalls()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'Minha fila' }));
+    expect(openedCalls()).toHaveLength(2);
+  });
+
+  it('fires minha_fila_opened again when switching member', () => {
+    renderFila('/entregas?view=fila');
+    expect(openedCalls()).toHaveLength(1);
+    fireEvent.click(screen.getByText('Pick member 12'));
+    expect(openedCalls()).toHaveLength(2);
+    expect(openedCalls()[1][1]).toMatchObject({ membro_is_self: false });
+  });
+
+  it('does not fire minha_fila_opened while loading or on error', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [],
+      isLoading: true,
+      isPending: true,
+      isError: false,
+    });
+    const loading = renderFila();
+    expect(openedCalls()).toHaveLength(0);
+    loading.unmount();
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: true });
+    renderFila();
+    expect(openedCalls()).toHaveLength(0);
   });
 });

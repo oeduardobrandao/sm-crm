@@ -23,9 +23,7 @@ import {
   CheckCheck,
   CircleCheck,
   CircleDashed,
-  Clapperboard,
   Eye,
-  GalleryHorizontalEnd,
   Image,
   Lock,
   MessageSquareWarning,
@@ -35,6 +33,7 @@ import {
   Send,
   ShieldCheck,
 } from 'lucide-react';
+import { TIPO_ICONS } from '../tipoIcons';
 import { cardAutoScheduleGates, reorderBoardPosts, type ActivePost } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import {
@@ -91,13 +90,6 @@ import {
 } from '../postsKanbanDrop';
 import { getCustomStatusIcon } from '../statusIcons';
 import { ACTIVE_POSTS_KEY, useUpdatePostStatus } from '../hooks/useUpdatePostStatus';
-
-const TIPO_ICONS: Record<ActivePost['tipo'], typeof Image> = {
-  feed: Image,
-  reels: Clapperboard,
-  carrossel: GalleryHorizontalEnd,
-  stories: CircleDashed,
-};
 
 /* Column-header icon per canonical status; color only where the status carries
  * a semantic outcome (approved/scheduled/published/failed), muted otherwise.

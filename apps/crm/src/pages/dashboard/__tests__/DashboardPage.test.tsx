@@ -55,6 +55,11 @@ vi.mock('../components/TodayCard', () => ({
   TodayCard: () => <div data-testid="today-card">Hoje</div>,
 }));
 
+// MinhaFilaCard owns its queries (useMinhaFilaData) and is tested separately
+vi.mock('../components/MinhaFilaCard', () => ({
+  MinhaFilaCard: () => <div data-testid="minha-fila-card">Minha fila</div>,
+}));
+
 import DashboardPage from '../DashboardPage';
 
 const mockedUseAuth = vi.mocked(useAuthMock);
@@ -344,5 +349,23 @@ describe('DashboardPage', () => {
       expect(toastSuccessMock).not.toHaveBeenCalled();
       expect(screen.getByTestId('location-search')).toHaveTextContent('?foo=bar');
     });
+  });
+
+  it('renders MinhaFilaCard right after TodayCard for admins and agents alike', () => {
+    renderDashboardPage();
+    const today = screen.getByTestId('today-card');
+    const fila = screen.getByTestId('minha-fila-card');
+    expect(today.compareDocumentPosition(fila) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const health = screen.getByTestId('client-health-monitor');
+    expect(fila.compareDocumentPosition(health) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    mockedUseAuth.mockReturnValue({
+      role: 'agent',
+      workspaceRole: 'agent',
+      canSeeFinancials: false,
+    } as never);
+    renderDashboardPage();
+    expect(screen.getAllByTestId('minha-fila-card')).toHaveLength(2);
+    expect(screen.getByTestId('agent-pending-section')).toBeInTheDocument();
   });
 });

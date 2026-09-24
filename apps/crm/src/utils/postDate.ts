@@ -26,6 +26,17 @@ export function formatPostDate(iso: string): string {
   return `${d.getDate()} ${MESES_ABREV[d.getMonth()]}${ano} · ${hora}`;
 }
 
+export const DIAS_ABREV = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+// Publish day with weekday and no time, e.g. "qua, 24 set" (year appended only
+// when it differs from `now`'s). Hand-rolled: date-fns ptBR adds periods ("qua.").
+export function formatPostWeekday(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const ano = d.getFullYear() !== now.getFullYear() ? ` ${d.getFullYear()}` : '';
+  return `${DIAS_ABREV[d.getDay()]}, ${d.getDate()} ${MESES_ABREV[d.getMonth()]}${ano}`;
+}
+
 // Full, readable form for tooltips, e.g. "8 de junho de 2026, 14:00".
 export function formatPostDateFull(iso: string): string {
   const d = new Date(iso);

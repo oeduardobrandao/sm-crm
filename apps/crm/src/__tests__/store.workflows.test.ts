@@ -518,6 +518,76 @@ describe('getDeadlineInfo', () => {
     expect(result.urgente).toBe(true);
     expect(result.estourado).toBe(false);
   });
+
+  it('data_limite estourado is based on the local end of day, not UTC midnight (timezone regression)', () => {
+    // Pins "now" at 22:00 on the deadline day itself, in this suite's local
+    // timezone (America/Fortaleza, UTC-3). Before the fix, `new
+    // Date(etapa.data_limite)` parsed 'YYYY-MM-DD' as UTC midnight, so "end of
+    // day" (+1 day) landed at 21:00 LOCAL instead of local midnight -- a step
+    // due today would already read estourado: true one hour before this.
+    // TZ must be pinned here: CI runs in UTC, where the old UTC parse gives
+    // the same result as the fix, so the assertions below pass against the
+    // bug too unless the process TZ actually differs from UTC (same pattern
+    // as apps/hub/src/components/__tests__/PostCalendar.test.tsx).
+    const originalTZ = process.env.TZ;
+    process.env.TZ = 'America/Fortaleza';
+    try {
+      const hoje = new Date(2026, 3, 15, 22, 0, 0); // 2026-04-15 22:00 local
+      vi.setSystemTime(hoje);
+      const y = hoje.getFullYear();
+      const m = String(hoje.getMonth() + 1).padStart(2, '0');
+      const d = String(hoje.getDate()).padStart(2, '0');
+
+      const result = store.getDeadlineInfo({
+        id: 1,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Entrega',
+        prazo_dias: 2,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: null,
+        data_limite: `${y}-${m}-${d}`,
+      } as never);
+
+      expect(result.estourado).toBe(false);
+      // Just after local midnight, the deadline day has actually ended.
+      vi.setSystemTime(new Date(2026, 3, 16, 0, 0, 1));
+      const afterMidnight = store.getDeadlineInfo({
+        id: 1,
+        workflow_id: 1,
+        ordem: 0,
+        nome: 'Entrega',
+        prazo_dias: 2,
+        tipo_prazo: 'corridos',
+        status: 'ativo',
+        iniciado_em: null,
+        data_limite: `${y}-${m}-${d}`,
+      } as never);
+      expect(afterMidnight.estourado).toBe(true);
+    } finally {
+      process.env.TZ = originalTZ;
+    }
+  });
+
+  it('falls through to iniciado_em/prazo_dias when data_limite is unparseable', () => {
+    vi.setSystemTime(new Date('2026-04-10T12:00:00.000Z'));
+
+    const result = store.getDeadlineInfo({
+      id: 1,
+      workflow_id: 1,
+      ordem: 0,
+      nome: 'Briefing',
+      prazo_dias: 5,
+      tipo_prazo: 'corridos',
+      status: 'ativo',
+      iniciado_em: '2026-04-08T12:00:00.000Z',
+      data_limite: 'not-a-date',
+    } as never);
+
+    expect(result.diasRestantes).toBe(3);
+    expect(result.estourado).toBe(false);
+  });
 });
 
 describe('getWorkflowPostsCounts', () => {

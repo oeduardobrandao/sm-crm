@@ -1,6 +1,15 @@
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Archive, BarChart2, Calendar, Columns, List, MoreHorizontal, Plus } from 'lucide-react';
+import {
+  Archive,
+  BarChart2,
+  Calendar,
+  Columns,
+  List,
+  ListChecks,
+  MoreHorizontal,
+  Plus,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -20,6 +29,7 @@ const VIEW_ICONS: Record<ActiveView, React.ReactNode> = {
   calendar: <Calendar className="h-3.5 w-3.5" />,
   list: <List className="h-3.5 w-3.5" />,
   concluded: <Archive className="h-3.5 w-3.5" />,
+  fila: <ListChecks className="h-3.5 w-3.5" />,
 };
 
 function viewIcon(query: string): React.ReactNode {

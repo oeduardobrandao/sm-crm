@@ -27,6 +27,10 @@ export type AnalyticsEvent =
   | 'entregas_explainer_shown'
   | 'entregas_explainer_reopened'
   | 'entregas_explainer_dismissed'
+  // "Minha fila": one per entry into the fila tab (and again on member switch),
+  // and the dashboard teaser's clicks (item row vs "Ver minha fila").
+  | 'minha_fila_opened'
+  | 'minha_fila_teaser_clicked'
   | 'guide_opened'
   | 'guide_closed'
   | 'guide_page_viewed'

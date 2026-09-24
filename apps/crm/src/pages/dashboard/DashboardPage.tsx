@@ -10,6 +10,7 @@ import { WhatsAppSupportCard } from '@/components/support/WhatsAppSupportCard';
 import { ClientHealthMonitor } from './components/ClientHealthMonitor';
 import { AgentPendingSection } from './components/AgentPendingSection';
 import { TodayCard } from './components/TodayCard';
+import { MinhaFilaCard } from './components/MinhaFilaCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
 
 export default function DashboardPage() {
@@ -76,6 +77,7 @@ export default function DashboardPage() {
   return (
     <div>
       <TodayCard />
+      <MinhaFilaCard />
 
       {!isAgent && <TrialNudgeCard />}
       {!isAgent && <WhatsAppSupportCard />}

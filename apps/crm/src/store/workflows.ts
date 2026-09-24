@@ -664,19 +664,28 @@ export function getDeadlineInfo(etapa: WorkflowEtapa): {
   // FIRST: if a fixed deadline date is set, calculate relative to it directly
   // (applies to data_fixa and data_entrega modes — step may still be pending)
   if (etapa.data_limite) {
-    const limite = new Date(etapa.data_limite);
-    // data_limite is a date (no time), treat end of that day as midnight start of next day
-    limite.setDate(limite.getDate() + 1);
-    const msRestantes = limite.getTime() - now.getTime();
-    const totalHorasRestantes = Math.floor(msRestantes / (1000 * 60 * 60));
-    const diasRestantes = Math.floor(totalHorasRestantes / 24);
-    const horasRestantes = totalHorasRestantes % 24;
-    return {
-      diasRestantes,
-      horasRestantes,
-      estourado: msRestantes < 0,
-      urgente: msRestantes >= 0 && msRestantes <= 24 * 60 * 60 * 1000,
-    };
+    // 'YYYY-MM-DD' — build via local components, same as etapaDeadlineDateOf
+    // (pages/entregas/etapaPrazo.ts): new Date('YYYY-MM-DD') parses as UTC
+    // midnight, which in a UTC-negative zone like Brazil (UTC-3) turns "end of
+    // day" into 21:00 local -- estourado flips true 3h before the day is
+    // actually over. Unparseable input falls through to the branches below,
+    // same guard etapaDeadlineDateOf uses.
+    const [y, m, d] = etapa.data_limite.slice(0, 10).split('-').map(Number);
+    if (y && m && d) {
+      const limite = new Date(y, m - 1, d);
+      // data_limite is a date (no time), treat end of that day as local midnight of next day
+      limite.setDate(limite.getDate() + 1);
+      const msRestantes = limite.getTime() - now.getTime();
+      const totalHorasRestantes = Math.floor(msRestantes / (1000 * 60 * 60));
+      const diasRestantes = Math.floor(totalHorasRestantes / 24);
+      const horasRestantes = totalHorasRestantes % 24;
+      return {
+        diasRestantes,
+        horasRestantes,
+        estourado: msRestantes < 0,
+        urgente: msRestantes >= 0 && msRestantes <= 24 * 60 * 60 * 1000,
+      };
+    }
   }
 
   if (etapa.status !== 'ativo' || !etapa.iniciado_em) {
