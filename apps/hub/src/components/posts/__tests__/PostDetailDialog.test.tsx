@@ -162,7 +162,7 @@ describe('PostDetailDialog', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('shows the post with caption, chips, footer actions and the strip', () => {
+  it('shows the post with caption, chips and footer actions, without a post strip', () => {
     renderDialog(1);
     expect(screen.getByRole('dialog', { name: 'Primeiro' })).toBeInTheDocument();
     expect(screen.getByText('Legenda um')).toBeInTheDocument();
@@ -171,7 +171,7 @@ describe('PostDetailDialog', () => {
     expect(screen.getByRole('button', { name: /Aprovar/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Corrigir/ })).toBeInTheDocument();
     expect(screen.getByText('1 de 3')).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: 'Outros posts' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Outros posts' })).not.toBeInTheDocument();
   });
 
   it('squares the footer action buttons to 4px', () => {
@@ -181,6 +181,58 @@ describe('PostDetailDialog', () => {
       expect(cls).toContain('rounded-[4px]');
       expect(cls).not.toContain('hub-r-ctl');
     }
+  });
+
+  describe('Salvar edição in the footer', () => {
+    it('swaps Aprovar for Salvar edição once the caption is edited, and saves from there', async () => {
+      vi.useFakeTimers();
+      try {
+        submitEditSuggestionMock.mockResolvedValue({ ok: true, pending_suggestion: null });
+        renderDialog(1);
+        fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+        // Nothing edited yet: Aprovar stays, and there is no save button anywhere.
+        expect(screen.getByRole('button', { name: /Aprovar/ })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Salvar edição/ })).not.toBeInTheDocument();
+
+        fireEvent.change(screen.getByDisplayValue('Legenda um'), {
+          target: { value: 'Legenda editada' },
+        });
+        expect(screen.queryByRole('button', { name: /Aprovar/ })).not.toBeInTheDocument();
+        const save = screen.getByRole('button', { name: /Salvar edição/ });
+        expect(screen.getByTestId('hub-post-save-slot')).toContainElement(save);
+        expect(save).toBeEnabled();
+
+        fireEvent.click(save);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1500);
+        });
+        expect(submitEditSuggestionMock).toHaveBeenCalledTimes(1);
+        expect(submitEditSuggestionMock.mock.calls[0][4]).toBe('Legenda editada');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps Aprovar (disabled) when only a correction comment is typed', () => {
+      renderDialog(1);
+      fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+      fireEvent.change(screen.getByPlaceholderText(/Descreva o que precisa mudar/), {
+        target: { value: 'Trocar a data' },
+      });
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: /Salvar edição/ })).not.toBeInTheDocument();
+    });
+
+    it('goes back to Aprovar when the edit is undone', () => {
+      renderDialog(1);
+      fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+      const caption = screen.getByDisplayValue('Legenda um');
+      fireEvent.change(caption, { target: { value: 'Legenda editada' } });
+      expect(screen.queryByRole('button', { name: /Aprovar/ })).not.toBeInTheDocument();
+      fireEvent.change(caption, { target: { value: 'Legenda um' } });
+      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: /Salvar edição/ })).not.toBeInTheDocument();
+    });
   });
 
   it('hides Aprovar/Corrigir for a non-pending post and shows the status once', () => {
@@ -196,13 +248,11 @@ describe('PostDetailDialog', () => {
     expect(screen.getAllByRole('button', { name: 'Próximo post' })).toHaveLength(1);
   });
 
-  it('navigates with arrows, keys and the strip', () => {
+  it('navigates with arrows and keys', () => {
     const { onNavigate } = renderDialog(2);
     fireEvent.click(screen.getByRole('button', { name: 'Post anterior' }));
     expect(onNavigate).toHaveBeenLastCalledWith(1);
     fireEvent.keyDown(window, { key: 'ArrowRight' });
-    expect(onNavigate).toHaveBeenLastCalledWith(3);
-    fireEvent.click(screen.getByRole('button', { name: 'Ir para Terceiro' }));
     expect(onNavigate).toHaveBeenLastCalledWith(3);
   });
 
@@ -350,7 +400,6 @@ describe('PostDetailDialog', () => {
       expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
       expect(screen.getByRole('button', { name: /Corrigir/ })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Próximo post' })).toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Ir para Terceiro' })).toBeDisabled();
       fireEvent.keyDown(window, { key: 'ArrowRight' });
       fireEvent.click(screen.getByRole('button', { name: /Aprovar/ }));
       expect(submitApprovalMock).toHaveBeenCalledTimes(1);
@@ -681,7 +730,6 @@ describe('PostDetailDialog', () => {
 
       const expectBlockedAndQuiet = () => {
         expect(screen.getByRole('button', { name: 'Próximo post' })).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Ir para Segundo' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Fechar' })).toBeDisabled();
         expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument();
@@ -702,26 +750,23 @@ describe('PostDetailDialog', () => {
       expect(onNavigate).not.toHaveBeenCalled();
     });
 
-    it('after a failed save, Fechar/X/next/strip are enabled and ask to discard; cancelling stays, confirming leaves', async () => {
+    it('after a failed save, Fechar/X/next are enabled and ask to discard; cancelling stays, confirming leaves', async () => {
       const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
       const { onNavigate } = await openWithFailedSave();
 
       const next = screen.getByRole('button', { name: 'Próximo post' });
-      const strip = screen.getByRole('button', { name: 'Ir para Segundo' });
       const fechar = screen.getByRole('button', { name: 'Fechar' });
       expect(next).toBeEnabled();
-      expect(strip).toBeEnabled();
       expect(fechar).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Fechar postagem' })).toBeEnabled();
 
       // Cancelling stays put, everywhere.
       fireEvent.click(next);
-      fireEvent.click(strip);
       fireEvent.click(fechar);
       fireEvent.click(screen.getByRole('button', { name: 'Fechar postagem' }));
       fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
       fireEvent.keyDown(window, { key: 'ArrowRight' });
-      expect(confirm).toHaveBeenCalledTimes(6);
+      expect(confirm).toHaveBeenCalledTimes(5);
       expect(confirm).toHaveBeenCalledWith('Descartar as alterações não enviadas?');
       expect(onNavigate).not.toHaveBeenCalled();
       expect(screen.getByText(FAILED)).toBeInTheDocument();
@@ -760,7 +805,9 @@ describe('PostDetailDialog', () => {
     it('the panel offers Tentar novamente and Descartar edição; Descartar resets the text and re-enables Aprovar', async () => {
       await openWithFailedSave();
       expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
-      expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
+      // The unsaved edit keeps Salvar edição in the footer instead of Aprovar.
+      expect(screen.queryByRole('button', { name: /Aprovar/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Salvar edição/ })).toBeEnabled();
 
       fireEvent.click(screen.getByRole('button', { name: 'Descartar edição' }));
 
@@ -837,7 +884,6 @@ describe('PostDetailDialog', () => {
 
     it.each([
       ['next', () => screen.getByRole('button', { name: 'Próximo post' }), 2],
-      ['strip', () => screen.getByRole('button', { name: 'Ir para Segundo' }), 2],
       ['close (X)', () => screen.getByRole('button', { name: 'Fechar postagem' }), null],
     ])('asks to discard on %s; cancel stays, confirm leaves', async (_label, getBtn, target) => {
       const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -952,6 +998,45 @@ describe('PostDetailDialog', () => {
       expect(screen.getByRole('button', { name: /Corrigir/ })).toBeDisabled();
       expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
       expect(screen.queryByText(REJECTED_NOTICE)).not.toBeInTheDocument();
+    });
+
+    it('says the body is the suggested version and toggles to the original', () => {
+      renderDialog(1, {
+        posts: [
+          post({
+            id: 1,
+            conteudo: null,
+            conteudo_plain: 'Corpo original',
+            ig_caption: 'Legenda original',
+            pending_suggestion: {
+              ...suggestion,
+              suggested_conteudo_plain: 'Corpo editado',
+              changed_fields: ['conteudo_plain', 'ig_caption'],
+            },
+          }),
+        ],
+      });
+      expect(
+        screen.getByText(
+          'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
+        ),
+      ).toBeInTheDocument();
+      const mine = screen.getByRole('button', { name: 'Sua sugestão' });
+      const original = screen.getByRole('button', { name: 'Original' });
+      expect(mine).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Legenda editada')).toBeInTheDocument();
+      expect(screen.queryByText('Legenda original')).not.toBeInTheDocument();
+
+      fireEvent.click(original);
+      expect(original).toHaveAttribute('aria-pressed', 'true');
+      expect(
+        screen.getByText('Você está vendo a versão original, sem as suas alterações.'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Legenda original')).toBeInTheDocument();
+      expect(screen.queryByText('Legenda editada')).not.toBeInTheDocument();
+
+      fireEvent.click(mine);
+      expect(screen.getByText('Legenda editada')).toBeInTheDocument();
     });
 
     it('nudges after a rejected suggestion in the reading view while Corrigir stays enabled', () => {

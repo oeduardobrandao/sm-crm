@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Save } from 'lucide-react';
 import type { CorrectionReason, HubPost } from '../../types';
 import type { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import { deriveCaption, pickPostCardKind } from '../../lib/postView';
@@ -10,12 +11,84 @@ import { CorrectionReasonChips } from '../CorrectionReasonChips';
 
 export type EditSuggestion = ReturnType<typeof useEditSuggestion>;
 
-/** "Sugestão enviada para revisão": replaces the whole panel, and explains the disabled footer actions in the reading view. */
-export function SuggestionPendingNotice() {
+export type SuggestionView = 'suggestion' | 'original';
+
+interface SuggestionPendingNoticeProps {
+  /** The pending suggestion's `changed_fields`; only read when `onViewChange` is given. */
+  changedFields?: string[];
+  view?: SuggestionView;
+  /** Reading view only: says which version is on screen and lets the client switch. */
+  onViewChange?: (view: SuggestionView) => void;
+}
+
+/**
+ * "Sugestão enviada para revisão": replaces the whole panel, and explains the disabled
+ * footer actions in the reading view. There it also says that the body below is the
+ * suggested version (not the original) and offers a Sua sugestão / Original toggle.
+ */
+export function SuggestionPendingNotice({
+  changedFields = [],
+  view = 'suggestion',
+  onViewChange,
+}: SuggestionPendingNoticeProps = {}) {
   const { t } = useTranslation('hubPosts');
+  const textChanged =
+    changedFields.includes('conteudo') || changedFields.includes('conteudo_plain');
+  const captionChanged = changedFields.includes('ig_caption');
+  const detail =
+    view === 'original'
+      ? t(
+          'shared.suggestionShowingOriginal',
+          'Você está vendo a versão original, sem as suas alterações.',
+        )
+      : textChanged && captionChanged
+        ? t(
+            'shared.suggestionShowingBoth',
+            'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
+          )
+        : textChanged
+          ? t(
+              'shared.suggestionShowingText',
+              'Abaixo está a versão que você sugeriu. Você alterou o texto.',
+            )
+          : captionChanged
+            ? t(
+                'shared.suggestionShowingCaption',
+                'Abaixo está a versão que você sugeriu. Você alterou a legenda.',
+              )
+            : t('shared.suggestionShowing', 'Abaixo está a versão que você sugeriu.');
+  const option = (key: SuggestionView, label: string) => (
+    <button
+      type="button"
+      aria-pressed={view === key}
+      onClick={() => onViewChange?.(key)}
+      className={`rounded-full px-3 py-1 text-[12px] font-semibold transition-colors ${
+        view === key
+          ? 'bg-amber-800 text-white dark:bg-amber-300 dark:text-amber-950'
+          : 'text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+      }`}
+    >
+      {label}
+    </button>
+  );
   return (
-    <div className="rounded-lg px-4 py-3 text-[13px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/60 dark:ring-amber-800/40 text-center">
-      {t('shared.suggestionPendingReviewFull', 'Sugestão enviada para revisão da equipe')}
+    <div className="rounded-lg px-4 py-3 text-[13px] bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/60 dark:ring-amber-800/40 text-center">
+      <p className="font-medium">
+        {t('shared.suggestionPendingReviewFull', 'Sugestão enviada para revisão da equipe')}
+      </p>
+      {onViewChange && (
+        <>
+          <p className="mt-1 text-[12px]">{detail}</p>
+          <div
+            role="group"
+            aria-label={t('shared.suggestionCompareLabel', 'Comparar versões')}
+            className="mt-2 inline-flex gap-0.5 rounded-full p-0.5 ring-1 ring-amber-200 dark:ring-amber-800/60 bg-white/60 dark:bg-black/20"
+          >
+            {option('suggestion', t('shared.suggestionViewMine', 'Sua sugestão'))}
+            {option('original', t('shared.suggestionViewOriginal', 'Original'))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -45,6 +118,14 @@ interface CorrectionPanelProps {
   onSubmitCorrection: (comentario: string, motivo: CorrectionReason | null) => void;
   /** True whenever something unsent exists: staged content differs, comentário typed or motivo chosen. */
   onDirtyChange: (dirty: boolean) => void;
+  /** True while the staged text/caption differs from the baseline (comentário and motivo excluded). */
+  onContentDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Where Salvar edição renders. Omitted: inline at the end of the edit section. Given: the
+   * button is portalled into this element (the dialog's action footer, in place of Aprovar),
+   * and renders nothing while the host has not mounted the slot yet (`null`).
+   */
+  saveSlot?: HTMLElement | null;
 }
 
 /**
@@ -59,6 +140,8 @@ export function CorrectionPanel({
   submitting,
   onSubmitCorrection,
   onDirtyChange,
+  onContentDirtyChange,
+  saveSlot,
 }: CorrectionPanelProps) {
   const { t } = useTranslation('hubPosts');
   const isText = pickPostCardKind(post) === 'text';
@@ -182,11 +265,22 @@ export function CorrectionPanel({
   useEffect(() => {
     onDirtyChange(panelDirty);
   }, [panelDirty, onDirtyChange]);
+  useEffect(() => {
+    onContentDirtyChange?.(contentDirty);
+  }, [contentDirty, onContentDirtyChange]);
   // The panel can unmount without going through the host's own close path (the post stops
   // being pending on a refetch); without this the host would keep a stale "unsent" flag.
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
-  useEffect(() => () => onDirtyChangeRef.current(false), []);
+  const onContentDirtyChangeRef = useRef(onContentDirtyChange);
+  onContentDirtyChangeRef.current = onContentDirtyChange;
+  useEffect(
+    () => () => {
+      onDirtyChangeRef.current(false);
+      onContentDirtyChangeRef.current?.(false);
+    },
+    [],
+  );
 
   // A successful save makes the staged values the new baseline (draft* update via
   // pending_suggestion on refetch); until then the fields keep what was typed.
@@ -208,12 +302,43 @@ export function CorrectionPanel({
   // from lingering for the instant between a click and the hook's state catching up.
   const showFailure = saveFailed && saveState === 'idle' && !saveRequested;
 
+  // Queued (the hook's 1.5s debounce) counts as saving too, so a click shows feedback at once.
+  const saving = saveState === 'saving' || (dirty && !saveFailed);
+  const saveLabel = saving
+    ? t('shared.saving', 'Salvando...')
+    : t('shared.salvarEdicao', 'Salvar edição');
+  const saveDisabled = (!contentDirty && !dirty) || saving;
+  const saveButton =
+    saveSlot === undefined ? (
+      <button
+        type="button"
+        onClick={submitStaged}
+        disabled={saveDisabled}
+        className="hub-btn-primary rounded-[4px] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
+      >
+        {saveLabel}
+      </button>
+    ) : saveSlot ? (
+      createPortal(
+        <button
+          type="button"
+          onClick={submitStaged}
+          disabled={saveDisabled}
+          className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
+        >
+          <Save size={15} aria-hidden="true" /> {saveLabel}
+        </button>,
+        saveSlot,
+      )
+    ) : null;
+
   const reasons: CorrectionReason[] = isText
     ? ['texto', 'legenda', 'outro']
     : ['midia', 'texto', 'legenda', 'outro'];
 
   return (
     <div className="space-y-3">
+      {saveSlot !== undefined && saveButton}
       <section className="rounded-xl border hub-border hub-bg-soft p-3 space-y-2">
         <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3">
           {isText ? t('posts.editText', 'Editar texto') : t('posts.editCaption', 'Editar legenda')}
@@ -303,16 +428,7 @@ export function CorrectionPanel({
               </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={submitStaged}
-            disabled={(!contentDirty && !dirty) || saveState === 'saving'}
-            className="hub-btn-primary rounded-[4px] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
-          >
-            {saveState === 'saving'
-              ? t('shared.saving', 'Salvando...')
-              : t('shared.salvarEdicao', 'Salvar edição')}
-          </button>
+          {saveSlot === undefined && saveButton}
         </div>
       </section>
 
