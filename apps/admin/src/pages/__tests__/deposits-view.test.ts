@@ -1,0 +1,134 @@
+import { describe, expect, it } from 'vitest';
+import {
+  NOT_CONFIGURED_SECRET,
+  formatDay,
+  formatDayShort,
+  formatMonth,
+  payoutStatusBadge,
+  providerName,
+  rowDateLabel,
+  scheduleCaption,
+  waitingTotalLabel,
+} from '../metricas/deposits-view';
+
+describe('deposits-view', () => {
+  it('formatDay / formatDayShort / formatMonth use pt-BR without timezone drift', () => {
+    expect(formatDay('2026-09-28')).toBe('28/09/2026');
+    expect(formatDayShort('2026-09-28')).toBe('seg, 28/09');
+    expect(formatMonth('2026-11')).toBe('novembro de 2026');
+  });
+
+  it('providerName', () => {
+    expect(providerName('stripe')).toBe('Stripe');
+    expect(providerName('pagarme')).toBe('Pagar.me');
+  });
+
+  it('scheduleCaption: Stripe schedule', () => {
+    expect(scheduleCaption('stripe', { schedule_interval: 'daily', delay_days: 30 })).toBe(
+      'Repasse automático diário, D+30',
+    );
+    expect(scheduleCaption('stripe', { schedule_interval: null, delay_days: null })).toBeNull();
+  });
+
+  it('scheduleCaption: Pagar.me transfer settings', () => {
+    expect(
+      scheduleCaption('pagarme', {
+        transfer_enabled: true,
+        transfer_interval: 'daily',
+        transfer_day: null,
+        anticipation_enabled: false,
+        anticipation_type: null,
+      }),
+    ).toBe('Transferência automática diária');
+    expect(
+      scheduleCaption('pagarme', {
+        transfer_enabled: true,
+        transfer_interval: 'weekly',
+        transfer_day: 3,
+        anticipation_enabled: true,
+        anticipation_type: 'full',
+      }),
+    ).toBe('Transferência automática semanal (quarta-feira) · antecipação automática ativa');
+    expect(
+      scheduleCaption('pagarme', {
+        transfer_enabled: true,
+        transfer_interval: 'monthly',
+        transfer_day: 15,
+        anticipation_enabled: null,
+        anticipation_type: null,
+      }),
+    ).toBe('Transferência automática mensal (dia 15)');
+    expect(
+      scheduleCaption('pagarme', {
+        transfer_enabled: false,
+        transfer_interval: 'daily',
+        transfer_day: null,
+        anticipation_enabled: null,
+        anticipation_type: null,
+      }),
+    ).toBe('Transferência automática desligada: saque manual');
+    expect(scheduleCaption('pagarme', {})).toBeNull();
+  });
+
+  it('payoutStatusBadge maps provider statuses to badge variants', () => {
+    expect(payoutStatusBadge('paid')).toEqual({ label: 'Pago', variant: 'success' });
+    expect(payoutStatusBadge('transferred')).toEqual({ label: 'Pago', variant: 'success' });
+    expect(payoutStatusBadge('pending')).toEqual({ label: 'Pendente', variant: 'info' });
+    expect(payoutStatusBadge('in_transit')).toEqual({ label: 'Em trânsito', variant: 'info' });
+    expect(payoutStatusBadge('processing')).toEqual({ label: 'Em trânsito', variant: 'info' });
+    expect(payoutStatusBadge('pending_transfer')).toEqual({ label: 'Pendente', variant: 'info' });
+    expect(payoutStatusBadge('failed')).toEqual({ label: 'Falhou', variant: 'danger' });
+    expect(payoutStatusBadge('canceled')).toEqual({ label: 'Cancelado', variant: 'neutral' });
+    expect(payoutStatusBadge('weird')).toEqual({ label: 'weird', variant: 'neutral' });
+  });
+
+  it('rowDateLabel distinguishes deposit vs manual withdrawal', () => {
+    const base = {
+      date: '2026-09-26',
+      deposit_on: '2026-09-28',
+      net_cents: 1,
+      gross_cents: 1,
+      fee_cents: 0,
+      count: 1,
+      kind: 'projected' as const,
+    };
+    expect(rowDateLabel(base)).toBe('Deposita em seg, 28/09');
+    expect(rowDateLabel({ ...base, manual_withdrawal: true })).toBe('Disponível em seg, 28/09');
+  });
+
+  it('NOT_CONFIGURED_SECRET names the secret per provider', () => {
+    expect(NOT_CONFIGURED_SECRET.stripe).toBe('STRIPE_SECRET_KEY');
+    expect(NOT_CONFIGURED_SECRET.pagarme).toBe('PAGARME_RECIPIENT_ID');
+  });
+
+  it('waitingTotalLabel names the failed provider when the summary is partial', () => {
+    const ok = {
+      configured: true,
+      ok: true,
+      truncated: false,
+      balance: null,
+      meta: {},
+      upcoming: { next30: [], byMonth: [] },
+      in_transit: [],
+      recent: [],
+    };
+    const failed = { ...ok, ok: false, error: 'unavailable' as const };
+    const notConfigured = { ...ok, configured: false, ok: false };
+    const summary = { next: null, next_30d_cents: 0, waiting_cents: 0, partial: false };
+    expect(waitingTotalLabel({ summary, stripe: ok, pagarme: ok })).toBe('A receber (total)');
+    expect(
+      waitingTotalLabel({ summary: { ...summary, partial: true }, stripe: failed, pagarme: ok }),
+    ).toBe('A receber (parcial: Stripe indisponível)');
+    expect(
+      waitingTotalLabel({
+        summary: { ...summary, partial: true },
+        stripe: failed,
+        pagarme: failed,
+      }),
+    ).toBe('A receber (parcial: Stripe e Pagar.me indisponíveis)');
+    // not configured is not "partial"
+    expect(waitingTotalLabel({ summary, stripe: ok, pagarme: notConfigured })).toBe(
+      'A receber (total)',
+    );
+  });
+});
