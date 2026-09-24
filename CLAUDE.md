@@ -16,6 +16,7 @@ Do NOT run them for small, well-understood changes — UI tweaks, copy changes, 
 # Development (default = PROD via .env; :staging overlays .env.staging)
 npm run dev              # CRM app on :5173      (prod)
 npm run dev:env          # same, but loads VITE_* from the main checkout's .env (git worktrees have none)
+npm run dev:all:env      # CRM + Hub + Admin (prod), same .env fallback for worktrees
 npm run dev:hub          # Hub app on :5175      (prod)
 npm run dev:admin        # Admin app on :5177    (prod)
 npm run dev:staging      # CRM   against staging Supabase
