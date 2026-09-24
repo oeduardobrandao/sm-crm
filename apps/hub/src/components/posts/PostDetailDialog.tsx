@@ -8,7 +8,15 @@ import {
   type RefObject,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, CheckCircle, ChevronLeft, ChevronRight, ImageOff, X } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  ImageOff,
+  Lock,
+  X,
+} from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import type { CorrectionReason, HubPost, InstagramProfile, PostApproval } from '../../types';
 import { submitApproval } from '../../api';
@@ -19,6 +27,7 @@ import {
   deriveCaption,
   getPostPublishState,
   getTipoLabel,
+  isInProduction,
   pickPostCardKind,
 } from '../../lib/postView';
 import { sanitizeExternalUrl } from '../../lib/security';
@@ -30,6 +39,7 @@ import { RichTextContent } from '../RichTextContent';
 import { SharePostButton } from '../SharePostButton';
 import { StatusTag } from './StatusTag';
 import { PostMediaPane } from './PostMediaPane';
+import { InProductionNotice } from './InProductionNotice';
 import {
   CorrectionPanel,
   RejectedSuggestionNotice,
@@ -233,6 +243,7 @@ function PostDetailContent({
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const kind = pickPostCardKind(post);
   const isPending = post.status === 'enviado_cliente';
+  const inProduction = isInProduction(post);
   const [tab, setTab] = useState<'content' | 'history'>('content');
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelDirty, setPanelDirty] = useState(false);
@@ -687,6 +698,7 @@ function PostDetailContent({
                       </div>
                     )}
                     {isPending && edit.wasRejected && <RejectedSuggestionNotice />}
+                    <InProductionNotice post={post} />
                     {readingBody}
                     {autoPublishNote}
                   </>
@@ -695,7 +707,9 @@ function PostDetailContent({
             </div>
           </div>
 
-          {(isPending || (post.status === 'postado' && post.instagram_permalink)) && (
+          {(isPending ||
+            inProduction ||
+            (post.status === 'postado' && post.instagram_permalink)) && (
             <div className="px-4 py-3 border-t hub-border hub-bg-soft shrink-0 space-y-2">
               {error && (
                 <p className="text-[12px] text-rose-700 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-300 rounded-lg px-3 py-2">
@@ -759,6 +773,11 @@ function PostDetailContent({
                     {t('shared.viewOnInstagram', 'Ver no Instagram')}
                   </a>
                 </div>
+              ) : inProduction ? (
+                <p className="flex items-center justify-center gap-1.5 text-[12.5px] hub-tx3">
+                  <Lock size={14} aria-hidden="true" />
+                  {t('production.footer', 'Em produção: nada para aprovar agora')}
+                </p>
               ) : null}
             </div>
           )}

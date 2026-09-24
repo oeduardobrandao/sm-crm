@@ -156,5 +156,16 @@
     "texto": "Texto",
     "legenda": "Legenda",
     "outro": "Outro"
+  },
+  "production": {
+    "nextApprovalTitle": "Você aprovou o texto.",
+    "nextApprovalBody_arte": "A equipe está produzindo a arte deste post. Ele volta para Aprovações quando estiver pronto para a próxima aprovação.",
+    "nextApprovalBody_video": "A equipe está produzindo o vídeo deste post. Ele volta para Aprovações quando estiver pronto para a próxima aprovação.",
+    "nextApprovalBody_conteudo": "A equipe está produzindo o conteúdo deste post. Ele volta para Aprovações quando estiver pronto para a próxima aprovação.",
+    "correcaoTitle": "A equipe está fazendo as correções que você pediu.",
+    "correcaoBody": "O post volta para Aprovações quando estiver pronto.",
+    "ajusteTitle": "A equipe está ajustando este post.",
+    "ajusteBody": "Ele volta para Aprovações quando estiver pronto.",
+    "footer": "Em produção: nada para aprovar agora"
   }
 }

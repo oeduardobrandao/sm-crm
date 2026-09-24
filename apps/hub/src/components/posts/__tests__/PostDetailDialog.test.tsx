@@ -1069,4 +1069,66 @@ describe('PostDetailDialog', () => {
       expect(screen.queryByText(REJECTED_NOTICE)).not.toBeInTheDocument();
     });
   });
+
+  describe('em produção (read-only)', () => {
+    const prodPosts = [
+      post({
+        id: 11,
+        titulo: 'Feed na arte',
+        status: 'rascunho',
+        em_producao: 'proxima_aprovacao',
+        tipo: 'feed',
+      }),
+      post({
+        id: 12,
+        titulo: 'Reel no vídeo',
+        status: 'rascunho',
+        em_producao: 'proxima_aprovacao',
+        tipo: 'reels',
+      }),
+      post({
+        id: 13,
+        titulo: 'Story',
+        status: 'rascunho',
+        em_producao: 'proxima_aprovacao',
+        tipo: 'stories',
+      }),
+      post({ id: 14, titulo: 'Corrigindo', status: 'revisao_interna', em_producao: 'correcao' }),
+      post({ id: 15, titulo: 'Ajustando', status: 'revisao_interna', em_producao: 'ajuste' }),
+    ];
+
+    it('shows the purple tag, the arte notice and a read-only footer', () => {
+      renderDialog(11, { posts: prodPosts });
+      expect(screen.getByText('Em produção')).toBeInTheDocument();
+      expect(screen.getByText('Você aprovou o texto.')).toBeInTheDocument();
+      expect(screen.getByText(/produzindo a arte deste post/)).toBeInTheDocument();
+      expect(screen.getByText('Em produção: nada para aprovar agora')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Aprovar/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Corrigir/ })).not.toBeInTheDocument();
+    });
+
+    it('says vídeo for reels and conteúdo for stories', () => {
+      renderDialog(12, { posts: prodPosts });
+      expect(screen.getByText(/produzindo o vídeo deste post/)).toBeInTheDocument();
+      cleanup();
+      renderDialog(13, { posts: prodPosts });
+      expect(screen.getByText(/produzindo o conteúdo deste post/)).toBeInTheDocument();
+    });
+
+    it('uses the correction and adjustment notices for the other reasons', () => {
+      renderDialog(14, { posts: prodPosts });
+      expect(
+        screen.getByText('A equipe está fazendo as correções que você pediu.'),
+      ).toBeInTheDocument();
+      cleanup();
+      renderDialog(15, { posts: prodPosts });
+      expect(screen.getByText('A equipe está ajustando este post.')).toBeInTheDocument();
+    });
+
+    it('shows no notice on a normal pending post', () => {
+      renderDialog(1);
+      expect(screen.queryByText('Em produção: nada para aprovar agora')).not.toBeInTheDocument();
+      expect(screen.queryByText('Você aprovou o texto.')).not.toBeInTheDocument();
+    });
+  });
 });
