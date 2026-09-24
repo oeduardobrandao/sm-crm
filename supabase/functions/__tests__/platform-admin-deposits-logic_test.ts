@@ -357,6 +357,30 @@ Deno.test("buildStripeDeposits: pending transactions grouped by available_on (ne
   assertEquals(out.upcoming.byMonth, [{ month: "2026-11", net_cents: 97000, gross_cents: 100000, fee_cents: 3000, count: 1 }]);
 });
 
+// ─── item 4: payout_cancel / payout_failure return funds, unlike "payout" itself ────
+
+Deno.test("buildStripeDeposits: a pending payout_failure txn (returned funds) becomes a projected row while its failed payout stays in recent; a pending payout txn is still skipped", () => {
+  const out = buildStripeDeposits(
+    stripeRaw({
+      pendingTransactions: [
+        ...stripeRaw().pendingTransactions,
+        // po_3 (amount 500, status "failed") is already in `recent`; this is Stripe returning
+        // those funds. It must show up as money coming back, not vanish.
+        { id: "txn_returned", net: 500, amount: 500, fee: 0, available_on: ts("2026-09-29"), status: "pending", currency: "brl", type: "payout_failure" },
+      ],
+    }),
+    TODAY,
+  );
+  const projected = out.upcoming.next30.filter((r) => r.kind === "projected");
+  assertEquals(projected.some((r) => r.date === "2026-09-29" && r.net_cents === 500), true);
+  // txn_po (type "payout") still duplicates the kind=payout row from payouts.list and is skipped
+  assertEquals(projected.some((r) => r.date === "2026-09-25"), false);
+  assertEquals(out.recent, [
+    { id: "po_2", date: "2026-09-23", amount_cents: 18000, status: "paid" },
+    { id: "po_3", date: "2026-09-22", amount_cents: 500, status: "failed" },
+  ]);
+});
+
 Deno.test("buildStripeDeposits: next30 is sorted by deposit_on then date", () => {
   const out = buildStripeDeposits(stripeRaw(), TODAY);
   assertEquals(out.upcoming.next30.map((r) => `${r.deposit_on}/${r.kind}`), [
