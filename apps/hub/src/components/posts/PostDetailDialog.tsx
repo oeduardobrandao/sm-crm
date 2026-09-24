@@ -245,16 +245,7 @@ function PostDetailContent({
   const kind = pickPostCardKind(post);
   const isPending = post.status === 'enviado_cliente';
   const inProduction = isInProduction(post);
-  // Media layouts show only the caption; the full text gets its own read-only tab.
-  const showPostTextTab = kind !== 'text' && hasDistinctPostText(post);
-  const tabKeys = showPostTextTab
-    ? (['content', 'postText', 'history'] as const)
-    : (['content', 'history'] as const);
   const [tab, setTab] = useState<'content' | 'postText' | 'history'>('content');
-  // A refetch can flip showPostTextTab to false while the postText tab is selected (e.g. the
-  // edit that made the body distinct from the caption gets reverted): fall back to content so
-  // the dialog never renders with no tab selected and no panel shown.
-  const activeTab = tab === 'postText' && !showPostTextTab ? 'content' : tab;
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelDirty, setPanelDirty] = useState(false);
   const [contentDirty, setContentDirty] = useState(false);
@@ -295,6 +286,24 @@ function PostDetailContent({
     ? post.conteudo_plain
     : (suggestion?.suggested_conteudo_plain ?? post.conteudo_plain);
   const textCaption = showOriginal ? post.ig_caption : (draftIgCaption ?? post.ig_caption);
+  // Media layouts show only the caption; the full text gets its own read-only tab. Computed
+  // from the DISPLAYED version (bodyPlain/textCaption), not the original post: a pending
+  // suggestion can add body text beyond its caption (no tab on the original post would give
+  // it none) or remove the distinction (a tab from the original post would linger, stale).
+  const showPostTextTab =
+    kind !== 'text' &&
+    hasDistinctPostText({
+      ...post,
+      conteudo_plain: bodyPlain ?? '',
+      ig_caption: textCaption ?? null,
+    });
+  const tabKeys = showPostTextTab
+    ? (['content', 'postText', 'history'] as const)
+    : (['content', 'history'] as const);
+  // A refetch (or a suggestion-view toggle) can flip showPostTextTab to false while the
+  // postText tab is selected: fall back to content so the dialog never renders with no tab
+  // selected and no panel shown.
+  const activeTab = tab === 'postText' && !showPostTextTab ? 'content' : tab;
   const showPanel = panelOpen && isPending;
   // Once the client edits the text/caption (or a save is queued, in flight or failed), the
   // footer's primary action becomes Salvar edição: Aprovar is blocked until the edit is

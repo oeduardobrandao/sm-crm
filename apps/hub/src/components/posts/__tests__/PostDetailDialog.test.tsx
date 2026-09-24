@@ -1182,5 +1182,33 @@ describe('PostDetailDialog', () => {
       expect(screen.getByRole('tab', { name: 'Legenda' })).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByText('Legenda um')).toBeVisible();
     });
+
+    it('follows the displayed version: a pending suggestion that adds distinct text shows the tab, the original hides it again', () => {
+      renderDialog(1, {
+        posts: [
+          post({
+            id: 1,
+            conteudo_plain: 'Legenda um',
+            ig_caption: 'Legenda um',
+            pending_suggestion: {
+              id: 9,
+              suggested_conteudo: null,
+              suggested_conteudo_plain: 'Legenda um, mais o corpo completo do post.',
+              suggested_ig_caption: 'Legenda um',
+              changed_fields: ['conteudo_plain'],
+              updated_at: '2026-04-28T10:00:00.000Z',
+            },
+          }),
+        ],
+      });
+
+      expect(screen.getByRole('tab', { name: 'Texto do post' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: 'Texto do post' }));
+      expect(screen.getByText('Legenda um, mais o corpo completo do post.')).toBeVisible();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Legenda' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Original' }));
+      expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
+    });
   });
 });
