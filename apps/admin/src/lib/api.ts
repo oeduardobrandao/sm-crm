@@ -140,12 +140,7 @@ export interface GlobalBanner {
 
 export type WorkspaceActivityBucket = '7d' | '30d' | 'dormente' | 'nunca';
 export type WorkspaceSortKey =
-  | 'name'
-  | 'plan'
-  | 'client_count'
-  | 'member_count'
-  | 'created_at'
-  | 'last_activity_at';
+  'name' | 'plan' | 'client_count' | 'member_count' | 'created_at' | 'last_activity_at';
 export type SortDir = 'asc' | 'desc';
 
 // A `type` literal (not `interface`) so it keeps the implicit string index signature
@@ -337,6 +332,64 @@ export function getWorkspace(workspace_id: string) {
 
 export function listPlans() {
   return adminApi<{ plans: Plan[] }>('list-plans');
+}
+
+// ─── Depósitos (admin Métricas page) ──────────────────────────
+// Mirror of supabase/functions/platform-admin/deposits-logic.ts. Keep the two in sync by hand.
+
+export type DepositProvider = 'stripe' | 'pagarme';
+
+export interface DepositDayRow {
+  /** Day the funds become available at the provider (YYYY-MM-DD). */
+  date: string;
+  /** Projected day the money reaches the bank account (YYYY-MM-DD). */
+  deposit_on: string;
+  net_cents: number;
+  gross_cents: number;
+  fee_cents: number;
+  count: number;
+  kind: 'payout' | 'projected';
+  manual_withdrawal?: boolean;
+}
+
+export interface DepositMonthRow {
+  /** YYYY-MM */
+  month: string;
+  net_cents: number;
+  gross_cents: number;
+  fee_cents: number;
+  count: number;
+}
+
+export interface ProviderDeposits {
+  configured: boolean;
+  ok: boolean;
+  error?: 'unavailable';
+  /** Pagination hit its cap: `upcoming` is incomplete. */
+  truncated: boolean;
+  balance: { available_cents: number; pending_cents: number; currency: 'brl' } | null;
+  meta: Record<string, string | number | boolean | null>;
+  upcoming: { next30: DepositDayRow[]; byMonth: DepositMonthRow[] };
+  in_transit: { id: string; amount_cents: number; expected_on: string | null; status: string }[];
+  recent: { id: string; date: string; amount_cents: number; status: string }[];
+}
+
+export interface DepositsResponse {
+  generated_at: string;
+  currency: 'brl';
+  summary: {
+    next: { date: string; amount_cents: number; provider: DepositProvider } | null;
+    next_30d_cents: number;
+    waiting_cents: number;
+    /** A configured provider failed: the totals only cover the one that answered. */
+    partial: boolean;
+  };
+  stripe: ProviderDeposits;
+  pagarme: ProviderDeposits;
+}
+
+export function getDeposits() {
+  return adminApi<DepositsResponse>('get-deposits');
 }
 
 export interface PayingWorkspace {

@@ -31,6 +31,10 @@ export const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import('./pages/WorkspaceDetailPage')).default }),
       },
       {
+        path: 'metricas',
+        lazy: async () => ({ Component: (await import('./pages/MetricasPage')).default }),
+      },
+      {
         path: 'plans',
         lazy: async () => ({ Component: (await import('./pages/PlansPage')).default }),
       },

@@ -14,6 +14,7 @@ import {
   BookOpen,
   Sparkles,
   Plug,
+  TrendingUp,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { BuildPrefetch } from '../components/BuildPrefetch';
@@ -23,6 +24,7 @@ import { Button } from '../components/ui/button';
 
 const NAV_ITEMS = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/admin/metricas', icon: TrendingUp, label: 'Métricas' },
   { to: '/admin/workspaces', icon: Building2, label: 'Workspaces' },
   { to: '/admin/plans', icon: Package, label: 'Planos' },
   { to: '/admin/admins', icon: Users, label: 'Admins' },

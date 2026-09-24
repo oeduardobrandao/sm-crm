@@ -2,3 +2,4 @@
 export const workspaceDetailPath = (id: string) => `/admin/workspaces/${id}`;
 export const kbArticleEditPath = (id: string) => `/admin/kb-articles/${id}/edit`;
 export const kbArticleNewPath = () => '/admin/kb-articles/new';
+export const metricasPath = () => '/admin/metricas';
