@@ -34,6 +34,7 @@ import {
   CorrectionPanel,
   RejectedSuggestionNotice,
   SuggestionPendingNotice,
+  type SuggestionView,
 } from './CorrectionPanel';
 
 interface PostDetailDialogProps {
@@ -259,7 +260,20 @@ function PostDetailContent({
   // Unsent-edit lock for navigation controls: while a save is queued/in flight, and
   // through the confirmation hold after an action.
   const navLocked = submitting || locked || (dirty && !saveFailed);
-  const caption = deriveCaption(post, edit.isEditable ? draftIgCaption : post.ig_caption);
+  // A pending suggestion is never written to the post itself (it lives in
+  // post_edit_suggestions until the team accepts it), so `post.*` stays the original and
+  // the reading view can switch between the two.
+  const suggestion = isPending ? post.pending_suggestion : null;
+  const [suggestionView, setSuggestionView] = useState<SuggestionView>('suggestion');
+  const showOriginal = suggestion !== null && suggestionView === 'original';
+  const caption = showOriginal
+    ? deriveCaption(post, post.ig_caption)
+    : deriveCaption(post, edit.isEditable ? draftIgCaption : post.ig_caption);
+  const bodyConteudo = showOriginal ? post.conteudo : draftConteudo;
+  const bodyPlain = showOriginal
+    ? post.conteudo_plain
+    : (suggestion?.suggested_conteudo_plain ?? post.conteudo_plain);
+  const textCaption = showOriginal ? post.ig_caption : (draftIgCaption ?? post.ig_caption);
   const showPanel = panelOpen && isPending;
   // Once the client edits the text/caption (or a save is queued, in flight or failed), the
   // footer's primary action becomes Salvar edição: Aprovar is blocked until the edit is
@@ -445,26 +459,26 @@ function PostDetailContent({
             )}
           </div>
         )}
-        {draftConteudo ? (
+        {bodyConteudo ? (
+          // Keyed by version: RichTextContent only reads `content` on mount.
           <RichTextContent
-            content={draftConteudo}
+            key={showOriginal ? 'original' : 'suggestion'}
+            content={bodyConteudo}
             className="font-display text-[16px] leading-[1.55] hub-txt"
             editable={false}
-            fallbackText={post.conteudo_plain}
+            fallbackText={bodyPlain}
           />
         ) : (
           <p className="font-display text-[16px] leading-[1.55] hub-txt whitespace-pre-wrap">
-            {post.conteudo_plain}
+            {bodyPlain}
           </p>
         )}
-        {(draftIgCaption || post.ig_caption) && (
+        {textCaption && (
           <div className="border-t hub-border pt-3">
             <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
               {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
             </p>
-            <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">
-              {draftIgCaption ?? post.ig_caption}
-            </p>
+            <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">{textCaption}</p>
           </div>
         )}
       </div>
@@ -665,7 +679,11 @@ function PostDetailContent({
                   <>
                     {isPending && edit.hasPendingSuggestion && (
                       <div className="mb-3">
-                        <SuggestionPendingNotice />
+                        <SuggestionPendingNotice
+                          changedFields={suggestion?.changed_fields}
+                          view={suggestionView}
+                          onViewChange={suggestion ? setSuggestionView : undefined}
+                        />
                       </div>
                     )}
                     {isPending && edit.wasRejected && <RejectedSuggestionNotice />}

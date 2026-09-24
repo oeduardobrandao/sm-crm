@@ -1000,6 +1000,45 @@ describe('PostDetailDialog', () => {
       expect(screen.queryByText(REJECTED_NOTICE)).not.toBeInTheDocument();
     });
 
+    it('says the body is the suggested version and toggles to the original', () => {
+      renderDialog(1, {
+        posts: [
+          post({
+            id: 1,
+            conteudo: null,
+            conteudo_plain: 'Corpo original',
+            ig_caption: 'Legenda original',
+            pending_suggestion: {
+              ...suggestion,
+              suggested_conteudo_plain: 'Corpo editado',
+              changed_fields: ['conteudo_plain', 'ig_caption'],
+            },
+          }),
+        ],
+      });
+      expect(
+        screen.getByText(
+          'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
+        ),
+      ).toBeInTheDocument();
+      const mine = screen.getByRole('button', { name: 'Sua sugestão' });
+      const original = screen.getByRole('button', { name: 'Original' });
+      expect(mine).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Legenda editada')).toBeInTheDocument();
+      expect(screen.queryByText('Legenda original')).not.toBeInTheDocument();
+
+      fireEvent.click(original);
+      expect(original).toHaveAttribute('aria-pressed', 'true');
+      expect(
+        screen.getByText('Você está vendo a versão original, sem as suas alterações.'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Legenda original')).toBeInTheDocument();
+      expect(screen.queryByText('Legenda editada')).not.toBeInTheDocument();
+
+      fireEvent.click(mine);
+      expect(screen.getByText('Legenda editada')).toBeInTheDocument();
+    });
+
     it('nudges after a rejected suggestion in the reading view while Corrigir stays enabled', () => {
       renderDialog(1, {
         posts: [post({ id: 1, suggestion_rejected_at: '2026-04-27T10:00:00.000Z' })],

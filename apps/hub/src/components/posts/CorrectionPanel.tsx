@@ -11,12 +11,84 @@ import { CorrectionReasonChips } from '../CorrectionReasonChips';
 
 export type EditSuggestion = ReturnType<typeof useEditSuggestion>;
 
-/** "Sugestão enviada para revisão": replaces the whole panel, and explains the disabled footer actions in the reading view. */
-export function SuggestionPendingNotice() {
+export type SuggestionView = 'suggestion' | 'original';
+
+interface SuggestionPendingNoticeProps {
+  /** The pending suggestion's `changed_fields`; only read when `onViewChange` is given. */
+  changedFields?: string[];
+  view?: SuggestionView;
+  /** Reading view only: says which version is on screen and lets the client switch. */
+  onViewChange?: (view: SuggestionView) => void;
+}
+
+/**
+ * "Sugestão enviada para revisão": replaces the whole panel, and explains the disabled
+ * footer actions in the reading view. There it also says that the body below is the
+ * suggested version (not the original) and offers a Sua sugestão / Original toggle.
+ */
+export function SuggestionPendingNotice({
+  changedFields = [],
+  view = 'suggestion',
+  onViewChange,
+}: SuggestionPendingNoticeProps = {}) {
   const { t } = useTranslation('hubPosts');
+  const textChanged =
+    changedFields.includes('conteudo') || changedFields.includes('conteudo_plain');
+  const captionChanged = changedFields.includes('ig_caption');
+  const detail =
+    view === 'original'
+      ? t(
+          'shared.suggestionShowingOriginal',
+          'Você está vendo a versão original, sem as suas alterações.',
+        )
+      : textChanged && captionChanged
+        ? t(
+            'shared.suggestionShowingBoth',
+            'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
+          )
+        : textChanged
+          ? t(
+              'shared.suggestionShowingText',
+              'Abaixo está a versão que você sugeriu. Você alterou o texto.',
+            )
+          : captionChanged
+            ? t(
+                'shared.suggestionShowingCaption',
+                'Abaixo está a versão que você sugeriu. Você alterou a legenda.',
+              )
+            : t('shared.suggestionShowing', 'Abaixo está a versão que você sugeriu.');
+  const option = (key: SuggestionView, label: string) => (
+    <button
+      type="button"
+      aria-pressed={view === key}
+      onClick={() => onViewChange?.(key)}
+      className={`rounded-full px-3 py-1 text-[12px] font-semibold transition-colors ${
+        view === key
+          ? 'bg-amber-800 text-white dark:bg-amber-300 dark:text-amber-950'
+          : 'text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+      }`}
+    >
+      {label}
+    </button>
+  );
   return (
-    <div className="rounded-lg px-4 py-3 text-[13px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/60 dark:ring-amber-800/40 text-center">
-      {t('shared.suggestionPendingReviewFull', 'Sugestão enviada para revisão da equipe')}
+    <div className="rounded-lg px-4 py-3 text-[13px] bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/60 dark:ring-amber-800/40 text-center">
+      <p className="font-medium">
+        {t('shared.suggestionPendingReviewFull', 'Sugestão enviada para revisão da equipe')}
+      </p>
+      {onViewChange && (
+        <>
+          <p className="mt-1 text-[12px]">{detail}</p>
+          <div
+            role="group"
+            aria-label={t('shared.suggestionCompareLabel', 'Comparar versões')}
+            className="mt-2 inline-flex gap-0.5 rounded-full p-0.5 ring-1 ring-amber-200 dark:ring-amber-800/60 bg-white/60 dark:bg-black/20"
+          >
+            {option('suggestion', t('shared.suggestionViewMine', 'Sua sugestão'))}
+            {option('original', t('shared.suggestionViewOriginal', 'Original'))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
