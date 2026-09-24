@@ -2,6 +2,7 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { isClientVisibleApproval } from "../_shared/hub-approvals.ts";
+import { fetchAllRows } from "../_shared/paginate.ts";
 import {
   computeEmProducaoByPost,
   INTERNAL_STATUSES,
@@ -151,18 +152,21 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       .map((post: { id: number }) => post.id);
     let emProducaoByPost = new Map<number, EmProducaoReason>();
     if (internalPostIds.length > 0) {
-      const { data: statusEvents, error: statusEventsError } = await db
-        .from("post_status_events")
-        .select("id, post_id, from_status, to_status, created_at")
-        .eq("conta_id", hubToken.conta_id)
-        .in("post_id", internalPostIds)
-        .in("to_status", ["enviado_cliente", ...INTERNAL_STATUSES])
-        .order("created_at", { ascending: true })
-        .order("id", { ascending: true });
-      if (statusEventsError) {
-        console.error("[hub-posts] status events lookup failed:", statusEventsError);
-      } else {
-        emProducaoByPost = computeEmProducaoByPost((statusEvents ?? []) as StatusEventRow[]);
+      try {
+        const statusEvents = await fetchAllRows<StatusEventRow>((from, to) =>
+          db
+            .from("post_status_events")
+            .select("id, post_id, from_status, to_status, created_at")
+            .eq("conta_id", hubToken.conta_id)
+            .in("post_id", internalPostIds)
+            .in("to_status", ["enviado_cliente", ...INTERNAL_STATUSES])
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+        emProducaoByPost = computeEmProducaoByPost(statusEvents);
+      } catch (err) {
+        console.error("[hub-posts] status events lookup failed:", err);
       }
     }
 

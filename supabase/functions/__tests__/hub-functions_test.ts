@@ -501,6 +501,39 @@ Deno.test("hub-posts falls back to em_producao null when the status-events query
   assertEquals(body.posts[0].em_producao, null);
 });
 
+Deno.test("hub-posts paginates the post_status_events lookup past a full page", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 1, status: "rascunho" }]);
+  db.queue("post_status_events", "select", {
+    data: [
+      { id: 1, post_id: 1, from_status: "aprovado_interno", to_status: "enviado_cliente", created_at: "2026-09-20T10:00:00.000Z" },
+    ],
+    error: null,
+  });
+  db.queue("post_status_events", "select", {
+    data: [
+      { id: 2, post_id: 1, from_status: "aprovado_cliente", to_status: "rascunho", created_at: "2026-09-21T10:00:00.000Z" },
+    ],
+    error: null,
+  });
+
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.posts[0].em_producao, "proxima_aprovacao");
+
+  const statusEventCalls = db.calls.filter((c) => c.table === "post_status_events");
+  // fetchAllRows advances by rows received and stops only on an empty page:
+  // the two queued 1-row pages are followed by a third, unqueued call that
+  // the mock answers with [] (its select default), which is what ends the loop.
+  assertEquals(statusEventCalls.length, 3, "fetchAllRows must page until it sees an empty page");
+  assert(
+    statusEventCalls.every((c) => c.modifiers.some((m) => m.method === "range")),
+    "every post_status_events call must use .range()",
+  );
+});
+
 Deno.test("hub-posts rejects missing tokens", async () => {
   const handler = createHubPostsHandler({
     buildCorsHeaders,
