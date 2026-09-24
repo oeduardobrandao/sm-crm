@@ -106,8 +106,6 @@
     "slides": "{{count}} slides",
     "storyFrames": "Story · {{count}}",
     "storiesRailLabel": "Stories",
-    "stripLabel": "Other posts",
-    "goToPost": "Go to {{title}}",
     "notAvailable": "This post is not available.",
     "submitError": "Could not send. Try again."
   },

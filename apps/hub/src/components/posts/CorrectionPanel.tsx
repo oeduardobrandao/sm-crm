@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Save } from 'lucide-react';
 import type { CorrectionReason, HubPost } from '../../types';
 import type { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import { deriveCaption, pickPostCardKind } from '../../lib/postView';
@@ -45,6 +46,14 @@ interface CorrectionPanelProps {
   onSubmitCorrection: (comentario: string, motivo: CorrectionReason | null) => void;
   /** True whenever something unsent exists: staged content differs, comentário typed or motivo chosen. */
   onDirtyChange: (dirty: boolean) => void;
+  /** True while the staged text/caption differs from the baseline (comentário and motivo excluded). */
+  onContentDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Where Salvar edição renders. Omitted: inline at the end of the edit section. Given: the
+   * button is portalled into this element (the dialog's action footer, in place of Aprovar),
+   * and renders nothing while the host has not mounted the slot yet (`null`).
+   */
+  saveSlot?: HTMLElement | null;
 }
 
 /**
@@ -59,6 +68,8 @@ export function CorrectionPanel({
   submitting,
   onSubmitCorrection,
   onDirtyChange,
+  onContentDirtyChange,
+  saveSlot,
 }: CorrectionPanelProps) {
   const { t } = useTranslation('hubPosts');
   const isText = pickPostCardKind(post) === 'text';
@@ -182,11 +193,22 @@ export function CorrectionPanel({
   useEffect(() => {
     onDirtyChange(panelDirty);
   }, [panelDirty, onDirtyChange]);
+  useEffect(() => {
+    onContentDirtyChange?.(contentDirty);
+  }, [contentDirty, onContentDirtyChange]);
   // The panel can unmount without going through the host's own close path (the post stops
   // being pending on a refetch); without this the host would keep a stale "unsent" flag.
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
-  useEffect(() => () => onDirtyChangeRef.current(false), []);
+  const onContentDirtyChangeRef = useRef(onContentDirtyChange);
+  onContentDirtyChangeRef.current = onContentDirtyChange;
+  useEffect(
+    () => () => {
+      onDirtyChangeRef.current(false);
+      onContentDirtyChangeRef.current?.(false);
+    },
+    [],
+  );
 
   // A successful save makes the staged values the new baseline (draft* update via
   // pending_suggestion on refetch); until then the fields keep what was typed.
@@ -208,12 +230,43 @@ export function CorrectionPanel({
   // from lingering for the instant between a click and the hook's state catching up.
   const showFailure = saveFailed && saveState === 'idle' && !saveRequested;
 
+  // Queued (the hook's 1.5s debounce) counts as saving too, so a click shows feedback at once.
+  const saving = saveState === 'saving' || (dirty && !saveFailed);
+  const saveLabel = saving
+    ? t('shared.saving', 'Salvando...')
+    : t('shared.salvarEdicao', 'Salvar edição');
+  const saveDisabled = (!contentDirty && !dirty) || saving;
+  const saveButton =
+    saveSlot === undefined ? (
+      <button
+        type="button"
+        onClick={submitStaged}
+        disabled={saveDisabled}
+        className="hub-btn-primary rounded-[4px] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
+      >
+        {saveLabel}
+      </button>
+    ) : saveSlot ? (
+      createPortal(
+        <button
+          type="button"
+          onClick={submitStaged}
+          disabled={saveDisabled}
+          className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
+        >
+          <Save size={15} aria-hidden="true" /> {saveLabel}
+        </button>,
+        saveSlot,
+      )
+    ) : null;
+
   const reasons: CorrectionReason[] = isText
     ? ['texto', 'legenda', 'outro']
     : ['midia', 'texto', 'legenda', 'outro'];
 
   return (
     <div className="space-y-3">
+      {saveSlot !== undefined && saveButton}
       <section className="rounded-xl border hub-border hub-bg-soft p-3 space-y-2">
         <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3">
           {isText ? t('posts.editText', 'Editar texto') : t('posts.editCaption', 'Editar legenda')}
@@ -303,16 +356,7 @@ export function CorrectionPanel({
               </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={submitStaged}
-            disabled={(!contentDirty && !dirty) || saveState === 'saving'}
-            className="hub-btn-primary rounded-[4px] py-2 px-3 text-[12px] font-semibold disabled:opacity-50 transition-colors"
-          >
-            {saveState === 'saving'
-              ? t('shared.saving', 'Salvando...')
-              : t('shared.salvarEdicao', 'Salvar edição')}
-          </button>
+          {saveSlot === undefined && saveButton}
         </div>
       </section>
 

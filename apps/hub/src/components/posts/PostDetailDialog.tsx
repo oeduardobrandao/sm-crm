@@ -17,7 +17,6 @@ import { computePostNavigation, usePostNavigation } from '../../hooks/usePostNav
 import { usePostAdvance, type ConfirmFlash, type SlideDir } from '../../hooks/usePostAdvance';
 import {
   deriveCaption,
-  getPostCover,
   getPostPublishState,
   getTipoLabel,
   pickPostCardKind,
@@ -29,7 +28,6 @@ import { PostHistoryPanel } from '../PostHistoryPanel';
 import { PostMediaLightbox } from '../PostMediaLightbox';
 import { RichTextContent } from '../RichTextContent';
 import { SharePostButton } from '../SharePostButton';
-import { MediaUnavailable } from '../MediaUnavailable';
 import { StatusTag } from './StatusTag';
 import { PostMediaPane } from './PostMediaPane';
 import {
@@ -237,6 +235,9 @@ function PostDetailContent({
   const [tab, setTab] = useState<'content' | 'history'>('content');
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelDirty, setPanelDirty] = useState(false);
+  const [contentDirty, setContentDirty] = useState(false);
+  // Footer element the panel portals Salvar edição into, in place of Aprovar.
+  const [saveSlot, setSaveSlot] = useState<HTMLDivElement | null>(null);
   const [historyDirty, setHistoryDirty] = useState(false);
   // Lazy first visit, then kept mounted (hidden) so a typed comment, the loaded data and
   // open diffs survive a tab flip, and flipping does not refetch hub-post-history.
@@ -244,7 +245,6 @@ function PostDetailContent({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
-  const stripRef = useRef<HTMLUListElement>(null);
 
   const edit = useEditSuggestion({ token, post, onSaved: onApprovalSubmitted });
   const {
@@ -261,10 +261,15 @@ function PostDetailContent({
   const navLocked = submitting || locked || (dirty && !saveFailed);
   const caption = deriveCaption(post, edit.isEditable ? draftIgCaption : post.ig_caption);
   const showPanel = panelOpen && isPending;
+  // Once the client edits the text/caption (or a save is queued, in flight or failed), the
+  // footer's primary action becomes Salvar edição: Aprovar is blocked until the edit is
+  // saved anyway, and the in-panel button sat at the bottom of a long scroll.
+  const showSaveInFooter = showPanel && !edit.hasPendingSuggestion && (contentDirty || dirty);
 
   useUnsavedWork(panelDirty || historyDirty || submitting);
 
   const handleDirtyChange = useCallback((d: boolean) => setPanelDirty(d), []);
+  const handleContentDirtyChange = useCallback((d: boolean) => setContentDirty(d), []);
   const handleHistoryDirtyChange = useCallback((d: boolean) => setHistoryDirty(d), []);
 
   // Navigation/close guard. Blocked while a save is queued or in flight (`dirty` without
@@ -320,12 +325,6 @@ function PostDetailContent({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [go, nav.prev, nav.next, lightboxIdx, ghost]);
-
-  useEffect(() => {
-    stripRef.current
-      ?.querySelector<HTMLElement>('[data-current="true"]')
-      ?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
-  }, [post.id]);
 
   // The slide-in direction is captured when the card enters and its class kept for the
   // card's lifetime: removing it exactly when the phase ends could cut the last frames of
@@ -659,6 +658,8 @@ function PostDetailContent({
                     submitting={submitting || locked}
                     onSubmitCorrection={(c, m) => submit('correcao', c, m)}
                     onDirtyChange={handleDirtyChange}
+                    onContentDirtyChange={handleContentDirtyChange}
+                    saveSlot={saveSlot}
                   />
                 ) : (
                   <>
@@ -675,44 +676,6 @@ function PostDetailContent({
               </div>
             </div>
           </div>
-
-          <ul
-            ref={stripRef}
-            aria-label={t('posts.stripLabel', 'Outros posts')}
-            className="flex gap-1.5 px-4 py-2 border-t hub-border overflow-x-auto shrink-0"
-          >
-            {posts.map((p) => {
-              const cover = getPostCover(p);
-              const src = cover?.kind === 'video' ? cover.thumbnail_url : cover?.url;
-              const isCurrent = p.id === post.id;
-              return (
-                <li key={p.id} data-current={isCurrent ? 'true' : undefined} className="shrink-0">
-                  <button
-                    type="button"
-                    aria-label={t('posts.goToPost', 'Ir para {{title}}', { title: p.titulo })}
-                    aria-current={isCurrent ? 'true' : undefined}
-                    disabled={navLocked}
-                    onClick={() => (isCurrent ? undefined : go(p))}
-                    className={`block w-[30px] h-[38px] rounded-[2px] overflow-hidden ${isCurrent ? 'ring-2 ring-[var(--hub-txt)] ring-offset-1 ring-offset-[var(--hub-card)]' : 'opacity-60 hover:opacity-100'}`}
-                  >
-                    {cover && !cover.media_lost_at && src ? (
-                      <img
-                        src={src}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : cover ? (
-                      <MediaUnavailable size="compact" />
-                    ) : (
-                      <span className="block w-full h-full hub-bg-soft border hub-border" />
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
 
           {(isPending || (post.status === 'postado' && post.instagram_permalink)) && (
             <div className="px-4 py-3 border-t hub-border hub-bg-soft shrink-0 space-y-2">
@@ -745,17 +708,25 @@ function PostDetailContent({
                       <AlertCircle size={15} /> {t('posts.correct', 'Corrigir')}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => submit('aprovado')}
-                    disabled={submitting || locked || approvalBlocked || dirty || panelDirty}
-                    className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
-                  >
-                    <CheckCircle size={15} />{' '}
-                    {saveState === 'saving'
-                      ? t('shared.saving', 'Salvando...')
-                      : t('shared.aprovar', 'Aprovar')}
-                  </button>
+                  {showSaveInFooter ? (
+                    <div
+                      ref={setSaveSlot}
+                      data-testid="hub-post-save-slot"
+                      className="flex-1 flex"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => submit('aprovado')}
+                      disabled={submitting || locked || approvalBlocked || dirty || panelDirty}
+                      className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
+                    >
+                      <CheckCircle size={15} />{' '}
+                      {saveState === 'saving'
+                        ? t('shared.saving', 'Salvando...')
+                        : t('shared.aprovar', 'Aprovar')}
+                    </button>
+                  )}
                 </div>
               ) : post.status === 'postado' && post.instagram_permalink ? (
                 // The status already sits in the header chips; only the permalink lives here.
