@@ -92,8 +92,12 @@ export async function listPendingTransactions(
   stripe: StripeDepositsClient,
   nowSec: number = Math.floor(Date.now() / 1000),
 ): Promise<{ rows: StripeRaw["pendingTransactions"]; truncated: boolean }> {
+  // Stripe stamps available_on at midnight UTC of the availability day, so a transaction
+  // available today is already < nowSec after 00:00 UTC while still status:"pending" (the daily
+  // payout hasn't been created yet) — the lower bound must be the start of today, not nowSec.
+  const dayStart = nowSec - (nowSec % 86400);
   const attempts: Record<string, unknown>[] = [
-    { available_on: { gte: nowSec }, limit: STRIPE_PAGE },
+    { available_on: { gte: dayStart }, limit: STRIPE_PAGE },
     { created: { gte: nowSec - 40 * 24 * 3600 }, limit: STRIPE_PAGE },
   ];
   let lastErr: unknown = null;

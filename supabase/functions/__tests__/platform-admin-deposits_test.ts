@@ -183,8 +183,11 @@ function stripeTxn(over: Partial<StripeRaw["pendingTransactions"][number]> = {})
   };
 }
 
-Deno.test("listPendingTransactions: happy path filters to pending rows and uses the available_on filter", async () => {
+Deno.test("listPendingTransactions: happy path filters to pending rows and uses the start-of-day available_on filter", async () => {
   const calls: Record<string, unknown>[] = [];
+  // Deliberately not a midnight value, so the test actually proves the day-start rounding
+  // (2026-09-25T13:00:00Z) rather than passing by coincidence.
+  const nowSec = 1790341200;
   const pendingRow = stripeTxn({ id: "txn_1", status: "pending" });
   const availableRow = stripeTxn({ id: "txn_2", status: "available" });
   const stripe = {
@@ -196,12 +199,15 @@ Deno.test("listPendingTransactions: happy path filters to pending rows and uses 
     },
   } as unknown as StripeDepositsClient;
 
-  const { rows, truncated } = await listPendingTransactions(stripe, NOW_SEC);
+  const { rows, truncated } = await listPendingTransactions(stripe, nowSec);
   assertEquals(rows.length, 1);
   assertEquals(rows[0].id, "txn_1");
   assertEquals(truncated, false);
   assertEquals(calls.length, 1);
-  assertEquals(calls[0].available_on, { gte: NOW_SEC });
+  assertEquals(calls[0].available_on, { gte: nowSec - (nowSec % 86400) });
+  const gte = (calls[0].available_on as { gte: number }).gte;
+  assertEquals(gte % 86400, 0);
+  assertEquals(gte <= nowSec, true);
   assertEquals(calls[0].limit, 100);
 });
 
