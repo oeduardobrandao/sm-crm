@@ -2,7 +2,11 @@ import { assertEquals } from "./assert.ts";
 import {
   buildDepositsResponse,
   handleGetDeposits,
+  listPendingTransactions,
+  listWaitingPayables,
+  nextCursor,
   type DepositsGateways,
+  type StripeDepositsClient,
 } from "../platform-admin/deposits.ts";
 import type { PagarmeRaw, StripeRaw } from "../platform-admin/deposits-logic.ts";
 
@@ -133,4 +137,216 @@ Deno.test("handleGetDeposits: 200 JSON with the response body", async () => {
   assertEquals(body.stripe.ok, true);
   assertEquals(body.pagarme.ok, true);
   assertEquals(body.summary.next.provider, "pagarme");
+});
+
+// ─── nextCursor ─────────────────────────────────────────────────────────────
+
+Deno.test("nextCursor: null/undefined paging → null", () => {
+  assertEquals(nextCursor(null), null);
+  assertEquals(nextCursor(undefined), null);
+});
+
+Deno.test("nextCursor: bare paging.next", () => {
+  assertEquals(nextCursor({ next: "abc" }), "abc");
+});
+
+Deno.test("nextCursor: paging.cursors.next", () => {
+  assertEquals(nextCursor({ cursors: { next: "xyz" } }), "xyz");
+});
+
+Deno.test("nextCursor: full URL with forward_cursor param extracts the param", () => {
+  assertEquals(
+    nextCursor({ next: "https://api.pagar.me/core/v5/payables?forward_cursor=c123&size=100" }),
+    "c123",
+  );
+});
+
+Deno.test("nextCursor: full URL without forward_cursor param → null", () => {
+  assertEquals(nextCursor({ next: "https://api.pagar.me/core/v5/payables?size=100" }), null);
+});
+
+// ─── listPendingTransactions ────────────────────────────────────────────────
+
+const NOW_SEC = 1758700800; // fixed epoch so filter params are deterministic
+
+function stripeTxn(over: Partial<StripeRaw["pendingTransactions"][number]> = {}) {
+  return {
+    id: "txn_default",
+    net: 100,
+    amount: 100,
+    fee: 0,
+    available_on: NOW_SEC,
+    status: "pending",
+    currency: "brl",
+    type: "charge",
+    ...over,
+  };
+}
+
+Deno.test("listPendingTransactions: happy path filters to pending rows and uses the available_on filter", async () => {
+  const calls: Record<string, unknown>[] = [];
+  const pendingRow = stripeTxn({ id: "txn_1", status: "pending" });
+  const availableRow = stripeTxn({ id: "txn_2", status: "available" });
+  const stripe = {
+    balanceTransactions: {
+      list: (params: Record<string, unknown>) => {
+        calls.push(params);
+        return Promise.resolve({ data: [pendingRow, availableRow], has_more: false });
+      },
+    },
+  } as unknown as StripeDepositsClient;
+
+  const { rows, truncated } = await listPendingTransactions(stripe, NOW_SEC);
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].id, "txn_1");
+  assertEquals(truncated, false);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].available_on, { gte: NOW_SEC });
+  assertEquals(calls[0].limit, 100);
+});
+
+Deno.test("listPendingTransactions: a 400 on the first attempt falls back to the created filter", async () => {
+  const calls: Record<string, unknown>[] = [];
+  let attempt = 0;
+  const stripe = {
+    balanceTransactions: {
+      list: (params: Record<string, unknown>) => {
+        calls.push(params);
+        if (attempt++ === 0) {
+          return Promise.reject({ statusCode: 400 });
+        }
+        return Promise.resolve({ data: [stripeTxn({ id: "txn_fallback" })], has_more: false });
+      },
+    },
+  } as unknown as StripeDepositsClient;
+
+  const { rows } = await listPendingTransactions(stripe, NOW_SEC);
+  assertEquals(calls.length, 2);
+  assertEquals(calls[1].created, { gte: NOW_SEC - 40 * 24 * 3600 });
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].id, "txn_fallback");
+});
+
+Deno.test("listPendingTransactions: a non-400 error rethrows without falling back", async () => {
+  let calls = 0;
+  const stripe = {
+    balanceTransactions: {
+      list: () => {
+        calls++;
+        return Promise.reject({ statusCode: 500, message: "boom" });
+      },
+    },
+  } as unknown as StripeDepositsClient;
+
+  let threw = false;
+  try {
+    await listPendingTransactions(stripe, NOW_SEC);
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+  assertEquals(calls, 1);
+});
+
+Deno.test("listPendingTransactions: hits the page cap, marks truncated, and chains starting_after", async () => {
+  const calls: Record<string, unknown>[] = [];
+  let callCount = 0;
+  const stripe = {
+    balanceTransactions: {
+      list: (params: Record<string, unknown>) => {
+        calls.push(params);
+        const page = callCount++;
+        const data = Array.from({ length: 100 }, (_, i) => stripeTxn({ id: `txn_p${page}_${i}` }));
+        return Promise.resolve({ data, has_more: true });
+      },
+    },
+  } as unknown as StripeDepositsClient;
+
+  const { truncated } = await listPendingTransactions(stripe, NOW_SEC);
+  assertEquals(truncated, true);
+  assertEquals(calls.length, 5);
+  for (let i = 1; i < 5; i++) {
+    assertEquals(calls[i].starting_after, `txn_p${i - 1}_99`);
+  }
+});
+
+Deno.test("listPendingTransactions: has_more false on the 2nd page stops before the cap, not truncated", async () => {
+  const calls: Record<string, unknown>[] = [];
+  let callCount = 0;
+  const stripe = {
+    balanceTransactions: {
+      list: (params: Record<string, unknown>) => {
+        calls.push(params);
+        const page = callCount++;
+        const data = [stripeTxn({ id: `txn_p${page}_0` })];
+        return Promise.resolve({ data, has_more: page === 0 });
+      },
+    },
+  } as unknown as StripeDepositsClient;
+
+  const { truncated } = await listPendingTransactions(stripe, NOW_SEC);
+  assertEquals(truncated, false);
+  assertEquals(calls.length, 2);
+});
+
+// ─── listWaitingPayables ─────────────────────────────────────────────────────
+
+function pagarmePayable(over: Partial<PagarmeRaw["payables"][number]> = {}) {
+  return {
+    id: 1,
+    status: "waiting_funds",
+    amount: 100,
+    fee: 1,
+    anticipation_fee: 0,
+    payment_date: "2026-09-25T00:00:00Z",
+    ...over,
+  };
+}
+
+Deno.test("listWaitingPayables: paginates via the injected fetchPage until there is no next cursor", async () => {
+  const paths: string[] = [];
+  const p1 = pagarmePayable({ id: 1 });
+  const p2 = pagarmePayable({ id: 2 });
+  const fetchPage = (path: string) => {
+    paths.push(path);
+    if (!path.includes("forward_cursor")) {
+      return Promise.resolve({ data: [p1], paging: { next: "c2" } });
+    }
+    return Promise.resolve({ data: [p2], paging: {} });
+  };
+
+  const { rows, truncated } = await listWaitingPayables("re_test", fetchPage);
+  assertEquals(rows, [p1, p2]);
+  assertEquals(truncated, false);
+  assertEquals(paths.length, 2);
+  assertEquals(paths[0].includes("recipient_id=re_test"), true);
+  assertEquals(paths[0].includes("status=waiting_funds"), true);
+  assertEquals(paths[0].includes("size=100"), true);
+  assertEquals(paths[1].includes("forward_cursor=c2"), true);
+});
+
+Deno.test("listWaitingPayables: an empty first page stops immediately", async () => {
+  let calls = 0;
+  const fetchPage = () => {
+    calls++;
+    return Promise.resolve({ data: [], paging: { next: "c2" } });
+  };
+
+  const { rows, truncated } = await listWaitingPayables("re_test", fetchPage);
+  assertEquals(rows, []);
+  assertEquals(truncated, false);
+  assertEquals(calls, 1);
+});
+
+Deno.test("listWaitingPayables: hits the page cap when every page has more, marking truncated", async () => {
+  let calls = 0;
+  const fetchPage = () => {
+    calls++;
+    const data = Array.from({ length: 100 }, (_, i) => pagarmePayable({ id: calls * 1000 + i }));
+    return Promise.resolve({ data, paging: { next: `c${calls}` } });
+  };
+
+  const { truncated } = await listWaitingPayables("re_test", fetchPage);
+  assertEquals(truncated, true);
+  assertEquals(calls, 5);
 });

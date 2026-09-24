@@ -58,7 +58,7 @@ export interface DepositsResponse {
 
 /** The slice of the Stripe SDK this module touches (the shared StripeClient type only knows
  *  subscriptions.retrieve). The real client satisfies this structurally. */
-type StripeDepositsClient = {
+export type StripeDepositsClient = {
   balance: { retrieve: (params?: undefined, opts?: { timeout?: number }) => Promise<StripeRaw["balance"]> };
   payouts: {
     list: (
@@ -87,11 +87,11 @@ const OPTS = { timeout: STRIPE_TIMEOUT_MS };
 /** Pending balance transactions. Prefers the `available_on` range filter; if Stripe rejects it
  *  (400), falls back to `created >= now-40d` (Brazil cards settle at T+30) and filters status
  *  client-side. Bounded to STRIPE_MAX_PAGES pages of 100; `truncated` when the cap is hit with
- *  more pages left. */
-async function listPendingTransactions(
+ *  more pages left. `nowSec` is injectable so tests get deterministic filter params. */
+export async function listPendingTransactions(
   stripe: StripeDepositsClient,
+  nowSec: number = Math.floor(Date.now() / 1000),
 ): Promise<{ rows: StripeRaw["pendingTransactions"]; truncated: boolean }> {
-  const nowSec = Math.floor(Date.now() / 1000);
   const attempts: Record<string, unknown>[] = [
     { available_on: { gte: nowSec }, limit: STRIPE_PAGE },
     { created: { gte: nowSec - 40 * 24 * 3600 }, limit: STRIPE_PAGE },
@@ -99,6 +99,9 @@ async function listPendingTransactions(
   let lastErr: unknown = null;
   for (const base of attempts) {
     try {
+      // Rows accumulated by a discarded attempt (a 400 mid-pagination) are dropped on purpose:
+      // this attempt's filter was rejected, so its partial results aren't trustworthy, and the
+      // next attempt starts clean with its own `rows`/`starting_after`/`truncated`.
       const rows: StripeRaw["pendingTransactions"] = [];
       let starting_after: string | undefined;
       let truncated = false;
@@ -169,7 +172,7 @@ interface PagarmeTransfersPage {
 
 /** Pagar.me returns the next cursor either bare (`paging.cursors.next`) or as a full URL in
  *  `paging.next` (`…/payables?forward_cursor=abc&size=100`). Accept both. */
-function nextCursor(paging: PagarmePayablesPage["paging"]): string | null {
+export function nextCursor(paging: PagarmePayablesPage["paging"]): string | null {
   const raw = paging?.cursors?.next ?? paging?.next ?? null;
   if (!raw) return null;
   if (/^https?:\/\//i.test(raw)) {
@@ -182,8 +185,10 @@ function nextCursor(paging: PagarmePayablesPage["paging"]): string | null {
   return raw;
 }
 
-async function listWaitingPayables(
+export async function listWaitingPayables(
   recipientId: string,
+  fetchPage: (path: string) => Promise<PagarmePayablesPage | null> = (path) =>
+    pagarmeFetch<PagarmePayablesPage>("GET", path),
 ): Promise<{ rows: PagarmeRaw["payables"]; truncated: boolean }> {
   const rows: PagarmeRaw["payables"] = [];
   let cursor: string | null = null;
@@ -191,7 +196,7 @@ async function listWaitingPayables(
   for (let page = 0; page < PAGARME_MAX_PAGES; page++) {
     const qs = new URLSearchParams({ recipient_id: recipientId, status: "waiting_funds", size: String(PAGARME_PAGE) });
     if (cursor) qs.set("forward_cursor", cursor);
-    const res = await pagarmeFetch<PagarmePayablesPage>("GET", `/payables?${qs.toString()}`);
+    const res = await fetchPage(`/payables?${qs.toString()}`);
     rows.push(...(res?.data ?? []));
     cursor = nextCursor(res?.paging);
     if (!cursor || (res?.data ?? []).length === 0) break;
