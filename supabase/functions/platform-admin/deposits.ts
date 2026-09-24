@@ -169,15 +169,13 @@ export async function createStripeDepositsGateway(): Promise<StripeDepositsGatew
 const PAGARME_PAGE = 100;
 const PAGARME_MAX_PAGES = 5;
 
-interface PagarmePayablesPage {
-  data: PagarmeRaw["payables"];
+interface PagarmeCursorPage<T> {
+  data: T[];
   paging?: { next?: string | null; cursors?: { next?: string | null } | null } | null;
 }
 
-interface PagarmeTransfersPage {
-  data: PagarmeRaw["transfers"];
-  paging?: { next?: string | null } | null;
-}
+type PagarmePayablesPage = PagarmeCursorPage<PagarmeRaw["payables"][number]>;
+type PagarmeTransfersPage = PagarmeCursorPage<PagarmeRaw["transfers"][number]>;
 
 /** Pagar.me returns the next cursor either bare (`paging.cursors.next`) or as a full URL in
  *  `paging.next` (`…/payables?forward_cursor=abc&size=100`). Accept both. */
@@ -194,18 +192,21 @@ export function nextCursor(paging: PagarmePayablesPage["paging"]): string | null
   return raw;
 }
 
-export async function listWaitingPayables(
-  recipientId: string,
-  fetchPage: (path: string) => Promise<PagarmePayablesPage | null> = (path) =>
-    pagarmeFetch<PagarmePayablesPage>("GET", path),
-): Promise<{ rows: PagarmeRaw["payables"]; truncated: boolean }> {
-  const rows: PagarmeRaw["payables"] = [];
+/** Cursor-paginated sweep of one Pagar.me list endpoint, bounded to PAGARME_MAX_PAGES pages of
+ *  PAGARME_PAGE rows. `truncated` means rows are (or may be) incomplete: the cap was hit, or a full
+ *  page came back with a `paging.next` from which no `forward_cursor` could be extracted. */
+async function listPagarmeCursorPages<T>(
+  path: string,
+  params: Record<string, string>,
+  fetchPage: (path: string) => Promise<PagarmeCursorPage<T> | null>,
+): Promise<{ rows: T[]; truncated: boolean }> {
+  const rows: T[] = [];
   let cursor: string | null = null;
   let truncated = false;
   for (let page = 0; page < PAGARME_MAX_PAGES; page++) {
-    const qs = new URLSearchParams({ recipient_id: recipientId, status: "waiting_funds", size: String(PAGARME_PAGE) });
+    const qs = new URLSearchParams({ ...params, size: String(PAGARME_PAGE) });
     if (cursor) qs.set("forward_cursor", cursor);
-    const res = await fetchPage(`/payables?${qs.toString()}`);
+    const res = await fetchPage(`${path}?${qs.toString()}`);
     const data = res?.data ?? [];
     rows.push(...data);
     const raw = nextCursor(res?.paging);
@@ -224,13 +225,33 @@ export async function listWaitingPayables(
   return { rows, truncated };
 }
 
+export function listWaitingPayables(
+  recipientId: string,
+  fetchPage: (path: string) => Promise<PagarmePayablesPage | null> = (path) =>
+    pagarmeFetch<PagarmePayablesPage>("GET", path),
+): Promise<{ rows: PagarmeRaw["payables"]; truncated: boolean }> {
+  return listPagarmeCursorPages("/payables", { recipient_id: recipientId, status: "waiting_funds" }, fetchPage);
+}
+
+/** Every transfer of the recipient, newest first, swept through the same cursor loop so an
+ *  in-flight transfer older than the first page is not silently dropped. Only recipient_id is
+ *  sent: the status filter's grammar (comma-separated? repeated param?) isn't documented for this
+ *  endpoint, so the caller narrows with IN_FLIGHT_TRANSFER_STATUSES after the fetch. */
+export function listInFlightTransfers(
+  recipientId: string,
+  fetchPage: (path: string) => Promise<PagarmeTransfersPage | null> = (path) =>
+    pagarmeFetch<PagarmeTransfersPage>("GET", path),
+): Promise<{ rows: PagarmeRaw["transfers"]; truncated: boolean }> {
+  return listPagarmeCursorPages("/transfers", { recipient_id: recipientId }, fetchPage);
+}
+
 const PAGARME_GATEWAY_TIMEOUT_MS = 5000;
 
 export function createPagarmeDepositsGateway(): PagarmeDepositsGateway {
   return {
     async fetchRaw(recipientId) {
       const id = encodeURIComponent(recipientId);
-      const [balance, payablesPage, recipient, transfers] = await Promise.all([
+      const [balance, payablesPage, recipient, transfersPage] = await Promise.all([
         withTimeout(
           pagarmeFetch<unknown>("GET", `/recipients/${id}/balance`),
           PAGARME_GATEWAY_TIMEOUT_MS,
@@ -242,26 +263,21 @@ export function createPagarmeDepositsGateway(): PagarmeDepositsGateway {
           PAGARME_GATEWAY_TIMEOUT_MS,
           "pagarme.recipient",
         ),
-        withTimeout(
-          // Only recipient_id + size: the status filter's grammar (comma-separated? repeated
-          // param?) isn't documented for this endpoint, so we ask for everything and narrow with
-          // IN_FLIGHT_TRANSFER_STATUSES after the fetch instead of guessing the query syntax.
-          pagarmeFetch<PagarmeTransfersPage>(
-            "GET",
-            `/transfers?${new URLSearchParams({ recipient_id: recipientId, size: "100" }).toString()}`,
-          ),
-          PAGARME_GATEWAY_TIMEOUT_MS,
-          "pagarme.transfers",
-        )
-          .then((r) => r?.data ?? [])
-          .catch((err) => {
-            // In-flight transfers are a nice-to-have; the endpoint is newer and its filter grammar
-            // is the least documented. Degrade to an empty list rather than fail the card.
-            console.error("[deposits] pagarme transfers failed:", (err as Error).message);
-            return [] as PagarmeRaw["transfers"];
-          }),
+        listInFlightTransfers(recipientId).catch((err) => {
+          // In-flight transfers are a nice-to-have; the endpoint is newer and the least documented.
+          // Degrade to an empty list rather than fail the card.
+          console.error("[deposits] pagarme transfers failed:", (err as Error).message);
+          return { rows: [] as PagarmeRaw["transfers"], truncated: false };
+        }),
       ]);
-      return { balance, payables: payablesPage.rows, recipient, transfers, truncated: payablesPage.truncated };
+      return {
+        balance,
+        payables: payablesPage.rows,
+        recipient,
+        transfers: transfersPage.rows,
+        // Either sweep hitting its cap means the card's lists may be incomplete.
+        truncated: payablesPage.truncated || transfersPage.truncated,
+      };
     },
   };
 }

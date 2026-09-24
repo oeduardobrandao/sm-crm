@@ -3,6 +3,7 @@ import {
   buildDepositsResponse,
   handleGetDeposits,
   listPendingTransactions,
+  listInFlightTransfers,
   listWaitingPayables,
   nextCursor,
   type DepositsGateways,
@@ -394,4 +395,45 @@ Deno.test("listWaitingPayables: a SHORT page with the same unextractable paging.
   const { rows, truncated } = await listWaitingPayables("re_test", fetchPage);
   assertEquals(truncated, false);
   assertEquals(rows.length, 2);
+});
+
+// ─── listInFlightTransfers ───────────────────────────────────────────────────
+
+function pagarmeTransfer(over: Partial<PagarmeRaw["transfers"][number]> = {}) {
+  return { id: "tr_1", amount: 100, status: "transferred", funding_estimated_date: null, ...over };
+}
+
+Deno.test("listInFlightTransfers: sends only recipient_id + size and follows the cursor, so an old in-flight transfer on page 2 is still returned", async () => {
+  const paths: string[] = [];
+  const recent = pagarmeTransfer({ id: "tr_new", status: "transferred" });
+  const oldPending = pagarmeTransfer({ id: "tr_old", status: "pending_transfer" });
+  const fetchPage = (path: string) => {
+    paths.push(path);
+    if (!path.includes("forward_cursor")) {
+      return Promise.resolve({ data: [recent], paging: { next: "c2" } });
+    }
+    return Promise.resolve({ data: [oldPending], paging: {} });
+  };
+
+  const { rows, truncated } = await listInFlightTransfers("re_test", fetchPage);
+  assertEquals(rows, [recent, oldPending]);
+  assertEquals(truncated, false);
+  assertEquals(paths[0].startsWith("/transfers?"), true);
+  assertEquals(paths[0].includes("recipient_id=re_test"), true);
+  assertEquals(paths[0].includes("size=100"), true);
+  assertEquals(paths[0].includes("status="), false);
+  assertEquals(paths[1].includes("forward_cursor=c2"), true);
+});
+
+Deno.test("listInFlightTransfers: hits the page cap, marking truncated", async () => {
+  let calls = 0;
+  const fetchPage = () => {
+    calls++;
+    const data = Array.from({ length: 100 }, (_, i) => pagarmeTransfer({ id: `tr_${calls}_${i}` }));
+    return Promise.resolve({ data, paging: { next: `c${calls}` } });
+  };
+
+  const { truncated } = await listInFlightTransfers("re_test", fetchPage);
+  assertEquals(truncated, true);
+  assertEquals(calls, 5);
 });
