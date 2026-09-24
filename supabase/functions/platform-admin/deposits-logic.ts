@@ -243,14 +243,22 @@ export function summarize(providers: Record<Provider, ProviderDeposits>): Deposi
     const p = providers[provider];
     if (p.configured && !p.ok) partial = true;
     if (!p.ok) continue;
+    let providerEarliest: string | null = null;
+    let providerEarliestSum = 0;
     for (const r of p.upcoming.next30) {
       next_30d_cents += r.net_cents;
       waiting_cents += r.net_cents;
-      if (!next || r.deposit_on < next.date) {
-        next = { date: r.deposit_on, amount_cents: r.net_cents, provider };
+      if (providerEarliest === null || r.deposit_on < providerEarliest) {
+        providerEarliest = r.deposit_on;
+        providerEarliestSum = r.net_cents;
+      } else if (r.deposit_on === providerEarliest) {
+        providerEarliestSum += r.net_cents;
       }
     }
     for (const m of p.upcoming.byMonth) waiting_cents += m.net_cents;
+    if (providerEarliest !== null && (!next || providerEarliest < next.date)) {
+      next = { date: providerEarliest, amount_cents: providerEarliestSum, provider };
+    }
   }
   return { next, next_30d_cents, waiting_cents, partial };
 }

@@ -198,6 +198,27 @@ Deno.test("summarize: a failed provider contributes nothing and marks the summar
   });
 });
 
+Deno.test("summarize: same-day rows of the chosen provider are summed into next.amount_cents", () => {
+  const stripe = provider({
+    upcoming: {
+      next30: [
+        { ...row("2026-09-25", 300), kind: "payout" },
+        row("2026-09-26", 700, "2026-09-25"),
+        row("2026-09-29", 50),
+      ],
+      byMonth: [],
+    },
+  });
+  const pagarme = provider({ upcoming: { next30: [row("2026-09-26", 999)], byMonth: [] } });
+  assertEquals(summarize({ stripe, pagarme }).next, { date: "2026-09-25", amount_cents: 1000, provider: "stripe" });
+});
+
+Deno.test("summarize: provider tie on the earliest date keeps the first provider, amounts never merge across providers", () => {
+  const stripe = provider({ upcoming: { next30: [row("2026-09-25", 100)], byMonth: [] } });
+  const pagarme = provider({ upcoming: { next30: [row("2026-09-25", 250)], byMonth: [] } });
+  assertEquals(summarize({ stripe, pagarme }).next, { date: "2026-09-25", amount_cents: 100, provider: "stripe" });
+});
+
 Deno.test("summarize: an unconfigured provider is not 'partial'; no rows → next null", () => {
   assertEquals(summarize({ stripe: provider({}), pagarme: notConfigured() }), {
     next: null,
