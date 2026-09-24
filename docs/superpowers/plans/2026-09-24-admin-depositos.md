@@ -156,8 +156,8 @@ Deno.test("projectTransferDate: monthly → next transfer_day on or after, clamp
   assertEquals(projectTransferDate("2026-09-15", m15).deposit_on, "2026-09-15");
   assertEquals(projectTransferDate("2026-09-16", m15).deposit_on, "2026-10-15");
   const m31 = { transfer_enabled: true, transfer_interval: "monthly", transfer_day: 31 };
-  assertEquals(projectTransferDate("2026-02-10", m31).deposit_on, "2026-02-28"); // clamp
-  assertEquals(projectTransferDate("2026-04-10", m31).deposit_on, "2026-04-30"); // clamp
+  assertEquals(projectTransferDate("2026-02-10", m31).deposit_on, "2026-03-02"); // clamp to 28 (Sat) then roll to Mon
+  assertEquals(projectTransferDate("2026-04-10", m31).deposit_on, "2026-04-30"); // clamp, 30 is a Thu
 });
 
 Deno.test("projectTransferDate: monthly lands on weekend → next business day", () => {
@@ -624,7 +624,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 export interface StripeRaw {
   balance: { available: { amount: number; currency: string }[]; pending: { amount: number; currency: string }[] };
   payouts: { id: string; amount: number; arrival_date: number; status: string; currency: string }[];
-  pendingTransactions: { net: number; amount: number; fee: number; available_on: number; status: string; currency: string; type: string }[];
+  pendingTransactions: { id: string; net: number; amount: number; fee: number; available_on: number; status: string; currency: string; type: string }[];
   schedule: StripeSchedule | null;
   truncated: boolean;   // the pending-transactions pagination hit its cap
 }
@@ -670,11 +670,14 @@ function stripeRaw(over: Partial<StripeRaw> = {}): StripeRaw {
       { id: "po_usd", amount: 100, arrival_date: ts("2026-09-25"), status: "pending", currency: "usd" },
     ],
     pendingTransactions: [
-      { net: 9700, amount: 10000, fee: 300, available_on: ts("2026-09-26"), status: "pending", currency: "brl", type: "charge" }, // Sat → Mon 28
-      { net: 4850, amount: 5000, fee: 150, available_on: ts("2026-09-28"), status: "pending", currency: "brl", type: "charge" },
-      { net: 97000, amount: 100000, fee: 3000, available_on: ts("2026-11-05"), status: "pending", currency: "brl", type: "charge" },
-      { net: -2000, amount: -2000, fee: 0, available_on: ts("2026-09-28"), status: "pending", currency: "brl", type: "refund" },
-      { net: 1, amount: 1, fee: 0, available_on: ts("2026-09-28"), status: "available", currency: "brl", type: "charge" }, // not pending: ignored
+      { id: "txn_1", net: 9700, amount: 10000, fee: 300, available_on: ts("2026-09-26"), status: "pending", currency: "brl", type: "charge" }, // Sat → Mon 28
+      { id: "txn_2", net: 4850, amount: 5000, fee: 150, available_on: ts("2026-09-28"), status: "pending", currency: "brl", type: "charge" },
+      { id: "txn_3", net: 97000, amount: 100000, fee: 3000, available_on: ts("2026-11-05"), status: "pending", currency: "brl", type: "charge" },
+      { id: "txn_4", net: -2000, amount: -2000, fee: 0, available_on: ts("2026-09-28"), status: "pending", currency: "brl", type: "refund" },
+      { id: "txn_5", net: 1, amount: 1, fee: 0, available_on: ts("2026-09-28"), status: "available", currency: "brl", type: "charge" }, // not pending: ignored
+      // The payout po_1 itself shows up as a pending balance transaction with negative net on its
+      // arrival day. It must NOT become a projected row, or it cancels the kind=payout row.
+      { id: "txn_po", net: -20000, amount: -20000, fee: 0, available_on: ts("2026-09-25"), status: "pending", currency: "brl", type: "payout" },
     ],
     schedule: { interval: "daily", delay_days: 30 },
     truncated: false,
@@ -706,11 +709,24 @@ Deno.test("buildStripeDeposits: manual schedule flags projected rows as manual_w
   assertEquals(projected.every((r) => r.manual_withdrawal === true), true);
 });
 
-Deno.test("buildStripeDeposits: pending payouts are kind=payout on arrival_date; paid/failed go to recent; other currencies dropped", () => {
+Deno.test("buildStripeDeposits: pending payouts are kind=payout grouped by arrival_date; paid/failed go to recent; other currencies dropped", () => {
   const out = buildStripeDeposits(stripeRaw(), TODAY);
   const payoutRows = out.upcoming.next30.filter((r) => r.kind === "payout");
   assertEquals(payoutRows, [
     { date: "2026-09-25", deposit_on: "2026-09-25", net_cents: 20000, gross_cents: 20000, fee_cents: 0, count: 1, kind: "payout" },
+  ]);
+  const two = buildStripeDeposits(
+    stripeRaw({
+      payouts: [
+        { id: "po_a", amount: 100, arrival_date: ts("2026-09-25"), status: "pending", currency: "brl" },
+        { id: "po_b", amount: 200, arrival_date: ts("2026-09-25"), status: "in_transit", currency: "brl" },
+      ],
+      pendingTransactions: [],
+    }),
+    TODAY,
+  );
+  assertEquals(two.upcoming.next30, [
+    { date: "2026-09-25", deposit_on: "2026-09-25", net_cents: 300, gross_cents: 300, fee_cents: 0, count: 2, kind: "payout" },
   ]);
   assertEquals(out.recent, [
     { id: "po_2", date: "2026-09-23", amount_cents: 18000, status: "paid" },
@@ -718,9 +734,10 @@ Deno.test("buildStripeDeposits: pending payouts are kind=payout on arrival_date;
   ]);
 });
 
-Deno.test("buildStripeDeposits: pending transactions grouped by available_on (net), weekend rolls to Monday, refunds subtract, non-pending ignored", () => {
+Deno.test("buildStripeDeposits: pending transactions grouped by available_on (net), weekend rolls to Monday, refunds subtract, non-pending and payout-type ignored", () => {
   const out = buildStripeDeposits(stripeRaw(), TODAY);
   const projected = out.upcoming.next30.filter((r) => r.kind === "projected");
+  assertEquals(projected.some((r) => r.date === "2026-09-25"), false); // txn_po excluded
   // 26 (Sat) → deposit_on 28; 28 (Mon) → 28. Both keyed by their own `date`, both deposit on the 28th.
   assertEquals(projected, [
     { date: "2026-09-26", deposit_on: "2026-09-28", net_cents: 9700, gross_cents: 10000, fee_cents: 300, count: 1, kind: "projected", manual_withdrawal: false },
@@ -867,6 +884,7 @@ export interface StripeRaw {
   payouts: { id: string; amount: number; arrival_date: number; status: string; currency: string }[];
   /** Balance transactions with status 'pending' (the fetch may over-deliver; we filter again). */
   pendingTransactions: {
+    id: string;
     net: number;
     amount: number;
     fee: number;
@@ -882,6 +900,10 @@ export interface StripeRaw {
 
 const UPCOMING_PAYOUT_STATUSES = new Set(["pending", "in_transit"]);
 const RECENT_PAYOUT_STATUSES = new Set(["paid", "failed", "canceled"]);
+/** A created payout is itself a pending balance transaction (negative net, available_on =
+ *  arrival_date). It is already represented by the kind=payout row from payouts.list, so it must
+ *  not also become a projected row that cancels it out. */
+const PAYOUT_TXN_TYPES = new Set(["payout", "payout_cancel", "payout_failure"]);
 
 function pickBrlAmount(entries: { amount: number; currency: string }[]): number | null {
   const hit = entries.find((e) => e.currency?.toLowerCase() === "brl");
@@ -903,29 +925,26 @@ export function buildStripeDeposits(raw: StripeRaw, today: string): ProviderDepo
 
   const rows: DayRow[] = [];
   const recent: ProviderDeposits["recent"] = [];
+  const payoutItems: { date: string; net_cents: number; gross_cents: number; fee_cents: number }[] = [];
   for (const p of raw.payouts ?? []) {
     if (p.currency?.toLowerCase() !== "brl") continue;
     const day = toDay(p.arrival_date);
     if (!day) continue;
     if (UPCOMING_PAYOUT_STATUSES.has(p.status)) {
-      rows.push({
-        date: day,
-        deposit_on: day,
-        net_cents: p.amount,
-        gross_cents: p.amount,
-        fee_cents: 0,
-        count: 1,
-        kind: "payout",
-      });
+      payoutItems.push({ date: day, net_cents: p.amount, gross_cents: p.amount, fee_cents: 0 });
     } else if (RECENT_PAYOUT_STATUSES.has(p.status)) {
       recent.push({ id: p.id, date: day, amount_cents: p.amount, status: p.status });
     }
+  }
+  for (const [date, tot] of groupByDay(payoutItems)) {
+    rows.push({ date, deposit_on: date, ...tot, kind: "payout" });
   }
 
   const pendingItems: { date: string; net_cents: number; gross_cents: number; fee_cents: number }[] = [];
   for (const t of raw.pendingTransactions ?? []) {
     if (t.status !== "pending") continue;
     if (t.currency?.toLowerCase() !== "brl") continue;
+    if (PAYOUT_TXN_TYPES.has(t.type)) continue;
     const day = toDay(t.available_on);
     if (!day) continue;
     pendingItems.push({ date: day, net_cents: t.net, gross_cents: t.amount, fee_cents: t.fee });
@@ -1374,7 +1393,7 @@ async function listPendingTransactions(
         const res = await withTimeout(stripe.balanceTransactions.list(params, OPTS), STRIPE_TIMEOUT_MS, "stripe.balanceTransactions.list");
         for (const t of res.data) if (t.status === "pending") rows.push(t);
         if (!res.has_more || res.data.length === 0) break;
-        starting_after = (res.data[res.data.length - 1] as unknown as { id: string }).id;
+        starting_after = res.data[res.data.length - 1].id;
         if (page === STRIPE_MAX_PAGES - 1) truncated = true;
       }
       return { rows, truncated };
@@ -1434,8 +1453,19 @@ interface PagarmeTransfersPage {
   paging?: { next?: string | null } | null;
 }
 
+/** Pagar.me returns the next cursor either bare (`paging.cursors.next`) or as a full URL in
+ *  `paging.next` (`…/payables?forward_cursor=abc&size=100`). Accept both. */
 function nextCursor(paging: PagarmePayablesPage["paging"]): string | null {
-  return paging?.cursors?.next ?? paging?.next ?? null;
+  const raw = paging?.cursors?.next ?? paging?.next ?? null;
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      return new URL(raw).searchParams.get("forward_cursor");
+    } catch {
+      return null;
+    }
+  }
+  return raw;
 }
 
 async function listWaitingPayables(
@@ -1549,7 +1579,7 @@ Run: `deno test --no-check --node-modules-dir=auto --allow-env --allow-read --al
 Expected: all PASS.
 
 Run: `npm run check:functions`
-Expected: no errors. If `stripe.balance.retrieve(undefined, OPTS)` mismatches the structural type because the SDK's first param is optional-but-typed, change the local type to `retrieve: (...args: unknown[]) => Promise<...>`. If `res.data[…].id` needs a cast, keep the `as unknown as { id: string }` shown.
+Expected: no errors. If `stripe.balance.retrieve(undefined, OPTS)` mismatches the structural type because the SDK's first param is optional-but-typed, change the local type to `retrieve: (...args: unknown[]) => Promise<...>`.
 
 - [ ] **Step 6: Run the whole edge suite once (guards the `mcp-admin` bundling constraint indirectly: nothing there imports `deposits.ts`)**
 
@@ -2138,7 +2168,7 @@ describe('DepositsSection', () => {
     expect(await screen.findByText('Próximo depósito')).toBeInTheDocument();
     const summary = screen.getByTestId('deposits-summary');
     expect(within(summary).getByText('R$ 2.935,00')).toBeInTheDocument();
-    expect(within(summary).getByText(/Pagar\.me · qui, 25\/09/)).toBeInTheDocument();
+    expect(within(summary).getByText(/Pagar\.me · sex, 25\/09/)).toBeInTheDocument();
     expect(within(summary).getByText('R$ 12.635,00')).toBeInTheDocument();
     expect(within(summary).getByText('R$ 50.000,00')).toBeInTheDocument();
     expect(within(summary).getByText('A receber (total)')).toBeInTheDocument();
@@ -2148,7 +2178,7 @@ describe('DepositsSection', () => {
     expect(within(stripe).getByText('Repasse automático diário, D+30')).toBeInTheDocument();
     expect(within(stripe).getByText('R$ 123,45')).toBeInTheDocument(); // disponível
     expect(within(stripe).getByText('R$ 500,00')).toBeInTheDocument(); // a compensar
-    expect(within(stripe).getByText('Deposita em qui, 25/09')).toBeInTheDocument();
+    expect(within(stripe).getByText('Deposita em sex, 25/09')).toBeInTheDocument();
     expect(within(stripe).getByText('Deposita em seg, 28/09')).toBeInTheDocument();
     expect(within(stripe).getByText('R$ 9.500,00')).toBeInTheDocument();
     expect(within(stripe).getByText('novembro de 2026')).toBeInTheDocument();
@@ -2158,7 +2188,8 @@ describe('DepositsSection', () => {
     expect(within(pagarme).getByRole('heading', { name: 'Pagar.me' })).toBeInTheDocument();
     expect(within(pagarme).getByText('Transferência automática diária')).toBeInTheDocument();
     expect(within(pagarme).getByText('outubro de 2026')).toBeInTheDocument();
-    expect(within(pagarme).getByText('Em trânsito')).toBeInTheDocument();
+    expect(within(pagarme).getByText('Transferências em andamento')).toBeInTheDocument();
+    expect(within(pagarme).getByText('Em trânsito')).toBeInTheDocument(); // the processing badge
     expect(within(pagarme).getByText('R$ 40,00')).toBeInTheDocument();
   });
 
@@ -2397,7 +2428,8 @@ function ProviderBody({
         ) : (
           <ul className="divide-y divide-border">
             {upcoming.next30.map((row) => (
-              <DayRowItem key={`${row.date}-${row.kind}`} row={row} />
+              // date is unique per kind after groupByDay on both sources
+              <DayRowItem key={`${row.kind}-${row.date}`} row={row} />
             ))}
           </ul>
         )}
@@ -2414,7 +2446,7 @@ function ProviderBody({
       ) : null}
 
       {in_transit.length > 0 ? (
-        <Block title="Em trânsito">
+        <Block title="Transferências em andamento">
           <ul className="divide-y divide-border">
             {in_transit.map((t) => {
               const badge = payoutStatusBadge(t.status);
@@ -2525,10 +2557,7 @@ function Muted({ children }: { children: ReactNode }) {
 - [ ] **Step 4: Run the component tests, the hex-literal test and the typecheck**
 
 Run: `npx vitest run apps/admin/src/pages/__tests__/DepositsSection.test.tsx apps/admin/src/__tests__/no-hex-literals.test.ts apps/admin/src/pages/__tests__/MetricasPage.test.tsx`
-Expected: PASS. Common fixes if not:
-- `getByText('Em trânsito')` matches both the Block title and the Badge: change the Block title to "Transferências em andamento" and keep the Badge label; then update the test to `getByText('Transferências em andamento')`.
-- `Skeleton` must forward `data-testid`: it spreads `...props` (check `components/ui/skeleton.tsx`); if not, add the spread.
-- `Badge` `size="sm"` exists per `badge.tsx` variants.
+Expected: PASS. Known-good facts if something fails: `Skeleton` spreads `...props` so `data-testid` lands on the div; `Badge` has `size="sm"`; TanStack Query is v5 (`isPending` exists); the in-transit block title is "Transferências em andamento" precisely so it never collides with the "Em trânsito" badge label.
 
 Run: `npx tsc -p apps/admin/tsconfig.json --noEmit` → expected: no errors.
 
@@ -2634,6 +2663,7 @@ Open `http://localhost:5177/admin/metricas` in the Browser pane (the worktree ha
 - `pagarme.balance` is non-null. If it is `null` while the sandbox has a balance, the live shape is neither `available_amount` nor `available.amount`: note the actual field names, extend `parsePagarmeBalance` (Task 2) with that shape, add a test with the real payload, redeploy.
 - `pagarme.upcoming.next30` / `byMonth` reflect the sandbox 12x subscriptions. If empty while `/payables` has rows, check the `paging` cursor field name in the raw response and fix `nextCursor`.
 - `stripe.upcoming` has projected rows and `stripe.meta.schedule_interval` is `"daily"`. If `stripe.ok` is false, read the function log (`[deposits] stripe failed:`): a 400 on `available_on` means the fallback also failed; inspect the message.
+- Sum of all Stripe `projected` rows (`next30` + `byMonth`) ≈ `stripe.balance.pending_cents`. A large gap means the pending sweep is picking up (or missing) transaction types it should not; compare against the raw `type` values.
 
 - [ ] **Step 4: UI verification in the Browser pane**
 
