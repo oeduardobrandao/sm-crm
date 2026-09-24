@@ -430,6 +430,7 @@ export interface PagarmeRaw {
     amount: number;
     fee?: number | null;
     anticipation_fee?: number | null;
+    fraud_coverage_fee?: number | null;
     payment_date: string;
     type?: string | null;
   }[];
@@ -501,7 +502,7 @@ export function buildPagarmeDeposits(raw: PagarmeRaw, today: string): ProviderDe
     if (p.status !== "waiting_funds") continue;
     const day = toDay(p.payment_date);
     if (!day) continue;
-    const fee = (p.fee ?? 0) + (p.anticipation_fee ?? 0);
+    const fee = (p.fee ?? 0) + (p.anticipation_fee ?? 0) + (p.fraud_coverage_fee ?? 0);
     items.push({ date: day, net_cents: p.amount - fee, gross_cents: p.amount, fee_cents: fee });
   }
   const rows: DayRow[] = [];

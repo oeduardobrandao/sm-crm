@@ -478,6 +478,19 @@ function pagarmeRaw(over: Partial<PagarmeRaw> = {}): PagarmeRaw {
   };
 }
 
+Deno.test("buildPagarmeDeposits: fraud_coverage_fee is deducted from the net like fee and anticipation_fee", () => {
+  const raw: PagarmeRaw = {
+    balance: null,
+    payables: [{ id: 1, status: "waiting_funds", amount: 1000, fee: 30, anticipation_fee: 20, fraud_coverage_fee: 10, payment_date: "2026-10-01T03:00:00Z" }],
+    recipient: { transfer_settings: { transfer_enabled: true, transfer_interval: "daily", transfer_day: 0 } },
+    transfers: [],
+    truncated: false,
+  };
+  const out = buildPagarmeDeposits(raw, "2026-09-24");
+  assertEquals(out.upcoming.next30[0].net_cents, 940);
+  assertEquals(out.upcoming.next30[0].fee_cents, 60);
+});
+
 Deno.test("buildPagarmeDeposits: waiting_funds payables grouped by payment_date with net = amount - fee - anticipation_fee", () => {
   const out = buildPagarmeDeposits(pagarmeRaw({ transfers: [] }), TODAY);
   assertEquals(out.configured, true);

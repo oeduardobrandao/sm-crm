@@ -403,29 +403,33 @@ function pagarmeTransfer(over: Partial<PagarmeRaw["transfers"][number]> = {}) {
   return { id: "tr_1", amount: 100, status: "transferred", funding_estimated_date: null, ...over };
 }
 
-Deno.test("listInFlightTransfers: one filtered sweep per in-flight status, each following its cursor", async () => {
+Deno.test("listInFlightTransfers: one page per in-flight status with the /transfers grammar (count, single status), bare array accepted", async () => {
   const paths: string[] = [];
   const pending = pagarmeTransfer({ id: "tr_pending", status: "pending_transfer" });
-  const oldPending = pagarmeTransfer({ id: "tr_old_pending", status: "pending_transfer" });
   const processing = pagarmeTransfer({ id: "tr_proc", status: "processing" });
   const fetchPage = (path: string) => {
     paths.push(path);
-    if (path.includes("status=pending_transfer")) {
-      return path.includes("forward_cursor")
-        ? Promise.resolve({ data: [oldPending], paging: {} })
-        : Promise.resolve({ data: [pending], paging: { next: "c2" } });
-    }
-    return Promise.resolve({ data: [processing], paging: {} });
+    return Promise.resolve(path.includes("status=pending_transfer") ? [pending] : [processing]);
   };
 
   const { rows, truncated } = await listInFlightTransfers("re_test", fetchPage);
-  assertEquals(rows.map((r) => r.id).sort(), ["tr_old_pending", "tr_pending", "tr_proc"]);
+  assertEquals(rows.map((r) => r.id).sort(), ["tr_pending", "tr_proc"]);
   assertEquals(truncated, false);
-  assertEquals(paths.length, 3);
-  assertEquals(paths.every((p) => p.startsWith("/transfers?") && p.includes("recipient_id=re_test") && p.includes("size=100")), true);
-  assertEquals(paths.filter((p) => p.includes("status=pending_transfer")).length, 2);
+  assertEquals(paths.length, 2);
+  assertEquals(paths.every((p) => p.startsWith("/transfers?") && p.includes("recipient_id=re_test") && p.includes("count=100")), true);
+  assertEquals(paths.some((p) => p.includes("size=") || p.includes("forward_cursor")), false);
+  assertEquals(paths.filter((p) => p.includes("status=pending_transfer")).length, 1);
   assertEquals(paths.filter((p) => p.includes("status=processing")).length, 1);
-  assertEquals(paths.some((p) => p.includes("status=pending_transfer%2C")), false);
+});
+
+Deno.test("listInFlightTransfers: a { data } envelope is accepted too, and a full page marks truncated", async () => {
+  const full = Array.from({ length: 100 }, (_, i) => pagarmeTransfer({ id: `tr_${i}`, status: "processing" }));
+  const fetchPage = (path: string) =>
+    Promise.resolve(path.includes("status=processing") ? { data: full } : { data: [] });
+
+  const { rows, truncated } = await listInFlightTransfers("re_test", fetchPage);
+  assertEquals(rows.length, 100);
+  assertEquals(truncated, true);
 });
 
 Deno.test("listInFlightTransfers: rows returned by both status sweeps (filter ignored) are deduped by id", async () => {
@@ -437,15 +441,3 @@ Deno.test("listInFlightTransfers: rows returned by both status sweeps (filter ig
   assertEquals(rows.map((r) => r.id).sort(), ["tr_1", "tr_2"]);
 });
 
-Deno.test("listInFlightTransfers: hits the page cap, marking truncated", async () => {
-  let calls = 0;
-  const fetchPage = () => {
-    calls++;
-    const data = Array.from({ length: 100 }, (_, i) => pagarmeTransfer({ id: `tr_${calls}_${i}` }));
-    return Promise.resolve({ data, paging: { next: `c${calls}` } });
-  };
-
-  const { truncated } = await listInFlightTransfers("re_test", fetchPage);
-  assertEquals(truncated, true);
-  assertEquals(calls, 10); // 5 pages per status sweep
-});

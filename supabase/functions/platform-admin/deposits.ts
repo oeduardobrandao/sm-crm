@@ -175,7 +175,7 @@ interface PagarmeCursorPage<T> {
 }
 
 type PagarmePayablesPage = PagarmeCursorPage<PagarmeRaw["payables"][number]>;
-type PagarmeTransfersPage = PagarmeCursorPage<PagarmeRaw["transfers"][number]>;
+type PagarmeTransfersPage = PagarmeRaw["transfers"] | { data?: PagarmeRaw["transfers"] | null };
 
 /** Pagar.me returns the next cursor either bare (`paging.cursors.next`) or as a full URL in
  *  `paging.next` (`…/payables?forward_cursor=abc&size=100`). Accept both. */
@@ -236,27 +236,30 @@ export function listWaitingPayables(
 /** Statuses of a transfer that has left the balance but not yet landed in the bank. */
 export const IN_FLIGHT_STATUS_SWEEPS = ["pending_transfer", "processing"] as const;
 
-/** In-flight transfers of the recipient: one filtered cursor sweep per status (a single-value
- *  `status` filter is the documented grammar; the comma-separated form is not), so a recipient
- *  with hundreds of settled transfers cannot push a live one past the page cap. The builder
- *  narrows by status again after the fetch in case the filter is ignored. */
+/** GET /transfers is NOT the payables grammar: it takes `count` (max 1000) + `cursor` (the next
+ *  cursor only travels in the `x-cursor-nextpage` response HEADER, which pagarmeFetch does not
+ *  expose) and answers a bare array. One filtered page per in-flight status is enough: a live
+ *  transfer count near 100 is not a real scenario, and a full page is reported as truncated. */
+const PAGARME_TRANSFERS_COUNT = 100;
+
 export async function listInFlightTransfers(
   recipientId: string,
   fetchPage: (path: string) => Promise<PagarmeTransfersPage | null> = (path) =>
     pagarmeFetch<PagarmeTransfersPage>("GET", path),
 ): Promise<{ rows: PagarmeRaw["transfers"]; truncated: boolean }> {
-  const sweeps = await Promise.all(
-    IN_FLIGHT_STATUS_SWEEPS.map((status) =>
-      listPagarmeCursorPages("/transfers", { recipient_id: recipientId, status }, fetchPage)
-    ),
+  const pages = await Promise.all(
+    IN_FLIGHT_STATUS_SWEEPS.map(async (status) => {
+      const qs = new URLSearchParams({ recipient_id: recipientId, status, count: String(PAGARME_TRANSFERS_COUNT) });
+      const res = await fetchPage(`/transfers?${qs.toString()}`);
+      // Documented shape is a bare array; tolerate the `{ data }` envelope the other lists use.
+      const rows = Array.isArray(res) ? res : (res?.data ?? []);
+      return { rows, truncated: rows.length >= PAGARME_TRANSFERS_COUNT };
+    }),
   );
-  // Dedupe by id: if the status filter were ignored, both sweeps would return the same rows.
+  // Dedupe by id: if the status filter were ignored, both pages would return the same rows.
   const byId = new Map<string, PagarmeRaw["transfers"][number]>();
-  for (const t of sweeps.flatMap((s) => s.rows)) byId.set(t.id, t);
-  return {
-    rows: [...byId.values()],
-    truncated: sweeps.some((s) => s.truncated),
-  };
+  for (const t of pages.flatMap((p) => p.rows)) byId.set(String(t.id), t);
+  return { rows: [...byId.values()], truncated: pages.some((p) => p.truncated) };
 }
 
 const PAGARME_GATEWAY_TIMEOUT_MS = 5000;
