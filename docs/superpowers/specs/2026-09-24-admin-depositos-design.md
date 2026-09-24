@@ -57,17 +57,23 @@ Novo módulo `supabase/functions/platform-admin/deposits.ts`, na mesma disciplin
 | Chamada | Uso |
 |---|---|
 | `balance.retrieve()` | Entrada `brl` de `available[]` e `pending[]` |
-| `payouts.list({ limit: 25 })` | `upcoming` = status `pending` / `in_transit` (`arrival_date`); `recent` = `paid` / `failed` / `canceled` |
-| `balanceTransactions.list` (fundos pendentes) | Tenta o filtro `available_on: { gte: now }`; se a API rejeitar, pagina por `created >= now − 40d` e mantém `status === 'pending'`. Agrupa por dia de `available_on`, soma `net`. No Brasil o repasse é automático e diário (doc Stripe), então a chegada ao banco é projetada como `available_on` (próximo dia útil se cair em fim de semana) |
-| `accounts.retrieve()` | `settings.payouts.schedule` (`interval`, `delay_days`) só para exibição |
+| `payouts.list({ limit: 25 })` | Só itens com `currency === 'brl'`. `upcoming` = status `pending` / `in_transit` (`arrival_date`); `recent` = `paid` / `failed` / `canceled` |
+| `balanceTransactions.list` (fundos pendentes) | Tenta o filtro `available_on: { gte: now }`; se a API rejeitar, pagina por `created >= now − 40d` e mantém `status === 'pending'`. Só `currency === 'brl'`. No máximo 5 páginas de 100; ao bater o teto, `truncated: true`. Agrupa por dia de `available_on`, soma `net`. A chegada ao banco é `projectStripeArrival(available_on, schedule)`: aplica o schedule da conta (diário → mesmo dia; semanal → próximo `weekly_anchor`; mensal → próximo `monthly_anchor`; `manual` → `manual_withdrawal: true`), com fim de semana rolando para o próximo dia útil. No Brasil o schedule é sempre diário automático (doc Stripe), mas a regra é aplicada, não presumida |
+| `accounts.retrieve()` | `settings.payouts.schedule` (`interval`, `weekly_anchor`, `monthly_anchor`, `delay_days`). Se a chamada falhar, o schedule é tratado como diário e o cartão segue (a falha vira `meta.schedule_interval: null`) |
 
-**`PagarmeDepositsGateway`** sobre `pagarmeFetch` (`recipientId` vem de `PAGARME_RECIPIENT_ID`;
-ausente ⇒ `configured: false`):
+**Moeda:** todas as fontes Stripe filtram `currency === 'brl'` antes de somar; o Pagar.me só opera em
+BRL. A resposta carrega `currency: 'brl'` no topo e nenhuma soma cruza moedas.
+
+**`PagarmeDepositsGateway`** sobre `pagarmeFetch`. Configurado = `PAGARME_RECIPIENT_ID` **e**
+`PAGARME_SECRET_KEY` presentes; qualquer um ausente ⇒ `configured: false` e o gateway nunca é
+chamado (sem isso `pagarmeFetch` só falharia em runtime e o cartão mostraria "indisponível" no
+lugar de "não configurado"). O ramo Stripe segue a mesma regra via `loadStripe()`: `null`
+(`STRIPE_SECRET_KEY` ausente) ⇒ `configured: false`.
 
 | Chamada | Uso |
 |---|---|
 | `GET /recipients/{id}/balance` | Saldo disponível / a compensar / transferido. **Nomes de campo a confirmar no sandbox** na implementação: a doc é v4 (`available.amount`, `waiting_funds.amount`); o parser aceita as duas formas |
-| `GET /payables?recipient_id=…&status=waiting_funds&size=100` | Paginação com `forward_cursor` (objeto `paging`); o param `page` está descontinuado e não é usado. Líquido por recebível = `amount − fee − anticipation_fee`. Agrupa por dia de `payment_date` |
+| `GET /payables?recipient_id=…&status=waiting_funds&size=100` | Paginação com `forward_cursor` (objeto `paging`); o param `page` está descontinuado e não é usado. **Teto de 5 páginas (500 recebíveis)**; ao bater o teto a leitura para e o provedor responde `truncated: true` (a UI avisa "lista parcial"). O teto existe porque cada chamada tem 5 s de timeout e a function inteira precisa caber no tempo do edge runtime; 500 recebíveis cobrem a base atual muitas vezes. Líquido por recebível = `amount − fee − anticipation_fee`. Agrupa por dia de `payment_date` |
 | `GET /recipients/{id}` | `transfer_settings { transfer_enabled, transfer_interval, transfer_day }` e `automatic_anticipation_settings`. Chegada ao banco por grupo = `projectTransferDate(payment_date, transfer_settings)` |
 | `GET /transfers?recipient_id=…&status=pending_transfer,processing` | Em trânsito, com `funding_estimated_date`. O endpoint de withdrawals está descontinuado e não é usado |
 
@@ -84,20 +90,33 @@ chega a um ano.
 `pickBrl`, `groupByDay`, `projectTransferDate`, `projectStripeArrival`,
 `splitHorizon(rows, today)` → `{ next30: DayRow[]; byMonth: MonthRow[] }`,
 `summarize(stripe, pagarme)` → próximo depósito (data, valor, provedor), total dos próximos 30
-dias, total a receber.
+dias, total a receber, e `partial`.
+
+**`deposit_on` manda em tudo.** A janela dos 30 dias, o agrupamento mensal, a ordenação das
+linhas e o "Próximo depósito" usam `deposit_on` (previsão de chegada ao banco), nunca `date`
+(disponibilidade no provedor). `date` é só informativo. Linhas com `deposit_on` anterior a hoje
+são descartadas: repasse atrasado não é "próximo".
 
 ### 1.3 Contrato da resposta
 
 `Promise.allSettled` por provedor; um provedor rejeitado vira
 `{ configured: true, ok: false, error: 'unavailable' }`, nunca o erro cru.
 
+**Resumo parcial.** `summary.partial` é `true` quando algum provedor está configurado e não
+respondeu (`configured && !ok`). Nesse caso os totais só cobrem o provedor que respondeu, e a UI
+troca o rótulo "A receber (total)" por "A receber (parcial: Stripe indisponível)". Provedor
+não configurado não torna o resumo parcial.
+
 ```ts
 interface DepositsResponse {
   generated_at: string;
+  currency: 'brl';
   summary: {
     next: { date: string; amount_cents: number; provider: 'stripe' | 'pagarme' } | null;
     next_30d_cents: number;
     waiting_cents: number;
+    /** true quando um provedor configurado falhou: os totais são parciais. */
+    partial: boolean;
   };
   stripe: ProviderDeposits;
   pagarme: ProviderDeposits;
@@ -120,6 +139,8 @@ interface ProviderDeposits {
   configured: boolean;
   ok: boolean;
   error?: 'unavailable';
+  /** true quando a paginação bateu o teto: upcoming está incompleto. */
+  truncated: boolean;
   balance: { available_cents: number; pending_cents: number; currency: 'brl' } | null;
   /** Específico do provedor: schedule da Stripe, transfer_settings / anticipation do Pagar.me. */
   meta: Record<string, string | number | boolean | null>;
@@ -134,7 +155,8 @@ interface ProviderDeposits {
 - Gate de admin igual a toda ação do `platform-admin`.
 - Nunca devolver corpo de erro dos provedores; logar internamente.
 - Secret nova `PAGARME_RECIPIENT_ID` (opcional, sem default), documentada na seção de env do
-  CLAUDE.md, ao lado de `PAGARME_DASHBOARD_BASE`.
+  CLAUDE.md, ao lado de `PAGARME_DASHBOARD_BASE`, **e** no `.env.example` logo abaixo de
+  `PAGARME_DASHBOARD_BASE` (convenção do repo: toda variável nova entra no template).
 
 ## 2. Frontend (`apps/admin`)
 
@@ -155,7 +177,10 @@ interface ProviderDeposits {
     vazia, lista "Recentes" com `Badge` de status.
   - Estados por provedor: `Skeleton` carregando; `ErrorState` com retry quando `ok: false`;
     `EmptyState` "Não configurado" citando a secret quando `configured: false`; "Nada previsto"
-    quando as listas estão vazias.
+    quando as listas estão vazias; aviso "Lista parcial: há mais recebíveis do que o painel
+    lê de uma vez" quando `truncated: true`.
+  - Tile "A receber (total)" vira "A receber (parcial: <Provedor> indisponível)" quando
+    `summary.partial`.
   - Copy em português, sem travessão. Cores só por tokens Tailwind (teste de hex literal).
   - Dinheiro via `formatMoney` de `lib/subscription.ts`.
 
@@ -199,8 +224,18 @@ interface ProviderDeposits {
 - Backfill como ação admin idempotente (`backfill-metrics`, linhas de fim de mês, upsert em
   `(workspace_id, snapshot_date)`), nunca script local com chave. Stripe:
   `subscriptions.list({ status: 'all' })` mapeado por `stripe_customer_id`, excluindo `incomplete*`;
-  Pagar.me: lista de assinaturas com `start_at` / `canceled_at`. Prod e staging compartilham a
-  conta Stripe: backfill só contra prod.
+  Pagar.me: lista de assinaturas com `start_at` / `canceled_at`, mapeada primeiro pelo espelho
+  (`workspace_subscriptions.pagarme_subscription_id`) e, na falta dele, por
+  `metadata.workspace_id` (o checkout grava `metadata: { workspace_id, plan_id }`,
+  `pagarme-checkout/gateway.ts`); assinatura sem mapeamento ou com metadata divergente do
+  espelho é ignorada e contada no relatório do backfill. **Precedência** quando Stripe e
+  Pagar.me produzem a mesma chave `(workspace_id, snapshot_date)`: vence a assinatura em vigor
+  naquela data; se as duas estiverem em vigor (janela da troca), vence o Pagar.me, com
+  `provider_switch: true`. A regra é determinística e não depende da ordem de paginação.
+- Prod e staging compartilham a conta Stripe, então "backfill só contra prod" precisa ser um
+  **guard no handler**, não instrução: o `backfill-metrics` recusa (403, sem nenhuma chamada
+  remota) a menos que a secret `METRICS_BACKFILL_ALLOWED=true` esteja definida no projeto, que
+  só prod recebe. Teste da recusa obrigatório.
 - Cron pg_cron padrão A (`net.http_post` com `cron_secret` do vault, checagem `x-cron-secret`,
   `reportCronFailure`), em minuto livre segundo `20260925110001_stagger_cron_schedules.sql`.
 - Frontend: Chart.js no `apps/admin` com um `chartTheme.ts` próprio que envolve os triplets HSL em
