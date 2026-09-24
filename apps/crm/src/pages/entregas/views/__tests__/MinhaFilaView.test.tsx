@@ -437,6 +437,26 @@ describe('FilaMembroPicker', () => {
     expect(onChange).toHaveBeenLastCalledWith(null);
   });
 
+  it('lists members alphabetically, ignoring accents and case', () => {
+    const unsorted = [
+      { id: 1, nome: 'Wal' },
+      { id: 2, nome: 'catarina' },
+      { id: 3, nome: 'Débora' },
+      { id: 4, nome: 'Aislyn' },
+      { id: 5, nome: 'Davi' },
+    ] as Membro[];
+    render(
+      <FilaMembroPicker membros={unsorted} membroId={1} currentMembroId={1} onChange={vi.fn()} />,
+    );
+    const names = screen
+      .getAllByRole('option')
+      .map((o) => o.textContent)
+      .filter((t) => t !== 'Escolha um membro');
+    expect(names).toEqual(['Aislyn', 'catarina', 'Davi', 'Débora', 'Wal (você)']);
+    // The prop array itself is left untouched.
+    expect(unsorted[0].nome).toBe('Wal');
+  });
+
   it('shows no selection when the login has no membro', () => {
     render(
       <FilaMembroPicker

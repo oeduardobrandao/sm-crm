@@ -8,6 +8,10 @@ import {
 } from '@/components/ui/select';
 import type { Membro } from '../../../store';
 
+// Ordem alfabética pt-BR, sem diferenciar acento nem caixa ("Débora" junto de "Davi").
+const byNome = (a: Membro, b: Membro) =>
+  a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+
 /** Seletor "Fila de" da Minha fila. Mora na linha das abas (VistasTabs
  *  `trailing`), não dentro da vista. */
 export function FilaMembroPicker({
@@ -37,7 +41,7 @@ export function FilaMembroPicker({
         <SelectValue placeholder="Escolha um membro" />
       </SelectTrigger>
       <SelectContent>
-        {membros.map((m) => (
+        {[...membros].sort(byNome).map((m) => (
           <SelectItem key={m.id} value={String(m.id)}>
             {m.id === currentMembroId ? `${m.nome} (você)` : m.nome}
           </SelectItem>
