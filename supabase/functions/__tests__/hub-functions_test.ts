@@ -419,6 +419,88 @@ Deno.test("hub-posts returns playback: null when signPlayback is not configured 
   assertEquals(body.posts[0].cover_media.playback, null);
 });
 
+function queueHubPostsBase(
+  db: ReturnType<typeof createSupabaseQueryMock>,
+  posts: Record<string, unknown>[],
+) {
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: posts, error: null });
+}
+
+function hubPostsHandlerFor(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    rateLimit: async () => true,
+  });
+}
+
+const basePost = {
+  titulo: "P", tipo: "feed", ordem: 0, conteudo_plain: "x",
+  scheduled_at: "2026-09-30T10:00:00.000Z", platform: "instagram",
+  workflow_id: 7, workflows: { titulo: "Setembro" },
+};
+
+Deno.test("hub-posts flags a re-armed rascunho post as em_producao and leaves the others null", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [
+    { ...basePost, id: 1, status: "rascunho" },
+    { ...basePost, id: 2, status: "rascunho" },
+    { ...basePost, id: 3, status: "enviado_cliente" },
+  ]);
+  db.queue("post_status_events", "select", {
+    data: [
+      { id: 1, post_id: 1, from_status: "aprovado_interno", to_status: "enviado_cliente", created_at: "2026-09-20T10:00:00.000Z" },
+      { id: 2, post_id: 1, from_status: "aprovado_cliente", to_status: "rascunho", created_at: "2026-09-21T10:00:00.000Z" },
+    ],
+    error: null,
+  });
+
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  const byId = Object.fromEntries(body.posts.map((p: { id: number; em_producao: unknown }) => [p.id, p.em_producao]));
+  assertEquals(byId, { 1: "proxima_aprovacao", 2: null, 3: null });
+
+  const call = db.calls.find((c) => c.table === "post_status_events");
+  assert(call, "status events must be queried");
+  const inPostIds = call!.modifiers.find((m) => m.method === "in" && m.args[0] === "post_id");
+  assertEquals(inPostIds?.args[1], [1, 2], "only posts currently in an internal status are looked up");
+  assert(
+    call!.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "conta-1"),
+    "events are scoped to the token's workspace",
+  );
+});
+
+Deno.test("hub-posts skips the status-events query when no post is internal", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 3, status: "enviado_cliente" }]);
+
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(body.posts[0].em_producao, null);
+  assertEquals(db.calls.some((c) => c.table === "post_status_events"), false);
+});
+
+Deno.test("hub-posts falls back to em_producao null when the status-events query fails", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 1, status: "rascunho" }]);
+  db.queue("post_status_events", "select", { data: null, error: { message: "boom" } });
+
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.posts[0].em_producao, null);
+});
+
 Deno.test("hub-posts rejects missing tokens", async () => {
   const handler = createHubPostsHandler({
     buildCorsHeaders,
