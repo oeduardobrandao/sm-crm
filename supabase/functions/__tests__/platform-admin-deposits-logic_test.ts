@@ -2,9 +2,12 @@ import { assertEquals } from "./assert.ts";
 import {
   addDays,
   businessToday,
+  buildPagarmeDeposits,
+  buildStripeDeposits,
   groupByDay,
   nextBusinessDay,
   notConfigured,
+  parsePagarmeBalance,
   projectStripeArrival,
   projectTransferDate,
   splitHorizon,
@@ -13,13 +16,8 @@ import {
   toDay,
   unavailable,
   type DayRow,
-  type ProviderDeposits,
-} from "../platform-admin/deposits-logic.ts";
-import {
-  buildPagarmeDeposits,
-  buildStripeDeposits,
-  parsePagarmeBalance,
   type PagarmeRaw,
+  type ProviderDeposits,
   type StripeRaw,
 } from "../platform-admin/deposits-logic.ts";
 
@@ -421,11 +419,11 @@ function pagarmeRaw(over: Partial<PagarmeRaw> = {}): PagarmeRaw {
 }
 
 Deno.test("buildPagarmeDeposits: waiting_funds payables grouped by payment_date with net = amount - fee - anticipation_fee", () => {
-  const out = buildPagarmeDeposits(pagarmeRaw(), TODAY);
+  const out = buildPagarmeDeposits(pagarmeRaw({ transfers: [] }), TODAY);
   assertEquals(out.configured, true);
   assertEquals(out.ok, true);
   assertEquals(out.truncated, false);
-  assertEquals(buildPagarmeDeposits(pagarmeRaw({ truncated: true }), TODAY).truncated, true);
+  assertEquals(buildPagarmeDeposits(pagarmeRaw({ truncated: true, transfers: [] }), TODAY).truncated, true);
   assertEquals(out.balance, { available_cents: 700, pending_cents: 60000, currency: "brl" });
   // 30/09 (Wed): 2935 + 2925 - 500 = 5360 net; gross 3090+3090-500 = 5680; fee 155+155+10 = 320
   assertEquals(out.upcoming.next30, [
@@ -438,7 +436,7 @@ Deno.test("buildPagarmeDeposits: waiting_funds payables grouped by payment_date 
 });
 
 Deno.test("buildPagarmeDeposits: meta carries transfer settings and anticipation", () => {
-  const out = buildPagarmeDeposits(pagarmeRaw(), TODAY);
+  const out = buildPagarmeDeposits(pagarmeRaw({ transfers: [] }), TODAY);
   assertEquals(out.meta, {
     transfer_enabled: true,
     transfer_interval: "daily",
@@ -448,30 +446,135 @@ Deno.test("buildPagarmeDeposits: meta carries transfer settings and anticipation
   });
 });
 
-Deno.test("buildPagarmeDeposits: monthly transfer settings shift deposit_on; transfers in flight mapped", () => {
+Deno.test("buildPagarmeDeposits: monthly transfer settings shift deposit_on; in-flight transfer landing tomorrow is mirrored into upcoming as a payout, not in_transit", () => {
   const out = buildPagarmeDeposits(
     pagarmeRaw({
       recipient: { transfer_settings: { transfer_enabled: true, transfer_interval: "monthly", transfer_day: 5 }, automatic_anticipation_settings: null },
     }),
     TODAY,
   );
-  // 30/09 → next 5th = 05/10 (Mon)
-  assertEquals(out.upcoming.next30.map((r) => r.deposit_on), ["2026-10-05"]);
-  assertEquals(out.in_transit, [{ id: "tr_1", amount_cents: 4000, expected_on: "2026-09-25", status: "processing" }]);
+  // 30/09 → next 5th = 05/10 (Mon); tr_1 (processing, funding_estimated_date 25/09 >= today) becomes a payout row.
+  assertEquals(out.upcoming.next30.map((r) => ({ deposit_on: r.deposit_on, kind: r.kind })), [
+    { deposit_on: "2026-09-25", kind: "payout" },
+    { deposit_on: "2026-10-05", kind: "projected" },
+  ]);
+  assertEquals(out.in_transit, []);
   assertEquals(out.meta.anticipation_enabled, null);
 });
 
 Deno.test("buildPagarmeDeposits: transfers disabled → manual_withdrawal rows", () => {
   const out = buildPagarmeDeposits(
-    pagarmeRaw({ recipient: { transfer_settings: { transfer_enabled: false, transfer_interval: "daily", transfer_day: null } } }),
+    pagarmeRaw({
+      recipient: { transfer_settings: { transfer_enabled: false, transfer_interval: "daily", transfer_day: null } },
+      transfers: [],
+    }),
     TODAY,
   );
   assertEquals(out.upcoming.next30[0].manual_withdrawal, true);
 });
 
+// ─── item 1: transfer_interval case normalisation ──────────────────────────
+
+Deno.test("buildPagarmeDeposits: Pagar.me v5 'Weekly'/'Monthly' (capitalized) transfer_interval is normalised to lowercase", () => {
+  const weekly = buildPagarmeDeposits(
+    pagarmeRaw({
+      payables: [{ id: 1, status: "waiting_funds", amount: 1000, fee: 0, anticipation_fee: 0, payment_date: "2026-09-28T03:00:00Z" }], // Mon
+      recipient: { transfer_settings: { transfer_enabled: true, transfer_interval: "Weekly", transfer_day: 5 }, automatic_anticipation_settings: null },
+      transfers: [],
+    }),
+    TODAY,
+  );
+  assertEquals(weekly.upcoming.next30[0].deposit_on, "2026-10-02"); // next Friday on/after Mon 28/09
+  assertEquals(weekly.meta.transfer_interval, "weekly");
+
+  const monthly = buildPagarmeDeposits(
+    pagarmeRaw({
+      payables: [{ id: 1, status: "waiting_funds", amount: 1000, fee: 0, anticipation_fee: 0, payment_date: "2026-09-01T03:00:00Z" }],
+      recipient: { transfer_settings: { transfer_enabled: true, transfer_interval: "Monthly", transfer_day: 10 }, automatic_anticipation_settings: null },
+      transfers: [],
+    }),
+    "2026-08-15", // 10/09/2026 (a Thursday) falls inside this today's 30-day horizon
+  );
+  assertEquals(monthly.upcoming.next30[0].deposit_on, "2026-09-10");
+  assertEquals(monthly.meta.transfer_interval, "monthly");
+});
+
+Deno.test("buildPagarmeDeposits: missing transfer_interval defaults to daily", () => {
+  const out = buildPagarmeDeposits(
+    pagarmeRaw({
+      recipient: { transfer_settings: { transfer_enabled: true, transfer_day: null }, automatic_anticipation_settings: null },
+      transfers: [],
+    }),
+    TODAY,
+  );
+  assertEquals(out.meta.transfer_interval, "daily");
+});
+
+// ─── item 2: /transfers rows are filtered by status after the fetch ────────
+
+Deno.test("buildPagarmeDeposits: a transfer already 'transferred' is dropped entirely (not in_transit, not upcoming)", () => {
+  const out = buildPagarmeDeposits(
+    pagarmeRaw({
+      transfers: [
+        { id: "tr_done", amount: 4000, status: "transferred", funding_estimated_date: "2026-09-25T03:00:00Z" },
+      ],
+    }),
+    TODAY,
+  );
+  assertEquals(out.in_transit, []);
+  assertEquals(out.upcoming.next30.some((r) => r.kind === "payout"), false);
+});
+
+// ─── item 3: in-flight transfers mirrored into upcoming ────────────────────
+
+Deno.test("buildPagarmeDeposits: an in-flight transfer landing tomorrow is a kind=payout upcoming row, not in_transit", () => {
+  const out = buildPagarmeDeposits(
+    pagarmeRaw({
+      payables: [],
+      transfers: [
+        { id: "tr_soon", amount: 4000, status: "pending_transfer", funding_estimated_date: "2026-09-25T03:00:00Z" },
+      ],
+    }),
+    TODAY,
+  );
+  assertEquals(out.in_transit, []);
+  assertEquals(out.upcoming.next30, [
+    { date: "2026-09-25", deposit_on: "2026-09-25", net_cents: 4000, gross_cents: 4000, fee_cents: 0, count: 1, kind: "payout" },
+  ]);
+});
+
+Deno.test("buildPagarmeDeposits: an in-flight transfer with no funding_estimated_date stays in_transit", () => {
+  const out = buildPagarmeDeposits(
+    pagarmeRaw({
+      payables: [],
+      transfers: [{ id: "tr_unknown", amount: 4000, status: "processing", funding_estimated_date: null, funding_date: null }],
+    }),
+    TODAY,
+  );
+  assertEquals(out.in_transit, [{ id: "tr_unknown", amount_cents: 4000, expected_on: null, status: "processing" }]);
+  assertEquals(out.upcoming.next30, []);
+});
+
+Deno.test("summarize: a Pagar.me in-flight-transfer payout row is picked as `next` when it is the earliest", () => {
+  const pagarme = buildPagarmeDeposits(
+    pagarmeRaw({
+      payables: [],
+      transfers: [
+        { id: "tr_soon", amount: 4000, status: "pending_transfer", funding_estimated_date: "2026-09-25T03:00:00Z" },
+      ],
+    }),
+    TODAY,
+  );
+  const summary = summarize({ stripe: provider({}), pagarme });
+  assertEquals(summary.next, { date: "2026-09-25", amount_cents: 4000, provider: "pagarme" });
+});
+
 Deno.test("buildPagarmeDeposits: payables with an unparsable payment_date are skipped, not thrown", () => {
   const out = buildPagarmeDeposits(
-    pagarmeRaw({ payables: [{ id: 9, status: "waiting_funds", amount: 100, fee: 0, payment_date: "nope" }] }),
+    pagarmeRaw({
+      payables: [{ id: 9, status: "waiting_funds", amount: 100, fee: 0, payment_date: "nope" }],
+      transfers: [],
+    }),
     TODAY,
   );
   assertEquals(out.upcoming.next30, []);

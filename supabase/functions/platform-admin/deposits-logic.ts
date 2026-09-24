@@ -334,10 +334,14 @@ export interface StripeRaw {
 
 const UPCOMING_PAYOUT_STATUSES = new Set(["pending", "in_transit"]);
 const RECENT_PAYOUT_STATUSES = new Set(["paid", "failed", "canceled"]);
-/** A created payout is itself a pending balance transaction (negative net, available_on =
- *  arrival_date). It is already represented by the kind=payout row from payouts.list, so it must
- *  not also become a projected row that cancels it out. */
-const PAYOUT_TXN_TYPES = new Set(["payout", "payout_cancel", "payout_failure"]);
+/** Only a created payout's own negative transaction (type "payout") duplicates the kind=payout
+ *  row already produced from payouts.list -- that one must be skipped, or it would cancel the
+ *  payout row out. `payout_cancel` / `payout_failure` are the opposite: positive transactions
+ *  that RETURN funds, for a payout that sits in `recent` (canceled/failed), not `upcoming`. They
+ *  must count as projected funds, or a returned payout would vanish from the card entirely.
+ *  Defensive, not observed: Stripe usually makes a returned payout available immediately, but if
+ *  Stripe ever left one pending this is what stops it from being silently dropped. */
+const PAYOUT_TXN_TYPES = new Set(["payout"]);
 
 function pickBrlAmount(entries: { amount: number; currency: string }[]): number | null {
   const hit = entries.find((e) => e.currency?.toLowerCase() === "brl");
@@ -471,10 +475,17 @@ function toTransferSettings(raw: PagarmeRaw["recipient"]): TransferSettings | nu
   if (!ts) return null;
   return {
     transfer_enabled: ts.transfer_enabled === true,
-    transfer_interval: ts.transfer_interval ?? "daily",
+    // Pagar.me v5 returns "Daily" | "Weekly" | "Monthly" (capitalized); projectTransferDate and
+    // the frontend both compare lowercase, so normalise here once instead of at every call site.
+    transfer_interval: (ts.transfer_interval ?? "daily").toLowerCase(),
     transfer_day: typeof ts.transfer_day === "number" ? ts.transfer_day : null,
   };
 }
+
+/** A transfer Pagar.me already created but that hasn't landed at the bank yet. Anything else
+ *  (already "transferred", "failed", etc.) is not in flight and must not appear on the card at
+ *  all -- it either already happened or never will. */
+const IN_FLIGHT_TRANSFER_STATUSES = new Set(["pending_transfer", "processing"]);
 
 export function buildPagarmeDeposits(raw: PagarmeRaw, today: string): ProviderDeposits {
   const settings = toTransferSettings(raw.recipient);
@@ -497,17 +508,30 @@ export function buildPagarmeDeposits(raw: PagarmeRaw, today: string): ProviderDe
       manual_withdrawal: proj.manual_withdrawal,
     });
   }
-  const split = splitHorizon(rows, today);
 
+  // An in-flight transfer mirrors a Stripe pending/in_transit payout (buildStripeDeposits): the
+  // provider already created it, so when we can project a landing day it belongs in `upcoming` as
+  // kind=payout, not in the generic `in_transit` list -- that keeps both cards' "next deposit"
+  // logic reading from the same place. A transfer whose day is unknown or already past cannot be
+  // projected, so it stays in `in_transit`; the card still lists it, nothing silently disappears.
+  // The payables it was funded from are already excluded above (only status "waiting_funds"
+  // remains projected), so nothing here is double counted.
   const in_transit: ProviderDeposits["in_transit"] = [];
+  const payoutItems: { date: string; net_cents: number; gross_cents: number; fee_cents: number }[] = [];
   for (const t of raw.transfers ?? []) {
-    in_transit.push({
-      id: t.id,
-      amount_cents: t.amount,
-      expected_on: toDay(t.funding_estimated_date ?? t.funding_date ?? null),
-      status: t.status,
-    });
+    if (!IN_FLIGHT_TRANSFER_STATUSES.has(t.status)) continue;
+    const expected_on = toDay(t.funding_estimated_date ?? t.funding_date ?? null);
+    if (expected_on !== null && expected_on >= today) {
+      payoutItems.push({ date: expected_on, net_cents: t.amount, gross_cents: t.amount, fee_cents: 0 });
+    } else {
+      in_transit.push({ id: t.id, amount_cents: t.amount, expected_on, status: t.status });
+    }
   }
+  for (const [date, tot] of groupByDay(payoutItems)) {
+    rows.push({ date, deposit_on: date, ...tot, kind: "payout" });
+  }
+
+  const split = splitHorizon(rows, today);
 
   const ant = raw.recipient?.automatic_anticipation_settings ?? null;
   return {
