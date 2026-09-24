@@ -29,7 +29,7 @@ visible anywhere.
   change, no migration.
 - **"Em produção" is a presentational Hub state**, like the existing `publicando`: computed,
   never stored.
-- Colour: purple `#8b5cf6`. Label: "Em produção".
+- Colour: purple `#8b5cf6`. Label: "Em produção" for all three reasons; only the notice differs.
 - The "Texto do post" tab appears on **every** media post with text beyond the caption, not
   only on posts in a two-approval cycle.
 
@@ -37,36 +37,63 @@ visible anywhere.
 
 ### 1. Signal: `em_producao` (server, `hub-posts`)
 
-```
-em_producao = status ∈ {rascunho, revisao_interna, aprovado_interno}
-              AND the post has at least one post_status_events row with to_status = 'aprovado_cliente'
-```
+A post is "em produção" when it is currently in an internal status
+(`rascunho`, `revisao_interna`, `aprovado_interno`) **and** it has already been in front of
+the client: at least one `post_status_events` row with `to_status = 'enviado_cliente'`.
 
-Source: `post_status_events`, not `post_approvals`. The CRM's "aprovar internamente"
-(`approvePostsInternally`, `posts.ts:1276`) flips status to `aprovado_cliente` without writing
-`post_approvals`. The status trigger records it in `post_status_events`, so both the client's
-approval in the Hub and an approval on the client's behalf count. `post_status_events` exists
-since 2026-08-05. Posts approved before that and still sitting in rascunho today stay hidden,
-which is acceptable.
+The **reason** comes from the latest event whose `from_status` is client-visible and whose
+`to_status` is internal, i.e. the moment the post left the Hub:
 
-`hub-posts` (GET list) runs one extra query:
-`post_status_events.select('post_id').in('post_id', internalPostIds).eq('to_status', 'aprovado_cliente')`.
-It is limited to the posts currently in an internal status, and the result becomes a Set.
-Every post in the response gets `em_producao: boolean`. On query error: log, and treat all as
-`false` (fail closed = today's behaviour).
+| Last exit transition | `em_producao` | Where it comes from |
+|---|---|---|
+| `aprovado_cliente` → `rascunho` | `'proxima_aprovacao'` | re-arm between two approval etapas (`resetApprovedPostsForNextCycle`, `transition_post_process`) |
+| `correcao_cliente` → any internal | `'correcao'` | agency starts the correction the client asked for (edit-confirm in `WorkflowDrawer.tsx:552` / `StandalonePostDrawer.tsx:353`) |
+| anything else (e.g. `aprovado_cliente` → `revisao_interna`, `enviado_cliente` → internal) | `'ajuste'` | agency edited an approved or sent post (approval invalidation), or pulled it back by hand |
+
+Why not just "ever `aprovado_cliente`": an approved post that the agency later edits is
+moved to `revisao_interna` to invalidate the approval (`WorkflowDrawer.tsx:552`). That rule
+would label it "Você aprovou o texto, a equipe está produzindo a arte", which is wrong. It
+would also keep hiding correction rework, which today disappears the same way. Keying on the
+exit transition tells the three cases apart with the data already recorded, so there is still
+no migration and no CRM change. Known imprecision: a manual `aprovado_cliente` → `rascunho`
+move in the CRM reads as `'proxima_aprovacao'`. That's acceptable.
+
+Source: `post_status_events`, written by the `workflow_posts_status_event` trigger since
+`20260606000001_post_status_events.sql`. It covers "aprovar internamente"
+(`approvePostsInternally`, which writes no `post_approvals` row) as well as approvals made in
+the Hub.
+
+`hub-posts` (GET list) runs one extra query, limited to posts currently in an internal status:
+`post_status_events.select('post_id, from_status, to_status, created_at, id').in('post_id', internalPostIds)`
+filtered to `to_status in (enviado_cliente, rascunho, revisao_interna, aprovado_interno)`, ordered
+`(created_at, id)`. A pure helper `computeEmProducao(events)` reduces the rows per post.
+Every post in the response gets `em_producao: 'proxima_aprovacao' | 'correcao' | 'ajuste' | null`.
+
+Failure handling:
+- If the query errors: log it and return `null` for every post, which is today's behaviour.
+- **Accepted gap:** the trigger is best-effort. It swallows insert failures with a
+  `raise warning`, so a status change can commit without its event row. Such a post stays
+  hidden (today's behaviour) until its next status change. No backfill; it's rare and fails
+  closed.
 
 The client can see nothing new that wasn't already in the payload. `hub-posts` already returns
 every post of the client, including drafts; the Hub filtered them only on the frontend.
 
 ### 2. Hub visibility
 
-Model it through `getPostPublishState`. When `post.em_producao` is true (and status is
-internal) it returns `'em_producao'`. Add:
+Contract: `HubPost` (`apps/hub/src/types.ts`) gains
+`em_producao?: 'proxima_aprovacao' | 'correcao' | 'ajuste' | null`. It is **optional**: a
+missing field means "not in production", which keeps the deploy window safe.
+
+Model it through `getPostPublishState`, which returns `'em_producao'` when `post.em_producao`
+is set and the status is internal. Add:
 
 - `STATUS_COLORS.em_producao = '#8b5cf6'`
 - `getClientStatusLabel` / `CLIENT_STATUS_LABELS`: `em_producao` → "Em produção"
-- `isClientVisible(post)` helper: `VISIBLE_STATUSES.has(post.status) || post.em_producao === true`.
-  A missing field means `false`, which makes the deploy window safe.
+- A new `isPostClientVisible(post)`:
+  `VISIBLE_STATUSES.has(post.status) || (!!post.em_producao && INTERNAL.has(post.status))`.
+  The existing status-only `isClientVisible(status)` stays as it is; its only consumer is
+  `postView.test.ts`. Every list and panel site below switches to `isPostClientVisible`.
 
 Sites to switch from `VISIBLE_STATUSES.has(p.status)` to the helper:
 
@@ -99,12 +126,17 @@ almost for free. The plan must confirm that `useEditSuggestion` autosave cannot 
 Additions:
 
 - **Header tag:** the purple "Em produção" StatusTag.
-- **Notice** at the top of the body (purple, clock icon). The wording depends on `tipo`
-  **only**. Never check for media: the "arte" wording stays even after the art is attached.
-  - feed, carrossel: "**Você aprovou o texto.** A equipe está produzindo a **arte** deste post.
-    Ele volta para **Aprovações** quando estiver pronto para a próxima aprovação."
-  - reels: "... produzindo o **vídeo** deste post. ..."
-  - stories: "... produzindo o **conteúdo** deste post. ..."
+- **Notice** at the top of the body (purple, clock icon). The wording depends on the reason:
+  - `'proxima_aprovacao'`: the wording depends on `tipo` **only**. Never check for media: the
+    "arte" wording stays even after the art is attached.
+    - feed, carrossel: "**Você aprovou o texto.** A equipe está produzindo a **arte** deste
+      post. Ele volta para **Aprovações** quando estiver pronto para a próxima aprovação."
+    - reels: "... produzindo o **vídeo** deste post. ..."
+    - stories: "... produzindo o **conteúdo** deste post. ..."
+  - `'correcao'`: "**A equipe está fazendo as correções que você pediu.** O post volta para
+    **Aprovações** quando estiver pronto."
+  - `'ajuste'`: "**A equipe está ajustando este post.** Ele volta para **Aprovações** quando
+    estiver pronto."
 - **Footer:** an info line with a lock icon, "Em produção: nada para aprovar agora", instead
   of the action buttons.
 
@@ -134,7 +166,7 @@ Every new string needs pt + en in `packages/i18n/locales/{pt,en}`:
 
 - `hubPostCard.json`: `status.em_producao`
 - `hubPosts.json`:
-  - three notice variants (arte / vídeo / conteúdo)
+  - five notice variants (arte / vídeo / conteúdo / correção / ajuste)
   - footer line
   - `posts.tabPostText` "Texto do post"
 
@@ -142,11 +174,16 @@ No em-dashes in user-facing copy.
 
 ### 6. Tests
 
-- Deno, `supabase/functions/__tests__/hub-functions_test.ts` (hub-posts):
-  - `em_producao` is true for a rascunho post with a prior `aprovado_cliente` event
-  - it is false for a rascunho post without one
-  - it is false for visible statuses
-  - it falls back to false when the events query errors
+- Deno: `computeEmProducao` is a pure helper, tested with no DB:
+  - re-arm (`aprovado_cliente` → `rascunho`) gives `'proxima_aprovacao'`
+  - correction rework (`correcao_cliente` → `revisao_interna`) gives `'correcao'`
+  - approval invalidation (`aprovado_cliente` → `revisao_interna`) gives `'ajuste'`
+  - a draft that was never sent gives `null`
+  - a later cycle uses the latest exit transition
+- Deno, `hub-functions_test.ts` (hub-posts):
+  - the field is present on posts
+  - it is `null` for visible statuses
+  - it is `null` for all posts when the events query errors
 - Vitest (Hub):
   - an `em_producao` post appears in Postagens and the Home calendar, and not in Aprovações
   - the purple tag and the per-`tipo` notice render
@@ -171,10 +208,13 @@ first just means the feature is live the moment the frontend deploys.
 - Snapshotting the approved version. The client sees the current text and art as the agency
   edits them.
 
-## Open question for spec review
+## Resolved during spec review
 
-Does the same disappearance happen during **correction rework**, when the agency pulls a
-`correcao_cliente` post back through `revisao_interna`? If so, the predicate "ever
-`enviado_cliente`" (instead of "ever `aprovado_cliente`") would cover it with a one-line change,
-but the notice would need a correction variant ("A equipe está ajustando este post..."). The
-default is to ship the current rule.
+- **Correction rework** (`correcao_cliente` → `revisao_interna` on edit) disappears today too.
+  It is covered here as reason `'correcao'`, with its own notice. Needs user confirmation,
+  since it widens the original request.
+- External review (Codex) findings folded in:
+  - signal keyed on the exit transition, not "ever approved"
+  - optional contract field plus a new post-level helper
+  - accepted trigger gap
+  - `post_status_events` date corrected to 2026-06-06
