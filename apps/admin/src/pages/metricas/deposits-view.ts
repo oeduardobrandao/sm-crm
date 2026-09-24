@@ -143,3 +143,42 @@ export function waitingTotalLabel(
   }
   return `A receber (parcial: ${reasons.join('; ')})`;
 }
+
+export interface MonthlyReceivableRow {
+  /** YYYY-MM of the expected deposit (or availability, for manual withdrawal) */
+  month: string;
+  stripe_cents: number;
+  pagarme_cents: number;
+  total_cents: number;
+}
+
+/**
+ * Net receivables per calendar month across both providers, keyed by the month of the
+ * expected deposit day (`deposit_on` for the next 30 days, the month rows after that).
+ * Only providers that answered contribute; in-flight transfers without a landing day have
+ * no month and are left out (they still count in the summary's "A receber").
+ */
+export function monthlyReceivables(
+  data: Pick<DepositsResponse, 'stripe' | 'pagarme'>,
+): MonthlyReceivableRow[] {
+  const byMonth = new Map<string, MonthlyReceivableRow>();
+  const add = (provider: DepositProvider, month: string, cents: number) => {
+    const row = byMonth.get(month) ?? {
+      month,
+      stripe_cents: 0,
+      pagarme_cents: 0,
+      total_cents: 0,
+    };
+    if (provider === 'stripe') row.stripe_cents += cents;
+    else row.pagarme_cents += cents;
+    row.total_cents += cents;
+    byMonth.set(month, row);
+  };
+  for (const provider of ['stripe', 'pagarme'] as DepositProvider[]) {
+    const p = data[provider];
+    if (!p.ok) continue;
+    for (const r of p.upcoming.next30) add(provider, r.deposit_on.slice(0, 7), r.net_cents);
+    for (const m of p.upcoming.byMonth) add(provider, m.month, m.net_cents);
+  }
+  return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
+}

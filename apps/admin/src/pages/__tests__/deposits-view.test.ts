@@ -4,6 +4,7 @@ import {
   formatDay,
   formatDayShort,
   formatMonth,
+  monthlyReceivables,
   notConfiguredHint,
   payoutStatusBadge,
   providerName,
@@ -178,5 +179,51 @@ describe('deposits-view', () => {
         pagarme: { ...ok, truncated: true },
       }),
     ).toBe('A receber (parcial: Stripe indisponível; lista do Pagar.me incompleta)');
+  });
+
+  it('monthlyReceivables groups next30 by deposit month, adds byMonth, splits by provider, skips failed providers', () => {
+    const day = (deposit_on: string, net_cents: number) => ({
+      date: deposit_on,
+      deposit_on,
+      net_cents,
+      gross_cents: net_cents + 10,
+      fee_cents: 10,
+      count: 1,
+      kind: 'projected' as const,
+    });
+    const base = {
+      configured: true,
+      ok: true,
+      truncated: false,
+      balance: null,
+      meta: {},
+      in_transit: [],
+      recent: [],
+    };
+    const stripe = {
+      ...base,
+      upcoming: {
+        next30: [day('2026-09-28', 100), day('2026-10-02', 50)],
+        byMonth: [{ month: '2026-11', net_cents: 700, gross_cents: 750, fee_cents: 50, count: 2 }],
+      },
+    };
+    const pagarme = {
+      ...base,
+      upcoming: {
+        next30: [day('2026-10-05', 300)],
+        byMonth: [{ month: '2026-12', net_cents: 400, gross_cents: 420, fee_cents: 20, count: 1 }],
+      },
+    };
+    expect(monthlyReceivables({ stripe, pagarme })).toEqual([
+      { month: '2026-09', stripe_cents: 100, pagarme_cents: 0, total_cents: 100 },
+      { month: '2026-10', stripe_cents: 50, pagarme_cents: 300, total_cents: 350 },
+      { month: '2026-11', stripe_cents: 700, pagarme_cents: 0, total_cents: 700 },
+      { month: '2026-12', stripe_cents: 0, pagarme_cents: 400, total_cents: 400 },
+    ]);
+    expect(monthlyReceivables({ stripe, pagarme: { ...pagarme, ok: false } })).toEqual([
+      { month: '2026-09', stripe_cents: 100, pagarme_cents: 0, total_cents: 100 },
+      { month: '2026-10', stripe_cents: 50, pagarme_cents: 0, total_cents: 50 },
+      { month: '2026-11', stripe_cents: 700, pagarme_cents: 0, total_cents: 700 },
+    ]);
   });
 });

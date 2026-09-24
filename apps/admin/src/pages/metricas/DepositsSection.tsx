@@ -6,6 +6,7 @@ import {
   type DepositDayRow,
   type DepositMonthRow,
   type DepositProvider,
+  type DepositsResponse,
   type ProviderDeposits,
 } from '../../lib/api';
 import { formatMoney } from '../../lib/subscription';
@@ -19,11 +20,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '../../components/ui/tooltip';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import {
   formatDayShort,
   formatMonth,
+  monthlyReceivables,
   notConfiguredHint,
   payoutStatusBadge,
   providerName,
@@ -95,6 +106,8 @@ export function DepositsSection() {
         </div>
       ) : null}
 
+      {data ? <MonthlyTable data={data} /> : null}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {isPending
           ? // No data-testid here: the card only becomes `deposits-card-{provider}` once its
@@ -127,6 +140,73 @@ export function DepositsSection() {
     </div>
   );
 }
+
+/** Net receivables per month of expected deposit, one column per provider plus the total. */
+function MonthlyTable({ data }: { data: DepositsResponse }) {
+  const rows = monthlyReceivables(data);
+  const incomplete = data.summary.partial || PROVIDERS.some((p) => data[p].ok && data[p].truncated);
+  const sum = (key: 'stripe_cents' | 'pagarme_cents' | 'total_cents') =>
+    rows.reduce((acc, r) => acc + r[key], 0);
+  return (
+    <Card data-testid="deposits-monthly">
+      <CardHeader>
+        <CardTitle>Recebíveis por mês</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Valores líquidos, pelo mês em que o depósito é esperado.
+          {incomplete ? ' Lista parcial: um provedor falhou ou a leitura foi cortada.' : ''}
+        </p>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <Muted>Nada previsto</Muted>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className={MONTH_HEAD_CLASS}>Mês</TableHead>
+                <TableHead className={`${MONTH_HEAD_CLASS} text-right`}>Stripe</TableHead>
+                <TableHead className={`${MONTH_HEAD_CLASS} text-right`}>Pagar.me</TableHead>
+                <TableHead className={`${MONTH_HEAD_CLASS} text-right`}>Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.month}>
+                  <TableCell className="text-sm">{formatMonth(r.month)}</TableCell>
+                  <TableCell className="text-sm text-right tabular-nums">
+                    {formatMoney(r.stripe_cents)}
+                  </TableCell>
+                  <TableCell className="text-sm text-right tabular-nums">
+                    {formatMoney(r.pagarme_cents)}
+                  </TableCell>
+                  <TableCell className="text-sm text-right tabular-nums font-medium">
+                    {formatMoney(r.total_cents)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell className="text-sm font-semibold">Total</TableCell>
+                <TableCell className="text-sm text-right tabular-nums font-semibold">
+                  {formatMoney(sum('stripe_cents'))}
+                </TableCell>
+                <TableCell className="text-sm text-right tabular-nums font-semibold">
+                  {formatMoney(sum('pagarme_cents'))}
+                </TableCell>
+                <TableCell className="text-sm text-right tabular-nums font-semibold">
+                  {formatMoney(sum('total_cents'))}
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const MONTH_HEAD_CLASS = 'text-xs uppercase tracking-wider text-muted-foreground';
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
