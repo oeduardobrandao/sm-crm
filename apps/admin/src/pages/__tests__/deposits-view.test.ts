@@ -4,6 +4,7 @@ import {
   formatDay,
   formatDayShort,
   formatMonth,
+  notConfiguredHint,
   payoutStatusBadge,
   providerName,
   rowDateLabel,
@@ -105,9 +106,18 @@ describe('deposits-view', () => {
     expect(rowDateLabel({ ...base, manual_withdrawal: true })).toBe('Disponível em seg, 28/09');
   });
 
-  it('NOT_CONFIGURED_SECRET names the secret per provider', () => {
+  it('NOT_CONFIGURED_SECRET names the secret(s) per provider', () => {
     expect(NOT_CONFIGURED_SECRET.stripe).toBe('STRIPE_SECRET_KEY');
-    expect(NOT_CONFIGURED_SECRET.pagarme).toBe('PAGARME_RECIPIENT_ID');
+    expect(NOT_CONFIGURED_SECRET.pagarme).toBe('PAGARME_RECIPIENT_ID e PAGARME_SECRET_KEY');
+  });
+
+  it('notConfiguredHint agrees in number: singular secret for Stripe, plural secrets for Pagar.me', () => {
+    expect(notConfiguredHint('stripe')).toBe(
+      'Defina a secret STRIPE_SECRET_KEY na function platform-admin para ler este provedor.',
+    );
+    expect(notConfiguredHint('pagarme')).toBe(
+      'Defina as secrets PAGARME_RECIPIENT_ID e PAGARME_SECRET_KEY na function platform-admin para ler este provedor.',
+    );
   });
 
   it('waitingTotalLabel names the failed provider when the summary is partial', () => {
@@ -139,5 +149,34 @@ describe('deposits-view', () => {
     expect(waitingTotalLabel({ summary, stripe: ok, pagarme: notConfigured })).toBe(
       'A receber (total)',
     );
+  });
+
+  it('waitingTotalLabel: a truncated (but ok) provider also makes the total partial', () => {
+    const ok = {
+      configured: true,
+      ok: true,
+      truncated: false,
+      balance: null,
+      meta: {},
+      upcoming: { next30: [], byMonth: [] },
+      in_transit: [],
+      recent: [],
+    };
+    const summary = { next: null, next_30d_cents: 0, waiting_cents: 0, partial: false };
+    expect(waitingTotalLabel({ summary, stripe: { ...ok, truncated: true }, pagarme: ok })).toBe(
+      'A receber (parcial: lista da Stripe incompleta)',
+    );
+    expect(waitingTotalLabel({ summary, stripe: ok, pagarme: { ...ok, truncated: true } })).toBe(
+      'A receber (parcial: lista do Pagar.me incompleta)',
+    );
+    // combines with a failed provider, joined by "; "
+    const failed = { ...ok, ok: false, error: 'unavailable' as const };
+    expect(
+      waitingTotalLabel({
+        summary: { ...summary, partial: true },
+        stripe: failed,
+        pagarme: { ...ok, truncated: true },
+      }),
+    ).toBe('A receber (parcial: Stripe indisponível; lista do Pagar.me incompleta)');
   });
 });

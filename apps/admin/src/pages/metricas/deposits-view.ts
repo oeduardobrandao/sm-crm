@@ -38,8 +38,16 @@ export function providerName(p: DepositProvider): string {
 
 export const NOT_CONFIGURED_SECRET: Record<DepositProvider, string> = {
   stripe: 'STRIPE_SECRET_KEY',
-  pagarme: 'PAGARME_RECIPIENT_ID',
+  pagarme: 'PAGARME_RECIPIENT_ID e PAGARME_SECRET_KEY',
 };
+
+/** The handler marks Pagar.me unconfigured when EITHER PAGARME_RECIPIENT_ID or
+ *  PAGARME_SECRET_KEY is missing, so the copy always names both; Stripe only ever has one. The
+ *  sentence keeps "a secret"/"as secrets" in agreement with how many are named. */
+export function notConfiguredHint(p: DepositProvider): string {
+  const article = p === 'stripe' ? 'a secret' : 'as secrets';
+  return `Defina ${article} ${NOT_CONFIGURED_SECRET[p]} na function platform-admin para ler este provedor.`;
+}
 
 const WEEKDAY_PT: Record<number, string> = {
   1: 'segunda-feira',
@@ -102,15 +110,33 @@ export function rowDateLabel(row: DepositDayRow): string {
   return `${prefix} ${formatDayShort(row.deposit_on)}`;
 }
 
-/** "total" only when every configured provider answered; otherwise names the ones that failed. */
+const TRUNCATED_PHRASE: Record<DepositProvider, string> = {
+  stripe: 'lista da Stripe incompleta',
+  pagarme: 'lista do Pagar.me incompleta',
+};
+
+/** "total" only when every configured provider answered in full; otherwise names the ones that
+ *  failed (backend `partial`, still meaning "a configured provider failed") and/or the ones whose
+ *  list is truncated (a provider can be `ok` and `truncated` at once, so this checks it
+ *  independently of `partial` -- the two reasons combine, joined by "; ", when both apply). */
 export function waitingTotalLabel(
   data: Pick<DepositsResponse, 'summary' | 'stripe' | 'pagarme'>,
 ): string {
-  if (!data.summary.partial) return 'A receber (total)';
   const failed = (['stripe', 'pagarme'] as DepositProvider[])
     .filter((p) => data[p].configured && !data[p].ok)
     .map(providerName);
-  const who =
-    failed.length > 1 ? `${failed.join(' e ')} indisponíveis` : `${failed[0]} indisponível`;
-  return `A receber (parcial: ${who})`;
+  const truncated = (['stripe', 'pagarme'] as DepositProvider[]).filter(
+    (p) => data[p].ok && data[p].truncated,
+  );
+  if (failed.length === 0 && truncated.length === 0) return 'A receber (total)';
+  const reasons: string[] = [];
+  if (failed.length > 0) {
+    reasons.push(
+      failed.length > 1 ? `${failed.join(' e ')} indisponíveis` : `${failed[0]} indisponível`,
+    );
+  }
+  if (truncated.length > 0) {
+    reasons.push(truncated.map((p) => TRUNCATED_PHRASE[p]).join('; '));
+  }
+  return `A receber (parcial: ${reasons.join('; ')})`;
 }

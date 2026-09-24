@@ -22,9 +22,9 @@ import {
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import {
-  NOT_CONFIGURED_SECRET,
   formatDayShort,
   formatMonth,
+  notConfiguredHint,
   payoutStatusBadge,
   providerName,
   rowDateLabel,
@@ -52,7 +52,7 @@ export function DepositsSection() {
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           Valores líquidos, já descontadas as taxas dos provedores.
-          {data
+          {data && !isError
             ? ` Atualizado ${new Date(data.generated_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`
             : ''}
         </p>
@@ -78,11 +78,13 @@ export function DepositsSection() {
         <div data-testid="deposits-summary" className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatTile
             label="Próximo depósito"
-            value={data.summary.next ? formatMoney(data.summary.next.amount_cents) : '—'}
+            value={data.summary.next ? formatMoney(data.summary.next.amount_cents) : 'Sem previsão'}
             sub={
               data.summary.next
                 ? `${providerName(data.summary.next.provider)} · ${formatDayShort(data.summary.next.date)}`
-                : 'Nada previsto'
+                : data.summary.waiting_cents > 0
+                  ? 'Nada nos próximos 30 dias'
+                  : 'Nada previsto'
             }
           />
           <StatTile label="Próximos 30 dias" value={formatMoney(data.summary.next_30d_cents)} />
@@ -162,7 +164,7 @@ function ProviderBody({
       <EmptyState
         icon={Banknote}
         title="Não configurado"
-        description={`Defina a secret ${NOT_CONFIGURED_SECRET[provider]} na function platform-admin para ler este provedor.`}
+        description={notConfiguredHint(provider)}
       />
     );
   }
@@ -186,7 +188,7 @@ function ProviderBody({
         >
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
           <span>
-            Lista parcial: há mais recebíveis do que o painel lê de uma vez. Os totais abaixo estão
+            Lista parcial: há mais lançamentos do que o painel lê de uma vez. Os totais abaixo estão
             subestimados.
           </span>
         </p>
@@ -298,15 +300,17 @@ function MonthRowItem({ row }: { row: DepositMonthRow }) {
   );
 }
 
-/** Net in the row; gross and fee behind a tooltip, and in the accessible name so screen readers get it too. */
+/** Net in the row; gross and fee behind a tooltip, and in visually hidden text so screen readers
+ *  get it too (an aria-label on a plain, non-interactive span is ignored by most screen readers). */
 function NetAmount({ net, gross, fee }: { net: number; gross: number; fee: number }) {
   const detail = `Bruto ${formatMoney(gross)}, taxas ${formatMoney(fee)}`;
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span aria-label={detail} className="font-medium tabular-nums cursor-help">
+          <span className="font-medium tabular-nums cursor-help">
             {formatMoney(net)}
+            <span className="sr-only">, {detail}</span>
           </span>
         </TooltipTrigger>
         <TooltipContent>{detail}</TooltipContent>

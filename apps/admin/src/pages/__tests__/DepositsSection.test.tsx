@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -143,13 +143,11 @@ describe('DepositsSection', () => {
     expect(within(pagarme).getByText('R$ 40,00')).toBeInTheDocument();
   });
 
-  it('a payout row exposes gross and fee through the tooltip trigger label', async () => {
+  it('a payout row exposes gross and fee through visually hidden text next to the amount', async () => {
     vi.mocked(getDeposits).mockResolvedValue(RESPONSE);
     renderSection();
     const stripe = await screen.findByTestId('deposits-card-stripe');
-    expect(
-      within(stripe).getByLabelText('Bruto R$ 10.000,00, taxas R$ 500,00'),
-    ).toBeInTheDocument();
+    expect(within(stripe).getByText(/Bruto R\$ 10\.000,00, taxas R\$ 500,00/)).toBeInTheDocument();
   });
 
   it('shows the not-configured state naming the secret', async () => {
@@ -202,6 +200,36 @@ describe('DepositsSection', () => {
     renderSection();
     const stripe = await screen.findByTestId('deposits-card-stripe');
     expect(within(stripe).getByText('Nada previsto')).toBeInTheDocument();
+  });
+
+  it('the "Próximo depósito" tile shows "Sem previsão" and mirrors the waiting-total ternary when there is nothing next', async () => {
+    vi.mocked(getDeposits).mockResolvedValue({
+      ...RESPONSE,
+      summary: { ...RESPONSE.summary, next: null, waiting_cents: 0 },
+    });
+    renderSection();
+    const summary = await screen.findByTestId('deposits-summary');
+    expect(within(summary).getByText('Sem previsão')).toBeInTheDocument();
+    expect(within(summary).getByText('Nada previsto')).toBeInTheDocument();
+  });
+
+  it('the "Próximo depósito" subtitle says "Nada nos próximos 30 dias" when there is money waiting but nothing due next', async () => {
+    vi.mocked(getDeposits).mockResolvedValue({
+      ...RESPONSE,
+      summary: { ...RESPONSE.summary, next: null, waiting_cents: 1 },
+    });
+    renderSection();
+    const summary = await screen.findByTestId('deposits-summary');
+    expect(within(summary).getByText('Nada nos próximos 30 dias')).toBeInTheDocument();
+  });
+
+  it('hides the "Atualizado HH:MM" stamp while a refetch is failing', async () => {
+    vi.mocked(getDeposits).mockResolvedValueOnce(RESPONSE).mockRejectedValueOnce(new Error('boom'));
+    renderSection();
+    expect(await screen.findByText(/Atualizado \d{2}:\d{2}\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.queryByText(/Atualizado \d{2}:\d{2}\./)).not.toBeInTheDocument();
   });
 
   it('the "Atualizar" button refetches', async () => {
