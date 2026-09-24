@@ -53,15 +53,16 @@ const STRIPE_INTERVAL_PT: Record<string, string> = {
   daily: 'diário',
   weekly: 'semanal',
   monthly: 'mensal',
-  manual: 'manual',
 };
 
 export function scheduleCaption(p: DepositProvider, meta: ProviderDeposits['meta']): string | null {
   if (p === 'stripe') {
     const interval = meta.schedule_interval;
     if (typeof interval !== 'string') return null;
+    if (interval === 'manual') return 'Repasse manual: sem transferência automática';
     const delay = typeof meta.delay_days === 'number' ? `, D+${meta.delay_days}` : '';
-    return `Repasse automático ${STRIPE_INTERVAL_PT[interval] ?? interval}${delay}`;
+    const label = STRIPE_INTERVAL_PT[interval];
+    return label ? `Repasse automático ${label}${delay}` : `Repasse automático${delay}`;
   }
   if (typeof meta.transfer_enabled !== 'boolean') return null;
   if (!meta.transfer_enabled) return 'Transferência automática desligada: saque manual';

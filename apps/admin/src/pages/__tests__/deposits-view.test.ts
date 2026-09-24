@@ -28,6 +28,15 @@ describe('deposits-view', () => {
       'Repasse automático diário, D+30',
     );
     expect(scheduleCaption('stripe', { schedule_interval: null, delay_days: null })).toBeNull();
+    expect(scheduleCaption('stripe', { schedule_interval: 'manual', delay_days: 30 })).toBe(
+      'Repasse manual: sem transferência automática',
+    );
+    expect(scheduleCaption('stripe', { schedule_interval: 'fortnightly', delay_days: 7 })).toBe(
+      'Repasse automático, D+7',
+    );
+    expect(scheduleCaption('stripe', { schedule_interval: 'weekly', delay_days: null })).toBe(
+      'Repasse automático semanal',
+    );
   });
 
   it('scheduleCaption: Pagar.me transfer settings', () => {
