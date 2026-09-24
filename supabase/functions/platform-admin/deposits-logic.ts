@@ -285,3 +285,223 @@ export function unavailable(): ProviderDeposits {
 export function notConfigured(): ProviderDeposits {
   return { ...emptyProvider(), configured: false, ok: false };
 }
+
+// ─── raw provider shapes (only the fields we read) ──────────────────────────
+
+export interface StripeRaw {
+  balance: {
+    available: { amount: number; currency: string }[];
+    pending: { amount: number; currency: string }[];
+  };
+  payouts: { id: string; amount: number; arrival_date: number; status: string; currency: string }[];
+  /** Balance transactions with status 'pending' (the fetch may over-deliver; we filter again). */
+  pendingTransactions: {
+    id: string;
+    net: number;
+    amount: number;
+    fee: number;
+    available_on: number;
+    status: string;
+    currency: string;
+    type: string;
+  }[];
+  schedule: StripeSchedule | null;
+  /** The pending-transactions pagination hit its cap: rows are incomplete. */
+  truncated: boolean;
+}
+
+const UPCOMING_PAYOUT_STATUSES = new Set(["pending", "in_transit"]);
+const RECENT_PAYOUT_STATUSES = new Set(["paid", "failed", "canceled"]);
+/** A created payout is itself a pending balance transaction (negative net, available_on =
+ *  arrival_date). It is already represented by the kind=payout row from payouts.list, so it must
+ *  not also become a projected row that cancels it out. */
+const PAYOUT_TXN_TYPES = new Set(["payout", "payout_cancel", "payout_failure"]);
+
+function pickBrlAmount(entries: { amount: number; currency: string }[]): number | null {
+  const hit = entries.find((e) => e.currency?.toLowerCase() === "brl");
+  return hit ? hit.amount : null;
+}
+
+function sortDayRows(rows: DayRow[]): DayRow[] {
+  return rows.sort((a, b) =>
+    a.deposit_on.localeCompare(b.deposit_on) || a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind)
+  );
+}
+
+export function buildStripeDeposits(raw: StripeRaw, today: string): ProviderDeposits {
+  const available = pickBrlAmount(raw.balance.available ?? []);
+  const pending = pickBrlAmount(raw.balance.pending ?? []);
+  const balance = available == null && pending == null
+    ? null
+    : { available_cents: available ?? 0, pending_cents: pending ?? 0, currency: "brl" as const };
+
+  const rows: DayRow[] = [];
+  const recent: ProviderDeposits["recent"] = [];
+  const payoutItems: { date: string; net_cents: number; gross_cents: number; fee_cents: number }[] = [];
+  for (const p of raw.payouts ?? []) {
+    if (p.currency?.toLowerCase() !== "brl") continue;
+    const day = toDay(p.arrival_date);
+    if (!day) continue;
+    if (UPCOMING_PAYOUT_STATUSES.has(p.status)) {
+      payoutItems.push({ date: day, net_cents: p.amount, gross_cents: p.amount, fee_cents: 0 });
+    } else if (RECENT_PAYOUT_STATUSES.has(p.status)) {
+      recent.push({ id: p.id, date: day, amount_cents: p.amount, status: p.status });
+    }
+  }
+  for (const [date, tot] of groupByDay(payoutItems)) {
+    rows.push({ date, deposit_on: date, ...tot, kind: "payout" });
+  }
+
+  const pendingItems: { date: string; net_cents: number; gross_cents: number; fee_cents: number }[] = [];
+  for (const t of raw.pendingTransactions ?? []) {
+    if (t.status !== "pending") continue;
+    if (t.currency?.toLowerCase() !== "brl") continue;
+    if (PAYOUT_TXN_TYPES.has(t.type)) continue;
+    const day = toDay(t.available_on);
+    if (!day) continue;
+    pendingItems.push({ date: day, net_cents: t.net, gross_cents: t.amount, fee_cents: t.fee });
+  }
+  for (const [date, tot] of groupByDay(pendingItems)) {
+    const proj = projectStripeArrival(date, raw.schedule);
+    rows.push({
+      date,
+      deposit_on: proj.deposit_on,
+      ...tot,
+      kind: "projected",
+      manual_withdrawal: proj.manual_withdrawal,
+    });
+  }
+
+  const split = splitHorizon(rows, today);
+  return {
+    configured: true,
+    ok: true,
+    truncated: raw.truncated === true,
+    balance,
+    meta: {
+      schedule_interval: raw.schedule?.interval ?? null,
+      delay_days: raw.schedule?.delay_days ?? null,
+    },
+    upcoming: { next30: sortDayRows(split.next30), byMonth: split.byMonth },
+    in_transit: [],
+    recent: recent.sort((a, b) => b.date.localeCompare(a.date)),
+  };
+}
+
+export interface PagarmeRaw {
+  /** GET /recipients/{id}/balance. Shape not validated in this repo; see parsePagarmeBalance. */
+  balance: unknown;
+  payables: {
+    id: number | string;
+    status: string;
+    amount: number;
+    fee?: number | null;
+    anticipation_fee?: number | null;
+    payment_date: string;
+    type?: string | null;
+  }[];
+  recipient: {
+    transfer_settings?: {
+      transfer_enabled?: boolean | null;
+      transfer_interval?: string | null;
+      transfer_day?: number | null;
+    } | null;
+    automatic_anticipation_settings?: {
+      enabled?: boolean | null;
+      type?: string | null;
+      volume_percentage?: number | null;
+      delay?: number | null;
+    } | null;
+  } | null;
+  transfers: {
+    id: string;
+    amount: number;
+    status: string;
+    funding_estimated_date?: string | null;
+    funding_date?: string | null;
+    created_at?: string | null;
+    date_created?: string | null;
+  }[];
+  /** The payables pagination hit its cap: rows are incomplete. */
+  truncated: boolean;
+}
+
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/** The v5 balance doc is v4-shaped (`available.amount`, `waiting_funds.amount`); some responses
+ *  flatten it to `available_amount` / `waiting_funds_amount`. Accept both, null otherwise. */
+export function parsePagarmeBalance(
+  raw: unknown,
+): { available_cents: number; pending_cents: number; currency: "brl" } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const nested = (k: string) => num((r[k] as { amount?: unknown } | undefined)?.amount);
+  const available = num(r.available_amount) ?? nested("available");
+  const pending = num(r.waiting_funds_amount) ?? nested("waiting_funds");
+  if (available == null && pending == null) return null;
+  return { available_cents: available ?? 0, pending_cents: pending ?? 0, currency: "brl" };
+}
+
+function toTransferSettings(raw: PagarmeRaw["recipient"]): TransferSettings | null {
+  const ts = raw?.transfer_settings;
+  if (!ts) return null;
+  return {
+    transfer_enabled: ts.transfer_enabled === true,
+    transfer_interval: ts.transfer_interval ?? "daily",
+    transfer_day: typeof ts.transfer_day === "number" ? ts.transfer_day : null,
+  };
+}
+
+export function buildPagarmeDeposits(raw: PagarmeRaw, today: string): ProviderDeposits {
+  const settings = toTransferSettings(raw.recipient);
+  const items: { date: string; net_cents: number; gross_cents: number; fee_cents: number }[] = [];
+  for (const p of raw.payables ?? []) {
+    if (p.status !== "waiting_funds") continue;
+    const day = toDay(p.payment_date);
+    if (!day) continue;
+    const fee = (p.fee ?? 0) + (p.anticipation_fee ?? 0);
+    items.push({ date: day, net_cents: p.amount - fee, gross_cents: p.amount, fee_cents: fee });
+  }
+  const rows: DayRow[] = [];
+  for (const [date, tot] of groupByDay(items)) {
+    const proj = projectTransferDate(date, settings);
+    rows.push({
+      date,
+      deposit_on: proj.deposit_on,
+      ...tot,
+      kind: "projected",
+      manual_withdrawal: proj.manual_withdrawal,
+    });
+  }
+  const split = splitHorizon(rows, today);
+
+  const in_transit: ProviderDeposits["in_transit"] = [];
+  for (const t of raw.transfers ?? []) {
+    in_transit.push({
+      id: t.id,
+      amount_cents: t.amount,
+      expected_on: toDay(t.funding_estimated_date ?? t.funding_date ?? null),
+      status: t.status,
+    });
+  }
+
+  const ant = raw.recipient?.automatic_anticipation_settings ?? null;
+  return {
+    configured: true,
+    ok: true,
+    truncated: raw.truncated === true,
+    balance: parsePagarmeBalance(raw.balance),
+    meta: {
+      transfer_enabled: settings ? settings.transfer_enabled : null,
+      transfer_interval: settings ? settings.transfer_interval : null,
+      transfer_day: settings ? settings.transfer_day : null,
+      anticipation_enabled: ant ? ant.enabled === true : null,
+      anticipation_type: ant?.type ?? null,
+    },
+    upcoming: { next30: sortDayRows(split.next30), byMonth: split.byMonth },
+    in_transit,
+    recent: [],
+  };
+}

@@ -14,6 +14,13 @@ import {
   type DayRow,
   type ProviderDeposits,
 } from "../platform-admin/deposits-logic.ts";
+import {
+  buildPagarmeDeposits,
+  buildStripeDeposits,
+  parsePagarmeBalance,
+  type PagarmeRaw,
+  type StripeRaw,
+} from "../platform-admin/deposits-logic.ts";
 
 // ─── toDay / addDays / nextBusinessDay ──────────────────────────────────────
 
@@ -235,4 +242,217 @@ Deno.test("unavailable / notConfigured shapes", () => {
   assertEquals(unavailable().truncated, false);
   assertEquals(notConfigured().configured, false);
   assertEquals(notConfigured().error, undefined);
+});
+
+// ─── buildStripeDeposits ────────────────────────────────────────────────────
+
+const TODAY = "2026-09-24";
+const ts = (day: string) => Math.floor(new Date(`${day}T00:00:00Z`).getTime() / 1000);
+
+function stripeRaw(over: Partial<StripeRaw> = {}): StripeRaw {
+  return {
+    balance: {
+      available: [{ amount: 12345, currency: "brl" }, { amount: 99, currency: "usd" }],
+      pending: [{ amount: 50000, currency: "brl" }],
+    },
+    payouts: [
+      { id: "po_1", amount: 20000, arrival_date: ts("2026-09-25"), status: "pending", currency: "brl" },
+      { id: "po_2", amount: 18000, arrival_date: ts("2026-09-23"), status: "paid", currency: "brl" },
+      { id: "po_3", amount: 500, arrival_date: ts("2026-09-22"), status: "failed", currency: "brl" },
+      { id: "po_usd", amount: 100, arrival_date: ts("2026-09-25"), status: "pending", currency: "usd" },
+    ],
+    pendingTransactions: [
+      { id: "txn_1", net: 9700, amount: 10000, fee: 300, available_on: ts("2026-09-26"), status: "pending", currency: "brl", type: "charge" }, // Sat → Mon 28
+      { id: "txn_2", net: 4850, amount: 5000, fee: 150, available_on: ts("2026-09-28"), status: "pending", currency: "brl", type: "charge" },
+      { id: "txn_3", net: 97000, amount: 100000, fee: 3000, available_on: ts("2026-11-05"), status: "pending", currency: "brl", type: "charge" },
+      { id: "txn_4", net: -2000, amount: -2000, fee: 0, available_on: ts("2026-09-28"), status: "pending", currency: "brl", type: "refund" },
+      { id: "txn_5", net: 1, amount: 1, fee: 0, available_on: ts("2026-09-28"), status: "available", currency: "brl", type: "charge" }, // not pending: ignored
+      // The payout po_1 itself shows up as a pending balance transaction with negative net on its
+      // arrival day. It must NOT become a projected row, or it cancels the kind=payout row.
+      { id: "txn_po", net: -20000, amount: -20000, fee: 0, available_on: ts("2026-09-25"), status: "pending", currency: "brl", type: "payout" },
+    ],
+    schedule: { interval: "daily", delay_days: 30 },
+    truncated: false,
+    ...over,
+  };
+}
+
+Deno.test("buildStripeDeposits: picks the brl balance entries; truncated propagates", () => {
+  const out = buildStripeDeposits(stripeRaw(), TODAY);
+  assertEquals(out.configured, true);
+  assertEquals(out.ok, true);
+  assertEquals(out.truncated, false);
+  assertEquals(out.balance, { available_cents: 12345, pending_cents: 50000, currency: "brl" });
+  assertEquals(out.meta, { schedule_interval: "daily", delay_days: 30 });
+  assertEquals(buildStripeDeposits(stripeRaw({ truncated: true }), TODAY).truncated, true);
+});
+
+Deno.test("buildStripeDeposits: a weekly schedule moves projected rows to the anchor day", () => {
+  const out = buildStripeDeposits(stripeRaw({ schedule: { interval: "weekly", weekly_anchor: "friday" } }), TODAY);
+  const projected = out.upcoming.next30.filter((r) => r.kind === "projected");
+  // 26 (Sat) → next Fri 02/10; 28 (Mon) → Fri 02/10
+  assertEquals(projected.map((r) => r.deposit_on), ["2026-10-02", "2026-10-02"]);
+  assertEquals(out.meta.schedule_interval, "weekly");
+});
+
+Deno.test("buildStripeDeposits: manual schedule flags projected rows as manual_withdrawal", () => {
+  const out = buildStripeDeposits(stripeRaw({ schedule: { interval: "manual" } }), TODAY);
+  const projected = out.upcoming.next30.filter((r) => r.kind === "projected");
+  assertEquals(projected.every((r) => r.manual_withdrawal === true), true);
+});
+
+Deno.test("buildStripeDeposits: pending payouts are kind=payout grouped by arrival_date; paid/failed go to recent; other currencies dropped", () => {
+  const out = buildStripeDeposits(stripeRaw(), TODAY);
+  const payoutRows = out.upcoming.next30.filter((r) => r.kind === "payout");
+  assertEquals(payoutRows, [
+    { date: "2026-09-25", deposit_on: "2026-09-25", net_cents: 20000, gross_cents: 20000, fee_cents: 0, count: 1, kind: "payout" },
+  ]);
+  const two = buildStripeDeposits(
+    stripeRaw({
+      payouts: [
+        { id: "po_a", amount: 100, arrival_date: ts("2026-09-25"), status: "pending", currency: "brl" },
+        { id: "po_b", amount: 200, arrival_date: ts("2026-09-25"), status: "in_transit", currency: "brl" },
+      ],
+      pendingTransactions: [],
+    }),
+    TODAY,
+  );
+  assertEquals(two.upcoming.next30, [
+    { date: "2026-09-25", deposit_on: "2026-09-25", net_cents: 300, gross_cents: 300, fee_cents: 0, count: 2, kind: "payout" },
+  ]);
+  assertEquals(out.recent, [
+    { id: "po_2", date: "2026-09-23", amount_cents: 18000, status: "paid" },
+    { id: "po_3", date: "2026-09-22", amount_cents: 500, status: "failed" },
+  ]);
+});
+
+Deno.test("buildStripeDeposits: pending transactions grouped by available_on (net), weekend rolls to Monday, refunds subtract, non-pending and payout-type ignored", () => {
+  const out = buildStripeDeposits(stripeRaw(), TODAY);
+  const projected = out.upcoming.next30.filter((r) => r.kind === "projected");
+  assertEquals(projected.some((r) => r.date === "2026-09-25"), false); // txn_po excluded
+  // 26 (Sat) → deposit_on 28; 28 (Mon) → 28. Both keyed by their own `date`, both deposit on the 28th.
+  assertEquals(projected, [
+    { date: "2026-09-26", deposit_on: "2026-09-28", net_cents: 9700, gross_cents: 10000, fee_cents: 300, count: 1, kind: "projected", manual_withdrawal: false },
+    { date: "2026-09-28", deposit_on: "2026-09-28", net_cents: 2850, gross_cents: 3000, fee_cents: 150, count: 2, kind: "projected", manual_withdrawal: false },
+  ]);
+  assertEquals(out.upcoming.byMonth, [{ month: "2026-11", net_cents: 97000, gross_cents: 100000, fee_cents: 3000, count: 1 }]);
+});
+
+Deno.test("buildStripeDeposits: next30 is sorted by deposit_on then date", () => {
+  const out = buildStripeDeposits(stripeRaw(), TODAY);
+  assertEquals(out.upcoming.next30.map((r) => `${r.deposit_on}/${r.kind}`), [
+    "2026-09-25/payout",
+    "2026-09-28/projected",
+    "2026-09-28/projected",
+  ]);
+});
+
+Deno.test("buildStripeDeposits: no brl balance → balance null; null schedule → meta nulls", () => {
+  const out = buildStripeDeposits(stripeRaw({ balance: { available: [], pending: [] }, schedule: null }), TODAY);
+  assertEquals(out.balance, null);
+  assertEquals(out.meta, { schedule_interval: null, delay_days: null });
+});
+
+// ─── parsePagarmeBalance ────────────────────────────────────────────────────
+
+Deno.test("parsePagarmeBalance: flat *_amount shape", () => {
+  assertEquals(
+    parsePagarmeBalance({ available_amount: 1000, waiting_funds_amount: 2500, transferred_amount: 9 }),
+    { available_cents: 1000, pending_cents: 2500, currency: "brl" },
+  );
+});
+
+Deno.test("parsePagarmeBalance: nested v4-style shape", () => {
+  assertEquals(
+    parsePagarmeBalance({ available: { amount: 1000 }, waiting_funds: { amount: 2500 } }),
+    { available_cents: 1000, pending_cents: 2500, currency: "brl" },
+  );
+});
+
+Deno.test("parsePagarmeBalance: unknown shape → null", () => {
+  assertEquals(parsePagarmeBalance(null), null);
+  assertEquals(parsePagarmeBalance({ foo: 1 }), null);
+});
+
+// ─── buildPagarmeDeposits ───────────────────────────────────────────────────
+
+function pagarmeRaw(over: Partial<PagarmeRaw> = {}): PagarmeRaw {
+  return {
+    balance: { available_amount: 700, waiting_funds_amount: 60000, transferred_amount: 0 },
+    payables: [
+      { id: 1, status: "waiting_funds", amount: 3090, fee: 155, anticipation_fee: 0, payment_date: "2026-09-30T03:00:00Z", type: "credit" },
+      { id: 2, status: "waiting_funds", amount: 3090, fee: 155, anticipation_fee: 10, payment_date: "2026-09-30T03:00:00Z", type: "credit" },
+      { id: 3, status: "waiting_funds", amount: 3090, fee: 155, anticipation_fee: 0, payment_date: "2026-10-30T03:00:00Z", type: "credit" },
+      { id: 4, status: "waiting_funds", amount: 3090, fee: 155, anticipation_fee: 0, payment_date: "2026-11-30T03:00:00Z", type: "credit" },
+      { id: 5, status: "paid", amount: 3090, fee: 155, anticipation_fee: 0, payment_date: "2026-08-30T03:00:00Z", type: "credit" }, // ignored
+      { id: 6, status: "waiting_funds", amount: -500, fee: 0, anticipation_fee: 0, payment_date: "2026-09-30T03:00:00Z", type: "refund" }, // subtracts
+    ],
+    recipient: {
+      transfer_settings: { transfer_enabled: true, transfer_interval: "daily", transfer_day: null },
+      automatic_anticipation_settings: { enabled: false, type: "full", volume_percentage: 50, delay: null },
+    },
+    transfers: [
+      { id: "tr_1", amount: 4000, status: "processing", funding_estimated_date: "2026-09-25T03:00:00Z", created_at: "2026-09-24T12:00:00Z" },
+    ],
+    truncated: false,
+    ...over,
+  };
+}
+
+Deno.test("buildPagarmeDeposits: waiting_funds payables grouped by payment_date with net = amount - fee - anticipation_fee", () => {
+  const out = buildPagarmeDeposits(pagarmeRaw(), TODAY);
+  assertEquals(out.configured, true);
+  assertEquals(out.ok, true);
+  assertEquals(out.truncated, false);
+  assertEquals(buildPagarmeDeposits(pagarmeRaw({ truncated: true }), TODAY).truncated, true);
+  assertEquals(out.balance, { available_cents: 700, pending_cents: 60000, currency: "brl" });
+  // 30/09 (Wed): 2935 + 2925 - 500 = 5360 net; gross 3090+3090-500 = 5680; fee 155+155+10 = 320
+  assertEquals(out.upcoming.next30, [
+    { date: "2026-09-30", deposit_on: "2026-09-30", net_cents: 5360, gross_cents: 5680, fee_cents: 320, count: 3, kind: "projected", manual_withdrawal: false },
+  ]);
+  assertEquals(out.upcoming.byMonth, [
+    { month: "2026-10", net_cents: 2935, gross_cents: 3090, fee_cents: 155, count: 1 },
+    { month: "2026-11", net_cents: 2935, gross_cents: 3090, fee_cents: 155, count: 1 },
+  ]);
+});
+
+Deno.test("buildPagarmeDeposits: meta carries transfer settings and anticipation", () => {
+  const out = buildPagarmeDeposits(pagarmeRaw(), TODAY);
+  assertEquals(out.meta, {
+    transfer_enabled: true,
+    transfer_interval: "daily",
+    transfer_day: null,
+    anticipation_enabled: false,
+    anticipation_type: "full",
+  });
+});
+
+Deno.test("buildPagarmeDeposits: monthly transfer settings shift deposit_on; transfers in flight mapped", () => {
+  const out = buildPagarmeDeposits(
+    pagarmeRaw({
+      recipient: { transfer_settings: { transfer_enabled: true, transfer_interval: "monthly", transfer_day: 5 }, automatic_anticipation_settings: null },
+    }),
+    TODAY,
+  );
+  // 30/09 → next 5th = 05/10 (Mon)
+  assertEquals(out.upcoming.next30.map((r) => r.deposit_on), ["2026-10-05"]);
+  assertEquals(out.in_transit, [{ id: "tr_1", amount_cents: 4000, expected_on: "2026-09-25", status: "processing" }]);
+  assertEquals(out.meta.anticipation_enabled, null);
+});
+
+Deno.test("buildPagarmeDeposits: transfers disabled → manual_withdrawal rows", () => {
+  const out = buildPagarmeDeposits(
+    pagarmeRaw({ recipient: { transfer_settings: { transfer_enabled: false, transfer_interval: "daily", transfer_day: null } } }),
+    TODAY,
+  );
+  assertEquals(out.upcoming.next30[0].manual_withdrawal, true);
+});
+
+Deno.test("buildPagarmeDeposits: payables with an unparsable payment_date are skipped, not thrown", () => {
+  const out = buildPagarmeDeposits(
+    pagarmeRaw({ payables: [{ id: 9, status: "waiting_funds", amount: 100, fee: 0, payment_date: "nope" }] }),
+    TODAY,
+  );
+  assertEquals(out.upcoming.next30, []);
+  assertEquals(out.upcoming.byMonth, []);
 });
