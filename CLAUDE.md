@@ -215,6 +215,12 @@ Monorepo with npm workspaces:
   `/subscriptions/{id}/info` to build the "Abrir no Pagar.me" link on the workspace
   detail. Optional, no default: unset or not `https://` means no link (everything else
   still works). Differs per environment (live account in prod, sandbox account in staging)
+- `PAGARME_RECIPIENT_ID` -- id do recebedor (`rp_…`) da conta Pagar.me, usado por
+  platform-admin `get-deposits` para ler saldo, recebíveis (`/payables`) e transferências
+  do painel de Depósitos do Admin. Opcional, sem default: ausente, o cartão Pagar.me da
+  página Métricas mostra "Não configurado" e o resto da página segue normal. Diferente
+  por ambiente (recebedor live em prod, sandbox em staging). O cartão Stripe do mesmo
+  painel usa `STRIPE_SECRET_KEY` (Balance, Payouts, Balance Transactions, Account)
 - `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` -- TikTok Login Kit OAuth (tiktok-integration)
 - `TIKTOK_APP_AUDITED` -- unset until TikTok's Content Posting audit passes; while unset, scheduling enforces SELF_ONLY privacy
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)

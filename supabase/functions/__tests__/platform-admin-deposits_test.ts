@@ -17,7 +17,7 @@ const STRIPE_RAW: StripeRaw = {
   balance: { available: [{ amount: 100, currency: "brl" }], pending: [{ amount: 9700, currency: "brl" }] },
   payouts: [],
   pendingTransactions: [
-    { net: 9700, amount: 10000, fee: 300, available_on: ts("2026-09-29"), status: "pending", currency: "brl", type: "charge" },
+    { id: "txn_fixture", net: 9700, amount: 10000, fee: 300, available_on: ts("2026-09-29"), status: "pending", currency: "brl", type: "charge" },
   ],
   schedule: { interval: "daily", delay_days: 30 },
   truncated: false,

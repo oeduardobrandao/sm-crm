@@ -15,6 +15,8 @@ const FILES = [
   'pages/WorkspaceEventsCard.tsx',
   'pages/WorkspaceInvitesCard.tsx',
   'pages/DashboardPage.tsx',
+  'pages/MetricasPage.tsx',
+  'pages/metricas/DepositsSection.tsx',
   'pages/workspaces/WorkspacesTable.tsx',
 ];
 
