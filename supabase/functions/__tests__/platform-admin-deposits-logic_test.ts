@@ -71,6 +71,13 @@ Deno.test("projectTransferDate: weekly → next transfer_day (1=Mon..5=Fri) on o
   assertEquals(projectTransferDate("2026-10-01", wk).deposit_on, "2026-10-07"); // Thu → next Wed
 });
 
+Deno.test("projectTransferDate: weekly transfer_day outside 0..6 (Pagar.me's documented range is 1..5) still clamps into Mon..Fri", () => {
+  assertEquals(
+    projectTransferDate("2026-09-28", { transfer_enabled: true, transfer_interval: "weekly", transfer_day: 9 }).deposit_on,
+    "2026-10-02",
+  );
+});
+
 Deno.test("projectTransferDate: monthly → next transfer_day on or after, clamped to month length", () => {
   const m15 = { transfer_enabled: true, transfer_interval: "monthly", transfer_day: 15 };
   assertEquals(projectTransferDate("2026-09-10", m15).deposit_on, "2026-09-15");
@@ -115,7 +122,8 @@ Deno.test("stripeScheduleToTransferSettings: weekly anchor name → 1..5, monthl
   assertEquals(stripeScheduleToTransferSettings({ interval: "weekly", weekly_anchor: "wednesday" }), {
     transfer_enabled: true, transfer_interval: "weekly", transfer_day: 3,
   });
-  assertEquals(stripeScheduleToTransferSettings({ interval: "weekly", weekly_anchor: "sunday" }).transfer_day, 1); // clamped into Mon..Fri
+  assertEquals(stripeScheduleToTransferSettings({ interval: "weekly", weekly_anchor: "sunday" }).transfer_day, 0);
+  assertEquals(stripeScheduleToTransferSettings({ interval: "weekly", weekly_anchor: "saturday" }).transfer_day, 6);
   assertEquals(stripeScheduleToTransferSettings({ interval: "monthly", monthly_anchor: 15 }), {
     transfer_enabled: true, transfer_interval: "monthly", transfer_day: 15,
   });
@@ -128,6 +136,12 @@ Deno.test("projectStripeArrival: daily → next business day; weekly/monthly fol
   assertEquals(projectStripeArrival("2026-09-28", { interval: "weekly", weekly_anchor: "friday" }).deposit_on, "2026-10-02");
   assertEquals(projectStripeArrival("2026-09-16", { interval: "monthly", monthly_anchor: 15 }).deposit_on, "2026-10-15");
   assertEquals(projectStripeArrival("2026-09-29", { interval: "manual" }), { deposit_on: "2026-09-29", manual_withdrawal: true });
+});
+
+Deno.test("projectStripeArrival: weekend anchors keep the real weekday, then roll to the next business day", () => {
+  assertEquals(projectStripeArrival("2026-09-28", { interval: "weekly", weekly_anchor: "sunday" }).deposit_on, "2026-10-05");
+  assertEquals(projectStripeArrival("2026-09-28", { interval: "weekly", weekly_anchor: "saturday" }).deposit_on, "2026-10-05");
+  assertEquals(projectStripeArrival("2026-10-04", { interval: "weekly", weekly_anchor: "sunday" }).deposit_on, "2026-10-05"); // available on the anchor day itself (Sun) → next Monday
 });
 
 // ─── groupByDay ─────────────────────────────────────────────────────────────

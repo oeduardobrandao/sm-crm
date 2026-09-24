@@ -124,7 +124,11 @@ export function projectTransferDate(
     return { deposit_on: availableOn, manual_withdrawal: true };
   }
   if (settings.transfer_interval === "weekly" && settings.transfer_day != null) {
-    const target = Math.min(Math.max(settings.transfer_day, 1), 5);
+    // 0..6 is a real JS UTC weekday (0 = Sunday .. 6 = Saturday) and is kept as-is, even when it
+    // lands on a weekend — the business-day roll below handles that. Anything outside 0..6 (only
+    // reachable from Pagar.me, whose documented range is 1..5) clamps into the Mon..Fri week.
+    const raw = settings.transfer_day;
+    const target = raw >= 0 && raw <= 6 ? raw : Math.min(Math.max(raw, 1), 5);
     const wd = weekday(availableOn); // 0..6
     const delta = (target - wd + 7) % 7;
     return { deposit_on: nextBusinessDay(addDays(availableOn, delta)), manual_withdrawal: false };
@@ -149,14 +153,17 @@ export function projectTransferDate(
   return { deposit_on: nextBusinessDay(availableOn), manual_withdrawal: false };
 }
 
+// Real JS UTC weekday numbers (0 = Sunday .. 6 = Saturday). A weekend anchor is kept as its real
+// weekday, not clamped into the business week here -- projectTransferDate's business-day roll
+// handles landing it on the following Monday.
 const STRIPE_WEEKDAY: Record<string, number> = {
+  sunday: 0,
   monday: 1,
   tuesday: 2,
   wednesday: 3,
   thursday: 4,
   friday: 5,
-  saturday: 5, // Stripe never pays on weekends; clamp into the business week
-  sunday: 1,
+  saturday: 6,
 };
 
 /** Maps Stripe's payout schedule onto the same TransferSettings shape Pagar.me uses, so one
