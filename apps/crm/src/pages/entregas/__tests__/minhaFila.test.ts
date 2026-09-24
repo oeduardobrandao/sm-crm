@@ -103,6 +103,24 @@ describe('margemOf', () => {
     });
   });
 
+  it('with now, an overdue deadline counts from today instead of the stale deadline', () => {
+    const vencido = new Date(2026, 4, 11, 23, 59);
+    const now = new Date(2026, 8, 23, 10, 0);
+    expect(margemOf(new Date(2026, 8, 24, 14, 0).toISOString(), vencido, now)).toEqual({
+      kind: 'dias',
+      dias: 1,
+    });
+    expect(margemOf(new Date(2026, 8, 23, 18, 0).toISOString(), vencido, now)).toEqual({
+      kind: 'sem_margem',
+      dias: 0,
+    });
+    // Deadline today or later: unchanged, still measured from the deadline.
+    expect(margemOf(new Date(2026, 8, 25, 8, 0).toISOString(), prazo, prazo)).toEqual({
+      kind: 'dias',
+      dias: 3,
+    });
+  });
+
   it('no publish date is sem_data; no deadline is sem_prazo (checked first)', () => {
     expect(margemOf(null, prazo)).toEqual({ kind: 'sem_data' });
     expect(margemOf(new Date(2026, 8, 25).toISOString(), null)).toEqual({ kind: 'sem_prazo' });

@@ -65,13 +65,23 @@ export function filaBucketOf(
   return 'depois';
 }
 
-/** Dias de calendário locais entre o prazo da etapa e a data de publicação. */
-export function margemOf(scheduledAt: string | null, prazoDate: Date | null): FilaMargem {
+/**
+ * Dias de calendário locais entre o prazo da etapa e a data de publicação.
+ * Com `now`, um prazo que já passou conta a partir de hoje: a etapa atrasada
+ * ainda vai terminar, então medir do prazo vencido inflaria a margem (etapa
+ * vencida há 98 dias com post publicando amanhã leria "margem 99d").
+ */
+export function margemOf(
+  scheduledAt: string | null,
+  prazoDate: Date | null,
+  now?: Date,
+): FilaMargem {
   if (!prazoDate) return { kind: 'sem_prazo' };
   if (!scheduledAt) return { kind: 'sem_data' };
   const publica = new Date(scheduledAt);
   if (isNaN(publica.getTime())) return { kind: 'sem_data' };
-  const dias = dayDiff(publica, prazoDate);
+  const base = now && dayNum(prazoDate) < dayNum(now) ? now : prazoDate;
+  const dias = dayDiff(publica, base);
   return dias <= 0 ? { kind: 'sem_margem', dias } : { kind: 'dias', dias };
 }
 
@@ -231,7 +241,9 @@ function makeItem(
   const bucket = filaBucketOf(prazoDate, deadline, now);
   // Prazo = a própria publicação: margem seria zero por definição; chip omitido.
   const margem: FilaMargem =
-    prazoOrigem === 'publicacao' ? { kind: 'sem_prazo' } : margemOf(post.scheduled_at, prazoDate);
+    prazoOrigem === 'publicacao'
+      ? { kind: 'sem_prazo' }
+      : margemOf(post.scheduled_at, prazoDate, now);
   return {
     key: `post:${post.id}`,
     post,

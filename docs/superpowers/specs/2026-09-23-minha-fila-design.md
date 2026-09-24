@@ -245,6 +245,11 @@ entre `startOfLocalDay(scheduled_at)` e `startOfLocalDay(prazoDate)` (a mesma
 as duas usarem uma só). Hora do dia é ignorada nos dois lados: uma etapa que vence 22 set
 23:59 e um post que publica 23 set 08:00 têm margem 1.
 
+Etapa já vencida (dia do prazo antes de hoje): a margem conta a partir de **hoje**, não do
+prazo vencido. A etapa atrasada ainda vai terminar; medir do prazo inflaria a margem (etapa
+vencida há 98 dias com post publicando amanhã leria "margem 99d"). `margemOf` recebe `now`
+para isso.
+
 | Valor | Chip | Cor |
 |---|---|---|
 | `margem <= 0` | `sem margem` | `--danger` (fundo) / `--danger-text` (texto) |

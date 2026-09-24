@@ -2,17 +2,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
-  Clapperboard,
-  CircleDashed,
   Copy,
   ExternalLink,
   FileText,
   FolderMinus,
-  GalleryHorizontalEnd,
-  Image,
   MoreHorizontal,
   Trash2,
 } from 'lucide-react';
+import { TIPO_ICONS } from '../tipoIcons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,16 +39,6 @@ const deadlineAccent: Record<string, string> = {
   'deadline-caution': '#eab308',
   'deadline-warning': '#ea580c',
   'deadline-overdue': '#ef4444',
-};
-
-// Fallback icon by post tipo when the entity has no cover thumbnail yet --
-// same mapping as PostsKanbanView's TIPO_ICONS, kept local since the two
-// boards don't share a component module for this.
-const TIPO_ICONS: Record<WorkflowPost['tipo'], typeof Image> = {
-  feed: Image,
-  reels: Clapperboard,
-  carrossel: GalleryHorizontalEnd,
-  stories: CircleDashed,
 };
 
 interface PostProcessCardProps {

@@ -30,6 +30,7 @@ vi.mock('@/components/ui/select', () => ({
 }));
 
 import { MinhaFilaView } from '../MinhaFilaView';
+import { FilaMembroPicker } from '../../components/FilaMembroPicker';
 import { buildMinhaFila, EMPTY_FILA } from '../../minhaFila';
 import { buildStatusRegistry } from '../../statusRegistry';
 import { toPostEntity } from '../../boardEntity';
@@ -140,7 +141,7 @@ function fixture() {
       ],
       posts: [
         // Etapa do fluxo 1 venceu ontem: post 11 publica ontem (margem 0 = "sem
-        // margem"), post 12 publica amanhã (margem 2d).
+        // margem"), post 12 publica amanhã (margem 1d: etapa vencida conta de hoje).
         post(11, { workflow_id: 1, titulo: 'Carrossel dia das mães', scheduled_at: iso(-1, 14) }),
         post(12, { workflow_id: 1, titulo: 'Reels bastidores', scheduled_at: iso(1, 10) }),
         post(20, { titulo: 'Post avulso X', responsavel_id: ME, scheduled_at: iso(0, 18) }),
@@ -219,7 +220,6 @@ function renderView(over: Partial<React.ComponentProps<typeof MinhaFilaView>> = 
     registry,
     isLoading: false,
     isError: false,
-    onMembroChange: vi.fn(),
     onPostClick: vi.fn(),
     onFluxoClick: vi.fn(),
     ...over,
@@ -227,43 +227,54 @@ function renderView(over: Partial<React.ComponentProps<typeof MinhaFilaView>> = 
   return { ...render(<MinhaFilaView {...props} />), props };
 }
 
+const sectionHead = (container: HTMLElement, bucket: string) =>
+  container.querySelector(`section[data-bucket="${bucket}"] .fila-section-head`) as HTMLElement;
+
 describe('MinhaFilaView', () => {
-  it('renders the six sections with counts and expands only Atrasado, Hoje and Amanhã', () => {
-    renderView();
-    const heads = screen.getAllByRole('button', { name: /\(\d+\)$/ });
-    expect(heads.map((h) => h.textContent)).toEqual([
-      'Atrasado (2)',
-      'Hoje (1)',
-      'Amanhã (0)',
-      'Próximos 7 dias (1)',
-      'Depois (0)',
-      'Sem prazo (0)',
-    ]);
-    expect(screen.getByRole('button', { name: 'Atrasado (2)' })).toHaveAttribute(
-      'aria-expanded',
-      'true',
+  it('renders only non-empty sections and expands Atrasado, Hoje and Amanhã by default', () => {
+    const { container } = renderView();
+    const buckets = [...container.querySelectorAll('section[data-bucket]')].map((s) =>
+      s.getAttribute('data-bucket'),
     );
-    expect(screen.getByRole('button', { name: 'Amanhã (0)' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
+    expect(buckets).toEqual(['atrasado', 'hoje', 'proximos7']);
+
+    const atrasado = sectionHead(container, 'atrasado');
+    expect(atrasado).toHaveAttribute('aria-expanded', 'true');
+    expect(within(atrasado).getByText('Atrasado')).toHaveClass('fila-pill--red');
+    expect(within(atrasado).getByText('o prazo já passou')).toBeInTheDocument();
+    expect(within(sectionHead(container, 'hoje')).getByText('Hoje')).toHaveClass(
+      'fila-pill--amber',
     );
-    // Collapsed by default: the row is not in the DOM until the header is clicked.
+
+    // Collapsed: count + "recolhido", and the row is not in the DOM until clicked.
+    const proximos = sectionHead(container, 'proximos7');
+    expect(proximos).toHaveAttribute('aria-expanded', 'false');
+    expect(within(proximos).getByText('1 post · recolhido')).toBeInTheDocument();
     expect(screen.queryByText('Stories evento')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Próximos 7 dias (1)' }));
+    fireEvent.click(proximos);
     expect(screen.getByText('Stories evento')).toBeInTheDocument();
   });
 
-  it('shows the summary and the "Comece por aqui" card with the first item', () => {
+  it('shows the four counters and the "Comece por aqui" card with the first item', () => {
     renderView();
-    expect(screen.getByTestId('fila-summary')).toHaveTextContent('4 posts · 2 atrasados');
+    const stats = screen.getByTestId('fila-summary');
+    const stat = (label: string) => within(stats).getByText(label).nextElementSibling;
+    expect(stat('Atrasados')).toHaveTextContent('2');
+    expect(stat('Atrasados')).toHaveClass('is-red');
+    expect(stat('Vencem hoje')).toHaveTextContent('1');
+    expect(stat('Esta semana')).toHaveTextContent('1');
+    expect(stat('Chegando')).toHaveTextContent('2');
+
     const top = screen.getByTestId('fila-top');
     expect(within(top).getByText('Comece por aqui')).toBeInTheDocument();
     expect(within(top).getByText('Carrossel dia das mães')).toBeInTheDocument();
-    expect(within(top).getByText('Dra. Marina · Fluxo 1 · Design')).toBeInTheDocument();
-    expect(within(top).getByText('sem margem')).toBeInTheDocument();
+    expect(
+      within(top).getByText(/^Dra\. Marina · Feed · Design atrasado 1d · publica /),
+    ).toBeInTheDocument();
+    expect(within(top).getByText('Abrir post')).toBeInTheDocument();
   });
 
-  it('omits the "etapa vence" label on "Comece por aqui" when the prazo comes from the publish-date fallback', () => {
+  it('omits the etapa status on "Comece por aqui" when the prazo comes from the publish-date fallback', () => {
     // Avulso post directly assigned (no fluxo etapa): prazoOrigem is
     // 'publicacao', so there is no etapa deadline to show.
     const fila = buildMinhaFila(
@@ -285,24 +296,30 @@ describe('MinhaFilaView', () => {
     renderView({ fila });
     const top = screen.getByTestId('fila-top');
     expect(within(top).getByText('Avulso sem etapa')).toBeInTheDocument();
-    expect(within(top).queryByText(/etapa vence/)).not.toBeInTheDocument();
+    expect(within(top).getByText(/^Dra\. Marina · Feed · publica /)).toBeInTheDocument();
+    expect(within(top).queryByText(/atrasado|vence/)).not.toBeInTheDocument();
   });
 
   it('groups fluxo posts under a clickable header and marks assignee rows', () => {
     const { props } = renderView();
-    // The "Comece por aqui" card carries the same context string; the group
-    // header is the one that also announces the post count.
-    const header = screen.getByRole('button', { name: /Dra\. Marina · Fluxo 1 · Design.*2 posts/ });
+    const header = screen.getByRole('button', {
+      name: /Dra\. Marina · Fluxo 1.*Etapa Design · venceu/,
+    });
+    expect(header).toHaveTextContent('1d atrasado');
     fireEvent.click(header);
     expect(props.onFluxoClick).toHaveBeenCalledWith(1);
 
-    // Avulso row (origem responsavel): assignee tag + second line; fluxo rows: no tag.
+    // Avulso row (origem responsavel): assignee tag + cliente/tipo context;
+    // grouped fluxo rows: tipo only, no tag.
     const avulso = screen.getByRole('button', { name: /Post avulso X/ });
     expect(within(avulso).getByText('responsável pelo post')).toBeInTheDocument();
-    expect(within(avulso).getByText('Dra. Marina')).toBeInTheDocument();
+    expect(within(avulso).getByText('Dra. Marina · Feed')).toBeInTheDocument();
     const wired = screen.getAllByRole('button', { name: /Reels bastidores/ })[0];
     expect(within(wired).queryByText('responsável pelo post')).not.toBeInTheDocument();
-    expect(within(wired).getByText('margem 2d')).toBeInTheDocument();
+    expect(within(wired).getByText('Feed')).toBeInTheDocument();
+    expect(within(wired).getByText('Publica')).toBeInTheDocument();
+    // Overdue etapa: margem counts from today (NOW), not from yesterday's deadline.
+    expect(within(wired).getByText('margem 1d')).toBeInTheDocument();
 
     fireEvent.click(wired);
     expect(props.onPostClick).toHaveBeenCalledWith(expect.objectContaining({ id: 12 }));
@@ -310,8 +327,12 @@ describe('MinhaFilaView', () => {
 
   it('groups Chegando by fluxo, collapsed, with the current etapa and the arrival date', () => {
     renderView();
-    expect(screen.getByText('Chegando')).toBeInTheDocument();
-    const head = screen.getByRole('button', { name: /Fluxo 4 · agora em Design \(Bruno Lima\)/ });
+    const section = screen.getByTestId('fila-chegando');
+    expect(within(section).getByText('Chegando')).toHaveClass('fila-pill--blue');
+    expect(
+      within(section).getByText('ainda não é sua vez. Revisão é a próxima etapa'),
+    ).toBeInTheDocument();
+    const head = screen.getByRole('button', { name: /Fluxo 4.*em Design com Bruno Lima/ });
     expect(head).toHaveTextContent('2 posts');
     expect(head).toHaveTextContent(/chega ~/);
     expect(screen.queryByText('Chegando A')).not.toBeInTheDocument();
@@ -336,9 +357,9 @@ describe('MinhaFilaView', () => {
     const { container } = renderView({ fila });
     const row = screen.getByRole('button', { name: /Avulso chegando/ });
     expect(row).toHaveClass('fila-row');
-    // Standalone: its wrapper carries no .fila-group-head sibling (that class
-    // only exists for the collapsible fluxo groups).
-    expect(row.parentElement?.querySelector('.fila-group-head')).toBeNull();
+    expect(
+      within(row).getByText('Dra. Marina · Individual · em Copy, sem responsável'),
+    ).toBeInTheDocument();
     expect(container.querySelectorAll('.fila-group-head')).toHaveLength(0);
   });
 
@@ -357,26 +378,17 @@ describe('MinhaFilaView', () => {
       NOW,
     );
     const { container } = renderView({ fila });
-    fireEvent.click(screen.getByRole('button', { name: /Próximos 7 dias/ }));
+    fireEvent.click(sectionHead(container, 'proximos7'));
     // "Margem apertada" is also the fila.top item ("Comece por aqui" card), so
     // scope to the row inside the section (the last match in DOM order).
     const rows = screen.getAllByRole('button', { name: /Margem apertada/ });
     const apertada = rows[rows.length - 1];
     expect(within(apertada).getByText('margem 1d')).toHaveClass('fila-margem--curta');
-    // "Margem folgada" publishes 5 days past the deadline: still counts as
-    // "depois" from the deadline's own bucket viewpoint is irrelevant here,
-    // what matters is the margem chip class on the row itself.
-    expect(container.querySelector('.fila-margem--ok')).not.toBeNull();
     expect(container.querySelector('.fila-margem--ok')).toHaveTextContent('margem 5d');
-  });
-
-  it('changes the member through the picker; picking yourself emits null', () => {
-    const { props } = renderView();
-    const select = screen.getByLabelText('Fila de');
-    fireEvent.change(select, { target: { value: String(OTHER) } });
-    expect(props.onMembroChange).toHaveBeenLastCalledWith(OTHER);
-    fireEvent.change(select, { target: { value: String(ME) } });
-    expect(props.onMembroChange).toHaveBeenLastCalledWith(null);
+    // The pressure bar is decorative and fuller for the tighter margin.
+    const fills = [...container.querySelectorAll<HTMLElement>('.fila-bar-fill')];
+    expect(fills[0].parentElement).toHaveAttribute('aria-hidden', 'true');
+    expect(parseInt(fills[0].style.width, 10)).toBeGreaterThan(parseInt(fills[1].style.width, 10));
   });
 
   it('renders loading, error, no-membro and the two empty states', () => {
@@ -393,11 +405,12 @@ describe('MinhaFilaView', () => {
 
     const { unmount: u3 } = renderView({ membroId: null, currentMembroId: null, fila: EMPTY_FILA });
     expect(screen.getByText(/ainda não está vinculado a um membro da equipe/)).toBeInTheDocument();
-    expect(screen.getByLabelText('Fila de')).toHaveValue('');
+    expect(screen.queryByTestId('fila-summary')).not.toBeInTheDocument();
     u3();
 
     const { unmount: u4 } = renderView({ fila: EMPTY_FILA });
     expect(screen.getByText(/^Nada na sua fila\./)).toBeInTheDocument();
+    expect(screen.queryByTestId('fila-summary')).not.toBeInTheDocument();
     u4();
 
     renderView({ fila: EMPTY_FILA, membroId: OTHER });
@@ -407,5 +420,32 @@ describe('MinhaFilaView', () => {
   it('falls back to a generic empty message when the picked membroId is not in membros', () => {
     renderView({ fila: EMPTY_FILA, membroId: 999, currentMembroId: ME });
     expect(screen.getByText('Nada na fila deste membro.')).toBeInTheDocument();
+  });
+});
+
+describe('FilaMembroPicker', () => {
+  it('marks yourself with "(você)"; picking yourself emits null', () => {
+    const onChange = vi.fn();
+    render(
+      <FilaMembroPicker membros={membros} membroId={ME} currentMembroId={ME} onChange={onChange} />,
+    );
+    const select = screen.getByLabelText('Fila de');
+    expect(screen.getByRole('option', { name: 'Ana Souza (você)' })).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: String(OTHER) } });
+    expect(onChange).toHaveBeenLastCalledWith(OTHER);
+    fireEvent.change(select, { target: { value: String(ME) } });
+    expect(onChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('shows no selection when the login has no membro', () => {
+    render(
+      <FilaMembroPicker
+        membros={membros}
+        membroId={null}
+        currentMembroId={null}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText('Fila de')).toHaveValue('');
   });
 });

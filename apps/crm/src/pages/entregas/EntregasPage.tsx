@@ -69,6 +69,7 @@ import { ApplyProcessDialog } from './components/ApplyProcessDialog';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
 import { EntidadeToggle } from './components/EntidadeToggle';
 import { VistasTabs } from './components/VistasTabs';
+import { FilaMembroPicker } from './components/FilaMembroPicker';
 import { useActivePosts } from './hooks/useActivePosts';
 import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } from './semProcesso';
 import { useOpenParam } from '../../hooks/useOpenParam';
@@ -1183,7 +1184,14 @@ export default function EntregasPage() {
         currentQuery={currentQuery}
         onApply={applySavedView}
         trailing={
-          showFilters ? (
+          activeView === 'fila' ? (
+            <FilaMembroPicker
+              membros={membros}
+              membroId={filaMembroId}
+              currentMembroId={currentMembroId}
+              onChange={setFilaMembro}
+            />
+          ) : showFilters ? (
             <div className="relative w-[220px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
               <Input
@@ -1471,7 +1479,6 @@ export default function EntregasPage() {
           registry={registry}
           isLoading={filaLoading}
           isError={filaError}
-          onMembroChange={setFilaMembro}
           onPostClick={handlePostClick}
           onFluxoClick={handleFluxoClick}
         />

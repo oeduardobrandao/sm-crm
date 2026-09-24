@@ -324,14 +324,12 @@ vi.mock('../views/MinhaFilaView', () => ({
     currentMembroId,
     isLoading,
     isError,
-    onMembroChange,
   }: {
     fila: { items: unknown[] };
     membroId: number | null;
     currentMembroId: number | null;
     isLoading: boolean;
     isError: boolean;
-    onMembroChange: (id: number | null) => void;
   }) => (
     <div>
       <div>
@@ -339,9 +337,17 @@ vi.mock('../views/MinhaFilaView', () => ({
       </div>
       <div>Fila state: {isError ? 'error' : isLoading ? 'loading' : 'ready'}</div>
       <div>Fila items: {fila.items.length}</div>
-      <button onClick={() => onMembroChange(12)}>Pick member 12</button>
-      <button onClick={() => onMembroChange(null)}>Pick self</button>
     </div>
+  ),
+}));
+
+// The member picker lives in the VistasTabs row, outside the view.
+vi.mock('../components/FilaMembroPicker', () => ({
+  FilaMembroPicker: ({ onChange }: { onChange: (id: number | null) => void }) => (
+    <>
+      <button onClick={() => onChange(12)}>Pick member 12</button>
+      <button onClick={() => onChange(null)}>Pick self</button>
+    </>
   ),
 }));
 
