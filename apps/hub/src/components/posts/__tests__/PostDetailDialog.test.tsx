@@ -1164,5 +1164,23 @@ describe('PostDetailDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
       expect(screen.getByRole('tab', { name: 'Legenda' })).toHaveAttribute('aria-selected', 'true');
     });
+
+    it('falls back to the Legenda tab when a refetch removes the postText tab while selected', () => {
+      const { rerender } = render(<ControlledDialog posts={posts} currentId={1} />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Texto do post' }));
+      expect(screen.getByRole('tab', { name: 'Texto do post' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+
+      const updatedPosts = posts.map((p) =>
+        p.id === 1 ? { ...p, conteudo_plain: p.ig_caption ?? '' } : p,
+      );
+      rerender(<ControlledDialog posts={updatedPosts} currentId={1} />);
+
+      expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Legenda' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByText('Legenda um')).toBeVisible();
+    });
   });
 });

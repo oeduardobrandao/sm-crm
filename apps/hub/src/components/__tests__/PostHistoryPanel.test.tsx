@@ -355,6 +355,37 @@ describe('PostHistoryPanel', () => {
     expect(screen.getByPlaceholderText('Escreva um comentário sobre este post')).toHaveValue('');
   });
 
+  it('clears dirty when the post moves into production mid-draft (composer unmounts)', async () => {
+    mockedFetch.mockResolvedValue({ events: [], approvals: [] });
+    const onDirtyChange = vi.fn();
+    const { rerender } = render(
+      <PostHistoryPanel
+        post={makePost({ status: 'enviado_cliente' })}
+        token="tok"
+        approvals={[]}
+        onDirtyChange={onDirtyChange}
+        embedded
+      />,
+    );
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+    fireEvent.change(screen.getByPlaceholderText('Escreva um comentário sobre este post'), {
+      target: { value: 'ainda não terminei' },
+    });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    rerender(
+      <PostHistoryPanel
+        post={makePost({ status: 'rascunho', em_producao: 'correcao' })}
+        token="tok"
+        approvals={[]}
+        onDirtyChange={onDirtyChange}
+        embedded
+      />,
+    );
+
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('keeps the draft and shows an error when sending fails', async () => {
     mockedFetch.mockResolvedValue({ events: [], approvals: [] });
     mockedSubmit.mockRejectedValue(new Error('Escreva um comentário.'));

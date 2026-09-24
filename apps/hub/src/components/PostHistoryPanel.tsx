@@ -78,7 +78,12 @@ export function PostHistoryPanel({
   const [sendError, setSendError] = useState(false);
   const [openDiffs, setOpenDiffs] = useState<Set<string>>(new Set());
   const [openVersions, setOpenVersions] = useState<Set<string>>(new Set());
-  const dirty = text.trim() !== '' || sending;
+  const visible = isPostClientVisible(post);
+  // Em produção is read-only: hub-approve rejects comments on internal statuses.
+  const canComment = !isInProduction(post);
+  // The composer unmounts when the post moves into production: an unsent comment typed
+  // before that can't stay "dirty" with no field left for the client to clear or send.
+  const dirty = canComment && (text.trim() !== '' || sending);
   useUnsavedWork(dirty);
   // Ref so a new callback identity never re-fires the effect; the unmount cleanup below
   // must always reach the latest one and clear the parent's flag.
@@ -88,10 +93,6 @@ export function PostHistoryPanel({
     onDirtyChangeRef.current?.(dirty);
   }, [dirty]);
   useEffect(() => () => onDirtyChangeRef.current?.(false), []);
-
-  const visible = isPostClientVisible(post);
-  // Em produção is read-only: hub-approve rejects comments on internal statuses.
-  const canComment = !isInProduction(post);
 
   useEffect(() => {
     if (!open || !visible) return;

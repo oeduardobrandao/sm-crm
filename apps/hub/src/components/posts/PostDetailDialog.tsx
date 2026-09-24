@@ -251,6 +251,10 @@ function PostDetailContent({
     ? (['content', 'postText', 'history'] as const)
     : (['content', 'history'] as const);
   const [tab, setTab] = useState<'content' | 'postText' | 'history'>('content');
+  // A refetch can flip showPostTextTab to false while the postText tab is selected (e.g. the
+  // edit that made the body distinct from the caption gets reverted): fall back to content so
+  // the dialog never renders with no tab selected and no panel shown.
+  const activeTab = tab === 'postText' && !showPostTextTab ? 'content' : tab;
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelDirty, setPanelDirty] = useState(false);
   const [contentDirty, setContentDirty] = useState(false);
@@ -651,12 +655,12 @@ function PostDetailContent({
                   key={key}
                   role="tab"
                   type="button"
-                  aria-selected={tab === key}
+                  aria-selected={activeTab === key}
                   onClick={() => {
                     if (key === 'history') setHistoryVisited(true);
                     setTab(key);
                   }}
-                  className={`py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 ${tab === key ? 'hub-txt border-[var(--hub-txt)]' : 'hub-tx3 border-transparent'}`}
+                  className={`py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 ${activeTab === key ? 'hub-txt border-[var(--hub-txt)]' : 'hub-tx3 border-transparent'}`}
                 >
                   {key === 'history'
                     ? t('posts.tabHistory', 'Histórico e comentários')
@@ -671,7 +675,7 @@ function PostDetailContent({
 
             <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
               {historyVisited && (
-                <div hidden={tab !== 'history'}>
+                <div hidden={activeTab !== 'history'}>
                   <PostHistoryPanel
                     post={post}
                     token={token}
@@ -682,7 +686,7 @@ function PostDetailContent({
                   />
                 </div>
               )}
-              {showPostTextTab && tab === 'postText' && (
+              {showPostTextTab && activeTab === 'postText' && (
                 <div className="space-y-4">
                   {bodyConteudo ? (
                     <RichTextContent
@@ -709,7 +713,7 @@ function PostDetailContent({
                   )}
                 </div>
               )}
-              <div hidden={tab !== 'content'}>
+              <div hidden={activeTab !== 'content'}>
                 {showPanel ? (
                   <CorrectionPanel
                     key={post.id}

@@ -151,6 +151,16 @@ export function deriveCaption(post: HubPost, igCaption: string | null): string {
 export function hasDistinctPostText(post: HubPost): boolean {
   const body = (post.conteudo_plain ?? '').trim();
   if (!body) return false;
+  // When the caption is derived from a LEGENDA marker inside the body itself (no explicit
+  // ig_caption), the body-vs-caption comparison below always differs by construction — the
+  // marker line alone is never part of the caption slice. In that case the tab is only worth
+  // showing when there is real text before the marker; otherwise the body is just the caption
+  // wearing a label, and the derived-caption comparison would wrongly call it distinct.
+  if (!post.ig_caption) {
+    const rawText = post.conteudo_plain ?? '';
+    const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
+    if (legendaIdx !== -1) return rawText.slice(0, legendaIdx).trim() !== '';
+  }
   return body !== deriveCaption(post, post.ig_caption).trim();
 }
 

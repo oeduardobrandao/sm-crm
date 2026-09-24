@@ -285,4 +285,16 @@ describe('hasDistinctPostText', () => {
       false,
     );
   });
+  it('is false when the body is only a LEGENDA marker with no explicit ig_caption', () => {
+    expect(hasDistinctPostText(post({ conteudo_plain: 'LEGENDA: xyz', ig_caption: null }))).toBe(
+      false,
+    );
+  });
+  it('is true when there is text before the LEGENDA marker', () => {
+    expect(
+      hasDistinctPostText(
+        post({ conteudo_plain: 'Roteiro do vídeo\nLEGENDA: xyz', ig_caption: null }),
+      ),
+    ).toBe(true);
+  });
 });
