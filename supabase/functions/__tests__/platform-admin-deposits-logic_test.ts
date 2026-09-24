@@ -237,6 +237,19 @@ Deno.test("summarize: manual-withdrawal rows count as money to receive but never
   });
 });
 
+Deno.test("summarize: in-transit transfers without a landing day count in waiting_cents, never in next or the 30-day total", () => {
+  const pagarme = provider({
+    upcoming: { next30: [row("2026-09-30", 100)], byMonth: [] },
+    in_transit: [{ id: "tr_1", amount_cents: 250, expected_on: null, status: "processing" }],
+  });
+  assertEquals(summarize({ stripe: unavailable(), pagarme }), {
+    next: { date: "2026-09-30", amount_cents: 100, provider: "pagarme" },
+    next_30d_cents: 100,
+    waiting_cents: 350,
+    partial: true,
+  });
+});
+
 Deno.test("summarize: a failed provider contributes nothing and marks the summary partial", () => {
   const pagarme = provider({ upcoming: { next30: [row("2026-09-25", 150)], byMonth: [] } });
   assertEquals(summarize({ stripe: unavailable(), pagarme }), {

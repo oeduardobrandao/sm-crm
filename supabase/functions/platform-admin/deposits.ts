@@ -233,16 +233,27 @@ export function listWaitingPayables(
   return listPagarmeCursorPages("/payables", { recipient_id: recipientId, status: "waiting_funds" }, fetchPage);
 }
 
-/** Every transfer of the recipient, newest first, swept through the same cursor loop so an
- *  in-flight transfer older than the first page is not silently dropped. Only recipient_id is
- *  sent: the status filter's grammar (comma-separated? repeated param?) isn't documented for this
- *  endpoint, so the caller narrows with IN_FLIGHT_TRANSFER_STATUSES after the fetch. */
-export function listInFlightTransfers(
+/** Statuses of a transfer that has left the balance but not yet landed in the bank. */
+export const IN_FLIGHT_STATUS_SWEEPS = ["pending_transfer", "processing"] as const;
+
+/** In-flight transfers of the recipient: one filtered cursor sweep per status (a single-value
+ *  `status` filter is the documented grammar; the comma-separated form is not), so a recipient
+ *  with hundreds of settled transfers cannot push a live one past the page cap. The builder
+ *  narrows by status again after the fetch in case the filter is ignored. */
+export async function listInFlightTransfers(
   recipientId: string,
   fetchPage: (path: string) => Promise<PagarmeTransfersPage | null> = (path) =>
     pagarmeFetch<PagarmeTransfersPage>("GET", path),
 ): Promise<{ rows: PagarmeRaw["transfers"]; truncated: boolean }> {
-  return listPagarmeCursorPages("/transfers", { recipient_id: recipientId }, fetchPage);
+  const sweeps = await Promise.all(
+    IN_FLIGHT_STATUS_SWEEPS.map((status) =>
+      listPagarmeCursorPages("/transfers", { recipient_id: recipientId, status }, fetchPage)
+    ),
+  );
+  return {
+    rows: sweeps.flatMap((s) => s.rows),
+    truncated: sweeps.some((s) => s.truncated),
+  };
 }
 
 const PAGARME_GATEWAY_TIMEOUT_MS = 5000;

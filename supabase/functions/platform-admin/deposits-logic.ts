@@ -282,6 +282,9 @@ export function summarize(providers: Record<Provider, ProviderDeposits>): Deposi
       }
     }
     for (const m of p.upcoming.byMonth) waiting_cents += m.net_cents;
+    // Transfers already on their way but without a projectable landing day are still money
+    // to receive; they just cannot be placed on the forecast timeline.
+    for (const t of p.in_transit) waiting_cents += t.amount_cents;
     if (providerEarliest !== null && (!next || providerEarliest < next.date)) {
       next = { date: providerEarliest, amount_cents: providerEarliestSum, provider };
     }
