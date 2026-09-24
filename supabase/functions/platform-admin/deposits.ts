@@ -250,8 +250,11 @@ export async function listInFlightTransfers(
       listPagarmeCursorPages("/transfers", { recipient_id: recipientId, status }, fetchPage)
     ),
   );
+  // Dedupe by id: if the status filter were ignored, both sweeps would return the same rows.
+  const byId = new Map<string, PagarmeRaw["transfers"][number]>();
+  for (const t of sweeps.flatMap((s) => s.rows)) byId.set(t.id, t);
   return {
-    rows: sweeps.flatMap((s) => s.rows),
+    rows: [...byId.values()],
     truncated: sweeps.some((s) => s.truncated),
   };
 }
@@ -276,9 +279,10 @@ export function createPagarmeDepositsGateway(): PagarmeDepositsGateway {
         ),
         listInFlightTransfers(recipientId).catch((err) => {
           // In-flight transfers are a nice-to-have; the endpoint is newer and the least documented.
-          // Degrade to an empty list rather than fail the card.
+          // Degrade to an empty list rather than fail the card, but flag the list as incomplete so
+          // the totals are labelled partial instead of silently omitting money already in transit.
           console.error("[deposits] pagarme transfers failed:", (err as Error).message);
-          return { rows: [] as PagarmeRaw["transfers"], truncated: false };
+          return { rows: [] as PagarmeRaw["transfers"], truncated: true };
         }),
       ]);
       return {

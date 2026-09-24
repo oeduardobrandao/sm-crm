@@ -428,6 +428,15 @@ Deno.test("listInFlightTransfers: one filtered sweep per in-flight status, each 
   assertEquals(paths.some((p) => p.includes("status=pending_transfer%2C")), false);
 });
 
+Deno.test("listInFlightTransfers: rows returned by both status sweeps (filter ignored) are deduped by id", async () => {
+  const t1 = pagarmeTransfer({ id: "tr_1", status: "pending_transfer" });
+  const t2 = pagarmeTransfer({ id: "tr_2", status: "processing" });
+  const fetchPage = () => Promise.resolve({ data: [t1, t2], paging: {} });
+
+  const { rows } = await listInFlightTransfers("re_test", fetchPage);
+  assertEquals(rows.map((r) => r.id).sort(), ["tr_1", "tr_2"]);
+});
+
 Deno.test("listInFlightTransfers: hits the page cap, marking truncated", async () => {
   let calls = 0;
   const fetchPage = () => {
