@@ -215,7 +215,7 @@ Monorepo with npm workspaces:
   `/subscriptions/{id}/info` to build the "Abrir no Pagar.me" link on the workspace
   detail. Optional, no default: unset or not `https://` means no link (everything else
   still works). Differs per environment (live account in prod, sandbox account in staging)
-- `PAGARME_RECIPIENT_ID` -- id do recebedor (`rp_…`) da conta Pagar.me, usado por
+- `PAGARME_RECIPIENT_ID` -- id do recebedor (`rp_…` em contratos antigos, `re_…` nos novos) da conta Pagar.me, usado por
   platform-admin `get-deposits` para ler saldo, recebíveis (`/payables`) e transferências
   do painel de Depósitos do Admin. Opcional, sem default: ausente, o cartão Pagar.me da
   página Métricas mostra "Não configurado" e o resto da página segue normal. Diferente
