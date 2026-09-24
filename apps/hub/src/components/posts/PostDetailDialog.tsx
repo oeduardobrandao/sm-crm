@@ -27,6 +27,7 @@ import {
   deriveCaption,
   getPostPublishState,
   getTipoLabel,
+  hasDistinctPostText,
   isInProduction,
   pickPostCardKind,
 } from '../../lib/postView';
@@ -244,7 +245,12 @@ function PostDetailContent({
   const kind = pickPostCardKind(post);
   const isPending = post.status === 'enviado_cliente';
   const inProduction = isInProduction(post);
-  const [tab, setTab] = useState<'content' | 'history'>('content');
+  // Media layouts show only the caption; the full text gets its own read-only tab.
+  const showPostTextTab = kind !== 'text' && hasDistinctPostText(post);
+  const tabKeys = showPostTextTab
+    ? (['content', 'postText', 'history'] as const)
+    : (['content', 'history'] as const);
+  const [tab, setTab] = useState<'content' | 'postText' | 'history'>('content');
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelDirty, setPanelDirty] = useState(false);
   const [contentDirty, setContentDirty] = useState(false);
@@ -638,9 +644,9 @@ function PostDetailContent({
 
             <div
               role="tablist"
-              className="sticky top-0 z-10 hub-bg-card md:static flex gap-5 px-4 border-b hub-border"
+              className="sticky top-0 z-10 hub-bg-card md:static flex gap-5 px-4 border-b hub-border overflow-x-auto"
             >
-              {(['content', 'history'] as const).map((key) => (
+              {tabKeys.map((key) => (
                 <button
                   key={key}
                   role="tab"
@@ -650,13 +656,15 @@ function PostDetailContent({
                     if (key === 'history') setHistoryVisited(true);
                     setTab(key);
                   }}
-                  className={`py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors ${tab === key ? 'hub-txt border-[var(--hub-txt)]' : 'hub-tx3 border-transparent'}`}
+                  className={`py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 ${tab === key ? 'hub-txt border-[var(--hub-txt)]' : 'hub-tx3 border-transparent'}`}
                 >
                   {key === 'history'
                     ? t('posts.tabHistory', 'Histórico e comentários')
-                    : kind === 'text'
-                      ? t('posts.tabText', 'Texto')
-                      : t('posts.tabCaption', 'Legenda')}
+                    : key === 'postText'
+                      ? t('posts.tabPostText', 'Texto do post')
+                      : kind === 'text'
+                        ? t('posts.tabText', 'Texto')
+                        : t('posts.tabCaption', 'Legenda')}
                 </button>
               ))}
             </div>
@@ -674,7 +682,34 @@ function PostDetailContent({
                   />
                 </div>
               )}
-              <div hidden={tab === 'history'}>
+              {showPostTextTab && tab === 'postText' && (
+                <div className="space-y-4">
+                  {bodyConteudo ? (
+                    <RichTextContent
+                      key={showOriginal ? 'original-posttext' : 'suggestion-posttext'}
+                      content={bodyConteudo}
+                      className="font-display text-[16px] leading-[1.55] hub-txt"
+                      editable={false}
+                      fallbackText={bodyPlain}
+                    />
+                  ) : (
+                    <p className="font-display text-[16px] leading-[1.55] hub-txt whitespace-pre-wrap">
+                      {bodyPlain}
+                    </p>
+                  )}
+                  {textCaption && (
+                    <div className="border-t hub-border pt-3">
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
+                        {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
+                      </p>
+                      <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">
+                        {textCaption}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div hidden={tab !== 'content'}>
                 {showPanel ? (
                   <CorrectionPanel
                     key={post.id}

@@ -104,6 +104,7 @@
     "openStory": "View story {{title}}",
     "tabCaption": "Caption",
     "tabText": "Text",
+    "tabPostText": "Post text",
     "tabHistory": "History and comments",
     "editCaption": "Edit caption",
     "editText": "Edit text",

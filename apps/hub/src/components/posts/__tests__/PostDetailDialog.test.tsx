@@ -1131,4 +1131,38 @@ describe('PostDetailDialog', () => {
       expect(screen.queryByText('Você aprovou o texto.')).not.toBeInTheDocument();
     });
   });
+
+  describe('Texto do post tab', () => {
+    it('shows the full post text on a media post when it differs from the caption', () => {
+      renderDialog(1);
+      expect(screen.queryByText('Corpo')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('tab', { name: 'Texto do post' }));
+      expect(screen.getByRole('tab', { name: 'Texto do post' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByText('Corpo')).toBeVisible();
+      expect(screen.getByText('Legenda do Instagram')).toBeInTheDocument();
+    });
+
+    it('is absent when the body equals the caption', () => {
+      renderDialog(1, {
+        posts: [post({ id: 1, conteudo_plain: 'Legenda um', ig_caption: 'Legenda um' })],
+      });
+      expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
+    });
+
+    it('is absent on a text post (the Texto tab already shows everything)', () => {
+      renderDialog(3);
+      expect(screen.queryByRole('tab', { name: 'Texto do post' })).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Texto' })).toBeInTheDocument();
+    });
+
+    it('Corrigir from the Texto do post tab switches back to the content tab', () => {
+      renderDialog(1);
+      fireEvent.click(screen.getByRole('tab', { name: 'Texto do post' }));
+      fireEvent.click(screen.getByRole('button', { name: /Corrigir/ }));
+      expect(screen.getByRole('tab', { name: 'Legenda' })).toHaveAttribute('aria-selected', 'true');
+    });
+  });
 });

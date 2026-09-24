@@ -104,6 +104,7 @@
     "openStory": "Ver story {{title}}",
     "tabCaption": "Legenda",
     "tabText": "Texto",
+    "tabPostText": "Texto do post",
     "tabHistory": "Histórico e comentários",
     "editCaption": "Editar legenda",
     "editText": "Editar texto",
