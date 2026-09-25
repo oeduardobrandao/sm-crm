@@ -78,8 +78,6 @@ const store = vi.hoisted(() => ({
   removeWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
   updateWorkflowEtapa: vi.fn(),
-  updateWorkflowTemplate: vi.fn(),
-  propagateTemplateToWorkflows: vi.fn(),
   getPropertyDefinitions: vi.fn(),
   deletePropertyDefinition: vi.fn(),
   getWorkflows: vi.fn(),

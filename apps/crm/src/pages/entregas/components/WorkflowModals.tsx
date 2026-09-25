@@ -37,8 +37,7 @@ import {
   removeWorkflow,
   updateWorkflow,
   updateWorkflowEtapa,
-  updateWorkflowTemplate,
-  propagateTemplateToWorkflows,
+  saveWorkflowTemplate,
   getPropertyDefinitions,
   deletePropertyDefinition,
   type WorkflowTemplate,
@@ -462,12 +461,11 @@ export function TemplatesModal({
         tipo: e.tipo,
       }));
       if (editingTemplate?.id) {
-        await updateWorkflowTemplate(editingTemplate.id, {
+        await saveWorkflowTemplate(editingTemplate.id, {
           nome,
           etapas: etapaData,
           modo_prazo: fModoPrazo,
         });
-        await propagateTemplateToWorkflows(editingTemplate.id);
         toast.success('Template atualizado!');
       } else {
         await addWorkflowTemplate({ nome, etapas: etapaData, modo_prazo: fModoPrazo });
@@ -659,7 +657,12 @@ export function TemplatesModal({
                           gap: '0.5rem',
                         }}
                       >
-                        <Button size="icon" variant="ghost" onClick={() => handleEdit(t)}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Editar template ${t.nome}`}
+                          onClick={() => handleEdit(t)}
+                        >
                           <Edit2 className="h-4 w-4" />
                         </Button>
                         <Button

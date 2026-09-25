@@ -19,9 +19,10 @@ export const explainerStorageKey = (contaId: string) => `entregas_explainer_dism
  *
  * Every claim is drawn from live behaviour, not aspiration: the etapa/post
  * split is `workflows.etapa_atual` vs `workflow_posts.status`; the re-arm is
- * `completeEtapaWithRearm`; template propagation is
- * `propagateTemplateToWorkflows`, which rewrites `pendente` and `ativo` etapas
- * (never `concluido`, and never `status`/`iniciado_em`/`concluido_em`).
+ * `completeEtapaWithRearm`; template propagation is `saveWorkflowTemplate`
+ * (`update_workflow_template`), which updates `pendente` and `ativo` etapas
+ * field by field, only where the fluxo still holds the template's previous
+ * value (never `concluido`, and never `status`/`iniciado_em`/`concluido_em`).
  */
 export function ComoFuncionaPanel({
   onDismiss,
@@ -86,7 +87,8 @@ export function ComoFuncionaPanel({
 
           <p className="ex-aside">
             <span className="ex-term">Modelo</span> é o esqueleto reutilizável de um fluxo. Editá-lo
-            reescreve só as etapas <strong>ainda não iniciadas</strong> dos fluxos que o usam.
+            atualiza as etapas <strong>em aberto</strong> dos fluxos que o usam, mas mantém o que
+            foi ajustado no próprio fluxo, como um prazo ou responsável diferente.
           </p>
         </article>
 

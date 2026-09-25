@@ -47,8 +47,6 @@ vi.mock('@/store', () => ({
   removeWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
   updateWorkflowEtapa: vi.fn(),
-  updateWorkflowTemplate: vi.fn(),
-  propagateTemplateToWorkflows: vi.fn(),
   getPropertyDefinitions: vi.fn(),
   deletePropertyDefinition: vi.fn(),
 }));
