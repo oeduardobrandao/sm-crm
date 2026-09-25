@@ -212,7 +212,10 @@ function SortableEtapaRow(props: {
               aria-label="Prazo em dias"
               value={prazo}
               onChange={(e) =>
-                onChange('prazo', Math.min(MAX_PRAZO_DIAS, Math.trunc(Number(e.target.value)) || 0))
+                onChange(
+                  'prazo',
+                  Math.max(0, Math.min(MAX_PRAZO_DIAS, Math.trunc(Number(e.target.value)) || 0)),
+                )
               }
               className="h-8 w-14 text-center text-sm"
             />

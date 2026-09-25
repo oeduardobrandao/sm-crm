@@ -491,7 +491,7 @@ export function TemplatesModal({
       tpl.etapas.map((e) =>
         defaultEtapa({
           nome: e.nome,
-          prazo: e.prazo_dias,
+          prazo: Math.max(0, Math.min(MAX_PRAZO_DIAS, Math.trunc(Number(e.prazo_dias)) || 0)),
           tipoPrazo: e.tipo_prazo,
           responsavelId: e.responsavel_id || null,
           tipo: e.tipo || 'padrao',

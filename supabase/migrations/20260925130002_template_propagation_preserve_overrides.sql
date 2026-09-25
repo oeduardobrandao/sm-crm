@@ -119,12 +119,18 @@ BEGIN
       RAISE EXCEPTION 'template_invalid';
     END IF;
     -- responsavel precisa ser membro DESTE workspace: workflow_etapas.responsavel_id
-    -- so tem FK global, e esta funcao e SECURITY DEFINER.
-    v_resp_raw := NULLIF(v_e ->> 'responsavel_id', '');
-    IF v_resp_raw IS NOT NULL THEN
-      IF v_resp_raw !~ '^[0-9]{1,18}$' THEN
+    -- so tem FK global, e esta funcao e SECURITY DEFINER. Mesma forma estrita de
+    -- apply_post_process (20260920000011): so JSON number (ou null/ausente)
+    -- passam aqui; uma string como "5" ou "" e invalid_responsavel, mesmo sendo
+    -- numerica. O lado OLD-template abaixo continua lenient (regex sobre ->>),
+    -- porque le valores salvos sem essa validacao.
+    IF jsonb_typeof(v_e -> 'responsavel_id') IS NOT NULL
+       AND jsonb_typeof(v_e -> 'responsavel_id') <> 'null' THEN
+      IF jsonb_typeof(v_e -> 'responsavel_id') <> 'number'
+         OR (v_e -> 'responsavel_id') #>> '{}' !~ '^[0-9]{1,18}$' THEN
         RAISE EXCEPTION 'invalid_responsavel';
       END IF;
+      v_resp_raw := (v_e -> 'responsavel_id') #>> '{}';
       PERFORM 1 FROM membros WHERE id = v_resp_raw::bigint AND conta_id = v_conta;
       IF NOT FOUND THEN
         RAISE EXCEPTION 'invalid_responsavel';

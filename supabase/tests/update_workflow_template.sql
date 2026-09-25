@@ -26,6 +26,10 @@
 --   (n) modo_prazo so no template; workflows.modo_prazo e data_limite intocados
 --   (o) evento transacional: falha ao gravar o evento faz a chamada levantar
 --   (p) propagate_template_to_workflows antigo: so backfill, nunca sobrescreve
+--   (q) limpar responsavel: template antigo A, novo sem responsavel_id (NULL);
+--       herdado vira NULL com alteracoes para:null, customizado (B) fica
+--   (r) etapas antigas com elemento nao-objeto na posicao 0: fica intocado,
+--       posicao 1 segue o merge normal
 --
 -- A RPC faz set_config('app.suppress_workflow_events','1', true), que persiste pelo
 -- resto da transacao de teste: toda chamada bem-sucedida e seguida de reset para '0'.
@@ -413,6 +417,10 @@ begin
   assert v_err = 'invalid_responsavel', format('(m) responsavel de outro workspace, veio %s', v_err);
   v_err := pg_temp.uwt_err(v_tpl, 'T', '[{"nome":"X","prazo_dias":1,"responsavel_id":"abc"}]', 'padrao');
   assert v_err = 'invalid_responsavel', format('(m) responsavel nao numerico, veio %s', v_err);
+  v_err := pg_temp.uwt_err(v_tpl, 'T', '[{"nome":"X","prazo_dias":1,"responsavel_id":"5"}]', 'padrao');
+  assert v_err = 'invalid_responsavel', format('(m) responsavel como string numerica ("5"), veio %s', v_err);
+  v_err := pg_temp.uwt_err(v_tpl, 'T', '[{"nome":"X","prazo_dias":1,"responsavel_id":""}]', 'padrao');
+  assert v_err = 'invalid_responsavel', format('(m) responsavel string vazia, veio %s', v_err);
   -- limites validos passam
   v_err := pg_temp.uwt_err(v_tpl, 'TL', '[{"nome":"L2","prazo_dias":0,"tipo_prazo":null,"tipo":null,"responsavel_id":null},{"nome":"M","prazo_dias":999}]', 'padrao');
   assert v_err is null, format('(m) prazo 0 e 999, chaves null, devem passar, levantou %s', v_err);
@@ -472,6 +480,72 @@ begin
   select metadata into v_meta from workflow_events where workflow_id = v_wf and event_type = 'template_propagado';
   assert (v_meta->>'etapas_atualizadas')::int = 0 and (v_meta->>'etapas_criadas')::int = 1,
     format('(p) metadata do RPC antigo: %s', v_meta);
+
+  -- ---------------------------------------------------------------------
+  -- (q) limpar responsavel: template antigo A, novo sem responsavel_id (NULL)
+  -- ---------------------------------------------------------------------
+  insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
+    values (v_ws, v_owner, 'TQ', jsonb_build_array(
+      jsonb_build_object('nome','Q','prazo_dias',1,'tipo_prazo','corridos','responsavel_id',v_ma,'tipo','padrao')
+    ), 'padrao') returning id into v_tpl;
+  -- fluxo herdado: ainda em A
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'Q1', v_tpl, 'ativo', 0, false, 'padrao') returning id into v_wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status)
+    values (v_wf, 0, 'Q', 1, 'corridos', v_ma, 'padrao', 'pendente') returning id into v_e0;
+  -- fluxo customizado: ja em B
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'Q2', v_tpl, 'ativo', 0, false, 'padrao') returning id into v_wf2;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, responsavel_id, tipo, status)
+    values (v_wf2, 0, 'Q', 1, 'corridos', v_mb, 'padrao', 'pendente') returning id into v_e1;
+
+  perform update_workflow_template(v_tpl, 'TQ', jsonb_build_array(
+    jsonb_build_object('nome','Q','prazo_dias',1,'tipo_prazo','corridos','tipo','padrao')
+  ), 'padrao');
+  perform set_config('app.suppress_workflow_events', '0', true);
+
+  select * into r from workflow_etapas where id = v_e0;
+  assert r.responsavel_id is null, format('(q) herdado: responsavel deve ser limpo, veio %s', r.responsavel_id);
+  select * into r from workflow_etapas where id = v_e1;
+  assert r.responsavel_id = v_mb, '(q) customizado (B) fica intocado';
+
+  select metadata into v_meta from workflow_events where workflow_id = v_wf and event_type = 'template_propagado';
+  assert v_meta is not null, '(q) fluxo herdado foi tocado: deve ter evento';
+  assert v_meta->'alteracoes' = jsonb_build_array(jsonb_build_object(
+      'etapa_id', v_e0, 'ordem', 0, 'campo', 'responsavel_id', 'de', v_ma, 'para', null::bigint)),
+    format('(q) alteracoes devem ter para:null, veio %s', v_meta->'alteracoes');
+  select count(*) into v_cnt from workflow_events where workflow_id = v_wf2 and event_type = 'template_propagado';
+  assert v_cnt = 0, '(q) fluxo ja customizado (B) nao deve ter evento';
+
+  -- ---------------------------------------------------------------------
+  -- (r) etapas antigas com elemento nao-objeto na posicao 0
+  -- ---------------------------------------------------------------------
+  insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
+    values (v_ws, v_owner, 'TR', '[{"nome":"R0","prazo_dias":1,"tipo_prazo":"corridos"},{"nome":"R1","prazo_dias":2,"tipo_prazo":"corridos"}]', 'padrao')
+    returning id into v_tpl;
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli, 'R1', v_tpl, 'ativo', 0, false, 'padrao') returning id into v_wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf, 0, 'R0', 1, 'corridos', 'padrao', 'pendente') returning id into v_e0;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf, 1, 'R1', 2, 'corridos', 'padrao', 'pendente') returning id into v_e1;
+
+  -- corrompe o template salvo diretamente: posicao 0 vira um escalar
+  update workflow_templates set etapas =
+    jsonb_build_array(5, jsonb_build_object('nome','R1','prazo_dias',2,'tipo_prazo','corridos'))
+    where id = v_tpl;
+
+  perform update_workflow_template(v_tpl, 'TR',
+    '[{"nome":"R0-novo","prazo_dias":9,"tipo_prazo":"uteis"},{"nome":"R1-novo","prazo_dias":8,"tipo_prazo":"uteis"}]',
+    'padrao');
+  perform set_config('app.suppress_workflow_events', '0', true);
+
+  select * into r from workflow_etapas where id = v_e0;
+  assert r.nome = 'R0' and r.prazo_dias = 1 and r.tipo_prazo = 'corridos',
+    format('(r) posicao 0 com old nao-objeto: etapa fica intocada, veio %s %s %s', r.nome, r.prazo_dias, r.tipo_prazo);
+  select * into r from workflow_etapas where id = v_e1;
+  assert r.nome = 'R1-novo' and r.prazo_dias = 8 and r.tipo_prazo = 'uteis',
+    format('(r) posicao 1 segue o merge normal, veio %s %s %s', r.nome, r.prazo_dias, r.tipo_prazo);
 
   raise notice 'PASS update_workflow_template';
 end $$;

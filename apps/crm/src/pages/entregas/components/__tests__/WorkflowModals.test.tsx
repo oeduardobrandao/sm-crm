@@ -389,5 +389,44 @@ describe('WorkflowModals', () => {
         expect(screen.getByRole('button', { name: 'Salvar' })).not.toBeDisabled(),
       );
     });
+
+    it('truncates a legacy decimal prazo_dias before saving', async () => {
+      vi.mocked(saveWorkflowTemplate).mockResolvedValue(undefined);
+      const decimalTemplate = {
+        ...template,
+        etapas: [{ ...template.etapas[0], prazo_dias: 2.5 }],
+      };
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const onRefresh = vi.fn();
+      render(
+        <QueryClientProvider client={qc}>
+          <TemplatesModal
+            open
+            onClose={vi.fn()}
+            templates={[decimalTemplate]}
+            membros={[]}
+            onRefresh={onRefresh}
+          />
+        </QueryClientProvider>,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Editar template Posts' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+      await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+      expect(saveWorkflowTemplate).toHaveBeenCalledWith(5, {
+        nome: 'Posts',
+        etapas: [
+          {
+            nome: 'Copy',
+            prazo_dias: 2,
+            tipo_prazo: 'corridos',
+            responsavel_id: 7,
+            tipo: 'padrao',
+          },
+        ],
+        modo_prazo: 'padrao',
+      });
+    });
   });
 });
