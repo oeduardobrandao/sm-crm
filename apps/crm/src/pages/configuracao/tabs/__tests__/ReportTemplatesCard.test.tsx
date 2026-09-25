@@ -36,11 +36,13 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuItem: ({
     children,
     onSelect,
+    disabled,
   }: {
     children: React.ReactNode;
     onSelect?: () => void;
+    disabled?: boolean;
   }) => (
-    <button type="button" onClick={() => onSelect?.()}>
+    <button type="button" disabled={disabled} onClick={() => onSelect?.()}>
       {children}
     </button>
   ),
@@ -198,6 +200,20 @@ describe('ReportTemplatesCard', () => {
     await waitFor(() =>
       expect(toastMock.error).toHaveBeenCalledWith('Não foi possível atualizar o modelo.'),
     );
+  });
+
+  it('F6: "Definir como padrão" desabilita enquanto a mutação está pendente', async () => {
+    let resolve!: () => void;
+    svc.setDefaultReportTemplate.mockImplementation(() => new Promise<void>((r) => (resolve = r)));
+    renderCard();
+    await screen.findByText('Resumo rápido');
+    const button = within(rowOf('Resumo rápido')).getByRole('button', {
+      name: /Definir como padrão/,
+    });
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    resolve();
+    await waitFor(() => expect(button).not.toBeDisabled());
   });
 
   it('sem modelos, mostra o texto de ajuda', async () => {

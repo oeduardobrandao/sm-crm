@@ -205,7 +205,10 @@ export function ReportTemplatesCard() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {!t.is_default && (
-                    <DropdownMenuItem onSelect={() => makeDefault.mutate(t.id)}>
+                    <DropdownMenuItem
+                      disabled={makeDefault.isPending}
+                      onSelect={() => makeDefault.mutate(t.id)}
+                    >
                       Definir como padrão
                     </DropdownMenuItem>
                   )}
