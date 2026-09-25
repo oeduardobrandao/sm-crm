@@ -47,7 +47,7 @@ só a service role lê e escreve.
 | `interval` | `text` null | `month` / `year` |
 | `monthly_cents` | `integer` not null default 0 | valor normalizado para mês, líquido de cupom |
 | `amount_source` | `text` not null | `stripe` / `pagarme` / `catalog` / `backfill` / `unpriced`: os três primeiros são o `amount_source` que `priceSubscriptionRows` já devolve (espelho ou leitura ao vivo aparecem pelo nome do provedor); `null` do helper vira `unpriced` com `monthly_cents = 0` |
-| `provider_switch` | `boolean` not null default false | linha do Pagar.me vinda de troca da Stripe |
+| `provider_switch` | `boolean` not null default false | informativo: o marcador de troca estava presente no dia. **A classificação não depende dele** (ver §4) |
 | `source` | `text` not null | `cron` / `backfill` |
 | `created_at` | `timestamptz` not null default now() | |
 
@@ -106,7 +106,9 @@ Function nova, deploy com `--no-verify-jwt --use-api`.
   `platform-admin/index.ts`. Com isso o MRR do snapshot do dia é o mesmo número do tile.
 - `monthly_cents` = `toMonthlyCents(interval, amount_cents)` do `_shared/billing-logic.ts`, o
   mesmo usado pelo `aggregateMrr`.
-- `provider_switch = switched_from_stripe_subscription_id is not null`.
+- `provider_switch = switched_from_stripe_subscription_id is not null`. É só informativo: o
+  `billing-downgrade-cron` limpa esse marcador quando o cancelamento na Stripe fica seguro, então
+  ele some antes do fechamento em boa parte das trocas.
 - `snapshot_date` = hoje em America/Sao_Paulo. Grava tudo de uma vez por
   `admin_metrics_write_snapshot(snapshot_date, 'cron', rows)`: sem marcador, o dia não existe para
   a leitura; rodar duas vezes no mesmo dia substitui o dia inteiro.
@@ -143,10 +145,12 @@ Ação admin nova no `platform-admin`.
   3. senão, ignorada e contada como sem mapeamento.
   O `metadata` é gravado pelo checkout em `pagarme-checkout/gateway.ts`.
 - **Meses:** do mês da assinatura mais antiga até o último mês fechado. Para cada fim de mês D
-  (último dia do mês):
-  - antes de `start_date`: sem linha
-  - dentro do trial (`trial_start <= D < trial_end`): `trialing`
-  - `ended_at <= D`: sem linha
+  (último dia do mês), o instante de comparação é **T = D às 23:47 em São Paulo**, o mesmo
+  fechamento do cron (Brasil sem horário de verão desde 2019: T = D+1 às 02:47 UTC). Os campos da
+  assinatura são timestamps e são comparados com T, nunca com a data D:
+  - `start_date > T`: sem linha
+  - dentro do trial (`trial_start <= T < trial_end`): `trialing`
+  - `ended_at <= T`: sem linha
   - demais casos: `active`
 - **Valor:** preço atual da assinatura líquido dos descontos que ela tem hoje, normalizado para
   mês, com `amount_source='backfill'`.
@@ -185,18 +189,28 @@ Ação admin somente leitura.
 "Pagante" = `status = 'active'` (mesmo `MRR_STATUSES` do `get-mrr`). MRR = soma de
 `monthly_cents` dos pagantes.
 
+Cada linha cai em uma de três classes: **pagante** (`active`), **inadimplente** (`past_due`) e
+**fora** (sem linha, `trialing`, `canceled`, `unpaid`, `incomplete` ou qualquer outro status).
+A tabela cobre as nove combinações, então toda transição tem categoria:
+
 | Anterior | Atual | Categoria |
 |---|---|---|
-| sem linha ou `trialing` | `active` | **Novo** |
-| `active` | `active`, valor maior / menor, mesmo provedor | **Expansão** / **Contração** |
-| `active` | `active` em outro provedor com `provider_switch` | **Troca de provedor** (só a diferença de valor) |
-| `active` | `past_due` | **Inadimplência** (−valor anterior) |
-| `past_due` | `active` | **Recuperado** (+valor atual) |
-| `active` | sem linha, `canceled` ou outro não pagante | **Churn** (−valor anterior) |
-| `past_due` | sem linha ou `canceled` | R$ 0 nas barras (o valor já saiu como Inadimplência); conta só no bloco `churn` |
+| fora | pagante | **Novo** (inclui trial convertido e reativação de quem estava `canceled`) |
+| pagante | pagante, mesmo provedor | **Expansão** / **Contração** pela diferença (zero se igual) |
+| pagante | pagante, **provedor diferente** | **Troca de provedor** (só a diferença de valor), com ou sem `provider_switch` |
+| pagante | inadimplente | **Inadimplência** (−valor anterior) |
+| pagante | fora | **Churn** (−valor anterior) |
+| inadimplente | pagante | **Recuperado** (+valor atual) |
+| inadimplente | fora | R$ 0 nas barras (o valor já saiu como Inadimplência); conta só no bloco `churn` |
+| inadimplente | inadimplente | R$ 0 |
+| fora | inadimplente / fora | R$ 0 |
+
+Uma troca com intervalo (Stripe ativa num fechamento, nada no seguinte, Pagar.me ativa depois)
+aparece como Churn e depois Novo; isso só acontece se a troca atravessar um fechamento inteiro.
 
 Invariante testada: a soma das sete categorias de `movements` é igual a
-`mrr_atual − mrr_anterior`. `movements.churn` é **só** a parte que reconcilia (ativo → saiu).
+`mrr_atual − mrr_anterior`, por construção (cada uma das nove combinações soma exatamente a
+diferença do workspace). `movements.churn` é **só** a parte que reconcilia (pagante → fora).
 
 **Bloco `churn`** (separado dos movimentos de propósito, porque mede outra coisa):
 - **carteira anterior** = workspaces `active` + `past_due` no fechamento anterior
@@ -264,11 +278,13 @@ interface MetricsMonth {
 ## 6. Testes
 
 - **Deno**
-  - `metrics-logic`: cada linha da tabela de classificação; invariante de reconciliação; bloco
+  - `metrics-logic`: as nove combinações da tabela de classificação (inclusive `canceled` →
+    pagante = Novo e troca de provedor com `provider_switch=false`); invariante de reconciliação; bloco
     `churn` com `past_due` → saiu (R$ 0 nos movimentos, contado em `lost_cents`); denominador zero
     (`null`); primeiro mês sem movimentos; mês com marcador e zero linhas (churn total calculado);
     mês `missing` no meio da série (`movements_since` aponta o mês anterior disponível).
-  - backfill: status no fim de mês (antes do início, trial, encerrada, ativa); precedência
+  - backfill: status no fim de mês comparado ao instante T (assinatura que começa ao meio-dia do
+    último dia entra; trial que termina antes das 23:47 do último dia já conta como ativo); precedência
     Stripe × Pagar.me nas duas ordens de paginação; os três passos do mapeamento do Pagar.me
     (inclusive divergente); data com marcador `cron` preservada; 403 sem
     `METRICS_BACKFILL_ALLOWED` sem chamar gateway.
