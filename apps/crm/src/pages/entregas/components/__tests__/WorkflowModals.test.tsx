@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // jsdom has no scrollIntoView; editing a template scrolls the form into view.
@@ -353,7 +353,8 @@ describe('WorkflowModals', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Editar template Posts' }));
       fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 
-      await vi.waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('Template atualizado!'));
+      await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+      expect(toastSuccessMock).toHaveBeenCalledWith('Template atualizado!');
       expect(saveWorkflowTemplate).toHaveBeenCalledTimes(1);
       expect(saveWorkflowTemplate).toHaveBeenCalledWith(5, {
         nome: 'Posts',
@@ -368,7 +369,6 @@ describe('WorkflowModals', () => {
         ],
         modo_prazo: 'padrao',
       });
-      expect(onRefresh).toHaveBeenCalled();
     });
 
     it('shows the mapped error message when the save fails', async () => {
@@ -380,10 +380,13 @@ describe('WorkflowModals', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Editar template Posts' }));
       fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 
-      await vi.waitFor(() =>
+      await waitFor(() =>
         expect(toastErrorMock).toHaveBeenCalledWith(
           'Um dos responsáveis não faz mais parte da equipe.',
         ),
+      );
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Salvar' })).not.toBeDisabled(),
       );
     });
   });
