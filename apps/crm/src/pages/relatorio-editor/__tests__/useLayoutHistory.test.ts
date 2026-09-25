@@ -2,7 +2,12 @@ import { act, fireEvent, renderHook } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
-import { COALESCE_MS, HISTORY_LIMIT, useLayoutHistory } from '../useLayoutHistory';
+import {
+  COALESCE_MS,
+  configCoalesceKey,
+  HISTORY_LIMIT,
+  useLayoutHistory,
+} from '../useLayoutHistory';
 
 const L = (n: number): ReportLayout => ({
   version: 1,
@@ -137,5 +142,13 @@ describe('useLayoutHistory', () => {
     });
     expect(result.current.layout.blocks[0].id).toBe('b1');
     input.remove();
+  });
+
+  it('configCoalesceKey separa campos do mesmo bloco', () => {
+    expect(configCoalesceKey('c', { title: 'a' })).not.toBe(
+      configCoalesceKey('c', { subtitle: 'a' }),
+    );
+    expect(configCoalesceKey('c', { title: 'a' })).toBe(configCoalesceKey('c', { title: 'ab' }));
+    expect(configCoalesceKey('c', { title: 'a' })).not.toBe(configCoalesceKey('d', { title: 'a' }));
   });
 });

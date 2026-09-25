@@ -24,7 +24,7 @@ import {
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { useBlockEditing } from './useBlockEditing';
-import { useLayoutHistory } from './useLayoutHistory';
+import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
 import { useStuckHeader } from './useStuckHeader';
 import { EditorCanvas } from './EditorCanvas';
@@ -219,7 +219,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         onChange={commit}
         onRemoveBlock={handleRemoveBlock}
         onConfigChange={(id, patch) =>
-          commit(updateBlockConfig(layoutRef.current, id, patch), `config:${id}`)
+          commit(updateBlockConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
         }
         highlightId={highlightId}
         renderTextBlock={(block: ReportBlock) => (

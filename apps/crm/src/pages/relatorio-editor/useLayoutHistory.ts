@@ -10,6 +10,12 @@ export const HISTORY_LIMIT = 100;
  *  (digitação num input de seção/capa ou num bloco de texto). */
 export const COALESCE_MS = 1000;
 
+/** Chave de agrupamento de uma edição de config: por bloco E por campo. Título e
+ *  subtítulo da mesma capa digitados em sequência viram dois passos, não um. */
+export function configCoalesceKey(id: string, patch: Record<string, unknown>): string {
+  return `config:${id}:${Object.keys(patch).sort().join(',')}`;
+}
+
 export function useLayoutHistory(layout: ReportLayout, applyLayout: (next: ReportLayout) => void) {
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
