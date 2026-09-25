@@ -1,4 +1,4 @@
--- Valida supabase/migrations/20260925130001_template_propagation_preserve_overrides.sql
+-- Valida supabase/migrations/20260925130002_template_propagation_preserve_overrides.sql
 -- (update_workflow_template novo; propagate_template_to_workflows reduzido a backfill).
 --
 -- Regra (por campo, por etapa, casamento posicional):

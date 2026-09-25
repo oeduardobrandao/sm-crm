@@ -68,7 +68,7 @@ export function mapTemplateSaveError(message: string): string {
 
 /**
  * Saves a template and propagates it to active fluxos in one transaction via the
- * `update_workflow_template` RPC (supabase/migrations/20260925130001_template_propagation_preserve_overrides.sql).
+ * `update_workflow_template` RPC (supabase/migrations/20260925130002_template_propagation_preserve_overrides.sql).
  * Per field, a fluxo etapa only follows the template when its value still matches the
  * template's previous value; values customized on the fluxo are kept. Steps the fluxo
  * doesn't have yet are appended as `pendente`.
