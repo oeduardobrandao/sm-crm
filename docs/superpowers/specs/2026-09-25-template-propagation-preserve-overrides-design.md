@@ -34,6 +34,7 @@ before the edit. Per field, per etapa (matched by position, as today):
 | X | X (unchanged) | anything | keep |
 | X | Y | X (inherited) | set to Y |
 | X | Y | Z (customized) | keep Z |
+| X | (no step at this position) | anything | keep (etapa not touched) |
 
 - **Fields:** `nome`, prazo, `responsavel_id`, `tipo`.
 - **Prazo is one field:** `(prazo_dias, tipo_prazo)` is compared and written as a pair.
@@ -48,6 +49,8 @@ before the edit. Per field, per etapa (matched by position, as today):
 - **No old value at that position** (the fluxo has more etapas than the old template):
   there is nothing to have inherited from, so every field counts as customized and is
   kept.
+- **Template shrinks** (a trailing step deleted): fluxo etapas past the end of the new
+  template are left as they are, as today. They are not deleted.
 - **New fluxos** keep copying the template at creation. Nothing changes there.
 - **Known limitation, unchanged:** matching is positional, and the template modal
   (`SortableEtapaList`) lets users reorder, insert and delete steps. Reordering over
@@ -57,6 +60,14 @@ before the edit. Per field, per etapa (matched by position, as today):
   inserted before a `concluido` etapa is never created and a duplicate later step is
   appended. Fixing that needs stable per-step ids in the template, which is a separate
   schema/product change. This spec doesn't make it worse.
+
+  Reordering has one new visible effect, and it's deliberate: because the merge is per
+  field, a customized value stays at its position while the inherited fields follow the
+  template. Example: fluxo `[A (custom prazo 10), B]`, template `[A, B] → [B, A]`. The
+  fluxo becomes `[B (prazo 10), A]`: the custom prazo is now under step B. Today the
+  custom prazo would be lost, so this isn't worse, but it's surprising. It's pinned by a
+  psql case and explained in the `ComoFuncionaPanel` copy. Deleting a middle step over a
+  `pendente` ladder behaves as today (`[A,B,C]` with template `[A,C]` → `[A,C,C]`).
 - **Deadline mode is template-only, unchanged:** `workflow_templates.modo_prazo` is saved,
   but `workflows.modo_prazo` and every etapa's `data_limite` are never touched, as today.
   A new mode reaches fluxos created afterwards. On a fluxo whose effective deadline is
@@ -68,19 +79,33 @@ before the edit. Per field, per etapa (matched by position, as today):
 
 ### Normalization
 
-Both sides of every comparison go through the same normalization the RPC already uses
-for writes, so a JSON quirk never reads as a customization:
+All three sides (old template, new template, fluxo row) are normalized the same way
+before comparing, so a storage quirk never reads as a customization. Writes store the
+normalized value.
 
-- `responsavel_id`: `NULLIF(x->>'responsavel_id', '')::bigint`, compared with
-  `IS NOT DISTINCT FROM` (NULL = NULL is "same").
-- `tipo_prazo`: `coalesce(x->>'tipo_prazo', 'corridos')`.
-- `tipo`: `coalesce(x->>'tipo', 'padrao')`.
-- `prazo_dias`: `(x->>'prazo_dias')::integer`.
-- `nome`: `x->>'nome'`, exact match.
+| Field | Template JSON (old and new) | Fluxo column |
+|---|---|---|
+| `responsavel_id` | `NULLIF(x->>'responsavel_id', '')` as bigint | as is |
+| `tipo_prazo` | `coalesce(x->>'tipo_prazo', 'corridos')` | `coalesce(tipo_prazo, 'corridos')` |
+| `tipo` | `coalesce(x->>'tipo', 'padrao')` | `coalesce(tipo, 'padrao')` |
+| `prazo_dias` | `x->>'prazo_dias'` as integer | as is |
+| `nome` | `x->>'nome'` | as is |
 
-The old template array was saved before any server validation existed, so non-object
-entries in it are skipped (the value at that position counts as absent, so the fluxo's
-values are kept). The new array is validated (see step 3 below), and a non-object entry
+`responsavel_id` is compared with `IS NOT DISTINCT FROM` (NULL = NULL is "same"). The
+fluxo-side `coalesce` matters: the current RPC writes `tipo_prazo` raw from the JSON and
+the column CHECK admits NULL, so NULL rows exist and would otherwise read as customized
+forever.
+
+**The old template is parsed defensively.** It was saved with no server validation and
+may hold values that don't cast (the modal accepts `prazo_dias: 2.5`, see the FIX ROUND 1
+note in `20260919000004_apply_post_process.sql`). A bare cast on the stored side would
+raise 22P02 and roll back the save, leaving the template un-editable even to fix it. So
+old-side `prazo_dias` and `responsavel_id` use the regex guards `apply_post_process`
+already uses (`^[0-9]{1,9}$` / `^[0-9]{1,18}$`). A field that fails its guard counts as
+"no old value" for that field, so the fluxo's value is kept. A non-array old `etapas`, or
+a non-object entry at a position, means no old value at that position at all.
+
+The new array is validated strictly (step 3 below). Any bad entry, including a non-object,
 rejects the whole save.
 
 ## Design
@@ -170,6 +195,17 @@ never overwrites a value. That is the safe direction.
 A follow-up migration drops the old RPC once the new frontend has been live for a deploy
 cycle. Out of scope here.
 
+Accepted drift: a field edit saved through the old frontend during the window never
+reaches existing fluxos. After the window, those fluxos still hold the pre-edit value, and
+the next template save compares against the post-edit template, so the pre-edit value
+reads as customized from then on. The window is minutes and template edits are rare, so
+this is accepted rather than engineered around.
+
+Also out of scope, unchanged from today: two people editing the same template at once.
+The template `FOR UPDATE` serializes the saves, but the second save's payload still
+replaces the first's edits (there is no expected-version check like
+`migrate_workflow_template`'s).
+
 ### 3. Event metadata
 
 `template_propagado` metadata keeps `template_id`, `template_nome`,
@@ -178,14 +214,10 @@ cycle. Out of scope here.
 - `alteracoes`: array of `{etapa_id, ordem, campo, de, para}` for each value written.
   `campo` is one of `nome`, `prazo`, `responsavel_id`, `tipo`. For `prazo`, `de`/`para`
   are `{prazo_dias, tipo_prazo}` objects.
-- `valores_preservados`: count of fields where the template changed but the fluxo's value
-  was kept because it was customized.
-
 `etapas_atualizadas` now counts etapas with at least one field written (it counted
-matched rows before). A fluxo where the template changed a field but every value was
-preserved is not "touched" and gets no event, so `valores_preservados` only shows up on
-fluxos that got an event for another reason. That's acceptable: the record exists to
-undo writes.
+matched rows before). A fluxo where every value was preserved is not "touched" and gets
+no event. A count of preserved values was considered and cut: it would only appear on
+fluxos that got an event for another reason, so it would be a partial, misleading number.
 
 The CRM timeline (`workflowTimeline.ts`) only reads `template_nome`, so the new keys are
 additive. No UI change.
@@ -200,8 +232,17 @@ This is the record that was missing on 2026-09-24: a bad save can be undone from
   `updateWorkflowTemplate`; the modal is the only caller of either, and keeping the plain
   UPDATE would leave a path that saves a template without the merge.
 - `WorkflowModals.tsx` `handleSave`: the edit branch calls `saveWorkflowTemplate` once
-  instead of update + propagate. Map `template_invalid` to the existing prazo toast; other
-  errors keep the generic error toast.
+  instead of update + propagate. Today the catch shows `err.message` raw
+  (`toast.error((err as Error).message || 'Erro')`), so the RPC's error codes would reach
+  the user verbatim. Add `mapTemplateSaveError` next to the store function (same pattern
+  as `mapMigrationError` in `store/workflowMigration.ts`): `template_invalid` →
+  "Revise as etapas do template: cada etapa precisa de nome e prazo inteiro entre 0 e
+  999.", `invalid_responsavel` → "Um dos responsáveis não faz mais parte da equipe.",
+  `template_not_found` → "Template não encontrado.", anything else → "Erro ao salvar
+  template.". The store function throws the mapped message.
+- `SortableEtapaList.tsx` prazo input: add `step={1}` and coerce to an integer
+  (`Math.trunc`) in `onChange`, so the modal can no longer produce `2.5`, which the RPC
+  now rejects.
 - `ComoFuncionaPanel.tsx` and the `boardRows.ts` comment describe the propagation. Update
   the copy/comments to say customized values are kept.
 
@@ -229,7 +270,7 @@ New suite `update_workflow_template.sql`, covering:
 - `ativo` never gets `tipo`; `concluido` untouched; a fluxo with more etapas than the old
   template keeps its extra etapa's values;
 - backfill of an appended step with the new values;
-- event: one per touched fluxo, exact `alteracoes` contents, `valores_preservados`, no
+- event: one per touched fluxo, exact `alteracoes` contents, no
   event for a fluxo where everything was preserved;
 - template from another workspace → `template_not_found`; a poisoned cross-tenant fluxo
   with a matching `template_id` is untouched (same shape as the existing suite's
@@ -240,11 +281,25 @@ New suite `update_workflow_template.sql`, covering:
   bad `tipo`. Nothing is written in any case (template row unchanged, no etapa changed);
 - `invalid_responsavel` for a `responsavel_id` from another workspace, and for a
   non-numeric one;
+- fluxo-side normalization: a fluxo etapa with NULL `tipo_prazo` and a template without
+  `tipo_prazo` count as inherited (the prazo pair follows the template);
+- defensive old-side parse: an old template with `prazo_dias: 2.5` or `"abc"` saves
+  without raising, and the fluxo's prazo at that position is kept;
+- reorder: fluxo `[A (custom prazo), B]`, template `[A,B] → [B,A]` yields
+  `[B (custom prazo), A]`;
+- shrink: a fluxo etapa past the end of the new template is untouched;
 - deadline mode: changing the template's `modo_prazo` leaves `workflows.modo_prazo` and
   `data_limite` untouched;
 - event atomicity: with `record_workflow_event` forced to fail (e.g. a temporary CHECK on
-  `workflow_events` inside the test transaction), the call raises and the template row
-  and etapas are unchanged.
+  `workflow_events` inside the test transaction), the call **raises**. That's the
+  meaningful assertion: the test catches the error in an EXCEPTION block, which rolls
+  back the subtransaction regardless, so "template unchanged" alone would prove nothing.
+  The old RPC swallows the same failure, so it's a real discriminator.
+
+The RPC sets `app.suppress_workflow_events` transaction-locally, which persists for the
+rest of the test transaction. The new suite resets it to `'0'` after every call, as the
+existing suite does (`workflow_events.sql` after each propagate call), or later trigger
+assertions silently see nothing.
 
 Row locking isn't covered by psql (it would need two sessions). The spec states it, and
 the plan's code review checks the `FOR UPDATE` on the etapa cursor.
@@ -258,8 +313,14 @@ overwrite is expected), and add an assertion that the old RPC now only backfills
 
 - `apps/crm/src/__tests__/store.workflows.test.ts`: replace the two
   `propagate_template_to_workflows` cases with the new RPC's args and error propagation.
-- `WorkflowModals.test.tsx`: the edit save calls `saveWorkflowTemplate` once with the
-  mapped etapas.
+- `WorkflowModals.test.tsx`: **new** test (there's no template-save test today): the edit
+  save calls `saveWorkflowTemplate` once with the mapped etapas and shows the success
+  toast; a rejected call shows the mapped message.
+- `mapTemplateSaveError`: one case per error code plus the fallback.
+- About a dozen view tests mock `propagateTemplateToWorkflows` / `updateWorkflowTemplate`
+  in their `vi.mock` factories. They don't break when the exports are removed, but the
+  plan sweeps them so no dead mock remains (`grep -rln "propagateTemplateToWorkflows"
+  apps/crm/src`).
 
 ### Manual
 
