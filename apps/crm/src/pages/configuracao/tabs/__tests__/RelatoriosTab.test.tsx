@@ -49,6 +49,10 @@ vi.mock('../../ReportPreview', () => ({
   ReportPreview: () => <div data-testid="report-preview" />,
 }));
 
+vi.mock('../ReportTemplatesCard', () => ({
+  ReportTemplatesCard: () => <div data-testid="report-templates-card" />,
+}));
+
 import RelatoriosTab from '../RelatoriosTab';
 
 function renderTab() {
@@ -98,6 +102,7 @@ describe('RelatoriosTab — report branding', () => {
     expect(document.querySelector('input[type="color"]')).toBeNull();
     const link = screen.getByRole('link', { name: /editar em configurações · hub/i });
     expect(link).toHaveAttribute('href', '/configuracao/hub');
+    expect(screen.getByTestId('report-templates-card')).toBeInTheDocument();
   });
 
   it('saves only the e-mail toggle via updateWorkspaceBranding, never brand_color', async () => {
