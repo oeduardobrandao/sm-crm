@@ -209,6 +209,15 @@ depois do cancelamento na Stripe), então a regra é confiável. Consequência c
 intervalo o gráfico conta o workspace e o tile de MRR ao vivo não (o tile já subconta trocas hoje;
 corrigir o tile está fora do escopo). No backfill, a precedência "vence o Pagar.me com
 `provider_switch=true`" produz exatamente essa linha.
+
+**Linha ativa sem preço herda o fechamento anterior:** uma linha `active` com
+`amount_source='unpriced'` (nenhum preço resolvido no instante do fechamento: sem espelho, Stripe
+fora do ar e sem preço de catálogo) é lida como a linha do mesmo workspace no fechamento comparado
+anterior (status, valor, provedor e plano), então não gera movimento nem entra no churn. Sem linha
+anterior, conta como **fora**. A substituição é feita em ordem, fechamento a fechamento, então
+dois fechamentos seguidos sem preço herdam o mesmo valor. As linhas gravadas não mudam; é só a
+leitura. O tile ao vivo continua sem contar a linha (mesma regra do `aggregateMrr`).
+
 A tabela cobre as nove combinações, então toda transição tem categoria:
 
 | Anterior | Atual | Categoria |
