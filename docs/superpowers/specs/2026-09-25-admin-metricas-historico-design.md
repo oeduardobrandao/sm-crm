@@ -46,7 +46,7 @@ só a service role lê e escreve.
 | `status` | `text` not null | status do provedor (`active`, `trialing`, `past_due`, `canceled`, ...) |
 | `interval` | `text` null | `month` / `year` |
 | `monthly_cents` | `integer` not null default 0 | valor normalizado para mês, líquido de cupom |
-| `amount_source` | `text` not null | `live` / `mirror` / `catalog` / `backfill` |
+| `amount_source` | `text` not null | `stripe` / `pagarme` / `catalog` / `backfill` / `unpriced`: os três primeiros são o `amount_source` que `priceSubscriptionRows` já devolve (espelho ou leitura ao vivo aparecem pelo nome do provedor); `null` do helper vira `unpriced` com `monthly_cents = 0` |
 | `provider_switch` | `boolean` not null default false | linha do Pagar.me vinda de troca da Stripe |
 | `source` | `text` not null | `cron` / `backfill` |
 | `created_at` | `timestamptz` not null default now() | |
@@ -57,11 +57,31 @@ Existe uma linha por workspace e dia **somente enquanto o workspace tem assinatu
 status, inclusive `trialing` e `past_due`). Linha com `status` nulo no espelho não gera snapshot.
 Ausência de linha = não pagante. Workspaces `is_internal` nunca têm linha.
 
-### RPC `admin_metrics_close_dates()`
+### Tabela `metrics_snapshot_runs` (marcador de conclusão)
 
-`returns table(month text, close_date date)`: para cada mês, `max(snapshot_date)` daquele mês.
-`revoke execute` de `public`, `anon` e `authenticated` nomeados explicitamente (ver memória
-`reference_supabase_revoke_public_strips_service_role`); só a service role chama.
+| Coluna | Tipo | Nota |
+|---|---|---|
+| `snapshot_date` | `date` primary key | |
+| `source` | `text` not null | `cron` / `backfill` |
+| `row_count` | `integer` not null | |
+| `completed_at` | `timestamptz` not null default now() | |
+
+RLS ligada sem policies. **Só datas com marcador existem para a leitura.** Linhas de um dia sem
+marcador (execução interrompida) são ignoradas, então uma execução parcial nunca vira churn
+falso. Um dia com marcador e zero linhas é um fechamento legítimo (ninguém com assinatura).
+
+### RPC `admin_metrics_write_snapshot(p_date date, p_source text, p_rows jsonb)`
+
+Grava o dia inteiro numa transação só:
+- `p_source = 'cron'`: apaga as linhas `source='cron'` daquela data, insere `p_rows` e faz upsert
+  do marcador. Rodar de novo no mesmo dia substitui o dia inteiro, inclusive removendo workspace
+  que deixou de ter assinatura.
+- `p_source = 'backfill'`: se já existe marcador `cron` na data, não grava nada e devolve
+  `skipped`; senão faz o mesmo que acima com `source='backfill'`.
+
+Devolve `{ written, skipped }`. `revoke execute` de `public`, `anon` e `authenticated` nomeados
+explicitamente (ver memória `reference_supabase_revoke_public_strips_service_role`); só a service
+role chama.
 
 ## 2. Cron `metrics-snapshot-cron`
 
@@ -69,20 +89,25 @@ Function nova, deploy com `--no-verify-jwt --use-api`.
 
 - Verifica `x-cron-secret` antes de qualquer trabalho; em falha, `reportCronFailure`
   (`_shared/triage.ts`).
-- Lê todas as linhas de `workspace_subscriptions` com `status` não nulo, remove as de
+- Lê todas as linhas de `workspace_subscriptions` com `status` não nulo (paginado até o fim com
+  `fetchAllRows`, como o `get-mrr`), remove as de
   `fetchInternalWorkspaceIds` (`_shared/internal-workspaces.ts`) e precifica com o mesmo
   `priceSubscriptionRows` de `platform-admin/pricing.ts`, registrando `setStripeLoader` igual ao
   `platform-admin/index.ts`. Com isso o MRR do snapshot do dia é o mesmo número do tile.
 - `monthly_cents` = `toMonthlyCents(interval, amount_cents)` do `_shared/billing-logic.ts`, o
   mesmo usado pelo `aggregateMrr`.
 - `provider_switch = switched_from_stripe_subscription_id is not null`.
-- `snapshot_date` = hoje em America/Sao_Paulo. Upsert em `(workspace_id, snapshot_date)` com
-  `source='cron'`: rodar duas vezes no mesmo dia só atualiza.
+- `snapshot_date` = hoje em America/Sao_Paulo. Grava tudo de uma vez por
+  `admin_metrics_write_snapshot(snapshot_date, 'cron', rows)`: sem marcador, o dia não existe para
+  a leitura; rodar duas vezes no mesmo dia substitui o dia inteiro.
 - Stripe fora do ar: o `priceSubscriptionRows` já cai para espelho/catálogo, e o `amount_source`
   registra de onde veio.
 - Agendamento: migration com pg_cron padrão A (`net.http_post` com o `cron_secret` do vault),
-  `47 2 * * *` UTC = 23:47 em São Paulo. Cada linha é o fechamento do dia; a do último dia do mês
-  é o fechamento do mês. Minuto livre segundo `20260925110001_stagger_cron_schedules.sql`.
+  `47 2 * * *` UTC = 23:47 em São Paulo. **O fechamento do dia é definido como o estado às 23:47**
+  (hora de São Paulo); o do último dia do mês é o fechamento do mês. O que muda entre 23:47 e a
+  meia-noite entra no dia seguinte, o que é irrelevante para uma métrica mensal. Um disparo manual
+  durante o dia grava o estado daquele momento e é substituído pela execução das 23:47. Minuto
+  livre segundo `20260925110001_stagger_cron_schedules.sql`.
 
 ### `get-mrr` e `get-trials`
 
@@ -99,10 +124,14 @@ Ação admin nova no `platform-admin`.
 - **Stripe:** `subscriptions.list({ status: 'all' })` paginado até o fim, ignorando
   `incomplete` e `incomplete_expired`. Mapeamento para workspace por
   `workspace_subscriptions.stripe_customer_id`; sem mapeamento = ignorada e contada.
-- **Pagar.me:** lista de assinaturas, mapeada primeiro pelo espelho
-  (`workspace_subscriptions.pagarme_subscription_id`) e, na falta, por `metadata.workspace_id`
-  (gravado pelo checkout em `pagarme-checkout/gateway.ts`). Sem mapeamento, ou metadata
-  divergente do espelho = ignorada e contada.
+- **Pagar.me:** lista de assinaturas, mapeada assim, nesta ordem:
+  1. o id da assinatura é o `pagarme_subscription_id` do espelho de um workspace W: vai para W,
+     **desde que** `metadata.workspace_id` seja vazio ou igual a W; se apontar para outro
+     workspace, a assinatura é ignorada e contada como divergente;
+  2. senão (assinatura antiga, substituída por outra no espelho), vai para
+     `metadata.workspace_id` se esse workspace existir;
+  3. senão, ignorada e contada como sem mapeamento.
+  O `metadata` é gravado pelo checkout em `pagarme-checkout/gateway.ts`.
 - **Meses:** do mês da assinatura mais antiga até o último mês fechado. Para cada fim de mês D
   (último dia do mês):
   - antes de `start_date`: sem linha
@@ -114,9 +143,12 @@ Ação admin nova no `platform-admin`.
 - **Precedência** quando Stripe e Pagar.me dão a mesma chave `(workspace_id, D)`: vence a
   assinatura em vigor em D; se as duas estiverem em vigor, vence o Pagar.me com
   `provider_switch=true`. Regra determinística, independente da ordem de paginação.
-- **Idempotência:** upsert em `(workspace_id, snapshot_date)` com `source='backfill'`, **sem nunca
-  sobrescrever linha `source='cron'`**. Workspaces `is_internal` ficam de fora.
-- **Resposta:** `{ written, skipped_unmapped: { stripe, pagarme }, kept_cron_rows, months }`.
+- **Idempotência:** cada fim de mês é gravado por
+  `admin_metrics_write_snapshot(D, 'backfill', rows)`, que **nunca sobrescreve uma data com
+  marcador `cron`** e substitui por inteiro uma data já backfilled. Workspaces `is_internal` ficam
+  de fora.
+- **Resposta:** `{ months_written, months_kept_cron, rows_written, skipped: { stripe_unmapped,
+  pagarme_unmapped, pagarme_divergent } }`.
 - Erros de provedor: logados internamente, o cliente recebe mensagem genérica.
 
 **Limites conhecidos** (exibidos como nota nos meses backfilled):
@@ -127,10 +159,16 @@ Ação admin nova no `platform-admin`.
 
 Ação admin somente leitura.
 
-1. `admin_metrics_close_dates()` → fechamento de cada mês. O mês corrente usa o snapshot mais
-   recente e vem com `closed: false`; se o cron falhou no último dia de um mês passado, vale a
-   data mais recente daquele mês.
-2. Lê só as linhas dessas datas e passa para o `metrics-logic.ts` puro.
+1. Lê `metrics_snapshot_runs` inteira (uma linha por dia, pequena). Fechamento de cada mês =
+   a maior `snapshot_date` com marcador naquele mês; se o cron falhou no último dia, vale a data
+   com marcador mais recente do mês. O mês corrente usa a mais recente e vem com `closed: false`.
+2. **A série de meses é gerada no calendário**, do mês do primeiro marcador até o mês corrente
+   em São Paulo, e não a partir das linhas: um mês cujo fechamento tem zero linhas (todos
+   cancelaram) aparece com MRR 0 e o churn do mês é calculado normalmente.
+3. Mês sem nenhum marcador (cron parado o mês todo) aparece com `missing: true` e valores nulos;
+   os movimentos do mês seguinte são calculados contra o último fechamento disponível e vêm com
+   `movements_since` indicando esse mês.
+4. Lê só as linhas das datas de fechamento e passa para o `metrics-logic.ts` puro.
 
 ### Classificação por workspace entre o fechamento anterior e o atual
 
@@ -145,13 +183,18 @@ Ação admin somente leitura.
 | `active` | `past_due` | **Inadimplência** (−valor anterior) |
 | `past_due` | `active` | **Recuperado** (+valor atual) |
 | `active` | sem linha, `canceled` ou outro não pagante | **Churn** (−valor anterior) |
-| `past_due` | sem linha ou `canceled` | R$ 0 nas barras; entra no churn % pelo valor da linha `past_due` |
+| `past_due` | sem linha ou `canceled` | R$ 0 nas barras (o valor já saiu como Inadimplência); conta só no bloco `churn` |
 
-Invariante testada: a soma das sete categorias é igual a `mrr_atual − mrr_anterior`.
+Invariante testada: a soma das sete categorias de `movements` é igual a
+`mrr_atual − mrr_anterior`. `movements.churn` é **só** a parte que reconcilia (ativo → saiu).
 
-**Churn %**
-- logos: churns do mês (incluindo `past_due` → cancelado) ÷ pagantes no fechamento anterior;
-- receita (bruto): (churn + contração) ÷ MRR anterior;
+**Bloco `churn`** (separado dos movimentos de propósito, porque mede outra coisa):
+- **carteira anterior** = workspaces `active` + `past_due` no fechamento anterior
+  (`base_logos`, `base_cents` = soma do `monthly_cents` deles);
+- **perdidos** = ativo → saiu **e** `past_due` → saiu (`logos`, `lost_cents` pelo valor da linha
+  anterior de cada um);
+- `logo_pct` = `logos ÷ base_logos`;
+- `revenue_pct` (bruto) = `(lost_cents + |contração|) ÷ base_cents`;
 - denominador zero → `null` (exibido como "n/d").
 
 ### Resposta
@@ -164,19 +207,24 @@ interface MetricsHistoryResponse {
 }
 interface MetricsMonth {
   month: string;                           // 'YYYY-MM'
-  close_date: string;                      // 'YYYY-MM-DD'
+  missing: boolean;                        // true: nenhum marcador no mês, demais campos nulos
+  close_date: string | null;               // 'YYYY-MM-DD'
   closed: boolean;
-  source: 'backfill' | 'cron' | 'mixed';
-  mrr_cents: number;
-  arr_cents: number;                       // mrr_cents * 12
-  paying_count: number;
-  by_provider: { stripe: number; pagarme: number };
-  by_plan: { plan_id: string | null; name: string; mrr_cents: number }[];
+  source: 'backfill' | 'cron' | null;      // de quem é o marcador do fechamento
+  mrr_cents: number | null;
+  arr_cents: number | null;                // mrr_cents * 12
+  paying_count: number | null;
+  by_provider: { stripe: number; pagarme: number } | null;
+  by_plan: { plan_id: string | null; name: string; mrr_cents: number }[] | null;
+  movements_since: string | null;          // mês do fechamento de comparação
   movements: {
     new: number; expansion: number; contraction: number; past_due: number;
     recovered: number; churn: number; switch: number;       // centavos com sinal
-  } | null;                                // null no primeiro mês
-  churn: { logos: number; logo_pct: number | null; revenue_pct: number | null } | null;
+  } | null;                                // null no primeiro mês e em mês missing
+  churn: {
+    logos: number; lost_cents: number; base_logos: number; base_cents: number;
+    logo_pct: number | null; revenue_pct: number | null;
+  } | null;
 }
 ```
 
@@ -194,7 +242,8 @@ interface MetricsMonth {
     novo, expansão, recuperado, troca; negativas abaixo: contração, inadimplência, churn); linha de
     churn % de logos e de receita; tabela compacta com os números.
   - Mês aberto rotulado "Setembro (até hoje)" com preenchimento mais claro; meses backfilled
-    trazem os limites conhecidos no tooltip.
+    trazem os limites conhecidos no tooltip; mês `missing` fica como lacuna com o rótulo
+    "Sem dados" e o mês seguinte indica "desde <mês>".
   - Botão "Reconstruir histórico" no cabeçalho da página, com diálogo de confirmação; chama
     `backfill-metrics` e mostra o relatório num toast; 403 vira "Disponível só em produção".
 - React Query: `['admin','metrics-history']`, `staleTime` 5 min; o backfill invalida essa chave.
@@ -205,13 +254,19 @@ interface MetricsMonth {
 ## 6. Testes
 
 - **Deno**
-  - `metrics-logic`: cada linha da tabela de classificação; invariante de reconciliação; churn %
-    com denominador zero (`null`); primeiro mês sem movimentos; `source` misto.
+  - `metrics-logic`: cada linha da tabela de classificação; invariante de reconciliação; bloco
+    `churn` com `past_due` → saiu (R$ 0 nos movimentos, contado em `lost_cents`); denominador zero
+    (`null`); primeiro mês sem movimentos; mês com marcador e zero linhas (churn total calculado);
+    mês `missing` no meio da série (`movements_since` aponta o mês anterior disponível).
   - backfill: status no fim de mês (antes do início, trial, encerrada, ativa); precedência
-    Stripe × Pagar.me nas duas ordens de paginação; não sobrescreve `cron`; ignora e conta
-    não mapeadas; 403 sem `METRICS_BACKFILL_ALLOWED` sem chamar gateway.
-  - cron: 401 sem `x-cron-secret`; exclui internos; upsert com a data de São Paulo (virada perto
-    da meia-noite UTC).
+    Stripe × Pagar.me nas duas ordens de paginação; os três passos do mapeamento do Pagar.me
+    (inclusive divergente); data com marcador `cron` preservada; 403 sem
+    `METRICS_BACKFILL_ALLOWED` sem chamar gateway.
+  - cron: 401 sem `x-cron-secret`; exclui internos; `amount_source` nulo do helper vira
+    `unpriced`; chama o RPC com a data de São Paulo (virada perto da meia-noite UTC).
+  - RPC `admin_metrics_write_snapshot` (suíte psql de `supabase/tests/entitlements/`, que o CI
+    roda): substituição do dia inteiro no `cron`, `skipped` do `backfill` sobre data `cron`,
+    `anon`/`authenticated` sem `execute`.
   - `get-mrr` / `get-trials`: excluem `is_internal`.
 - **Vitest**: helpers puros de view (rótulo do mês, séries por provedor/plano, sinais das
   categorias) e estados das seções (carregando, erro, vazio, dados); tiles do Dashboard com o
@@ -228,7 +283,9 @@ Ordem (merge implanta o frontend na hora):
 4. Backfill em prod pelo botão.
 
 Âncoras:
-- MRR do snapshot de hoje == tile de MRR.
+- Disparo manual do cron e, logo em seguida, o tile de MRR: mesmo valor. A comparação só vale
+  nesse instante; depois disso o tile é ao vivo e o snapshot é o estado das 23:47, e uma
+  diferença é legítima.
 - Um mês backfilled == MRR do dashboard da Stripe naquele mês, dentro do arredondamento e dos
   limites conhecidos.
 
