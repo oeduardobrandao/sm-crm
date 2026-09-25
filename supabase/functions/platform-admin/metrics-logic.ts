@@ -80,7 +80,11 @@ export function classOf(r: SnapshotRecord | undefined): WorkspaceClass {
   return "out";
 }
 
-/** One close per calendar month from the first marker month to `currentMonth`. */
+/**
+ * One close per calendar month from the first marker month to `currentMonth`. A past month with
+ * no marker stays in as `missing`; the current month is left out until it has a marker (the 1st
+ * before the 23:44 cron), so the chart doesn't end on a gap every month.
+ */
 export function computeCloses(runs: RunRecord[], currentMonth: string): MonthClose[] {
   if (!runs.length) return [];
   const latestByMonth = new Map<string, RunRecord>();
@@ -90,7 +94,10 @@ export function computeCloses(runs: RunRecord[], currentMonth: string): MonthClo
     if (!prev || r.snapshot_date > prev.snapshot_date) latestByMonth.set(m, r);
   }
   const first = [...latestByMonth.keys()].sort()[0];
-  return monthRange(first, currentMonth).map((month) => {
+  const months = monthRange(first, currentMonth).filter(
+    (month) => month !== currentMonth || latestByMonth.has(month),
+  );
+  return months.map((month) => {
     const run = latestByMonth.get(month);
     return {
       month,

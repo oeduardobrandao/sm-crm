@@ -122,6 +122,22 @@ Deno.test("computeCloses: calendar series from first marker month, latest marker
   assertEquals(computeCloses([], "2026-09"), []);
 });
 
+Deno.test("computeCloses: the current month without a marker yet is left out; a past gap stays missing", () => {
+  // 1 Sep before the 23:44 cron: no September marker yet, July never had one.
+  const closes = computeCloses(
+    [
+      { snapshot_date: "2026-06-30", source: "backfill" },
+      { snapshot_date: "2026-08-31", source: "cron" },
+    ],
+    "2026-09",
+  );
+  assertEquals(closes, [
+    { month: "2026-06", close_date: "2026-06-30", source: "backfill", closed: true },
+    { month: "2026-07", close_date: null, source: null, closed: true },
+    { month: "2026-08", close_date: "2026-08-31", source: "cron", closed: true },
+  ]);
+});
+
 Deno.test("buildMonths: first month has no movements; a missing month is skipped for the comparison", () => {
   const months = buildMonths(
     [
