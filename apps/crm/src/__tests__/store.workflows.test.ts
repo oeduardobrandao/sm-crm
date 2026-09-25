@@ -71,15 +71,6 @@ describe('store workflow functions', () => {
       },
     },
     {
-      name: 'updateWorkflowTemplate',
-      table: 'workflow_templates',
-      operation: 'update' as const,
-      run: () => store.updateWorkflowTemplate(1, { nome: 'Social Quinzenal' }),
-      response: { id: 1, nome: 'Social Quinzenal' },
-      payload: { nome: 'Social Quinzenal' },
-      modifier: { method: 'eq', args: ['id', 1] },
-    },
-    {
       name: 'removeWorkflowTemplate',
       table: 'workflow_templates',
       operation: 'delete' as const,
@@ -101,25 +92,51 @@ describe('store workflow functions', () => {
     },
   );
 
-  it('propagates template changes via the propagate_template_to_workflows RPC', async () => {
-    mockedSupabase.__queueSupabaseRpc('propagate_template_to_workflows', {
-      data: null,
-      error: null,
+  it('saves a template via the update_workflow_template RPC', async () => {
+    mockedSupabase.__queueSupabaseRpc('update_workflow_template', { data: null, error: null });
+
+    const etapas = [
+      {
+        nome: 'Copy',
+        prazo_dias: 1,
+        tipo_prazo: 'corridos' as const,
+        responsavel_id: 7,
+        tipo: 'padrao' as const,
+      },
+    ];
+    await store.saveWorkflowTemplate(5, { nome: 'Posts', etapas, modo_prazo: 'padrao' });
+
+    const rpcCall = getCalls('rpc:update_workflow_template').at(-1);
+    expect(rpcCall?.payload).toEqual({
+      p_template_id: 5,
+      p_nome: 'Posts',
+      p_etapas: etapas,
+      p_modo_prazo: 'padrao',
     });
-
-    await store.propagateTemplateToWorkflows(5);
-
-    const rpcCall = getCalls('rpc:propagate_template_to_workflows').at(-1);
-    expect(rpcCall?.payload).toEqual({ p_template_id: 5 });
   });
 
-  it('propagates propagate_template_to_workflows RPC errors as thrown Errors', async () => {
-    mockedSupabase.__queueSupabaseRpc('propagate_template_to_workflows', {
+  it('throws the mapped message when update_workflow_template fails', async () => {
+    mockedSupabase.__queueSupabaseRpc('update_workflow_template', {
       data: null,
-      error: { message: 'forbidden' },
+      error: { message: 'invalid_responsavel' },
     });
 
-    await expect(store.propagateTemplateToWorkflows(5)).rejects.toThrow('forbidden');
+    await expect(
+      store.saveWorkflowTemplate(5, { nome: 'Posts', etapas: [], modo_prazo: 'padrao' }),
+    ).rejects.toThrow('Um dos responsáveis não faz mais parte da equipe.');
+  });
+
+  it.each([
+    [
+      'template_invalid',
+      'Revise as etapas do template: cada etapa precisa de nome e prazo inteiro entre 0 e 999.',
+    ],
+    ['invalid_responsavel', 'Um dos responsáveis não faz mais parte da equipe.'],
+    ['template_not_found', 'Template não encontrado.'],
+    ['workspace_not_found', 'Erro ao salvar template.'],
+    ['boom', 'Erro ao salvar template.'],
+  ])('mapTemplateSaveError(%s)', (code, expected) => {
+    expect(store.mapTemplateSaveError(code)).toBe(expected);
   });
 
   it('completes a step and activates the next workflow stage', async () => {

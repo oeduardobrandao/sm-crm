@@ -1,6 +1,9 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// jsdom has no scrollIntoView; editing a template scrolls the form into view.
+(Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
 
 const { toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
   toastSuccessMock: vi.fn(),
@@ -25,8 +28,7 @@ vi.mock('../../../../store', () => ({
   removeWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
   updateWorkflowEtapa: vi.fn(),
-  updateWorkflowTemplate: vi.fn(),
-  propagateTemplateToWorkflows: vi.fn(),
+  saveWorkflowTemplate: vi.fn(),
   getPropertyDefinitions: vi.fn(),
   deletePropertyDefinition: vi.fn(),
 }));
@@ -236,11 +238,23 @@ vi.mock('@/components/ui/alert-dialog', async () => {
   };
 });
 
+vi.mock('../SortableEtapaList', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../SortableEtapaList')>();
+  return { ...actual, SortableEtapaList: () => <div>SortableEtapaList</div> };
+});
+
+vi.mock('../MigrateTemplateDialog', () => ({
+  MigrateTemplateDialog: () => null,
+}));
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   ClientApprovalChoiceDialog,
   RecurringWorkflowDialog,
   RevertConfirmDialog,
+  TemplatesModal,
 } from '../WorkflowModals';
+import { saveWorkflowTemplate } from '../../../../store';
 
 describe('WorkflowModals', () => {
   beforeEach(() => {
@@ -294,5 +308,125 @@ describe('WorkflowModals', () => {
     expect(onCancelApproval).toHaveBeenCalled();
     expect(onApproveInternally).toHaveBeenCalled();
     expect(onSendToPortal).toHaveBeenCalled();
+  });
+
+  describe('TemplatesModal edit save', () => {
+    const template = {
+      id: 5,
+      nome: 'Posts',
+      modo_prazo: 'padrao' as const,
+      etapas: [
+        {
+          nome: 'Copy',
+          prazo_dias: 1,
+          tipo_prazo: 'corridos' as const,
+          responsavel_id: 7,
+          tipo: 'padrao' as const,
+        },
+      ],
+    };
+
+    function renderModal(onRefresh = vi.fn()) {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={qc}>
+          <TemplatesModal
+            open
+            onClose={vi.fn()}
+            templates={[template]}
+            membros={[]}
+            onRefresh={onRefresh}
+          />
+        </QueryClientProvider>,
+      );
+      return onRefresh;
+    }
+
+    beforeEach(() => {
+      vi.mocked(saveWorkflowTemplate).mockReset();
+    });
+
+    it('saves an edited template with one saveWorkflowTemplate call', async () => {
+      vi.mocked(saveWorkflowTemplate).mockResolvedValue(undefined);
+      const onRefresh = renderModal();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Editar template Posts' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+      await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+      expect(toastSuccessMock).toHaveBeenCalledWith('Template atualizado!');
+      expect(saveWorkflowTemplate).toHaveBeenCalledTimes(1);
+      expect(saveWorkflowTemplate).toHaveBeenCalledWith(5, {
+        nome: 'Posts',
+        etapas: [
+          {
+            nome: 'Copy',
+            prazo_dias: 1,
+            tipo_prazo: 'corridos',
+            responsavel_id: 7,
+            tipo: 'padrao',
+          },
+        ],
+        modo_prazo: 'padrao',
+      });
+    });
+
+    it('shows the mapped error message when the save fails', async () => {
+      vi.mocked(saveWorkflowTemplate).mockRejectedValue(
+        new Error('Um dos responsáveis não faz mais parte da equipe.'),
+      );
+      renderModal();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Editar template Posts' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+      await waitFor(() =>
+        expect(toastErrorMock).toHaveBeenCalledWith(
+          'Um dos responsáveis não faz mais parte da equipe.',
+        ),
+      );
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Salvar' })).not.toBeDisabled(),
+      );
+    });
+
+    it('truncates a legacy decimal prazo_dias before saving', async () => {
+      vi.mocked(saveWorkflowTemplate).mockResolvedValue(undefined);
+      const decimalTemplate = {
+        ...template,
+        etapas: [{ ...template.etapas[0], prazo_dias: 2.5 }],
+      };
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const onRefresh = vi.fn();
+      render(
+        <QueryClientProvider client={qc}>
+          <TemplatesModal
+            open
+            onClose={vi.fn()}
+            templates={[decimalTemplate]}
+            membros={[]}
+            onRefresh={onRefresh}
+          />
+        </QueryClientProvider>,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Editar template Posts' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+      await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+      expect(saveWorkflowTemplate).toHaveBeenCalledWith(5, {
+        nome: 'Posts',
+        etapas: [
+          {
+            nome: 'Copy',
+            prazo_dias: 2,
+            tipo_prazo: 'corridos',
+            responsavel_id: 7,
+            tipo: 'padrao',
+          },
+        ],
+        modo_prazo: 'padrao',
+      });
+    });
   });
 });

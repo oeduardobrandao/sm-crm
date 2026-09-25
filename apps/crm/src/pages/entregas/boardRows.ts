@@ -38,8 +38,9 @@ export interface BuildBoardRowsOptions {
    *  "snapshots divergentes do mesmo template virassem linhas próprias". Na
    *  prática isso produzia duas (ou mais) abas com o MESMO rótulo — o nome do
    *  template —, indistinguíveis de um template duplicado, e divergir é a
-   *  norma e não a exceção: `propagate_template_to_workflows` só atualiza
-   *  etapas `pendente`/`ativo`, então editar um template forka para sempre a
+   *  norma e não a exceção: `update_workflow_template` só atualiza etapas
+   *  `pendente`/`ativo` (e só campos que o fluxo herdou do template), então
+   *  editar um template forka para sempre a
    *  assinatura de todo fluxo que já tenha uma etapa concluída. As colunas já
    *  fazem união por `ordem` e `isValidDropTarget` já valida contra as etapas
    *  do próprio card, então a linha por template comporta os divergentes.
