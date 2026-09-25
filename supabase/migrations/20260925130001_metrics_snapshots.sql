@@ -5,7 +5,7 @@
 -- that have one, so a run that died halfway never reads as churn.
 --
 -- Deploy metrics-snapshot-cron BEFORE applying this migration: the schedule at the bottom starts
--- firing at the next 02:47 UTC.
+-- firing at the next 02:44 UTC.
 
 create table public.workspace_subscription_snapshots (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -100,8 +100,9 @@ revoke all on function public.admin_metrics_write_snapshot(date, text, jsonb)
 grant execute on function public.admin_metrics_write_snapshot(date, text, jsonb)
   to service_role;
 
--- Daily close at 23:47 São Paulo (02:47 UTC). Minute 47 of hour 2 is free in
--- 20260925110001_stagger_cron_schedules.sql. Idempotent.
+-- Daily close at 23:44 São Paulo (02:44 UTC). Minute 44 of hour 2 only has the three
+-- every-minute jobs in prod (cron.job, 2026-09-25; see
+-- 20260925110001_stagger_cron_schedules.sql). Idempotent.
 do $$ begin
   if exists (select 1 from cron.job where jobname = 'metrics-snapshot-cron') then
     perform cron.unschedule('metrics-snapshot-cron');
@@ -110,7 +111,7 @@ end $$;
 
 select cron.schedule(
   'metrics-snapshot-cron',
-  '47 2 * * *',
+  '44 2 * * *',
   $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url')

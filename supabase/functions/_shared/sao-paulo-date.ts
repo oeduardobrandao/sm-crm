@@ -8,10 +8,10 @@ export function saoPauloDate(now: Date): string {
   return new Date(now.getTime() - SP_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-/** The metrics close of São Paulo date D: 23:47 local, i.e. D+1 at 02:47 UTC (the cron tick). */
+/** The metrics close of São Paulo date D: 23:44 local, i.e. D+1 at 02:44 UTC (the cron tick). */
 export function closeInstant(date: string): Date {
   const [y, m, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + 1, 2, 47, 0));
+  return new Date(Date.UTC(y, m - 1, d + 1, 2, 44, 0));
 }
 
 /** Last calendar day (YYYY-MM-DD) of month 'YYYY-MM'. */

@@ -12,13 +12,13 @@ Deno.test("saoPauloDate: before 03:00 UTC is still the previous São Paulo day",
   assertEquals(saoPauloDate(new Date("2026-09-25T03:00:00Z")), "2026-09-25");
 });
 
-Deno.test("saoPauloDate: the 02:47 UTC cron tick belongs to the previous São Paulo day", () => {
-  assertEquals(saoPauloDate(new Date("2026-10-01T02:47:00Z")), "2026-09-30");
+Deno.test("saoPauloDate: the 02:44 UTC cron tick belongs to the previous São Paulo day", () => {
+  assertEquals(saoPauloDate(new Date("2026-10-01T02:44:00Z")), "2026-09-30");
 });
 
-Deno.test("closeInstant: D at 23:47 São Paulo is D+1 02:47 UTC, across month and year ends", () => {
-  assertEquals(closeInstant("2026-06-30").toISOString(), "2026-07-01T02:47:00.000Z");
-  assertEquals(closeInstant("2026-12-31").toISOString(), "2027-01-01T02:47:00.000Z");
+Deno.test("closeInstant: D at 23:44 São Paulo is D+1 02:44 UTC, across month and year ends", () => {
+  assertEquals(closeInstant("2026-06-30").toISOString(), "2026-07-01T02:44:00.000Z");
+  assertEquals(closeInstant("2026-12-31").toISOString(), "2027-01-01T02:44:00.000Z");
 });
 
 Deno.test("lastDayOfMonth handles February and leap years", () => {
