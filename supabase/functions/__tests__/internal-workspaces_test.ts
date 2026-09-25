@@ -1,5 +1,8 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
+import {
+  fetchInternalWorkspaceIds,
+  fetchInternalWorkspaceIdsOrThrow,
+} from "../_shared/internal-workspaces.ts";
 
 function svcReturning(result: { data?: unknown; error?: unknown }) {
   const calls: Array<{ table: string; column: string; value: unknown }> = [];
@@ -48,4 +51,25 @@ Deno.test("fails OPEN when the client throws", async () => {
     },
   };
   assertEquals((await fetchInternalWorkspaceIds(svc)).size, 0);
+});
+
+Deno.test("fetchInternalWorkspaceIdsOrThrow returns the set on success", async () => {
+  const svc = {
+    from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: [{ id: "w1" }], error: null }) }) }),
+  };
+  const ids = await fetchInternalWorkspaceIdsOrThrow(svc);
+  assertEquals([...ids], ["w1"]);
+});
+
+Deno.test("fetchInternalWorkspaceIdsOrThrow throws on a query error instead of excluding none", async () => {
+  const svc = {
+    from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: null, error: { message: "boom" } }) }) }),
+  };
+  let threw = false;
+  try {
+    await fetchInternalWorkspaceIdsOrThrow(svc);
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
 });

@@ -1,7 +1,8 @@
-import { assert } from "./assert.ts";
+import { assert, assertEquals } from "./assert.ts";
 import {
   extractCoupon,
   fetchStripeAmount,
+  stripeAmountFromSubscription,
   type StripeClient,
 } from "../_shared/stripe-amount.ts";
 
@@ -84,4 +85,30 @@ Deno.test("extractCoupon handles discounts[], legacy discount, and unexpanded st
   assert(extractCoupon({ discount: { coupon } })?.id === "c");
   assert(extractCoupon({ discounts: ["di_123"] }) === null, "unexpanded discount id must be null");
   assert(extractCoupon({}) === null);
+});
+
+Deno.test("stripeAmountFromSubscription applies a percent coupon from discounts[]", () => {
+  const amt = stripeAmountFromSubscription(
+    {
+      livemode: true,
+      items: { data: [{ quantity: 1, price: { unit_amount: 10000, currency: "brl", recurring: { interval: "month" } } }] },
+      discounts: [{ coupon: { id: "c1", name: "Parceiro", percent_off: 20 } }],
+    },
+    null,
+  );
+  assertEquals(amt.amount_cents, 8000);
+  assertEquals(amt.gross_cents, 10000);
+  assertEquals(amt.interval, "month");
+  assertEquals(amt.discount_label, "Parceiro −20%");
+});
+
+Deno.test("stripeAmountFromSubscription: no coupon, interval falls back when price lacks recurring", () => {
+  const amt = stripeAmountFromSubscription(
+    { items: { data: [{ quantity: 2, price: { unit_amount: 5000, currency: "brl" } }] } },
+    "year",
+  );
+  assertEquals(amt.amount_cents, 10000);
+  assertEquals(amt.gross_cents, null);
+  assertEquals(amt.interval, "year");
+  assertEquals(amt.discount_label, null);
 });
