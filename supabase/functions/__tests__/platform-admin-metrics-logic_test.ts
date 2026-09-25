@@ -14,7 +14,9 @@ const row = (over: Partial<SnapshotRecord>): SnapshotRecord => ({
   plan_id: "pro",
   plan_name: "Pro",
   status: "active",
+  billing_interval: "month",
   monthly_cents: 10000,
+  amount_source: "stripe",
   provider_switch: false,
   ...over,
 });
@@ -163,4 +165,93 @@ Deno.test("buildMonths: a close with a marker and zero rows is a real month with
   assertEquals(months[1].mrr_cents, 0);
   assertEquals(months[1].movements?.churn, -10000);
   assertEquals(months[1].churn?.logo_pct, 1);
+});
+
+Deno.test("buildMonths: an unpriced active row inherits the previous close's row instead of churning then reappearing as new", () => {
+  const closes = [
+    { month: "2026-06", close_date: "2026-06-30", source: "cron" as const, closed: true },
+    { month: "2026-07", close_date: "2026-07-31", source: "cron" as const, closed: true },
+    { month: "2026-08", close_date: "2026-08-31", source: "cron" as const, closed: true },
+  ];
+  const months = buildMonths(
+    closes,
+    new Map([
+      ["2026-06-30", [row({ workspace_id: "a", snapshot_date: "2026-06-30", monthly_cents: 10000, amount_source: "stripe" })]],
+      ["2026-07-31", [row({ workspace_id: "a", snapshot_date: "2026-07-31", monthly_cents: 0, amount_source: "unpriced" })]],
+      ["2026-08-31", [row({ workspace_id: "a", snapshot_date: "2026-08-31", monthly_cents: 10000, amount_source: "stripe" })]],
+    ]),
+  );
+  const zeroMovements = { new: 0, expansion: 0, contraction: 0, past_due: 0, recovered: 0, churn: 0, switch: 0 };
+  assertEquals(months[1].mrr_cents, 10000);
+  assertEquals(months[1].paying_count, 1);
+  assertEquals(months[1].movements, zeroMovements);
+  assertEquals(months[1].churn?.lost_cents, 0);
+  assertEquals(months[2].mrr_cents, 10000);
+  assertEquals(months[2].movements, zeroMovements);
+  assertEquals(months[2].churn?.lost_cents, 0);
+});
+
+Deno.test("buildMonths: two consecutive unpriced closes chain-inherit the same value", () => {
+  const closes = [
+    { month: "2026-06", close_date: "2026-06-30", source: "cron" as const, closed: true },
+    { month: "2026-07", close_date: "2026-07-31", source: "cron" as const, closed: true },
+    { month: "2026-08", close_date: "2026-08-31", source: "cron" as const, closed: true },
+  ];
+  const months = buildMonths(
+    closes,
+    new Map([
+      ["2026-06-30", [row({ workspace_id: "a", snapshot_date: "2026-06-30", monthly_cents: 10000, amount_source: "stripe" })]],
+      ["2026-07-31", [row({ workspace_id: "a", snapshot_date: "2026-07-31", monthly_cents: 0, amount_source: "unpriced" })]],
+      ["2026-08-31", [row({ workspace_id: "a", snapshot_date: "2026-08-31", monthly_cents: 0, amount_source: "unpriced" })]],
+    ]),
+  );
+  assertEquals(months[1].mrr_cents, 10000);
+  assertEquals(months[2].mrr_cents, 10000);
+  assertEquals(months[1].movements?.new, 0);
+  assertEquals(months[2].movements?.new, 0);
+});
+
+Deno.test("buildMonths: unpriced row with no row at the previous available close counts as out, no New", () => {
+  const closes = [
+    { month: "2026-06", close_date: "2026-06-30", source: "cron" as const, closed: true },
+    { month: "2026-07", close_date: "2026-07-31", source: "cron" as const, closed: true },
+  ];
+  const months = buildMonths(
+    closes,
+    new Map([
+      ["2026-06-30", []],
+      ["2026-07-31", [row({ workspace_id: "a", snapshot_date: "2026-07-31", monthly_cents: 0, amount_source: "unpriced" })]],
+    ]),
+  );
+  assertEquals(months[1].mrr_cents, 0);
+  assertEquals(months[1].paying_count, 0);
+  assertEquals(months[1].movements?.new, 0);
+});
+
+Deno.test("buildMonths: unpriced row on the very first close (no previous close at all) counts as out", () => {
+  const months = buildMonths(
+    [{ month: "2026-06", close_date: "2026-06-30", source: "cron" as const, closed: true }],
+    new Map([
+      ["2026-06-30", [row({ workspace_id: "a", snapshot_date: "2026-06-30", monthly_cents: 0, amount_source: "unpriced" })]],
+    ]),
+  );
+  assertEquals(months[0].mrr_cents, 0);
+  assertEquals(months[0].paying_count, 0);
+});
+
+Deno.test("buildMonths: unpriced row inherits past_due from the previous close, not Recuperado", () => {
+  const closes = [
+    { month: "2026-06", close_date: "2026-06-30", source: "cron" as const, closed: true },
+    { month: "2026-07", close_date: "2026-07-31", source: "cron" as const, closed: true },
+  ];
+  const months = buildMonths(
+    closes,
+    new Map([
+      ["2026-06-30", [row({ workspace_id: "a", snapshot_date: "2026-06-30", status: "past_due", monthly_cents: 7000, amount_source: "stripe" })]],
+      ["2026-07-31", [row({ workspace_id: "a", snapshot_date: "2026-07-31", status: "active", monthly_cents: 0, amount_source: "unpriced" })]],
+    ]),
+  );
+  assertEquals(months[1].mrr_cents, 0);
+  assertEquals(months[1].paying_count, 0);
+  assertEquals(months[1].movements, { new: 0, expansion: 0, contraction: 0, past_due: 0, recovered: 0, churn: 0, switch: 0 });
 });

@@ -25,7 +25,9 @@ export async function handleGetMetricsHistory(
     const rows = await fetchAllRows<SnapshotRecord>((from, to) =>
       svc
         .from("workspace_subscription_snapshots")
-        .select("workspace_id, snapshot_date, provider, plan_id, plan_name, status, monthly_cents, provider_switch")
+        .select(
+          "workspace_id, snapshot_date, provider, plan_id, plan_name, status, billing_interval, monthly_cents, amount_source, provider_switch",
+        )
         .in("snapshot_date", ids)
         .order("snapshot_date", { ascending: true })
         .order("workspace_id", { ascending: true })

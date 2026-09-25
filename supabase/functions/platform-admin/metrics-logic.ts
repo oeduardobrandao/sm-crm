@@ -2,6 +2,7 @@
 // No I/O: the handler hands in the completion markers and the rows of each month close.
 
 import { monthRange } from "../_shared/sao-paulo-date.ts";
+import type { AmountSource } from "../_shared/metrics-snapshot.ts";
 
 export interface SnapshotRecord {
   workspace_id: string;
@@ -10,7 +11,9 @@ export interface SnapshotRecord {
   plan_id: string | null;
   plan_name: string | null;
   status: string;
+  billing_interval: string | null;
   monthly_cents: number;
+  amount_source: AmountSource;
   provider_switch: boolean;
 }
 
@@ -181,12 +184,42 @@ function aggregate(rows: SnapshotRecord[]) {
   };
 }
 
+/**
+ * An `active` row with no resolved price (`amount_source === "unpriced"`, stored with
+ * `monthly_cents = 0`) is read as the same workspace's row from the previous AVAILABLE close
+ * (already normalized), so a transient pricing failure at one close doesn't produce a fake
+ * Churn followed by a fake Novo. No row at the previous available close (or this is the first
+ * close) -> left as-is, which classifies as "out". Never mutates `rows` or its entries.
+ */
+function normalizeUnpriced(
+  rows: SnapshotRecord[],
+  prevByWorkspace: Map<string, SnapshotRecord> | null,
+): SnapshotRecord[] {
+  if (!prevByWorkspace) return rows;
+  return rows.map((r) => {
+    if (r.status !== "active" || r.amount_source !== "unpriced") return r;
+    const prevRow = prevByWorkspace.get(r.workspace_id);
+    if (!prevRow) return r;
+    return {
+      ...r,
+      status: prevRow.status,
+      provider: prevRow.provider,
+      plan_id: prevRow.plan_id,
+      plan_name: prevRow.plan_name,
+      billing_interval: prevRow.billing_interval,
+      monthly_cents: prevRow.monthly_cents,
+      amount_source: prevRow.amount_source,
+      provider_switch: prevRow.provider_switch,
+    };
+  });
+}
+
 export function buildMonths(
   closes: MonthClose[],
   rowsByDate: Map<string, SnapshotRecord[]>,
 ): MetricsMonth[] {
   const out: MetricsMonth[] = [];
-  let prev: { month: string; rows: SnapshotRecord[] } | null = null;
+  let prev: { month: string; rows: SnapshotRecord[]; byWorkspace: Map<string, SnapshotRecord> } | null = null;
   for (const c of closes) {
     if (!c.close_date) {
       out.push({
@@ -196,7 +229,7 @@ export function buildMonths(
       });
       continue;
     }
-    const rows = rowsByDate.get(c.close_date) ?? [];
+    const rows = normalizeUnpriced(rowsByDate.get(c.close_date) ?? [], prev?.byWorkspace ?? null);
     const agg = aggregate(rows);
     const diff = prev ? diffCloses(prev.rows, rows) : null;
     out.push({
@@ -214,7 +247,7 @@ export function buildMonths(
       movements: diff?.movements ?? null,
       churn: diff?.churn ?? null,
     });
-    prev = { month: c.month, rows };
+    prev = { month: c.month, rows, byWorkspace: byWorkspace(rows) };
   }
   return out;
 }
