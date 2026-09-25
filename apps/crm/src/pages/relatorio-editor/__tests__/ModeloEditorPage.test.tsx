@@ -90,6 +90,8 @@ describe('ModeloEditorPage', () => {
     // relatório" do LayersPanel (mesmo componente do RelatorioEditorPage);
     // nome exato, mesmo padrão de RelatorioEditorPage.test.tsx.
     expect(screen.getByRole('button', { name: 'Adicionar widget' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Desfazer' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Refazer' })).toBeDisabled();
   });
 
   it('renomear grava name via updateReportTemplate', async () => {

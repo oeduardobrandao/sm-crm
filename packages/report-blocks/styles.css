@@ -24,6 +24,20 @@
 .rb-grid > [data-block-id]:empty {
   display: none;
 }
+/* Cartões lado a lado na mesma linha ficam com a mesma altura: a célula do
+   grid já estica até a altura da linha, então o cartão (e, no editor, o miolo
+   .rb-edit-body, já que a toolbar é absolute) estica junto. As regras :empty
+   acima e do modo edição têm especificidade maior e seguem valendo. */
+.rb-grid > [data-block-id],
+.rb-grid .rb-edit-body {
+  display: flex;
+  flex-direction: column;
+}
+.rb-grid .rb-edit-body,
+.rb-grid > [data-block-id] > .rb-card,
+.rb-grid .rb-edit-body > .rb-card {
+  flex: 1 1 auto;
+}
 @media (max-width: 720px) {
   .rb-third,
   .rb-half {

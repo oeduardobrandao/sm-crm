@@ -144,4 +144,22 @@ describe('TextBlockEditor', () => {
     // schema correto (acima). Nada a assertar além do não-disparo inicial.
     expect(onTextChange).not.toHaveBeenCalled();
   });
+
+  it('texto trocado de fora (desfazer do layout) atualiza o editor sem reemitir', async () => {
+    const onTextChange = vi.fn();
+    const doc = (t: string) => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }],
+    });
+    const { rerender } = render(
+      <TextBlockEditor block={textBlock(doc('Versão nova'))} onTextChange={onTextChange} />,
+    );
+    await waitFor(() => expect(screen.getByText('Versão nova')).toBeInTheDocument());
+    rerender(
+      <TextBlockEditor block={textBlock(doc('Versão antiga'))} onTextChange={onTextChange} />,
+    );
+    await waitFor(() => expect(screen.getByText('Versão antiga')).toBeInTheDocument());
+    expect(screen.queryByText('Versão nova')).not.toBeInTheDocument();
+    expect(onTextChange).not.toHaveBeenCalled();
+  });
 });

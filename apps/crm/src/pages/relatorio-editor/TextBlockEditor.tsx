@@ -25,7 +25,7 @@ import {
   TextQuote,
   Underline,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import type { AnyExtension } from '@tiptap/core';
 import type { ReportBlock } from '@mesaas/report-blocks/types';
@@ -247,6 +247,10 @@ export function TextBlockEditor({ block, onTextChange }: TextBlockEditorProps) {
   const onTextChangeRef = useRef(onTextChange);
   onTextChangeRef.current = onTextChange;
   const isInitialized = useRef(false);
+  // Último texto que ESTE editor emitiu (ou recebeu na criação). updateBlockText
+  // guarda o objeto como veio, então block.text === lastText enquanto a edição
+  // vem daqui; outra referência = mudança externa (desfazer/refazer do layout).
+  const lastText = useRef<unknown>(block.text);
 
   const editor = useEditor({
     extensions: buildTextBlockExtensions(),
@@ -256,9 +260,19 @@ export function TextBlockEditor({ block, onTextChange }: TextBlockEditorProps) {
     },
     onUpdate: ({ editor: ed }) => {
       if (!isInitialized.current) return;
-      onTextChangeRef.current(block.id, ed.getJSON());
+      const json = ed.getJSON();
+      lastText.current = json;
+      onTextChangeRef.current(block.id, json);
     },
   });
+
+  useEffect(() => {
+    if (!editor || block.text === lastText.current) return;
+    lastText.current = block.text;
+    // emitUpdate: false -- sem isso o setContent voltaria como edição nova e
+    // apagaria o refazer.
+    editor.commands.setContent((block.text as object | undefined) ?? '', { emitUpdate: false });
+  }, [editor, block.text]);
 
   return (
     <div className="rb-text-editor">

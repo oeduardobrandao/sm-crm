@@ -13,6 +13,9 @@ import { getReportTemplate, type ReportTemplateRow } from '../../services/report
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { TEMPLATE_AUTOSAVE_TARGET } from './templateAutosave';
 import { useBlockEditing } from './useBlockEditing';
+import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
+import { UndoRedoButtons } from './UndoRedoButtons';
+import { useStuckHeader } from './useStuckHeader';
 import { useSampleSnapshot } from './useSampleSnapshot';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
@@ -59,6 +62,9 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
   const [draftName, setDraftName] = useState(title);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  const history = useLayoutHistory(layout, applyLayout);
+  const commit = history.commit;
+  const { sentinelRef, headerRef, stuck } = useStuckHeader();
   const {
     drawerOpen,
     setDrawerOpen,
@@ -67,11 +73,15 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     openWidgetDrawer,
     handleInsert,
     handleRemoveBlock,
-  } = useBlockEditing(layoutRef, applyLayout);
+  } = useBlockEditing(layoutRef, commit);
 
   return (
     <div className="rb-editor-with-rail">
+      <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
       <header
+        ref={headerRef}
+        className="rb-editor-header"
+        data-stuck={stuck || undefined}
         style={{
           maxWidth: 880,
           margin: '0 auto 1rem',
@@ -118,7 +128,13 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
             )}
           </p>
         </div>
-        <AppearancePopover layout={layout} snapshot={snapshot} onChange={applyLayout} />
+        <UndoRedoButtons
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
+          onUndo={history.undo}
+          onRedo={history.redo}
+        />
+        <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
         <Button size="sm" onClick={() => openWidgetDrawer(null)}>
           <Plus className="h-3.5 w-3.5" /> Adicionar widget
         </Button>
@@ -146,16 +162,20 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
       <EditorCanvas
         layout={layout}
         snapshot={snapshot}
-        onChange={applyLayout}
+        onChange={commit}
         onRemoveBlock={handleRemoveBlock}
-        onConfigChange={(id, patch) => applyLayout(updateBlockConfig(layoutRef.current, id, patch))}
+        onConfigChange={(id, patch) =>
+          commit(updateBlockConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
+        }
         highlightId={highlightId}
         renderTextBlock={(block: ReportBlock) =>
           block.type === 'text' ? (
             <TextBlockEditor
               key={block.id}
               block={block}
-              onTextChange={(id, json) => applyLayout(updateBlockText(layoutRef.current, id, json))}
+              onTextChange={(id, json) =>
+                commit(updateBlockText(layoutRef.current, id, json), `text:${id}`)
+              }
             />
           ) : (
             <AiPlaceholder key={block.id} />
@@ -166,9 +186,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        onReorder={(activeId, overId) =>
-          applyLayout(moveBlock(layoutRef.current, activeId, overId))
-        }
+        onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
         onLocate={highlightAndScroll}
         onAddAt={openWidgetDrawer}
         onAddEnd={() => openWidgetDrawer(null)}

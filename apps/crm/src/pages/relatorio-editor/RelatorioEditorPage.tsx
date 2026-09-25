@@ -24,6 +24,9 @@ import {
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { useBlockEditing } from './useBlockEditing';
+import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
+import { UndoRedoButtons } from './UndoRedoButtons';
+import { useStuckHeader } from './useStuckHeader';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
@@ -50,6 +53,9 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   // de um render anterior e aplicaria updates sobre estado obsoleto.
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  const history = useLayoutHistory(layout, applyLayout);
+  const commit = history.commit;
+  const { sentinelRef, headerRef, stuck } = useStuckHeader();
 
   const {
     drawerOpen,
@@ -59,7 +65,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     openWidgetDrawer,
     handleInsert,
     handleRemoveBlock,
-  } = useBlockEditing(layoutRef, applyLayout);
+  } = useBlockEditing(layoutRef, commit);
 
   const [saveTplOpen, setSaveTplOpen] = useState(false);
   const [applyTplOpen, setApplyTplOpen] = useState(false);
@@ -130,7 +136,11 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   // painel de camadas.
   return (
     <div className="rb-editor-with-rail">
+      <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
       <header
+        ref={headerRef}
+        className="rb-editor-header"
+        data-stuck={stuck || undefined}
         style={{
           maxWidth: 880,
           margin: '0 auto 1.25rem',
@@ -165,7 +175,13 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             )}
           </p>
         </div>
-        <AppearancePopover layout={layout} snapshot={snapshot} onChange={applyLayout} />
+        <UndoRedoButtons
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
+          onUndo={history.undo}
+          onRedo={history.redo}
+        />
+        <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
         <Button size="sm" onClick={() => openWidgetDrawer(null)}>
           <Plus className="h-3.5 w-3.5" /> Adicionar widget
         </Button>
@@ -200,15 +216,19 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <EditorCanvas
         layout={layout}
         snapshot={snapshot}
-        onChange={applyLayout}
+        onChange={commit}
         onRemoveBlock={handleRemoveBlock}
-        onConfigChange={(id, patch) => applyLayout(updateBlockConfig(layoutRef.current, id, patch))}
+        onConfigChange={(id, patch) =>
+          commit(updateBlockConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
+        }
         highlightId={highlightId}
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor
             key={block.id}
             block={block}
-            onTextChange={(id, json) => applyLayout(updateBlockText(layoutRef.current, id, json))}
+            onTextChange={(id, json) =>
+              commit(updateBlockText(layoutRef.current, id, json), `text:${id}`)
+            }
           />
         )}
       />
@@ -216,9 +236,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        onReorder={(activeId, overId) =>
-          applyLayout(moveBlock(layoutRef.current, activeId, overId))
-        }
+        onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
         onLocate={highlightAndScroll}
         onAddAt={openWidgetDrawer}
         onAddEnd={() => openWidgetDrawer(null)}
@@ -234,7 +252,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         open={applyTplOpen}
         onOpenChange={setApplyTplOpen}
         onApply={(tpl) => {
-          applyLayout(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
+          commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
           toast.success('Template aplicado.');
         }}
       />

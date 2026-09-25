@@ -14,7 +14,8 @@ import { setLayoutAccent, setLayoutFonts } from './layoutOps';
 export interface AppearancePopoverProps {
   layout: ReportLayout;
   snapshot: ReportDocSnapshot;
-  onChange: (next: ReportLayout) => void;
+  /** coalesceKey: um arraste do seletor de cor inteiro vira um passo só no desfazer. */
+  onChange: (next: ReportLayout, coalesceKey?: string) => void;
 }
 
 export function AppearancePopover({ layout, snapshot, onChange }: AppearancePopoverProps) {
@@ -52,7 +53,7 @@ export function AppearancePopover({ layout, snapshot, onChange }: AppearancePopo
         <div className="rb-appearance-accent">
           <ColorPicker
             value={layout.accent ?? snapshot.branding.accent_color}
-            onChange={(hex) => onChange(setLayoutAccent(layout, hex))}
+            onChange={(hex, opts) => onChange(setLayoutAccent(layout, hex), opts?.coalesceKey)}
             brandColors={[snapshot.branding.accent_color]}
             allowAlpha={false}
             label="Cor de destaque"
