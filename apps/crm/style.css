@@ -13015,6 +13015,33 @@ a.hub-fill__row-inner:hover {
 .rb-editor-with-rail {
   padding: 1.5rem;
 }
+/* Cabeçalho do editor (título, desfazer/refazer, Aparência, Adicionar widget)
+   fixo no topo enquanto o canvas rola. Quem rola é o .main-content
+   (overflow-y: auto), então sticky funciona aqui apesar do overflow-x do
+   #root. Ele para logo abaixo do padding-top do .main-content (que muda por
+   breakpoint); o ::before pinta essa faixa para o canvas não aparecer rolando
+   por cima do cabeçalho. Abaixo de 769px o cabeçalho quebra em várias linhas
+   e ocuparia metade da tela: lá ele rola junto. */
+@media (min-width: 769px) {
+  .rb-editor-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg-color);
+    padding: 0.75rem 0;
+    box-shadow: 0 1px 0 var(--border-color);
+  }
+  .rb-editor-header::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: 3rem;
+    background: var(--bg-color);
+    pointer-events: none;
+  }
+}
 @media (min-width: 1280px) {
   .rb-layers-rail {
     display: block;

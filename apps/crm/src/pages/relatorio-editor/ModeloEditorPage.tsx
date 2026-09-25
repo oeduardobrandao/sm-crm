@@ -76,6 +76,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
   return (
     <div className="rb-editor-with-rail">
       <header
+        className="rb-editor-header"
         style={{
           maxWidth: 880,
           margin: '0 auto 1rem',
