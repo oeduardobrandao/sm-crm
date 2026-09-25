@@ -1,7 +1,7 @@
 // Editor de modelo (spec 2026-09-25 §2): o mesmo canvas do relatório, com
 // dados de exemplo e a marca real do workspace, gravando em report_templates.
 // Sem PDF, atualizar dados, ver como cliente ou salvar/aplicar template.
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Info, Plus, Sparkles } from 'lucide-react';
@@ -73,6 +73,12 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     { layout: normalizeCoverSize(template.layout), title: template.name },
     TEMPLATE_AUTOSAVE_TARGET,
   );
+  // F1 (revisão final): templateAutosave pula a gravação no banco quando o
+  // título vem em branco (name é NOT NULL), mas o hook ainda otimiza o cache
+  // com o valor em branco. Um draft local, só sincronizado com o hook quando
+  // não-vazio, garante que `setTitle` nunca recebe '' -- o guard do target
+  // fica só como defesa-em-profundidade.
+  const [draftName, setDraftName] = useState(title);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const {
@@ -105,8 +111,15 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         <div style={{ flex: 1, minWidth: 220 }}>
           <input
             aria-label="Nome do modelo"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            value={draftName}
+            onChange={(e) => {
+              const next = e.target.value;
+              setDraftName(next);
+              if (next.trim()) setTitle(next);
+            }}
+            onBlur={() => {
+              if (!draftName.trim()) setDraftName(title);
+            }}
             style={{
               width: '100%',
               border: 'none',
@@ -190,7 +203,11 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
 
 export default function ModeloEditorPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: template, isLoading } = useQuery({
+  const {
+    data: template,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['report-template', id],
     queryFn: () => getReportTemplate(id!),
     enabled: Boolean(id),
@@ -203,6 +220,18 @@ export default function ModeloEditorPage() {
     return (
       <div style={{ display: 'grid', placeItems: 'center', minHeight: '50vh' }}>
         <Spinner />
+      </div>
+    );
+  }
+
+  // F5 (revisão final): getReportTemplate falhar (rede, RLS, etc.) não é o
+  // mesmo caso de um id que simplesmente não existe -- a cópia tem que dizer
+  // qual dos dois aconteceu.
+  if (isError) {
+    return (
+      <div style={{ padding: '2rem' }}>
+        <p style={{ color: 'var(--text-muted)' }}>Não foi possível carregar o modelo.</p>
+        <Link to={SETTINGS_PATH}>Voltar para os modelos</Link>
       </div>
     );
   }
