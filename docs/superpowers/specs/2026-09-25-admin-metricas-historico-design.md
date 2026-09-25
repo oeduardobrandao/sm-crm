@@ -198,6 +198,16 @@ MRR). MRR = soma de `monthly_cents` dos pagantes.
 Cada linha cai em uma de três classes: **pagante** (`active` com valor positivo),
 **inadimplente** (`past_due`) e **fora** (sem linha, `active` sem preço, `trialing`,
 `canceled`, `unpaid`, `incomplete` ou qualquer outro status).
+
+**Exceção da troca em andamento:** uma linha Pagar.me `trialing` com `provider_switch=true` e
+valor positivo conta como **pagante**. Na troca Stripe → Pagar.me o espelho passa a ser a linha
+Pagar.me em `trialing` (`pagarme-checkout/logic.ts`) enquanto o cliente continua pagando a Stripe
+até o fim do período; sem a exceção, um fechamento no meio da troca gravaria Churn e, no mês
+seguinte, Novo. Durante essa janela o marcador ainda existe (o `billing-downgrade-cron` só o limpa
+depois do cancelamento na Stripe), então a regra é confiável. Consequência conhecida: nesse
+intervalo o gráfico conta o workspace e o tile de MRR ao vivo não (o tile já subconta trocas hoje;
+corrigir o tile está fora do escopo). No backfill, a precedência "vence o Pagar.me com
+`provider_switch=true`" produz exatamente essa linha.
 A tabela cobre as nove combinações, então toda transição tem categoria:
 
 | Anterior | Atual | Categoria |
@@ -322,7 +332,8 @@ Ordem (merge implanta o frontend na hora):
 4. Backfill em prod pelo botão.
 
 Âncoras:
-- Disparo manual do cron e, logo em seguida, o tile de MRR: mesmo valor. A comparação só vale
+- Disparo manual do cron e, logo em seguida, o tile de MRR: mesmo valor, salvo workspaces no meio
+  de uma troca de provedor (ver exceção no §4). A comparação só vale
   nesse instante; depois disso o tile é ao vivo e o snapshot é o estado das 23:47, e uma
   diferença é legítima.
 - Um mês backfilled == MRR do dashboard da Stripe naquele mês, dentro do arredondamento e dos
