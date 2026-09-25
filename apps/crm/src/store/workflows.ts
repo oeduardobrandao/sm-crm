@@ -47,39 +47,47 @@ export async function addWorkflowTemplate(
   return data;
 }
 
-export async function updateWorkflowTemplate(
-  id: number,
-  t: Partial<Omit<WorkflowTemplate, 'id' | 'user_id' | 'conta_id'>>,
-): Promise<WorkflowTemplate> {
-  const { data, error } = await supabase
-    .from('workflow_templates')
-    .update(t)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
 export async function removeWorkflowTemplate(id: number): Promise<void> {
   const { error } = await supabase.from('workflow_templates').delete().eq('id', id);
   if (error) throw error;
 }
 
+const TEMPLATE_SAVE_ERRORS: Record<string, string> = {
+  template_invalid:
+    'Revise as etapas do template: cada etapa precisa de nome e prazo inteiro entre 0 e 999.',
+  invalid_responsavel: 'Um dos responsáveis não faz mais parte da equipe.',
+  template_not_found: 'Template não encontrado.',
+};
+
+export function mapTemplateSaveError(message: string): string {
+  for (const [code, friendly] of Object.entries(TEMPLATE_SAVE_ERRORS)) {
+    if (message.includes(code)) return friendly;
+  }
+  return 'Erro ao salvar template.';
+}
+
 /**
- * Propagate template step changes to `pendente`/`ativo` workflow_etapas of active workflows
- * using this template, and backfill (as `pendente`) any template step whose `ordem` has no
- * workflow_etapas row yet — appending a new step to a template reaches workflows created
- * before the edit. Server-side now — see `propagate_template_to_workflows` in
- * supabase/migrations/20260828000010_propagate_template_backfill_new_steps.sql for the full
- * behavioral spec (it reads the template's `etapas` jsonb directly, so the caller no longer
- * passes it).
+ * Saves a template and propagates it to active fluxos in one transaction via the
+ * `update_workflow_template` RPC (supabase/migrations/20260925130001_template_propagation_preserve_overrides.sql).
+ * Per field, a fluxo etapa only follows the template when its value still matches the
+ * template's previous value; values customized on the fluxo are kept. Steps the fluxo
+ * doesn't have yet are appended as `pendente`.
  */
-export async function propagateTemplateToWorkflows(templateId: number): Promise<void> {
-  const { error } = await supabase.rpc('propagate_template_to_workflows', {
-    p_template_id: templateId,
+export async function saveWorkflowTemplate(
+  id: number,
+  t: {
+    nome: string;
+    etapas: WorkflowTemplateEtapa[];
+    modo_prazo: 'padrao' | 'data_fixa' | 'data_entrega';
+  },
+): Promise<void> {
+  const { error } = await supabase.rpc('update_workflow_template', {
+    p_template_id: id,
+    p_nome: t.nome,
+    p_etapas: t.etapas,
+    p_modo_prazo: t.modo_prazo,
   });
-  if (error) throw error;
+  if (error) throw new Error(mapTemplateSaveError(error.message));
 }
 
 // =============================================
