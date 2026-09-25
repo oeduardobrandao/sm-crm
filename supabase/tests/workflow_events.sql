@@ -22,20 +22,22 @@
 --       referenciado nao pertence ao tenant do workflow
 --   (l) integracao com migrate_workflow_template: exatamente 1 evento 'template_migrado'
 --       por chamada (nenhum ruido de trigger de linha vaza)
---   (m) integracao com propagate_template_to_workflows: 1 'template_propagado' por
---       workflow tocado (nao por etapa); etapa concluida intocada; tipo so sincroniza em
---       'pendente'; fluxo de outro tenant com template_id coincidente nao e tocado;
---       backfill: ordens do template sem linha no fluxo sao inseridas como 'pendente'
---       (nome/prazo/tipo copiados, data_limite/iniciado_em/concluido_em NULL) e contam
---       em metadata.etapas_criadas
+--   (m) integracao com update_workflow_template (save + propagacao com merge por campo):
+--       1 'template_propagado' por workflow tocado (nao por etapa); etapa concluida
+--       intocada; tipo so sincroniza em 'pendente'; fluxo de outro tenant com
+--       template_id coincidente nao e tocado; backfill: ordens do template sem linha
+--       no fluxo sao inseridas como 'pendente' (nome/prazo/tipo copiados,
+--       data_limite/iniciado_em/concluido_em NULL) e contam em metadata.etapas_criadas
 --   (n) backfill puro: fluxo cuja unica etapa e 'concluido' recebe SO as ordens que
 --       faltam (a concluida nunca duplica), emite evento mesmo com 0 updates
 --       (etapas_atualizadas=0, etapas_criadas>0); tipo_prazo/tipo ausentes no jsonb
 --       caem nos defaults 'corridos'/'padrao'; segunda chamada nao insere de novo
---       (idempotente por ordem)
+--       (idempotente por ordem) e, sem nada a inserir, nao emite evento novo; o RPC
+--       antigo propagate_template_to_workflows agora e so-backfill e nunca sobrescreve
+--       etapa existente
 --
--- Estrutural: tanto migrate_workflow_template quanto propagate_template_to_workflows
--- fazem set_config('app.suppress_workflow_events', '1', true) e NUNCA resetam para '0'
+-- Estrutural: migrate_workflow_template, update_workflow_template e
+-- propagate_template_to_workflows fazem set_config('app.suppress_workflow_events', '1', true) e NUNCA resetam para '0'
 -- antes de retornar. Este arquivo usa um unico bloco begin/rollback (como
 -- migrate_workflow_template.sql) e reseta a GUC explicitamente para '0' logo apos cada
 -- chamada de RPC, antes de qualquer asserção subsequente que dependa do disparo normal
@@ -75,6 +77,7 @@ declare
   v_wf_poison_prop bigint; v_etapa_poison_prop bigint;
 
   v_tpl_n bigint; v_wf_n bigint; v_etapa_n_concl bigint;
+  v_wf_n2 bigint; v_etapa_n2 bigint;
 
   v_snap_concl_nome text; v_snap_concl_prazo int; v_snap_concl_tp text; v_snap_concl_tipo text;
   v_snap_concl_resp bigint; v_snap_concl_status text;
@@ -511,11 +514,12 @@ begin
   insert into workflow_templates (conta_id, user_id, nome, etapas, modo_prazo)
     values (v_ws, v_owner, 'Template M', '[]'::jsonb, 'padrao') returning id into v_tpl_m;
 
-  -- "edita" o template depois de criado, como o brief pede
+  -- template "antigo" = os valores que os fluxos ja tem (herdados); o save via
+  -- update_workflow_template abaixo troca para T0/T1/T2, e so valor herdado segue.
   update workflow_templates set etapas = jsonb_build_array(
-    jsonb_build_object('nome', 'T0', 'prazo_dias', 3, 'tipo_prazo', 'corridos', 'responsavel_id', null, 'tipo', 'aprovacao_cliente'),
-    jsonb_build_object('nome', 'T1', 'prazo_dias', 4, 'tipo_prazo', 'uteis', 'responsavel_id', null, 'tipo', 'padrao'),
-    jsonb_build_object('nome', 'T2', 'prazo_dias', 5, 'tipo_prazo', 'uteis', 'responsavel_id', null, 'tipo', 'padrao')
+    jsonb_build_object('nome', 'Old0', 'prazo_dias', 1, 'tipo_prazo', 'uteis', 'responsavel_id', null, 'tipo', 'padrao'),
+    jsonb_build_object('nome', 'Old1', 'prazo_dias', 1, 'tipo_prazo', 'uteis', 'responsavel_id', null, 'tipo', 'padrao'),
+    jsonb_build_object('nome', 'Old2', 'prazo_dias', 1, 'tipo_prazo', 'uteis', 'responsavel_id', null, 'tipo', 'padrao')
   ) where id = v_tpl_m;
 
   -- workflow com etapa pendente (tipo deve sincronizar)
@@ -531,7 +535,7 @@ begin
     values (v_ws, v_owner, v_cli1, 'Fluxo M Ativo', v_tpl_m, 'ativo', 0, false, 'padrao')
     returning id into v_wf_m_ativo;
   insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status, iniciado_em)
-    values (v_wf_m_ativo, 0, 'Old0b', 1, 'uteis', 'padrao', 'ativo', now())
+    values (v_wf_m_ativo, 0, 'Old0', 1, 'uteis', 'padrao', 'ativo', now())
     returning id into v_etapa_m_ativo;
 
   -- workflow com escada mista: concluido (intocavel) + duas pendentes (ambas devem sincronizar,
@@ -567,7 +571,11 @@ begin
     from workflow_etapas where id = v_etapa_poison_prop;
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
-  perform propagate_template_to_workflows(v_tpl_m);
+  perform update_workflow_template(v_tpl_m, 'Template M', jsonb_build_array(
+    jsonb_build_object('nome', 'T0', 'prazo_dias', 3, 'tipo_prazo', 'corridos', 'responsavel_id', null, 'tipo', 'aprovacao_cliente'),
+    jsonb_build_object('nome', 'T1', 'prazo_dias', 4, 'tipo_prazo', 'uteis', 'responsavel_id', null, 'tipo', 'padrao'),
+    jsonb_build_object('nome', 'T2', 'prazo_dias', 5, 'tipo_prazo', 'uteis', 'responsavel_id', null, 'tipo', 'padrao')
+  ), 'padrao');
   perform set_config('app.suppress_workflow_events', '0', true);
 
   -- (m-3) tipo sincroniza em 'pendente'
@@ -681,9 +689,21 @@ begin
     values (v_wf_n, 0, 'AntigaFinal', 1, 'uteis', 'padrao', 'concluido', '2026-02-01 10:00+00', '2026-02-02 10:00+00')
     returning id into v_etapa_n_concl;
 
+  -- fluxo com pendente customizada: o RPC antigo (so-backfill) nao pode sobrescrever
+  insert into workflows (conta_id, user_id, cliente_id, titulo, template_id, status, etapa_atual, recorrente, modo_prazo)
+    values (v_ws, v_owner, v_cli1, 'Fluxo N2 Custom', v_tpl_n, 'ativo', 0, false, 'padrao')
+    returning id into v_wf_n2;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, tipo_prazo, tipo, status)
+    values (v_wf_n2, 0, 'Custom', 9, 'corridos', 'padrao', 'pendente')
+    returning id into v_etapa_n2;
+
   perform set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
   perform propagate_template_to_workflows(v_tpl_n);
   perform set_config('app.suppress_workflow_events', '0', true);
+
+  select * into r from workflow_etapas where id = v_etapa_n2;
+  assert r.nome = 'Custom' and r.prazo_dias = 9 and r.tipo_prazo = 'corridos',
+    format('(n) RPC antigo e so-backfill: nao pode sobrescrever, veio %s/%s/%s', r.nome, r.prazo_dias, r.tipo_prazo);
 
   -- a concluida na ordem 0 conta como existente: nunca duplicar
   select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf_n and ordem = 0;
@@ -723,11 +743,11 @@ begin
 
   select count(*) into v_cnt from workflow_etapas where workflow_id = v_wf_n;
   assert v_cnt = 2, format('segunda propagacao nao pode inserir de novo (2 etapas), veio %s', v_cnt);
-  select metadata into v_meta from workflow_events
-    where workflow_id = v_wf_n and event_type = 'template_propagado'
-    order by id desc limit 1;
-  assert (v_meta->>'etapas_criadas')::int = 0,
-    format('segunda propagacao deve registrar etapas_criadas=0, veio %s', v_meta->>'etapas_criadas');
+
+  -- nada a inserir -> nada muda E nenhum evento novo (RPC so-backfill)
+  select count(*) into v_cnt from workflow_events
+    where workflow_id = v_wf_n and event_type = 'template_propagado';
+  assert v_cnt = 1, format('segunda propagacao sem nada a inserir nao emite evento novo, veio %s', v_cnt);
 
   raise notice 'PASS workflow_events';
 end $$;
