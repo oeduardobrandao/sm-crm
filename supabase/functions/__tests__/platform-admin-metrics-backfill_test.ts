@@ -1,6 +1,7 @@
 import { assertEquals } from "./assert.ts";
 import {
   type BackfillDeps,
+  defaultBackfillDeps,
   handleBackfillMetrics,
   listPagarmeSubscriptions,
   PAGARME_MAX_PAGES,
@@ -131,4 +132,23 @@ Deno.test("listPagarmeSubscriptions throws at the page cap instead of returning 
   }
   assertEquals(threw, true);
   assertEquals(calls, PAGARME_MAX_PAGES);
+});
+
+Deno.test("defaultBackfillDeps: the 403 guard runs before any client or network call", async () => {
+  const prevAllowed = Deno.env.get("METRICS_BACKFILL_ALLOWED");
+  const realFetch = globalThis.fetch;
+  let fetched = 0;
+  globalThis.fetch = (() => {
+    fetched++;
+    return Promise.reject(new Error("no network in this test"));
+  }) as typeof fetch;
+  try {
+    Deno.env.delete("METRICS_BACKFILL_ALLOWED");
+    const res = await handleBackfillMetrics(H, defaultBackfillDeps());
+    assertEquals(res.status, 403);
+    assertEquals(fetched, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevAllowed !== undefined) Deno.env.set("METRICS_BACKFILL_ALLOWED", prevAllowed);
+  }
 });

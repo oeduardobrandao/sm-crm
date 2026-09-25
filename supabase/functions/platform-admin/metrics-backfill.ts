@@ -2,7 +2,7 @@
 // Prod-only: prod and staging share one Stripe account, so the guard is enforced here, before
 // any remote or database call.
 
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { fetchAllRows } from "../_shared/paginate.ts";
 import { pagarmeFetch } from "../_shared/pagarme.ts";
 import { loadStripe } from "../_shared/stripe-loader.ts";
@@ -214,15 +214,38 @@ async function loadLocal(svc: SupabaseClient): Promise<BackfillLocal> {
   };
 }
 
-/** Lazy: nothing here runs until a dep is called, so the 403 guard precedes all I/O. */
-export function defaultBackfillDeps(svc: SupabaseClient): BackfillDeps {
+// Bounded global fetch: this handler writes durable history, and a stalled PostgREST call
+// (local reads, internal lookup, snapshot RPC) would otherwise hang until the edge runtime kills
+// the isolate, bypassing catch (documented repo failure mode). A timeout surfaces as a normal
+// throw instead. platform-admin's shared service client is unbounded, so the backfill uses its own.
+function boundedServiceClient(): SupabaseClient {
+  return createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+    global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, {
+          ...init,
+          signal: init?.signal
+            ? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
+            : AbortSignal.timeout(10_000),
+        }),
+    },
+  });
+}
+
+/**
+ * Lazy: nothing here runs until a dep is called (the bounded client is built on first use), so
+ * the 403 guard precedes all I/O.
+ */
+export function defaultBackfillDeps(): BackfillDeps {
+  let client: SupabaseClient | null = null;
+  const db = () => (client ??= boundedServiceClient());
   return {
     allowed: Deno.env.get("METRICS_BACKFILL_ALLOWED") === "true",
     now: () => new Date(),
-    loadLocal: () => loadLocal(svc),
-    loadInternalIds: () => fetchInternalWorkspaceIdsOrThrow(svc),
+    loadLocal: () => loadLocal(db()),
+    loadInternalIds: () => fetchInternalWorkspaceIdsOrThrow(db()),
     listStripeSubs: listStripeSubscriptions,
     listPagarmeSubs: () => listPagarmeSubscriptions(),
-    write: (date, rows) => writeSnapshot(svc, date, "backfill", rows),
+    write: (date, rows) => writeSnapshot(db(), date, "backfill", rows),
   };
 }

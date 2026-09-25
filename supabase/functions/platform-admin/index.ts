@@ -96,7 +96,7 @@ Deno.serve(async (req: Request) => {
       case "get-metrics-history":
         return await handleGetMetricsHistory(svc, headers);
       case "backfill-metrics":
-        return await handleBackfillMetrics(headers, defaultBackfillDeps(svc));
+        return await handleBackfillMetrics(headers, defaultBackfillDeps());
       case "create-plan":
         return await handleCreatePlan(svc, body, headers);
       case "update-plan":
