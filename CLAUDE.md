@@ -222,6 +222,11 @@ Monorepo with npm workspaces:
   página Métricas mostra "Não configurado" e o resto da página segue normal. Diferente
   por ambiente (recebedor live em prod, sandbox em staging). O cartão Stripe do mesmo
   painel usa `STRIPE_SECRET_KEY` (Balance, Payouts, Balance Transactions, Account)
+- `METRICS_BACKFILL_ALLOWED` -- `true` libera a ação `backfill-metrics` do platform-admin
+  (reconstrução do histórico de MRR/churn da página Métricas a partir da Stripe e do Pagar.me).
+  Só prod recebe: prod e staging compartilham a conta Stripe, e o handler responde 403 sem
+  nenhuma chamada remota quando a secret não é exatamente `true`. O snapshot diário é do
+  `metrics-snapshot-cron` (pg_cron `44 2 * * *` UTC = 23:44 em São Paulo), que não depende dela.
 - `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` -- TikTok Login Kit OAuth (tiktok-integration)
 - `TIKTOK_APP_AUDITED` -- unset until TikTok's Content Posting audit passes; while unset, scheduling enforces SELF_ONLY privacy
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)
