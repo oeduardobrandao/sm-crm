@@ -42,6 +42,12 @@ Deno.test("toSnapshotRows maps an unpriced row to amount_source 'unpriced' with 
   assertEquals(row.monthly_cents, 0);
 });
 
+Deno.test("toSnapshotRows keeps the real source for a resolved zero amount (100% coupon)", () => {
+  const [row] = toSnapshotRows([{ ...base, amount_cents: 0, amount_source: "stripe" }], new Set());
+  assertEquals(row.amount_source, "stripe");
+  assertEquals(row.monthly_cents, 0);
+});
+
 Deno.test("writeSnapshot calls the RPC and throws on error", async () => {
   const calls: unknown[] = [];
   const ok = {

@@ -116,6 +116,25 @@ Deno.test("buildBackfill: same-provider tie at equal start is deterministic rega
   }
 });
 
+Deno.test("buildBackfill: a resolved zero price is 'backfill' with 0 cents; only a missing price is 'unpriced'", () => {
+  const plan = buildBackfill({
+    stripe: [
+      stripeSub({ id: "sub_free", customer: "cus_1", amount_cents: 0 }),
+      stripeSub({ id: "sub_none", customer: "cus_3", amount_cents: null }),
+    ],
+    pagarme: [pagarmeSub({ interval: "month", price_cents: null, created_at: "2026-06-10T12:00:00Z", start_at: "2026-06-10T12:00:00Z" })],
+    local: local({ customerToWorkspace: new Map([["cus_1", "w1"], ["cus_3", "w3"]]) }),
+    internalIds: new Set(),
+    todaySP: "2026-07-25",
+  });
+  const jun = plan.dates.find((d) => d.date === "2026-06-30")!;
+  const by = new Map(jun.rows.map((r) => [r.workspace_id, r]));
+  assertEquals([by.get("w1")!.amount_source, by.get("w1")!.monthly_cents], ["backfill", 0]);
+  assertEquals([by.get("w3")!.amount_source, by.get("w3")!.monthly_cents], ["unpriced", 0]);
+  // Pagar.me monthly with no price: the annual catalog price does not apply -> unpriced.
+  assertEquals([by.get("w2")!.amount_source, by.get("w2")!.monthly_cents], ["unpriced", 0]);
+});
+
 Deno.test("buildBackfill: skips incomplete Stripe subs, internal workspaces, and counts unmapped", () => {
   const plan = buildBackfill({
     stripe: [

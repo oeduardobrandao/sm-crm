@@ -109,6 +109,8 @@ interface Candidate {
   plan_name: string | null;
   billing_interval: string | null;
   monthly_cents: number;
+  /** A price was resolved (possibly 0, e.g. a 100% coupon). False -> `unpriced`. */
+  priced: boolean;
 }
 
 export function buildBackfill(input: {
@@ -143,6 +145,7 @@ export function buildBackfill(input: {
       plan_name: planName(resolved?.plan_id ?? null),
       billing_interval: interval,
       monthly_cents: toMonthlyCents(interval, s.amount_cents) ?? 0,
+      priced: s.amount_cents != null,
     });
   }
 
@@ -169,6 +172,7 @@ export function buildBackfill(input: {
       plan_name: planName(s.metadata_plan_id),
       billing_interval: interval,
       monthly_cents: toMonthlyCents(interval, price) ?? 0,
+      priced: price != null,
     });
   }
 
@@ -205,7 +209,7 @@ export function buildBackfill(input: {
         status: pick.status,
         billing_interval: pick.c.billing_interval,
         monthly_cents: pick.c.monthly_cents,
-        amount_source: pick.c.monthly_cents > 0 ? "backfill" : "unpriced",
+        amount_source: pick.c.priced ? "backfill" : "unpriced",
         provider_switch: pagarme.length > 0 && hasStripe,
       });
     }

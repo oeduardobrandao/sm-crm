@@ -38,7 +38,9 @@ export function toSnapshotRows(
   return priced
     .filter((r) => !!r.status && !internalIds.has(r.workspace_id))
     .map((r) => {
-      const monthly = toMonthlyCents(r.interval, r.amount_cents);
+      // `unpriced` only when pricing resolved nothing. A real zero amount (a 100% coupon) keeps
+      // its source with 0 cents, so it classifies as not paying instead of inheriting the
+      // previous close's value in the history read.
       return {
         workspace_id: r.workspace_id,
         provider: r.provider === "pagarme" ? "pagarme" : "stripe",
@@ -46,8 +48,8 @@ export function toSnapshotRows(
         plan_name: r.plan_name,
         status: r.status as string,
         billing_interval: r.interval,
-        monthly_cents: monthly ?? 0,
-        amount_source: monthly == null ? "unpriced" : (r.amount_source ?? "unpriced"),
+        monthly_cents: toMonthlyCents(r.interval, r.amount_cents) ?? 0,
+        amount_source: r.amount_cents == null || r.amount_source == null ? "unpriced" : r.amount_source,
         provider_switch: !!r.switched_from_stripe_subscription_id,
       };
     });

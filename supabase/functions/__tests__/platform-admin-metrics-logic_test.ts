@@ -191,6 +191,24 @@ Deno.test("buildMonths: an unpriced active row inherits the previous close's row
   assertEquals(months[2].churn?.lost_cents, 0);
 });
 
+Deno.test("buildMonths: a resolved zero amount (not unpriced) after a paying close is Churn, not inherited", () => {
+  const months = buildMonths(
+    [
+      { month: "2026-07", close_date: "2026-07-31", source: "cron", closed: true },
+      { month: "2026-08", close_date: "2026-08-31", source: "cron", closed: true },
+    ],
+    new Map([
+      ["2026-07-31", [row({ workspace_id: "a", snapshot_date: "2026-07-31", monthly_cents: 10000, amount_source: "stripe" })]],
+      ["2026-08-31", [row({ workspace_id: "a", snapshot_date: "2026-08-31", monthly_cents: 0, amount_source: "stripe" })]],
+    ]),
+  );
+  assertEquals(months[1].mrr_cents, 0);
+  assertEquals(months[1].paying_count, 0);
+  assertEquals(months[1].movements?.churn, -10000);
+  assertEquals(months[1].churn?.logos, 1);
+  assertEquals(months[1].churn?.lost_cents, 10000);
+});
+
 Deno.test("buildMonths: two consecutive unpriced closes chain-inherit the same value", () => {
   const closes = [
     { month: "2026-06", close_date: "2026-06-30", source: "cron" as const, closed: true },
