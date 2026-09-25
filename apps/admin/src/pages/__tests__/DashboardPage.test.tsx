@@ -113,7 +113,7 @@ function renderPage() {
 
 /** The KPI card element whose label text is `label` (labels are <p>; table headers are <span>). */
 function kpiCard(label: string): HTMLElement {
-  return screen.getByText(label, { selector: 'p' }).closest('div')!;
+  return screen.getByText(label, { selector: 'p' }).closest('[data-testid="kpi-card"]')!;
 }
 
 describe('DashboardPage per-card loading', () => {
@@ -305,5 +305,23 @@ describe('DashboardPage at-risk card', () => {
     expect(kpiCard('Em risco').textContent).toContain('—');
     expect(kpiCard('Em risco').textContent).not.toMatch(/\b0 testes vencendo/);
     consoleErrorSpy.mockRestore();
+  });
+});
+
+describe('DashboardPage tile links', () => {
+  it('links the MRR, Pagantes and MRR projetado tiles to the Métricas MRR section', async () => {
+    renderPage();
+    const links = await screen.findAllByRole('link');
+    const tiles = links.filter((a) => a.getAttribute('href') === '/admin/metricas#mrr');
+    expect(tiles).toHaveLength(3);
+    expect(within(tiles[0]).getByText('Pagantes')).toBeInTheDocument();
+    expect(within(tiles[1]).getByText('MRR', { selector: 'p' })).toBeInTheDocument();
+    expect(within(tiles[2]).getByText('MRR projetado')).toBeInTheDocument();
+    expect(
+      links.some(
+        (a) =>
+          a.getAttribute('href') === '/admin/metricas#mrr' && within(a).queryByText('Workspaces'),
+      ),
+    ).toBe(false);
   });
 });
