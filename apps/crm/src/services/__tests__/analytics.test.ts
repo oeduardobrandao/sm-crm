@@ -148,14 +148,6 @@ describe('analytics service', () => {
       },
       {
         data: [
-          { instagram_account_id: 10, posted_at: '2026-04-12T10:00:00.000Z' },
-          { instagram_account_id: 10, posted_at: '2026-04-10T10:00:00.000Z' },
-          { instagram_account_id: 20, posted_at: '2026-04-11T10:00:00.000Z' },
-        ],
-        error: null,
-      },
-      {
-        data: [
           {
             id: 1,
             instagram_account_id: 10,
@@ -186,6 +178,13 @@ describe('analytics service', () => {
         error: null,
       },
     );
+    mockedSupabase.__queueSupabaseResult('instagram_account_last_post', 'select', {
+      data: [
+        { instagram_account_id: 10, last_post_at: '2026-04-12T10:00:00.000Z' },
+        { instagram_account_id: 20, last_post_at: '2026-04-11T10:00:00.000Z' },
+      ],
+      error: null,
+    });
     mockedSupabase.__queueSupabaseResult('instagram_follower_history', 'select', {
       data: [
         { instagram_account_id: 10, date: '2026-03-20', follower_count: 2300 },
@@ -217,6 +216,15 @@ describe('analytics service', () => {
       client_name: 'Clínica Aurora',
       username: 'clinicaaurora',
       posts_last_30d: 2,
+      last_post_at: '2026-04-12T10:00:00.000Z',
+    });
+
+    // Latest post per account comes from the aggregate view, never from an
+    // unbounded instagram_posts fetch (PostgREST caps those at 1000 rows).
+    const lastPostCall = getLastCall('instagram_account_last_post');
+    expect(lastPostCall.modifiers).toContainEqual({
+      method: 'in',
+      args: ['instagram_account_id', [10, 20]],
     });
 
     const igCall = getLastCall('instagram_accounts');
@@ -492,7 +500,10 @@ describe('analytics service', () => {
       data: [],
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', { data: [], error: null }); // latestPosts
+    mockedSupabase.__queueSupabaseResult('instagram_account_last_post', 'select', {
+      data: [],
+      error: null,
+    }); // latestPosts
     mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', {
       data: [
         {

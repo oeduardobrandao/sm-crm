@@ -697,19 +697,18 @@ Deno.serve(async (req) => {
         return json({ accounts: [], summary: { total: clients.length, connected: 0, growing: 0, stagnant: 0, declining: 0 } });
       }
 
-      // Get latest post date per account
+      // Get latest post date per account from the aggregate view (one row per
+      // account). Fetching every instagram_posts row was silently capped at
+      // PostgREST's 1000 rows in large workspaces, losing idle accounts' last post.
       const accountIds = igAccounts.map((a: any) => a.id);
       const { data: latestPosts } = await serviceClient
-        .from('instagram_posts')
-        .select('instagram_account_id, posted_at')
-        .in('instagram_account_id', accountIds)
-        .order('posted_at', { ascending: false });
+        .from('instagram_account_last_post')
+        .select('instagram_account_id, last_post_at')
+        .in('instagram_account_id', accountIds);
 
       const latestPostMap: Record<number, string> = {};
       for (const p of (latestPosts || [])) {
-        if (!latestPostMap[p.instagram_account_id]) {
-          latestPostMap[p.instagram_account_id] = p.posted_at;
-        }
+        if (p.last_post_at) latestPostMap[p.instagram_account_id] = p.last_post_at;
       }
 
       // Get post counts in last 30 days per account
