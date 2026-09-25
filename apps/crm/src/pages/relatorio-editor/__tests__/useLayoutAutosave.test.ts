@@ -789,4 +789,58 @@ describe('useLayoutAutosave', () => {
       expect(event.defaultPrevented).toBe(false);
     });
   });
+
+  it('target customizado: salva por ele, escreve no cacheKey dele e usa o titleField dele', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const target = {
+      save,
+      cacheKey: (id: string) => ['report-template', id],
+      titleField: 'name' as const,
+      errorMessage: 'Erro ao salvar o modelo',
+    };
+    qc.setQueryData(['report-template', 'tpl-1'], {
+      id: 'tpl-1',
+      name: 'Velho',
+      layout: baseLayout,
+    });
+    const { result } = renderHook(
+      () => useLayoutAutosave('tpl-1', { layout: baseLayout, title: 'Velho' }, target),
+      { wrapper },
+    );
+    const next: ReportLayout = { ...baseLayout, accent: '#0f766e' };
+    act(() => result.current.applyLayout(next));
+    act(() => result.current.setTitle('Novo'));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledWith('tpl-1', { layout: next });
+    expect(save).toHaveBeenCalledWith('tpl-1', { title: 'Novo' });
+    expect(qc.getQueryData(['report-template', 'tpl-1'])).toMatchObject({
+      name: 'Novo',
+      layout: next,
+    });
+  });
+
+  it('target customizado: falha usa a mensagem de erro dele', async () => {
+    const target = {
+      save: vi.fn().mockRejectedValue(new Error('x')),
+      cacheKey: (id: string) => ['report-template', id],
+      titleField: 'name' as const,
+      errorMessage: 'Erro ao salvar o modelo',
+    };
+    const { result } = renderHook(
+      () => useLayoutAutosave('tpl-1', { layout: baseLayout, title: 'T' }, target),
+      { wrapper },
+    );
+    act(() => result.current.applyLayout({ ...baseLayout, accent: '#111111' }));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o modelo', expect.anything());
+  });
 });
