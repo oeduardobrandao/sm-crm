@@ -24,6 +24,8 @@ import {
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { useBlockEditing } from './useBlockEditing';
+import { useLayoutHistory } from './useLayoutHistory';
+import { UndoRedoButtons } from './UndoRedoButtons';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
@@ -50,6 +52,8 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   // de um render anterior e aplicaria updates sobre estado obsoleto.
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  const history = useLayoutHistory(layout, applyLayout);
+  const commit = history.commit;
 
   const {
     drawerOpen,
@@ -59,7 +63,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     openWidgetDrawer,
     handleInsert,
     handleRemoveBlock,
-  } = useBlockEditing(layoutRef, applyLayout);
+  } = useBlockEditing(layoutRef, commit);
 
   const [saveTplOpen, setSaveTplOpen] = useState(false);
   const [applyTplOpen, setApplyTplOpen] = useState(false);
@@ -165,7 +169,13 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             )}
           </p>
         </div>
-        <AppearancePopover layout={layout} snapshot={snapshot} onChange={applyLayout} />
+        <UndoRedoButtons
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
+          onUndo={history.undo}
+          onRedo={history.redo}
+        />
+        <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
         <Button size="sm" onClick={() => openWidgetDrawer(null)}>
           <Plus className="h-3.5 w-3.5" /> Adicionar widget
         </Button>
@@ -200,15 +210,19 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <EditorCanvas
         layout={layout}
         snapshot={snapshot}
-        onChange={applyLayout}
+        onChange={commit}
         onRemoveBlock={handleRemoveBlock}
-        onConfigChange={(id, patch) => applyLayout(updateBlockConfig(layoutRef.current, id, patch))}
+        onConfigChange={(id, patch) =>
+          commit(updateBlockConfig(layoutRef.current, id, patch), `config:${id}`)
+        }
         highlightId={highlightId}
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor
             key={block.id}
             block={block}
-            onTextChange={(id, json) => applyLayout(updateBlockText(layoutRef.current, id, json))}
+            onTextChange={(id, json) =>
+              commit(updateBlockText(layoutRef.current, id, json), `text:${id}`)
+            }
           />
         )}
       />
@@ -216,9 +230,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <LayersPanel
         layout={layout}
         highlightId={highlightId}
-        onReorder={(activeId, overId) =>
-          applyLayout(moveBlock(layoutRef.current, activeId, overId))
-        }
+        onReorder={(activeId, overId) => commit(moveBlock(layoutRef.current, activeId, overId))}
         onLocate={highlightAndScroll}
         onAddAt={openWidgetDrawer}
         onAddEnd={() => openWidgetDrawer(null)}
@@ -234,7 +246,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
         open={applyTplOpen}
         onOpenChange={setApplyTplOpen}
         onApply={(tpl) => {
-          applyLayout(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
+          commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
           toast.success('Template aplicado.');
         }}
       />

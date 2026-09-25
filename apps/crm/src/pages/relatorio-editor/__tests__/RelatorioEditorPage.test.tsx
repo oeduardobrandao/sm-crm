@@ -214,6 +214,32 @@ describe('RelatorioEditorPage (editor)', () => {
     });
   });
 
+  it('botões Desfazer/Refazer do cabeçalho percorrem as edições de layout', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const ids = () =>
+      [...document.querySelectorAll('[data-block-id]')].map((el) =>
+        el.getAttribute('data-block-id'),
+      );
+    const undo = screen.getByRole('button', { name: 'Desfazer' });
+    const redo = screen.getByRole('button', { name: 'Refazer' });
+    expect(undo).toBeDisabled();
+    expect(redo).toBeDisabled();
+
+    fireEvent.click(screen.getAllByLabelText('Excluir bloco')[1]);
+    expect(ids()).toEqual(['a']);
+    expect(undo).toBeEnabled();
+
+    fireEvent.click(undo);
+    expect(ids()).toEqual(['a', 'b']);
+    expect(undo).toBeDisabled();
+    expect(redo).toBeEnabled();
+
+    fireEvent.click(redo);
+    expect(ids()).toEqual(['a']);
+  });
+
   it('Adicionar widget insere no fim e destaca', async () => {
     getReportDocMock.mockResolvedValue(doc());
     renderPage();
