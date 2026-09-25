@@ -37,7 +37,7 @@
 | `supabase/functions/_shared/stripe-amount.ts` (modify) | extract pure `stripeAmountFromSubscription` |
 | `supabase/functions/_shared/internal-workspaces.ts` (modify) | add fail-closed `fetchInternalWorkspaceIdsOrThrow` |
 | `supabase/functions/_shared/metrics-snapshot.ts` (new) | `SnapshotRow` type, `toSnapshotRows`, `writeSnapshot` RPC wrapper |
-| `supabase/migrations/20260925120001_metrics_snapshots.sql` (new) | tables, RPC, grants, cron schedule |
+| `supabase/migrations/20260925130001_metrics_snapshots.sql` (new) | tables, RPC, grants, cron schedule |
 | `supabase/tests/metrics_snapshot_rpcs.sql` (new) | psql suite for the RPC |
 | `supabase/functions/metrics-snapshot-cron/{handler,index}.ts` (new) | cron function |
 | `supabase/functions/platform-admin/mrr.ts` (modify) | exclude internal workspaces |
@@ -323,7 +323,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: Migration (tables, write RPC, grants, schedule) + psql suite
 
 **Files:**
-- Create: `supabase/migrations/20260925120001_metrics_snapshots.sql`
+- Create: `supabase/migrations/20260925130001_metrics_snapshots.sql`
 - Create: `supabase/tests/metrics_snapshot_rpcs.sql`
 
 **Interfaces:**
@@ -331,7 +331,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Check the migration version is free**
 
-Run: `ls supabase/migrations | tail -3` — the new version `20260925120001` must be greater than the last one and unique. If `main` has moved past it, pick the next free `2026092512000N`.
+Run: `ls supabase/migrations | tail -3` — the new version `20260925130001` must be greater than the last one and unique. If `main` has moved past it, pick the next free `2026092513000N`.
 
 - [ ] **Step 2: Write the psql suite first** — `supabase/tests/metrics_snapshot_rpcs.sql`:
 
@@ -416,7 +416,7 @@ end $$;
 rollback;
 ```
 
-- [ ] **Step 3: Write the migration** — `supabase/migrations/20260925120001_metrics_snapshots.sql`:
+- [ ] **Step 3: Write the migration** — `supabase/migrations/20260925130001_metrics_snapshots.sql`:
 
 ```sql
 -- Admin Métricas, sub-projeto B (spec docs/superpowers/specs/2026-09-25-admin-metricas-historico-design.md).
@@ -554,7 +554,7 @@ Expected: exits 0 with no assertion errors. If no local Supabase is running (Doc
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260925120001_metrics_snapshots.sql supabase/tests/metrics_snapshot_rpcs.sql
+git add supabase/migrations/20260925130001_metrics_snapshots.sql supabase/tests/metrics_snapshot_rpcs.sql
 git commit -m "feat(metrics): tabelas de snapshot, marcador de conclusão, RPC atômico e agendamento do cron
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -727,7 +727,7 @@ Run: `deno test --no-check --node-modules-dir=auto --allow-env --allow-read --al
 
 ```ts
 // Shared shape of one admin-metrics snapshot row and the single writer through the
-// admin_metrics_write_snapshot RPC (migration 20260925120001). Used by metrics-snapshot-cron
+// admin_metrics_write_snapshot RPC (migration 20260925130001). Used by metrics-snapshot-cron
 // (daily close) and platform-admin backfill-metrics (month-end rebuild).
 
 import { toMonthlyCents } from "./billing-logic.ts";
