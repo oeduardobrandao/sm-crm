@@ -79,9 +79,19 @@ Grava o dia inteiro numa transação só:
 - `p_source = 'backfill'`: se já existe marcador `cron` na data, não grava nada e devolve
   `skipped`; senão faz o mesmo que acima com `source='backfill'`.
 
-Devolve `{ written, skipped }`. `revoke execute` de `public`, `anon` e `authenticated` nomeados
-explicitamente (ver memória `reference_supabase_revoke_public_strips_service_role`); só a service
-role chama.
+Devolve `{ written, skipped }`. Grants, exatamente nesta forma:
+
+```sql
+revoke all on function public.admin_metrics_write_snapshot(date, text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.admin_metrics_write_snapshot(date, text, jsonb)
+  to service_role;
+```
+
+Os papéis são nomeados porque no Supabase hospedado `anon` e `authenticated` recebem `execute`
+explícito na criação, e um `revoke ... from public` sozinho não os remove. O `grant` para
+`service_role` é obrigatório: sem ele o banco local e o do CI (que não têm o ACL padrão do
+hospedado) negam a chamada, e a function fica dependente de um grant implícito.
 
 ## 2. Cron `metrics-snapshot-cron`
 
