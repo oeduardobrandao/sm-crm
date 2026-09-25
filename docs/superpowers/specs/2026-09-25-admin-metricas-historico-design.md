@@ -44,7 +44,7 @@ só a service role lê e escreve.
 | `plan_id` | `text` null | mesmo tipo de `plans.id`; sem FK (plano apagado não pode quebrar o histórico) |
 | `plan_name` | `text` null | nome do plano no dia, pelo mesmo motivo |
 | `status` | `text` not null | status do provedor (`active`, `trialing`, `past_due`, `canceled`, ...) |
-| `interval` | `text` null | `month` / `year` |
+| `billing_interval` | `text` null | `month` / `year` (mesmo nome do espelho; `interval` é palavra-chave do Postgres) |
 | `monthly_cents` | `integer` not null default 0 | valor normalizado para mês, líquido de cupom |
 | `amount_source` | `text` not null | `stripe` / `pagarme` / `catalog` / `backfill` / `unpriced`: os três primeiros são o `amount_source` que `priceSubscriptionRows` já devolve (espelho ou leitura ao vivo aparecem pelo nome do provedor); `null` do helper vira `unpriced` com `monthly_cents = 0` |
 | `provider_switch` | `boolean` not null default false | informativo: o marcador de troca estava presente no dia. **A classificação não depende dele** (ver §4) |
@@ -73,7 +73,7 @@ falso. Um dia com marcador e zero linhas é um fechamento legítimo (ninguém co
 ### RPC `admin_metrics_write_snapshot(p_date date, p_source text, p_rows jsonb)`
 
 Grava o dia inteiro numa transação só:
-- `p_source = 'cron'`: apaga as linhas `source='cron'` daquela data, insere `p_rows` e faz upsert
+- `p_source = 'cron'`: apaga todas as linhas daquela data, insere `p_rows` e faz upsert
   do marcador. Rodar de novo no mesmo dia substitui o dia inteiro, inclusive removendo workspace
   que deixou de ter assinatura.
 - `p_source = 'backfill'`: se já existe marcador `cron` na data, não grava nada e devolve
@@ -100,10 +100,15 @@ Function nova, deploy com `--no-verify-jwt --use-api`.
 - Verifica `x-cron-secret` antes de qualquer trabalho; em falha, `reportCronFailure`
   (`_shared/triage.ts`).
 - Lê todas as linhas de `workspace_subscriptions` com `status` não nulo (paginado até o fim com
-  `fetchAllRows`, como o `get-mrr`), remove as de
-  `fetchInternalWorkspaceIds` (`_shared/internal-workspaces.ts`) e precifica com o mesmo
+  `fetchAllRows`, como o `get-mrr`), remove os workspaces `is_internal` e precifica com o mesmo
   `priceSubscriptionRows` de `platform-admin/pricing.ts`, registrando `setStripeLoader` igual ao
   `platform-admin/index.ts`. Com isso o MRR do snapshot do dia é o mesmo número do tile.
+- **A lista de internos falha fechada aqui.** O `fetchInternalWorkspaceIds` de
+  `_shared/internal-workspaces.ts` devolve conjunto vazio em erro (de propósito, para os crons de
+  sync); um snapshot gravado com um interno dentro polui o histórico para sempre. Por isso o cron
+  e o backfill usam uma variante nova, `fetchInternalWorkspaceIdsOrThrow`, que lança; a execução
+  aborta antes do RPC e nenhum marcador é gravado. O `get-mrr` / `get-trials` seguem com a
+  variante que falha aberta (são leitura ao vivo, nada fica gravado).
 - `monthly_cents` = `toMonthlyCents(interval, amount_cents)` do `_shared/billing-logic.ts`, o
   mesmo usado pelo `aggregateMrr`.
 - `provider_switch = switched_from_stripe_subscription_id is not null`. É só informativo: o
@@ -186,11 +191,13 @@ Ação admin somente leitura.
 
 ### Classificação por workspace entre o fechamento anterior e o atual
 
-"Pagante" = `status = 'active'` (mesmo `MRR_STATUSES` do `get-mrr`). MRR = soma de
-`monthly_cents` dos pagantes.
+"Pagante" = `status = 'active'` **e** `monthly_cents > 0`, a mesma elegibilidade do
+`aggregateMrr` do `get-mrr` (linha ativa sem preço resolvido não entra em `paying_count` nem no
+MRR). MRR = soma de `monthly_cents` dos pagantes.
 
-Cada linha cai em uma de três classes: **pagante** (`active`), **inadimplente** (`past_due`) e
-**fora** (sem linha, `trialing`, `canceled`, `unpaid`, `incomplete` ou qualquer outro status).
+Cada linha cai em uma de três classes: **pagante** (`active` com valor positivo),
+**inadimplente** (`past_due`) e **fora** (sem linha, `active` sem preço, `trialing`,
+`canceled`, `unpaid`, `incomplete` ou qualquer outro status).
 A tabela cobre as nove combinações, então toda transição tem categoria:
 
 | Anterior | Atual | Categoria |
