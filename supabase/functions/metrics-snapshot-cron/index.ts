@@ -19,7 +19,21 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
     throw new Error("CRON_SECRET is required");
   })();
 
-const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+// Bounded global fetch: a stalled PostgREST call (subscription scan, internal lookup, mirror
+// write-back, snapshot RPC) would otherwise hang until the edge runtime kills the isolate,
+// bypassing catch and cron-failure triage entirely (documented repo failure mode). A timeout
+// surfaces as a normal throw instead.
+const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  global: {
+    fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, {
+        ...init,
+        signal: init?.signal
+          ? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
+          : AbortSignal.timeout(10_000),
+      }),
+  },
+});
 
 interface SubRow {
   workspace_id: string;
