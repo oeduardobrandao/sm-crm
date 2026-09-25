@@ -147,3 +147,36 @@ Deno.test("handleGetMrr aggregates past the 1000-row PostgREST page", async () =
   assertEquals(body.paying_count, SUB_COUNT);
   assertEquals(body.workspaces.length, SUB_COUNT);
 });
+
+Deno.test("handleGetMrr excludes internal workspaces from the total and the list", async () => {
+  const sub = (id: string) => ({
+    workspace_id: id, provider: "stripe", status: "active", plan_id: "pro", billing_interval: "month",
+    stripe_subscription_id: null, amount_cents: 9900, currency: "brl", amount_interval: "month", discount_label: null,
+  });
+  const svc = makeFakeSvc({
+    subscriptions: [sub("ws-1"), sub("ws-int")],
+    workspaces: [{ id: "ws-1", name: "Alpha" }, { id: "ws-int", name: "Interno" }],
+    plans: [{ id: "pro", name: "Pro", price_brl: 9900, price_brl_annual: null }],
+  });
+  const res = await handleGetMrr(svc, HEADERS, fakeFetchOwnerContacts, () => Promise.resolve(new Set(["ws-int"])));
+  const body = await res.json();
+  assertEquals(body.mrr_cents, 9900);
+  assertEquals(body.paying_count, 1);
+  assertEquals(body.workspaces.map((w: { workspace_id: string }) => w.workspace_id), ["ws-1"]);
+});
+
+Deno.test("handleGetTrials excludes internal workspaces", async () => {
+  const trial = (id: string) => ({
+    workspace_id: id, provider: "stripe", plan_id: "pro", billing_interval: "month", stripe_subscription_id: null,
+    current_period_end: "2026-10-01T00:00:00Z", amount_cents: 9900, currency: "brl", amount_interval: "month", discount_label: null,
+  });
+  const svc = makeFakeSvc({
+    subscriptions: [trial("ws-1"), trial("ws-int")],
+    workspaces: [{ id: "ws-1", name: "Alpha" }, { id: "ws-int", name: "Interno" }],
+    plans: [{ id: "pro", name: "Pro", price_brl: 9900, price_brl_annual: null }],
+  });
+  const res = await handleGetTrials(svc, HEADERS, fakeFetchOwnerContacts, () => Promise.resolve(new Set(["ws-int"])));
+  const body = await res.json();
+  assertEquals(body.trial_count, 1);
+  assertEquals(body.trials[0].workspace_id, "ws-1");
+});

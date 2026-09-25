@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { aggregateMrr, MRR_STATUSES, toMonthlyCents } from "../_shared/billing-logic.ts";
 import { chunk, fetchAllRows } from "../_shared/paginate.ts";
+import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
 import { priceSubscriptionRows } from "./pricing.ts";
 import { fetchOwnerContacts } from "./owner-contact.ts";
 
@@ -78,8 +79,9 @@ export async function handleGetMrr(
   svc: SupabaseClient,
   headers: Record<string, string>,
   fetchOwnerContactsFn: typeof fetchOwnerContacts = fetchOwnerContacts,
+  fetchInternalIdsFn: (svc: SupabaseClient) => Promise<Set<string>> = fetchInternalWorkspaceIds,
 ) {
-  const rows = await fetchAllRows<MrrSubRow>((from, to) =>
+  const allRows = await fetchAllRows<MrrSubRow>((from, to) =>
     svc
       .from("workspace_subscriptions")
       .select(
@@ -89,6 +91,10 @@ export async function handleGetMrr(
       .order("workspace_id", { ascending: true })
       .range(from, to),
   );
+  // Internal (seeded/demo) workspaces never count as revenue; the metrics snapshots exclude them
+  // too, so the tile and the history chart agree. Fails open (display only, nothing persisted).
+  const internalIds = await fetchInternalIdsFn(svc);
+  const rows = allRows.filter((s) => !internalIds.has(s.workspace_id));
   const wsIds = rows.map((s) => s.workspace_id);
   const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
 
@@ -171,8 +177,9 @@ export async function handleGetTrials(
   svc: SupabaseClient,
   headers: Record<string, string>,
   fetchOwnerContactsFn: typeof fetchOwnerContacts = fetchOwnerContacts,
+  fetchInternalIdsFn: (svc: SupabaseClient) => Promise<Set<string>> = fetchInternalWorkspaceIds,
 ) {
-  const rows = await fetchAllRows<TrialSubRow>((from, to) =>
+  const allRows = await fetchAllRows<TrialSubRow>((from, to) =>
     svc
       .from("workspace_subscriptions")
       .select(
@@ -182,6 +189,10 @@ export async function handleGetTrials(
       .order("workspace_id", { ascending: true })
       .range(from, to),
   );
+  // Internal (seeded/demo) workspaces never count as revenue; the metrics snapshots exclude them
+  // too, so the tile and the history chart agree. Fails open (display only, nothing persisted).
+  const internalIds = await fetchInternalIdsFn(svc);
+  const rows = allRows.filter((s) => !internalIds.has(s.workspace_id));
   const wsIds = rows.map((s) => s.workspace_id);
   const planIds = [...new Set(rows.map((s) => s.plan_id).filter(Boolean))] as string[];
 
