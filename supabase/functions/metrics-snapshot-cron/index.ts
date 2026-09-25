@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
-import { chunk, fetchAllRows } from "../_shared/paginate.ts";
+import { chunk, fetchAllRowsKeyset } from "../_shared/paginate.ts";
 import { setStripeLoader } from "../_shared/stripe-loader.ts";
 import { fetchInternalWorkspaceIdsOrThrow } from "../_shared/internal-workspaces.ts";
 import { type PricedSnapshotSource, writeSnapshot } from "../_shared/metrics-snapshot.ts";
@@ -36,16 +36,27 @@ interface SubRow {
 }
 
 async function loadPricedRows(): Promise<PricedSnapshotSource[]> {
-  // workspace_subscriptions' primary key is workspace_id alone, so it is the total order.
-  const rows = await fetchAllRows<SubRow>((from, to) =>
-    svc
-      .from("workspace_subscriptions")
-      .select(
-        "workspace_id, provider, status, plan_id, billing_interval, stripe_subscription_id, amount_cents, currency, amount_interval, discount_label, switched_from_stripe_subscription_id",
-      )
-      .not("status", "is", null)
-      .order("workspace_id", { ascending: true })
-      .range(from, to),
+  // workspace_subscriptions' primary key is workspace_id alone, so it is the total order — but a
+  // durable-history write can't tolerate offset (.range) pagination's races against concurrent
+  // writers: a concurrent insert between pages can repeat a workspace_id (the RPC's unique
+  // (workspace_id, snapshot_date) then aborts the whole day) and a concurrent removal from the
+  // filtered set (e.g. status -> null) can skip one (a false absence written into durable
+  // history). Keyset pagination re-anchors each page on the last workspace_id actually seen, so
+  // neither race is possible.
+  const rows = await fetchAllRowsKeyset<SubRow>(
+    (after) => {
+      let query = svc
+        .from("workspace_subscriptions")
+        .select(
+          "workspace_id, provider, status, plan_id, billing_interval, stripe_subscription_id, amount_cents, currency, amount_interval, discount_label, switched_from_stripe_subscription_id",
+        )
+        .not("status", "is", null)
+        .order("workspace_id", { ascending: true })
+        .limit(1000);
+      if (after != null) query = query.gt("workspace_id", after);
+      return query;
+    },
+    (r) => r.workspace_id,
   );
   const planIds = [...new Set(rows.map((r) => r.plan_id).filter(Boolean))] as string[];
   const planById = new Map<string, PlanMeta>();
