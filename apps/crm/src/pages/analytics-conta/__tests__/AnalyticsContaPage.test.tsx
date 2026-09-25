@@ -101,10 +101,15 @@ vi.mock('../../../services/analytics', () => ({
   assignTagToPost: vi.fn(),
   removeTagFromPost: vi.fn(),
   getClientReports: vi.fn(),
-  generateReport: vi.fn(),
   getAccountAIAnalysis: accountAIMock,
   upsertManualFollowerCount: vi.fn(),
   getClientRateBaseline: vi.fn(),
+}));
+
+// The dialog has its own suite; here we only care whether the page opens it.
+vi.mock('../components/NewReportDialog', () => ({
+  NewReportDialog: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog" aria-label="Novo relatório" /> : null,
 }));
 
 vi.mock('../../../services/reportDocs', () => ({
@@ -250,7 +255,6 @@ import {
   getPostsAnalytics,
   getAnalyticsOverview,
   getClientRateBaseline,
-  generateReport,
 } from '../../../services/analytics';
 import { getClientes, getCurrentWorkspace } from '../../../store';
 import { getInstagramSummary, syncInstagramData } from '../../../services/instagram';
@@ -264,7 +268,6 @@ const mockedGetPostsAnalytics = vi.mocked(getPostsAnalytics);
 const mockedGetFollowerHistory = vi.mocked(getFollowerHistory);
 const mockedGetTags = vi.mocked(getTags);
 const mockedGetClientReports = vi.mocked(getClientReports);
-const mockedGenerateReport = vi.mocked(generateReport);
 const mockedGetAudienceDemographics = vi.mocked(getAudienceDemographics);
 const mockedGetBestPostingTimes = vi.mocked(getBestPostingTimes);
 const mockedGetCurrentWorkspace = vi.mocked(getCurrentWorkspace);
@@ -759,75 +762,53 @@ describe('AnalyticsContaPage', () => {
     expect(drawer).toBeTruthy();
     expect(within(drawer!).getAllByText(/Post ranqueado/)[0]).toHaveTextContent('Post ranqueado 6');
   });
-  it('locks both Gerar buttons while a report is being generated', async () => {
+  it('Gerar Relatório (header) opens the interactive report dialog', () => {
     seedCommonAnalyticsData();
-    // Hold the request open so the busy state is observable.
-    let finish!: (v: unknown) => void;
-    mockedGenerateReport.mockImplementation(
-      () => new Promise((resolve) => (finish = resolve)) as ReturnType<typeof generateReport>,
-    );
-
     render(<AnalyticsContaPage />);
 
-    const gerar = screen.getByRole('button', { name: 'Gerar' });
-    const gerarRelatorio = screen.getByRole('button', { name: 'Gerar Relatório' });
-    expect((gerar as HTMLButtonElement).disabled).toBe(false);
-
-    fireEvent.click(gerar);
-
-    // Feedback is immediate: label swaps, spinner appears, BOTH entry points lock
-    // (they share one handler, so either could otherwise queue a second report).
-    await waitFor(() => {
-      expect(screen.getAllByText('Gerando…').length).toBe(2);
-    });
-    expect((gerar as HTMLButtonElement).disabled).toBe(true);
-    expect((gerarRelatorio as HTMLButtonElement).disabled).toBe(true);
-
-    // Impatient repeat clicks on either button must not queue more work.
-    fireEvent.click(gerar);
-    fireEvent.click(gerarRelatorio);
-    expect(mockedGenerateReport).toHaveBeenCalledTimes(1);
-
-    finish({ reportId: 7, status: 'pending' });
-
-    await waitFor(() => {
-      expect((gerar as HTMLButtonElement).disabled).toBe(false);
-    });
-    expect(screen.queryByText('Gerando…')).toBeNull();
-    expect(queryClientMock.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['analytics-reports', 42],
-    });
+    expect(screen.queryByRole('dialog', { name: 'Novo relatório' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar Relatório' }));
+    expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toBeTruthy();
   });
 
-  it('re-enables the Gerar buttons when generation fails', async () => {
+  it('Gerar (Relatórios Gerados card) opens the interactive report dialog', () => {
     seedCommonAnalyticsData();
-    let fail!: (e: unknown) => void;
-    mockedGenerateReport.mockImplementation(
-      () => new Promise((_resolve, reject) => (fail = reject)) as ReturnType<typeof generateReport>,
-    );
-
     render(<AnalyticsContaPage />);
+
     fireEvent.click(screen.getByRole('button', { name: 'Gerar' }));
-
-    // Assert it actually locked first, or the re-enable check below proves nothing.
-    await waitFor(() => {
-      // The Spinner mock contributes text, so match the label as a substring.
-      const busy = screen.getAllByRole('button', { name: /Gerando…/ }) as HTMLButtonElement[];
-      expect(busy.length).toBe(2);
-      expect(busy.every((b) => b.disabled)).toBe(true);
-    });
-
-    fail(new Error('Erro ao gerar relatório'));
-    await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledWith('Erro ao gerar relatório');
-    });
-    // A failed run must not leave the button stuck in its busy state.
-    expect((screen.getByRole('button', { name: 'Gerar' }) as HTMLButtonElement).disabled).toBe(
-      false,
-    );
+    expect(screen.getByRole('dialog', { name: 'Novo relatório' })).toBeTruthy();
   });
 
-  it('Relatórios Interativos: excluir pede confirmação e, confirmado, chama deleteReportDoc, invalida a lista e mostra toast', async () => {
+  it('Relatórios Gerados lists interactive docs and keeps old-format reports below them', () => {
+    seedCommonAnalyticsData();
+    queryState['report-docs'] = {
+      data: [
+        {
+          id: 'doc-1',
+          title: 'Relatório de Julho',
+          period_start: '2026-07-01',
+          status: 'ready',
+          created_at: '2026-08-01T00:00:00Z',
+        },
+      ],
+    };
+
+    render(<AnalyticsContaPage />);
+
+    expect(screen.queryByText('Relatórios Interativos')).toBeNull();
+    expect(screen.queryByText('Incluir IA')).toBeNull();
+    const doc = screen.getByText('Relatório de Julho');
+    const legacyHeading = screen.getByText('Formato anterior');
+    const legacyRow = screen.getByText('Abr 2026');
+    expect(
+      doc.compareDocumentPosition(legacyHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      legacyHeading.compareDocumentPosition(legacyRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('Relatórios Gerados (interativo): excluir pede confirmação e, confirmado, chama deleteReportDoc, invalida a lista e mostra toast', async () => {
     seedCommonAnalyticsData();
     queryState['report-docs'] = {
       data: [
@@ -856,7 +837,7 @@ describe('AnalyticsContaPage', () => {
     expect(toastSuccessMock).toHaveBeenCalledWith('Relatório excluído.');
   });
 
-  it('Relatórios Interativos: cancelar no confirm não exclui', async () => {
+  it('Relatórios Gerados (interativo): cancelar no confirm não exclui', async () => {
     seedCommonAnalyticsData();
     queryState['report-docs'] = {
       data: [
@@ -880,7 +861,7 @@ describe('AnalyticsContaPage', () => {
     });
   });
 
-  it('Relatórios Interativos: erro ao excluir mostra toast e não invalida a lista', async () => {
+  it('Relatórios Gerados (interativo): erro ao excluir mostra toast e não invalida a lista', async () => {
     seedCommonAnalyticsData();
     queryState['report-docs'] = {
       data: [

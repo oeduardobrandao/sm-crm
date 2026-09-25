@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '../../../context/AuthContext';
+import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { supabase } from '../../../lib/supabase';
 import {
   getCurrentWorkspace,
@@ -27,6 +28,7 @@ import {
 } from '../../../store';
 import { ReportPreview } from '../ReportPreview';
 import { downscaleImage } from '../reportSplash';
+import { ReportTemplatesCard } from './ReportTemplatesCard';
 
 const MAX_SPLASH_BYTES = 4 * 1024 * 1024;
 const SPLASH_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -57,6 +59,18 @@ export default function RelatoriosTab() {
   // toast de sucesso mentia. O backstop de zero linhas fica em
   // store/workspace.ts; esconder o controle é a correção primária.
   const canEditConfig = can('configuracoes', 'editar') === true;
+
+  // F3 (revisão final): /relatorios/modelos/:id exige feature_analytics_reports
+  // (ProtectedRoute) e analytics:ver (routePermissions) -- este card tinha só
+  // o gate de configuracoes:ver da aba, então um membro/plano sem os dois
+  // conseguia "Novo modelo"/"Duplicar" e caía numa tela travada. Mesma regra
+  // de bloqueio do ProtectedRoute: só trava quando limits carregou, não é
+  // ilimitado e a flag veio explicitamente false.
+  const { features: planFeatures, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
+  const canViewTemplates = can('analytics', 'ver') === true;
+  const templatesFeatureBlocked =
+    !isUnlimited && !!planFeatures && planFeatures.feature_analytics_reports === false;
+  const showTemplatesCard = !limitsLoading && canViewTemplates && !templatesFeatureBlocked;
 
   // The workspace supplies the logo and name shown in the live preview, plus
   // the id used to persist the cover art. Name/logo are edited on the Workspace
@@ -185,199 +199,203 @@ export default function RelatoriosTab() {
   const brandColor = branding?.brand_color ?? '#eab308';
 
   return (
-    <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-      <h3 className="config-title">Relatório Mensal</h3>
-      <p style={{ ...HINT, marginTop: 0, marginBottom: canEditConfig ? '1.5rem' : '0.5rem' }}>
-        A marca que seus clientes veem no relatório mensal do Instagram.
-      </p>
-      {!canEditConfig && (
-        <p style={{ ...HINT, marginTop: 0, marginBottom: '1.5rem' }}>Somente leitura</p>
-      )}
+    <>
+      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <h3 className="config-title">Relatório Mensal</h3>
+        <p style={{ ...HINT, marginTop: 0, marginBottom: canEditConfig ? '1.5rem' : '0.5rem' }}>
+          A marca que seus clientes veem no relatório mensal do Instagram.
+        </p>
+        {!canEditConfig && (
+          <p style={{ ...HINT, marginTop: 0, marginBottom: '1.5rem' }}>Somente leitura</p>
+        )}
 
-      <div className="config-report-grid">
-        <div>
-          {/* Accent colour: read-only, edited from Configurações → Hub now (it's
+        <div className="config-report-grid">
+          <div>
+            {/* Accent colour: read-only, edited from Configurações → Hub now (it's
               shared with the client Hub calendar, so it has one editor). */}
-          <div style={FIELD}>
-            <Label style={FIELD_LABEL}>Cor de destaque</Label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
-                  border: '1px solid var(--border-color)',
-                  background: brandColor,
-                  flexShrink: 0,
-                }}
-              />
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.8rem',
-                  color: 'var(--text-muted)',
-                  textTransform: 'uppercase',
-                }}
-              >
-                {brandColor}
-              </span>
-            </div>
-            <p style={HINT}>
-              A mesma cor do Hub do Cliente. Marca títulos e destaques; os gráficos mantêm as cores
-              próprias, para os dados seguirem legíveis.{' '}
-              <Link to="/configuracao/hub">Editar em Configurações · Hub</Link>
-            </p>
-          </div>
-
-          {/* Cover splash art */}
-          <div style={FIELD}>
-            <Label htmlFor="report-splash-trigger" style={FIELD_LABEL}>
-              Arte da capa
-            </Label>
-            {/* Wraps so the destructive action stays reachable on narrow screens,
-                where thumbnail + both buttons overflow a single row. */}
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.75rem',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-              }}
-            >
-              {splashUrl && (
-                <img
-                  src={splashUrl}
-                  alt="Arte da capa"
+            <div style={FIELD}>
+              <Label style={FIELD_LABEL}>Cor de destaque</Label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span
+                  aria-hidden="true"
                   style={{
-                    width: 72,
-                    height: 72,
-                    objectFit: 'cover',
+                    width: 28,
+                    height: 28,
                     borderRadius: 8,
                     border: '1px solid var(--border-color)',
-                    opacity: splashUploading ? 0.5 : 1,
-                    transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    background: brandColor,
+                    flexShrink: 0,
                   }}
                 />
-              )}
-              <Button
-                id="report-splash-trigger"
-                variant="outline"
-                onClick={() => splashInputRef.current?.click()}
-                disabled={splashUploading || !canEditConfig}
-              >
-                {splashUploading && <Spinner size="sm" />}
-                {splashUploading ? 'Enviando…' : splashUrl ? 'Substituir arte' : 'Enviar arte'}
-              </Button>
-              {splashUrl && (
-                <Button
-                  variant="ghost"
-                  className="text-destructive"
-                  onClick={() => setSplashRemoveOpen(true)}
-                  disabled={splashUploading || !canEditConfig}
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.8rem',
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                  }}
                 >
-                  Remover arte
-                </Button>
-              )}
-            </div>
-            <p style={HINT}>
-              Formato quadrado (1:1), JPEG, PNG ou WebP, até 4MB. Salva assim que você envia. Sem
-              arte, a capa fica apenas tipográfica.
-            </p>
-            <input
-              ref={splashInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              hidden
-              disabled={!canEditConfig}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file && canEditConfig) handleSplashUpload(file);
-              }}
-            />
-          </div>
-
-          {/* Email delivery toggle */}
-          <div style={{ ...FIELD, display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-            <Switch
-              id="report-email"
-              checked={sendReportEmail}
-              disabled={brandingPending || brandingFailed || !canEditConfig}
-              onCheckedChange={setSendReportEmail}
-              style={{ marginTop: 2, flexShrink: 0 }}
-            />
-            <div>
-              <Label htmlFor="report-email" style={{ fontWeight: 500, cursor: 'pointer' }}>
-                Enviar relatórios por e-mail
-              </Label>
-              <p style={{ ...HINT, marginTop: '0.25rem' }}>
-                Envia o relatório automaticamente, todo mês, para os clientes com envio habilitado.
+                  {brandColor}
+                </span>
+              </div>
+              <p style={HINT}>
+                A mesma cor do Hub do Cliente. Marca títulos e destaques; os gráficos mantêm as
+                cores próprias, para os dados seguirem legíveis.{' '}
+                <Link to="/configuracao/hub">Editar em Configurações · Hub</Link>
               </p>
             </div>
+
+            {/* Cover splash art */}
+            <div style={FIELD}>
+              <Label htmlFor="report-splash-trigger" style={FIELD_LABEL}>
+                Arte da capa
+              </Label>
+              {/* Wraps so the destructive action stays reachable on narrow screens,
+                where thumbnail + both buttons overflow a single row. */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '0.75rem',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                }}
+              >
+                {splashUrl && (
+                  <img
+                    src={splashUrl}
+                    alt="Arte da capa"
+                    style={{
+                      width: 72,
+                      height: 72,
+                      objectFit: 'cover',
+                      borderRadius: 8,
+                      border: '1px solid var(--border-color)',
+                      opacity: splashUploading ? 0.5 : 1,
+                      transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    }}
+                  />
+                )}
+                <Button
+                  id="report-splash-trigger"
+                  variant="outline"
+                  onClick={() => splashInputRef.current?.click()}
+                  disabled={splashUploading || !canEditConfig}
+                >
+                  {splashUploading && <Spinner size="sm" />}
+                  {splashUploading ? 'Enviando…' : splashUrl ? 'Substituir arte' : 'Enviar arte'}
+                </Button>
+                {splashUrl && (
+                  <Button
+                    variant="ghost"
+                    className="text-destructive"
+                    onClick={() => setSplashRemoveOpen(true)}
+                    disabled={splashUploading || !canEditConfig}
+                  >
+                    Remover arte
+                  </Button>
+                )}
+              </div>
+              <p style={HINT}>
+                Formato quadrado (1:1), JPEG, PNG ou WebP, até 4MB. Salva assim que você envia. Sem
+                arte, a capa fica apenas tipográfica.
+              </p>
+              <input
+                ref={splashInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                disabled={!canEditConfig}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file && canEditConfig) handleSplashUpload(file);
+                }}
+              />
+            </div>
+
+            {/* Email delivery toggle */}
+            <div style={{ ...FIELD, display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+              <Switch
+                id="report-email"
+                checked={sendReportEmail}
+                disabled={brandingPending || brandingFailed || !canEditConfig}
+                onCheckedChange={setSendReportEmail}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              <div>
+                <Label htmlFor="report-email" style={{ fontWeight: 500, cursor: 'pointer' }}>
+                  Enviar relatórios por e-mail
+                </Label>
+                <p style={{ ...HINT, marginTop: '0.25rem' }}>
+                  Envia o relatório automaticamente, todo mês, para os clientes com envio
+                  habilitado.
+                </p>
+              </div>
+            </div>
+
+            {brandingFailed && (
+              <p
+                role="alert"
+                style={{
+                  ...HINT,
+                  color: 'var(--danger-text)',
+                  marginTop: 0,
+                  marginBottom: '0.75rem',
+                }}
+              >
+                Não foi possível carregar as configurações de relatório. Recarregue a página. Salvar
+                agora sobrescreveria a sua marca com os valores padrão.
+              </p>
+            )}
+
+            {/* Saving before the branding query resolves would persist this form's
+              placeholder values over the workspace's real branding. */}
+            <Button
+              onClick={() => brandingMutation.mutate()}
+              disabled={
+                brandingMutation.isPending || brandingPending || brandingFailed || !canEditConfig
+              }
+            >
+              {brandingMutation.isPending && <Spinner size="sm" />} Salvar
+            </Button>
           </div>
 
-          {brandingFailed && (
-            <p
-              role="alert"
-              style={{
-                ...HINT,
-                color: 'var(--danger-text)',
-                marginTop: 0,
-                marginBottom: '0.75rem',
-              }}
-            >
-              Não foi possível carregar as configurações de relatório. Recarregue a página. Salvar
-              agora sobrescreveria a sua marca com os valores padrão.
-            </p>
-          )}
-
-          {/* Saving before the branding query resolves would persist this form's
-              placeholder values over the workspace's real branding. */}
-          <Button
-            onClick={() => brandingMutation.mutate()}
-            disabled={
-              brandingMutation.isPending || brandingPending || brandingFailed || !canEditConfig
-            }
-          >
-            {brandingMutation.isPending && <Spinner size="sm" />} Salvar
-          </Button>
+          {/* Live preview */}
+          <div>
+            <Label style={FIELD_LABEL}>Prévia</Label>
+            <ReportPreview
+              accentColor={brandColor}
+              splashUrl={splashUrl}
+              logoUrl={workspace?.logo_url ?? null}
+              workspaceName={workspace?.name ?? ''}
+            />
+            <p style={{ ...HINT, maxWidth: 240 }}>O logo e o nome vêm da aba Workspace.</p>
+          </div>
         </div>
 
-        {/* Live preview */}
-        <div>
-          <Label style={FIELD_LABEL}>Prévia</Label>
-          <ReportPreview
-            accentColor={brandColor}
-            splashUrl={splashUrl}
-            logoUrl={workspace?.logo_url ?? null}
-            workspaceName={workspace?.name ?? ''}
-          />
-          <p style={{ ...HINT, maxWidth: 240 }}>O logo e o nome vêm da aba Workspace.</p>
-        </div>
+        {/* Remove Report Splash Confirm */}
+        <AlertDialog open={splashRemoveOpen} onOpenChange={setSplashRemoveOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remover a arte da capa?</AlertDialogTitle>
+              <AlertDialogDescription>
+                A capa dos próximos relatórios volta a ser apenas tipográfica. Você pode enviar
+                outra arte quando quiser.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleRemoveSplash}
+                disabled={splashUploading || !canEditConfig}
+              >
+                Remover arte
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
-
-      {/* Remove Report Splash Confirm */}
-      <AlertDialog open={splashRemoveOpen} onOpenChange={setSplashRemoveOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover a arte da capa?</AlertDialogTitle>
-            <AlertDialogDescription>
-              A capa dos próximos relatórios volta a ser apenas tipográfica. Você pode enviar outra
-              arte quando quiser.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleRemoveSplash}
-              disabled={splashUploading || !canEditConfig}
-            >
-              Remover arte
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      {showTemplatesCard && <ReportTemplatesCard />}
+    </>
   );
 }

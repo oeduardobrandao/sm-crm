@@ -75,6 +75,8 @@ const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const AnalyticsContaPage = lazy(() => import('./pages/analytics-conta/AnalyticsContaPage'));
 const AnalyticsFluxosPage = lazy(() => import('./pages/analytics-fluxos/AnalyticsFluxosPage'));
 const RelatorioEditorPage = lazy(() => import('./pages/relatorio-editor/RelatorioEditorPage'));
+const ModeloEditorPage = lazy(() => import('./pages/relatorio-editor/ModeloEditorPage'));
+const ModeloPadraoPage = lazy(() => import('./pages/relatorio-editor/ModeloPadraoPage'));
 const IdeiasPage = lazy(() => import('./pages/ideias/IdeiasPage'));
 const MensagensPage = lazy(() => import('./pages/mensagens/MensagensPage'));
 const ArquivosPage = lazy(() => import('./pages/arquivos/ArquivosPage'));
@@ -242,6 +244,8 @@ export default function App() {
                 <Route path="/arquivos" element={<ArquivosPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/analytics/:id" element={<AnalyticsContaPage />} />
+                <Route path="/relatorios/modelos/padrao" element={<ModeloPadraoPage />} />
+                <Route path="/relatorios/modelos/:id" element={<ModeloEditorPage />} />
                 <Route path="/relatorios/:id" element={<RelatorioEditorPage />} />
                 <Route path="/analytics-fluxos" element={<AnalyticsFluxosPage />} />
                 <Route path="/ideias" element={<IdeiasPage />} />

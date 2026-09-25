@@ -6,7 +6,6 @@ vi.mock('../../lib/supabase');
 
 import * as supabaseModule from '../../lib/supabase';
 import {
-  generateReport,
   getAccountMetrics,
   getAnalyticsOverview,
   getClientRateBaseline,
@@ -463,18 +462,6 @@ describe('analytics service', () => {
     expect(summary.accounts).toHaveLength(1);
     expect(summary.accounts[0].posts_last_30d).toBe(2);
     expect(summary.accounts[0].engagement_rate_avg).toBe(3);
-  });
-
-  it('throws a friendly report generation error when the edge function fails', async () => {
-    fetchHarness.queueResponse({
-      ok: false,
-      status: 500,
-      json: { message: 'Falha ao gerar PDF para a cliente Clínica Aurora' },
-    });
-
-    await expect(generateReport(7, '2026-03')).rejects.toThrow(
-      'Falha ao gerar PDF para a cliente Clínica Aurora',
-    );
   });
 
   it('attaches per-view rates to portfolio ranked posts', async () => {

@@ -1,6 +1,6 @@
 // PR 2: o editor do relatório de blocos. Canvas dnd + drawer + TipTap +
 // autosave. View/print continuam no BlockRenderer do pacote (Hub, PR 3).
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, MoreHorizontal, Plus } from 'lucide-react';
@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
-import type { BlockType, ReportBlock } from '@mesaas/report-blocks/types';
+import type { ReportBlock } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import {
   exportReportPdf,
@@ -23,6 +23,7 @@ import {
 } from '../../services/reportDocs';
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
+import { useBlockEditing } from './useBlockEditing';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
@@ -30,15 +31,7 @@ import { LayersPanel } from './LayersPanel';
 import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
 import { AppearancePopover } from './AppearancePopover';
-import {
-  insertBlockAt,
-  moveBlock,
-  normalizeCoverSize,
-  removeBlock,
-  restoreBlock,
-  updateBlockConfig,
-  updateBlockText,
-} from './layoutOps';
+import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
 import { applyTemplateLayout } from './templateOps';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
@@ -58,17 +51,20 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  // Posição de inserção do próximo widget: null = fim do documento. Setada
-  // pelos pontos de inserção do painel de camadas antes de abrir o drawer.
-  const [insertAt, setInsertAt] = useState<number | null>(null);
+  const {
+    drawerOpen,
+    setDrawerOpen,
+    highlightId,
+    highlightAndScroll,
+    openWidgetDrawer,
+    handleInsert,
+    handleRemoveBlock,
+  } = useBlockEditing(layoutRef, applyLayout);
+
   const [saveTplOpen, setSaveTplOpen] = useState(false);
   const [applyTplOpen, setApplyTplOpen] = useState(false);
-  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Link "Ver como cliente": só existe quando o Hub tem um token ativo, não
   // expirado, e o workspace tem slug. Mesma checagem de validade que o
@@ -127,63 +123,6 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     } finally {
       setRefreshing(false);
     }
-  }
-
-  // Nenhum dos dois timers sobrevive a um unmount: sem isso, um insert seguido
-  // de navegação dispara o callback depois que jsdom já derrubou a árvore
-  // (scrollIntoView é undefined lá) ou tenta setHighlightId num componente
-  // desmontado, vazando pro próximo arquivo de teste que rodar em seguida.
-  useEffect(
-    () => () => {
-      if (highlightTimer.current) clearTimeout(highlightTimer.current);
-      if (scrollTimer.current) clearTimeout(scrollTimer.current);
-    },
-    [],
-  );
-
-  // Exclusão com desfazer: o toast carrega a posição de origem (idx) — sem
-  // ela, "Desfazer" reinseriria sempre no fim, perdendo a ordem do usuário.
-  function handleRemoveBlock(id: string) {
-    const idx = layoutRef.current.blocks.findIndex((b) => b.id === id);
-    const block = layoutRef.current.blocks[idx];
-    if (!block) return;
-    applyLayout(removeBlock(layoutRef.current, id));
-    toast('Bloco excluído.', {
-      action: {
-        label: 'Desfazer',
-        onClick: () => applyLayout(restoreBlock(layoutRef.current, block, idx)),
-      },
-    });
-  }
-
-  function highlightAndScroll(id: string) {
-    setHighlightId(id);
-    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    highlightTimer.current = setTimeout(() => setHighlightId(null), 2500);
-    if (scrollTimer.current) clearTimeout(scrollTimer.current);
-    scrollTimer.current = setTimeout(() => {
-      // jsdom não implementa scrollIntoView (undefined no protótipo do
-      // elemento) — o `?.()` opcional no MÉTODO, não só no querySelector,
-      // evita o TypeError que corrompe o próximo arquivo de teste.
-      document
-        .querySelector(`[data-block-id="${id}"]`)
-        ?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-    }, 50);
-  }
-
-  function openWidgetDrawer(at: number | null) {
-    setInsertAt(at);
-    setDrawerOpen(true);
-  }
-
-  function handleInsert(type: BlockType) {
-    const { layout: next, newId } = insertBlockAt(
-      layoutRef.current,
-      type,
-      insertAt ?? layoutRef.current.blocks.length,
-    );
-    applyLayout(next);
-    highlightAndScroll(newId);
   }
 
   // Padding vive em .rb-editor-with-rail (style.css): inline aqui

@@ -2,22 +2,33 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { generateMock, navigateMock, invalidateQueriesMock, queryState, listTemplatesMock } =
-  vi.hoisted(() => {
-    const queryState: Record<string, { data?: unknown; isLoading?: boolean }> = {};
-    return {
-      generateMock: vi.fn(),
-      navigateMock: vi.fn(),
-      invalidateQueriesMock: vi.fn(),
-      queryState,
-      listTemplatesMock: vi.fn(),
-    };
-  });
+const {
+  generateMock,
+  navigateMock,
+  invalidateQueriesMock,
+  queryState,
+  listTemplatesMock,
+  useQueryCalls,
+  canMock,
+} = vi.hoisted(() => {
+  const queryState: Record<string, { data?: unknown; isLoading?: boolean }> = {};
+  return {
+    generateMock: vi.fn(),
+    navigateMock: vi.fn(),
+    invalidateQueriesMock: vi.fn(),
+    queryState,
+    listTemplatesMock: vi.fn(),
+    useQueryCalls: [] as Array<Record<string, unknown>>,
+    canMock: vi.fn(),
+  };
+});
 vi.mock('../../../../services/reportDocs', () => ({ generateReportDoc: generateMock }));
 vi.mock('../../../../services/reportTemplates', () => ({ listReportTemplates: listTemplatesMock }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigateMock }));
+vi.mock('../../../../context/AuthContext', () => ({ useAuth: () => ({ can: canMock }) }));
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: (options: { queryKey: unknown[] }) => {
+  useQuery: (options: { queryKey: unknown[] } & Record<string, unknown>) => {
+    useQueryCalls.push(options);
     const key = String(options.queryKey[0]);
     return queryState[key] ?? { data: undefined, isLoading: false };
   },
@@ -88,6 +99,8 @@ import { NewReportDialog } from '../NewReportDialog';
 
 beforeEach(() => {
   for (const key of Object.keys(queryState)) delete queryState[key];
+  useQueryCalls.length = 0;
+  canMock.mockReturnValue(true);
 });
 
 describe('NewReportDialog', () => {
@@ -215,5 +228,64 @@ describe('NewReportDialog', () => {
     await waitFor(() => expect(generateMock).toHaveBeenCalled());
     const [, , templateId] = generateMock.mock.calls[0];
     expect(templateId).toBe('tpl-2');
+  });
+
+  it('mostra "Ver e editar modelos" abrindo Configuração › Relatórios em nova aba', () => {
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    const link = screen.getByRole('link', { name: /Ver e editar modelos/ });
+    expect(link).toHaveAttribute('href', '/configuracao/relatorios');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  });
+
+  it('sem configuracoes:ver, não mostra o link', () => {
+    canMock.mockReturnValue(false);
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    expect(screen.queryByRole('link', { name: /Ver e editar modelos/ })).toBeNull();
+  });
+
+  // F4 (revisão final): o template selecionado pode ser excluído em outra
+  // aba enquanto o dialog segue aberto; o refetch tira a linha da lista mas
+  // `templateId` mantinha o id antigo, o Select ficava em branco e gerar
+  // falhava.
+  it('F4: template selecionado deixa de existir na lista -> volta para "Padrão do sistema"', async () => {
+    const templatesV1 = [
+      { id: 'tpl-1', name: 'Mensal padrão', layout: {}, is_default: true, created_at: 'x' },
+      { id: 'tpl-2', name: 'Trimestral', layout: {}, is_default: false, created_at: 'x' },
+    ];
+    queryState['report-templates'] = { data: templatesV1 };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    const { rerender } = render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    await screen.findByRole('button', { name: /Mensal padrão · padrão/ });
+
+    // Usuário troca manualmente para o Trimestral.
+    fireEvent.click(screen.getByRole('button', { name: 'Trimestral' }));
+
+    // Refetch depois de o Trimestral ser excluído em outra aba.
+    queryState['report-templates'] = { data: [templatesV1[0]] };
+    rerender(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('system');
+  });
+
+  it('F4: não mexe na sentinela "Padrão do sistema" mesmo se a lista ainda não carregou', async () => {
+    queryState['report-templates'] = { data: undefined, isLoading: true };
+    generateMock.mockResolvedValue({ id: 'doc-9' });
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar relatório' }));
+    await waitFor(() => expect(generateMock).toHaveBeenCalled());
+    const [, , templateId] = generateMock.mock.calls[0];
+    expect(templateId).toBe('system');
+  });
+
+  it('a lista de modelos refaz sempre que a janela volta ao foco', () => {
+    render(<NewReportDialog open onOpenChange={() => {}} clientId={42} />);
+    const templatesQuery = useQueryCalls.find(
+      (o) => (o.queryKey as unknown[])[0] === 'report-templates',
+    );
+    expect(templatesQuery?.refetchOnWindowFocus).toBe('always');
   });
 });

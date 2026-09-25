@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ExternalLink } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -24,6 +26,8 @@ import {
 } from '@/components/ui/select';
 import { generateReportDoc } from '../../../services/reportDocs';
 import { listReportTemplates } from '../../../services/reportTemplates';
+import { captureEvent } from '@/lib/analytics';
+import { useAuth } from '../../../context/AuthContext';
 
 const SYSTEM_TEMPLATE = '__system';
 
@@ -43,14 +47,22 @@ export interface NewReportDialogProps {
 export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialogProps) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { can } = useAuth();
   const [month, setMonth] = useState(previousMonth);
   const [templateId, setTemplateId] = useState(SYSTEM_TEMPLATE);
   const [generating, setGenerating] = useState(false);
+
+  // Só quem abre a aba (configTabs.ts: configuracoes:ver) vê o link.
+  const canSeeTemplates = can('configuracoes', 'ver') === true;
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ['report-templates'],
     queryFn: listReportTemplates,
     enabled: open,
+    // O link abaixo abre os modelos em outra aba. O QueryClient global tem
+    // staleTime de 30s, então sem 'always' um modelo criado lá e uma volta
+    // rápida manteriam a lista antiga no select.
+    refetchOnWindowFocus: 'always',
   });
 
   // Default: o template is_default do workspace, se existir; senão "Padrão
@@ -71,6 +83,19 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
     appliedDefaultRef.current = true;
   }, [open, templatesLoading, templates]);
 
+  // F4 (revisão final): o template selecionado pode ser excluído em outra
+  // aba enquanto o dialog segue aberto -- o refetch derruba a linha da
+  // lista, mas `templateId` continuava com o id antigo, o Select ficava em
+  // branco e gerar falhava. Só reseta depois que a lista carregou, e nunca
+  // mexe na sentinela do sistema.
+  useEffect(() => {
+    if (!open || templatesLoading) return;
+    if (templateId === SYSTEM_TEMPLATE) return;
+    if (!templates.some((t) => t.id === templateId)) {
+      setTemplateId(SYSTEM_TEMPLATE);
+    }
+  }, [open, templatesLoading, templates, templateId]);
+
   const handleGenerate = async () => {
     if (generating || !month) return;
     setGenerating(true);
@@ -86,6 +111,7 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
         templateId === SYSTEM_TEMPLATE ? 'system' : templateId,
       );
       toast.success('Relatório gerado.');
+      captureEvent('report_generated');
       await qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
       onOpenChange(false);
       navigate(`/relatorios/${id}`);
@@ -105,32 +131,53 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Novo relatório interativo</DialogTitle>
+          <DialogTitle>Novo relatório</DialogTitle>
+          <DialogDescription>
+            Gera o relatório com os dados do mês escolhido. Depois você edita os blocos, remove
+            métricas e salva o layout como modelo.
+          </DialogDescription>
         </DialogHeader>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-          Gera o relatório com os dados do mês escolhido. Depois você edita os blocos, remove
-          métricas e salva o layout como modelo.
-        </p>
-        <div className="space-y-1">
-          <Label>Mês do relatório</Label>
-          <MonthPicker value={month} onChange={setMonth} clearable={false} />
-        </div>
-        <div className="space-y-1" style={{ marginTop: '0.75rem' }}>
-          <Label>Modelo</Label>
-          <Select value={templateId} onValueChange={setTemplateId} disabled={generating}>
-            <SelectTrigger aria-label="Modelo do relatório">
-              <SelectValue placeholder="Padrão do sistema" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={SYSTEM_TEMPLATE}>Padrão do sistema</SelectItem>
-              {templates.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                  {t.is_default ? ' · padrão' : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-report-month">Mês do relatório</Label>
+            <MonthPicker
+              id="new-report-month"
+              value={month}
+              onChange={setMonth}
+              clearable={false}
+              disabled={generating}
+              className="w-full"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <Label htmlFor="new-report-template">Modelo</Label>
+              {canSeeTemplates && (
+                <a
+                  href="/configuracao/relatorios"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Ver e editar modelos <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                </a>
+              )}
+            </div>
+            <Select value={templateId} onValueChange={setTemplateId} disabled={generating}>
+              <SelectTrigger id="new-report-template" aria-label="Modelo do relatório">
+                <SelectValue placeholder="Padrão do sistema" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SYSTEM_TEMPLATE}>Padrão do sistema</SelectItem>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                    {t.is_default ? ' · padrão' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={generating} onClick={() => onOpenChange(false)}>

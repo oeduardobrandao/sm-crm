@@ -4,8 +4,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
-const { useAuthMock, storeMock } = vi.hoisted(() => ({
+const { useAuthMock, useWorkspaceLimitsMock, storeMock } = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
+  useWorkspaceLimitsMock: vi.fn(),
   storeMock: {
     getCurrentWorkspace: vi.fn(async () => ({
       id: 'ws-1',
@@ -24,6 +25,10 @@ const { useAuthMock, storeMock } = vi.hoisted(() => ({
 
 vi.mock('../../../../context/AuthContext', () => ({
   useAuth: useAuthMock,
+}));
+
+vi.mock('../../../../hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: useWorkspaceLimitsMock,
 }));
 
 vi.mock('../../../../store', () => storeMock);
@@ -47,6 +52,10 @@ vi.mock('../../reportSplash', () => ({
 
 vi.mock('../../ReportPreview', () => ({
   ReportPreview: () => <div data-testid="report-preview" />,
+}));
+
+vi.mock('../ReportTemplatesCard', () => ({
+  ReportTemplatesCard: () => <div data-testid="report-templates-card" />,
 }));
 
 import RelatoriosTab from '../RelatoriosTab';
@@ -75,6 +84,11 @@ describe('RelatoriosTab — report branding', () => {
       signOut: vi.fn(),
       refetchProfile: vi.fn(),
     });
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
+    });
     storeMock.getCurrentWorkspace.mockResolvedValue({
       id: 'ws-1',
       name: 'Workspace Teste',
@@ -98,6 +112,7 @@ describe('RelatoriosTab — report branding', () => {
     expect(document.querySelector('input[type="color"]')).toBeNull();
     const link = screen.getByRole('link', { name: /editar em configurações · hub/i });
     expect(link).toHaveAttribute('href', '/configuracao/hub');
+    expect(screen.getByTestId('report-templates-card')).toBeInTheDocument();
   });
 
   it('saves only the e-mail toggle via updateWorkspaceBranding, never brand_color', async () => {
@@ -155,6 +170,11 @@ describe('RelatoriosTab — report branding', () => {
 describe('RelatoriosTab — queries gated on configuracoes:ver', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
+    });
     storeMock.getCurrentWorkspace.mockResolvedValue({
       id: 'ws-1',
       name: 'Workspace Teste',
@@ -272,6 +292,11 @@ describe('RelatoriosTab — mutation controls gated on configuracoes:editar', ()
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
+    });
     storeMock.getCurrentWorkspace.mockResolvedValue({
       id: 'ws-1',
       name: 'Workspace Teste',
@@ -315,5 +340,105 @@ describe('RelatoriosTab — mutation controls gated on configuracoes:editar', ()
 
     await waitFor(() => expect(screen.getByRole('button', { name: /Salvar/ })).not.toBeDisabled());
     expect(screen.queryByText('Somente leitura')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * F3 (revisão final): o card de modelos não tinha o mesmo gate da rota do
+ * editor (/relatorios/modelos/:id exige feature_analytics_reports via
+ * ProtectedRoute e analytics:ver via routePermissions) -- um membro/plano
+ * sem os dois conseguia "Novo modelo"/"Duplicar" e caía numa tela travada.
+ */
+describe('RelatoriosTab — card de modelos espelha o gate da rota do editor', () => {
+  const auth = (overrides: Parameters<typeof fakeMembership>[0]) => ({
+    user: { id: 'user-1', email: 'ana@exemplo.com' },
+    profile: { id: 'user-1', nome: 'Ana' },
+    can: makeCan(fakeMembership(overrides)),
+    signOut: vi.fn(),
+    refetchProfile: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'Workspace Teste',
+      logo_url: null,
+    });
+    storeMock.getWorkspaceBranding.mockResolvedValue({
+      brand_color: '#111111',
+      report_splash_url: null,
+      send_report_email: false,
+    });
+  });
+
+  it('renderiza o card quando a feature está ligada e analytics:ver é true', async () => {
+    useAuthMock.mockReturnValue(auth({ role: 'owner' }));
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId('report-templates-card')).toBeInTheDocument();
+    });
+  });
+
+  it('não renderiza o card quando a feature do plano está desligada', async () => {
+    useAuthMock.mockReturnValue(auth({ role: 'owner' }));
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: false },
+      isLoading: false,
+      isUnlimited: false,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByText('#111111')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('report-templates-card')).not.toBeInTheDocument();
+  });
+
+  it('não renderiza o card sem analytics:ver, mesmo com a feature ligada', async () => {
+    useAuthMock.mockReturnValue(
+      auth({ role: 'agent', role_id: 'role-1', permissions: { configuracoes: 'ver' } }),
+    );
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: { feature_analytics_reports: true },
+      isLoading: false,
+      isUnlimited: false,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByText('#111111')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('report-templates-card')).not.toBeInTheDocument();
+  });
+
+  it('não renderiza o card enquanto os limites do plano ainda carregam', async () => {
+    useAuthMock.mockReturnValue(auth({ role: 'owner' }));
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: null,
+      isLoading: true,
+      isUnlimited: false,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByText('#111111')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('report-templates-card')).not.toBeInTheDocument();
+  });
+
+  it('plano ilimitado (sem limites) renderiza o card mesmo sem features carregadas', async () => {
+    useAuthMock.mockReturnValue(auth({ role: 'owner' }));
+    useWorkspaceLimitsMock.mockReturnValue({
+      features: null,
+      isLoading: false,
+      isUnlimited: true,
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId('report-templates-card')).toBeInTheDocument();
+    });
   });
 });

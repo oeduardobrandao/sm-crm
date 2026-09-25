@@ -789,4 +789,167 @@ describe('useLayoutAutosave', () => {
       expect(event.defaultPrevented).toBe(false);
     });
   });
+
+  it('target customizado: salva por ele, escreve no cacheKey dele e usa o titleField dele', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const target = {
+      save,
+      cacheKey: (id: string) => ['report-template', id],
+      titleField: 'name' as const,
+      errorMessage: 'Erro ao salvar o modelo',
+    };
+    qc.setQueryData(['report-template', 'tpl-1'], {
+      id: 'tpl-1',
+      name: 'Velho',
+      layout: baseLayout,
+    });
+    const { result } = renderHook(
+      () => useLayoutAutosave('tpl-1', { layout: baseLayout, title: 'Velho' }, target),
+      { wrapper },
+    );
+    const next: ReportLayout = { ...baseLayout, accent: '#0f766e' };
+    act(() => result.current.applyLayout(next));
+    act(() => result.current.setTitle('Novo'));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledWith('tpl-1', { layout: next });
+    expect(save).toHaveBeenCalledWith('tpl-1', { title: 'Novo' });
+    expect(qc.getQueryData(['report-template', 'tpl-1'])).toMatchObject({
+      name: 'Novo',
+      layout: next,
+    });
+  });
+
+  // F2 (revisão final): onSaved só dispara depois de um save bem-sucedido, e
+  // recebe o QueryClient + o id -- é assim que o target de modelo invalida
+  // ['report-templates'] sem o hook conhecer essa chave.
+  it('F2: onSaved dispara com (qc, id) após o debounce do layout salvar com sucesso', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const onSaved = vi.fn();
+    const target = {
+      save,
+      cacheKey: (id: string) => ['report-template', id],
+      titleField: 'name' as const,
+      errorMessage: 'Erro ao salvar o modelo',
+      onSaved,
+    };
+    const { result } = renderHook(
+      () => useLayoutAutosave('tpl-1', { layout: baseLayout, title: 'T' }, target),
+      { wrapper },
+    );
+    const next: ReportLayout = { ...baseLayout, accent: '#0f766e' };
+    act(() => result.current.applyLayout(next));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledWith('tpl-1', { layout: next });
+    expect(onSaved).toHaveBeenCalledWith(qc, 'tpl-1');
+  });
+
+  it('F2: onSaved dispara após o debounce do título salvar com sucesso', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const onSaved = vi.fn();
+    const target = {
+      save,
+      cacheKey: (id: string) => ['report-template', id],
+      titleField: 'name' as const,
+      errorMessage: 'Erro ao salvar o modelo',
+      onSaved,
+    };
+    const { result } = renderHook(
+      () => useLayoutAutosave('tpl-1', { layout: baseLayout, title: 'T' }, target),
+      { wrapper },
+    );
+    act(() => result.current.setTitle('Novo nome'));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledWith('tpl-1', { title: 'Novo nome' });
+    expect(onSaved).toHaveBeenCalledWith(qc, 'tpl-1');
+  });
+
+  it('F2: onSaved dispara após o flush de unmount (layout e título) salvar com sucesso', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const onSaved = vi.fn();
+    const target = {
+      save,
+      cacheKey: (id: string) => ['report-template', id],
+      titleField: 'name' as const,
+      errorMessage: 'Erro ao salvar o modelo',
+      onSaved,
+    };
+    const { result, unmount } = renderHook(
+      () => useLayoutAutosave('tpl-unmount', { layout: baseLayout, title: 'T' }, target),
+      { wrapper },
+    );
+    act(() => {
+      result.current.applyLayout({ ...baseLayout, accent: '#123456' });
+      result.current.setTitle('Novo nome');
+    });
+    unmount();
+    await act(async () => {
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+    });
+    expect(onSaved).toHaveBeenCalledWith(qc, 'tpl-unmount');
+    // Uma vez por save bem-sucedido: layout + título no unmount.
+    expect(onSaved).toHaveBeenCalledTimes(2);
+  });
+
+  it('F2: onSaved NÃO dispara quando o save falha', async () => {
+    const save = vi.fn().mockRejectedValue(new Error('boom'));
+    const onSaved = vi.fn();
+    const target = {
+      save,
+      cacheKey: (id: string) => ['report-template', id],
+      titleField: 'name' as const,
+      errorMessage: 'Erro ao salvar o modelo',
+      onSaved,
+    };
+    const { result, unmount } = renderHook(
+      () => useLayoutAutosave('tpl-fail', { layout: baseLayout, title: 'T' }, target),
+      { wrapper },
+    );
+    act(() => result.current.applyLayout({ ...baseLayout, accent: '#654321' }));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(onSaved).not.toHaveBeenCalled();
+    unmount();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it('target customizado: falha usa a mensagem de erro dele', async () => {
+    const target = {
+      save: vi.fn().mockRejectedValue(new Error('x')),
+      cacheKey: (id: string) => ['report-template', id],
+      titleField: 'name' as const,
+      errorMessage: 'Erro ao salvar o modelo',
+    };
+    const { result } = renderHook(
+      () => useLayoutAutosave('tpl-1', { layout: baseLayout, title: 'T' }, target),
+      { wrapper },
+    );
+    act(() => result.current.applyLayout({ ...baseLayout, accent: '#111111' }));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(toastErrorMock).toHaveBeenCalledWith('Erro ao salvar o modelo', expect.anything());
+  });
 });
