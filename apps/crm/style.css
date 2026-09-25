@@ -13016,30 +13016,39 @@ a.hub-fill__row-inner:hover {
   padding: 1.5rem;
 }
 /* Cabeçalho do editor (título, desfazer/refazer, Aparência, Adicionar widget)
-   fixo no topo enquanto o canvas rola. Quem rola é o .main-content
-   (overflow-y: auto), então sticky funciona aqui apesar do overflow-x do
-   #root. Ele para logo abaixo do padding-top do .main-content (que muda por
-   breakpoint); o ::before pinta essa faixa para o canvas não aparecer rolando
-   por cima do cabeçalho. Abaixo de 769px o cabeçalho quebra em várias linhas
-   e ocuparia metade da tela: lá ele rola junto. */
+   fixo no topo enquanto o canvas rola, no estilo do menu do Hub
+   (HubMobileNav): plano no topo da página; ao descolar (data-stuck, via
+   sentinela em useStuckHeader) vira um cartão translúcido com blur, borda e
+   sombra, flutuando sobre o canvas. Quem rola é o .main-content (overflow-y:
+   auto), então sticky funciona aqui apesar do overflow-x do #root. Padding e
+   borda são constantes (borda transparente no topo) para não pular layout ao
+   descolar. Abaixo de 769px o cabeçalho quebra em várias linhas e ocuparia
+   metade da tela: lá ele rola junto. */
+.rb-editor-sentinel {
+  height: 1px;
+  margin-bottom: -1px;
+}
 @media (min-width: 769px) {
   .rb-editor-header {
     position: sticky;
-    top: 0;
+    /* Sobe um pouco sobre o padding-top do .main-content: o cartão flutua
+       perto do topo, como o do Hub. */
+    top: -0.75rem;
     z-index: 10;
-    background: var(--bg-color);
-    padding: 0.75rem 0;
-    box-shadow: 0 1px 0 var(--border-color);
+    padding: 0.6rem 0.9rem;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
   }
-  .rb-editor-header::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 100%;
-    height: 3rem;
-    background: var(--bg-color);
-    pointer-events: none;
+  .rb-editor-header[data-stuck] {
+    background: color-mix(in srgb, var(--card-bg) 80%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    backdrop-filter: saturate(180%) blur(14px);
+    border-color: var(--border-color);
+    box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.35);
   }
 }
 @media (min-width: 1280px) {

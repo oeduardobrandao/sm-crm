@@ -26,6 +26,7 @@ import { useLayoutAutosave } from './useLayoutAutosave';
 import { useBlockEditing } from './useBlockEditing';
 import { useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
+import { useStuckHeader } from './useStuckHeader';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
@@ -54,6 +55,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   layoutRef.current = layout;
   const history = useLayoutHistory(layout, applyLayout);
   const commit = history.commit;
+  const { sentinelRef, stuck } = useStuckHeader();
 
   const {
     drawerOpen,
@@ -134,8 +136,10 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   // painel de camadas.
   return (
     <div className="rb-editor-with-rail">
+      <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
       <header
         className="rb-editor-header"
+        data-stuck={stuck || undefined}
         style={{
           maxWidth: 880,
           margin: '0 auto 1.25rem',

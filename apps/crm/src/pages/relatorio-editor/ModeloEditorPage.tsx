@@ -15,6 +15,7 @@ import { TEMPLATE_AUTOSAVE_TARGET } from './templateAutosave';
 import { useBlockEditing } from './useBlockEditing';
 import { useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
+import { useStuckHeader } from './useStuckHeader';
 import { useSampleSnapshot } from './useSampleSnapshot';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
@@ -63,6 +64,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
   layoutRef.current = layout;
   const history = useLayoutHistory(layout, applyLayout);
   const commit = history.commit;
+  const { sentinelRef, stuck } = useStuckHeader();
   const {
     drawerOpen,
     setDrawerOpen,
@@ -75,8 +77,10 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
 
   return (
     <div className="rb-editor-with-rail">
+      <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
       <header
         className="rb-editor-header"
+        data-stuck={stuck || undefined}
         style={{
           maxWidth: 880,
           margin: '0 auto 1rem',
