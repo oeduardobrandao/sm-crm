@@ -357,12 +357,73 @@ describe('BriefingPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Renomear seção Negócio' }));
       const input = screen.getByLabelText('Nome da seção');
       fireEvent.change(input, { target: { value: 'Negócio (renomeada)' } });
-      fireEvent.click(screen.getByRole('button', { name: /Salvar/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^Salvar$/ }));
 
       await waitFor(() => expect(hubStore.renameHubBriefingSection).toHaveBeenCalledTimes(1));
       const [calledIds, calledName] = vi.mocked(hubStore.renameHubBriefingSection).mock.calls[0];
       expect([...calledIds].sort()).toEqual(['a', 'b']);
       expect(calledName).toBe('Negócio (renomeada)');
+    });
+  });
+
+  describe('salvar briefing como template', () => {
+    // Ordem crua intercalada (Negócio, Público, Negócio): o template precisa sair na
+    // ordem que a tela mostra, agrupada por seção, que é também a ordem que
+    // applyTemplateToClient grava de volta como display_order.
+    const QUESTIONS: QuestionFixture[] = [
+      { id: 'a', question: 'P1', answer: 'R1', section: 'Negócio', display_order: 0 },
+      { id: 'c', question: 'P3', answer: null, section: 'Público', display_order: 1 },
+      { id: 'b', question: 'P2', answer: null, section: 'Negócio', display_order: 2 },
+      { id: 'd', question: 'P4', answer: 'R4', section: null, display_order: 3 },
+    ];
+
+    it('abre o editor preenchido e salva todas as perguntas, sem respostas, mesmo com filtro ativo', async () => {
+      vi.mocked(hubStore.addBriefingTemplate).mockResolvedValue({} as never);
+      renderBriefing(QUESTIONS);
+
+      // O filtro só decide o que a grade desenha; o template leva o briefing inteiro.
+      fireEvent.click(screen.getByTestId('chip-respondidas'));
+      fireEvent.click(screen.getByRole('button', { name: /Salvar como template/ }));
+
+      const titleInput = await screen.findByPlaceholderText(/Título do template/);
+      expect(titleInput).toHaveValue('Briefing principal');
+      expect(
+        screen.getAllByPlaceholderText('Pergunta...').map((el) => (el as HTMLInputElement).value),
+      ).toEqual(['P1', 'P2', 'P3', 'P4']);
+
+      fireEvent.change(titleInput, { target: { value: 'Onboarding clínica' } });
+      fireEvent.click(screen.getByRole('button', { name: /Salvar template/ }));
+
+      await waitFor(() => expect(hubStore.addBriefingTemplate).toHaveBeenCalledTimes(1));
+      expect(hubStore.addBriefingTemplate).toHaveBeenCalledWith({
+        title: 'Onboarding clínica',
+        questions: [
+          { question: 'P1', section: 'Negócio' },
+          { question: 'P2', section: 'Negócio' },
+          { question: 'P3', section: 'Público' },
+          { question: 'P4', section: null },
+        ],
+      });
+    });
+
+    it('fechar o rascunho e abrir "Templates" mostra a lista, não o editor velho', async () => {
+      renderBriefing(QUESTIONS);
+      fireEvent.click(screen.getByRole('button', { name: /Salvar como template/ }));
+      expect(await screen.findByPlaceholderText(/Título do template/)).toBeInTheDocument();
+
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+      await waitFor(() =>
+        expect(screen.queryByPlaceholderText(/Título do template/)).not.toBeInTheDocument(),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /^Templates$/ }));
+      expect(await screen.findByRole('button', { name: /Novo template/ })).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/Título do template/)).not.toBeInTheDocument();
+    });
+
+    it('fica desabilitado quando o briefing não tem perguntas', () => {
+      renderBriefing([]);
+      expect(screen.getByRole('button', { name: /Salvar como template/ })).toBeDisabled();
     });
   });
 

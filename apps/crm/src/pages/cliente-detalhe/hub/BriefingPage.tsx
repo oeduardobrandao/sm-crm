@@ -19,6 +19,7 @@ import {
   Pencil,
   ChevronDown,
   ChevronRight,
+  LayoutTemplate,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -59,7 +60,7 @@ import {
   type HubBriefingQuestionRow,
   type BriefingRow,
 } from '@/store';
-import { BriefingTemplatesModal } from '../BriefingTemplatesModal';
+import { BriefingTemplatesModal, type BriefingTemplateDraft } from '../BriefingTemplatesModal';
 import { BriefingAudioPlayer } from '../BriefingAudioPlayer';
 import { SortableQuestion, SortableSection, SECTION_PREFIX } from '../BriefingReorder';
 import {
@@ -200,6 +201,7 @@ function BriefingEditor({
     queryFn: getBriefingTemplates,
   });
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templateDraft, setTemplateDraft] = useState<BriefingTemplateDraft | null>(null);
   const [applying, setApplying] = useState(false);
   const [importingCsv, setImportingCsv] = useState(false);
   // Filtro por estado da resposta: chips com contagem no lugar do <select> (design
@@ -650,6 +652,20 @@ function BriefingEditor({
 
   const canExport = !!selectedBriefing && briefingQuestions.length > 0;
 
+  /** Abre o editor de template já preenchido com as perguntas deste briefing, na ordem em
+   * que aparecem na tela (agrupadas por seção). Usa o briefing inteiro, nunca o filtro
+   * ativo; respostas e áudios ficam de fora, template é só pergunta + seção. */
+  function handleSaveAsTemplate() {
+    if (!selectedBriefing || briefingQuestions.length === 0) return;
+    setTemplateDraft({
+      title: selectedBriefing.title,
+      questions: allSections.flatMap((s) =>
+        s.questions.map((q) => ({ question: q.question, section: q.section ?? null })),
+      ),
+    });
+    setTemplatesOpen(true);
+  }
+
   async function handleCopyMarkdown() {
     const sections = buildBriefingExportSections(questions, selectedId, firstId);
     const md = briefingToMarkdown(selectedBriefing?.title ?? '', sections);
@@ -879,6 +895,14 @@ function BriefingEditor({
                     style={{ color: 'var(--text-muted)' }}
                   />
                 </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSaveAsTemplate}
+                  disabled={!canExport}
+                >
+                  <LayoutTemplate size={14} className="mr-1.5" /> Salvar como template
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button size="sm" variant="outline" disabled={!canExport}>
@@ -1148,7 +1172,14 @@ function BriefingEditor({
           </>
         )}
       </div>
-      <BriefingTemplatesModal open={templatesOpen} onOpenChange={setTemplatesOpen} />
+      <BriefingTemplatesModal
+        open={templatesOpen}
+        onOpenChange={(v) => {
+          setTemplatesOpen(v);
+          if (!v) setTemplateDraft(null);
+        }}
+        initialDraft={templateDraft}
+      />
     </div>
   );
 }
