@@ -20,8 +20,8 @@
 - "Pagante" = `status === "active"` AND `monthly_cents > 0` (same eligibility as `aggregateMrr`). Exception: a `pagarme` row with `status === "trialing"`, `provider_switch === true` and `monthly_cents > 0` is also pagante (switch in progress).
 - `amount_source` values: `stripe | pagarme | catalog | backfill | unpriced` (helper `null` → `unpriced`, `monthly_cents` 0).
 - Snapshot column is `billing_interval` (not `interval`).
-- Snapshot date = calendar date in America/Sao_Paulo (fixed UTC-3, no DST since 2019). Month close instant for date D = D at 23:47 São Paulo = D+1 02:47 UTC.
-- Cron schedule `47 2 * * *` (UTC). Function name `metrics-snapshot-cron`.
+- Snapshot date = calendar date in America/Sao_Paulo (fixed UTC-3, no DST since 2019). Month close instant for date D = D at 23:44 São Paulo = D+1 02:44 UTC.
+- Cron schedule `44 2 * * *` (UTC). Function name `metrics-snapshot-cron`.
 - Backfill guard: env `METRICS_BACKFILL_ALLOWED` must equal `"true"`, else HTTP 403 `{ "error": "backfill_not_allowed" }` **before any remote or DB call**.
 - RPC grants exactly: `revoke all ... from public, anon, authenticated; grant execute ... to service_role;`.
 - Never commit `deno.lock`. After any `deno test`, run `git checkout deno.lock`. If `node_modules/.deno` exists before running Vitest or `tsc`, run `rm -rf node_modules/.deno && npm ci` first (Deno pollutes `node_modules`).
@@ -96,13 +96,13 @@ Deno.test("saoPauloDate: before 03:00 UTC is still the previous São Paulo day",
   assertEquals(saoPauloDate(new Date("2026-09-25T03:00:00Z")), "2026-09-25");
 });
 
-Deno.test("saoPauloDate: the 02:47 UTC cron tick belongs to the previous São Paulo day", () => {
-  assertEquals(saoPauloDate(new Date("2026-10-01T02:47:00Z")), "2026-09-30");
+Deno.test("saoPauloDate: the 02:44 UTC cron tick belongs to the previous São Paulo day", () => {
+  assertEquals(saoPauloDate(new Date("2026-10-01T02:44:00Z")), "2026-09-30");
 });
 
-Deno.test("closeInstant: D at 23:47 São Paulo is D+1 02:47 UTC, across month and year ends", () => {
-  assertEquals(closeInstant("2026-06-30").toISOString(), "2026-07-01T02:47:00.000Z");
-  assertEquals(closeInstant("2026-12-31").toISOString(), "2027-01-01T02:47:00.000Z");
+Deno.test("closeInstant: D at 23:44 São Paulo is D+1 02:44 UTC, across month and year ends", () => {
+  assertEquals(closeInstant("2026-06-30").toISOString(), "2026-07-01T02:44:00.000Z");
+  assertEquals(closeInstant("2026-12-31").toISOString(), "2027-01-01T02:44:00.000Z");
 });
 
 Deno.test("lastDayOfMonth handles February and leap years", () => {
@@ -140,10 +140,10 @@ export function saoPauloDate(now: Date): string {
   return new Date(now.getTime() - SP_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-/** The metrics close of São Paulo date D: 23:47 local, i.e. D+1 at 02:47 UTC (the cron tick). */
+/** The metrics close of São Paulo date D: 23:44 local, i.e. D+1 at 02:44 UTC (the cron tick). */
 export function closeInstant(date: string): Date {
   const [y, m, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + 1, 2, 47, 0));
+  return new Date(Date.UTC(y, m - 1, d + 1, 2, 44, 0));
 }
 
 /** Last calendar day (YYYY-MM-DD) of month 'YYYY-MM'. */
@@ -426,7 +426,7 @@ rollback;
 -- that have one, so a run that died halfway never reads as churn.
 --
 -- Deploy metrics-snapshot-cron BEFORE applying this migration: the schedule at the bottom starts
--- firing at the next 02:47 UTC.
+-- firing at the next 02:44 UTC.
 
 create table public.workspace_subscription_snapshots (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -521,8 +521,8 @@ revoke all on function public.admin_metrics_write_snapshot(date, text, jsonb)
 grant execute on function public.admin_metrics_write_snapshot(date, text, jsonb)
   to service_role;
 
--- Daily close at 23:47 São Paulo (02:47 UTC). Minute 47 of hour 2 is free in
--- 20260925110001_stagger_cron_schedules.sql. Idempotent.
+-- Daily close at 23:44 São Paulo (02:44 UTC). Minute 44 of hour 2 only has the three every-minute jobs in prod (cron.job, 2026-09-25; see
+-- 20260925110001_stagger_cron_schedules.sql). Idempotent.
 do $$ begin
   if exists (select 1 from cron.job where jobname = 'metrics-snapshot-cron') then
     perform cron.unschedule('metrics-snapshot-cron');
@@ -531,7 +531,7 @@ end $$;
 
 select cron.schedule(
   'metrics-snapshot-cron',
-  '47 2 * * *',
+  '44 2 * * *',
   $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url')
@@ -667,7 +667,7 @@ function makeDeps(over: Partial<Parameters<typeof createMetricsSnapshotHandler>[
   const deps = {
     cronSecret: "s3cret",
     timingSafeEqual: (a: string, b: string) => a === b,
-    now: () => new Date("2026-10-01T02:47:00Z"),
+    now: () => new Date("2026-10-01T02:44:00Z"),
     loadPricedRows: () => Promise.resolve([base]),
     loadInternalIds: () => Promise.resolve(new Set<string>()),
     write: (date: string, rows: SnapshotRow[]) => {
@@ -697,7 +697,7 @@ Deno.test("cron rejects a missing or wrong secret without doing any work", async
   assertEquals(written.length, 0);
 });
 
-Deno.test("cron writes the São Paulo date of its tick (02:47 UTC on the 1st = last day of the month)", async () => {
+Deno.test("cron writes the São Paulo date of its tick (02:44 UTC on the 1st = last day of the month)", async () => {
   const { deps, written } = makeDeps();
   const res = await createMetricsSnapshotHandler(deps)(req("s3cret"));
   assertEquals(res.status, 200);
@@ -1666,7 +1666,7 @@ import {
 } from "../platform-admin/metrics-backfill-logic.ts";
 
 const sec = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
-const T_JUN = new Date("2026-07-01T02:47:00Z"); // close of 2026-06-30
+const T_JUN = new Date("2026-07-01T02:44:00Z"); // close of 2026-06-30
 
 const stripeSub = (over: Partial<StripeSubLite> = {}): StripeSubLite => ({
   id: "sub_1", customer: "cus_1", status: "active",
@@ -1690,11 +1690,11 @@ const local = (over: Partial<BackfillLocal> = {}): BackfillLocal => ({
   ...over,
 });
 
-Deno.test("stripeStatusAt compares timestamps with the 23:47 close instant", () => {
+Deno.test("stripeStatusAt compares timestamps with the 23:44 close instant", () => {
   // starts at noon on the last day of June: in force at the June close
   assertEquals(stripeStatusAt(stripeSub({ start_date: sec("2026-06-30T15:00:00Z") }), T_JUN), "active");
   assertEquals(stripeStatusAt(stripeSub({ start_date: sec("2026-07-02T00:00:00Z") }), T_JUN), null);
-  // trial ending before 23:47 of the last day already counts as active
+  // trial ending before 23:44 of the last day already counts as active
   assertEquals(
     stripeStatusAt(stripeSub({ trial_start: sec("2026-06-15T00:00:00Z"), trial_end: sec("2026-06-30T20:00:00Z") }), T_JUN),
     "active",
@@ -1707,7 +1707,7 @@ Deno.test("stripeStatusAt compares timestamps with the 23:47 close instant", () 
 });
 
 Deno.test("pagarmeStatusAt: future start is trialing, canceled is gone", () => {
-  const t = new Date("2026-09-01T02:47:00Z");
+  const t = new Date("2026-09-01T02:44:00Z");
   assertEquals(pagarmeStatusAt(pagarmeSub({ created_at: "2026-08-20T00:00:00Z", start_at: "2026-09-10T00:00:00Z" }), t), "trialing");
   assertEquals(pagarmeStatusAt(pagarmeSub(), t), "active");
   assertEquals(pagarmeStatusAt(pagarmeSub({ canceled_at: "2026-08-25T00:00:00Z" }), t), null);
@@ -3496,7 +3496,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   (reconstrução do histórico de MRR/churn da página Métricas a partir da Stripe e do Pagar.me).
   Só prod recebe: prod e staging compartilham a conta Stripe, e o handler responde 403 sem
   nenhuma chamada remota quando a secret não é exatamente `true`. O snapshot diário é do
-  `metrics-snapshot-cron` (pg_cron `47 2 * * *` UTC = 23:47 em São Paulo), que não depende dela
+  `metrics-snapshot-cron` (pg_cron `44 2 * * *` UTC = 23:44 em São Paulo), que não depende dela
 ```
 
 - [ ] **Step 2: Run the whole gate** (fix anything that fails before committing):

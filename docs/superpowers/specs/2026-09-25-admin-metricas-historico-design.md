@@ -120,11 +120,11 @@ Function nova, deploy com `--no-verify-jwt --use-api`.
 - Stripe fora do ar: o `priceSubscriptionRows` já cai para espelho/catálogo, e o `amount_source`
   registra de onde veio.
 - Agendamento: na mesma migration das tabelas e do RPC, com pg_cron padrão A (`net.http_post` com o `cron_secret` do vault),
-  `47 2 * * *` UTC = 23:47 em São Paulo. **O fechamento do dia é definido como o estado às 23:47**
-  (hora de São Paulo); o do último dia do mês é o fechamento do mês. O que muda entre 23:47 e a
+  `44 2 * * *` UTC = 23:44 em São Paulo. **O fechamento do dia é definido como o estado às 23:44**
+  (hora de São Paulo); o do último dia do mês é o fechamento do mês. O que muda entre 23:44 e a
   meia-noite entra no dia seguinte, o que é irrelevante para uma métrica mensal. Um disparo manual
-  durante o dia grava o estado daquele momento e é substituído pela execução das 23:47. Minuto
-  livre segundo `20260925110001_stagger_cron_schedules.sql`.
+  durante o dia grava o estado daquele momento e é substituído pela execução das 23:44. Minuto
+  escolhido porque às 02:44 UTC só rodam os três jobs de todo minuto em prod (cron.job, 2026-09-25); às 02:47 seriam cinco.
 
 ### `get-mrr` e `get-trials`
 
@@ -150,8 +150,8 @@ Ação admin nova no `platform-admin`.
   3. senão, ignorada e contada como sem mapeamento.
   O `metadata` é gravado pelo checkout em `pagarme-checkout/gateway.ts`.
 - **Meses:** do mês da assinatura mais antiga até o último mês fechado. Para cada fim de mês D
-  (último dia do mês), o instante de comparação é **T = D às 23:47 em São Paulo**, o mesmo
-  fechamento do cron (Brasil sem horário de verão desde 2019: T = D+1 às 02:47 UTC). Os campos da
+  (último dia do mês), o instante de comparação é **T = D às 23:44 em São Paulo**, o mesmo
+  fechamento do cron (Brasil sem horário de verão desde 2019: T = D+1 às 02:44 UTC). Os campos da
   assinatura são timestamps e são comparados com T, nunca com a data D:
   - `start_date > T`: sem linha
   - dentro do trial (`trial_start <= T < trial_end`): `trialing`
@@ -301,7 +301,7 @@ interface MetricsMonth {
     (`null`); primeiro mês sem movimentos; mês com marcador e zero linhas (churn total calculado);
     mês `missing` no meio da série (`movements_since` aponta o mês anterior disponível).
   - backfill: status no fim de mês comparado ao instante T (assinatura que começa ao meio-dia do
-    último dia entra; trial que termina antes das 23:47 do último dia já conta como ativo); precedência
+    último dia entra; trial que termina antes das 23:44 do último dia já conta como ativo); precedência
     Stripe × Pagar.me nas duas ordens de paginação; os três passos do mapeamento do Pagar.me
     (inclusive divergente); data com marcador `cron` preservada; 403 sem
     `METRICS_BACKFILL_ALLOWED` sem chamar gateway.
@@ -321,7 +321,7 @@ Ordem (merge implanta o frontend na hora):
 
 1. Staging, nesta ordem:
    1. deploy de `metrics-snapshot-cron` e `platform-admin` **antes** da migration: o deploy não
-      precisa das tabelas, e agendar antes do deploy faria uma execução das 02:47 UTC cair numa
+      precisa das tabelas, e agendar antes do deploy faria uma execução das 02:44 UTC cair numa
       function inexistente e virar alerta de cron (`db push` aplica todas as migrations pendentes
       de uma vez, então separar a migration do agendamento não resolveria);
    2. `db push` da migration (tabelas, RPC e agendamento juntos);
@@ -334,7 +334,7 @@ Ordem (merge implanta o frontend na hora):
 Âncoras:
 - Disparo manual do cron e, logo em seguida, o tile de MRR: mesmo valor, salvo workspaces no meio
   de uma troca de provedor (ver exceção no §4). A comparação só vale
-  nesse instante; depois disso o tile é ao vivo e o snapshot é o estado das 23:47, e uma
+  nesse instante; depois disso o tile é ao vivo e o snapshot é o estado das 23:44, e uma
   diferença é legítima.
 - Um mês backfilled == MRR do dashboard da Stripe naquele mês, dentro do arredondamento e dos
   limites conhecidos.
