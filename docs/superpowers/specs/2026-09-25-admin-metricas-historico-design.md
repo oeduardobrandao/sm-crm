@@ -97,10 +97,11 @@ hospedado) negam a chamada, e a function fica dependente de um grant implícito.
 
 Function nova, deploy com `--no-verify-jwt --use-api`.
 
-- Verifica `x-cron-secret` antes de qualquer trabalho; em falha, `reportCronFailure`
-  (`_shared/triage.ts`).
-- Lê todas as linhas de `workspace_subscriptions` com `status` não nulo (paginado até o fim com
-  `fetchAllRows`, como o `get-mrr`), remove os workspaces `is_internal` e precifica com o mesmo
+- Verifica `x-cron-secret` antes de qualquer trabalho e responde 401 sem registrar falha, como
+  os demais crons (um POST anônimo não pode gerar alertas). Qualquer falha da execução chama
+  `reportCronFailure` (`_shared/triage.ts`).
+- Lê todas as linhas de `workspace_subscriptions` com `status` não nulo (paginado por chave com
+  `fetchAllRowsKeyset` em `workspace_id`, para que uma escrita concorrente não repita nem pule um workspace), remove os workspaces `is_internal` e precifica com o mesmo
   `priceSubscriptionRows` de `platform-admin/pricing.ts`, registrando `setStripeLoader` igual ao
   `platform-admin/index.ts`. Com isso o MRR do snapshot do dia é o mesmo número do tile.
 - **A lista de internos falha fechada aqui.** O `fetchInternalWorkspaceIds` de
