@@ -29,8 +29,8 @@ Docker here is **colima**, not Docker.app: run `colima start --cpu 4 --memory 8`
 ```bash
 npx supabase start
 npx supabase db reset            # applies all migrations, including the new one
-DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
-  psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/update_workflow_template.sql
+export DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres   # 54422 with the overrides
+psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/update_workflow_template.sql
 ```
 
 (Use port 54422 if you applied the overrides.) A passing suite prints `NOTICE:  PASS update_workflow_template`.
@@ -1446,7 +1446,7 @@ Expected: all exit 0. On `format:check` failure, run `npm run format` and commit
 
 ```bash
 npx supabase db reset
-DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm run test:db
+SUPABASE_DB_URL="$DB_URL" npm run test:db   # the runner reads SUPABASE_DB_URL, not DB_URL
 ```
 
 Expected: `failures=0`, including `PASS supabase/tests/update_workflow_template.sql` and `PASS supabase/tests/workflow_events.sql`.
