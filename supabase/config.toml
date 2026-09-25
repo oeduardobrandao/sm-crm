@@ -224,3 +224,6 @@ verify_jwt = false
 
 [functions.client-email-unsub]
 verify_jwt = false
+
+[functions.metrics-snapshot-cron]
+verify_jwt = false

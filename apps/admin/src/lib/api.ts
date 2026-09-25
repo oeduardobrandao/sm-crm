@@ -397,6 +397,64 @@ export function getDeposits() {
   return adminApi<DepositsResponse>('get-deposits');
 }
 
+// ─── Métricas: histórico (sub-projeto B) ─────────────────────
+
+export interface MetricsMovements {
+  new: number;
+  expansion: number;
+  contraction: number;
+  past_due: number;
+  recovered: number;
+  churn: number;
+  switch: number;
+}
+
+export interface MetricsChurn {
+  logos: number;
+  lost_cents: number;
+  base_logos: number;
+  base_cents: number;
+  logo_pct: number | null;
+  revenue_pct: number | null;
+}
+
+export interface MetricsMonth {
+  month: string;
+  missing: boolean;
+  close_date: string | null;
+  closed: boolean;
+  source: 'cron' | 'backfill' | null;
+  mrr_cents: number | null;
+  arr_cents: number | null;
+  paying_count: number | null;
+  by_provider: { stripe: number; pagarme: number } | null;
+  by_plan: { plan_id: string | null; name: string; mrr_cents: number }[] | null;
+  movements_since: string | null;
+  movements: MetricsMovements | null;
+  churn: MetricsChurn | null;
+}
+
+export interface MetricsHistoryResponse {
+  generated_at: string;
+  first_month: string | null;
+  months: MetricsMonth[];
+}
+
+export interface BackfillReport {
+  months_written: number;
+  months_kept_cron: number;
+  rows_written: number;
+  skipped: { stripe_unmapped: number; pagarme_unmapped: number; pagarme_divergent: number };
+}
+
+export function getMetricsHistory() {
+  return adminApi<MetricsHistoryResponse>('get-metrics-history');
+}
+
+export function backfillMetrics() {
+  return adminApi<BackfillReport>('backfill-metrics');
+}
+
 export interface PayingWorkspace {
   workspace_id: string;
   name: string;
