@@ -81,6 +81,8 @@ export function buildTimeSuggestions(
 
   const upcoming = data.topSlots
     .map((slot) => ({ date: nextOccurrence(slot, from), slot }))
+    // Already offered as the same-day row.
+    .filter((s) => s.date.getTime() !== sameDay?.date.getTime())
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   return { sameDay, upcoming };

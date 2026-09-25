@@ -125,4 +125,13 @@ describe('buildTimeSuggestions', () => {
     const { sameDay } = buildTimeSuggestions(data, new Date(2026, 9, 3), WED_10AM);
     expect(sameDay).toBeNull();
   });
+
+  it('does not repeat the same-day suggestion among the upcoming ones', () => {
+    const { sameDay, upcoming } = buildTimeSuggestions(data, WED_10AM, WED_10AM);
+    expect(sameDay?.date).toEqual(new Date(2026, 8, 30, 18));
+    expect(upcoming.map((s) => s.date)).toEqual([
+      new Date(2026, 9, 2, 12),
+      new Date(2026, 9, 5, 8),
+    ]);
+  });
 });
