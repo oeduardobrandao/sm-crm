@@ -1,20 +1,19 @@
 // Editor de modelo (spec 2026-09-25 §2): o mesmo canvas do relatório, com
 // dados de exemplo e a marca real do workspace, gravando em report_templates.
 // Sem PDF, atualizar dados, ver como cliente ou salvar/aplicar template.
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Info, Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
 import type { ReportBlock } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
 import { getReportTemplate, type ReportTemplateRow } from '../../services/reportTemplates';
-import { getCurrentWorkspace, getWorkspaceBranding } from '../../store';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { TEMPLATE_AUTOSAVE_TARGET } from './templateAutosave';
 import { useBlockEditing } from './useBlockEditing';
+import { useSampleSnapshot } from './useSampleSnapshot';
 import { EditorCanvas } from './EditorCanvas';
 import { TextBlockEditor } from './TextBlockEditor';
 import { AddWidgetDrawer } from './AddWidgetDrawer';
@@ -45,28 +44,7 @@ function AiPlaceholder() {
 }
 
 function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
-  const { data: workspace } = useQuery({
-    queryKey: ['currentWorkspace'],
-    queryFn: getCurrentWorkspace,
-  });
-  const { data: branding } = useQuery({
-    queryKey: ['workspace-branding'],
-    queryFn: getWorkspaceBranding,
-  });
-  // Mesmo racional de ReportPreview.tsx: números de exemplo, marca real.
-  const snapshot = useMemo(
-    () =>
-      makeSnapshotFixture({
-        account: { handle: 'seucliente', specialty: '' },
-        branding: {
-          workspace_name: workspace?.name ?? '',
-          logo_url: workspace?.logo_url ?? null,
-          splash_url: branding?.report_splash_url ?? null,
-          accent_color: branding?.brand_color ?? '#eab308',
-        },
-      }),
-    [workspace, branding],
-  );
+  const snapshot = useSampleSnapshot();
 
   const { layout, applyLayout, title, setTitle, saving } = useLayoutAutosave(
     template.id,

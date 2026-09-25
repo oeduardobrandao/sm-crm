@@ -122,6 +122,13 @@ describe('ReportTemplatesCard', () => {
     expect(navigateMock).toHaveBeenCalledWith('/relatorios/modelos/new-1');
   });
 
+  it('Visualizar o padrão do sistema abre a prévia', async () => {
+    renderCard();
+    await screen.findByText('Mensal completo');
+    fireEvent.click(within(rowOf('Padrão do sistema')).getByRole('button', { name: /Visualizar/ }));
+    expect(navigateMock).toHaveBeenCalledWith('/relatorios/modelos/padrao');
+  });
+
   it('Duplicar o padrão do sistema cria "Padrão do sistema (cópia)"', async () => {
     renderCard();
     await screen.findByText('Mensal completo');

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Copy, Lock, MoreHorizontal, Pencil, Plus } from 'lucide-react';
+import { Copy, Eye, Lock, MoreHorizontal, Pencil, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -163,19 +163,28 @@ export function ReportTemplatesCard() {
             <span>{SYSTEM_TEMPLATE_NAME}</span>
             <span style={META_STYLE}>embutido</span>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() =>
-              create.mutate({
-                name: `${SYSTEM_TEMPLATE_NAME} (cópia)`,
-                layout: buildSystemDefaultLayout(),
-              })
-            }
-          >
-            <Copy className="h-3.5 w-3.5" /> Duplicar
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/relatorios/modelos/padrao')}
+            >
+              <Eye className="h-3.5 w-3.5" /> Visualizar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                create.mutate({
+                  name: `${SYSTEM_TEMPLATE_NAME} (cópia)`,
+                  layout: buildSystemDefaultLayout(),
+                })
+              }
+            >
+              <Copy className="h-3.5 w-3.5" /> Duplicar
+            </Button>
+          </div>
         </div>
 
         {templates.map((t) => (
