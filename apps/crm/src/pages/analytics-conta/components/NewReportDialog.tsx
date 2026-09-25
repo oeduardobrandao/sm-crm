@@ -83,6 +83,19 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
     appliedDefaultRef.current = true;
   }, [open, templatesLoading, templates]);
 
+  // F4 (revisão final): o template selecionado pode ser excluído em outra
+  // aba enquanto o dialog segue aberto -- o refetch derruba a linha da
+  // lista, mas `templateId` continuava com o id antigo, o Select ficava em
+  // branco e gerar falhava. Só reseta depois que a lista carregou, e nunca
+  // mexe na sentinela do sistema.
+  useEffect(() => {
+    if (!open || templatesLoading) return;
+    if (templateId === SYSTEM_TEMPLATE) return;
+    if (!templates.some((t) => t.id === templateId)) {
+      setTemplateId(SYSTEM_TEMPLATE);
+    }
+  }, [open, templatesLoading, templates, templateId]);
+
   const handleGenerate = async () => {
     if (generating || !month) return;
     setGenerating(true);
