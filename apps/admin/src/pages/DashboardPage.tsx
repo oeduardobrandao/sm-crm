@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { listWorkspaces, getMrr, getTrials } from '../lib/api';
@@ -14,7 +14,7 @@ import { RowLink } from '../components/RowLink';
 import { Skeleton } from '../components/ui/skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { cn } from '../lib/utils';
-import { workspaceDetailPath } from '../lib/routes';
+import { workspaceDetailPath, metricasPath } from '../lib/routes';
 import { RiskCard } from './dashboard/RiskCard';
 import { selectTrialsEndingSoon } from './dashboard-risk';
 import {
@@ -147,6 +147,7 @@ export default function DashboardPage() {
     sub?: string;
     loading: boolean;
     tone?: 'warning';
+    to?: string;
   }[] = [
     { label: 'Workspaces', value: totalWorkspaces, loading: wsLoading },
     { label: 'Usuários', value: totalMembers, loading: wsLoading },
@@ -167,12 +168,14 @@ export default function DashboardPage() {
           ? `${Math.round((mrrData.paying_count / totalWorkspaces) * 100)}% dos workspaces`
           : undefined,
       loading: mrrLoading,
+      to: `${metricasPath()}#mrr`,
     },
     {
       label: 'MRR',
       value: kpiMoney(mrrData?.mrr_cents ?? null),
       sub: mrrData ? `${mrrData.paying_count} pagantes` : undefined,
       loading: mrrLoading,
+      to: `${metricasPath()}#mrr`,
     },
     {
       label: 'Testes',
@@ -194,6 +197,7 @@ export default function DashboardPage() {
       value: kpiMoney(totalMrrCents),
       sub: 'MRR + testes',
       loading: mrrLoading || trialsLoading,
+      to: `${metricasPath()}#mrr`,
     },
   ];
 
@@ -202,27 +206,44 @@ export default function DashboardPage() {
       <PageHeader title="Dashboard" description="Visão geral da plataforma" />
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-        {kpis.map((kpi) => (
-          <div
-            key={kpi.label}
-            className="glass-surface bg-card border border-border rounded-2xl p-5 min-w-0"
-          >
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
-              {kpi.label}
-            </p>
-            <p
+        {kpis.map((kpi) => {
+          const body = (
+            <>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                {kpi.label}
+              </p>
+              {'\n'}
+              <p
+                className={cn(
+                  'text-2xl sm:text-3xl font-bold font-sf break-words',
+                  kpi.tone === 'warning' && 'text-warning',
+                )}
+              >
+                {kpi.loading ? '—' : kpi.value}
+              </p>
+              {!kpi.loading && kpi.sub && (
+                <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
+              )}
+            </>
+          );
+          const cls = 'glass-surface bg-card border border-border rounded-2xl p-5 min-w-0';
+          return kpi.to ? (
+            <Link
+              key={kpi.label}
+              to={kpi.to}
               className={cn(
-                'text-2xl sm:text-3xl font-bold font-sf break-words',
-                kpi.tone === 'warning' && 'text-warning',
+                cls,
+                'block transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               )}
             >
-              {kpi.loading ? '—' : kpi.value}
-            </p>
-            {!kpi.loading && kpi.sub ? (
-              <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
-            ) : null}
-          </div>
-        ))}
+              {body}
+            </Link>
+          ) : (
+            <div key={kpi.label} className={cls}>
+              {body}
+            </div>
+          );
+        })}
       </div>
 
       <RiskCard

@@ -307,3 +307,13 @@ describe('DashboardPage at-risk card', () => {
     consoleErrorSpy.mockRestore();
   });
 });
+
+describe('DashboardPage tile links', () => {
+  it('links the MRR, Pagantes and MRR projetado tiles to the Métricas MRR section', async () => {
+    renderPage();
+    const links = await screen.findAllByRole('link');
+    const tiles = links.filter((a) => a.getAttribute('href') === '/admin/metricas#mrr');
+    expect(tiles.map((a) => a.textContent?.split(/\s/)[0])).toEqual(['Pagantes', 'MRR', 'MRR']);
+    expect(links.some((a) => a.textContent?.startsWith('Workspaces'))).toBe(false);
+  });
+});
