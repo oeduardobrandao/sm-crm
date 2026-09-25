@@ -2,6 +2,8 @@ import { assertEquals } from "./assert.ts";
 import {
   type BackfillDeps,
   handleBackfillMetrics,
+  listPagarmeSubscriptions,
+  PAGARME_MAX_PAGES,
   toPagarmeSubLite,
   toStripeSubLite,
 } from "../platform-admin/metrics-backfill.ts";
@@ -99,4 +101,34 @@ Deno.test("toPagarmeSubLite reads price, interval and metadata", () => {
       canceled_at: null, interval: "year", price_cents: 120000, metadata_workspace_id: "w1", metadata_plan_id: "max",
     },
   );
+});
+
+const pgRaw = (id: string) => ({ id, status: "active", interval: "month", items: [{ pricing_scheme: { price: 9900 } }] });
+
+Deno.test("listPagarmeSubscriptions keeps paging through short pages until an empty one", async () => {
+  // A server-side clamp of `size` returns short but non-empty pages: they are not the end.
+  const pages: unknown[][] = [[pgRaw("a"), pgRaw("b"), pgRaw("c")], [pgRaw("d"), pgRaw("e")], []];
+  const asked: Array<[number, number]> = [];
+  const subs = await listPagarmeSubscriptions((page, size) => {
+    asked.push([page, size]);
+    return Promise.resolve({ data: pages[page - 1] ?? [] });
+  });
+  assertEquals(subs.map((s) => s.id), ["a", "b", "c", "d", "e"]);
+  assertEquals(asked.map(([page]) => page), [1, 2, 3]);
+});
+
+Deno.test("listPagarmeSubscriptions throws at the page cap instead of returning a partial list", async () => {
+  let calls = 0;
+  let threw = false;
+  try {
+    await listPagarmeSubscriptions(() => {
+      calls++;
+      return Promise.resolve({ data: [pgRaw(`s${calls}`)] });
+    });
+  } catch (err) {
+    threw = true;
+    assertEquals((err as Error).message, "pagarme subscriptions list exceeded the page cap");
+  }
+  assertEquals(threw, true);
+  assertEquals(calls, PAGARME_MAX_PAGES);
 });

@@ -123,7 +123,7 @@ export async function handleBackfillMetrics(
 
 const STRIPE_MAX_PAGES = 100;
 const PAGARME_PAGE_SIZE = 100;
-const PAGARME_MAX_PAGES = 50;
+export const PAGARME_MAX_PAGES = 50;
 
 type StripeSubsClient = {
   subscriptions: {
@@ -157,16 +157,26 @@ async function listStripeSubscriptions(): Promise<StripeSubLite[]> {
   throw new Error("stripe subscriptions list exceeded the page cap");
 }
 
-async function listPagarmeSubscriptions(): Promise<PagarmeSubLite[]> {
+export type PagarmePageFetcher = (
+  page: number,
+  size: number,
+) => Promise<{ data?: unknown[] | null } | null | undefined>;
+
+/**
+ * Walks every page until an EMPTY one. A short page is not the end: if Pagar.me clamps `size`
+ * below what we asked, stopping there would silently truncate the list and write false absences
+ * (churn) into durable history. Hitting the page cap throws for the same reason.
+ */
+export async function listPagarmeSubscriptions(
+  fetchPage: PagarmePageFetcher = (page, size) =>
+    pagarmeFetch<{ data?: unknown[] | null }>("GET", `/subscriptions?page=${page}&size=${size}`),
+): Promise<PagarmeSubLite[]> {
   const out: PagarmeSubLite[] = [];
   for (let page = 1; page <= PAGARME_MAX_PAGES; page++) {
-    const res = await pagarmeFetch<{ data?: unknown[] | null }>(
-      "GET",
-      `/subscriptions?page=${page}&size=${PAGARME_PAGE_SIZE}`,
-    );
+    const res = await fetchPage(page, PAGARME_PAGE_SIZE);
     const rows = res?.data ?? [];
+    if (!rows.length) return out;
     for (const raw of rows) out.push(toPagarmeSubLite(raw));
-    if (rows.length < PAGARME_PAGE_SIZE) return out;
   }
   throw new Error("pagarme subscriptions list exceeded the page cap");
 }
@@ -212,7 +222,7 @@ export function defaultBackfillDeps(svc: SupabaseClient): BackfillDeps {
     loadLocal: () => loadLocal(svc),
     loadInternalIds: () => fetchInternalWorkspaceIdsOrThrow(svc),
     listStripeSubs: listStripeSubscriptions,
-    listPagarmeSubs: listPagarmeSubscriptions,
+    listPagarmeSubs: () => listPagarmeSubscriptions(),
     write: (date, rows) => writeSnapshot(svc, date, "backfill", rows),
   };
 }
