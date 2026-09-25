@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '../../../context/AuthContext';
+import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { supabase } from '../../../lib/supabase';
 import {
   getCurrentWorkspace,
@@ -58,6 +59,18 @@ export default function RelatoriosTab() {
   // toast de sucesso mentia. O backstop de zero linhas fica em
   // store/workspace.ts; esconder o controle é a correção primária.
   const canEditConfig = can('configuracoes', 'editar') === true;
+
+  // F3 (revisão final): /relatorios/modelos/:id exige feature_analytics_reports
+  // (ProtectedRoute) e analytics:ver (routePermissions) -- este card tinha só
+  // o gate de configuracoes:ver da aba, então um membro/plano sem os dois
+  // conseguia "Novo modelo"/"Duplicar" e caía numa tela travada. Mesma regra
+  // de bloqueio do ProtectedRoute: só trava quando limits carregou, não é
+  // ilimitado e a flag veio explicitamente false.
+  const { features: planFeatures, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
+  const canViewTemplates = can('analytics', 'ver') === true;
+  const templatesFeatureBlocked =
+    !isUnlimited && !!planFeatures && planFeatures.feature_analytics_reports === false;
+  const showTemplatesCard = !limitsLoading && canViewTemplates && !templatesFeatureBlocked;
 
   // The workspace supplies the logo and name shown in the live preview, plus
   // the id used to persist the cover art. Name/logo are edited on the Workspace
@@ -382,7 +395,7 @@ export default function RelatoriosTab() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-      <ReportTemplatesCard />
+      {showTemplatesCard && <ReportTemplatesCard />}
     </>
   );
 }
