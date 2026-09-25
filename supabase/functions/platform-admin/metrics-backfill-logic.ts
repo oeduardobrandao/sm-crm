@@ -100,6 +100,7 @@ export function mapPagarmeWorkspace(
 }
 
 interface Candidate {
+  id: string;
   workspace_id: string;
   provider: "stripe" | "pagarme";
   startMs: number;
@@ -133,6 +134,7 @@ export function buildBackfill(input: {
     const resolved = s.price_id ? resolvePlanFromPriceId(s.price_id, local.plans) : null;
     const interval = s.interval ?? resolved?.interval ?? null;
     candidates.push({
+      id: s.id,
       workspace_id: ws,
       provider: "stripe",
       startMs: s.start_date * 1000,
@@ -158,6 +160,7 @@ export function buildBackfill(input: {
     const catalog = local.plans.find((p) => p.id === s.metadata_plan_id)?.price_brl_annual ?? null;
     const price = s.price_cents ?? (interval === "year" ? catalog : null);
     candidates.push({
+      id: s.id,
       workspace_id: mapped.workspace_id,
       provider: "pagarme",
       startMs,
@@ -188,8 +191,12 @@ export function buildBackfill(input: {
       const hasStripe = inForce.some((x) => x.c.provider === "stripe");
       const pagarme = inForce.filter((x) => x.c.provider === "pagarme");
       const pool = pagarme.length ? pagarme : inForce;
-      // Latest start wins inside a provider; ties broken by provider name for determinism.
-      const pick = [...pool].sort((a, b) => b.c.startMs - a.c.startMs || (a.c.provider < b.c.provider ? -1 : 1))[0];
+      // Latest start wins inside the pool (Pagar.me-only or Stripe-only, never mixed — see
+      // `pool` above); a startMs tie is broken by subscription id for a result that is the same
+      // regardless of input/pagination order.
+      const pick = [...pool].sort((a, b) =>
+        b.c.startMs - a.c.startMs || (a.c.id < b.c.id ? -1 : a.c.id > b.c.id ? 1 : 0)
+      )[0];
       rows.push({
         workspace_id: ws,
         provider: pick.c.provider,

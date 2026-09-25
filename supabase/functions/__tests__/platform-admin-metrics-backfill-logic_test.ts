@@ -97,6 +97,25 @@ Deno.test("buildBackfill: Stripe and Pagar.me both in force -> Pagar.me with pro
   }
 });
 
+Deno.test("buildBackfill: same-provider tie at equal start is deterministic regardless of input order", () => {
+  // Two Stripe subs for the same workspace, same start_date (a genuine tie), never ended:
+  // both are in force at every close in range. The pick must not depend on array order.
+  const a = stripeSub({ id: "sub_a", amount_cents: 9900 });
+  const b = stripeSub({ id: "sub_b", amount_cents: 19900 });
+  for (const stripe of [[a, b], [b, a]]) {
+    const plan = buildBackfill({
+      stripe,
+      pagarme: [],
+      local: local(),
+      internalIds: new Set(),
+      todaySP: "2026-08-25",
+    });
+    const jul = plan.dates.find((d) => d.date === "2026-07-31")!;
+    assertEquals(jul.rows.length, 1);
+    assertEquals(jul.rows[0].monthly_cents, 9900); // "sub_a" < "sub_b" wins the tie either way
+  }
+});
+
 Deno.test("buildBackfill: skips incomplete Stripe subs, internal workspaces, and counts unmapped", () => {
   const plan = buildBackfill({
     stripe: [
