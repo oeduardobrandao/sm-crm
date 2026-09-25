@@ -126,7 +126,9 @@ export function buildBackfill(input: {
   const candidates: Candidate[] = [];
 
   for (const s of input.stripe) {
-    if (s.status === "incomplete" || s.status === "incomplete_expired") continue;
+    // Never charged: incomplete* failed the first payment; Stripe only pauses a sub when its trial
+    // ends without a payment method, and the current status does not say when that happened.
+    if (s.status === "incomplete" || s.status === "incomplete_expired" || s.status === "paused") continue;
     const ws = local.customerToWorkspace.get(s.customer);
     if (!ws) {
       skipped.stripe_unmapped++;

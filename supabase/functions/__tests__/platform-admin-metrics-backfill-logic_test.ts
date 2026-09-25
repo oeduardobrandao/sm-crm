@@ -150,3 +150,14 @@ Deno.test("buildBackfill: skips incomplete Stripe subs, internal workspaces, and
   assertEquals(plan.skipped, { stripe_unmapped: 1, pagarme_unmapped: 1, pagarme_divergent: 1 });
   assertEquals(plan.dates.flatMap((d) => d.rows).length, 0);
 });
+
+Deno.test("buildBackfill: skips paused Stripe subs (trial ended without a payment method, never charged)", () => {
+  const plan = buildBackfill({
+    stripe: [stripeSub({ status: "paused", trial_start: 1780000000, trial_end: 1781000000 })],
+    pagarme: [],
+    local: local(),
+    internalIds: new Set(),
+    todaySP: "2026-09-25",
+  });
+  assertEquals(plan.dates.flatMap((d) => d.rows).length, 0);
+});
