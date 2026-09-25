@@ -188,6 +188,8 @@ Ação admin somente leitura.
 3. Mês sem nenhum marcador (cron parado o mês todo) aparece com `missing: true` e valores nulos;
    os movimentos do mês seguinte são calculados contra o último fechamento disponível e vêm com
    `movements_since` indicando esse mês.
+   Exceção: o mês corrente sem marcador ainda (dia 1 antes das 23:44) fica fora da série, em vez
+   de aparecer como lacuna no fim do gráfico.
 4. Lê só as linhas das datas de fechamento e passa para o `metrics-logic.ts` puro.
 
 ### Classificação por workspace entre o fechamento anterior e o atual
