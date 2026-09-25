@@ -5,6 +5,7 @@ import {
   monthRange,
   previousMonth,
   saoPauloDate,
+  saoPauloWeekdayHour,
 } from "../_shared/sao-paulo-date.ts";
 
 Deno.test("saoPauloDate: before 03:00 UTC is still the previous São Paulo day", () => {
@@ -36,4 +37,13 @@ Deno.test("monthRange is inclusive and crosses years; empty when from > to", () 
 Deno.test("previousMonth wraps the year", () => {
   assertEquals(previousMonth("2026-01"), "2025-12");
   assertEquals(previousMonth("2026-09"), "2026-08");
+});
+
+Deno.test("saoPauloWeekdayHour: shifts hour and weekday by UTC-3, Monday = 0", () => {
+  // Wednesday 21:00 UTC is Wednesday 18:00 in São Paulo.
+  assertEquals(saoPauloWeekdayHour(new Date("2026-09-30T21:00:00Z")), { day: 2, hour: 18 });
+  // Wednesday 01:30 UTC is still Tuesday 22:30 in São Paulo.
+  assertEquals(saoPauloWeekdayHour(new Date("2026-09-30T01:30:00Z")), { day: 1, hour: 22 });
+  // Monday 02:00 UTC is Sunday 23:00 in São Paulo.
+  assertEquals(saoPauloWeekdayHour(new Date("2026-09-28T02:00:00Z")), { day: 6, hour: 23 });
 });

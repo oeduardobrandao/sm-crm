@@ -6,6 +6,7 @@ import { featureForPath } from "../_shared/feature-guard.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { resolveHubUrl } from "../_shared/hub-url.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import { saoPauloWeekdayHour } from "../_shared/sao-paulo-date.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -522,9 +523,8 @@ Deno.serve(async (req) => {
         const counts: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
 
         for (const p of (posts || [])) {
-          const date = new Date(p.posted_at);
-          const dayOfWeek = (date.getDay() + 6) % 7; // Monday=0
-          const hour = date.getHours();
+          // São Paulo wall clock: the runtime is UTC, and the CRM schedules in local time.
+          const { day: dayOfWeek, hour } = saoPauloWeekdayHour(new Date(p.posted_at));
           const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
           const engRate = p.reach > 0 ? (interactions / p.reach) * 100 : 0;
           heatmap[dayOfWeek][hour] += engRate;

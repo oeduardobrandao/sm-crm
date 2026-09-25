@@ -1,7 +1,14 @@
-// Calendar helpers for the admin metrics snapshots. Brazil abolished daylight saving time in
+// São Paulo calendar helpers (admin metrics snapshots, Instagram best-times). Brazil abolished daylight saving time in
 // 2019, so America/Sao_Paulo is a fixed UTC-3 and plain offset arithmetic is exact.
 
 const SP_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/** Weekday (Monday = 0 … Sunday = 6) and hour (0-23) of the instant on the São Paulo wall clock.
+ * The edge runtime runs in UTC, so plain getDay()/getHours() would bucket by UTC instead. */
+export function saoPauloWeekdayHour(instant: Date): { day: number; hour: number } {
+  const local = new Date(instant.getTime() - SP_OFFSET_MS);
+  return { day: (local.getUTCDay() + 6) % 7, hour: local.getUTCHours() };
+}
 
 /** Calendar date (YYYY-MM-DD) in São Paulo at the given instant. */
 export function saoPauloDate(now: Date): string {
