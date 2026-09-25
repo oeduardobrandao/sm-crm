@@ -1012,29 +1012,6 @@ export async function removeTagFromPost(postId: number, tagId: number): Promise<
 
 // ---- Reports ----
 
-export async function generateReport(
-  clientId: number,
-  month?: string,
-  includeAI = true,
-): Promise<{ reportId: number; status: string }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch(`${EDGE_URL}/generate-report/${clientId}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ month, force: true, includeAI }),
-  });
-
-  const data = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    throw new Error(data?.message || `Erro ao gerar relatório (${res.status})`);
-  }
-  if (!data) {
-    throw new Error('Resposta inválida do servidor');
-  }
-  return data;
-}
-
 export async function sendReportEmail(
   reportId: number,
 ): Promise<{ success: boolean; warning?: string }> {

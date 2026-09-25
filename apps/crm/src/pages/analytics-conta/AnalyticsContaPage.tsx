@@ -72,7 +72,6 @@ import {
   getClientReports,
   getAccountAIAnalysis,
   upsertManualFollowerCount,
-  generateReport,
   sendReportEmail,
   getReportDownloadUrl,
   getClientRateBaseline,
@@ -95,7 +94,6 @@ import {
   type Quartiles,
   type RateKey,
 } from '../../lib/ig-rates';
-import { captureEvent } from '@/lib/analytics';
 import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
 import { NewReportDialog } from './components/NewReportDialog';
 
@@ -1042,8 +1040,6 @@ function AnalyticsContent({
   const [rankedDateTo, setRankedDateTo] = useState('');
   const [emailReportTarget, setEmailReportTarget] = useState<AnalyticsReport | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
-  const [generateIncludeAI, setGenerateIncludeAI] = useState(true);
-  const [generatingReport, setGeneratingReport] = useState(false);
   const [newReportOpen, setNewReportOpen] = useState(false);
   // Which report row is currently being downloaded, so only that row spins.
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
@@ -1455,25 +1451,6 @@ function AnalyticsContent({
     }
   };
 
-  const handleGenerateScheduledReport = async (month?: string) => {
-    // Both "Gerar" buttons share this handler; the guard makes a double-click
-    // (or one click on each) a no-op rather than a second queued report.
-    if (generatingReport) return;
-    setGeneratingReport(true);
-    try {
-      await generateReport(clientId, month, generateIncludeAI);
-      toast.success('Geração de relatório iniciada!');
-      captureEvent('report_generated');
-      // Awaited so the button stays busy until the new row is actually on
-      // screen — the request resolving is not what the user is waiting for.
-      await qc.invalidateQueries({ queryKey: ['analytics-reports', clientId] });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao gerar relatório');
-    } finally {
-      setGeneratingReport(false);
-    }
-  };
-
   const periodTag = periodLabel || `${overviewDays}d`;
   const visiblePosts = showAllPosts ? posts : posts.slice(0, 5);
 
@@ -1569,9 +1546,8 @@ function AnalyticsContent({
           >
             {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
-          <Button disabled={generatingReport} onClick={() => handleGenerateScheduledReport()}>
-            {generatingReport ? <Spinner size="sm" /> : <FileText className="h-4 w-4" />}{' '}
-            {generatingReport ? 'Gerando…' : 'Gerar Relatório'}
+          <Button onClick={() => setNewReportOpen(true)}>
+            <FileText className="h-4 w-4" /> Gerar Relatório
           </Button>
         </div>
       </header>
@@ -2268,21 +2244,21 @@ function AnalyticsContent({
         </div>
       </div>
 
-      {/* Relatórios interativos (novo formato) */}
+      {/* Reports */}
       <div className="card animate-up">
         <div
           className="dashboard-hub-card-header"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
         >
-          <h3>Relatórios Interativos</h3>
+          <h3>Relatórios Gerados</h3>
           <Button variant="outline" size="sm" onClick={() => setNewReportOpen(true)}>
-            <Plus className="h-3.5 w-3.5" /> Novo relatório
+            <Plus className="h-3.5 w-3.5" /> Gerar
           </Button>
         </div>
         <div style={{ marginTop: '1rem' }}>
-          {reportDocs.length === 0 && (
+          {reportDocs.length === 0 && reportsData.length === 0 && (
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Nenhum relatório interativo ainda. Clique em "Novo relatório" para criar o primeiro.
+              Nenhum relatório gerado ainda. Clique em "Gerar" para criar o primeiro.
             </p>
           )}
           {reportDocs.map((doc) => (
@@ -2335,50 +2311,16 @@ function AnalyticsContent({
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Reports */}
-      <div className="card animate-up">
-        <div
-          className="dashboard-hub-card-header"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-        >
-          <h3>Relatórios Gerados</h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <label
+          {reportsData.length > 0 && (
+            <p
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                fontSize: '0.8rem',
+                fontSize: '0.75rem',
                 color: 'var(--text-muted)',
-                cursor: 'pointer',
+                marginTop: reportDocs.length > 0 ? '1.25rem' : 0,
+                marginBottom: '0.25rem',
               }}
             >
-              <input
-                type="checkbox"
-                checked={generateIncludeAI}
-                onChange={(e) => setGenerateIncludeAI(e.target.checked)}
-                style={{ accentColor: 'var(--primary-color)' }}
-              />
-              Incluir IA
-            </label>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={generatingReport}
-              onClick={() => handleGenerateScheduledReport()}
-            >
-              {generatingReport ? <Spinner size="sm" /> : <Plus className="h-3.5 w-3.5" />}{' '}
-              {generatingReport ? 'Gerando…' : 'Gerar'}
-            </Button>
-          </div>
-        </div>
-        <div style={{ marginTop: '1rem' }}>
-          {reportsData.length === 0 && (
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Nenhum relatório gerado ainda. Clique em "Gerar" para criar o primeiro.
+              Formato anterior
             </p>
           )}
           {reportsData.map((r) => (

@@ -14,6 +14,7 @@ export interface MonthPickerProps {
   className?: string;
   disabled?: boolean;
   clearable?: boolean;
+  id?: string;
 }
 
 const MONTHS = Array.from({ length: 12 }, (_, i) =>
@@ -38,6 +39,7 @@ export function MonthPicker({
   className,
   disabled,
   clearable = true,
+  id,
 }: MonthPickerProps) {
   const parsed = parseValue(value);
   const [open, setOpen] = React.useState(false);
@@ -57,6 +59,7 @@ export function MonthPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           type="button"
           variant="outline"
           disabled={disabled}

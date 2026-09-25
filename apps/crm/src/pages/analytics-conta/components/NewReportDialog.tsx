@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -24,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { generateReportDoc } from '../../../services/reportDocs';
 import { listReportTemplates } from '../../../services/reportTemplates';
+import { captureEvent } from '@/lib/analytics';
 
 const SYSTEM_TEMPLATE = '__system';
 
@@ -86,6 +88,7 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
         templateId === SYSTEM_TEMPLATE ? 'system' : templateId,
       );
       toast.success('Relatório gerado.');
+      captureEvent('report_generated');
       await qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
       onOpenChange(false);
       navigate(`/relatorios/${id}`);
@@ -105,32 +108,41 @@ export function NewReportDialog({ open, onOpenChange, clientId }: NewReportDialo
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Novo relatório interativo</DialogTitle>
+          <DialogTitle>Novo relatório</DialogTitle>
+          <DialogDescription>
+            Gera o relatório com os dados do mês escolhido. Depois você edita os blocos, remove
+            métricas e salva o layout como modelo.
+          </DialogDescription>
         </DialogHeader>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-          Gera o relatório com os dados do mês escolhido. Depois você edita os blocos, remove
-          métricas e salva o layout como modelo.
-        </p>
-        <div className="space-y-1">
-          <Label>Mês do relatório</Label>
-          <MonthPicker value={month} onChange={setMonth} clearable={false} />
-        </div>
-        <div className="space-y-1" style={{ marginTop: '0.75rem' }}>
-          <Label>Modelo</Label>
-          <Select value={templateId} onValueChange={setTemplateId} disabled={generating}>
-            <SelectTrigger aria-label="Modelo do relatório">
-              <SelectValue placeholder="Padrão do sistema" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={SYSTEM_TEMPLATE}>Padrão do sistema</SelectItem>
-              {templates.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                  {t.is_default ? ' · padrão' : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-report-month">Mês do relatório</Label>
+            <MonthPicker
+              id="new-report-month"
+              value={month}
+              onChange={setMonth}
+              clearable={false}
+              disabled={generating}
+              className="w-full"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-report-template">Modelo</Label>
+            <Select value={templateId} onValueChange={setTemplateId} disabled={generating}>
+              <SelectTrigger id="new-report-template" aria-label="Modelo do relatório">
+                <SelectValue placeholder="Padrão do sistema" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SYSTEM_TEMPLATE}>Padrão do sistema</SelectItem>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                    {t.is_default ? ' · padrão' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={generating} onClick={() => onOpenChange(false)}>
