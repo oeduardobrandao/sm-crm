@@ -5,7 +5,7 @@
 // cap, para de tentar (payload continua retido, sem novo timer) até que uma
 // edição nova ou o unmount reabram o ciclo. Nova edição zera o contador.
 import { useEffect, useRef, useState } from 'react';
-import { useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
@@ -27,6 +27,9 @@ export interface AutosaveTarget {
   /** Campo do registro em cache que guarda o título. */
   titleField: 'title' | 'name';
   errorMessage: string;
+  /** Chamado só após um save bem-sucedido (nunca em falha). Ex.: invalidar
+   *  uma lista que espelha esse registro em outra tela (F2, revisão final). */
+  onSaved?: (qc: QueryClient, id: string) => void | Promise<void>;
 }
 
 export const REPORT_DOC_TARGET: AutosaveTarget = {
@@ -125,6 +128,7 @@ export function useLayoutAutosave(
           appendToDocChain(id, async () => {
             try {
               await targetRef.current.save(id, { layout: pending });
+              await targetRef.current.onSaved?.(qc, id);
             } catch (err) {
               console.error('[relatorio-editor] flush de unmount falhou:', err);
             }
@@ -140,6 +144,7 @@ export function useLayoutAutosave(
         appendToDocChain(id, async () => {
           try {
             await targetRef.current.save(id, { title: titleToSave });
+            await targetRef.current.onSaved?.(qc, id);
           } catch (err) {
             console.error('[relatorio-editor] flush de unmount falhou:', err);
           }
@@ -180,6 +185,7 @@ export function useLayoutAutosave(
             old ? { ...(old as object), layout: toSave } : old,
           );
           retryCount.current = 0;
+          await targetRef.current.onSaved?.(qc, docIdRef.current);
         } catch (err) {
           console.error('[relatorio-editor] autosave falhou:', err);
           toast.error(targetRef.current.errorMessage, SAVE_ERROR_TOAST);
@@ -221,6 +227,7 @@ export function useLayoutAutosave(
             old ? { ...(old as object), [targetRef.current.titleField]: toSave } : old,
           );
           titleRetryCount.current = 0;
+          await targetRef.current.onSaved?.(qc, docIdRef.current);
           // A newer edit is queued behind this request: stay held until its own flush settles.
           if (!titleDirty.current) setTitleSaving(false);
         } catch (err) {

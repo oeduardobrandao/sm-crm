@@ -5,6 +5,8 @@ import { updateReportTemplate } from '../../services/reportTemplates';
 import { stripAiTextForTemplate } from './templateOps';
 import type { AutosaveTarget } from './useLayoutAutosave';
 
+const TEMPLATES_LIST_KEY = ['report-templates'] as const;
+
 export const TEMPLATE_AUTOSAVE_TARGET: AutosaveTarget = {
   async save(id, patch) {
     if (patch.layout) {
@@ -18,4 +20,10 @@ export const TEMPLATE_AUTOSAVE_TARGET: AutosaveTarget = {
   cacheKey: (id) => ['report-template', id],
   titleField: 'name',
   errorMessage: 'Erro ao salvar o modelo',
+  // F2 (revisão final): sem isso, Configuração › Relatórios mostra o nome
+  // antigo / contagem de blocos antiga até um reload manual -- nada
+  // invalidava ['report-templates'] depois de um save no editor.
+  onSaved: (qc) => {
+    qc.invalidateQueries({ queryKey: TEMPLATES_LIST_KEY });
+  },
 };

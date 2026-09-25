@@ -46,4 +46,12 @@ describe('TEMPLATE_AUTOSAVE_TARGET', () => {
     expect(TEMPLATE_AUTOSAVE_TARGET.cacheKey('tpl-1')).toEqual(['report-template', 'tpl-1']);
     expect(TEMPLATE_AUTOSAVE_TARGET.titleField).toBe('name');
   });
+
+  // F2 (revisão final): sem isso, Configuração › Relatórios mostrava o nome /
+  // contagem de blocos antiga de um modelo até um reload manual.
+  it('onSaved invalida a lista de modelos', () => {
+    const invalidateQueries = vi.fn();
+    TEMPLATE_AUTOSAVE_TARGET.onSaved?.({ invalidateQueries } as any, 'tpl-1');
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['report-templates'] });
+  });
 });
