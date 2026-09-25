@@ -49,9 +49,19 @@ before the edit. Per field, per etapa (matched by position, as today):
   there is nothing to have inherited from, so every field counts as customized and is
   kept.
 - **New fluxos** keep copying the template at creation. Nothing changes there.
-- **Known limitation, unchanged:** matching is positional. Reordering or deleting template
-  steps still maps by index. The merge rule makes this safer, since a value that doesn't
-  match the old template at that index is kept, but it doesn't add stable etapa identity.
+- **Known limitation, unchanged:** matching is positional, and the template modal
+  (`SortableEtapaList`) lets users reorder, insert and delete steps. Reordering over
+  inherited `pendente` etapas still resolves correctly (old[i] = fluxo[i], so fluxo[i]
+  follows new[i]). The case documented in
+  `20260828000010_propagate_template_backfill_new_steps.sql` stays broken: a step
+  inserted before a `concluido` etapa is never created and a duplicate later step is
+  appended. Fixing that needs stable per-step ids in the template, which is a separate
+  schema/product change. This spec doesn't make it worse.
+- **Deadline mode is template-only, unchanged:** `workflow_templates.modo_prazo` is saved,
+  but `workflows.modo_prazo` and every etapa's `data_limite` are never touched, as today.
+  A new mode reaches fluxos created afterwards. On a fluxo whose effective deadline is
+  `data_limite` (`data_fixa`/`data_entrega`), a propagated prazo change is stored but
+  doesn't move that deadline, which is also today's behavior.
 - **Indistinguishable case, accepted:** a fluxo value that was set by hand to exactly the
   old template's value counts as inherited. It already equals the template, so following
   the template is the least surprising result.
@@ -68,7 +78,10 @@ for writes, so a JSON quirk never reads as a customization:
 - `prazo_dias`: `(x->>'prazo_dias')::integer`.
 - `nome`: `x->>'nome'`, exact match.
 
-Non-object entries in either array are skipped, as today.
+The old template array was saved before any server validation existed, so non-object
+entries in it are skipped (the value at that position counts as absent, so the fluxo's
+values are kept). The new array is validated (see step 3 below), and a non-object entry
+rejects the whole save.
 
 ## Design
 
@@ -91,18 +104,49 @@ One transaction:
    conta_id = v_conta FOR UPDATE`; not found raises `template_not_found`. The row lock
    serializes two concurrent saves of the same template, so each one merges against the
    version the other committed.
-3. Validate the input, raising `template_invalid` if any check fails: `p_nome` trimmed
-   non-empty; `p_etapas` is a non-empty array whose entries are objects with a non-empty
-   `nome` and an integer `prazo_dias` in `0..999` (same ceiling as the modal's
-   `MAX_PRAZO_DIAS` and `apply_post_process`); `p_modo_prazo` in
-   `('padrao','data_fixa','data_entrega')`.
+3. Validate the input before any write. Every check handles SQL NULL explicitly
+   (`x IS NULL OR x NOT IN (...)`, `coalesce(btrim(x), '') = ''`), because a bare
+   `NOT IN` or `= ''` on NULL evaluates to NULL and skips the branch. This is the same
+   trap `migrate_workflow_template` already guards against. Raise `template_invalid`
+   unless:
+   - `p_nome` is non-null and non-empty after trim;
+   - `p_modo_prazo` is non-null and in `('padrao','data_fixa','data_entrega')`;
+   - `p_etapas` is a non-null, non-empty JSON array, and **every** entry is an object;
+   - each entry's `nome` is a non-empty string;
+   - each entry's `prazo_dias` parses as an integer in `0..999` (the parse is inside a
+     sub-block so a bad cast raises `template_invalid`, not a raw cast error; the
+     ceiling matches the modal's `MAX_PRAZO_DIAS` and `apply_post_process`);
+   - each entry's `tipo_prazo` is `'uteis'`/`'corridos'` or absent (absent normalizes to
+     `'corridos'`);
+   - each entry's `tipo` is `'padrao'`/`'aprovacao_cliente'` or absent (absent normalizes
+     to `'padrao'`).
+
+   Each non-null `responsavel_id` must parse as a bigint and exist in `membros` with
+   `conta_id = v_conta`, otherwise raise `invalid_responsavel`. This mirrors
+   `migrate_workflow_template`: `workflow_etapas.responsavel_id` only has a global FK,
+   and this function is `SECURITY DEFINER`, so without the check a caller could assign a
+   member from another workspace.
 4. `UPDATE workflow_templates SET nome, etapas, modo_prazo`.
 5. Propagate with the merge rule, using `v_old` and `p_etapas`. The loop structure is the
    current RPC's: per-fluxo `FOR UPDATE` re-check of `template_id`/`status`/`conta_id`,
-   `conta_id` tenant filter on the fluxo cursor, status re-check in each etapa UPDATE's
-   WHERE (TOCTOU guard), event suppression GUC, backfill as a single
-   `INSERT ... SELECT ... WHERE NOT EXISTS`.
-6. Record one `template_propagado` event per touched fluxo (see 3).
+   `conta_id` tenant filter on the fluxo cursor, event suppression GUC, backfill as a
+   single `INSERT ... SELECT ... WHERE NOT EXISTS`.
+
+   **Etapa rows are locked before comparison.** The per-fluxo etapa cursor is
+   `SELECT ... FROM workflow_etapas WHERE workflow_id = ... AND status IN
+   ('pendente','ativo') ORDER BY ordem FOR UPDATE`, and it reads the field values it
+   compares. Locking the `workflows` row is not enough: `updateWorkflowEtapa` in the CRM
+   writes `workflow_etapas` directly without touching the fluxo row. Without the etapa
+   lock, a manual edit committed between the comparison and the UPDATE would be
+   overwritten with the template value. With it, a concurrent manual edit either commits
+   first (and the cursor reads its value under READ COMMITTED once the lock is granted)
+   or waits for this transaction to finish. The UPDATE keeps `AND status = <value read>`
+   as a belt-and-braces guard.
+6. Record one `template_propagado` event per touched fluxo (see section 3), **in the
+   same transaction and without an exception handler**. If the event insert fails, the
+   whole save rolls back. The current RPC deliberately swallows event failures with a
+   warning, but here the event is the undo record, so a save that can't be undone must
+   not commit.
 
 Grants: `REVOKE ALL ... FROM public, anon`; `GRANT EXECUTE ... TO authenticated,
 service_role`. Authorization matches today: any member of the workspace can edit its
@@ -115,7 +159,8 @@ An etapa whose fields all resolve to "keep" is not written.
 ### 2. Old RPC becomes backfill-only
 
 `propagate_template_to_workflows(bigint)` is redefined to run only the backfill step (and
-its event). It no longer writes any field on existing etapas.
+its event, which stays best-effort as today: it only ever inserts rows, so there is
+nothing to undo). It no longer writes any field on existing etapas.
 
 This covers the deploy window. Migrations are pushed before merging, and the merge
 deploys the frontend right away, so the old modal keeps calling this RPC for a while.
@@ -189,8 +234,20 @@ New suite `update_workflow_template.sql`, covering:
 - template from another workspace → `template_not_found`; a poisoned cross-tenant fluxo
   with a matching `template_id` is untouched (same shape as the existing suite's
   `v_wf_poison_prop`);
-- `template_invalid` for empty name, empty array, `prazo_dias` 1000, bad `modo_prazo`,
-  and nothing written in each case.
+- `template_invalid` for: NULL / blank `p_nome`; NULL / bad `p_modo_prazo`; NULL / empty
+  / non-array `p_etapas`; an array mixing one valid object with a scalar; missing or
+  blank `nome`; `prazo_dias` missing, non-numeric, negative, or 1000; bad `tipo_prazo`;
+  bad `tipo`. Nothing is written in any case (template row unchanged, no etapa changed);
+- `invalid_responsavel` for a `responsavel_id` from another workspace, and for a
+  non-numeric one;
+- deadline mode: changing the template's `modo_prazo` leaves `workflows.modo_prazo` and
+  `data_limite` untouched;
+- event atomicity: with `record_workflow_event` forced to fail (e.g. a temporary CHECK on
+  `workflow_events` inside the test transaction), the call raises and the template row
+  and etapas are unchanged.
+
+Row locking isn't covered by psql (it would need two sessions). The spec states it, and
+the plan's code review checks the `FOR UPDATE` on the etapa cursor.
 
 Existing suite `supabase/tests/workflow_events.sql`, sections (m) and (n), calls
 `propagate_template_to_workflows` and asserts overwrites. Move those overwrite assertions
