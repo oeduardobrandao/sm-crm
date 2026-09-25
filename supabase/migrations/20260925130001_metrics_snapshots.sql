@@ -29,6 +29,7 @@ create index workspace_subscription_snapshots_date_idx
 
 alter table public.workspace_subscription_snapshots enable row level security;
 revoke all on table public.workspace_subscription_snapshots from anon, authenticated;
+grant all on table public.workspace_subscription_snapshots to service_role;
 
 create table public.metrics_snapshot_runs (
   snapshot_date date primary key,
@@ -39,6 +40,7 @@ create table public.metrics_snapshot_runs (
 
 alter table public.metrics_snapshot_runs enable row level security;
 revoke all on table public.metrics_snapshot_runs from anon, authenticated;
+grant all on table public.metrics_snapshot_runs to service_role;
 
 -- Writes one whole day atomically: rows + marker, or nothing.
 --   cron:     replaces every row of the date (a rerun drops workspaces that lost their sub).
@@ -94,7 +96,12 @@ end;
 $$;
 
 -- Hosted Supabase grants EXECUTE to anon/authenticated/service_role explicitly at creation, so
--- the roles must be named; the service_role grant keeps local/CI (no hosted default ACL) working.
+-- the roles must be named here too; this only covers calling the RPC, not the tables it touches.
+-- The RPC is SECURITY INVOKER, so its body runs as whatever role calls it: the two GRANT ALL
+-- ... TO service_role above (on workspace_subscription_snapshots and metrics_snapshot_runs) are
+-- what let a service_role caller (Task 3's cron/backfill client) actually DELETE+INSERT and
+-- INSERT+UPDATE those tables on hosted Supabase, which has no default ACL for objects created by
+-- a migration (same shape as 20260925000030_tarefa_series.sql and 20260925000016_cliente_links.sql).
 revoke all on function public.admin_metrics_write_snapshot(date, text, jsonb)
   from public, anon, authenticated;
 grant execute on function public.admin_metrics_write_snapshot(date, text, jsonb)
