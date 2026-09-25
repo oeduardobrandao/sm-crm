@@ -114,8 +114,7 @@ Function nova, deploy com `--no-verify-jwt --use-api`.
   a leitura; rodar duas vezes no mesmo dia substitui o dia inteiro.
 - Stripe fora do ar: o `priceSubscriptionRows` já cai para espelho/catálogo, e o `amount_source`
   registra de onde veio.
-- Agendamento: **migration separada** (a segunda do PR, depois da que cria tabelas e RPC) com
-  pg_cron padrão A (`net.http_post` com o `cron_secret` do vault),
+- Agendamento: na mesma migration das tabelas e do RPC, com pg_cron padrão A (`net.http_post` com o `cron_secret` do vault),
   `47 2 * * *` UTC = 23:47 em São Paulo. **O fechamento do dia é definido como o estado às 23:47**
   (hora de São Paulo); o do último dia do mês é o fechamento do mês. O que muda entre 23:47 e a
   meia-noite entra no dia seguinte, o que é irrelevante para uma métrica mensal. Um disparo manual
@@ -303,12 +302,13 @@ interface MetricsMonth {
 
 Ordem (merge implanta o frontend na hora):
 
-1. Staging, nesta ordem, porque cada passo depende do anterior:
-   1. migration de tabelas + RPC (a function grava por esse RPC);
-   2. deploy de `metrics-snapshot-cron` e `platform-admin`;
-   3. migration do agendamento (só agora o `net.http_post` tem destino; agendar antes faria uma
-      execução das 02:47 UTC cair numa function inexistente e virar alerta de cron);
-   4. disparo manual do cron; conferir linhas, marcador e `get-metrics-history`.
+1. Staging, nesta ordem:
+   1. deploy de `metrics-snapshot-cron` e `platform-admin` **antes** da migration: o deploy não
+      precisa das tabelas, e agendar antes do deploy faria uma execução das 02:47 UTC cair numa
+      function inexistente e virar alerta de cron (`db push` aplica todas as migrations pendentes
+      de uma vez, então separar a migration do agendamento não resolveria);
+   2. `db push` da migration (tabelas, RPC e agendamento juntos);
+   3. disparo manual do cron; conferir linhas, marcador e `get-metrics-history`.
 2. Prod: a mesma sequência, mais `METRICS_BACKFILL_ALLOWED=true` só em prod (definida pelo
    usuário).
 3. Merge.
