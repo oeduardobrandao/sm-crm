@@ -6,6 +6,11 @@ import type { AdminMcpContext } from "../_shared/mcp-admin-auth.ts";
 export type Resp = { data: unknown; error: unknown };
 export type Call = { table: string; method: string; args: unknown[] };
 
+// Queue keys: `table` serves every query on that table in FIFO order. A key of the form
+// `table[col=value]` (e.g. `workspaces[is_internal=true]`) serves only the queries on that
+// table that called `.eq(col, value)`, and takes precedence over the plain table queue when
+// the test provides it. Lets a filtered lookup that runs concurrently with other reads of the
+// same table (Promise.all) answer deterministically instead of racing for the shared FIFO.
 export function makeFakeDb(responses: Record<string, Resp[]>, rpc: Record<string, Resp[]> = {}) {
   const calls: Call[] = [];
   const queues: Record<string, Resp[]> = {};
@@ -15,9 +20,17 @@ export function makeFakeDb(responses: Record<string, Resp[]>, rpc: Record<string
   function recorder(table: string) {
     // deno-lint-ignore no-explicit-any
     const rec: any = {};
-    const next = (): Resp => (queues[table] ?? []).shift() ?? { data: null, error: null };
+    const eqKeys: string[] = [];
+    const next = (): Resp => {
+      const key = eqKeys.find((k) => k in queues) ?? table;
+      return (queues[key] ?? []).shift() ?? { data: null, error: null };
+    };
     for (const m of ["select", "eq", "in", "is", "gte", "order", "limit", "range", "insert", "update", "upsert", "delete", "ilike"]) {
-      rec[m] = (...args: unknown[]) => { calls.push({ table, method: m, args }); return rec; };
+      rec[m] = (...args: unknown[]) => {
+        calls.push({ table, method: m, args });
+        if (m === "eq") eqKeys.push(`${table}[${String(args[0])}=${String(args[1])}]`);
+        return rec;
+      };
     }
     rec.single = () => { calls.push({ table, method: "single", args: [] }); return Promise.resolve(next()); };
     rec.maybeSingle = () => { calls.push({ table, method: "maybeSingle", args: [] }); return Promise.resolve(next()); };

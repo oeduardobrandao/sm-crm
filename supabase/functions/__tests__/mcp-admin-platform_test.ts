@@ -91,7 +91,9 @@ Deno.test("listPlans: reutiliza handleListPlans", async () => {
 Deno.test("getDashboard: só agregados — nenhuma chave owner_* ou lista de workspaces sai", async () => {
   const { db } = makeFakeDb(
     { plans: [{ data: [{ id: "a" }, { id: "b" }], error: null }], workspaces: [{ data: null, error: null, count: 1 } as never, { data: null, error: null, count: 1 } as never],
-      workspace_subscriptions: [{ data: [], error: null }, { data: [], error: null }] },
+      workspace_subscriptions: [{ data: [], error: null }, { data: [], error: null }],
+      // Lookup de workspaces internos de handleGetMrr/handleGetTrials (fetchInternalWorkspaceIds).
+      "workspaces[is_internal=true]": [{ data: [], error: null }, { data: [], error: null }] },
     { admin_list_workspaces: [{ data: { workspaces: [WS], total: 12, total_members: 30, total_clients: 70, total_with_overrides: 2, total_instagram_accounts: 9, total_instagram_accounts_active: 8 }, error: null }] },
   );
   const r = await getDashboard(makeDeps(db));
@@ -125,6 +127,9 @@ Deno.test("getDashboard: com assinatura paga, nunca faz fan-out de contato do do
         { data: [{ id: "w1", name: "Agência X", created_at: "2026-01-01T00:00:00.000Z" }], error: null },
       ],
       workspace_subscriptions: [{ data: [PAYING_SUB], error: null }, { data: [PAYING_SUB], error: null }],
+      // handleGetMrr/handleGetTrials filtram workspaces internos (fetchInternalWorkspaceIds, que
+      // roda em paralelo com as leituras de nome acima); fila própria para não consumi-las.
+      "workspaces[is_internal=true]": [{ data: [], error: null }, { data: [], error: null }],
     },
     {
       admin_list_workspaces: [{ data: { workspaces: [WS], total: 1, total_members: 1, total_clients: 1, total_with_overrides: 0 }, error: null }],
@@ -137,4 +142,24 @@ Deno.test("getDashboard: com assinatura paga, nunca faz fan-out de contato do do
   const r = await getDashboard(makeDeps(db));
   assertEquals(r.mrr, { mrr_cents: 29900, paying_count: 1 });
   assertEquals(r.trials, { trial_mrr_cents: 29900, trial_count: 1 });
+});
+
+Deno.test("getDashboard: workspace interno fica fora do MRR e dos trials", async () => {
+  const SUB = {
+    workspace_id: "w-int", provider: "stripe", status: "active", plan_id: "max",
+    billing_interval: "month", stripe_subscription_id: "sub_1",
+    amount_cents: 29900, currency: "brl", amount_interval: "month", discount_label: null,
+    current_period_end: "2026-10-01T00:00:00.000Z",
+  };
+  const { db } = makeFakeDb(
+    {
+      plans: [{ data: [], error: null }],
+      workspace_subscriptions: [{ data: [SUB], error: null }, { data: [SUB], error: null }],
+      "workspaces[is_internal=true]": [{ data: [{ id: "w-int" }], error: null }, { data: [{ id: "w-int" }], error: null }],
+    },
+    { admin_list_workspaces: [{ data: { workspaces: [WS], total: 1, total_members: 1, total_clients: 1, total_with_overrides: 0 }, error: null }] },
+  );
+  const r = await getDashboard(makeDeps(db));
+  assertEquals(r.mrr, { mrr_cents: 0, paying_count: 0 });
+  assertEquals(r.trials, { trial_mrr_cents: 0, trial_count: 0 });
 });
