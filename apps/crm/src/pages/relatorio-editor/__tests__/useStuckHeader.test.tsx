@@ -4,13 +4,14 @@ import { useStuckHeader } from '../useStuckHeader';
 
 let ioCallback: ((entries: { isIntersecting: boolean }[]) => void) | null = null;
 const disconnect = vi.fn();
+let ioOptions: IntersectionObserverInit | undefined;
 
 function Harness() {
-  const { sentinelRef, stuck } = useStuckHeader();
+  const { sentinelRef, headerRef, stuck } = useStuckHeader();
   return (
     <>
       <div ref={sentinelRef} />
-      <header data-testid="h" data-stuck={stuck || undefined} />
+      <header ref={headerRef} data-testid="h" data-stuck={stuck || undefined} />
     </>
   );
 }
@@ -20,8 +21,9 @@ describe('useStuckHeader', () => {
     ioCallback = null;
     vi.stubGlobal(
       'IntersectionObserver',
-      vi.fn(function (this: unknown, cb: typeof ioCallback) {
+      vi.fn(function (this: unknown, cb: typeof ioCallback, opts?: IntersectionObserverInit) {
         ioCallback = cb;
+        ioOptions = opts;
         return { observe: vi.fn(), disconnect };
       }),
     );
@@ -44,5 +46,20 @@ describe('useStuckHeader', () => {
     const { unmount } = render(<Harness />);
     unmount();
     expect(disconnect).toHaveBeenCalled();
+  });
+
+  it('observa no scroller, com o topo recuado até a linha em que o sticky prende', () => {
+    function InScroller() {
+      const { sentinelRef, headerRef } = useStuckHeader();
+      return (
+        <div data-testid="scroller" style={{ overflowY: 'auto', paddingTop: '36px' }}>
+          <div ref={sentinelRef} />
+          <header ref={headerRef} style={{ top: '-12px' }} />
+        </div>
+      );
+    }
+    render(<InScroller />);
+    expect(ioOptions?.root).toBe(screen.getByTestId('scroller'));
+    expect(ioOptions?.rootMargin).toBe('-24px 0px 0px 0px');
   });
 });

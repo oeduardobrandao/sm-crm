@@ -64,7 +64,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
   layoutRef.current = layout;
   const history = useLayoutHistory(layout, applyLayout);
   const commit = history.commit;
-  const { sentinelRef, stuck } = useStuckHeader();
+  const { sentinelRef, headerRef, stuck } = useStuckHeader();
   const {
     drawerOpen,
     setDrawerOpen,
@@ -79,6 +79,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     <div className="rb-editor-with-rail">
       <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
       <header
+        ref={headerRef}
         className="rb-editor-header"
         data-stuck={stuck || undefined}
         style={{
