@@ -350,18 +350,18 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
     .gte('date', new Date(Date.now() - days * 86400000).toISOString().split('T')[0])
     .order('date', { ascending: true });
 
-  // Get latest post date per account (from all posts, not just recent)
+  // Latest post date per account (from all posts, not just recent). Read from the
+  // aggregate view: one row per account. Fetching every instagram_posts row here
+  // got silently capped at PostgREST's 1000 rows in large workspaces, which
+  // dropped the last post of accounts that had been idle the longest.
   const { data: latestPosts } = await supabase
-    .from('instagram_posts')
-    .select('instagram_account_id, posted_at')
-    .in('instagram_account_id', accountIds)
-    .order('posted_at', { ascending: false });
+    .from('instagram_account_last_post')
+    .select('instagram_account_id, last_post_at')
+    .in('instagram_account_id', accountIds);
 
   const latestPostMap: Record<number, string> = {};
   for (const p of latestPosts || []) {
-    if (!latestPostMap[p.instagram_account_id]) {
-      latestPostMap[p.instagram_account_id] = p.posted_at;
-    }
+    if (p.last_post_at) latestPostMap[p.instagram_account_id] = p.last_post_at;
   }
 
   // Aggregate post stats per account
