@@ -212,7 +212,6 @@ export default function DashboardPage() {
               <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
                 {kpi.label}
               </p>
-              {'\n'}
               <p
                 className={cn(
                   'text-2xl sm:text-3xl font-bold font-sf break-words',
@@ -231,6 +230,7 @@ export default function DashboardPage() {
             <Link
               key={kpi.label}
               to={kpi.to}
+              data-testid="kpi-card"
               className={cn(
                 cls,
                 'block transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -239,7 +239,7 @@ export default function DashboardPage() {
               {body}
             </Link>
           ) : (
-            <div key={kpi.label} className={cls}>
+            <div key={kpi.label} data-testid="kpi-card" className={cls}>
               {body}
             </div>
           );

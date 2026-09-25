@@ -113,7 +113,7 @@ function renderPage() {
 
 /** The KPI card element whose label text is `label` (labels are <p>; table headers are <span>). */
 function kpiCard(label: string): HTMLElement {
-  return screen.getByText(label, { selector: 'p' }).closest('div')!;
+  return screen.getByText(label, { selector: 'p' }).closest('[data-testid="kpi-card"]')!;
 }
 
 describe('DashboardPage per-card loading', () => {
@@ -313,7 +313,15 @@ describe('DashboardPage tile links', () => {
     renderPage();
     const links = await screen.findAllByRole('link');
     const tiles = links.filter((a) => a.getAttribute('href') === '/admin/metricas#mrr');
-    expect(tiles.map((a) => a.textContent?.split(/\s/)[0])).toEqual(['Pagantes', 'MRR', 'MRR']);
-    expect(links.some((a) => a.textContent?.startsWith('Workspaces'))).toBe(false);
+    expect(tiles).toHaveLength(3);
+    expect(within(tiles[0]).getByText('Pagantes')).toBeInTheDocument();
+    expect(within(tiles[1]).getByText('MRR', { selector: 'p' })).toBeInTheDocument();
+    expect(within(tiles[2]).getByText('MRR projetado')).toBeInTheDocument();
+    expect(
+      links.some(
+        (a) =>
+          a.getAttribute('href') === '/admin/metricas#mrr' && within(a).queryByText('Workspaces'),
+      ),
+    ).toBe(false);
   });
 });
