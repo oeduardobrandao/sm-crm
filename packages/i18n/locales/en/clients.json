@@ -167,7 +167,7 @@
     "ttError": "There was an error connecting the TikTok account. Please try again.",
     "ttSyncing": "Syncing TikTok data...",
     "noTitle": "Untitled",
-    "calendarUpdateError": "Error updating calendar.",
+    "standalonePost": "Standalone post",
     "postScheduled": "Post scheduled.",
     "postMarkedPosted": "Post marked as posted.",
     "postStatusError": "Error updating post status.",

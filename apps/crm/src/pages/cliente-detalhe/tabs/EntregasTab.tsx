@@ -21,7 +21,7 @@ import {
   getWorkflowAwaitingClientePostsCounts,
   getConcludedWorkflowsByCliente,
   getWorkflowPosts,
-  getWorkflowPostsWithProperties,
+  getClientePosts,
   updateWorkflowPost,
   getClientes,
   getWorkspaceSlug,
@@ -408,8 +408,36 @@ export default function EntregasTab() {
       .filter(Boolean) as BoardCard[];
   }, [workflowsWithEtapas, cliente, membros, workflowCovers, hubToken, workspaceSlug]);
 
-  // Post calendar: fetch posts with scheduled_at for all active workflows
-  const [postCalendarEvents, setPostCalendarEvents] = useState<PostCalendarEvent[]>([]);
+  // Post calendar: every scheduled post of the client's active workflows PLUS
+  // its posts avulsos (getClientePosts merges both). Same ['clientePosts',
+  // clienteId] key as WorkflowDrawer / StandalonePostDrawer, so a reschedule
+  // inside either drawer refreshes the calendar too.
+  const { data: clientePosts = [] } = useQuery({
+    queryKey: ['clientePosts', clienteId],
+    queryFn: () => getClientePosts(clienteId),
+    enabled: !isNaN(clienteId),
+  });
+  const postCalendarEvents = useMemo(() => {
+    const events: PostCalendarEvent[] = [];
+    for (const post of clientePosts) {
+      if (!post.scheduled_at) continue;
+      const m = post.scheduled_at.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      const parsed = m
+        ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+        : new Date(post.scheduled_at);
+      if (isNaN(parsed.getTime())) continue;
+      events.push({
+        postId: post.id,
+        postTitle: post.titulo || t('detail.noTitle'),
+        workflowId: post.workflow_id,
+        workflowTitle: post.workflow_titulo,
+        date: parsed,
+        tipo: post.tipo,
+        status: post.status,
+      });
+    }
+    return events;
+  }, [clientePosts, t]);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -417,93 +445,8 @@ export default function EntregasTab() {
   const [selectedPostDay, setSelectedPostDay] = useState<number | null>(new Date().getDate());
   const [postUpdating, setPostUpdating] = useState<number | null>(null);
 
-  useEffect(() => {
-    const activeWfs = (clienteWorkflowsRaw ?? []).filter((w) => w.status === 'ativo');
-    if (activeWfs.length === 0) {
-      setPostCalendarEvents([]);
-      return;
-    }
-    let cancelled = false;
-    Promise.all(
-      activeWfs.map(async (wf) => {
-        const posts = await getWorkflowPostsWithProperties(wf.id!);
-        return posts.map((p) => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
-      }),
-    )
-      .then((results) => {
-        if (cancelled) return;
-        const events: PostCalendarEvent[] = [];
-        for (const posts of results) {
-          for (const post of posts) {
-            if (post.scheduled_at) {
-              const m = post.scheduled_at.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              const parsed = m
-                ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-                : new Date(post.scheduled_at);
-              if (!isNaN(parsed.getTime())) {
-                events.push({
-                  postId: post.id!,
-                  postTitle: post.titulo || t('detail.noTitle'),
-                  workflowId: post._wfId,
-                  workflowTitle: post._wfTitle,
-                  date: parsed,
-                  tipo: post.tipo,
-                  status: post.status,
-                });
-              }
-            }
-          }
-        }
-        setPostCalendarEvents(events);
-      })
-      .catch(() => {
-        if (!cancelled) setPostCalendarEvents([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [clienteWorkflowsRaw]);
-
   const refreshPostCalendar = () => {
-    const activeWfs = (clienteWorkflowsRaw ?? []).filter((w) => w.status === 'ativo');
-    if (activeWfs.length === 0) {
-      setPostCalendarEvents([]);
-      return;
-    }
-    Promise.all(
-      activeWfs.map(async (wf) => {
-        const posts = await getWorkflowPostsWithProperties(wf.id!);
-        return posts.map((p) => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
-      }),
-    )
-      .then((results) => {
-        const events: PostCalendarEvent[] = [];
-        for (const posts of results) {
-          for (const post of posts) {
-            if (post.scheduled_at) {
-              const m = post.scheduled_at.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              const parsed = m
-                ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-                : new Date(post.scheduled_at);
-              if (!isNaN(parsed.getTime())) {
-                events.push({
-                  postId: post.id!,
-                  postTitle: post.titulo || t('detail.noTitle'),
-                  workflowId: post._wfId,
-                  workflowTitle: post._wfTitle,
-                  date: parsed,
-                  tipo: post.tipo,
-                  status: post.status,
-                });
-              }
-            }
-          }
-        }
-        setPostCalendarEvents(events);
-      })
-      .catch(() => {
-        toast.error(t('detail.calendarUpdateError'));
-      });
+    queryClient.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
   };
 
   const handlePostStatusUpdate = async (postId: number, newStatus: 'agendado' | 'postado') => {
@@ -708,6 +651,36 @@ export default function EntregasTab() {
     setDrawerCard(card);
   };
 
+  // Rendered in both branches below: a client whose only scheduled posts are
+  // avulsos without a process has no board cards, and the calendar must still show.
+  const postCalendar = (
+    <ClientePostCalendar
+      events={postCalendarEvents}
+      calendarMonth={calendarMonth}
+      onMonthChange={(d) => {
+        setCalendarMonth(d);
+        setSelectedPostDay(null);
+      }}
+      selectedPostDay={selectedPostDay}
+      onSelectDay={(day) => setSelectedPostDay(day)}
+      postUpdating={postUpdating}
+      onPostStatusUpdate={handlePostStatusUpdate}
+      onOpenPost={(postId, workflowId) => {
+        if (workflowId == null) {
+          setDrawerCard(null);
+          setDrawerInitialPostId(undefined);
+          setStandalonePostId(postId);
+          return;
+        }
+        const card = boardCards.find((candidate) => candidate.workflow.id === workflowId);
+        if (!card) return;
+        setStandalonePostId(null);
+        setDrawerInitialPostId(postId);
+        setDrawerCard(card);
+      }}
+    />
+  );
+
   return (
     <>
       {boardCards.length === 0 && postEntities.length === 0 ? (
@@ -730,6 +703,7 @@ export default function EntregasTab() {
               {t('detail.noActiveDeliveriesHint')}
             </p>
           </div>
+          {postCalendar}
         </div>
       ) : (
         <div id="sec-entregas" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
@@ -812,22 +786,7 @@ export default function EntregasTab() {
             </div>
           )}
 
-          <ClientePostCalendar
-            events={postCalendarEvents}
-            calendarMonth={calendarMonth}
-            onMonthChange={(d) => {
-              setCalendarMonth(d);
-              setSelectedPostDay(null);
-            }}
-            selectedPostDay={selectedPostDay}
-            onSelectDay={(day) => setSelectedPostDay(day)}
-            postUpdating={postUpdating}
-            onPostStatusUpdate={handlePostStatusUpdate}
-            onOpenCard={(workflowId) => {
-              const card = boardCards.find((candidate) => candidate.workflow.id === workflowId);
-              if (card) setDrawerCard(card);
-            }}
-          />
+          {postCalendar}
         </div>
       )}
 
@@ -910,6 +869,7 @@ export default function EntregasTab() {
 
       {drawerCard && (
         <WorkflowDrawer
+          key={`${drawerCard.workflow.id}-${drawerInitialPostId ?? ''}`}
           card={drawerCard}
           membros={membros}
           initialPostId={drawerInitialPostId}
