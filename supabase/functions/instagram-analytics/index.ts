@@ -6,6 +6,7 @@ import { featureForPath } from "../_shared/feature-guard.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { resolveHubUrl } from "../_shared/hub-url.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import { BEST_TIMES_CACHE_KEY, computeBestTimes, isCurrentBestTimes } from "../_shared/best-times.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -65,7 +66,9 @@ async function getCachedOrFetch<T>(
   cacheKey: string,
   fetchFn: () => Promise<T>,
   maxAgeHours = 6,
-  skipCacheRead = false
+  skipCacheRead = false,
+  // Lets a route reject cached rows written under an older payload contract.
+  isCacheUsable: (data: unknown) => boolean = () => true
 ): Promise<{ data: T; fromCache: boolean; fetchedAt: string }> {
   if (!skipCacheRead) {
     const { data: cached } = await serviceClient
@@ -75,7 +78,7 @@ async function getCachedOrFetch<T>(
       .eq('cache_key', cacheKey)
       .single();
 
-    if (cached && cached.data) {
+    if (cached && cached.data && isCacheUsable(cached.data)) {
       const age = Date.now() - new Date(cached.fetched_at).getTime();
       if (age < maxAgeHours * 60 * 60 * 1000) {
         return { data: cached.data as T, fromCache: true, fetchedAt: cached.fetched_at };
@@ -504,61 +507,16 @@ Deno.serve(async (req) => {
       await verifyClientOwnership(serviceClient, clientId, contaId);
       const account = await getAccount(serviceClient, clientId);
 
-      const result = await getCachedOrFetch(serviceClient, account.id, 'best_times', async () => {
-        console.log('[best-times] analyzing posts for account', account.id);
-
-        // Fetch last 90 days of posts
-        const sinceDate = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
-        const { data: posts } = await serviceClient
-          .from('instagram_posts')
-          .select('posted_at, likes, comments, saved, shares, reach')
-          .eq('instagram_account_id', account.id)
-          .gte('posted_at', sinceDate);
-
-        console.log('[best-times] found', posts?.length || 0, 'posts');
-
-        // Build 7x24 heatmap of average engagement rate per slot
-        const heatmap: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
-        const counts: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
-
-        for (const p of (posts || [])) {
-          const date = new Date(p.posted_at);
-          const dayOfWeek = (date.getDay() + 6) % 7; // Monday=0
-          const hour = date.getHours();
-          const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
-          const engRate = p.reach > 0 ? (interactions / p.reach) * 100 : 0;
-          heatmap[dayOfWeek][hour] += engRate;
-          counts[dayOfWeek][hour] += 1;
-        }
-
-        // Average out
-        for (let d = 0; d < 7; d++) {
-          for (let h = 0; h < 24; h++) {
-            heatmap[d][h] = counts[d][h] > 0 ? Math.round((heatmap[d][h] / counts[d][h]) * 100) / 100 : 0;
-          }
-        }
-
-        // Find top 3 slots (only slots with posts)
-        const slots: { day: number; hour: number; value: number; postCount: number }[] = [];
-        for (let d = 0; d < 7; d++) {
-          for (let h = 0; h < 24; h++) {
-            if (counts[d][h] > 0) {
-              slots.push({ day: d, hour: h, value: heatmap[d][h], postCount: counts[d][h] });
-            }
-          }
-        }
-        slots.sort((a, b) => b.value - a.value);
-        const topSlots = slots.slice(0, 3);
-
-        return {
-          heatmap,
-          counts,
-          topSlots,
-          totalPosts: (posts || []).length,
-          labels_days: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'],
-          labels_hours: Array.from({ length: 24 }, (_, i) => `${i}h`),
-        };
-      }, 12);
+      // Legacy UTC-bucketed rows lack the São Paulo marker: recompute instead of serving them.
+      const result = await getCachedOrFetch(
+        serviceClient,
+        account.id,
+        BEST_TIMES_CACHE_KEY,
+        () => computeBestTimes(serviceClient, account.id),
+        12,
+        false,
+        isCurrentBestTimes,
+      );
 
       return json(result);
     }

@@ -11,6 +11,7 @@ import type {
   AudienceData,
   BestTimeSlot,
 } from "../_shared/report-template/types.ts";
+import { BEST_TIMES_TIMEZONE } from "../_shared/sao-paulo-date.ts";
 
 // ---------------------------------------------------------------------------
 // Audience mapping
@@ -262,7 +263,12 @@ export function mapBestTimes(raw: unknown): BestTimeSlot[] {
     heatmap?: unknown;
     counts?: unknown;
     topSlots?: unknown;
+    timezone?: unknown;
   };
+  // Rows cached before instagram-analytics bucketed on the São Paulo clock hold UTC hours.
+  // Both report paths run the row through `resolveBestTimes` (_shared/best-times.ts) first,
+  // which recomputes a legacy row; this guard keeps a UTC grid from ever being rendered.
+  if (obj.timezone !== BEST_TIMES_TIMEZONE) return [];
   const heatmap = obj.heatmap;
   const counts = obj.counts;
 

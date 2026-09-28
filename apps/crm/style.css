@@ -9779,6 +9779,87 @@ a.mention-chip:hover {
   flex-shrink: 0;
 }
 
+/* "Sugerir horário" beside the scheduler's label (SuggestTimeButton) */
+.drawer-post-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.suggest-time-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px;
+  margin-right: -4px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--primary-hover);
+  white-space: nowrap;
+}
+
+.suggest-time-trigger:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.suggest-time-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.suggest-time-group {
+  padding: 6px;
+}
+
+.suggest-time-group + .suggest-time-group {
+  border-top: 1px solid var(--border-color);
+}
+
+.suggest-time-group__label {
+  padding: 4px 8px 2px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.suggest-time-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.suggest-time-row:hover,
+.suggest-time-row:focus-visible {
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.suggest-time-row__when {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.suggest-time-row__why {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.suggest-time-foot {
+  padding: 6px 14px 8px;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.625rem;
+  color: var(--text-muted);
+}
+
 /* ── Calendar Grid ────────────────────────────────────────────── */
 
 .calendar-grid-container {

@@ -37,6 +37,7 @@ import { PostAutomationSection } from './PostAutomationSection';
 import { PublishErrorBlock } from './PublishErrorBlock';
 import { shouldShowPublishErrorBlock } from './publishErrorBlockVisibility';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
+import { SuggestTimeButton } from './SuggestTimeButton';
 import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { computeWordDiff } from '@/utils/textDiff';
@@ -435,7 +436,17 @@ export function PostEditorBody({
           </div>
         )}
         <div className="drawer-post-field">
-          <label>Data de postagem</label>
+          <div className="drawer-post-field-head">
+            <label>Data de postagem</label>
+            {hasInstagramAccount && (
+              <SuggestTimeButton
+                clientId={clienteId}
+                value={post.scheduled_at ? new Date(post.scheduled_at) : undefined}
+                onPick={(date) => onFieldChange('scheduled_at', date.toISOString())}
+                disabled={isScheduleLocked}
+              />
+            )}
+          </div>
           <DateTimePicker
             value={post.scheduled_at ? new Date(post.scheduled_at) : undefined}
             onChange={(date) => onFieldChange('scheduled_at', date?.toISOString() ?? null)}

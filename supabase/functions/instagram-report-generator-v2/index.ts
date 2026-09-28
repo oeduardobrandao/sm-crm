@@ -8,6 +8,7 @@ import { generateAINarrative } from "../_shared/report-template/ai.ts";
 import { buildEmailKpis } from "../_shared/report-template/email-kpis.ts";
 import type { EmailKpis } from "../_shared/report-template/brand-header.ts";
 import { mapAudience, mapBestTimes } from "./mappers.ts";
+import { resolveBestTimes } from "../_shared/best-times.ts";
 import type {
   AIOutput,
   AudienceData,
@@ -493,7 +494,9 @@ Deno.serve(async (req) => {
     const allPosts = allPostsRes.data || [];
     const followerHistory = followerHistoryRes.data || [];
     const demographics = demographicsRes.data?.data || null;
-    const bestTimesRaw = bestTimesRes.data?.data || [];
+    // A missing or pre-São Paulo row is recomputed here: this path never calls /best-times.
+    const bestTimesRaw =
+      (await resolveBestTimes(serviceClient, igAccountId, bestTimesRes.data?.data, "[report-v2]")) ?? [];
     const tagPerformanceRaw =
       (tagPerformanceRes.data as TagPerformance[] | null) || [];
 
