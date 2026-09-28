@@ -80,29 +80,32 @@ CREATE POLICY "Authenticated users can read published ready videos"
 CREATE POLICY "Users read own video progress"
   ON kb_video_progress FOR SELECT TO authenticated
   USING (user_id = auth.uid());
-CREATE POLICY "Users insert own video progress"
-  ON kb_video_progress FOR INSERT TO authenticated
-  WITH CHECK (user_id = auth.uid());
-CREATE POLICY "Users update own video progress"
-  ON kb_video_progress FOR UPDATE TO authenticated
-  USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
 
 GRANT SELECT ON kb_video_series, kb_videos TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON kb_video_progress TO authenticated;
 
--- Grava a posição de um vídeo para o usuário atual. SECURITY INVOKER: a RLS de kb_videos
--- decide se o vídeo é visível (invisível = no_data_found) e a de kb_video_progress garante
--- que só a própria linha é escrita. completed_at é preservado atomicamente (coalesce),
--- então saves fora de ordem nunca "desconcluem" um vídeo. A posição é última-gravação-vence
--- de propósito: o usuário pode voltar no vídeo e retomar dali.
+-- kb_video_progress: só leitura direta. Escrita só via save_kb_video_progress (abaixo), que
+-- roda SECURITY DEFINER para poder validar visibilidade do vídeo mesmo sem policy de escrita
+-- na tabela. Hosted Supabase concede ALL em tabela nova a anon/authenticated por ACL padrão,
+-- então o REVOKE explícito é necessário mesmo sem nenhuma policy de INSERT/UPDATE.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON kb_video_progress FROM anon, authenticated;
+GRANT SELECT ON kb_video_progress TO authenticated;
+
+-- Grava a posição de um vídeo para o usuário atual. Único caminho de escrita em
+-- kb_video_progress (a tabela não tem policy nem grant de INSERT/UPDATE para authenticated).
+-- SECURITY DEFINER: como não há policy de escrita para a RLS aplicar, a função precisa
+-- decidir visibilidade ela mesma antes de gravar. A busca abaixo exige vídeo publicado+pronto
+-- de série publicada (os mesmos critérios da policy de SELECT de kb_videos) e usa o mesmo erro
+-- 'video not found' tanto para id inexistente quanto para vídeo oculto, então um vídeo de série
+-- rascunho não pode ser distinguido de um id que não existe. completed_at é preservado
+-- atomicamente (coalesce), então saves fora de ordem nunca "desconcluem" um vídeo. A posição é
+-- última-gravação-vence de propósito: o usuário pode voltar no vídeo e retomar dali.
 CREATE OR REPLACE FUNCTION public.save_kb_video_progress(
   p_video_id bigint,
   p_position numeric,
   p_completed boolean
 ) RETURNS void
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
@@ -115,7 +118,13 @@ BEGIN
     RAISE EXCEPTION 'not authenticated' USING ERRCODE = '42501';
   END IF;
 
-  SELECT duration_seconds, true INTO v_duration, v_found FROM kb_videos WHERE id = p_video_id;
+  SELECT v.duration_seconds, true INTO v_duration, v_found
+    FROM kb_videos v
+    JOIN kb_video_series s ON s.id = v.series_id
+    WHERE v.id = p_video_id
+      AND v.status = 'published'
+      AND v.stream_status = 'ready'
+      AND s.status = 'published';
   IF v_found IS NULL THEN
     RAISE EXCEPTION 'video not found' USING ERRCODE = 'P0002';
   END IF;

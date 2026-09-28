@@ -7,7 +7,9 @@
 -- recorta posição, recusa vídeo invisível; (d) progresso é por usuário;
 -- (e) anon não executa a RPC; (f) CHECK: ready exige hls_url.
 begin;
-select et_grant_hosted_parity();
+-- kb_video_progress é excluída: a parity grant concederia ALL (incluindo INSERT/UPDATE) e
+-- desfaria o REVOKE sob teste na migration. Ver doc de p_exclude em _helpers.sql.
+select et_grant_hosted_parity(array['kb_video_progress']);
 do $$
 declare
   v_ua         uuid := gen_random_uuid();
@@ -24,10 +26,12 @@ declare
   v_completed  timestamptz;
   v_rejected   boolean;
 begin
-  -- et_grant_hosted_parity() grants ALL on every table (hosted default ACL), so every
-  -- rejection below comes from RLS, not from missing table grants: an RLS WITH CHECK
-  -- failure raises insufficient_privilege (42501), and an UPDATE with no matching policy
-  -- silently affects 0 rows. Function EXECUTE grants are untouched by the helper.
+  -- et_grant_hosted_parity() grants ALL on every table (hosted default ACL) except
+  -- kb_video_progress, which is excluded above so its explicit REVOKE stays in effect: writes
+  -- to it are rejected by that revoke (insufficient_privilege), not by RLS. Every other
+  -- rejection below comes from RLS: an RLS WITH CHECK failure raises insufficient_privilege
+  -- (42501), and an UPDATE with no matching policy silently affects 0 rows. Function EXECUTE
+  -- grants are untouched by the helper.
   insert into auth.users (id) values (v_ua), (v_ub);
 
   insert into kb_video_series (title, slug, status) values ('Primeiros passos', 'primeiros-passos', 'published')
@@ -98,11 +102,36 @@ begin
 
   v_rejected := false;
   begin
+    perform save_kb_video_progress(v_v_hidden_s, 1, false);
+  exception when no_data_found then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'RPC aceitou progresso de video publicado+pronto de serie rascunho';
+
+  v_rejected := false;
+  begin
     insert into kb_video_progress (user_id, video_id) values (v_ub, v_v_ok);
   exception when insufficient_privilege then
     v_rejected := true;
   end;
   assert v_rejected, 'A conseguiu gravar progresso com user_id de B';
+
+  -- ---- escrita direta na tabela (bypassando a RPC) é sempre recusada ----
+  v_rejected := false;
+  begin
+    insert into kb_video_progress (user_id, video_id) values (v_ua, v_v_ok);
+  exception when insufficient_privilege then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'A conseguiu INSERT direto em kb_video_progress (bypass da RPC)';
+
+  v_rejected := false;
+  begin
+    update kb_video_progress set completed_at = null where user_id = v_ua;
+  exception when insufficient_privilege then
+    v_rejected := true;
+  end;
+  assert v_rejected, 'A conseguiu UPDATE direto em kb_video_progress (bypass da RPC)';
   execute 'reset role';
 
   -- ---- (d) B não vê o progresso de A ----
