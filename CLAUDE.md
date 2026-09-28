@@ -184,7 +184,10 @@ Monorepo with npm workspaces:
   raise if 429s persist. Gated via `cron_scan_state` (scan_key `stream-reap`, migration
   20260913000001 -- reused as-is, `updated_at` alone is the "last successful reap" marker, no new
   migration needed); a missing/never-written row means reap has never run and it runs immediately
-  regardless of this interval. `cron_scan_state.updated_at` for that key shows the last actual run
+  regardless of this interval. `cron_scan_state.updated_at` for that key shows the last actual run.
+  The reap's "known" set is `files` + `file_deletions` + `kb_videos` (Central de Ajuda
+  tutorials, public playback). Rolling the cron back to a version that doesn't read
+  `kb_videos` deletes every tutorial: set this interval to `876000` BEFORE such a deploy
 - `SYNC_BATCH_LIMIT` / `SYNC_CONCURRENCY` / `BACKFILL_BATCH_LIMIT` -- throughput dials
   for instagram-sync-cron (defaults 25 / 5 / 3). These, not the customer count, set the
   platform's Instagram capacity: the cron runs hourly, so it performs
