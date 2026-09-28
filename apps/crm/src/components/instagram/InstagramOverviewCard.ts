@@ -75,7 +75,7 @@ export function renderInstagramOverviewCard(
          <div class="instagram-overview__metadata" style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
                 ${escapeHTML(account.username || t('instagram.account'))}
-                <i class="fa-brands fa-instagram" aria-hidden="true" style="color: #E1306C; font-size: 1.2rem;"></i>
+                <i class="ph ph-instagram-logo" aria-hidden="true" style="color: #E1306C; font-size: 1.2rem;"></i>
             </h3>
             <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
               <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">${escapeHTML(updatedDate)}</p>

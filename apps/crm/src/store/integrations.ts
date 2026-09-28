@@ -12,37 +12,37 @@ const DEFAULT_INTEGRATIONS = [
   {
     integracao_id: 'meta_ads',
     label: 'Meta Ads',
-    icon: 'fa-brands fa-meta',
+    icon: 'ph ph-meta-logo',
     desc: 'Facebook & Instagram Ads',
   },
   {
     integracao_id: 'asaas',
     label: 'Asaas',
-    icon: 'fa-solid fa-file-invoice-dollar',
+    icon: 'ph ph-invoice',
     desc: 'Cobranças e Boletos',
   },
   {
     integracao_id: 'whatsapp',
     label: 'WhatsApp Business',
-    icon: 'fa-brands fa-whatsapp',
+    icon: 'ph ph-whatsapp-logo',
     desc: 'Mensagens e Notificações',
   },
   {
     integracao_id: 'google_analytics',
     label: 'Google Analytics',
-    icon: 'fa-brands fa-google',
+    icon: 'ph ph-google-logo',
     desc: 'Métricas e Relatórios',
   },
   {
     integracao_id: 'canva',
     label: 'Canva',
-    icon: 'fa-solid fa-palette',
+    icon: 'ph ph-palette',
     desc: 'Design e Criativos',
   },
   {
     integracao_id: 'notion',
     label: 'Notion',
-    icon: 'fa-solid fa-book',
+    icon: 'ph ph-book',
     desc: 'Documentos e Planejamento',
   },
 ];
