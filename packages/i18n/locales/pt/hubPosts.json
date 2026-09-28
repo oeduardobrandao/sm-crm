@@ -28,7 +28,15 @@
     "discardCorrectionConfirm": "Descartar as alterações não enviadas?",
     "saveFailedRetry": "Não foi possível salvar. Tente novamente.",
     "retrySave": "Tentar novamente",
-    "discardFailedEdit": "Descartar edição"
+    "discardFailedEdit": "Descartar edição",
+    "editSuggestion": "Editar sugestão",
+    "editingSuggestionNote": "Você está editando a sugestão que já enviou. As alterações anteriores continuam valendo.",
+    "correctionBlockedBySuggestion": "Para pedir correção, aguarde a equipe revisar sua sugestão.",
+    "suggestionViewDiff": "Alterações",
+    "suggestionShowingDiff": "Em vermelho o que você removeu, em verde o que acrescentou.",
+    "suggestionDiffTextLabel": "Texto do post",
+    "suggestionDiffCaptionLabel": "Legenda",
+    "suggestionNoTextDiff": "Sem diferenças de texto em relação ao original."
   },
   "aprovacoes": {
     "title": "Aprovações",

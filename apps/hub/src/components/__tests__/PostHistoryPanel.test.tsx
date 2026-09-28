@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PostHistoryPanel, TextDiff } from '../PostHistoryPanel';
+import { PostHistoryPanel } from '../PostHistoryPanel';
+import { TextDiff } from '../TextDiff';
 import { fetchPostHistory, submitApproval } from '../../api';
 import type { HubPost, PostApproval, PostHistoryResponse } from '../../types';
 
