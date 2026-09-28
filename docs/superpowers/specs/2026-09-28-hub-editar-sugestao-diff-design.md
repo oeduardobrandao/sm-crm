@@ -1,6 +1,6 @@
 # Hub: editar sugestão pendente + diff das alterações
 
-Status: DRAFT v3 (after Fable + two Codex reviews)
+Status: APPROVED v4 (after Fable + three Codex reviews)
 Date: 2026-09-28
 
 ## Context
@@ -121,13 +121,25 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
   **"Sugestão de edição atualizada"** when `metadata.updated`.
 - One notification per explicit save; no dedupe.
 - Withdrawal (`action: 'deleted'`) sends no notification (see Out of scope).
-- **3b. `hub-approve` guard**: for `aprovado` and `correcao`, return 409
-  `{ error: "Há uma sugestão de edição pendente." }` when a pending `post_edit_suggestions` row
-  exists for the post, before `record_client_approval`. Closes the stale-tab / direct-request path
-  where a status change auto-rejects the pending suggestion. `mensagem` is unaffected. The Hub
-  already shows the generic submit error on failure.
+- **3b. Approval guard, atomic**: `record_client_approval` (latest body
+  `20260925000010_post_approvals_motivo.sql`, same signature) first locks the post
+  (`perform 1 from workflow_posts where id = p_post_id for update`), then, when
+  `not p_is_workspace_user and p_action in ('aprovado','correcao')` and a pending
+  `post_edit_suggestions` row exists, raises `pending_suggestion` (SQLSTATE `P0001`) before any
+  insert. Because `upsert_edit_suggestion` takes the same post lock first, an approval and a save
+  serialize: whichever commits second fails cleanly. `hub-approve` maps an RPC error whose message
+  contains `pending_suggestion` to 409 `{ error: "Há uma sugestão de edição pendente." }`
+  (no separate pre-check query). `mensagem` is unaffected. The Hub shows its generic submit
+  error.
+- **3d. Lock order**: `accept_edit_suggestion` (latest body `20260923000001`) locks the post row
+  before the suggestion row (read `post_id` without a lock, `select … from workflow_posts where
+  id = v_post_id for update`, then the existing `select … from post_edit_suggestions … for
+  update`). Every writer then takes post → suggestion, matching the new upsert and the auto-reject
+  trigger path (team `UPDATE workflow_posts` → trigger updates the suggestion), so accept and a
+  concurrent client save cannot deadlock.
 - Rollback: re-apply the previous bodies (`20260521000001` for `upsert_edit_suggestion`,
-  `20260830000003` for the notification RPC) with `CREATE OR REPLACE` (same signatures, grants
+  `20260830000003` for the notification RPC, `20260925000010` for `record_client_approval`,
+  `20260923000001` for `accept_edit_suggestion`) with `CREATE OR REPLACE` (same signatures, grants
   unaffected) and redeploy the previous `hub-edit-suggestion` / `hub-approve`. Each piece can be
   rolled back alone.
 
@@ -152,11 +164,12 @@ New Hub strings via `t('…', 'fallback')` in `hubPosts`, keys in `packages/i18n
   `PostDetailDialog.test.tsx:995-999`, `:1004-1040` (default view becomes `diff`), `:1210`;
   `PostHistoryPanel` tests after the `WordDiff` extraction.
 - Deno: `hub-edit-suggestion` calls the notification RPC on update as well as on insert, not on
-  `deleted`, and maps `post_not_pending` to 409. `hub-approve` returns 409 for `aprovado` /
-  `correcao` with a pending suggestion and still accepts `mensagem`.
+  `deleted`, and maps `post_not_pending` to 409. `hub-approve` maps a `pending_suggestion` RPC
+  error to 409 and still accepts `mensagem`.
 - psql (entitlements suite): `metadata.updated` false on first insert, true after an update;
   notification RPC returns 0 with no pending row; `upsert_edit_suggestion` raises on a post not in
-  `enviado_cliente`.
+  `enviado_cliente`; `record_client_approval` raises `pending_suggestion` for a client approval
+  with a pending row and still succeeds for `p_is_workspace_user = true`.
 - CRM: notification-config title for `updated`.
 
 ## Deploy order
