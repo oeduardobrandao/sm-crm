@@ -71,7 +71,7 @@ const textPost: HubPost = {
   suggestion_rejected_at: null,
 };
 
-describe('CorrectionPanel: formatting edit made while a save is in flight', () => {
+describe('CorrectionPanel: formatting-only edits', () => {
   it('keeps the formatting edit and does not report a clean save', () => {
     const onSavedClean = vi.fn();
     const edit = makeEdit();
@@ -95,5 +95,31 @@ describe('CorrectionPanel: formatting edit made while a save is in flight', () =
     rerender(<CorrectionPanel {...props} edit={makeEdit({ saveState: 'saved' })} />);
     expect(screen.getByTestId('doc')).toHaveTextContent('"bold":true');
     expect(onSavedClean).not.toHaveBeenCalled();
+  });
+
+  it('treats a formatting-only edit as unsaved content, and a fresh panel as clean', () => {
+    const edit = makeEdit();
+    const onContentDirtyChange = vi.fn();
+    render(
+      <CorrectionPanel
+        post={textPost}
+        edit={edit}
+        submitting={false}
+        onSubmitCorrection={vi.fn()}
+        onDirtyChange={vi.fn()}
+        onContentDirtyChange={onContentDirtyChange}
+      />,
+    );
+    expect(onContentDirtyChange).toHaveBeenLastCalledWith(false);
+    expect(screen.getByRole('button', { name: /Salvar edição/ })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'format' }));
+    expect(onContentDirtyChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+    expect(edit.saveSuggestion).toHaveBeenCalledWith(
+      { type: 'doc', bold: true },
+      'Corpo do post',
+      'Legenda original',
+    );
   });
 });

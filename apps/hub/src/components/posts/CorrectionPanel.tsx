@@ -6,6 +6,7 @@ import { AlertCircle, Save } from 'lucide-react';
 import type { CorrectionReason, HubPost } from '../../types';
 import type { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import { pickPostCardKind, suggestionAwareCaption } from '../../lib/postView';
+import { canonicalDoc } from '../../lib/richDoc';
 import { RichTextContent } from '../RichTextContent';
 import { CorrectionReasonChips } from '../CorrectionReasonChips';
 
@@ -233,9 +234,20 @@ export function CorrectionPanel({
     lastSyncedCaptionRef.current = captionBaseline;
   }
 
+  // The body is tracked by plain text AND by canonical document, so a refetch that only
+  // changes formatting (or re-signs image URLs, which canonicalDoc ignores) resyncs too.
+  const draftDocKey = canonicalDoc(draftConteudo);
+  const stagedDocKey = canonicalDoc(stagedConteudo);
   const lastSyncedConteudoPlainRef = useRef(draftConteudoPlain);
-  if (draftConteudoPlain !== lastSyncedConteudoPlainRef.current) {
-    if (stagedConteudoPlain === lastSyncedConteudoPlainRef.current) {
+  const lastSyncedDocKeyRef = useRef(draftDocKey);
+  if (
+    draftConteudoPlain !== lastSyncedConteudoPlainRef.current ||
+    draftDocKey !== lastSyncedDocKeyRef.current
+  ) {
+    if (
+      stagedConteudoPlain === lastSyncedConteudoPlainRef.current &&
+      stagedDocKey === lastSyncedDocKeyRef.current
+    ) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
       // Force RichTextContent to remount with the resynced body as its new
@@ -243,6 +255,7 @@ export function CorrectionPanel({
       setContentVersion((v) => v + 1);
     }
     lastSyncedConteudoPlainRef.current = draftConteudoPlain;
+    lastSyncedDocKeyRef.current = draftDocKey;
   }
 
   // The staged text/caption as of the last Salvar edição (or retry) click. When the save
@@ -290,8 +303,11 @@ export function CorrectionPanel({
   // '' when it had no caption field, which must not reveal one.
   const showCaptionField = !isText || post.ig_caption != null || !!suggestion?.suggested_ig_caption;
 
+  // A formatting-only edit (bold, an inline image) leaves the plain text untouched, so the
+  // document is compared too, canonically (see canonicalDoc).
   const contentDirty =
-    (isText && stagedConteudoPlain !== draftConteudoPlain) || stagedCaption !== captionBaseline;
+    (isText && (stagedConteudoPlain !== draftConteudoPlain || stagedDocKey !== draftDocKey)) ||
+    stagedCaption !== captionBaseline;
   const panelDirty = contentDirty || comentario.trim() !== '' || motivo !== null;
 
   useEffect(() => {
