@@ -204,10 +204,13 @@ describe('PostDetailDialog', () => {
 
         fireEvent.click(save);
         await act(async () => {
-          await vi.advanceTimersByTimeAsync(1500);
+          await vi.advanceTimersByTimeAsync(1600);
         });
         expect(submitEditSuggestionMock).toHaveBeenCalledTimes(1);
         expect(submitEditSuggestionMock.mock.calls[0][4]).toBe('Legenda editada');
+        // A clean first save closes the panel too (not only saves on a pending suggestion).
+        expect(screen.queryByRole('textbox', { name: 'Legenda do post' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Corrigir/ })).toBeInTheDocument();
       } finally {
         vi.useRealTimers();
       }

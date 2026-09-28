@@ -69,13 +69,23 @@ describe('resolveEffectiveSuggestion', () => {
   });
   it('uses the saved value while the post prop is still the pre-save object', () => {
     expect(
-      resolveEffectiveSuggestion(base, { postId: base.id, value: SAVED, postAtSave: base }),
+      resolveEffectiveSuggestion(base, {
+        postId: base.id,
+        value: SAVED,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
     ).toBe(SAVED);
   });
   it('trusts a refetched post even when it has no suggestion (team resolved it)', () => {
     const refetched = makePost({ pending_suggestion: null });
     expect(
-      resolveEffectiveSuggestion(refetched, { postId: base.id, value: SAVED, postAtSave: base }),
+      resolveEffectiveSuggestion(refetched, {
+        postId: base.id,
+        value: SAVED,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
     ).toBeNull();
   });
   it('keeps the saved value over a refetch that carries an older row', () => {
@@ -83,12 +93,55 @@ describe('resolveEffectiveSuggestion', () => {
       pending_suggestion: { ...SAVED, updated_at: '2026-09-28T11:00:00.000Z' },
     });
     expect(
-      resolveEffectiveSuggestion(stale, { postId: base.id, value: SAVED, postAtSave: base }),
+      resolveEffectiveSuggestion(stale, {
+        postId: base.id,
+        value: SAVED,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
+    ).toBe(SAVED);
+  });
+  it('keeps a reverted (null) save over a refetch carrying the row it just reverted', () => {
+    // The refetch started before the revert landed, so it still carries the old pending row.
+    const stale = makePost({ pending_suggestion: SAVED });
+    expect(
+      resolveEffectiveSuggestion(stale, {
+        postId: base.id,
+        value: null,
+        postAtSave: base,
+        preSaveUpdatedAt: SAVED.updated_at,
+      }),
+    ).toBeNull();
+  });
+  it('trusts a refetch after a revert when it carries a newer row', () => {
+    const newer = { ...SAVED, updated_at: '2026-09-28T13:00:00.000Z' };
+    expect(
+      resolveEffectiveSuggestion(makePost({ pending_suggestion: newer }), {
+        postId: base.id,
+        value: null,
+        postAtSave: base,
+        preSaveUpdatedAt: SAVED.updated_at,
+      }),
+    ).toBe(newer);
+  });
+  it('trusts a refetch after a revert when nothing was pending before it', () => {
+    expect(
+      resolveEffectiveSuggestion(makePost({ pending_suggestion: SAVED }), {
+        postId: base.id,
+        value: null,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
     ).toBe(SAVED);
   });
   it('ignores a local save made for another post', () => {
     expect(
-      resolveEffectiveSuggestion(base, { postId: 1, value: SAVED, postAtSave: base }),
+      resolveEffectiveSuggestion(base, {
+        postId: 1,
+        value: SAVED,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
     ).toBeNull();
   });
 });
@@ -124,6 +177,24 @@ describe('useEditSuggestion', () => {
 
     // The team rejected it before the refetch landed: the refetched post wins.
     rerender({ post: makePost({ pending_suggestion: null }) });
+    expect(result.current.hasPendingSuggestion).toBe(false);
+    expect(result.current.draftIgCaption).toBe('legenda original');
+  });
+
+  it('after reverting a suggestion, ignores a stale refetch that still carries it', async () => {
+    mockedSubmit.mockResolvedValue({ ok: true, pending_suggestion: null });
+    const { result, rerender } = renderHook(
+      ({ post }) => useEditSuggestion({ token: 't', post, onSaved: () => undefined }),
+      { initialProps: { post: makePost({ pending_suggestion: SAVED }) } },
+    );
+    act(() => result.current.saveSuggestion(null, 'original', 'legenda original'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    expect(result.current.hasPendingSuggestion).toBe(false);
+
+    // A refetch that started before the revert lands with the old pending row.
+    rerender({ post: makePost({ pending_suggestion: { ...SAVED } }) });
     expect(result.current.hasPendingSuggestion).toBe(false);
     expect(result.current.draftIgCaption).toBe('legenda original');
   });

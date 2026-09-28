@@ -50,6 +50,12 @@ export interface LocalSuggestion {
   value: PendingEditSuggestion | null;
   /** The `post` object on screen when the save resolved (no refetch yet = same reference). */
   postAtSave: HubPost;
+  /**
+   * The newest pending row known before this save: the `updated_at` of the suggestion on
+   * screen, or of one an earlier save in the same drain returned, if newer. Only read when
+   * `value` is null (the save reverted the suggestion).
+   */
+  preSaveUpdatedAt: string | null;
 }
 
 /**
@@ -57,8 +63,11 @@ export interface LocalSuggestion {
  * until the list refetch lands; seeding drafts from it would let a reopened editor start from
  * the pre-save text and overwrite the suggestion. So the saved value wins while `post` is
  * still the same object it was at save time, or when a refetch carries an older row than the
- * save returned (a fetch that started before the save). Any other refetch is server truth,
- * including one where the team already accepted/rejected the suggestion.
+ * save returned (a fetch that started before the save). After a save that reverted the
+ * suggestion (`value` null), a refetch carrying a row no newer than `preSaveUpdatedAt` is the
+ * row just reverted, fetched before the revert: only the client creates suggestions, so it
+ * cannot be a new one. Any other refetch is server truth, including one where the team
+ * already accepted/rejected the suggestion.
  */
 export function resolveEffectiveSuggestion(
   post: HubPost,
@@ -71,7 +80,21 @@ export function resolveEffectiveSuggestion(
   if (prop && local.value && Date.parse(prop.updated_at) < Date.parse(local.value.updated_at)) {
     return local.value;
   }
+  if (
+    prop &&
+    local.value === null &&
+    local.preSaveUpdatedAt !== null &&
+    Date.parse(prop.updated_at) <= Date.parse(local.preSaveUpdatedAt)
+  ) {
+    return null;
+  }
   return prop;
+}
+
+function newerUpdatedAt(a: string | null, b: string | null): string | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Date.parse(b) > Date.parse(a) ? b : a;
 }
 
 export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpts) {
@@ -81,6 +104,9 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   const postRef = useRef(post);
   postRef.current = post;
   const suggestion = resolveEffectiveSuggestion(post, localSuggestion);
+  // The suggestion currently on screen; read when a save settles to stamp `preSaveUpdatedAt`.
+  const suggestionRef = useRef(suggestion);
+  suggestionRef.current = suggestion;
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -149,7 +175,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
 
   // Always holds the id of whichever post this hook is CURRENTLY rendering. `flush`
   // uses it to decide whether a just-drained save's outcome should update this
-  // instance's on-screen state (saveState/hasPendingSuggestion/dirty): a save for a
+  // instance's on-screen state (saveState/dirty/the held suggestion): a save for a
   // post the user has since navigated away from must still be sent (below), but must
   // not paint the CURRENTLY displayed post's UI with a different post's result.
   const currentPostIdRef = useRef(post.id);
@@ -184,7 +210,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   const flush = useCallback(async () => {
     if (inFlightRef.current || pendingRef.current.size === 0) return;
     inFlightRef.current = true;
-    // The completion side effects (saveState/hasPendingSuggestion/dirty) are applied
+    // The completion side effects (saveState/dirty/the held suggestion) are applied
     // once, AFTER the loop below has fully drained -- not per iteration. A second edit
     // to the currently-displayed post made while its first save is in flight coalesces
     // onto the SAME map entry and gets picked up by the next loop iteration; applying
@@ -196,6 +222,9 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
       succeeded: boolean;
       pendingSuggestion: PendingEditSuggestion | null;
     } | null = null;
+    // Newest row an earlier save in this drain returned for the displayed post: when a later
+    // one reverts it, a refetch triggered in between (onSaved) may still carry that row.
+    let newestDrainedUpdatedAt: string | null = null;
     try {
       while (pendingRef.current.size > 0) {
         const [postId, payload] = pendingRef.current.entries().next().value as [number, Payload];
@@ -229,6 +258,10 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
               succeeded: true,
               pendingSuggestion: res.pending_suggestion,
             };
+            newestDrainedUpdatedAt = newerUpdatedAt(
+              newestDrainedUpdatedAt,
+              res.pending_suggestion?.updated_at ?? null,
+            );
           }
         } catch {
           // Unconditional: a post left mid-save (possibly a full unmount, not just a
@@ -257,6 +290,10 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
           postId: currentPostOutcome.postId,
           value: currentPostOutcome.pendingSuggestion,
           postAtSave: postRef.current,
+          preSaveUpdatedAt: newerUpdatedAt(
+            suggestionRef.current?.updated_at ?? null,
+            newestDrainedUpdatedAt,
+          ),
         });
         setSaveState('saved');
         setDirty(false);

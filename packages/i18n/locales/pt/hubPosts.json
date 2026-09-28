@@ -36,7 +36,8 @@
     "suggestionShowingDiff": "Em vermelho o que você removeu, em verde o que acrescentou.",
     "suggestionDiffTextLabel": "Texto do post",
     "suggestionDiffCaptionLabel": "Legenda",
-    "suggestionNoTextDiff": "Sem diferenças de texto em relação ao original."
+    "suggestionNoTextDiff": "Sem diferenças de texto em relação ao original.",
+    "suggestionFormatOnlyDiff": "Alterações somente de formatação ou imagens."
   },
   "aprovacoes": {
     "title": "Aprovações",

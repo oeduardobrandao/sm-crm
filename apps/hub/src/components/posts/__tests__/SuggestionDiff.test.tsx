@@ -117,6 +117,96 @@ describe('SuggestionDiff', () => {
     render(<SuggestionDiff post={post()} suggestion={sugg()} />);
     expect(screen.getByText('Sem diferenças de texto em relação ao original.')).toBeInTheDocument();
   });
+
+  const DOC = {
+    type: 'doc',
+    content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Corpo original' }] }],
+  };
+  const BOLD_DOC = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Corpo original', marks: [{ type: 'bold' }] }],
+      },
+    ],
+  };
+  const FORMAT_ONLY = 'Alterações somente de formatação ou imagens.';
+
+  it('says the change is formatting or images only when the document differs but the text does not', () => {
+    render(
+      <SuggestionDiff
+        post={post({ conteudo: DOC })}
+        suggestion={sugg({ suggested_conteudo: BOLD_DOC })}
+      />,
+    );
+    expect(screen.getByText(FORMAT_ONLY)).toBeInTheDocument();
+    expect(
+      screen.queryByText('Sem diferenças de texto em relação ao original.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('adds the formatting line under a caption diff when the document also differs', () => {
+    render(
+      <SuggestionDiff
+        post={post({ conteudo: DOC })}
+        suggestion={sugg({ suggested_conteudo: BOLD_DOC, suggested_ig_caption: 'Legenda nova' })}
+      />,
+    );
+    expect(screen.getByText('Legenda', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.getByText(FORMAT_ONLY)).toBeInTheDocument();
+  });
+
+  it('treats a post without a document as different from a suggested one', () => {
+    render(<SuggestionDiff post={post()} suggestion={sugg({ suggested_conteudo: DOC })} />);
+    expect(screen.getByText(FORMAT_ONLY)).toBeInTheDocument();
+  });
+
+  it('has no formatting line when the suggested document is null or identical', () => {
+    const { unmount } = render(
+      <SuggestionDiff
+        post={post({ conteudo: DOC })}
+        suggestion={sugg({ suggested_conteudo: null })}
+      />,
+    );
+    expect(screen.getByText('Sem diferenças de texto em relação ao original.')).toBeInTheDocument();
+    expect(screen.queryByText(FORMAT_ONLY)).not.toBeInTheDocument();
+    unmount();
+    render(
+      <SuggestionDiff
+        post={post({ conteudo: DOC })}
+        suggestion={sugg({ suggested_conteudo: DOC })}
+      />,
+    );
+    expect(screen.queryByText(FORMAT_ONLY)).not.toBeInTheDocument();
+  });
+
+  it('ignores signed image URLs and key order when comparing the documents', () => {
+    // hub-posts signs inline images into `src` (appended last); a just-saved suggestion comes
+    // back from hub-edit-suggestion with `src` stripped.
+    const withImage = (attrs: Record<string, unknown>) => ({
+      type: 'doc',
+      content: [{ type: 'inlineImage', attrs }],
+    });
+    render(
+      <SuggestionDiff
+        post={post({ conteudo: withImage({ src: 'https://signed/a?sig=1', r2Key: 'k/a.png' }) })}
+        suggestion={sugg({ suggested_conteudo: withImage({ r2Key: 'k/a.png' }) })}
+      />,
+    );
+    expect(screen.queryByText(FORMAT_ONLY)).not.toBeInTheDocument();
+  });
+
+  it('has no formatting line when the text itself differs', () => {
+    render(
+      <SuggestionDiff
+        post={post({ conteudo: DOC, media: [] })}
+        suggestion={sugg({ suggested_conteudo: BOLD_DOC, suggested_conteudo_plain: 'Corpo novo' })}
+      />,
+    );
+    expect(screen.getByText('Texto do post')).toBeInTheDocument();
+    expect(screen.queryByText(FORMAT_ONLY)).not.toBeInTheDocument();
+  });
 });
 
 describe('suggestionAwareCaption', () => {

@@ -36,7 +36,8 @@
     "suggestionShowingDiff": "Removed text in red, added text in green.",
     "suggestionDiffTextLabel": "Post text",
     "suggestionDiffCaptionLabel": "Caption",
-    "suggestionNoTextDiff": "No text differences from the original."
+    "suggestionNoTextDiff": "No text differences from the original.",
+    "suggestionFormatOnlyDiff": "Formatting or image changes only."
   },
   "aprovacoes": {
     "title": "Approvals",

@@ -391,7 +391,7 @@ describe('CorrectionPanel', () => {
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
     rerender(
       <CorrectionPanel
-        post={post()}
+        post={post({ ig_caption: 'Legenda atualizada' })}
         edit={makeEdit({ draftIgCaption: 'Legenda atualizada' })}
         submitting={false}
         onSubmitCorrection={onSubmitCorrection}
@@ -564,6 +564,57 @@ describe('CorrectionPanel', () => {
     });
     rerender(<CorrectionPanel {...props} edit={makeEdit({ saveState: 'saved' })} />);
     expect(onSavedClean).not.toHaveBeenCalled();
+  });
+
+  it('keeps text typed while the save was in flight, and does not report a clean save', () => {
+    const onSavedClean = vi.fn();
+    const edit = makeEdit();
+    const props = {
+      post: post(),
+      submitting: false,
+      onSubmitCorrection,
+      onDirtyChange,
+      onSavedClean,
+    };
+    const { rerender } = render(<CorrectionPanel {...props} edit={edit} />);
+    const caption = screen.getByRole('textbox', { name: 'Legenda do post' });
+    fireEvent.change(caption, { target: { value: 'Legenda enviada' } });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+    expect(edit.saveSuggestion).toHaveBeenCalledWith(null, 'Corpo do post', 'Legenda enviada');
+    // Still typing while the request is in flight.
+    fireEvent.change(caption, { target: { value: 'Legenda enviada e mais' } });
+
+    rerender(<CorrectionPanel {...props} edit={makeEdit({ saveState: 'saved' })} />);
+    expect(screen.getByRole('textbox', { name: 'Legenda do post' })).toHaveValue(
+      'Legenda enviada e mais',
+    );
+    expect(onSavedClean).not.toHaveBeenCalled();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(screen.getByRole('button', { name: /Salvar edição/ })).toBeEnabled();
+  });
+
+  it('resets to the saved baseline and reports a clean save when nothing changed after Salvar', () => {
+    const onSavedClean = vi.fn();
+    const props = {
+      submitting: false,
+      onSubmitCorrection,
+      onDirtyChange,
+      onSavedClean,
+    };
+    const { rerender } = render(<CorrectionPanel {...props} post={post()} edit={makeEdit()} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Legenda do post' }), {
+      target: { value: 'Legenda enviada' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+    rerender(
+      <CorrectionPanel
+        {...props}
+        post={post({ ig_caption: 'Legenda enviada' })}
+        edit={makeEdit({ saveState: 'saved' })}
+      />,
+    );
+    expect(onSavedClean).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('textbox', { name: 'Legenda do post' })).toHaveValue('Legenda enviada');
   });
 
   it('does not report a clean save when it mounts during the 3s "saved" window', () => {

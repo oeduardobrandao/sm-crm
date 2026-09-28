@@ -22,9 +22,10 @@ interface SuggestionPendingNoticeProps {
 }
 
 /**
- * "Sugestão enviada para revisão": replaces the whole panel, and explains the disabled
- * footer actions in the reading view. There it also says that the body below is the
- * suggested version (not the original) and offers a Sua sugestão / Original toggle.
+ * "Sugestão enviada para revisão", shown above the reading view while a suggestion is
+ * pending (the panel itself stays editable through Editar sugestão). It explains the
+ * disabled Aprovar, says which version the body below shows and offers an Alterações /
+ * Sua sugestão / Original toggle, Alterações (the diff) being the default.
  */
 export function SuggestionPendingNotice({
   changedFields = [],
@@ -244,9 +245,14 @@ export function CorrectionPanel({
     lastSyncedConteudoPlainRef.current = draftConteudoPlain;
   }
 
+  // The staged text/caption as of the last Salvar edição (or retry) click. When the save
+  // lands, anything typed after that click was never sent: see the 'saved' effect below.
+  const sentStagedRef = useRef<{ conteudoPlain: string; caption: string } | null>(null);
+
   // Resubmits whatever is currently staged. Shared by Salvar edição and the failed-save retry.
   function submitStaged() {
     setSaveRequested(true);
+    sentStagedRef.current = { conteudoPlain: stagedConteudoPlain, caption: stagedCaption };
     saveSuggestion(
       isText ? stagedConteudo : draftConteudo,
       isText ? stagedConteudoPlain : (post.conteudo_plain ?? ''),
@@ -303,11 +309,17 @@ export function CorrectionPanel({
   // fires only on the TRANSITION into 'saved', never on mount: the hook holds saveState ===
   // 'saved' for 3s after a save (savedTimerRef in useEditSuggestion.ts), and effects run on
   // mount too, so reopening the panel within that window would otherwise close it right away.
+  // Text typed after the click (while the save was queued or in flight) differs from what was
+  // sent: then neither reset nor close, so the client keeps it and Salvar edição stays up.
   const prevSaveStateRef = useRef(saveState);
   useEffect(() => {
     const enteredSaved = saveState === 'saved' && prevSaveStateRef.current !== 'saved';
     prevSaveStateRef.current = saveState;
-    if (saveState === 'saved') {
+    const sent = sentStagedRef.current;
+    const editedSinceSend =
+      sent !== null &&
+      (stagedConteudoPlain !== sent.conteudoPlain || stagedCaption !== sent.caption);
+    if (saveState === 'saved' && !editedSinceSend) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
       setStagedCaption(captionBaseline);

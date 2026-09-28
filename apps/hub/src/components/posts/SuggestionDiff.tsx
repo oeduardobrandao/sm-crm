@@ -45,6 +45,43 @@ export function suggestionDiffBlocks(
   return blocks;
 }
 
+/**
+ * A TipTap document as a comparable string: keys sorted, and inline images' `src` dropped.
+ * hub-posts signs `src` into both documents (appending the key), while a just-saved
+ * suggestion comes back from hub-edit-suggestion with `src` stripped; the image identity is
+ * its `r2Key` either way.
+ */
+function canonicalDoc(value: unknown): string {
+  const walk = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (node === null || typeof node !== 'object') return node;
+    const obj = node as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort()) {
+      if (key === 'src' && obj.r2Key !== undefined) continue;
+      out[key] = walk(obj[key]);
+    }
+    return out;
+  };
+  return JSON.stringify(walk(value ?? null));
+}
+
+/**
+ * The suggested rich document differs from the post's while its plain text does not (no text
+ * block): bold, links, inline images. The plain-text diff can't show those, so say they exist.
+ */
+export function hasFormatOnlyChange(
+  post: HubPost,
+  suggestion: PendingEditSuggestion,
+  blocks: SuggestionDiffBlock[],
+): boolean {
+  return (
+    suggestion.suggested_conteudo != null &&
+    canonicalDoc(suggestion.suggested_conteudo) !== canonicalDoc(post.conteudo) &&
+    !blocks.some((b) => b.field === 'text')
+  );
+}
+
 export function SuggestionDiff({
   post,
   suggestion,
@@ -54,11 +91,18 @@ export function SuggestionDiff({
 }) {
   const { t } = useTranslation('hubPosts');
   const blocks = suggestionDiffBlocks(post, suggestion);
+  const formatOnlyLine = hasFormatOnlyChange(post, suggestion, blocks) ? (
+    <p className="text-[13px] hub-tx3">
+      {t('shared.suggestionFormatOnlyDiff', 'Alterações somente de formatação ou imagens.')}
+    </p>
+  ) : null;
   if (blocks.length === 0) {
     return (
-      <p className="text-[13px] hub-tx3">
-        {t('shared.suggestionNoTextDiff', 'Sem diferenças de texto em relação ao original.')}
-      </p>
+      formatOnlyLine ?? (
+        <p className="text-[13px] hub-tx3">
+          {t('shared.suggestionNoTextDiff', 'Sem diferenças de texto em relação ao original.')}
+        </p>
+      )
     );
   }
   return (
@@ -77,6 +121,7 @@ export function SuggestionDiff({
           />
         </section>
       ))}
+      {formatOnlyLine}
     </div>
   );
 }
