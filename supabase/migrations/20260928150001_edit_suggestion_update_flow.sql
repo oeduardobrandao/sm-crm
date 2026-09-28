@@ -1,5 +1,5 @@
 -- =====================================================================
--- 20260928000001_edit_suggestion_update_flow.sql
+-- 20260928150001_edit_suggestion_update_flow.sql
 -- Hub: editar sugestão pendente (spec
 -- docs/superpowers/specs/2026-09-28-hub-editar-sugestao-diff-design.md §3).
 --
@@ -263,6 +263,7 @@ GRANT EXECUTE ON FUNCTION create_edit_suggestion_notification(bigint) TO service
 -- Body otherwise identical to 20260923000001.
 -- ---------------------------------------------------------------------
 drop function if exists accept_edit_suggestion(bigint);
+drop function if exists accept_edit_suggestion(bigint, timestamptz);
 
 create function accept_edit_suggestion(
   p_suggestion_id       bigint,

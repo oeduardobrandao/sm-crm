@@ -195,7 +195,7 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
       });
       if (approvalErr) {
         // record_client_approval refuses a client approval/correction while an edit
-        // suggestion is pending (migration 20260928000001): the status change would make the
+        // suggestion is pending (migration 20260928150001): the status change would make the
         // auto-reject trigger silently discard it.
         const message = (approvalErr as { message?: unknown }).message;
         if (typeof message === "string" && message.includes("pending_suggestion")) {

@@ -137,7 +137,7 @@ export function createHubEditSuggestionHandler(deps: HubEditSuggestionHandlerDep
 
     if (rpcError) {
       // upsert_edit_suggestion re-checks the status under a row lock (migration
-      // 20260928000001): the team accepted/rejected/moved the post after the check above.
+      // 20260928150001): the team accepted/rejected/moved the post after the check above.
       const message = (rpcError as { message?: unknown }).message;
       if (typeof message === "string" && message.includes("post_not_pending")) {
         return json({ error: "Post não está aguardando aprovação." }, 409);

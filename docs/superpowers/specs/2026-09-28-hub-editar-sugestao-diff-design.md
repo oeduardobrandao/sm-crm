@@ -110,7 +110,7 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
 No signature changes, with one user-approved exception: `accept_edit_suggestion` gains
 `p_expected_updated_at timestamptz DEFAULT NULL` (3d), since a pending suggestion is now mutable.
 
-- New migration `20260928000001_edit_suggestion_update_flow.sql` (above main's tail
+- New migration `20260928150001_edit_suggestion_update_flow.sql` (above main's tail
   `20260925130002`; re-check at PR time), `CREATE OR REPLACE` on existing signatures except
   `accept_edit_suggestion` (`DROP` + `CREATE`, see 3d):
   - **3a. `upsert_edit_suggestion`**: `SELECT … FROM workflow_posts WHERE id = p_post_id FOR UPDATE`

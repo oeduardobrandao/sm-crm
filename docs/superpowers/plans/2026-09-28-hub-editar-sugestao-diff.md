@@ -15,7 +15,7 @@
 - Worktree: `/Users/eduardosouza/projects/sm-crm/.claude/worktrees/relatorios-interativos-default-1e62f5`, branch `claude/recover-post-suggestions-ea3978`. Run `pwd && git branch --show-current` before each task.
 - No function signature changes. Every SQL change is `CREATE OR REPLACE` on an existing signature (test `96_lockdown_definer_function_grants.sql` pins them).
 - Lock order for every writer: `workflow_posts` row, then `post_edit_suggestions` row.
-- Migration file: `supabase/migrations/20260928000001_edit_suggestion_update_flow.sql`. Before opening the PR, `git fetch origin main && git ls-tree --name-only origin/main supabase/migrations/ | tail -3`; renumber above main's tail if needed.
+- Migration file: `supabase/migrations/20260928150001_edit_suggestion_update_flow.sql`. Before opening the PR, `git fetch origin main && git ls-tree --name-only origin/main supabase/migrations/ | tail -3`; renumber above main's tail if needed.
 - UI copy in Portuguese, no em-dashes in new user-facing copy. Every new Hub string goes through `t('shared.<key>', '<pt fallback>')` in namespace `hubPosts`, with the key added to both `packages/i18n/locales/pt/hubPosts.json` and `packages/i18n/locales/en/hubPosts.json` under `"shared"`.
 - Icons: `lucide-react` only. Edge functions never return raw error details.
 - Never `useBlocker`. Unsaved-work signalling stays with `useUnsavedWork` (already wired).
@@ -28,7 +28,7 @@
 
 | File | Change |
 |---|---|
-| `supabase/migrations/20260928000001_edit_suggestion_update_flow.sql` | Create: 4 function redefinitions |
+| `supabase/migrations/20260928150001_edit_suggestion_update_flow.sql` | Create: 4 function redefinitions |
 | `supabase/tests/edit_suggestion_update_flow.sql` | Create: psql suite |
 | `supabase/functions/hub-edit-suggestion/handler.ts` | 409 mapping, notify on update |
 | `supabase/functions/hub-approve/handler.ts` | 409 mapping |
@@ -50,7 +50,7 @@
 ### Task 1: Database — migration + psql suite
 
 **Files:**
-- Create: `supabase/migrations/20260928000001_edit_suggestion_update_flow.sql`
+- Create: `supabase/migrations/20260928150001_edit_suggestion_update_flow.sql`
 - Create: `supabase/tests/edit_suggestion_update_flow.sql`
 
 **Interfaces:**
@@ -74,7 +74,7 @@ Create `supabase/tests/edit_suggestion_update_flow.sql`:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Suite for 20260928000001_edit_suggestion_update_flow.sql
+-- Suite for 20260928150001_edit_suggestion_update_flow.sql
 -- (spec docs/superpowers/specs/2026-09-28-hub-editar-sugestao-diff-design.md §3).
 --   E.1 notification metadata.updated: false on first insert, true after an update
 --   E.2 upsert_edit_suggestion raises post_not_pending when the post left enviado_cliente
@@ -243,11 +243,11 @@ Expected: FAIL at E.1 (`updated` key missing) or E.2 (no exception raised). If D
 
 - [ ] **Step 4: Write the migration**
 
-Create `supabase/migrations/20260928000001_edit_suggestion_update_flow.sql`:
+Create `supabase/migrations/20260928150001_edit_suggestion_update_flow.sql`:
 
 ```sql
 -- =====================================================================
--- 20260928000001_edit_suggestion_update_flow.sql
+-- 20260928150001_edit_suggestion_update_flow.sql
 -- Hub: editar sugestão pendente (spec
 -- docs/superpowers/specs/2026-09-28-hub-editar-sugestao-diff-design.md §3).
 --
@@ -573,7 +573,7 @@ Expected: all `PASS` notices, exit 0. Don't commit any colima port override in `
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20260928000001_edit_suggestion_update_flow.sql supabase/tests/edit_suggestion_update_flow.sql
+git add supabase/migrations/20260928150001_edit_suggestion_update_flow.sql supabase/tests/edit_suggestion_update_flow.sql
 git commit -m "feat(db): sugestão de edição com lock post→sugestão, guarda de aprovação e aviso de atualização
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -708,7 +708,7 @@ Replace the `if (rpcError) { ... }` block and the notification block with:
 ```ts
     if (rpcError) {
       // upsert_edit_suggestion re-checks the status under a row lock (migration
-      // 20260928000001): the team accepted/rejected/moved the post after the check above.
+      // 20260928150001): the team accepted/rejected/moved the post after the check above.
       const message = (rpcError as { message?: unknown }).message;
       if (typeof message === "string" && message.includes("post_not_pending")) {
         return json({ error: "Post não está aguardando aprovação." }, 409);
@@ -739,7 +739,7 @@ Replace `if (approvalErr) return json({ error: "Erro ao registrar aprovação." 
 ```ts
       if (approvalErr) {
         // record_client_approval refuses a client approval/correction while an edit
-        // suggestion is pending (migration 20260928000001): the status change would make the
+        // suggestion is pending (migration 20260928150001): the status change would make the
         // auto-reject trigger silently discard it.
         const message = (approvalErr as { message?: unknown }).message;
         if (typeof message === "string" && message.includes("pending_suggestion")) {

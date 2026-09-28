@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Suite for 20260928000001_edit_suggestion_update_flow.sql
+-- Suite for 20260928150001_edit_suggestion_update_flow.sql
 -- (spec docs/superpowers/specs/2026-09-28-hub-editar-sugestao-diff-design.md §3).
 --   E.1 notification metadata.updated: false on first insert, true after an update
 --   E.2 upsert_edit_suggestion raises post_not_pending when the post left enviado_cliente
