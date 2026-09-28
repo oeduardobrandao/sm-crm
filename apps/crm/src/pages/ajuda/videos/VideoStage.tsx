@@ -119,6 +119,7 @@ export function VideoStage({
             <Button
               size="sm"
               variant="outline"
+              className="text-foreground"
               onClick={() => {
                 setFailed(false);
                 setAttempt((a) => a + 1);
@@ -158,6 +159,7 @@ export function VideoStage({
             <Button
               size="sm"
               variant="outline"
+              className="text-foreground"
               onClick={() => {
                 setEndState('playing');
                 setAttempt((a) => a + 1);

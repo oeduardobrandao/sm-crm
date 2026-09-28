@@ -139,7 +139,26 @@ describe('VideoPlaylistBlock', () => {
     fireEvent.error(videoEl(container)); // native-hls → fallback
     fireEvent.error(videoEl(container)); // fallback fails → fatal
     expect(screen.getByText('Não foi possível carregar este vídeo.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    const retryButton = screen.getByRole('button', { name: 'Tentar novamente' });
+    // The outline variant only sets bg-background, no text colour, so on this dark overlay it
+    // inherits text-white and becomes invisible in light mode (white text on a white button).
+    expect(retryButton).toHaveClass('text-foreground');
+    fireEvent.click(retryButton);
     expect(videoEl(container)).not.toBeNull();
+  });
+
+  it('offers to watch again once the last video in the series ends, with a readable button', () => {
+    const { container } = renderBlock({
+      progress: toProgressMap([done(1), done(2)]),
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Primeiro cliente/ }));
+    const el = videoEl(container);
+    setMedia(el, 100);
+    fireEvent.ended(el);
+    expect(screen.getByText('Série concluída')).toBeInTheDocument();
+    const watchAgainButton = screen.getByRole('button', { name: 'Assistir de novo' });
+    // Same outline-variant contrast bug as "Tentar novamente": must not inherit the overlay's
+    // text-white in light mode.
+    expect(watchAgainButton).toHaveClass('text-foreground');
   });
 });

@@ -22,4 +22,11 @@ describe('NextUpOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  // The outline variant only sets bg-background, no text colour, so on a dark overlay it
+  // inherits text-white and becomes invisible in light mode (white text on a white button).
+  it('keeps the outline "Cancelar" button readable in light mode', () => {
+    render(<NextUpOverlay title="Equipe" onGo={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveClass('text-foreground');
+  });
 });

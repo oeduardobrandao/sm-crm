@@ -46,7 +46,7 @@ export function NextUpOverlay({ title, onGo, onCancel }: NextUpOverlayProps) {
         <Button size="sm" onClick={onGo}>
           Assistir agora
         </Button>
-        <Button size="sm" variant="outline" onClick={onCancel}>
+        <Button size="sm" variant="outline" className="text-foreground" onClick={onCancel}>
           Cancelar
         </Button>
       </div>
