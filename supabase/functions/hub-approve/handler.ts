@@ -193,7 +193,16 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         p_new_status: newStatus,
         p_motivo: action === "correcao" ? (motivo ?? null) : null,
       });
-      if (approvalErr) return json({ error: "Erro ao registrar aprovação." }, 500);
+      if (approvalErr) {
+        // record_client_approval refuses a client approval/correction while an edit
+        // suggestion is pending (migration 20260928000001): the status change would make the
+        // auto-reject trigger silently discard it.
+        const message = (approvalErr as { message?: unknown }).message;
+        if (typeof message === "string" && message.includes("pending_suggestion")) {
+          return json({ error: "Há uma sugestão de edição pendente." }, 409);
+        }
+        return json({ error: "Erro ao registrar aprovação." }, 500);
+      }
     }
 
     let scheduled = false;

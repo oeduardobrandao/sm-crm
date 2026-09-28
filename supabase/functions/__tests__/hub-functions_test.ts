@@ -2730,6 +2730,100 @@ Deno.test("hub-edit-suggestion accepts a suggestion for an avulso post (workflow
   });
 });
 
+function hubEditSuggestionDb() {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", conteudo: null, conta_id: "conta-1", cliente_id: 14 },
+    error: null,
+  });
+  return db;
+}
+
+function hubEditSuggestionHandlerFor(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return createHubEditSuggestionHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    rateLimit: async () => true,
+  });
+}
+
+function editSuggestionRequest() {
+  return new Request("https://example.test/hub-edit-suggestion", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, suggested_conteudo_plain: "Corpo", suggested_ig_caption: "Legenda nova" }),
+  });
+}
+
+Deno.test("hub-edit-suggestion notifies the team again when a pending suggestion is updated", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: false, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 200);
+  const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification");
+  assert(notif, "an update must notify too");
+  assertEquals(notif.payload, { p_post_id: 99 });
+});
+
+Deno.test("hub-edit-suggestion does not notify when the client reverted the suggestion (deleted)", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "deleted", is_new: false, suggestion: null },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).pending_suggestion, null);
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification"),
+    false,
+  );
+});
+
+Deno.test("hub-edit-suggestion maps post_not_pending from the RPC to 409 and does not notify", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "post_not_pending" } });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 409);
+  assertEquals((await readJson(response)).error, "Post não está aguardando aprovação.");
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification"),
+    false,
+  );
+});
+
+Deno.test("hub-edit-suggestion still returns a generic 500 for other RPC errors", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "boom" } });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 500);
+  assertEquals((await readJson(response)).error, "Erro ao salvar sugestão.");
+});
+
+for (const action of ["aprovado", "correcao"] as const) {
+  Deno.test(`hub-approve maps pending_suggestion to 409 for ${action}`, async () => {
+    const db = hubApproveDbForPost();
+    db.queueRpc("record_client_approval", { data: null, error: { message: "pending_suggestion" } });
+    const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+      method: "POST",
+      body: JSON.stringify({ token: "hub-123", post_id: 99, action }),
+    }));
+    assertEquals(response.status, 409);
+    assertEquals((await readJson(response)).error, "Há uma sugestão de edição pendente.");
+    assertEquals(
+      db.calls.some((c: { table: string }) => c.table === "rpc:create_post_approval_notification"),
+      false,
+    );
+  });
+}
+
 Deno.test("hub-approve não autoagenda avulso com processo individual que ainda tem outra aprovação adiante", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
