@@ -113,8 +113,13 @@ begin
   assert (v_meta->>'updated')::boolean = false, format('first insert must be updated=false: %s', v_meta);
 
   -- created_at/updated_at are both now() inside one transaction; age the row so the
-  -- BEFORE UPDATE trigger's new now() is observably later.
+  -- BEFORE UPDATE trigger's new now() is observably later. That UPDATE itself fires the
+  -- trigger (updated_at := now()), so reset updated_at = created_at afterwards; otherwise
+  -- updated=true would hold even if the second upsert did nothing.
   update post_edit_suggestions set created_at = created_at - interval '1 minute' where post_id = f.post;
+  alter table post_edit_suggestions disable trigger post_edit_suggestions_updated_at;
+  update post_edit_suggestions set updated_at = created_at where post_id = f.post;
+  alter table post_edit_suggestions enable trigger post_edit_suggestions_updated_at;
   v_res := upsert_edit_suggestion(f.post, f.ws, 'tok', null, 'texto v1', 'legenda v3');
   assert not (v_res->>'is_new')::boolean, 'second upsert must update the same pending row';
   delete from notifications where (metadata->>'post_id')::bigint = f.post;
@@ -136,7 +141,7 @@ begin
   update workflow_posts set status = 'aprovado_cliente' where id = f.post;
   begin
     perform upsert_edit_suggestion(f.post, f.ws, 'tok', null, 'texto v1', 'legenda v2');
-    raise exception 'expected post_not_pending';
+    raise exception 'expected post_not_pending' using errcode = 'P0002';
   exception when sqlstate 'P0001' then
     assert sqlerrm = 'post_not_pending', format('unexpected message: %s', sqlerrm);
   end;
@@ -153,7 +158,7 @@ begin
   select * into f from pg_temp.esf_fixture();
   begin
     perform upsert_edit_suggestion(f.post, gen_random_uuid(), 'tok', null, 'texto v1', 'legenda v2');
-    raise exception 'expected post_not_pending';
+    raise exception 'expected post_not_pending' using errcode = 'P0002';
   exception when sqlstate 'P0001' then
     assert sqlerrm = 'post_not_pending', format('unexpected message: %s', sqlerrm);
   end;
@@ -185,7 +190,7 @@ begin
     begin
       perform record_client_approval(f.post, 'tok', v_action, null, false,
         case v_action when 'aprovado' then 'aprovado_cliente' else 'correcao_cliente' end);
-      raise exception 'expected pending_suggestion for %', v_action;
+      raise exception 'expected pending_suggestion for %', v_action using errcode = 'P0002';
     exception when sqlstate 'P0001' then
       assert sqlerrm = 'pending_suggestion', format('unexpected message: %s', sqlerrm);
     end;
@@ -253,8 +258,9 @@ Create `supabase/migrations/20260928000001_edit_suggestion_update_flow.sql`:
 -- team accepts serialize instead of racing or deadlocking.
 --
 -- All four functions keep their signatures; CREATE OR REPLACE keeps their
--- grants. The grants are restated anyway, matching
--- 20260925000001_lockdown_definer_function_grants.sql.
+-- grants. The three service_role-only ones restate them anyway, matching
+-- 20260925000001_lockdown_definer_function_grants.sql; accept_edit_suggestion
+-- keeps its existing authenticated + service_role grants untouched.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -691,9 +697,9 @@ for (const action of ["aprovado", "correcao"] as const) {
 - [ ] **Step 2: Run to see them fail**
 
 ```bash
-deno test --no-check --allow-all supabase/functions/__tests__/hub-functions_test.ts --filter "hub-edit-suggestion|hub-approve maps"
+deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys --filter "/hub-edit-suggestion|hub-approve maps/" supabase/functions/__tests__/hub-functions_test.ts
 ```
-Expected: the update test fails (no notification call), and the two 409 tests get 500. `--filter` matches test NAMES.
+Expected: the update test fails (no notification call), and the two 409 tests get 500. `--filter` matches test NAMES; it's only a regex when wrapped in `/…/`. The flags mirror `test:functions` in `package.json`.
 
 - [ ] **Step 3: Implement hub-edit-suggestion**
 
@@ -746,7 +752,7 @@ Replace `if (approvalErr) return json({ error: "Erro ao registrar aprovação." 
 - [ ] **Step 5: Run the Deno suites and the type gate**
 
 ```bash
-deno test --no-check --allow-all supabase/functions/__tests__/hub-functions_test.ts
+deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/hub-functions_test.ts
 npm run check:functions
 ls node_modules/.deno 2>/dev/null && npm ci; git status --short deno.lock
 ```
@@ -827,8 +833,6 @@ In `notification-catalog.ts`, `post_edit_suggestion.when`:
     when: 'o cliente sugere ou atualiza uma alteração de texto ou legenda no Hub',
 ```
 
-If `m` is typed so that `m.updated` fails `tsc`, read it the way the neighbouring cases read metadata (e.g. `m.tipo === ...`), without adding a cast.
-
 - [ ] **Step 4: Run** the new test plus `npx vitest run apps/crm/src/lib` and `npx tsc -p apps/crm/tsconfig.json --noEmit`. Expected: pass.
 
 - [ ] **Step 5: Commit**
@@ -854,6 +858,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `packages/i18n/locales/pt/hubPosts.json`, `packages/i18n/locales/en/hubPosts.json`
 
 **Interfaces:**
+- Deliberate deviation from spec §2 (keep it): for TEXT-kind posts the caption diff's "before" is the raw `post.ig_caption ?? ''`, not `deriveCaption(...)`. A text post without a caption stores `''` as its suggested caption, and `deriveCaption` would turn "before" into the body text, which would show a fake "removed the whole body" caption block. Media posts use `deriveCaption` as the spec says.
 - Produces:
   - `TextDiff({ before: string; after: string; className?: string }): JSX.Element`
   - `suggestionAwareCaption(post: HubPost, suggestion: PendingEditSuggestion | null): string`
@@ -937,7 +942,8 @@ describe('SuggestionDiff', () => {
     const { container } = render(
       <SuggestionDiff post={post()} suggestion={sugg({ suggested_ig_caption: 'Legenda editada' })} />,
     );
-    expect(screen.getByText('Legenda')).toBeInTheDocument();
+    // The equal segment "Legenda " is also a text node, so scope the label lookup to the <p>.
+    expect(screen.getByText('Legenda', { selector: 'p' })).toBeInTheDocument();
     expect(container.querySelector('del')?.textContent).toContain('original');
     expect(container.querySelector('ins')?.textContent).toContain('editada');
   });
@@ -1009,7 +1015,7 @@ export function TextDiff({
 }
 ```
 
-In `PostHistoryPanel.tsx`: delete the local `export function TextDiff …` block and the now-unused `computeWordDiff` import, and add `import { TextDiff } from './TextDiff';`. In `PostHistoryPanel.test.tsx` line 3: `import { PostHistoryPanel } from '../PostHistoryPanel';` plus `import { TextDiff } from '../TextDiff';`.
+In `PostHistoryPanel.tsx`: delete the local `export function TextDiff …` block and the now-unused `computeWordDiff` import (drop `useMemo` from the React import too if nothing else uses it), and add `import { TextDiff } from './TextDiff';`. In `PostHistoryPanel.test.tsx` line 3: `import { PostHistoryPanel } from '../PostHistoryPanel';` plus `import { TextDiff } from '../TextDiff';`.
 
 `apps/hub/src/lib/postView.ts`, after `deriveCaption` (add `PendingEditSuggestion` to the existing `../types` import):
 
@@ -1219,7 +1225,7 @@ Put the `it` block inside the existing `describe('useEditSuggestion', …)` so i
 
 In `useEditSuggestion.ts`:
 
-1. Imports: `import type { HubPost, PendingEditSuggestion } from '../types';`.
+1. Imports: `PendingEditSuggestion` is already imported from `../types`; nothing to add.
 2. Add, above `export function useEditSuggestion`:
 
 ```ts
@@ -1243,7 +1249,8 @@ export function resolveEffectiveSuggestion(
   post: HubPost,
   local: LocalSuggestion | null,
 ): PendingEditSuggestion | null {
-  const prop = post.pending_suggestion;
+  // `?? null`: a cached/partial payload may omit the field entirely.
+  const prop = post.pending_suggestion ?? null;
   if (!local || local.postId !== post.id) return prop;
   if (post === local.postAtSave) return local.value;
   if (prop && local.value && Date.parse(prop.updated_at) < Date.parse(local.value.updated_at)) {
@@ -1278,7 +1285,7 @@ export function resolveEffectiveSuggestion(
 
 If the React Compiler / `react-hooks` lint flags writing `postRef.current` during render, move the assignment into `useLayoutEffect(() => { postRef.current = post; })`. The hook already assigns `currentPostIdRef.current` during render, so check what lint does with that first.
 
-- [ ] **Step 4: Run** the hook tests, then `npx vitest run apps/hub` (other suites build `makeEdit` without `suggestion`; they fail to typecheck only under `tsc`, which Task 6 fixes). Expected: the hook suite passes.
+- [ ] **Step 4: Run** the hook tests, then `npx vitest run apps/hub`. Expected: the hook suite passes. (`apps/hub/tsconfig.json` excludes test files, so `makeEdit` lacking `suggestion` until Task 6 does not break `tsc`.)
 
 - [ ] **Step 5: Commit**
 
@@ -1373,9 +1380,25 @@ In `CorrectionPanel.test.tsx`: add `suggestion: null,` to `makeEdit`'s defaults;
     rerender(<CorrectionPanel {...props} edit={makeEdit({ saveState: 'saved' })} />);
     expect(onSavedClean).not.toHaveBeenCalled();
   });
+
+  it('does not report a clean save when it mounts during the 3s "saved" window', () => {
+    // Reopening Editar sugestão right after a save mounts the panel with saveState 'saved'.
+    const onSavedClean = vi.fn();
+    render(
+      <CorrectionPanel
+        post={post()}
+        edit={makeEdit({ saveState: 'saved' })}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+        onSavedClean={onSavedClean}
+      />,
+    );
+    expect(onSavedClean).not.toHaveBeenCalled();
+  });
 ```
 
-- [ ] **Step 2: Run** `npx vitest run apps/hub/src/components/posts/__tests__/CorrectionPanel.test.tsx`. Expected: the three new tests fail.
+- [ ] **Step 2: Run** `npx vitest run apps/hub/src/components/posts/__tests__/CorrectionPanel.test.tsx`. Expected: the first three new tests fail (the mount-window test passes trivially until `onSavedClean` exists; it guards the implementation).
 
 - [ ] **Step 3: Implement**
 
@@ -1418,15 +1441,18 @@ In `CorrectionPanel.tsx`:
 ```
 
    Keep the existing explanatory comment above it and add one line: "A text post's suggestion stores '' when it had no caption field, which must not reveal one."
-7. The saved effect becomes:
+7. The saved effect becomes the following. `onSavedClean` fires only on the TRANSITION into `'saved'`, never on mount. The hook holds `saveState === 'saved'` for 3s after a save (`useEditSuggestion.ts`, `savedTimerRef`), and effects run on mount, so reopening the panel within 3s would otherwise close it right away. The staged resets stay as they are today.
 
 ```ts
+  const prevSaveStateRef = useRef(saveState);
   useEffect(() => {
+    const enteredSaved = saveState === 'saved' && prevSaveStateRef.current !== 'saved';
+    prevSaveStateRef.current = saveState;
     if (saveState === 'saved') {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
       setStagedCaption(captionBaseline);
-      if (comentario.trim() === '' && motivo === null) onSavedCleanRef.current?.();
+      if (enteredSaved && comentario.trim() === '' && motivo === null) onSavedCleanRef.current?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveState]);
