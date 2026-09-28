@@ -456,7 +456,11 @@ export default function EntregasTab() {
       toast.success(
         newStatus === 'agendado' ? t('detail.postScheduled') : t('detail.postMarkedPosted'),
       );
-      refreshPostCalendar();
+      // refreshCards, not just the calendar: a post avulso with an active
+      // process renders its status on the PostProcessCard
+      // (['post-processes-cliente']), and a fluxo post's status feeds the
+      // workflow card counts.
+      refreshCards();
     } catch {
       toast.error(t('detail.postStatusError'));
     } finally {

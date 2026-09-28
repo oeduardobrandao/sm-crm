@@ -737,6 +737,22 @@ describe('EntregasTab', () => {
       expect(mockedGetClientePosts).toHaveBeenCalledWith(42);
     });
 
+    it('refreshes the individual-post cards too after a calendar status change', async () => {
+      const { updateWorkflowPost } = await import('@/store');
+      vi.mocked(updateWorkflowPost).mockResolvedValue(undefined as never);
+      mockedGetClientePosts.mockResolvedValue([clientePost()]);
+      const { invalidateSpy } = renderTab();
+      await screen.findByText('Post avulso de hoje');
+      fireEvent.click(screen.getByRole('button', { name: /○ Agendar/ }));
+      await waitFor(() =>
+        expect(vi.mocked(updateWorkflowPost)).toHaveBeenCalledWith(500, { status: 'agendado' }),
+      );
+      await waitFor(() =>
+        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-processes-cliente', 42] }),
+      );
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientePosts', 42] });
+    });
+
     it('opens a fluxo post in its workflow drawer', async () => {
       mockedGetClientePosts.mockResolvedValue([
         clientePost({
