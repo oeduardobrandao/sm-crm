@@ -36,7 +36,8 @@ export default function KbVideoEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const parsedId = id ? parseInt(id, 10) : NaN;
+  // Só dígitos: parseInt sozinho aceitaria "12abc" como 12 e abriria outro vídeo.
+  const parsedId = id && /^[1-9][0-9]*$/.test(id) ? parseInt(id, 10) : NaN;
   const isEdit = !!id;
   const videoId = Number.isNaN(parsedId) ? null : parsedId;
 

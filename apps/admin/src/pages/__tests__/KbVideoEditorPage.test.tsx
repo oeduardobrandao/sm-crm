@@ -84,6 +84,12 @@ function renderAt(path: string) {
 }
 
 describe('KbVideoEditorPage', () => {
+  it('treats a non-canonical id as not found instead of loading another video', async () => {
+    renderAt('/admin/kb-videos/7abc/edit');
+    expect(await screen.findByText('Vídeo não encontrado.')).toBeInTheDocument();
+    expect(getKbVideo).not.toHaveBeenCalled();
+  });
+
   it('cannot publish a video that is still processing', async () => {
     renderAt('/admin/kb-videos/7/edit');
     expect(await screen.findByDisplayValue('Primeiro acesso')).toBeInTheDocument();
