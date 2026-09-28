@@ -276,9 +276,16 @@ export function CorrectionPanel({
       conteudoPlain: stagedConteudoPlain,
       caption: stagedCaption,
     };
+    // An untouched body sends its STORED text: draftConteudoPlain is the editor's rendering
+    // of the document, which can differ from the stored text in line breaks alone, and the
+    // RPC would then record a body change that accepting applies (see docPlainText).
+    const bodyEdited = stagedConteudoPlain !== draftConteudoPlain || stagedDocKey !== draftDocKey;
+    const textPlain = bodyEdited
+      ? stagedConteudoPlain
+      : (suggestion?.suggested_conteudo_plain ?? post.conteudo_plain ?? '');
     saveSuggestion(
       isText ? stagedConteudo : draftConteudo,
-      isText ? stagedConteudoPlain : (post.conteudo_plain ?? ''),
+      isText ? textPlain : (post.conteudo_plain ?? ''),
       showCaptionField ? stagedCaption : '',
     );
   }

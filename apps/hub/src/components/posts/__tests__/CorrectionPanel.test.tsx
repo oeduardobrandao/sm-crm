@@ -566,6 +566,32 @@ describe('CorrectionPanel', () => {
     expect(onSavedClean).not.toHaveBeenCalled();
   });
 
+  it('sends the stored body text on a caption-only edit, even when it differs from the editor text', () => {
+    // Agent-created posts store one \n per line; the editor's getText() uses \n\n.
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Linha um.' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Linha dois.' }] },
+      ],
+    };
+    const edit = makeEdit({ draftConteudo: doc, draftConteudoPlain: 'Linha um.\n\nLinha dois.' });
+    render(
+      <CorrectionPanel
+        post={post({ media: [], conteudo: doc, conteudo_plain: 'Linha um.\nLinha dois.' })}
+        edit={edit}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Legenda do post' }), {
+      target: { value: 'Legenda nova' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+    expect(edit.saveSuggestion).toHaveBeenCalledWith(doc, 'Linha um.\nLinha dois.', 'Legenda nova');
+  });
+
   it('keeps text typed while the save was in flight, and does not report a clean save', () => {
     const onSavedClean = vi.fn();
     const edit = makeEdit();
