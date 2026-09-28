@@ -287,7 +287,11 @@ Monorepo with npm workspaces:
   `STREAM_SIGNING_KEY_JWK`, `STREAM_WEBHOOK_SECRET`) is the kill switch --
   ingest and playback stop while cleanup keeps draining queued deletions.
   Losing `STREAM_ACCOUNT_ID` or `STREAM_API_TOKEN` is what disables the whole
-  feature, cleanup included
+  feature, cleanup included. Central de Ajuda tutorial videos (`kb_videos`) are gated only on
+  `isStreamCleanupEnabled()` because their playback is public/unsigned, so the four-var kill
+  switch above does NOT stop tutorial uploads; without `STREAM_WEBHOOK_SECRET` the webhook
+  401s every delivery, so tutorial uploads only settle via the Admin editor's
+  `refresh-kb-video` poll
 
 ## Gotchas
 
