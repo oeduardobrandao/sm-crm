@@ -45,6 +45,25 @@ export function VideoPlaylistBlock({
     resolveSelection(series, selection) ??
     resolveSelection(series, pickInitial(series, progress, null));
 
+  // Keeps the shown video in sync with the URL slug when it changes from OUTSIDE this component
+  // (e.g. a Link to another /ajuda/video/:slug). Internal navigation (rail click, "next video")
+  // also ends up changing the URL via onVideoChange -> navigate(replace), but by the time that
+  // reaches back down here as a new `requestedSlug`, `resolved.video.slug` already matches it, so
+  // this no-ops. Deps are ONLY [requestedSlug] on purpose: right after an internal `select()`,
+  // there is a render where `resolved.video.slug` is the new video but `requestedSlug` (URL) is
+  // still the old one. If `resolved`/`selection` were in the deps, the effect would re-run on
+  // that render, see the mismatch, and revert the selection we just made with pickInitial(old
+  // slug) before the URL catches up.
+  useEffect(() => {
+    if (!requestedSlug || resolved?.video.slug === requestedSlug) return;
+    const picked = pickInitial(series, progress, requestedSlug);
+    if (picked) {
+      setSelection(picked);
+      setAutoPlay(false); // external navigation never autoplays, same as the initial mount
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedSlug]);
+
   const onVideoChangeRef = useRef(onVideoChange);
   useEffect(() => {
     onVideoChangeRef.current = onVideoChange;

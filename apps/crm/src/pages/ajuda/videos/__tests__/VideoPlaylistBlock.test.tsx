@@ -93,6 +93,44 @@ describe('VideoPlaylistBlock', () => {
     );
   });
 
+  it('follows requestedSlug when it changes after mount, without remounting the block', () => {
+    const { rerender } = renderBlock({ requestedSlug: 'video-1' });
+    expect(screen.getByRole('heading', { name: 'Primeiro acesso' })).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <VideoPlaylistBlock
+          series={series}
+          progress={toProgressMap([done(1)])}
+          onSaveProgress={vi.fn()}
+          requestedSlug="video-3"
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('heading', { name: 'Primeiro cliente' })).toBeInTheDocument();
+  });
+
+  it('does not fight a just-made internal selection once the URL catches up to it', () => {
+    const onSaveProgress = vi.fn();
+    const { rerender } = renderBlock({ requestedSlug: 'video-2', onSaveProgress });
+    fireEvent.click(screen.getByRole('button', { name: /Primeiro cliente/ }));
+    expect(screen.getByRole('heading', { name: 'Primeiro cliente' })).toBeInTheDocument();
+
+    // Simulate the URL having caught up (navigate({replace:true}) already landed) to the video
+    // just selected: requestedSlug now equals it, so the sync effect must no-op.
+    rerender(
+      <MemoryRouter>
+        <VideoPlaylistBlock
+          series={series}
+          progress={toProgressMap([done(1)])}
+          onSaveProgress={onSaveProgress}
+          requestedSlug="video-3"
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('heading', { name: 'Primeiro cliente' })).toBeInTheDocument();
+  });
+
   it('switches video from the rail', () => {
     renderBlock();
     fireEvent.click(screen.getByRole('button', { name: /Primeiro cliente/ }));
