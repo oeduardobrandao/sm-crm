@@ -61,7 +61,12 @@ Novo bloco `VideoPlaylistHero` acima da busca. Estrutura em grid
   "Cancelar". Último vídeo da série: overlay "Série concluída" sem autoplay.
 - **Tudo concluído:** o bloco colapsa para uma faixa fina "Tutoriais em vídeo" com botão
   "Rever", que expande o bloco completo (estado só em memória).
-- **Sem séries publicadas:** o bloco não renderiza. A página fica como hoje.
+- **Séries visíveis:** toda a lógica do bloco (seleção, seletor de série, contagem,
+  colapso, estado vazio) usa só as séries com pelo menos um vídeo visível (publicado e
+  pronto). Uma série publicada cujos vídeos ainda estão em rascunho ou processando não
+  aparece. "Tudo concluído" exige ao menos um vídeo visível, nunca um `every()` sobre
+  lista vazia.
+- **Sem séries visíveis:** o bloco não renderiza. A página fica como hoje.
 - **Carregando:** skeleton com a mesma altura do bloco, para não deslocar a página.
 - **Responsivo:** abaixo de 900px a playlist vai para baixo do player (coluna única).
 
@@ -151,7 +156,8 @@ kb_video_progress (
 
 ### Store do CRM (`apps/crm/src/store/kb.ts`)
 
-- `getPublishedVideoSeries()`: séries + vídeos publicados e prontos, ordenados.
+- `getPublishedVideoSeries()`: séries + vídeos publicados e prontos, ordenados. Descarta
+  séries que ficaram sem vídeos depois da RLS, para nenhum consumidor ver uma série vazia.
 - `getVideoBySlug(slug)`.
 - `getMyVideoProgress()`: todas as linhas do usuário (volume pequeno).
 - `saveVideoProgress(videoId, positionSeconds, completed)`: chama a RPC
@@ -324,7 +330,8 @@ em `kb_videos`/`kb_video_series`.
 - Seleção inicial: primeira série não concluída, primeiro vídeo não concluído, prioridade
   do `?video=`.
 - Regra de conclusão aos 90%, e o upsert que não apaga `completed_at`.
-- Colapso quando tudo está concluído.
+- Colapso quando tudo está concluído, e nenhum colapso nem playlist quebrada quando a única
+  série publicada não tem vídeo visível.
 - A busca casa vídeos.
 
 **Vitest (Admin):** estados de processamento e a regra "publicar exige pronto" no editor.
