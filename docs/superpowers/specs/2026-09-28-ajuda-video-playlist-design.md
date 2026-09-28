@@ -149,20 +149,24 @@ kb_video_progress (
   - `kb_video_series`: `authenticated` lê `status = 'published'`.
   - `kb_videos`: `authenticated` lê `status = 'published' and stream_status = 'ready'` e
     série publicada (`exists` em `kb_video_series`).
-  - `kb_video_progress`: `authenticated` faz select/insert/update onde
-    `user_id = auth.uid()`. Sem delete.
+  - `kb_video_progress`: `authenticated` só tem policy de `select` (`user_id = auth.uid()`).
+    `insert`/`update`/`delete`/`truncate` são revogados de `anon` e `authenticated` (o ACL
+    padrão do Supabase hospedado concede `ALL` em tabela nova); a única escrita é a RPC
+    `save_kb_video_progress`, `SECURITY DEFINER`.
   - Escrita em séries e vídeos só pelo service role (via `platform-admin`).
 - Progresso não é por workspace: o tutorial é do usuário, não da agência.
 
-### Store do CRM (`apps/crm/src/store/kb.ts`)
+### Store do CRM (`apps/crm/src/store/kbVideos.ts`)
 
 - `getPublishedVideoSeries()`: séries + vídeos publicados e prontos, ordenados. Descarta
   séries que ficaram sem vídeos depois da RLS, para nenhum consumidor ver uma série vazia.
-- `getVideoBySlug(slug)`.
 - `getMyVideoProgress()`: todas as linhas do usuário (volume pequeno).
 - `saveVideoProgress(videoId, positionSeconds, completed)`: chama a RPC
-  `save_kb_video_progress(p_video_id, p_position, p_completed)` (`SECURITY INVOKER`, usa
-  `auth.uid()`), que faz
+  `save_kb_video_progress(p_video_id, p_position, p_completed)`. Como não há policy de escrita
+  para a RLS aplicar, a função é `SECURITY DEFINER` e decide visibilidade ela mesma: exige um
+  vídeo publicado e pronto (`stream_status = 'ready'`) de uma série publicada, com o mesmo erro
+  `P0002` ("video not found") tanto para id inexistente quanto para vídeo oculto, e `42501`
+  quando `auth.uid()` é nulo. A escrita em si é
   `insert ... on conflict (user_id, video_id) do update set position_seconds = excluded.position_seconds,
   completed_at = coalesce(kb_video_progress.completed_at, excluded.completed_at), updated_at = now()`.
   - A conclusão é preservada de forma atômica, sem depender da ordem das requisições.
