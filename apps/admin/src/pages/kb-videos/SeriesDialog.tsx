@@ -76,7 +76,7 @@ export function SeriesDialog({ series, onClose }: SeriesDialogProps) {
       toast.error(
         err.status === 409
           ? 'Esta série ainda tem vídeos. Mova ou exclua os vídeos antes.'
-          : err.message,
+          : 'Não foi possível excluir a série.',
       ),
   });
 

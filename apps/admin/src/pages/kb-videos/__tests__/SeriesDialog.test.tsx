@@ -11,7 +11,7 @@ vi.mock('sonner', () => ({
 }));
 
 import { toast } from 'sonner';
-import { upsertKbVideoSeries } from '../../../lib/api';
+import { deleteKbVideoSeries, upsertKbVideoSeries } from '../../../lib/api';
 import { SeriesDialog } from '../SeriesDialog';
 
 const toastError = vi.mocked(toast.error);
@@ -57,6 +57,27 @@ describe('SeriesDialog', () => {
 
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith('Não foi possível salvar a série.'),
+    );
+    expect(toastError).not.toHaveBeenCalledWith('internal server error');
+  });
+
+  it('shows a fixed Portuguese message when delete fails, never err.message', async () => {
+    const err = Object.assign(new Error('internal server error'), { status: 500 });
+    vi.mocked(deleteKbVideoSeries).mockRejectedValue(err);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderDialog({
+      id: 's1',
+      title: 'Primeiros passos',
+      slug: 'primeiros-passos',
+      description: null,
+      display_order: 0,
+      status: 'draft',
+    } as never);
+
+    fireEvent.click(screen.getByRole('button', { name: /Excluir série/ }));
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith('Não foi possível excluir a série.'),
     );
     expect(toastError).not.toHaveBeenCalledWith('internal server error');
   });
