@@ -185,6 +185,37 @@ describe('VideoPlaylistBlock', () => {
     expect(videoEl(container)).not.toBeNull();
   });
 
+  it('resumes at the last known position on "Tentar novamente" instead of restarting at 0', () => {
+    const { container } = renderBlock();
+    const el = videoEl(container);
+    setMedia(el, 37);
+    fireEvent.timeUpdate(el); // captures positionRef = 37
+    fireEvent.error(el); // native-hls → fallback
+    fireEvent.error(videoEl(container)); // fallback fails → fatal
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+
+    const retried = videoEl(container);
+    setMedia(retried, 0, 100);
+    fireEvent.loadedMetadata(retried);
+    expect(retried.currentTime).toBe(37);
+  });
+
+  it('does NOT resume position on "Assistir de novo" (rewatch after completion)', () => {
+    const { container } = renderBlock({
+      progress: toProgressMap([done(1), done(2)]),
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Primeiro cliente/ }));
+    const el = videoEl(container);
+    setMedia(el, 100);
+    fireEvent.ended(el);
+    fireEvent.click(screen.getByRole('button', { name: 'Assistir de novo' }));
+
+    const replayed = videoEl(container);
+    setMedia(replayed, 0, 100);
+    fireEvent.loadedMetadata(replayed);
+    expect(replayed.currentTime).toBe(0);
+  });
+
   it('offers to watch again once the last video in the series ends, with a readable button', () => {
     const { container } = renderBlock({
       progress: toProgressMap([done(1), done(2)]),

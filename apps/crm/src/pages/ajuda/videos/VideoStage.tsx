@@ -121,6 +121,10 @@ export function VideoStage({
               variant="outline"
               className="text-foreground"
               onClick={() => {
+                // Resumes the retry where playback actually failed, instead of restarting at 0.
+                // handleLoadedMetadata consumes resumeRef.current once the new attempt loads.
+                resumeRef.current =
+                  positionRef.current > 0 ? positionRef.current : resumeRef.current;
                 setFailed(false);
                 setAttempt((a) => a + 1);
               }}
