@@ -20,6 +20,7 @@ Deno.test("validateKbArticle: title 1..200, slug no formato e fora dos reservado
   assert(validateKbArticle({ ...BASE, slug: "-a" }) !== null);
   assert(validateKbArticle({ ...BASE, slug: "novo" }) !== null);
   assert(validateKbArticle({ ...BASE, slug: "editar" }) !== null);
+  assert(validateKbArticle({ ...BASE, slug: "video" }) !== null);
 });
 
 Deno.test("validateKbArticle: category na lista; status draft|published", () => {
