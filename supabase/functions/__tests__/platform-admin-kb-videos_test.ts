@@ -5,6 +5,7 @@ import {
   handleCancelKbVideoUpload,
   handleCreateKbVideoUpload,
   handleDeleteKbVideoSeries,
+  handleGetKbVideo,
   handleRefreshKbVideo,
   handleReorderKbVideos,
   handleUpsertKbVideo,
@@ -140,6 +141,22 @@ Deno.test("upsert-kb-video: creates a draft video with only allowlisted columns"
   });
 });
 
+Deno.test("upsert-kb-video: an already-published row stays editable while its replacement file processes", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("kb_videos", "select", {
+    data: row({ status: "published", stream_status: "pending", stream_uid: "u1", hls_url: null }),
+  });
+  db.queue("kb_video_series", "select", { data: { id: "s1" } });
+  db.queue("kb_videos", "update", {
+    data: row({ status: "published", stream_status: "pending", stream_uid: "u1", hls_url: null, title: "Novo título" }),
+  });
+
+  const res = await handleUpsertKbVideo(db as never, { video_id: 7, title: "Novo título" }, H);
+
+  assertEquals(res.status, 200);
+  assertEquals(callsFor(db, "kb_videos", "update")[0].payload, { title: "Novo título" });
+});
+
 Deno.test("upsert-kb-video: duplicate slug is a 409", async () => {
   const db = createSupabaseQueryMock();
   db.queue("kb_video_series", "select", { data: { id: "s1" } });
@@ -247,6 +264,22 @@ Deno.test("reorder-kb-videos: validates every item before writing", async () => 
   const ok = await handleReorderKbVideos(db as never, { items: [{ id: 1, display_order: 20 }, { id: 2, display_order: 10 }] }, H);
   assertEquals(ok.status, 200);
   assertEquals(callsFor(db, "kb_videos", "update").map((c) => c.payload), [{ display_order: 20 }, { display_order: 10 }]);
+});
+
+Deno.test("get-kb-video: video_id parsing is strict, never a bare Number()", async () => {
+  for (const bad of ["1e3", "0x10", " 7", "12abc", "-1", "1.5", "0", ""]) {
+    const res = await handleGetKbVideo(createSupabaseQueryMock() as never, { video_id: bad }, H);
+    assertEquals(res.status, 400, `video_id ${JSON.stringify(bad)} must be rejected`);
+  }
+
+  const db = createSupabaseQueryMock();
+  db.queue("kb_videos", "select", { data: row({ id: 7 }) });
+  const ok = await handleGetKbVideo(db as never, { video_id: "7" }, H);
+  assertEquals(ok.status, 200);
+  assertEquals(
+    callsFor(db, "kb_videos", "select")[0].modifiers.filter((m) => m.method === "eq"),
+    [{ method: "eq", args: ["id", 7] }],
+  );
 });
 
 Deno.test("platform-admin: every kb-video action is dispatched behind the admin gate", async () => {

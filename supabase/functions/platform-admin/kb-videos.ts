@@ -41,9 +41,20 @@ function isFkViolation(error: unknown): boolean {
   return !!error && typeof error === "object" && (error as { code?: unknown }).code === "23503";
 }
 
+// Estrito por convenção do repo (parseInt + guard, nunca Number() bruto): uma string só passa
+// se for inteiro positivo em dígitos puros -- rejeita notação científica ("1e3"), hex ("0x10"),
+// espaço, ponto decimal e sufixos ("12abc"), que Number() aceitaria silenciosamente.
+const VIDEO_ID_RE = /^[1-9][0-9]*$/;
+
 function parseVideoId(value: unknown): number | null {
-  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
-  return Number.isInteger(n) && n > 0 ? n : null;
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value === "string" && VIDEO_ID_RE.test(value)) {
+    const n = parseInt(value, 10);
+    return Number.isSafeInteger(n) ? n : null;
+  }
+  return null;
 }
 
 async function bestEffortDelete(stream: KbVideoStreamDeps, uid: string, scope: string): Promise<void> {
@@ -160,7 +171,7 @@ export async function handleUpsertKbVideo(svc: Svc, body: Row, headers: Headers)
     if (!current) return json({ error: "Video not found" }, 404, headers);
   }
   const merged = { ...(current ?? {}), ...fields };
-  const fieldError = validateKbVideo(merged);
+  const fieldError = validateKbVideo(merged, { alreadyPublished: current?.status === "published" });
   if (fieldError) return json({ error: fieldError }, 400, headers);
 
   const { data: series, error: seriesErr } = await svc

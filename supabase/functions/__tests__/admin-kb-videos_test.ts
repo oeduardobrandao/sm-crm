@@ -48,6 +48,12 @@ Deno.test("validateKbVideo: publishing requires a ready video with an HLS url", 
   );
 });
 
+Deno.test("validateKbVideo: alreadyPublished skips the ready check for an already-published row", () => {
+  const row = { ...VIDEO, status: "published", stream_status: "pending", hls_url: null };
+  assert(validateKbVideo(row) !== null);
+  assertEquals(validateKbVideo(row, { alreadyPublished: true }), null);
+});
+
 Deno.test("pickColumns + normalizeKbVideoRow: allowlist, trim, '' → null", () => {
   const picked = pickColumns(
     { title: " T ", slug: " t ", description: "", article_id: "", series_id: "s1", hls_url: "x", action: "y" },

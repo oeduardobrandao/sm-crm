@@ -67,13 +67,20 @@ export function validateKbVideoSeries(row: Record<string, unknown>): string | nu
   return validateCommon(row);
 }
 
-export function validateKbVideo(row: Record<string, unknown>): string | null {
+export function validateKbVideo(
+  row: Record<string, unknown>,
+  opts?: { alreadyPublished?: boolean },
+): string | null {
   const common = validateCommon(row);
   if (common) return common;
   if (typeof row.series_id !== "string" || row.series_id.length === 0) return "series_id is required";
   const articleId = row.article_id ?? null;
   if (articleId !== null && (typeof articleId !== "string" || articleId.length === 0)) return "invalid article_id";
-  if ((row.status ?? "draft") === "published") {
+  // A exigência de "ready + HLS" só vale na TRANSIÇÃO para published (linha nova já publicada, ou
+  // draft -> published). Uma linha já publicada continua editável mesmo com o arquivo em
+  // reprocessamento (stream_status volta a pending ao trocar o arquivo) -- o RLS já esconde o
+  // vídeo do Hub enquanto isso, e ele reaparece sozinho quando o refresh o marcar ready de novo.
+  if ((row.status ?? "draft") === "published" && !opts?.alreadyPublished) {
     if (row.stream_status !== "ready" || typeof row.hls_url !== "string" || row.hls_url.length === 0) {
       return "only a ready video can be published";
     }
