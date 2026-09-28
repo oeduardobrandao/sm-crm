@@ -30,14 +30,22 @@ export function useVideoProgress(): {
 
   // Fire-and-forget: a failed save never interrupts the video nor shows a toast (spec). The
   // optimistic cache write keeps the rail's checkmarks in step with what the user just watched.
+  // Cancel any in-flight fetch before writing the cache so it doesn't overwrite the optimistic
+  // row when it resolves.
   const save = useCallback(
     (videoId: number, position: number, completed: boolean) => {
+      void qc.cancelQueries({ queryKey: KB_VIDEO_PROGRESS_KEY });
       qc.setQueryData<KbVideoProgress[]>(KB_VIDEO_PROGRESS_KEY, (old = []) =>
         mergeProgress(old, videoId, position, completed, new Date().toISOString()),
       );
-      saveVideoProgress(videoId, position, completed).catch((err) =>
-        console.error('[kb-video-progress] save failed', err),
-      );
+      saveVideoProgress(videoId, position, completed)
+        .then(() => {
+          void qc.invalidateQueries({ queryKey: KB_VIDEO_PROGRESS_KEY });
+        })
+        .catch((err) => {
+          console.error('[kb-video-progress] save failed', err);
+          void qc.invalidateQueries({ queryKey: KB_VIDEO_PROGRESS_KEY });
+        });
     },
     [qc],
   );
