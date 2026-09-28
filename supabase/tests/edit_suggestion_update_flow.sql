@@ -10,6 +10,9 @@
 --   E.5 record_client_approval raises pending_suggestion for a client approval/correction
 --   E.6 record_client_approval still succeeds for a workspace user with a pending row
 --   E.7 accept_edit_suggestion still applies the suggestion (lock-order rewrite)
+--   E.8 accept_edit_suggestion refuses a stale p_expected_updated_at (suggestion_changed)
+--       and accepts the current one, round-tripped through its JSON text as PostgREST returns it
+--   E.9 accept/reject_edit_suggestion grants: authenticated + service_role, never anon
 
 create or replace function pg_temp.esf_fixture(out ws uuid, out usr uuid, out cli bigint, out post bigint)
 language plpgsql as $$
@@ -155,3 +158,51 @@ begin
   raise notice 'PASS E.7 accept_edit_suggestion still applies the suggestion';
 end $$;
 rollback;
+
+-- E.8
+begin;
+do $$
+declare f record; v_id bigint; v_txt text;
+begin
+  select * into f from pg_temp.esf_fixture();
+  perform upsert_edit_suggestion(f.post, f.ws, 'tok', null, 'texto v1', 'legenda v2');
+  select id, to_jsonb(updated_at) #>> '{}' into v_id, v_txt
+    from post_edit_suggestions where post_id = f.post and status = 'pending';
+
+  -- The team opened an older version: the client has saved since.
+  begin
+    perform accept_edit_suggestion(v_id, v_txt::timestamptz - interval '1 second');
+    raise exception 'expected suggestion_changed' using errcode = 'P0002';
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'suggestion_changed', format('unexpected message: %s', sqlerrm);
+  end;
+  assert (select ig_caption from workflow_posts where id = f.post) = 'legenda v1',
+    'a stale accept must not touch the post';
+  assert (select status from post_edit_suggestions where id = v_id) = 'pending',
+    'a stale accept must leave the suggestion pending';
+
+  -- updated_at as its JSON text (ISO 8601 with microseconds, what PostgREST returns) compares equal.
+  perform accept_edit_suggestion(v_id, v_txt::timestamptz);
+  assert (select ig_caption from workflow_posts where id = f.post) = 'legenda v2';
+  assert (select status from post_edit_suggestions where id = v_id) = 'accepted';
+  raise notice 'PASS E.8 accept_edit_suggestion checks p_expected_updated_at';
+end $$;
+rollback;
+
+-- E.9
+do $$
+begin
+  assert has_function_privilege('anon', 'public.accept_edit_suggestion(bigint, timestamptz)', 'EXECUTE') = false,
+    'anon must NOT execute accept_edit_suggestion';
+  assert has_function_privilege('authenticated', 'public.accept_edit_suggestion(bigint, timestamptz)', 'EXECUTE'),
+    'authenticated must execute accept_edit_suggestion (the CRM calls it)';
+  assert has_function_privilege('service_role', 'public.accept_edit_suggestion(bigint, timestamptz)', 'EXECUTE'),
+    'service_role must keep execute on accept_edit_suggestion';
+  assert has_function_privilege('anon', 'public.reject_edit_suggestion(bigint)', 'EXECUTE') = false,
+    'anon must NOT execute reject_edit_suggestion';
+  assert has_function_privilege('authenticated', 'public.reject_edit_suggestion(bigint)', 'EXECUTE'),
+    'authenticated must execute reject_edit_suggestion (the CRM calls it)';
+  assert to_regprocedure('public.accept_edit_suggestion(bigint)') is null,
+    'the one-argument overload must be gone (calls would be ambiguous)';
+  raise notice 'PASS E.9 accept/reject_edit_suggestion grants';
+end $$;

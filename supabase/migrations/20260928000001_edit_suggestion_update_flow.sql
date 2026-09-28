@@ -9,19 +9,21 @@
 -- trigger updates the suggestion), so client saves, client approvals and
 -- team accepts serialize instead of racing or deadlocking.
 --
--- All four functions keep their signatures; CREATE OR REPLACE keeps their
--- grants. The three service_role-only ones restate them anyway, matching
--- 20260925000001_lockdown_definer_function_grants.sql; accept_edit_suggestion
--- keeps its existing authenticated + service_role grants untouched.
+-- Three functions keep their signatures and are CREATE OR REPLACEd; the
+-- service_role-only grants are restated anyway, matching
+-- 20260925000001_lockdown_definer_function_grants.sql. accept_edit_suggestion
+-- gains p_expected_updated_at (DEFAULT NULL, so one-argument calls keep
+-- working): it is dropped and recreated, and its authenticated + service_role
+-- grants are restated with anon named explicitly (§3d).
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
 -- 3a. upsert_edit_suggestion: lock the post and require enviado_cliente
 -- in the same transaction as the upsert. Before, hub-edit-suggestion
--- checked the status in a separate query, so a team accept/reject landing
--- in between let the save recreate a pending suggestion on a post that was
--- no longer waiting for the client. Body otherwise identical to
--- 20260521000001.
+-- checked the status in a separate query, so a status move landing in
+-- between (a client approval or correction, or a team status change) let
+-- the save create a pending suggestion on a post that was no longer
+-- waiting for the client. Body otherwise identical to 20260521000001.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION upsert_edit_suggestion(
   p_post_id                bigint,
@@ -249,11 +251,22 @@ GRANT EXECUTE ON FUNCTION create_edit_suggestion_notification(bigint) TO service
 -- 3d. accept_edit_suggestion: lock the post BEFORE the suggestion. It used
 -- to lock the suggestion first and then update the post, the reverse of
 -- the upsert above, so a team accept concurrent with a client save could
--- deadlock. Body otherwise identical to 20260923000001. Grants unchanged
--- (authenticated + service_role, the CRM calls it directly).
+-- deadlock.
+--
+-- New p_expected_updated_at: a pending suggestion is now mutable (the
+-- client can keep saving it), so the CRM passes the updated_at of the
+-- version the team reviewed and the accept raises suggestion_changed when
+-- the row moved on since, instead of applying a version nobody saw. NULL
+-- skips the check (older callers). The signature change needs DROP +
+-- CREATE (CREATE OR REPLACE would add an overload and make one-argument
+-- calls ambiguous), which drops the grants, so they are restated below.
+-- Body otherwise identical to 20260923000001.
 -- ---------------------------------------------------------------------
-create or replace function accept_edit_suggestion(
-  p_suggestion_id bigint
+drop function if exists accept_edit_suggestion(bigint);
+
+create function accept_edit_suggestion(
+  p_suggestion_id       bigint,
+  p_expected_updated_at timestamptz default null
 )
 returns void
 language plpgsql
@@ -287,6 +300,11 @@ begin
     raise exception 'Suggestion is not pending (status: %)', v_suggestion.status;
   end if;
 
+  if p_expected_updated_at is not null
+     and v_suggestion.updated_at is distinct from p_expected_updated_at then
+    raise exception 'suggestion_changed' using errcode = 'P0001';
+  end if;
+
   perform set_config('app.accepting_edit_suggestion', v_suggestion.id::text, true);
 
   -- source is forced to 'client' (the TEXT is client-authored), while
@@ -308,3 +326,12 @@ begin
   where id = p_suggestion_id;
 end;
 $$;
+
+-- Hosted Supabase grants EXECUTE to anon/authenticated directly at creation
+-- time, so revoking from public alone would leave anon able to call it.
+revoke all on function accept_edit_suggestion(bigint, timestamptz) from public, anon;
+grant execute on function accept_edit_suggestion(bigint, timestamptz) to authenticated, service_role;
+
+-- reject_edit_suggestion is untouched; same hosted anon grant, closed here
+-- (idempotent). authenticated keeps EXECUTE: the CRM calls it directly.
+revoke all on function reject_edit_suggestion(bigint) from anon;

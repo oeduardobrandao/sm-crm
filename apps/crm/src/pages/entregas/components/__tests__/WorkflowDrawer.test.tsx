@@ -411,7 +411,9 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
     fireEvent.click(acceptButton);
 
-    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+    await waitFor(() =>
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+    );
     await waitFor(() => expect(mockSyncMentions).toHaveBeenCalledWith('workflow_post', 1, [7]));
   });
 
@@ -425,7 +427,9 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
     fireEvent.click(acceptButton);
 
-    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+    await waitFor(() =>
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+    );
     expect(mockSyncMentions).not.toHaveBeenCalled();
   });
 
@@ -445,7 +449,9 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
     fireEvent.click(acceptButton);
 
-    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+    await waitFor(() =>
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+    );
     expect(mockSyncMentions).not.toHaveBeenCalled();
   });
 
@@ -501,7 +507,9 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
     fireEvent.click(acceptButton);
 
-    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+    await waitFor(() =>
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+    );
 
     // While the posts refetch that handleAcceptSuggestion explicitly awaits is still
     // pending, refresh() (which invalidates post-edit-suggestions) must not have fired
@@ -580,7 +588,9 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     const acceptButton = await screen.findByRole('button', { name: 'Aceitar' });
     fireEvent.click(acceptButton);
 
-    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200));
+    await waitFor(() =>
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+    );
 
     // The diff card clears once posts + suggestions settle, but the signed-URL fetch is
     // still pending -- the editor must not mount yet with the unsigned content.
@@ -597,6 +607,25 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
       const content = JSON.parse(editorStub.getAttribute('data-content') ?? 'null');
       expect(content.content[1].attrs.src).toBe('https://signed.example/img-abc');
     });
+  });
+
+  it('asks to review again, and refetches, when the client updated the suggestion meanwhile', async () => {
+    const { toast } = await import('sonner');
+    mockAcceptEditSuggestion.mockRejectedValue({ message: 'suggestion_changed' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'A sugestão foi atualizada pelo cliente. Revise a nova versão.',
+      ),
+    );
+    expect(toast.error).not.toHaveBeenCalledWith('Erro ao aceitar sugestão');
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(mockSyncMentions).not.toHaveBeenCalled();
   });
 });
 

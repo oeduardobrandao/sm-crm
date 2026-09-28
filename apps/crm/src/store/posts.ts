@@ -1387,8 +1387,16 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
   return data || [];
 }
 
-export async function acceptEditSuggestion(id: number): Promise<void> {
-  const { error } = await supabase.rpc('accept_edit_suggestion', { p_suggestion_id: id });
+/**
+ * `expectedUpdatedAt` is the `updated_at` of the version the team reviewed. The client can
+ * keep editing a pending suggestion, so the RPC refuses with `suggestion_changed` when the
+ * row moved on since then instead of applying a version nobody on the team has seen.
+ */
+export async function acceptEditSuggestion(id: number, expectedUpdatedAt?: string): Promise<void> {
+  const { error } = await supabase.rpc('accept_edit_suggestion', {
+    p_suggestion_id: id,
+    p_expected_updated_at: expectedUpdatedAt ?? null,
+  });
   if (error) throw error;
 }
 

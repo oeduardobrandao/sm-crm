@@ -386,7 +386,8 @@ export function StandalonePostDrawer({
   const handleAcceptSuggestion = useCallback(
     async (suggestion: PostEditSuggestion) => {
       try {
-        await acceptEditSuggestion(suggestion.id);
+        // The version on screen: the client may have saved a newer one since.
+        await acceptEditSuggestion(suggestion.id, suggestion.updated_at);
         if (
           suggestion.changed_fields.includes('conteudo') &&
           suggestion.suggested_conteudo != null
@@ -408,7 +409,13 @@ export function StandalonePostDrawer({
         toast.success('Sugestão aceita!');
         refresh();
         onRefresh();
-      } catch {
+      } catch (err) {
+        // PostgrestError is a plain object, not an Error instance.
+        if (String((err as { message?: unknown })?.message ?? '').includes('suggestion_changed')) {
+          toast.error('A sugestão foi atualizada pelo cliente. Revise a nova versão.');
+          refresh();
+          return;
+        }
         toast.error('Erro ao aceitar sugestão');
       }
     },
