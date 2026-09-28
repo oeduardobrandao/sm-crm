@@ -377,6 +377,7 @@ export async function getStreamVideo(
   if (!res.ok) throw new Error("stream get failed: " + res.status);
   const json = await res.json().catch(() => null) as
     | {
+      success?: boolean;
       result?: {
         status?: { state?: string };
         duration?: number;
@@ -385,7 +386,10 @@ export async function getStreamVideo(
       };
     }
     | null;
-  const r = json?.result;
+  if (json === null || json.success === false || !json.result) {
+    throw new Error("stream get failed: " + res.status);
+  }
+  const r = json.result;
   const raw = r?.status?.state;
   const state: StreamVideoState = raw === "ready" || raw === "error" || raw === "pendingupload"
     ? raw

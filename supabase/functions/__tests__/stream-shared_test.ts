@@ -728,3 +728,41 @@ Deno.test("stream-shared: getStreamVideo throws on a non-404 failure", async () 
   assert(message.includes("502"), `expected status in message, got "${message}"`);
   clearStreamEnv();
 });
+
+Deno.test("stream-shared: getStreamVideo rejects 200 with success:false, missing result, or non-JSON body", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+
+  // Case 1: success: false
+  const failResponse = (() =>
+    Promise.resolve(new Response(JSON.stringify({ success: false, errors: [{ message: "nope" }] }), { status: 200 }))) as typeof fetch;
+  let message = "";
+  try {
+    await getStreamVideo("u1", failResponse);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert(message.includes("200"), `expected 200 in message for success:false, got "${message}"`);
+
+  // Case 2: no result object
+  const noResultResponse = (() => Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))) as typeof fetch;
+  message = "";
+  try {
+    await getStreamVideo("u1", noResultResponse);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert(message.includes("200"), `expected 200 in message for no result, got "${message}"`);
+
+  // Case 3: non-JSON body
+  const nonJsonResponse = (() => Promise.resolve(new Response("not json", { status: 200 }))) as typeof fetch;
+  message = "";
+  try {
+    await getStreamVideo("u1", nonJsonResponse);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert(message.includes("200"), `expected 200 in message for non-JSON, got "${message}"`);
+
+  clearStreamEnv();
+});
