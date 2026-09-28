@@ -15,6 +15,7 @@ import {
   Sparkles,
   Plug,
   TrendingUp,
+  Film,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { BuildPrefetch } from '../components/BuildPrefetch';
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { to: '/admin/banners', icon: Megaphone, label: 'Banners' },
   { to: '/admin/popups', icon: AppWindow, label: 'Popups' },
   { to: '/admin/kb-articles', icon: BookOpen, label: 'Artigos' },
+  { to: '/admin/kb-videos', icon: Film, label: 'Vídeos' },
 ];
 
 export default function AdminLayout() {
