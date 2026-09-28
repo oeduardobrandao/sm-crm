@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -116,6 +116,31 @@ describe('KbVideosPage', () => {
     renderPage();
     await screen.findAllByRole('link', { name: 'Equipe' });
     expect(refreshKbVideo).not.toHaveBeenCalled();
+  });
+
+  it('keeps retrying a stale pending upload once a minute while Stream is still processing', async () => {
+    vi.mocked(refreshKbVideo).mockClear();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const stale = { ...videos[1], updated_at: new Date(Date.now() - 10 * 60_000).toISOString() };
+      vi.mocked(listKbVideos).mockResolvedValue({ videos: [videos[0], stale] } as never);
+      vi.mocked(refreshKbVideo).mockResolvedValue({ video: stale } as never);
+      renderPage();
+      await waitFor(() => expect(refreshKbVideo).toHaveBeenCalledTimes(1));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(refreshKbVideo).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(40_000);
+      });
+      await waitFor(() => expect(refreshKbVideo).toHaveBeenCalledTimes(2));
+      expect(refreshKbVideo).toHaveBeenLastCalledWith(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows an empty state when there are no series yet', async () => {

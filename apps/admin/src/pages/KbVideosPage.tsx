@@ -34,6 +34,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { SeriesDialog } from './kb-videos/SeriesDialog';
 
 const PENDING_POLL_MS = 10_000;
+const AUTO_REFRESH_RETRY_MS = 60_000;
 
 export default function KbVideosPage() {
   const navigate = useNavigate();
@@ -50,19 +51,23 @@ export default function KbVideosPage() {
         : false,
   });
 
-  // One refresh-kb-video per stale pending row per page load: covers a missed webhook and
-  // uploads abandoned past their expiry.
-  const refreshed = useRef(new Set<number>());
+  // refresh-kb-video for each stale pending row, at most once a minute per row while the list
+  // is open: covers a missed webhook (Stream may still say inprogress on the first try) and
+  // uploads abandoned past their expiry. Keyed on dataUpdatedAt, not data: a poll that returns
+  // identical rows keeps the same data reference under structural sharing.
+  const lastRefreshAt = useRef(new Map<number, number>());
   useEffect(() => {
     const now = Date.now();
     for (const v of videosQuery.data?.videos ?? []) {
-      if (!needsAutoRefresh(v, now) || refreshed.current.has(v.id)) continue;
-      refreshed.current.add(v.id);
+      if (!needsAutoRefresh(v, now)) continue;
+      const last = lastRefreshAt.current.get(v.id);
+      if (last !== undefined && now - last < AUTO_REFRESH_RETRY_MS) continue;
+      lastRefreshAt.current.set(v.id, now);
       refreshKbVideo(v.id)
         .then(() => qc.invalidateQueries({ queryKey: KB_VIDEOS_KEY }))
         .catch(() => undefined);
     }
-  }, [videosQuery.data, qc]);
+  }, [videosQuery.data, videosQuery.dataUpdatedAt, qc]);
 
   const reorderMut = useMutation({
     mutationFn: (items: Array<{ id: number; display_order: number }>) => reorderKbVideos(items),
