@@ -1,8 +1,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { useEditSuggestion, resetEditSuggestionFailuresForTests } from '../useEditSuggestion';
+import {
+  useEditSuggestion,
+  resetEditSuggestionFailuresForTests,
+  resolveEffectiveSuggestion,
+} from '../useEditSuggestion';
 import { submitEditSuggestion } from '../../api';
-import type { HubPost } from '../../types';
+import type { HubPost, PendingEditSuggestion } from '../../types';
 
 vi.mock('../../api', () => ({
   submitEditSuggestion: vi.fn(),
@@ -49,6 +53,99 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+const SAVED: PendingEditSuggestion = {
+  id: 77,
+  suggested_conteudo: null,
+  suggested_conteudo_plain: 'original',
+  suggested_ig_caption: 'legenda sugerida',
+  changed_fields: ['ig_caption'],
+  updated_at: '2026-09-28T12:00:00.000Z',
+};
+
+describe('resolveEffectiveSuggestion', () => {
+  const base = makePost({ pending_suggestion: null });
+  it('uses the prop without a local save', () => {
+    expect(resolveEffectiveSuggestion(base, null)).toBeNull();
+  });
+  it('uses the saved value while the post prop is still the pre-save object', () => {
+    expect(
+      resolveEffectiveSuggestion(base, {
+        postId: base.id,
+        value: SAVED,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
+    ).toBe(SAVED);
+  });
+  it('trusts a refetched post even when it has no suggestion (team resolved it)', () => {
+    const refetched = makePost({ pending_suggestion: null });
+    expect(
+      resolveEffectiveSuggestion(refetched, {
+        postId: base.id,
+        value: SAVED,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
+    ).toBeNull();
+  });
+  it('keeps the saved value over a refetch that carries an older row', () => {
+    const stale = makePost({
+      pending_suggestion: { ...SAVED, updated_at: '2026-09-28T11:00:00.000Z' },
+    });
+    expect(
+      resolveEffectiveSuggestion(stale, {
+        postId: base.id,
+        value: SAVED,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
+    ).toBe(SAVED);
+  });
+  it('keeps a reverted (null) save over a refetch carrying the row it just reverted', () => {
+    // The refetch started before the revert landed, so it still carries the old pending row.
+    const stale = makePost({ pending_suggestion: SAVED });
+    expect(
+      resolveEffectiveSuggestion(stale, {
+        postId: base.id,
+        value: null,
+        postAtSave: base,
+        preSaveUpdatedAt: SAVED.updated_at,
+      }),
+    ).toBeNull();
+  });
+  it('trusts a refetch after a revert when it carries a newer row', () => {
+    const newer = { ...SAVED, updated_at: '2026-09-28T13:00:00.000Z' };
+    expect(
+      resolveEffectiveSuggestion(makePost({ pending_suggestion: newer }), {
+        postId: base.id,
+        value: null,
+        postAtSave: base,
+        preSaveUpdatedAt: SAVED.updated_at,
+      }),
+    ).toBe(newer);
+  });
+  it('trusts a refetch after a revert when nothing was pending before it', () => {
+    expect(
+      resolveEffectiveSuggestion(makePost({ pending_suggestion: SAVED }), {
+        postId: base.id,
+        value: null,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
+    ).toBe(SAVED);
+  });
+  it('ignores a local save made for another post', () => {
+    expect(
+      resolveEffectiveSuggestion(base, {
+        postId: 1,
+        value: SAVED,
+        postAtSave: base,
+        preSaveUpdatedAt: null,
+      }),
+    ).toBeNull();
+  });
+});
+
 describe('useEditSuggestion', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -61,6 +158,109 @@ describe('useEditSuggestion', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("holds a second instance's save for the same post until the first request settles", async () => {
+    const first = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ ok: true, pending_suggestion: null });
+    const post = makePost();
+
+    // The client saves, closes the post while that request is still in flight, reopens it
+    // (a fresh hook instance) and saves again.
+    const a = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
+    act(() => {
+      a.result.current.saveSuggestion(null, 'primeira', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    a.unmount();
+
+    const b = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
+    act(() => {
+      b.result.current.saveSuggestion(null, 'segunda', null);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    // Sent now, the older request could reach the server last and overwrite this one.
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve({ ok: true, pending_suggestion: null });
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(2);
+    expect(mockedSubmit.mock.calls[1][3]).toBe('segunda');
+  });
+
+  it("bases the draft text on the document, as the editor's getText() writes it", () => {
+    // Agent-created posts store one \n per line; the editor joins paragraphs with \n\n.
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Linha um.' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Linha dois.' }] },
+      ],
+    };
+    const post = makePost({
+      conteudo: doc,
+      conteudo_plain: 'Linha um.\nLinha dois.',
+      pending_suggestion: null,
+    });
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    expect(result.current.draftConteudoPlain).toBe('Linha um.\n\nLinha dois.');
+  });
+
+  it('keeps the stored text when the document has none', () => {
+    const post = makePost({ pending_suggestion: null });
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    expect(result.current.draftConteudoPlain).toBe('original');
+  });
+
+  it('after a save, exposes the returned suggestion until the post prop is refetched', async () => {
+    mockedSubmit.mockResolvedValue({ ok: true, pending_suggestion: SAVED });
+    const initial = makePost({ pending_suggestion: null });
+    const { result, rerender } = renderHook(
+      ({ post }) => useEditSuggestion({ token: 't', post, onSaved: () => undefined }),
+      { initialProps: { post: initial } },
+    );
+    act(() => result.current.saveSuggestion(null, 'original', 'legenda sugerida'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    expect(result.current.hasPendingSuggestion).toBe(true);
+    expect(result.current.suggestion).toEqual(SAVED);
+    expect(result.current.draftIgCaption).toBe('legenda sugerida');
+
+    // The team rejected it before the refetch landed: the refetched post wins.
+    rerender({ post: makePost({ pending_suggestion: null }) });
+    expect(result.current.hasPendingSuggestion).toBe(false);
+    expect(result.current.draftIgCaption).toBe('legenda original');
+  });
+
+  it('after reverting a suggestion, ignores a stale refetch that still carries it', async () => {
+    mockedSubmit.mockResolvedValue({ ok: true, pending_suggestion: null });
+    const { result, rerender } = renderHook(
+      ({ post }) => useEditSuggestion({ token: 't', post, onSaved: () => undefined }),
+      { initialProps: { post: makePost({ pending_suggestion: SAVED }) } },
+    );
+    act(() => result.current.saveSuggestion(null, 'original', 'legenda original'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    expect(result.current.hasPendingSuggestion).toBe(false);
+
+    // A refetch that started before the revert lands with the old pending row.
+    rerender({ post: makePost({ pending_suggestion: { ...SAVED } }) });
+    expect(result.current.hasPendingSuggestion).toBe(false);
+    expect(result.current.draftIgCaption).toBe('legenda original');
   });
 
   it('serializes saves so an earlier, in-flight request cannot land after a later one and overwrite it', async () => {
@@ -495,12 +695,11 @@ describe('useEditSuggestion', () => {
   });
 
   it('does not let a stale, older save erase a newer save failure recorded for the same post', async () => {
-    // Two SEPARATE hook instances for the same post can each have their own request in
-    // flight: attempt A is dispatched, the user leaves before it resolves (a real
-    // unmount, not just a rerender), reopens the same post (a fresh instance), and
-    // edits again -- attempt B. If B fails first and A's now-stale, slower request
-    // then succeeds, that success must not erase B's failure: B is the newer, truer
-    // outcome, and its edit never actually reached the server.
+    // Two SEPARATE hook instances for the same post: attempt A is dispatched, the user
+    // leaves before it resolves (a real unmount, not just a rerender), reopens the same
+    // post (a fresh instance), and edits again -- attempt B. B waits for A to settle
+    // (lastRequestByPostId), so A's success lands first; B then fails. B is the newer,
+    // truer outcome and its edit never reached the server, so the failure must stick.
     //
     // A currently-mounted instance's own `dirty` state is a poor probe here: it's
     // already true from its own `saveSuggestion` call and stays true regardless of
@@ -538,22 +737,24 @@ describe('useEditSuggestion', () => {
     act(() => {
       vi.advanceTimersByTime(1500);
     });
+    // Held behind A.
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+
+    // Attempt A (the older, now-superseded one) succeeds; only then is B sent.
+    await act(async () => {
+      attemptA.resolve({ ok: true, pending_suggestion: null });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(mockedSubmit).toHaveBeenCalledTimes(2);
 
-    // Attempt B (the newer one) fails first, recording the hold.
+    // Attempt B (the newer one) fails, recording the hold.
     await act(async () => {
       attemptB.reject(new Error('network error'));
       await Promise.resolve();
       await Promise.resolve();
     });
     unmount2();
-
-    // Attempt A (the older, now-superseded one) finally succeeds in the background.
-    await act(async () => {
-      attemptA.resolve({ ok: true, pending_suggestion: null });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
 
     // Reopen the post a third time: a brand new instance, reading the module-level
     // failure memory fresh at mount. B's failure must have survived A's stale

@@ -136,14 +136,22 @@ export function createHubEditSuggestionHandler(deps: HubEditSuggestionHandlerDep
     });
 
     if (rpcError) {
+      // upsert_edit_suggestion re-checks the status under a row lock (migration
+      // 20260928150001): the team accepted/rejected/moved the post after the check above.
+      const message = (rpcError as { message?: unknown }).message;
+      if (typeof message === "string" && message.includes("post_not_pending")) {
+        return json({ error: "Post não está aguardando aprovação." }, 409);
+      }
       console.error("[hub-edit-suggestion] upsert failed:", rpcError);
       return json({ error: "Erro ao salvar sugestão." }, 500);
     }
 
     const rpcResult = result as { action: string; is_new: boolean; suggestion: unknown };
 
-    // Create notification only on first insert
-    if (rpcResult.is_new) {
+    // Notify on every save that leaves a pending suggestion: the first one and each later
+    // update (the RPC flags updates via metadata.updated and no-ops if the row was resolved
+    // in between). A revert to the original (`deleted`) sends nothing.
+    if (rpcResult.action !== "deleted") {
       const { error: notifErr } = await db.rpc("create_edit_suggestion_notification", {
         p_post_id: post_id,
       });

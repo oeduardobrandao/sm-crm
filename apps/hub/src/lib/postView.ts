@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { EmProducaoReason, HubPost, HubPostMedia } from '../types';
+import type { EmProducaoReason, HubPost, HubPostMedia, PendingEditSuggestion } from '../types';
 
 export type { EmProducaoReason };
 
@@ -142,6 +142,20 @@ export function deriveCaption(post: HubPost, igCaption: string | null): string {
         .replace(/^[:\s\n]+/, '')
         .trim()
     : rawText;
+}
+
+/**
+ * The caption to show/edit while a suggestion may be pending. A suggestion's own caption wins
+ * even when it is '' (the client cleared it): `deriveCaption` treats '' as missing and would
+ * fall back to LEGENDA-derived body text, which a re-save would then submit as the caption.
+ */
+export function suggestionAwareCaption(
+  post: HubPost,
+  suggestion: PendingEditSuggestion | null,
+): string {
+  if (suggestion && suggestion.suggested_ig_caption !== null)
+    return suggestion.suggested_ig_caption;
+  return deriveCaption(post, post.ig_caption);
 }
 
 /**

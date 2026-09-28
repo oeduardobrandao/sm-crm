@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
-import { computeWordDiff } from '@mesaas/text-diff';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { fetchPostHistory, submitApproval } from '../api';
 import {
@@ -18,6 +17,7 @@ import {
   pickPostCardKind,
 } from '../lib/postView';
 import { formatDate } from './PostCard';
+import { TextDiff } from './TextDiff';
 import type { HubPost, PostApproval, PostHistoryResponse } from '../types';
 
 interface PostHistoryPanelProps {
@@ -36,27 +36,6 @@ type LoadState =
   | { status: 'loading' }
   | { status: 'error' }
   | { status: 'ready'; data: PostHistoryResponse };
-
-export function TextDiff({ before, after }: { before: string; after: string }) {
-  const segments = useMemo(() => computeWordDiff(before, after), [before, after]);
-  return (
-    <p className="text-[12px] leading-relaxed whitespace-pre-wrap hub-tx2">
-      {segments.map((segment, i) =>
-        segment.type === 'delete' ? (
-          <del key={i} className="bg-rose-50 text-rose-700 no-underline line-through">
-            {segment.text}
-          </del>
-        ) : segment.type === 'insert' ? (
-          <ins key={i} className="bg-emerald-50 text-emerald-800 no-underline">
-            {segment.text}
-          </ins>
-        ) : (
-          <span key={i}>{segment.text}</span>
-        ),
-      )}
-    </p>
-  );
-}
 
 export function PostHistoryPanel({
   post,

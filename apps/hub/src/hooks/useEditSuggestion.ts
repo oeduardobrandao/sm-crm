@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useMemo } from 'react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitEditSuggestion } from '../api';
 import type { HubPost, PendingEditSuggestion } from '../types';
+import { docPlainText } from '../lib/richDoc';
 
 export type SaveState = 'idle' | 'saving' | 'saved';
 
@@ -38,15 +39,83 @@ const failedPostIds = new Set<number>();
 let nextAttemptId = 0;
 const latestAttemptByPostId = new Map<number, number>();
 
+// The last request sent for each post, across every hook instance. `latestAttemptByPostId`
+// only orders the LOCAL outcome; it cannot stop an older request (from an instance the user
+// left mid-save) from reaching the server after a newer one and overwriting it. So a save
+// for a post that still has a request in flight is sent only once that request settles.
+// Per tab only: another tab or device still races, last write wins as before.
+const lastRequestByPostId = new Map<number, Promise<unknown>>();
+
 /** Test-only: forget every recorded failure and attempt ordering between tests. */
 export function resetEditSuggestionFailuresForTests(): void {
   failedPostIds.clear();
   latestAttemptByPostId.clear();
+  lastRequestByPostId.clear();
+}
+
+/** The suggestion a save just returned, held until the post prop catches up. */
+export interface LocalSuggestion {
+  postId: number;
+  value: PendingEditSuggestion | null;
+  /** The `post` object on screen when the save resolved (no refetch yet = same reference). */
+  postAtSave: HubPost;
+  /**
+   * The newest pending row known before this save: the `updated_at` of the suggestion on
+   * screen, or of one an earlier save in the same drain returned, if newer. Only read when
+   * `value` is null (the save reverted the suggestion).
+   */
+  preSaveUpdatedAt: string | null;
+}
+
+/**
+ * The pending suggestion to act on. Right after a save, `post.pending_suggestion` is stale
+ * until the list refetch lands; seeding drafts from it would let a reopened editor start from
+ * the pre-save text and overwrite the suggestion. So the saved value wins while `post` is
+ * still the same object it was at save time, or when a refetch carries an older row than the
+ * save returned (a fetch that started before the save). After a save that reverted the
+ * suggestion (`value` null), a refetch carrying a row no newer than `preSaveUpdatedAt` is the
+ * row just reverted, fetched before the revert: only the client creates suggestions, so it
+ * cannot be a new one. Any other refetch is server truth, including one where the team
+ * already accepted/rejected the suggestion.
+ */
+export function resolveEffectiveSuggestion(
+  post: HubPost,
+  local: LocalSuggestion | null,
+): PendingEditSuggestion | null {
+  // `?? null`: a cached/partial payload may omit the field entirely.
+  const prop = post.pending_suggestion ?? null;
+  if (!local || local.postId !== post.id) return prop;
+  if (post === local.postAtSave) return local.value;
+  if (prop && local.value && Date.parse(prop.updated_at) < Date.parse(local.value.updated_at)) {
+    return local.value;
+  }
+  if (
+    prop &&
+    local.value === null &&
+    local.preSaveUpdatedAt !== null &&
+    Date.parse(prop.updated_at) <= Date.parse(local.preSaveUpdatedAt)
+  ) {
+    return null;
+  }
+  return prop;
+}
+
+function newerUpdatedAt(a: string | null, b: string | null): string | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Date.parse(b) > Date.parse(a) ? b : a;
 }
 
 export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpts) {
   const isEditable = post.status === 'enviado_cliente';
-  const suggestion = post.pending_suggestion;
+  const [localSuggestion, setLocalSuggestion] = useState<LocalSuggestion | null>(null);
+  // The post object currently rendered; read when a save settles to stamp `postAtSave`.
+  const postRef = useRef(post);
+  postRef.current = post;
+  const suggestion = resolveEffectiveSuggestion(post, localSuggestion);
+  // The suggestion currently on screen; read when a save settles to stamp `preSaveUpdatedAt`.
+  const suggestionRef = useRef(suggestion);
+  suggestionRef.current = suggestion;
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -92,7 +161,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   const [saveState, setSaveState] = useState<SaveState>(() =>
     isSavingFor(post.id) ? 'saving' : 'idle',
   );
-  const [hasPendingSuggestion, setHasPendingSuggestion] = useState(!!suggestion);
+  const hasPendingSuggestion = !!suggestion;
   const [dirty, setDirty] = useState(() => isDirtyFor(post.id));
   // `dirty` alone can't drive the "save failed" UI: it is also true during the 1.5s
   // debounce window and while a request is in flight. `saveFailed` is true only once
@@ -104,9 +173,13 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     () => suggestion?.suggested_conteudo ?? post.conteudo,
     [suggestion, post.conteudo],
   );
+  // Without a suggestion, the post's own text as the editor would write it: stored
+  // conteudo_plain can differ in line breaks alone (see docPlainText), which would make an
+  // untouched or reverted edit read as a change.
   const draftConteudoPlain = useMemo(
-    () => suggestion?.suggested_conteudo_plain ?? post.conteudo_plain,
-    [suggestion, post.conteudo_plain],
+    () =>
+      suggestion?.suggested_conteudo_plain ?? docPlainText(post.conteudo) ?? post.conteudo_plain,
+    [suggestion, post.conteudo, post.conteudo_plain],
   );
   const draftIgCaption = useMemo(
     () => suggestion?.suggested_ig_caption ?? post.ig_caption ?? null,
@@ -115,7 +188,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
 
   // Always holds the id of whichever post this hook is CURRENTLY rendering. `flush`
   // uses it to decide whether a just-drained save's outcome should update this
-  // instance's on-screen state (saveState/hasPendingSuggestion/dirty): a save for a
+  // instance's on-screen state (saveState/dirty/the held suggestion): a save for a
   // post the user has since navigated away from must still be sent (below), but must
   // not paint the CURRENTLY displayed post's UI with a different post's result.
   const currentPostIdRef = useRef(post.id);
@@ -135,7 +208,6 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     setSaveState(isSavingFor(post.id) ? 'saving' : 'idle');
     setDirty(isDirtyFor(post.id));
     setSaveFailed(failedPostIds.has(post.id) && !isSavingFor(post.id));
-    setHasPendingSuggestion(!!suggestion);
     // The cosmetic "saved -> idle" timer belongs to the post being left; if left
     // running, it would fire later and could stomp the newly-displayed post's own,
     // legitimately different saveState (e.g. flipping it from 'saving' to 'idle'
@@ -151,7 +223,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   const flush = useCallback(async () => {
     if (inFlightRef.current || pendingRef.current.size === 0) return;
     inFlightRef.current = true;
-    // The completion side effects (saveState/hasPendingSuggestion/dirty) are applied
+    // The completion side effects (saveState/dirty/the held suggestion) are applied
     // once, AFTER the loop below has fully drained -- not per iteration. A second edit
     // to the currently-displayed post made while its first save is in flight coalesces
     // onto the SAME map entry and gets picked up by the next loop iteration; applying
@@ -161,8 +233,11 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     let currentPostOutcome: {
       postId: number;
       succeeded: boolean;
-      pendingSuggestion: unknown;
+      pendingSuggestion: PendingEditSuggestion | null;
     } | null = null;
+    // Newest row an earlier save in this drain returned for the displayed post: when a later
+    // one reverts it, a refetch triggered in between (onSaved) may still carry that row.
+    let newestDrainedUpdatedAt: string | null = null;
     try {
       while (pendingRef.current.size > 0) {
         const [postId, payload] = pendingRef.current.entries().next().value as [number, Payload];
@@ -172,14 +247,20 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         inFlightPostIdRef.current = postId;
         const attemptId = ++nextAttemptId;
         latestAttemptByPostId.set(postId, attemptId);
-        try {
-          const res = await submitEditSuggestion(
+        const send = () =>
+          submitEditSuggestion(
             token,
             payload.postId,
             payload.conteudo,
             payload.conteudoPlain,
             payload.igCaption,
           );
+        const previous = lastRequestByPostId.get(postId);
+        // Sent right away when nothing is in flight for this post (the common case).
+        const request = previous ? previous.then(send, send) : send();
+        lastRequestByPostId.set(postId, request);
+        try {
+          const res = await request;
           onSaved();
           // Unconditional (not gated by isCurrentPost): this post's last known
           // attempt is no longer a failure, whether or not it's on screen right now.
@@ -196,6 +277,10 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
               succeeded: true,
               pendingSuggestion: res.pending_suggestion,
             };
+            newestDrainedUpdatedAt = newerUpdatedAt(
+              newestDrainedUpdatedAt,
+              res.pending_suggestion?.updated_at ?? null,
+            );
           }
         } catch {
           // Unconditional: a post left mid-save (possibly a full unmount, not just a
@@ -210,6 +295,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
             currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null };
         } finally {
           inFlightPostIdRef.current = null;
+          if (lastRequestByPostId.get(postId) === request) lastRequestByPostId.delete(postId);
         }
       }
     } finally {
@@ -220,7 +306,15 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     // outcome is no longer about whatever is on screen and must not touch its UI.
     if (currentPostOutcome && currentPostOutcome.postId === currentPostIdRef.current) {
       if (currentPostOutcome.succeeded) {
-        setHasPendingSuggestion(!!currentPostOutcome.pendingSuggestion);
+        setLocalSuggestion({
+          postId: currentPostOutcome.postId,
+          value: currentPostOutcome.pendingSuggestion,
+          postAtSave: postRef.current,
+          preSaveUpdatedAt: newerUpdatedAt(
+            suggestionRef.current?.updated_at ?? null,
+            newestDrainedUpdatedAt,
+          ),
+        });
         setSaveState('saved');
         setDirty(false);
         setSaveFailed(false);
@@ -269,6 +363,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
 
   return {
     isEditable,
+    suggestion,
     hasPendingSuggestion,
     wasRejected,
     saveSuggestion,
