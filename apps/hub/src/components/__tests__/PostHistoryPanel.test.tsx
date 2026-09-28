@@ -409,5 +409,8 @@ describe('TextDiff', () => {
     expect(container.querySelector('del')?.textContent).toContain('bom');
     expect(container.querySelector('ins')?.textContent).toContain('boa');
     expect(container.textContent).toContain(' time');
+    const delElement = container.querySelector('del');
+    expect(delElement?.className).toContain('line-through');
+    expect(delElement?.className).not.toContain('no-underline');
   });
 });

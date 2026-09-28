@@ -18,7 +18,7 @@ export function TextDiff({
         segment.type === 'delete' ? (
           <del
             key={i}
-            className="bg-rose-50 text-rose-700 no-underline line-through dark:bg-rose-950/40 dark:text-rose-300"
+            className="bg-rose-50 text-rose-700 line-through dark:bg-rose-950/40 dark:text-rose-300"
           >
             {segment.text}
           </del>
