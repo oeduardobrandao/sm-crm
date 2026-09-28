@@ -187,7 +187,10 @@ export default function KbVideoEditorPage() {
 
   // The ready+HLS requirement only gates a TRANSITION into "Publicado". A video that is already
   // published stays publishable even while a replacement file is mid-processing (stream_status
-  // pending): the site keeps serving the last-published HLS asset until the new one is ready.
+  // pending): create-kb-video-upload deletes the old Stream uid and nulls hls_url right away, so
+  // the published video is hidden from the site while the new file processes, and it reappears
+  // automatically once the refresh marks it ready again. A cancelled or expired replacement
+  // leaves it hidden until the next upload.
   const savedStatus: KbVideo['status'] = video?.status ?? 'draft';
   const isReady = !!video && video.stream_status === 'ready' && !!video.hls_url;
   const publishLocked = savedStatus !== 'published' && !isReady;
