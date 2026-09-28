@@ -21,6 +21,21 @@ import { handleSetWorkspaceOverrides, handleClearWorkspaceOverrides } from "./wo
 import { handleListPlans } from "./plans.ts";
 import { setStripeLoader } from "../_shared/stripe-loader.ts";
 import { listAdminMcpGrants, revokeAdminMcpGrant } from "../_shared/admin-mcp-grants.ts";
+import {
+  handleCancelKbVideoUpload,
+  handleCreateKbVideoUpload,
+  handleDeleteKbVideo,
+  handleDeleteKbVideoSeries,
+  handleGetKbVideo,
+  handleListKbVideos,
+  handleListKbVideoSeries,
+  handleRefreshKbVideo,
+  handleReorderKbVideos,
+  handleUpsertKbVideo,
+  handleUpsertKbVideoSeries,
+  type KbVideoStreamDeps,
+} from "./kb-videos.ts";
+import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
 
 // Registra o loader do Stripe só para este function -- ver _shared/stripe-loader.ts. mcp-admin
 // não registra nada, e cai no fallback do espelho/catálogo (o comportamento desejado para as
@@ -29,6 +44,15 @@ setStripeLoader(() => import("../_shared/stripe.ts").then((m) => m.stripe));
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// Playback público dos tutoriais não usa as chaves de assinatura: conta + token bastam.
+const kbVideoStream: KbVideoStreamDeps = {
+  enabled: () => isStreamCleanupEnabled(),
+  createDirectUpload: (opts) => createStreamDirectUpload(opts),
+  getVideo: (uid) => getStreamVideo(uid),
+  deleteVideo: (uid) => deleteStreamVideo(uid),
+  now: () => Date.now(),
+};
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -165,6 +189,28 @@ Deno.serve(async (req: Request) => {
         return await handleUpsertKbContextLink(svc, body, headers);
       case "delete-kb-context-link":
         return await handleDeleteKbContextLink(svc, body, headers);
+      case "list-kb-video-series":
+        return await handleListKbVideoSeries(svc, headers);
+      case "upsert-kb-video-series":
+        return await handleUpsertKbVideoSeries(svc, body, headers);
+      case "delete-kb-video-series":
+        return await handleDeleteKbVideoSeries(svc, body, headers);
+      case "list-kb-videos":
+        return await handleListKbVideos(svc, headers);
+      case "get-kb-video":
+        return await handleGetKbVideo(svc, body, headers);
+      case "upsert-kb-video":
+        return await handleUpsertKbVideo(svc, body, headers);
+      case "delete-kb-video":
+        return await handleDeleteKbVideo(svc, body, kbVideoStream, headers);
+      case "create-kb-video-upload":
+        return await handleCreateKbVideoUpload(svc, body, kbVideoStream, headers);
+      case "refresh-kb-video":
+        return await handleRefreshKbVideo(svc, body, kbVideoStream, headers);
+      case "cancel-kb-video-upload":
+        return await handleCancelKbVideoUpload(svc, body, kbVideoStream, headers);
+      case "reorder-kb-videos":
+        return await handleReorderKbVideos(svc, body, headers);
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers });
     }
