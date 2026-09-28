@@ -39,10 +39,18 @@ const failedPostIds = new Set<number>();
 let nextAttemptId = 0;
 const latestAttemptByPostId = new Map<number, number>();
 
+// The last request sent for each post, across every hook instance. `latestAttemptByPostId`
+// only orders the LOCAL outcome; it cannot stop an older request (from an instance the user
+// left mid-save) from reaching the server after a newer one and overwriting it. So a save
+// for a post that still has a request in flight is sent only once that request settles.
+// Per tab only: another tab or device still races, last write wins as before.
+const lastRequestByPostId = new Map<number, Promise<unknown>>();
+
 /** Test-only: forget every recorded failure and attempt ordering between tests. */
 export function resetEditSuggestionFailuresForTests(): void {
   failedPostIds.clear();
   latestAttemptByPostId.clear();
+  lastRequestByPostId.clear();
 }
 
 /** The suggestion a save just returned, held until the post prop catches up. */
@@ -239,14 +247,20 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
         inFlightPostIdRef.current = postId;
         const attemptId = ++nextAttemptId;
         latestAttemptByPostId.set(postId, attemptId);
-        try {
-          const res = await submitEditSuggestion(
+        const send = () =>
+          submitEditSuggestion(
             token,
             payload.postId,
             payload.conteudo,
             payload.conteudoPlain,
             payload.igCaption,
           );
+        const previous = lastRequestByPostId.get(postId);
+        // Sent right away when nothing is in flight for this post (the common case).
+        const request = previous ? previous.then(send, send) : send();
+        lastRequestByPostId.set(postId, request);
+        try {
+          const res = await request;
           onSaved();
           // Unconditional (not gated by isCurrentPost): this post's last known
           // attempt is no longer a failure, whether or not it's on screen right now.
@@ -281,6 +295,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
             currentPostOutcome = { postId, succeeded: false, pendingSuggestion: null };
         } finally {
           inFlightPostIdRef.current = null;
+          if (lastRequestByPostId.get(postId) === request) lastRequestByPostId.delete(postId);
         }
       }
     } finally {

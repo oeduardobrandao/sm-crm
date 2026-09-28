@@ -160,6 +160,42 @@ describe('useEditSuggestion', () => {
     vi.useRealTimers();
   });
 
+  it("holds a second instance's save for the same post until the first request settles", async () => {
+    const first = deferred<{ ok: boolean; pending_suggestion: null }>();
+    mockedSubmit
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ ok: true, pending_suggestion: null });
+    const post = makePost();
+
+    // The client saves, closes the post while that request is still in flight, reopens it
+    // (a fresh hook instance) and saves again.
+    const a = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
+    act(() => {
+      a.result.current.saveSuggestion(null, 'primeira', null);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    a.unmount();
+
+    const b = renderHook(() => useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }));
+    act(() => {
+      b.result.current.saveSuggestion(null, 'segunda', null);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    // Sent now, the older request could reach the server last and overwrite this one.
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve({ ok: true, pending_suggestion: null });
+    });
+    expect(mockedSubmit).toHaveBeenCalledTimes(2);
+    expect(mockedSubmit.mock.calls[1][3]).toBe('segunda');
+  });
+
   it("bases the draft text on the document, as the editor's getText() writes it", () => {
     // Agent-created posts store one \n per line; the editor joins paragraphs with \n\n.
     const doc = {
@@ -659,12 +695,11 @@ describe('useEditSuggestion', () => {
   });
 
   it('does not let a stale, older save erase a newer save failure recorded for the same post', async () => {
-    // Two SEPARATE hook instances for the same post can each have their own request in
-    // flight: attempt A is dispatched, the user leaves before it resolves (a real
-    // unmount, not just a rerender), reopens the same post (a fresh instance), and
-    // edits again -- attempt B. If B fails first and A's now-stale, slower request
-    // then succeeds, that success must not erase B's failure: B is the newer, truer
-    // outcome, and its edit never actually reached the server.
+    // Two SEPARATE hook instances for the same post: attempt A is dispatched, the user
+    // leaves before it resolves (a real unmount, not just a rerender), reopens the same
+    // post (a fresh instance), and edits again -- attempt B. B waits for A to settle
+    // (lastRequestByPostId), so A's success lands first; B then fails. B is the newer,
+    // truer outcome and its edit never reached the server, so the failure must stick.
     //
     // A currently-mounted instance's own `dirty` state is a poor probe here: it's
     // already true from its own `saveSuggestion` call and stays true regardless of
@@ -702,22 +737,24 @@ describe('useEditSuggestion', () => {
     act(() => {
       vi.advanceTimersByTime(1500);
     });
+    // Held behind A.
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+
+    // Attempt A (the older, now-superseded one) succeeds; only then is B sent.
+    await act(async () => {
+      attemptA.resolve({ ok: true, pending_suggestion: null });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(mockedSubmit).toHaveBeenCalledTimes(2);
 
-    // Attempt B (the newer one) fails first, recording the hold.
+    // Attempt B (the newer one) fails, recording the hold.
     await act(async () => {
       attemptB.reject(new Error('network error'));
       await Promise.resolve();
       await Promise.resolve();
     });
     unmount2();
-
-    // Attempt A (the older, now-superseded one) finally succeeds in the background.
-    await act(async () => {
-      attemptA.resolve({ ok: true, pending_suggestion: null });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
 
     // Reopen the post a third time: a brand new instance, reading the module-level
     // failure memory fresh at mount. B's failure must have survived A's stale
