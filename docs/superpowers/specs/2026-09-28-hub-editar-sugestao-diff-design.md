@@ -108,9 +108,14 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
     accepts/rejects/edits between the handler's status check and the upsert, which today recreates
     a pending suggestion on a no-longer-pending post. `hub-edit-suggestion` maps that error to the
     existing 409 "Post não está aguardando aprovação." Rest of the body unchanged.
-  - **3c. `create_edit_suggestion_notification(bigint)`**: body from `20260830000003` plus: return
-    0 without notifying when no pending row exists for the post (the row was accepted/rejected in
-    between), and `metadata.updated := (pending.updated_at > pending.created_at)`.
+  - **3c. `create_edit_suggestion_notification(bigint)`**: body from `20260830000003` plus: read
+    the pending row with `for share`, return 0 without notifying when none exists, and
+    `metadata.updated := (pending.updated_at > pending.created_at)`. The share lock serializes with
+    accept/reject (both take `for update` on that row): an in-flight accept/reject makes this wait,
+    after which the row no longer matches `status = 'pending'` and nothing is sent; one that starts
+    later waits for the notification to commit. Locking the post instead would not cover
+    `reject_edit_suggestion`, which never locks the post. Only the suggestion row is locked here,
+    so no post → suggestion order is violated.
   `CREATE OR REPLACE` keeps the grants and the `(bigint)` signature, so test 96 and PostgREST
   calls are untouched. On insert `created_at = updated_at = now()`; the BEFORE UPDATE trigger bumps
   `updated_at` on the upsert's `DO UPDATE`.
