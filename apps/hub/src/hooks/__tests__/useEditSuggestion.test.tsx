@@ -1,8 +1,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { useEditSuggestion, resetEditSuggestionFailuresForTests } from '../useEditSuggestion';
+import {
+  useEditSuggestion,
+  resetEditSuggestionFailuresForTests,
+  resolveEffectiveSuggestion,
+} from '../useEditSuggestion';
 import { submitEditSuggestion } from '../../api';
-import type { HubPost } from '../../types';
+import type { HubPost, PendingEditSuggestion } from '../../types';
 
 vi.mock('../../api', () => ({
   submitEditSuggestion: vi.fn(),
@@ -49,6 +53,46 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+const SAVED: PendingEditSuggestion = {
+  id: 77,
+  suggested_conteudo: null,
+  suggested_conteudo_plain: 'original',
+  suggested_ig_caption: 'legenda sugerida',
+  changed_fields: ['ig_caption'],
+  updated_at: '2026-09-28T12:00:00.000Z',
+};
+
+describe('resolveEffectiveSuggestion', () => {
+  const base = makePost({ pending_suggestion: null });
+  it('uses the prop without a local save', () => {
+    expect(resolveEffectiveSuggestion(base, null)).toBeNull();
+  });
+  it('uses the saved value while the post prop is still the pre-save object', () => {
+    expect(
+      resolveEffectiveSuggestion(base, { postId: base.id, value: SAVED, postAtSave: base }),
+    ).toBe(SAVED);
+  });
+  it('trusts a refetched post even when it has no suggestion (team resolved it)', () => {
+    const refetched = makePost({ pending_suggestion: null });
+    expect(
+      resolveEffectiveSuggestion(refetched, { postId: base.id, value: SAVED, postAtSave: base }),
+    ).toBeNull();
+  });
+  it('keeps the saved value over a refetch that carries an older row', () => {
+    const stale = makePost({
+      pending_suggestion: { ...SAVED, updated_at: '2026-09-28T11:00:00.000Z' },
+    });
+    expect(
+      resolveEffectiveSuggestion(stale, { postId: base.id, value: SAVED, postAtSave: base }),
+    ).toBe(SAVED);
+  });
+  it('ignores a local save made for another post', () => {
+    expect(
+      resolveEffectiveSuggestion(base, { postId: 1, value: SAVED, postAtSave: base }),
+    ).toBeNull();
+  });
+});
+
 describe('useEditSuggestion', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -61,6 +105,27 @@ describe('useEditSuggestion', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('after a save, exposes the returned suggestion until the post prop is refetched', async () => {
+    mockedSubmit.mockResolvedValue({ ok: true, pending_suggestion: SAVED });
+    const initial = makePost({ pending_suggestion: null });
+    const { result, rerender } = renderHook(
+      ({ post }) => useEditSuggestion({ token: 't', post, onSaved: () => undefined }),
+      { initialProps: { post: initial } },
+    );
+    act(() => result.current.saveSuggestion(null, 'original', 'legenda sugerida'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    expect(result.current.hasPendingSuggestion).toBe(true);
+    expect(result.current.suggestion).toEqual(SAVED);
+    expect(result.current.draftIgCaption).toBe('legenda sugerida');
+
+    // The team rejected it before the refetch landed: the refetched post wins.
+    rerender({ post: makePost({ pending_suggestion: null }) });
+    expect(result.current.hasPendingSuggestion).toBe(false);
+    expect(result.current.draftIgCaption).toBe('legenda original');
   });
 
   it('serializes saves so an earlier, in-flight request cannot land after a later one and overwrite it', async () => {
