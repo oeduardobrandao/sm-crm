@@ -167,7 +167,7 @@
     "ttError": "Ocorreu um erro ao conectar a conta TikTok. Tente novamente.",
     "ttSyncing": "Sincronizando dados do TikTok...",
     "noTitle": "Sem título",
-    "calendarUpdateError": "Erro ao atualizar calendário.",
+    "standalonePost": "Post avulso",
     "postScheduled": "Post agendado.",
     "postMarkedPosted": "Post marcado como postado.",
     "postStatusError": "Erro ao atualizar status do post.",

@@ -20,7 +20,7 @@ vi.mock('@/store', () => ({
   getWorkflowAwaitingClientePostsCounts: vi.fn(),
   getConcludedWorkflowsByCliente: vi.fn(),
   getWorkflowPosts: vi.fn(),
-  getWorkflowPostsWithProperties: vi.fn(),
+  getClientePosts: vi.fn(),
   updateWorkflowPost: vi.fn(),
   getClientes: vi.fn(),
   getWorkspaceSlug: vi.fn(),
@@ -207,7 +207,7 @@ import {
   getWorkflowAwaitingClientePostsCounts,
   getConcludedWorkflowsByCliente,
   getWorkflowPosts,
-  getWorkflowPostsWithProperties,
+  getClientePosts,
   getClientes,
   getWorkspaceSlug,
   getHubToken,
@@ -217,6 +217,7 @@ import {
   completeEtapa,
   completeEtapaWithRearm,
   type Cliente,
+  type ClientePost,
   type Workflow,
   type WorkflowEtapa,
   type PostProcessStep,
@@ -245,7 +246,7 @@ const mockedGetWorkflowAwaitingClientePostsCounts = vi.mocked(
 );
 const mockedGetConcludedWorkflowsByCliente = vi.mocked(getConcludedWorkflowsByCliente);
 const mockedGetWorkflowPosts = vi.mocked(getWorkflowPosts);
-const mockedGetWorkflowPostsWithProperties = vi.mocked(getWorkflowPostsWithProperties);
+const mockedGetClientePosts = vi.mocked(getClientePosts);
 const mockedGetClientes = vi.mocked(getClientes);
 const mockedGetWorkspaceSlug = vi.mocked(getWorkspaceSlug);
 const mockedGetHubToken = vi.mocked(getHubToken);
@@ -455,7 +456,7 @@ describe('EntregasTab', () => {
     mockedGetWorkflowTemplates.mockResolvedValue([]);
     mockedGetConcludedWorkflowsByCliente.mockResolvedValue([]);
     mockedGetWorkflowPosts.mockResolvedValue([]);
-    mockedGetWorkflowPostsWithProperties.mockResolvedValue([]);
+    mockedGetClientePosts.mockResolvedValue([]);
     mockedGetWorkflowCovers.mockResolvedValue(new Map());
     mockedGetVigentePostProcessesByCliente.mockResolvedValue([]);
     mockedGetPostCovers.mockResolvedValue(new Map());
@@ -702,6 +703,75 @@ describe('EntregasTab', () => {
     );
   });
 
+  describe('post calendar', () => {
+    function todayISO() {
+      const d = new Date();
+      const p = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T12:00:00`;
+    }
+    function clientePost(overrides: Partial<ClientePost> = {}): ClientePost {
+      return {
+        id: 500,
+        workflow_id: null,
+        titulo: 'Post avulso de hoje',
+        tipo: 'feed',
+        status: 'aprovado_interno',
+        custom_status_id: null,
+        scheduled_at: todayISO(),
+        ordem: 0,
+        workflow_titulo: null,
+        ...overrides,
+      };
+    }
+
+    it('shows posts avulsos even with no active deliveries, and opens them in the standalone drawer', async () => {
+      mockedGetWorkflowsByCliente.mockResolvedValue([]);
+      mockedGetClientePosts.mockResolvedValue([clientePost()]);
+      renderTab();
+      expect(await screen.findByText('Post avulso de hoje')).toBeInTheDocument();
+      expect(screen.getByText('Post avulso')).toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', { name: /Abrir publicação: Post avulso de hoje/i }),
+      );
+      expect(await screen.findByText('StandalonePostDrawer open: 500')).toBeInTheDocument();
+      expect(mockedGetClientePosts).toHaveBeenCalledWith(42);
+    });
+
+    it('refreshes the individual-post cards too after a calendar status change', async () => {
+      const { updateWorkflowPost } = await import('@/store');
+      vi.mocked(updateWorkflowPost).mockResolvedValue(undefined as never);
+      mockedGetClientePosts.mockResolvedValue([clientePost()]);
+      const { invalidateSpy } = renderTab();
+      await screen.findByText('Post avulso de hoje');
+      fireEvent.click(screen.getByRole('button', { name: /○ Agendar/ }));
+      await waitFor(() =>
+        expect(vi.mocked(updateWorkflowPost)).toHaveBeenCalledWith(500, { status: 'agendado' }),
+      );
+      await waitFor(() =>
+        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-processes-cliente', 42] }),
+      );
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientePosts', 42] });
+    });
+
+    it('opens a fluxo post in its workflow drawer', async () => {
+      mockedGetClientePosts.mockResolvedValue([
+        clientePost({
+          id: 501,
+          workflow_id: 1,
+          workflow_titulo: 'Posts Agosto',
+          titulo: 'Post do fluxo',
+        }),
+      ]);
+      renderTab();
+      await screen.findByText('open-card-1');
+      fireEvent.click(
+        await screen.findByRole('button', { name: /Abrir publicação: Post do fluxo/i }),
+      );
+      expect(await screen.findByText('WorkflowDrawer open: Posts Agosto')).toBeInTheDocument();
+      expect(screen.queryByText(/StandalonePostDrawer open/)).not.toBeInTheDocument();
+    });
+  });
+
   describe('query isolation', () => {
     it('declares only Entregas/workflow-domain query keys, plus the narrow hub-url exception — nothing else from Instagram, Hub, or Financeiro', async () => {
       // `clientes` is included here even though EditWorkflowModal isn't open:
@@ -715,6 +785,8 @@ describe('EntregasTab', () => {
       // (a workflow_posts read, same domain as everything else here): it is
       // always mounted (workflowId gates only whether it fetches), so React
       // Query registers the cache entry even with workflowId still null.
+      // `clientePosts` feeds the post calendar (fluxo posts + posts avulsos),
+      // shared with WorkflowDrawer / StandalonePostDrawer.
       const { queryClient } = renderTab();
       await screen.findByText('Posts Agosto');
 
@@ -744,6 +816,7 @@ describe('EntregasTab', () => {
             'auto-schedule-batch-posts',
             'post-processes-cliente',
             'post-covers-cliente',
+            'clientePosts',
           ]),
         );
       });

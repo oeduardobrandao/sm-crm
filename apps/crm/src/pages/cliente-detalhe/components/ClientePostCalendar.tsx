@@ -7,8 +7,10 @@ import type { WorkflowPost } from '@/store';
 export interface PostCalendarEvent {
   postId: number;
   postTitle: string;
-  workflowId: number;
-  workflowTitle: string;
+  /** NULL = post avulso (fora de fluxo). */
+  workflowId: number | null;
+  /** NULL for a post avulso (no workflow to name). */
+  workflowTitle: string | null;
   date: Date;
   tipo: WorkflowPost['tipo'];
   status: WorkflowPost['status'];
@@ -74,7 +76,8 @@ export function ScheduledPostOpenButton({
 }
 
 interface ClientePostCalendarProps {
-  /** Scheduled-post events for all active workflows. Owned by EntregasTab so a
+  /** Scheduled-post events for all active workflows plus the client's posts
+   *  avulsos. Owned by EntregasTab so a
    *  single refresh (advance/revert/status update) can update both the board
    *  and the calendar together — see EntregasTab's `refreshPostCalendar`. */
   events: PostCalendarEvent[];
@@ -85,8 +88,9 @@ interface ClientePostCalendarProps {
   /** Post id currently being mutated by a status-update button, if any. */
   postUpdating: number | null;
   onPostStatusUpdate: (postId: number, newStatus: 'agendado' | 'postado') => void;
-  /** Opens the WorkflowDrawer for the workflow owning a scheduled post. */
-  onOpenCard: (workflowId: number) => void;
+  /** Opens a scheduled post: the WorkflowDrawer of the owning workflow, or the
+   *  StandalonePostDrawer when `workflowId` is null (post avulso). */
+  onOpenPost: (postId: number, workflowId: number | null) => void;
 }
 
 /**
@@ -104,7 +108,7 @@ export function ClientePostCalendar({
   onSelectDay,
   postUpdating,
   onPostStatusUpdate,
-  onOpenCard,
+  onOpenPost,
 }: ClientePostCalendarProps) {
   const { t, i18n } = useTranslation('clients');
   const { t: tc } = useTranslation();
@@ -237,13 +241,15 @@ export function ClientePostCalendar({
                     </span>
                   </div>
                   <div className="item-title">{ev.postTitle}</div>
-                  <div className="item-subtitle">{ev.workflowTitle}</div>
+                  <div className="item-subtitle">
+                    {ev.workflowTitle ?? t('detail.standalonePost')}
+                  </div>
                   <div className="item-divider" />
                   <div className="item-meta">{ev.date.toLocaleDateString(dateLocale)}</div>
                   <ScheduledPostOpenButton
                     postTitle={ev.postTitle}
                     label={t('instagram.openPost')}
-                    onOpen={() => onOpenCard(ev.workflowId)}
+                    onOpen={() => onOpenPost(ev.postId, ev.workflowId)}
                   />
                   <div
                     style={{
