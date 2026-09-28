@@ -838,6 +838,18 @@ body {
   }
 }
 
+/* ===== Phosphor spinner (`<i class="ph ph-spinner ph-spin">`) ===== */
+/* Phosphor ships no spin helper, and `<i>` is inline: transform needs inline-block. */
+@keyframes ph-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ph-spin {
+  display: inline-block;
+  animation: ph-spin 1s linear infinite;
+}
+
 /* ===== Global Banners ===== */
 .banner-container {
   position: fixed;
