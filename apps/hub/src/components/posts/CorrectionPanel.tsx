@@ -247,12 +247,22 @@ export function CorrectionPanel({
 
   // The staged text/caption as of the last Salvar edição (or retry) click. When the save
   // lands, anything typed after that click was never sent: see the 'saved' effect below.
-  const sentStagedRef = useRef<{ conteudoPlain: string; caption: string } | null>(null);
+  // `conteudo` is compared by reference: TipTap emits a new doc on every edit, so a
+  // formatting-only change (same plain text) still counts as edited since the send.
+  const sentStagedRef = useRef<{
+    conteudo: unknown;
+    conteudoPlain: string;
+    caption: string;
+  } | null>(null);
 
   // Resubmits whatever is currently staged. Shared by Salvar edição and the failed-save retry.
   function submitStaged() {
     setSaveRequested(true);
-    sentStagedRef.current = { conteudoPlain: stagedConteudoPlain, caption: stagedCaption };
+    sentStagedRef.current = {
+      conteudo: stagedConteudo,
+      conteudoPlain: stagedConteudoPlain,
+      caption: stagedCaption,
+    };
     saveSuggestion(
       isText ? stagedConteudo : draftConteudo,
       isText ? stagedConteudoPlain : (post.conteudo_plain ?? ''),
@@ -318,7 +328,9 @@ export function CorrectionPanel({
     const sent = sentStagedRef.current;
     const editedSinceSend =
       sent !== null &&
-      (stagedConteudoPlain !== sent.conteudoPlain || stagedCaption !== sent.caption);
+      (stagedConteudo !== sent.conteudo ||
+        stagedConteudoPlain !== sent.conteudoPlain ||
+        stagedCaption !== sent.caption);
     if (saveState === 'saved' && !editedSinceSend) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
