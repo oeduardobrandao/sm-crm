@@ -1,4 +1,4 @@
-import { addDays, addMinutes, isBefore, setHours, startOfDay } from 'date-fns';
+import { addMinutes, isBefore } from 'date-fns';
 import type { BestPostingTimes } from '../../services/analytics';
 
 /** Same floor as DateTimePicker's `futureOnly`: a suggestion earlier than this would land on a
@@ -21,22 +21,36 @@ export interface TimeSuggestion {
   slot: BestTimeSlot;
 }
 
-/** JS `getDay()` (Sunday = 0) → the endpoint's Monday = 0 convention. */
-export function mondayBasedWeekday(date: Date): number {
-  return (date.getDay() + 6) % 7;
+/*
+ * Slot math runs on "wall" Dates: a Date whose UTC fields read the São Paulo wall clock (see
+ * toSaoPauloWall). UTC has no DST, so days are always 24h and every hour exists, whatever zone
+ * the browser is in. Never use local-time date-fns helpers (startOfDay, setHours) on them.
+ */
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** Midnight of the wall date's day. */
+function wallStartOfDay(wall: Date): Date {
+  return new Date(Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate()));
 }
 
-/** First instant at `slot.hour`:00 on `slot.day` that is not before `from`. */
+/** Monday = 0 … Sunday = 6 (the endpoint's convention) of a wall date. */
+export function mondayBasedWeekday(wall: Date): number {
+  return (wall.getUTCDay() + 6) % 7;
+}
+
+/** First wall time at `slot.hour`:00 on `slot.day` that is not before `from`. */
 export function nextOccurrence(slot: Pick<BestTimeSlot, 'day' | 'hour'>, from: Date): Date {
-  const base = startOfDay(from);
+  const base = wallStartOfDay(from).getTime() + slot.hour * HOUR_MS;
   for (let i = 0; i <= 7; i++) {
-    const candidate = setHours(addDays(base, i), slot.hour);
+    const candidate = new Date(base + i * DAY_MS);
     if (mondayBasedWeekday(candidate) === slot.day && !isBefore(candidate, from)) {
       return candidate;
     }
   }
   // Unreachable for a valid slot: 8 consecutive days always contain the weekday once after `from`.
-  return setHours(addDays(base, 7), slot.hour);
+  return new Date(base + 7 * DAY_MS);
 }
 
 /** Highest-engagement hour on `weekday`, considering only hours that actually had posts. */
@@ -57,25 +71,21 @@ export function hasEnoughData(data: BestPostingTimes | null | undefined): data i
   return !!data && data.totalPosts >= SUGGESTION_MIN_POSTS && data.topSlots.length > 0;
 }
 
-/** America/Sao_Paulo is a fixed UTC-3 (no DST since 2019), in getTimezoneOffset() units. */
-const SAO_PAULO_TZ_OFFSET_MINUTES = 180;
+/** America/Sao_Paulo is a fixed UTC-3 (no DST since 2019). */
+const SAO_PAULO_OFFSET_MS = 3 * HOUR_MS;
 
-/**
- * The best-times grid is bucketed on the São Paulo wall clock (instagram-analytics), but the
- * browser may sit in another zone. These map an instant to a Date whose *local* getters read the
- * São Paulo wall clock, and back, so the slot math can stay in plain date-fns local arithmetic.
- * `tzOffset` is the browser's getTimezoneOffset(); a parameter only so tests can pin it.
- */
-export function toSaoPauloWall(instant: Date, tzOffset = instant.getTimezoneOffset()): Date {
-  return addMinutes(instant, tzOffset - SAO_PAULO_TZ_OFFSET_MINUTES);
+/** Instant → wall Date whose UTC fields read the São Paulo clock. */
+export function toSaoPauloWall(instant: Date): Date {
+  return new Date(instant.getTime() - SAO_PAULO_OFFSET_MS);
 }
 
-export function fromSaoPauloWall(wall: Date, tzOffset = wall.getTimezoneOffset()): Date {
-  return addMinutes(wall, SAO_PAULO_TZ_OFFSET_MINUTES - tzOffset);
+/** Wall Date → the real instant to persist. */
+export function fromSaoPauloWall(wall: Date): Date {
+  return new Date(wall.getTime() + SAO_PAULO_OFFSET_MS);
 }
 
 /**
- * Suggestions for the scheduler, computed on a wall clock (see `suggestTimes` for real instants):
+ * Suggestions for the scheduler on wall Dates (see `suggestTimes` for real instants):
  * - `sameDay`: the best hour on the already-selected day, when that weekday has data and the
  *   hour is still schedulable.
  * - `upcoming`: each of the top slots at its next schedulable occurrence, soonest first.
@@ -91,7 +101,7 @@ export function buildTimeSuggestions(
   if (selected) {
     const slot = bestSlotOnWeekday(data, mondayBasedWeekday(selected));
     if (slot) {
-      const date = setHours(startOfDay(selected), slot.hour);
+      const date = new Date(wallStartOfDay(selected).getTime() + slot.hour * HOUR_MS);
       if (!isBefore(date, from)) sameDay = { date, slot };
     }
   }

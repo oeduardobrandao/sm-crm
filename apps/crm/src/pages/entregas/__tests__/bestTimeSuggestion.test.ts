@@ -38,23 +38,28 @@ function makeData(
   };
 }
 
+/** Wall Date: UTC fields read the São Paulo clock (month is 0-based, like Date). */
+function wall(y: number, m: number, d: number, h = 0, mi = 0): Date {
+  return new Date(Date.UTC(y, m, d, h, mi));
+}
+
 // 2026-09-30 is a Wednesday (Monday-based weekday 2).
-const WED_10AM = new Date(2026, 8, 30, 10, 0);
+const WED_10AM = wall(2026, 8, 30, 10, 0);
 
 describe('mondayBasedWeekday', () => {
   it('maps Monday to 0 and Sunday to 6', () => {
-    expect(mondayBasedWeekday(new Date(2026, 8, 28))).toBe(0);
-    expect(mondayBasedWeekday(new Date(2026, 9, 4))).toBe(6);
+    expect(mondayBasedWeekday(wall(2026, 8, 28))).toBe(0);
+    expect(mondayBasedWeekday(wall(2026, 9, 4))).toBe(6);
   });
 });
 
 describe('nextOccurrence', () => {
   it('returns later the same day when the hour is still ahead', () => {
-    expect(nextOccurrence({ day: 2, hour: 18 }, WED_10AM)).toEqual(new Date(2026, 8, 30, 18));
+    expect(nextOccurrence({ day: 2, hour: 18 }, WED_10AM)).toEqual(wall(2026, 8, 30, 18));
   });
 
   it('rolls to next week when the hour already passed today', () => {
-    expect(nextOccurrence({ day: 2, hour: 9 }, WED_10AM)).toEqual(new Date(2026, 9, 7, 9));
+    expect(nextOccurrence({ day: 2, hour: 9 }, WED_10AM)).toEqual(wall(2026, 9, 7, 9));
   });
 
   it('accepts an instant exactly on the hour', () => {
@@ -62,11 +67,11 @@ describe('nextOccurrence', () => {
   });
 
   it('finds a later weekday in the same week', () => {
-    expect(nextOccurrence({ day: 4, hour: 12 }, WED_10AM)).toEqual(new Date(2026, 9, 2, 12));
+    expect(nextOccurrence({ day: 4, hour: 12 }, WED_10AM)).toEqual(wall(2026, 9, 2, 12));
   });
 
   it('crosses into next week for an earlier weekday', () => {
-    expect(nextOccurrence({ day: 0, hour: 8 }, WED_10AM)).toEqual(new Date(2026, 9, 5, 8));
+    expect(nextOccurrence({ day: 0, hour: 8 }, WED_10AM)).toEqual(wall(2026, 9, 5, 8));
   });
 });
 
@@ -103,62 +108,45 @@ describe('buildTimeSuggestions', () => {
   it('orders the top slots by their next occurrence', () => {
     const { upcoming } = buildTimeSuggestions(data, undefined, WED_10AM);
     expect(upcoming.map((s) => s.date)).toEqual([
-      new Date(2026, 8, 30, 18),
-      new Date(2026, 9, 2, 12),
-      new Date(2026, 9, 5, 8),
+      wall(2026, 8, 30, 18),
+      wall(2026, 9, 2, 12),
+      wall(2026, 9, 5, 8),
     ]);
   });
 
   it('skips an occurrence inside the 15-minute lead window', () => {
-    const { upcoming } = buildTimeSuggestions(data, undefined, new Date(2026, 8, 30, 17, 50));
-    expect(upcoming[upcoming.length - 1].date).toEqual(new Date(2026, 9, 7, 18));
+    const { upcoming } = buildTimeSuggestions(data, undefined, wall(2026, 8, 30, 17, 50));
+    expect(upcoming[upcoming.length - 1].date).toEqual(wall(2026, 9, 7, 18));
   });
 
   it('suggests the best hour on the selected day', () => {
-    const { sameDay } = buildTimeSuggestions(data, new Date(2026, 9, 7, 9, 30), WED_10AM);
-    expect(sameDay?.date).toEqual(new Date(2026, 9, 7, 18));
+    const { sameDay } = buildTimeSuggestions(data, wall(2026, 9, 7, 9, 30), WED_10AM);
+    expect(sameDay?.date).toEqual(wall(2026, 9, 7, 18));
   });
 
   it('omits the same-day suggestion when that hour already passed', () => {
-    const { sameDay } = buildTimeSuggestions(data, WED_10AM, new Date(2026, 8, 30, 19));
+    const { sameDay } = buildTimeSuggestions(data, WED_10AM, wall(2026, 8, 30, 19));
     expect(sameDay).toBeNull();
   });
 
   it('omits the same-day suggestion for a weekday without data', () => {
-    const { sameDay } = buildTimeSuggestions(data, new Date(2026, 9, 3), WED_10AM);
+    const { sameDay } = buildTimeSuggestions(data, wall(2026, 9, 3), WED_10AM);
     expect(sameDay).toBeNull();
   });
 
   it('does not repeat the same-day suggestion among the upcoming ones', () => {
     const { sameDay, upcoming } = buildTimeSuggestions(data, WED_10AM, WED_10AM);
-    expect(sameDay?.date).toEqual(new Date(2026, 8, 30, 18));
-    expect(upcoming.map((s) => s.date)).toEqual([
-      new Date(2026, 9, 2, 12),
-      new Date(2026, 9, 5, 8),
-    ]);
+    expect(sameDay?.date).toEqual(wall(2026, 8, 30, 18));
+    expect(upcoming.map((s) => s.date)).toEqual([wall(2026, 9, 2, 12), wall(2026, 9, 5, 8)]);
   });
 });
 
 describe('São Paulo wall clock conversion', () => {
-  // 2026-09-30 21:00Z is 18:00 in São Paulo.
-  const instant = new Date('2026-09-30T21:00:00Z');
-
-  it('is a no-op for a browser already on UTC-3', () => {
-    expect(toSaoPauloWall(instant, 180)).toEqual(instant);
-    expect(fromSaoPauloWall(instant, 180)).toEqual(instant);
-  });
-
-  it('round-trips for a browser on UTC-4 (Manaus)', () => {
-    const wall = toSaoPauloWall(instant, 240);
-    // On a UTC-4 browser, local 18:00 is 22:00Z.
-    expect(wall.toISOString()).toBe('2026-09-30T22:00:00.000Z');
-    expect(fromSaoPauloWall(wall, 240)).toEqual(instant);
-  });
-
-  it('persists an 18h São Paulo slot as 21:00Z from a UTC-4 browser', () => {
-    // Local-18:00 wall date on a UTC-4 browser is 22:00Z.
-    const wall18 = new Date('2026-09-30T22:00:00Z');
-    expect(fromSaoPauloWall(wall18, 240).toISOString()).toBe('2026-09-30T21:00:00.000Z');
+  it('shifts by a fixed three hours both ways', () => {
+    // 2026-09-30 21:00Z is 18:00 in São Paulo.
+    const instant = new Date('2026-09-30T21:00:00Z');
+    expect(toSaoPauloWall(instant)).toEqual(wall(2026, 8, 30, 18));
+    expect(fromSaoPauloWall(wall(2026, 8, 30, 18))).toEqual(instant);
   });
 });
 
@@ -168,5 +156,13 @@ describe('suggestTimes', () => {
     // Wednesday 10:00 in São Paulo.
     const { upcoming } = suggestTimes(data, undefined, new Date('2026-09-30T13:00:00Z'));
     expect(upcoming[0].date.toISOString()).toBe('2026-09-30T21:00:00.000Z');
+  });
+
+  it('keeps an hour that falls in a DST gap of the browser zone', () => {
+    // Sunday 02:00 in São Paulo on 2026-03-08 is 05:00Z; in New York that day 02:00-03:00 local
+    // does not exist. Browser-local arithmetic would shift it to 06:00Z.
+    const data = makeData([{ day: 6, hour: 2, value: 6, count: 5 }]);
+    const { upcoming } = suggestTimes(data, undefined, new Date('2026-03-06T15:00:00Z'));
+    expect(upcoming[0].date.toISOString()).toBe('2026-03-08T05:00:00.000Z');
   });
 });

@@ -57,7 +57,7 @@ describe('SuggestTimeButton', () => {
     const onPick = vi.fn();
     renderButton(onPick);
     fireEvent.click(await screen.findByRole('button', { name: /sugerir horário/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /quarta-feira/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /engajamento/i }));
     expect(onPick).toHaveBeenCalledWith(new Date('2026-09-30T21:00:00Z'));
   });
 
@@ -65,7 +65,9 @@ describe('SuggestTimeButton', () => {
     const onPick = vi.fn();
     renderButton(onPick);
     fireEvent.click(await screen.findByRole('button', { name: /sugerir horário/i }));
-    const row = await screen.findByRole('button', { name: /quarta-feira, 30\/09/i });
+    // Rows are labelled in browser-local time, so match by content, not weekday.
+    const row = await screen.findByRole('button', { name: /engajamento/i });
+    const staleLabel = row.textContent;
 
     // 17:50 in São Paulo: the 18h slot is now inside the 15-minute lead window.
     vi.setSystemTime(new Date('2026-09-30T20:50:00Z'));
@@ -73,8 +75,11 @@ describe('SuggestTimeButton', () => {
 
     expect(onPick).not.toHaveBeenCalled();
     expect(toast.info).toHaveBeenCalled();
+    // Recomputed: the same slot now points a week later.
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /quarta-feira, 07\/10/i })).toBeTruthy(),
+      expect(screen.getByRole('button', { name: /engajamento/i }).textContent).not.toBe(staleLabel),
     );
+    fireEvent.click(screen.getByRole('button', { name: /engajamento/i }));
+    expect(onPick).toHaveBeenCalledWith(new Date('2026-10-07T21:00:00Z'));
   });
 });
