@@ -76,8 +76,8 @@ link "Voltar para a Central de Ajuda". Slug inexistente ou não publicado: estad
 "Vídeo não encontrado" com link de volta. Rota nova em `App.tsx` declarada antes de
 `/ajuda/:slug`. `vercel.json` já cobre `/ajuda(/.*)?`, sem mudança. `video` entra em
 `RESERVED_SLUGS` de `_shared/admin-kb.ts` (hoje `novo`, `editar`), para nenhum artigo
-disputar `/ajuda/video`. O plano confere antes que nenhum artigo existente usa esse slug. A página define
-`document.title` com captura e restauração no cleanup (padrão das páginas do CRM).
+disputar `/ajuda/video`. O plano confere antes que nenhum artigo existente usa esse slug.
+A página define `document.title` com captura e restauração no cleanup (padrão das páginas do CRM).
 
 ### Progresso
 
@@ -180,8 +180,7 @@ Nova entrada "Vídeos" na navegação, ao lado de "Artigos" (KB):
   e badge de processamento (Processando / Pronto / Erro, de `stream_status`; "Enviando"
   com percentual é estado local enquanto o upload deste navegador está em curso; "Envio
   interrompido" é `error` com `stream_uid` nulo, ver "Uploads abandonados"). Linhas
-  clicáveis via
-  `RowLink`. Ordem editável por botões subir/descer (troca `display_order`).
+  clicáveis via `RowLink`. Ordem editável por botões subir/descer (troca `display_order`).
 - **Séries:** criar/editar (título, slug, descrição, status) em diálogo na mesma página.
 - **Editor de vídeo** (novo ou existente): título, slug (gerado do título, editável),
   descrição, série, artigo relacionado (select dos artigos publicados), status, e o arquivo.
@@ -192,7 +191,9 @@ Nova entrada "Vídeos" na navegação, ao lado de "Artigos" (KB):
 1. Admin escolhe o arquivo (`video/*`, até 200 MB, validado no cliente).
 2. `platform-admin` action `create-kb-video-upload` (vídeo novo ou existente):
    - chama `POST /accounts/{id}/stream/direct_upload` com
-     `{ maxDurationSeconds: 900, requireSignedURLs: false, meta: { kind: 'kb-video' } }`;
+     `{ maxDurationSeconds: 900, requireSignedURLs: false, expiry: <agora + 2h, ISO 8601>, meta: { kind: 'kb-video' } }`;
+   - grava o mesmo instante em `stream_upload_expires_at`, para o prazo local e o do Stream
+     serem um só;
    - grava `stream_uid` e `stream_status = 'pending'` na linha **antes** de responder
      (o reap nunca vê esse uid como desconhecido);
    - em vídeo existente com uid anterior, apaga o uid antigo com `deleteStreamVideo`
@@ -216,8 +217,11 @@ pronto). O `refresh-kb-video` trata uma linha `pending` assim:
   então o Stream não acumula reservas.
 - Qualquer outro caso: não muda nada.
 
-O botão "Cancelar" durante o upload aborta o XHR e chama o mesmo caminho de limpeza sem
-esperar o prazo. A linha e seus metadados continuam; só o arquivo some.
+O botão "Cancelar" durante o upload aborta o XHR e chama a action `cancel-kb-video-upload`.
+Ela aplica a mesma limpeza sem esperar o prazo: `deleteStreamVideo` (best-effort),
+`stream_uid = null`, `stream_status = 'error'`. Só age em linha `pending` cujo `stream_uid`
+é o enviado pelo cliente, para não apagar um upload mais novo. A linha e seus metadados
+continuam; só o arquivo some.
 
 Novas funções em `_shared/stream.ts`:
 
@@ -235,7 +239,7 @@ mostra "Upload de vídeo indisponível neste ambiente."
 
 `list-kb-video-series`, `upsert-kb-video-series`, `delete-kb-video-series`,
 `list-kb-videos`, `upsert-kb-video`, `delete-kb-video`, `create-kb-video-upload`,
-`refresh-kb-video`, `reorder-kb-videos`.
+`refresh-kb-video`, `cancel-kb-video-upload`, `reorder-kb-videos`.
 
 Todas autorizadas por `platform_admins`, como as actions de KB. `delete-kb-video` apaga a
 linha e depois o uid no Stream (best-effort, com o reap como rede de segurança).
@@ -305,13 +309,15 @@ rodada do reap (a cada 6h).
 - `admin-kb-videos_test.ts`: a action de upload grava o uid antes de responder; o upload
   em vídeo existente apaga o uid antigo; não publica vídeo não pronto; recusa artigo em
   rascunho; recusa colunas de Stream vindas do cliente; não autorizado → 403; sem Stream → 503;
-  o refresh de uma linha `pendingupload` com prazo vencido limpa o uid, e com prazo vigente
-  não muda nada.
+  o upload envia `expiry` e grava o mesmo instante em `stream_upload_expires_at`; o refresh
+  de uma linha `pendingupload` com prazo vencido limpa o uid, e com prazo vigente não muda
+  nada; `cancel-kb-video-upload` limpa na hora e ignora um `stream_uid` diferente do atual.
 
 **Entitlements (`supabase/tests/entitlements/`):** com `et_grant_hosted_parity()` antes dos
 selects como `authenticated`. Usuário A não lê nem escreve o progresso de B; a RPC
-`save_kb_video_progress` preserva `completed_at` quando chamada com `p_completed = false`; `authenticated` não vê vídeo em rascunho, `pending`, ou de série em rascunho; e não
-escreve em `kb_videos`/`kb_video_series`.
+`save_kb_video_progress` preserva `completed_at` quando chamada com `p_completed = false`;
+`authenticated` não vê vídeo em rascunho, `pending`, ou de série em rascunho; e não escreve
+em `kb_videos`/`kb_video_series`.
 
 **Vitest (CRM):**
 
