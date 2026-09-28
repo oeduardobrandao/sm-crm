@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Tutoriais em vídeo da Central de Ajuda (migration 20260928120001).
+-- Tutoriais em vídeo da Central de Ajuda (migration 20260928160001).
 -- (a) authenticated só vê vídeo publicado + pronto de série publicada;
 -- (b) não escreve no catálogo; (c) RPC de progresso: preserva completed_at,
 -- recorta posição, recusa vídeo invisível; (d) progresso é por usuário;

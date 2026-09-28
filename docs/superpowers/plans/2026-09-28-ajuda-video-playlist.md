@@ -18,7 +18,7 @@
 - Admin pages use no hex colour literals (the new pages are added to `apps/admin/src/__tests__/no-hex-literals.test.ts`).
 - Never `useBlocker`. Uploads are wrapped in `trackUnsavedWork` from `@mesaas/app-lifecycle`.
 - Edge functions: never return raw error details; thrown errors fall to `platform-admin`'s generic 500.
-- Migration version prefix must be unique and above `origin/main`'s tail. Planned name: `20260928120001_kb_videos.sql`; re-check `ls supabase/migrations | tail -3` on `origin/main` right before opening the PR and renumber if something newer landed.
+- Migration version prefix must be unique and above `origin/main`'s tail. Planned name: `20260928160001_kb_videos.sql`; re-check `ls supabase/migrations | tail -3` on `origin/main` right before opening the PR and renumber if something newer landed.
 - Stream direct upload body: `{ maxDurationSeconds: 900, requireSignedURLs: false, expiry: <now + 2h ISO>, meta: { kind: 'kb-video', video_id } }`. Upload TTL = 2h. Admin file cap = 200 MB.
 - Progress: save every 10 s of playback, on pause, on `pagehide`, on video switch/unmount. Complete at `currentTime >= 0.9 * duration` or `ended`. `completed_at` never goes back to null.
 - Only series with at least one visible (published + ready) video exist for the CRM.
@@ -28,7 +28,7 @@
 ## File Map
 
 **Database**
-- Create `supabase/migrations/20260928120001_kb_videos.sql`: tables, RLS, `save_kb_video_progress` RPC, grants.
+- Create `supabase/migrations/20260928160001_kb_videos.sql`: tables, RLS, `save_kb_video_progress` RPC, grants.
 - Create `supabase/tests/entitlements/99_kb_videos.sql`: RLS/RPC suite.
 
 **Edge functions**
@@ -60,7 +60,7 @@
 ### Task 1: Database: tables, RLS, progress RPC
 
 **Files:**
-- Create: `supabase/migrations/20260928120001_kb_videos.sql`
+- Create: `supabase/migrations/20260928160001_kb_videos.sql`
 - Test: `supabase/tests/entitlements/99_kb_videos.sql`
 
 **Interfaces:**
@@ -74,7 +74,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Tutoriais em vídeo da Central de Ajuda (migration 20260928120001).
+-- Tutoriais em vídeo da Central de Ajuda (migration 20260928160001).
 -- (a) authenticated só vê vídeo publicado + pronto de série publicada;
 -- (b) não escreve no catálogo; (c) RPC de progresso: preserva completed_at,
 -- recorta posição, recusa vídeo invisível; (d) progresso é por usuário;
@@ -213,7 +213,7 @@ Expected: FAIL, `relation "kb_video_series" does not exist`.
 
 - [ ] **Step 3: Write the migration**
 
-`supabase/migrations/20260928120001_kb_videos.sql`:
+`supabase/migrations/20260928160001_kb_videos.sql`:
 
 ```sql
 -- Tutoriais em vídeo da Central de Ajuda (spec 2026-09-28-ajuda-video-playlist-design).
@@ -368,7 +368,7 @@ Expected: completes with `ROLLBACK`, no assertion error. (No Docker: CI's `entit
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260928120001_kb_videos.sql supabase/tests/entitlements/99_kb_videos.sql
+git add supabase/migrations/20260928160001_kb_videos.sql supabase/tests/entitlements/99_kb_videos.sql
 git commit -m "feat(ajuda): tabelas de vídeos tutoriais, RLS e RPC de progresso"
 ```
 
