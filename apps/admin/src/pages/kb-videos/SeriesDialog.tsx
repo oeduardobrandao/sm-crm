@@ -15,6 +15,7 @@ import { Button } from '../../components/ui/button';
 const FIELD =
   'w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm focus:outline-none focus:border-primary';
 const LABEL = 'block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5';
+const RESERVED_SLUGS = ['novo', 'editar', 'video'];
 
 interface SeriesDialogProps {
   /** null = nova série */
@@ -35,6 +36,14 @@ export function SeriesDialog({ series, onClose }: SeriesDialogProps) {
     if (!isEdit) setSlug(slugify(title));
   }, [title, isEdit]);
 
+  const slugError =
+    slug &&
+    (RESERVED_SLUGS.includes(slug)
+      ? 'Slug reservado'
+      : !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)
+        ? 'Apenas letras minúsculas, números e hifens'
+        : null);
+
   const done = (message: string) => {
     qc.invalidateQueries({ queryKey: KB_VIDEO_SERIES_KEY });
     toast.success(message);
@@ -53,7 +62,9 @@ export function SeriesDialog({ series, onClose }: SeriesDialogProps) {
       }),
     onSuccess: () => done(isEdit ? 'Série atualizada' : 'Série criada'),
     onError: (err: AdminApiError) =>
-      toast.error(err.status === 409 ? 'Já existe uma série com esse slug.' : err.message),
+      toast.error(
+        err.status === 409 ? 'Já existe uma série com esse slug.' : 'Não foi possível salvar a série.',
+      ),
   });
 
   const deleteMut = useMutation({
@@ -121,6 +132,7 @@ export function SeriesDialog({ series, onClose }: SeriesDialogProps) {
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
             />
+            {slugError && <p className="mt-1 text-xs text-destructive">{slugError}</p>}
           </div>
           <div>
             <label htmlFor="series-description" className={LABEL}>
@@ -181,7 +193,11 @@ export function SeriesDialog({ series, onClose }: SeriesDialogProps) {
             ) : (
               <span />
             )}
-            <Button type="submit" size="sm" disabled={saveMut.isPending || !title || !slug}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saveMut.isPending || !title || !slug || !!slugError}
+            >
               {saveMut.isPending ? 'Salvando…' : 'Salvar'}
             </Button>
           </div>
