@@ -179,7 +179,11 @@ export async function handleUpsertKbVideo(svc: Svc, body: Row, headers: Headers)
   if (seriesErr) throw seriesErr;
   if (!series) return json({ error: "series not found" }, 400, headers);
 
-  if (merged.article_id) {
+  // Only re-validate the linked article when it's actually changing (create, or an update that
+  // carries a different article_id). An update that leaves article_id untouched must not
+  // dead-end on an article that was published when linked and later went back to draft.
+  const articleChanged = !current || (body.article_id !== undefined && merged.article_id !== current.article_id);
+  if (merged.article_id && articleChanged) {
     const { data: article, error: articleErr } = await svc
       .from("kb_articles").select("id, status").eq("id", merged.article_id as string).maybeSingle();
     if (articleErr) throw articleErr;
@@ -230,8 +234,12 @@ export async function handleCreateKbVideoUpload(
     meta: { kind: "kb-video", video_id: String(id) },
   });
 
-  // O uid é gravado ANTES de responder: o orphan reap nunca o vê como desconhecido.
-  const { data: video, error } = await svc
+  const oldUid = typeof current.stream_uid === "string" ? current.stream_uid : null;
+
+  // O uid é gravado ANTES de responder: o orphan reap nunca o vê como desconhecido. A escrita é
+  // guardada pelo stream_uid lido em `current`: se um upload concorrente já moveu a linha, esta
+  // escrita não bate em nada em vez de sobrescrever o uid do vencedor e deixá-lo órfão.
+  let query = svc
     .from("kb_videos")
     .update({
       stream_uid: uid,
@@ -241,15 +249,20 @@ export async function handleCreateKbVideoUpload(
       hls_url: null,
       thumbnail_url: null,
     })
-    .eq("id", id)
-    .select()
-    .single();
+    .eq("id", id);
+  query = oldUid !== null ? query.eq("stream_uid", oldUid) : query.is("stream_uid", null);
+  const { data: video, error } = await query.select().maybeSingle();
   if (error) {
     await bestEffortDelete(stream, uid, "kb-video-upload");
     throw error;
   }
+  if (!video) {
+    // Perdeu a corrida: outra chamada já reivindicou esta linha. Libera só o uid que acabamos de
+    // reservar; oldUid pode já pertencer ao vencedor, então não é tocado aqui.
+    await bestEffortDelete(stream, uid, "kb-video-upload");
+    return json({ error: "upload_conflict" }, 409, headers);
+  }
 
-  const oldUid = typeof current.stream_uid === "string" ? current.stream_uid : null;
   if (oldUid && oldUid !== uid) await bestEffortDelete(stream, oldUid, "kb-video-upload");
 
   return json({ uploadURL, video }, 200, headers);

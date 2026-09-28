@@ -93,6 +93,49 @@ Deno.test("create-kb-video-upload: 503 without Stream, and the new uid is releas
   assertEquals(deleted, ["new-uid"]);
 });
 
+Deno.test("create-kb-video-upload: the write is guarded on the previous stream_uid", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("kb_videos", "select", { data: row({ stream_uid: "old-uid" }) });
+  db.queue("kb_videos", "update", { data: row({ stream_uid: "new-uid" }) });
+  const { deps } = fakeStream();
+
+  await handleCreateKbVideoUpload(db as never, { video_id: 7 }, deps, H);
+
+  const upd = callsFor(db, "kb_videos", "update")[0];
+  assertEquals(upd.modifiers.filter((m) => m.method === "eq" || m.method === "is"), [
+    { method: "eq", args: ["id", 7] },
+    { method: "eq", args: ["stream_uid", "old-uid"] },
+  ]);
+});
+
+Deno.test("create-kb-video-upload: the write is guarded on null when there is no prior upload", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("kb_videos", "select", { data: row() }); // stream_uid: null by default
+  db.queue("kb_videos", "update", { data: row({ stream_uid: "new-uid" }) });
+  const { deps } = fakeStream();
+
+  await handleCreateKbVideoUpload(db as never, { video_id: 7 }, deps, H);
+
+  const upd = callsFor(db, "kb_videos", "update")[0];
+  assertEquals(upd.modifiers.filter((m) => m.method === "eq" || m.method === "is"), [
+    { method: "eq", args: ["id", 7] },
+    { method: "is", args: ["stream_uid", null] },
+  ]);
+});
+
+Deno.test("create-kb-video-upload: losing the race releases the new uid, keeps the old one, and 409s", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("kb_videos", "select", { data: row({ stream_uid: "old-uid" }) });
+  db.queue("kb_videos", "update", { data: null });
+  const { deps, deleted } = fakeStream();
+
+  const res = await handleCreateKbVideoUpload(db as never, { video_id: 7 }, deps, H);
+
+  assertEquals(res.status, 409);
+  assertEquals((await readJson(res) as { error: string }).error, "upload_conflict");
+  assertEquals(deleted, ["new-uid"]);
+});
+
 Deno.test("upsert-kb-video: rejects Stream-owned columns from the client", async () => {
   const res = await handleUpsertKbVideo(
     createSupabaseQueryMock() as never,
@@ -121,6 +164,31 @@ Deno.test("upsert-kb-video: a related article must be published", async () => {
   );
   assertEquals(res.status, 400);
   assertEquals(callsFor(db, "kb_videos", "insert").length, 0);
+});
+
+Deno.test("upsert-kb-video: leaving article_id untouched skips the published-article check", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("kb_videos", "select", { data: row({ article_id: "a1" }) });
+  db.queue("kb_video_series", "select", { data: { id: "s1" } });
+  db.queue("kb_videos", "update", { data: row({ article_id: "a1", title: "Novo título" }) });
+
+  const res = await handleUpsertKbVideo(db as never, { video_id: 7, title: "Novo título" }, H);
+
+  assertEquals(res.status, 200);
+  assertEquals(callsFor(db, "kb_articles", "select").length, 0);
+  assertEquals(callsFor(db, "kb_videos", "update")[0].payload, { title: "Novo título" });
+});
+
+Deno.test("upsert-kb-video: changing to a different unpublished article is rejected", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("kb_videos", "select", { data: row({ article_id: "a1" }) });
+  db.queue("kb_video_series", "select", { data: { id: "s1" } });
+  db.queue("kb_articles", "select", { data: { id: "a2", status: "draft" } });
+
+  const res = await handleUpsertKbVideo(db as never, { video_id: 7, article_id: "a2" }, H);
+
+  assertEquals(res.status, 400);
+  assertEquals(callsFor(db, "kb_videos", "update").length, 0);
 });
 
 Deno.test("upsert-kb-video: creates a draft video with only allowlisted columns", async () => {
