@@ -315,3 +315,86 @@ export async function listStreamVideos(
   }
   return items;
 }
+
+/** Creates a one-time direct creator upload with PUBLIC playback (tutorial videos only; post
+ * media keeps copyToStream's signed playback). The browser then POSTs the file straight to
+ * `uploadURL`. `expiry` bounds how long the reservation lives on Stream's side. */
+export async function createStreamDirectUpload(
+  opts: { maxDurationSeconds: number; expiry: string; meta: Record<string, string> },
+  fetchFn: typeof fetch = fetch,
+  sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
+): Promise<{ uid: string; uploadURL: string }> {
+  const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
+  const res = await fetchStreamWithRetry(fetchFn, `${streamBase(accountId)}/direct_upload`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      maxDurationSeconds: opts.maxDurationSeconds,
+      expiry: opts.expiry,
+      requireSignedURLs: false,
+      meta: opts.meta,
+    }),
+  }, sleepFn, budget);
+  const json = await res.json().catch(() => null) as
+    | { success?: boolean; result?: { uid?: string; uploadURL?: string } }
+    | null;
+  const uid = json?.result?.uid;
+  const uploadURL = json?.result?.uploadURL;
+  if (!res.ok || json?.success === false || !uid || !uploadURL) {
+    throw new Error("stream direct upload failed: " + res.status);
+  }
+  return { uid, uploadURL };
+}
+
+export type StreamVideoState = "ready" | "error" | "pendingupload" | "inprogress" | "notfound";
+
+export interface StreamVideoInfo {
+  state: StreamVideoState;
+  duration: number | null;
+  hls: string | null;
+  thumbnail: string | null;
+}
+
+/** Full lookup of one video. Unlike getStreamVideoStatus it keeps `pendingupload` (a direct
+ * upload whose bytes never arrived) apart from processing, and maps 404 to `notfound`. Stream
+ * reports an unknown duration as -1, which becomes null. */
+export async function getStreamVideo(
+  uid: string,
+  fetchFn: typeof fetch = fetch,
+  sleepFn: SleepFn = defaultSleep,
+  budget?: StreamRetryBudget,
+): Promise<StreamVideoInfo> {
+  const accountId = Deno.env.get("STREAM_ACCOUNT_ID") ?? "";
+  const res = await fetchStreamWithRetry(
+    fetchFn,
+    `${streamBase(accountId)}/${uid}`,
+    { headers: authHeaders() },
+    sleepFn,
+    budget,
+  );
+  if (res.status === 404) return { state: "notfound", duration: null, hls: null, thumbnail: null };
+  if (!res.ok) throw new Error("stream get failed: " + res.status);
+  const json = await res.json().catch(() => null) as
+    | {
+      result?: {
+        status?: { state?: string };
+        duration?: number;
+        playback?: { hls?: string };
+        thumbnail?: string;
+      };
+    }
+    | null;
+  const r = json?.result;
+  const raw = r?.status?.state;
+  const state: StreamVideoState = raw === "ready" || raw === "error" || raw === "pendingupload"
+    ? raw
+    : "inprogress";
+  const duration = typeof r?.duration === "number" && r.duration >= 0 ? r.duration : null;
+  return {
+    state,
+    duration,
+    hls: typeof r?.playback?.hls === "string" ? r.playback.hls : null,
+    thumbnail: typeof r?.thumbnail === "string" ? r.thumbnail : null,
+  };
+}
