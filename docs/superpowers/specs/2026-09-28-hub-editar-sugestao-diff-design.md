@@ -1,6 +1,6 @@
 # Hub: editar sugestão pendente + diff das alterações
 
-Status: DRAFT v2 (after Fable + Codex review)
+Status: DRAFT v3 (after Fable + two Codex reviews)
 Date: 2026-09-28
 
 ## Context
@@ -47,19 +47,24 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
 - `CorrectionPanel` drops the `hasPendingSuggestion` early return. A one-line note at the top:
   "Você está editando a sugestão que já enviou. As alterações anteriores continuam valendo."
 - `showSaveInFooter` drops its `!edit.hasPendingSuggestion` term so Salvar edição renders.
-- Section 2 (correction request) stays visible but **disabled with a reason** while a suggestion is
-  pending ("Para pedir correção, aguarde a equipe revisar sua sugestão."). It is already
-  disabled via `approvalBlocked` (`CorrectionPanel.tsx:456`); the change is the explanatory line.
-  Rationale: `correcao` changes post status (`hub-approve/handler.ts:183-195`) and the auto-reject
-  trigger would silently reject the suggestion.
+- Section 2 (correction request) keeps today's controls while a suggestion is pending: reason
+  chips and "Enviar correção" disabled via `approvalBlocked` (`CorrectionPanel.tsx:439-456`), the
+  comentário textarea stays editable and typed comentário/motivo is retained (it becomes sendable
+  once the suggestion is resolved). New: a reason line under the heading ("Para pedir correção,
+  aguarde a equipe revisar sua sugestão."). Rationale: `correcao` changes post status
+  (`hub-approve/handler.ts:183-195`) and the auto-reject trigger would silently reject the
+  suggestion; §3b adds the server-side guard.
 - **Caption seeding fix.** `deriveCaption` treats `''` as missing (`postView.ts:136`), so a stored
   `suggested_ig_caption = ''` would re-seed the caption field with LEGENDA-derived body text and a
   text-only re-save would submit it as the caption. When a suggestion exists, the caption baseline
   is `suggestion.suggested_ig_caption ?? deriveCaption(post, post.ig_caption)`, in the panel and in
   the reading view.
-- **Post-save state.** `useEditSuggestion` exposes the `pending_suggestion` returned by the save
-  (today discarded at `:190-196`); the dialog prefers it over `post.pending_suggestion` until the
-  refetch catches up, so the diff and notice are correct immediately.
+- **Post-save state.** `useEditSuggestion` keeps the `pending_suggestion` returned by the save
+  (today discarded at `:190-196`) as its own **effective pending suggestion**, and derives
+  `draft*`, `hasPendingSuggestion` and the value it exposes to the dialog from it, until the prop
+  catches up (prop `updated_at` >= local `updated_at`) or the post id changes. A returned
+  `null` (`action: 'deleted'`) is held the same way. So the diff, the notice and a reopened panel
+  all seed from the just-saved snapshot, never from the stale prop.
 - **Close after save.** After a successful save the panel closes through `closePanel()` (the
   guarded path), only when nothing else is unsent (no comentário / motivo typed). Otherwise it
   stays open. Applies to the first save as well.
@@ -79,8 +84,9 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
 - `Alterações` renders a new `SuggestionDiff`: word diff via `computeWordDiff`, rose strikethrough
   for removed, emerald for added, `whitespace-pre-wrap`. One block per field that actually differs:
   - **Texto do post**: `post.conteudo_plain` → `suggested_conteudo_plain`, shown only when
-    `suggested_conteudo_plain != null` and the plain text differs. If `changed_fields` has
-    `conteudo` but the plain text is identical, show "Alterações somente de formatação."
+    `suggested_conteudo_plain != null` and the plain text differs. Formatting-only differences are
+    not shown (`changed_fields` is not a reliable signal: a null `suggested_conteudo` is recorded
+    as a `conteudo` change that accept's `COALESCE` never applies, cf. `WorkflowDrawer.tsx:711-724`).
   - **Legenda**: `deriveCaption(post, post.ig_caption)` → `suggested_ig_caption`, shown only when
     `suggested_ig_caption != null` and it differs. Using `deriveCaption` for "before" matches what
     the client actually edited on media posts without `ig_caption` (LEGENDA fallback).
@@ -92,12 +98,19 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
 - Plain-text diff: formatting is not compared (`Sua sugestão` still renders rich text).
 - `postText` tab in `Alterações` shows the suggested version.
 
-### 3. Notify the team on updates (no signature change)
+### 3. Backend: atomic save, update notification, approval guard (no signature changes)
 
-- New migration `20260928000001_edit_suggestion_notification_updated.sql` (above main's tail
-  `20260925130002`; re-check at PR time): `CREATE OR REPLACE` the existing
-  `create_edit_suggestion_notification(bigint)` with the body from `20260830000003` plus
-  `metadata.updated := exists(pending row for p_post_id where updated_at > created_at)`.
+- New migration `20260928000001_edit_suggestion_update_flow.sql` (above main's tail
+  `20260925130002`; re-check at PR time), all `CREATE OR REPLACE` on existing signatures:
+  - **3a. `upsert_edit_suggestion`**: `SELECT … FROM workflow_posts WHERE id = p_post_id FOR UPDATE`
+    and `RAISE EXCEPTION` (SQLSTATE `P0001`, message `post_not_pending`) unless
+    `status = 'enviado_cliente'` and `conta_id = p_conta_id`. Closes the race where the team
+    accepts/rejects/edits between the handler's status check and the upsert, which today recreates
+    a pending suggestion on a no-longer-pending post. `hub-edit-suggestion` maps that error to the
+    existing 409 "Post não está aguardando aprovação." Rest of the body unchanged.
+  - **3c. `create_edit_suggestion_notification(bigint)`**: body from `20260830000003` plus: return
+    0 without notifying when no pending row exists for the post (the row was accepted/rejected in
+    between), and `metadata.updated := (pending.updated_at > pending.created_at)`.
   `CREATE OR REPLACE` keeps the grants and the `(bigint)` signature, so test 96 and PostgREST
   calls are untouched. On insert `created_at = updated_at = now()`; the BEFORE UPDATE trigger bumps
   `updated_at` on the upsert's `DO UPDATE`.
@@ -108,8 +121,15 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
   **"Sugestão de edição atualizada"** when `metadata.updated`.
 - One notification per explicit save; no dedupe.
 - Withdrawal (`action: 'deleted'`) sends no notification (see Out of scope).
-- Rollback: re-apply the `20260830000003` body with `CREATE OR REPLACE` (same signature, grants
-  unaffected) and redeploy the previous `hub-edit-suggestion`. Either half can be rolled back alone.
+- **3b. `hub-approve` guard**: for `aprovado` and `correcao`, return 409
+  `{ error: "Há uma sugestão de edição pendente." }` when a pending `post_edit_suggestions` row
+  exists for the post, before `record_client_approval`. Closes the stale-tab / direct-request path
+  where a status change auto-rejects the pending suggestion. `mensagem` is unaffected. The Hub
+  already shows the generic submit error on failure.
+- Rollback: re-apply the previous bodies (`20260521000001` for `upsert_edit_suggestion`,
+  `20260830000003` for the notification RPC) with `CREATE OR REPLACE` (same signatures, grants
+  unaffected) and redeploy the previous `hub-edit-suggestion` / `hub-approve`. Each piece can be
+  rolled back alone.
 
 ### 4. i18n
 
@@ -126,20 +146,23 @@ New Hub strings via `t('…', 'fallback')` in `hubPosts`, keys in `packages/i18n
     refetch; panel closes after save only when no comentário/motivo is typed.
   - `SuggestionDiff`: only differing fields render; null suggested value renders nothing;
     formatting-only line; LEGENDA-fallback caption baseline.
-  - `useEditSuggestion`: `hasPendingSuggestion` re-syncs from the prop when idle.
+  - `useEditSuggestion`: `hasPendingSuggestion` re-syncs from the prop when idle; after a save,
+    `draft*` come from the returned suggestion while the prop is still stale.
 - Vitest, existing tests to update: `CorrectionPanel.test.tsx:489-500`,
   `PostDetailDialog.test.tsx:995-999`, `:1004-1040` (default view becomes `diff`), `:1210`;
   `PostHistoryPanel` tests after the `WordDiff` extraction.
-- Deno: `hub-edit-suggestion` calls the notification RPC on update as well as on insert, and not
-  on `deleted`.
-- psql: a check that `metadata.updated` is false on first insert and true after an upsert update
-  (added to an existing entitlements suite or a new one).
+- Deno: `hub-edit-suggestion` calls the notification RPC on update as well as on insert, not on
+  `deleted`, and maps `post_not_pending` to 409. `hub-approve` returns 409 for `aprovado` /
+  `correcao` with a pending suggestion and still accepts `mensagem`.
+- psql (entitlements suite): `metadata.updated` false on first insert, true after an update;
+  notification RPC returns 0 with no pending row; `upsert_edit_suggestion` raises on a post not in
+  `enviado_cliente`.
 - CRM: notification-config title for `updated`.
 
 ## Deploy order
 
 1. `npx supabase db push` (migration; compatible with the current function).
-2. Deploy `hub-edit-suggestion` (`--no-verify-jwt`, `--use-api`).
+2. Deploy `hub-edit-suggestion` and `hub-approve` (`--no-verify-jwt`, `--use-api`).
 3. Merge (frontend deploys on merge).
 
 ## Out of scope
@@ -152,5 +175,4 @@ New Hub strings via `t('…', 'fallback')` in `hubPosts`, keys in `packages/i18n
   broken state.
 - Stale "sugestão rejeitada" notice resurfacing after a client-initiated revert
   (`hub-posts/handler.ts:345` has no recency check).
-- Server-side guard against approving with a pending suggestion (`hub-approve`).
 - "Descartar sugestão" button; rich-text (TipTap) diff in the Hub.
