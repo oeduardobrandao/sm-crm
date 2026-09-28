@@ -3,6 +3,10 @@
 
 const SP_OFFSET_MS = 3 * 60 * 60 * 1000;
 
+/** Marker on the instagram-analytics `best_times` cache payload: the grid is bucketed on the
+ * São Paulo wall clock. Rows cached before that change were bucketed in UTC and lack it. */
+export const BEST_TIMES_TIMEZONE = "America/Sao_Paulo";
+
 /** Weekday (Monday = 0 … Sunday = 6) and hour (0-23) of the instant on the São Paulo wall clock.
  * The edge runtime runs in UTC, so plain getDay()/getHours() would bucket by UTC instead. */
 export function saoPauloWeekdayHour(instant: Date): { day: number; hour: number } {

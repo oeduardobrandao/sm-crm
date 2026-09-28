@@ -57,8 +57,25 @@ export function hasEnoughData(data: BestPostingTimes | null | undefined): data i
   return !!data && data.totalPosts >= SUGGESTION_MIN_POSTS && data.topSlots.length > 0;
 }
 
+/** America/Sao_Paulo is a fixed UTC-3 (no DST since 2019), in getTimezoneOffset() units. */
+const SAO_PAULO_TZ_OFFSET_MINUTES = 180;
+
 /**
- * Suggestions for the scheduler:
+ * The best-times grid is bucketed on the São Paulo wall clock (instagram-analytics), but the
+ * browser may sit in another zone. These map an instant to a Date whose *local* getters read the
+ * São Paulo wall clock, and back, so the slot math can stay in plain date-fns local arithmetic.
+ * `tzOffset` is the browser's getTimezoneOffset(); a parameter only so tests can pin it.
+ */
+export function toSaoPauloWall(instant: Date, tzOffset = instant.getTimezoneOffset()): Date {
+  return addMinutes(instant, tzOffset - SAO_PAULO_TZ_OFFSET_MINUTES);
+}
+
+export function fromSaoPauloWall(wall: Date, tzOffset = wall.getTimezoneOffset()): Date {
+  return addMinutes(wall, SAO_PAULO_TZ_OFFSET_MINUTES - tzOffset);
+}
+
+/**
+ * Suggestions for the scheduler, computed on a wall clock (see `suggestTimes` for real instants):
  * - `sameDay`: the best hour on the already-selected day, when that weekday has data and the
  *   hour is still schedulable.
  * - `upcoming`: each of the top slots at its next schedulable occurrence, soonest first.
@@ -86,4 +103,25 @@ export function buildTimeSuggestions(
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   return { sameDay, upcoming };
+}
+
+/** `buildTimeSuggestions` on the São Paulo wall clock, returning real instants to persist. */
+export function suggestTimes(
+  data: BestPostingTimes,
+  selected: Date | undefined,
+  now: Date,
+): { sameDay: TimeSuggestion | null; upcoming: TimeSuggestion[] } {
+  const wall = buildTimeSuggestions(
+    data,
+    selected && toSaoPauloWall(selected),
+    toSaoPauloWall(now),
+  );
+  const toInstant = (s: TimeSuggestion): TimeSuggestion => ({
+    ...s,
+    date: fromSaoPauloWall(s.date),
+  });
+  return {
+    sameDay: wall.sameDay && toInstant(wall.sameDay),
+    upcoming: wall.upcoming.map(toInstant),
+  };
 }

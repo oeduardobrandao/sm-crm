@@ -3,9 +3,12 @@ import type { BestPostingTimes } from '../../../services/analytics';
 import {
   bestSlotOnWeekday,
   buildTimeSuggestions,
+  fromSaoPauloWall,
   hasEnoughData,
   mondayBasedWeekday,
   nextOccurrence,
+  suggestTimes,
+  toSaoPauloWall,
 } from '../bestTimeSuggestion';
 
 function grid(): number[][] {
@@ -133,5 +136,37 @@ describe('buildTimeSuggestions', () => {
       new Date(2026, 9, 2, 12),
       new Date(2026, 9, 5, 8),
     ]);
+  });
+});
+
+describe('São Paulo wall clock conversion', () => {
+  // 2026-09-30 21:00Z is 18:00 in São Paulo.
+  const instant = new Date('2026-09-30T21:00:00Z');
+
+  it('is a no-op for a browser already on UTC-3', () => {
+    expect(toSaoPauloWall(instant, 180)).toEqual(instant);
+    expect(fromSaoPauloWall(instant, 180)).toEqual(instant);
+  });
+
+  it('round-trips for a browser on UTC-4 (Manaus)', () => {
+    const wall = toSaoPauloWall(instant, 240);
+    // On a UTC-4 browser, local 18:00 is 22:00Z.
+    expect(wall.toISOString()).toBe('2026-09-30T22:00:00.000Z');
+    expect(fromSaoPauloWall(wall, 240)).toEqual(instant);
+  });
+
+  it('persists an 18h São Paulo slot as 21:00Z from a UTC-4 browser', () => {
+    // Local-18:00 wall date on a UTC-4 browser is 22:00Z.
+    const wall18 = new Date('2026-09-30T22:00:00Z');
+    expect(fromSaoPauloWall(wall18, 240).toISOString()).toBe('2026-09-30T21:00:00.000Z');
+  });
+});
+
+describe('suggestTimes', () => {
+  it('returns the São Paulo instant whatever the machine time zone', () => {
+    const data = makeData([{ day: 2, hour: 18, value: 6, count: 5 }]);
+    // Wednesday 10:00 in São Paulo.
+    const { upcoming } = suggestTimes(data, undefined, new Date('2026-09-30T13:00:00Z'));
+    expect(upcoming[0].date.toISOString()).toBe('2026-09-30T21:00:00.000Z');
   });
 });

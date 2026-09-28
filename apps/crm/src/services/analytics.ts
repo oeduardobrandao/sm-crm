@@ -155,6 +155,8 @@ export interface BestPostingTimes {
   totalPosts: number;
   labels_days: string[];
   labels_hours: string[];
+  /** Present once the grid is bucketed on the São Paulo wall clock. */
+  timezone?: string;
 }
 
 export interface PortfolioAccount {

@@ -1,12 +1,18 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { addMinutes, format, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { getBestPostingTimes } from '../../../services/analytics';
-import { buildTimeSuggestions, hasEnoughData, type TimeSuggestion } from '../bestTimeSuggestion';
+import {
+  hasEnoughData,
+  SUGGESTION_MIN_LEAD_MINUTES,
+  suggestTimes,
+  type TimeSuggestion,
+} from '../bestTimeSuggestion';
 
 interface SuggestTimeButtonProps {
   clientId: number;
@@ -60,15 +66,25 @@ export function SuggestTimeButton({ clientId, value, onPick, disabled }: Suggest
   });
   const data = res?.data;
 
+  // Bumped when a row turns out stale, to recompute from the current time.
+  const [refreshTick, setRefreshTick] = useState(0);
+
   // Recomputed on open so "next occurrence" is measured from the moment the list is shown.
   const suggestions = useMemo(
-    () => (open && hasEnoughData(data) ? buildTimeSuggestions(data, value, new Date()) : null),
-    [open, data, value],
+    () => (open && hasEnoughData(data) ? suggestTimes(data, value, new Date()) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshTick only forces a recompute
+    [open, data, value, refreshTick],
   );
 
   if (!enabled || !hasEnoughData(data)) return null;
 
   const pick = (date: Date) => {
+    // The list can sit open past a slot; this path skips the picker's own 15-min clamp.
+    if (isBefore(date, addMinutes(new Date(), SUGGESTION_MIN_LEAD_MINUTES))) {
+      toast.info('Esse horário já passou. A lista foi atualizada.');
+      setRefreshTick((n) => n + 1);
+      return;
+    }
     onPick(date);
     setOpen(false);
   };
