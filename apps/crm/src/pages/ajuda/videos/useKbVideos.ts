@@ -25,7 +25,14 @@ export function useVideoProgress(): {
   isLoading: boolean;
 } {
   const qc = useQueryClient();
-  const query = useQuery({ queryKey: KB_VIDEO_PROGRESS_KEY, queryFn: getMyVideoProgress });
+  // staleTime keeps a focus refetch from firing right on top of an optimistic write below (the
+  // save still cancels any in-flight fetch, but this avoids triggering a fresh one in the first
+  // place while the user is actively watching).
+  const query = useQuery({
+    queryKey: KB_VIDEO_PROGRESS_KEY,
+    queryFn: getMyVideoProgress,
+    staleTime: 60_000,
+  });
   const progress = useMemo(() => toProgressMap(query.data ?? []), [query.data]);
 
   // Fire-and-forget: a failed save never interrupts the video nor shows a toast (spec). The
