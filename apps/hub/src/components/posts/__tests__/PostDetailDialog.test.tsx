@@ -204,10 +204,13 @@ describe('PostDetailDialog', () => {
 
         fireEvent.click(save);
         await act(async () => {
-          await vi.advanceTimersByTimeAsync(1500);
+          await vi.advanceTimersByTimeAsync(1600);
         });
         expect(submitEditSuggestionMock).toHaveBeenCalledTimes(1);
         expect(submitEditSuggestionMock.mock.calls[0][4]).toBe('Legenda editada');
+        // A clean first save closes the panel too (not only saves on a pending suggestion).
+        expect(screen.queryByRole('textbox', { name: 'Legenda do post' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Corrigir/ })).toBeInTheDocument();
       } finally {
         vi.useRealTimers();
       }
@@ -992,10 +995,11 @@ describe('PostDetailDialog', () => {
       updated_at: '2026-04-28T10:00:00.000Z',
     };
 
-    it('explains a pending suggestion without opening Corrigir, with both actions disabled', () => {
+    it('offers Editar sugestão (enabled) for a pending suggestion while Aprovar stays disabled', () => {
       renderDialog(1, { posts: [post({ id: 1, pending_suggestion: suggestion })] });
       expect(screen.getByText(PENDING_NOTICE)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Corrigir/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Editar sugestão/ })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: /Corrigir/ })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Aprovar/ })).toBeDisabled();
       expect(screen.queryByText(REJECTED_NOTICE)).not.toBeInTheDocument();
     });
@@ -1016,12 +1020,20 @@ describe('PostDetailDialog', () => {
           }),
         ],
       });
+      const changes = screen.getByRole('button', { name: 'Alterações' });
+      expect(changes).toHaveAttribute('aria-pressed', 'true');
+      expect(
+        screen.getByText('Em vermelho o que você removeu, em verde o que acrescentou.'),
+      ).toBeInTheDocument();
+      expect(document.querySelector('[data-testid="suggestion-diff"] ins')).not.toBeNull();
+
+      const mine = screen.getByRole('button', { name: 'Sua sugestão' });
+      fireEvent.click(mine);
       expect(
         screen.getByText(
           'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
         ),
       ).toBeInTheDocument();
-      const mine = screen.getByRole('button', { name: 'Sua sugestão' });
       const original = screen.getByRole('button', { name: 'Original' });
       expect(mine).toHaveAttribute('aria-pressed', 'true');
       expect(screen.getByText('Legenda editada')).toBeInTheDocument();
@@ -1067,6 +1079,52 @@ describe('PostDetailDialog', () => {
       });
       expect(screen.queryByText(PENDING_NOTICE)).not.toBeInTheDocument();
       expect(screen.queryByText(REJECTED_NOTICE)).not.toBeInTheDocument();
+    });
+
+    it('Editar sugestão edits the pending suggestion and saves the merged caption from the footer', async () => {
+      vi.useFakeTimers();
+      try {
+        submitEditSuggestionMock.mockResolvedValue({
+          ok: true,
+          pending_suggestion: {
+            ...suggestion,
+            suggested_ig_caption: 'Legenda editada de novo',
+            updated_at: '2026-04-28T11:00:00.000Z',
+          },
+        });
+        renderDialog(1, {
+          posts: [post({ id: 1, ig_caption: 'Legenda um', pending_suggestion: suggestion })],
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Editar sugestão/ }));
+        const caption = screen.getByRole('textbox', { name: 'Legenda do post' });
+        expect(caption).toHaveValue('Legenda editada');
+        fireEvent.change(caption, { target: { value: 'Legenda editada de novo' } });
+
+        fireEvent.click(screen.getByRole('button', { name: /Salvar edição/ }));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1600);
+        });
+
+        expect(submitEditSuggestionMock).toHaveBeenCalledWith(
+          'token-publico',
+          1,
+          null,
+          'Corpo',
+          'Legenda editada de novo',
+        );
+        // Clean save: the panel closes back to the reading view, which already shows the saved
+        // suggestion as a diff before any refetch.
+        expect(screen.queryByRole('textbox', { name: 'Legenda do post' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Alterações' })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        );
+        expect(document.querySelector('[data-testid="suggestion-diff"]')?.textContent).toContain(
+          'de novo',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

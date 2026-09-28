@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ImageOff,
   Lock,
+  PencilLine,
   X,
 } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
@@ -30,6 +31,7 @@ import {
   hasDistinctPostText,
   isInProduction,
   pickPostCardKind,
+  suggestionAwareCaption,
 } from '../../lib/postView';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { HubDialog } from '../ui/HubDialog';
@@ -41,6 +43,7 @@ import { SharePostButton } from '../SharePostButton';
 import { StatusTag } from './StatusTag';
 import { PostMediaPane } from './PostMediaPane';
 import { InProductionNotice } from './InProductionNotice';
+import { SuggestionDiff } from './SuggestionDiff';
 import {
   CorrectionPanel,
   RejectedSuggestionNotice,
@@ -274,13 +277,16 @@ function PostDetailContent({
   const navLocked = submitting || locked || (dirty && !saveFailed);
   // A pending suggestion is never written to the post itself (it lives in
   // post_edit_suggestions until the team accepts it), so `post.*` stays the original and
-  // the reading view can switch between the two.
-  const suggestion = isPending ? post.pending_suggestion : null;
-  const [suggestionView, setSuggestionView] = useState<SuggestionView>('suggestion');
+  // the reading view can switch between the two. The hook's effective suggestion (not
+  // `post.pending_suggestion` directly) includes a just-saved snapshot until the refetch
+  // lands, so a clean save shows immediately instead of a stale/missing suggestion.
+  const suggestion = isPending ? edit.suggestion : null;
+  const [suggestionView, setSuggestionView] = useState<SuggestionView>('diff');
   const showOriginal = suggestion !== null && suggestionView === 'original';
-  const caption = showOriginal
-    ? deriveCaption(post, post.ig_caption)
-    : deriveCaption(post, edit.isEditable ? draftIgCaption : post.ig_caption);
+  const caption =
+    showOriginal || !edit.isEditable
+      ? deriveCaption(post, post.ig_caption)
+      : suggestionAwareCaption(post, suggestion);
   const bodyConteudo = showOriginal ? post.conteudo : draftConteudo;
   const bodyPlain = showOriginal
     ? post.conteudo_plain
@@ -307,8 +313,10 @@ function PostDetailContent({
   const showPanel = panelOpen && isPending;
   // Once the client edits the text/caption (or a save is queued, in flight or failed), the
   // footer's primary action becomes Salvar edição: Aprovar is blocked until the edit is
-  // saved anyway, and the in-panel button sat at the bottom of a long scroll.
-  const showSaveInFooter = showPanel && !edit.hasPendingSuggestion && (contentDirty || dirty);
+  // saved anyway, and the in-panel button sat at the bottom of a long scroll. This slot must
+  // also mount while editing an already-pending suggestion (hasPendingSuggestion true), or
+  // Salvar edição has nowhere to render there.
+  const showSaveInFooter = showPanel && (contentDirty || dirty);
 
   useUnsavedWork(panelDirty || historyDirty || submitting);
 
@@ -426,6 +434,17 @@ function PostDetailContent({
     setPanelOpen(false);
     setPanelDirty(false);
   }
+
+  // Fires only after a clean save (no comentário/motivo left unsent): closes the panel back
+  // to the reading view, which already shows the saved suggestion via `edit.suggestion`. This
+  // bypasses `guard()` on purpose -- the panel only calls it once nothing is unsent, and a
+  // stale `panelDirty` from just before the save resolved would otherwise prompt to discard.
+  const handleSavedClean = useCallback(() => {
+    setPanelOpen(false);
+    setPanelDirty(false);
+    setContentDirty(false);
+    setSuggestionView('diff');
+  }, []);
 
   const chips = (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -732,6 +751,7 @@ function PostDetailContent({
                     onSubmitCorrection={(c, m) => submit('correcao', c, m)}
                     onDirtyChange={handleDirtyChange}
                     onContentDirtyChange={handleContentDirtyChange}
+                    onSavedClean={handleSavedClean}
                     saveSlot={saveSlot}
                   />
                 ) : (
@@ -747,7 +767,11 @@ function PostDetailContent({
                     )}
                     {isPending && edit.wasRejected && <RejectedSuggestionNotice />}
                     <InProductionNotice post={post} />
-                    {readingBody}
+                    {suggestion && suggestionView === 'diff' ? (
+                      <SuggestionDiff post={post} suggestion={suggestion} />
+                    ) : (
+                      readingBody
+                    )}
                     {autoPublishNote}
                   </>
                 )}
@@ -782,10 +806,19 @@ function PostDetailContent({
                         setTab('content');
                         setPanelOpen(true);
                       }}
-                      disabled={submitting || locked || edit.hasPendingSuggestion}
+                      disabled={submitting || locked}
                       className="flex-1 flex items-center justify-center gap-1.5 hub-btn-secondary rounded-[4px] py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50"
                     >
-                      <AlertCircle size={15} /> {t('posts.correct', 'Corrigir')}
+                      {edit.hasPendingSuggestion ? (
+                        <>
+                          <PencilLine size={15} aria-hidden="true" />{' '}
+                          {t('shared.editSuggestion', 'Editar sugestão')}
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle size={15} /> {t('posts.correct', 'Corrigir')}
+                        </>
+                      )}
                     </button>
                   )}
                   {showSaveInFooter ? (

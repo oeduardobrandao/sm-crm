@@ -28,7 +28,16 @@
     "discardCorrectionConfirm": "Discard the unsent changes?",
     "saveFailedRetry": "Couldn't save. Try again.",
     "retrySave": "Retry",
-    "discardFailedEdit": "Discard edit"
+    "discardFailedEdit": "Discard edit",
+    "editSuggestion": "Edit suggestion",
+    "editingSuggestionNote": "You are editing the suggestion you already sent. Your earlier changes are kept.",
+    "correctionBlockedBySuggestion": "To request a correction, wait for the team to review your suggestion.",
+    "suggestionViewDiff": "Changes",
+    "suggestionShowingDiff": "Removed text in red, added text in green.",
+    "suggestionDiffTextLabel": "Post text",
+    "suggestionDiffCaptionLabel": "Caption",
+    "suggestionNoTextDiff": "No text differences from the original.",
+    "suggestionFormatOnlyDiff": "Formatting or image changes only."
   },
   "aprovacoes": {
     "title": "Approvals",

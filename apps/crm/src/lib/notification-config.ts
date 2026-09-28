@@ -94,7 +94,8 @@ export function getNotificationDisplay(
       return {
         icon: FilePen,
         tone: 'warning',
-        title: 'Sugestão de edição do cliente',
+        title:
+          m.updated === true ? 'Sugestão de edição atualizada' : 'Sugestão de edição do cliente',
         body: `${client} — ${post}`,
       };
     case 'idea_submitted':

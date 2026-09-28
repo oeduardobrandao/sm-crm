@@ -5,13 +5,14 @@ import type { TFunction } from 'i18next';
 import { AlertCircle, Save } from 'lucide-react';
 import type { CorrectionReason, HubPost } from '../../types';
 import type { useEditSuggestion } from '../../hooks/useEditSuggestion';
-import { deriveCaption, pickPostCardKind } from '../../lib/postView';
+import { pickPostCardKind, suggestionAwareCaption } from '../../lib/postView';
+import { canonicalDoc } from '../../lib/richDoc';
 import { RichTextContent } from '../RichTextContent';
 import { CorrectionReasonChips } from '../CorrectionReasonChips';
 
 export type EditSuggestion = ReturnType<typeof useEditSuggestion>;
 
-export type SuggestionView = 'suggestion' | 'original';
+export type SuggestionView = 'diff' | 'suggestion' | 'original';
 
 interface SuggestionPendingNoticeProps {
   /** The pending suggestion's `changed_fields`; only read when `onViewChange` is given. */
@@ -22,13 +23,14 @@ interface SuggestionPendingNoticeProps {
 }
 
 /**
- * "Sugestão enviada para revisão": replaces the whole panel, and explains the disabled
- * footer actions in the reading view. There it also says that the body below is the
- * suggested version (not the original) and offers a Sua sugestão / Original toggle.
+ * "Sugestão enviada para revisão", shown above the reading view while a suggestion is
+ * pending (the panel itself stays editable through Editar sugestão). It explains the
+ * disabled Aprovar, says which version the body below shows and offers an Alterações /
+ * Sua sugestão / Original toggle, Alterações (the diff) being the default.
  */
 export function SuggestionPendingNotice({
   changedFields = [],
-  view = 'suggestion',
+  view = 'diff',
   onViewChange,
 }: SuggestionPendingNoticeProps = {}) {
   const { t } = useTranslation('hubPosts');
@@ -36,33 +38,38 @@ export function SuggestionPendingNotice({
     changedFields.includes('conteudo') || changedFields.includes('conteudo_plain');
   const captionChanged = changedFields.includes('ig_caption');
   const detail =
-    view === 'original'
+    view === 'diff'
       ? t(
-          'shared.suggestionShowingOriginal',
-          'Você está vendo a versão original, sem as suas alterações.',
+          'shared.suggestionShowingDiff',
+          'Em vermelho o que você removeu, em verde o que acrescentou.',
         )
-      : textChanged && captionChanged
+      : view === 'original'
         ? t(
-            'shared.suggestionShowingBoth',
-            'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
+            'shared.suggestionShowingOriginal',
+            'Você está vendo a versão original, sem as suas alterações.',
           )
-        : textChanged
+        : textChanged && captionChanged
           ? t(
-              'shared.suggestionShowingText',
-              'Abaixo está a versão que você sugeriu. Você alterou o texto.',
+              'shared.suggestionShowingBoth',
+              'Abaixo está a versão que você sugeriu. Você alterou o texto e a legenda.',
             )
-          : captionChanged
+          : textChanged
             ? t(
-                'shared.suggestionShowingCaption',
-                'Abaixo está a versão que você sugeriu. Você alterou a legenda.',
+                'shared.suggestionShowingText',
+                'Abaixo está a versão que você sugeriu. Você alterou o texto.',
               )
-            : t('shared.suggestionShowing', 'Abaixo está a versão que você sugeriu.');
+            : captionChanged
+              ? t(
+                  'shared.suggestionShowingCaption',
+                  'Abaixo está a versão que você sugeriu. Você alterou a legenda.',
+                )
+              : t('shared.suggestionShowing', 'Abaixo está a versão que você sugeriu.');
   const option = (key: SuggestionView, label: string) => (
     <button
       type="button"
       aria-pressed={view === key}
       onClick={() => onViewChange?.(key)}
-      className={`rounded-full px-3 py-1 text-[12px] font-semibold transition-colors ${
+      className={`rounded-full px-3 py-1 text-[12px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
         view === key
           ? 'bg-amber-800 text-white dark:bg-amber-300 dark:text-amber-950'
           : 'text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
@@ -78,12 +85,15 @@ export function SuggestionPendingNotice({
       </p>
       {onViewChange && (
         <>
-          <p className="mt-1 text-[12px]">{detail}</p>
+          <p className="mt-1 text-[12px]" aria-live="polite">
+            {detail}
+          </p>
           <div
             role="group"
             aria-label={t('shared.suggestionCompareLabel', 'Comparar versões')}
             className="mt-2 inline-flex gap-0.5 rounded-full p-0.5 ring-1 ring-amber-200 dark:ring-amber-800/60 bg-white/60 dark:bg-black/20"
           >
+            {option('diff', t('shared.suggestionViewDiff', 'Alterações'))}
             {option('suggestion', t('shared.suggestionViewMine', 'Sua sugestão'))}
             {option('original', t('shared.suggestionViewOriginal', 'Original'))}
           </div>
@@ -120,6 +130,8 @@ interface CorrectionPanelProps {
   onDirtyChange: (dirty: boolean) => void;
   /** True while the staged text/caption differs from the baseline (comentário and motivo excluded). */
   onContentDirtyChange?: (dirty: boolean) => void;
+  /** Called after a successful save when nothing else (comentário/motivo) is unsent. */
+  onSavedClean?: () => void;
   /**
    * Where Salvar edição renders. Omitted: inline at the end of the edit section. Given: the
    * button is portalled into this element (the dialog's action footer, in place of Aprovar),
@@ -141,6 +153,7 @@ export function CorrectionPanel({
   onSubmitCorrection,
   onDirtyChange,
   onContentDirtyChange,
+  onSavedClean,
   saveSlot,
 }: CorrectionPanelProps) {
   const { t } = useTranslation('hubPosts');
@@ -156,11 +169,15 @@ export function CorrectionPanel({
     discardFailedSave,
     draftConteudo,
     draftConteudoPlain,
-    draftIgCaption,
+    suggestion,
   } = edit;
 
-  // Baselines: the caption the client actually sees (LEGENDA fallback included).
-  const captionBaseline = deriveCaption(post, draftIgCaption);
+  const onSavedCleanRef = useRef(onSavedClean);
+  onSavedCleanRef.current = onSavedClean;
+
+  // Baseline: the caption the client actually sees. A pending suggestion's own caption wins
+  // even when '' (see suggestionAwareCaption); otherwise the LEGENDA fallback applies.
+  const captionBaseline = suggestionAwareCaption(post, suggestion);
   const [stagedConteudo, setStagedConteudo] = useState(draftConteudo);
   const [stagedConteudoPlain, setStagedConteudoPlain] = useState(draftConteudoPlain);
   const [stagedCaption, setStagedCaption] = useState(captionBaseline);
@@ -217,9 +234,20 @@ export function CorrectionPanel({
     lastSyncedCaptionRef.current = captionBaseline;
   }
 
+  // The body is tracked by plain text AND by canonical document, so a refetch that only
+  // changes formatting (or re-signs image URLs, which canonicalDoc ignores) resyncs too.
+  const draftDocKey = canonicalDoc(draftConteudo);
+  const stagedDocKey = canonicalDoc(stagedConteudo);
   const lastSyncedConteudoPlainRef = useRef(draftConteudoPlain);
-  if (draftConteudoPlain !== lastSyncedConteudoPlainRef.current) {
-    if (stagedConteudoPlain === lastSyncedConteudoPlainRef.current) {
+  const lastSyncedDocKeyRef = useRef(draftDocKey);
+  if (
+    draftConteudoPlain !== lastSyncedConteudoPlainRef.current ||
+    draftDocKey !== lastSyncedDocKeyRef.current
+  ) {
+    if (
+      stagedConteudoPlain === lastSyncedConteudoPlainRef.current &&
+      stagedDocKey === lastSyncedDocKeyRef.current
+    ) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
       // Force RichTextContent to remount with the resynced body as its new
@@ -227,14 +255,37 @@ export function CorrectionPanel({
       setContentVersion((v) => v + 1);
     }
     lastSyncedConteudoPlainRef.current = draftConteudoPlain;
+    lastSyncedDocKeyRef.current = draftDocKey;
   }
+
+  // The staged text/caption as of the last Salvar edição (or retry) click. When the save
+  // lands, anything typed after that click was never sent: see the 'saved' effect below.
+  // `conteudo` is compared by reference: TipTap emits a new doc on every edit, so a
+  // formatting-only change (same plain text) still counts as edited since the send.
+  const sentStagedRef = useRef<{
+    conteudo: unknown;
+    conteudoPlain: string;
+    caption: string;
+  } | null>(null);
 
   // Resubmits whatever is currently staged. Shared by Salvar edição and the failed-save retry.
   function submitStaged() {
     setSaveRequested(true);
+    sentStagedRef.current = {
+      conteudo: stagedConteudo,
+      conteudoPlain: stagedConteudoPlain,
+      caption: stagedCaption,
+    };
+    // An untouched body sends its STORED text: draftConteudoPlain is the editor's rendering
+    // of the document, which can differ from the stored text in line breaks alone, and the
+    // RPC would then record a body change that accepting applies (see docPlainText).
+    const bodyEdited = stagedConteudoPlain !== draftConteudoPlain || stagedDocKey !== draftDocKey;
+    const textPlain = bodyEdited
+      ? stagedConteudoPlain
+      : (suggestion?.suggested_conteudo_plain ?? post.conteudo_plain ?? '');
     saveSuggestion(
       isText ? stagedConteudo : draftConteudo,
-      isText ? stagedConteudoPlain : (post.conteudo_plain ?? ''),
+      isText ? textPlain : (post.conteudo_plain ?? ''),
       showCaptionField ? stagedCaption : '',
     );
   }
@@ -255,11 +306,15 @@ export function CorrectionPanel({
   // there's neither an explicit ig_caption nor a draft/suggested one -- in that
   // case stagedCaption is still seeded from captionBaseline's conteudo_plain
   // fallback (deriveCaption), but the client never saw or edited that text as a
-  // caption, so it must not be submitted as one.
-  const showCaptionField = !isText || draftIgCaption !== null || !!post.ig_caption;
+  // caption, so it must not be submitted as one. A text post's suggestion stores
+  // '' when it had no caption field, which must not reveal one.
+  const showCaptionField = !isText || post.ig_caption != null || !!suggestion?.suggested_ig_caption;
 
+  // A formatting-only edit (bold, an inline image) leaves the plain text untouched, so the
+  // document is compared too, canonically (see canonicalDoc).
   const contentDirty =
-    (isText && stagedConteudoPlain !== draftConteudoPlain) || stagedCaption !== captionBaseline;
+    (isText && (stagedConteudoPlain !== draftConteudoPlain || stagedDocKey !== draftDocKey)) ||
+    stagedCaption !== captionBaseline;
   const panelDirty = contentDirty || comentario.trim() !== '' || motivo !== null;
 
   useEffect(() => {
@@ -283,19 +338,30 @@ export function CorrectionPanel({
   );
 
   // A successful save makes the staged values the new baseline (draft* update via
-  // pending_suggestion on refetch); until then the fields keep what was typed.
+  // pending_suggestion on refetch); until then the fields keep what was typed. `onSavedClean`
+  // fires only on the TRANSITION into 'saved', never on mount: the hook holds saveState ===
+  // 'saved' for 3s after a save (savedTimerRef in useEditSuggestion.ts), and effects run on
+  // mount too, so reopening the panel within that window would otherwise close it right away.
+  // Text typed after the click (while the save was queued or in flight) differs from what was
+  // sent: then neither reset nor close, so the client keeps it and Salvar edição stays up.
+  const prevSaveStateRef = useRef(saveState);
   useEffect(() => {
-    if (saveState === 'saved') {
+    const enteredSaved = saveState === 'saved' && prevSaveStateRef.current !== 'saved';
+    prevSaveStateRef.current = saveState;
+    const sent = sentStagedRef.current;
+    const editedSinceSend =
+      sent !== null &&
+      (stagedConteudo !== sent.conteudo ||
+        stagedConteudoPlain !== sent.conteudoPlain ||
+        stagedCaption !== sent.caption);
+    if (saveState === 'saved' && !editedSinceSend) {
       setStagedConteudo(draftConteudo);
       setStagedConteudoPlain(draftConteudoPlain);
       setStagedCaption(captionBaseline);
+      if (enteredSaved && comentario.trim() === '' && motivo === null) onSavedCleanRef.current?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveState]);
-
-  if (hasPendingSuggestion) {
-    return <SuggestionPendingNotice />;
-  }
 
   // `saveFailed` is only true once the last attempt settled as a failure (never during the
   // debounce window or in flight), so it is the gate; `!saveRequested` just keeps the UI
@@ -343,6 +409,14 @@ export function CorrectionPanel({
         <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3">
           {isText ? t('posts.editText', 'Editar texto') : t('posts.editCaption', 'Editar legenda')}
         </p>
+        {hasPendingSuggestion && (
+          <p className="text-[12px] text-amber-800 dark:text-amber-300">
+            {t(
+              'shared.editingSuggestionNote',
+              'Você está editando a sugestão que já enviou. As alterações anteriores continuam valendo.',
+            )}
+          </p>
+        )}
         {isText && stagedConteudo && (
           <RichTextContent
             key={contentVersion}
@@ -436,6 +510,14 @@ export function CorrectionPanel({
         <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3">
           {t('posts.requestCorrection', 'Solicitar correção')}
         </p>
+        {hasPendingSuggestion && (
+          <p className="text-[12px] hub-tx3">
+            {t(
+              'shared.correctionBlockedBySuggestion',
+              'Para pedir correção, aguarde a equipe revisar sua sugestão.',
+            )}
+          </p>
+        )}
         <CorrectionReasonChips
           value={motivo}
           onChange={setMotivo}

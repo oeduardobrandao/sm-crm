@@ -59,7 +59,7 @@ export const NOTIFICATION_CATALOG = {
   post_edit_suggestion: {
     category: 'aprovacoes_hub',
     label: 'Sugestão de edição',
-    when: 'o cliente sugere uma alteração de legenda no Hub',
+    when: 'o cliente sugere ou atualiza uma alteração de texto ou legenda no Hub',
     recipients: RESP_ADMINS,
     emailEligible: false,
   },
