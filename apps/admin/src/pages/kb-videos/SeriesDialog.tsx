@@ -63,7 +63,9 @@ export function SeriesDialog({ series, onClose }: SeriesDialogProps) {
     onSuccess: () => done(isEdit ? 'Série atualizada' : 'Série criada'),
     onError: (err: AdminApiError) =>
       toast.error(
-        err.status === 409 ? 'Já existe uma série com esse slug.' : 'Não foi possível salvar a série.',
+        err.status === 409
+          ? 'Já existe uma série com esse slug.'
+          : 'Não foi possível salvar a série.',
       ),
   });
 

@@ -41,7 +41,9 @@ describe('SeriesDialog', () => {
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Primeiros passos' } });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Já existe uma série com esse slug.'));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith('Já existe uma série com esse slug.'),
+    );
     expect(toastError).not.toHaveBeenCalledWith(expect.stringContaining('constraint'));
   });
 
@@ -53,7 +55,9 @@ describe('SeriesDialog', () => {
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Primeiros passos' } });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Não foi possível salvar a série.'));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith('Não foi possível salvar a série.'),
+    );
     expect(toastError).not.toHaveBeenCalledWith('internal server error');
   });
 
