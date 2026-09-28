@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { kbVideoKey } from '../../lib/kb-video-status';
 
 vi.mock('../../lib/api', () => ({
   getKbVideo: vi.fn(),
@@ -119,6 +120,39 @@ describe('KbVideoEditorPage', () => {
     renderAt('/admin/kb-videos/7/edit');
     await screen.findByDisplayValue('Primeiro acesso');
     await waitFor(() => expect(refreshKbVideo).toHaveBeenCalledWith(7));
+  });
+
+  it('keeps unsaved edits when a background refetch settles processing mid-edit', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/admin/kb-videos/7/edit']}>
+          <Routes>
+            <Route path="/admin/kb-videos/:id/edit" element={<KbVideoEditorPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const titleInput = await screen.findByDisplayValue('Primeiro acesso');
+    fireEvent.change(titleInput, { target: { value: 'Editado pelo admin, não salvo' } });
+
+    const readyVideo = {
+      ...video,
+      stream_status: 'ready',
+      hls_url: 'https://h/u1.m3u8',
+      duration_seconds: 65,
+      title: 'Título atualizado no servidor',
+    };
+    vi.mocked(getKbVideo).mockResolvedValue({ video: readyVideo } as never);
+    vi.mocked(refreshKbVideo).mockResolvedValue({ video: readyVideo } as never);
+
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: kbVideoKey(7) });
+    });
+
+    await waitFor(() => expect(screen.getByText('Pronto')).toBeInTheDocument());
+    expect(screen.getByDisplayValue('Editado pelo admin, não salvo')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Título atualizado no servidor')).toBeNull();
   });
 
   it('asks to save first on a new video (no file field yet)', async () => {

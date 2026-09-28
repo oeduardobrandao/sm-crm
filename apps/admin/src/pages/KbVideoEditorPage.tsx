@@ -50,6 +50,11 @@ export default function KbVideoEditorPage() {
   const [progress, setProgress] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Tracks which video id's fields have already been loaded into the form, so a later
+  // background refetch (the 10s pending-poll settling processing per decision A) updates the
+  // processing/status UI without clobbering an in-progress, unsaved edit. Only a genuinely
+  // different video (a fresh load, or navigating from "new" to the created id) re-hydrates.
+  const hydratedVideoIdRef = useRef<number | null>(null);
 
   // A pending video may have finished processing on Stream's side without the webhook ever
   // reaching us (missed delivery, cold start, etc). Rather than trust the DB row forever, every
@@ -90,7 +95,8 @@ export default function KbVideoEditorPage() {
   });
 
   useEffect(() => {
-    if (!video) return;
+    if (!video || hydratedVideoIdRef.current === video.id) return;
+    hydratedVideoIdRef.current = video.id;
     setTitle(video.title);
     setSlug(video.slug);
     setDescription(video.description ?? '');
