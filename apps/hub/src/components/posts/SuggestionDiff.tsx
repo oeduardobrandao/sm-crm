@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { HubPost, PendingEditSuggestion } from '../../types';
 import { deriveCaption, pickPostCardKind } from '../../lib/postView';
-import { canonicalDoc } from '../../lib/richDoc';
+import { canonicalDoc, docPlainText } from '../../lib/richDoc';
 import { TextDiff } from '../TextDiff';
 
 export interface SuggestionDiffBlock {
@@ -21,12 +21,17 @@ export function suggestionDiffBlocks(
   suggestion: PendingEditSuggestion,
 ): SuggestionDiffBlock[] {
   const blocks: SuggestionDiffBlock[] = [];
-  const beforeText = post.conteudo_plain ?? '';
-  if (
-    suggestion.suggested_conteudo_plain != null &&
-    suggestion.suggested_conteudo_plain !== beforeText
-  ) {
-    blocks.push({ field: 'text', before: beforeText, after: suggestion.suggested_conteudo_plain });
+  if (suggestion.suggested_conteudo_plain != null) {
+    // Both sides from the documents when both load, so each is the text the Hub editor
+    // itself produces (see docPlainText); otherwise the stored plain texts, as before.
+    const beforeDoc = docPlainText(post.conteudo);
+    const afterDoc = docPlainText(suggestion.suggested_conteudo);
+    const fromDocs = beforeDoc !== null && afterDoc !== null;
+    const beforeText = fromDocs ? beforeDoc : (post.conteudo_plain ?? '');
+    const afterText = fromDocs ? afterDoc : suggestion.suggested_conteudo_plain;
+    if (afterText !== beforeText) {
+      blocks.push({ field: 'text', before: beforeText, after: afterText });
+    }
   }
   if (suggestion.suggested_ig_caption != null) {
     // Text posts edit the stored caption; media posts edit the caption the client sees, which

@@ -93,6 +93,63 @@ describe('suggestionDiffBlocks', () => {
     ]);
   });
 
+  // Agent-created posts store conteudo_plain with one \n per line, while the Hub editor's
+  // getText() joins paragraphs with \n\n: comparing the stored strings flags every line break.
+  const paras = (...lines: string[]) => ({
+    type: 'doc',
+    content: lines.map((t) =>
+      t ? { type: 'paragraph', content: [{ type: 'text', text: t }] } : { type: 'paragraph' },
+    ),
+  });
+
+  it('diffs the documents, not the stored plain texts, when both documents exist', () => {
+    const p = post({
+      media: [],
+      conteudo: paras('Linha [KEY].', 'Fala: completa mesmo.'),
+      conteudo_plain: 'Linha [KEY].\nFala: completa mesmo.',
+    });
+    const blocks = suggestionDiffBlocks(
+      p,
+      sugg({
+        suggested_conteudo: paras('Linha [KEY].', 'Fala: completa mesmo!'),
+        suggested_conteudo_plain: 'Linha [KEY].\n\nFala: completa mesmo!',
+      }),
+    );
+    expect(blocks).toEqual([
+      {
+        field: 'text',
+        before: 'Linha [KEY].\n\nFala: completa mesmo.',
+        after: 'Linha [KEY].\n\nFala: completa mesmo!',
+      },
+    ]);
+  });
+
+  it('shows no text change when only the stored line breaks differ', () => {
+    const doc = paras('Linha um.', '', 'Linha dois.');
+    const p = post({ media: [], conteudo: doc, conteudo_plain: 'Linha um.\n\nLinha dois.' });
+    const blocks = suggestionDiffBlocks(
+      p,
+      sugg({
+        suggested_conteudo: paras('Linha um.', '', 'Linha dois.'),
+        suggested_conteudo_plain: 'Linha um.\n\n\n\nLinha dois.',
+      }),
+    );
+    expect(blocks).toEqual([]);
+  });
+
+  it('falls back to the stored plain texts when a document does not load', () => {
+    const p = post({
+      media: [],
+      conteudo: { type: 'doc', content: [{ type: 'naoExiste' }] },
+      conteudo_plain: 'Corpo original',
+    });
+    const blocks = suggestionDiffBlocks(
+      p,
+      sugg({ suggested_conteudo: paras('Corpo novo'), suggested_conteudo_plain: 'Corpo novo' }),
+    );
+    expect(blocks).toEqual([{ field: 'text', before: 'Corpo original', after: 'Corpo novo' }]);
+  });
+
   it('does not invent a caption change for a text post without a caption', () => {
     const p = post({ media: [], ig_caption: null });
     expect(suggestionDiffBlocks(p, sugg({ suggested_ig_caption: '' }))).toEqual([]);
@@ -201,7 +258,18 @@ describe('SuggestionDiff', () => {
     render(
       <SuggestionDiff
         post={post({ conteudo: DOC, media: [] })}
-        suggestion={sugg({ suggested_conteudo: BOLD_DOC, suggested_conteudo_plain: 'Corpo novo' })}
+        suggestion={sugg({
+          suggested_conteudo: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: 'Corpo novo', marks: [{ type: 'bold' }] }],
+              },
+            ],
+          },
+          suggested_conteudo_plain: 'Corpo novo',
+        })}
       />,
     );
     expect(screen.getByText('Texto do post')).toBeInTheDocument();

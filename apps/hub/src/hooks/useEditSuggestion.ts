@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useMemo } from 'react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { submitEditSuggestion } from '../api';
 import type { HubPost, PendingEditSuggestion } from '../types';
+import { docPlainText } from '../lib/richDoc';
 
 export type SaveState = 'idle' | 'saving' | 'saved';
 
@@ -164,9 +165,13 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
     () => suggestion?.suggested_conteudo ?? post.conteudo,
     [suggestion, post.conteudo],
   );
+  // Without a suggestion, the post's own text as the editor would write it: stored
+  // conteudo_plain can differ in line breaks alone (see docPlainText), which would make an
+  // untouched or reverted edit read as a change.
   const draftConteudoPlain = useMemo(
-    () => suggestion?.suggested_conteudo_plain ?? post.conteudo_plain,
-    [suggestion, post.conteudo_plain],
+    () =>
+      suggestion?.suggested_conteudo_plain ?? docPlainText(post.conteudo) ?? post.conteudo_plain,
+    [suggestion, post.conteudo, post.conteudo_plain],
   );
   const draftIgCaption = useMemo(
     () => suggestion?.suggested_ig_caption ?? post.ig_caption ?? null,

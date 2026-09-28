@@ -160,6 +160,34 @@ describe('useEditSuggestion', () => {
     vi.useRealTimers();
   });
 
+  it("bases the draft text on the document, as the editor's getText() writes it", () => {
+    // Agent-created posts store one \n per line; the editor joins paragraphs with \n\n.
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Linha um.' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Linha dois.' }] },
+      ],
+    };
+    const post = makePost({
+      conteudo: doc,
+      conteudo_plain: 'Linha um.\nLinha dois.',
+      pending_suggestion: null,
+    });
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    expect(result.current.draftConteudoPlain).toBe('Linha um.\n\nLinha dois.');
+  });
+
+  it('keeps the stored text when the document has none', () => {
+    const post = makePost({ pending_suggestion: null });
+    const { result } = renderHook(() =>
+      useEditSuggestion({ token: 'tok', post, onSaved: vi.fn() }),
+    );
+    expect(result.current.draftConteudoPlain).toBe('original');
+  });
+
   it('after a save, exposes the returned suggestion until the post prop is refetched', async () => {
     mockedSubmit.mockResolvedValue({ ok: true, pending_suggestion: SAVED });
     const initial = makePost({ pending_suggestion: null });
