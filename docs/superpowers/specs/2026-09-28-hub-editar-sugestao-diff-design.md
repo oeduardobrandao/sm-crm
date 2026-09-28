@@ -63,11 +63,14 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
   (today discarded at `:190-196`) as its own **effective pending suggestion**, and derives
   `draft*`, `hasPendingSuggestion` and the value it exposes to the dialog from it, until the prop
   catches up (prop `updated_at` >= local `updated_at`) or the post id changes. A returned
-  `null` (`action: 'deleted'`) is held the same way. So the diff, the notice and a reopened panel
+  `null` (`action: 'deleted'`) is held the same way: a refetch whose row is not newer than the
+  suggestion on screen before that save (only the client creates suggestions) is the row just
+  reverted, fetched before the revert, and stays hidden. So the diff, the notice and a reopened panel
   all seed from the just-saved snapshot, never from the stale prop.
 - **Close after save.** After a successful save the panel closes through `closePanel()` (the
-  guarded path), only when nothing else is unsent (no comentário / motivo typed). Otherwise it
-  stays open. Applies to the first save as well.
+  guarded path), only when nothing else is unsent (no comentário / motivo typed, and no text or
+  caption typed after clicking Salvar edição, which is kept rather than reset to the saved
+  baseline). Otherwise it stays open. Applies to the first save as well.
 - **Re-sync.** `hasPendingSuggestion` re-syncs from the prop whenever nothing is queued or in
   flight for the post, so if the team accepts/rejects (or a team edit auto-rejects) while the panel
   is open, the note and diff go away instead of lingering over reverted text.
@@ -84,9 +87,13 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
 - `Alterações` renders a new `SuggestionDiff`: word diff via `computeWordDiff`, rose strikethrough
   for removed, emerald for added, `whitespace-pre-wrap`. One block per field that actually differs:
   - **Texto do post**: `post.conteudo_plain` → `suggested_conteudo_plain`, shown only when
-    `suggested_conteudo_plain != null` and the plain text differs. Formatting-only differences are
-    not shown (`changed_fields` is not a reliable signal: a null `suggested_conteudo` is recorded
-    as a `conteudo` change that accept's `COALESCE` never applies, cf. `WorkflowDrawer.tsx:711-724`).
+    `suggested_conteudo_plain != null` and the plain text differs. Formatting-only differences get
+    no word diff; instead, when there is no text block but `suggested_conteudo != null` and the
+    rich document differs from `post.conteudo` (keys sorted, inline images' signed `src` ignored),
+    a line "Alterações somente de formatação ou imagens." is shown (in place of "Sem diferenças…",
+    or under a caption block). `changed_fields` is not used for this: a null `suggested_conteudo`
+    is recorded as a `conteudo` change that accept's `COALESCE` never applies, cf.
+    `WorkflowDrawer.tsx:711-724`.
   - **Legenda**: `deriveCaption(post, post.ig_caption)` → `suggested_ig_caption`, shown only when
     `suggested_ig_caption != null` and it differs. Using `deriveCaption` for "before" matches what
     the client actually edited on media posts without `ig_caption` (LEGENDA fallback).
@@ -98,10 +105,14 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
 - Plain-text diff: formatting is not compared (`Sua sugestão` still renders rich text).
 - `postText` tab in `Alterações` shows the suggested version.
 
-### 3. Backend: atomic save, update notification, approval guard (no signature changes)
+### 3. Backend: atomic save, update notification, approval guard, accept version check
+
+No signature changes, with one user-approved exception: `accept_edit_suggestion` gains
+`p_expected_updated_at timestamptz DEFAULT NULL` (3d), since a pending suggestion is now mutable.
 
 - New migration `20260928000001_edit_suggestion_update_flow.sql` (above main's tail
-  `20260925130002`; re-check at PR time), all `CREATE OR REPLACE` on existing signatures:
+  `20260925130002`; re-check at PR time), `CREATE OR REPLACE` on existing signatures except
+  `accept_edit_suggestion` (`DROP` + `CREATE`, see 3d):
   - **3a. `upsert_edit_suggestion`**: `SELECT … FROM workflow_posts WHERE id = p_post_id FOR UPDATE`
     and `RAISE EXCEPTION` (SQLSTATE `P0001`, message `post_not_pending`) unless
     `status = 'enviado_cliente'` and `conta_id = p_conta_id`. Closes the race where the team
@@ -142,11 +153,29 @@ lines to the caption; the row was restored to `pending` by hand. The product ask
   update`). Every writer then takes post → suggestion, matching the new upsert and the auto-reject
   trigger path (team `UPDATE workflow_posts` → trigger updates the suggestion), so accept and a
   concurrent client save cannot deadlock.
+- **3d. Version check on accept** (user-approved signature change). The client can now update a
+  pending suggestion, so a team member could accept v2 while looking at v1. The function becomes
+  `accept_edit_suggestion(p_suggestion_id bigint, p_expected_updated_at timestamptz DEFAULT
+  NULL)`: after locking the suggestion and the pending check, a non-null
+  `p_expected_updated_at` that `IS DISTINCT FROM` the row's `updated_at` raises
+  `suggestion_changed` (SQLSTATE `P0001`) and changes nothing. `NULL` skips the check, so
+  one-argument calls (the currently deployed CRM, `95_post_content_versions_coalescing.sql`)
+  keep working. It is `DROP FUNCTION … (bigint)` + `CREATE FUNCTION` (a `CREATE OR REPLACE`
+  would add an overload and make one-argument calls ambiguous), so the grants are restated:
+  `REVOKE ALL … FROM public, anon; GRANT EXECUTE … TO authenticated, service_role`. Also
+  `REVOKE ALL ON FUNCTION reject_edit_suggestion(bigint) FROM anon` (hardening, no body change).
+  The CRM (`WorkflowDrawer`, `StandalonePostDrawer`) passes the displayed suggestion's
+  `updated_at` (PostgREST's microsecond ISO string compares equal as `timestamptz`); on
+  `suggestion_changed` it toasts "A sugestão foi atualizada pelo cliente. Revise a nova versão."
+  and refetches the suggestions.
 - Rollback: re-apply the previous bodies (`20260521000001` for `upsert_edit_suggestion`,
-  `20260830000003` for the notification RPC, `20260925000010` for `record_client_approval`,
-  `20260923000001` for `accept_edit_suggestion`) with `CREATE OR REPLACE` (same signatures, grants
-  unaffected) and redeploy the previous `hub-edit-suggestion` / `hub-approve`. Each piece can be
-  rolled back alone.
+  `20260830000003` for the notification RPC, `20260925000010` for `record_client_approval`) with
+  `CREATE OR REPLACE` (same signatures, grants unaffected) and redeploy the previous
+  `hub-edit-suggestion` / `hub-approve`. `accept_edit_suggestion` needs
+  `DROP FUNCTION accept_edit_suggestion(bigint, timestamptz)` first, then the `20260923000001`
+  body and its grants (authenticated + service_role); otherwise both overloads coexist and every
+  one-argument call is ambiguous. Roll the CRM back first: the new CRM sends the second argument,
+  which the old function does not take. Each other piece can be rolled back alone.
 
 ### 4. i18n
 
@@ -174,14 +203,21 @@ New Hub strings via `t('…', 'fallback')` in `hubPosts`, keys in `packages/i18n
 - psql (entitlements suite): `metadata.updated` false on first insert, true after an update;
   notification RPC returns 0 with no pending row; `upsert_edit_suggestion` raises on a post not in
   `enviado_cliente`; `record_client_approval` raises `pending_suggestion` for a client approval
-  with a pending row and still succeeds for `p_is_workspace_user = true`.
-- CRM: notification-config title for `updated`.
+  with a pending row and still succeeds for `p_is_workspace_user = true`; `accept_edit_suggestion`
+  raises `suggestion_changed` for a stale `p_expected_updated_at` (nothing changes) and accepts
+  with the current one read back as JSON text; accept/reject grants.
+- CRM: notification-config title for `updated`; `acceptEditSuggestion` sends
+  `p_expected_updated_at`; the drawer's `suggestion_changed` toast + refetch.
 
 ## Deploy order
 
-1. `npx supabase db push` (migration; compatible with the current function).
-2. Deploy `hub-edit-suggestion` and `hub-approve` (`--no-verify-jwt`, `--use-api`).
-3. Merge (frontend deploys on merge).
+1. Deploy `hub-edit-suggestion` and `hub-approve` (`--no-verify-jwt`, `--use-api`). They work
+   against the old RPC bodies, while the old functions would map the new RPC errors
+   (`post_not_pending`, `pending_suggestion`) to 500.
+2. `npx supabase db push` (the migration).
+3. Merge (frontend deploys on merge). The CRM needs the new accept signature, which the
+   migration provides; the currently deployed CRM keeps working after step 2 (one-argument call,
+   `DEFAULT NULL`).
 
 ## Out of scope
 

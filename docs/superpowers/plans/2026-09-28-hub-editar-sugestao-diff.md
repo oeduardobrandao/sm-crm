@@ -1710,8 +1710,8 @@ The migration and functions are NOT deployed, so saving must not hit prod. Follo
 
 ## Deploy (user-approved, after merge readiness; not part of execution)
 
-1. `npx supabase db push --linked` for the migration (prod ref `skjzpekeqefvlojenfsw`; check `supabase/.temp/project-ref`). It is compatible with the currently deployed functions.
-2. `npx supabase functions deploy hub-edit-suggestion --no-verify-jwt --use-api` and the same for `hub-approve`, from an up-to-date checkout (diff against `origin/main` first).
-3. Merge (the frontend deploys on merge).
+1. `npx supabase functions deploy hub-edit-suggestion --no-verify-jwt --use-api` and the same for `hub-approve`, from an up-to-date checkout (diff against `origin/main` first). They work against the old RPC bodies; the old functions would map the new RPC errors (`post_not_pending`, `pending_suggestion`) to 500, so they go first.
+2. `npx supabase db push --linked` for the migration (prod ref `skjzpekeqefvlojenfsw`; check `supabase/.temp/project-ref`).
+3. Merge (the frontend deploys on merge). The CRM sends `p_expected_updated_at`, which only the migrated `accept_edit_suggestion` accepts; the currently deployed CRM keeps working after step 2 (one-argument call, `DEFAULT NULL`).
 
-Rollback: re-apply the previous bodies (`20260521000001` upsert, `20260830000003` notification, `20260925000010` record_client_approval, `20260923000001` accept) with `CREATE OR REPLACE`, then redeploy the previous two functions. Each piece can be rolled back alone.
+Rollback: re-apply the previous bodies (`20260521000001` upsert, `20260830000003` notification, `20260925000010` record_client_approval) with `CREATE OR REPLACE`, then redeploy the previous two functions. For accept, `DROP FUNCTION accept_edit_suggestion(bigint, timestamptz)` first, then the `20260923000001` body and its grants (otherwise both overloads coexist and one-argument calls are ambiguous), after rolling back the CRM that sends the second argument.
