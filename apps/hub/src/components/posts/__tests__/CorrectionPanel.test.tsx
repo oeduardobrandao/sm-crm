@@ -20,6 +20,7 @@ function makeEdit(over: Partial<Edit> = {}): Edit {
     draftConteudo: null,
     draftConteudoPlain: 'Corpo do post',
     draftIgCaption: 'Legenda original',
+    suggestion: null,
     ...over,
   };
 }
@@ -363,7 +364,7 @@ describe('CorrectionPanel', () => {
     onDirtyChange.mockClear();
     rerender(
       <CorrectionPanel
-        post={post()}
+        post={post({ ig_caption: 'Legenda atualizada' })}
         edit={makeEdit({ draftIgCaption: 'Legenda atualizada' })}
         submitting={false}
         onSubmitCorrection={onSubmitCorrection}
@@ -486,18 +487,99 @@ describe('CorrectionPanel', () => {
     expect(screen.queryByText('Corpo original do roteiro')).not.toBeInTheDocument();
   });
 
-  it('collapses to the pending message when a suggestion is pending', () => {
+  const PENDING = {
+    id: 9,
+    suggested_conteudo: null,
+    suggested_conteudo_plain: 'Corpo do post',
+    suggested_ig_caption: 'Legenda sugerida',
+    changed_fields: ['ig_caption'],
+    updated_at: '2026-09-28T10:00:00.000Z',
+  };
+
+  it('keeps the editor open for a pending suggestion, seeded with it', () => {
     render(
       <CorrectionPanel
-        post={post()}
-        edit={makeEdit({ hasPendingSuggestion: true, approvalBlocked: true })}
+        post={post({ pending_suggestion: PENDING })}
+        edit={makeEdit({
+          hasPendingSuggestion: true,
+          approvalBlocked: true,
+          suggestion: PENDING,
+          draftIgCaption: 'Legenda sugerida',
+        })}
         submitting={false}
         onSubmitCorrection={onSubmitCorrection}
         onDirtyChange={onDirtyChange}
       />,
     );
-    expect(screen.getByText('Sugestão enviada para revisão da equipe')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Enviar correção/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Legenda do post' })).toHaveValue(
+      'Legenda sugerida',
+    );
+    expect(screen.getByText(/Você está editando a sugestão que já enviou/)).toBeInTheDocument();
+    expect(
+      screen.getByText('Para pedir correção, aguarde a equipe revisar sua sugestão.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Enviar correção/ })).toBeDisabled();
+  });
+
+  it("does not refill a suggestion's cleared caption with body text", () => {
+    const cleared = { ...PENDING, suggested_ig_caption: '' };
+    render(
+      <CorrectionPanel
+        post={post({
+          ig_caption: null,
+          conteudo_plain: 'Roteiro LEGENDA: derivada',
+          pending_suggestion: cleared,
+        })}
+        edit={makeEdit({
+          hasPendingSuggestion: true,
+          approvalBlocked: true,
+          suggestion: cleared,
+          draftIgCaption: '',
+        })}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    expect(screen.getByRole('textbox', { name: 'Legenda do post' })).toHaveValue('');
+  });
+
+  it('reports a clean save so the host can close, but not with a comentário typed', () => {
+    const onSavedClean = vi.fn();
+    const props = {
+      post: post(),
+      submitting: false,
+      onSubmitCorrection,
+      onDirtyChange,
+      onSavedClean,
+    };
+    const { rerender } = render(<CorrectionPanel {...props} edit={makeEdit()} />);
+    rerender(<CorrectionPanel {...props} edit={makeEdit({ saveState: 'saved' })} />);
+    expect(onSavedClean).toHaveBeenCalledTimes(1);
+
+    onSavedClean.mockReset();
+    rerender(<CorrectionPanel {...props} edit={makeEdit({ saveState: 'idle' })} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Descreva o que precisa mudar' }), {
+      target: { value: 'trocar a foto' },
+    });
+    rerender(<CorrectionPanel {...props} edit={makeEdit({ saveState: 'saved' })} />);
+    expect(onSavedClean).not.toHaveBeenCalled();
+  });
+
+  it('does not report a clean save when it mounts during the 3s "saved" window', () => {
+    // Reopening Editar sugestão right after a save mounts the panel with saveState 'saved'.
+    const onSavedClean = vi.fn();
+    render(
+      <CorrectionPanel
+        post={post()}
+        edit={makeEdit({ saveState: 'saved' })}
+        submitting={false}
+        onSubmitCorrection={onSubmitCorrection}
+        onDirtyChange={onDirtyChange}
+        onSavedClean={onSavedClean}
+      />,
+    );
+    expect(onSavedClean).not.toHaveBeenCalled();
   });
 
   it('shows the rejected warning when the previous suggestion was rejected', () => {
