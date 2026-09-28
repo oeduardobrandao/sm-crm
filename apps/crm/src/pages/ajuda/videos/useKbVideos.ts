@@ -34,13 +34,16 @@ export function useVideoProgress(): {
   // row when it resolves.
   const save = useCallback(
     (videoId: number, position: number, completed: boolean) => {
+      const wasFetching = qc.isFetching({ queryKey: KB_VIDEO_PROGRESS_KEY }) > 0;
       void qc.cancelQueries({ queryKey: KB_VIDEO_PROGRESS_KEY });
       qc.setQueryData<KbVideoProgress[]>(KB_VIDEO_PROGRESS_KEY, (old = []) =>
         mergeProgress(old, videoId, position, completed, new Date().toISOString()),
       );
       saveVideoProgress(videoId, position, completed)
         .then(() => {
-          void qc.invalidateQueries({ queryKey: KB_VIDEO_PROGRESS_KEY });
+          if (wasFetching) {
+            void qc.invalidateQueries({ queryKey: KB_VIDEO_PROGRESS_KEY });
+          }
         })
         .catch((err) => {
           console.error('[kb-video-progress] save failed', err);

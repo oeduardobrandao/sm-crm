@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import * as kbVideosStore from '@/store/kbVideos';
@@ -13,12 +13,17 @@ describe('useVideoProgress', () => {
       defaultOptions: { queries: { retry: false } },
     });
 
-    let resolveGetProgress: (value: kbVideosStore.KbVideoProgress[]) => void;
-    const getProgressPromise = new Promise<kbVideosStore.KbVideoProgress[]>((resolve) => {
-      resolveGetProgress = resolve;
+    let resolveStaleFetch: (value: kbVideosStore.KbVideoProgress[]) => void;
+    const staleFetch = new Promise<kbVideosStore.KbVideoProgress[]>((resolve) => {
+      resolveStaleFetch = resolve;
     });
 
-    vi.mocked(kbVideosStore.getMyVideoProgress).mockReturnValue(getProgressPromise);
+    // Initial fetch returns stale data (deferred); follow-up fetch after invalidation returns updated data
+    vi.mocked(kbVideosStore.getMyVideoProgress)
+      .mockReturnValueOnce(staleFetch)
+      .mockResolvedValueOnce([
+        { video_id: 7, position_seconds: 42, completed_at: '2026-09-28T12:00:00.000Z' },
+      ]);
     vi.mocked(kbVideosStore.saveVideoProgress).mockResolvedValue(undefined);
 
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -33,7 +38,7 @@ describe('useVideoProgress', () => {
     // Call save while fetch is pending
     result.current.save(7, 42, true);
 
-    // Verify optimistic update is in cache and triggers a re-render
+    // Verify optimistic update is in cache
     await waitFor(() => {
       expect(result.current.progress.get(7)).toEqual({
         video_id: 7,
@@ -42,17 +47,56 @@ describe('useVideoProgress', () => {
       });
     });
 
+    // Resolve the stale fetch with old state (empty array)
+    resolveStaleFetch!([]);
+
+    // Right after stale fetch resolves, optimistic row should still be in cache
+    // (This is what cancelQueries + setQueryData before the initial fetch resolution prevents)
+    await act(async () => {});
+    expect(result.current.progress.get(7)).toBeDefined();
+    expect(result.current.progress.get(7)!.video_id).toBe(7);
+
+    // After invalidateQueries runs, the follow-up fetch resolves with the saved row
+    await waitFor(() => {
+      // Cache should now have the row from the server
+      expect(result.current.progress.get(7)).toEqual({
+        video_id: 7,
+        position_seconds: 42,
+        completed_at: '2026-09-28T12:00:00.000Z',
+      });
+    });
+
     // Verify save was called
     expect(vi.mocked(kbVideosStore.saveVideoProgress)).toHaveBeenCalledWith(7, 42, true);
+  });
 
-    // Resolve the fetch with old state (empty array)
-    resolveGetProgress!([]);
-
-    // After the fetch resolves and invalidateQueries runs, the cache will be empty
-    // But the key point is that saveVideoProgress was called (which it was above)
-    await waitFor(() => {
-      // Cache should be empty after invalidation and the server re-fetch returns []
-      expect(result.current.progress.size).toBe(0);
+  it('does not refetch on successful save when nothing is in flight', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
     });
+
+    vi.mocked(kbVideosStore.getMyVideoProgress).mockResolvedValue([]);
+    vi.mocked(kbVideosStore.saveVideoProgress).mockResolvedValue(undefined);
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useVideoProgress(), { wrapper });
+
+    // Initial fetch completes
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Call save with no fetch in flight
+    result.current.save(7, 42, false);
+
+    // Wait for save RPC to complete
+    await waitFor(() => {
+      expect(vi.mocked(kbVideosStore.saveVideoProgress)).toHaveBeenCalledWith(7, 42, false);
+    });
+
+    // getMyVideoProgress should only have been called once (initial fetch)
+    // not twice (initial + invalidation refetch)
+    expect(vi.mocked(kbVideosStore.getMyVideoProgress)).toHaveBeenCalledTimes(1);
   });
 });
