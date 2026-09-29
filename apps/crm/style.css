@@ -1253,6 +1253,13 @@ body {
   line-height: 1.1;
 }
 
+/* StatCard compactValue (names, currency). Was an inline style; the selector
+   is (0,3,0) so the phone overrides of .kpi-value still lose to it, as they did
+   to the inline 1.25rem. */
+.kpi-card .kpi-value.kpi-value--compact {
+  font-size: 1.25rem;
+}
+
 .kpi-sub {
   font-weight: 500;
   font-size: 0.8rem;
@@ -1341,23 +1348,31 @@ body {
 /*
  * A fused grid keeps its --kpi-cols count at every desktop width, so a 5-up
  * card is ~145px wide on a 1101px viewport. Label + icon bubble need ~155px of
- * content box and a six-digit value at 2rem ~130px; without this the bubble and
- * the value spill into the neighbouring card. Keyed off the card's own width
- * (a container query, the only one in this file) so a 4-up grid at the same
- * viewport keeps its icons. Phones size their cards in the 900px block instead.
+ * content box, so below 150px the bubble goes. The value scales with the card:
+ * the widest seven-digit number ("9.999.999") is 5.24em, so 19cqi keeps it
+ * inside the content box at any width and 2rem still applies from ~168px up.
+ * Both are keyed off the card's own width (container queries), so a 4-up grid
+ * at the same viewport keeps its icons. Compact values get the same 19cqi: a
+ * currency amount wraps after "R$" (StatCard swaps its non-breaking space), and
+ * "49.500,00" is also 5.24em. Phones size their cards in the 900px block.
  */
 .kpi-grid > .kpi-card {
   container-type: inline-size;
 }
 
 @media (min-width: 901px) {
+  .kpi-grid > .kpi-card .kpi-value {
+    font-size: min(2rem, 19cqi);
+  }
+
+  /* (0,4,0): beats both the compact base rule and the one above. */
+  .kpi-grid > .kpi-card .kpi-value.kpi-value--compact {
+    font-size: min(1.25rem, 19cqi);
+  }
+
   @container (max-width: 150px) {
     .kpi-grid > .kpi-card .kpi-icon {
       display: none;
-    }
-
-    .kpi-grid > .kpi-card .kpi-value {
-      font-size: min(2rem, 24cqi);
     }
   }
 }
@@ -12135,13 +12150,14 @@ a.hub-fill__row-inner:hover {
 }
 
 /* The overview often sits in a half-width column, where 4-up metric cards drop
-   to ~100px and the narrow-card rule shrinks their values below 1rem. Four
-   cards pair off evenly, so 2-up leaves no empty track. */
+   to ~100px and the kpi-grid value scaling (19cqi) takes them below 1.25rem.
+   Under 680px the four cards go 2-up instead, which keeps values at 24px or
+   more; four cards pair off evenly, so 2-up leaves no empty track. */
 .instagram-overview {
   container-type: inline-size;
 }
 
-@container (max-width: 580px) {
+@container (max-width: 680px) {
   .instagram-overview__metric-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
