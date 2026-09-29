@@ -60,8 +60,15 @@ function parseInto(data: any[], values: InsightValue, returned: Set<string>): vo
 
 /**
  * Bio link taps from a `profile_activity` + `breakdown=action_type` response.
- * A valid response without a bio_link_clicked result means 0 taps; a missing
- * or malformed `total_value` means absent (undefined).
+ * When the response is valid but has no such result, the value is 0 (the account
+ * had no taps). When the request errors or the shape is unexpected, it is absent.
+ * Specifically:
+ * - Missing/non-object total_value → undefined (unexpected shape)
+ * - No results array but total_value.value === 0 → 0 (valid: no profile activity)
+ * - No results array and total_value.value > 0 → undefined (unexpected shape: activity
+ *   exists but no breakdown)
+ * - results array exists, no bio_link_clicked → 0 (valid: activity but no bio taps)
+ * - bio_link_clicked exists with non-number value → undefined (unexpected shape)
  */
 export function parseBioLinkClicks(data: unknown): number | undefined {
   if (!Array.isArray(data)) return undefined;
@@ -69,11 +76,11 @@ export function parseBioLinkClicks(data: unknown): number | undefined {
   const total = insight?.total_value;
   if (!total || typeof total !== "object") return undefined;
   const results = total.breakdowns?.[0]?.results;
-  if (!Array.isArray(results)) return 0;
+  if (!Array.isArray(results)) return total.value === 0 ? 0 : undefined;
   const hit = results.find(
     (r: any) => String(r?.dimension_values?.[0] ?? "").toLowerCase() === "bio_link_clicked",
   );
-  return typeof hit?.value === "number" ? hit.value : 0;
+  return typeof hit?.value === "number" ? hit.value : (hit ? undefined : 0);
 }
 
 async function getJson(fetchFn: typeof fetch, url: string): Promise<any> {

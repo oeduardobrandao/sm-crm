@@ -111,7 +111,7 @@ Deno.test("fetchPostInsights: unsupported actions -> retry with reposts only", a
 });
 
 Deno.test("fetchPostInsights: transient/auth action errors are not retried", async () => {
-  for (const code of [4, 17, 32, 613, 190]) {
+  for (const code of [1, 2, 4, 9, 17, 32, 613, 190]) {
     let actionCalls = 0;
     const { fetchFn } = router({
       actions: () => {
@@ -160,6 +160,10 @@ Deno.test("parseBioLinkClicks: case-insensitive match, 0 when absent, undefined 
   assertEquals(parseBioLinkClicks(none), 0);
   const noBreakdowns = [{ name: "profile_activity", total_value: { value: 0 } }];
   assertEquals(parseBioLinkClicks(noBreakdowns), 0);
+  const breakdownMissingButActivityExists = [{ name: "profile_activity", total_value: { value: 5 } }];
+  assertEquals(parseBioLinkClicks(breakdownMissingButActivityExists), undefined);
+  const nonNumberValue = [{ name: "profile_activity", total_value: { value: 1, breakdowns: [{ results: [{ dimension_values: ["BIO_LINK_CLICKED"], value: "1" }] }] } }];
+  assertEquals(parseBioLinkClicks(nonNumberValue), undefined);
   assertEquals(parseBioLinkClicks(undefined), undefined);
   assertEquals(parseBioLinkClicks([]), undefined);
   assertEquals(parseBioLinkClicks([{ name: "profile_activity" }]), undefined);
