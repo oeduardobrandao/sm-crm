@@ -32,6 +32,17 @@ begin
   -- rejection below comes from RLS: an RLS WITH CHECK failure raises insufficient_privilege
   -- (42501), and an UPDATE with no matching policy silently affects 0 rows. Function EXECUTE
   -- grants are untouched by the helper.
+  -- O REVOKE da migration, checado direto no ACL: a tentativa de INSERT abaixo também cai
+  -- na RLS (sem policy de INSERT, mesmo 42501), então só ela não provaria o REVOKE.
+  assert not has_table_privilege('authenticated', 'public.kb_video_progress', 'INSERT'),
+    'authenticated tem INSERT em kb_video_progress';
+  assert not has_table_privilege('authenticated', 'public.kb_video_progress', 'UPDATE'),
+    'authenticated tem UPDATE em kb_video_progress';
+  assert not has_table_privilege('authenticated', 'public.kb_video_progress', 'DELETE'),
+    'authenticated tem DELETE em kb_video_progress';
+  assert not has_table_privilege('anon', 'public.kb_video_progress', 'INSERT'),
+    'anon tem INSERT em kb_video_progress';
+
   insert into auth.users (id) values (v_ua), (v_ub);
 
   insert into kb_video_series (title, slug, status) values ('Primeiros passos', 'primeiros-passos', 'published')
