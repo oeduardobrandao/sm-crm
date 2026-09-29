@@ -1,8 +1,10 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
   copyToStream,
+  createStreamDirectUpload,
   createStreamRetryBudget,
   deleteStreamVideo,
+  getStreamVideo,
   getStreamVideoStatus,
   isStreamCleanupEnabled,
   isStreamEnabled,
@@ -610,5 +612,157 @@ Deno.test("stream-shared: a shared budget is spent across separate calls, so a s
     1,
     "the second call must not sleep at all — the shared budget was already exhausted by the first",
   );
+  clearStreamEnv();
+});
+
+// ---------------------------------------------------------------------------
+// createStreamDirectUpload
+// ---------------------------------------------------------------------------
+
+Deno.test("stream-shared: createStreamDirectUpload posts public-playback options and returns uid + uploadURL", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  const cap: { req?: Request; body?: unknown } = {};
+  const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    cap.req = new Request(input as string, init);
+    cap.body = JSON.parse(String(init?.body));
+    return new Response(
+      JSON.stringify({ success: true, result: { uid: "up-1", uploadURL: "https://upload.videodelivery.net/abc" } }),
+      { status: 200 },
+    );
+  }) as typeof fetch;
+
+  const out = await createStreamDirectUpload(
+    { maxDurationSeconds: 900, expiry: "2026-09-28T14:00:00.000Z", meta: { kind: "kb-video", video_id: "7" } },
+    fetchFn,
+  );
+
+  assertEquals(out, { uid: "up-1", uploadURL: "https://upload.videodelivery.net/abc" });
+  assertEquals(cap.req!.url, "https://api.cloudflare.com/client/v4/accounts/acct1/stream/direct_upload");
+  assertEquals(cap.req!.method, "POST");
+  assertEquals(cap.req!.headers.get("Authorization"), "Bearer tok1");
+  assertEquals(cap.body, {
+    maxDurationSeconds: 900,
+    expiry: "2026-09-28T14:00:00.000Z",
+    requireSignedURLs: false,
+    meta: { kind: "kb-video", video_id: "7" },
+  });
+  assert(cap.req!.signal instanceof AbortSignal, "expected the direct-upload fetch to carry an AbortSignal");
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: createStreamDirectUpload throws with the status when Stream refuses", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  const fetchFn = (() => Promise.resolve(new Response("nope", { status: 500 }))) as typeof fetch;
+  let message = "";
+  try {
+    await createStreamDirectUpload({ maxDurationSeconds: 900, expiry: "x", meta: {} }, fetchFn);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert(message.includes("500"), `expected status in message, got "${message}"`);
+  clearStreamEnv();
+});
+
+// ---------------------------------------------------------------------------
+// getStreamVideo
+// ---------------------------------------------------------------------------
+
+Deno.test("stream-shared: getStreamVideo maps a ready video's playback fields", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  let url = "";
+  const fetchFn = ((input: RequestInfo | URL) => {
+    url = String(input);
+    return Promise.resolve(new Response(JSON.stringify({
+      result: {
+        status: { state: "ready" },
+        duration: 65.4,
+        playback: { hls: "https://customer-c.cloudflarestream.com/u1/manifest/video.m3u8" },
+        thumbnail: "https://customer-c.cloudflarestream.com/u1/thumbnails/thumbnail.jpg",
+      },
+    }), { status: 200 }));
+  }) as typeof fetch;
+
+  const info = await getStreamVideo("u1", fetchFn);
+
+  assertEquals(url, "https://api.cloudflare.com/client/v4/accounts/acct1/stream/u1");
+  assertEquals(info, {
+    state: "ready",
+    duration: 65.4,
+    hls: "https://customer-c.cloudflarestream.com/u1/manifest/video.m3u8",
+    thumbnail: "https://customer-c.cloudflarestream.com/u1/thumbnails/thumbnail.jpg",
+  });
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: getStreamVideo keeps pendingupload distinct, maps 404 to notfound and -1 duration to null", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  const pending = (() => Promise.resolve(new Response(JSON.stringify({
+    result: { status: { state: "pendingupload" }, duration: -1 },
+  }), { status: 200 }))) as typeof fetch;
+  assertEquals(await getStreamVideo("u1", pending), { state: "pendingupload", duration: null, hls: null, thumbnail: null });
+
+  const queued = (() => Promise.resolve(new Response(JSON.stringify({
+    result: { status: { state: "queued" } },
+  }), { status: 200 }))) as typeof fetch;
+  assertEquals((await getStreamVideo("u1", queued)).state, "inprogress");
+
+  const gone = (() => Promise.resolve(new Response("{}", { status: 404 }))) as typeof fetch;
+  assertEquals(await getStreamVideo("u1", gone), { state: "notfound", duration: null, hls: null, thumbnail: null });
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: getStreamVideo throws on a non-404 failure", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+  const fetchFn = (() => Promise.resolve(new Response("boom", { status: 502 }))) as typeof fetch;
+  let message = "";
+  try {
+    await getStreamVideo("u1", fetchFn);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert(message.includes("502"), `expected status in message, got "${message}"`);
+  clearStreamEnv();
+});
+
+Deno.test("stream-shared: getStreamVideo rejects 200 with success:false, missing result, or non-JSON body", async () => {
+  clearStreamEnv();
+  setStreamEnv();
+
+  // Case 1: success: false
+  const failResponse = (() =>
+    Promise.resolve(new Response(JSON.stringify({ success: false, errors: [{ message: "nope" }] }), { status: 200 }))) as typeof fetch;
+  let message = "";
+  try {
+    await getStreamVideo("u1", failResponse);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert(message.includes("200"), `expected 200 in message for success:false, got "${message}"`);
+
+  // Case 2: no result object
+  const noResultResponse = (() => Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))) as typeof fetch;
+  message = "";
+  try {
+    await getStreamVideo("u1", noResultResponse);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert(message.includes("200"), `expected 200 in message for no result, got "${message}"`);
+
+  // Case 3: non-JSON body
+  const nonJsonResponse = (() => Promise.resolve(new Response("not json", { status: 200 }))) as typeof fetch;
+  message = "";
+  try {
+    await getStreamVideo("u1", nonJsonResponse);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert(message.includes("200"), `expected 200 in message for non-JSON, got "${message}"`);
+
   clearStreamEnv();
 });

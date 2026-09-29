@@ -49,7 +49,7 @@ const CRM_ROUTES = [
   { value: '/arquivos', label: 'Arquivos' },
 ];
 
-const RESERVED_SLUGS = ['novo', 'editar'];
+const RESERVED_SLUGS = ['novo', 'editar', 'video'];
 
 function slugify(text: string): string {
   return text

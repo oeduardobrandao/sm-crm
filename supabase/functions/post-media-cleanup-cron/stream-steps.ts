@@ -269,15 +269,23 @@ async function fetchKnownStreamUids(db: DbClient, table: string): Promise<Set<st
   return known;
 }
 
-/** Deletes Stream videos that neither `files.stream_uid` nor the `file_deletions` delete queue
- * knows about — a copy whose uid was never persisted (e.g. index update failed after the Stream
- * API call succeeded). The 1h age gate spares an in-flight ingest that just hasn't been saved
- * yet. Rows already queued in `file_deletions` are deliberately excluded from "orphan": they're
- * on their way to deletion via the drain loop, not double-deleted here. */
+/** Deletes Stream videos that neither `files.stream_uid`, the `file_deletions` delete queue nor
+ * `kb_videos.stream_uid` (Central de Ajuda tutorials) knows about — a copy whose uid was never
+ * persisted (e.g. index update failed after the Stream API call succeeded). The 1h age gate
+ * spares an in-flight ingest that just hasn't been saved yet. Rows already queued in
+ * `file_deletions` are deliberately excluded from "orphan": they're on their way to deletion via
+ * the drain loop, not double-deleted here.
+ *
+ * ROLLBACK HAZARD: once any kb_videos.stream_uid exists, deploying a version of this function
+ * that does not read kb_videos deletes every tutorial within STREAM_REAP_INTERVAL_HOURS. Turn the
+ * reap off first (STREAM_REAP_INTERVAL_HOURS=876000). See the "Rollback" section of
+ * docs/superpowers/specs/2026-09-28-ajuda-video-playlist-design.md. */
 async function orphanReap(deps: StreamStepsDeps, nowMs: () => number): Promise<number> {
   const known = await fetchKnownStreamUids(deps.db, "files");
   const queued = await fetchKnownStreamUids(deps.db, "file_deletions");
   for (const uid of queued) known.add(uid);
+  const tutorials = await fetchKnownStreamUids(deps.db, "kb_videos");
+  for (const uid of tutorials) known.add(uid);
 
   const videos = await deps.listStreamVideos();
   const cutoffMs = nowMs() - ONE_HOUR_MS;

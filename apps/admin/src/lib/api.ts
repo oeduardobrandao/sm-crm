@@ -831,6 +831,84 @@ export function deleteKbContextLink(link_id: string) {
   return adminApi<{ message: string }>('delete-kb-context-link', { link_id });
 }
 
+// ─── KB Vídeos (tutoriais da Central de Ajuda) ──────────────────
+
+export type KbVideoStreamStatus = 'pending' | 'ready' | 'error';
+
+export interface KbVideoSeries {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  display_order: number;
+  status: 'draft' | 'published';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KbVideo {
+  id: number;
+  series_id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  article_id: string | null;
+  display_order: number;
+  status: 'draft' | 'published';
+  stream_uid: string | null;
+  stream_status: KbVideoStreamStatus;
+  stream_upload_expires_at: string | null;
+  duration_seconds: number | null;
+  hls_url: string | null;
+  thumbnail_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listKbVideoSeries() {
+  return adminApi<{ series: KbVideoSeries[] }>('list-kb-video-series');
+}
+
+export function upsertKbVideoSeries(params: Record<string, unknown>) {
+  return adminApi<{ series: KbVideoSeries }>('upsert-kb-video-series', params);
+}
+
+export function deleteKbVideoSeries(series_id: string) {
+  return adminApi<{ message: string }>('delete-kb-video-series', { series_id });
+}
+
+export function listKbVideos() {
+  return adminApi<{ videos: KbVideo[] }>('list-kb-videos');
+}
+
+export function getKbVideo(video_id: number) {
+  return adminApi<{ video: KbVideo }>('get-kb-video', { video_id });
+}
+
+export function upsertKbVideo(params: Record<string, unknown>) {
+  return adminApi<{ video: KbVideo }>('upsert-kb-video', params);
+}
+
+export function deleteKbVideo(video_id: number) {
+  return adminApi<{ message: string }>('delete-kb-video', { video_id });
+}
+
+export function createKbVideoUpload(video_id: number) {
+  return adminApi<{ uploadURL: string; video: KbVideo }>('create-kb-video-upload', { video_id });
+}
+
+export function refreshKbVideo(video_id: number) {
+  return adminApi<{ video: KbVideo }>('refresh-kb-video', { video_id });
+}
+
+export function cancelKbVideoUpload(video_id: number, stream_uid: string) {
+  return adminApi<{ video: KbVideo }>('cancel-kb-video-upload', { video_id, stream_uid });
+}
+
+export function reorderKbVideos(items: Array<{ id: number; display_order: number }>) {
+  return adminApi<{ message: string }>('reorder-kb-videos', { items });
+}
+
 // ─── MCP do Admin (conector platform-admin) ────────────────────
 
 export interface AdminMcpGrant {

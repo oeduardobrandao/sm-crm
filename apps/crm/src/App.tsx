@@ -85,6 +85,7 @@ const ImportarPage = lazy(() => import('./pages/importar/ImportarPage'));
 const AjudaPage = lazy(() => import('./pages/ajuda/AjudaPage'));
 const SecaoPage = lazy(() => import('./pages/ajuda/SecaoPage'));
 const ArtigoPage = lazy(() => import('./pages/ajuda/ArtigoPage'));
+const VideoPage = lazy(() => import('./pages/ajuda/VideoPage'));
 const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage'));
 
 export const queryClient = new QueryClient({
@@ -256,6 +257,8 @@ export default function App() {
                 <Route path="/ajuda" element={<AjudaPage />} />
                 <Route path="/ajuda/secao/:category" element={<SecaoPage />} />
                 <Route path="/ajuda/secao" element={<Navigate to="/ajuda" replace />} />
+                <Route path="/ajuda/video/:slug" element={<VideoPage />} />
+                <Route path="/ajuda/video" element={<Navigate to="/ajuda" replace />} />
                 <Route path="/ajuda/:slug" element={<ArtigoPage />} />
               </Route>
 
