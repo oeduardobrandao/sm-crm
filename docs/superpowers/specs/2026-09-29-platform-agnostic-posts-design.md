@@ -39,13 +39,16 @@ Decided with the user:
   - A view, `post_targets_resolved`, merges them into the destinations view, so everything reads one shape.
 - **One writer, no sync triggers.** `mark_target_published` and `mark_target_failed` replace `mark_platform_published` (current body at `20260807000001:67-122`).
   - For Instagram they also write the legacy columns in the same transaction.
-  - Both must `REVOKE ALL … FROM public, anon, authenticated`.
+  - Both must `REVOKE ALL … FROM public, anon, authenticated` and then `GRANT EXECUTE … TO service_role`, the same pair `20260925000001:53-54` uses. Without the grant the publishers get permission denied.
   - Both lock the `workflow_posts` row `FOR UPDATE` before reading the other destinations, the same order `mark_platform_published` uses (`20260807000001:86-88`). Without that, two publishers finishing at the same moment each miss the other's write and the post never reaches `postado`.
   - The publishers keep calling `mark_platform_published` until each one migrates (TikTok in P4, Instagram in P5). At that point it becomes a thin wrapper around `mark_target_*`.
 - **`workflow_posts.platform` becomes a read-only derived value.** A one-way trigger fills it from the destinations: `instagram`, `tiktok`, `both`, or a new `other`.
   - `other` stops posts that are only Geral from ever matching the Instagram claim (`20260925000013:34`).
   - The P1 migration drops the inline CHECK constraint (`20260720000005:25-26`, auto-named `workflow_posts_platform_check`) and re-adds it with `'other'` included.
-  - **Every check of the form `<> 'tiktok'` flips to `NOT IN ('instagram','both')`:** ICA at `20260830000002:445,460,480,535` and `AutomationFormDialog.tsx:129`. Otherwise a post that is only Geral becomes a valid Instagram automation target.
+  - **Every TikTok-based check becomes an Instagram-based check**, so a post that is only Geral cannot become an Instagram automation target:
+    - Checks that *include* Instagram posts (`<> 'tiktok'`, `!== 'tiktok'`) become `IN ('instagram','both')`.
+    - Checks that *exclude* them (`= 'tiktok'`) become `NOT IN ('instagram','both')`.
+    - Sites: the latest definitions of `resolve_ica_workflow_post_target` and `reconcile_unlinked_automation_targets` (`20260914000001`), `link_pending_instagram_automations` and `sweep_pending_instagram_automation_links` (`20260830000002`), plus `AutomationFormDialog.tsx:129`, `PostAutomationSection.tsx:72`, `TrialReelPanel.tsx:20`, `WorkflowGridView.tsx:72`, `publishErrorBlockVisibility.ts:23` and `PostEditorBody.tsx:501`.
   - The `platform` union widens in P1 in `store/posts.ts:89`, `apps/hub/src/types.ts:67`, `AutoSchedulePromptDialog.tsx:24`, `postLabels.ts:35` and Hub `PostCard.tsx:33-40`, because P1 already creates the first posts that are only Geral.
   - **Writes to `platform` from an old frontend during the deploy window:** a guarded BEFORE UPDATE trigger turns them into destination changes. A GUC prevents loops. The mapping is removed in P4.
 - **Post status comes from the destinations.** A guarded `recompute_post_publish_status(post)` runs through `record_post_status_change`, so status events and automations still fire. The guards:
@@ -60,7 +63,7 @@ Decided with the user:
   - `workflows.plataformas text[] DEFAULT '{instagram}'`.
   - `workflow_templates.plataformas`, copied into a workflow when it is created, not propagated afterwards. Templates are saved through `update_workflow_template` with explicit params (`store/workflows.ts:84`, latest `20260925130002`), so the RPC is copied forward with a new `p_plataformas` param that the 3-way merge ignores.
   - `clientes.plataformas_padrao` for posts avulsos. It defaults from the client's connected accounts, otherwise `{geral}`. It must also be added to the `clientes` column GRANT, to `clientes_v` and to `CLIENTE_SAFE_COLUMNS`.
-  - A trigger fills in destinations from the board when a post is created without any. It also rejects a destination whose platform the board doesn't list.
+  - A trigger fills in destinations from the board when a post is created without any. It drops any platform that has no native format for the post's `tipo` (TikTok for `stories`), so a stories post on an Instagram+TikTok board never gets a TikTok destination that would fail. The editor disables the same combinations. It also rejects a destination whose platform the board doesn't list.
   - A seeded destination takes its status from the post's status at insert time. Data import inserts rows already `postado` (`data-import/handler.ts:1300`), and the recompute must never regress them.
 
 ### Formats
