@@ -19,8 +19,8 @@ function currentSlot(): number | null {
  *   render-time location would push it back stale.
  * - Back past that entry calls `onClose`.
  * - Closing from the UI (X, overlay click) pops the entry, but only while it's still the
- *   current slot. Replaces in between keep the slot, so a filter change while the overlay
- *   is open still unwinds cleanly.
+ *   current slot. Replaces in between keep the slot, and their URL is carried onto the
+ *   entry below once the pop lands, so a filter change while the overlay is open sticks.
  * - Unmounting does nothing: if the user left the page with the overlay open, popping
  *   here would undo their navigation.
  *
@@ -37,8 +37,9 @@ export function useOverlayHistoryEntry(open: boolean, onClose: () => void): void
   openRef.current = open;
   /** Slot index of the entry pushed for the overlay; null while none is pushed. */
   const slotRef = useRef<number | null>(null);
-  /** A UI close popped the entry and the (async) popstate hasn't landed yet. */
-  const poppingRef = useRef(false);
+  /** A UI close popped the entry and the (async) popstate hasn't landed yet. Holds the
+   *  URL the overlay's slot had at that moment, to carry onto the entry below. */
+  const poppingRef = useRef<{ href: string; usr: unknown } | null>(null);
 
   const pushEntry = useCallback(() => {
     const before = currentSlot();
@@ -63,21 +64,31 @@ export function useOverlayHistoryEntry(open: boolean, onClose: () => void): void
     const idx = currentSlot();
     if (idx === null || idx >= slot) return;
     slotRef.current = null;
-    if (poppingRef.current) {
-      // Our own pop landed. Reopened in the meantime: it needs an entry again.
-      poppingRef.current = false;
+    const popped = poppingRef.current;
+    if (popped) {
+      // Our own pop landed on the entry below, which still holds the URL from before the
+      // overlay opened. Anything replaced into the overlay's slot meanwhile (a filter
+      // change syncing the query) must survive: the page's state already reflects it and
+      // won't re-sync on its own. Reopened in the meantime: it needs an entry again.
+      poppingRef.current = null;
+      const { pathname, search, hash } = window.location;
+      if (pathname + search + hash !== popped.href) {
+        navigate(popped.href, { replace: true, state: popped.usr });
+      }
       if (openRef.current) pushEntry();
     } else {
       onCloseRef.current();
     }
-  }, [location.key, pushEntry]);
+  }, [location.key, navigate, pushEntry]);
 
   useEffect(() => {
     if (open || poppingRef.current) return;
     const slot = slotRef.current;
     if (slot === null) return;
     if (currentSlot() === slot) {
-      poppingRef.current = true;
+      const { pathname, search, hash } = window.location;
+      const usr = (window.history.state as { usr?: unknown } | null)?.usr;
+      poppingRef.current = { href: pathname + search + hash, usr };
       navigate(-1);
     } else {
       slotRef.current = null;

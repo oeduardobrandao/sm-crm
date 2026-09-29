@@ -89,6 +89,9 @@ describe('useOverlayHistoryEntry', () => {
     fireEvent.click(screen.getByText('close'));
     await waitFor(() => expect(idx()).toBe(start));
     expect(onClosed).not.toHaveBeenCalled();
+    // The pop lands on the entry under the overlay, which still held the old query.
+    await waitFor(() => expect(window.location.search).toBe('?filtro=x'));
+    expect(idx()).toBe(start);
   });
 
   it('fechar e reabrir antes do pop chegar mantém o overlay aberto com uma entrada', async () => {
