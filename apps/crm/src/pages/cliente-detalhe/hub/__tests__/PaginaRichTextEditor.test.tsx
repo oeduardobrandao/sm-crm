@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterAll, afterEach } from 'vitest';
 import { isAllowedRichTextLinkUrl } from '@mesaas/link-policy';
 import { PaginaRichTextEditor } from '../PaginaRichTextEditor';
 
@@ -8,6 +8,12 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 import { toast } from 'sonner';
 
 afterEach(() => vi.clearAllMocks());
+
+// BubbleMenuView.destroy() (@tiptap/extension-bubble-menu) doesn't clear its 250ms
+// update debounce timer. When this file is the last one in a CI worker, that timer
+// fires after jsdom is torn down ("document is not defined" as an unhandled error,
+// which fails the run). Let it fire while the environment still exists.
+afterAll(() => new Promise((resolve) => setTimeout(resolve, 300)));
 
 describe('PaginaRichTextEditor', () => {
   it('emite o documento a cada edição', async () => {

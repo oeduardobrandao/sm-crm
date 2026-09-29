@@ -143,7 +143,7 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
               </div>
             )}
           </div>
-          <button className="drawer-close-btn" onClick={onClose} title="Fechar">
+          <button className="drawer-close-btn drawer-dismiss-btn" onClick={onClose} title="Fechar">
             <X className="h-5 w-5" />
           </button>
         </div>

@@ -6723,6 +6723,18 @@ body.role-agent input[name='valor_total'] {
   background: var(--surface-2);
 }
 
+/* The X is the header's last child, after the actions group, so the mobile header
+   can pin it beside the title. On wider screens it still reads as the actions' last
+   button: the auto margin keeps space-between from opening a gap before it, and the
+   negative margin restores the actions' own 0.5rem spacing. */
+.drawer-header-actions:has(+ .drawer-dismiss-btn) {
+  margin-left: auto;
+}
+
+.drawer-header-actions + .drawer-dismiss-btn {
+  margin-left: -0.5rem;
+}
+
 .drawer-body {
   flex: 1;
   overflow-y: auto;
@@ -7607,6 +7619,9 @@ body.role-agent input[name='valor_total'] {
     max-height: 100dvh;
     border-radius: 0;
     animation: none;
+    /* Full-screen here, and the installed app draws under a translucent status bar
+       (viewport-fit=cover): keep the header's controls out from under it. */
+    padding-top: env(safe-area-inset-top, 0px);
   }
 }
 
@@ -7617,9 +7632,27 @@ body.role-agent input[name='valor_total'] {
    two lines instead — line 1 is identity (handle, chevron, tipo, title), line 2
    is state + actions. */
 @media (max-width: 767px) {
+  /* Title and X on the first row, the other controls wrapping below. With the
+     controls unshrinkable beside it, the title column was squeezed to a sliver. */
   .drawer-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding: 1rem 1rem 0.75rem;
     gap: 0.5rem;
+  }
+
+  .drawer-header-actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+
+  .drawer-dismiss-btn {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .drawer-header-actions + .drawer-dismiss-btn {
+    margin-left: 0;
   }
 
   /* Nothing to toggle: the panel is already forced fullscreen at <=900px. */

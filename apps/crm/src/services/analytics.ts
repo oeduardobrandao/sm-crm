@@ -15,6 +15,13 @@ import {
   type Baseline,
   type PostMetricRow,
 } from '../lib/ig-rates';
+import {
+  ACTION_SORT_KEYS,
+  compareNullableNumber,
+  followsPerMilReach,
+  toNullableCount,
+  type ActionSortKey,
+} from '../lib/post-action-metrics';
 
 const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-analytics';
 
@@ -132,6 +139,12 @@ export interface PostAnalytics {
   saved: number;
   shares: number;
   views: number;
+  /** Action metrics: null = no data (never fetched, or Instagram didn't return it). */
+  profile_visits: number | null;
+  follows: number | null;
+  bio_link_clicks: number | null;
+  /** follows per 1.000 accounts reached; null when follows is null or reach is 0. */
+  follows_per_mil_reach: number | null;
   rates: Rates;
   unavailable_metrics: string[];
   ig_score: number | null;
@@ -775,11 +788,16 @@ export async function getPostsAnalytics(
       },
       unavailable,
     );
+    const follows = toNullableCount(p.follows);
     return {
       ...p,
       engagement_rate: Math.round(engRate * 100) / 100,
       saves_rate: Math.round(savesRate * 100) / 100,
       views: p.impressions ?? 0,
+      profile_visits: toNullableCount(p.profile_visits),
+      follows,
+      bio_link_clicks: toNullableCount(p.bio_link_clicks),
+      follows_per_mil_reach: followsPerMilReach(follows, p.reach),
       rates,
       unavailable_metrics: unavailable,
       ig_score: dists ? scorePost({ media_type: p.media_type, rates }, dists) : null,
@@ -800,15 +818,21 @@ export async function getPostsAnalytics(
     'shares',
   ];
   const derivedCols = new Set(['share_rate', 'like_rate', 'save_rate', 'comment_rate', 'ig_score']);
-  const col = validCols.includes(sort) || derivedCols.has(sort) ? sort : 'posted_at';
+  const actionCols = new Set<string>(ACTION_SORT_KEYS);
+  const col =
+    validCols.includes(sort) || derivedCols.has(sort) || actionCols.has(sort) ? sort : 'posted_at';
+  const nullableDir = dir === 'asc' ? 'asc' : 'desc';
   enriched.sort((a, b) => {
     if (derivedCols.has(col)) {
-      const va = postRateSortValue(a, col);
-      const vb = postRateSortValue(b, col);
-      if (va === null && vb === null) return 0;
-      if (va === null) return 1; // nulls always last, regardless of dir
-      if (vb === null) return -1;
-      return dir === 'asc' ? va - vb : vb - va;
+      return compareNullableNumber(
+        postRateSortValue(a, col),
+        postRateSortValue(b, col),
+        nullableDir,
+      );
+    }
+    if (actionCols.has(col)) {
+      const key = col as ActionSortKey;
+      return compareNullableNumber(a[key], b[key], nullableDir);
     }
     const va = (a as any)[col] ?? 0;
     const vb = (b as any)[col] ?? 0;
