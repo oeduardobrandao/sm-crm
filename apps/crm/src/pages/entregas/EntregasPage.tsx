@@ -62,6 +62,7 @@ import { MinhaFilaView } from './views/MinhaFilaView';
 import { buildMinhaFila, EMPTY_FILA } from './minhaFila';
 import { useCurrentMembro } from '@/hooks/useCurrentMembro';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { useOverlayHistoryEntry } from '@/hooks/useOverlayHistoryEntry';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { StandalonePostDrawer } from './components/StandalonePostDrawer';
 import { SemProcessoSection } from './components/SemProcessoSection';
@@ -482,6 +483,15 @@ export default function EntregasPage() {
     // bookmarked link re-opened the drawer. The refs above already hold what was consumed.
     setSearchParams(new URLSearchParams(currentQuery), { replace: true });
   }, [currentQuery, setSearchParams]);
+
+  // Both drawers share one history entry, so Back (the iOS edge swipe included) closes
+  // the open drawer instead of leaving Entregas. One boolean on purpose: swapping one
+  // drawer for the other in a single commit must keep the entry, not pop and re-push it.
+  useOverlayHistoryEntry(drawerCard !== null || standalonePostId !== null, () => {
+    setDrawerCard(null);
+    setDrawerInitialPostId(null);
+    setStandalonePostId(null);
+  });
 
   // Remembers the last mode the user actively left one of these three views in,
   // per conta -- read back by the `hadModeParam` seeds above on the next visit
