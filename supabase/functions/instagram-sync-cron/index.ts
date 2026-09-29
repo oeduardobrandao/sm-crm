@@ -288,7 +288,7 @@ async function syncAccount(
         if (ids.length) {
           const { data: existingRows } = await supabase
             .from('instagram_posts')
-            .select('instagram_post_id, thumbnail_url, reach, impressions, saved, shares, likes, comments')
+            .select('instagram_post_id, thumbnail_url, reach, impressions, saved, shares, likes, comments, reposts, profile_visits, follows, bio_link_clicks')
             .in('instagram_post_id', ids) as { data: any[] | null };
           for (const r of existingRows ?? []) existingByPostId.set(r.instagram_post_id, r);
         }
@@ -330,6 +330,7 @@ async function syncAccount(
             posted_at: post.timestamp,
             likes: m.likes, comments: m.comments,
             reach: m.reach, impressions: m.impressions, saved: m.saved, shares: m.shares,
+            reposts: m.reposts, profile_visits: m.profile_visits, follows: m.follows, bio_link_clicks: m.bio_link_clicks,
             unavailable_metrics: m.unavailable_metrics,
             synced_at: new Date().toISOString()
           };
