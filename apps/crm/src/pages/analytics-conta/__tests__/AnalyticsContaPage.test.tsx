@@ -724,6 +724,79 @@ describe('AnalyticsContaPage', () => {
     expect(screen.queryByText('Baseline Instagram')).not.toBeInTheDocument();
   });
 
+  it('shows the "Novos seg." column and the insights panel in the expanded row', () => {
+    seedCommonAnalyticsData();
+    const base = {
+      instagram_post_id: 'x',
+      permalink: 'https://instagram.com/p/x',
+      likes: 4512,
+      comments: 17,
+      impressions: 66656,
+      views: 66656,
+      saved: 630,
+      shares: 1502,
+      thumbnail_url: null,
+      engagement_rate: 18.4,
+      saves_rate: 1.7,
+      rates: { share_rate: null, like_rate: null, save_rate: null, comment_rate: null },
+      ig_score: null,
+      tags: [],
+    };
+    queryState['analytics-posts'] = {
+      data: {
+        posts: [
+          {
+            ...base,
+            id: 1,
+            caption: 'Dá preguiça. Dá medo.',
+            media_type: 'CAROUSEL_ALBUM',
+            posted_at: '2026-09-23T12:00:00Z',
+            reach: 37600,
+            reposts: 335,
+            profile_visits: 328,
+            follows: 75,
+            bio_link_clicks: 1,
+            follows_per_mil_reach: 1.99,
+            unavailable_metrics: [],
+          },
+          {
+            ...base,
+            id: 2,
+            caption: 'Reel sem dados de ação',
+            media_type: 'VIDEO',
+            posted_at: '2026-09-19T12:00:00Z',
+            reach: 9214,
+            reposts: 12,
+            profile_visits: null,
+            follows: null,
+            bio_link_clicks: null,
+            follows_per_mil_reach: null,
+            unavailable_metrics: ['follows', 'profile_visits', 'bio_link_clicks'],
+          },
+        ],
+      },
+    };
+
+    const { container } = render(<AnalyticsContaPage />);
+    const table = container.querySelector('#posts-table') as HTMLTableElement;
+    expect(within(table).getByText('Novos seg.')).toBeInTheDocument();
+
+    const cells = table.querySelectorAll('td[data-label="Novos seg."]');
+    expect(cells[0]).toHaveTextContent('75');
+    expect(cells[1]).toHaveTextContent('—');
+    expect(cells[1].querySelector('[title]')).toHaveAttribute(
+      'title',
+      'O Instagram não retornou este dado para este post',
+    );
+
+    fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
+    const detail = table.querySelector('tr.post-detail-row') as HTMLTableRowElement;
+    expect(detail.querySelector('td')).toHaveAttribute('colspan', '12');
+    expect(within(detail).getByText('Ações após a visualização')).toBeInTheDocument();
+    expect(within(detail).getByText('Novos seguidores').nextSibling).toHaveTextContent('75');
+    expect(within(detail).getByText('Reposts').nextSibling).toHaveTextContent('335');
+  });
+
   it('opens the reach-ranked posts drawer using only this client account posts', () => {
     seedCommonAnalyticsData();
     queryState['analytics-posts'] = {

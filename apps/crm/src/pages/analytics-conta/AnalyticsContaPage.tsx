@@ -96,6 +96,7 @@ import {
 } from '../../lib/ig-rates';
 import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
 import { NewReportDialog } from './components/NewReportDialog';
+import { ActionMetricValue, PostInsightsDetail } from './components/PostInsightsDetail';
 
 Chart.register(...registerables);
 
@@ -1786,6 +1787,7 @@ function AnalyticsContent({
                     { col: 'saved', label: 'Salvos' },
                     { col: 'comments', label: 'Coment.' },
                     { col: 'shares', label: 'Compart.' },
+                    { col: 'follows', label: 'Novos seg.' },
                     { col: null, label: 'Tags' },
                   ].map(({ col, label }) => (
                     <th
@@ -1877,6 +1879,9 @@ function AnalyticsContent({
                       <td data-label="Salvos">{p.saved}</td>
                       <td data-label="Coment.">{p.comments}</td>
                       <td data-label="Compart.">{p.shares}</td>
+                      <td data-label="Novos seg.">
+                        <ActionMetricValue post={p} metric="follows" />
+                      </td>
                       <td data-label="Tags" onClick={(e) => e.stopPropagation()}>
                         {p.tags.map((t) => (
                           <span
@@ -1928,7 +1933,7 @@ function AnalyticsContent({
                     </tr>
                     {expandedPostId === p.id && (
                       <tr key={`detail-${p.id}`} className="post-detail-row">
-                        <td colSpan={10} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
+                        <td colSpan={12} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
                           <p
                             style={{
                               fontSize: '0.85rem',
@@ -1954,13 +1959,8 @@ function AnalyticsContent({
                             >
                               ↗ Ver no Instagram
                             </a>
-                            <span style={{ color: 'var(--text-muted)' }}>
-                              Visualizações: {p.views.toLocaleString('pt-BR')}
-                            </span>
-                            <span style={{ color: 'var(--text-muted)' }}>
-                              Curtidas: {p.likes.toLocaleString('pt-BR')}
-                            </span>
                           </div>
+                          <PostInsightsDetail post={p} />
                         </td>
                       </tr>
                     )}
