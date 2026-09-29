@@ -835,6 +835,86 @@ describe('AnalyticsContaPage', () => {
     expect(drawer).toBeTruthy();
     expect(within(drawer!).getAllByText(/Post ranqueado/)[0]).toHaveTextContent('Post ranqueado 6');
   });
+  it('sorts the "Ver mais" drawer by Novos seguidores with missing values last', () => {
+    seedCommonAnalyticsData();
+    const follows = [5, null, 20, null, 1, 8];
+    queryState['analytics-posts'] = {
+      data: {
+        posts: follows.map((f, index) => ({
+          id: index + 1,
+          posted_at: `2020-01-${String(index + 1).padStart(2, '0')}T12:00:00Z`,
+          media_type: 'IMAGE',
+          reach: 1000,
+          impressions: 1400,
+          views: 1400,
+          engagement_rate: 5,
+          likes: 10,
+          saved: 1,
+          saves_rate: 1,
+          comments: 1,
+          shares: 1,
+          follows: f,
+          caption: `Post ranqueado ${index + 1}`,
+          thumbnail_url: `https://example.com/ranked-${index + 1}.jpg`,
+          permalink: `https://instagram.com/p/ranked-${index + 1}`,
+          unavailable_metrics: [],
+          tags: [],
+        })),
+      },
+    };
+
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getAllByText('Ver mais')[0]);
+    const drawer = screen.getByText('6 de 6 posts de @clinicaaurora').closest('aside')!;
+    fireEvent.change(within(drawer).getByLabelText('Ordenar posts'), {
+      target: { value: 'follows' },
+    });
+
+    const order = within(drawer)
+      .getAllByText(/Post ranqueado/)
+      .map((el) => el.textContent);
+    expect(order.slice(0, 4)).toEqual([
+      'Post ranqueado 3',
+      'Post ranqueado 6',
+      'Post ranqueado 1',
+      'Post ranqueado 5',
+    ]);
+    expect(order.slice(4).sort()).toEqual(['Post ranqueado 2', 'Post ranqueado 4']);
+  });
+
+  it('shows the followers chip on ranked cards only when the value exists', () => {
+    seedCommonAnalyticsData();
+    queryState['analytics-posts'] = {
+      data: {
+        posts: [75, null].map((f, index) => ({
+          id: index + 1,
+          posted_at: `2020-01-0${index + 1}T12:00:00Z`,
+          media_type: 'IMAGE',
+          reach: 1000,
+          impressions: 1400,
+          views: 1400,
+          engagement_rate: 5,
+          likes: 10,
+          saved: 1,
+          saves_rate: 1,
+          comments: 1,
+          shares: 1,
+          follows: f,
+          caption: `Chip ${index + 1}`,
+          thumbnail_url: null,
+          permalink: `https://instagram.com/p/chip-${index + 1}`,
+          unavailable_metrics: [],
+          tags: [],
+        })),
+      },
+    };
+
+    render(<AnalyticsContaPage />);
+    const chips = screen.getAllByTitle('Novos seguidores');
+    expect(chips.length).toBeGreaterThan(0);
+    for (const chip of chips) expect(chip).toHaveTextContent('75');
+  });
+
   it('Gerar Relatório (header) opens the interactive report dialog', () => {
     seedCommonAnalyticsData();
     render(<AnalyticsContaPage />);
