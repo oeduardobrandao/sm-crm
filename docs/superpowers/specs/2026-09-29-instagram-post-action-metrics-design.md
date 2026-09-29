@@ -51,9 +51,9 @@ ALTER TABLE instagram_posts
 No grants change: `instagram_posts` has no column-level allowlist; the CRM reads it with
 `select('*')` under the existing RLS policy.
 
-Naming note: `profile_visits` is the per-post metric. The account-level
-`profile_views*` columns hold `accounts_engaged` (historical naming trap); these are
-unrelated.
+Naming note: `profile_visits` is the per-post metric and is unrelated to the
+account-level `profile_views*` columns (the cron writes real `profile_views` there; the
+integration connect/refresh paths still write a mislabeled value). Don't touch those.
 
 ## Fetch (`supabase/functions/_shared/instagram-metrics.ts`)
 
@@ -61,8 +61,11 @@ Per post, three requests to `graph.instagram.com/{media-id}/insights`:
 
 1. **Core, unchanged:** `reach,views,saved,shares`, with the existing retry without
    `shares`. Nothing about the new metrics can affect this call.
-2. **Actions:** `reposts,follows,profile_visits`. On an error response, retry once with
-   `reposts` alone; the other two are then absent.
+2. **Actions:** `reposts,follows,profile_visits`. On an error response whose Graph
+   `error.code` is NOT transient or auth (transient/auth = 1, 2, 4, 9, 17, 32, 613, 190),
+   retry once with `reposts` alone; the other two are then absent. On a transient or
+   auth error, or a timeout, don't retry: all three are absent for this sync and keep
+   their previous stored values.
 3. **Bio link:** `profile_activity&breakdown=action_type`. Must be its own request: Meta
    errors when a breakdown is combined with metrics that don't support it. Parse
    `data[0].total_value.breakdowns[0].results[]`, take the result whose
@@ -73,8 +76,17 @@ Per post, three requests to `graph.instagram.com/{media-id}/insights`:
 Calls 2 and 3 run in parallel with call 1. Each failure is isolated: a thrown fetch or
 an error body in one call never removes values from another.
 
-Parsing for calls 1 and 2 keeps reading `values[0].value` (lifetime metrics). Also accept
-`total_value.value` for the action metrics in case Meta returns that shape.
+Every insights request (the existing core call included) carries
+`signal: AbortSignal.timeout(10_000)`; a timeout counts as absent. The edge runtime
+kills isolates that hang on I/O, and today's helper has no bound at all.
+
+The connect callback loops over posts serially (pre-existing). Because the three calls
+per post run concurrently, its wall-clock time per post stays roughly the same; no
+restructuring of that loop is in scope. The `last_synced_at` stamp semantics are also
+unchanged.
+
+Parsing for calls 1 and 2 keeps reading `values[0].value` (lifetime metrics), falling
+back to `total_value.value` in case Meta returns that shape.
 
 Cost: 1 → 3 calls per post per sync. A 50-post manual refresh goes from ~50 to ~150
 calls; the hourly cron touches only posts from the last 30 days.
@@ -119,10 +131,11 @@ Replace the "Visualizações / Curtidas" spans with two groups under the caption
   bio, plus the line "1 novo seguidor a cada N contas alcançadas" (N = round(reach /
   follows)) when follows > 0 and reach > 0.
 
-A null value renders "—" with a `title`: for `media_type === 'VIDEO'`,
-"O Instagram não fornece este dado para Reels"; otherwise
-"Sem dado ainda. Clique em Atualizar para buscar". Fix `colSpan` to the real column
-count (12 after B).
+A null value renders "—" with a metric-specific `title`: when the metric's token is in
+the post's `unavailable_metrics` (the last sync asked and got nothing),
+"O Instagram não retornou este dado para este post"; otherwise (never fetched)
+"Sem dado para este post ainda". No Reels-specific copy until the first prod sync
+confirms what Reels return. Fix `colSpan` to the real column count (12 after B).
 
 ### B. Table column
 
@@ -138,7 +151,9 @@ tooltip rules.
 
 ### D. Ranked post card
 
-Fourth chip with lucide `UserPlus` and `follows`. Hidden when `follows` is null.
+Fourth chip with lucide `UserPlus` and `follows`, on the carousel cards
+(`RankedPostCard`) and on the items of the "Ver mais" drawer, which repeat the same
+chips. Hidden when `follows` is null.
 
 ### Sorting
 
@@ -189,6 +204,6 @@ reversed order degrades to "—" rather than breaking.
 
 ## Verification after deploy
 
-Click "Atualizar" on a real connected account with both feed posts and Reels, then
+Click "Sincronizar Dados" on a real connected account with both feed posts and Reels, then
 check `instagram_posts` for the four columns and `unavailable_metrics` on Reels rows.
 That answers decision 3 and gives the numbers to compare against the Instagram app.
