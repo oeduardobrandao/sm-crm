@@ -13121,6 +13121,39 @@ a.hub-fill__row-inner:hover {
   height: 1px;
   margin-bottom: -1px;
 }
+/* Título x ações do cabeçalho: a base de 20rem cabe o título padrão mais longo
+   ("Relatório de Fevereiro de 2026"). Quando título e ações não cabem na mesma
+   linha, as ações descem juntas (um bloco só) e o título fica com a linha
+   inteira. Com o teto de 880px isso vale em qualquer largura no editor de
+   relatório; antes os botões espremiam o título até cortar o ano e o "..."
+   caía sozinho numa segunda linha. */
+.rb-editor-title {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+.rb-editor-title-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: var(--text-main);
+  outline: none;
+  text-overflow: ellipsis;
+}
+.rb-editor-subtitle {
+  margin: 0.15rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.rb-editor-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-left: auto;
+}
 @media (min-width: 769px) {
   .rb-editor-header {
     position: sticky;
