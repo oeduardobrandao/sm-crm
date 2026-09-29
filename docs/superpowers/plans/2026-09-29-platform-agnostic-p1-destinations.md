@@ -1,0 +1,1402 @@
+# Platform-agnostic posts — P1: board platforms + `post_targets` foundation
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:**
+- Boards, templates and clients declare which platforms they produce for.
+- Every post gets one `post_targets` row per destination.
+- `workflow_posts.platform` becomes a derived value that can now be `other`, meaning no Instagram and no TikTok destination.
+- Nothing that publishes or automates Instagram ever picks up a post with `platform = 'other'`.
+
+**Architecture:**
+- **Three migrations:**
+  1. `plataformas` columns
+  2. `post_targets` with backfill, seed/derive/legacy-mapping triggers and a wider `platform` CHECK
+  3. Copy-forward of four ICA functions with Instagram-based predicates
+- **Write paths:**
+  - The existing `PlatformSelector` keeps writing `workflow_posts.platform`. A guarded trigger turns those writes into destination rows.
+  - Board and template platform lists come from a new `PlatformChips` component.
+- **Server-side guard:** `validateForScheduling` refuses `other` posts, which covers the CRM schedule endpoint and hub-approve auto-schedule. The CRM also hides the schedule button for them.
+
+**Tech Stack:** Postgres (plpgsql triggers, RLS), psql entitlement suites, Deno edge functions, React 19 + TanStack Query, Vitest.
+
+**Spec:** `docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md`. **Depends on P0** (the `@mesaas/platforms` registry must already be merged).
+
+## Deliberate deviations from the spec (for reviewers)
+
+1. **`mark_target_*` RPCs, `recompute_post_publish_status` and `post_targets_resolved` move to P2/P4.** Those are the phases that first call or read them. P1 has no caller, so shipping them here would be dead code with a grant surface.
+2. **No DB trigger rejects a destination the board doesn't list.**
+   - `PlatformSelector` (legacy path) lets TikTok-plan users pick TikTok on any board today.
+   - A DB rejection would break that until every board lists TikTok.
+   - The UI restricts choices instead (P2 editor). Removing a platform from a board never touches existing destinations.
+3. **`workflow_templates.plataformas` is saved with a direct `UPDATE`** after `update_workflow_template`, not by copying that 250-line RPC forward. Templates are workspace-editable under RLS, and a failure there only loses the platform list, which the next save rewrites.
+4. **Every existing client gets `clientes.plataformas_padrao = '{instagram}'`**, not a value derived from connected accounts. Clients without connected accounts produce Instagram content today, and flipping them to Geral would change their posts avulsos silently.
+5. **TikTok captions are not copied into `post_targets.caption` in P1.** `tiktok_caption` stays the source until P4 moves the TikTok publisher. Destination status stays `pendente` for Instagram/TikTok rows until P4/P5; the per-platform publish state is still read from the legacy columns.
+6. **The `validateForScheduling` guard for `other` is pulled forward from P3.** P1 already creates `other` posts, and without the guard an approved one could be moved to `agendado` with nothing ever claiming it.
+
+## Global Constraints
+
+- **Branch:** a new branch off fresh `origin/main` after P0 is merged: `claude/platform-agnostic-p1`. Run `git fetch origin main && git checkout -b claude/platform-agnostic-p1 origin/main`.
+- **Migration versions:**
+  - Use `20260929100001`, `20260929100002` and `20260929100003`.
+  - Before `gh pr create`, run `ls supabase/migrations | tail -5`. If main has anything at or above these numbers, renumber above main's tail. Every version prefix must be unique.
+- **Allowed values:**
+  - Platform ids stored in SQL: exactly `'instagram'`, `'tiktok'`, `'geral'` (the registry's `PLATFORM_IDS`).
+  - Derived `workflow_posts.platform`: `'instagram' | 'tiktok' | 'both' | 'other'`.
+  - `post_targets.status` values: `'pendente','agendado','processando','publicado','falha','disponivel'`.
+- **Every new SECURITY DEFINER function:**
+  - declares `SET search_path = public, pg_temp`;
+  - is followed by `REVOKE ALL ON FUNCTION … FROM public, anon, authenticated;`. Trigger functions get no GRANT: triggers fire without EXECUTE.
+- **Recursion guard:** GUC `app.post_targets_sync`. Set it with `set_config('app.post_targets_sync','on', true)`, restore the previous value afterwards, and test it with `current_setting('app.post_targets_sync', true) = 'on'`.
+- **New `clientes` column:** it must be added to three places or the CRM cannot see it:
+  - the column-level `GRANT SELECT (…)` (re-declared in full);
+  - `clientes_v`, appended **last**;
+  - `CLIENTE_SAFE_COLUMNS` in `apps/crm/src/store/clients.ts`.
+- No em dashes in new user-facing copy.
+- **Gates before pushing:**
+  - `npm run lint`, `npm run format:check`
+  - the four `tsc` commands
+  - `npm run test`, `npm run check:functions`, `npm run test:functions`
+  - `bash scripts/test-entitlements.sh` against a local Supabase (colima). Never commit per-worktree port overrides in `supabase/config.toml`.
+- **Deploy order (merge deploys the frontend instantly):**
+  1. `npx supabase db push --linked` on staging.
+  2. Deploy `instagram-publish`, `hub-approve` and `tiktok-publish` (they bundle `_shared/instagram-publish-utils.ts`), each with `--use-api --no-verify-jwt` where it already uses that flag.
+  3. Smoke on staging.
+  4. Repeat steps 1-3 on prod.
+  5. Merge.
+
+---
+
+### Task 1: Migration A: `plataformas` on workflows, templates and clientes
+
+**Files:**
+- Create: `supabase/migrations/20260929100001_board_platforms.sql`
+- Test: `supabase/tests/entitlements/99_post_targets.sql` (created here, extended in Tasks 2-3)
+
+**Interfaces:**
+- Produces these columns:
+  - `workflows.plataformas text[] NOT NULL DEFAULT '{instagram}'`
+  - `workflow_templates.plataformas text[] NOT NULL DEFAULT '{instagram}'`
+  - `clientes.plataformas_padrao text[] NOT NULL DEFAULT '{instagram}'`, readable by `authenticated` and exposed as the last column of `clientes_v`
+- Each column's CHECK: `cardinality(x) >= 1 AND x <@ ARRAY['instagram','tiktok','geral']`.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `supabase/tests/entitlements/99_post_targets.sql`:
+
+```sql
+\set ON_ERROR_STOP on
+\i supabase/tests/entitlements/_helpers.sql
+
+-- Plataformas por quadro + post_targets (migrations 20260929100001..3).
+-- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
+
+-- 1. Colunas plataformas: default, CHECK e allowlist de clientes
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_wf bigint;
+  v_arr text[]; v_rejected boolean;
+begin
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into workspace_members (user_id, workspace_id, role) values (v_uid, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_uid;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_uid, v_ws, v_cli, 'W', 'ativo') returning id into v_wf;
+
+  select plataformas into v_arr from workflows where id = v_wf;
+  assert v_arr = array['instagram'], format('workflows.plataformas default: %s', v_arr);
+  select plataformas_padrao into v_arr from clientes where id = v_cli;
+  assert v_arr = array['instagram'], format('clientes.plataformas_padrao default: %s', v_arr);
+
+  v_rejected := false;
+  begin update workflows set plataformas = '{}' where id = v_wf;
+  exception when check_violation then v_rejected := true; end;
+  assert v_rejected, 'workflows.plataformas vazio foi aceito';
+
+  v_rejected := false;
+  begin update workflows set plataformas = array['youtube'] where id = v_wf;
+  exception when check_violation then v_rejected := true; end;
+  assert v_rejected, 'workflows.plataformas com youtube foi aceito';
+
+  v_rejected := false;
+  begin insert into workflow_templates (user_id, conta_id, nome, etapas, plataformas)
+    values (v_uid, v_ws, 'T', '[]'::jsonb, array['instagram','x']);
+  exception when check_violation then v_rejected := true; end;
+  assert v_rejected, 'workflow_templates.plataformas invalido foi aceito';
+
+  update workflows set plataformas = array['instagram','geral'] where id = v_wf;
+
+  -- authenticated le a coluna nova direto e pela view
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  select plataformas_padrao into v_arr from clientes where id = v_cli;
+  assert v_arr = array['instagram'], 'authenticated nao le clientes.plataformas_padrao';
+  select plataformas_padrao into v_arr from clientes_v where id = v_cli;
+  assert v_arr = array['instagram'], 'clientes_v nao expoe plataformas_padrao';
+end $$;
+rollback;
+```
+
+- [ ] **Step 2: Run the test and confirm it fails**
+
+Run: `psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f supabase/tests/entitlements/99_post_targets.sql`. Start the stack first with `npx supabase start`, using colima.
+Expected: FAIL with `column "plataformas" does not exist`.
+
+- [ ] **Step 3: Write the migration**
+
+`supabase/migrations/20260929100001_board_platforms.sql`:
+
+```sql
+-- ============================================================
+-- Plataformas por quadro, template e cliente (P1)
+-- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
+-- Ids válidos = PLATFORM_IDS de supabase/functions/_shared/platform-registry.ts.
+-- Plataforma nova = ampliar os três CHECKs abaixo e o de post_targets.platform.
+-- ============================================================
+
+ALTER TABLE public.workflows
+  ADD COLUMN IF NOT EXISTS plataformas text[] NOT NULL DEFAULT '{instagram}';
+ALTER TABLE public.workflows
+  ADD CONSTRAINT workflows_plataformas_valid
+  CHECK (cardinality(plataformas) >= 1
+         AND plataformas <@ ARRAY['instagram','tiktok','geral']::text[]);
+
+ALTER TABLE public.workflow_templates
+  ADD COLUMN IF NOT EXISTS plataformas text[] NOT NULL DEFAULT '{instagram}';
+ALTER TABLE public.workflow_templates
+  ADD CONSTRAINT workflow_templates_plataformas_valid
+  CHECK (cardinality(plataformas) >= 1
+         AND plataformas <@ ARRAY['instagram','tiktok','geral']::text[]);
+
+-- Plataformas dos posts avulsos do cliente. Todos começam em Instagram: cliente
+-- sem conta conectada produz conteúdo de Instagram hoje (spec, desvio 4 do plano).
+ALTER TABLE public.clientes
+  ADD COLUMN IF NOT EXISTS plataformas_padrao text[] NOT NULL DEFAULT '{instagram}';
+ALTER TABLE public.clientes
+  ADD CONSTRAINT clientes_plataformas_padrao_valid
+  CHECK (cardinality(plataformas_padrao) >= 1
+         AND plataformas_padrao <@ ARRAY['instagram','tiktok','geral']::text[]);
+
+-- Quadros que já têm post TikTok passam a declarar TikTok. Sem evento de
+-- workflow: é backfill, não edição de usuário.
+SELECT set_config('app.suppress_workflow_events', '1', true);
+UPDATE public.workflows w
+   SET plataformas = ARRAY['instagram','tiktok']
+ WHERE EXISTS (SELECT 1 FROM public.workflow_posts wp
+                WHERE wp.workflow_id = w.id AND wp.platform IN ('tiktok','both'));
+SELECT set_config('app.suppress_workflow_events', '', true);
+
+-- ---------- allowlist de SELECT de clientes (trio da armadilha 20260728000002)
+-- Lista INTEIRA copiada de 20260904000001:23-28 (a mais recente) + plataformas_padrao.
+REVOKE SELECT ON public.clientes FROM authenticated;
+GRANT SELECT (
+  id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status,
+  created_at, notion_page_url, data_pagamento, especialidade, data_aniversario,
+  dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis,
+  foto_url, send_event_email, event_email_unsub_at, plataformas_padrao
+) ON public.clientes TO authenticated;
+
+-- clientes_v: SELECT vigente copiado de 20260904000001:35-45, coluna nova
+-- APENDADA POR ÚLTIMO (inserir no meio renomeia colunas por ordinal).
+CREATE OR REPLACE VIEW public.clientes_v WITH (security_barrier = true) AS
+  SELECT c.id, c.user_id, c.conta_id, c.nome, c.sigla, c.cor, c.plano,
+         c.email, c.telefone, c.status, c.created_at, c.notion_page_url,
+         c.data_pagamento, c.especialidade, c.data_aniversario, c.dia_entrega,
+         c.auto_publish_on_approval, c.send_report_email, c.include_ai_analysis,
+         CASE WHEN public.can_see_financials()
+              THEN c.valor_mensal ELSE NULL END AS valor_mensal,
+         c.foto_url,
+         c.send_event_email, c.event_email_unsub_at,
+         c.plataformas_padrao
+  FROM public.clientes c
+  WHERE c.conta_id = public.get_my_conta_id();
+```
+
+Before running it, confirm that no migration after `20260904000001` redefines the clientes grant or `clientes_v`:
+
+```bash
+grep -ln "clientes_v\|GRANT SELECT (" supabase/migrations/*.sql | sort | tail -3
+```
+
+If a newer file shows up, copy the lists from that file instead.
+
+- [ ] **Step 4: Apply and run the test**
+
+Run: `npx supabase db reset` (local only), then `psql … -f supabase/tests/entitlements/99_post_targets.sql`.
+Expected: `ROLLBACK`, with no assertion errors.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add supabase/migrations/20260929100001_board_platforms.sql supabase/tests/entitlements/99_post_targets.sql
+git commit -m "feat(db): plataformas em fluxos, templates e clientes"
+```
+
+---
+
+### Task 2: Migration B: `post_targets`, backfill, triggers, `other`
+
+**Files:**
+- Create: `supabase/migrations/20260929100002_post_targets.sql`
+- Modify: `supabase/tests/entitlements/99_post_targets.sql` (append sections 2-4)
+
+**Interfaces:**
+- Consumes: the `plataformas` columns from Task 1.
+- Produces:
+  - Table `public.post_targets`, unique on `(post_id, platform)` and FK `(post_id, conta_id) → workflow_posts(id, conta_id) ON DELETE CASCADE`.
+  - Trigger functions `post_targets_seed()`, `post_targets_sync_platform()` and `workflow_posts_platform_to_targets()`.
+  - `workflow_posts.platform` CHECK widened to include `'other'`.
+- Behaviour contract that later tasks and phases rely on:
+  - **Insert.** A post gets one target per board platform. The board is `workflows.plataformas`, or `clientes.plataformas_padrao` when `workflow_id IS NULL`.
+    - When the insert sets `platform` to `tiktok`, `both` or `other`, that value decides the Instagram/TikTok part.
+    - A platform that doesn't support the post's `tipo` is dropped (`tiktok` for `stories`).
+  - **Derived platform.** After any target insert or delete, `platform` = `both` if Instagram and TikTok, else `instagram`, else `tiktok`, else `other`.
+  - **Direct writes.** An `UPDATE workflow_posts SET platform = X` from outside the triggers adds or removes the Instagram/TikTok targets to match X and leaves other targets alone.
+
+- [ ] **Step 1: Append failing tests (sections 2-4)**
+
+Append to `99_post_targets.sql`:
+
+```sql
+-- 2. Seed a partir do quadro, filtro de formato e platform derivado
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_cli_geral bigint;
+  v_wf_ig bigint; v_wf_geral bigint; v_wf_mix bigint;
+  v_p bigint; v_arr text[]; v_plat text;
+begin
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into clientes (user_id, conta_id, nome, sigla, cor, plataformas_padrao)
+    values (v_uid, v_ws, 'G', 'G', '#000', array['geral']) returning id into v_cli_geral;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_uid, v_ws, v_cli, 'IG', 'ativo') returning id into v_wf_ig;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli_geral, 'Geral', 'ativo', array['geral']) returning id into v_wf_geral;
+  -- 'start' limita 1 fluxo ativo por cliente: o terceiro quadro usa outro cliente
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'M', 'M', '#000') returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'Mix', 'ativo', array['instagram','tiktok','geral'])
+    returning id into v_wf_mix;
+
+  -- quadro só Instagram: igual a hoje
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_ig, v_ws, 'a', 'feed') returning id into v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['instagram'] and v_plat = 'instagram',
+    format('quadro IG: %s / %s', v_arr, v_plat);
+
+  -- quadro só Geral: platform vira other
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_geral, v_ws, 'b', 'reels') returning id into v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral'] and v_plat = 'other',
+    format('quadro Geral: %s / %s', v_arr, v_plat);
+
+  -- quadro misto, reels: três destinos, platform both
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_mix, v_ws, 'c', 'reels') returning id into v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral','instagram','tiktok'] and v_plat = 'both',
+    format('quadro misto reels: %s / %s', v_arr, v_plat);
+
+  -- quadro misto, stories: TikTok não tem stories
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_mix, v_ws, 'd', 'stories') returning id into v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral','instagram'] and v_plat = 'instagram',
+    format('quadro misto stories: %s / %s', v_arr, v_plat);
+
+  -- platform explícito manda na parte social (legado: testes e MCP que gravam platform)
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo, platform)
+    values (v_wf_ig, v_ws, 'e', 'reels', 'tiktok') returning id into v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  assert v_arr = array['tiktok'], format('platform explicito: %s', v_arr);
+
+  -- avulso usa clientes.plataformas_padrao
+  insert into workflow_posts (workflow_id, cliente_id, conta_id, titulo, tipo)
+    values (null, v_cli_geral, v_ws, 'f', 'feed') returning id into v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral'] and v_plat = 'other', format('avulso geral: %s / %s', v_arr, v_plat);
+end $$;
+rollback;
+
+-- 3. Escrita legada em workflow_posts.platform e escrita direta em post_targets
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_wf bigint;
+  v_p bigint; v_arr text[]; v_plat text; v_rejected boolean;
+begin
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'W', 'ativo', array['instagram','geral']) returning id into v_wf;
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf, v_ws, 'a', 'reels') returning id into v_p;
+
+  -- PlatformSelector grava tiktok: IG sai, TikTok entra, Geral fica
+  update workflow_posts set platform = 'tiktok' where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral','tiktok'] and v_plat = 'tiktok', format('-> tiktok: %s / %s', v_arr, v_plat);
+
+  update workflow_posts set platform = 'both' where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  assert v_arr = array['geral','instagram','tiktok'], format('-> both: %s', v_arr);
+
+  update workflow_posts set platform = 'other' where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral'] and v_plat = 'other', format('-> other: %s / %s', v_arr, v_plat);
+
+  -- escrita direta em post_targets deriva platform
+  insert into post_targets (conta_id, post_id, platform) values (v_ws, v_p, 'instagram');
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_plat = 'instagram', format('insert target ig: %s', v_plat);
+  delete from post_targets where post_id = v_p and platform = 'instagram';
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_plat = 'other', format('delete target ig: %s', v_plat);
+
+  -- CHECKs
+  v_rejected := false;
+  begin insert into post_targets (conta_id, post_id, platform) values (v_ws, v_p, 'youtube');
+  exception when check_violation then v_rejected := true; end;
+  assert v_rejected, 'post_targets.platform youtube foi aceito';
+
+  v_rejected := false;
+  begin update post_targets set status = 'x' where post_id = v_p;
+  exception when check_violation then v_rejected := true; end;
+  assert v_rejected, 'post_targets.status invalido foi aceito';
+
+  v_rejected := false;
+  begin update workflow_posts set platform = 'geral' where id = v_p;
+  exception when check_violation then v_rejected := true; end;
+  assert v_rejected, 'workflow_posts.platform geral foi aceito (so other e valido)';
+
+  -- post apagado leva os destinos
+  delete from workflow_posts where id = v_p;
+  assert not exists (select 1 from post_targets where post_id = v_p), 'destinos sobreviveram ao post';
+end $$;
+rollback;
+
+-- 4. RLS e ACL de post_targets
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws_a uuid; v_ws_b uuid; v_uid uuid := gen_random_uuid();
+  v_cli_a bigint; v_cli_b bigint; v_wf_a bigint; v_wf_b bigint; v_p_a bigint; v_p_b bigint;
+  v_n int; v_rows int; v_rejected boolean;
+begin
+  v_ws_a := et_make_workspace('start');
+  v_ws_b := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into workspace_members (user_id, workspace_id, role)
+    values (v_uid, v_ws_a, 'owner'), (v_uid, v_ws_b, 'owner');
+  update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a where id = v_uid;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws_a, 'A', 'A', '#000') returning id into v_cli_a;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws_b, 'B', 'B', '#000') returning id into v_cli_b;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (v_uid, v_ws_a, v_cli_a, 'A', 'ativo') returning id into v_wf_a;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status) values (v_uid, v_ws_b, v_cli_b, 'B', 'ativo') returning id into v_wf_b;
+  insert into workflow_posts (workflow_id, conta_id, titulo) values (v_wf_a, v_ws_a, 'a') returning id into v_p_a;
+  insert into workflow_posts (workflow_id, conta_id, titulo) values (v_wf_b, v_ws_b, 'b') returning id into v_p_b;
+
+  assert not has_function_privilege('authenticated', 'public.post_targets_seed()', 'EXECUTE'),
+    'authenticated executa post_targets_seed';
+  assert not has_function_privilege('anon', 'public.workflow_posts_platform_to_targets()', 'EXECUTE'),
+    'anon executa workflow_posts_platform_to_targets';
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+
+  select count(*) into v_n from post_targets;
+  assert v_n = 1, format('esperava 1 destino visivel, veio %s', v_n);
+
+  update post_targets set caption = 'x' where conta_id = v_ws_b;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 0, 'atualizou destino de outro workspace';
+
+  v_rejected := false;
+  begin insert into post_targets (conta_id, post_id, platform) values (v_ws_b, v_p_b, 'geral');
+  exception when insufficient_privilege then v_rejected := true; end;
+  assert v_rejected, 'inseriu destino com conta_id de outro workspace';
+
+  -- post de B com conta_id de A: FK composta barra
+  v_rejected := false;
+  begin insert into post_targets (conta_id, post_id, platform) values (v_ws_a, v_p_b, 'geral');
+  exception when foreign_key_violation then v_rejected := true; end;
+  assert v_rejected, 'destino apontando post de outro workspace foi aceito';
+
+  -- escrita no proprio workspace funciona (e deriva platform como authenticated)
+  insert into post_targets (conta_id, post_id, platform) values (v_ws_a, v_p_a, 'geral');
+end $$;
+rollback;
+```
+
+Run the file. Expected: FAIL in section 2 with `relation "post_targets" does not exist`.
+
+- [ ] **Step 2: Write the migration**
+
+`supabase/migrations/20260929100002_post_targets.sql`:
+
+```sql
+-- ============================================================
+-- post_targets: destinos de cada post (P1)
+-- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
+--
+-- P1: esta tabela é a fonte de QUAIS destinos um post tem (e da legenda dos
+-- destinos que não são Instagram/TikTok). O estado de publicação de Instagram
+-- e TikTok continua nas colunas legadas de workflow_posts até P4 (TikTok) e
+-- P5 (Instagram); status aqui fica 'pendente' para essas linhas até lá.
+--
+-- workflow_posts.platform vira DERIVADO dos destinos:
+--   instagram+tiktok -> both | instagram -> instagram | tiktok -> tiktok | resto -> other
+-- 'other' é o que impede um post só Geral de casar com o claim do Instagram
+-- (20260925000013:34) e com as automações de comentário (migration 3).
+--
+-- Três triggers, um GUC de recursão (app.post_targets_sync):
+--   z6 seed   (AFTER INSERT em workflow_posts): cria destinos a partir do quadro.
+--   sync      (AFTER INSERT/DELETE em post_targets): recalcula platform.
+--   legado    (BEFORE UPDATE OF platform em workflow_posts): o PlatformSelector
+--             atual grava platform; o trigger traduz para destinos.
+-- ============================================================
+
+-- ---------- CHECK de platform ganha 'other' --------------------------------
+-- A CHECK inline de 20260720000005:25-26 tem nome gerado; acha pelo corpo.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT conname FROM pg_constraint
+     WHERE conrelid = 'public.workflow_posts'::regclass
+       AND contype = 'c'
+       AND pg_get_constraintdef(oid) LIKE '%(platform = ANY%'
+  LOOP
+    EXECUTE format('ALTER TABLE public.workflow_posts DROP CONSTRAINT %I', r.conname);
+  END LOOP;
+END $$;
+ALTER TABLE public.workflow_posts
+  ADD CONSTRAINT workflow_posts_platform_check
+  CHECK (platform IN ('instagram','tiktok','both','other'));
+
+-- ---------- tabela ----------------------------------------------------------
+CREATE TABLE public.post_targets (
+  id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  conta_id      uuid   NOT NULL,
+  post_id       bigint NOT NULL,
+  platform      text   NOT NULL
+                CHECK (platform IN ('instagram','tiktok','geral')),
+  format        text,
+  caption       text,
+  title         text,
+  settings      jsonb  NOT NULL DEFAULT '{}'::jsonb,
+  scheduled_at  timestamptz,
+  status        text   NOT NULL DEFAULT 'pendente'
+                CHECK (status IN ('pendente','agendado','processando','publicado','falha','disponivel')),
+  external_id   text,
+  permalink     text,
+  error         text,
+  error_code    text,
+  retry_count   int    NOT NULL DEFAULT 0,
+  processing_at timestamptz,
+  published_at  timestamptz,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT post_targets_post_platform_uq UNIQUE (post_id, platform),
+  -- FK composta tenant-safe (par workflow_posts_id_conta_uq, 20260820000002:18)
+  CONSTRAINT post_targets_post_same_tenant
+    FOREIGN KEY (post_id, conta_id) REFERENCES public.workflow_posts (id, conta_id)
+    ON DELETE CASCADE
+);
+CREATE INDEX post_targets_conta_idx ON public.post_targets (conta_id);
+
+ALTER TABLE public.post_targets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY post_targets_workspace_all ON public.post_targets
+  FOR ALL TO authenticated
+  USING (conta_id IN (SELECT public.get_my_conta_id()))
+  WITH CHECK (conta_id IN (SELECT public.get_my_conta_id()));
+CREATE POLICY post_targets_service_role ON public.post_targets
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.post_targets FROM anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.post_targets TO authenticated;
+GRANT ALL ON public.post_targets TO service_role;
+
+-- ---------- backfill (antes dos triggers: não pode reescrever platform) ----
+INSERT INTO public.post_targets (conta_id, post_id, platform)
+SELECT wp.conta_id, wp.id, p.platform
+  FROM public.workflow_posts wp
+ CROSS JOIN LATERAL unnest(
+   CASE wp.platform WHEN 'both' THEN ARRAY['instagram','tiktok']
+                    ELSE ARRAY[wp.platform] END) AS p(platform);
+
+-- ---------- helper: platform derivado -----------------------------------
+CREATE OR REPLACE FUNCTION public.derive_post_platform(p_post_id bigint)
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  SELECT CASE
+           WHEN bool_or(platform = 'instagram') AND bool_or(platform = 'tiktok') THEN 'both'
+           WHEN bool_or(platform = 'instagram') THEN 'instagram'
+           WHEN bool_or(platform = 'tiktok')    THEN 'tiktok'
+           ELSE 'other'
+         END
+    FROM public.post_targets WHERE post_id = p_post_id;
+$$;
+REVOKE ALL ON FUNCTION public.derive_post_platform(bigint) FROM public, anon, authenticated;
+
+-- ---------- sync: destino mudou -> recalcula platform -------------------
+CREATE OR REPLACE FUNCTION public.post_targets_sync_platform()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  v_post bigint;
+  v_prev text := current_setting('app.post_targets_sync', true);
+  v_derived text;
+BEGIN
+  IF v_prev = 'on' THEN RETURN NULL; END IF;
+  IF TG_OP = 'DELETE' THEN v_post := OLD.post_id; ELSE v_post := NEW.post_id; END IF;
+  v_derived := public.derive_post_platform(v_post);
+  PERFORM set_config('app.post_targets_sync', 'on', true);
+  UPDATE public.workflow_posts SET platform = v_derived
+   WHERE id = v_post AND platform IS DISTINCT FROM v_derived;
+  PERFORM set_config('app.post_targets_sync', COALESCE(v_prev, ''), true);
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.post_targets_sync_platform() FROM public, anon, authenticated;
+
+CREATE TRIGGER post_targets_sync_platform
+  AFTER INSERT OR DELETE OR UPDATE OF platform ON public.post_targets
+  FOR EACH ROW EXECUTE FUNCTION public.post_targets_sync_platform();
+
+-- ---------- seed: post novo -> destinos do quadro ------------------------
+CREATE OR REPLACE FUNCTION public.post_targets_seed()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  v_board  text[];
+  v_social text[];
+  v_all    text[];
+BEGIN
+  IF NEW.workflow_id IS NOT NULL THEN
+    SELECT plataformas INTO v_board FROM public.workflows WHERE id = NEW.workflow_id;
+  ELSE
+    SELECT plataformas_padrao INTO v_board FROM public.clientes WHERE id = NEW.cliente_id;
+  END IF;
+  v_board := COALESCE(v_board, ARRAY['instagram']);
+
+  -- platform é 'instagram' por default: nesse caso o quadro decide a parte
+  -- social; qualquer outro valor foi escrito de propósito e manda.
+  v_social := CASE NEW.platform
+    WHEN 'both'   THEN ARRAY['instagram','tiktok']
+    WHEN 'tiktok' THEN ARRAY['tiktok']
+    WHEN 'other'  THEN ARRAY[]::text[]
+    ELSE ARRAY(SELECT x FROM unnest(v_board) x WHERE x IN ('instagram','tiktok'))
+  END;
+  v_all := v_social || ARRAY(SELECT x FROM unnest(v_board) x WHERE x NOT IN ('instagram','tiktok'));
+
+  -- Formato sem equivalente na plataforma (registro: tiktok não tem stories).
+  IF NEW.tipo = 'stories' THEN
+    v_all := array_remove(v_all, 'tiktok');
+  END IF;
+
+  INSERT INTO public.post_targets (conta_id, post_id, platform)
+  SELECT NEW.conta_id, NEW.id, x FROM unnest(v_all) x
+  ON CONFLICT (post_id, platform) DO NOTHING;
+
+  -- Sem destino nenhum (ex.: quadro só TikTok + stories): o sync nunca rodou.
+  IF cardinality(v_all) = 0 THEN
+    PERFORM set_config('app.post_targets_sync', 'on', true);
+    UPDATE public.workflow_posts SET platform = 'other'
+     WHERE id = NEW.id AND platform IS DISTINCT FROM 'other';
+    PERFORM set_config('app.post_targets_sync', '', true);
+  END IF;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.post_targets_seed() FROM public, anon, authenticated;
+
+CREATE TRIGGER workflow_posts_z6_seed_targets
+  AFTER INSERT ON public.workflow_posts
+  FOR EACH ROW EXECUTE FUNCTION public.post_targets_seed();
+
+-- ---------- legado: PlatformSelector grava platform -> destinos ----------
+CREATE OR REPLACE FUNCTION public.workflow_posts_platform_to_targets()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  v_prev text := current_setting('app.post_targets_sync', true);
+BEGIN
+  IF v_prev = 'on' OR NEW.platform IS NOT DISTINCT FROM OLD.platform THEN
+    RETURN NEW;
+  END IF;
+  -- GUC ligado: os INSERT/DELETE abaixo não podem reescrever esta mesma linha
+  -- (UPDATE dentro de BEFORE UPDATE da própria linha = erro 27000).
+  PERFORM set_config('app.post_targets_sync', 'on', true);
+
+  IF NEW.platform IN ('instagram','both') THEN
+    INSERT INTO public.post_targets (conta_id, post_id, platform)
+    VALUES (NEW.conta_id, NEW.id, 'instagram') ON CONFLICT (post_id, platform) DO NOTHING;
+  ELSE
+    DELETE FROM public.post_targets WHERE post_id = NEW.id AND platform = 'instagram';
+  END IF;
+
+  IF NEW.platform IN ('tiktok','both') THEN
+    INSERT INTO public.post_targets (conta_id, post_id, platform)
+    VALUES (NEW.conta_id, NEW.id, 'tiktok') ON CONFLICT (post_id, platform) DO NOTHING;
+  ELSE
+    DELETE FROM public.post_targets WHERE post_id = NEW.id AND platform = 'tiktok';
+  END IF;
+
+  PERFORM set_config('app.post_targets_sync', COALESCE(v_prev, ''), true);
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.workflow_posts_platform_to_targets() FROM public, anon, authenticated;
+
+CREATE TRIGGER workflow_posts_a2_platform_to_targets
+  BEFORE UPDATE OF platform ON public.workflow_posts
+  FOR EACH ROW EXECUTE FUNCTION public.workflow_posts_platform_to_targets();
+```
+
+Before running it, check the trigger names are free:
+
+```bash
+grep -rn "workflow_posts_z6\|workflow_posts_a2" supabase/migrations
+```
+
+Expected: no hits except the new file. If one is taken, pick the next free letter or number.
+
+- [ ] **Step 3: Run the tests**
+
+Run: `npx supabase db reset`, then `psql … -f supabase/tests/entitlements/99_post_targets.sql`.
+Expected: `ROLLBACK` ×4 with no assertion failure.
+
+Then run the whole suite, because existing suites insert posts and change `platform`: `bash scripts/test-entitlements.sh`. Expected: all PASS.
+
+If `30_ig_trial_strategy.sql` or `tiktok_publishing_rpcs.sql` now fail, read the failure first. They insert with an explicit `platform`, which the seed trigger respects by design, so any failure there is a real regression to fix in the migration, not in the test.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add supabase/migrations/20260929100002_post_targets.sql supabase/tests/entitlements/99_post_targets.sql
+git commit -m "feat(db): post_targets com seed pelo quadro e platform derivado (other)"
+```
+
+---
+
+### Task 3: Migration C: Instagram automations only accept Instagram posts
+
+**Files:**
+- Create: `supabase/migrations/20260929100003_ica_platform_predicates.sql`
+- Modify: `supabase/tests/entitlements/99_post_targets.sql` (append section 5)
+
+**Interfaces:**
+- Consumes: `platform = 'other'` from Task 2.
+- Produces: four ICA functions that treat only `platform IN ('instagram','both')` as an Instagram target. Signatures, grants and triggers are unchanged: `CREATE OR REPLACE` keeps the OID.
+
+- [ ] **Step 1: Append the failing test (section 5)**
+
+Start from **section 3 of `supabase/tests/entitlements/66_instagram_automation_post_targets.sql`**, the "post so-TikTok" rejection. Copy that block, including its workspace override that turns `feature_instagram_automation` on, and append it as section 5 of `99_post_targets.sql` with these changes:
+
+- The target post is created on a board inserted with `plataformas = array['geral']`, so its `platform` is `other`.
+- The expected exception text is the one Step 2 introduces: `'instagram automation target must be an instagram post'`.
+- Add a second assertion, run as table owner:
+  - update that `other` post to `status = 'postado'`, and create a pending automation pointing at it with the Step 2 guards disabled. The simplest way is `alter table instagram_comment_automations disable trigger ica_a1_resolve_workflow_post_target`, the same trick suite 66 section 1 uses.
+  - Then run `select * from reconcile_unlinked_automation_targets()` and assert that `target_unlinked_at` stays `NULL` for it (an `other` post is not an Instagram post that "lost" its media).
+
+Run the file. Expected: FAIL on section 5, because the resolver accepts the `other` post (`<> 'tiktok'` is true for `other`).
+
+- [ ] **Step 2: Write the copy-forward migration**
+
+`supabase/migrations/20260929100003_ica_platform_predicates.sql`. It has a header comment and four `CREATE OR REPLACE FUNCTION` blocks, each copied **verbatim** from its latest definition with only the predicate lines changed:
+
+| Function | Copy from | Change |
+|---|---|---|
+| `public.reconcile_unlinked_automation_targets()` | `20260914000001_ica_target_unlinked.sql:24-65` | both `AND COALESCE(wp.platform, 'instagram') <> 'tiktok'` lines become `AND COALESCE(wp.platform, 'instagram') IN ('instagram','both')` |
+| `resolve_ica_workflow_post_target()` | `20260914000001_ica_target_unlinked.sql:83-183` | the `IF COALESCE(v_platform, 'instagram') = 'tiktok' THEN RAISE EXCEPTION 'instagram automation target cannot be a tiktok-only post';` block becomes `IF COALESCE(v_platform, 'instagram') NOT IN ('instagram','both') THEN RAISE EXCEPTION 'instagram automation target must be an instagram post';`. The fill guard `AND COALESCE(v_platform, 'instagram') <> 'tiktok'` becomes `AND COALESCE(v_platform, 'instagram') IN ('instagram','both')` |
+| `link_pending_instagram_automations()` | `20260830000002_avulso_claim_reorder_ica.sql:474-500` | `IF NEW.tipo = 'stories' OR COALESCE(NEW.platform, 'instagram') = 'tiktok' THEN` becomes `IF NEW.tipo = 'stories' OR COALESCE(NEW.platform, 'instagram') NOT IN ('instagram','both') THEN` |
+| `sweep_pending_instagram_automation_links()` | `20260830000002_avulso_claim_reorder_ica.sql:520-538` | `AND COALESCE(wp.platform, 'instagram') <> 'tiktok';` becomes `AND COALESCE(wp.platform, 'instagram') IN ('instagram','both');` |
+
+Header comment to put at the top of the file:
+
+```sql
+-- ============================================================
+-- Automações de comentário: só post de Instagram é alvo (P1)
+-- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
+-- Com workflow_posts.platform = 'other' (post sem Instagram nem TikTok), os
+-- testes "<> 'tiktok'" passaram a aceitar post só Geral. Os predicados viram
+-- "IN ('instagram','both')" (inclusão) e "NOT IN ('instagram','both')"
+-- (exclusão). Copy-forward VERBATIM das definições vigentes; só essas linhas
+-- mudam. CREATE OR REPLACE preserva oid, grants e triggers.
+-- ============================================================
+```
+
+Before copying, confirm these are still the latest definitions:
+
+```bash
+for f in reconcile_unlinked_automation_targets resolve_ica_workflow_post_target link_pending_instagram_automations sweep_pending_instagram_automation_links; do echo "$f: $(grep -l "FUNCTION[[:space:]]*\(public\.\)\?$f\b" supabase/migrations/*.sql | sort | tail -1)"; done
+```
+
+Expected: 0914 for the first two and 0830 for the last two. If a newer file appears, copy from it.
+
+Check that the old RAISE text isn't asserted anywhere:
+
+```bash
+grep -rn "tiktok-only post" supabase/tests supabase/functions apps
+```
+
+Update any hit to the new message.
+
+- [ ] **Step 3: Run the tests**
+
+Run: `npx supabase db reset && bash scripts/test-entitlements.sh`
+Expected: all PASS, including suites 65, 66 and 99. Suite 66 section 3 (the TikTok-only post) must still be rejected, now with the new message: update its expected `sqlerrm` if it matches on the text.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add supabase/migrations/20260929100003_ica_platform_predicates.sql supabase/tests/entitlements/
+git commit -m "fix(db): automações de comentário só aceitam post de Instagram (platform other)"
+```
+
+---
+
+### Task 4: `validateForScheduling` refuses posts with no auto-publishing destination
+
+**Files:**
+- Modify: `supabase/functions/_shared/instagram-publish-utils.ts:91-96`
+- Test: `supabase/functions/__tests__/instagram-publish-validate_test.ts`
+
+**Interfaces:**
+- Produces: `validateForScheduling` returns `{ ok: false, errors: ["Este post não tem destino com publicação automática."] }` when `post.platform === "other"`, before any media or account lookup. The CRM `instagram-publish` schedule route and hub-approve auto-schedule both inherit this.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `instagram-publish-validate_test.ts`:
+
+```ts
+Deno.test("validateForScheduling: platform other → refused before media/account lookups", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workflow_posts", "select", {
+    data: { id: 1, scheduled_at: null, ig_caption: "cap", workflow_id: 9, cliente_id: 5, tipo: "feed", platform: "other" },
+    error: null,
+  });
+  const res = await validateForScheduling(db as never, 1, { skipDateCheck: true });
+  assert(!res.ok, "other must not validate");
+  assert(
+    res.errors.length === 1 && res.errors[0] === "Este post não tem destino com publicação automática.",
+    `unexpected errors: ${JSON.stringify(res.errors)}`,
+  );
+});
+```
+
+Run:
+
+```bash
+deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/instagram-publish-validate_test.ts
+```
+
+Expected: FAIL. The unqueued `post_file_links` select returns nothing, so the errors are "Post precisa de pelo menos uma mídia." and others.
+
+- [ ] **Step 2: Implement**
+
+In `supabase/functions/_shared/instagram-publish-utils.ts`, add `platform` to the select and return early:
+
+```ts
+  const { data: post } = await db
+    .from("workflow_posts")
+    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo, ig_trial_strategy, platform")
+    .eq("id", postId)
+    .single();
+  if (!post) return { ok: false, errors: ["Post não encontrado."] };
+  // Post sem Instagram nem TikTok (só Geral): nada o publicaria; agendar o
+  // deixaria preso em 'agendado'. Spec 2026-09-29, fase P1.
+  if (post.platform === "other") {
+    return { ok: false, errors: ["Este post não tem destino com publicação automática."] };
+  }
+```
+
+- [ ] **Step 3: Run the tests**
+
+Run: `npm run check:functions`, then `deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/` (the whole suite: `hub-functions_test.ts` and the publish tests exercise this path).
+Expected: PASS. Afterwards run `ls node_modules/.deno 2>/dev/null && npm ci`, and `git checkout deno.lock` if it changed.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add supabase/functions/_shared/instagram-publish-utils.ts supabase/functions/__tests__/instagram-publish-validate_test.ts
+git commit -m "fix(publish): agendamento recusa post sem destino com publicação automática"
+```
+
+---
+
+### Task 5: CRM and Hub understand `platform = 'other'`
+
+**Files:**
+- Modify (CRM):
+  - `apps/crm/src/store/posts.ts:86-89` (type + comment)
+  - `apps/crm/src/pages/entregas/postLabels.ts:35-39`
+  - `apps/crm/src/pages/entregas/components/AutoSchedulePromptDialog.tsx:24`
+  - `apps/crm/src/pages/entregas/components/PlatformSelector.tsx:38-66`
+  - `apps/crm/src/pages/entregas/components/ScheduleButton.tsx:199-206`
+- Modify (Instagram predicates, CRM):
+  - `apps/crm/src/pages/automacoes/AutomationFormDialog.tsx:129`
+  - `apps/crm/src/pages/entregas/components/PostAutomationSection.tsx:72`
+  - `apps/crm/src/pages/entregas/components/TrialReelPanel.tsx:20`
+  - `apps/crm/src/pages/entregas/components/WorkflowGridView.tsx:72`
+  - `apps/crm/src/pages/entregas/components/publishErrorBlockVisibility.ts:23`
+  - `apps/crm/src/pages/entregas/components/PostEditorBody.tsx:501`
+- Modify (Hub):
+  - `apps/hub/src/types.ts` (the `platform` field)
+  - `apps/hub/src/components/PostCard.tsx:33-40`
+  - `packages/i18n/locales/{pt,en}/hubPostCard.json` (`platform.other`)
+- Create: `apps/crm/src/pages/entregas/platformTargets.ts`
+- Test:
+  - `apps/crm/src/pages/entregas/__tests__/platformTargets.test.ts`
+  - `apps/crm/src/pages/entregas/components/__tests__/PlatformSelector.test.tsx` (existing; extend it)
+
+**Interfaces:**
+- Produces: `type PostPlatform = 'instagram' | 'tiktok' | 'both' | 'other'` (exported from `store/posts.ts`), and in `platformTargets.ts`:
+  - `targetsInstagram(p: PostPlatform | null | undefined): boolean`, true for `instagram`/`both`/nullish (DB default)
+  - `hasAutoPublishTarget(p): boolean`, false only for `other`
+- Every component predicate below calls these helpers instead of comparing against `'tiktok'`.
+
+- [ ] **Step 1: Write the failing test**
+
+`apps/crm/src/pages/entregas/__tests__/platformTargets.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { targetsInstagram, hasAutoPublishTarget } from '../platformTargets';
+
+describe('platform predicates', () => {
+  it('only instagram, both and the legacy default target Instagram', () => {
+    expect(targetsInstagram('instagram')).toBe(true);
+    expect(targetsInstagram('both')).toBe(true);
+    expect(targetsInstagram(undefined)).toBe(true);
+    expect(targetsInstagram(null)).toBe(true);
+    expect(targetsInstagram('tiktok')).toBe(false);
+    expect(targetsInstagram('other')).toBe(false);
+  });
+
+  it('other is the only value with nothing to publish', () => {
+    expect(hasAutoPublishTarget('other')).toBe(false);
+    for (const p of ['instagram', 'tiktok', 'both', undefined] as const) {
+      expect(hasAutoPublishTarget(p)).toBe(true);
+    }
+  });
+});
+```
+
+Run: `npx vitest run apps/crm/src/pages/entregas/__tests__/platformTargets.test.ts`
+Expected: FAIL (module not found).
+
+- [ ] **Step 2: Implement the helpers and widen the type**
+
+`apps/crm/src/pages/entregas/platformTargets.ts`:
+
+```ts
+import type { PostPlatform } from '@/store/posts';
+
+/** Post publica no Instagram? `platform` nulo = linha antiga = default do banco (instagram). */
+export function targetsInstagram(p: PostPlatform | null | undefined): boolean {
+  return p == null || p === 'instagram' || p === 'both';
+}
+
+/** 'other' = nenhum destino com publicação automática (só Geral). Nada o agenda. */
+export function hasAutoPublishTarget(p: PostPlatform | null | undefined): boolean {
+  return p !== 'other';
+}
+```
+
+`apps/crm/src/store/posts.ts`, around lines 86-89:
+
+```ts
+/** Derivado de post_targets pelo banco (migration 20260929100002):
+ *  instagram+tiktok -> both; 'other' = nenhum destino Instagram/TikTok (ex.: só Geral).
+ *  'stories' nunca tem destino TikTok. */
+export type PostPlatform = 'instagram' | 'tiktok' | 'both' | 'other';
+```
+
+Then set the field to `platform?: PostPlatform;`.
+
+`postLabels.ts` `PLATFORM_LABELS`: add `other: 'Geral',`.
+
+`AutoSchedulePromptDialog.tsx:24`: `platform?: PostPlatform;` (import the type).
+
+- [ ] **Step 3: Switch the Instagram predicates to the helper**
+
+Replace each TikTok-exclusion check with `targetsInstagram(…)` (import from `../platformTargets`, adjusting the relative path):
+
+- `AutomationFormDialog.tsx:129`: `(post.platform ?? 'instagram') !== 'tiktok'` → `targetsInstagram(post.platform)`
+- `PostAutomationSection.tsx:72`: the same replacement.
+- `TrialReelPanel.tsx:20`: `(post.platform ?? 'instagram') === 'tiktok'` → `!targetsInstagram(post.platform)`
+- `WorkflowGridView.tsx:72`: `p.platform !== 'tiktok'` → `targetsInstagram(p.platform)`
+- `publishErrorBlockVisibility.ts:23`: `post.platform !== 'tiktok'` → `targetsInstagram(post.platform)`
+- `PostEditorBody.tsx:501`: `targetsInstagram={post.platform !== 'tiktok'}` → `targetsInstagram={targetsInstagram(post.platform)}`. Import the helper under an alias if the prop name shadows it, e.g. `import { targetsInstagram as isInstagramPost } from '../platformTargets'`.
+
+- [ ] **Step 4: `PlatformSelector` and `ScheduleButton` ignore `other` posts**
+
+`PlatformSelector.tsx`: the stories self-heal (`isStories && value !== 'instagram'`) would rewrite `other` to `instagram`. Guard it, and hide the control for `other` posts. Their destinations come from the board and P2 adds the destination toggles.
+
+```ts
+  const isOther = value === 'other';
+  ...
+    if (isStories && !isOther && value !== 'instagram' && !disabled) {
+  ...
+  if (!tiktokFeatureEnabled || isOther) return null;
+```
+
+Also widen `export type Platform = NonNullable<WorkflowPost['platform']>;`. It follows the store type automatically; check that `ToggleGroup` values are unaffected.
+
+`ScheduleButton.tsx`, just before the existing `if (targetsInstagram && !hasInstagramAccount) return null;` (around line 206):
+
+```ts
+  // Post só Geral: nada o publica (validateForScheduling também recusa no servidor).
+  if (!hasAutoPublishTarget(post.platform)) return null;
+```
+
+Extend `components/__tests__/PlatformSelector.test.tsx`:
+
+```tsx
+  it('renders nothing and never self-heals for an other (Geral-only) post', () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <PlatformSelector value="other" tipo="stories" tiktokFeatureEnabled hasActiveTikTokAccount onChange={onChange} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+```
+
+Match the existing file's imports (`render`, `vi`) and its wrapper, if it has one.
+
+- [ ] **Step 5: Hub**
+
+- `apps/hub/src/types.ts`: widen `platform?:` to `'instagram' | 'tiktok' | 'both' | 'other'`.
+- `apps/hub/src/components/PostCard.tsx` `getPlatformLabel`: widen the parameter and `Record` key type to include `'other'`, and add `other: t('hubPostCard:platform.other', 'Geral'),`.
+- Locales: pt `hubPostCard.json` → `"platform"` gets `"other": "Geral"`; en gets `"other": "General"`.
+
+- [ ] **Step 6: Run the tests**
+
+Run:
+- `npx vitest run apps/crm/src/pages/entregas apps/crm/src/pages/automacoes apps/hub`
+- `npx tsc -p apps/crm/tsconfig.json --noEmit`
+- `npx tsc -p apps/hub/tsconfig.json --noEmit`
+
+Expected: PASS and exit 0. The type widening surfaces every exhaustive `Record<Platform, …>` or switch that lacks `'other'`. Add `other` to each: label "Geral"; for scheduling copy, fall back to the Instagram branch, which is unreachable because `ScheduleButton` returns early.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add -A apps/crm/src apps/hub/src packages/i18n
+git commit -m "feat(crm,hub): platform 'other' (só Geral) e predicados de Instagram por helper"
+```
+
+---
+
+### Task 6: Store: platform lists on workflows, templates and clients
+
+**Files:**
+- Modify:
+  - `apps/crm/src/store/workflows.ts`: types at `:17-25` and `:96-113`, `saveWorkflowTemplate` at `:77-91`, recurring renewal at `:547-555`
+  - `apps/crm/src/store/clients.ts`: `Cliente` type (`:4-37`) and `CLIENTE_SAFE_COLUMNS` (`:94-95`)
+  - `apps/crm/src/pages/entregas/wizard/createWorkflow.ts:12-24,73-110`
+- Test:
+  - `apps/crm/src/__tests__/store.workflows.test.ts` (existing: `ls apps/crm/src/__tests__ | grep -i workflow`; add to it)
+  - `apps/crm/src/pages/entregas/wizard/__tests__/createWorkflow.test.ts` (existing if present; otherwise create)
+
+**Interfaces:**
+- Consumes: `PlatformId` from `@mesaas/platforms`.
+- Produces:
+  - `WorkflowTemplate.plataformas?: PlatformId[]`, `Workflow.plataformas?: PlatformId[]`, `Cliente.plataformas_padrao?: PlatformId[]`
+  - `saveWorkflowTemplate(id, { nome, etapas, modo_prazo, plataformas })`, which runs the RPC and then `UPDATE workflow_templates SET plataformas`
+  - `WizardCreateInput.plataformas: PlatformId[]`
+
+- [ ] **Step 1: Write the failing tests**
+
+In the store workflows test (use the file's existing supabase mock), add:
+
+```ts
+  it('saveWorkflowTemplate persists plataformas after the RPC', async () => {
+    await saveWorkflowTemplate(7, {
+      nome: 'T', etapas: [], modo_prazo: 'padrao', plataformas: ['instagram', 'geral'],
+    });
+    expect(mockRpc).toHaveBeenCalledWith('update_workflow_template', expect.objectContaining({ p_template_id: 7 }));
+    expect(mockFrom).toHaveBeenCalledWith('workflow_templates');
+    expect(mockUpdate).toHaveBeenCalledWith({ plataformas: ['instagram', 'geral'] });
+    expect(mockEq).toHaveBeenCalledWith('id', 7);
+  });
+```
+
+Use the mock names the file already uses (`mockRpc`/`mockFrom`, etc.). If the file lacks an `update` chain mock, extend the mock factory the same way its existing `insert` chain is built.
+
+In the `createWorkflow` test, add:
+
+```ts
+  it('passes plataformas to the workflow and to the saved template', async () => {
+    await createWorkflowFromWizard({ ...baseInput, plataformas: ['geral'], saveAsTemplate: true, templateName: 'T' });
+    expect(addWorkflowTemplate).toHaveBeenCalledWith(expect.objectContaining({ plataformas: ['geral'] }));
+    expect(addWorkflow).toHaveBeenCalledWith(expect.objectContaining({ plataformas: ['geral'] }));
+  });
+```
+
+`baseInput` is the fixture the file already uses. If the file doesn't exist, create it:
+- mock `../../../store` with `vi.mock` and stub `addWorkflow`, `addWorkflowEtapa`, `addWorkflowTemplate` and `removeWorkflow`;
+- build `baseInput` with one etapa `{ nome: 'Copy', prazo: 1, tipoPrazo: 'corridos', responsavelId: null, tipo: 'padrao' }`, `clienteId: 1`, `modoPrazo: 'padrao'`, `mesEntrega: ''`, `source: { kind: 'zero' }`, `cliente: undefined`, `membros: []`.
+
+Run both. Expected: FAIL (TypeScript error: `plataformas` does not exist in the type).
+
+- [ ] **Step 2: Implement**
+
+- `store/workflows.ts`:
+  - Add `plataformas?: PlatformId[];` to both `WorkflowTemplate` and `Workflow`.
+  - In `saveWorkflowTemplate`, extend the parameter type with `plataformas: PlatformId[]`. After the RPC succeeds:
+
+```ts
+  // Separado do RPC de propósito (plano P1, desvio 3): update_workflow_template
+  // não conhece a coluna, e perder só a lista de plataformas é recuperável no
+  // próximo save.
+  const { error: platErr } = await supabase
+    .from('workflow_templates')
+    .update({ plataformas: t.plataformas })
+    .eq('id', id);
+  if (platErr) throw new Error('Template salvo, mas as plataformas não foram gravadas.');
+```
+
+  - Recurring renewal (`addWorkflow({...})` around line 547): add `plataformas: workflow.plataformas,` so the next cycle keeps the board's platforms.
+
+- `store/clients.ts`: add `plataformas_padrao?: PlatformId[];` to `Cliente`, and append `, plataformas_padrao` to the end of the `CLIENTE_SAFE_COLUMNS` string.
+
+- `wizard/createWorkflow.ts`:
+  - Add `plataformas: PlatformId[];` to `WizardCreateInput`.
+  - Pass `plataformas: input.plataformas` in both the `addWorkflowTemplate({...})` and the `addWorkflow({...})` calls.
+
+- [ ] **Step 3: Run the tests and typecheck**
+
+Run: `npx vitest run apps/crm/src/__tests__ apps/crm/src/pages/entregas/wizard` and `npx tsc -p apps/crm/tsconfig.json --noEmit`.
+Expected: PASS. tsc flags the callers of `saveWorkflowTemplate` and `createWorkflowFromWizard` that don't pass `plataformas` yet; Task 7 fixes them. Temporarily pass `['instagram']` there so the gate is green, and Task 7 replaces it.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A apps/crm/src
+git commit -m "feat(crm): store lê e grava plataformas de fluxo, template e cliente"
+```
+
+---
+
+### Task 7: `PlatformChips`, and using it in the wizard, the workflow edit modal, templates and the client dialog
+
+**Files:**
+- Create:
+  - `apps/crm/src/components/PlatformChips.tsx`
+  - `apps/crm/src/components/__tests__/PlatformChips.test.tsx`
+- Modify:
+  - `apps/crm/src/pages/entregas/wizard/NewWorkflowWizard.tsx:44-75,123-142,185-197`
+  - `apps/crm/src/pages/entregas/wizard/steps/StepBasics.tsx`
+  - `apps/crm/src/pages/entregas/components/WorkflowModals.tsx` (EditWorkflowModal `:87-122` + render near `:210-217`; TemplatesModal `:407-408,461-472,486-489,606-619`)
+  - `apps/crm/src/pages/cliente-detalhe/ClienteEditDialog.tsx:39-64,110-130`
+
+**Interfaces:**
+- Consumes: `PLATFORM_IDS`, `PLATFORM_DEFS`, `COMING_SOON_PLATFORMS`, `PlatformId` from `@mesaas/platforms`; `useWorkspaceLimits()` → `features?.feature_tiktok`.
+- Produces: `<PlatformChips value={PlatformId[]} onChange={(next: PlatformId[]) => void} id?: string />`.
+  - It never emits an empty array: toggling off the last chip is a no-op with a hint.
+  - It hides TikTok unless `feature_tiktok` is on or `value` already includes it.
+  - YouTube renders as a disabled chip with "em breve".
+
+- [ ] **Step 1: Write the failing component test**
+
+`apps/crm/src/components/__tests__/PlatformChips.test.tsx`:
+
+```tsx
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { PlatformChips } from '../PlatformChips';
+
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: { feature_tiktok: false } }),
+}));
+
+describe('PlatformChips', () => {
+  it('toggles platforms and keeps order from the registry', () => {
+    const onChange = vi.fn();
+    render(<PlatformChips value={['instagram']} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: /Geral/ }));
+    expect(onChange).toHaveBeenCalledWith(['instagram', 'geral']);
+  });
+
+  it('never emits an empty list', () => {
+    const onChange = vi.fn();
+    render(<PlatformChips value={['geral']} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: /Geral/ }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText('Escolha pelo menos uma plataforma.')).toBeInTheDocument();
+  });
+
+  it('hides TikTok without the plan flag, shows YouTube as coming soon', () => {
+    render(<PlatformChips value={['instagram']} onChange={() => {}} />);
+    expect(screen.queryByRole('button', { name: /TikTok/ })).toBeNull();
+    const yt = screen.getByRole('button', { name: /YouTube/ });
+    expect(yt).toBeDisabled();
+    expect(yt).toHaveTextContent('em breve');
+  });
+
+  it('keeps TikTok visible when the value already has it', () => {
+    render(<PlatformChips value={['tiktok']} onChange={() => {}} />);
+    expect(screen.getByRole('button', { name: /TikTok/ })).toBeInTheDocument();
+  });
+});
+```
+
+Check the real hook path (`grep -rn "export function useWorkspaceLimits" apps/crm/src/hooks`) and fix the `vi.mock` path if it differs.
+
+Run: `npx vitest run apps/crm/src/components/__tests__/PlatformChips.test.tsx`
+Expected: FAIL (module not found).
+
+- [ ] **Step 2: Implement `PlatformChips`**
+
+`apps/crm/src/components/PlatformChips.tsx`:
+
+```tsx
+import { useState } from 'react';
+import { Check, FileDown, Instagram, Music2, Youtube } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  COMING_SOON_PLATFORMS,
+  PLATFORM_DEFS,
+  PLATFORM_IDS,
+  type PlatformId,
+} from '@mesaas/platforms';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+
+const ICONS: Record<PlatformId, LucideIcon> = {
+  instagram: Instagram,
+  tiktok: Music2,
+  geral: FileDown,
+};
+
+/**
+ * Plataformas de um quadro, template ou cliente (spec 2026-09-29). A ordem de
+ * saída segue PLATFORM_IDS. Nunca emite lista vazia: o banco exige >= 1.
+ */
+export function PlatformChips({
+  value,
+  onChange,
+  id,
+}: {
+  value: PlatformId[];
+  onChange: (next: PlatformId[]) => void;
+  id?: string;
+}) {
+  const { features } = useWorkspaceLimits();
+  const [emptyHint, setEmptyHint] = useState(false);
+
+  const visible = PLATFORM_IDS.filter((p) => {
+    const flag = PLATFORM_DEFS[p].planFeature;
+    return !flag || features?.[flag] === true || value.includes(p);
+  });
+
+  const toggle = (p: PlatformId) => {
+    const on = value.includes(p);
+    if (on && value.length === 1) {
+      setEmptyHint(true);
+      return;
+    }
+    setEmptyHint(false);
+    const set = new Set(on ? value.filter((x) => x !== p) : [...value, p]);
+    onChange(PLATFORM_IDS.filter((x) => set.has(x)));
+  };
+
+  return (
+    <div id={id}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        {visible.map((p) => {
+          const Icon = ICONS[p];
+          const on = value.includes(p);
+          return (
+            <button
+              key={p}
+              type="button"
+              aria-pressed={on}
+              onClick={() => toggle(p)}
+              className={`platform-chip${on ? ' platform-chip--on' : ''}`}
+            >
+              <Icon size={14} aria-hidden="true" />
+              {PLATFORM_DEFS[p].label}
+              {on && <Check size={14} aria-hidden="true" />}
+            </button>
+          );
+        })}
+        {COMING_SOON_PLATFORMS.map((p) => (
+          <button key={p.id} type="button" disabled className="platform-chip platform-chip--soon">
+            <Youtube size={14} aria-hidden="true" />
+            {p.label} <span className="platform-chip__soon">em breve</span>
+          </button>
+        ))}
+      </div>
+      {emptyHint && (
+        <p style={{ fontSize: '0.72rem', color: 'var(--danger-text)', margin: '0.35rem 0 0' }}>
+          Escolha pelo menos uma plataforma.
+        </p>
+      )}
+      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.35rem 0 0' }}>
+        Geral é conteúdo para baixar, sem publicação automática.
+      </p>
+    </div>
+  );
+}
+```
+
+`COMING_SOON_PLATFORMS` holds only YouTube today, which is why every entry uses the `Youtube` icon. When a second coming-soon platform is added, add an icon map for it.
+
+Append these styles to `apps/crm/style.css`, next to the other chip or pill rules (search for `.filter-pill` to find them):
+
+```css
+.platform-chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.8rem; padding: 0.35rem 0.65rem; border-radius: 8px;
+  border: 1px solid var(--border-color); background: var(--card-bg);
+  color: var(--text-main); cursor: pointer;
+}
+.platform-chip--on { border-color: var(--primary-color); background: rgba(255, 191, 48, 0.12); }
+.platform-chip--soon { cursor: not-allowed; color: var(--text-muted); }
+.platform-chip__soon { font-size: 0.68rem; }
+```
+
+- [ ] **Step 3: Run the component test**
+
+Run: `npx vitest run apps/crm/src/components/__tests__/PlatformChips.test.tsx`
+Expected: PASS (4 tests).
+
+- [ ] **Step 4: Wire it into the four forms**
+
+**Wizard**
+- `NewWorkflowWizard.tsx`:
+  - Add `plataformas: PlatformId[];` to `WizardState`, and `plataformas: ['instagram'],` to `INITIAL`.
+  - In `selectSource`'s `patch({...})`, add `plataformas: tpl?.plataformas ?? s.plataformas,`.
+  - In `createWorkflowFromWizard({...})`, add `plataformas: s.plataformas,`.
+  - Remove the temporary `['instagram']` from Task 6.
+- `StepBasics.tsx`:
+  - Change the name placeholder to `"Ex: Conteúdo Março 2026"`.
+  - After the "Nome do fluxo" block, add:
+
+```tsx
+      <div className="space-y-1">
+        <Label htmlFor="wizard-plataformas">Plataformas deste fluxo</Label>
+        <PlatformChips
+          id="wizard-plataformas"
+          value={state.plataformas}
+          onChange={(plataformas) => patch({ plataformas })}
+        />
+      </div>
+```
+
+**EditWorkflowModal (`WorkflowModals.tsx`)**
+- Add `const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(w.plataformas ?? ['instagram']);`.
+- Add `plataformas: fPlataformas,` to the `updateWorkflow(w.id!, {...})` payload.
+- Render the chips after the "Fluxo recorrente" row, before the etapa section. Its `onChange` sets state and calls `markDirty()`:
+
+```tsx
+            <div className="space-y-1">
+              <Label>Plataformas</Label>
+              <PlatformChips value={fPlataformas} onChange={(v) => { setFPlataformas(v); markDirty(); }} />
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+                Vale para os próximos posts. Posts já criados mantêm os destinos.
+              </p>
+            </div>
+```
+
+**TemplatesModal (`WorkflowModals.tsx`)**
+- Add `const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(['instagram']);`.
+- `handleEdit`: `setFPlataformas(tpl.plataformas ?? ['instagram']);`.
+- Add `plataformas: fPlataformas` to both `saveWorkflowTemplate(...)` and `addWorkflowTemplate({...})`.
+- Reset it to `['instagram']` where the form resets (next to `setFModoPrazo('padrao')`).
+- Render the chips block (label "Plataformas") right after the "Modo de Prazo" select.
+
+**ClienteEditDialog.tsx**
+- Add `const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(['instagram']);`.
+- In the effect that loads the cliente (around line 64): `setFPlataformas(cliente.plataformas_padrao ?? ['instagram']);`.
+- Add `plataformas_padrao: fPlataformas,` to `payload`.
+- Render the chips with the label "Plataformas dos posts avulsos" after the "dia de entrega" field.
+
+- [ ] **Step 5: Typecheck and run tests**
+
+Run: `npx tsc -p apps/crm/tsconfig.json --noEmit` and `npx vitest run apps/crm/src`
+Expected: exit 0 and PASS. The wizard, modal and client-dialog tests that snapshot the payload of `updateWorkflow`/`updateCliente`/`addWorkflow` need the new key: update each expectation to include `plataformas: ['instagram']` / `plataformas_padrao: ['instagram']`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A apps/crm
+git commit -m "feat(crm): escolha de plataformas no fluxo, template e cliente (PlatformChips)"
+```
+
+---
+
+### Task 8: End-to-end check, deploy and PR
+
+- [ ] **Step 1: Run every CI gate** from Global Constraints, including `bash scripts/test-entitlements.sh` against a freshly reset local DB.
+
+- [ ] **Step 2: Local browser check.** Run `preview_start` against the local Supabase (`npm run dev:env` with `.env` pointing at local, or `npm run dev:staging` after staging has the migrations). Check that:
+  1. Novo fluxo: the step "O básico" shows "Plataformas deste fluxo" with Instagram on, Geral off, YouTube "em breve", and TikTok only on a TikTok plan.
+  2. A board created with only Geral has posts with no "Agendar" button, and the platform selector is hidden.
+  3. A board with Instagram behaves exactly as before, including scheduling.
+  4. Editing a board's platforms, then creating a new post, gives that post the new set. Check with `select platform from post_targets where post_id = …` via `npx supabase db query` locally.
+  5. A template saved with Geral preselects Geral when the wizard starts from it.
+  6. The Hub card of a Geral-only post shows the "Geral" badge.
+
+  Take screenshots of 1 and 2.
+
+- [ ] **Step 3: Deploy to staging (before merge)**
+
+```bash
+npx supabase db push --linked   # staging; check supabase/.temp/project-ref = wlyzhyfondykzpsiqsce first
+npx supabase functions deploy instagram-publish --use-api --project-ref wlyzhyfondykzpsiqsce
+npx supabase functions deploy hub-approve --use-api --no-verify-jwt --project-ref wlyzhyfondykzpsiqsce
+npx supabase functions deploy tiktok-publish --use-api --project-ref wlyzhyfondykzpsiqsce
+```
+
+Match each function's existing `--no-verify-jwt` usage: check the deploy memory or the function's own README/comment before adding or dropping the flag.
+
+Smoke on staging:
+- `select platform, count(*) from workflow_posts group by 1` must show no `other` yet.
+- `select count(*) from post_targets` must equal the sum of posts counting `both` twice.
+
+- [ ] **Step 4: Open the PR** (renumber migrations first if main moved)
+
+```bash
+git push -u origin claude/platform-agnostic-p1
+gh pr create --title "feat(platforms): P1 plataformas por quadro + post_targets" --body "$(cat <<'EOF'
+Fase P1 da spec docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md (plano em docs/superpowers/plans/2026-09-29-platform-agnostic-p1-destinations.md, com os desvios da spec listados no topo).
+
+- Fluxos, templates e clientes declaram plataformas (Instagram, TikTok com plano, Geral; YouTube em breve).
+- `post_targets`: um destino por plataforma por post, criado a partir do quadro; `workflow_posts.platform` passa a ser derivado e ganha `other` (sem Instagram nem TikTok).
+- Automações de comentário, agendamento (validateForScheduling) e o CRM ignoram posts `other`.
+
+Deploy: migrations + instagram-publish, hub-approve, tiktok-publish ANTES do merge (staging e prod).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+- [ ] **Step 5: Prod deploy before merge.** Repeat Step 3 with the prod ref `skjzpekeqefvlojenfsw`, then merge.
