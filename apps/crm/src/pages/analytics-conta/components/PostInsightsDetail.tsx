@@ -35,19 +35,22 @@ const rowStyle: CSSProperties = {
 export function ActionMetricValue({
   post,
   metric,
+  as: Tag = 'strong',
 }: {
   post: PostAnalytics;
   metric: ActionMetricKey;
+  /** `span` renders plain text (table cells); `strong` is for label/value rows. */
+  as?: 'strong' | 'span';
 }) {
   const value = post[metric];
-  if (typeof value === 'number') return <strong>{value.toLocaleString('pt-BR')}</strong>;
+  if (typeof value === 'number') return <Tag>{value.toLocaleString('pt-BR')}</Tag>;
   return (
-    <strong
+    <Tag
       title={missingActionMetricTitle(metric, post.unavailable_metrics)}
       style={{ color: 'var(--text-muted)', fontWeight: 400 }}
     >
       —
-    </strong>
+    </Tag>
   );
 }
 
@@ -82,7 +85,7 @@ export function PostInsightsDetail({ post }: { post: PostAnalytics }) {
   const follows = post.follows;
   const reachPerFollower =
     typeof follows === 'number' && follows > 0 && post.reach > 0
-      ? Math.round(post.reach / follows)
+      ? Math.max(1, Math.round(post.reach / follows))
       : null;
 
   return (

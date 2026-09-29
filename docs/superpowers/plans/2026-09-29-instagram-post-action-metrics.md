@@ -670,10 +670,10 @@ describe('post-action-metrics', () => {
 
   it('missingActionMetricTitle distinguishes "not returned" from "never fetched"', () => {
     expect(missingActionMetricTitle('follows', ['follows'])).toBe(
-      'O Instagram não retornou este dado para este post',
+      'O Instagram não retornou este dado na última sincronização',
     );
-    expect(missingActionMetricTitle('follows', ['reposts'])).toBe('Sem dado para este post ainda');
-    expect(missingActionMetricTitle('follows', undefined)).toBe('Sem dado para este post ainda');
+    expect(missingActionMetricTitle('follows', ['reposts'])).toBe('Sem dado para este post');
+    expect(missingActionMetricTitle('follows', undefined)).toBe('Sem dado para este post');
   });
 
   it('exposes the sortable keys', () => {
@@ -747,8 +747,8 @@ export function missingActionMetricTitle(
   unavailable: readonly string[] | null | undefined,
 ): string {
   return unavailable?.includes(metric)
-    ? 'O Instagram não retornou este dado para este post'
-    : 'Sem dado para este post ainda';
+    ? 'O Instagram não retornou este dado na última sincronização'
+    : 'Sem dado para este post';
 }
 ```
 
@@ -1007,9 +1007,9 @@ describe('PostInsightsDetail', () => {
     );
     const follows = screen.getByText('Novos seguidores').nextSibling as HTMLElement;
     expect(follows).toHaveTextContent('—');
-    expect(follows).toHaveAttribute('title', 'O Instagram não retornou este dado para este post');
+    expect(follows).toHaveAttribute('title', 'O Instagram não retornou este dado na última sincronização');
     const bio = screen.getByText('Toques no link da bio').nextSibling as HTMLElement;
-    expect(bio).toHaveAttribute('title', 'Sem dado para este post ainda');
+    expect(bio).toHaveAttribute('title', 'Sem dado para este post');
     expect(screen.queryByText(/novo seguidor a cada/)).not.toBeInTheDocument();
   });
 
@@ -1116,7 +1116,7 @@ export function PostInsightsDetail({ post }: { post: PostAnalytics }) {
   const follows = post.follows;
   const reachPerFollower =
     typeof follows === 'number' && follows > 0 && post.reach > 0
-      ? Math.round(post.reach / follows)
+      ? Math.max(1, Math.round(post.reach / follows))
       : null;
 
   return (
@@ -1224,7 +1224,7 @@ In `apps/crm/src/pages/analytics-conta/__tests__/AnalyticsContaPage.test.tsx`, i
     expect(cells[1]).toHaveTextContent('—');
     expect(cells[1].querySelector('[title]')).toHaveAttribute(
       'title',
-      'O Instagram não retornou este dado para este post',
+      'O Instagram não retornou este dado na última sincronização',
     );
 
     fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
@@ -1633,7 +1633,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ## Deploy (needs the user's explicit go-ahead; not part of task execution)
 
-Order matters: the sync functions select and upsert the new columns, so deploying them before the migration makes every post upsert fail.
+Order matters: the sync functions select and upsert the new columns, so deploying them before the migration (or with it rolled back) makes their `existingByPostId` select error and every `instagram_posts` upsert fail, stopping metric syncing for every account. Migration first is mandatory. After `db push`, confirm PostgREST sees the columns (e.g. a REST `select=reposts&limit=1` on `instagram_posts`) before deploying the functions, on staging and prod. (The frontend alone tolerates missing columns.)
 
 1. Migration on staging, then prod: `npx supabase db push --linked` (check `supabase/.temp/project-ref` first; staging `wlyzhyfondykzpsiqsce`, prod `skjzpekeqefvlojenfsw`).
 2. Functions, each env: `npx supabase functions deploy instagram-integration --use-api --no-verify-jwt --project-ref <ref>` and the same for `instagram-sync-cron`. Deploy from a checkout whose branch contains current `origin/main` (rebase first) so nothing on main regresses.

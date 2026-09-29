@@ -43,7 +43,7 @@ describe('PostInsightsDetail', () => {
     expect(screen.getByText('Reposts').nextSibling).toHaveTextContent('335');
     expect(screen.getByText('Visitas ao perfil').nextSibling).toHaveTextContent('328');
     expect(screen.getByText('Novos seguidores').nextSibling).toHaveTextContent('75');
-    expect(screen.getByText('Toques no link da bio').nextSibling).toHaveTextContent('1');
+    expect(screen.getByText('Toques no link da bio').nextSibling).toHaveTextContent(/^1$/);
     expect(screen.getByText('Curtidas').nextSibling).toHaveTextContent('4.512');
     expect(screen.getByText('1 novo seguidor a cada 501 contas alcançadas')).toBeInTheDocument();
   });
@@ -62,9 +62,12 @@ describe('PostInsightsDetail', () => {
     );
     const follows = screen.getByText('Novos seguidores').nextSibling as HTMLElement;
     expect(follows).toHaveTextContent('—');
-    expect(follows).toHaveAttribute('title', 'O Instagram não retornou este dado para este post');
+    expect(follows).toHaveAttribute(
+      'title',
+      'O Instagram não retornou este dado na última sincronização',
+    );
     const bio = screen.getByText('Toques no link da bio').nextSibling as HTMLElement;
-    expect(bio).toHaveAttribute('title', 'Sem dado para este post ainda');
+    expect(bio).toHaveAttribute('title', 'Sem dado para este post');
     expect(screen.queryByText(/novo seguidor a cada/)).not.toBeInTheDocument();
   });
 

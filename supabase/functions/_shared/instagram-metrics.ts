@@ -36,9 +36,9 @@ const API_TO_COL: Record<ApiToken, keyof InsightValue> = {
 
 // The edge runtime kills isolates that hang on I/O; bound every request.
 const INSIGHT_TIMEOUT_MS = 10_000;
-// Graph error codes that mean "try later" (throttling, temporary) or "bad
-// token". Retrying with fewer metrics can't fix these.
-const TRANSIENT_OR_AUTH_CODES = new Set([1, 2, 4, 9, 17, 32, 613, 190]);
+// Graph error codes that mean "try later" (throttling, temporary; 80002 is
+// Instagram's per-account rate limit) or "bad token". Retrying with fewer metrics can't fix these.
+const TRANSIENT_OR_AUTH_CODES = new Set([1, 2, 4, 9, 17, 32, 613, 190, 80002]);
 
 function metricNumber(insight: any): number | undefined {
   const v = insight?.values?.[0]?.value;

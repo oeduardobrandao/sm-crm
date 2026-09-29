@@ -111,7 +111,7 @@ Deno.test("fetchPostInsights: unsupported actions -> retry with reposts only", a
 });
 
 Deno.test("fetchPostInsights: transient/auth action errors are not retried", async () => {
-  for (const code of [1, 2, 4, 9, 17, 32, 613, 190]) {
+  for (const code of [1, 2, 4, 9, 17, 32, 613, 190, 80002]) {
     let actionCalls = 0;
     const { fetchFn } = router({
       actions: () => {
@@ -124,6 +124,25 @@ Deno.test("fetchPostInsights: transient/auth action errors are not retried", asy
     assert(!r.returned.has("reposts"));
     assertEquals(r.values.reach, 100);
   }
+});
+
+Deno.test("fetchPostInsights: actions error without a numeric code -> retry with reposts only", async () => {
+  const actionUrls: string[] = [];
+  const { fetchFn } = router({
+    actions: (u) => {
+      actionUrls.push(u);
+      if (u.includes("follows")) {
+        return Promise.resolve({ json: () => Promise.resolve({ error: { message: "x" } }) } as Response);
+      }
+      return ok([{ name: "reposts", values: [{ value: 12 }] }]);
+    },
+  });
+  const r = await fetchPostInsights(fetchFn, "m6", "tok");
+  assertEquals(actionUrls.length, 2);
+  assert(actionUrls[1].includes("metric=reposts&"));
+  assertEquals(r.values.reposts, 12);
+  assert(!r.returned.has("follows"));
+  assertEquals(r.values.reach, 100);
 });
 
 Deno.test("fetchPostInsights: a throwing actions/bio call never removes core values", async () => {

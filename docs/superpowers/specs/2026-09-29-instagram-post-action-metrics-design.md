@@ -133,8 +133,8 @@ Replace the "Visualizações / Curtidas" spans with two groups under the caption
 
 A null value renders "—" with a metric-specific `title`: when the metric's token is in
 the post's `unavailable_metrics` (the last sync asked and got nothing),
-"O Instagram não retornou este dado para este post"; otherwise (never fetched)
-"Sem dado para este post ainda". No Reels-specific copy until the first prod sync
+"O Instagram não retornou este dado na última sincronização"; otherwise
+"Sem dado para este post" (no "ainda": posts outside the sync window are never refreshed). No Reels-specific copy until the first prod sync
 confirms what Reels return. Fix `colSpan` to the real column count (12 after B).
 
 ### B. Table column
@@ -199,8 +199,13 @@ Merging ships the CRM on Vercel immediately, so backend first:
    `--no-verify-jwt` and an explicit `--project-ref`.
 3. Merge.
 
-The frontend tolerates the columns being absent (undefined → null → "—"), so a
-reversed order degrades to "—" rather than breaking.
+The frontend tolerates missing columns (undefined → null → "—"), but the two sync
+functions do NOT: deployed before the migration (or with the migration rolled
+back), their `existingByPostId` select errors and every `instagram_posts` upsert
+fails, so metric syncing stops for every account. Migration first is mandatory.
+After `db push`, confirm PostgREST sees the columns (e.g. a REST
+`select=reposts&limit=1` on `instagram_posts`) before deploying the functions, on
+staging and prod.
 
 ## Verification after deploy
 

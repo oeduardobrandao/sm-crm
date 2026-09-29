@@ -47,6 +47,6 @@ export function missingActionMetricTitle(
   unavailable: readonly string[] | null | undefined,
 ): string {
   return unavailable?.includes(metric)
-    ? 'O Instagram não retornou este dado para este post'
-    : 'Sem dado para este post ainda';
+    ? 'O Instagram não retornou este dado na última sincronização'
+    : 'Sem dado para este post';
 }

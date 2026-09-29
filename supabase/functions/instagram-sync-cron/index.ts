@@ -338,7 +338,10 @@ async function syncAccount(
         allPostData.push(...batchResults);
       }
 
-      await supabase.from('instagram_posts').upsert(allPostData, { onConflict: 'instagram_post_id' });
+      const { error: postsUpsertErr } = await supabase.from('instagram_posts').upsert(allPostData, { onConflict: 'instagram_post_id' });
+      if (postsUpsertErr) {
+        console.error(`[IG-SYNC-CRON] instagram_posts upsert failed for account ${account.id}:`, postsUpsertErr);
+      }
     }
   }
 

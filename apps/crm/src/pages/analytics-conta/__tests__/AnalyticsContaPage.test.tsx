@@ -786,7 +786,7 @@ describe('AnalyticsContaPage', () => {
     expect(cells[1]).toHaveTextContent('—');
     expect(cells[1].querySelector('[title]')).toHaveAttribute(
       'title',
-      'O Instagram não retornou este dado para este post',
+      'O Instagram não retornou este dado na última sincronização',
     );
 
     fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
@@ -835,6 +835,7 @@ describe('AnalyticsContaPage', () => {
     expect(drawer).toBeTruthy();
     expect(within(drawer!).getAllByText(/Post ranqueado/)[0]).toHaveTextContent('Post ranqueado 6');
   });
+
   it('sorts the "Ver mais" drawer by Novos seguidores with missing values last', () => {
     seedCommonAnalyticsData();
     const follows = [5, null, 20, null, 1, 8];

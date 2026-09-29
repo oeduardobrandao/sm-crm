@@ -1913,7 +1913,7 @@ function AnalyticsContent({
                       <td data-label="Coment.">{p.comments}</td>
                       <td data-label="Compart.">{p.shares}</td>
                       <td data-label="Novos seg.">
-                        <ActionMetricValue post={p} metric="follows" />
+                        <ActionMetricValue post={p} metric="follows" as="span" />
                       </td>
                       <td data-label="Tags" onClick={(e) => e.stopPropagation()}>
                         {p.tags.map((t) => (

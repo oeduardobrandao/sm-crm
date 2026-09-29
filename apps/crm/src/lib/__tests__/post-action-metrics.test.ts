@@ -38,10 +38,10 @@ describe('post-action-metrics', () => {
 
   it('missingActionMetricTitle distinguishes "not returned" from "never fetched"', () => {
     expect(missingActionMetricTitle('follows', ['follows'])).toBe(
-      'O Instagram não retornou este dado para este post',
+      'O Instagram não retornou este dado na última sincronização',
     );
-    expect(missingActionMetricTitle('follows', ['reposts'])).toBe('Sem dado para este post ainda');
-    expect(missingActionMetricTitle('follows', undefined)).toBe('Sem dado para este post ainda');
+    expect(missingActionMetricTitle('follows', ['reposts'])).toBe('Sem dado para este post');
+    expect(missingActionMetricTitle('follows', undefined)).toBe('Sem dado para este post');
   });
 
   it('exposes the sortable keys', () => {

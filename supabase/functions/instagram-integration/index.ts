@@ -847,7 +847,10 @@ Deno.serve(async (req) => {
                     allPostData.push(...batchResults);
                 }
                 // Single bulk upsert instead of 50 individual ones
-                await serviceClient.from('instagram_posts').upsert(allPostData, { onConflict: 'instagram_post_id' });
+                const { error: postsUpsertErr } = await serviceClient.from('instagram_posts').upsert(allPostData, { onConflict: 'instagram_post_id' });
+                if (postsUpsertErr) {
+                    console.error(`[IG-SYNC] instagram_posts upsert failed for account ${account.id}:`, postsUpsertErr);
+                }
             }
             
             return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
