@@ -35,7 +35,7 @@ const BIO = [{
 }];
 
 const isCore = (u: string) => u.includes("metric=reach");
-const isActions = (u: string) => u.includes("metric=reposts");
+const isActions = (u: string) => u.includes("metric=reposts") || u.includes("metric=follows");
 const isBio = (u: string) => u.includes("metric=profile_activity");
 
 /** Routes each of the three per-post requests to its own handler. */
@@ -92,22 +92,46 @@ Deno.test("fetchPostInsights: shares rejection -> core retried without shares", 
   assert(r.returned.has("reposts"));
 });
 
-Deno.test("fetchPostInsights: unsupported actions -> retry with reposts only", async () => {
+Deno.test("fetchPostInsights: actions and bio use the pinned Graph version; core stays unversioned", async () => {
+  const { fetchFn, urls } = router({});
+  await fetchPostInsights(fetchFn, "m1", "tok");
+  for (const u of urls.filter((u) => isActions(u) || isBio(u))) {
+    assert(u.startsWith("https://graph.instagram.com/v25.0/m1/insights?"), u);
+  }
+  const core = urls.find(isCore)!;
+  assert(core.startsWith("https://graph.instagram.com/m1/insights?"), core);
+});
+
+Deno.test("fetchPostInsights: rejected reposts doesn't take follows/profile_visits down", async () => {
   const actionUrls: string[] = [];
   const { fetchFn } = router({
     actions: (u) => {
       actionUrls.push(u);
+      if (u.includes("reposts")) return errBody("(#100) metric[0] must be one of the following values", 100);
+      return ok(ACTIONS.filter((m) => m.name !== "reposts"));
+    },
+  });
+  const r = await fetchPostInsights(fetchFn, "m3", "tok");
+  assertEquals(actionUrls.length, 3); // combined, then follows,profile_visits + reposts
+  assert(actionUrls.some((u) => u.includes("metric=follows,profile_visits&")));
+  assert(actionUrls.some((u) => u.includes("metric=reposts&")));
+  assertEquals(r.values.follows, 75);
+  assertEquals(r.values.profile_visits, 328);
+  assert(!r.returned.has("reposts"));
+  assertEquals(r.values.reach, 100); // core untouched
+});
+
+Deno.test("fetchPostInsights: unsupported follows/profile_visits -> reposts still returned", async () => {
+  const { fetchFn } = router({
+    actions: (u) => {
       if (u.includes("follows")) return errBody("metric follows not supported for REELS", 100);
       return ok([{ name: "reposts", values: [{ value: 12 }] }]);
     },
   });
-  const r = await fetchPostInsights(fetchFn, "m3", "tok");
-  assertEquals(actionUrls.length, 2);
-  assert(actionUrls[1].includes("metric=reposts&"));
+  const r = await fetchPostInsights(fetchFn, "m3b", "tok");
   assertEquals(r.values.reposts, 12);
   assert(!r.returned.has("follows"));
   assert(!r.returned.has("profile_visits"));
-  assertEquals(r.values.reach, 100); // core untouched
 });
 
 Deno.test("fetchPostInsights: transient/auth action errors are not retried", async () => {
@@ -126,7 +150,7 @@ Deno.test("fetchPostInsights: transient/auth action errors are not retried", asy
   }
 });
 
-Deno.test("fetchPostInsights: actions error without a numeric code -> retry with reposts only", async () => {
+Deno.test("fetchPostInsights: actions error without a numeric code -> split retry", async () => {
   const actionUrls: string[] = [];
   const { fetchFn } = router({
     actions: (u) => {
@@ -138,8 +162,7 @@ Deno.test("fetchPostInsights: actions error without a numeric code -> retry with
     },
   });
   const r = await fetchPostInsights(fetchFn, "m6", "tok");
-  assertEquals(actionUrls.length, 2);
-  assert(actionUrls[1].includes("metric=reposts&"));
+  assertEquals(actionUrls.length, 3);
   assertEquals(r.values.reposts, 12);
   assert(!r.returned.has("follows"));
   assertEquals(r.values.reach, 100);
@@ -179,6 +202,9 @@ Deno.test("parseBioLinkClicks: case-insensitive match, 0 when absent, undefined 
   assertEquals(parseBioLinkClicks(none), 0);
   const noBreakdowns = [{ name: "profile_activity", total_value: { value: 0 } }];
   assertEquals(parseBioLinkClicks(noBreakdowns), 0);
+  // zero-activity posts can come back with only `values`
+  assertEquals(parseBioLinkClicks([{ name: "profile_activity", values: [{ value: 0 }] }]), 0);
+  assertEquals(parseBioLinkClicks([{ name: "profile_activity", values: [{ value: 3 }] }]), undefined);
   const breakdownMissingButActivityExists = [{ name: "profile_activity", total_value: { value: 5 } }];
   assertEquals(parseBioLinkClicks(breakdownMissingButActivityExists), undefined);
   const nonNumberValue = [{ name: "profile_activity", total_value: { value: 1, breakdowns: [{ results: [{ dimension_values: ["BIO_LINK_CLICKED"], value: "1" }] }] } }];

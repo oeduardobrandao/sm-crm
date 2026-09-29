@@ -5,12 +5,15 @@
 // Three insights requests per post, run concurrently and isolated from each
 // other: a failure in one never removes values another returned.
 //   1. core:    reach,views,saved,shares (retried without shares)
-//   2. actions: reposts,follows,profile_visits (retried with reposts alone on a
-//               non-transient error; Meta documents follows/profile_visits for
-//               FEED and STORY only)
+//   2. actions: reposts,follows,profile_visits. On a non-transient error, split
+//               into follows,profile_visits + reposts so one rejected metric
+//               (reposts is the newest) can't take the others down. Meta
+//               documents follows/profile_visits for FEED and STORY only.
 //   3. bio:     profile_activity&breakdown=action_type -> bio_link_clicked. Its
 //               own request: Meta errors when a breakdown is mixed with metrics
 //               that don't support it.
+// Calls 2 and 3 are pinned to GRAPH_VERSION: unversioned URLs use the app
+// dashboard's default version, which can predate these metrics.
 
 type InsightValue = {
   reach?: number;
@@ -36,6 +39,22 @@ const API_TO_COL: Record<ApiToken, keyof InsightValue> = {
 
 // The edge runtime kills isolates that hang on I/O; bound every request.
 const INSIGHT_TIMEOUT_MS = 10_000;
+const GRAPH_VERSION = "v25.0";
+// Graph rejections are otherwise silent (values just go absent). Log a sample
+// per isolate so a systematic rejection is diagnosable without flooding logs.
+// Never log the URL: it carries the access token.
+const MAX_LOGGED_REJECTIONS = 5;
+let loggedRejections = 0;
+
+function logRejection(call: string, body: any): void {
+  if (loggedRejections >= MAX_LOGGED_REJECTIONS) return;
+  loggedRejections++;
+  const e = body?.error;
+  console.warn(
+    `[ig-metrics] ${call} insights rejected: code=${e?.code ?? "?"} subcode=${e?.error_subcode ?? "-"} ` +
+      String(e?.message ?? "no error body").slice(0, 200),
+  );
+}
 // Graph error codes that mean "try later" (throttling, temporary; 80002 is
 // Instagram's per-account rate limit) or "bad token". Retrying with fewer metrics can't fix these.
 const TRANSIENT_OR_AUTH_CODES = new Set([1, 2, 4, 9, 17, 32, 613, 190, 80002]);
@@ -74,7 +93,10 @@ export function parseBioLinkClicks(data: unknown): number | undefined {
   if (!Array.isArray(data)) return undefined;
   const insight = data.find((i: any) => i?.name === "profile_activity");
   const total = insight?.total_value;
-  if (!total || typeof total !== "object") return undefined;
+  if (!total || typeof total !== "object") {
+    // Posts with no profile activity can come back with only `values`.
+    return insight?.values?.[0]?.value === 0 ? 0 : undefined;
+  }
   const results = total.breakdowns?.[0]?.results;
   if (!Array.isArray(results)) return total.value === 0 ? 0 : undefined;
   const hit = results.find(
@@ -102,15 +124,27 @@ async function fetchCore(fetchFn: typeof fetch, url: (q: string) => string): Pro
 }
 
 async function fetchActions(fetchFn: typeof fetch, url: (q: string) => string): Promise<any[]> {
+  let body: any;
   try {
-    const body = await getJson(fetchFn, url("metric=reposts,follows,profile_visits"));
-    if (Array.isArray(body?.data)) return body.data;
-    const code = body?.error?.code;
-    if (typeof code === "number" && TRANSIENT_OR_AUTH_CODES.has(code)) return [];
-    const body2 = await getJson(fetchFn, url("metric=reposts"));
-    if (Array.isArray(body2?.data)) return body2.data;
-  } catch (_) { /* absent */ }
-  return [];
+    body = await getJson(fetchFn, url("metric=reposts,follows,profile_visits"));
+  } catch (_) {
+    return [];
+  }
+  if (Array.isArray(body?.data)) return body.data;
+  logRejection("actions", body);
+  const code = body?.error?.code;
+  if (typeof code === "number" && TRANSIENT_OR_AUTH_CODES.has(code)) return [];
+  const parts = await Promise.all(
+    ["follows,profile_visits", "reposts"].map(async (metrics) => {
+      try {
+        const b = await getJson(fetchFn, url(`metric=${metrics}`));
+        if (Array.isArray(b?.data)) return b.data;
+        logRejection(`actions:${metrics}`, b);
+      } catch (_) { /* absent */ }
+      return [];
+    }),
+  );
+  return parts.flat();
 }
 
 async function fetchBioLinkClicks(
@@ -119,6 +153,7 @@ async function fetchBioLinkClicks(
 ): Promise<number | undefined> {
   try {
     const body = await getJson(fetchFn, url("metric=profile_activity&breakdown=action_type"));
+    if (!Array.isArray(body?.data)) logRejection("bio", body);
     return parseBioLinkClicks(body?.data);
   } catch (_) {
     return undefined;
@@ -136,10 +171,12 @@ export async function fetchPostInsights(
 ): Promise<{ values: InsightValue; returned: Set<string> }> {
   const url = (query: string) =>
     `https://graph.instagram.com/${mediaId}/insights?${query}&access_token=${token}`;
+  const versionedUrl = (query: string) =>
+    `https://graph.instagram.com/${GRAPH_VERSION}/${mediaId}/insights?${query}&access_token=${token}`;
   const [core, actions, bio] = await Promise.all([
     fetchCore(fetchFn, url),
-    fetchActions(fetchFn, url),
-    fetchBioLinkClicks(fetchFn, url),
+    fetchActions(fetchFn, versionedUrl),
+    fetchBioLinkClicks(fetchFn, versionedUrl),
   ]);
   const values: InsightValue = {};
   const returned = new Set<string>();
