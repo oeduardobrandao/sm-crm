@@ -28,6 +28,7 @@
   - `clients.json:386` (IG analytics)
   - `TopPostsRow.tsx`
   - `TikTokSettingsPanel.tsx`
+  - `packages/report-blocks/blocks/FormatCardsBlock.tsx` (Instagram analytics report block)
 - No em dashes in new user-facing copy (house rule).
 - Before pushing, all of these must pass: `npm run lint`, `npm run format:check`, `npx tsc -p apps/crm/tsconfig.json --noEmit`, `npx tsc -p apps/hub/tsconfig.json --noEmit`, `npx tsc -p apps/admin/tsconfig.json --noEmit`, `npx tsc -p tsconfig.scripts.json`, `npm run test`, `npm run check:functions`, `npm run test:functions`. After any Deno run, run `ls node_modules/.deno` and, if it exists, `npm ci`: Deno pollutes `node_modules`.
 
