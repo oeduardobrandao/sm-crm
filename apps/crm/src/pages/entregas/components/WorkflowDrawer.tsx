@@ -935,10 +935,10 @@ export function WorkflowDrawer({
             >
               {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
-            <button className="drawer-close-btn" onClick={onClose} title="Fechar">
-              <X className="h-5 w-5" />
-            </button>
           </div>
+          <button className="drawer-close-btn drawer-dismiss-btn" onClick={onClose} title="Fechar">
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Posts section */}

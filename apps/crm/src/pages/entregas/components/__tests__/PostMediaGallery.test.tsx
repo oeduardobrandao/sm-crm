@@ -492,9 +492,10 @@ describe('PostMediaGallery adjustment entry points', () => {
   it('does not warn about a supported 3:4 feed image', async () => {
     vi.mocked(listPostMedia).mockResolvedValue([{ ...image, height: 1440 }]);
     renderGallery();
-    await screen.findByText('Adicionar');
+    // 'Adicionar' renders with the empty gallery, before the media list resolves: wait
+    // on the tile's own control so the warning check below runs against loaded media.
+    expect(await screen.findByTitle('Ajustar proporção')).toBeInTheDocument();
     expect(screen.queryByText(/precisa de ajuste/)).not.toBeInTheDocument();
-    expect(screen.getByTitle('Ajustar proporção')).toBeInTheDocument();
   });
 });
 
