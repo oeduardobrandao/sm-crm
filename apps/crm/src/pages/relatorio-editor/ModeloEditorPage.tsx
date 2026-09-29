@@ -87,7 +87,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
           margin: '0 auto 1rem',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.75rem',
+          gap: '0.5rem 0.75rem',
           flexWrap: 'wrap',
         }}
       >
@@ -96,9 +96,10 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
             <ArrowLeft className="h-3.5 w-3.5" /> Modelos
           </Link>
         </Button>
-        <div style={{ flex: 1, minWidth: 220 }}>
+        <div className="rb-editor-title">
           <input
             aria-label="Nome do modelo"
+            className="rb-editor-title-input"
             value={draftName}
             onChange={(e) => {
               const next = e.target.value;
@@ -108,18 +109,8 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
             onBlur={() => {
               if (!draftName.trim()) setDraftName(title);
             }}
-            style={{
-              width: '100%',
-              border: 'none',
-              background: 'transparent',
-              fontSize: '1.35rem',
-              fontWeight: 700,
-              letterSpacing: '-1px',
-              color: 'var(--text-main)',
-              outline: 'none',
-            }}
           />
-          <p style={{ margin: '0.15rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          <p className="rb-editor-subtitle">
             Modelo de relatório
             {saving && (
               <span className="drawer-saving-indicator" style={{ marginLeft: '0.6rem' }}>
@@ -128,16 +119,18 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
             )}
           </p>
         </div>
-        <UndoRedoButtons
-          canUndo={history.canUndo}
-          canRedo={history.canRedo}
-          onUndo={history.undo}
-          onRedo={history.redo}
-        />
-        <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
-        <Button size="sm" onClick={() => openWidgetDrawer(null)}>
-          <Plus className="h-3.5 w-3.5" /> Adicionar widget
-        </Button>
+        <div className="rb-editor-actions">
+          <UndoRedoButtons
+            canUndo={history.canUndo}
+            canRedo={history.canRedo}
+            onUndo={history.undo}
+            onRedo={history.redo}
+          />
+          <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
+          <Button size="sm" onClick={() => openWidgetDrawer(null)}>
+            <Plus className="h-3.5 w-3.5" /> Adicionar widget
+          </Button>
+        </div>
       </header>
 
       <p

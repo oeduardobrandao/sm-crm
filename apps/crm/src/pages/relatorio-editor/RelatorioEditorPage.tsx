@@ -146,27 +146,18 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
           margin: '0 auto 1.25rem',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.75rem',
+          gap: '0.5rem 0.75rem',
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ flex: 1, minWidth: 220 }}>
+        <div className="rb-editor-title">
           <input
             aria-label="Título do relatório"
+            className="rb-editor-title-input"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            style={{
-              width: '100%',
-              border: 'none',
-              background: 'transparent',
-              fontSize: '1.35rem',
-              fontWeight: 700,
-              letterSpacing: '-1px',
-              color: 'var(--text-main)',
-              outline: 'none',
-            }}
           />
-          <p style={{ margin: '0.15rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          <p className="rb-editor-subtitle">
             {snapshot.period.label}
             {saving && (
               <span className="drawer-saving-indicator" style={{ marginLeft: '0.6rem' }}>
@@ -175,42 +166,46 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             )}
           </p>
         </div>
-        <UndoRedoButtons
-          canUndo={history.canUndo}
-          canRedo={history.canRedo}
-          onUndo={history.undo}
-          onRedo={history.redo}
-        />
-        <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
-        <Button size="sm" onClick={() => openWidgetDrawer(null)}>
-          <Plus className="h-3.5 w-3.5" /> Adicionar widget
-        </Button>
-        <Button size="sm" disabled={exporting} onClick={handleExportPdf}>
-          {exporting ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />} Exportar PDF
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" aria-label="Ações do relatório">
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => setSaveTplOpen(true)}>
-              Salvar como template
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setApplyTplOpen(true)}>
-              Aplicar template
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={refreshing} onSelect={handleRefreshData}>
-              {refreshing ? 'Atualizando…' : 'Atualizar dados'}
-            </DropdownMenuItem>
-            {hubViewLink && (
-              <DropdownMenuItem onSelect={() => window.open(hubViewLink.url, '_blank', 'noopener')}>
-                Ver como cliente
+        <div className="rb-editor-actions">
+          <UndoRedoButtons
+            canUndo={history.canUndo}
+            canRedo={history.canRedo}
+            onUndo={history.undo}
+            onRedo={history.redo}
+          />
+          <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
+          <Button size="sm" onClick={() => openWidgetDrawer(null)}>
+            <Plus className="h-3.5 w-3.5" /> Adicionar widget
+          </Button>
+          <Button size="sm" disabled={exporting} onClick={handleExportPdf}>
+            {exporting ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />} Exportar PDF
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" aria-label="Ações do relatório">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setSaveTplOpen(true)}>
+                Salvar como template
               </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem onSelect={() => setApplyTplOpen(true)}>
+                Aplicar template
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={refreshing} onSelect={handleRefreshData}>
+                {refreshing ? 'Atualizando…' : 'Atualizar dados'}
+              </DropdownMenuItem>
+              {hubViewLink && (
+                <DropdownMenuItem
+                  onSelect={() => window.open(hubViewLink.url, '_blank', 'noopener')}
+                >
+                  Ver como cliente
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
 
       <EditorCanvas
