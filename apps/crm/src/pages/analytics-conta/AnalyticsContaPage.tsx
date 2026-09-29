@@ -23,6 +23,7 @@ import {
   Send,
   ChevronDown,
   Trash2,
+  UserPlus,
   type LucideIcon,
 } from 'lucide-react';
 import { StatCard, type StatTone, type StatDelta } from '@/components/StatCard';
@@ -94,8 +95,10 @@ import {
   type Quartiles,
   type RateKey,
 } from '../../lib/ig-rates';
+import { compareNullableNumber, type ActionSortKey } from '../../lib/post-action-metrics';
 import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
 import { NewReportDialog } from './components/NewReportDialog';
+import { ActionMetricValue, PostInsightsDetail } from './components/PostInsightsDetail';
 
 Chart.register(...registerables);
 
@@ -363,6 +366,23 @@ function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'w
               {formatNumber(post.saved)}
             </strong>
           </span>
+          {typeof post.follows === 'number' && (
+            <span
+              title="Novos seguidores"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                fontSize: '0.65rem',
+                color: 'var(--text-muted)',
+              }}
+            >
+              <UserPlus className="h-3 w-3" />{' '}
+              <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
+                {formatNumber(post.follows)}
+              </strong>
+            </span>
+          )}
         </div>
       </div>
     </a>
@@ -414,7 +434,8 @@ type RankedPostOrderBy =
   | 'share_rate'
   | 'like_rate'
   | 'save_rate'
-  | 'comment_rate';
+  | 'comment_rate'
+  | ActionSortKey;
 
 // ---- KPI Card ----
 function KpiCard({
@@ -1174,28 +1195,40 @@ function AnalyticsContent({
         );
         break;
       case 'ig_score':
-        next.sort((a, b) => {
-          const va = (a as PostAnalytics).ig_score;
-          const vb = (b as PostAnalytics).ig_score;
-          if (va === null && vb === null) return 0;
-          if (va === null) return 1;
-          if (vb === null) return -1;
-          return (va - vb) * dir;
-        });
+        next.sort((a, b) =>
+          compareNullableNumber(
+            (a as PostAnalytics).ig_score,
+            (b as PostAnalytics).ig_score,
+            rankedAsc ? 'asc' : 'desc',
+          ),
+        );
         break;
       case 'share_rate':
       case 'like_rate':
       case 'save_rate':
       case 'comment_rate': {
         const key = rankedOrderBy as RateKey;
-        next.sort((a, b) => {
-          const va = (a as PostAnalytics).rates[key];
-          const vb = (b as PostAnalytics).rates[key];
-          if (va === null && vb === null) return 0;
-          if (va === null) return 1;
-          if (vb === null) return -1;
-          return (va - vb) * dir;
-        });
+        next.sort((a, b) =>
+          compareNullableNumber(
+            (a as PostAnalytics).rates[key],
+            (b as PostAnalytics).rates[key],
+            rankedAsc ? 'asc' : 'desc',
+          ),
+        );
+        break;
+      }
+      case 'profile_visits':
+      case 'follows':
+      case 'bio_link_clicks':
+      case 'follows_per_mil_reach': {
+        const key = rankedOrderBy;
+        next.sort((a, b) =>
+          compareNullableNumber(
+            (a as PostAnalytics)[key],
+            (b as PostAnalytics)[key],
+            rankedAsc ? 'asc' : 'desc',
+          ),
+        );
         break;
       }
     }
@@ -1786,6 +1819,7 @@ function AnalyticsContent({
                     { col: 'saved', label: 'Salvos' },
                     { col: 'comments', label: 'Coment.' },
                     { col: 'shares', label: 'Compart.' },
+                    { col: 'follows', label: 'Novos seg.' },
                     { col: null, label: 'Tags' },
                   ].map(({ col, label }) => (
                     <th
@@ -1877,6 +1911,9 @@ function AnalyticsContent({
                       <td data-label="Salvos">{p.saved}</td>
                       <td data-label="Coment.">{p.comments}</td>
                       <td data-label="Compart.">{p.shares}</td>
+                      <td data-label="Novos seg.">
+                        <ActionMetricValue post={p} metric="follows" as="span" />
+                      </td>
                       <td data-label="Tags" onClick={(e) => e.stopPropagation()}>
                         {p.tags.map((t) => (
                           <span
@@ -1928,7 +1965,7 @@ function AnalyticsContent({
                     </tr>
                     {expandedPostId === p.id && (
                       <tr key={`detail-${p.id}`} className="post-detail-row">
-                        <td colSpan={10} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
+                        <td colSpan={12} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
                           <p
                             style={{
                               fontSize: '0.85rem',
@@ -1954,13 +1991,8 @@ function AnalyticsContent({
                             >
                               ↗ Ver no Instagram
                             </a>
-                            <span style={{ color: 'var(--text-muted)' }}>
-                              Visualizações: {p.views.toLocaleString('pt-BR')}
-                            </span>
-                            <span style={{ color: 'var(--text-muted)' }}>
-                              Curtidas: {p.likes.toLocaleString('pt-BR')}
-                            </span>
                           </div>
+                          <PostInsightsDetail post={p} />
                         </td>
                       </tr>
                     )}
@@ -2587,12 +2619,15 @@ function AnalyticsContent({
                 <option value="comments">Comentários</option>
                 <option value="saved">Salvos</option>
                 <option value="shares">Compart.</option>
+                <option value="profile_visits">Visitas ao perfil</option>
+                <option value="follows">Novos seguidores</option>
                 <option value="date">Data</option>
                 <option value="ig_score">IG Score</option>
                 <option value="share_rate">Compart./visualização</option>
                 <option value="like_rate">Curt./visualização</option>
                 <option value="save_rate">Salvos/visualização</option>
                 <option value="comment_rate">Coment./visualização</option>
+                <option value="follows_per_mil_reach">Seguidores/mil alcançados</option>
               </select>
               <Button
                 variant="outline"
@@ -2803,6 +2838,19 @@ function AnalyticsContent({
                           {formatNumber(post.saved)}
                         </strong>
                       </span>
+                      {typeof post.follows === 'number' && (
+                        <span
+                          title="Novos seguidores"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}
+                        >
+                          <UserPlus className="h-3 w-3" />{' '}
+                          <strong
+                            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                          >
+                            {formatNumber(post.follows)}
+                          </strong>
+                        </span>
+                      )}
                     </div>
                   </div>
                 </a>

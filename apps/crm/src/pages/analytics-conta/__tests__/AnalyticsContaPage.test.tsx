@@ -724,6 +724,77 @@ describe('AnalyticsContaPage', () => {
     expect(screen.queryByText('Baseline Instagram')).not.toBeInTheDocument();
   });
 
+  it('shows the "Novos seg." column and the insights panel in the expanded row', () => {
+    seedCommonAnalyticsData();
+    const base = {
+      instagram_post_id: 'x',
+      permalink: 'https://instagram.com/p/x',
+      likes: 4512,
+      comments: 17,
+      impressions: 66656,
+      views: 66656,
+      saved: 630,
+      shares: 1502,
+      thumbnail_url: null,
+      engagement_rate: 18.4,
+      saves_rate: 1.7,
+      rates: { share_rate: null, like_rate: null, save_rate: null, comment_rate: null },
+      ig_score: null,
+      tags: [],
+    };
+    queryState['analytics-posts'] = {
+      data: {
+        posts: [
+          {
+            ...base,
+            id: 1,
+            caption: 'Dá preguiça. Dá medo.',
+            media_type: 'CAROUSEL_ALBUM',
+            posted_at: '2026-09-23T12:00:00Z',
+            reach: 37600,
+            profile_visits: 328,
+            follows: 75,
+            bio_link_clicks: 1,
+            follows_per_mil_reach: 1.99,
+            unavailable_metrics: [],
+          },
+          {
+            ...base,
+            id: 2,
+            caption: 'Reel sem dados de ação',
+            media_type: 'VIDEO',
+            posted_at: '2026-09-19T12:00:00Z',
+            reach: 9214,
+            profile_visits: null,
+            follows: null,
+            bio_link_clicks: null,
+            follows_per_mil_reach: null,
+            unavailable_metrics: ['follows', 'profile_visits', 'bio_link_clicks'],
+          },
+        ],
+      },
+    };
+
+    const { container } = render(<AnalyticsContaPage />);
+    const table = container.querySelector('#posts-table') as HTMLTableElement;
+    expect(within(table).getByText('Novos seg.')).toBeInTheDocument();
+
+    const cells = table.querySelectorAll('td[data-label="Novos seg."]');
+    expect(cells[0]).toHaveTextContent('75');
+    expect(cells[1]).toHaveTextContent('—');
+    expect(cells[1].querySelector('[title]')).toHaveAttribute(
+      'title',
+      'O Instagram não fornece este dado para Reels',
+    );
+
+    fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
+    const detail = table.querySelector('tr.post-detail-row') as HTMLTableRowElement;
+    expect(detail.querySelector('td')).toHaveAttribute('colspan', '12');
+    expect(within(detail).getByText('Ações após a visualização')).toBeInTheDocument();
+    expect(within(detail).getByText('Novos seguidores').nextSibling).toHaveTextContent('75');
+    expect(within(detail).queryByText('Reposts')).not.toBeInTheDocument();
+  });
+
   it('opens the reach-ranked posts drawer using only this client account posts', () => {
     seedCommonAnalyticsData();
     queryState['analytics-posts'] = {
@@ -762,6 +833,87 @@ describe('AnalyticsContaPage', () => {
     expect(drawer).toBeTruthy();
     expect(within(drawer!).getAllByText(/Post ranqueado/)[0]).toHaveTextContent('Post ranqueado 6');
   });
+
+  it('sorts the "Ver mais" drawer by Novos seguidores with missing values last', () => {
+    seedCommonAnalyticsData();
+    const follows = [5, null, 20, null, 1, 8];
+    queryState['analytics-posts'] = {
+      data: {
+        posts: follows.map((f, index) => ({
+          id: index + 1,
+          posted_at: `2020-01-${String(index + 1).padStart(2, '0')}T12:00:00Z`,
+          media_type: 'IMAGE',
+          reach: 1000,
+          impressions: 1400,
+          views: 1400,
+          engagement_rate: 5,
+          likes: 10,
+          saved: 1,
+          saves_rate: 1,
+          comments: 1,
+          shares: 1,
+          follows: f,
+          caption: `Post ranqueado ${index + 1}`,
+          thumbnail_url: `https://example.com/ranked-${index + 1}.jpg`,
+          permalink: `https://instagram.com/p/ranked-${index + 1}`,
+          unavailable_metrics: [],
+          tags: [],
+        })),
+      },
+    };
+
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getAllByText('Ver mais')[0]);
+    const drawer = screen.getByText('6 de 6 posts de @clinicaaurora').closest('aside')!;
+    fireEvent.change(within(drawer).getByLabelText('Ordenar posts'), {
+      target: { value: 'follows' },
+    });
+
+    const order = within(drawer)
+      .getAllByText(/Post ranqueado/)
+      .map((el) => el.textContent);
+    expect(order.slice(0, 4)).toEqual([
+      'Post ranqueado 3',
+      'Post ranqueado 6',
+      'Post ranqueado 1',
+      'Post ranqueado 5',
+    ]);
+    expect(order.slice(4).sort()).toEqual(['Post ranqueado 2', 'Post ranqueado 4']);
+  });
+
+  it('shows the followers chip on ranked cards only when the value exists', () => {
+    seedCommonAnalyticsData();
+    queryState['analytics-posts'] = {
+      data: {
+        posts: [75, null].map((f, index) => ({
+          id: index + 1,
+          posted_at: `2020-01-0${index + 1}T12:00:00Z`,
+          media_type: 'IMAGE',
+          reach: 1000,
+          impressions: 1400,
+          views: 1400,
+          engagement_rate: 5,
+          likes: 10,
+          saved: 1,
+          saves_rate: 1,
+          comments: 1,
+          shares: 1,
+          follows: f,
+          caption: `Chip ${index + 1}`,
+          thumbnail_url: null,
+          permalink: `https://instagram.com/p/chip-${index + 1}`,
+          unavailable_metrics: [],
+          tags: [],
+        })),
+      },
+    };
+
+    render(<AnalyticsContaPage />);
+    const chips = screen.getAllByTitle('Novos seguidores');
+    expect(chips.length).toBeGreaterThan(0);
+    for (const chip of chips) expect(chip).toHaveTextContent('75');
+  });
+
   it('Gerar Relatório (header) opens the interactive report dialog', () => {
     seedCommonAnalyticsData();
     render(<AnalyticsContaPage />);
