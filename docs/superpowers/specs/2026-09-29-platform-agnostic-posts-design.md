@@ -25,12 +25,12 @@ Decided with the user:
 - **New table `post_targets`**
   - Columns: `id`, `conta_id`, `post_id` (FK, delete cascade), `platform`, `format`, `caption`, `title`, `settings jsonb`, `scheduled_at` (nullable override), `status`, `external_id`, `permalink`, `error`, `error_code`, `retry_count`, `processing_at`, `published_at`. Unique on (`post_id`, `platform`).
   - `status` values: `pendente`, `agendado`, `processando`, `publicado`, `falha`, `disponivel`.
-  - Row-level security mirrors `workflow_posts` (`20260402_workflow_posts.sql:82-99`).
+  - Row-level security mirrors `workflow_posts` (`20260402_workflow_posts.sql:82-99`). A composite FK `(post_id, conta_id) → workflow_posts(id, conta_id)` (target `workflow_posts_id_conta_uq`, `20260820000002:18`) guarantees a destination row always belongs to its post's workspace, so the row's own `conta_id` is safe to use in RLS.
   - **What this table owns, by phase:**
     - From P1 it is the record of which destinations a post has and of every non-Instagram caption.
     - Publish state moves onto it one platform at a time: TikTok in P4, Instagram in P5.
     - Until then, `post_targets_resolved` derives each platform's status from the legacy columns:
-      - Instagram: `instagram_media_id` means publicado, `status='falha_publicacao'` means falha, `publish_processing_at` means processando.
+      - Instagram: `instagram_media_id` means publicado. Falha means `instagram_media_id IS NULL AND publish_error IS NOT NULL`: never the shared `status='falha_publicacao'`, which a TikTok failure also sets on a post going to both. Only the Instagram path writes `publish_error`/`publish_error_code`; TikTok writes `tiktok_publish_error`. `publish_processing_at` means processando.
       - TikTok: taken from `tiktok_publish_status`.
     - This keeps the per-destination chips in P2 correct while the publishers still write the old columns.
 - **Instagram keeps its existing columns** (`ig_caption`, `instagram_media_id`, `instagram_permalink`, `publish_*`) because too much depends on them:
