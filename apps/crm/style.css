@@ -1253,6 +1253,13 @@ body {
   line-height: 1.1;
 }
 
+/* StatCard compactValue (names, currency). Was an inline style; the selector
+   is (0,3,0) so the phone overrides of .kpi-value still lose to it, as they did
+   to the inline 1.25rem. */
+.kpi-card .kpi-value.kpi-value--compact {
+  font-size: 1.25rem;
+}
+
 .kpi-sub {
   font-weight: 500;
   font-size: 0.8rem;
@@ -1336,6 +1343,38 @@ body {
 [data-theme='dark'] .kpi-icon[data-tone='slate'] {
   --kpi-tone-bg: rgba(148, 163, 184, 0.16);
   --kpi-tone-fg: #cbd5e1;
+}
+
+/*
+ * A fused grid keeps its --kpi-cols count at every desktop width, so a 5-up
+ * card is ~145px wide on a 1101px viewport. Label + icon bubble need ~155px of
+ * content box, so below 150px the bubble goes. The value scales with the card:
+ * the widest seven-digit number ("9.999.999") is 5.24em, so 19cqi keeps it
+ * inside the content box at any width and 2rem still applies from ~168px up.
+ * Both are keyed off the card's own width (container queries), so a 4-up grid
+ * at the same viewport keeps its icons. Compact values get the same 19cqi: a
+ * currency amount wraps after "R$" (StatCard swaps its non-breaking space), and
+ * "49.500,00" is also 5.24em. Phones size their cards in the 900px block.
+ */
+.kpi-grid > .kpi-card {
+  container-type: inline-size;
+}
+
+@media (min-width: 901px) {
+  .kpi-grid > .kpi-card .kpi-value {
+    font-size: min(2rem, 19cqi);
+  }
+
+  /* (0,4,0): beats both the compact base rule and the one above. */
+  .kpi-grid > .kpi-card .kpi-value.kpi-value--compact {
+    font-size: min(1.25rem, 19cqi);
+  }
+
+  @container (max-width: 150px) {
+    .kpi-grid > .kpi-card .kpi-icon {
+      display: none;
+    }
+  }
 }
 
 /* Footer row: trend arrow + delta, or a plain descriptive sub-label */
@@ -3761,9 +3800,13 @@ select.form-input option {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 
-  .kpi-grid {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  }
+  /*
+   * No .kpi-grid column override here: --kpi-cols owns the column count, and
+   * StatCardGrid sizes its filler cells for exactly that count. An auto-fit
+   * track list re-flows the cards (8 cards at 6-up) and the fillers no longer
+   * close the last row, so the divider background shows as empty tracks.
+   * Narrow cards are handled by the @container rule next to .kpi-icon.
+   */
 
   .data-table th {
     padding: 0.75rem 0.6rem;
@@ -12106,6 +12149,20 @@ a.hub-fill__row-inner:hover {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* The overview often sits in a half-width column, where 4-up metric cards drop
+   to ~100px and the kpi-grid value scaling (19cqi) takes them below 1.25rem.
+   Under 680px the four cards go 2-up instead, which keeps values at 24px or
+   more; four cards pair off evenly, so 2-up leaves no empty track. */
+.instagram-overview {
+  container-type: inline-size;
+}
+
+@container (max-width: 680px) {
+  .instagram-overview__metric-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .instagram-overview__actions {
   display: flex;
   gap: 0.5rem;
@@ -12157,7 +12214,9 @@ a.hub-fill__row-inner:hover {
 }
 
 @media (max-width: 900px) {
-  .instagram-overview__account-kpis > :last-child:nth-child(odd) {
+  /* Stays three across on phones, so the 2-up odd-count promotion must not
+     stretch the first card over the row and strand an empty track below. */
+  .instagram-overview__account-kpis > .kpi-card:first-child:nth-last-child(odd) {
     grid-column: auto;
     max-width: none;
     justify-self: stretch;
@@ -13120,6 +13179,39 @@ a.hub-fill__row-inner:hover {
 .rb-editor-sentinel {
   height: 1px;
   margin-bottom: -1px;
+}
+/* Título x ações do cabeçalho: a base de 20rem cabe o título padrão mais longo
+   ("Relatório de Fevereiro de 2026"). Quando título e ações não cabem na mesma
+   linha, as ações descem juntas (um bloco só) e o título fica com a linha
+   inteira. Com o teto de 880px isso vale em qualquer largura no editor de
+   relatório; antes os botões espremiam o título até cortar o ano e o "..."
+   caía sozinho numa segunda linha. */
+.rb-editor-title {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+.rb-editor-title-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: var(--text-main);
+  outline: none;
+  text-overflow: ellipsis;
+}
+.rb-editor-subtitle {
+  margin: 0.15rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.rb-editor-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-left: auto;
 }
 @media (min-width: 769px) {
   .rb-editor-header {

@@ -7,9 +7,9 @@ export const KB_ARTICLE_COLUMNS = [
   "cover_image_url", "category", "tags", "status", "display_order",
 ] as const;
 
-/** Colidem com as rotas do Admin /admin/kb-articles/new e /:id/edit. Espelho em
- * apps/admin/src/pages/KbArticleEditorPage.tsx (RESERVED_SLUGS). */
-export const RESERVED_SLUGS = ["novo", "editar"];
+/** Colidem com as rotas do Admin /admin/kb-articles/new e /:id/edit, e com /ajuda/video/:slug
+ * do CRM. Espelho em apps/admin/src/pages/KbArticleEditorPage.tsx (RESERVED_SLUGS). */
+export const RESERVED_SLUGS = ["novo", "editar", "video"];
 
 /** Slugs de categoria. ESPELHO de apps/admin/src/lib/kb-categories.ts (Deno e Vite não
  * compartilham import); admin-kb_test.ts falha se as listas divergirem. */

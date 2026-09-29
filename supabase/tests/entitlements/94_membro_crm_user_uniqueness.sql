@@ -1,6 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
-select et_grant_hosted_parity();
+-- et_grant_hosted_parity() runs inside each begin/rollback block: at top level its GRANT ALL
+-- would commit and leak to every later suite on CI's shared database.
 
 -- membros_conta_crm_user_unique + set_membro_crm_user + accept_workspace_invite
 -- (migration 20260923000003_membro_crm_user_uniqueness.sql). Cobre:
@@ -18,6 +19,7 @@ select et_grant_hosted_parity();
 -- 94.0: indice unico bloqueia direto, sem passar pela RPC
 -- =============================================================
 begin;
+select et_grant_hosted_parity();
 do $$
 declare
   v_ws uuid;
@@ -49,6 +51,7 @@ rollback;
 -- 94.1: set_membro_crm_user caminho feliz
 -- =============================================================
 begin;
+select et_grant_hosted_parity();
 do $$
 declare
   v_ws uuid;
@@ -80,6 +83,7 @@ rollback;
 -- 94.2: set_membro_crm_user rejeita conflito, nao grava nada
 -- =============================================================
 begin;
+select et_grant_hosted_parity();
 do $$
 declare
   v_ws uuid;
@@ -125,6 +129,7 @@ rollback;
 -- 94.3: set_membro_crm_user ainda exige owner/admin (regressao)
 -- =============================================================
 begin;
+select et_grant_hosted_parity();
 do $$
 declare
   v_ws uuid;
@@ -161,6 +166,7 @@ rollback;
 -- usuario ja esta linkado a OUTRO membro na mesma conta
 -- =============================================================
 begin;
+select et_grant_hosted_parity();
 do $$
 declare
   v_ws uuid;
@@ -212,6 +218,7 @@ rollback;
 -- nesta conta (NULL role != NOT IN check bypass)
 -- =============================================================
 begin;
+select et_grant_hosted_parity();
 do $$
 declare
   v_ws uuid;

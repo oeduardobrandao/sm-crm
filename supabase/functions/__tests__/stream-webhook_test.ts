@@ -24,6 +24,7 @@ function baseDeps(db: Db, overrides: Partial<StreamWebhookDeps> = {}): StreamWeb
   return {
     createDb: () => db as never,
     verifySignature: (unreachable("verifySignature") as unknown) as StreamWebhookDeps["verifySignature"],
+    getStreamVideo: (unreachable("getStreamVideo") as unknown) as StreamWebhookDeps["getStreamVideo"],
     ...overrides,
   };
 }
@@ -189,4 +190,105 @@ Deno.test("stream-webhook: a db error on settle returns a generic 500, never the
   const responseBody = await response.json();
   assertEquals(responseBody, { error: "Internal server error" });
   assertEquals(JSON.stringify(responseBody).includes("connection reset"), false);
+});
+
+// ── kb_videos settle (tutoriais da Central de Ajuda) ────────────────────────
+
+const KB_HLS = "https://customer-c.cloudflarestream.com/kb-uid/manifest/video.m3u8";
+const KB_THUMB = "https://customer-c.cloudflarestream.com/kb-uid/thumbnails/thumbnail.jpg";
+
+Deno.test("stream-webhook: ready for a pending kb_videos uid fetches playback details and settles it", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "update", { data: null, error: null });
+  db.queue("kb_videos", "select", { data: [{ id: 7 }], error: null });
+  db.queue("kb_videos", "update", { data: null, error: null });
+  const handler = createStreamWebhookHandler(baseDeps(db, {
+    verifySignature: () => Promise.resolve(true),
+    getStreamVideo: async (uid) => {
+      assertEquals(uid, "kb-uid");
+      return { state: "ready", duration: 65.4, hls: KB_HLS, thumbnail: KB_THUMB };
+    },
+  }));
+
+  const response = await handler(webhookRequest(payload({ uid: "kb-uid", state: "ready" })));
+
+  assertEquals(response.status, 200);
+  const selects = callsFor(db, "kb_videos", "select");
+  assertEquals(selects[0].modifiers, [
+    { method: "eq", args: ["stream_uid", "kb-uid"] },
+    { method: "eq", args: ["stream_status", "pending"] },
+    { method: "limit", args: [1] },
+  ]);
+  const updates = callsFor(db, "kb_videos", "update");
+  assertEquals(updates.length, 1);
+  assertEquals(updates[0].payload, {
+    stream_status: "ready",
+    duration_seconds: 65.4,
+    hls_url: KB_HLS,
+    thumbnail_url: KB_THUMB,
+    stream_upload_expires_at: null,
+  });
+  assertEquals(updates[0].modifiers, [
+    { method: "eq", args: ["id", 7] },
+    { method: "eq", args: ["stream_uid", "kb-uid"] },
+    { method: "eq", args: ["stream_status", "pending"] },
+  ]);
+});
+
+Deno.test("stream-webhook: error for a pending kb_videos uid marks it error without a Stream lookup", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "update", { data: null, error: null });
+  db.queue("kb_videos", "select", { data: [{ id: 7 }], error: null });
+  db.queue("kb_videos", "update", { data: null, error: null });
+  const handler = createStreamWebhookHandler(baseDeps(db, { verifySignature: () => Promise.resolve(true) }));
+
+  const response = await handler(webhookRequest(payload({ uid: "kb-uid", state: "error" })));
+
+  assertEquals(response.status, 200);
+  assertEquals(callsFor(db, "kb_videos", "update")[0].payload, {
+    stream_status: "error",
+    stream_upload_expires_at: null,
+  });
+});
+
+Deno.test("stream-webhook: a uid with no pending kb_videos row (files video, or already settled) never touches kb_videos", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "update", { data: null, error: null });
+  db.queue("kb_videos", "select", { data: [], error: null });
+  const handler = createStreamWebhookHandler(baseDeps(db, { verifySignature: () => Promise.resolve(true) }));
+
+  const response = await handler(webhookRequest(payload({ uid: "video-uid-1", state: "error" })));
+
+  assertEquals(response.status, 200);
+  assertEquals(callsFor(db, "kb_videos", "update").length, 0);
+});
+
+Deno.test("stream-webhook: a failed Stream lookup acks 200 and leaves the kb_videos row pending", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "update", { data: null, error: null });
+  db.queue("kb_videos", "select", { data: [{ id: 7 }], error: null });
+  const handler = createStreamWebhookHandler(baseDeps(db, {
+    verifySignature: () => Promise.resolve(true),
+    getStreamVideo: () => Promise.reject(new Error("stream get failed: 503")),
+  }));
+
+  const response = await handler(webhookRequest(payload({ uid: "kb-uid", state: "ready" })));
+
+  assertEquals(response.status, 200);
+  assertEquals(callsFor(db, "kb_videos", "update").length, 0);
+});
+
+Deno.test("stream-webhook: ready without an HLS url yet leaves the kb_videos row pending", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "update", { data: null, error: null });
+  db.queue("kb_videos", "select", { data: [{ id: 7 }], error: null });
+  const handler = createStreamWebhookHandler(baseDeps(db, {
+    verifySignature: () => Promise.resolve(true),
+    getStreamVideo: async () => ({ state: "inprogress", duration: null, hls: null, thumbnail: null }),
+  }));
+
+  const response = await handler(webhookRequest(payload({ uid: "kb-uid", state: "ready" })));
+
+  assertEquals(response.status, 200);
+  assertEquals(callsFor(db, "kb_videos", "update").length, 0);
 });

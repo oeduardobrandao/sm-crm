@@ -66,6 +66,18 @@ export const router = createBrowserRouter([
         path: 'kb-articles/:id/edit',
         lazy: async () => ({ Component: (await import('./pages/KbArticleEditorPage')).default }),
       },
+      {
+        path: 'kb-videos',
+        lazy: async () => ({ Component: (await import('./pages/KbVideosPage')).default }),
+      },
+      {
+        path: 'kb-videos/new',
+        lazy: async () => ({ Component: (await import('./pages/KbVideoEditorPage')).default }),
+      },
+      {
+        path: 'kb-videos/:id/edit',
+        lazy: async () => ({ Component: (await import('./pages/KbVideoEditorPage')).default }),
+      },
     ],
   },
   {

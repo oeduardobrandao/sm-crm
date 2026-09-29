@@ -1,6 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
-select et_grant_hosted_parity();
+-- et_grant_hosted_parity() runs inside each begin/rollback block: at top level its GRANT ALL
+-- would commit and leak to every later suite on CI's shared database.
 
 -- reorder_fluxos_board (migration 20260919000008). Cobre:
 -- 92.0 happy path misto: fluxos e processos renumerados numa chamada
@@ -33,6 +34,7 @@ end $$;
 
 -- 92.0
 begin;
+select et_grant_hosted_parity();
 do $$
 declare e record; v int;
 begin
@@ -53,6 +55,7 @@ rollback;
 
 -- 92.1
 begin;
+select et_grant_hosted_parity();
 do $$
 declare e record; g record; v_raised boolean := false; v int;
 begin
@@ -85,6 +88,7 @@ rollback;
 
 -- 92.2
 begin;
+select et_grant_hosted_parity();
 do $$
 declare e record; v_raised boolean := false;
 begin
@@ -114,6 +118,7 @@ rollback;
 
 -- 92.3
 begin;
+select et_grant_hosted_parity();
 do $$
 declare e record; v_ver uuid := gen_random_uuid(); v_role uuid; v_raised boolean := false; v int;
 begin
@@ -152,6 +157,7 @@ rollback;
 
 -- 92.4
 begin;
+select et_grant_hosted_parity();
 do $$
 declare e record; v_raised boolean := false; v int;
 begin
@@ -226,6 +232,7 @@ rollback;
 
 -- 92.5
 begin;
+select et_grant_hosted_parity();
 do $$
 declare e record; v_raised boolean := false; v int;
 begin
@@ -248,6 +255,7 @@ rollback;
 
 -- 92.6
 begin;
+select et_grant_hosted_parity();
 do $$
 declare e record; v_raised boolean := false; v int;
 begin

@@ -9,6 +9,10 @@ import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
 import { filterArticles } from './filterArticles';
 import { SectionCard } from './components/SectionCard';
 import { ArticleCard } from './components/ArticleCard';
+import { VideoPlaylistHero } from './videos/VideoPlaylistHero';
+import { VideoResultCard } from './videos/VideoResultCard';
+import { useKbVideoSeries } from './videos/useKbVideos';
+import { filterVideos } from './videos/playlist';
 
 export default function AjudaPage() {
   // `?q=` vem do item "Ver todos em Ajuda" da busca global (⌘K).
@@ -30,6 +34,9 @@ export default function AjudaPage() {
 
   const filteredArticles = useMemo(() => filterArticles(articles, search), [articles, search]);
 
+  const { data: videoSeries = [] } = useKbVideoSeries();
+  const filteredVideos = useMemo(() => filterVideos(videoSeries, search), [videoSeries, search]);
+
   const isSearching = search.trim().length > 0;
 
   return (
@@ -40,10 +47,12 @@ export default function AjudaPage() {
         </div>
       </div>
 
+      <VideoPlaylistHero requestedSlug={searchParams.get('video')} />
+
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-light)]" />
         <Input
-          placeholder="Buscar artigos..."
+          placeholder="Buscar vídeos e artigos..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
@@ -55,10 +64,10 @@ export default function AjudaPage() {
           <Spinner size="lg" />
         </div>
       ) : isSearching ? (
-        filteredArticles.length === 0 ? (
+        filteredArticles.length === 0 && filteredVideos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-[0.9rem] text-[var(--text-light)]">
-              Nenhum artigo encontrado para esta busca.
+              Nenhum vídeo ou artigo encontrado para esta busca.
             </p>
           </div>
         ) : (
@@ -66,6 +75,9 @@ export default function AjudaPage() {
             className="grid gap-5"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}
           >
+            {filteredVideos.map((hit) => (
+              <VideoResultCard key={`video-${hit.video.id}`} hit={hit} />
+            ))}
             {filteredArticles.map((article) => (
               <ArticleCard key={article.id} article={article} />
             ))}

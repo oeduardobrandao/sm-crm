@@ -20,6 +20,9 @@ const FILES = [
   'pages/metricas/RevenueSection.tsx',
   'pages/metricas/MovementSection.tsx',
   'pages/workspaces/WorkspacesTable.tsx',
+  'pages/KbVideosPage.tsx',
+  'pages/KbVideoEditorPage.tsx',
+  'pages/kb-videos/SeriesDialog.tsx',
 ];
 
 /** Brand colours that are data, not theme: the login splash gradient and the logo mark. */

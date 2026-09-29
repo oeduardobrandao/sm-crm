@@ -578,3 +578,46 @@ Deno.test("stream-steps: settle honors a custom settleBatchSize instead of the S
   const limitMod = settleSelect.modifiers.find((m) => m.method === "limit");
   assertEquals(limitMod?.args, [7]);
 });
+
+Deno.test("stream-steps: reap spares a 2-day-old uid known only to kb_videos (tutorial video)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", { data: [] });
+  db.queue("file_deletions", "select", { data: [] });
+  db.queue("kb_videos", "select", { data: [{ id: 1, stream_uid: "tutorial-uid" }] });
+
+  const deleted: string[] = [];
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [
+      { uid: "tutorial-uid", created: hoursAgoIso(48) },
+      { uid: "orphan-old", created: hoursAgoIso(2) },
+    ],
+    deleteStreamVideo: async (uid) => {
+      deleted.push(uid);
+    },
+  }));
+
+  assertEquals(deleted, ["orphan-old"]);
+  assertEquals(result.reaped, 1);
+  const kbSelects = callsFor(db, "kb_videos", "select");
+  assertEquals(kbSelects.length, 1);
+  assertEquals(kbSelects[0].modifiers.find((m) => m.method === "gt")?.args, ["id", 0]);
+});
+
+Deno.test("stream-steps: a failed kb_videos read aborts the reap before any delete", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("files", "select", { data: [] });
+  db.queue("file_deletions", "select", { data: [] });
+  db.queue("kb_videos", "select", { data: null, error: { message: "boom" } });
+
+  const deleted: string[] = [];
+  const result = await runStreamSweeps(baseDeps(db, {
+    listStreamVideos: async () => [{ uid: "tutorial-uid", created: hoursAgoIso(48) }],
+    deleteStreamVideo: async (uid) => {
+      deleted.push(uid);
+    },
+  }));
+
+  assertEquals(deleted, []);
+  assertEquals(result.reaped, 0);
+  assertEquals(result.errors, 1);
+});

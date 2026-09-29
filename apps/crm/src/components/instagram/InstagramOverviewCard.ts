@@ -66,7 +66,7 @@ export function renderInstagramOverviewCard(
   // Translation values from static JSON, user data escaped via escapeHTML/sanitizeUrl
   // All dynamic values are either escaped (escapeHTML/sanitizeUrl) or computed numbers (daysLeft)
   container.innerHTML = `
-    <div class="card animate-up" style="position: relative; margin-bottom: 1.5rem;">
+    <div class="card animate-up instagram-overview" style="position: relative; margin-bottom: 1.5rem;">
 
       ${statusBanner}
 
@@ -104,7 +104,7 @@ export function renderInstagramOverviewCard(
       </div>
 
       <h4 style="margin-bottom: 1rem; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">${escapeHTML(t('instagram.metricsTitle'))}</h4>
-      <div class="kpi-grid" style="--kpi-cols: 4;">
+      <div class="kpi-grid instagram-overview__metric-kpis" style="--kpi-cols: 4;">
          <div class="kpi-card">
             <span class="kpi-label"><i class="ph ph-users" aria-hidden="true"></i> ${escapeHTML(t('instagram.reach'))}</span>
             <span class="kpi-value">${numFmt(account.reach_28d)}</span>
