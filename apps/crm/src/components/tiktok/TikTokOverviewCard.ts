@@ -89,7 +89,7 @@ export function renderTikTokOverviewCard(
          </div>
       </div>
 
-      <div class="kpi-grid">
+      <div class="kpi-grid" style="--kpi-cols: 3;">
          <div class="kpi-card">
             <span class="kpi-label">${escapeHTML(t('tiktok.followers') as string)}</span>
             <span class="kpi-value">${numFmt(account.follower_count)}</span>

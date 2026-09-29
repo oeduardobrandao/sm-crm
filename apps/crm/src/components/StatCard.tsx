@@ -24,7 +24,11 @@ interface StatCardProps {
   footNote?: ReactNode;
   /** Overrides the value's colour (used by the finance strips). */
   valueColor?: string;
-  /** Shrinks the value — for cards whose value is a name rather than a number. */
+  /**
+   * Shrinks the value — for cards whose value is a name or a currency amount.
+   * A string value's non-breaking spaces become plain ones, so "R$ 49.500,00"
+   * can wrap after the symbol in a narrow card instead of overflowing it.
+   */
   compactValue?: boolean;
   /** Renders the card as a button and fires this on click. */
   onClick?: () => void;
@@ -85,13 +89,10 @@ export function StatCard({
         )}
       </div>
       <span
-        className="kpi-value"
-        style={{
-          ...(valueColor ? { color: valueColor } : {}),
-          ...(compactValue ? { fontSize: '1.25rem' } : {}),
-        }}
+        className={compactValue ? 'kpi-value kpi-value--compact' : 'kpi-value'}
+        style={valueColor ? { color: valueColor } : undefined}
       >
-        {value}
+        {compactValue && typeof value === 'string' ? value.replace(/\u00a0/g, ' ') : value}
       </span>
       {(delta || sub) && (
         <div className="kpi-foot">
