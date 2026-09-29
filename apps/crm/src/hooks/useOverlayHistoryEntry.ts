@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 /** React Router's index for the current history slot (`history.state.idx`). Internal to the
@@ -33,11 +33,14 @@ export function useOverlayHistoryEntry(open: boolean, onClose: () => void): void
   const location = useLocation();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const openRef = useRef(open);
+  openRef.current = open;
   /** Slot index of the entry pushed for the overlay; null while none is pushed. */
   const slotRef = useRef<number | null>(null);
+  /** A UI close popped the entry and the (async) popstate hasn't landed yet. */
+  const poppingRef = useRef(false);
 
-  useEffect(() => {
-    if (!open || slotRef.current !== null) return;
+  const pushEntry = useCallback(() => {
     const before = currentSlot();
     if (before === null) return;
     const { pathname, search, hash } = window.location;
@@ -46,23 +49,38 @@ export function useOverlayHistoryEntry(open: boolean, onClose: () => void): void
     navigate(pathname + search + hash, { state: usr });
     const after = currentSlot();
     slotRef.current = after !== null && after > before ? after : null;
-  }, [open, navigate]);
+  }, [navigate]);
+
+  // While a pop is in flight slotRef is still set, so a reopen waits for it (below)
+  // instead of pushing an entry the pop would then remove.
+  useEffect(() => {
+    if (open && slotRef.current === null) pushEntry();
+  }, [open, pushEntry]);
 
   useEffect(() => {
     const slot = slotRef.current;
     if (slot === null) return;
     const idx = currentSlot();
-    if (idx !== null && idx < slot) {
-      slotRef.current = null;
+    if (idx === null || idx >= slot) return;
+    slotRef.current = null;
+    if (poppingRef.current) {
+      // Our own pop landed. Reopened in the meantime: it needs an entry again.
+      poppingRef.current = false;
+      if (openRef.current) pushEntry();
+    } else {
       onCloseRef.current();
     }
-  }, [location.key]);
+  }, [location.key, pushEntry]);
 
   useEffect(() => {
-    if (open) return;
+    if (open || poppingRef.current) return;
     const slot = slotRef.current;
     if (slot === null) return;
-    slotRef.current = null;
-    if (currentSlot() === slot) navigate(-1);
+    if (currentSlot() === slot) {
+      poppingRef.current = true;
+      navigate(-1);
+    } else {
+      slotRef.current = null;
+    }
   }, [open, navigate]);
 }
