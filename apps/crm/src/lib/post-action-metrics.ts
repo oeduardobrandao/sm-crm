@@ -1,13 +1,13 @@
-// Per-post "ações" metrics from Instagram media insights: reposts, profile
-// visits, new followers (follows) and bio link taps. `null` means no data
-// (never fetched, or Instagram didn't return it) and renders as "—", never 0.
+// Per-post "ações" metrics from Instagram media insights: profile visits, new
+// followers (follows) and bio link taps. `null` means no data (never fetched,
+// or Instagram didn't return it) and renders as "—", never 0. Reposts are not
+// here: Instagram Login doesn't serve them, and Reels never get these three.
 // Spec: docs/superpowers/specs/2026-09-29-instagram-post-action-metrics-design.md
 
-export type ActionMetricKey = 'reposts' | 'profile_visits' | 'follows' | 'bio_link_clicks';
+export type ActionMetricKey = 'profile_visits' | 'follows' | 'bio_link_clicks';
 export type ActionSortKey = ActionMetricKey | 'follows_per_mil_reach';
 
 export const ACTION_SORT_KEYS: readonly ActionSortKey[] = [
-  'reposts',
   'profile_visits',
   'follows',
   'bio_link_clicks',
@@ -41,11 +41,17 @@ export function compareNullableNumber(
   return dir === 'asc' ? a - b : b - a;
 }
 
-/** Tooltip for a "—": did the last sync ask and get nothing, or was it never fetched? */
+/**
+ * Tooltip for a "—": a Reel (Instagram never provides these), did the last sync
+ * ask and get nothing, or was it never fetched? `VIDEO` stands in for Reels:
+ * every video post since 2022 is a Reel, and the sync only covers recent posts.
+ */
 export function missingActionMetricTitle(
   metric: ActionMetricKey,
   unavailable: readonly string[] | null | undefined,
+  mediaType?: string | null,
 ): string {
+  if (mediaType === 'VIDEO') return 'O Instagram não fornece este dado para Reels';
   return unavailable?.includes(metric)
     ? 'O Instagram não retornou este dado na última sincronização'
     : 'Sem dado para este post';

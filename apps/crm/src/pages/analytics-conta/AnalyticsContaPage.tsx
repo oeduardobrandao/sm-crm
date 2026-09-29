@@ -1217,7 +1217,6 @@ function AnalyticsContent({
         );
         break;
       }
-      case 'reposts':
       case 'profile_visits':
       case 'follows':
       case 'bio_link_clicks':
@@ -2620,7 +2619,6 @@ function AnalyticsContent({
                 <option value="comments">Comentários</option>
                 <option value="saved">Salvos</option>
                 <option value="shares">Compart.</option>
-                <option value="reposts">Reposts</option>
                 <option value="profile_visits">Visitas ao perfil</option>
                 <option value="follows">Novos seguidores</option>
                 <option value="date">Data</option>

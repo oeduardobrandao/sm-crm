@@ -636,8 +636,15 @@ describe('analytics service', () => {
       unavailable_metrics: [],
     };
     const rows = [
-      { ...base, id: 1, posted_at: '2026-09-01T00:00:00Z', reach: 1000, follows: 5, reposts: 0 },
-      // pre-migration row: the four columns are simply absent
+      {
+        ...base,
+        id: 1,
+        posted_at: '2026-09-01T00:00:00Z',
+        reach: 1000,
+        follows: 5,
+        profile_visits: 0,
+      },
+      // pre-migration row: the action columns are simply absent
       { ...base, id: 2, posted_at: '2026-09-02T00:00:00Z', reach: 1000 },
       {
         ...base,
@@ -645,11 +652,17 @@ describe('analytics service', () => {
         posted_at: '2026-09-03T00:00:00Z',
         reach: 37600,
         follows: 75,
-        reposts: 335,
         profile_visits: 328,
         bio_link_clicks: 1,
       },
-      { ...base, id: 4, posted_at: '2026-09-04T00:00:00Z', reach: 0, follows: 2, reposts: null },
+      {
+        ...base,
+        id: 4,
+        posted_at: '2026-09-04T00:00:00Z',
+        reach: 0,
+        follows: 2,
+        profile_visits: null,
+      },
     ];
     const queue = () => {
       mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
@@ -671,14 +684,13 @@ describe('analytics service', () => {
     expect(desc.posts.map((p) => p.id)).toEqual([3, 1, 4, 2]);
     const pre = desc.posts.find((p) => p.id === 2)!;
     expect(pre.follows).toBeNull();
-    expect(pre.reposts).toBeNull();
     expect(pre.profile_visits).toBeNull();
     expect(pre.bio_link_clicks).toBeNull();
     const top = desc.posts[0];
-    expect(top.reposts).toBe(335);
+    expect(top.profile_visits).toBe(328);
     expect(top.bio_link_clicks).toBe(1);
     expect(top.follows_per_mil_reach).toBeCloseTo(1.9947, 3);
-    expect(desc.posts.find((p) => p.id === 1)!.reposts).toBe(0); // real 0 kept
+    expect(desc.posts.find((p) => p.id === 1)!.profile_visits).toBe(0); // real 0 kept
     expect(desc.posts.find((p) => p.id === 4)!.follows_per_mil_reach).toBeNull(); // reach 0
 
     queue();

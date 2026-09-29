@@ -752,7 +752,6 @@ describe('AnalyticsContaPage', () => {
             media_type: 'CAROUSEL_ALBUM',
             posted_at: '2026-09-23T12:00:00Z',
             reach: 37600,
-            reposts: 335,
             profile_visits: 328,
             follows: 75,
             bio_link_clicks: 1,
@@ -766,7 +765,6 @@ describe('AnalyticsContaPage', () => {
             media_type: 'VIDEO',
             posted_at: '2026-09-19T12:00:00Z',
             reach: 9214,
-            reposts: 12,
             profile_visits: null,
             follows: null,
             bio_link_clicks: null,
@@ -786,7 +784,7 @@ describe('AnalyticsContaPage', () => {
     expect(cells[1]).toHaveTextContent('—');
     expect(cells[1].querySelector('[title]')).toHaveAttribute(
       'title',
-      'O Instagram não retornou este dado na última sincronização',
+      'O Instagram não fornece este dado para Reels',
     );
 
     fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
@@ -794,7 +792,7 @@ describe('AnalyticsContaPage', () => {
     expect(detail.querySelector('td')).toHaveAttribute('colspan', '12');
     expect(within(detail).getByText('Ações após a visualização')).toBeInTheDocument();
     expect(within(detail).getByText('Novos seguidores').nextSibling).toHaveTextContent('75');
-    expect(within(detail).getByText('Reposts').nextSibling).toHaveTextContent('335');
+    expect(within(detail).queryByText('Reposts')).not.toBeInTheDocument();
   });
 
   it('opens the reach-ranked posts drawer using only this client account posts', () => {

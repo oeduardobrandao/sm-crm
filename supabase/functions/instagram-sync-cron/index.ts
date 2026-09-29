@@ -151,7 +151,7 @@ async function syncAccount(
     fetch(`https://graph.instagram.com/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
     fetch(`https://graph.instagram.com/me/insights?metric=profile_views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
     fetch(`https://graph.instagram.com/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) }),
-    fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) })
+    fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`, { signal: AbortSignal.timeout(15_000) })
   ]);
 
   const [reachData, viewsData, engagedData, websiteClicksData, profileViewsData, igProfile, mediaData] = await Promise.all([
@@ -288,7 +288,7 @@ async function syncAccount(
         if (ids.length) {
           const { data: existingRows } = await supabase
             .from('instagram_posts')
-            .select('instagram_post_id, thumbnail_url, reach, impressions, saved, shares, likes, comments, reposts, profile_visits, follows, bio_link_clicks')
+            .select('instagram_post_id, thumbnail_url, reach, impressions, saved, shares, likes, comments, profile_visits, follows, bio_link_clicks')
             .in('instagram_post_id', ids) as { data: any[] | null };
           for (const r of existingRows ?? []) existingByPostId.set(r.instagram_post_id, r);
         }
@@ -299,7 +299,7 @@ async function syncAccount(
       for (let i = 0; i < recentPosts.length; i += BATCH_SIZE) {
         const batch = recentPosts.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(batch.map(async (post: any) => {
-          const insights = await fetchPostInsights(fetch, post.id, accessToken);
+          const insights = await fetchPostInsights(fetch, post.id, accessToken, post.media_product_type);
           const m = buildMetricFields(existingByPostId.get(post.id) ?? null, insights, post);
 
           let thumbUrl = post.thumbnail_url || post.media_url || null;
@@ -330,7 +330,7 @@ async function syncAccount(
             posted_at: post.timestamp,
             likes: m.likes, comments: m.comments,
             reach: m.reach, impressions: m.impressions, saved: m.saved, shares: m.shares,
-            reposts: m.reposts, profile_visits: m.profile_visits, follows: m.follows, bio_link_clicks: m.bio_link_clicks,
+            profile_visits: m.profile_visits, follows: m.follows, bio_link_clicks: m.bio_link_clicks,
             unavailable_metrics: m.unavailable_metrics,
             synced_at: new Date().toISOString()
           };

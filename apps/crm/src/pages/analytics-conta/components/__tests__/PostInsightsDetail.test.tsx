@@ -26,7 +26,6 @@ function post(over: Partial<PostAnalytics> = {}): PostAnalytics {
     engagement_rate: 18.4,
     saves_rate: 1.7,
     tags: [],
-    reposts: 335,
     profile_visits: 328,
     follows: 75,
     bio_link_clicks: 1,
@@ -40,7 +39,8 @@ describe('PostInsightsDetail', () => {
     render(<PostInsightsDetail post={post()} />);
     expect(screen.getByText('Interações')).toBeInTheDocument();
     expect(screen.getByText('Ações após a visualização')).toBeInTheDocument();
-    expect(screen.getByText('Reposts').nextSibling).toHaveTextContent('335');
+    // Instagram Login doesn't serve reposts, so the row isn't shown at all.
+    expect(screen.queryByText('Reposts')).not.toBeInTheDocument();
     expect(screen.getByText('Visitas ao perfil').nextSibling).toHaveTextContent('328');
     expect(screen.getByText('Novos seguidores').nextSibling).toHaveTextContent('75');
     expect(screen.getByText('Toques no link da bio').nextSibling).toHaveTextContent(/^1$/);
@@ -73,8 +73,29 @@ describe('PostInsightsDetail', () => {
 
   it('treats undefined (pre-migration rows) like null', () => {
     const p = post();
-    delete (p as Partial<PostAnalytics>).reposts;
+    delete (p as Partial<PostAnalytics>).profile_visits;
     render(<PostInsightsDetail post={p} />);
-    expect(screen.getByText('Reposts').nextSibling).toHaveTextContent('—');
+    expect(screen.getByText('Visitas ao perfil').nextSibling).toHaveTextContent('—');
+  });
+
+  it('explains that Reels never get the action metrics', () => {
+    render(
+      <PostInsightsDetail
+        post={post({
+          media_type: 'VIDEO',
+          follows: null,
+          profile_visits: null,
+          bio_link_clicks: null,
+          follows_per_mil_reach: null,
+          unavailable_metrics: ['follows', 'profile_visits', 'bio_link_clicks'],
+        })}
+      />,
+    );
+    for (const label of ['Visitas ao perfil', 'Novos seguidores', 'Toques no link da bio']) {
+      expect(screen.getByText(label).nextSibling).toHaveAttribute(
+        'title',
+        'O Instagram não fornece este dado para Reels',
+      );
+    }
   });
 });

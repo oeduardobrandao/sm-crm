@@ -16,7 +16,6 @@ const CORE = [
   { name: "shares", values: [{ value: 3 }] },
 ];
 const ACTIONS = [
-  { name: "reposts", values: [{ value: 335 }] },
   { name: "follows", values: [{ value: 75 }] },
   { name: "profile_visits", values: [{ value: 328 }] },
 ];
@@ -35,7 +34,7 @@ const BIO = [{
 }];
 
 const isCore = (u: string) => u.includes("metric=reach");
-const isActions = (u: string) => u.includes("metric=reposts") || u.includes("metric=follows");
+const isActions = (u: string) => u.includes("metric=follows");
 const isBio = (u: string) => u.includes("metric=profile_activity");
 
 /** Routes each of the three per-post requests to its own handler. */
@@ -62,9 +61,9 @@ Deno.test("fetchPostInsights: parses all three calls", async () => {
   const r = await fetchPostInsights(fetchFn, "m1", "tok");
   assertEquals(r.values, {
     reach: 100, impressions: 200, saved: 5, shares: 3,
-    reposts: 335, follows: 75, profile_visits: 328, bio_link_clicks: 1,
+    follows: 75, profile_visits: 328, bio_link_clicks: 1,
   });
-  for (const t of ["reach", "impressions", "saved", "shares", "reposts", "follows", "profile_visits", "bio_link_clicks"]) {
+  for (const t of ["reach", "impressions", "saved", "shares", "follows", "profile_visits", "bio_link_clicks"]) {
     assert(r.returned.has(t), t);
   }
 });
@@ -89,7 +88,7 @@ Deno.test("fetchPostInsights: shares rejection -> core retried without shares", 
   assertEquals(coreCalls, 2);
   assertEquals(r.values.reach, 100);
   assert(!r.returned.has("shares"));
-  assert(r.returned.has("reposts"));
+  assert(r.returned.has("follows"));
 });
 
 Deno.test("fetchPostInsights: actions and bio use the pinned Graph version; core stays unversioned", async () => {
@@ -102,70 +101,47 @@ Deno.test("fetchPostInsights: actions and bio use the pinned Graph version; core
   assert(core.startsWith("https://graph.instagram.com/m1/insights?"), core);
 });
 
-Deno.test("fetchPostInsights: rejected reposts doesn't take follows/profile_visits down", async () => {
-  const actionUrls: string[] = [];
-  const { fetchFn } = router({
-    actions: (u) => {
-      actionUrls.push(u);
-      if (u.includes("reposts")) return errBody("(#100) metric[0] must be one of the following values", 100);
-      return ok(ACTIONS.filter((m) => m.name !== "reposts"));
-    },
-  });
-  const r = await fetchPostInsights(fetchFn, "m3", "tok");
-  assertEquals(actionUrls.length, 3); // combined, then follows,profile_visits + reposts
-  assert(actionUrls.some((u) => u.includes("metric=follows,profile_visits&")));
-  assert(actionUrls.some((u) => u.includes("metric=reposts&")));
-  assertEquals(r.values.follows, 75);
-  assertEquals(r.values.profile_visits, 328);
-  assert(!r.returned.has("reposts"));
-  assertEquals(r.values.reach, 100); // core untouched
+Deno.test("fetchPostInsights: reposts is never requested (Instagram Login rejects it)", async () => {
+  const { fetchFn, urls } = router({});
+  await fetchPostInsights(fetchFn, "m3", "tok");
+  assert(urls.every((u) => !u.includes("reposts")), urls.join("\n"));
+  const actions = urls.filter(isActions);
+  assertEquals(actions.length, 1);
+  assert(actions[0].includes("metric=follows,profile_visits&"), actions[0]);
 });
 
-Deno.test("fetchPostInsights: unsupported follows/profile_visits -> reposts still returned", async () => {
-  const { fetchFn } = router({
-    actions: (u) => {
-      if (u.includes("follows")) return errBody("metric follows not supported for REELS", 100);
-      return ok([{ name: "reposts", values: [{ value: 12 }] }]);
-    },
-  });
-  const r = await fetchPostInsights(fetchFn, "m3b", "tok");
-  assertEquals(r.values.reposts, 12);
-  assert(!r.returned.has("follows"));
-  assert(!r.returned.has("profile_visits"));
+Deno.test("fetchPostInsights: Reels skip the actions and bio calls", async () => {
+  const { fetchFn, urls } = router({});
+  const r = await fetchPostInsights(fetchFn, "m4", "tok", "REELS");
+  assertEquals(urls.length, 1);
+  assert(isCore(urls[0]));
+  assertEquals(r.values, { reach: 100, impressions: 200, saved: 5, shares: 3 });
+  for (const t of ["follows", "profile_visits", "bio_link_clicks"]) assert(!r.returned.has(t), t);
 });
 
-Deno.test("fetchPostInsights: transient/auth action errors are not retried", async () => {
-  for (const code of [1, 2, 4, 9, 17, 32, 613, 190, 80002]) {
-    let actionCalls = 0;
-    const { fetchFn } = router({
-      actions: () => {
-        actionCalls++;
-        return errBody("Application request limit reached", code);
-      },
-    });
-    const r = await fetchPostInsights(fetchFn, "m4", "tok");
-    assertEquals(actionCalls, 1, `code ${code}`);
-    assert(!r.returned.has("reposts"));
-    assertEquals(r.values.reach, 100);
+Deno.test("fetchPostInsights: FEED and unknown product types still make all three calls", async () => {
+  for (const type of ["FEED", undefined]) {
+    const { fetchFn, urls } = router({});
+    const r = await fetchPostInsights(fetchFn, "m5", "tok", type);
+    assertEquals(urls.length, 3, String(type));
+    assertEquals(r.values.follows, 75);
   }
 });
 
-Deno.test("fetchPostInsights: actions error without a numeric code -> split retry", async () => {
-  const actionUrls: string[] = [];
+Deno.test("fetchPostInsights: actions error body -> follows/profile_visits absent, no retry", async () => {
+  let actionCalls = 0;
   const { fetchFn } = router({
-    actions: (u) => {
-      actionUrls.push(u);
-      if (u.includes("follows")) {
-        return Promise.resolve({ json: () => Promise.resolve({ error: { message: "x" } }) } as Response);
-      }
-      return ok([{ name: "reposts", values: [{ value: 12 }] }]);
+    actions: () => {
+      actionCalls++;
+      return errBody("metric follows not supported", 100);
     },
   });
   const r = await fetchPostInsights(fetchFn, "m6", "tok");
-  assertEquals(actionUrls.length, 3);
-  assertEquals(r.values.reposts, 12);
+  assertEquals(actionCalls, 1);
   assert(!r.returned.has("follows"));
+  assert(!r.returned.has("profile_visits"));
   assertEquals(r.values.reach, 100);
+  assertEquals(r.values.bio_link_clicks, 1);
 });
 
 Deno.test("fetchPostInsights: a throwing actions/bio call never removes core values", async () => {
@@ -258,27 +234,25 @@ Deno.test("buildMetricFields: action metrics fresh, preserved, or null (never 0)
   const fresh = buildMetricFields(
     null,
     {
-      values: { reach: 1, impressions: 1, saved: 0, shares: 0, reposts: 0, follows: 75, profile_visits: 328, bio_link_clicks: 1 },
-      returned: new Set(["reach", "impressions", "saved", "shares", "reposts", "follows", "profile_visits", "bio_link_clicks"]),
+      values: { reach: 1, impressions: 1, saved: 0, shares: 0, follows: 0, profile_visits: 328, bio_link_clicks: 1 },
+      returned: new Set(["reach", "impressions", "saved", "shares", "follows", "profile_visits", "bio_link_clicks"]),
     },
     { like_count: 1, comments_count: 1 },
   );
-  assertEquals(fresh.reposts, 0); // a real 0 is kept
-  assertEquals(fresh.follows, 75);
+  assertEquals(fresh.follows, 0); // a real 0 is kept
   assertEquals(fresh.profile_visits, 328);
   assertEquals(fresh.bio_link_clicks, 1);
   assertEquals(fresh.unavailable_metrics, []);
 
   const preserved = buildMetricFields(
-    { reach: 1, impressions: 1, saved: 0, shares: 0, likes: 1, comments: 1, reposts: 5, follows: 7, profile_visits: 9, bio_link_clicks: null },
+    { reach: 1, impressions: 1, saved: 0, shares: 0, likes: 1, comments: 1, follows: 7, profile_visits: 9, bio_link_clicks: null },
     { values: { reach: 2, impressions: 2, saved: 0, shares: 0 }, returned: new Set(["reach", "impressions", "saved", "shares"]) },
     { like_count: 1, comments_count: 1 },
   );
-  assertEquals(preserved.reposts, 5);
   assertEquals(preserved.follows, 7);
   assertEquals(preserved.profile_visits, 9);
   assertEquals(preserved.bio_link_clicks, null);
-  for (const t of ["reposts", "follows", "profile_visits", "bio_link_clicks"]) {
+  for (const t of ["follows", "profile_visits", "bio_link_clicks"]) {
     assert(preserved.unavailable_metrics.includes(t), t);
   }
 
@@ -287,8 +261,8 @@ Deno.test("buildMetricFields: action metrics fresh, preserved, or null (never 0)
     { values: { reach: 1, impressions: 1, saved: 0, shares: 0 }, returned: new Set(["reach", "impressions", "saved", "shares"]) },
     { like_count: 1, comments_count: 1 },
   );
-  assertEquals(brandNew.reposts, null);
   assertEquals(brandNew.follows, null);
   assertEquals(brandNew.profile_visits, null);
   assertEquals(brandNew.bio_link_clicks, null);
+  assert(!("reposts" in brandNew));
 });

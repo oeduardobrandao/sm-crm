@@ -1,7 +1,27 @@
 # Instagram post action metrics (reposts, profile visits, follows, bio link taps)
 
-Status: approved design, 2026-09-29
+Status: approved design, 2026-09-29. Revised the same day after the first prod sync (below).
 Mockups: https://claude.ai/artifact/49HycgcaWpHk8ZZnYbM8mx
+
+## Revision after the first prod sync (supersedes the rest where they differ)
+
+Prod function logs from the 19:07 UTC cron showed two Graph `code=100` rejections:
+
+- `reposts`: "Instagram Insights Media API endpoint does not support the metrics:
+  reposts", on every post. Meta's insights reference lists it, but
+  `graph.instagram.com` (Instagram Login, what we use) does not serve it.
+  **Reposts is dropped:** not requested, not written, not shown (no row in the
+  expanded view, no drawer sort option). The `reposts` column stays (already
+  migrated, always NULL) so it can come back if Meta adds it to Instagram Login.
+- Reels: `follows`, `profile_visits` and `profile_activity` are rejected for the
+  REELS product type (0 of 356 VIDEO rows got them; 100% of carousels and images
+  did). This answers decision 3. **The sync now requests `media_product_type` from
+  `/me/media` and skips the actions and bio calls for REELS** (1 call per Reel
+  instead of 3). The actions call is a single `follows,profile_visits` request
+  with no split retry.
+- UI: a "—" on a `VIDEO` post gets the tooltip "O Instagram não fornece este dado
+  para Reels". `VIDEO` stands in for REELS on the frontend because the product
+  type isn't stored; every video post since 2022 is a Reel.
 
 ## Goal
 

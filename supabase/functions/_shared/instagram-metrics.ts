@@ -2,16 +2,17 @@
 // (instagram-integration connect + refresh, instagram-sync-cron). Pure /
 // fetch-injectable so the preservation + availability logic is unit-tested.
 //
-// Three insights requests per post, run concurrently and isolated from each
-// other: a failure in one never removes values another returned.
+// Up to three insights requests per post, run concurrently and isolated from
+// each other: a failure in one never removes values another returned.
 //   1. core:    reach,views,saved,shares (retried without shares)
-//   2. actions: reposts,follows,profile_visits. On a non-transient error, split
-//               into follows,profile_visits + reposts so one rejected metric
-//               (reposts is the newest) can't take the others down. Meta
-//               documents follows/profile_visits for FEED and STORY only.
+//   2. actions: follows,profile_visits
 //   3. bio:     profile_activity&breakdown=action_type -> bio_link_clicked. Its
 //               own request: Meta errors when a breakdown is mixed with metrics
 //               that don't support it.
+// Calls 2 and 3 are skipped for Reels: Meta rejects follows, profile_visits and
+// profile_activity for the REELS product type (code 100, confirmed in prod
+// 2026-09-29). `reposts` is not requested at all: graph.instagram.com
+// (Instagram Login) rejects it with "does not support the metrics: reposts".
 // Calls 2 and 3 are pinned to GRAPH_VERSION: unversioned URLs use the app
 // dashboard's default version, which can predate these metrics.
 
@@ -20,19 +21,17 @@ type InsightValue = {
   impressions?: number;
   saved?: number;
   shares?: number;
-  reposts?: number;
   profile_visits?: number;
   follows?: number;
   bio_link_clicks?: number;
 };
-type ApiToken = "reach" | "views" | "saved" | "shares" | "reposts" | "follows" | "profile_visits";
+type ApiToken = "reach" | "views" | "saved" | "shares" | "follows" | "profile_visits";
 // API metric name -> our column token. `views` is stored as `impressions`.
 const API_TO_COL: Record<ApiToken, keyof InsightValue> = {
   reach: "reach",
   views: "impressions",
   saved: "saved",
   shares: "shares",
-  reposts: "reposts",
   follows: "follows",
   profile_visits: "profile_visits",
 };
@@ -55,9 +54,6 @@ function logRejection(call: string, body: any): void {
       String(e?.message ?? "no error body").slice(0, 200),
   );
 }
-// Graph error codes that mean "try later" (throttling, temporary; 80002 is
-// Instagram's per-account rate limit) or "bad token". Retrying with fewer metrics can't fix these.
-const TRANSIENT_OR_AUTH_CODES = new Set([1, 2, 4, 9, 17, 32, 613, 190, 80002]);
 
 function metricNumber(insight: any): number | undefined {
   const v = insight?.values?.[0]?.value;
@@ -124,27 +120,12 @@ async function fetchCore(fetchFn: typeof fetch, url: (q: string) => string): Pro
 }
 
 async function fetchActions(fetchFn: typeof fetch, url: (q: string) => string): Promise<any[]> {
-  let body: any;
   try {
-    body = await getJson(fetchFn, url("metric=reposts,follows,profile_visits"));
-  } catch (_) {
-    return [];
-  }
-  if (Array.isArray(body?.data)) return body.data;
-  logRejection("actions", body);
-  const code = body?.error?.code;
-  if (typeof code === "number" && TRANSIENT_OR_AUTH_CODES.has(code)) return [];
-  const parts = await Promise.all(
-    ["follows,profile_visits", "reposts"].map(async (metrics) => {
-      try {
-        const b = await getJson(fetchFn, url(`metric=${metrics}`));
-        if (Array.isArray(b?.data)) return b.data;
-        logRejection(`actions:${metrics}`, b);
-      } catch (_) { /* absent */ }
-      return [];
-    }),
-  );
-  return parts.flat();
+    const body = await getJson(fetchFn, url("metric=follows,profile_visits"));
+    if (Array.isArray(body?.data)) return body.data;
+    logRejection("actions", body);
+  } catch (_) { /* absent */ }
+  return [];
 }
 
 async function fetchBioLinkClicks(
@@ -161,22 +142,26 @@ async function fetchBioLinkClicks(
 }
 
 /**
- * Fetch per-post insights (three concurrent, isolated requests; see top of
- * file). Anything not returned is simply absent from `values`/`returned`.
+ * Fetch per-post insights (up to three concurrent, isolated requests; see top
+ * of file). Anything not returned is simply absent from `values`/`returned`.
+ * `mediaProductType` is the /media node's `media_product_type`; REELS skips the
+ * action and bio calls.
  */
 export async function fetchPostInsights(
   fetchFn: typeof fetch,
   mediaId: string,
   token: string,
+  mediaProductType?: string,
 ): Promise<{ values: InsightValue; returned: Set<string> }> {
   const url = (query: string) =>
     `https://graph.instagram.com/${mediaId}/insights?${query}&access_token=${token}`;
   const versionedUrl = (query: string) =>
     `https://graph.instagram.com/${GRAPH_VERSION}/${mediaId}/insights?${query}&access_token=${token}`;
+  const isReel = mediaProductType === "REELS";
   const [core, actions, bio] = await Promise.all([
     fetchCore(fetchFn, url),
-    fetchActions(fetchFn, versionedUrl),
-    fetchBioLinkClicks(fetchFn, versionedUrl),
+    isReel ? [] : fetchActions(fetchFn, versionedUrl),
+    isReel ? undefined : fetchBioLinkClicks(fetchFn, versionedUrl),
   ]);
   const values: InsightValue = {};
   const returned = new Set<string>();
@@ -191,7 +176,6 @@ export async function fetchPostInsights(
 
 type Counts = { reach: number; impressions: number; saved: number; shares: number; likes: number; comments: number };
 type ActionCounts = {
-  reposts: number | null;
   profile_visits: number | null;
   follows: number | null;
   bio_link_clicks: number | null;
@@ -228,7 +212,6 @@ export function buildMetricFields(
     shares: pick("shares", insights.values.shares, insights.returned.has("shares")),
     likes: pick("likes", mediaNode.like_count, typeof mediaNode.like_count === "number"),
     comments: pick("comments", mediaNode.comments_count, typeof mediaNode.comments_count === "number"),
-    reposts: pickNullable("reposts"),
     profile_visits: pickNullable("profile_visits"),
     follows: pickNullable("follows"),
     bio_link_clicks: pickNullable("bio_link_clicks"),

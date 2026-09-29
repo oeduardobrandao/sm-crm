@@ -40,13 +40,21 @@ describe('post-action-metrics', () => {
     expect(missingActionMetricTitle('follows', ['follows'])).toBe(
       'O Instagram não retornou este dado na última sincronização',
     );
-    expect(missingActionMetricTitle('follows', ['reposts'])).toBe('Sem dado para este post');
+    expect(missingActionMetricTitle('follows', ['profile_visits'])).toBe('Sem dado para este post');
     expect(missingActionMetricTitle('follows', undefined)).toBe('Sem dado para este post');
+  });
+
+  it('missingActionMetricTitle explains that Reels never get these metrics', () => {
+    expect(missingActionMetricTitle('follows', ['follows'], 'VIDEO')).toBe(
+      'O Instagram não fornece este dado para Reels',
+    );
+    expect(missingActionMetricTitle('follows', ['follows'], 'IMAGE')).toBe(
+      'O Instagram não retornou este dado na última sincronização',
+    );
   });
 
   it('exposes the sortable keys', () => {
     expect(ACTION_SORT_KEYS).toEqual([
-      'reposts',
       'profile_visits',
       'follows',
       'bio_link_clicks',

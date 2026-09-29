@@ -46,7 +46,7 @@ export function ActionMetricValue({
   if (typeof value === 'number') return <Tag>{value.toLocaleString('pt-BR')}</Tag>;
   return (
     <Tag
-      title={missingActionMetricTitle(metric, post.unavailable_metrics)}
+      title={missingActionMetricTitle(metric, post.unavailable_metrics, post.media_type)}
       style={{ color: 'var(--text-muted)', fontWeight: 400 }}
     >
       —
@@ -101,7 +101,6 @@ export function PostInsightsDetail({ post }: { post: PostAnalytics }) {
         <h4 style={headingStyle}>Interações</h4>
         <CountRow label="Curtidas" value={post.likes ?? 0} />
         <CountRow label="Comentários" value={post.comments ?? 0} />
-        <ActionRow label="Reposts" post={post} metric="reposts" />
         <CountRow label="Compartilhamentos" value={post.shares ?? 0} />
         <CountRow label="Salvamentos" value={post.saved ?? 0} />
       </div>
