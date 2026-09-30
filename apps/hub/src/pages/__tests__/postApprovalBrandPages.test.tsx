@@ -244,7 +244,7 @@ describe('hub approval, posts, and brand pages', () => {
       expect(await screen.findByText('Nenhuma postagem disponível ainda.')).toBeInTheDocument();
     });
 
-    it('sorts visible posts chronologically into one flattened grid, with a publish-month dropdown', async () => {
+    it('sorts visible posts newest first into one flattened grid, with a publish-month dropdown', async () => {
       mockedFetchPosts.mockResolvedValue({
         posts: [
           makePost({
@@ -311,9 +311,9 @@ describe('hub approval, posts, and brand pages', () => {
 
       const tiles = screen.getAllByRole('button', { name: /^Abrir / });
       expect(tiles.map((b) => b.getAttribute('aria-label'))).toEqual([
-        'Abrir Aprovado hoje',
-        'Abrir Mais cedo',
         'Abrir Mais tarde',
+        'Abrir Mais cedo',
+        'Abrir Aprovado hoje',
         'Abrir Sem data',
       ]);
 

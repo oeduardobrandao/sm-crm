@@ -147,7 +147,7 @@ describe('PostagensPage', () => {
 
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders one flattened chronological grid with the month dropdown and status chips in one row', async () => {
+  it('renders one flattened newest-first grid with the month dropdown and status chips in one row', async () => {
     renderPage(
       BASE,
       response({
@@ -162,9 +162,9 @@ describe('PostagensPage', () => {
     );
     const tiles = await screen.findAllByRole('button', { name: /^Abrir / });
     expect(tiles.map((b) => b.getAttribute('aria-label'))).toEqual([
-      'Abrir Primeiro',
-      'Abrir Segundo',
       'Abrir Setembro',
+      'Abrir Segundo',
+      'Abrir Primeiro',
       'Abrir Avulso',
     ]);
     const trigger = screen.getByRole('button', { name: 'Todos os meses' });
@@ -294,7 +294,12 @@ describe('PostagensPage', () => {
   it('opens the dialog on tile click and updates the URL; close returns to the list', async () => {
     renderPage(
       BASE,
-      response({ posts: [post({ id: 1, titulo: 'A' }), post({ id: 2, titulo: 'B' })] }),
+      response({
+        posts: [
+          post({ id: 1, titulo: 'A', scheduled_at: '2026-04-22T15:00:00.000Z' }),
+          post({ id: 2, titulo: 'B', scheduled_at: '2026-04-20T15:00:00.000Z' }),
+        ],
+      }),
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Abrir A' }));
     expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}/1`);
