@@ -19,6 +19,7 @@
   - The Publicações cell, sort and grouping switch to this rule too. Today the cell shows "—" for an avulso without an etapa, while the filter matches it by `responsavel_id`, so a "Bia (1)" group would contain a row whose Responsável cell reads "—".
 - **Panel counts are facets.** They are computed with every active filter except the responsável filter, so checking Ana doesn't zero out everyone else. They respect the Fluxos entity toggle (cards only when `entidade !== 'posts'`, processos only when `entidade !== 'fluxos'`).
 - **Panel placement:** inline `<aside>` at ≥901px (`useIsDesktop(901)`, the same breakpoint as the filter pills), bottom `Sheet` below 901px. Below 901px the Lista toolbar also leaves the horizontally scrolling tabs row for a row of its own (Task 9, step 10).
+- **Amended after the browser pass (user's choice, 2026-09-30): the Lista toolbar gets its own row above the table at every width, right-aligned from 901px.** Task 9 step 10 put it at the end of the tabs row on desktop, but that row scrolls with no visible scrollbar and holds about 1,495px of content: the toolbar ended up 550px out of view at 1280 wide and 398px at 1440.
 - **Mockups:** https://claude.ai/artifact/PeuTauLf7N16k3nfE8EX6f (antes/depois, alternativa sobreposta, modo Etapas, tema escuro, celular).
 - **Docked aside, not an overlay** (user's choice, 2026-09-30). With the aside open the 9-column Publicações table loses 276px and scrolls horizontally inside its card on laptop widths. That cost is accepted.
 
