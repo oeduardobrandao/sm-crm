@@ -8,6 +8,7 @@ import {
 } from '@mesaas/ui/InstagramGrid';
 import { supabase } from '@/lib/supabase';
 import { getClientePosts } from '@/store';
+import { targetsInstagram } from '../platformTargets';
 import { getPostCovers } from '@/services/postMedia';
 import { getInstagramPosts, reorderClientePostSchedules } from '@/services/instagram';
 
@@ -69,7 +70,7 @@ export function WorkflowGridView({ clienteId, clienteNome }: WorkflowGridViewPro
       const plannedFeed = planned.filter(
         (p) =>
           p.tipo !== 'stories' &&
-          p.platform !== 'tiktok' &&
+          targetsInstagram(p.platform) &&
           p.status !== 'postado' &&
           p.status !== 'falha_publicacao',
       );

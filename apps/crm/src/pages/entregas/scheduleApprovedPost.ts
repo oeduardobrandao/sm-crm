@@ -27,6 +27,9 @@ export function scheduleSuccessMessage(platform: Platform): string {
 export async function scheduleApprovedPost(
   post: SchedulablePost,
 ): Promise<{ ok: boolean; status: string }> {
+  if (post.platform === 'other') {
+    throw new Error('Este post não tem destino com publicação automática.');
+  }
   const platform: Platform = post.platform ?? 'instagram';
   if (targetsTikTokService(platform)) return scheduleTikTokPost(post.id!, post.scheduled_at!);
   return scheduleInstagramPost(post.id!);

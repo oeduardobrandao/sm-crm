@@ -41,6 +41,8 @@ export function PlatformSelector({
   onChange,
 }: PlatformSelectorProps) {
   const isStories = tipo === 'stories';
+  // 'other' (só Geral): destinos vêm do quadro; nada aqui deve reescrevê-lo.
+  const isOther = value === 'other';
 
   // Guards against re-firing on every render while the parent's async write is still
   // in flight (value prop hasn't caught up to 'instagram' yet) — the effect's deps
@@ -50,7 +52,7 @@ export function PlatformSelector({
   useEffect(() => {
     // While schedule-locked, the self-heal must not write either — it re-runs (and
     // heals if still needed) once the lock lifts, via `disabled` in the deps.
-    if (isStories && value !== 'instagram' && !disabled) {
+    if (isStories && !isOther && value !== 'instagram' && !disabled) {
       if (!revertingRef.current) {
         revertingRef.current = true;
         onChange('instagram');
@@ -65,7 +67,7 @@ export function PlatformSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStories, value, disabled]);
 
-  if (!tiktokFeatureEnabled) return null;
+  if (!tiktokFeatureEnabled || isOther) return null;
 
   const disabledReason = isStories
     ? 'Stories não são suportados no TikTok'

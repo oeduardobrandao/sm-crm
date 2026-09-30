@@ -66,6 +66,10 @@ describe('shouldOfferAutoSchedule', () => {
     expect(shouldOfferAutoSchedule(allTrue)).toBe(true);
   });
 
+  it('never offers auto-schedule for a Geral-only post', () => {
+    expect(shouldOfferAutoSchedule({ ...allTrue, platform: 'other' })).toBe(false);
+  });
+
   it('is false for any status other than aprovado_cliente', () => {
     expect(shouldOfferAutoSchedule({ ...allTrue, status: 'aprovado_interno' })).toBe(false);
     expect(shouldOfferAutoSchedule({ ...allTrue, status: 'agendado' })).toBe(false);

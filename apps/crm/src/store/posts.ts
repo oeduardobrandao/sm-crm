@@ -40,6 +40,11 @@ function compareCreatedAtAsc(a: { created_at: string }, b: { created_at: string 
   return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
 }
 
+/** Derivado de post_targets pelo banco (migration 20260929100002):
+ *  instagram+tiktok -> both; 'other' = nenhum destino Instagram/TikTok (ex.: só Geral).
+ *  'stories' nunca tem destino TikTok. */
+export type PostPlatform = 'instagram' | 'tiktok' | 'both' | 'other';
+
 // =============================================
 // WORKFLOW POSTS (Sub-tasks / Content pieces)
 // =============================================
@@ -85,10 +90,8 @@ export interface WorkflowPost {
   publish_retry_count?: number;
   instagram_container_id?: string | null;
   instagram_media_id?: string | null;
-  /** Which platform(s) this post targets. Defaults to 'instagram' at the DB level
-   * (migration 20260719000001_tiktok_publishing.sql). 'stories' tipo never allows
-   * 'tiktok'/'both' — TikTok has no Stories API. */
-  platform?: 'instagram' | 'tiktok' | 'both';
+  /** Plataforma(s) do post; derivada de post_targets pelo banco. Ver PostPlatform. */
+  platform?: PostPlatform;
   tiktok_publish_id?: string | null;
   tiktok_post_id?: string | null;
   tiktok_post_url?: string | null;
