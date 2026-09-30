@@ -58,3 +58,17 @@ export function postStageOf(
     };
   return undefined;
 }
+
+/**
+ * Quem está com o post AGORA, pela regra do filtro "Responsável" de
+ * Publicações: o responsável da etapa (fluxo ou processo individual); sem
+ * etapa, o responsavel_id do próprio post. O painel Responsáveis e o
+ * agrupamento da Lista usam a mesma regra; senão um grupo "Ana (3)" sairia de
+ * um filtro que só acha 2.
+ */
+export function postResponsavelIdOf(
+  post: { responsavel_id: number | null },
+  stage: PostStage | undefined,
+): number | null {
+  return stage ? stage.responsavelId : post.responsavel_id;
+}
