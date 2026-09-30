@@ -100,6 +100,11 @@ function getRenderedTitles(container: HTMLElement) {
   );
 }
 
+const groupHeads = () =>
+  Array.from(document.querySelectorAll('.list-group-toggle')).map((b) =>
+    b.getAttribute('aria-label'),
+  );
+
 describe('PostsListView', () => {
   it('renders the filtered empty state when a filter narrows the list to nothing', () => {
     render(<PostsListView {...baseProps} posts={[]} filtersActive />);
@@ -506,5 +511,59 @@ describe('PostsListView', () => {
     );
     // deadline zerado não pode virar "0h restantes" na coluna de prazo
     expect(screen.queryByText(/restantes|atrasado/)).toBeNull();
+  });
+
+  it('sem groupBy continua uma tabela corrida', () => {
+    render(<PostsListView {...baseProps} posts={[makePost({ titulo: 'Solo' })]} />);
+    expect(groupHeads()).toEqual([]);
+    expect(screen.getByText('Solo')).toBeInTheDocument();
+  });
+
+  it('agrupa por responsável: o da etapa, ou o responsavel_id do avulso sem etapa, que também aparece na célula', () => {
+    const posts = [
+      makePost({ titulo: 'Do fluxo' }),
+      makePost({
+        titulo: 'Avulso da Bia',
+        workflow_id: null,
+        workflow_titulo: null,
+        responsavel_id: 9,
+      }),
+      makePost({ titulo: 'Avulso sem ninguém', workflow_id: null, workflow_titulo: null }),
+    ];
+    render(
+      <PostsListView
+        {...baseProps}
+        cardsByWorkflowId={
+          new Map([[10, makeBoardCard({ etapa: { nome: 'Design', responsavel_id: 7 } })]])
+        }
+        posts={posts}
+        groupBy="responsavel"
+        membroNomeById={new Map([[9, 'Bia Costa']])}
+      />,
+    );
+    expect(groupHeads()).toEqual(['Ana Silva (1)', 'Bia Costa (1)', 'Sem responsável (1)']);
+    const row = screen.getByText('Avulso da Bia').closest('tr')!;
+    const cells = Array.from(row.querySelectorAll('td')).map((td) => td.textContent);
+    expect(cells[6]).toBe('Bia Costa'); // Responsável
+  });
+
+  it('agrupa por data de postagem com "Sem data" por último e recolhe um grupo', () => {
+    const hoje = new Date();
+    hoje.setHours(12, 0, 0, 0);
+    const posts = [
+      makePost({ titulo: 'Sem agenda' }),
+      makePost({ titulo: 'Sai hoje', scheduled_at: hoje.toISOString() }),
+    ];
+    render(<PostsListView {...baseProps} posts={posts} groupBy="postagem" />);
+    expect(groupHeads()).toEqual(['Hoje (1)', 'Sem data (1)']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hoje (1)' }));
+
+    expect(screen.getByRole('button', { name: 'Hoje (1)' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByText('Sai hoje')).toBeNull();
+    expect(screen.getByText('Sem agenda')).toBeInTheDocument();
   });
 });
