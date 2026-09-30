@@ -95,7 +95,7 @@ describe('PostCalendar', () => {
       />,
     );
 
-    expect(screen.getByText('2 Feed')).toBeInTheDocument();
+    expect(screen.getByText('2 Imagem')).toBeInTheDocument();
     expect(screen.getByText('1 Stories')).toBeInTheDocument();
     expect(screen.getByText('18 de Abril, 2026')).toBeInTheDocument();
     expect(screen.getByText('Feed 1 do dia 18')).toBeInTheDocument();

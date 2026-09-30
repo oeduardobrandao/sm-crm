@@ -48,8 +48,8 @@
     "rangeError": "Não foi possível carregar este mês.",
     "rangeRetry": "Tentar novamente",
     "tipoLabel": {
-      "feed": "Feed",
-      "reels": "Reels",
+      "feed": "Imagem",
+      "reels": "Vídeo vertical",
       "stories": "Stories",
       "carrossel": "Carrossel"
     },
