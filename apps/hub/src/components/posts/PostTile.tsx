@@ -123,7 +123,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
     );
   } else {
     body = (
-      <div className="absolute inset-0 hub-card flex flex-col gap-1.5 p-3 text-left">
+      <div className="absolute inset-0 hub-bg-card flex flex-col gap-1.5 p-3 text-left">
         <span className="self-start">
           <StatusTag status={status} />
         </span>
