@@ -2,8 +2,10 @@
 //
 // The wire types below MIRROR supabase/functions/data-import/types.ts — the
 // frontend cannot import from supabase/functions/ (Deno sources, `.ts`
-// specifiers, never bundled by Vite). That file is the source of truth: any
-// change there needs the same change here.
+// specifiers, never bundled by Vite). The one exception is a zero-import
+// module exposed through an alias, like the platform registry
+// (`@mesaas/platforms`, imported below). That file is the source of truth:
+// any change there needs the same change here.
 import type { ContentFormat } from '@mesaas/platforms';
 import { supabase } from '@/lib/supabase';
 
