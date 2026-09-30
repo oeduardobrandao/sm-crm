@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { FilterDropdown } from './FilterDropdown';
 
-export type MediaFilter = 'all' | 'with' | 'without';
+import type { MediaFilter } from './MediaFilterChips';
+
+export type { MediaFilter };
 
 interface MediaFilterDropdownProps {
   value: MediaFilter;
