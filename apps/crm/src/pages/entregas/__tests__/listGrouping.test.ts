@@ -14,7 +14,12 @@ import type { DeadlineInfo } from '../etapaPrazo';
 // Fixed "now": quarta-feira 2026-09-30, 10:00 local.
 const NOW = new Date(2026, 8, 30, 10, 0, 0);
 const OK: DeadlineInfo = { diasRestantes: 1, horasRestantes: 0, estourado: false, urgente: false };
-const LATE: DeadlineInfo = { diasRestantes: -1, horasRestantes: 0, estourado: true, urgente: false };
+const LATE: DeadlineInfo = {
+  diasRestantes: -1,
+  horasRestantes: 0,
+  estourado: true,
+  urgente: false,
+};
 /** Data local `n` dias depois do dia de NOW, às `h` horas. */
 const day = (n: number, h = 9) => new Date(2026, 8, 30 + n, h, 0, 0);
 
