@@ -389,6 +389,7 @@ export function PostEditorBody({
           tiktokFeatureEnabled={features?.feature_tiktok === true}
           hasActiveTikTokAccount={hasActiveTikTokAccount}
           disabled={isScheduleLocked}
+          isExpress={post.is_express === true}
           onChange={(platform) => {
             onFieldChange('platform', platform);
             if (platform === 'tiktok' && post.ig_trial_strategy) {

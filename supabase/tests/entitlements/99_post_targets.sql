@@ -508,3 +508,69 @@ begin
   assert v_plat = 'instagram', format('post que ganhou o destino: %s', v_plat);
 end $$;
 rollback;
+
+-- 10. move_posts_to_new_flow: o fluxo novo herda plataformas da origem, então
+-- um post só Geral não ganha Instagram pelo z8 (quadro novo nascia {instagram})
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_wf_geral bigint;
+  v_p bigint; v_res jsonb; v_new_wf bigint; v_arr text[]; v_plat text; v_board text[];
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_uid);
+  insert into workspace_members (user_id, workspace_id, role) values (v_uid, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_uid;
+  insert into clientes (user_id, conta_id, nome, sigla, cor, plataformas_padrao)
+    values (v_uid, v_ws, 'C', 'C', '#000', array['geral']) returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'Geral', 'ativo', array['geral']) returning id into v_wf_geral;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias)
+    values (v_wf_geral, 0, 'Unica', 1);
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_geral, v_ws, 'a', 'feed') returning id into v_p;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_uid)::text, true);
+  v_res := move_posts_to_new_flow(array[v_p], v_wf_geral, 'Novo', 0);
+  v_new_wf := (v_res->>'target_workflow_id')::bigint;
+
+  select plataformas into v_board from workflows where id = v_new_wf;
+  assert v_board = array['geral'], format('plataformas do fluxo novo: %s', v_board);
+  assert (v_res->'workflow'->'plataformas') = '["geral"]'::jsonb,
+    format('workflow no retorno: %s', v_res->'workflow'->'plataformas');
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral'] and v_plat = 'other',
+    format('post geral movido para fluxo novo: %s / %s', v_arr, v_plat);
+end $$;
+rollback;
+
+-- 11. Post Express ignora a escrita legada de platform (é sempre Instagram)
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint;
+  v_p bigint; v_arr text[]; v_plat text;
+begin
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflow_posts (workflow_id, cliente_id, conta_id, titulo, tipo, is_express)
+    values (null, v_cli, v_ws, 'x', 'feed', true) returning id into v_p;
+
+  update workflow_posts set platform = 'tiktok' where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['instagram'] and v_plat = 'instagram',
+    format('express -> tiktok: %s / %s', v_arr, v_plat);
+
+  update workflow_posts set platform = 'both' where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['instagram'] and v_plat = 'instagram',
+    format('express -> both: %s / %s', v_arr, v_plat);
+end $$;
+rollback;
