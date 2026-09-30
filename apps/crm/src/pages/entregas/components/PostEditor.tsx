@@ -37,6 +37,7 @@ import type { MentionEntityType } from '@/components/mentions/types';
 import { createInlineImageExtension } from './InlineImageExtension';
 import type { InlineImageUploadFn } from './InlineImageExtension';
 import PostCommentPopover from './PostCommentPopover';
+import { MAX_CAPTION_CHARS } from './useCaptionDraft';
 import { AddCommentPopover } from './AddCommentPopover';
 import type { CommentThreadWithComments, Membro } from '@/store';
 
@@ -521,8 +522,8 @@ export function PostEditor({
           </button>
           {showCharacterCount && (
             <div className="post-editor-char-count">
-              {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} /
-              2200
+              {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} /{' '}
+              {MAX_CAPTION_CHARS}
             </div>
           )}
         </div>

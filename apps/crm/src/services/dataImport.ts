@@ -4,6 +4,7 @@
 // frontend cannot import from supabase/functions/ (Deno sources, `.ts`
 // specifiers, never bundled by Vite). That file is the source of truth: any
 // change there needs the same change here.
+import type { ContentFormat } from '@mesaas/platforms';
 import { supabase } from '@/lib/supabase';
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/data-import`;
@@ -52,7 +53,7 @@ export interface CommitPostRow {
   titulo: string;
   conteudo: Record<string, unknown> | null;
   conteudoPlain: string;
-  tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  tipo: ContentFormat;
   status: string;
   scheduledAt: string | null;
   publishedAt: string | null;
