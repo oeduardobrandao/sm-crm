@@ -151,13 +151,21 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
         if (!posts || posts.length === 0) return json({ covers: [] });
 
         const postIds = posts.map((p: any) => p.id);
-        const { data: coverLinks } = await svc.from("post_file_links")
+        const { data: links } = await svc.from("post_file_links")
           .select("*, files(*)")
           .in("post_id", postIds)
-          .eq("is_cover", true);
+          .order("sort_order", { ascending: true })
+          .order("id", { ascending: true });
+
+        // One cover per post: its first slide by sort_order (what Instagram shows
+        // in the feed). The is_cover flag goes stale on reorder, so it is ignored.
+        const firstByPost = new Map<number, any>();
+        for (const l of (links ?? [])) {
+          if (!firstByPost.has(l.post_id)) firstByPost.set(l.post_id, l);
+        }
 
         const postById = new Map<number, any>(posts.map((p: any) => [p.id, p] as [number, any]));
-        const sorted = (coverLinks ?? []).slice().sort((a: any, b: any) => {
+        const sorted = Array.from(firstByPost.values()).sort((a: any, b: any) => {
           const pa = postById.get(a.post_id);
           const pb = postById.get(b.post_id);
           return (pa?.ordem ?? 0) - (pb?.ordem ?? 0) || a.post_id - b.post_id;
@@ -203,11 +211,11 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
           .order("sort_order", { ascending: true })
           .order("id", { ascending: true });
 
-        // One cover per post: the is_cover link if flagged, else the first by sort_order.
+        // One cover per post: its first slide by sort_order (what Instagram shows
+        // in the feed). The is_cover flag goes stale on reorder, so it is ignored.
         const coverByPost = new Map<number, any>();
         for (const l of (links ?? [])) {
-          const existing = coverByPost.get(l.post_id);
-          if (!existing || (l.is_cover && !existing.is_cover)) coverByPost.set(l.post_id, l);
+          if (!coverByPost.has(l.post_id)) coverByPost.set(l.post_id, l);
         }
 
         const covers = await Promise.all(Array.from(coverByPost.values()).map(async (l: any) => {

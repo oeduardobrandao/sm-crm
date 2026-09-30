@@ -95,10 +95,13 @@ describe('pickPostCardKind (media-first)', () => {
 });
 
 describe('getPostCover', () => {
-  it('prefers cover_media, then media[0], then null', () => {
-    const cover = media({ id: 9 });
-    expect(getPostCover(post({ cover_media: cover, media: [media({ id: 2 })] }))?.id).toBe(9);
+  it('is the first slide (media[0]), not a stale cover_media flag', () => {
+    const staleCover = media({ id: 9 });
+    expect(
+      getPostCover(post({ cover_media: staleCover, media: [media({ id: 2 }), staleCover] }))?.id,
+    ).toBe(2);
     expect(getPostCover(post({ media: [media({ id: 2 })] }))?.id).toBe(2);
+    expect(getPostCover(post({ cover_media: staleCover }))?.id).toBe(9);
     expect(getPostCover(post())).toBeNull();
   });
 });

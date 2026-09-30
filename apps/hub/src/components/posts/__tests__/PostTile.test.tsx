@@ -48,11 +48,15 @@ function post(over: Partial<HubPost> = {}): HubPost {
 const noop = vi.fn();
 
 describe('PostTile', () => {
-  it('uses cover_media over media[0] and opens on click', () => {
+  it('shows the first slide even when cover_media points elsewhere, and opens on click', () => {
     const onOpen = vi.fn();
+    const staleCover = media({ id: 9, url: 'https://cdn/old-cover.jpg' });
     render(
       <PostTile
-        post={post({ cover_media: media({ id: 9, url: 'https://cdn/cover.jpg' }) })}
+        post={post({
+          cover_media: staleCover,
+          media: [media({ id: 2, url: 'https://cdn/cover.jpg' }), staleCover],
+        })}
         mode="browse"
         selected={false}
         onOpen={onOpen}
