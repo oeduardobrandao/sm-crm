@@ -1,11 +1,13 @@
 import { useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import type { PlatformId } from '@mesaas/platforms';
 import { Trash2, Edit2, FileText, Settings, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { PlatformChips } from '@/components/PlatformChips';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Select,
@@ -87,6 +89,7 @@ export function EditWorkflowModal({
   const [fTitulo, setFTitulo] = useState(w.titulo);
   const [fClienteId, setFClienteId] = useState(String(w.cliente_id));
   const [fRecorrente, setFRecorrente] = useState(w.recorrente || false);
+  const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(w.plataformas ?? ['instagram']);
   const [fResponsavelId, setFResponsavelId] = useState(String(e.responsavel_id || ''));
   const [fPrazoDias, setFPrazoDias] = useState(String(e.prazo_dias));
   const [fTipoPrazo, setFTipoPrazo] = useState(e.tipo_prazo);
@@ -108,6 +111,7 @@ export function EditWorkflowModal({
         titulo: fTitulo,
         cliente_id: Number(fClienteId),
         recorrente: fRecorrente,
+        plataformas: fPlataformas,
       });
       const etapaUpdate: Parameters<typeof updateWorkflowEtapa>[1] = {
         responsavel_id: fResponsavelId ? Number(fResponsavelId) : null,
@@ -214,6 +218,19 @@ export function EditWorkflowModal({
                 }}
               />
               <Label htmlFor="recorrente-edit">Fluxo recorrente</Label>
+            </div>
+            <div className="space-y-1">
+              <Label>Plataformas</Label>
+              <PlatformChips
+                value={fPlataformas}
+                onChange={(v) => {
+                  setFPlataformas(v);
+                  markDirty();
+                }}
+              />
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+                Vale para os próximos posts. Posts já criados mantêm os destinos.
+              </p>
             </div>
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
               <div
@@ -406,6 +423,7 @@ export function TemplatesModal({
   const [deleteTemplateId, setDeleteTemplateId] = useState<number | null>(null);
   const [fNome, setFNome] = useState('');
   const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
+  const [fPlataformas, setFPlataformas] = useState<PlatformId[]>(['instagram']);
   const formTopRef = useRef<HTMLDivElement>(null);
 
   const qc = useQueryClient();
@@ -465,18 +483,23 @@ export function TemplatesModal({
           nome,
           etapas: etapaData,
           modo_prazo: fModoPrazo,
-          // TEMP (Task 7 troca por seletor): preserva a lista atual do modelo.
-          plataformas: editingTemplate.plataformas ?? ['instagram'],
+          plataformas: fPlataformas,
         });
         toast.success('Template atualizado!');
       } else {
-        await addWorkflowTemplate({ nome, etapas: etapaData, modo_prazo: fModoPrazo });
+        await addWorkflowTemplate({
+          nome,
+          etapas: etapaData,
+          modo_prazo: fModoPrazo,
+          plataformas: fPlataformas,
+        });
         toast.success('Template criado!');
       }
       setFNome('');
       setEtapas([defaultEtapa()]);
       setEditingTemplate(null);
       setFModoPrazo('padrao');
+      setFPlataformas(['instagram']);
       onRefresh();
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Erro');
@@ -489,6 +512,7 @@ export function TemplatesModal({
     setEditingTemplate(tpl);
     setFNome(tpl.nome);
     setFModoPrazo((tpl.modo_prazo as ModoPrazo) || 'padrao');
+    setFPlataformas(tpl.plataformas ?? ['instagram']);
     setEtapas(
       tpl.etapas.map((e) =>
         defaultEtapa({
@@ -525,6 +549,7 @@ export function TemplatesModal({
             setEtapas([defaultEtapa()]);
             setEditingTemplate(null);
             setFModoPrazo('padrao');
+            setFPlataformas(['instagram']);
             onClose();
           }
         }}
@@ -536,6 +561,7 @@ export function TemplatesModal({
             setEtapas([defaultEtapa()]);
             setEditingTemplate(null);
             setFModoPrazo('padrao');
+            setFPlataformas(['instagram']);
             onClose();
           }}
         >
@@ -617,6 +643,10 @@ export function TemplatesModal({
                       <SelectItem value="data_entrega">Data de entrega do cliente</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
+                  <Label>Plataformas</Label>
+                  <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
                 </div>
                 <SortableEtapaList
                   etapas={etapas}
@@ -833,6 +863,7 @@ export function TemplatesModal({
                 setEtapas([defaultEtapa()]);
                 setEditingTemplate(null);
                 setFModoPrazo('padrao');
+                setFPlataformas(['instagram']);
                 onClose();
               }}
             >

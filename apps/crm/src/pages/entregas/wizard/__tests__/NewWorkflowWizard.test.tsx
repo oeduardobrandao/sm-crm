@@ -9,6 +9,9 @@ import type { Cliente, Membro, WorkflowTemplate } from '../../../../store';
 
 // sonner 2.x really does expose `toast.warning`, so the template-failure path asserts against it
 // rather than falling back to `toast.error`.
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: {}, isLoading: false }),
+}));
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
@@ -785,6 +788,7 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
         modoPrazo: 'data_entrega',
         saveAsTemplate: true,
         source: { kind: 'preset', presetId: 'posts-mensais', presetNome: 'Posts mensais' },
+        plataformas: ['instagram'],
       }),
     );
     expect(captureEvent).toHaveBeenCalledWith('workflow_wizard_source', {
