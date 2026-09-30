@@ -5,6 +5,11 @@
 -- Plataforma nova = ampliar os três CHECKs abaixo e o de post_targets.platform.
 -- ============================================================
 
+-- ACCESS EXCLUSIVE em tabelas quentes (workflows, clientes): desiste em 5s em
+-- vez de enfileirar todo o tráfego atrás do ALTER. Cada arquivo roda numa
+-- transação no supabase CLI, então SET LOCAL vale até o fim deste arquivo.
+SET LOCAL lock_timeout = '5s';
+
 ALTER TABLE public.workflows
   ADD COLUMN IF NOT EXISTS plataformas text[] NOT NULL DEFAULT '{instagram}';
 ALTER TABLE public.workflows
@@ -28,14 +33,9 @@ ALTER TABLE public.clientes
   CHECK (cardinality(plataformas_padrao) >= 1
          AND plataformas_padrao <@ ARRAY['instagram','tiktok','geral']::text[]);
 
--- Quadros que já têm post TikTok passam a declarar TikTok. Sem evento de
--- workflow: é backfill, não edição de usuário.
-SELECT set_config('app.suppress_workflow_events', '1', true);
-UPDATE public.workflows w
-   SET plataformas = ARRAY['instagram','tiktok']
- WHERE EXISTS (SELECT 1 FROM public.workflow_posts wp
-                WHERE wp.workflow_id = w.id AND wp.platform IN ('tiktok','both'));
-SELECT set_config('app.suppress_workflow_events', '', true);
+-- Sem backfill de quadros: todo quadro começa no default {instagram} (desvio 7
+-- do plano). Post legado de TikTok mantém o destino TikTok pelo backfill de
+-- post_targets (20260929100002), que não depende do quadro.
 
 -- ---------- allowlist de SELECT de clientes (trio da armadilha 20260728000002)
 -- Lista INTEIRA copiada de 20260904000001:23-28 (a mais recente) + plataformas_padrao.
