@@ -35,9 +35,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/context/AuthContext';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useEntitlements } from '@/hooks/useEntitlements';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { shouldAutoStartTour } from './tour/tourGating';
 import { shouldShowExample } from './tour/exampleGate';
@@ -69,23 +71,28 @@ import { SemProcessoSection } from './components/SemProcessoSection';
 import { ApplyProcessDialog } from './components/ApplyProcessDialog';
 import { ModeToggle, type EntregasMode } from './components/ModeToggle';
 import { EntidadeToggle } from './components/EntidadeToggle';
+import { ListToolbar } from './components/ListToolbar';
+import { ResponsaveisPanel } from './components/ResponsaveisPanel';
 import { VistasTabs } from './components/VistasTabs';
 import { FilaMembroPicker } from './components/FilaMembroPicker';
 import { useActivePosts } from './hooks/useActivePosts';
 import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } from './semProcesso';
 import { useOpenParam } from '../../hooks/useOpenParam';
 import { filterActivePosts, filterBoardCards } from './boardFilters';
-import { postStageOf } from './postStage';
+import { postStageOf, postResponsavelIdOf } from './postStage';
+import { countByResponsavel } from './listGrouping';
 import { matchesPostEntityFilters } from './entityFilters';
 import { filtersToReveal } from './revealFilters';
 import type { PostEntity } from './boardEntity';
 import { nextApprovalAwaited } from './autoScheduleNudge';
 import {
   DEFAULT_LIST_GROUP_BY,
+  LIST_GROUP_BYS,
   parseEntregasQuery,
   serializeEntregasQuery,
   type ActiveView,
   type EntidadeFilter,
+  type ListGroupBy,
 } from './viewQuery';
 import {
   loadLastMode,
@@ -95,6 +102,8 @@ import {
   loadLastEntidade,
   persistLastEntidade,
   hasLastMode,
+  loadListGroupBy,
+  persistListGroupBy,
 } from './entregasPrefs';
 import type { BoardColumnSort } from './postsBoardOrder';
 import {
@@ -122,6 +131,7 @@ const EMPTY_POST_ENTITIES: PostEntity[] = [];
 const EMPTY_CARDS: BoardCard[] = [];
 const EMPTY_ETAPA_MAP: Map<number, string> = new Map();
 const EMPTY_POST_ENTITY_MAP: Map<number, PostEntity> = new Map();
+const EMPTY_COUNTS: ReadonlyMap<number, number> = new Map();
 
 export default function EntregasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -130,6 +140,7 @@ export default function EntregasPage() {
   // (non-ref) value would flip once that happens and re-seed from the URL forever.
   const hadModeParam = useRef(searchParams.has('mode')).current;
   const hadEntidadeParam = useRef(searchParams.has('entidade')).current;
+  const hadAgruparParam = useRef(searchParams.has('agrupar')).current;
   // Parsed exactly once: the URL is only an INPUT at mount time; afterwards the
   // page state is the source of truth and the sync effect below writes it back.
   const initialQuery = useRef(parseEntregasQuery(searchParams)).current;
@@ -190,6 +201,22 @@ export default function EntregasPage() {
     if (hadEntidadeParam) return initialQuery.entidade;
     return loadLastEntidade(contaId) ?? (hasLastMode(contaId) ? 'fluxos' : 'todos');
   });
+  // "Agrupar por" da Lista: `agrupar=` na URL vence a preferência da conta; sem
+  // as duas, prazo. Mesmo esquema do modo (hadModeParam / loadLastMode).
+  const [listGroupBy, setListGroupBy] = useState<ListGroupBy>(() =>
+    hadAgruparParam && initialQuery.view === 'list'
+      ? initialQuery.listGroupBy
+      : (loadListGroupBy(contaId) ?? DEFAULT_LIST_GROUP_BY),
+  );
+  // Painel Responsáveis da Lista: aside ao lado da tabela a partir de 901px
+  // (mesmo breakpoint da barra de filtros), Sheet de baixo abaixo disso.
+  const [responsaveisOpen, setResponsaveisOpen] = useState(false);
+  const isDesktop = useIsDesktop(901);
+  // Cruzar o breakpoint com o painel aberto montaria o Sheet já aberto (ou
+  // sumiria com o aside): fecha e deixa o usuário reabrir no layout novo.
+  useEffect(() => {
+    setResponsaveisOpen(false);
+  }, [isDesktop]);
   // Minha fila (spec 2026-09-23): membro escolhido EXPLICITAMENTE no seletor
   // ou vindo de `?membro=`. null = "o próprio usuário", que é o que uma URL ou
   // vista salva sem `membro=` significa para quem a abre. O id efetivo é
@@ -287,6 +314,13 @@ export default function EntregasPage() {
   // é sempre o de fluxos, a URL não ganha ?entidade= e nenhuma chave nova entra
   // no localStorage.
   const effectiveEntidade: EntidadeFilter = postProcessesVisible ? entidade : 'fluxos';
+
+  // Data de postagem só existe em Publicações: na Lista de Fluxos ela vale como
+  // prazo, sem apagar a escolha (voltar a Publicações a traz de volta).
+  const effectiveListGroupBy: ListGroupBy =
+    listGroupBy === 'postagem' && mode !== 'publicacoes' ? DEFAULT_LIST_GROUP_BY : listGroupBy;
+  const listGroupByOptions =
+    mode === 'publicacoes' ? LIST_GROUP_BYS : LIST_GROUP_BYS.filter((g) => g !== 'postagem');
 
   // Same inline pattern as NotFoundPage: an app route, not one of the
   // manifest-driven public pages usePageMeta covers, so nothing else would set
@@ -469,7 +503,7 @@ export default function EntregasPage() {
     view: activeView,
     mode: activeMode,
     filaMembro: activeView === 'fila' ? filaMembro : null,
-    listGroupBy: DEFAULT_LIST_GROUP_BY,
+    listGroupBy: effectiveListGroupBy,
     entidade:
       activeMode === 'entregas' && (activeView === 'kanban' || activeView === 'list')
         ? effectiveEntidade
@@ -502,6 +536,10 @@ export default function EntregasPage() {
       persistLastMode(contaId, activeMode);
     }
   }, [activeView, activeMode, contaId]);
+
+  useEffect(() => {
+    if (activeView === 'list') persistListGroupBy(contaId, listGroupBy);
+  }, [activeView, listGroupBy, contaId]);
 
   useEffect(() => {
     if (!postProcessesVisible) return;
@@ -748,6 +786,7 @@ export default function EntregasPage() {
       setEntidade(parsed.entidade);
     }
     setFilters(parsed.filters);
+    if (parsed.view === 'list') setListGroupBy(parsed.listGroupBy);
     // null para qualquer vista que não seja a fila: aplicar uma vista do Kanban
     // também limpa uma escolha explícita de membro, como uma URL sem `membro=`.
     setFilaMembro(parsed.filaMembro);
@@ -892,6 +931,87 @@ export default function EntregasPage() {
   const visibleCards = effectiveEntidade === 'posts' ? EMPTY_CARDS : filteredCards;
   const visiblePostEntities =
     effectiveEntidade === 'fluxos' ? EMPTY_POST_ENTITIES : filteredPostEntities;
+
+  const handleListGroupByChange = (next: ListGroupBy) => {
+    setListGroupBy(next);
+    captureEvent('entregas_lista_agrupar', { agrupar: next, mode: activeMode });
+  };
+  const toggleResponsaveis = () => {
+    const next = !responsaveisOpen;
+    setResponsaveisOpen(next);
+    if (next) captureEvent('entregas_lista_responsaveis_aberto', { mode: activeMode });
+  };
+
+  const membroNomeById = useMemo(
+    () => new Map(membros.filter((m) => m.id != null).map((m) => [m.id!, m.nome])),
+    [membros],
+  );
+
+  // Painel Responsáveis (Lista): contagem por responsável sobre as linhas que a
+  // Lista mostraria SEM o filtro de responsável (facetas), com a regra de
+  // "responsável" de cada modo e o mesmo filtro de entidade da Lista de Fluxos.
+  // Só roda com o painel aberto.
+  const responsavelCounts = useMemo(() => {
+    if (activeView !== 'list' || !responsaveisOpen) return EMPTY_COUNTS;
+    const semResponsavel: FilterState = { ...filters, filterMembros: [] };
+    if (mode === 'publicacoes') {
+      return countByResponsavel(
+        filterActivePosts(activePosts, semResponsavel, stageOfPost).map((p) =>
+          postResponsavelIdOf(p, stageOfPost(p)),
+        ),
+      );
+    }
+    const cardIds =
+      effectiveEntidade === 'posts'
+        ? []
+        : filterBoardCards(cards, semResponsavel, postResponsaveis).map(
+            (c) => c.etapa.responsavel_id ?? null,
+          );
+    const entityIds =
+      effectiveEntidade === 'fluxos'
+        ? []
+        : postEntities
+            .filter((e) => matchesPostEntityFilters(e, semResponsavel))
+            .map((e) => e.step.responsavel_id ?? null);
+    return countByResponsavel([...cardIds, ...entityIds]);
+  }, [
+    activeView,
+    responsaveisOpen,
+    filters,
+    mode,
+    activePosts,
+    stageOfPost,
+    effectiveEntidade,
+    cards,
+    postResponsaveis,
+    postEntities,
+  ]);
+
+  const renderResponsaveisPanel = (onClose?: () => void) => (
+    <ResponsaveisPanel
+      membros={membros}
+      counts={responsavelCounts}
+      selected={filters.filterMembros}
+      onChange={(filterMembros) => setFilters({ ...filters, filterMembros })}
+      caption={
+        mode === 'publicacoes'
+          ? 'Quem está com o post na etapa atual'
+          : 'Responsável pela etapa atual'
+      }
+      onClose={onClose}
+    />
+  );
+
+  const listToolbar = (
+    <ListToolbar
+      groupBy={effectiveListGroupBy}
+      groupByOptions={listGroupByOptions}
+      onGroupByChange={handleListGroupByChange}
+      responsaveisOpen={responsaveisOpen}
+      onToggleResponsaveis={toggleResponsaveis}
+      selectedResponsaveis={filters.filterMembros.length}
+    />
+  );
 
   // Publicações (Kanban/Lista): "Individual · <etapa>" no card de um avulso
   // com processo ativo (spec §4.4). Vazio e estável com a flag desligada.
@@ -1218,6 +1338,10 @@ export default function EntregasPage() {
               </div>
             )}
 
+          {activeView === 'list' && isDesktop && (
+            <div style={{ marginLeft: 'auto', flexShrink: 0 }}>{listToolbar}</div>
+          )}
+
           {activeView === 'concluded' && (
             <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
@@ -1231,6 +1355,10 @@ export default function EntregasPage() {
           )}
         </div>
       </div>
+
+      {/* Celular: a linha das abas rola na horizontal, então a barra da Lista
+          ganha linha própria em vez de ficar escondida no fim da rolagem. */}
+      {activeView === 'list' && !isDesktop && listToolbar}
 
       {activeView === 'kanban' &&
         (mode === 'entregas' ? (
@@ -1346,32 +1474,61 @@ export default function EntregasPage() {
           }}
         />
       )}
-      {activeView === 'list' &&
-        (mode === 'entregas' ? (
-          <ListView
-            cards={visibleCards}
-            postEntities={visiblePostEntities}
-            onPostClick={handlePostEntityClick}
-            sort={listSort}
-            onSortChange={setListSort}
-            onCardClick={handleCardClick}
-          />
-        ) : (
-          <PostsListView
-            posts={filteredPosts}
-            isLoading={activePostsLoading}
-            openableWorkflowIds={openableWorkflowIds}
-            onPostClick={handlePostClick}
-            onFluxoClick={handleFluxoClick}
-            cardsByWorkflowId={cardsByWorkflowId}
-            filtersActive={postsFiltersActive}
-            onCreateAvulso={() => {
-              setAvulsoTemplateId(null);
-              setNewAvulsoOpen(true);
-            }}
-            postEntityByPostId={postEntityByPostId}
-          />
-        ))}
+      {activeView === 'list' && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+          <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+            {mode === 'entregas' ? (
+              <ListView
+                cards={visibleCards}
+                postEntities={visiblePostEntities}
+                onPostClick={handlePostEntityClick}
+                sort={listSort}
+                onSortChange={setListSort}
+                onCardClick={handleCardClick}
+                groupBy={effectiveListGroupBy}
+              />
+            ) : (
+              <PostsListView
+                posts={filteredPosts}
+                isLoading={activePostsLoading}
+                openableWorkflowIds={openableWorkflowIds}
+                onPostClick={handlePostClick}
+                onFluxoClick={handleFluxoClick}
+                cardsByWorkflowId={cardsByWorkflowId}
+                filtersActive={postsFiltersActive}
+                onCreateAvulso={() => {
+                  setAvulsoTemplateId(null);
+                  setNewAvulsoOpen(true);
+                }}
+                postEntityByPostId={postEntityByPostId}
+                groupBy={effectiveListGroupBy}
+                membroNomeById={membroNomeById}
+              />
+            )}
+          </div>
+          {isDesktop && responsaveisOpen && (
+            <aside
+              className="card animate-up"
+              aria-label="Responsáveis"
+              style={{ width: 260, flexShrink: 0, padding: '1rem' }}
+            >
+              {renderResponsaveisPanel(() => setResponsaveisOpen(false))}
+            </aside>
+          )}
+        </div>
+      )}
+      {activeView === 'list' && !isDesktop && (
+        <Sheet open={responsaveisOpen} onOpenChange={setResponsaveisOpen}>
+          <SheetContent
+            side="bottom"
+            className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24"
+          >
+            <SheetTitle className="sr-only">Responsáveis</SheetTitle>
+            <SheetDescription className="sr-only">Filtre a lista por responsável</SheetDescription>
+            {renderResponsaveisPanel()}
+          </SheetContent>
+        </Sheet>
+      )}
       {activeView === 'concluded' && (
         <ConcludedView
           clientSearch={concludedClientSearch}
