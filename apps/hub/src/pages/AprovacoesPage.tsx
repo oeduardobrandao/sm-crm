@@ -6,7 +6,7 @@ import { useHub } from '../HubContext';
 import { fetchPosts, fetchInstagramFeed } from '../api';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { PageHeader } from '../components/PageHeader';
-import { MediaFilterChips, type MediaFilter } from '../components/MediaFilterChips';
+import { MediaFilterDropdown, type MediaFilter } from '../components/MediaFilterDropdown';
 import { FloatingFilterBar } from '../components/FloatingFilterBar';
 import { FILTER_PILL_CLASS, filterPillStyle } from '../components/filterPill';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
@@ -107,7 +107,7 @@ export function AprovacoesPage() {
   }, [pending.length]);
   const mediaCounts = useMemo(() => {
     const withMedia = pending.filter((p) => p.media.length > 0).length;
-    return { all: pending.length, withMedia, withoutMedia: pending.length - withMedia };
+    return { with: withMedia, without: pending.length - withMedia };
   }, [pending]);
   // What the grid AND the dialog receive, so prev/next, the strip and auto-advance follow
   // the on-screen order. `selectedPosts` below deliberately stays on the full pending list.
@@ -223,11 +223,10 @@ export function AprovacoesPage() {
         <>
           {pending.length > 0 && (
             <FloatingFilterBar>
-              <MediaFilterChips
+              <MediaFilterDropdown
                 value={mediaFilter}
                 counts={mediaCounts}
                 onChange={setMediaFilter}
-                className="contents"
               />
               <span
                 aria-hidden="true"

@@ -1,9 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { FilterDropdown } from './FilterDropdown';
 
-import type { MediaFilter } from './MediaFilterChips';
-
-export type { MediaFilter };
+export type MediaFilter = 'all' | 'with' | 'without';
 
 interface MediaFilterDropdownProps {
   value: MediaFilter;
@@ -12,7 +10,7 @@ interface MediaFilterDropdownProps {
   onChange: (value: MediaFilter) => void;
 }
 
-/** Postagens-only filter between posts with media (image/video) and text-only posts. */
+/** Postagens and Aprovações filter between posts with media (image/video) and text-only posts. */
 export function MediaFilterDropdown({ value, counts, onChange }: MediaFilterDropdownProps) {
   const { t } = useTranslation('hubPosts');
   const labels: Record<MediaFilter, string> = {

@@ -317,44 +317,47 @@ describe('AprovacoesPage', () => {
         .map((b) => b.getAttribute('aria-label'))
         // The open dialog also has an "Abrir mídia N" lightbox button; keep only grid tiles.
         .filter((label) => !label?.startsWith('Abrir mídia'));
+    // The media filter is a dropdown: its trigger reads the current choice ("Com e sem
+    // mídia", "Com mídia" or "Sem mídia") and the menu lists each option with its count.
+    const mediaTrigger = () => screen.getByRole('button', { name: /mídia$/, hidden: true });
+    const pickMedia = async (option: string) => {
+      fireEvent.click(mediaTrigger());
+      fireEvent.click(await screen.findByRole('menuitemradio', { name: option, hidden: true }));
+    };
 
-    it('renders the media chips with counts from the pending posts, defaulting to Todos', async () => {
+    it('renders the media dropdown with counts from the pending posts, defaulting to all', async () => {
       renderPage(BASE, mixed());
       await screen.findAllByRole('button', { name: /^Abrir / });
-      expect(screen.getByRole('group', { name: 'Filtrar por mídia' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Todos (4)' })).toHaveAttribute(
-        'aria-pressed',
-        'true',
+      expect(mediaTrigger()).toHaveAccessibleName('Com e sem mídia');
+      fireEvent.click(mediaTrigger());
+      const items = await screen.findAllByRole('menuitemradio');
+      ['Com e sem mídia', 'Com mídia (2)', 'Sem mídia (2)'].forEach((name, i) =>
+        expect(items[i]).toHaveAccessibleName(name),
       );
-      expect(screen.getByRole('button', { name: 'Com mídia (2)' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Sem mídia (2)' })).toBeInTheDocument();
+      expect(items[0]).toHaveAttribute('aria-checked', 'true');
       expect(screen.getByRole('group', { name: 'Ordenar por' })).toBeInTheDocument();
     });
 
-    it('shows neither chips nor sort when nothing is pending', async () => {
+    it('shows neither the media filter nor sort when nothing is pending', async () => {
       renderPage(BASE, response({ posts: [post({ id: 3, status: 'postado' })] }));
       await screen.findByText('Tudo em dia. Nenhum post aguardando aprovação.');
-      expect(screen.queryByRole('group', { name: 'Filtrar por mídia' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /mídia$/ })).not.toBeInTheDocument();
       expect(screen.queryByRole('group', { name: 'Ordenar por' })).not.toBeInTheDocument();
     });
 
     it('"Sem mídia" shows only text posts and "Com mídia" the reverse, keeping the total description', async () => {
       renderPage(BASE, mixed());
       await screen.findAllByRole('button', { name: /^Abrir / });
-      fireEvent.click(screen.getByRole('button', { name: 'Sem mídia (2)' }));
+      await pickMedia('Sem mídia (2)');
       expect(tileLabels()).toEqual(['Abrir Meio', 'Abrir Fim']);
-      expect(screen.getByRole('button', { name: 'Sem mídia (2)' })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      );
-      // Counts stay computed from the unfiltered pending list; header keeps the total.
-      expect(screen.getByRole('button', { name: 'Todos (4)' })).toBeInTheDocument();
+      expect(mediaTrigger()).toHaveAccessibleName('Sem mídia');
+      // Header keeps the total pending count.
       expect(screen.getByText('4 posts aguardando sua aprovação.')).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Com mídia (2)' }));
+      await pickMedia('Com mídia (2)');
       expect(tileLabels()).toEqual(['Abrir Cedo', 'Abrir Tarde']);
 
-      fireEvent.click(screen.getByRole('button', { name: 'Todos (4)' }));
+      await pickMedia('Com e sem mídia');
       expect(tileLabels()).toEqual(['Abrir Cedo', 'Abrir Meio', 'Abrir Tarde', 'Abrir Fim']);
     });
 
@@ -383,7 +386,7 @@ describe('AprovacoesPage', () => {
     it('the dialog next button follows the filtered and sorted order', async () => {
       renderPage(BASE, mixed());
       await screen.findAllByRole('button', { name: /^Abrir / });
-      fireEvent.click(screen.getByRole('button', { name: 'Com mídia (2)' }));
+      await pickMedia('Com mídia (2)');
       fireEvent.click(screen.getByRole('button', { name: 'Mais recentes' }));
       // Newest first among media posts: Tarde, Cedo.
       fireEvent.click(screen.getByRole('button', { name: 'Abrir Tarde' }));
@@ -396,22 +399,22 @@ describe('AprovacoesPage', () => {
       expect(screen.getByRole('button', { name: 'Post anterior' })).toBeEnabled();
     });
 
-    it('keeps the chips and sort and shows a message when the filter matches nothing', async () => {
+    it('keeps the media filter and sort and shows a message when the filter matches nothing', async () => {
       renderPage(BASE, response({ posts: [post({ id: 1, titulo: 'A' })] }));
       await screen.findByRole('button', { name: 'Abrir A' });
-      fireEvent.click(screen.getByRole('button', { name: 'Sem mídia (0)' }));
+      await pickMedia('Sem mídia (0)');
       expect(screen.getByText('Nenhum post encontrado para este filtro.')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /^Abrir / })).not.toBeInTheDocument();
-      expect(screen.getByRole('group', { name: 'Filtrar por mídia' })).toBeInTheDocument();
+      expect(mediaTrigger()).toHaveAccessibleName('Sem mídia');
       expect(screen.getByRole('group', { name: 'Ordenar por' })).toBeInTheDocument();
       // The header still reports the pending queue, not "Tudo em dia".
       expect(screen.getByText('1 post aguardando sua aprovação.')).toBeInTheDocument();
       expect(screen.queryByText(/Tudo em dia/)).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Todos (1)' }));
+      await pickMedia('Com e sem mídia');
       expect(screen.getByRole('button', { name: 'Abrir A' })).toBeInTheDocument();
     });
 
-    it('a background refetch that moves the open post out of the media filter resets it to Todos', async () => {
+    it('a background refetch that moves the open post out of the media filter resets it to all', async () => {
       const before = [
         post({ id: 1, titulo: 'A', media: [] }),
         post({ id: 2, titulo: 'B', media: [] }),
@@ -423,16 +426,11 @@ describe('AprovacoesPage', () => {
         .mockResolvedValue(response({ posts: after }));
       const { qc } = renderPage(BASE);
       await screen.findByRole('button', { name: 'Abrir B' });
-      fireEvent.click(screen.getByRole('button', { name: 'Sem mídia (2)' }));
+      await pickMedia('Sem mídia (2)');
       fireEvent.click(screen.getByRole('button', { name: 'Abrir B' }));
       expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
       await act(() => qc.invalidateQueries({ queryKey: ['hub-posts', 'token-publico'] }));
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: /Todos \(/, hidden: true })).toHaveAttribute(
-          'aria-pressed',
-          'true',
-        ),
-      );
+      await waitFor(() => expect(mediaTrigger()).toHaveAccessibleName('Com e sem mídia'));
       expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
       expect(tileLabels()).toEqual(['Abrir A', 'Abrir B']);
     });
@@ -457,7 +455,7 @@ describe('AprovacoesPage', () => {
       );
       fireEvent.click(await screen.findByRole('button', { name: 'Selecionar' }));
       fireEvent.click(screen.getByRole('checkbox'));
-      fireEvent.click(screen.getByRole('button', { name: 'Sem mídia (1)' }));
+      await pickMedia('Sem mídia (1)');
       fireEvent.click(screen.getByRole('button', { name: /Visualizar no Feed \(1\)/ }));
       expect(await screen.findByTestId('grid-selected-count')).toHaveTextContent('1');
     });
