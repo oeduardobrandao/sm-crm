@@ -269,7 +269,7 @@ describe('MinhaFilaView', () => {
     expect(within(top).getByText('Comece por aqui')).toBeInTheDocument();
     expect(within(top).getByText('Carrossel dia das mães')).toBeInTheDocument();
     expect(
-      within(top).getByText(/^Dra\. Marina · Feed · Design atrasado 1d · publica /),
+      within(top).getByText(/^Dra\. Marina · Imagem · Design atrasado 1d · publica /),
     ).toBeInTheDocument();
     expect(within(top).getByText('Abrir post')).toBeInTheDocument();
   });
@@ -296,7 +296,7 @@ describe('MinhaFilaView', () => {
     renderView({ fila });
     const top = screen.getByTestId('fila-top');
     expect(within(top).getByText('Avulso sem etapa')).toBeInTheDocument();
-    expect(within(top).getByText(/^Dra\. Marina · Feed · publica /)).toBeInTheDocument();
+    expect(within(top).getByText(/^Dra\. Marina · Imagem · publica /)).toBeInTheDocument();
     expect(within(top).queryByText(/atrasado|vence/)).not.toBeInTheDocument();
   });
 
@@ -313,10 +313,10 @@ describe('MinhaFilaView', () => {
     // grouped fluxo rows: tipo only, no tag.
     const avulso = screen.getByRole('button', { name: /Post avulso X/ });
     expect(within(avulso).getByText('responsável pelo post')).toBeInTheDocument();
-    expect(within(avulso).getByText('Dra. Marina · Feed')).toBeInTheDocument();
+    expect(within(avulso).getByText('Dra. Marina · Imagem')).toBeInTheDocument();
     const wired = screen.getAllByRole('button', { name: /Reels bastidores/ })[0];
     expect(within(wired).queryByText('responsável pelo post')).not.toBeInTheDocument();
-    expect(within(wired).getByText('Feed')).toBeInTheDocument();
+    expect(within(wired).getByText('Imagem')).toBeInTheDocument();
     expect(within(wired).getByText('Publica')).toBeInTheDocument();
     // Overdue etapa: margem counts from today (NOW), not from yesterday's deadline.
     expect(within(wired).getByText('margem 1d')).toBeInTheDocument();

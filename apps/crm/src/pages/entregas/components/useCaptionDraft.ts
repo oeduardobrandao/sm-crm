@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
+import { IG_CAPTION_MAX } from '@mesaas/platforms';
 import type { CaptionAnchorPatch, CommentThread } from '@/store';
 import {
   anchorsFromThreads,
@@ -9,7 +10,7 @@ import {
   type CaptionAnchor,
 } from '../utils/captionAnchors';
 
-export const MAX_CAPTION_CHARS = 2200;
+export const MAX_CAPTION_CHARS = IG_CAPTION_MAX;
 const SAVE_DEBOUNCE_MS = 1500;
 
 interface Draft {

@@ -44,6 +44,7 @@ import { computeWordDiff } from '@/utils/textDiff';
 import { computeTipTapDiff } from '@/utils/tiptapDiff';
 import {
   TIPO_LABELS,
+  TIPO_ORDER,
   getStatusAutomationHint,
   isVisibleToClient,
   buildTipoDayMarkers,
@@ -374,7 +375,7 @@ export function PostEditorBody({
             disabled={isScheduleLocked}
             title={isScheduleLocked ? 'Cancelar agendamento para editar' : undefined}
           >
-            {(['feed', 'reels', 'stories', 'carrossel'] as const).map((t) => (
+            {TIPO_ORDER.map((t) => (
               <option key={t} value={t}>
                 {TIPO_LABELS[t]}
               </option>

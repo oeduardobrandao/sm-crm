@@ -319,7 +319,7 @@ describe('PostsListView', () => {
         ]}
       />,
     );
-    expect(screen.getByText('Reels')).toBeInTheDocument();
+    expect(screen.getByText('Vídeo vertical')).toBeInTheDocument();
     expect(screen.getByText('Carrossel')).toBeInTheDocument();
     expect(screen.getByText('Enviado ao cliente')).toBeInTheDocument();
     expect(screen.getByText('Postado')).toBeInTheDocument();

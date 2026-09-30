@@ -203,7 +203,7 @@ describe('ConversationThread', () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
     });
     const card = await screen.findByTestId('post-hover-preview');
-    expect(card).toHaveTextContent('Feed');
+    expect(card).toHaveTextContent('Imagem');
     expect(card).toHaveTextContent('Fluxo de agosto');
     fireEvent.mouseLeave(chip.parentElement!);
     await waitFor(() => expect(screen.queryByTestId('post-hover-preview')).not.toBeInTheDocument());
