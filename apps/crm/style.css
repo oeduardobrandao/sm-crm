@@ -3248,18 +3248,31 @@ select.form-input option {
     left: 0;
   }
 
+  /* The banner stack starts at the very top here, under the installed app's
+     translucent status bar: the first bar grows by the inset so its text clears it.
+     --banner-height (measured) then already includes the inset, which is why the
+     shell's own top padding below only adds whatever part of it no banner covered. */
+  .banner-container > .banner-bar:first-child {
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  }
+
   .main-content {
     margin-left: 0;
     margin-top: var(--banner-height, 0px);
     padding: 1rem;
-    padding-top: calc(1.25rem + env(safe-area-inset-top, 0px));
+    padding-top: calc(
+      1.25rem + max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px))
+    );
     padding-bottom: calc(80px + env(safe-area-inset-bottom, 0));
     height: calc(100dvh - var(--banner-height, 0px));
     border-radius: 0;
   }
 
+  /* Full-bleed pages (Mensagens, Arquivos) zero the shell padding, inset included:
+     give back just the status-bar inset so their headers aren't drawn under it. */
   .main-content:has(> .page-full-bleed) {
     margin-left: 0;
+    padding-top: max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px)) !important;
   }
 
   .crisp-client {
@@ -3764,8 +3777,8 @@ select.form-input option {
   }
 
   .main-content {
-    padding: calc(1.25rem + env(safe-area-inset-top, 0px)) 1rem
-      calc(104px + env(safe-area-inset-bottom, 0px));
+    padding: calc(1.25rem + max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px)))
+      1rem calc(104px + env(safe-area-inset-bottom, 0px));
   }
 
   /* Mensagens (.page-full-bleed) forces .main-content padding to 0 at every
@@ -13089,7 +13102,9 @@ a.hub-fill__row-inner:hover {
    notebook, então só ele ganha um teto maior; os 3vh de folga por lado continuam. */
 .pagarme-checkout-dialog,
 .pagarme-checkout-dialog > div {
-  max-height: 94vh;
+  /* Centered, so at 94vh its top (and the X) sat under the installed app's status bar
+     on a phone. The inset term only bites there; elsewhere 94vh is the smaller one. */
+  max-height: min(94vh, calc(100dvh - 2 * env(safe-area-inset-top, 0px) - 1rem));
 }
 
 /* ===== Editor de relatório de blocos (PR 2) ===== */
