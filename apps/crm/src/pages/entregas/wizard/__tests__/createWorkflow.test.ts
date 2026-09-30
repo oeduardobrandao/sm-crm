@@ -26,6 +26,7 @@ const baseInput = (over: Partial<WizardCreateInput> = {}): WizardCreateInput => 
   templateName: '',
   cliente: { id: 1, dia_entrega: 5 } as never,
   membros: [{ id: 7, nome: 'Maria' }] as never,
+  plataformas: ['instagram'],
   ...over,
 });
 
@@ -35,6 +36,19 @@ describe('createWorkflowFromWizard', () => {
     store.addWorkflow.mockResolvedValue({ id: 42 });
     store.addWorkflowEtapa.mockResolvedValue({ id: 1 });
     store.addWorkflowTemplate.mockResolvedValue({ id: 9, nome: 'Meu template' });
+  });
+
+  it('passes plataformas to the workflow and to the saved template', async () => {
+    await createWorkflowFromWizard(
+      baseInput({ plataformas: ['geral'], saveAsTemplate: true, templateName: 'T' }),
+    );
+
+    expect(store.addWorkflowTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({ plataformas: ['geral'] }),
+    );
+    expect(store.addWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({ plataformas: ['geral'] }),
+    );
   });
 
   it('creates template FIRST and links it via template_id', async () => {

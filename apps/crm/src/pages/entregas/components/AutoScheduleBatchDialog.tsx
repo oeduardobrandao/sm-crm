@@ -90,7 +90,10 @@ export function AutoScheduleBatchDialog({
     gcTime: 0,
   });
 
-  const approved = (posts ?? []).filter((p) => p.status === 'aprovado_cliente');
+  // Posts só Geral não têm o que agendar: ficam fora do lote.
+  const approved = (posts ?? []).filter(
+    (p) => p.status === 'aprovado_cliente' && p.platform !== 'other',
+  );
   const byDate = partitionByScheduleEligibility(
     approved.map((p) => ({ ...p, scheduled_at: p.scheduled_at ?? null })),
   );

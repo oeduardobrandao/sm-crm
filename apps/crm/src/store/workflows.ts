@@ -2,6 +2,7 @@ import { supabase, getUserId, getContaId } from './core';
 import { resetApprovedPostsForNextCycle } from './posts';
 import { fetchAllPaged } from './paging';
 import { toLocalISODate } from '../utils/postDate';
+import type { PlatformId } from '@mesaas/platforms';
 
 // =============================================
 // WORKFLOW TEMPLATES
@@ -21,6 +22,7 @@ export interface WorkflowTemplate {
   nome: string;
   etapas: WorkflowTemplateEtapa[];
   modo_prazo?: 'padrao' | 'data_fixa' | 'data_entrega';
+  plataformas?: PlatformId[];
   created_at?: string;
 }
 
@@ -79,6 +81,7 @@ export async function saveWorkflowTemplate(
     nome: string;
     etapas: WorkflowTemplateEtapa[];
     modo_prazo: 'padrao' | 'data_fixa' | 'data_entrega';
+    plataformas: PlatformId[];
   },
 ): Promise<void> {
   const { error } = await supabase.rpc('update_workflow_template', {
@@ -88,6 +91,15 @@ export async function saveWorkflowTemplate(
     p_modo_prazo: t.modo_prazo,
   });
   if (error) throw new Error(mapTemplateSaveError(error.message));
+
+  // Separado do RPC de propósito (plano P1, desvio 3): update_workflow_template
+  // não conhece a coluna, e perder só a lista de plataformas é recuperável no
+  // próximo save.
+  const { error: platErr } = await supabase
+    .from('workflow_templates')
+    .update({ plataformas: t.plataformas })
+    .eq('id', id);
+  if (platErr) throw new Error('Template salvo, mas as plataformas não foram gravadas.');
 }
 
 // =============================================
@@ -108,6 +120,7 @@ export interface Workflow {
   link_notion?: string | null;
   link_drive?: string | null;
   position?: number;
+  plataformas?: PlatformId[];
   created_at?: string;
   created_via?: 'human' | 'agent';
 }
@@ -552,6 +565,7 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
     etapa_atual: 0,
     recorrente: workflow.recorrente,
     modo_prazo: modoPrazo,
+    plataformas: workflow.plataformas,
   });
 
   try {

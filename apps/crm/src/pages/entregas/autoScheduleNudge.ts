@@ -83,6 +83,8 @@ export interface AutoScheduleGateInput {
  */
 export function shouldOfferAutoSchedule(input: AutoScheduleGateInput): boolean {
   return (
+    // post só Geral: nada publica (validateForScheduling também recusa)
+    input.platform !== 'other' &&
     input.status === 'aprovado_cliente' &&
     input.autoPublishOnApproval &&
     input.schedulingFeatureEnabled &&

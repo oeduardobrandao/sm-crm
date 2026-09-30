@@ -23,6 +23,7 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { captureEvent } from '@/lib/analytics';
 import { toast } from 'sonner';
+import type { PlatformId } from '@mesaas/platforms';
 import type { Cliente, Membro, WorkflowTemplate } from '../../../store';
 import type { EtapaFormData } from '../components/SortableEtapaList';
 import { type WorkflowPreset } from './presets';
@@ -57,6 +58,7 @@ export interface WizardState {
   mesEntrega: string;
   saveAsTemplate: boolean;
   templateName: string;
+  plataformas: PlatformId[];
 }
 
 const INITIAL: WizardState = {
@@ -72,6 +74,7 @@ const INITIAL: WizardState = {
   mesEntrega: '',
   saveAsTemplate: false,
   templateName: '',
+  plataformas: ['instagram'],
 };
 
 const STEP_COUNT = 5;
@@ -137,6 +140,7 @@ export function NewWorkflowWizard(props: {
       // Recorrência is a property of the preset; templates and "do zero" leave the user's choice.
       recorrente: preset ? preset.recorrente : s.recorrente,
       nome: s.nomeEdited ? s.nome : sourceNome ? suggestName(sourceNome) : '',
+      plataformas: tpl?.plataformas ?? s.plataformas,
       step: 2,
     });
   };
@@ -194,6 +198,7 @@ export function NewWorkflowWizard(props: {
         templateName: s.templateName,
         cliente,
         membros,
+        plataformas: s.plataformas,
       });
       toast.success('Fluxo criado com sucesso!');
       if (result.warning) toast.warning(result.warning);

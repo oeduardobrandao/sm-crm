@@ -16,6 +16,9 @@ interface PlatformSelectorProps {
    * the Instagram container, so retargeting the platform would desync it. Disables the
    * whole group and suspends the stories self-heal (no writes to a locked post). */
   disabled?: boolean;
+  /** Post Express (`is_express`) is Instagram-only and the DB ignores legacy platform
+   * writes on it, so the selector renders nothing and never self-heals. */
+  isExpress?: boolean;
   /** Writes through the same optimistic-update path `tipo` already uses
    * (WorkflowDrawer's onFieldChange -> updateWorkflowPost) — no dedicated save button. */
   onChange: (platform: Platform) => void;
@@ -38,9 +41,12 @@ export function PlatformSelector({
   tiktokFeatureEnabled,
   hasActiveTikTokAccount,
   disabled = false,
+  isExpress = false,
   onChange,
 }: PlatformSelectorProps) {
   const isStories = tipo === 'stories';
+  // 'other' (só Geral): destinos vêm do quadro; nada aqui deve reescrevê-lo.
+  const isOther = value === 'other';
 
   // Guards against re-firing on every render while the parent's async write is still
   // in flight (value prop hasn't caught up to 'instagram' yet) — the effect's deps
@@ -50,7 +56,7 @@ export function PlatformSelector({
   useEffect(() => {
     // While schedule-locked, the self-heal must not write either — it re-runs (and
     // heals if still needed) once the lock lifts, via `disabled` in the deps.
-    if (isStories && value !== 'instagram' && !disabled) {
+    if (isStories && !isOther && !isExpress && value !== 'instagram' && !disabled) {
       if (!revertingRef.current) {
         revertingRef.current = true;
         onChange('instagram');
@@ -63,9 +69,9 @@ export function PlatformSelector({
     // passes an inline closure, but re-running only on isStories/value change is the
     // whole point of this guard — including onChange would defeat it).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isStories, value, disabled]);
+  }, [isStories, value, disabled, isExpress]);
 
-  if (!tiktokFeatureEnabled) return null;
+  if (!tiktokFeatureEnabled || isOther || isExpress) return null;
 
   const disabledReason = isStories
     ? 'Stories não são suportados no TikTok'
