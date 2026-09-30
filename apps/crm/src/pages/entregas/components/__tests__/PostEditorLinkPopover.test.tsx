@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterAll, afterEach } from 'vitest';
 import { isAllowedRichTextLinkUrl } from '@mesaas/link-policy';
 import { PostEditor } from '../PostEditor';
 
@@ -22,6 +22,13 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 import { toast } from 'sonner';
 
 afterEach(() => vi.clearAllMocks());
+
+// Same guard as PaginaRichTextEditor.test.tsx: BubbleMenuView.destroy()
+// (@tiptap/extension-bubble-menu) doesn't clear its 250ms update debounce timer, so the
+// last selection change here can leave one pending. Under load it fires after jsdom is
+// torn down ("document is not defined" as an unhandled error, which fails the run).
+// Let it fire while the environment still exists.
+afterAll(() => new Promise((resolve) => setTimeout(resolve, 300)));
 
 function renderEditor(initialContent: Record<string, unknown> | null = null) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
