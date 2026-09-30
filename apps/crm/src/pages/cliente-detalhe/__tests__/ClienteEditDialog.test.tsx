@@ -3,6 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useState, type ReactElement } from 'react';
 
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: {}, isLoading: false }),
+}));
 vi.mock('../../../store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../store')>()),
   updateCliente: vi.fn(),
@@ -117,7 +120,7 @@ describe('ClienteEditDialog', () => {
     await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
     expect(mockedUpdateCliente).toHaveBeenCalledWith(
       42,
-      expect.objectContaining({ nome: 'Aurora Estética' }),
+      expect.objectContaining({ nome: 'Aurora Estética', plataformas_padrao: ['instagram'] }),
     );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['cliente', 42] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });

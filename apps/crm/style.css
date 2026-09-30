@@ -7752,6 +7752,16 @@ body.role-agent input[name='valor_total'] {
   --badge-border: rgba(225, 48, 108, 0.32);
 }
 
+.platform-chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.8rem; padding: 0.35rem 0.65rem; border-radius: 8px;
+  border: 1px solid var(--border-color); background: var(--card-bg);
+  color: var(--text-main); cursor: pointer;
+}
+.platform-chip--on { border-color: var(--primary-color); background: rgba(255, 191, 48, 0.12); }
+.platform-chip--soon { cursor: not-allowed; color: var(--text-muted); }
+.platform-chip__soon { font-size: 0.68rem; }
+
 .post-status--rascunho {
   --badge-bg: #f1f5f9;
   --badge-fg: #475569;
