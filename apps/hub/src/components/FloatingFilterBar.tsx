@@ -114,8 +114,8 @@ export function FloatingFilterBar({ children }: { children: ReactNode }) {
           }
         >
           {/* One scrolling row on phones so the floating card never eats half the screen;
-              wraps from md up, where the whole set fits on one line. */}
-          <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible">
+              wraps from lg up, where the whole set fits on one line. */}
+          <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-wrap lg:overflow-visible">
             {children}
           </div>
         </div>

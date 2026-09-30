@@ -5,7 +5,7 @@ import type { CSSProperties } from 'react';
  * dropdown triggers), so the row reads as a single set of filters.
  */
 export const FILTER_PILL_CLASS =
-  'inline-flex h-8 max-w-full shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[12px] font-semibold transition-colors';
+  'inline-flex h-8 max-w-full shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[12px] font-semibold transition-colors hub-focus-accent focus:outline-none';
 
 export function filterPillStyle(selected: boolean): CSSProperties {
   return selected

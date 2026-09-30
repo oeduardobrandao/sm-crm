@@ -171,10 +171,10 @@ describe('PostagensPage', () => {
     const statusGroup = screen.getByRole('group', { name: 'Filtrar por status' });
     const mediaTrigger = screen.getByRole('button', { name: 'Com e sem mídia' });
     // Same flex row: month and media triggers, a divider, then the status group (display:
-    // contents). One scrolling line on phones, wrapping from md up.
+    // contents). One scrolling line below lg, wrapping from there up.
     const row = trigger.parentElement as HTMLElement;
     expect(statusGroup.parentElement).toBe(row);
-    expect(row.className).toContain('md:flex-wrap');
+    expect(row.className).toContain('lg:flex-wrap');
     expect(row.className).toContain('overflow-x-auto');
     expect(row.firstElementChild).toBe(trigger);
     expect(row.children[1]).toBe(mediaTrigger);
