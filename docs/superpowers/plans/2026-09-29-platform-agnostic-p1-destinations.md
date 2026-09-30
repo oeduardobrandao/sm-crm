@@ -39,12 +39,13 @@
    - `a2`: a legacy write of `instagram`, `tiktok` or `both` that would leave the post with neither Instagram nor TikTok (Instagram on a TikTok-only board, TikTok on a stories post) is a no-op: targets stay and `platform` is re-derived from them. An explicit `other` write still removes both (no UI writes it).
    - `z8` (`AFTER UPDATE OF workflow_id`): a post with no Instagram/TikTok target that changes board (moved, attached, detached) gets the new board's Instagram/TikTok entries (TikTok never on stories) and `platform` is re-derived. A move never removes destinations.
    - `post_targets_sync_platform` also fires on `UPDATE OF post_id` and re-derives both the old and the new post.
+10. **Review fixes outside the original task list.** Migration `20260929100004_move_new_flow_platforms.sql` copies `move_posts_to_new_flow` forward so the new board inherits the source's `plataformas` (it defaulted to `{instagram}`, and `z8` then gave Geral posts an Instagram destination). `a2` also ignores legacy `platform` writes on Express posts, and `PlatformSelector` hides for them (sections 10 and 11 of `99_post_targets.sql`).
 
 ## Global Constraints
 
 - **Branch:** a new branch off fresh `origin/main` after P0 is merged: `claude/platform-agnostic-p1`. Run `git fetch origin main && git checkout -b claude/platform-agnostic-p1 origin/main`.
 - **Migration versions:**
-  - Use `20260929100001`, `20260929100002` and `20260929100003`.
+  - Use `20260929100001`, `20260929100002`, `20260929100003` and `20260929100004` (the last one added in review, deviation 10).
   - Before `gh pr create`, run `ls supabase/migrations | tail -5`. If main has anything at or above these numbers, renumber above main's tail. Every version prefix must be unique.
 - **Allowed values:**
   - Platform ids stored in SQL: exactly `'instagram'`, `'tiktok'`, `'geral'` (the registry's `PLATFORM_IDS`).
@@ -166,6 +167,11 @@ Expected: FAIL with `column "plataformas" does not exist`.
 -- Ids válidos = PLATFORM_IDS de supabase/functions/_shared/platform-registry.ts.
 -- Plataforma nova = ampliar os três CHECKs abaixo e o de post_targets.platform.
 -- ============================================================
+
+-- ACCESS EXCLUSIVE em tabelas quentes (workflows, clientes): desiste em 5s em
+-- vez de enfileirar todo o tráfego atrás do ALTER. Cada arquivo roda numa
+-- transação no supabase CLI, então SET LOCAL vale até o fim deste arquivo.
+SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.workflows
   ADD COLUMN IF NOT EXISTS plataformas text[] NOT NULL DEFAULT '{instagram}';

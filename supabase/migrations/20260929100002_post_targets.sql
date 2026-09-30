@@ -28,7 +28,8 @@
 --   post já tem o destino (TikTok não é checado contra o quadro: legado, ver
 --   desvio 2 do plano P1).
 --   Post Express (is_express) é só Instagram: nasce com {instagram}, sem olhar
---   o padrão do cliente (o fluxo Express publica no Instagram).
+--   o padrão do cliente (o fluxo Express publica no Instagram), e o a2 ignora
+--   a escrita legada de platform nele.
 --   Escrita legada de platform que deixaria o post sem Instagram nem TikTok não
 --   faz nada: em P1 não há editor de destinos para sair de 'other'.
 -- ============================================================
@@ -285,6 +286,11 @@ DECLARE
   v_want_tt boolean;
 BEGIN
   IF v_prev = 'on' OR NEW.platform IS NOT DISTINCT FROM OLD.platform THEN
+    RETURN NEW;
+  END IF;
+  -- Post Express é só Instagram: a escrita legada de platform não faz nada.
+  IF NEW.is_express THEN
+    NEW.platform := OLD.platform;
     RETURN NEW;
   END IF;
   -- Valor fora do domínio: deixa a CHECK recusar (não tocar em destinos).
