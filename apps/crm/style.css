@@ -14363,3 +14363,8 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
   font-weight: 500;
   text-align: center;
 }
+/* Tema escuro: --surface-hover e --surface-2 são o mesmo cinza, e no hover do
+   botão o selo da contagem se perdia dentro dele. */
+.list-group-toggle:hover .list-group-count {
+  background: var(--surface-3);
+}
