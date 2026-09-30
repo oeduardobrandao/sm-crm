@@ -28,6 +28,7 @@ export const PLATFORM_LABELS: Record<NonNullable<WorkflowPost['platform']>, stri
   instagram: 'Instagram',
   tiktok: 'TikTok',
   both: 'Ambas',
+  other: 'Geral',
 };
 
 /** Pipeline order of post statuses — column order for the Publicações kanban

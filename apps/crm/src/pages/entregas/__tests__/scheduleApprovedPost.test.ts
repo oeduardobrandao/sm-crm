@@ -27,6 +27,14 @@ describe('scheduleApprovedPost', () => {
     expect(scheduleTikTokPost).not.toHaveBeenCalled();
   });
 
+  it('refuses an other post without calling any schedule endpoint', async () => {
+    await expect(
+      scheduleApprovedPost({ id: 1, platform: 'other', scheduled_at: FUTURE }),
+    ).rejects.toThrow('Este post não tem destino com publicação automática.');
+    expect(scheduleInstagramPost).not.toHaveBeenCalled();
+    expect(scheduleTikTokPost).not.toHaveBeenCalled();
+  });
+
   it('treats a missing platform as instagram (legacy rows, DB default)', async () => {
     await scheduleApprovedPost({ id: 2, platform: undefined, scheduled_at: FUTURE });
     expect(scheduleInstagramPost).toHaveBeenCalledWith(2);

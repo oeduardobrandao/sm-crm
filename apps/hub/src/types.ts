@@ -65,7 +65,7 @@ export interface HubPost {
   tipo: ContentFormat;
   /** Target platform(s) for publishing. Absent on stale/pre-migration cached payloads —
    * treat as 'instagram' (mirrors the DB default). */
-  platform?: 'instagram' | 'tiktok' | 'both';
+  platform?: 'instagram' | 'tiktok' | 'both' | 'other';
   /** Reel de teste (Instagram trial reel): publicado só para não-seguidores até
    * a graduação. Absent em payloads antigos em cache — tratar como null. */
   ig_trial_strategy?: 'manual' | 'auto' | null;

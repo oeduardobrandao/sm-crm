@@ -53,6 +53,7 @@ import {
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { groupOptionsByOwner } from '../statusRegistry';
+import { targetsInstagram as isInstagramPost } from '../platformTargets';
 import { PostVersionHistorySheet } from './PostVersionHistorySheet';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -499,7 +500,7 @@ export function PostEditorBody({
       <PostMediaGallery
         postId={post.id!}
         forStories={isStoryPost}
-        targetsInstagram={post.platform !== 'tiktok'}
+        targetsInstagram={isInstagramPost(post.platform)}
         adjustmentDisabled={
           post.status === 'agendado' ||
           post.status === 'postado' ||
