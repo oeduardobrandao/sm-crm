@@ -128,3 +128,26 @@ Deno.test("validateForScheduling: sem trial não adiciona o erro", async () => {
   const res = await validateForScheduling(db as never, 1, { skipDateCheck: true });
   assert(!res.errors.includes(TRIAL_MEDIA_SHAPE_ERROR), "shape error only when flagged");
 });
+
+Deno.test("validateForScheduling: platform other → refused before media/account lookups", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workflow_posts", "select", {
+    data: {
+      id: 1,
+      scheduled_at: null,
+      ig_caption: "cap",
+      workflow_id: 9,
+      cliente_id: 5,
+      tipo: "feed",
+      platform: "other",
+    },
+    error: null,
+  });
+  const res = await validateForScheduling(db as never, 1, { skipDateCheck: true });
+  assert(!res.ok, "other must not validate");
+  assert(
+    res.errors.length === 1 &&
+      res.errors[0] === "Este post não tem destino com publicação automática.",
+    `unexpected errors: ${JSON.stringify(res.errors)}`,
+  );
+});

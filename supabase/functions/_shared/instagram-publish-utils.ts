@@ -90,10 +90,15 @@ export async function validateForScheduling(
 
   const { data: post } = await db
     .from("workflow_posts")
-    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo, ig_trial_strategy")
+    .select("id, scheduled_at, ig_caption, workflow_id, cliente_id, tipo, ig_trial_strategy, platform")
     .eq("id", postId)
     .single();
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
+  // Post sem Instagram nem TikTok (só Geral): nada o publicaria; agendá-lo
+  // o deixaria preso em 'agendado'. Spec 2026-09-29, fase P1.
+  if (post.platform === "other") {
+    return { ok: false, errors: ["Este post não tem destino com publicação automática."] };
+  }
   const isStory = post.tipo === "stories";
 
   if (!opts?.skipDateCheck) {
