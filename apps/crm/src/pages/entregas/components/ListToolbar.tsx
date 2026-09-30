@@ -1,3 +1,4 @@
+import type { Ref } from 'react';
 import { Rows3, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,8 +19,8 @@ const LIST_GROUP_BY_LABELS: Record<ListGroupBy, string> = {
   nenhum: 'Nenhum',
 };
 
-/** Controles da vista Lista, na linha das abas: "Agrupar por" e o botão do
- *  painel Responsáveis. */
+/** Controles da vista Lista, em linha própria acima da tabela: "Agrupar por" e
+ *  o botão do painel Responsáveis. */
 export function ListToolbar({
   groupBy,
   groupByOptions,
@@ -27,6 +28,7 @@ export function ListToolbar({
   responsaveisOpen,
   onToggleResponsaveis,
   selectedResponsaveis,
+  responsaveisToggleRef,
 }: {
   groupBy: ListGroupBy;
   /** Data de postagem só existe em Publicações: a página decide a lista. */
@@ -36,9 +38,15 @@ export function ListToolbar({
   onToggleResponsaveis: () => void;
   /** Quantos responsáveis estão marcados no filtro (selo no botão). */
   selectedResponsaveis: number;
+  /** O botão Responsáveis: a página devolve o foco a ele quando o X do painel
+   *  lateral desmonta o botão que estava focado. */
+  responsaveisToggleRef?: Ref<HTMLButtonElement>;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    // Quebra de linha em vez de passar da largura do celular (o select com a
+    // data de postagem mais o selo do botão já passa dos 343px de um 375px).
+    // Alinhada à direita a partir de 901px, sobre onde o painel lateral abre.
+    <div className="flex flex-wrap items-center gap-2 min-[901px]:justify-end">
       <Select
         value={groupBy}
         onValueChange={(v) => {
@@ -46,7 +54,12 @@ export function ListToolbar({
           if (next) onGroupByChange(next);
         }}
       >
-        <SelectTrigger className="h-8 w-auto rounded-full text-xs gap-1.5" aria-label="Agrupar por">
+        {/* md:text-xs: o md:text-sm do SelectTrigger sobrevive ao merge e deixaria o
+            select em 14px ao lado do botão de 12px. */}
+        <SelectTrigger
+          className="h-8 w-auto rounded-full text-xs md:text-xs gap-1.5"
+          aria-label="Agrupar por"
+        >
           <Rows3 className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
           <span style={{ color: 'var(--text-muted)' }}>Agrupar:</span>
           <SelectValue />
@@ -60,6 +73,7 @@ export function ListToolbar({
         </SelectContent>
       </Select>
       <Button
+        ref={responsaveisToggleRef}
         type="button"
         variant="outline"
         // Aberto = fundo accent: o estado do painel fica visível no próprio botão.
@@ -69,7 +83,9 @@ export function ListToolbar({
         aria-expanded={responsaveisOpen}
         onClick={onToggleResponsaveis}
       >
-        <Users className="h-3.5 w-3.5" aria-hidden="true" />
+        {/* !h/!w: o [&_svg]:size-4 do Button vence um h-3.5 sem importante e deixaria o
+            ícone em 16px ao lado do Rows3 de 14px. */}
+        <Users className="!h-3.5 !w-3.5" aria-hidden="true" />
         Responsáveis
         {selectedResponsaveis > 0 && (
           <span

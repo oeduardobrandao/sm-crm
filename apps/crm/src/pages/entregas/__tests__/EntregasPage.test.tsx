@@ -1,3 +1,4 @@
+import type { Ref } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -314,25 +315,31 @@ vi.mock('@/hooks/useCurrentMembro', () => ({
 const isDesktopMock = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => isDesktopMock.value }));
 
-// Like FilaMembroPicker: the Lista controls live in the tabs row and are
-// unit-tested on their own (ListToolbar.test.tsx / ResponsaveisPanel.test.tsx).
+// Like FilaMembroPicker: the Lista controls (a row of their own above the list)
+// are unit-tested on their own (ListToolbar.test.tsx / ResponsaveisPanel.test.tsx).
+// The stub keeps the ref wiring: the page hands the toggle's ref to the toolbar to
+// return focus to it when the aside closes.
 vi.mock('../components/ListToolbar', () => ({
   ListToolbar: ({
     groupBy,
     groupByOptions,
     onGroupByChange,
     onToggleResponsaveis,
+    responsaveisToggleRef,
   }: {
     groupBy: string;
     groupByOptions: readonly string[];
     onGroupByChange: (g: string) => void;
     onToggleResponsaveis: () => void;
+    responsaveisToggleRef?: Ref<HTMLButtonElement>;
   }) => (
     <div>
       <div>GroupBy: {groupBy}</div>
       <div>GroupByOptions: {groupByOptions.join(',')}</div>
       <button onClick={() => onGroupByChange('cliente')}>Agrupar por cliente</button>
-      <button onClick={onToggleResponsaveis}>Alternar responsáveis</button>
+      <button ref={responsaveisToggleRef} onClick={onToggleResponsaveis}>
+        Alternar responsáveis
+      </button>
     </div>
   ),
 }));
@@ -343,17 +350,22 @@ vi.mock('../components/ResponsaveisPanel', () => ({
     selected,
     onChange,
     caption,
+    onClose,
   }: {
     counts: ReadonlyMap<number, number>;
     selected: number[];
     onChange: (ids: number[]) => void;
     caption: string;
+    onClose?: () => void;
   }) => (
     <div>
       <div>Contagens: {[...counts.entries()].map(([id, n]) => `${id}=${n}`).join(',')}</div>
       <div>Selecionados: {selected.join(',')}</div>
       <div>Legenda: {caption}</div>
       <button onClick={() => onChange([7])}>Marcar membro 7</button>
+      {/* Like the real panel: only the desktop aside gets onClose (its X); the
+          mobile Sheet closes itself. */}
+      {onClose && <button onClick={onClose}>Fechar painel de responsáveis</button>}
     </div>
   ),
 }));
@@ -2923,5 +2935,50 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
+    // O Sheet fecha sozinho (e o Radix devolve o foco): não recebe o X do aside.
+    expect(screen.queryByRole('button', { name: 'Fechar painel de responsáveis' })).toBeNull();
+  });
+
+  it.each([
+    ['desktop', true],
+    ['celular', false],
+  ])(
+    'a barra da Lista aparece uma vez, em linha própria acima da tabela (%s)',
+    (_label, desktop) => {
+      isDesktopMock.value = desktop;
+      renderLista('/entregas?view=list');
+
+      const toggles = screen.getAllByText('Alternar responsáveis');
+      expect(toggles).toHaveLength(1);
+      const toggle = toggles[0];
+      // Fora da linha das abas: ela rola na horizontal e escondia a barra.
+      const tabsRow = screen.getByRole('tablist', { name: 'Modos de visualização' }).parentElement;
+      expect(tabsRow).not.toContainElement(toggle);
+      // E antes da tabela na ordem do documento.
+      expect(
+        toggle.compareDocumentPosition(screen.getByText(/^List view:/)) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    },
+  );
+
+  it('fora da vista Lista a barra não aparece', () => {
+    renderLista('/entregas?view=kanban');
+    expect(screen.queryByText('Alternar responsáveis')).toBeNull();
+  });
+
+  it('fechar o painel lateral pelo X devolve o foco ao botão Responsáveis da barra', () => {
+    renderLista('/entregas?view=list');
+    const toggle = screen.getByText('Alternar responsáveis');
+    fireEvent.click(toggle);
+    const close = screen.getByRole('button', { name: 'Fechar painel de responsáveis' });
+    // É o X quem tem o foco quando o usuário o aciona; fireEvent.click não o move.
+    close.focus();
+    expect(close).toHaveFocus();
+
+    fireEvent.click(close);
+
+    expect(screen.queryByText(/Contagens:/)).toBeNull();
+    expect(toggle).toHaveFocus();
   });
 });

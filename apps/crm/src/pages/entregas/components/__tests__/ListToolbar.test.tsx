@@ -1,3 +1,4 @@
+import { createRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -86,5 +87,21 @@ describe('ListToolbar', () => {
     expect(button).toHaveTextContent('2');
     fireEvent.click(button);
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('entrega o botão Responsáveis pela ref, para a página devolver o foco a ele', () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(
+      <ListToolbar
+        groupBy="prazo"
+        groupByOptions={ALL}
+        onGroupByChange={vi.fn()}
+        responsaveisOpen={false}
+        onToggleResponsaveis={vi.fn()}
+        selectedResponsaveis={0}
+        responsaveisToggleRef={ref}
+      />,
+    );
+    expect(ref.current).toBe(screen.getByRole('button', { name: /Responsáveis/ }));
   });
 });

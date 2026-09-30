@@ -211,6 +211,9 @@ export default function EntregasPage() {
   // Painel Responsáveis da Lista: aside ao lado da tabela a partir de 901px
   // (mesmo breakpoint da barra de filtros), Sheet de baixo abaixo disso.
   const [responsaveisOpen, setResponsaveisOpen] = useState(false);
+  // Botão "Responsáveis" da barra da Lista: recebe o foco de volta quando o X do
+  // aside fecha o painel (closeResponsaveisAside).
+  const responsaveisToggleRef = useRef<HTMLButtonElement>(null);
   const isDesktop = useIsDesktop(901);
   // Cruzar o breakpoint com o painel aberto montaria o Sheet já aberto (ou
   // sumiria com o aside): fecha e deixa o usuário reabrir no layout novo.
@@ -941,6 +944,13 @@ export default function EntregasPage() {
     setResponsaveisOpen(next);
     if (next) captureEvent('entregas_lista_responsaveis_aberto', { mode: activeMode });
   };
+  // X do aside: o botão focado sai da tela e o foco cairia no <body>. Devolve ao
+  // botão da barra, que segue montado. No Sheet do celular o Radix já restaura o
+  // foco sozinho, então ele não passa por aqui.
+  const closeResponsaveisAside = () => {
+    setResponsaveisOpen(false);
+    responsaveisToggleRef.current?.focus();
+  };
 
   const membroNomeById = useMemo(
     () => new Map(membros.filter((m) => m.id != null).map((m) => [m.id!, m.nome])),
@@ -1010,6 +1020,7 @@ export default function EntregasPage() {
       responsaveisOpen={responsaveisOpen}
       onToggleResponsaveis={toggleResponsaveis}
       selectedResponsaveis={filters.filterMembros.length}
+      responsaveisToggleRef={responsaveisToggleRef}
     />
   );
 
@@ -1338,10 +1349,6 @@ export default function EntregasPage() {
               </div>
             )}
 
-          {activeView === 'list' && isDesktop && (
-            <div style={{ marginLeft: 'auto', flexShrink: 0 }}>{listToolbar}</div>
-          )}
-
           {activeView === 'concluded' && (
             <div className="relative w-[220px]" style={{ marginLeft: 'auto', flexShrink: 0 }}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
@@ -1355,10 +1362,6 @@ export default function EntregasPage() {
           )}
         </div>
       </div>
-
-      {/* Celular: a linha das abas rola na horizontal, então a barra da Lista
-          ganha linha própria em vez de ficar escondida no fim da rolagem. */}
-      {activeView === 'list' && !isDesktop && listToolbar}
 
       {activeView === 'kanban' &&
         (mode === 'entregas' ? (
@@ -1475,46 +1478,54 @@ export default function EntregasPage() {
         />
       )}
       {activeView === 'list' && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-          <div style={{ flex: '1 1 0%', minWidth: 0 }}>
-            {mode === 'entregas' ? (
-              <ListView
-                cards={visibleCards}
-                postEntities={visiblePostEntities}
-                onPostClick={handlePostEntityClick}
-                sort={listSort}
-                onSortChange={setListSort}
-                onCardClick={handleCardClick}
-                groupBy={effectiveListGroupBy}
-              />
-            ) : (
-              <PostsListView
-                posts={filteredPosts}
-                isLoading={activePostsLoading}
-                openableWorkflowIds={openableWorkflowIds}
-                onPostClick={handlePostClick}
-                onFluxoClick={handleFluxoClick}
-                cardsByWorkflowId={cardsByWorkflowId}
-                filtersActive={postsFiltersActive}
-                onCreateAvulso={() => {
-                  setAvulsoTemplateId(null);
-                  setNewAvulsoOpen(true);
-                }}
-                postEntityByPostId={postEntityByPostId}
-                groupBy={effectiveListGroupBy}
-                membroNomeById={membroNomeById}
-              />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {/* Barra da Lista (Agrupar por + Responsáveis) em linha própria acima da
+              tabela, em qualquer largura: a linha das abas rola na horizontal e
+              escondia a barra no fim da rolagem. O gap aqui é menor que o 1.5rem
+              da página porque a barra pertence à tabela. A partir de 901px ela se
+              alinha à direita (ListToolbar), sobre onde o painel lateral abre. */}
+          {listToolbar}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+            <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+              {mode === 'entregas' ? (
+                <ListView
+                  cards={visibleCards}
+                  postEntities={visiblePostEntities}
+                  onPostClick={handlePostEntityClick}
+                  sort={listSort}
+                  onSortChange={setListSort}
+                  onCardClick={handleCardClick}
+                  groupBy={effectiveListGroupBy}
+                />
+              ) : (
+                <PostsListView
+                  posts={filteredPosts}
+                  isLoading={activePostsLoading}
+                  openableWorkflowIds={openableWorkflowIds}
+                  onPostClick={handlePostClick}
+                  onFluxoClick={handleFluxoClick}
+                  cardsByWorkflowId={cardsByWorkflowId}
+                  filtersActive={postsFiltersActive}
+                  onCreateAvulso={() => {
+                    setAvulsoTemplateId(null);
+                    setNewAvulsoOpen(true);
+                  }}
+                  postEntityByPostId={postEntityByPostId}
+                  groupBy={effectiveListGroupBy}
+                  membroNomeById={membroNomeById}
+                />
+              )}
+            </div>
+            {isDesktop && responsaveisOpen && (
+              <aside
+                className="card animate-up"
+                aria-label="Responsáveis"
+                style={{ width: 260, flexShrink: 0, padding: '1rem' }}
+              >
+                {renderResponsaveisPanel(closeResponsaveisAside)}
+              </aside>
             )}
           </div>
-          {isDesktop && responsaveisOpen && (
-            <aside
-              className="card animate-up"
-              aria-label="Responsáveis"
-              style={{ width: 260, flexShrink: 0, padding: '1rem' }}
-            >
-              {renderResponsaveisPanel(() => setResponsaveisOpen(false))}
-            </aside>
-          )}
         </div>
       )}
       {activeView === 'list' && !isDesktop && (
