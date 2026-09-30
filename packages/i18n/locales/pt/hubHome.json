@@ -4,7 +4,7 @@
     "kpi": {
       "postsThisMonth": {
         "label": "Posts este mês",
-        "hint": "Feed, Reels, Stories"
+        "hint": "Imagem, Vídeo vertical, Stories"
       },
       "pendingApprovals": {
         "label": "Aprovações pendentes",

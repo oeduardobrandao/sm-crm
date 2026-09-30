@@ -180,10 +180,10 @@ describe('CalendarPostDetailPanel', () => {
   });
 
   it('forwards day markers to the reschedule picker', async () => {
-    const markers = new Map([['2026-07-24', { colors: ['#eab308'], label: '1 Feed' }]]);
+    const markers = new Map([['2026-07-24', { colors: ['#eab308'], label: '1 Imagem' }]]);
     renderPanel({ isCurrentWorkflow: true, isLocked: false, dayMarkers: markers });
     fireEvent.click(screen.getByRole('button', { name: /jul 2026|Selecionar data e hora/i }));
-    expect(await screen.findByTitle('1 Feed')).toBeInTheDocument();
+    expect(await screen.findByTitle('1 Imagem')).toBeInTheDocument();
   });
 
   it('falls back to the empty-thumbnail icon instead of a broken image when the cover is permanently lost (no source change — the component already treats a null thumbnail_url/url as no cover)', async () => {

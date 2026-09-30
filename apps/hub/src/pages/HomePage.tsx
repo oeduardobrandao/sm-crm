@@ -82,7 +82,7 @@ export function HomePage() {
     {
       label: t('home.kpi.postsThisMonth.label', 'Posts este mês'),
       value: String(thisMonthCount),
-      hint: t('home.kpi.postsThisMonth.hint', 'Feed, Reels, Stories'),
+      hint: t('home.kpi.postsThisMonth.hint', 'Imagem, Vídeo vertical, Stories'),
     },
     {
       label: t('home.kpi.pendingApprovals.label', 'Aprovações pendentes'),
