@@ -81,6 +81,7 @@ import { filtersToReveal } from './revealFilters';
 import type { PostEntity } from './boardEntity';
 import { nextApprovalAwaited } from './autoScheduleNudge';
 import {
+  DEFAULT_LIST_GROUP_BY,
   parseEntregasQuery,
   serializeEntregasQuery,
   type ActiveView,
@@ -469,6 +470,7 @@ export default function EntregasPage() {
     view: activeView,
     mode: activeMode,
     filaMembro: activeView === 'fila' ? filaMembro : null,
+    listGroupBy: DEFAULT_LIST_GROUP_BY,
     entidade:
       activeMode === 'entregas' && (activeView === 'kanban' || activeView === 'list')
         ? effectiveEntidade

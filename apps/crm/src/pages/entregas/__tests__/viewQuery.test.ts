@@ -15,6 +15,7 @@ describe('viewQuery', () => {
         mode: 'entregas',
         entidade: 'fluxos',
         filaMembro: null,
+        listGroupBy: 'prazo',
         filters: EMPTY_FILTERS,
       }),
     ).toBe('');
@@ -26,6 +27,7 @@ describe('viewQuery', () => {
       mode: 'publicacoes' as const,
       entidade: 'fluxos' as const,
       filaMembro: null,
+      listGroupBy: 'cliente' as const,
       filters: {
         ...EMPTY_FILTERS,
         filterSearch: 'post de julho',
@@ -117,6 +119,7 @@ describe('viewQuery', () => {
       mode: 'entregas' as const,
       entidade: 'fluxos' as const,
       filaMembro: 12,
+      listGroupBy: 'prazo' as const,
       filters: EMPTY_FILTERS,
     };
     const qs = serializeEntregasQuery(state);
@@ -150,5 +153,45 @@ describe('viewQuery', () => {
     expect(parseEntregasQuery(new URLSearchParams('view=fila&membro=abc')).filaMembro).toBeNull();
     expect(parseEntregasQuery(new URLSearchParams('view=fila&membro=')).filaMembro).toBeNull();
     expect(parseEntregasQuery(new URLSearchParams('view=fila')).filaMembro).toBeNull();
+  });
+
+  describe('agrupar (Lista)', () => {
+    const base = {
+      mode: 'entregas' as const,
+      entidade: 'fluxos' as const,
+      filaMembro: null,
+      filters: EMPTY_FILTERS,
+    };
+
+    it('omits the default prazo and emits the others, only on view=list', () => {
+      expect(serializeEntregasQuery({ ...base, view: 'list', listGroupBy: 'prazo' })).toBe(
+        'view=list',
+      );
+      expect(serializeEntregasQuery({ ...base, view: 'list', listGroupBy: 'cliente' })).toBe(
+        'view=list&agrupar=cliente',
+      );
+      expect(serializeEntregasQuery({ ...base, view: 'kanban', listGroupBy: 'cliente' })).toBe('');
+    });
+
+    it('parses agrupar only for view=list and falls back to prazo', () => {
+      const parse = (qs: string) => parseEntregasQuery(new URLSearchParams(qs)).listGroupBy;
+      expect(parse('view=list&agrupar=etapa')).toBe('etapa');
+      expect(parse('view=list&agrupar=nenhum')).toBe('nenhum');
+      expect(parse('view=list&agrupar=xyz')).toBe('prazo');
+      expect(parse('view=list')).toBe('prazo');
+      expect(parse('view=kanban&agrupar=etapa')).toBe('prazo');
+    });
+
+    it('writes agrupar right after the view params, before the filters', () => {
+      expect(
+        serializeEntregasQuery({
+          ...base,
+          view: 'list',
+          mode: 'publicacoes',
+          listGroupBy: 'responsavel',
+          filters: { ...EMPTY_FILTERS, filterClientes: [3] },
+        }),
+      ).toBe('view=list&mode=publicacoes&agrupar=responsavel&clientes=3');
+    });
   });
 });

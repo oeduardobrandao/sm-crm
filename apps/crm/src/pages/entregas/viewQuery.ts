@@ -14,6 +14,20 @@ export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded' 
 export type EntidadeFilter = 'todos' | 'fluxos' | 'posts';
 const ENTIDADES: readonly EntidadeFilter[] = ['todos', 'fluxos', 'posts'];
 
+/** "Agrupar por" da vista Lista. `prazo` é o default do parser/serializador e
+ *  sai da URL, para que vistas salvas antigas da Lista continuem casando por
+ *  igualdade de string. */
+export type ListGroupBy = 'prazo' | 'postagem' | 'cliente' | 'responsavel' | 'etapa' | 'nenhum';
+export const LIST_GROUP_BYS: readonly ListGroupBy[] = [
+  'prazo',
+  'postagem',
+  'cliente',
+  'responsavel',
+  'etapa',
+  'nenhum',
+];
+export const DEFAULT_LIST_GROUP_BY: ListGroupBy = 'prazo';
+
 const VIEWS: readonly ActiveView[] = ['kanban', 'chart', 'calendar', 'list', 'concluded', 'fila'];
 const STATUS_VALUES: readonly StatusFilter[] = ['atrasado', 'urgente', 'em_dia'];
 
@@ -27,6 +41,8 @@ export interface EntregasViewState {
    *  picker. null = the logged-in user's own fila, which is what a URL or a
    *  saved vista without `membro=` means for whoever opens it. */
   filaMembro: number | null;
+  /** Only meaningful for view 'list': how the Lista splits its rows. */
+  listGroupBy: ListGroupBy;
   filters: FilterState;
 }
 
@@ -44,6 +60,8 @@ export function serializeEntregasQuery(state: EntregasViewState): string {
   if (state.mode !== 'entregas') p.set('mode', state.mode);
   if (state.entidade !== 'fluxos') p.set('entidade', state.entidade);
   if (state.view === 'fila' && state.filaMembro != null) p.set('membro', String(state.filaMembro));
+  if (state.view === 'list' && state.listGroupBy !== DEFAULT_LIST_GROUP_BY)
+    p.set('agrupar', state.listGroupBy);
 
   const f = state.filters;
   if (f.filterSearch) p.set('q', f.filterSearch);
@@ -78,6 +96,12 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
   const parsedMembro = rawMembro ? parseInt(rawMembro, 10) : NaN;
   const filaMembro = view === 'fila' && !isNaN(parsedMembro) ? parsedMembro : null;
 
+  const rawAgrupar = p.get('agrupar') as ListGroupBy | null;
+  const listGroupBy: ListGroupBy =
+    view === 'list' && rawAgrupar && LIST_GROUP_BYS.includes(rawAgrupar)
+      ? rawAgrupar
+      : DEFAULT_LIST_GROUP_BY;
+
   const nums = (key: string) =>
     p
       .getAll(key)
@@ -108,5 +132,5 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
     filterPrazoTo: day('ate'),
   };
 
-  return { view, mode, entidade, filaMembro, filters };
+  return { view, mode, entidade, filaMembro, listGroupBy, filters };
 }

@@ -9,6 +9,8 @@ import {
   loadLastEntidade,
   persistLastEntidade,
   hasLastMode,
+  loadListGroupBy,
+  persistListGroupBy,
 } from '../entregasPrefs';
 
 describe('entregasPrefs', () => {
@@ -120,5 +122,22 @@ describe('entidade prefs', () => {
     expect(loadLastEntidade('c1')).toBeNull();
     expect(hasLastMode('c1')).toBe(false);
     spy.mockRestore();
+  });
+});
+
+describe('agrupar da Lista', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('devolve null sem preferência gravada e com lixo gravado', () => {
+    expect(loadListGroupBy('c1')).toBeNull();
+    localStorage.setItem('entregas_list_group_c1', 'xyz');
+    expect(loadListGroupBy('c1')).toBeNull();
+  });
+
+  it('grava e lê por conta', () => {
+    persistListGroupBy('c1', 'nenhum');
+    persistListGroupBy('c2', 'cliente');
+    expect(loadListGroupBy('c1')).toBe('nenhum');
+    expect(loadListGroupBy('c2')).toBe('cliente');
   });
 });
