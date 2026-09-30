@@ -199,6 +199,23 @@ export function sortPostsChronologically(posts: HubPost[]): HubPost[] {
   return sortPostsByScheduled(posts, 'asc');
 }
 
+/**
+ * scheduled_at descending (newest first), unscheduled last, `ordem` as the tiebreaker, so the
+ * grid reads in the same order as the month dropdown (newest month first, "Sem data" last).
+ * Returns a copy.
+ */
+export function sortPostsNewestFirst(posts: HubPost[]): HubPost[] {
+  const scheduled = sortPostsByScheduled(
+    posts.filter((p) => p.scheduled_at),
+    'desc',
+  );
+  const unscheduled = sortPostsByScheduled(
+    posts.filter((p) => !p.scheduled_at),
+    'asc',
+  );
+  return [...scheduled, ...unscheduled];
+}
+
 /** Filter value meaning "no month filter". Never collides with a `YYYY-MM` key or `none`. */
 export const ALL_MONTHS = 'all';
 /** Bucket key for posts without a usable date. */

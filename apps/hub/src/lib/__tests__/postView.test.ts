@@ -14,6 +14,7 @@ import {
   clientStatusOf,
   pickPostCardKind,
   sortPostsChronologically,
+  sortPostsNewestFirst,
   sortPostsByScheduled,
   STATUS_COLORS,
   VISIBLE_STATUSES,
@@ -165,6 +166,20 @@ describe('sortPostsByScheduled', () => {
         .map((p) => p.id)
         .reverse(),
     );
+    expect(input.map((p) => p.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe('sortPostsNewestFirst', () => {
+  it('sorts by scheduled_at desc, unscheduled last in ordem, without mutating', () => {
+    const input = [
+      post({ id: 1, scheduled_at: null, ordem: 2 }),
+      post({ id: 2, scheduled_at: '2026-04-02T00:00:00.000Z', ordem: 1 }),
+      post({ id: 3, scheduled_at: '2026-04-01T00:00:00.000Z', ordem: 5 }),
+      post({ id: 4, scheduled_at: '2026-04-01T00:00:00.000Z', ordem: 1 }),
+      post({ id: 5, scheduled_at: null, ordem: 1 }),
+    ];
+    expect(sortPostsNewestFirst(input).map((p) => p.id)).toEqual([2, 3, 4, 5, 1]);
     expect(input.map((p) => p.id)).toEqual([1, 2, 3, 4, 5]);
   });
 });

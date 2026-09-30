@@ -19,7 +19,7 @@ import {
   getPostPublishState,
   groupPostsByMonth,
   isPostClientVisible,
-  sortPostsChronologically,
+  sortPostsNewestFirst,
 } from '../lib/postView';
 import { isAutoPublishActive } from '../lib/autoPublish';
 
@@ -59,7 +59,7 @@ export function PostagensPage() {
   const fatalError = isError && data === undefined;
 
   const allVisible = useMemo(
-    () => sortPostsChronologically((data?.posts ?? []).filter(isPostClientVisible)),
+    () => sortPostsNewestFirst((data?.posts ?? []).filter(isPostClientVisible)),
     [data?.posts],
   );
   // The two filters are cross-faceted: each control's counts reflect the other's selection,
