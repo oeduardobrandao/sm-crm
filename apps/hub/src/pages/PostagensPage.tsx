@@ -9,6 +9,8 @@ import { PageHeader } from '../components/PageHeader';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { StatusFilterChips, type StatusFilter } from '../components/StatusFilterChips';
 import { MonthFilterDropdown, type MonthFilterOption } from '../components/MonthFilterDropdown';
+import { MediaFilterDropdown, type MediaFilter } from '../components/MediaFilterDropdown';
+import { FloatingFilterBar } from '../components/FloatingFilterBar';
 import { PostGrid } from '../components/posts/PostGrid';
 import { PostDetailDialog } from '../components/posts/PostDetailDialog';
 import { isFeedSelectable, type TileMode } from '../components/posts/PostTile';
@@ -19,9 +21,11 @@ import {
   getPostPublishState,
   groupPostsByMonth,
   isPostClientVisible,
+  postHasMedia,
   sortPostsNewestFirst,
 } from '../lib/postView';
 import { isAutoPublishActive } from '../lib/autoPublish';
+import type { HubPost } from '../types';
 
 export function PostagensPage() {
   const { t } = useTranslation('hubPosts');
@@ -42,6 +46,7 @@ export function PostagensPage() {
   const [showGrid, setShowGrid] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [monthFilter, setMonthFilter] = useState<string>(ALL_MONTHS);
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
@@ -62,34 +67,44 @@ export function PostagensPage() {
     () => sortPostsNewestFirst((data?.posts ?? []).filter(isPostClientVisible)),
     [data?.posts],
   );
-  // The two filters are cross-faceted: each control's counts reflect the other's selection,
-  // so a chip or month never advertises posts the current combination would hide.
-  const inMonth = (p: { scheduled_at: string | null }) =>
-    monthFilter === ALL_MONTHS || getPostMonthKey(p) === monthFilter;
-  const monthScoped = allVisible.filter(inMonth);
+  // The three filters are cross-faceted: each control's counts reflect the other two
+  // selections, so a chip or menu option never advertises posts the current combination hides.
+  const inMonth = (p: HubPost) => monthFilter === ALL_MONTHS || getPostMonthKey(p) === monthFilter;
+  const inStatus = (p: HubPost) => statusFilter === 'all' || p.status === statusFilter;
+  const inMedia = (p: HubPost) =>
+    mediaFilter === 'all' || (mediaFilter === 'with') === postHasMedia(p);
+  const statusScoped = allVisible.filter((p) => inMonth(p) && inMedia(p));
   const filterCounts: Record<StatusFilter, number> = {
-    all: monthScoped.length,
-    enviado_cliente: monthScoped.filter((p) => p.status === 'enviado_cliente').length,
-    correcao_cliente: monthScoped.filter((p) => p.status === 'correcao_cliente').length,
-    aprovado_cliente: monthScoped.filter((p) => p.status === 'aprovado_cliente').length,
+    all: statusScoped.length,
+    enviado_cliente: statusScoped.filter((p) => p.status === 'enviado_cliente').length,
+    correcao_cliente: statusScoped.filter((p) => p.status === 'correcao_cliente').length,
+    aprovado_cliente: statusScoped.filter((p) => p.status === 'aprovado_cliente').length,
   };
+  const mediaScoped = allVisible.filter((p) => inMonth(p) && inStatus(p));
+  const withMedia = mediaScoped.filter(postHasMedia).length;
+  const mediaCounts = { with: withMedia, without: mediaScoped.length - withMedia };
   // Which months exist comes from every visible post (so choosing a status never removes the
-  // selected month from under the user); each month's count respects the status filter.
+  // selected month from under the user); each month's count respects the other filters.
   const monthOptions = useMemo<MonthFilterOption[]>(() => {
     const counts = countPostsByMonth(
-      allVisible.filter((p) => statusFilter === 'all' || p.status === statusFilter),
+      allVisible.filter(
+        (p) =>
+          (statusFilter === 'all' || p.status === statusFilter) &&
+          (mediaFilter === 'all' || (mediaFilter === 'with') === postHasMedia(p)),
+      ),
     );
     return groupPostsByMonth(allVisible).map(({ key }) => ({ key, count: counts.get(key) ?? 0 }));
-  }, [allVisible, statusFilter]);
+  }, [allVisible, statusFilter, mediaFilter]);
 
   const visiblePosts = useMemo(
     () =>
       allVisible.filter(
         (p) =>
           (statusFilter === 'all' || p.status === statusFilter) &&
-          (monthFilter === ALL_MONTHS || getPostMonthKey(p) === monthFilter),
+          (monthFilter === ALL_MONTHS || getPostMonthKey(p) === monthFilter) &&
+          (mediaFilter === 'all' || (mediaFilter === 'with') === postHasMedia(p)),
       ),
-    [allVisible, statusFilter, monthFilter],
+    [allVisible, statusFilter, monthFilter, mediaFilter],
   );
 
   // Filters start at "Todos", so a deep link never lands on a hidden post. What can:
@@ -101,6 +116,7 @@ export function PostagensPage() {
     if (visiblePosts.some((p) => p.id === currentId)) return;
     setStatusFilter('all');
     setMonthFilter(ALL_MONTHS);
+    setMediaFilter('all');
   }, [currentId, allVisible, visiblePosts]);
 
   // MonthFilterDropdown unmounts itself with a single option, so a selected month that
@@ -154,57 +170,73 @@ export function PostagensPage() {
   );
 
   return (
-    <div className="max-w-5xl mx-auto hub-fade-up">
-      <PageHeader
-        title={t('postagens.title', 'Postagens')}
-        description={
-          mode === 'select'
-            ? t(
-                'postagens.selectHint',
-                'Selecione posts para visualizar e reordenar como ficarão no feed do Instagram.',
-              )
-            : t('postagens.defaultDescription', 'Todos os posts do seu calendário de conteúdo.')
-        }
-        action={
-          instagramProfile && (
-            <span className="flex items-center gap-2">
-              {mode === 'select' && (
-                <FeedPreviewButton
-                  selectedCount={selectedPosts.length}
-                  onClick={() => setShowGrid(true)}
-                />
-              )}
-              <button
-                type="button"
-                onClick={() => setMode((m) => (m === 'select' ? 'browse' : 'select'))}
-                className="rounded-[4px] border hub-border px-3 py-2 text-[13px] font-semibold hub-tx2"
-              >
-                {mode === 'select' ? t('posts.done', 'Concluir') : t('posts.select', 'Selecionar')}
-              </button>
-            </span>
-          )
-        }
-      />
+    // No `.hub-fade-up` on this wrapper: its lingering transform would trap the filter bar's
+    // `position: fixed` (see FloatingFilterBar). The header and content fade in on their own.
+    <div className="max-w-5xl mx-auto">
+      <div className="hub-fade-up">
+        <PageHeader
+          title={t('postagens.title', 'Postagens')}
+          description={
+            mode === 'select'
+              ? t(
+                  'postagens.selectHint',
+                  'Selecione posts para visualizar e reordenar como ficarão no feed do Instagram.',
+                )
+              : t('postagens.defaultDescription', 'Todos os posts do seu calendário de conteúdo.')
+          }
+          action={
+            instagramProfile && (
+              <span className="flex items-center gap-2">
+                {mode === 'select' && (
+                  <FeedPreviewButton
+                    selectedCount={selectedPosts.length}
+                    onClick={() => setShowGrid(true)}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setMode((m) => (m === 'select' ? 'browse' : 'select'))}
+                  className="rounded-[4px] border hub-border px-3 py-2 text-[13px] font-semibold hub-tx2"
+                >
+                  {mode === 'select'
+                    ? t('posts.done', 'Concluir')
+                    : t('posts.select', 'Selecionar')}
+                </button>
+              </span>
+            )
+          }
+        />
+      </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-20">
+        <div className="hub-fade-up flex justify-center py-20">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
       ) : fatalError ? (
-        <div className="py-20 text-center text-sm hub-tx2">
+        <div className="hub-fade-up py-20 text-center text-sm hub-tx2">
           {t('postagens.loadError', 'Erro ao carregar postagens.')}
         </div>
       ) : allVisible.length === 0 ? (
-        <p className="text-sm hub-tx2">
+        <p className="hub-fade-up text-sm hub-tx2">
           {t('postagens.empty', 'Nenhuma postagem disponível ainda.')}
         </p>
       ) : (
         <>
-          <div className="mb-6 flex flex-wrap items-center gap-1.5">
+          <FloatingFilterBar>
             <MonthFilterDropdown
               value={monthFilter}
               options={monthOptions}
               onChange={setMonthFilter}
+            />
+            <MediaFilterDropdown
+              value={mediaFilter}
+              counts={mediaCounts}
+              onChange={setMediaFilter}
+            />
+            <span
+              aria-hidden="true"
+              className="mx-1 h-5 w-px shrink-0"
+              style={{ background: 'var(--hub-bd)' }}
             />
             <StatusFilterChips
               value={statusFilter}
@@ -212,19 +244,21 @@ export function PostagensPage() {
               onChange={setStatusFilter}
               className="contents"
             />
-          </div>
+          </FloatingFilterBar>
           {visiblePosts.length === 0 ? (
-            <p className="text-sm hub-tx2">
+            <p className="hub-fade-up text-sm hub-tx2">
               {t('postagens.noResults', 'Nenhuma postagem encontrada para este filtro.')}
             </p>
           ) : (
-            <PostGrid
-              posts={visiblePosts}
-              mode={mode}
-              selectedIds={selectedIds}
-              onOpen={handleOpen}
-              onToggle={handleToggleSelect}
-            />
+            <div className="hub-fade-up">
+              <PostGrid
+                posts={visiblePosts}
+                mode={mode}
+                selectedIds={selectedIds}
+                onOpen={handleOpen}
+                onToggle={handleToggleSelect}
+              />
+            </div>
           )}
         </>
       )}

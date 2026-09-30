@@ -58,16 +58,16 @@ describe('MonthFilterDropdown', () => {
     expect(screen.getByRole('button', { name: 'Sem data' })).toBeInTheDocument();
   });
 
-  it('uses a squared 4px trigger and fills it only when a month is picked', () => {
+  it('uses a pill trigger and fills it with the accent only when a month is picked', () => {
     const { rerender } = render(
       <MonthFilterDropdown value="all" options={OPTIONS} onChange={vi.fn()} />,
     );
     const idle = screen.getByRole('button', { name: 'Todos os meses' });
-    expect(idle.className).toContain('rounded-[4px]');
-    expect(idle.style.background).toBe('');
+    expect(idle.className).toContain('rounded-full');
+    expect(idle.style.background).toBe('var(--hub-card)');
     rerender(<MonthFilterDropdown value="2026-09" options={OPTIONS} onChange={vi.fn()} />);
     const active = screen.getByRole('button', { name: 'Setembro de 2026' });
-    expect(active.className).toContain('rounded-[4px]');
+    expect(active.className).toContain('rounded-full');
     expect(active.style.background).toBe('var(--hub-acc)');
   });
 

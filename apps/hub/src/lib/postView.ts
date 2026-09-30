@@ -41,6 +41,15 @@ export function clientStatusOf(p: ProductionFields): string {
   return isInProduction(p) ? 'em_producao' : p.status;
 }
 
+/**
+ * Whether a post counts as "com mídia" for the Postagens media filter. A published post whose
+ * files were swept (`media_autocleaned_at`) had media and still reads as a media post, so it
+ * stays out of the text-only bucket.
+ */
+export function postHasMedia(post: Pick<HubPost, 'media' | 'media_autocleaned_at'>): boolean {
+  return (post.media?.length ?? 0) > 0 || Boolean(post.media_autocleaned_at);
+}
+
 /** Media-first card selection, identical to the Postagens/Aprovações lists. */
 export function pickPostCardKind(post: HubPost): 'instagram' | 'story' | 'text' {
   if ((post.media?.length ?? 0) === 0) return 'text';

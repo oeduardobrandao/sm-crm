@@ -11,14 +11,18 @@ interface PostGridProps {
   onToggle: (postId: number) => void;
 }
 
-/** Stories rail on top, then one chronological 4:5 grid of media and text tiles. */
+/**
+ * Stories rail on top, then one chronological 4:5 grid of media and text tiles, laid out like
+ * an Instagram profile: three columns with hairline gutters (two on phones, where a third
+ * column would leave text tiles too narrow to read).
+ */
 export function PostGrid({ posts, mode, selectedIds, onOpen, onToggle }: PostGridProps) {
   const stories = posts.filter((p) => pickPostCardKind(p) === 'story');
   const tiles = posts.filter((p) => pickPostCardKind(p) !== 'story');
   return (
     <div>
       <StoriesRail posts={stories} onOpen={onOpen} dimmed={mode === 'select'} />
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
         {tiles.map((post, i) => (
           <PostTile
             key={post.id}

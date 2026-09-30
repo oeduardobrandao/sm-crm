@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { getClientStatusLabel } from '../lib/postView';
+import { FILTER_PILL_CLASS, filterPillStyle } from './filterPill';
 
 export type StatusFilter = 'all' | 'enviado_cliente' | 'correcao_cliente' | 'aprovado_cliente';
 
@@ -46,16 +47,8 @@ export function StatusFilterChips({
             type="button"
             aria-pressed={selected}
             onClick={() => onChange(filter)}
-            className="rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors"
-            style={
-              selected
-                ? {
-                    background: 'var(--hub-acc)',
-                    color: 'var(--hub-acc-fg)',
-                    borderColor: 'var(--hub-acc)',
-                  }
-                : { color: 'var(--hub-tx2)', borderColor: 'var(--hub-bd)' }
-            }
+            className={FILTER_PILL_CLASS}
+            style={filterPillStyle(selected)}
           >
             {label} ({counts[filter]})
           </button>

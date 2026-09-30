@@ -169,13 +169,16 @@ describe('PostagensPage', () => {
     ]);
     const trigger = screen.getByRole('button', { name: 'Todos os meses' });
     const statusGroup = screen.getByRole('group', { name: 'Filtrar por status' });
-    // Same flex row: the trigger and the status group (display: contents) share one parent,
-    // trigger first, and the row wraps instead of stacking on a row of its own.
+    const mediaTrigger = screen.getByRole('button', { name: 'Com e sem mídia' });
+    // Same flex row: month and media triggers, a divider, then the status group (display:
+    // contents). One scrolling line on phones, wrapping from md up.
     const row = trigger.parentElement as HTMLElement;
     expect(statusGroup.parentElement).toBe(row);
-    expect(row.className).toContain('flex-wrap');
+    expect(row.className).toContain('md:flex-wrap');
+    expect(row.className).toContain('overflow-x-auto');
     expect(row.firstElementChild).toBe(trigger);
-    expect(row.children[1]).toBe(statusGroup);
+    expect(row.children[1]).toBe(mediaTrigger);
+    expect(row.children[3]).toBe(statusGroup);
     // Newest month first, dateless last, counts per month.
     openMonthMenu();
     const items = screen.getAllByRole('menuitemradio');
@@ -217,6 +220,45 @@ describe('PostagensPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Setembro de 2026' }));
     expect(screen.getByRole('menuitemradio', { name: 'Setembro de 2026 (1)' })).toBeInTheDocument();
     expect(screen.getByRole('menuitemradio', { name: 'Abril de 2026 (0)' })).toBeInTheDocument();
+  });
+
+  it('filters by media, counting under the other filters and keeping swept posts as media', async () => {
+    renderPage(
+      BASE,
+      response({
+        posts: [
+          post({ id: 1, titulo: 'Foto', scheduled_at: '2026-09-15T15:00:00.000Z' }),
+          post({ id: 2, titulo: 'Texto', media: [], scheduled_at: '2026-09-16T15:00:00.000Z' }),
+          post({
+            id: 3,
+            titulo: 'Varrido',
+            media: [],
+            media_autocleaned_at: '2026-09-20T00:00:00.000Z',
+            status: 'aprovado_cliente',
+            scheduled_at: '2026-04-15T15:00:00.000Z',
+          }),
+        ],
+      }),
+    );
+    await screen.findByRole('button', { name: 'Abrir Foto' });
+    fireEvent.click(screen.getByRole('button', { name: 'Com e sem mídia' }));
+    expect(await screen.findByRole('menuitemradio', { name: 'Com mídia (2)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sem mídia (1)' }));
+    expect(
+      screen.getAllByRole('button', { name: /^Abrir / }).map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Abrir Texto']);
+    // Status chips count only text-only posts now.
+    expect(screen.getByRole('button', { name: 'Todos (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aprovado (0)' })).toBeInTheDocument();
+    // Media counts respect the status filter.
+    fireEvent.click(screen.getByRole('button', { name: 'Sem mídia' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Com mídia (2)' }));
+    fireEvent.click(screen.getByRole('button', { name: /Aprovado \(/ }));
+    expect(
+      screen.getAllByRole('button', { name: /^Abrir / }).map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Abrir Varrido']);
+    fireEvent.click(screen.getByRole('button', { name: 'Com mídia' }));
+    expect(await screen.findByRole('menuitemradio', { name: 'Sem mídia (0)' })).toBeInTheDocument();
   });
 
   it('shows only dateless posts for Sem data and everything again after Todos os meses', async () => {

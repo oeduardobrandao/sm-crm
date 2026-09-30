@@ -68,6 +68,12 @@
       "label": "Filter by status",
       "all": "All"
     },
+    "mediaFilter": {
+      "label": "Filter by media",
+      "all": "With and without media",
+      "with": "With media",
+      "without": "Without media"
+    },
     "monthFilter": {
       "label": "Filter by month",
       "trigger": "All months",
