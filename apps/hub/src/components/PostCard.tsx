@@ -11,7 +11,7 @@ import { MediaUnavailable } from './MediaUnavailable';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 import { sanitizeExternalUrl } from '../lib/security';
 import { StatusPill } from './StatusPill';
-import { getTipoLabel } from '../lib/postView';
+import { getPostCover, getTipoLabel } from '../lib/postView';
 import type { TFunction } from 'i18next';
 
 /** Translated post-status label covering PostCard's full status set (including the
@@ -242,8 +242,7 @@ export function PostCard({
   const igCaptionRef = useRef(draftIgCaption ?? '');
   const postApprovals = approvals.filter((a) => a.post_id === post.id);
   const postProperties = propertyValues.filter((p) => p.post_id === post.id);
-  const displayCover =
-    post.cover_media ?? (post.media && post.media.length > 0 ? post.media[0] : null);
+  const displayCover = getPostCover(post);
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);

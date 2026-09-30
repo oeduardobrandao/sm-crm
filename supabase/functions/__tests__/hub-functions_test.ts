@@ -167,6 +167,68 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
   assertEquals(body.posts[0].cover_media.playback, null);
 });
 
+Deno.test("hub-posts cover_media is the first slide by sort_order, not a stale is_cover flag", async () => {
+  // Instagram shows a carousel's first slide in the feed. A slide moved to the
+  // front keeps is_cover=false while the old first slide keeps the flag.
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 99,
+        titulo: "Carrossel",
+        tipo: "carrossel",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo_plain: "",
+        scheduled_at: null,
+        workflow_id: 7,
+        workflows: { titulo: "Calendário Abril" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  const file = (id: number, key: string) => ({
+    id,
+    kind: "image",
+    mime_type: "image/jpeg",
+    r2_key: key,
+    thumbnail_r2_key: null,
+    width: 1080,
+    height: 1350,
+    duration_seconds: null,
+    blur_data_url: null,
+  });
+  db.queue("post_file_links", "select", {
+    data: [
+      { id: 2, post_id: 99, is_cover: false, sort_order: 0, files: file(20, "contas/1/first.jpg") },
+      { id: 1, post_id: 99, is_cover: true, sort_order: 1, files: file(10, "contas/1/old-cover.jpg") },
+    ],
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed.mesaas.com/${key}`,
+    rateLimit: async () => true,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.posts[0].cover_media.url, "https://signed.mesaas.com/contas/1/first.jpg");
+});
+
 Deno.test("hub-posts never ships team-authored mensagem rows in postApprovals", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {

@@ -119,6 +119,48 @@ Deno.test("post-media-manage: GET with workflow_ids returns covers grouped by wo
   assertEquals(body.covers[0].media[0].url, "https://signed.example.com/contas/conta-1/files/img.png");
 });
 
+Deno.test("post-media-manage: GET with workflow_ids picks each post's first slide by sort_order, ignoring a stale is_cover", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", {
+    data: [{ id: 50, workflow_id: 7, ordem: 0 }],
+    error: null,
+  });
+  db.queue("post_file_links", "select", {
+    data: [
+      { ...sampleLink, id: 2, is_cover: false, sort_order: 0, files: { ...sampleFile, id: 20, r2_key: "contas/conta-1/files/first.png" } },
+      { ...sampleLink, id: 1, is_cover: true, sort_order: 1 },
+    ],
+    error: null,
+  });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "?workflow_ids=7"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.covers.length, 1);
+  assertEquals(body.covers[0].media.length, 1);
+  assertEquals(body.covers[0].media[0].url, "https://signed.example.com/contas/conta-1/files/first.png");
+});
+
+Deno.test("post-media-manage: GET with post_ids picks the first slide by sort_order, ignoring a stale is_cover", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: [{ id: 50 }], error: null });
+  db.queue("post_file_links", "select", {
+    data: [
+      { ...sampleLink, id: 2, is_cover: false, sort_order: 0, files: { ...sampleFile, id: 20, r2_key: "contas/conta-1/files/first.png" } },
+      { ...sampleLink, id: 1, is_cover: true, sort_order: 1 },
+    ],
+    error: null,
+  });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "?post_ids=50"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.covers.length, 1);
+  assertEquals(body.covers[0].media.url, "https://signed.example.com/contas/conta-1/files/first.png");
+});
+
 Deno.test("post-media-manage: GET with empty workflow_ids returns empty covers", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);

@@ -63,7 +63,8 @@ export function CalendarPostDetailPanel({
     queryFn: () => listPostMedia(post.id),
   });
 
-  const cover = media.find((m) => m.is_cover) ?? media[0] ?? null;
+  // First slide by sort_order, as Instagram shows it (listPostMedia is ordered).
+  const cover = media[0] ?? null;
   const thumbUrl = cover?.thumbnail_url ?? cover?.url ?? null;
 
   const responsavel =

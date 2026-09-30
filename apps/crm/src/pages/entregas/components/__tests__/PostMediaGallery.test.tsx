@@ -13,7 +13,6 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
     listPostMedia: vi.fn(async () => []),
     uploadPostMedia: vi.fn(),
     deletePostMedia: vi.fn(),
-    setPostMediaCover: vi.fn(),
     reorderPostMedia: vi.fn(),
   };
 });
