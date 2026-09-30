@@ -46,6 +46,8 @@ export function FloatingFilterBar({ children }: { children: ReactNode }) {
   const [stuck, setStuck] = useState(false);
   const [box, setBox] = useState<{ left: number; width: number } | null>(null);
   const [height, setHeight] = useState<number | null>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -79,6 +81,33 @@ export function FloatingFilterBar({ children }: { children: ReactNode }) {
       window.removeEventListener('resize', measure);
     };
   }, []);
+
+  // Below lg the row scrolls sideways; fade whichever edge still hides chips so the row
+  // reads as swipeable instead of looking clipped.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const update = () => {
+      const left = row.scrollLeft > 1;
+      const right = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
+      setEdges((e) => (e.left === left && e.right === right ? e : { left, right }));
+    };
+    update();
+    row.addEventListener('scroll', update, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(row);
+    return () => {
+      row.removeEventListener('scroll', update);
+      ro?.disconnect();
+    };
+  }, []);
+  const fade = 28;
+  const mask =
+    edges.left || edges.right
+      ? `linear-gradient(to right, ${edges.left ? `transparent, #000 ${fade}px` : '#000'}, ${
+          edges.right ? `#000 calc(100% - ${fade}px), transparent` : '#000'
+        })`
+      : undefined;
 
   const floating = stuck && box !== null;
 
@@ -115,7 +144,11 @@ export function FloatingFilterBar({ children }: { children: ReactNode }) {
         >
           {/* One scrolling row on phones so the floating card never eats half the screen;
               wraps from lg up, where the whole set fits on one line. */}
-          <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-wrap lg:overflow-visible">
+          <div
+            ref={rowRef}
+            className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-wrap lg:overflow-visible"
+            style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
+          >
             {children}
           </div>
         </div>

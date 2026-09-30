@@ -178,7 +178,7 @@ export function PostTile({ post, mode, selected, onOpen, onToggle, priority }: P
         aria-label={openLabel}
         disabled={inert}
         onClick={() => onOpen(post.id)}
-        className={`absolute inset-0 overflow-hidden text-left transition-[filter,opacity] duration-150 hub-focus-accent focus:outline-none ring-1 ring-inset ring-black/5 ${inert ? 'opacity-50 cursor-default' : 'hover:brightness-[0.92]'}`}
+        className={`absolute inset-0 overflow-hidden text-left transition-[filter,opacity] duration-150 hub-focus-accent focus:outline-none ring-1 ring-inset ring-black/5 ${inert ? 'opacity-50 cursor-default' : '[@media(hover:hover)]:hover:brightness-[0.92]'}`}
       >
         {body}
       </button>
