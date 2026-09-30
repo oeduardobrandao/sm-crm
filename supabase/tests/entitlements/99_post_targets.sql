@@ -338,3 +338,173 @@ begin
   assert v_stamp is null, 'reconcile carimbou automacao cujo post e other (nao e post do Instagram)';
 end $$;
 rollback;
+
+-- 6. Post Express é sempre Instagram, qualquer que seja o padrão do cliente
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli_g bigint; v_cli_t bigint;
+  v_p bigint; v_arr text[]; v_plat text;
+begin
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor, plataformas_padrao)
+    values (v_uid, v_ws, 'G', 'G', '#000', array['geral']) returning id into v_cli_g;
+  insert into clientes (user_id, conta_id, nome, sigla, cor, plataformas_padrao)
+    values (v_uid, v_ws, 'T', 'T', '#000', array['tiktok']) returning id into v_cli_t;
+
+  insert into workflow_posts (workflow_id, cliente_id, conta_id, titulo, tipo, is_express)
+    values (null, v_cli_g, v_ws, 'x', 'feed', true) returning id, platform into v_p, v_plat;
+  assert v_plat = 'instagram', format('express em cliente geral (RETURNING): %s', v_plat);
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['instagram'] and v_plat = 'instagram',
+    format('express em cliente geral: %s / %s', v_arr, v_plat);
+
+  insert into workflow_posts (workflow_id, cliente_id, conta_id, titulo, tipo, is_express)
+    values (null, v_cli_t, v_ws, 'y', 'feed', true) returning id, platform into v_p, v_plat;
+  assert v_plat = 'instagram', format('express em cliente tiktok (RETURNING): %s', v_plat);
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['instagram'] and v_plat = 'instagram',
+    format('express em cliente tiktok: %s / %s', v_arr, v_plat);
+
+  -- avulso comum do mesmo cliente segue o padrão (controle)
+  insert into workflow_posts (workflow_id, cliente_id, conta_id, titulo, tipo)
+    values (null, v_cli_t, v_ws, 'z', 'feed') returning platform into v_plat;
+  assert v_plat = 'tiktok', format('avulso comum em cliente tiktok: %s', v_plat);
+end $$;
+rollback;
+
+-- 7. Escrita legada que deixaria o post sem Instagram/TikTok não faz nada
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_wf_tt bigint; v_wf_ig bigint;
+  v_p bigint; v_arr text[]; v_plat text;
+begin
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'TT', 'ativo', array['tiktok','geral']) returning id into v_wf_tt;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'IG', 'ativo', array['instagram','geral']) returning id into v_wf_ig;
+
+  -- quadro TikTok, usuário escolhe Instagram: Instagram é recusado e o TikTok fica
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_tt, v_ws, 'a', 'reels') returning id into v_p;
+  update workflow_posts set platform = 'instagram' where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral','tiktok'] and v_plat = 'tiktok',
+    format('quadro TikTok -> instagram: %s / %s', v_arr, v_plat);
+
+  -- stories com Instagram, usuário escolhe TikTok: TikTok não tem stories, Instagram fica
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_ig, v_ws, 'b', 'stories') returning id into v_p;
+  update workflow_posts set platform = 'tiktok' where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral','instagram'] and v_plat = 'instagram',
+    format('stories -> tiktok: %s / %s', v_arr, v_plat);
+end $$;
+rollback;
+
+-- 8. Mudar de quadro sem Instagram/TikTok ganha os destinos sociais do quadro novo
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint;
+  v_wf_geral bigint; v_wf_ig bigint; v_wf_tt bigint;
+  v_p bigint; v_arr text[]; v_plat text;
+begin
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor, plataformas_padrao)
+    values (v_uid, v_ws, 'C', 'C', '#000', array['geral']) returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'Geral', 'ativo', array['geral']) returning id into v_wf_geral;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'IG', 'ativo', array['instagram']) returning id into v_wf_ig;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'TT', 'ativo', array['tiktok']) returning id into v_wf_tt;
+
+  -- post só Geral vai para quadro Instagram: ganha Instagram, Geral fica
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_geral, v_ws, 'a', 'feed') returning id into v_p;
+  perform set_config('app.allow_post_move', 'on', true);
+  update workflow_posts set workflow_id = v_wf_ig where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral','instagram'] and v_plat = 'instagram',
+    format('geral -> quadro IG: %s / %s', v_arr, v_plat);
+
+  -- post com Instagram vai para quadro TikTok: nada muda (mover nunca tira destino)
+  update workflow_posts set workflow_id = v_wf_tt where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral','instagram'] and v_plat = 'instagram',
+    format('IG -> quadro TikTok: %s / %s', v_arr, v_plat);
+
+  -- avulso só Geral anexado a quadro Instagram
+  insert into workflow_posts (workflow_id, cliente_id, conta_id, titulo, tipo)
+    values (null, v_cli, v_ws, 'b', 'feed') returning id into v_p;
+  update workflow_posts set workflow_id = v_wf_ig where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral','instagram'] and v_plat = 'instagram',
+    format('avulso geral -> quadro IG: %s / %s', v_arr, v_plat);
+
+  -- stories só Geral vai para quadro TikTok: TikTok não tem stories, segue other
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_geral, v_ws, 'c', 'stories') returning id into v_p;
+  update workflow_posts set workflow_id = v_wf_tt where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral'] and v_plat = 'other',
+    format('stories geral -> quadro TikTok: %s / %s', v_arr, v_plat);
+
+  -- reels só Geral vai para quadro TikTok: ganha TikTok
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_geral, v_ws, 'd', 'reels') returning id into v_p;
+  update workflow_posts set workflow_id = v_wf_tt where id = v_p;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_p;
+  select platform into v_plat from workflow_posts where id = v_p;
+  assert v_arr = array['geral','tiktok'] and v_plat = 'tiktok',
+    format('reels geral -> quadro TikTok: %s / %s', v_arr, v_plat);
+end $$;
+rollback;
+
+-- 9. Destino que troca de post recalcula platform dos dois posts
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_wf_ig bigint; v_wf_geral bigint;
+  v_a bigint; v_b bigint; v_plat text;
+begin
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_uid, v_ws, v_cli, 'IG', 'ativo') returning id into v_wf_ig;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'Geral', 'ativo', array['geral']) returning id into v_wf_geral;
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_ig, v_ws, 'a', 'feed') returning id into v_a;
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_geral, v_ws, 'b', 'feed') returning id into v_b;
+
+  update post_targets set post_id = v_b where post_id = v_a and platform = 'instagram';
+  select platform into v_plat from workflow_posts where id = v_a;
+  assert v_plat = 'other', format('post que perdeu o destino: %s', v_plat);
+  select platform into v_plat from workflow_posts where id = v_b;
+  assert v_plat = 'instagram', format('post que ganhou o destino: %s', v_plat);
+end $$;
+rollback;

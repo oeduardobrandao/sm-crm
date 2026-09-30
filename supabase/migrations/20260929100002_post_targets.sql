@@ -19,12 +19,23 @@
 --   a2   BEFORE UPDATE OF platform: o PlatformSelector atual grava platform;
 --        traduz para destinos e devolve o platform derivado.
 --   z7   AFTER UPDATE OF tipo: virou stories -> destino TikTok sai.
---   sync AFTER INSERT/DELETE/UPDATE OF platform em post_targets: recalcula platform.
+--   z8   AFTER UPDATE OF workflow_id: post sem Instagram/TikTok que muda de
+--        quadro ganha os destinos sociais do quadro novo (nunca perde destino).
+--   sync AFTER INSERT/DELETE/UPDATE OF platform, post_id em post_targets:
+--        recalcula platform (dos dois posts, se o destino trocou de post).
 -- Regras de destino (espelham supportsFormat do registro):
 --   TikTok não tem stories; Instagram só entra se o quadro lista Instagram ou o
 --   post já tem o destino (TikTok não é checado contra o quadro: legado, ver
 --   desvio 2 do plano P1).
+--   Post Express (is_express) é só Instagram: nasce com {instagram}, sem olhar
+--   o padrão do cliente (o fluxo Express publica no Instagram).
+--   Escrita legada de platform que deixaria o post sem Instagram nem TikTok não
+--   faz nada: em P1 não há editor de destinos para sair de 'other'.
 -- ============================================================
+
+-- ACCESS EXCLUSIVE em workflow_posts (troca da CHECK): desiste em 5s em vez de
+-- enfileirar o tráfego atrás do ALTER. SET LOCAL vale até o fim do arquivo.
+SET LOCAL lock_timeout = '5s';
 
 -- ---------- CHECK de platform ganha 'other' --------------------------------
 -- A CHECK inline de 20260720000005:25-26 tem nome gerado; acha pelo corpo.
@@ -141,15 +152,21 @@ REVOKE ALL ON FUNCTION public.derive_post_platform(bigint) FROM public, anon, au
 -- Destinos de um post NOVO. p_platform é o valor do INSERT: 'instagram' é o
 -- default da coluna, então nesse caso o quadro decide a parte social; qualquer
 -- outro valor foi escrito de propósito (testes, MCP legado) e manda.
+-- Post Express é sempre só Instagram (publicar agora vai para o Instagram).
 CREATE OR REPLACE FUNCTION public.post_seed_targets(
-  p_workflow_id bigint, p_cliente_id bigint, p_platform text, p_tipo text)
+  p_workflow_id bigint, p_cliente_id bigint, p_platform text, p_tipo text,
+  p_is_express boolean)
 RETURNS text[]
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
-  v_board  text[] := public.post_board_platforms(p_workflow_id, p_cliente_id);
+  v_board  text[];
   v_social text[];
   v_all    text[];
 BEGIN
+  IF p_is_express THEN
+    RETURN ARRAY['instagram'];
+  END IF;
+  v_board := public.post_board_platforms(p_workflow_id, p_cliente_id);
   v_social := CASE p_platform
     WHEN 'both'   THEN ARRAY['instagram','tiktok']
     WHEN 'tiktok' THEN ARRAY['tiktok']
@@ -162,7 +179,7 @@ BEGIN
   END IF;
   RETURN v_all;
 END $$;
-REVOKE ALL ON FUNCTION public.post_seed_targets(bigint, bigint, text, text) FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION public.post_seed_targets(bigint, bigint, text, text, boolean) FROM public, anon, authenticated;
 
 -- ---------- z4b: platform certo já no INSERT -----------------------------
 -- Nome escolhido para rodar DEPOIS de post_a0_sync_cliente (preenche cliente_id)
@@ -173,7 +190,8 @@ RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   NEW.platform := public.platform_from_targets(
-    public.post_seed_targets(NEW.workflow_id, NEW.cliente_id, NEW.platform, NEW.tipo));
+    public.post_seed_targets(NEW.workflow_id, NEW.cliente_id, NEW.platform, NEW.tipo,
+                             NEW.is_express));
   RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION public.workflow_posts_platform_on_insert() FROM public, anon, authenticated;
@@ -191,16 +209,21 @@ DECLARE
   v_social text[];
   v_all text[];
 BEGIN
-  -- NEW.platform já é o derivado (z4b): 'instagram' aqui é Instagram mesmo.
-  v_social := CASE NEW.platform
-    WHEN 'both'      THEN ARRAY['instagram','tiktok']
-    WHEN 'instagram' THEN ARRAY['instagram']
-    WHEN 'tiktok'    THEN ARRAY['tiktok']
-    ELSE ARRAY[]::text[]
-  END;
-  v_all := v_social || ARRAY(
-    SELECT x FROM unnest(public.post_board_platforms(NEW.workflow_id, NEW.cliente_id)) x
-     WHERE x NOT IN ('instagram','tiktok'));
+  IF NEW.is_express THEN
+    -- Mesma regra de post_seed_targets (z4b): Express é só Instagram.
+    v_all := ARRAY['instagram'];
+  ELSE
+    -- NEW.platform já é o derivado (z4b): 'instagram' aqui é Instagram mesmo.
+    v_social := CASE NEW.platform
+      WHEN 'both'      THEN ARRAY['instagram','tiktok']
+      WHEN 'instagram' THEN ARRAY['instagram']
+      WHEN 'tiktok'    THEN ARRAY['tiktok']
+      ELSE ARRAY[]::text[]
+    END;
+    v_all := v_social || ARRAY(
+      SELECT x FROM unnest(public.post_board_platforms(NEW.workflow_id, NEW.cliente_id)) x
+       WHERE x NOT IN ('instagram','tiktok'));
+  END IF;
 
   -- platform já está certo: o sync não precisa reescrever a linha.
   PERFORM set_config('app.post_targets_sync', 'on', true);
@@ -221,27 +244,35 @@ CREATE OR REPLACE FUNCTION public.post_targets_sync_platform()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
+  v_posts bigint[];
   v_post bigint;
   v_prev text := current_setting('app.post_targets_sync', true);
   v_derived text;
 BEGIN
   IF v_prev = 'on' THEN RETURN NULL; END IF;
-  IF TG_OP = 'DELETE' THEN v_post := OLD.post_id; ELSE v_post := NEW.post_id; END IF;
-  -- DELETE em cascata do post: a linha pai já sumiu, nada a recalcular.
-  IF NOT EXISTS (SELECT 1 FROM public.workflow_posts WHERE id = v_post) THEN
-    RETURN NULL;
+  IF TG_OP = 'DELETE' THEN
+    v_posts := ARRAY[OLD.post_id];
+  ELSIF TG_OP = 'UPDATE' AND NEW.post_id IS DISTINCT FROM OLD.post_id THEN
+    -- Destino trocou de post: os dois posts mudaram de destinos.
+    v_posts := ARRAY[OLD.post_id, NEW.post_id];
+  ELSE
+    v_posts := ARRAY[NEW.post_id];
   END IF;
-  v_derived := public.derive_post_platform(v_post);
-  PERFORM set_config('app.post_targets_sync', 'on', true);
-  UPDATE public.workflow_posts SET platform = v_derived
-   WHERE id = v_post AND platform IS DISTINCT FROM v_derived;
-  PERFORM set_config('app.post_targets_sync', COALESCE(v_prev, ''), true);
+  FOREACH v_post IN ARRAY v_posts LOOP
+    -- DELETE em cascata do post: a linha pai já sumiu, nada a recalcular.
+    CONTINUE WHEN NOT EXISTS (SELECT 1 FROM public.workflow_posts WHERE id = v_post);
+    v_derived := public.derive_post_platform(v_post);
+    PERFORM set_config('app.post_targets_sync', 'on', true);
+    UPDATE public.workflow_posts SET platform = v_derived
+     WHERE id = v_post AND platform IS DISTINCT FROM v_derived;
+    PERFORM set_config('app.post_targets_sync', COALESCE(v_prev, ''), true);
+  END LOOP;
   RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.post_targets_sync_platform() FROM public, anon, authenticated;
 
 CREATE TRIGGER post_targets_sync_platform
-  AFTER INSERT OR DELETE OR UPDATE OF platform ON public.post_targets
+  AFTER INSERT OR DELETE OR UPDATE OF platform, post_id ON public.post_targets
   FOR EACH ROW EXECUTE FUNCTION public.post_targets_sync_platform();
 
 -- ---------- a2: PlatformSelector grava platform -> destinos --------------
@@ -269,6 +300,16 @@ BEGIN
          OR EXISTS (SELECT 1 FROM public.post_targets
                      WHERE post_id = NEW.id AND platform = 'instagram'));
   v_want_tt := NEW.platform IN ('tiktok','both') AND NEW.tipo <> 'stories';
+
+  -- Pedido de Instagram/TikTok que não sobra nenhum dos dois (quadro só TikTok
+  -- e o usuário pede Instagram; stories e o usuário pede TikTok): em P1 não há
+  -- editor de destinos para sair de 'other', então a escrita não faz nada e o
+  -- platform volta a ser o dos destinos atuais. 'other' explícito (nenhuma UI
+  -- grava) segue valendo: tira Instagram e TikTok de propósito.
+  IF NEW.platform <> 'other' AND NOT v_want_ig AND NOT v_want_tt THEN
+    NEW.platform := public.derive_post_platform(NEW.id);
+    RETURN NEW;
+  END IF;
 
   -- GUC ligado: os INSERT/DELETE abaixo não podem reescrever esta mesma linha
   -- (UPDATE dentro de BEFORE UPDATE da própria linha = erro 27000).
@@ -315,3 +356,46 @@ CREATE TRIGGER workflow_posts_z7_stories_drop_tiktok
   FOR EACH ROW
   WHEN (NEW.tipo = 'stories' AND OLD.tipo IS DISTINCT FROM 'stories')
   EXECUTE FUNCTION public.workflow_posts_stories_drop_tiktok();
+
+-- ---------- z8: mudou de quadro sem Instagram/TikTok -> destinos do quadro novo
+-- Post que só tem destinos fora de Instagram/TikTok (quadro só Geral, avulso de
+-- cliente Geral) e vai para outro quadro, ou é anexado/desanexado, ganha a
+-- parte social do quadro novo. Nunca apaga destino (desvio 2 do plano). AFTER
+-- pelo mesmo motivo do z7: o UPDATE de platform na própria linha é permitido em
+-- AFTER e seria erro 27000 em BEFORE.
+CREATE OR REPLACE FUNCTION public.workflow_posts_board_move_seed_targets()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  v_prev text := current_setting('app.post_targets_sync', true);
+  v_social text[];
+  v_derived text;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.post_targets
+              WHERE post_id = NEW.id AND platform IN ('instagram','tiktok')) THEN
+    RETURN NULL;
+  END IF;
+  v_social := ARRAY(
+    SELECT x FROM unnest(public.post_board_platforms(NEW.workflow_id, NEW.cliente_id)) x
+     WHERE x = 'instagram' OR (x = 'tiktok' AND NEW.tipo IS DISTINCT FROM 'stories'));
+  IF cardinality(v_social) = 0 THEN
+    RETURN NULL;
+  END IF;
+
+  PERFORM set_config('app.post_targets_sync', 'on', true);
+  INSERT INTO public.post_targets (conta_id, post_id, platform)
+  SELECT NEW.conta_id, NEW.id, x FROM unnest(v_social) x
+  ON CONFLICT (post_id, platform) DO NOTHING;
+  v_derived := public.derive_post_platform(NEW.id);
+  UPDATE public.workflow_posts SET platform = v_derived
+   WHERE id = NEW.id AND platform IS DISTINCT FROM v_derived;
+  PERFORM set_config('app.post_targets_sync', COALESCE(v_prev, ''), true);
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.workflow_posts_board_move_seed_targets() FROM public, anon, authenticated;
+
+CREATE TRIGGER workflow_posts_z8_board_move_seed_targets
+  AFTER UPDATE OF workflow_id ON public.workflow_posts
+  FOR EACH ROW
+  WHEN (NEW.workflow_id IS DISTINCT FROM OLD.workflow_id)
+  EXECUTE FUNCTION public.workflow_posts_board_move_seed_targets();
