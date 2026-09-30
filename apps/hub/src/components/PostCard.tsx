@@ -30,7 +30,7 @@ export function getPostStatusLabel(t: TFunction, status: string): string {
   return labels[status] ?? status;
 }
 
-function getPlatformLabel(t: TFunction, platform: 'instagram' | 'tiktok' | 'both'): string {
+export function getPlatformLabel(t: TFunction, platform: 'instagram' | 'tiktok' | 'both'): string {
   const labels: Record<'instagram' | 'tiktok' | 'both', string> = {
     instagram: t('hubPostCard:platform.instagram', 'Instagram'),
     tiktok: t('hubPostCard:platform.tiktok', 'TikTok'),
