@@ -1,5 +1,6 @@
 import { supabase, getUserId, getContaId } from './core';
 import { applyTemplateToClient } from './hub';
+import type { PlatformId } from '@mesaas/platforms';
 
 export interface Cliente {
   id?: number;
@@ -34,6 +35,8 @@ export interface Cliente {
   // the UI, not just flipping the switch back on.
   send_event_email?: boolean;
   event_email_unsub_at?: string | null;
+  /** Plataformas padrão dos fluxos novos do cliente (text[]; default {instagram}). */
+  plataformas_padrao?: PlatformId[];
 }
 
 export interface ClienteEndereco {
@@ -92,7 +95,7 @@ export function sortClientesByNome<T extends { nome: string }>(clientes: T[]): T
  * read — it falls back to a `GenericStringError` result type.
  */
 const CLIENTE_SAFE_COLUMNS =
-  'id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status, created_at, notion_page_url, data_pagamento, especialidade, data_aniversario, dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis, foto_url, send_event_email, event_email_unsub_at';
+  'id, user_id, conta_id, nome, sigla, cor, plano, email, telefone, status, created_at, notion_page_url, data_pagamento, especialidade, data_aniversario, dia_entrega, auto_publish_on_approval, send_report_email, include_ai_analysis, foto_url, send_event_email, event_email_unsub_at, plataformas_padrao';
 
 // Supabase's REST layer applies a project-level max-rows cap (commonly 1000), so
 // an unbounded `.select('*')` is silently truncated once a workspace has more

@@ -44,6 +44,42 @@ describe('store workflow functions', () => {
     });
   });
 
+  it('saveWorkflowTemplate persists plataformas after the RPC', async () => {
+    mockedSupabase.__queueSupabaseRpc('update_workflow_template', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('workflow_templates', 'update', {
+      data: null,
+      error: null,
+    });
+
+    await store.saveWorkflowTemplate(7, {
+      nome: 'T',
+      etapas: [],
+      modo_prazo: 'padrao',
+      plataformas: ['instagram', 'geral'],
+    });
+
+    const [update] = getCalls('workflow_templates', 'update');
+    expect(update.payload).toEqual({ plataformas: ['instagram', 'geral'] });
+    expect(update.modifiers).toContainEqual({ method: 'eq', args: ['id', 7] });
+  });
+
+  it('saveWorkflowTemplate throws a clear error when the plataformas update fails', async () => {
+    mockedSupabase.__queueSupabaseRpc('update_workflow_template', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('workflow_templates', 'update', {
+      data: null,
+      error: { message: 'boom' },
+    });
+
+    await expect(
+      store.saveWorkflowTemplate(7, {
+        nome: 'T',
+        etapas: [],
+        modo_prazo: 'padrao',
+        plataformas: ['tiktok'],
+      }),
+    ).rejects.toThrow('Template salvo, mas as plataformas não foram gravadas.');
+  });
+
   it.each([
     {
       name: 'getWorkflowTemplates',
