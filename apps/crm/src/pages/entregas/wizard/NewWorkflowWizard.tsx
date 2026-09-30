@@ -194,6 +194,8 @@ export function NewWorkflowWizard(props: {
         templateName: s.templateName,
         cliente,
         membros,
+        // TEMP (Task 7 troca por seletor): padrão do cliente, ou Instagram.
+        plataformas: cliente?.plataformas_padrao ?? ['instagram'],
       });
       toast.success('Fluxo criado com sucesso!');
       if (result.warning) toast.warning(result.warning);

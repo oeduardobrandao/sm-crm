@@ -465,6 +465,8 @@ export function TemplatesModal({
           nome,
           etapas: etapaData,
           modo_prazo: fModoPrazo,
+          // TEMP (Task 7 troca por seletor): preserva a lista atual do modelo.
+          plataformas: editingTemplate.plataformas ?? ['instagram'],
         });
         toast.success('Template atualizado!');
       } else {
