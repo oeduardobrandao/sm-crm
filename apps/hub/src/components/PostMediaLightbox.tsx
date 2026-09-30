@@ -6,6 +6,22 @@ import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import type { HubPostMedia } from '../types';
 import { MediaUnavailable } from './MediaUnavailable';
 
+/**
+ * A <video> with only max-width/max-height renders at its intrinsic resolution, and HLS
+ * starts on a low rendition, so a vertical Reel opened at ~240x430 CSS px. Give it the
+ * largest box that fits 90vw x 85vh at the stored aspect ratio; without stored dimensions
+ * fill that box and let object-contain letterbox.
+ */
+function videoBoxStyle(m: HubPostMedia): React.CSSProperties {
+  if (m.width && m.height) {
+    return {
+      width: `min(90vw, calc(85vh * ${m.width} / ${m.height}))`,
+      aspectRatio: `${m.width} / ${m.height}`,
+    };
+  }
+  return { width: '90vw', height: '85vh' };
+}
+
 interface PostMediaLightboxProps {
   media: HubPostMedia[];
   initialIndex: number;
@@ -154,7 +170,8 @@ export function PostMediaLightbox({
             controls
             preload="auto"
             onFatalError={() => onStaleUrl?.()}
-            className="max-h-[85vh] max-w-[90vw] object-contain"
+            className="max-h-[85vh] max-w-[90vw] object-contain bg-black"
+            style={videoBoxStyle(current)}
           />
         )}
       </div>
