@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { X } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { avatarColorClass } from '@/lib/avatarColor';
@@ -41,6 +42,10 @@ export function ResponsaveisPanel({
   /** Painel lateral (desktop): botão X. No Sheet do celular o Sheet fecha sozinho. */
   onClose?: () => void;
 }) {
+  // Prefixo único por instância do painel: a contagem de cada membro vira a
+  // descrição do checkbox dele (aria-describedby), e dois painéis na página não
+  // podem repetir o id.
+  const panelId = useId();
   const sorted = membros.filter((m) => m.id != null).sort(byNome);
   const toggle = (id: number, checked: boolean) =>
     onChange(checked ? [...selected, id] : selected.filter((s) => s !== id));
@@ -75,7 +80,7 @@ export function ResponsaveisPanel({
               aria-label="Fechar painel de responsáveis"
               onClick={onClose}
               className="rounded-md p-1 hover:bg-[var(--surface-hover)]"
-              style={{ background: 'none', border: 'none', color: 'var(--text-muted)' }}
+              style={{ color: 'var(--text-muted)' }}
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -90,6 +95,7 @@ export function ResponsaveisPanel({
         <ul className="flex flex-col gap-0.5">
           {sorted.map((m) => {
             const id = m.id!;
+            const countId = `${panelId}-count-${id}`;
             return (
               <li key={id}>
                 <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--surface-hover)]">
@@ -104,6 +110,7 @@ export function ResponsaveisPanel({
                     {m.nome}
                   </span>
                   <span
+                    id={countId}
                     className="text-xs tabular-nums"
                     style={{ color: 'var(--text-muted)' }}
                     data-testid="responsavel-count"
@@ -112,6 +119,7 @@ export function ResponsaveisPanel({
                   </span>
                   <Checkbox
                     aria-label={m.nome}
+                    aria-describedby={countId}
                     checked={selected.includes(id)}
                     onCheckedChange={(v) => toggle(id, v === true)}
                   />

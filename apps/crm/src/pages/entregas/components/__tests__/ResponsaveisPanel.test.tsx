@@ -68,4 +68,35 @@ describe('ResponsaveisPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Limpar' }));
     expect(onChange).toHaveBeenCalledWith([]);
   });
+
+  it('a contagem é a descrição do checkbox e o nome continua sendo o do membro', () => {
+    renderPanel();
+    const ana = screen.getByRole('checkbox', { name: 'Ana Silva' });
+    expect(ana).toHaveAccessibleName('Ana Silva');
+    expect(ana).toHaveAccessibleDescription('3');
+    expect(screen.getByRole('checkbox', { name: 'Bruno Lima' })).toHaveAccessibleDescription('1');
+    // Ausente do mapa = 0, lido como 0 (não como "sem descrição").
+    expect(screen.getByRole('checkbox', { name: 'Érica Souza' })).toHaveAccessibleDescription('0');
+  });
+
+  it('dois painéis na mesma página não trocam as contagens entre si', () => {
+    const props = { membros, selected: [], onChange: vi.fn(), caption: 'Legenda' };
+    render(
+      <>
+        <ResponsaveisPanel {...props} counts={new Map([[7, 3]])} />
+        <ResponsaveisPanel {...props} counts={new Map([[7, 5]])} />
+      </>,
+    );
+    const [primeiro, segundo] = screen.getAllByRole('checkbox', { name: 'Ana Silva' });
+    // Ids repetidos fariam o segundo checkbox ler a contagem do primeiro.
+    expect(primeiro).toHaveAccessibleDescription('3');
+    expect(segundo).toHaveAccessibleDescription('5');
+  });
+
+  it('o X não fixa fundo nem borda inline, senão o hover dele nunca pinta', () => {
+    renderPanel();
+    const x = screen.getByRole('button', { name: 'Fechar painel de responsáveis' });
+    expect(x.style.background).toBe('');
+    expect(x.style.border).toBe('');
+  });
 });
