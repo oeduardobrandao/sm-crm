@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import type { TFunction } from 'i18next';
 import {
   countPostsByMonth,
   deriveCaption,
   formatMonthKey,
   getPostCover,
+  getTipoLabel,
+  TIPO_LABELS,
   getPostMonthKey,
   groupPostsByMonth,
   getPostPublishState,
@@ -296,5 +299,22 @@ describe('hasDistinctPostText', () => {
         post({ conteudo_plain: 'Roteiro do vídeo\nLEGENDA: xyz', ig_caption: null }),
       ),
     ).toBe(true);
+  });
+});
+
+describe('hub tipo labels', () => {
+  it('are neutral', () => {
+    expect(TIPO_LABELS).toEqual({
+      feed: 'Imagem',
+      carrossel: 'Carrossel',
+      reels: 'Vídeo vertical',
+      stories: 'Stories',
+    });
+  });
+
+  it('getTipoLabel falls back to the neutral pt label', () => {
+    const t = ((_key: string, fallback: string) => fallback) as unknown as TFunction;
+    expect(getTipoLabel(t, 'reels')).toBe('Vídeo vertical');
+    expect(getTipoLabel(t, 'feed')).toBe('Imagem');
   });
 });

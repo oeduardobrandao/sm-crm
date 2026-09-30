@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import { CONTENT_FORMAT_LABELS } from '@mesaas/platforms';
 import type { EmProducaoReason, HubPost, HubPostMedia, PendingEditSuggestion } from '../types';
 
 export type { EmProducaoReason };
@@ -60,12 +61,7 @@ export const CLIENT_STATUS_LABELS: Record<string, string> = {
   em_producao: 'Em produção',
 };
 
-export const TIPO_LABELS: Record<HubPost['tipo'], string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
+export const TIPO_LABELS: Record<HubPost['tipo'], string> = CONTENT_FORMAT_LABELS;
 
 /** Translated equivalent of `CLIENT_STATUS_LABELS` — takes the caller's `t` (from
  * `useTranslation('hubPostCard')` or the `@mesaas/i18n` singleton) instead of a hook of
@@ -87,10 +83,10 @@ export function getClientStatusLabel(t: TFunction, status: string): string {
 /** Translated equivalent of `TIPO_LABELS` — see `getClientStatusLabel`. */
 export function getTipoLabel(t: TFunction, tipo: string): string {
   const labels: Record<string, string> = {
-    feed: t('hubPostCard:tipo.feed', 'Feed'),
-    reels: t('hubPostCard:tipo.reels', 'Reels'),
-    stories: t('hubPostCard:tipo.stories', 'Stories'),
-    carrossel: t('hubPostCard:tipo.carrossel', 'Carrossel'),
+    feed: t('hubPostCard:tipo.feed', CONTENT_FORMAT_LABELS.feed),
+    reels: t('hubPostCard:tipo.reels', CONTENT_FORMAT_LABELS.reels),
+    stories: t('hubPostCard:tipo.stories', CONTENT_FORMAT_LABELS.stories),
+    carrossel: t('hubPostCard:tipo.carrossel', CONTENT_FORMAT_LABELS.carrossel),
   };
   return labels[tipo] ?? tipo;
 }

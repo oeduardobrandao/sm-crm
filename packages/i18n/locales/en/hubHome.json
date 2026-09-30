@@ -46,8 +46,8 @@
     "noPostsThisDay": "No posts on this day.",
     "selectADay": "Select a day.",
     "tipoLabel": {
-      "feed": "Feed",
-      "reels": "Reels",
+      "feed": "Image",
+      "reels": "Vertical video",
       "stories": "Stories",
       "carrossel": "Carousel"
     },

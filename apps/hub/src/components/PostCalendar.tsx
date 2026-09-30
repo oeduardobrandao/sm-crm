@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { CONTENT_FORMAT_LABELS, type ContentFormat } from '@mesaas/platforms';
 import { clientStatusOf } from '../lib/postView';
 import type { HubPost } from '../types';
 
@@ -29,13 +30,6 @@ const TIPO_COLOR: Record<string, string> = {
   reels: '#8b5cf6',
   stories: '#f59e0b',
   carrossel: '#10b981',
-};
-
-const TIPO_LABEL_PT: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
 };
 
 const STATUS_LABEL_PT: Record<string, string> = {
@@ -70,7 +64,7 @@ export function PostCalendar({ posts }: Props) {
     return t(`weekdaysShort.${i}`, WEEKDAYS_SHORT_PT[i]);
   }
   function tipoLabel(tipo: string) {
-    return t(`calendar.tipoLabel.${tipo}`, TIPO_LABEL_PT[tipo] ?? tipo);
+    return t(`calendar.tipoLabel.${tipo}`, CONTENT_FORMAT_LABELS[tipo as ContentFormat] ?? tipo);
   }
   function statusLabel(status: string) {
     return t(`calendar.statusLabel.${status}`, STATUS_LABEL_PT[status] ?? status);
