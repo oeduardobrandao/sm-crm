@@ -290,3 +290,51 @@ begin
   insert into post_targets (conta_id, post_id, platform) values (v_ws_a, v_p_a, 'geral');
 end $$;
 rollback;
+
+-- 5. Automacoes de comentario do Instagram: post so Geral (platform 'other')
+--    nao e alvo (migration 20260929100003)
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_wf bigint;
+  v_p bigint; v_auto uuid; v_plat text; v_rejected boolean;
+  v_marked int; v_cleared int; v_stamp timestamptz;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_instagram_automation": true}'::jsonb);
+  insert into auth.users (id) values (v_uid);
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'Geral', 'ativo', array['geral']) returning id into v_wf;
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf, v_ws, 'So Geral', 'feed') returning id, platform into v_p, v_plat;
+  assert v_plat = 'other', format('post de quadro geral deveria ser other, veio %s', v_plat);
+
+  -- resolver: post other nao e alvo de automacao do Instagram
+  v_rejected := false;
+  begin
+    insert into instagram_comment_automations
+      (conta_id, client_id, name, keywords, dm_message, workflow_post_id)
+      values (v_ws, v_cli, 'Geral', array['x'], 'y', v_p);
+  exception when sqlstate 'P0001' then
+    assert sqlerrm like '%must be an instagram post%', format('wrong msg: %s', sqlerrm);
+    v_rejected := true;
+  end;
+  assert v_rejected, 'post so Geral (other) nao pode ser alvo de automacao do Instagram';
+
+  -- reconcile: post other 'postado' sem media NAO e orfao do Instagram
+  alter table instagram_comment_automations disable trigger ica_a1_resolve_workflow_post_target;
+  update workflow_posts set status = 'postado', published_at = now() where id = v_p;
+  insert into instagram_comment_automations
+    (conta_id, client_id, name, keywords, dm_message, workflow_post_id, ativo)
+    values (v_ws, v_cli, 'Pendente other', array['x'], 'y', v_p, true) returning id into v_auto;
+  alter table instagram_comment_automations enable trigger ica_a1_resolve_workflow_post_target;
+
+  select marked, cleared into v_marked, v_cleared from reconcile_unlinked_automation_targets();
+  select target_unlinked_at into v_stamp from instagram_comment_automations where id = v_auto;
+  assert v_stamp is null, 'reconcile carimbou automacao cujo post e other (nao e post do Instagram)';
+end $$;
+rollback;
