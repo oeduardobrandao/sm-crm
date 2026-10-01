@@ -9,13 +9,30 @@ vi.mock('../../../context/AuthContext', () => ({
 }));
 
 vi.mock('../Sidebar', () => ({
-  default: ({ isDrawer, isOpen }: { isDrawer?: boolean; isOpen?: boolean }) => (
+  default: ({
+    isDrawer,
+    isOpen,
+    collapsible,
+    pinned,
+    onTogglePinned,
+  }: {
+    isDrawer?: boolean;
+    isOpen?: boolean;
+    collapsible?: boolean;
+    pinned?: boolean;
+    onTogglePinned?: () => void;
+  }) => (
     <div
       data-testid="sidebar"
       data-drawer={String(Boolean(isDrawer))}
       data-open={String(Boolean(isOpen))}
+      data-collapsible={String(Boolean(collapsible))}
+      data-pinned={String(Boolean(pinned))}
     >
       Sidebar
+      <button type="button" onClick={onTogglePinned}>
+        Pin
+      </button>
     </div>
   ),
 }));
@@ -121,6 +138,7 @@ function setCanSeeFinancials(
 }
 
 beforeEach(() => {
+  localStorage.clear();
   // Default: unrestricted. Non-financial routes render regardless of this
   // value, so only the financial-guard tests below need to vary it.
   setCanSeeFinancials(true);
@@ -237,6 +255,55 @@ describe('AppLayout', () => {
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-drawer', 'false');
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-open', 'false');
     expect(document.querySelector('.tablet-drawer-backdrop')).toBeNull();
+  });
+
+  it('defaults the desktop sidebar to the rail, and pinning insets the content', async () => {
+    setViewport(1280);
+    mockMatchMedia(false);
+
+    const { container, unmount } = renderLayout();
+    await screen.findByTestId('global-banner');
+    const shell = container.querySelector('.app-container')!;
+
+    // Unpinned by default: the content sits next to the 64px rail.
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-collapsible', 'true');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'false');
+    expect(shell).toHaveAttribute('data-sidebar-collapsed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'true');
+    expect(shell).not.toHaveAttribute('data-sidebar-collapsed');
+    expect(localStorage.getItem('sidebar-pinned')).toBe('1');
+
+    unmount();
+    const { container: again } = renderLayout();
+    await screen.findByTestId('global-banner');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'true');
+    expect(again.querySelector('.app-container')).not.toHaveAttribute('data-sidebar-collapsed');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+    expect(again.querySelector('.app-container')).toHaveAttribute('data-sidebar-collapsed', 'true');
+    expect(localStorage.getItem('sidebar-pinned')).toBe('0');
+  });
+
+  it('never applies the rail to the tablet drawer, and restores it on widening', async () => {
+    setViewport(900);
+    const mediaQueryList = mockMatchMedia(true);
+
+    const { container } = renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-collapsible', 'false');
+    expect(container.querySelector('.app-container')).not.toHaveAttribute('data-sidebar-collapsed');
+
+    act(() => {
+      mediaQueryList.dispatch(false);
+    });
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-collapsible', 'true');
+    expect(container.querySelector('.app-container')).toHaveAttribute(
+      'data-sidebar-collapsed',
+      'true',
+    );
   });
 
   it('scrolls the main content back to the top when the route changes', async () => {

@@ -656,7 +656,9 @@ body {
 }
 
 .topbar-left {
-  width: var(--sidebar-width);
+  /* Fixed, not var(--sidebar-width): the collapsed rail shrinks that var to
+     64px, which can't fit the toggle + logo. */
+  width: 260px;
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -925,7 +927,7 @@ body {
   /* Sized by flex (see the :has rule below), NOT by height. Any fixed height
      (100dvh, then 100%) overflows the clipped .main-content by whatever the
      shell renders ABOVE the page in flow (the context-help "Artigos
-     relacionados" bar, ~48px), cutting off the bottom strip of the page —
+     relacionados" bar used to, ~48px), cutting off the bottom strip of the page —
      the Arquivos storage meter lived there, invisible on every viewport. */
   height: auto;
   flex: 1 1 0;
@@ -9340,6 +9342,157 @@ a.mention-chip:hover {
   transform: translateX(0);
 }
 
+/* Desktop sidebar: icon rail by default, expands OVER the content on hover
+   (.sidebar--overlay), and pinning (Sidebar's toggle) keeps it open with the
+   content beside it. AppLayout sets data-sidebar-collapsed only while
+   unpinned and static; the media query is the CSS-side guard so it can never
+   touch the tablet drawer. .main-content reads --sidebar-width, so only
+   pinning moves the content; hovering only widens the sidebar itself.
+
+   Rail and expanded share one left-anchored layout and the rail just clips it
+   to 64px: hovering is pure width growth, nothing reflows. Text fades with
+   opacity, so labels stay the links' accessible names. */
+@media (min-width: 1101px) {
+  .app-container[data-sidebar-collapsed] {
+    --sidebar-width: 64px;
+  }
+
+  .sidebar {
+    transition:
+      width 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+
+  .sidebar--overlay {
+    width: 260px;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.12);
+  }
+
+  [data-theme='dark'] .sidebar--overlay {
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.45);
+  }
+
+  /* Same horizontal insets as .sidebar-scrollable + .sidebar-sub-link, so the
+     toggle's icon lines up with the nav icons, in the rail and expanded. */
+  .sidebar-pin-row {
+    display: flex;
+    padding: 0.5rem 0.75rem 0;
+    flex-shrink: 0;
+  }
+
+  .sidebar-pin-btn {
+    display: flex;
+    align-items: center;
+    padding: 0.3rem 0.75rem;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s,
+      opacity 0.15s;
+  }
+
+  .sidebar-pin-btn:hover {
+    background: var(--surface-hover);
+    color: var(--text-main);
+  }
+
+  .sidebar-pin-btn[aria-pressed='true'] {
+    color: var(--text-main);
+  }
+
+  .sidebar-sub-label {
+    white-space: nowrap;
+  }
+
+  /* Centres the 32px avatar in the 64px rail. Applied in every desktop state,
+     not just the rail, so hovering doesn't shift it. */
+  .sidebar-bottom {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .sidebar-user-menu {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .sidebar-sub-link {
+    position: relative;
+  }
+
+  /* nowrap: in the 64px rail a two-word header ("Visão geral") would wrap to
+     two lines -- invisible, but it pushes every item below it down, so the
+     icons would jump on hover. */
+  .sidebar-group-label {
+    position: relative;
+    white-space: nowrap;
+  }
+
+  .sidebar-sub-label,
+  .sidebar-group-label > *,
+  .user-name-text,
+  .sidebar-user-trigger > i {
+    transition: opacity 0.15s ease;
+  }
+
+  /* .sidebar-scrollable already clips x, but .sidebar-bottom doesn't: anything
+     past 64px there has to fade or it paints over the page. */
+  .sidebar--rail .sidebar-sub-label,
+  .sidebar--rail .sidebar-group-label > *,
+  .sidebar--rail .user-name-text,
+  .sidebar--rail .sidebar-user-trigger > i {
+    opacity: 0;
+  }
+
+  /* A short dash where each group header sits. */
+  .sidebar--rail .sidebar-group-label::after {
+    content: '';
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    width: 1rem;
+    height: 1px;
+    background: var(--border-color);
+  }
+
+  .sidebar--rail .sidebar-scrollable {
+    scrollbar-width: none;
+  }
+
+  .sidebar--rail .sidebar-scrollable::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* The unread count sits at the row's far end, clipped in the rail: shrink it
+     to a dot on the icon instead. */
+  .sidebar--rail .nav-badge--count {
+    position: absolute;
+    top: 2px;
+    left: 30px;
+    min-width: 8px;
+    height: 8px;
+    padding: 0;
+    margin: 0;
+    font-size: 0;
+    box-shadow: 0 0 0 2px var(--surface-main);
+  }
+
+  [data-theme='dark'] .sidebar--rail .nav-badge--count {
+    box-shadow: 0 0 0 2px var(--sidebar-bg);
+  }
+}
+
+@media (min-width: 1101px) and (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+}
+
 @media (min-width: 768px) and (max-width: 1100px) {
   /* Hide desktop sidebar and mobile bottom nav */
   .sidebar {
@@ -12125,40 +12278,82 @@ a.hub-fill__row-inner:hover {
   }
 }
 
+/* Floating corner button, never in flow: an in-flow row here pushed every
+   page title ~48px down. Collapsed it shows the icon and count; hovering,
+   focusing or opening it slides the label out to the left. */
 .context-help {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 45;
   display: flex;
-  justify-content: flex-end;
-  min-height: 36px;
-  margin-bottom: 0.75rem;
 }
 
 .context-help__trigger {
-  min-height: 44px;
-  gap: 0.45rem;
+  height: 40px;
+  gap: 0;
+  padding: 0 0.6rem;
+  border-radius: 999px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow, 0 2px 8px rgba(0, 0, 0, 0.08));
   color: var(--text-muted);
 }
 
-/* Below 768px the row would otherwise be the first thing every page renders
-   -- a full-width line before the title. Pull it out of flow entirely (fixed,
-   floating under the topbar) instead, and collapse it to an icon-only pill so
-   it reads as a small badge, not a header row competing with the page's own. */
+.context-help__trigger:hover,
+.context-help__trigger[data-state='open'] {
+  background: var(--card-bg);
+  color: var(--text-main);
+}
+
+.context-help__label {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  transition:
+    max-width 0.22s ease,
+    opacity 0.16s ease,
+    margin 0.22s ease;
+}
+
+.context-help__trigger .context-help__count {
+  margin-left: 0.4rem;
+}
+
+.context-help__trigger:hover .context-help__label,
+.context-help__trigger:focus-visible .context-help__label,
+.context-help__trigger[data-state='open'] .context-help__label {
+  max-width: 12rem;
+  margin-left: 0.45rem;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-help__label {
+    transition: none;
+  }
+}
+
+/* >=1101px the Guia pill owns bottom: 20px of the same corner: sit above it. */
+@media (min-width: 1101px) {
+  body:has(.guide-pill) .context-help {
+    bottom: 72px;
+  }
+}
+
+/* Phones: the bottom nav owns the bottom edge, so float under the topbar
+   instead, icon-only (no hover on touch to reveal the label). */
 @media (max-width: 767px) {
   .context-help {
-    position: fixed;
     top: calc(var(--topbar-height) + var(--banner-height, 0px) + 10px);
     right: 14px;
-    z-index: 45;
-    min-height: 0;
-    margin-bottom: 0;
+    bottom: auto;
   }
 
   .context-help__trigger {
-    min-height: 36px;
-    padding: 0.4rem 0.55rem;
-    border-radius: 999px;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    height: 36px;
+    padding: 0 0.55rem;
   }
 
   .context-help__label {
