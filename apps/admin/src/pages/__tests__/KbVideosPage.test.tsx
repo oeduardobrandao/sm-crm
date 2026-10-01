@@ -9,6 +9,7 @@ vi.mock('../../lib/api', () => ({
   getKbViewStats: vi.fn(),
   refreshKbVideo: vi.fn(),
   reorderKbVideos: vi.fn(),
+  upsertKbVideo: vi.fn(),
   upsertKbVideoSeries: vi.fn(),
   deleteKbVideoSeries: vi.fn(),
 }));
@@ -20,7 +21,9 @@ import {
   listKbVideoSeries,
   refreshKbVideo,
   reorderKbVideos,
+  upsertKbVideo,
 } from '../../lib/api';
+import { toast } from 'sonner';
 import KbVideosPage from '../KbVideosPage';
 
 const series = [
@@ -139,6 +142,47 @@ describe('KbVideosPage', () => {
         { id: 1, display_order: 20 },
       ]),
     );
+  });
+
+  it('bulk-publishes the selected videos one by one and reports refusals', async () => {
+    vi.mocked(upsertKbVideo).mockReset();
+    vi.mocked(upsertKbVideo)
+      .mockResolvedValueOnce({ video: videos[0] } as never)
+      .mockRejectedValueOnce(new Error('only a ready video can be published'));
+    renderPage();
+    await screen.findAllByRole('link', { name: 'Primeiro acesso' });
+    expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Selecionar todos os vídeos de Primeiros passos' }),
+    );
+    expect(screen.getByText('2 selecionados')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Publicar/ }));
+
+    await waitFor(() => expect(upsertKbVideo).toHaveBeenCalledTimes(2));
+    expect(upsertKbVideo).toHaveBeenCalledWith({ video_id: 1, status: 'published' });
+    expect(upsertKbVideo).toHaveBeenCalledWith({ video_id: 2, status: 'published' });
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        '1 item publicado. 1 falhou. Só vídeos com o arquivo pronto podem ser publicados.',
+      ),
+    );
+    expect(screen.queryByRole('toolbar', { name: 'Ações em massa' })).toBeNull();
+  });
+
+  it('bulk-unpublishes a single selected video', async () => {
+    vi.mocked(upsertKbVideo).mockReset();
+    vi.mocked(upsertKbVideo).mockResolvedValue({ video: videos[0] } as never);
+    renderPage();
+    await screen.findAllByRole('link', { name: 'Primeiro acesso' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Selecionar Primeiro acesso' }));
+    expect(screen.getByText('1 selecionado')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Despublicar/ }));
+    await waitFor(() =>
+      expect(upsertKbVideo).toHaveBeenCalledWith({ video_id: 1, status: 'draft' }),
+    );
+    expect(upsertKbVideo).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('1 item despublicado.'));
   });
 
   it('does not auto-refresh a pending upload that is still fresh', async () => {

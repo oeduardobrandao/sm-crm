@@ -819,6 +819,10 @@ export function deleteKbArticle(article_id: string) {
   return adminApi<{ message: string }>('delete-kb-article', { article_id });
 }
 
+export function reorderKbArticles(items: Array<{ id: string; display_order: number }>) {
+  return adminApi<{ message: string }>('reorder-kb-articles', { items });
+}
+
 export function listKbContextLinks(article_id: string) {
   return adminApi<{ links: KbContextLink[] }>('list-kb-context-links', { article_id });
 }
