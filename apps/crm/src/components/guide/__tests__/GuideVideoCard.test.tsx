@@ -104,4 +104,22 @@ describe('GuideVideoCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver na Central de Ajuda' }));
     expect(props.onOpenInHelpCenter).toHaveBeenCalledWith('conectar-instagram');
   });
+
+  it('foco: não rouba o foco na montagem', () => {
+    renderCard();
+    expect(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' })).not.toHaveFocus();
+  });
+
+  it('foco: ao abrir vai para Fechar vídeo', () => {
+    renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' }));
+    expect(screen.getByRole('button', { name: 'Fechar vídeo' })).toHaveFocus();
+  });
+
+  it('foco: ao fechar volta para o botão do card', () => {
+    renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar vídeo' }));
+    expect(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' })).toHaveFocus();
+  });
 });

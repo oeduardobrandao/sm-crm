@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Check, Play, RotateCcw } from 'lucide-react';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import { Button, buttonVariants } from '../ui/button';
@@ -55,6 +55,16 @@ export function GuideVideoCard({
   onOpenInHelpCenter,
 }: GuideVideoCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const cardRef = useRef<HTMLButtonElement>(null);
+  // Set only by "Fechar vídeo", so the card never takes focus when the guide page first renders.
+  const returnFocus = useRef(false);
+
+  useEffect(() => {
+    if (!expanded && returnFocus.current) {
+      returnFocus.current = false;
+      cardRef.current?.focus();
+    }
+  }, [expanded]);
 
   if (expanded) {
     return (
@@ -62,7 +72,10 @@ export function GuideVideoCard({
         video={video}
         progress={progress}
         onSave={onSave}
-        onClose={() => setExpanded(false)}
+        onClose={() => {
+          returnFocus.current = true;
+          setExpanded(false);
+        }}
         onOpenInHelpCenter={onOpenInHelpCenter}
       />
     );
@@ -75,6 +88,7 @@ export function GuideVideoCard({
 
   return (
     <button
+      ref={cardRef}
       type="button"
       aria-label={`${watched ? 'Ver de novo' : 'Assistir'} o vídeo ${video.title}`}
       onClick={() => {
@@ -239,6 +253,12 @@ function ExpandedVideo({
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const { handlers, positionRef, resumeRef } = usePlaybackProgress(video.id, progress, onSave);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // ExpandedVideo only mounts after the user opened the card, so this never steals focus on render.
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
 
   return (
     <div style={{ marginTop: 14 }}>
@@ -299,7 +319,7 @@ function ExpandedVideo({
           <button type="button" style={linkButton} onClick={() => onOpenInHelpCenter(video.slug)}>
             Ver na Central de Ajuda
           </button>
-          <button type="button" style={linkButton} onClick={onClose}>
+          <button ref={closeRef} type="button" style={linkButton} onClick={onClose}>
             Fechar vídeo
           </button>
         </span>
