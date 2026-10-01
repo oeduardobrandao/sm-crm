@@ -226,6 +226,7 @@ import {
   detachPostsFromWorkflow,
   detachPostsKeepingProcess,
   movePostsToNewFlow,
+  addWorkflowPost,
 } from '@/store';
 import { resolveInlineImageUrls } from '@/services/inlineImage';
 
@@ -238,6 +239,7 @@ const mockSyncMentions = vi.mocked(syncMentions);
 const mockDetach = vi.mocked(detachPostsFromWorkflow);
 const mockDetachKeepingProcess = vi.mocked(detachPostsKeepingProcess);
 const mockMoveToNewFlow = vi.mocked(movePostsToNewFlow);
+const mockAddPost = vi.mocked(addWorkflowPost);
 
 function renderDrawer(
   qc: QueryClient,
@@ -1176,5 +1178,97 @@ describe('WorkflowDrawer mover para outro fluxo', () => {
     // with the app's 30s staleTime a recently-opened destination would
     // otherwise render the remapped value as "Vazio" from a stale cache.
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-select-options', 77] });
+  });
+});
+
+describe('WorkflowDrawer scrolls the targeted post into view', () => {
+  const makePost = (id: number, ordem: number) =>
+    ({
+      id,
+      workflow_id: 10,
+      titulo: `Post ${id}`,
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem,
+      status: 'rascunho',
+      responsavel_id: null,
+      scheduled_at: null,
+      ig_caption: null,
+      platform: 'instagram',
+    }) as never;
+
+  // jsdom has no layout: fake a 500px-tall drawer body at y=100 and push the
+  // post with `targetId` 800px below its top edge. jsdom's scrollTop is also
+  // inert, so back it with a map to read what the drawer wrote.
+  let restore: () => void;
+  const scrollTops = new WeakMap<Element, number>();
+  const stubLayout = (targetId: number) => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const scrolled = (top: number, height: number) => {
+          const body = this.closest('.drawer-body');
+          const t = top - (body ? (scrollTops.get(body) ?? 0) : 0);
+          return { top: t, bottom: t + height } as DOMRect;
+        };
+        if (this.classList.contains('drawer-body')) return { top: 100, bottom: 600 } as DOMRect;
+        if (this.dataset.postId === String(targetId)) return scrolled(900, 1000);
+        return scrolled(120, 40);
+      });
+    const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+    Object.defineProperty(Element.prototype, 'scrollTop', {
+      configurable: true,
+      get(this: Element) {
+        return scrollTops.get(this) ?? 0;
+      },
+      set(this: Element, v: number) {
+        scrollTops.set(this, v);
+      },
+    });
+    restore = () => {
+      rectSpy.mockRestore();
+      if (desc) Object.defineProperty(Element.prototype, 'scrollTop', desc);
+    };
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+  afterEach(() => restore?.());
+
+  it('aligns a deep-linked post with the top of the drawer body', async () => {
+    mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(2, 1)]);
+    stubLayout(2);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = renderDrawer(qc, { initialPostId: 2 });
+
+    const body = container.querySelector('.drawer-body')!;
+    await waitFor(() => expect(body.scrollTop).toBe(800));
+  });
+
+  it('leaves the scroll alone when no post was targeted', async () => {
+    mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(2, 1)]);
+    stubLayout(2);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = renderDrawer(qc, { initialPostId: undefined });
+
+    await screen.findByText('Post 2');
+    expect(container.querySelector('.drawer-body')!.scrollTop).toBe(0);
+  });
+
+  it('scrolls to the post "Novo Post" just created once it renders', async () => {
+    mockGetPosts.mockResolvedValue([makePost(1, 0)]);
+    mockAddPost.mockResolvedValue(makePost(3, 1));
+    stubLayout(3);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = renderDrawer(qc, { initialPostId: undefined });
+    await screen.findByText('Post 1');
+
+    mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(3, 1)]);
+    fireEvent.click(screen.getByRole('button', { name: /Novo Post/ }));
+
+    const body = container.querySelector('.drawer-body')!;
+    await waitFor(() => expect(body.scrollTop).toBe(800));
   });
 });
