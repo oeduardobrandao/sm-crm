@@ -34,11 +34,13 @@ import {
   reorderPostMedia,
   detectKind,
   uploadMany,
+  updateVideoThumbnail,
 } from '../../../services/postMedia';
+import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { extractVideoFrame } from '../../../utils/videoFrame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { MediaAdjustmentDialog } from './MediaAdjustmentDialog';
-import { validateMedia } from '../instagramLimits';
+import { IMAGE_AR_MIN, validateMedia } from '../instagramLimits';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../../store';
@@ -70,6 +72,19 @@ interface PostMediaGalleryProps {
 // supabase/functions/_shared/instagram-publish-utils.ts — keep in sync.
 // Instagram's Content Publishing API caps carousels at 10 (the native app allows 20).
 const CAROUSEL_MAX_ITEMS = 10;
+
+/** Exactly one video plus one image taller than the feed allows (3:4): the
+ *  shape a Reel cover takes when it's added as a gallery file instead of as
+ *  the video's thumbnail. A feed-ratio image beside a video is a legit
+ *  carousel slide and is left alone. */
+function findMisplacedReelCover(media: PostMedia[]): { video: PostMedia; image: PostMedia } | null {
+  if (media.length !== 2) return null;
+  const video = media.find((m) => m.kind === 'video');
+  const image = media.find((m) => m.kind === 'image');
+  if (!video || !image || video.media_lost_at || image.media_lost_at || !image.url) return null;
+  if (!image.width || !image.height || image.width / image.height >= IMAGE_AR_MIN) return null;
+  return { video, image };
+}
 
 export function PostMediaGallery({
   postId,
@@ -144,6 +159,7 @@ export function PostMediaGallery({
     Map<string, { name: string; pct: number; status: 'uploading' | 'done' | 'error' }>
   >(new Map());
   const [dragOver, setDragOver] = useState(false);
+  const [movingCover, setMovingCover] = useState(false);
 
   // Preload images into browser cache so lightbox opens instantly.
   const preloadCache = useRef<HTMLImageElement[]>([]);
@@ -168,9 +184,18 @@ export function PostMediaGallery({
   // Reel — it should follow the same feed ratios as an image there instead
   // of being pushed toward the Reel-only 9:16 frame.
   const isCarousel = !forStories && media.length > 1;
+  // A Reel's cover is the video's thumbnail. Uploaded as a second file, a
+  // portrait cover turns the post into a 2-slide carousel and fails the feed
+  // ratio check. Point the user at the thumbnail instead of "ajustar proporção",
+  // and judge the video by Reel rules since that's what it becomes once moved.
+  const reelCover = targetsInstagram && !forStories ? findMisplacedReelCover(media) : null;
+  const validationOpts = { forStories, isCarousel: isCarousel && !reelCover };
   const invalidMedia = targetsInstagram
     ? media.filter(
-        (m) => !m.media_lost_at && validateMedia([m], { forStories, isCarousel }).length > 0,
+        (m) =>
+          m !== reelCover?.image &&
+          !m.media_lost_at &&
+          validateMedia([m], validationOpts).length > 0,
       )
     : [];
   const portraitSuggestions = targetsInstagram
@@ -407,6 +432,35 @@ export function PostMediaGallery({
     }
   }
 
+  async function handleUseAsReelCover() {
+    if (!reelCover || movingCover) return;
+    const { video, image } = reelCover;
+    setMovingCover(true);
+    try {
+      await trackUnsavedWork(
+        (async () => {
+          const res = await fetchWithRetry(image.url!, { cache: 'no-store' });
+          if (!res.ok) throw new Error(t('mediaGallery.reelCoverFetchError'));
+          const blob = await res.blob();
+          const raw = new File([blob], image.original_filename, {
+            type: blob.type || image.mime_type,
+          });
+          await updateVideoThumbnail(video.id, await encodeImageAsJpeg(raw));
+          // Only drop the slide once the cover is safely on the video.
+          await deletePostMedia(image.id);
+        })(),
+      );
+      toast.success(t('mediaGallery.reelCoverMoved'));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setMovingCover(false);
+      refreshWithCovers();
+      // Dropping the slide can change which file the grid tile shows.
+      qc.invalidateQueries({ queryKey: ['workflow-grid'] });
+    }
+  }
+
   async function handleDelete(id: number) {
     try {
       await deletePostMedia(id);
@@ -495,6 +549,29 @@ export function PostMediaGallery({
 
   return (
     <div className="space-y-3">
+      {reelCover && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-3 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-100">
+          <div className="min-w-[14rem] flex-1 space-y-1 text-xs">
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <AlertTriangle size={16} className="shrink-0" />
+              {t('mediaGallery.reelCoverTitle')}
+            </p>
+            <p className="break-all font-semibold">{reelCover.image.original_filename}</p>
+            <p>{t('mediaGallery.reelCoverDesc')}</p>
+          </div>
+          {canAdjust && (
+            <button
+              type="button"
+              disabled={movingCover}
+              onClick={handleUseAsReelCover}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#12151a] px-3 py-2 text-xs font-semibold text-white hover:bg-black disabled:opacity-60"
+            >
+              <ImageIcon size={14} />
+              {movingCover ? t('mediaGallery.reelCoverMoving') : t('mediaGallery.reelCoverAction')}
+            </button>
+          )}
+        </div>
+      )}
       {invalidMedia.length > 0 && (
         <div className="space-y-3 rounded-xl bg-amber-50 px-3 py-3 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-100">
           <p className="flex items-center gap-2 text-sm font-semibold">
@@ -507,7 +584,7 @@ export function PostMediaGallery({
             <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <div className="min-w-0 flex-1">
                 <p className="break-all font-semibold">{m.original_filename}</p>
-                {validateMedia([m], { forStories, isCarousel }).map((issue) => (
+                {validateMedia([m], validationOpts).map((issue) => (
                   <p key={issue.message}>{issue.message}</p>
                 ))}
               </div>
