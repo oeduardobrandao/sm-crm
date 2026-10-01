@@ -4,10 +4,11 @@ import { classifyDeadline } from './deadlineStatus';
 import { matchesDeadlineFilter } from './etapaPrazo';
 
 /**
- * The Fluxos-mode page filters applied to an individual post (mirror of the
- * `filteredCards` chain in EntregasPage, field by field, in the same order).
+ * The Fluxos-mode page filters applied to an individual post (mirror of
+ * `filterBoardCards` in boardFilters.ts, field by field, in the same order: a
+ * new filter step goes in both).
  * filterTipos / filterPostStatus only exist on the Publicações bar and are not
- * read here, exactly like `filteredCards`.
+ * read here, exactly like `filterBoardCards`.
  */
 export function matchesPostEntityFilters(
   entity: PostEntity,

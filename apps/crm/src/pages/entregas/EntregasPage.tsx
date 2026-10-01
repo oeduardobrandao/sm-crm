@@ -831,7 +831,8 @@ export default function EntregasPage() {
 
   // Processo individual ativo de cada avulso, pela projeção que o quadro de
   // Fluxos já resolve (etapa ativa, responsável e prazo). Declarado ANTES de
-  // filteredPosts de propósito: aquele useMemo lê este mapa durante o render.
+  // stageOfPost de propósito: o useCallback dele lê este mapa nas dependências
+  // durante o render.
   const postEntityByPostId = useMemo(() => {
     if (postEntities.length === 0) return EMPTY_POST_ENTITY_MAP;
     return new Map(postEntities.map((e) => [e.process.post_id, e]));
@@ -897,9 +898,10 @@ export default function EntregasPage() {
     [activePosts, filters, stageOfPost],
   );
 
-  // Mirrors exactly the fields filteredPosts reads above -- a post-mode filter
-  // this omits would silently show "Ajuste os filtros" instead of the create-avulso
-  // empty state (or vice versa) despite `posts` really being filtered by it.
+  // Mirrors exactly the fields boardFilters.filterActivePosts reads (what
+  // filteredPosts above runs) -- a post-mode filter this omits would silently
+  // show "Ajuste os filtros" instead of the create-avulso empty state (or vice
+  // versa) despite `posts` really being filtered by it.
   const postsFiltersActive =
     !!filters.filterSearch ||
     filters.filterClientes.length > 0 ||
@@ -921,9 +923,9 @@ export default function EntregasPage() {
   );
 
   // Posts individuais passam pelos MESMOS filtros do modo Fluxos (entityFilters
-  // espelha a cadeia acima campo a campo). O filtro de entidade só decide o
-  // que o Kanban e a Lista recebem; Calendário e Gráfico seguem lendo
-  // filteredCards (spec §4.1: "não afeta ... o gráfico").
+  // espelha boardFilters.filterBoardCards campo a campo). O filtro de entidade
+  // só decide o que o Kanban e a Lista recebem; Calendário e Gráfico seguem
+  // lendo filteredCards (spec §4.1: "não afeta ... o gráfico").
   const filteredPostEntities = useMemo(
     () =>
       postEntities.length === 0
@@ -960,7 +962,9 @@ export default function EntregasPage() {
   // Painel Responsáveis (Lista): contagem por responsável sobre as linhas que a
   // Lista mostraria SEM o filtro de responsável (facetas), com a regra de
   // "responsável" de cada modo e o mesmo filtro de entidade da Lista de Fluxos.
-  // Só roda com o painel aberto.
+  // Só roda com o painel aberto. Reexecuta o pipeline da Lista menos o filtro
+  // de responsável (filterBoardCards + matchesPostEntityFilters + o switch de
+  // entidade, ou filterActivePosts): um passo novo lá tem de entrar aqui também.
   const responsavelCounts = useMemo(() => {
     if (activeView !== 'list' || !responsaveisOpen) return EMPTY_COUNTS;
     const semResponsavel: FilterState = { ...filters, filterMembros: [] };

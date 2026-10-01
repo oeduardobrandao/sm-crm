@@ -12,7 +12,9 @@ import { postMatchesStatusFilter } from './statusRegistry';
 
 /** Filtros do modo Fluxos sobre os cards de fluxo. Every dropdown filter is
  *  multi-select: empty means "no filter", otherwise a card matches if it hits
- *  ANY of the selected values. */
+ *  ANY of the selected values. Keep in sync with matchesPostEntityFilters
+ *  (entityFilters.ts), which applies this same chain to individual posts: a new
+ *  filter step goes in both. */
 export function filterBoardCards(
   cards: BoardCard[],
   filters: FilterState,
@@ -69,6 +71,8 @@ export function filterBoardCards(
  * etapa, responsável e prazo aplicam à etapa em que ele está (`stageOf`: a do
  * fluxo para um post amarrado, a do processo individual para um avulso que
  * tenha um). Templates e o status de prazo são de fluxo e não são lidos aqui.
+ * Os campos lidos aqui têm de bater com `postsFiltersActive` (EntregasPage),
+ * que decide entre "Ajuste os filtros" e o estado vazio de criar avulso.
  */
 export function filterActivePosts(
   posts: ActivePost[],
