@@ -1,6 +1,7 @@
 import { Skeleton } from '@/components/ui/skeleton';
 import { VideoPlaylistBlock } from './VideoPlaylistBlock';
 import { useKbVideoSeries, useVideoProgress } from './useKbVideos';
+import { recordKbViewSafely } from '../useRecordKbView';
 
 /** Top of /ajuda. Waits for BOTH queries so the first selection sees the user's progress, keeps
  * the block's height while loading, and renders nothing when there is no visible series (or the
@@ -21,6 +22,7 @@ export function VideoPlaylistHero({ requestedSlug }: { requestedSlug: string | n
       onSaveProgress={save}
       requestedSlug={requestedSlug}
       collapsible
+      onFirstPlay={(videoId) => recordKbViewSafely({ videoId })}
     />
   );
 }
