@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Contagem de visualizações da Central de Ajuda (migration 20261001000001).
+-- Contagem de visualizações da Central de Ajuda (migration 20261001000010).
 -- (a) grants: tabela fechada para anon/authenticated; record_kb_view só authenticated;
 --     kb_view_stats só service_role. (b) record_kb_view ignora conteúdo oculto, deduplica
 --     por 30 min, exige exatamente um alvo. (c) kb_view_stats: janelas 30d/total, pessoas

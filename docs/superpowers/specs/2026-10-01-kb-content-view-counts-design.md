@@ -27,7 +27,7 @@ all time**. Video rows also show how many people finished the video.
 
 ## Data model
 
-Migration `20261001000001_kb_content_views.sql` (renumber above main's tail at PR time).
+Migration `20261001000010_kb_content_views.sql` (renumber above main's tail at PR time).
 
 ```sql
 CREATE TABLE kb_content_views (

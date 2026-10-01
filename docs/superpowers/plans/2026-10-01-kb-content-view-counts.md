@@ -13,7 +13,7 @@
 ## Global constraints
 
 - Worktree: `/Users/eduardosouza/projects/sm-crm/.claude/worktrees/admin-content-view-counts-9aa3e3`, branch `claude/admin-content-view-counts-9aa3e3`. Run every command from there.
-- Migration filename: `supabase/migrations/20261001000001_kb_content_views.sql`. Before opening the PR, confirm the prefix is still above `ls supabase/migrations | tail -1` on `origin/main`, and renumber if it isn't.
+- Migration filename: `supabase/migrations/20261001000010_kb_content_views.sql`. Before opening the PR, confirm the prefix is still above `ls supabase/migrations | tail -1` on `origin/main`, and renumber if it isn't.
 - Function grants list every role explicitly (`FROM PUBLIC, anon, authenticated, service_role`), because `REVOKE FROM PUBLIC` alone leaves Supabase's direct grants in place.
 - Edge functions never return raw error detail. `platform-admin/index.ts`'s catch-all already logs the error and returns a generic `500 Internal server error`, so handlers just `throw`.
 - User-facing copy is Portuguese, with **no em-dashes**; use `·` as the separator.
@@ -26,7 +26,7 @@
 ### Task 1: migration and entitlement suite
 
 **Files:**
-- Create: `supabase/migrations/20261001000001_kb_content_views.sql`
+- Create: `supabase/migrations/20261001000010_kb_content_views.sql`
 - Create: `supabase/tests/entitlements/99_kb_content_views.sql`
 
 **Interfaces:**
@@ -42,7 +42,7 @@ Create `supabase/tests/entitlements/99_kb_content_views.sql`:
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Contagem de visualizações da Central de Ajuda (migration 20261001000001).
+-- Contagem de visualizações da Central de Ajuda (migration 20261001000010).
 -- (a) grants: tabela fechada para anon/authenticated; record_kb_view só authenticated;
 --     kb_view_stats só service_role. (b) record_kb_view ignora conteúdo oculto, deduplica
 --     por 30 min, exige exatamente um alvo. (c) kb_view_stats: janelas 30d/total, pessoas
@@ -225,7 +225,7 @@ Expected: `FAIL 99_kb_content_views.sql`, with `relation "kb_content_views" does
 
 - [ ] **Step 3: write the migration**
 
-Create `supabase/migrations/20261001000001_kb_content_views.sql`:
+Create `supabase/migrations/20261001000010_kb_content_views.sql`:
 
 ```sql
 -- Contagem de visualizações da Central de Ajuda (spec 2026-10-01-kb-content-view-counts-design).
@@ -393,7 +393,7 @@ Expected: `PASS 99_kb_content_views.sql` and no `FAIL` lines. If an assertion me
 - [ ] **Step 5: commit**
 
 ```bash
-git add supabase/migrations/20261001000001_kb_content_views.sql supabase/tests/entitlements/99_kb_content_views.sql
+git add supabase/migrations/20261001000010_kb_content_views.sql supabase/tests/entitlements/99_kb_content_views.sql
 git commit -m "feat(kb): tabela kb_content_views, record_kb_view e kb_view_stats
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -1310,7 +1310,7 @@ Skip this step if nothing changed. Never stage `supabase/config.toml` (colima po
 
 Merging deploys the frontends immediately, so the backend has to go out first:
 
-1. Renumber the migration if `origin/main`'s tail has passed `20261001000001`.
+1. Renumber the migration if `origin/main`'s tail has passed `20261001000010`.
 2. Apply the migration to staging, then `npx supabase functions deploy platform-admin --project-ref wlyzhyfondykzpsiqsce --use-api`.
 3. Apply the migration to prod, then deploy `platform-admin` to prod the same way, with `--project-ref skjzpekeqefvlojenfsw`. `supabase/config.toml` already sets `verify_jwt = false` for `platform-admin` (it checks the JWT itself), and the deploy picks that up.
 4. Merge.
