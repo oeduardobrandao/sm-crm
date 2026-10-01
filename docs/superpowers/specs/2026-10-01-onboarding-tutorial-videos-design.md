@@ -73,7 +73,11 @@ guide (`closeForAction`) and navigates to `/ajuda/video/<first video slug of tha
 Series is found by slug `indo-alem`; absent or empty, the block is not rendered.
 
 Slugs are editable in the Admin video editor. Renaming one silently drops its card from the guide.
-That is the accepted failure mode; the guide never errors over a video.
+That is the accepted failure mode; the guide never errors over a video. The popup CTA has the same
+dependency: renaming `primeiro-acesso` while the popup is active sends its CTA to "Vídeo não
+encontrado". Accepted, not enforced: treat the 8 Primeiros Passos slugs as frozen, and if one must
+change, update `guideContent.tsx` (and the popup's `cta_url`, if it is still active) in the same
+change.
 
 ### Components
 
@@ -82,7 +86,12 @@ That is the accepted failure mode; the guide never errors over a video.
   - Collapsed: a single `<button>` holding the thumbnail (`thumbnail_url`, 16:9, duration badge
     via `formatDuration`), an eyebrow, the video title and a trailing `Assistir` pill.
     `featured` (home) is larger, on a `surface-1` fill, with `Comece por aqui`. `inline` (trail
-    pages) says `Prefere ver? Vídeo de 1 minuto` (`... de N minutos` from the duration).
+    pages) says `Prefere ver? Vídeo de 1 minuto`.
+  - Length copy, `videoLengthLabel(seconds)`: `max(1, round(seconds / 60))` minutes, so anything
+    under 90s (including sub-minute videos) reads `1 minuto`, otherwise `N minutos`. Null, zero or
+    non-finite duration gives `''`, and the eyebrow drops the length: `Comece por aqui` /
+    `Prefere ver? Assista ao vídeo`. The thumbnail's duration badge (`formatDuration`) is omitted
+    when it is `''`.
   - Watched (`isCompleted`): the eyebrow becomes `Assistido` with a check, the thumbnail dims
     behind a check, and the pill becomes `Ver de novo`.
   - Expanded on click: `VideoPlayer` with `controls playsInline autoPlay` (autoplay only after the
@@ -93,6 +102,8 @@ That is the accepted failure mode; the guide never errors over a video.
   - Fatal player error: the same `Não foi possível carregar este vídeo.` + `Tentar novamente` as
     `VideoStage`.
   - Fires `captureEvent('guide_video_played', { page: pageId | 'home', slug })` once per expansion.
+    `AnalyticsEvent` in `lib/analytics.ts` is a closed union: add `'guide_video_played'` next to
+    the other `guide_*` events.
 - **`usePlaybackProgress`** (`pages/ajuda/videos/usePlaybackProgress.ts`): extracted from
   `VideoStage` so both players save the same way. It owns the refs and returns the
   `onLoadedMetadata`, `onTimeUpdate`, `onPause` and `onEnded` handlers (resume, 10s interval save,
