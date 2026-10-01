@@ -6055,6 +6055,24 @@ body.role-agent input[name='valor_total'] {
   display: inline-flex;
 }
 
+/* A pill vira botão quando há data de vencimento: clicar alterna entre o
+   prazo relativo e a data (DeadlinePill). Zera o chrome nativo do botão. */
+.board-card-deadline-toggle {
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.board-card-deadline-toggle:hover {
+  filter: brightness(0.95);
+}
+
+.board-card-deadline-toggle:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+
 .board-card-prazo-type-inner {
   margin-left: 0.3rem;
   opacity: 0.6;
