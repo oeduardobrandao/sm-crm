@@ -1,20 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import { Button } from '@/components/ui/button';
 import type { KbVideo, KbVideoSeries } from '@/store/kbVideos';
 import { NextUpOverlay } from './NextUpOverlay';
-import {
-  isCompleted,
-  nextInSeries,
-  reachedCompletion,
-  resumePosition,
-  type ProgressMap,
-} from './playlist';
-
-/** How often playback position is persisted while the video plays. */
-const SAVE_INTERVAL_MS = 10_000;
+import { nextInSeries, type ProgressMap } from './playlist';
+import { usePlaybackProgress } from './usePlaybackProgress';
 
 interface VideoStageProps {
   video: KbVideo;
@@ -39,73 +31,13 @@ export function VideoStage({
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
-  const saveRef = useRef(onSaveProgress);
-  useEffect(() => {
-    saveRef.current = onSaveProgress;
-  });
-  const positionRef = useRef(0);
-  const lastSaveAtRef = useRef(0);
-  const completedRef = useRef(isCompleted(progress, video.id));
-  const resumeRef = useRef(resumePosition(progress, video.id));
-
-  useEffect(() => {
-    lastSaveAtRef.current = Date.now();
-  }, []);
-
-  const flush = useCallback(() => {
-    if (positionRef.current > 0) saveRef.current(video.id, positionRef.current, false);
-  }, [video.id]);
-
-  // Save on tab close/navigation away and when this stage unmounts (video switch, leaving /ajuda).
-  useEffect(() => {
-    window.addEventListener('pagehide', flush);
-    return () => {
-      window.removeEventListener('pagehide', flush);
-      flush();
-    };
-  }, [flush]);
-
   const next = nextInSeries(series, video.id);
-
-  const handleLoadedMetadata = (e: SyntheticEvent<HTMLVideoElement>) => {
-    const el = e.currentTarget;
-    const resume = resumeRef.current;
-    resumeRef.current = null;
-    if (resume !== null && (!Number.isFinite(el.duration) || resume < el.duration - 1)) {
-      el.currentTime = resume;
-    }
-  };
-
-  const handleTimeUpdate = (e: SyntheticEvent<HTMLVideoElement>) => {
-    const el = e.currentTarget;
-    positionRef.current = el.currentTime;
-    const now = Date.now();
-    if (!completedRef.current && reachedCompletion(el.currentTime, el.duration)) {
-      completedRef.current = true;
-      lastSaveAtRef.current = now;
-      saveRef.current(video.id, el.currentTime, true);
-      return;
-    }
-    if (now - lastSaveAtRef.current >= SAVE_INTERVAL_MS) {
-      lastSaveAtRef.current = now;
-      saveRef.current(video.id, el.currentTime, false);
-    }
-  };
-
-  const handlePause = (e: SyntheticEvent<HTMLVideoElement>) => {
-    positionRef.current = e.currentTarget.currentTime;
-    if (positionRef.current > 0) {
-      lastSaveAtRef.current = Date.now();
-      saveRef.current(video.id, positionRef.current, false);
-    }
-  };
-
-  const handleEnded = (e: SyntheticEvent<HTMLVideoElement>) => {
-    positionRef.current = e.currentTarget.currentTime;
-    completedRef.current = true;
-    saveRef.current(video.id, positionRef.current, true);
-    setEndState(next ? 'next' : 'done');
-  };
+  const { handlers, positionRef, resumeRef } = usePlaybackProgress(
+    video.id,
+    progress,
+    onSaveProgress,
+    () => setEndState(next ? 'next' : 'done'),
+  );
 
   return (
     <div className="min-w-0 space-y-3">
@@ -143,10 +75,7 @@ export function VideoStage({
             preload="metadata"
             autoPlay={autoPlay || attempt > 0}
             className="h-full w-full"
-            onLoadedMetadata={handleLoadedMetadata}
-            onTimeUpdate={handleTimeUpdate}
-            onPause={handlePause}
-            onEnded={handleEnded}
+            {...handlers}
             onFatalError={() => setFailed(true)}
           />
         )}
