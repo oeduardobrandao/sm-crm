@@ -198,3 +198,12 @@ export function toggleKey(set: ReadonlySet<string>, key: string): Set<string> {
   else next.add(key);
   return next;
 }
+
+/** Todos os grupos visíveis estão recolhidos? Decide entre "Fechar todos" e
+ *  "Abrir todos". Uma chave de outro agrupamento no conjunto não conta. */
+export function allGroupsCollapsed(
+  keys: readonly string[],
+  collapsed: ReadonlySet<string>,
+): boolean {
+  return keys.length > 0 && keys.every((k) => collapsed.has(k));
+}

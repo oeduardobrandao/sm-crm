@@ -14368,3 +14368,31 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
 .list-group-toggle:hover .list-group-count {
   background: var(--surface-3);
 }
+/* "Fechar todos / Abrir todos" dos grupos, acima da tabela: o ícone fica
+   alinhado às setas dos grupos (o mesmo 1rem da célula e -0.4rem do botão). */
+.list-groups-bar {
+  padding: 0 1rem 0.25rem;
+}
+.list-groups-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: -0.4rem;
+  padding: 0.25rem 0.4rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.list-groups-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+.list-groups-toggle:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}

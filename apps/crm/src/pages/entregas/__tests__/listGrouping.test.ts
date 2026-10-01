@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 // deixa o import inerte (mesmo motivo de minhaFila.test.ts).
 vi.mock('../../../lib/supabase');
 import {
+  allGroupsCollapsed,
   countByResponsavel,
   groupListRows,
   toggleKey,
@@ -156,5 +157,14 @@ describe('toggleKey', () => {
     expect([...b]).toEqual(['x', 'y']);
     expect([...toggleKey(b, 'x')]).toEqual(['y']);
     expect([...a]).toEqual(['x']);
+  });
+});
+
+describe('allGroupsCollapsed', () => {
+  it('só é verdade com todos os grupos visíveis recolhidos', () => {
+    expect(allGroupsCollapsed([], new Set())).toBe(false);
+    expect(allGroupsCollapsed(['a', 'b'], new Set(['a']))).toBe(false);
+    // Uma chave de outro agrupamento no conjunto não atrapalha.
+    expect(allGroupsCollapsed(['a', 'b'], new Set(['a', 'b', 'velho']))).toBe(true);
   });
 });

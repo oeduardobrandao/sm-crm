@@ -184,6 +184,40 @@ describe('ListView', () => {
     expect(screen.queryByText('Fluxo da Ana')).toBeNull();
     expect(screen.getByText('Fluxo sem dono')).toBeInTheDocument();
   });
+
+  it('Fechar todos recolhe os grupos e Abrir todos reabre', () => {
+    const cards = [
+      makeCard({
+        workflow: { id: 1, titulo: 'Fluxo da Ana' },
+        etapa: { id: 11, nome: 'Copy', responsavel_id: 7 },
+        membro: { id: 7, nome: 'Ana' },
+      }),
+      makeCard({
+        workflow: { id: 2, titulo: 'Fluxo sem dono' },
+        etapa: { id: 12, nome: 'Copy' },
+        membro: undefined,
+      }),
+    ];
+    render(
+      <ListView
+        cards={cards}
+        sort={{ column: 'titulo', direction: 'asc' }}
+        onSortChange={vi.fn()}
+        onCardClick={vi.fn()}
+        groupBy="responsavel"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+    expect(screen.queryByText('Fluxo da Ana')).toBeNull();
+    expect(screen.queryByText('Fluxo sem dono')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir todos' }));
+
+    expect(screen.getByText('Fluxo da Ana')).toBeInTheDocument();
+    expect(screen.getByText('Fluxo sem dono')).toBeInTheDocument();
+  });
 });
 
 function makePostEntity(titulo: string, dias: number): PostEntity {

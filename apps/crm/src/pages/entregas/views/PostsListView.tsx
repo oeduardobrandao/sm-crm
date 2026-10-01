@@ -9,8 +9,9 @@ import { formatPostDate } from '@/utils/postDate';
 import { formatEtapaDeadlineDay, formatEtapaPrazo } from '../etapaPrazo';
 import { postStageOf, postResponsavelIdOf, type PostStage } from '../postStage';
 import type { ListGroupBy } from '../viewQuery';
-import { groupListRows, toggleKey } from '../listGrouping';
+import { allGroupsCollapsed, groupListRows, toggleKey } from '../listGrouping';
 import { ListGroupHeaderRow } from '../components/ListGroupHeaderRow';
+import { ListGroupsToggle } from '../components/ListGroupsToggle';
 import type { PostEntity } from '../boardEntity';
 import { POST_STATUS_ORDER, TIPO_LABELS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
@@ -362,9 +363,17 @@ export function PostsListView({
           },
           new Date(),
         );
+  const groupKeys = groups?.map((g) => g.key) ?? [];
+  const allCollapsed = allGroupsCollapsed(groupKeys, collapsed);
 
   return (
     <div className="animate-up card" style={{ overflow: 'auto' }}>
+      {groups && groups.length > 1 && (
+        <ListGroupsToggle
+          allCollapsed={allCollapsed}
+          onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys))}
+        />
+      )}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
         <thead>
           <tr>

@@ -581,4 +581,50 @@ describe('PostsListView', () => {
     expect(screen.queryByText('Sai hoje')).toBeNull();
     expect(screen.getByText('Sem agenda')).toBeInTheDocument();
   });
+
+  describe('Fechar todos / Abrir todos', () => {
+    const hoje = new Date();
+    hoje.setHours(12, 0, 0, 0);
+    const posts = [
+      makePost({ titulo: 'Sem agenda' }),
+      makePost({ titulo: 'Sai hoje', scheduled_at: hoje.toISOString() }),
+    ];
+
+    it('Fechar todos recolhe os grupos e vira Abrir todos, que reabre', () => {
+      render(<PostsListView {...baseProps} posts={posts} groupBy="postagem" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+      expect(screen.queryByText('Sai hoje')).toBeNull();
+      expect(screen.queryByText('Sem agenda')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Hoje (1)' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir todos' }));
+
+      expect(screen.getByText('Sai hoje')).toBeInTheDocument();
+      expect(screen.getByText('Sem agenda')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Fechar todos' })).toBeInTheDocument();
+    });
+
+    it('recolher um a um até o último também vira Abrir todos', () => {
+      render(<PostsListView {...baseProps} posts={posts} groupBy="postagem" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Hoje (1)' }));
+      expect(screen.getByRole('button', { name: 'Fechar todos' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sem data (1)' }));
+      expect(screen.getByRole('button', { name: 'Abrir todos' })).toBeInTheDocument();
+    });
+
+    it('só aparece com dois grupos ou mais', () => {
+      const { rerender } = render(<PostsListView {...baseProps} posts={posts} groupBy="nenhum" />);
+      expect(screen.queryByRole('button', { name: /(Fechar|Abrir) todos/ })).toBeNull();
+
+      rerender(<PostsListView {...baseProps} posts={posts.slice(0, 1)} groupBy="postagem" />);
+      expect(screen.queryByRole('button', { name: /(Fechar|Abrir) todos/ })).toBeNull();
+    });
+  });
 });
