@@ -96,7 +96,7 @@ banner shows). `.main-content` offsets itself with `margin-left: var(--sidebar-w
 | ≤ 900px | Drawer + bottom nav |
 | ≤ 768px | Further compaction |
 
-The pin toggle sits at the top right of the expanded sidebar. Unpinned, `AppLayout` sets
+The pin toggle sits at the top of the sidebar, aligned with the nav icons. Unpinned, `AppLayout` sets
 `data-sidebar-collapsed` on `.app-container` and CSS overrides `--sidebar-width: 64px` there;
 hovering only widens the sidebar itself (`.sidebar--overlay`), so the content never moves until
 the user pins (persisted in localStorage `sidebar-pinned`). Anything inset by the sidebar should

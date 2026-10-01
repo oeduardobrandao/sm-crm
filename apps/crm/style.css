@@ -9372,19 +9372,18 @@ a.mention-chip:hover {
     box-shadow: 8px 0 24px rgba(0, 0, 0, 0.45);
   }
 
+  /* Same horizontal insets as .sidebar-scrollable + .sidebar-sub-link, so the
+     toggle's icon lines up with the nav icons, in the rail and expanded. */
   .sidebar-pin-row {
     display: flex;
-    justify-content: flex-end;
-    padding: 0.5rem 0.5rem 0;
+    padding: 0.5rem 0.75rem 0;
     flex-shrink: 0;
   }
 
   .sidebar-pin-btn {
-    width: 28px;
-    height: 28px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    padding: 0.3rem 0.75rem;
     border: none;
     border-radius: 8px;
     background: transparent;
@@ -9441,19 +9440,13 @@ a.mention-chip:hover {
     transition: opacity 0.15s ease;
   }
 
-  /* .sidebar-scrollable already clips x, but .sidebar-bottom and the pin row
-     don't: anything past 64px there has to fade or it paints over the page. */
+  /* .sidebar-scrollable already clips x, but .sidebar-bottom doesn't: anything
+     past 64px there has to fade or it paints over the page. */
   .sidebar--rail .sidebar-sub-label,
   .sidebar--rail .sidebar-group-label > *,
   .sidebar--rail .user-name-text,
   .sidebar--rail .sidebar-user-trigger > i {
     opacity: 0;
-  }
-
-  /* Still focusable: tabbing onto it expands the rail (keyboard focus does). */
-  .sidebar--rail .sidebar-pin-btn {
-    opacity: 0;
-    pointer-events: none;
   }
 
   /* A short dash where each group header sits. */
