@@ -2935,7 +2935,7 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
-    // O Sheet fecha sozinho (e o Radix devolve o foco): não recebe o X do aside.
+    // O Sheet fecha pelo próprio X: não recebe o X do aside.
     expect(screen.queryByRole('button', { name: 'Fechar painel de responsáveis' })).toBeNull();
   });
 
@@ -2980,5 +2980,19 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
 
     expect(screen.queryByText(/Contagens:/)).toBeNull();
     expect(toggle).toHaveFocus();
+  });
+
+  it('fechar o Sheet do celular devolve o foco ao botão Responsáveis da barra', async () => {
+    isDesktopMock.value = false;
+    renderLista('/entregas?view=list');
+    const toggle = screen.getByText('Alternar responsáveis');
+    fireEvent.click(toggle);
+    await screen.findByRole('dialog');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // O FocusScope do Radix devolve o foco num setTimeout depois de desmontar.
+    await waitFor(() => expect(toggle).toHaveFocus());
   });
 });

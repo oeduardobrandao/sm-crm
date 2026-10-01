@@ -947,8 +947,8 @@ export default function EntregasPage() {
     if (next) captureEvent('entregas_lista_responsaveis_aberto', { mode: activeMode });
   };
   // X do aside: o botão focado sai da tela e o foco cairia no <body>. Devolve ao
-  // botão da barra, que segue montado. No Sheet do celular o Radix já restaura o
-  // foco sozinho, então ele não passa por aqui.
+  // botão da barra, que segue montado. O Sheet do celular faz o mesmo no
+  // onCloseAutoFocus do SheetContent.
   const closeResponsaveisAside = () => {
     setResponsaveisOpen(false);
     responsaveisToggleRef.current?.focus();
@@ -1537,6 +1537,12 @@ export default function EntregasPage() {
           <SheetContent
             side="bottom"
             className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24"
+            // Sem SheetTrigger o Radix não sabe a quem devolver o foco e ele cairia
+            // no <body>: devolve ao botão Responsáveis da barra.
+            onCloseAutoFocus={(e) => {
+              e.preventDefault();
+              responsaveisToggleRef.current?.focus();
+            }}
           >
             <SheetTitle className="sr-only">Responsáveis</SheetTitle>
             <SheetDescription className="sr-only">Filtre a lista por responsável</SheetDescription>
