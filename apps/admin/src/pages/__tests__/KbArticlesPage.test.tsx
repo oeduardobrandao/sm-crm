@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('../../lib/api', () => ({ listKbArticles: vi.fn() }));
+vi.mock('../../lib/api', () => ({ listKbArticles: vi.fn(), getKbViewStats: vi.fn() }));
 
-import { listKbArticles } from '../../lib/api';
+import { getKbViewStats, listKbArticles } from '../../lib/api';
 import KbArticlesPage from '../KbArticlesPage';
 
 const articles = [
@@ -41,6 +41,10 @@ const articles = [
 
 beforeEach(() => {
   vi.mocked(listKbArticles).mockResolvedValue({ articles } as never);
+  vi.mocked(getKbViewStats).mockResolvedValue({
+    articles: { k1: { views_30d: 48, users_30d: 12, views_total: 210, users_total: 64 } },
+    videos: {},
+  });
 });
 
 function renderPage() {
@@ -55,6 +59,25 @@ function renderPage() {
 }
 
 describe('KbArticlesPage', () => {
+  it('shows view counts per article and a zero state for unviewed ones', async () => {
+    renderPage();
+    expect((await screen.findAllByText('48 visualizações · 12 pessoas')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Total: 210 · 64 pessoas').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Sem visualizações').length).toBeGreaterThan(0);
+    expect(screen.getByText('Visualizações')).toBeInTheDocument();
+  });
+
+  it('still lists articles when the stats call fails', async () => {
+    vi.mocked(getKbViewStats).mockRejectedValue(new Error('down'));
+    renderPage();
+    expect((await screen.findAllByRole('link', { name: 'Primeiro post' })).length).toBeGreaterThan(
+      0,
+    );
+    // Stats lines end in "· N pessoa(s)"; the "Visualizações" header must not count.
+    expect(screen.queryByText(/· \d+ pessoas?$/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Sem visualizações')).not.toBeInTheDocument();
+  });
+
   it('renders each title as a link to the editor', async () => {
     renderPage();
     const links = await screen.findAllByRole('link', { name: 'Primeiro post' });

@@ -909,6 +909,26 @@ export function reorderKbVideos(items: Array<{ id: number; display_order: number
   return adminApi<{ message: string }>('reorder-kb-videos', { items });
 }
 
+export interface KbViewStatsEntry {
+  views_30d: number;
+  users_30d: number;
+  views_total: number;
+  users_total: number;
+  /** Videos only. */
+  completed?: number;
+}
+
+export interface KbViewStatsResponse {
+  /** Keyed by article uuid. Items with no views are absent. */
+  articles: Record<string, KbViewStatsEntry>;
+  /** Keyed by String(video id). */
+  videos: Record<string, KbViewStatsEntry>;
+}
+
+export function getKbViewStats() {
+  return adminApi<KbViewStatsResponse>('kb-view-stats');
+}
+
 // ─── MCP do Admin (conector platform-admin) ────────────────────
 
 export interface AdminMcpGrant {
