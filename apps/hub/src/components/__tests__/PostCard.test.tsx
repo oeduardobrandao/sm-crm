@@ -301,9 +301,10 @@ describe('PostCard', () => {
 
   it('opens the media lightbox from the cover image and reuses the refresh callback for stale URLs', () => {
     const onApprovalSubmitted = vi.fn();
+    // The cover is the first slide; a stale cover_media flag on a later slide is ignored.
     const galleryMedia = [
-      makeMedia({ id: 1, url: 'https://cdn.example.com/gallery-1.jpg', sort_order: 0 }),
-      makeMedia({ id: 2, url: 'https://cdn.example.com/cover.jpg', sort_order: 1 }),
+      makeMedia({ id: 1, url: 'https://cdn.example.com/cover.jpg', sort_order: 0 }),
+      makeMedia({ id: 2, url: 'https://cdn.example.com/gallery-2.jpg', sort_order: 1 }),
     ];
 
     const { container } = render(
@@ -332,7 +333,7 @@ describe('PostCard', () => {
     fireEvent.click(coverButton);
 
     expect(screen.getByTestId('post-media-lightbox')).toBeInTheDocument();
-    expect(screen.getByText('Indice inicial: 1')).toBeInTheDocument();
+    expect(screen.getByText('Indice inicial: 0')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Simular URL expirada' }));
 

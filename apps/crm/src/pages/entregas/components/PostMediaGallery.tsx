@@ -5,7 +5,6 @@ import JSZip from 'jszip';
 import {
   Upload,
   Crop,
-  Star,
   Trash2,
   AlertTriangle,
   Download,
@@ -32,7 +31,6 @@ import {
   listPostMedia,
   uploadPostMedia,
   deletePostMedia,
-  setPostMediaCover,
   reorderPostMedia,
   detectKind,
   uploadMany,
@@ -418,15 +416,6 @@ export function PostMediaGallery({
     }
   }
 
-  async function handleSetCover(id: number) {
-    try {
-      await setPostMediaCover(id);
-      refresh();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
   async function handlePickFiles(fileIds: number[]) {
     const base = media.length;
     try {
@@ -579,7 +568,6 @@ export function PostMediaGallery({
                 onOpen={() => setLightboxIndex(i)}
                 onAdjust={canAdjust && !m.media_lost_at ? () => setAdjustingMedia(m) : undefined}
                 needsAdjustment={invalidMedia.includes(m)}
-                onSetCover={() => handleSetCover(m.id)}
                 onDelete={() => handleDelete(m.id)}
                 onEditThumbnail={
                   m.kind === 'video' && !m.media_lost_at ? () => setEditingMedia(m) : undefined
@@ -754,7 +742,6 @@ interface SortableMediaTileProps {
   media: PostMedia;
   disabled?: boolean;
   onOpen: () => void;
-  onSetCover: () => void;
   onDelete: () => void;
   onEditThumbnail?: () => void;
   onAdjust?: () => void;
@@ -765,7 +752,6 @@ function SortableMediaTile({
   media: m,
   disabled,
   onOpen,
-  onSetCover,
   onDelete,
   onEditThumbnail,
   onAdjust,
@@ -821,27 +807,12 @@ function SortableMediaTile({
           <AlertTriangle size={14} />
         </span>
       )}
-      {m.is_cover && (
-        <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 text-[10px] font-semibold bg-stone-900/85 text-white px-1.5 py-0.5 rounded-full">
-          <Star className="h-2.5 w-2.5" /> capa
-        </span>
-      )}
       {!disabled && (
         <div
           className="absolute top-1.5 right-1.5 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          {!m.is_cover && (
-            <button
-              type="button"
-              onClick={onSetCover}
-              title="Definir como capa"
-              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
-            >
-              <Star className="h-3 w-3" />
-            </button>
-          )}
           {onAdjust && (
             <button
               type="button"

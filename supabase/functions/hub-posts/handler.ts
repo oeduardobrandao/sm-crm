@@ -272,7 +272,9 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     const flatPostsWithMedia = flatPosts.map((post: any) => {
       const mediaForPost = mediaByPost[post.id] ?? [];
-      const cover_media = mediaForPost.find((media) => media.is_cover) ?? mediaForPost[0] ?? null;
+      // First slide by sort_order: what Instagram shows in the feed. The is_cover
+      // flag goes stale when a slide is moved to the front, so it is not consulted.
+      const cover_media = mediaForPost[0] ?? null;
       return { ...post, media: mediaForPost, cover_media };
     });
 

@@ -122,9 +122,13 @@ export function getPostPublishState(p: {
     : p.status;
 }
 
-/** Tile/strip image: the flagged cover, else the first media item. */
+/**
+ * Tile/strip image: the first slide by sort_order, which is what Instagram shows
+ * in the feed. `cover_media` is only a fallback for payloads without `media`;
+ * the legacy is_cover flag goes stale when slides are reordered.
+ */
 export function getPostCover(post: HubPost): HubPostMedia | null {
-  return post.cover_media ?? post.media?.[0] ?? null;
+  return post.media?.[0] ?? post.cover_media ?? null;
 }
 
 /**
