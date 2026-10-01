@@ -925,7 +925,7 @@ body {
   /* Sized by flex (see the :has rule below), NOT by height. Any fixed height
      (100dvh, then 100%) overflows the clipped .main-content by whatever the
      shell renders ABOVE the page in flow (the context-help "Artigos
-     relacionados" bar, ~48px), cutting off the bottom strip of the page —
+     relacionados" bar used to, ~48px), cutting off the bottom strip of the page —
      the Arquivos storage meter lived there, invisible on every viewport. */
   height: auto;
   flex: 1 1 0;
@@ -12125,40 +12125,82 @@ a.hub-fill__row-inner:hover {
   }
 }
 
+/* Floating corner button, never in flow: an in-flow row here pushed every
+   page title ~48px down. Collapsed it shows the icon and count; hovering,
+   focusing or opening it slides the label out to the left. */
 .context-help {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 45;
   display: flex;
-  justify-content: flex-end;
-  min-height: 36px;
-  margin-bottom: 0.75rem;
 }
 
 .context-help__trigger {
-  min-height: 44px;
-  gap: 0.45rem;
+  height: 40px;
+  gap: 0;
+  padding: 0 0.6rem;
+  border-radius: 999px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow, 0 2px 8px rgba(0, 0, 0, 0.08));
   color: var(--text-muted);
 }
 
-/* Below 768px the row would otherwise be the first thing every page renders
-   -- a full-width line before the title. Pull it out of flow entirely (fixed,
-   floating under the topbar) instead, and collapse it to an icon-only pill so
-   it reads as a small badge, not a header row competing with the page's own. */
+.context-help__trigger:hover,
+.context-help__trigger[data-state='open'] {
+  background: var(--card-bg);
+  color: var(--text-main);
+}
+
+.context-help__label {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  transition:
+    max-width 0.22s ease,
+    opacity 0.16s ease,
+    margin 0.22s ease;
+}
+
+.context-help__trigger .context-help__count {
+  margin-left: 0.4rem;
+}
+
+.context-help__trigger:hover .context-help__label,
+.context-help__trigger:focus-visible .context-help__label,
+.context-help__trigger[data-state='open'] .context-help__label {
+  max-width: 12rem;
+  margin-left: 0.45rem;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-help__label {
+    transition: none;
+  }
+}
+
+/* >=1101px the Guia pill owns bottom: 20px of the same corner: sit above it. */
+@media (min-width: 1101px) {
+  body:has(.guide-pill) .context-help {
+    bottom: 72px;
+  }
+}
+
+/* Phones: the bottom nav owns the bottom edge, so float under the topbar
+   instead, icon-only (no hover on touch to reveal the label). */
 @media (max-width: 767px) {
   .context-help {
-    position: fixed;
     top: calc(var(--topbar-height) + var(--banner-height, 0px) + 10px);
     right: 14px;
-    z-index: 45;
-    min-height: 0;
-    margin-bottom: 0;
+    bottom: auto;
   }
 
   .context-help__trigger {
-    min-height: 36px;
-    padding: 0.4rem 0.55rem;
-    border-radius: 999px;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    height: 36px;
+    padding: 0 0.55rem;
   }
 
   .context-help__label {
