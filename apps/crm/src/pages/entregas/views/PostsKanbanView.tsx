@@ -69,6 +69,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatPostDate } from '@/utils/postDate';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { getInitials } from '@/lib/initials';
 import { formatEtapaPrazo } from '../etapaPrazo';
 import { TIPO_LABELS, LOCKED_STATUSES, LOCKED_TOOLTIPS, getPostPublishState } from '../postLabels';
 import {
@@ -179,15 +180,6 @@ interface PostsKanbanViewProps {
  *  on its workflow still being an active, loaded card. */
 function isPostOpenable(post: ActivePost, openableWorkflowIds: Set<number>): boolean {
   return post.workflow_id == null || openableWorkflowIds.has(post.workflow_id);
-}
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 }
 
 /** Card guts shared by the real card and its DragOverlay clone. */

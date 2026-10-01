@@ -14,6 +14,7 @@ import { AlertTriangle, CalendarClock, CheckCircle2, Clock, UserCheck } from 'lu
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { getChartTheme, useIsDark, type ChartTheme } from '@/lib/chartTheme';
+import { getInitials } from '@/lib/initials';
 import type { BoardCard } from '../hooks/useEntregasData';
 import {
   DEADLINE_STATUS,
@@ -83,15 +84,6 @@ function isoDaysAgo(n: number): string {
 
 function sameSet(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((v) => b.includes(v));
-}
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 }
 
 function SectionCard({

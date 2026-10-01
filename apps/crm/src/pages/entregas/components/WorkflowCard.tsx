@@ -23,16 +23,10 @@ import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 import { sanitizeUrl } from '@/utils/security';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { getInitials } from '@/lib/initials';
 import { WorkflowTimelinePopover } from './WorkflowTimelinePopover';
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
+import { DeadlinePill } from './DeadlinePill';
+import { etapaDeadlineDate } from '../etapaPrazo';
 
 // Deadline accent colors mapped from class name
 const deadlineAccent: Record<string, string> = {
@@ -319,9 +313,9 @@ export function WorkflowCard({
       </div>
 
       {/* Deadline pill (texto + tipo_prazo combinados, spec §4) */}
-      <span
+      <DeadlinePill
         className={`board-card-deadline board-card-deadline-pill ${deadlineClass}`}
-        data-tour="wf-deadline"
+        dataTour="wf-deadline"
         style={{
           fontSize: '0.7rem',
           fontWeight: 700,
@@ -330,14 +324,11 @@ export function WorkflowCard({
           letterSpacing: '0.01em',
           alignSelf: 'flex-start',
         }}
-      >
-        {deadlineText}
-        {card.etapa.tipo_prazo && (
-          <span className="board-card-prazo-type-inner">
-            {card.etapa.tipo_prazo === 'uteis' ? 'úteis' : 'corridos'}
-          </span>
-        )}
-      </span>
+        relativeText={deadlineText}
+        dueDate={etapaDeadlineDate(card)}
+        estourado={dl.estourado}
+        tipoPrazo={card.etapa.tipo_prazo}
+      />
 
       {/* Assignee chip */}
       <DropdownMenu

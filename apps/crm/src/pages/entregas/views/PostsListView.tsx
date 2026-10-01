@@ -5,6 +5,7 @@ import type { BoardCard } from '../hooks/useEntregasData';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { getInitials } from '@/lib/initials';
 import { formatPostDate } from '@/utils/postDate';
 import { formatEtapaDeadlineDay, formatEtapaPrazo } from '../etapaPrazo';
 import { postStageOf, postResponsavelIdOf, type PostStage } from '../postStage';
@@ -59,15 +60,6 @@ const COLUMNS: Column[] = [
   { key: 'prazo_etapa', label: 'Prazo da etapa' },
   { key: 'agendado', label: 'Agendado para' },
 ];
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
 
 const oneLineCell: React.CSSProperties = {
   padding: '0.6rem 1rem',
