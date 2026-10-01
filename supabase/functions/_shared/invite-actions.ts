@@ -240,7 +240,9 @@ export interface InviteOrResendInput {
   contaId: string;
   email: string;
   role: "owner" | "admin" | "agent";
-  invitedBy: string;
+  /** NULL when an admin resends an invite whose original inviter was deleted
+   * (invites.invited_by is ON DELETE SET NULL). */
+  invitedBy: string | null;
   redirectBase: string;
   /** Membro da equipe this invite links to (Equipe form). Stamped on every
    * invites row; the added route links membros.crm_user_id immediately. */

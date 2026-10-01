@@ -622,7 +622,7 @@ export interface InviteInfo {
   created_at: string;
   accepted_at: string | null;
   expires_at: string | null;
-  invited_by: string;
+  invited_by: string | null;
   silent_add: boolean;
   link_expired: boolean;
   auth_state: InviteAuthState | null;
