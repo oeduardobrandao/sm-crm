@@ -23,6 +23,8 @@ interface VideoStageProps {
   autoPlay: boolean;
   onSaveProgress: (videoId: number, position: number, completed: boolean) => void;
   onPlayNext: (next: KbVideo) => void;
+  /** Called on the first `play` of this video (the parent keys the stage by video id). */
+  onFirstPlay?: (videoId: number) => void;
 }
 
 /** Player + metadata for ONE video. The parent keys it by video id, so every ref below starts
@@ -34,6 +36,7 @@ export function VideoStage({
   autoPlay,
   onSaveProgress,
   onPlayNext,
+  onFirstPlay,
 }: VideoStageProps) {
   const [endState, setEndState] = useState<'playing' | 'next' | 'done'>('playing');
   const [failed, setFailed] = useState(false);
@@ -47,6 +50,7 @@ export function VideoStage({
   const lastSaveAtRef = useRef(0);
   const completedRef = useRef(isCompleted(progress, video.id));
   const resumeRef = useRef(resumePosition(progress, video.id));
+  const playedRef = useRef(false);
 
   useEffect(() => {
     lastSaveAtRef.current = Date.now();
@@ -90,6 +94,12 @@ export function VideoStage({
       lastSaveAtRef.current = now;
       saveRef.current(video.id, el.currentTime, false);
     }
+  };
+
+  const handlePlay = () => {
+    if (playedRef.current) return;
+    playedRef.current = true;
+    onFirstPlay?.(video.id);
   };
 
   const handlePause = (e: SyntheticEvent<HTMLVideoElement>) => {
@@ -145,6 +155,7 @@ export function VideoStage({
             className="h-full w-full"
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
+            onPlay={handlePlay}
             onPause={handlePause}
             onEnded={handleEnded}
             onFatalError={() => setFailed(true)}

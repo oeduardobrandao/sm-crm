@@ -20,6 +20,7 @@ import { IframeExtension } from './components/IframeExtension';
 import { TableOfContents } from './components/TableOfContents';
 import { CATEGORY_LABELS, ALL_CATEGORIES } from './categoryConfig';
 import { ArticleCard } from './components/ArticleCard';
+import { useRecordArticleView } from './useRecordKbView';
 
 function readingTime(plainText: string): number {
   return Math.max(1, Math.ceil(plainText.trim().split(/\s+/).length / 200));
@@ -36,6 +37,7 @@ export default function ArtigoPage() {
     queryFn: () => getArticleBySlug(slug!),
     enabled: !!slug,
   });
+  useRecordArticleView(article);
 
   const { data: allArticles = [] } = useQuery({
     queryKey: ['kb-articles'],

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, Pencil, Plus, Search } from 'lucide-react';
 import { listKbArticles } from '../lib/api';
+import { useKbViewStats } from '../lib/kb-view-stats';
 import {
   KB_CATEGORIES as CATEGORIES,
   ALL_KB_CATEGORIES as ALL_CATEGORIES,
@@ -13,6 +14,7 @@ import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { RowLink } from '../components/RowLink';
+import { KbViewStats } from '../components/KbViewStats';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -46,6 +48,7 @@ export default function KbArticlesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
 
+  const viewStats = useKbViewStats();
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'kb-articles', statusFilter, categoryFilter],
     queryFn: () =>
@@ -144,11 +147,12 @@ export default function KbArticlesPage() {
       </div>
 
       <Card className="p-5">
-        <div className="hidden border-b border-border pb-3 text-[0.7rem] uppercase tracking-wider text-muted-foreground md:grid md:grid-cols-[2fr_1fr_0.7fr_0.7fr_0.5fr] md:gap-2">
+        <div className="hidden border-b border-border pb-3 text-[0.7rem] uppercase tracking-wider text-muted-foreground md:grid md:grid-cols-[2fr_1fr_0.7fr_0.5fr_minmax(15rem,1.3fr)_0.3fr] md:gap-2">
           <span>Título</span>
           <span>Categoria</span>
           <span>Status</span>
           <span>Ordem</span>
+          <span>Visualizações</span>
           <span></span>
         </div>
 
@@ -198,8 +202,13 @@ export default function KbArticlesPage() {
                       {badge.label}
                     </Badge>
                   </div>
+                  <KbViewStats
+                    stats={viewStats.data?.articles[a.id]}
+                    loading={viewStats.isLoading}
+                    failed={viewStats.isError}
+                  />
                 </div>
-                <div className="hidden items-center gap-2 md:grid md:grid-cols-[2fr_1fr_0.7fr_0.7fr_0.5fr]">
+                <div className="hidden items-center gap-2 md:grid md:grid-cols-[2fr_1fr_0.7fr_0.5fr_minmax(15rem,1.3fr)_0.3fr]">
                   <div className="min-w-0">
                     <RowLink to={to} className="block truncate text-sm">
                       {a.title}
@@ -211,6 +220,12 @@ export default function KbArticlesPage() {
                     {badge.label}
                   </Badge>
                   <span className="text-sm text-muted-foreground">{a.display_order}</span>
+                  <KbViewStats
+                    className="[&>div]:whitespace-nowrap"
+                    stats={viewStats.data?.articles[a.id]}
+                    loading={viewStats.isLoading}
+                    failed={viewStats.isError}
+                  />
                   <span className="text-muted-foreground hover:text-primary">
                     <Pencil size={14} />
                   </span>

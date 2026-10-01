@@ -22,6 +22,8 @@ export interface VideoPlaylistBlockProps {
   /** Hero on /ajuda: shrink to a slim bar when everything was already watched. */
   collapsible?: boolean;
   onVideoChange?: (video: KbVideo) => void;
+  /** First play of each video; used to record a Central de Ajuda view. */
+  onFirstPlay?: (videoId: number) => void;
 }
 
 export function VideoPlaylistBlock({
@@ -31,6 +33,7 @@ export function VideoPlaylistBlock({
   requestedSlug = null,
   collapsible = false,
   onVideoChange,
+  onFirstPlay,
 }: VideoPlaylistBlockProps) {
   const [selection, setSelection] = useState<PlaylistSelection | null>(() =>
     pickInitial(series, progress, requestedSlug),
@@ -116,6 +119,7 @@ export function VideoPlaylistBlock({
         progress={progress}
         autoPlay={autoPlay}
         onSaveProgress={onSaveProgress}
+        onFirstPlay={onFirstPlay}
         onPlayNext={(next) => select(resolved.series.id, next.id, true)}
       />
       <VideoRail

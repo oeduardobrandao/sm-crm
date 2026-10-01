@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('../../lib/api', () => ({
   listKbVideoSeries: vi.fn(),
   listKbVideos: vi.fn(),
+  getKbViewStats: vi.fn(),
   refreshKbVideo: vi.fn(),
   reorderKbVideos: vi.fn(),
   upsertKbVideoSeries: vi.fn(),
@@ -13,7 +14,13 @@ vi.mock('../../lib/api', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { listKbVideos, listKbVideoSeries, refreshKbVideo, reorderKbVideos } from '../../lib/api';
+import {
+  getKbViewStats,
+  listKbVideos,
+  listKbVideoSeries,
+  refreshKbVideo,
+  reorderKbVideos,
+} from '../../lib/api';
 import KbVideosPage from '../KbVideosPage';
 
 const series = [
@@ -68,6 +75,12 @@ beforeEach(() => {
   vi.mocked(listKbVideos).mockResolvedValue({ videos } as never);
   vi.mocked(refreshKbVideo).mockResolvedValue({ video: videos[1] } as never);
   vi.mocked(reorderKbVideos).mockResolvedValue({ message: 'ok' } as never);
+  vi.mocked(getKbViewStats).mockResolvedValue({
+    articles: {},
+    videos: {
+      '1': { views_30d: 5, users_30d: 4, views_total: 9, users_total: 7, completed: 3 },
+    },
+  });
 });
 
 function renderPage() {
@@ -82,6 +95,22 @@ function renderPage() {
 }
 
 describe('KbVideosPage', () => {
+  it('shows view counts and completions per video', async () => {
+    renderPage();
+    expect(await screen.findByText('5 visualizações · 4 pessoas')).toBeInTheDocument();
+    expect(screen.getByText('Total: 9 · 7 pessoas · 3 concluíram')).toBeInTheDocument();
+    expect(screen.getByText('Sem visualizações')).toBeInTheDocument(); // video 2
+  });
+
+  it('still lists videos when the stats call fails', async () => {
+    vi.mocked(getKbViewStats).mockRejectedValue(new Error('down'));
+    renderPage();
+    expect(
+      (await screen.findAllByRole('link', { name: 'Primeiro acesso' })).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/· \d+ pessoas?$/)).not.toBeInTheDocument();
+  });
+
   it('groups videos under their series with links to the editor', async () => {
     renderPage();
     expect(await screen.findByText('Primeiros passos')).toBeInTheDocument();

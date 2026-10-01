@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { KbVideo } from '@/store/kbVideos';
 import { VideoPlaylistBlock } from './videos/VideoPlaylistBlock';
 import { useKbVideoSeries, useVideoProgress } from './videos/useKbVideos';
+import { recordKbViewSafely } from './useRecordKbView';
 
 export default function VideoPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -68,6 +69,7 @@ export default function VideoPage() {
         onSaveProgress={save}
         requestedSlug={slug ?? null}
         onVideoChange={handleVideoChange}
+        onFirstPlay={(videoId) => recordKbViewSafely({ videoId })}
       />
     </div>
   );
