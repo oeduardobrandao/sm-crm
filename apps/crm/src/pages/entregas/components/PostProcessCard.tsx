@@ -19,20 +19,12 @@ import {
 import { MediaUnavailable } from '@/components/MediaUnavailable';
 import { copyAppLink } from '@/lib/copyAppLink';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { getInitials } from '@/lib/initials';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { PostEntity } from '../boardEntity';
 import { TIPO_LABELS } from '../postLabels';
 import { PostStatusChip } from './PostStatusChip';
 import type { WorkflowPost } from '../../../store';
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
 
 const deadlineAccent: Record<string, string> = {
   'deadline-ok': '#3ecf8e',

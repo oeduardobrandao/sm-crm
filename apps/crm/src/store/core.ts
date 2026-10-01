@@ -7,14 +7,7 @@ export function formatDate(d: string): string {
   return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
 }
 
-export function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase();
-}
+export { getInitials } from '@/lib/initials';
 
 export async function getUserId(): Promise<string> {
   const user = await getCurrentUser();

@@ -32,6 +32,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { getInitials } from '@/lib/initials';
 import type { Cliente, Membro, WorkflowPost, WorkflowTemplate } from '../../../store';
 import { TIPO_ORDER, TIPO_LABELS, TIPO_COLORS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
@@ -127,15 +128,6 @@ interface MultiSelectOption<T extends string | number> {
   /** Small leading visual (initials avatar), same pattern as the card's
    *  responsável menu. Rendered in the menu rows and in the trigger summary. */
   avatar?: React.ReactNode;
-}
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 }
 
 function membroAvatar(m: { id?: number; nome: string }): React.ReactNode {
