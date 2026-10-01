@@ -2,18 +2,8 @@ import { useId } from 'react';
 import { X } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { avatarColorClass } from '@/lib/avatarColor';
+import { getInitials } from '@/lib/initials';
 import type { Membro } from '../../../store';
-
-// Iniciais locais em vez do getInitials do store: EntregasPage.test mocka o
-// store inteiro, e um import de valor de lá chegaria undefined no render.
-function initials(nome: string): string {
-  return nome
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
 
 // Ordem alfabética pt-BR, sem diferenciar acento nem caixa (como FilaMembroPicker).
 const byNome = (a: Membro, b: Membro) =>
@@ -104,7 +94,7 @@ export function ResponsaveisPanel({
                     style={{ width: 22, height: 22, fontSize: '0.55rem', flexShrink: 0 }}
                     aria-hidden="true"
                   >
-                    {initials(m.nome)}
+                    {getInitials(m.nome)}
                   </span>
                   <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--text-main)' }}>
                     {m.nome}
