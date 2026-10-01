@@ -103,7 +103,13 @@
     "autocleanedTitle": "Mídia removida para liberar espaço",
     "autocleanedDesc": "Removida automaticamente em {{date}}, conforme a política de armazenamento do workspace.",
     "autocleanedViewInstagram": "Ver publicação no Instagram",
-    "autocleanedViewTiktok": "Ver publicação no TikTok"
+    "autocleanedViewTiktok": "Ver publicação no TikTok",
+    "reelCoverTitle": "Esta imagem parece ser a capa do Reel",
+    "reelCoverDesc": "A capa do Reel fica na miniatura do vídeo. Como segundo arquivo, o post seria publicado como carrossel e a imagem 9:16 ficaria fora do formato aceito.",
+    "reelCoverAction": "Usar como capa do Reel",
+    "reelCoverMoving": "Movendo capa…",
+    "reelCoverMoved": "Capa do Reel atualizada",
+    "reelCoverFetchError": "Não foi possível carregar a imagem da capa. Tente novamente."
   },
   "thumbnailEditor": {
     "title": "Miniatura do vídeo",

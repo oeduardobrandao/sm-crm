@@ -103,7 +103,13 @@
     "autocleanedTitle": "Media removed to free up storage",
     "autocleanedDesc": "Removed automatically on {{date}}, per the workspace storage policy.",
     "autocleanedViewInstagram": "View post on Instagram",
-    "autocleanedViewTiktok": "View post on TikTok"
+    "autocleanedViewTiktok": "View post on TikTok",
+    "reelCoverTitle": "This image looks like the Reel cover",
+    "reelCoverDesc": "A Reel's cover is the video's thumbnail. As a second file, the post would publish as a carousel and the 9:16 image would be outside the accepted format.",
+    "reelCoverAction": "Use as Reel cover",
+    "reelCoverMoving": "Moving cover…",
+    "reelCoverMoved": "Reel cover updated",
+    "reelCoverFetchError": "Couldn't load the cover image. Try again."
   },
   "thumbnailEditor": {
     "title": "Video thumbnail",

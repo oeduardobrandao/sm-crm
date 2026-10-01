@@ -14,6 +14,7 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
     uploadPostMedia: vi.fn(),
     deletePostMedia: vi.fn(),
     reorderPostMedia: vi.fn(),
+    updateVideoThumbnail: vi.fn(),
   };
 });
 
@@ -59,7 +60,12 @@ vi.mock('jszip', () => ({
   },
 }));
 
-import { listPostMedia, uploadPostMedia } from '../../../../services/postMedia';
+import {
+  deletePostMedia,
+  listPostMedia,
+  updateVideoThumbnail,
+  uploadPostMedia,
+} from '../../../../services/postMedia';
 import type { PostMedia } from '../../../../store';
 import { extractVideoFrame } from '../../../../utils/videoFrame';
 import { encodeImageAsJpeg } from '../../../../utils/imageJpeg';
@@ -523,4 +529,90 @@ it('revalidates the gallery and refreshes visible cover caches after adjustment'
   );
   expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-grid'] });
   expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-covers'] });
+});
+
+describe('PostMediaGallery Reel cover uploaded as a second file', () => {
+  const video = {
+    id: 50,
+    post_id: 42,
+    kind: 'video',
+    mime_type: 'video/mp4',
+    original_filename: 'reel.mp4',
+    url: 'https://example.test/reel.mp4',
+    thumbnail_url: 'https://example.test/reel-thumb.jpg',
+    width: 1080,
+    height: 1920,
+    size_bytes: 1024,
+    duration_seconds: 30,
+    is_cover: false,
+  } as PostMedia;
+  const cover = {
+    id: 51,
+    post_id: 42,
+    kind: 'image',
+    mime_type: 'image/jpeg',
+    original_filename: 'capa.jpg',
+    url: 'https://example.test/capa.jpg',
+    width: 1080,
+    height: 1920,
+    size_bytes: 1024,
+    duration_seconds: null,
+    is_cover: false,
+  } as PostMedia;
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('explains the cover belongs in the thumbnail instead of flagging the 9:16 ratio', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    renderGallery();
+    expect(await screen.findByText('Esta imagem parece ser a capa do Reel')).toBeInTheDocument();
+    expect(screen.queryByText(/Proporção da imagem fora do permitido/)).not.toBeInTheDocument();
+    // The video is judged as the Reel it becomes, not as a carousel slide.
+    expect(screen.queryByText(/Proporção do vídeo fora do permitido/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/precisa de ajuste/)).not.toBeInTheDocument();
+  });
+
+  it('leaves a feed-ratio image beside a video alone (a real carousel)', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video, { ...cover, height: 1350 }]);
+    renderGallery();
+    await screen.findAllByTitle('Ajustar proporção');
+    expect(screen.queryByText('Esta imagem parece ser a capa do Reel')).not.toBeInTheDocument();
+  });
+
+  it('moves the image into the video thumbnail, then removes the slide', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['img'], { type: 'image/jpeg' }))),
+    );
+    const order: string[] = [];
+    vi.mocked(updateVideoThumbnail).mockImplementation(async () => {
+      order.push('thumbnail');
+      return video;
+    });
+    vi.mocked(deletePostMedia).mockImplementation(async () => {
+      order.push('delete');
+    });
+    renderGallery();
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar como capa do Reel' }));
+    await waitFor(() => expect(deletePostMedia).toHaveBeenCalledWith(51));
+    expect(updateVideoThumbnail).toHaveBeenCalledWith(50, expect.any(File));
+    expect(order).toEqual(['thumbnail', 'delete']);
+  });
+
+  it('keeps the image when the thumbnail update fails', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['img'], { type: 'image/jpeg' }))),
+    );
+    vi.mocked(updateVideoThumbnail).mockRejectedValue(new Error('upload failed'));
+    renderGallery();
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar como capa do Reel' }));
+    await waitFor(() => expect(updateVideoThumbnail).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Usar como capa do Reel' })).toBeEnabled(),
+    );
+    expect(deletePostMedia).not.toHaveBeenCalled();
+  });
 });
