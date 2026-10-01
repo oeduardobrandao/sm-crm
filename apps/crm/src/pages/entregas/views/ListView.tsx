@@ -1,7 +1,13 @@
+import { useState } from 'react';
 import { ChevronUp, ChevronDown, FileText } from 'lucide-react';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { PostEntity } from '../boardEntity';
 import { DEADLINE_STATUS, classifyDeadline } from '../deadlineStatus';
+import { etapaDeadlineDate } from '../etapaPrazo';
+import type { ListGroupBy } from '../viewQuery';
+import { allGroupsCollapsed, groupListRows, toggleKey } from '../listGrouping';
+import { ListGroupHeaderRow } from '../components/ListGroupHeaderRow';
+import { ListGroupsToggle } from '../components/ListGroupsToggle';
 
 interface ListViewProps {
   cards: BoardCard[];
@@ -11,6 +17,9 @@ interface ListViewProps {
   onSortChange: (sort: { column: string; direction: 'asc' | 'desc' }) => void;
   onCardClick: (card: BoardCard) => void;
   onPostClick?: (entity: PostEntity) => void;
+  /** "Agrupar por" da Lista. 'nenhum' (padrão) = tabela corrida. Sem data de
+   *  postagem aqui: um fluxo tem vários posts, e 'postagem' agrupa por prazo. */
+  groupBy?: ListGroupBy;
 }
 
 type Column = { key: string; label: string };
@@ -28,11 +37,15 @@ const COLUMNS: Column[] = [
 interface ListRow {
   key: string;
   titulo: string;
+  clienteId: number | null;
   clienteNome: string;
   clienteCor: string | undefined;
   etapaNome: string;
+  responsavelId: number | null;
   responsavelNome: string;
   deadline: BoardCard['deadline'];
+  /** Dia do prazo da etapa, ou null sem prazo resolvido (agrupamento por prazo). */
+  prazoDate: Date | null;
   /** false quando a entidade não tem prazo efetivo (etapa não ativada ou prazo
    *  limpo). deadline vem com um fallback zerado nesse caso (spec §7) e não
    *  deve ser lido como "vence em 0h" -- ver formatPrazo. */
@@ -88,7 +101,10 @@ export function ListView({
   onSortChange,
   onCardClick,
   onPostClick,
+  groupBy = 'nenhum',
 }: ListViewProps) {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+
   if (cards.length === 0 && postEntities.length === 0) {
     return (
       <div
@@ -104,11 +120,14 @@ export function ListView({
     ...cards.map<ListRow>((card) => ({
       key: `wf-${card.workflow.id}`,
       titulo: card.workflow.titulo,
+      clienteId: card.workflow.cliente_id ?? card.cliente?.id ?? null,
       clienteNome: card.cliente?.nome || '',
       clienteCor: card.cliente?.cor,
       etapaNome: card.etapa.nome,
+      responsavelId: card.etapa.responsavel_id ?? null,
       responsavelNome: card.membro?.nome || '',
       deadline: card.deadline,
+      prazoDate: etapaDeadlineDate(card),
       hasDeadline: true,
       individual: false,
       open: () => onCardClick(card),
@@ -116,11 +135,14 @@ export function ListView({
     ...postEntities.map<ListRow>((e) => ({
       key: e.id,
       titulo: e.titulo,
+      clienteId: e.process.post.cliente_id ?? null,
       clienteNome: e.cliente?.nome || e.process.post.cliente_nome || '',
       clienteCor: e.cliente?.cor,
       etapaNome: e.etapaNome,
+      responsavelId: e.step.responsavel_id ?? null,
       responsavelNome: e.responsavel?.nome || '',
       deadline: e.deadline,
+      prazoDate: e.prazoEfetivo,
       hasDeadline: e.prazoEfetivo != null,
       individual: true,
       open: () => onPostClick?.(e),
@@ -136,8 +158,84 @@ export function ListView({
     }
   };
 
+  const renderRow = (row: ListRow) => {
+    const badge = getStatusBadge(row);
+    return (
+      <tr
+        key={row.key}
+        onClick={row.open}
+        style={{ cursor: 'pointer', borderBottom: '1px solid var(--border-color)' }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <td style={{ padding: '0.75rem 1rem' }}>
+          {row.titulo}
+          {row.individual && (
+            <span
+              className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual"
+              style={{ marginLeft: '0.5rem' }}
+            >
+              <FileText size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
+              Individual
+            </span>
+          )}
+        </td>
+        <td style={{ padding: '0.75rem 1rem' }}>
+          <span
+            style={{
+              borderLeft: `3px solid ${row.clienteCor || '#888'}`,
+              paddingLeft: '0.5rem',
+            }}
+          >
+            {row.clienteNome || '—'}
+          </span>
+        </td>
+        <td style={{ padding: '0.75rem 1rem' }}>{row.etapaNome}</td>
+        <td style={{ padding: '0.75rem 1rem' }}>{row.responsavelNome || '—'}</td>
+        <td style={{ padding: '0.75rem 1rem' }}>{formatPrazo(row)}</td>
+        <td style={{ padding: '0.75rem 1rem' }}>
+          <span
+            style={{
+              padding: '0.2rem 0.6rem',
+              borderRadius: 12,
+              background: `color-mix(in srgb, ${badge.color} 13%, transparent)`,
+              color: badge.color,
+              fontSize: '0.75rem',
+              fontWeight: 600,
+            }}
+          >
+            {badge.label}
+          </span>
+        </td>
+      </tr>
+    );
+  };
+
+  const groups =
+    groupBy === 'nenhum'
+      ? null
+      : groupListRows(
+          sorted,
+          groupBy,
+          {
+            prazo: (r) => ({ date: r.prazoDate, deadline: r.deadline }),
+            cliente: (r) => ({ id: r.clienteId, nome: r.clienteNome }),
+            responsavel: (r) => ({ id: r.responsavelId, nome: r.responsavelNome }),
+            etapa: (r) => r.etapaNome,
+          },
+          new Date(),
+        );
+  const groupKeys = groups?.map((g) => g.key) ?? [];
+  const allCollapsed = allGroupsCollapsed(groupKeys, collapsed);
+
   return (
     <div className="animate-up card" style={{ overflow: 'auto' }}>
+      {groups && groups.length > 1 && (
+        <ListGroupsToggle
+          allCollapsed={allCollapsed}
+          onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(groupKeys))}
+        />
+      )}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
         <thead>
           <tr>
@@ -170,60 +268,27 @@ export function ListView({
             ))}
           </tr>
         </thead>
-        <tbody>
-          {sorted.map((row) => {
-            const badge = getStatusBadge(row);
+        {groups ? (
+          groups.map((g) => {
+            const isCollapsed = collapsed.has(g.key);
             return (
-              <tr
-                key={row.key}
-                onClick={row.open}
-                style={{ cursor: 'pointer', borderBottom: '1px solid var(--border-color)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <td style={{ padding: '0.75rem 1rem' }}>
-                  {row.titulo}
-                  {row.individual && (
-                    <span
-                      className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual"
-                      style={{ marginLeft: '0.5rem' }}
-                    >
-                      <FileText size={11} aria-hidden="true" style={{ flexShrink: 0 }} />
-                      Individual
-                    </span>
-                  )}
-                </td>
-                <td style={{ padding: '0.75rem 1rem' }}>
-                  <span
-                    style={{
-                      borderLeft: `3px solid ${row.clienteCor || '#888'}`,
-                      paddingLeft: '0.5rem',
-                    }}
-                  >
-                    {row.clienteNome || '—'}
-                  </span>
-                </td>
-                <td style={{ padding: '0.75rem 1rem' }}>{row.etapaNome}</td>
-                <td style={{ padding: '0.75rem 1rem' }}>{row.responsavelNome || '—'}</td>
-                <td style={{ padding: '0.75rem 1rem' }}>{formatPrazo(row)}</td>
-                <td style={{ padding: '0.75rem 1rem' }}>
-                  <span
-                    style={{
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: 12,
-                      background: `color-mix(in srgb, ${badge.color} 13%, transparent)`,
-                      color: badge.color,
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {badge.label}
-                  </span>
-                </td>
-              </tr>
+              <tbody key={g.key}>
+                <ListGroupHeaderRow
+                  label={g.label}
+                  sub={g.sub}
+                  count={g.rows.length}
+                  danger={g.danger}
+                  colSpan={COLUMNS.length}
+                  collapsed={isCollapsed}
+                  onToggle={() => setCollapsed((prev) => toggleKey(prev, g.key))}
+                />
+                {!isCollapsed && g.rows.map(renderRow)}
+              </tbody>
             );
-          })}
-        </tbody>
+          })
+        ) : (
+          <tbody>{sorted.map(renderRow)}</tbody>
+        )}
       </table>
     </div>
   );

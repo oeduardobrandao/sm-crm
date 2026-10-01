@@ -14330,3 +14330,87 @@ body.landing-page:has(.lp-v2) .cookie-banner button:hover {
     margin-left: calc(44px + 1rem);
   }
 }
+
+/* Entregas, vista Lista: cabeçalho de grupo (Agrupar por) */
+.list-group-head th {
+  padding: 1rem 1rem 0.4rem;
+  text-align: left;
+  font-weight: 400;
+  border-bottom: 1px solid var(--border-color);
+}
+.list-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: -0.4rem;
+  padding: 0.25rem 0.4rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.list-group-toggle:hover {
+  background: var(--surface-hover);
+}
+.list-group-toggle:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+.list-group-toggle svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.list-group-toggle.is-danger .list-group-label {
+  color: var(--danger-text);
+}
+.list-group-sub {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.list-group-count {
+  min-width: 1.4rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-align: center;
+}
+/* Tema escuro: --surface-hover e --surface-2 são o mesmo cinza, e no hover do
+   botão o selo da contagem se perdia dentro dele. */
+.list-group-toggle:hover .list-group-count {
+  background: var(--surface-3);
+}
+/* "Fechar todos / Abrir todos" dos grupos, acima da tabela: o ícone fica
+   alinhado às setas dos grupos (o mesmo 1rem da célula e -0.4rem do botão). */
+.list-groups-bar {
+  padding: 0 1rem 0.25rem;
+}
+.list-groups-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: -0.4rem;
+  padding: 0.25rem 0.4rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.list-groups-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+.list-groups-toggle:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}

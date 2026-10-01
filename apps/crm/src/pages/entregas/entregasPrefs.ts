@@ -1,5 +1,5 @@
 import type { EntregasMode } from './components/ModeToggle';
-import type { EntidadeFilter } from './viewQuery';
+import type { EntidadeFilter, ListGroupBy } from './viewQuery';
 import { BOARD_COLUMN_SORTS, type BoardColumnSort } from './postsBoardOrder';
 
 /** Ordenacao de uma coluna (etapa) do board de Fluxos: 'prazo' (padrao,
@@ -129,6 +129,37 @@ export function persistBoardColumnSort(
     const current = loadBoardColumnSorts(contaId);
     current[columnKey] = sort;
     localStorage.setItem(boardSortsKey(contaId), JSON.stringify(current));
+  } catch {
+    // Best effort: a preferência só não sobrevive ao reload.
+  }
+}
+
+const listGroupKey = (contaId: string) => `entregas_list_group_${contaId}`;
+// Cópia local da lista válida, como ENTIDADES acima: importar o valor de
+// viewQuery puxaria EntregasFilters e o store para este módulo.
+const LIST_GROUPS: ListGroupBy[] = [
+  'prazo',
+  'postagem',
+  'cliente',
+  'responsavel',
+  'etapa',
+  'nenhum',
+];
+
+/** Último "Agrupar por" da Lista, por conta. null sem preferência gravada (ou
+ *  com lixo): a página cai no padrão, prazo. */
+export function loadListGroupBy(contaId: string): ListGroupBy | null {
+  try {
+    const raw = localStorage.getItem(listGroupKey(contaId));
+    return raw && (LIST_GROUPS as string[]).includes(raw) ? (raw as ListGroupBy) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function persistListGroupBy(contaId: string, groupBy: ListGroupBy): void {
+  try {
+    localStorage.setItem(listGroupKey(contaId), groupBy);
   } catch {
     // Best effort: a preferência só não sobrevive ao reload.
   }

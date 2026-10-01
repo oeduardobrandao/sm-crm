@@ -36,7 +36,7 @@ export function EntidadeToggle({ value, onChange }: EntidadeToggleProps) {
           aria-checked={value === o.id}
           onClick={() => onChange(o.id)}
           style={{
-            padding: '0.35rem 0.85rem',
+            padding: '0.3rem 0.65rem',
             borderRadius: 6,
             border: 'none',
             cursor: 'pointer',

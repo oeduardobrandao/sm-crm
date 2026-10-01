@@ -37,7 +37,7 @@ export function ModeToggle({ mode, onModeChange }: ModeToggleProps) {
           key={id}
           onClick={() => onModeChange(id)}
           style={{
-            padding: '0.35rem 0.85rem',
+            padding: '0.3rem 0.65rem',
             borderRadius: 6,
             border: 'none',
             cursor: 'pointer',

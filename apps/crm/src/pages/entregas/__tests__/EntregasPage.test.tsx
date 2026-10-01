@@ -1,3 +1,4 @@
+import type { Ref } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -309,6 +310,73 @@ vi.mock('@/hooks/useCurrentMembro', () => ({
   useCurrentMembro: () => ({ ...currentMembroMock }),
 }));
 
+// jsdom's matchMedia is a stub; the Lista's Responsáveis panel is an inline
+// aside on desktop and a Sheet below 901px. Each test picks the branch.
+const isDesktopMock = vi.hoisted(() => ({ value: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => isDesktopMock.value }));
+
+// Like FilaMembroPicker: the Lista controls (on the tabs line, after the tabs)
+// are unit-tested on their own (ListToolbar.test.tsx / ResponsaveisPanel.test.tsx).
+// The stub keeps the ref wiring: the page hands the toggle's ref to the toolbar to
+// return focus to it when the aside closes.
+vi.mock('../components/ListToolbar', () => ({
+  ListToolbar: ({
+    groupBy,
+    groupByOptions,
+    onGroupByChange,
+    onToggleResponsaveis,
+    responsaveisToggleRef,
+    postados,
+  }: {
+    groupBy: string;
+    groupByOptions: readonly string[];
+    onGroupByChange: (g: string) => void;
+    onToggleResponsaveis: () => void;
+    responsaveisToggleRef?: Ref<HTMLButtonElement>;
+    postados?: { count: number; shown: boolean; onToggle: () => void };
+  }) => (
+    <div>
+      <div>GroupBy: {groupBy}</div>
+      <div>GroupByOptions: {groupByOptions.join(',')}</div>
+      <button onClick={() => onGroupByChange('cliente')}>Agrupar por cliente</button>
+      {postados && (
+        <button onClick={postados.onToggle}>
+          Alternar postados ({postados.count}, {postados.shown ? 'visíveis' : 'ocultos'})
+        </button>
+      )}
+      <button ref={responsaveisToggleRef} onClick={onToggleResponsaveis}>
+        Alternar responsáveis
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock('../components/ResponsaveisPanel', () => ({
+  ResponsaveisPanel: ({
+    counts,
+    selected,
+    onChange,
+    caption,
+    onClose,
+  }: {
+    counts: ReadonlyMap<number, number>;
+    selected: number[];
+    onChange: (ids: number[]) => void;
+    caption: string;
+    onClose?: () => void;
+  }) => (
+    <div>
+      <div>Contagens: {[...counts.entries()].map(([id, n]) => `${id}=${n}`).join(',')}</div>
+      <div>Selecionados: {selected.join(',')}</div>
+      <div>Legenda: {caption}</div>
+      <button onClick={() => onChange([7])}>Marcar membro 7</button>
+      {/* Like the real panel: only the desktop aside gets onClose (its X); the
+          mobile Sheet closes itself. */}
+      {onClose && <button onClick={onClose}>Fechar painel de responsáveis</button>}
+    </div>
+  ),
+}));
+
 // captureEvent is only asserted by the Minha fila analytics tests; the rest of
 // the module stays real.
 const analyticsMock = vi.hoisted(() => ({ captureEvent: vi.fn() }));
@@ -410,13 +478,16 @@ vi.mock('../views/ListView', () => ({
     cards,
     sort,
     onSortChange,
+    groupBy,
   }: {
     cards: Array<{ workflow: { titulo: string } }>;
     sort: { column: string; direction: 'asc' | 'desc' };
     onSortChange: (next: { column: string; direction: 'asc' | 'desc' }) => void;
+    groupBy?: string;
   }) => (
     <div>
       <div>List view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
+      <div>ListGroupBy: {groupBy}</div>
       <div>
         Sort: {sort.column}/{sort.direction}
       </div>
@@ -452,12 +523,18 @@ vi.mock('../views/PostsListView', () => ({
   PostsListView: ({
     posts,
     onFluxoClick,
+    groupBy,
+    hiddenPostados,
   }: {
     posts: unknown[];
     onFluxoClick: (workflowId: number) => void;
+    groupBy?: string;
+    hiddenPostados?: number;
   }) => (
     <div>
       <div>Posts list view: {posts.length}</div>
+      <div>PostsGroupBy: {groupBy}</div>
+      <div>Postados ocultos: {hiddenPostados ?? 0}</div>
       <button onClick={() => onFluxoClick(1)}>Open fluxo from tag</button>
     </div>
   ),
@@ -2708,5 +2785,296 @@ describe('EntregasPage: Minha fila', () => {
     mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: true });
     renderFila();
     expect(openedCalls()).toHaveLength(0);
+  });
+});
+
+describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
+  // No `postResponsaveis` in the fixture on purpose: filterBoardCards only reads
+  // it while filterPostResponsaveis is non-empty, which these tests never set.
+  function renderLista(entry: string, over: Record<string, unknown> = {}) {
+    mockedUseEntregasData.mockReturnValue({
+      clientes: [],
+      membros: [
+        { id: 7, nome: 'Ana' },
+        { id: 8, nome: 'Bruno' },
+      ],
+      templates: [],
+      cards: [
+        makeCard({
+          workflow: { id: 1, titulo: 'Fluxo Ana', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 7 },
+        }),
+        makeCard({
+          workflow: { id: 2, titulo: 'Fluxo Bruno', cliente_id: 10, status: 'ativo' },
+          etapa: { responsavel_id: 8 },
+        }),
+      ],
+      activeWorkflows: [wfFixture],
+      postEntities: [],
+      processByPostId: new Map(),
+      concludedPostProcesses: [],
+      activePostProcessCount: 0,
+      postProcessesVisible: false,
+      isLoading: false,
+      isError: false,
+      refresh: vi.fn(),
+      ...over,
+    } as never);
+    return renderPage(entry);
+  }
+
+  beforeEach(() => {
+    limitsMock.features = null;
+    localStorage.clear();
+    localStorage.setItem('entregas_explainer_dismissed_conta-1', 'true');
+    mockedUseActivePosts.mockReturnValue({ posts: [], isLoading: false, isError: false });
+    analyticsMock.captureEvent.mockReset();
+    isDesktopMock.value = true;
+  });
+
+  it('lê agrupar= da URL e grava a nova escolha na URL e na preferência da conta', () => {
+    renderLista('/entregas?view=list&agrupar=etapa');
+    expect(screen.getByText('ListGroupBy: etapa')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Agrupar por cliente'));
+
+    expect(screen.getByText('ListGroupBy: cliente')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=list&agrupar=cliente$/,
+    );
+    expect(localStorage.getItem('entregas_list_group_conta-1')).toBe('cliente');
+    expect(analyticsMock.captureEvent).toHaveBeenCalledWith('entregas_lista_agrupar', {
+      agrupar: 'cliente',
+      mode: 'entregas',
+    });
+  });
+
+  it('sem agrupar= na URL, começa pela preferência gravada', () => {
+    localStorage.setItem('entregas_list_group_conta-1', 'nenhum');
+    renderLista('/entregas?view=list');
+    expect(screen.getByText('ListGroupBy: nenhum')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=list&agrupar=nenhum$/,
+    );
+  });
+
+  it('sem URL e sem preferência, agrupa por prazo e deixa a URL limpa', () => {
+    renderLista('/entregas?view=list');
+    expect(screen.getByText('ListGroupBy: prazo')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=list$/);
+  });
+
+  it('na Lista de Fluxos, postagem vale como prazo e não é oferecida', () => {
+    renderLista('/entregas?view=list&agrupar=postagem');
+    expect(screen.getByText('ListGroupBy: prazo')).toBeInTheDocument();
+    expect(
+      screen.getByText('GroupByOptions: prazo,cliente,responsavel,etapa,nenhum'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/entregas\?view=list$/);
+  });
+
+  it('em Publicações, postagem é oferecida e aplicada', () => {
+    renderLista('/entregas?view=list&mode=publicacoes&agrupar=postagem');
+    expect(screen.getByText('PostsGroupBy: postagem')).toBeInTheDocument();
+    expect(
+      screen.getByText('GroupByOptions: prazo,postagem,cliente,responsavel,etapa,nenhum'),
+    ).toBeInTheDocument();
+  });
+
+  it('painel: as contagens ignoram o próprio filtro de responsável e marcar filtra a lista', () => {
+    renderLista('/entregas?view=list');
+    expect(screen.queryByText(/Contagens:/)).toBeNull();
+
+    fireEvent.click(screen.getByText('Alternar responsáveis'));
+    expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
+    expect(screen.getByText('Legenda: Responsável pela etapa atual')).toBeInTheDocument();
+    expect(analyticsMock.captureEvent).toHaveBeenCalledWith('entregas_lista_responsaveis_aberto', {
+      mode: 'entregas',
+    });
+
+    fireEvent.click(screen.getByText('Marcar membro 7'));
+
+    expect(screen.getByText('List view: Fluxo Ana')).toBeInTheDocument();
+    expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
+    expect(screen.getByText('Selecionados: 7')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent(
+      /^\/entregas\?view=list&membros=7$/,
+    );
+  });
+
+  it('painel em Publicações conta pelo responsável da etapa e, sem etapa, pelo do próprio post', () => {
+    mockedUseActivePosts.mockReturnValue({
+      posts: [
+        {
+          id: 5,
+          workflow_id: 1,
+          cliente_id: 10,
+          titulo: 'Post do fluxo',
+          tipo: 'feed',
+          status: 'rascunho',
+          responsavel_id: null,
+          scheduled_at: null,
+        },
+        {
+          id: 6,
+          workflow_id: null,
+          cliente_id: 10,
+          titulo: 'Avulso',
+          tipo: 'feed',
+          status: 'rascunho',
+          responsavel_id: 8,
+          scheduled_at: null,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    } as never);
+    renderLista('/entregas?view=list&mode=publicacoes');
+
+    fireEvent.click(screen.getByText('Alternar responsáveis'));
+
+    expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
+    expect(screen.getByText('Legenda: Quem está com o post na etapa atual')).toBeInTheDocument();
+  });
+
+  it('no celular o painel abre num Sheet', async () => {
+    isDesktopMock.value = false;
+    renderLista('/entregas?view=list');
+
+    fireEvent.click(screen.getByText('Alternar responsáveis'));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Contagens: 7=1,8=1')).toBeInTheDocument();
+    // O Sheet fecha pelo próprio X: não recebe o X do aside.
+    expect(screen.queryByRole('button', { name: 'Fechar painel de responsáveis' })).toBeNull();
+  });
+
+  it.each([
+    ['desktop', true],
+    ['celular', false],
+  ])(
+    'a barra da Lista aparece uma vez, na linha das abas mas fora da rolagem delas (%s)',
+    (_label, desktop) => {
+      isDesktopMock.value = desktop;
+      renderLista('/entregas?view=list');
+
+      const toggles = screen.getAllByText('Alternar responsáveis');
+      expect(toggles).toHaveLength(1);
+      const toggle = toggles[0];
+      // Fora da rolagem das abas, que escondia a barra no fim da rolagem, mas na
+      // mesma linha flex: o CSS decide se cabe ao lado das abas ou quebra.
+      const tabsRow = screen.getByRole('tablist', { name: 'Modos de visualização' }).parentElement;
+      expect(tabsRow).not.toContainElement(toggle);
+      expect(tabsRow?.parentElement).toContainElement(toggle);
+      // E antes da tabela na ordem do documento.
+      expect(
+        toggle.compareDocumentPosition(screen.getByText(/^List view:/)) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    },
+  );
+
+  it('fora da vista Lista a barra não aparece', () => {
+    renderLista('/entregas?view=kanban');
+    expect(screen.queryByText('Alternar responsáveis')).toBeNull();
+  });
+
+  it('fechar o painel lateral pelo X devolve o foco ao botão Responsáveis da barra', () => {
+    renderLista('/entregas?view=list');
+    const toggle = screen.getByText('Alternar responsáveis');
+    fireEvent.click(toggle);
+    const close = screen.getByRole('button', { name: 'Fechar painel de responsáveis' });
+    // É o X quem tem o foco quando o usuário o aciona; fireEvent.click não o move.
+    close.focus();
+    expect(close).toHaveFocus();
+
+    fireEvent.click(close);
+
+    expect(screen.queryByText(/Contagens:/)).toBeNull();
+    expect(toggle).toHaveFocus();
+  });
+
+  it('fechar o Sheet do celular devolve o foco ao botão Responsáveis da barra', async () => {
+    isDesktopMock.value = false;
+    renderLista('/entregas?view=list');
+    const toggle = screen.getByText('Alternar responsáveis');
+    fireEvent.click(toggle);
+    await screen.findByRole('dialog');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // O FocusScope do Radix devolve o foco num setTimeout depois de desmontar.
+    await waitFor(() => expect(toggle).toHaveFocus());
+  });
+
+  describe('postados na Lista de Publicações', () => {
+    const avulso = (id: number, titulo: string, status: string, responsavel_id: number) => ({
+      id,
+      workflow_id: null,
+      cliente_id: 10,
+      titulo,
+      tipo: 'feed',
+      status,
+      responsavel_id,
+      scheduled_at: null,
+    });
+
+    beforeEach(() => {
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          avulso(21, 'Rascunho da Ana', 'rascunho', 7),
+          avulso(22, 'Postado do Bruno', 'postado', 8),
+          avulso(23, 'Postado da Ana', 'postado', 7),
+        ],
+        isLoading: false,
+        isError: false,
+      } as never);
+    });
+
+    it('ficam ocultos por padrão e o botão da barra os mostra, gravando postados=1', () => {
+      renderLista('/entregas?view=list&mode=publicacoes');
+      expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+      expect(screen.getByText('Postados ocultos: 2')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Alternar postados (2, ocultos)'));
+
+      expect(screen.getByText('Posts list view: 3')).toBeInTheDocument();
+      expect(screen.getByText('Postados ocultos: 0')).toBeInTheDocument();
+      expect(screen.getByText('Alternar postados (2, visíveis)')).toBeInTheDocument();
+      expect(screen.getByTestId('current-path')).toHaveTextContent(
+        /^\/entregas\?view=list&mode=publicacoes&postados=1$/,
+      );
+    });
+
+    it('postados=1 na URL abre com eles visíveis', () => {
+      renderLista('/entregas?view=list&mode=publicacoes&postados=1');
+      expect(screen.getByText('Posts list view: 3')).toBeInTheDocument();
+    });
+
+    it('o filtro de status do post decide: com Postado marcado eles aparecem e o botão some', () => {
+      renderLista('/entregas?view=list&mode=publicacoes&pstatus=postado');
+      expect(screen.getByText('Posts list view: 2')).toBeInTheDocument();
+      expect(screen.queryByText(/Alternar postados/)).toBeNull();
+    });
+
+    it('o Kanban de Publicações segue mostrando os postados', () => {
+      renderLista('/entregas?mode=publicacoes');
+      expect(screen.getByText('Posts kanban view: 3')).toBeInTheDocument();
+    });
+
+    it('as contagens do painel Responsáveis seguem o que a Lista mostra', () => {
+      renderLista('/entregas?view=list&mode=publicacoes');
+      fireEvent.click(screen.getByText('Alternar responsáveis'));
+      expect(screen.getByText('Contagens: 7=1')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Alternar postados (2, ocultos)'));
+      expect(screen.getByText('Contagens: 7=2,8=1')).toBeInTheDocument();
+    });
+
+    it('a Lista de Fluxos não tem o botão de postados', () => {
+      renderLista('/entregas?view=list');
+      expect(screen.queryByText(/Alternar postados/)).toBeNull();
+    });
   });
 });

@@ -27,6 +27,10 @@ export type AnalyticsEvent =
   | 'entregas_explainer_shown'
   | 'entregas_explainer_reopened'
   | 'entregas_explainer_dismissed'
+  // Lista de Entregas: uma por troca do "Agrupar por" (com a dimensão escolhida) e
+  // uma por abertura do painel Responsáveis. Ambas levam `mode` (entregas | publicacoes).
+  | 'entregas_lista_agrupar'
+  | 'entregas_lista_responsaveis_aberto'
   // "Minha fila": one per entry into the fila tab (and again on member switch),
   // and the dashboard teaser's clicks (item row vs "Ver minha fila").
   | 'minha_fila_opened'
