@@ -1284,7 +1284,7 @@ Expected: every command exits 0. If `format:check` fails, run `npm run format` a
 - [ ] **Step 2: check the Admin layout in the browser**
 
 The RPC and action don't exist on prod or staging yet, so drive the UI with a patched `fetch`:
-1. The worktree has no `.env`, so copy the main checkout's `.env` in first (`cp /Users/eduardosouza/projects/sm-crm/.env .env`, which is gitignored, so never commit it). Then `preview_start {name: "admin"}` (`.claude/launch.json` already has it, on port 5177). Log in with the seed-login flow (memory `reference_seed_login_browser_verification`).
+1. Use **staging**, where the seed user is a `platform_admins` row. The worktree has no env files, so copy `.env.staging` from the main checkout (`cp /Users/eduardosouza/projects/sm-crm/.env.staging .env.staging`; confirm `git check-ignore .env.staging` prints it). Then `preview_start {name: "admin-staging"}` and read `preview_logs` for the real port (it binds 5177 even when the tool reports 5178). Log in with the seed-login flow in memory `reference_seed_login_browser_verification`, Admin variant: write the session json to `apps/admin/zz-seed-session.json`, fetch `/zz-seed-session.json`, then delete the file immediately; it is not gitignored. If that flow fails, ask the user to log in manually in the Browser pane.
 2. Before navigating to `/admin/kb-articles`, patch `window.fetch` with `javascript_tool` so a POST body containing `"action":"kb-view-stats"` resolves to a canned payload, keyed by real ids from the `list-kb-articles` and `list-kb-videos` responses.
 3. Check:
    - desktop at 1280px: the "Visualizações" column lines up with the header, and long numbers ("15.000") don't wrap;
@@ -1297,12 +1297,12 @@ The RPC and action don't exist on prod or staging yet, so drive the UI with a pa
 - [ ] **Step 3: commit any fixes**
 
 ```bash
-git add -A apps supabase && git commit -m "fix: ajustes de lint/format/layout
+git add -A apps supabase/functions supabase/migrations supabase/tests && git commit -m "fix: ajustes de lint/format/layout
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-Skip this step if nothing changed.
+Skip this step if nothing changed. Never stage `supabase/config.toml` (colima port overrides), `.env*`, or `apps/admin/zz-seed-session.json`.
 
 ---
 
