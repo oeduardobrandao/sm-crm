@@ -119,12 +119,12 @@ import {
 import { captureEvent } from '@/lib/analytics';
 
 const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
-  { id: 'kanban', label: 'Kanban', icon: <Columns className="h-4 w-4" /> },
-  { id: 'chart', label: 'Visão geral', icon: <BarChart2 className="h-4 w-4" /> },
-  { id: 'calendar', label: 'Calendário', icon: <Calendar className="h-4 w-4" /> },
-  { id: 'list', label: 'Lista', icon: <List className="h-4 w-4" /> },
-  { id: 'concluded', label: 'Concluídas', icon: <Archive className="h-4 w-4" /> },
-  { id: 'fila', label: 'Minha fila', icon: <ListChecks className="h-4 w-4" /> },
+  { id: 'kanban', label: 'Kanban', icon: <Columns className="h-3.5 w-3.5" /> },
+  { id: 'chart', label: 'Visão geral', icon: <BarChart2 className="h-3.5 w-3.5" /> },
+  { id: 'calendar', label: 'Calendário', icon: <Calendar className="h-3.5 w-3.5" /> },
+  { id: 'list', label: 'Lista', icon: <List className="h-3.5 w-3.5" /> },
+  { id: 'fila', label: 'Minha fila', icon: <ListChecks className="h-3.5 w-3.5" /> },
+  { id: 'concluded', label: 'Concluídas', icon: <Archive className="h-3.5 w-3.5" /> },
 ];
 
 const EMPTY_POST_ENTITIES: PostEntity[] = [];
@@ -1311,21 +1311,24 @@ export default function EntregasPage() {
             own space instead of wrapping into several stacked control rows,
             which was eating the first fold on phones. */}
         <div
-          className="no-scrollbar"
+          // Below 901px, flex-basis 0% (flex-1, not 'auto') so the outer row's
+          // line-wrapping decision -- made from each item's hypothetical size
+          // BEFORE shrinking is applied -- doesn't see this item's full content
+          // width and wrap it onto its own line. minWidth:0 then lets it
+          // actually shrink to fit next to the Filtros button, and this
+          // element's own overflow-x:auto scrolls whatever doesn't fit. From
+          // 901px up the filters take a line of their own and the basis goes
+          // back to auto, so the Lista toolbar after this row wraps onto the
+          // next line when it doesn't fit beside the tabs, instead of
+          // squeezing them into a scroll.
+          className="no-scrollbar flex-1 min-[901px]:basis-auto"
           style={{
             display: 'flex',
             flexWrap: 'nowrap',
             overflowX: 'auto',
             alignItems: 'center',
-            gap: '0.75rem',
+            gap: '0.5rem',
             minWidth: 0,
-            // flex-basis 0% (not 'auto') so the outer row's line-wrapping
-            // decision -- made from each item's hypothetical size BEFORE
-            // shrinking is applied -- doesn't see this item's full content
-            // width and wrap it onto its own line. minWidth:0 then lets it
-            // actually shrink to fit next to the Filtros button, and this
-            // element's own overflow-x:auto scrolls whatever doesn't fit.
-            flex: '1 1 0%',
           }}
         >
           <div
@@ -1356,8 +1359,8 @@ export default function EntregasPage() {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.4rem',
-                  padding: '0.4rem 0.9rem',
+                  gap: '0.35rem',
+                  padding: '0.3rem 0.65rem',
                   borderRadius: '6px',
                   border: 'none',
                   background: activeView === tab.id ? 'var(--cta-bg)' : 'transparent',
@@ -1399,6 +1402,15 @@ export default function EntregasPage() {
             </div>
           )}
         </div>
+
+        {/* Barra da Lista (Agrupar por, Mostrar postados, Responsáveis) na linha
+            das abas quando cabe, alinhada à direita, sobre onde o painel lateral
+            abre. Fica fora da rolagem das abas, que a escondia no fim da
+            rolagem: abaixo de 901px tem linha própria, e a partir daí quebra
+            para a linha de baixo quando não cabe ao lado das abas. */}
+        {activeView === 'list' && (
+          <div className="basis-full min-[901px]:basis-auto min-[901px]:ml-auto">{listToolbar}</div>
+        )}
       </div>
 
       {activeView === 'kanban' &&
@@ -1516,55 +1528,47 @@ export default function EntregasPage() {
         />
       )}
       {activeView === 'list' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {/* Barra da Lista (Agrupar por + Responsáveis) em linha própria acima da
-              tabela, em qualquer largura: a linha das abas rola na horizontal e
-              escondia a barra no fim da rolagem. O gap aqui é menor que o 1.5rem
-              da página porque a barra pertence à tabela. A partir de 901px ela se
-              alinha à direita (ListToolbar), sobre onde o painel lateral abre. */}
-          {listToolbar}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-            <div style={{ flex: '1 1 0%', minWidth: 0 }}>
-              {mode === 'entregas' ? (
-                <ListView
-                  cards={visibleCards}
-                  postEntities={visiblePostEntities}
-                  onPostClick={handlePostEntityClick}
-                  sort={listSort}
-                  onSortChange={setListSort}
-                  onCardClick={handleCardClick}
-                  groupBy={effectiveListGroupBy}
-                />
-              ) : (
-                <PostsListView
-                  posts={listPosts}
-                  hiddenPostados={hiddenPostados}
-                  isLoading={activePostsLoading}
-                  openableWorkflowIds={openableWorkflowIds}
-                  onPostClick={handlePostClick}
-                  onFluxoClick={handleFluxoClick}
-                  cardsByWorkflowId={cardsByWorkflowId}
-                  filtersActive={postsFiltersActive}
-                  onCreateAvulso={() => {
-                    setAvulsoTemplateId(null);
-                    setNewAvulsoOpen(true);
-                  }}
-                  postEntityByPostId={postEntityByPostId}
-                  groupBy={effectiveListGroupBy}
-                  membroNomeById={membroNomeById}
-                />
-              )}
-            </div>
-            {isDesktop && responsaveisOpen && (
-              <aside
-                className="card animate-up"
-                aria-label="Responsáveis"
-                style={{ width: 260, flexShrink: 0, padding: '1rem' }}
-              >
-                {renderResponsaveisPanel(closeResponsaveisAside)}
-              </aside>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+          <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+            {mode === 'entregas' ? (
+              <ListView
+                cards={visibleCards}
+                postEntities={visiblePostEntities}
+                onPostClick={handlePostEntityClick}
+                sort={listSort}
+                onSortChange={setListSort}
+                onCardClick={handleCardClick}
+                groupBy={effectiveListGroupBy}
+              />
+            ) : (
+              <PostsListView
+                posts={listPosts}
+                hiddenPostados={hiddenPostados}
+                isLoading={activePostsLoading}
+                openableWorkflowIds={openableWorkflowIds}
+                onPostClick={handlePostClick}
+                onFluxoClick={handleFluxoClick}
+                cardsByWorkflowId={cardsByWorkflowId}
+                filtersActive={postsFiltersActive}
+                onCreateAvulso={() => {
+                  setAvulsoTemplateId(null);
+                  setNewAvulsoOpen(true);
+                }}
+                postEntityByPostId={postEntityByPostId}
+                groupBy={effectiveListGroupBy}
+                membroNomeById={membroNomeById}
+              />
             )}
           </div>
+          {isDesktop && responsaveisOpen && (
+            <aside
+              className="card animate-up"
+              aria-label="Responsáveis"
+              style={{ width: 260, flexShrink: 0, padding: '1rem' }}
+            >
+              {renderResponsaveisPanel(closeResponsaveisAside)}
+            </aside>
+          )}
         </div>
       )}
       {activeView === 'list' && !isDesktop && (

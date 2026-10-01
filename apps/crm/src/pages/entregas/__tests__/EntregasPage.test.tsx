@@ -315,7 +315,7 @@ vi.mock('@/hooks/useCurrentMembro', () => ({
 const isDesktopMock = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => isDesktopMock.value }));
 
-// Like FilaMembroPicker: the Lista controls (a row of their own above the list)
+// Like FilaMembroPicker: the Lista controls (on the tabs line, after the tabs)
 // are unit-tested on their own (ListToolbar.test.tsx / ResponsaveisPanel.test.tsx).
 // The stub keeps the ref wiring: the page hands the toggle's ref to the toolbar to
 // return focus to it when the aside closes.
@@ -2953,7 +2953,7 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
     ['desktop', true],
     ['celular', false],
   ])(
-    'a barra da Lista aparece uma vez, em linha própria acima da tabela (%s)',
+    'a barra da Lista aparece uma vez, na linha das abas mas fora da rolagem delas (%s)',
     (_label, desktop) => {
       isDesktopMock.value = desktop;
       renderLista('/entregas?view=list');
@@ -2961,9 +2961,11 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
       const toggles = screen.getAllByText('Alternar responsáveis');
       expect(toggles).toHaveLength(1);
       const toggle = toggles[0];
-      // Fora da linha das abas: ela rola na horizontal e escondia a barra.
+      // Fora da rolagem das abas, que escondia a barra no fim da rolagem, mas na
+      // mesma linha flex: o CSS decide se cabe ao lado das abas ou quebra.
       const tabsRow = screen.getByRole('tablist', { name: 'Modos de visualização' }).parentElement;
       expect(tabsRow).not.toContainElement(toggle);
+      expect(tabsRow?.parentElement).toContainElement(toggle);
       // E antes da tabela na ordem do documento.
       expect(
         toggle.compareDocumentPosition(screen.getByText(/^List view:/)) &

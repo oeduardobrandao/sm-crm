@@ -19,9 +19,10 @@ const LIST_GROUP_BY_LABELS: Record<ListGroupBy, string> = {
   nenhum: 'Nenhum',
 };
 
-/** Controles da vista Lista, em linha própria acima da tabela: "Agrupar por",
- *  "Mostrar postados" (só na Lista de Publicações) e o botão do painel
- *  Responsáveis, por último para ficar sobre onde o painel lateral abre. */
+/** Controles da vista Lista: "Agrupar por", "Mostrar postados" (só na Lista de
+ *  Publicações) e o botão do painel Responsáveis, por último para ficar sobre
+ *  onde o painel lateral abre. A página os põe na linha das abas e decide o
+ *  alinhamento. */
 export function ListToolbar({
   groupBy,
   groupByOptions,
@@ -51,8 +52,7 @@ export function ListToolbar({
   return (
     // Quebra de linha em vez de passar da largura do celular (o select com a
     // data de postagem mais o selo do botão já passa dos 343px de um 375px).
-    // Alinhada à direita a partir de 901px, sobre onde o painel lateral abre.
-    <div className="flex flex-wrap items-center gap-2 min-[901px]:justify-end">
+    <div className="flex flex-wrap items-center gap-2">
       <Select
         value={groupBy}
         onValueChange={(v) => {
