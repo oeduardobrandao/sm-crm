@@ -99,7 +99,7 @@ export function ContextHelpLinks() {
       ) : (
         <Popover>
           <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-          <PopoverContent align="start" className="context-help__popover">
+          <PopoverContent side="top" align="end" className="context-help__popover">
             <ArticleMenu links={validLinks} />
           </PopoverContent>
         </Popover>
