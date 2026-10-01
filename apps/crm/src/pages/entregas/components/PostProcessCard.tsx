@@ -24,6 +24,7 @@ import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import type { PostEntity } from '../boardEntity';
 import { TIPO_LABELS } from '../postLabels';
 import { PostStatusChip } from './PostStatusChip';
+import { DeadlinePill } from './DeadlinePill';
 import type { WorkflowPost } from '../../../store';
 
 const deadlineAccent: Record<string, string> = {
@@ -289,7 +290,7 @@ export function PostProcessCard({
           gap: '0.4rem',
         }}
       >
-        <span
+        <DeadlinePill
           className={`board-card-deadline board-card-deadline-pill ${hasDeadline ? deadlineClass : 'deadline-ok'}`}
           style={{
             fontSize: '0.66rem',
@@ -301,14 +302,11 @@ export function PostProcessCard({
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}
-        >
-          {deadlineText}
-          {entity.step.tipo_prazo && (
-            <span className="board-card-prazo-type-inner">
-              {entity.step.tipo_prazo === 'uteis' ? 'úteis' : 'corridos'}
-            </span>
-          )}
-        </span>
+          relativeText={deadlineText}
+          dueDate={entity.prazoEfetivo}
+          estourado={dl.estourado}
+          tipoPrazo={entity.step.tipo_prazo}
+        />
         <span className="board-card-type-status-chip" style={{ flexShrink: 0 }}>
           <PostStatusChip post={post} registry={registry} />
         </span>
