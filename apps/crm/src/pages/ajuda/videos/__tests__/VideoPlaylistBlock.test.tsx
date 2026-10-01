@@ -230,4 +230,26 @@ describe('VideoPlaylistBlock', () => {
     // text-white in light mode.
     expect(watchAgainButton).toHaveClass('text-foreground');
   });
+
+  it('reports the first play of each video once', () => {
+    const onFirstPlay = vi.fn();
+    const { container } = renderBlock({ onFirstPlay });
+    // Opens on video 2 (first unwatched).
+    fireEvent.play(videoEl(container));
+    fireEvent.pause(videoEl(container));
+    fireEvent.play(videoEl(container));
+    expect(onFirstPlay).toHaveBeenCalledTimes(1);
+    expect(onFirstPlay).toHaveBeenCalledWith(2);
+
+    fireEvent.click(screen.getByRole('button', { name: /Primeiro cliente/ }));
+    fireEvent.play(videoEl(container));
+    expect(onFirstPlay).toHaveBeenCalledTimes(2);
+    expect(onFirstPlay).toHaveBeenLastCalledWith(3);
+  });
+
+  it('reports nothing when the video is only shown', () => {
+    const onFirstPlay = vi.fn();
+    renderBlock({ onFirstPlay });
+    expect(onFirstPlay).not.toHaveBeenCalled();
+  });
 });

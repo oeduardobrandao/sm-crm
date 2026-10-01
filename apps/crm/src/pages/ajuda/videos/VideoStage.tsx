@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
@@ -15,6 +15,8 @@ interface VideoStageProps {
   autoPlay: boolean;
   onSaveProgress: (videoId: number, position: number, completed: boolean) => void;
   onPlayNext: (next: KbVideo) => void;
+  /** Called on the first `play` of this video (the parent keys the stage by video id). */
+  onFirstPlay?: (videoId: number) => void;
 }
 
 /** Player + metadata for ONE video. The parent keys it by video id, so every ref below starts
@@ -26,6 +28,7 @@ export function VideoStage({
   autoPlay,
   onSaveProgress,
   onPlayNext,
+  onFirstPlay,
 }: VideoStageProps) {
   const [endState, setEndState] = useState<'playing' | 'next' | 'done'>('playing');
   const [failed, setFailed] = useState(false);
@@ -38,6 +41,13 @@ export function VideoStage({
     onSaveProgress,
     () => setEndState(next ? 'next' : 'done'),
   );
+  const playedRef = useRef(false);
+
+  const handlePlay = () => {
+    if (playedRef.current) return;
+    playedRef.current = true;
+    onFirstPlay?.(video.id);
+  };
 
   return (
     <div className="min-w-0 space-y-3">
@@ -76,6 +86,7 @@ export function VideoStage({
             autoPlay={autoPlay || attempt > 0}
             className="h-full w-full"
             {...handlers}
+            onPlay={handlePlay}
             onFatalError={() => setFailed(true)}
           />
         )}

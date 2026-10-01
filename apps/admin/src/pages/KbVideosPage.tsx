@@ -11,6 +11,7 @@ import {
   type KbVideo,
   type KbVideoSeries,
 } from '../lib/api';
+import { useKbViewStats } from '../lib/kb-view-stats';
 import {
   formatDuration,
   groupBySeries,
@@ -27,6 +28,7 @@ import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { RowLink } from '../components/RowLink';
+import { KbViewStats } from '../components/KbViewStats';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -50,6 +52,7 @@ export default function KbVideosPage() {
         ? PENDING_POLL_MS
         : false,
   });
+  const viewStats = useKbViewStats();
 
   // refresh-kb-video for each stale pending row, at most once a minute per row while the list
   // is open: covers a missed webhook (Stream may still say inprogress on the first try) and
@@ -197,6 +200,13 @@ export default function KbVideosPage() {
                               {sb.label}
                             </Badge>
                           </div>
+                          <KbViewStats
+                            className="mt-1"
+                            stats={viewStats.data?.videos[String(v.id)]}
+                            loading={viewStats.isLoading}
+                            failed={viewStats.isError}
+                            showCompleted
+                          />
                         </div>
                         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                           <Button
