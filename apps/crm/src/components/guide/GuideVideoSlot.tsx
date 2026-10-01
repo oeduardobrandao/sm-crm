@@ -40,10 +40,11 @@ export function GuideVideoSlot({
   variant: 'featured' | 'inline';
 }) {
   const { data: series } = useKbVideoSeries();
-  const { progress, save } = useVideoProgress();
+  const { progress, save, isLoading: progressLoading } = useVideoProgress();
   const openInHelpCenter = useOpenInHelpCenter(pageId);
   const video = useMemo(() => findVideoBySlug(series ?? [], slug), [series, slug]);
-  if (!video) return null;
+  // O progresso semeia o player uma vez, na montagem: sem esperar, um clique rápido perde o retomar.
+  if (!video || progressLoading) return null;
   return (
     <GuideVideoCard
       key={video.id}

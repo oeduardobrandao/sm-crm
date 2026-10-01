@@ -10,10 +10,21 @@ import GuideDialog from '../GuideDialog';
 
 vi.mock('../../../lib/analytics', () => ({ captureEvent: vi.fn() }));
 
-const videos = vi.hoisted(() => ({ series: { data: undefined as unknown } }));
+const videos = vi.hoisted(() => ({
+  series: { data: undefined as unknown } as Record<string, unknown>,
+  progressLoading: false,
+  seriesHook: vi.fn(),
+}));
 vi.mock('../../../pages/ajuda/videos/useKbVideos', () => ({
-  useKbVideoSeries: () => videos.series,
-  useVideoProgress: () => ({ progress: new Map(), save: vi.fn(), isLoading: false }),
+  useKbVideoSeries: (...args: unknown[]) => {
+    videos.seriesHook(...args);
+    return videos.series;
+  },
+  useVideoProgress: () => ({
+    progress: new Map(),
+    save: vi.fn(),
+    isLoading: videos.progressLoading,
+  }),
 }));
 
 function v(id: number, slug: string, title: string, series_id: string) {
@@ -106,6 +117,8 @@ function renderDialog(api: GuideApi) {
 describe('GuideDialog', () => {
   beforeEach(() => {
     videos.series = { data: SERIES };
+    videos.progressLoading = false;
+    videos.seriesHook.mockClear();
     HTMLMediaElement.prototype.canPlayType = vi.fn(() => 'probably') as unknown as (
       t: string,
     ) => CanPlayTypeResult;
@@ -184,6 +197,23 @@ describe('GuideDialog', () => {
     videos.series = { data: undefined };
     renderDialog(makeApi({ currentPageId: 't1p3' }));
     expect(screen.queryByRole('button', { name: /o vídeo/ })).not.toBeInTheDocument();
+  });
+
+  it('progresso carregando: sem card até o progresso chegar', () => {
+    videos.progressLoading = true;
+    renderDialog(makeApi({ currentPageId: 't1p3' }));
+    expect(screen.queryByRole('button', { name: /o vídeo/ })).not.toBeInTheDocument();
+  });
+
+  it('erro ao carregar a série: sem card', () => {
+    videos.series = { data: undefined, isError: true };
+    renderDialog(makeApi({ currentPageId: 't1p3' }));
+    expect(screen.queryByRole('button', { name: /o vídeo/ })).not.toBeInTheDocument();
+  });
+
+  it('com o guia fechado, as queries de vídeo não rodam', () => {
+    renderDialog(makeApi({ isOpen: false, currentPageId: 't1p3' }));
+    expect(videos.seriesHook).not.toHaveBeenCalled();
   });
 
   it('Ver na Central de Ajuda sai do guia sem dismissal e abre o vídeo', () => {
