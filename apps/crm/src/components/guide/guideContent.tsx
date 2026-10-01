@@ -45,6 +45,9 @@ export interface GuidePage {
   title: string;
   lead: string;
   body?: ReactNode;
+  /** Slug de um vídeo da Central de Ajuda mostrado nesta página. Sem vídeo publicado com esse
+   * slug, a página fica sem card. */
+  videoSlug?: string;
   /** Linhas de recap com check dinâmico pelo sinal (página de fechamento). */
   recap?: GuideRecapItem[];
   action?: GuideAction;
@@ -62,6 +65,11 @@ export interface GuideTrail {
   icon: LucideIcon;
   pages: GuidePage[];
 }
+
+/** Vídeo em destaque na tela inicial do guia. */
+export const GUIDE_HOME_VIDEO = 'primeiro-acesso';
+/** Série sugerida na página de fechamento. */
+export const GUIDE_MORE_SERIES = 'indo-alem';
 
 const clienteDeepLink = (suffix: string) => (ctx: GuideCtx) =>
   ctx.latestClienteId != null ? `/clientes/${ctx.latestClienteId}/${suffix}` : '/clientes';
@@ -87,6 +95,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
       {
         id: 't1p2',
         title: 'Crie o cadastro',
+        videoSlug: 'cadastrar-cliente',
         lead: 'Só o nome é obrigatório. E-mail, telefone e valores podem esperar.',
         action: {
           label: 'Fazer agora',
@@ -99,6 +108,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
       {
         id: 't1p3',
         title: 'Conecte o Instagram do cliente',
+        videoSlug: 'conectar-instagram',
         lead: 'Com a conta conectada, você agenda, publica e acompanha métricas direto pelo Mesaas. Dois caminhos:',
         body: (
           <GuideOptionGrid columns={2}>
@@ -120,6 +130,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
       {
         id: 't1p4',
         title: 'Gere o link do Hub',
+        videoSlug: 'portal-do-cliente',
         lead: 'O Hub é o portal do seu cliente: aprovações, postagens e briefing com a sua marca. Sem login e sem senha.',
         body: (
           <GuideFine>
@@ -198,6 +209,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
       {
         id: 't2p3',
         title: 'Adicione alguém da equipe',
+        videoSlug: 'cadastrar-equipe',
         lead: 'O convite mora no cadastro do membro: crie, ative o convite e escolha o papel.',
         action: {
           label: 'Fazer agora',
@@ -241,6 +253,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
       {
         id: 't3p2',
         title: 'Crie o primeiro fluxo',
+        videoSlug: 'criar-fluxo',
         lead: 'O assistente monta tudo: escolha um modelo pronto, diga o cliente e pronto.',
         body: (
           <GuideOptionGrid columns={3}>
@@ -265,6 +278,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
       {
         id: 't3p3',
         title: 'O post reúne tudo',
+        videoSlug: 'criar-post',
         lead: 'Dentro do fluxo, cada post junta a mídia, quem faz e a legenda.',
         body: (
           <GuideInfoBox>
@@ -305,6 +319,7 @@ export const GUIDE_TRAILS: GuideTrail[] = [
       {
         id: 't3p5',
         title: 'O que um post precisa para ser agendado',
+        videoSlug: 'agendar-post',
         lead: 'O Mesaas confere tudo isso antes de enviar ao Instagram. Se faltar algo, o botão Agendar mostra o que é.',
         body: (
           <>

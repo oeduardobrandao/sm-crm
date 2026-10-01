@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { GUIDE_TRAILS, allPages, filterTrails, requiredSignals } from '../guideContent';
+import {
+  GUIDE_TRAILS,
+  GUIDE_HOME_VIDEO,
+  allPages,
+  filterTrails,
+  requiredSignals,
+} from '../guideContent';
 
 const ALL_ON = () => true;
 
@@ -53,5 +59,24 @@ describe('guideContent', () => {
     expect(GUIDE_TRAILS[0].pages[4].bridgeTo).toBe('t2');
     expect(GUIDE_TRAILS[1].pages[3].bridgeTo).toBe('t3');
     expect(GUIDE_TRAILS[2].pages[5].conclude).toBe(true);
+  });
+
+  it('mapeia as páginas aos vídeos da série Primeiros Passos, sem repetir', () => {
+    const mapped = Object.fromEntries(
+      allPages(GUIDE_TRAILS)
+        .filter((p) => p.videoSlug)
+        .map((p) => [p.id, p.videoSlug]),
+    );
+    expect(mapped).toEqual({
+      t1p2: 'cadastrar-cliente',
+      t1p3: 'conectar-instagram',
+      t1p4: 'portal-do-cliente',
+      t2p3: 'cadastrar-equipe',
+      t3p2: 'criar-fluxo',
+      t3p3: 'criar-post',
+      t3p5: 'agendar-post',
+    });
+    const all = [GUIDE_HOME_VIDEO, ...Object.values(mapped)];
+    expect(new Set(all).size).toBe(all.length);
   });
 });

@@ -41,6 +41,7 @@ export type AnalyticsEvent =
   | 'guide_action_clicked'
   | 'guide_trail_completed'
   | 'guide_completed'
+  | 'guide_video_played'
   | 'popup_shown'
   | 'popup_page'
   | 'popup_closed'

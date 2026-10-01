@@ -3,12 +3,71 @@ import { fireEvent, render, screen } from '@testing-library/react';
 // Este repo não tem @testing-library/user-event instalado (ver outros testes
 // de Dialog, ex. RelatorioEditorPage.test.tsx) — cliques via fireEvent.
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GuideContext, type GuideApi } from '../GuideContext';
 import { GUIDE_TRAILS } from '../guideContent';
 import GuideDialog from '../GuideDialog';
+import { recordKbViewSafely } from '../../../pages/ajuda/useRecordKbView';
 
 vi.mock('../../../lib/analytics', () => ({ captureEvent: vi.fn() }));
+vi.mock('../../../pages/ajuda/useRecordKbView', () => ({ recordKbViewSafely: vi.fn() }));
+
+const videos = vi.hoisted(() => ({
+  series: { data: undefined as unknown } as Record<string, unknown>,
+  progressLoading: false,
+  seriesHook: vi.fn(),
+}));
+vi.mock('../../../pages/ajuda/videos/useKbVideos', () => ({
+  useKbVideoSeries: (...args: unknown[]) => {
+    videos.seriesHook(...args);
+    return videos.series;
+  },
+  useVideoProgress: () => ({
+    progress: new Map(),
+    save: vi.fn(),
+    isLoading: videos.progressLoading,
+  }),
+}));
+
+function v(id: number, slug: string, title: string, series_id: string) {
+  return {
+    id,
+    series_id,
+    title,
+    slug,
+    description: null,
+    display_order: id,
+    duration_seconds: 60,
+    hls_url: `https://h/${id}.m3u8`,
+    thumbnail_url: null,
+    article: null,
+  };
+}
+
+const SERIES = [
+  {
+    id: 's1',
+    title: 'Primeiros Passos',
+    slug: 'primeiros-passos',
+    description: null,
+    display_order: 1,
+    videos: [
+      v(1, 'primeiro-acesso', 'Primeiro acesso', 's1'),
+      v(4, 'conectar-instagram', 'Instagram', 's1'),
+    ],
+  },
+  {
+    id: 's2',
+    title: 'Indo Além',
+    slug: 'indo-alem',
+    description: null,
+    display_order: 2,
+    videos: [
+      v(9, 'metricas-do-instagram', 'Métricas do Instagram', 's2'),
+      v(10, 'automacoes', 'Automações', 's2'),
+    ],
+  },
+];
 
 function makeApi(overrides: Partial<GuideApi> = {}): GuideApi {
   return {
@@ -58,6 +117,19 @@ function renderDialog(api: GuideApi) {
 }
 
 describe('GuideDialog', () => {
+  beforeEach(() => {
+    videos.series = { data: SERIES };
+    videos.progressLoading = false;
+    videos.seriesHook.mockClear();
+    HTMLMediaElement.prototype.canPlayType = vi.fn(() => 'probably') as unknown as (
+      t: string,
+    ) => CanPlayTypeResult;
+    HTMLMediaElement.prototype.play = vi.fn(() => Promise.resolve());
+  });
+  afterEach(() => {
+    delete (HTMLMediaElement.prototype as { canPlayType?: unknown }).canPlayType;
+  });
+
   it('home mostra as três trilhas e o contador geral', () => {
     renderDialog(makeApi());
     expect(screen.getByText('Bem-vindo ao Mesaas')).toBeInTheDocument();
@@ -104,5 +176,80 @@ describe('GuideDialog', () => {
     renderDialog(api);
     fireEvent.click(screen.getByRole('button', { name: 'Concluir guia' }));
     expect(api.concludeGuide).toHaveBeenCalled();
+  });
+
+  it('home mostra o vídeo em destaque', () => {
+    renderDialog(makeApi());
+    expect(
+      screen.getByRole('button', { name: 'Assistir o vídeo Primeiro acesso' }),
+    ).toBeInTheDocument();
+  });
+
+  it('página com vídeo publicado mostra o card', () => {
+    renderDialog(makeApi({ currentPageId: 't1p3' }));
+    expect(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' })).toBeInTheDocument();
+  });
+
+  it('slug sem vídeo publicado não mostra nada', () => {
+    renderDialog(makeApi({ currentPageId: 't1p2' }));
+    expect(screen.queryByRole('button', { name: /o vídeo/ })).not.toBeInTheDocument();
+  });
+
+  it('carregando: sem card', () => {
+    videos.series = { data: undefined };
+    renderDialog(makeApi({ currentPageId: 't1p3' }));
+    expect(screen.queryByRole('button', { name: /o vídeo/ })).not.toBeInTheDocument();
+  });
+
+  it('progresso carregando: sem card até o progresso chegar', () => {
+    videos.progressLoading = true;
+    renderDialog(makeApi({ currentPageId: 't1p3' }));
+    expect(screen.queryByRole('button', { name: /o vídeo/ })).not.toBeInTheDocument();
+  });
+
+  it('erro ao carregar a série: sem card', () => {
+    videos.series = { data: undefined, isError: true };
+    renderDialog(makeApi({ currentPageId: 't1p3' }));
+    expect(screen.queryByRole('button', { name: /o vídeo/ })).not.toBeInTheDocument();
+  });
+
+  it('com o guia fechado, as queries de vídeo não rodam', () => {
+    renderDialog(makeApi({ isOpen: false, currentPageId: 't1p3' }));
+    expect(videos.seriesHook).not.toHaveBeenCalled();
+  });
+
+  it('tocar o vídeo no guia conta como visualização', () => {
+    vi.mocked(recordKbViewSafely).mockClear();
+    renderDialog(makeApi({ currentPageId: 't1p3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' }));
+    fireEvent.play(document.querySelector('[role=dialog] video')!);
+    expect(recordKbViewSafely).toHaveBeenCalledWith({ videoId: 4 });
+  });
+
+  it('Ver na Central de Ajuda sai do guia sem dismissal e abre o vídeo', () => {
+    const api = makeApi({ currentPageId: 't1p3' });
+    renderDialog(api);
+    fireEvent.click(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver na Central de Ajuda' }));
+    expect(api.setLastPage).toHaveBeenCalledWith('t1p3');
+    expect(api.closeForAction).toHaveBeenCalled();
+    expect(api.dismiss).not.toHaveBeenCalled();
+    expect(screen.getByTestId('loc').textContent).toBe('/ajuda/video/conectar-instagram');
+  });
+
+  it('fechamento sugere a série Indo Além', () => {
+    const api = makeApi({ currentPageId: 't3p6' });
+    renderDialog(api);
+    expect(screen.getByText('Quando quiser ir além')).toBeInTheDocument();
+    expect(screen.getByText('Métricas do Instagram')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver vídeos' }));
+    expect(api.closeForAction).toHaveBeenCalled();
+    expect(screen.getByTestId('loc').textContent).toBe('/ajuda/video/metricas-do-instagram');
+  });
+
+  it('fechamento sem a série publicada não mostra o bloco', () => {
+    videos.series = { data: [SERIES[0]] };
+    renderDialog(makeApi({ currentPageId: 't3p6' }));
+    expect(screen.queryByText('Quando quiser ir além')).not.toBeInTheDocument();
   });
 });
