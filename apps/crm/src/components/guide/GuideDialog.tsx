@@ -5,7 +5,14 @@ import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { captureEvent } from '../../lib/analytics';
 import { useGuide } from './GuideContext';
-import { requiredSignals, type GuidePage, type GuideTrail } from './guideContent';
+import {
+  GUIDE_HOME_VIDEO,
+  GUIDE_MORE_SERIES,
+  requiredSignals,
+  type GuidePage,
+  type GuideTrail,
+} from './guideContent';
+import { GuideMoreVideos, GuideVideoSlot } from './GuideVideoSlot';
 
 const seg = (on: boolean): React.CSSProperties => ({
   flex: 1,
@@ -111,6 +118,7 @@ function HomeView({
         Três trilhas curtas, em páginas rápidas de ler. Feche quando quiser: o guia continua de onde
         parou.
       </p>
+      <GuideVideoSlot slug={GUIDE_HOME_VIDEO} pageId="home" variant="featured" />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 4px' }}>
         <div
           aria-hidden="true"
@@ -318,6 +326,8 @@ function PageView({
             })}
         </ul>
       )}
+      {page.videoSlug && <GuideVideoSlot slug={page.videoSlug} pageId={page.id} variant="inline" />}
+      {page.conclude && <GuideMoreVideos seriesSlug={GUIDE_MORE_SERIES} pageId={page.id} />}
       {page.action && (
         <div
           style={{
