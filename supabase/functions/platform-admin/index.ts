@@ -36,6 +36,7 @@ import {
   type KbVideoStreamDeps,
 } from "./kb-videos.ts";
 import { handleKbViewStats } from "./kb-views.ts";
+import { handleReorderKbArticles } from "./kb-articles.ts";
 import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
 
 // Registra o loader do Stripe só para este function -- ver _shared/stripe-loader.ts. mcp-admin
@@ -184,6 +185,8 @@ Deno.serve(async (req: Request) => {
         return await handleUpdateKbArticle(svc, body, { userId: user.id }, headers);
       case "delete-kb-article":
         return await handleDeleteKbArticle(svc, body, headers);
+      case "reorder-kb-articles":
+        return await handleReorderKbArticles(svc, body, headers);
       case "list-kb-context-links":
         return await handleListKbContextLinks(svc, body, headers);
       case "upsert-kb-context-link":

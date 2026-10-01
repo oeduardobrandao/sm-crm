@@ -43,11 +43,11 @@ export function formatDuration(seconds: number | null | undefined): string {
 }
 
 /** Moves list[index] by delta and renumbers the whole list (10, 20, 30…), or null at an edge. */
-export function reorderedItems(
-  list: KbVideo[],
+export function reorderedItems<Id extends string | number>(
+  list: ReadonlyArray<{ id: Id }>,
   index: number,
   delta: -1 | 1,
-): Array<{ id: number; display_order: number }> | null {
+): Array<{ id: Id; display_order: number }> | null {
   const target = index + delta;
   if (index < 0 || index >= list.length || target < 0 || target >= list.length) return null;
   const next = [...list];

@@ -8,10 +8,20 @@ import {
   listKbVideoSeries,
   refreshKbVideo,
   reorderKbVideos,
+  upsertKbVideo,
   type KbVideo,
   type KbVideoSeries,
 } from '../lib/api';
 import { useKbViewStats } from '../lib/kb-view-stats';
+import {
+  bulkResultMessage,
+  groupCheckState,
+  runBulk,
+  toggleGroup,
+  toggleOne,
+  visibleSelection,
+  type PublishStatus,
+} from '../lib/kb-bulk';
 import {
   formatDuration,
   groupBySeries,
@@ -29,9 +39,11 @@ import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { RowLink } from '../components/RowLink';
 import { KbViewStats } from '../components/KbViewStats';
+import { KbBulkBar } from '../components/KbBulkBar';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
+import { Checkbox } from '../components/ui/checkbox';
 import { Skeleton } from '../components/ui/skeleton';
 import { SeriesDialog } from './kb-videos/SeriesDialog';
 
@@ -42,6 +54,7 @@ export default function KbVideosPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<{ series: KbVideoSeries | null } | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
 
   const seriesQuery = useQuery({ queryKey: KB_VIDEO_SERIES_KEY, queryFn: listKbVideoSeries });
   const videosQuery = useQuery({
@@ -78,6 +91,22 @@ export default function KbVideosPage() {
     onError: () => toast.error('Não foi possível reordenar.'),
   });
 
+  // Publishing still goes through upsert-kb-video one row at a time, so a video that isn't ready
+  // yet is refused by the server and counted as a failure instead of going live broken.
+  const bulkMut = useMutation({
+    mutationFn: ({ ids, status }: { ids: number[]; status: PublishStatus }) =>
+      runBulk(ids, (id) => upsertKbVideo({ video_id: id, status })),
+    onSuccess: (result, { status }) => {
+      const message = bulkResultMessage(status, result);
+      if (result.failed > 0 && status === 'published') {
+        toast.error(`${message} Só vídeos com o arquivo pronto podem ser publicados.`);
+      } else if (result.failed > 0) toast.error(message);
+      else toast.success(message);
+      setSelected(new Set());
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: KB_VIDEOS_KEY }),
+  });
+
   const groups = useMemo(
     () => groupBySeries(seriesQuery.data?.series ?? [], videosQuery.data?.videos ?? []),
     [seriesQuery.data, videosQuery.data],
@@ -88,11 +117,17 @@ export default function KbVideosPage() {
     if (items) reorderMut.mutate(items);
   };
 
+  const actionable = visibleSelection(
+    selected,
+    groups.flatMap((g) => g.videos.map((v) => v.id)),
+  );
+
   const isLoading = seriesQuery.isLoading || videosQuery.isLoading;
   const isError = seriesQuery.isError || videosQuery.isError;
 
   return (
-    <div>
+    // Room under the last row so the floating bulk bar never covers it.
+    <div className={cn(actionable.length > 0 && 'pb-20')}>
       <PageHeader
         title="Vídeos tutoriais"
         description="Playlist da Central de Ajuda do CRM"
@@ -110,6 +145,13 @@ export default function KbVideosPage() {
             </Button>
           </div>
         }
+      />
+
+      <KbBulkBar
+        count={actionable.length}
+        pending={bulkMut.isPending}
+        onSetStatus={(status) => bulkMut.mutate({ ids: actionable, status })}
+        onClear={() => setSelected(new Set())}
       />
 
       {isLoading ? (
@@ -146,10 +188,19 @@ export default function KbVideosPage() {
         <div className="flex flex-col gap-5">
           {groups.map(({ series, videos }) => {
             const sBadge = publishBadge(series.status);
+            const groupIds = videos.map((v) => v.id);
             return (
               <Card key={series.id} className="p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
                   <div className="flex min-w-0 items-center gap-2">
+                    {videos.length > 0 && (
+                      <Checkbox
+                        className="mr-1"
+                        aria-label={`Selecionar todos os vídeos de ${series.title}`}
+                        checked={groupCheckState(selected, groupIds)}
+                        onCheckedChange={() => setSelected((prev) => toggleGroup(prev, groupIds))}
+                      />
+                    )}
                     <h2 className="truncate text-base font-semibold">{series.title}</h2>
                     <Badge variant={sBadge.variant} size="sm">
                       {sBadge.label}
@@ -172,10 +223,17 @@ export default function KbVideosPage() {
                         key={v.id}
                         onClick={() => navigate(to)}
                         className={cn(
-                          '-mx-5 grid cursor-pointer grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 px-5 py-3 transition-colors last:border-b-0 hover:bg-secondary/30',
+                          '-mx-5 grid cursor-pointer grid-cols-[auto_64px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 px-5 py-3 transition-colors last:border-b-0 hover:bg-secondary/30',
                           v.status === 'draft' && 'opacity-70',
                         )}
                       >
+                        <div className="flex" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            aria-label={`Selecionar ${v.title}`}
+                            checked={selected.has(v.id)}
+                            onCheckedChange={() => setSelected((prev) => toggleOne(prev, v.id))}
+                          />
+                        </div>
                         <div className="aspect-video w-16 overflow-hidden rounded-md bg-secondary">
                           {v.thumbnail_url && (
                             <img
