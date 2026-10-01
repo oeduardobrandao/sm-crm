@@ -28,6 +28,7 @@ describe('viewQuery', () => {
       entidade: 'fluxos' as const,
       filaMembro: null,
       listGroupBy: 'cliente' as const,
+      showPostados: true,
       filters: {
         ...EMPTY_FILTERS,
         filterSearch: 'post de julho',
@@ -120,6 +121,7 @@ describe('viewQuery', () => {
       entidade: 'fluxos' as const,
       filaMembro: 12,
       listGroupBy: 'prazo' as const,
+      showPostados: false,
       filters: EMPTY_FILTERS,
     };
     const qs = serializeEntregasQuery(state);
@@ -192,6 +194,57 @@ describe('viewQuery', () => {
           filters: { ...EMPTY_FILTERS, filterClientes: [3] },
         }),
       ).toBe('view=list&mode=publicacoes&agrupar=responsavel&clientes=3');
+    });
+  });
+
+  describe('postados (Lista de Publicações)', () => {
+    const base = {
+      entidade: 'fluxos' as const,
+      filaMembro: null,
+      listGroupBy: 'prazo' as const,
+      filters: EMPTY_FILTERS,
+    };
+
+    it('grava postados=1 só quando visíveis na Lista de Publicações', () => {
+      expect(
+        serializeEntregasQuery({ ...base, view: 'list', mode: 'publicacoes', showPostados: true }),
+      ).toBe('view=list&mode=publicacoes&postados=1');
+      expect(
+        serializeEntregasQuery({ ...base, view: 'list', mode: 'publicacoes', showPostados: false }),
+      ).toBe('view=list&mode=publicacoes');
+      expect(
+        serializeEntregasQuery({ ...base, view: 'list', mode: 'entregas', showPostados: true }),
+      ).toBe('view=list');
+      expect(
+        serializeEntregasQuery({
+          ...base,
+          view: 'kanban',
+          mode: 'publicacoes',
+          showPostados: true,
+        }),
+      ).toBe('mode=publicacoes');
+    });
+
+    it('lê postados só na Lista de Publicações; o resto é o padrão (ocultos)', () => {
+      const parse = (qs: string) => parseEntregasQuery(new URLSearchParams(qs)).showPostados;
+      expect(parse('view=list&mode=publicacoes&postados=1')).toBe(true);
+      expect(parse('view=list&mode=publicacoes')).toBe(false);
+      expect(parse('view=list&mode=publicacoes&postados=0')).toBe(false);
+      expect(parse('view=list&postados=1')).toBe(false);
+      expect(parse('view=kanban&mode=publicacoes&postados=1')).toBe(false);
+    });
+
+    it('grava postados depois de agrupar, antes dos filtros', () => {
+      expect(
+        serializeEntregasQuery({
+          ...base,
+          view: 'list',
+          mode: 'publicacoes',
+          listGroupBy: 'cliente',
+          showPostados: true,
+          filters: { ...EMPTY_FILTERS, filterClientes: [3] },
+        }),
+      ).toBe('view=list&mode=publicacoes&agrupar=cliente&postados=1&clientes=3');
     });
   });
 });

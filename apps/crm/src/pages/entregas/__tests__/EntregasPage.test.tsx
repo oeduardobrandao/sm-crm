@@ -326,17 +326,24 @@ vi.mock('../components/ListToolbar', () => ({
     onGroupByChange,
     onToggleResponsaveis,
     responsaveisToggleRef,
+    postados,
   }: {
     groupBy: string;
     groupByOptions: readonly string[];
     onGroupByChange: (g: string) => void;
     onToggleResponsaveis: () => void;
     responsaveisToggleRef?: Ref<HTMLButtonElement>;
+    postados?: { count: number; shown: boolean; onToggle: () => void };
   }) => (
     <div>
       <div>GroupBy: {groupBy}</div>
       <div>GroupByOptions: {groupByOptions.join(',')}</div>
       <button onClick={() => onGroupByChange('cliente')}>Agrupar por cliente</button>
+      {postados && (
+        <button onClick={postados.onToggle}>
+          Alternar postados ({postados.count}, {postados.shown ? 'visíveis' : 'ocultos'})
+        </button>
+      )}
       <button ref={responsaveisToggleRef} onClick={onToggleResponsaveis}>
         Alternar responsáveis
       </button>
@@ -517,14 +524,17 @@ vi.mock('../views/PostsListView', () => ({
     posts,
     onFluxoClick,
     groupBy,
+    hiddenPostados,
   }: {
     posts: unknown[];
     onFluxoClick: (workflowId: number) => void;
     groupBy?: string;
+    hiddenPostados?: number;
   }) => (
     <div>
       <div>Posts list view: {posts.length}</div>
       <div>PostsGroupBy: {groupBy}</div>
+      <div>Postados ocultos: {hiddenPostados ?? 0}</div>
       <button onClick={() => onFluxoClick(1)}>Open fluxo from tag</button>
     </div>
   ),
@@ -2994,5 +3004,75 @@ describe('EntregasPage: Lista agrupada e painel Responsáveis', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     // O FocusScope do Radix devolve o foco num setTimeout depois de desmontar.
     await waitFor(() => expect(toggle).toHaveFocus());
+  });
+
+  describe('postados na Lista de Publicações', () => {
+    const avulso = (id: number, titulo: string, status: string, responsavel_id: number) => ({
+      id,
+      workflow_id: null,
+      cliente_id: 10,
+      titulo,
+      tipo: 'feed',
+      status,
+      responsavel_id,
+      scheduled_at: null,
+    });
+
+    beforeEach(() => {
+      mockedUseActivePosts.mockReturnValue({
+        posts: [
+          avulso(21, 'Rascunho da Ana', 'rascunho', 7),
+          avulso(22, 'Postado do Bruno', 'postado', 8),
+          avulso(23, 'Postado da Ana', 'postado', 7),
+        ],
+        isLoading: false,
+        isError: false,
+      } as never);
+    });
+
+    it('ficam ocultos por padrão e o botão da barra os mostra, gravando postados=1', () => {
+      renderLista('/entregas?view=list&mode=publicacoes');
+      expect(screen.getByText('Posts list view: 1')).toBeInTheDocument();
+      expect(screen.getByText('Postados ocultos: 2')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Alternar postados (2, ocultos)'));
+
+      expect(screen.getByText('Posts list view: 3')).toBeInTheDocument();
+      expect(screen.getByText('Postados ocultos: 0')).toBeInTheDocument();
+      expect(screen.getByText('Alternar postados (2, visíveis)')).toBeInTheDocument();
+      expect(screen.getByTestId('current-path')).toHaveTextContent(
+        /^\/entregas\?view=list&mode=publicacoes&postados=1$/,
+      );
+    });
+
+    it('postados=1 na URL abre com eles visíveis', () => {
+      renderLista('/entregas?view=list&mode=publicacoes&postados=1');
+      expect(screen.getByText('Posts list view: 3')).toBeInTheDocument();
+    });
+
+    it('o filtro de status do post decide: com Postado marcado eles aparecem e o botão some', () => {
+      renderLista('/entregas?view=list&mode=publicacoes&pstatus=postado');
+      expect(screen.getByText('Posts list view: 2')).toBeInTheDocument();
+      expect(screen.queryByText(/Alternar postados/)).toBeNull();
+    });
+
+    it('o Kanban de Publicações segue mostrando os postados', () => {
+      renderLista('/entregas?mode=publicacoes');
+      expect(screen.getByText('Posts kanban view: 3')).toBeInTheDocument();
+    });
+
+    it('as contagens do painel Responsáveis seguem o que a Lista mostra', () => {
+      renderLista('/entregas?view=list&mode=publicacoes');
+      fireEvent.click(screen.getByText('Alternar responsáveis'));
+      expect(screen.getByText('Contagens: 7=1')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Alternar postados (2, ocultos)'));
+      expect(screen.getByText('Contagens: 7=2,8=1')).toBeInTheDocument();
+    });
+
+    it('a Lista de Fluxos não tem o botão de postados', () => {
+      renderLista('/entregas?view=list');
+      expect(screen.queryByText(/Alternar postados/)).toBeNull();
+    });
   });
 });

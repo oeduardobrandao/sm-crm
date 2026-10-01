@@ -127,6 +127,21 @@ describe('PostsListView', () => {
     expect(onCreateAvulso).toHaveBeenCalledTimes(1);
   });
 
+  it('vazia só por postados ocultos, diz quantos estão ocultos em vez de oferecer criar um avulso', () => {
+    const { rerender } = render(
+      <PostsListView {...baseProps} posts={[]} filtersActive={false} hiddenPostados={3} />,
+    );
+    expect(
+      screen.getByText('Nenhum post a mostrar. 3 posts postados estão ocultos.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar post avulso' })).toBeNull();
+
+    rerender(<PostsListView {...baseProps} posts={[]} filtersActive hiddenPostados={1} />);
+    expect(
+      screen.getByText('Nenhum post a mostrar. 1 post postado está oculto.'),
+    ).toBeInTheDocument();
+  });
+
   it('renders all columns including Etapa atual, Responsável and Prazo da etapa', () => {
     const { container } = render(<PostsListView {...baseProps} posts={[makePost()]} />);
     const headers = Array.from(container.querySelectorAll('th')).map((el) => el.textContent);

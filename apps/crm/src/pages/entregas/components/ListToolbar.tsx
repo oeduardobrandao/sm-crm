@@ -1,5 +1,5 @@
 import type { Ref } from 'react';
-import { Rows3, Users } from 'lucide-react';
+import { CheckCheck, Rows3, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -19,8 +19,9 @@ const LIST_GROUP_BY_LABELS: Record<ListGroupBy, string> = {
   nenhum: 'Nenhum',
 };
 
-/** Controles da vista Lista, em linha própria acima da tabela: "Agrupar por" e
- *  o botão do painel Responsáveis. */
+/** Controles da vista Lista, em linha própria acima da tabela: "Agrupar por",
+ *  "Mostrar postados" (só na Lista de Publicações) e o botão do painel
+ *  Responsáveis, por último para ficar sobre onde o painel lateral abre. */
 export function ListToolbar({
   groupBy,
   groupByOptions,
@@ -29,6 +30,7 @@ export function ListToolbar({
   onToggleResponsaveis,
   selectedResponsaveis,
   responsaveisToggleRef,
+  postados,
 }: {
   groupBy: ListGroupBy;
   /** Data de postagem só existe em Publicações: a página decide a lista. */
@@ -41,6 +43,10 @@ export function ListToolbar({
   /** O botão Responsáveis: a página devolve o foco a ele quando o X do painel
    *  lateral desmonta o botão que estava focado. */
   responsaveisToggleRef?: Ref<HTMLButtonElement>;
+  /** Lista de Publicações com o filtro de status do post vazio: os postados ficam
+   *  ocultos até `shown`. `count` é quantos postados a lista tem com os filtros
+   *  atuais. Ausente, o botão não aparece. */
+  postados?: { count: number; shown: boolean; onToggle: () => void };
 }) {
   return (
     // Quebra de linha em vez de passar da largura do celular (o select com a
@@ -72,6 +78,33 @@ export function ListToolbar({
           ))}
         </SelectContent>
       </Select>
+      {postados && (
+        <Button
+          type="button"
+          variant="outline"
+          className={`h-8 rounded-full px-3 text-xs gap-1.5 font-normal mb-0${
+            postados.shown ? ' bg-accent' : ''
+          }`}
+          aria-pressed={postados.shown}
+          onClick={postados.onToggle}
+        >
+          <CheckCheck className="!h-3.5 !w-3.5" aria-hidden="true" />
+          Mostrar postados
+          {postados.count > 0 && (
+            <span
+              className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none px-1"
+              style={{
+                background: 'var(--surface-2)',
+                color: 'var(--text-muted)',
+                minWidth: '1.1rem',
+                height: '1.1rem',
+              }}
+            >
+              {postados.count}
+            </span>
+          )}
+        </Button>
+      )}
       <Button
         ref={responsaveisToggleRef}
         type="button"

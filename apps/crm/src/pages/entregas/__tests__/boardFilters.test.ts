@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 // EMPTY_FILTERS (EntregasFilters) puxa useStatusRegistry -> store -> supabase.
 vi.mock('../../../lib/supabase');
-import { filterActivePosts, filterBoardCards } from '../boardFilters';
+import { filterActivePosts, filterBoardCards, withoutPostados } from '../boardFilters';
 import { EMPTY_FILTERS, type FilterState } from '../components/EntregasFilters';
 import type { ActivePost } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
@@ -94,5 +94,21 @@ describe('filterBoardCards', () => {
     expect(titulos({})).toEqual(['Fluxo 1', 'Fluxo 2']);
     expect(titulos({ filterMembros: [8] })).toEqual(['Fluxo 2']);
     expect(titulos({ filterPostResponsaveis: [42] })).toEqual(['Fluxo 1']);
+  });
+});
+
+describe('withoutPostados', () => {
+  it('tira os postados, inclusive os de um status personalizado que se comporta como postado', () => {
+    const posts = [
+      makePost({ titulo: 'Rascunho' }),
+      makePost({ titulo: 'Agendado', status: 'agendado' }),
+      makePost({ titulo: 'Postado', status: 'postado' }),
+      makePost({
+        titulo: 'Publicado (personalizado)',
+        status: 'postado',
+        custom_status_id: '11111111-2222-3333-4444-555555555555',
+      }),
+    ];
+    expect(withoutPostados(posts).map((p) => p.titulo)).toEqual(['Rascunho', 'Agendado']);
   });
 });

@@ -104,4 +104,48 @@ describe('ListToolbar', () => {
     );
     expect(ref.current).toBe(screen.getByRole('button', { name: /Responsáveis/ }));
   });
+
+  describe('postados (Lista de Publicações)', () => {
+    const base = {
+      groupBy: 'prazo' as const,
+      groupByOptions: ALL,
+      onGroupByChange: vi.fn(),
+      responsaveisOpen: false,
+      onToggleResponsaveis: vi.fn(),
+      selectedResponsaveis: 0,
+    };
+
+    it('sem a prop postados (Lista de Fluxos) não mostra o botão', () => {
+      render(<ListToolbar {...base} />);
+      expect(screen.queryByRole('button', { name: /postados/i })).toBeNull();
+    });
+
+    it('alterna os postados com aria-pressed e mostra quantos há', () => {
+      const onToggle = vi.fn();
+      const { rerender } = render(
+        <ListToolbar {...base} postados={{ count: 3, shown: false, onToggle }} />,
+      );
+      const button = screen.getByRole('button', { name: /Mostrar postados/ });
+      expect(button).toHaveAttribute('aria-pressed', 'false');
+      expect(button).toHaveTextContent('3');
+      fireEvent.click(button);
+      expect(onToggle).toHaveBeenCalledTimes(1);
+
+      rerender(<ListToolbar {...base} postados={{ count: 3, shown: true, onToggle }} />);
+      expect(screen.getByRole('button', { name: /Mostrar postados/ })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    });
+
+    it('fica antes de Responsáveis, que segue por último sobre o painel; sem selo com 0', () => {
+      render(<ListToolbar {...base} postados={{ count: 0, shown: false, onToggle: vi.fn() }} />);
+      const postados = screen.getByRole('button', { name: /Mostrar postados/ });
+      const responsaveis = screen.getByRole('button', { name: /Responsáveis/ });
+      expect(
+        postados.compareDocumentPosition(responsaveis) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(postados).not.toHaveTextContent(/\d/);
+    });
+  });
 });

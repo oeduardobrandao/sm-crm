@@ -78,7 +78,7 @@ import { FilaMembroPicker } from './components/FilaMembroPicker';
 import { useActivePosts } from './hooks/useActivePosts';
 import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } from './semProcesso';
 import { useOpenParam } from '../../hooks/useOpenParam';
-import { filterActivePosts, filterBoardCards } from './boardFilters';
+import { filterActivePosts, filterBoardCards, withoutPostados } from './boardFilters';
 import { postStageOf, postResponsavelIdOf } from './postStage';
 import { countByResponsavel } from './listGrouping';
 import { matchesPostEntityFilters } from './entityFilters';
@@ -208,6 +208,9 @@ export default function EntregasPage() {
       ? initialQuery.listGroupBy
       : (loadListGroupBy(contaId) ?? DEFAULT_LIST_GROUP_BY),
   );
+  // Lista de Publicações: postados ficam ocultos até o botão da barra (ou
+  // `postados=1` na URL) os mostrar. Sem preferência salva: o padrão é ocultar.
+  const [showPostados, setShowPostados] = useState(initialQuery.showPostados);
   // Painel Responsáveis da Lista: aside ao lado da tabela a partir de 901px
   // (mesmo breakpoint da barra de filtros), Sheet de baixo abaixo disso.
   const [responsaveisOpen, setResponsaveisOpen] = useState(false);
@@ -507,6 +510,7 @@ export default function EntregasPage() {
     mode: activeMode,
     filaMembro: activeView === 'fila' ? filaMembro : null,
     listGroupBy: effectiveListGroupBy,
+    showPostados,
     entidade:
       activeMode === 'entregas' && (activeView === 'kanban' || activeView === 'list')
         ? effectiveEntidade
@@ -789,7 +793,10 @@ export default function EntregasPage() {
       setEntidade(parsed.entidade);
     }
     setFilters(parsed.filters);
-    if (parsed.view === 'list') setListGroupBy(parsed.listGroupBy);
+    if (parsed.view === 'list') {
+      setListGroupBy(parsed.listGroupBy);
+      setShowPostados(parsed.showPostados);
+    }
     // null para qualquer vista que não seja a fila: aplicar uma vista do Kanban
     // também limpa uma escolha explícita de membro, como uma URL sem `membro=`.
     setFilaMembro(parsed.filaMembro);
@@ -897,6 +904,21 @@ export default function EntregasPage() {
     () => filterActivePosts(activePosts, filters, stageOfPost),
     [activePosts, filters, stageOfPost],
   );
+  // Lista de Publicações: postados ficam fora por padrão (withoutPostados) até o
+  // botão da barra os mostrar. Com o filtro de status do post em uso, ele decide
+  // e o botão some. O Kanban de Publicações segue com filteredPosts e a coluna
+  // Postado.
+  const postadosToggleable = mode === 'publicacoes' && filters.filterPostStatus.length === 0;
+  const hidePostados = postadosToggleable && !showPostados;
+  const listPosts = useMemo(
+    () => (hidePostados ? withoutPostados(filteredPosts) : filteredPosts),
+    [hidePostados, filteredPosts],
+  );
+  const postadosCount = useMemo(
+    () => (postadosToggleable ? filteredPosts.length - withoutPostados(filteredPosts).length : 0),
+    [postadosToggleable, filteredPosts],
+  );
+  const hiddenPostados = hidePostados ? postadosCount : 0;
 
   // Mirrors exactly the fields boardFilters.filterActivePosts reads (what
   // filteredPosts above runs) -- a post-mode filter this omits would silently
@@ -964,13 +986,15 @@ export default function EntregasPage() {
   // "responsável" de cada modo e o mesmo filtro de entidade da Lista de Fluxos.
   // Só roda com o painel aberto. Reexecuta o pipeline da Lista menos o filtro
   // de responsável (filterBoardCards + matchesPostEntityFilters + o switch de
-  // entidade, ou filterActivePosts): um passo novo lá tem de entrar aqui também.
+  // entidade, ou filterActivePosts + withoutPostados): um passo novo lá tem de
+  // entrar aqui também.
   const responsavelCounts = useMemo(() => {
     if (activeView !== 'list' || !responsaveisOpen) return EMPTY_COUNTS;
     const semResponsavel: FilterState = { ...filters, filterMembros: [] };
     if (mode === 'publicacoes') {
+      const posts = filterActivePosts(activePosts, semResponsavel, stageOfPost);
       return countByResponsavel(
-        filterActivePosts(activePosts, semResponsavel, stageOfPost).map((p) =>
+        (hidePostados ? withoutPostados(posts) : posts).map((p) =>
           postResponsavelIdOf(p, stageOfPost(p)),
         ),
       );
@@ -995,6 +1019,7 @@ export default function EntregasPage() {
     mode,
     activePosts,
     stageOfPost,
+    hidePostados,
     effectiveEntidade,
     cards,
     postResponsaveis,
@@ -1025,6 +1050,15 @@ export default function EntregasPage() {
       onToggleResponsaveis={toggleResponsaveis}
       selectedResponsaveis={filters.filterMembros.length}
       responsaveisToggleRef={responsaveisToggleRef}
+      postados={
+        postadosToggleable
+          ? {
+              count: postadosCount,
+              shown: showPostados,
+              onToggle: () => setShowPostados((shown) => !shown),
+            }
+          : undefined
+      }
     />
   );
 
@@ -1503,7 +1537,8 @@ export default function EntregasPage() {
                 />
               ) : (
                 <PostsListView
-                  posts={filteredPosts}
+                  posts={listPosts}
+                  hiddenPostados={hiddenPostados}
                   isLoading={activePostsLoading}
                   openableWorkflowIds={openableWorkflowIds}
                   onPostClick={handlePostClick}

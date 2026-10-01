@@ -43,6 +43,9 @@ export interface EntregasViewState {
   filaMembro: number | null;
   /** Only meaningful for view 'list': how the Lista splits its rows. */
   listGroupBy: ListGroupBy;
+  /** Only meaningful for the Publicações Lista: posts já postados ficam ocultos
+   *  por padrão e `postados=1` os mostra. */
+  showPostados: boolean;
   filters: FilterState;
 }
 
@@ -62,6 +65,8 @@ export function serializeEntregasQuery(state: EntregasViewState): string {
   if (state.view === 'fila' && state.filaMembro != null) p.set('membro', String(state.filaMembro));
   if (state.view === 'list' && state.listGroupBy !== DEFAULT_LIST_GROUP_BY)
     p.set('agrupar', state.listGroupBy);
+  if (state.view === 'list' && state.mode === 'publicacoes' && state.showPostados)
+    p.set('postados', '1');
 
   const f = state.filters;
   if (f.filterSearch) p.set('q', f.filterSearch);
@@ -101,6 +106,7 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
     view === 'list' && rawAgrupar && LIST_GROUP_BYS.includes(rawAgrupar)
       ? rawAgrupar
       : DEFAULT_LIST_GROUP_BY;
+  const showPostados = view === 'list' && mode === 'publicacoes' && p.get('postados') === '1';
 
   const nums = (key: string) =>
     p
@@ -132,5 +138,5 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
     filterPrazoTo: day('ate'),
   };
 
-  return { view, mode, entidade, filaMembro, listGroupBy, filters };
+  return { view, mode, entidade, filaMembro, listGroupBy, showPostados, filters };
 }

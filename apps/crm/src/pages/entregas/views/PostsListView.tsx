@@ -40,6 +40,10 @@ interface PostsListViewProps {
   /** Nome de cada membro: o responsável de um avulso sem etapa vem do
    *  responsavel_id do próprio post, que não tem card nem processo para dar o nome. */
   membroNomeById?: ReadonlyMap<number, string>;
+  /** Quantos postados a página tirou de `posts` (ficam ocultos por padrão). Com
+   *  a lista vazia só por eles, o estado vazio diz isso em vez de oferecer criar
+   *  um avulso. */
+  hiddenPostados?: number;
 }
 
 type Column = { key: string; label: string };
@@ -101,6 +105,7 @@ export function PostsListView({
   postEntityByPostId,
   groupBy = 'nenhum',
   membroNomeById = EMPTY_NOMES,
+  hiddenPostados = 0,
 }: PostsListViewProps) {
   const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'agendado',
@@ -191,7 +196,13 @@ export function PostsListView({
         className="card animate-up"
         style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
       >
-        {filtersActive ? (
+        {hiddenPostados > 0 ? (
+          <p>
+            {hiddenPostados === 1
+              ? 'Nenhum post a mostrar. 1 post postado está oculto.'
+              : `Nenhum post a mostrar. ${hiddenPostados} posts postados estão ocultos.`}
+          </p>
+        ) : filtersActive ? (
           <p>Nenhum post encontrado. Ajuste os filtros.</p>
         ) : (
           <>

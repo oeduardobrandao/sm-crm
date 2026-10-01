@@ -9,6 +9,8 @@ import { postMatchesStatusFilter } from './statusRegistry';
 // rodarem duas vezes: a lista com todos os filtros, e a base das contagens do
 // painel Responsáveis com todos menos o de responsável. Movidas de
 // EntregasPage (filteredCards / filteredPosts) sem mudança de comportamento.
+// A Lista de Publicações ainda passa o resultado de filterActivePosts por
+// withoutPostados (abaixo), na lista e nas contagens do painel.
 
 /** Filtros do modo Fluxos sobre os cards de fluxo. Every dropdown filter is
  *  multi-select: empty means "no filter", otherwise a card matches if it hits
@@ -116,4 +118,14 @@ export function filterActivePosts(
     );
   });
   return ps;
+}
+
+/**
+ * Lista de Publicações: posts já postados ficam fora por padrão (o Kanban segue
+ * com a coluna Postado). `status` é a coluna canônica, então um status
+ * personalizado que se comporta como postado sai junto. A página só aplica isto
+ * com o filtro de status do post vazio: com ele em uso, o filtro decide.
+ */
+export function withoutPostados(posts: ActivePost[]): ActivePost[] {
+  return posts.filter((p) => p.status !== 'postado');
 }
