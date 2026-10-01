@@ -147,7 +147,7 @@ export default function KbArticlesPage() {
       </div>
 
       <Card className="p-5">
-        <div className="hidden border-b border-border pb-3 text-[0.7rem] uppercase tracking-wider text-muted-foreground md:grid md:grid-cols-[2fr_1fr_0.7fr_0.5fr_1.3fr_0.3fr] md:gap-2">
+        <div className="hidden border-b border-border pb-3 text-[0.7rem] uppercase tracking-wider text-muted-foreground md:grid md:grid-cols-[2fr_1fr_0.7fr_0.5fr_minmax(15rem,1.3fr)_0.3fr] md:gap-2">
           <span>Título</span>
           <span>Categoria</span>
           <span>Status</span>
@@ -208,7 +208,7 @@ export default function KbArticlesPage() {
                     failed={viewStats.isError}
                   />
                 </div>
-                <div className="hidden items-center gap-2 md:grid md:grid-cols-[2fr_1fr_0.7fr_0.5fr_1.3fr_0.3fr]">
+                <div className="hidden items-center gap-2 md:grid md:grid-cols-[2fr_1fr_0.7fr_0.5fr_minmax(15rem,1.3fr)_0.3fr]">
                   <div className="min-w-0">
                     <RowLink to={to} className="block truncate text-sm">
                       {a.title}
@@ -221,6 +221,7 @@ export default function KbArticlesPage() {
                   </Badge>
                   <span className="text-sm text-muted-foreground">{a.display_order}</span>
                   <KbViewStats
+                    className="[&>div]:whitespace-nowrap"
                     stats={viewStats.data?.articles[a.id]}
                     loading={viewStats.isLoading}
                     failed={viewStats.isError}
