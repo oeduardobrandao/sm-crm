@@ -4,7 +4,7 @@ export interface PendingWorkspaceInviteInput {
   contaId: string;
   email: string;
   role: WorkspaceRole;
-  invitedBy: string;
+  invitedBy: string | null;
   redirectTo: string;
   membroId?: number | null;
   /** Custom workspace_roles.id, when the caller picked a granular role.
