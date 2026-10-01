@@ -98,6 +98,18 @@ describe('GuideVideoCard', () => {
     expect(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' })).toBeInTheDocument();
   });
 
+  it('primeiro play chama onFirstPlay uma vez só', () => {
+    const onFirstPlay = vi.fn();
+    const { container } = renderCard({ onFirstPlay });
+    fireEvent.click(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' }));
+    const video = container.querySelector('video')!;
+    fireEvent.play(video);
+    fireEvent.pause(video);
+    fireEvent.play(video);
+    expect(onFirstPlay).toHaveBeenCalledTimes(1);
+    expect(onFirstPlay).toHaveBeenCalledWith(4);
+  });
+
   it('Ver na Central de Ajuda repassa o slug', () => {
     const { props } = renderCard();
     fireEvent.click(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' }));

@@ -125,6 +125,10 @@ Uses the existing `kb_video_progress` table and `save_kb_video_progress` RPC thr
 as watched there and vice versa. Watching a video does not complete a guide page; pages keep their
 current completion rules.
 
+The first `play` of each opened guide player also counts as a Central de Ajuda view
+(`recordKbViewSafely({ videoId })`, the same call `VideoStage` makes since #615). The
+`record_kb_view` RPC dedupes repeats within 30 minutes, so reopening the card does not inflate counts.
+
 ### Not doing
 
 - No auto-open video modal, no autoplay.

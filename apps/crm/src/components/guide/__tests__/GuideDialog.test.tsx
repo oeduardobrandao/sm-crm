@@ -7,8 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GuideContext, type GuideApi } from '../GuideContext';
 import { GUIDE_TRAILS } from '../guideContent';
 import GuideDialog from '../GuideDialog';
+import { recordKbViewSafely } from '../../../pages/ajuda/useRecordKbView';
 
 vi.mock('../../../lib/analytics', () => ({ captureEvent: vi.fn() }));
+vi.mock('../../../pages/ajuda/useRecordKbView', () => ({ recordKbViewSafely: vi.fn() }));
 
 const videos = vi.hoisted(() => ({
   series: { data: undefined as unknown } as Record<string, unknown>,
@@ -214,6 +216,14 @@ describe('GuideDialog', () => {
   it('com o guia fechado, as queries de vídeo não rodam', () => {
     renderDialog(makeApi({ isOpen: false, currentPageId: 't1p3' }));
     expect(videos.seriesHook).not.toHaveBeenCalled();
+  });
+
+  it('tocar o vídeo no guia conta como visualização', () => {
+    vi.mocked(recordKbViewSafely).mockClear();
+    renderDialog(makeApi({ currentPageId: 't1p3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assistir o vídeo Instagram' }));
+    fireEvent.play(document.querySelector('[role=dialog] video')!);
+    expect(recordKbViewSafely).toHaveBeenCalledWith({ videoId: 4 });
   });
 
   it('Ver na Central de Ajuda sai do guia sem dismissal e abre o vídeo', () => {

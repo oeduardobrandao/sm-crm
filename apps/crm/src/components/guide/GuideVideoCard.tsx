@@ -32,6 +32,8 @@ export interface GuideVideoCardProps {
   pageId: string;
   variant: 'featured' | 'inline';
   onOpenInHelpCenter: (slug: string) => void;
+  /** Chamado no primeiro `play` de cada abertura do player (conta visualização). */
+  onFirstPlay?: (videoId: number) => void;
 }
 
 const linkButton: CSSProperties = {
@@ -53,6 +55,7 @@ export function GuideVideoCard({
   pageId,
   variant,
   onOpenInHelpCenter,
+  onFirstPlay,
 }: GuideVideoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const cardRef = useRef<HTMLButtonElement>(null);
@@ -77,6 +80,7 @@ export function GuideVideoCard({
           setExpanded(false);
         }}
         onOpenInHelpCenter={onOpenInHelpCenter}
+        onFirstPlay={onFirstPlay}
       />
     );
   }
@@ -243,17 +247,27 @@ function ExpandedVideo({
   onSave,
   onClose,
   onOpenInHelpCenter,
+  onFirstPlay,
 }: {
   video: KbVideo;
   progress: ProgressMap;
   onSave: SaveProgress;
   onClose: () => void;
   onOpenInHelpCenter: (slug: string) => void;
+  onFirstPlay?: (videoId: number) => void;
 }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const { handlers, positionRef, resumeRef } = usePlaybackProgress(video.id, progress, onSave);
   const closeRef = useRef<HTMLButtonElement>(null);
+  // Survives a retry (the player remounts by `attempt`, this component does not).
+  const playedRef = useRef(false);
+
+  const handlePlay = () => {
+    if (playedRef.current) return;
+    playedRef.current = true;
+    onFirstPlay?.(video.id);
+  };
 
   // ExpandedVideo only mounts after the user opened the card, so this never steals focus on render.
   useEffect(() => {
@@ -298,6 +312,7 @@ function ExpandedVideo({
             autoPlay
             className="h-full w-full"
             {...handlers}
+            onPlay={handlePlay}
             onFatalError={() => setFailed(true)}
           />
         )}

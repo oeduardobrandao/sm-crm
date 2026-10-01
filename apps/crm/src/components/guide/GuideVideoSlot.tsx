@@ -6,6 +6,7 @@ import { useGuide } from './GuideContext';
 import { GuideVideoCard } from './GuideVideoCard';
 import { useKbVideoSeries, useVideoProgress } from '../../pages/ajuda/videos/useKbVideos';
 import { formatDuration } from '../../pages/ajuda/videos/playlist';
+import { recordKbViewSafely } from '../../pages/ajuda/useRecordKbView';
 import type { KbVideo, KbVideoSeries } from '../../store/kbVideos';
 
 export function findVideoBySlug(series: KbVideoSeries[], slug: string): KbVideo | null {
@@ -54,6 +55,7 @@ export function GuideVideoSlot({
       pageId={pageId}
       variant={variant}
       onOpenInHelpCenter={openInHelpCenter}
+      onFirstPlay={(videoId) => recordKbViewSafely({ videoId })}
     />
   );
 }
