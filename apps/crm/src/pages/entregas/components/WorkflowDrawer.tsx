@@ -209,6 +209,10 @@ export function WorkflowDrawer({
   // Expanded post id (accordion). Seeded from initialPostId when opened from the
   // calendar; the call site keys the drawer by initialPostId so a new target remounts.
   const [expandedId, setExpandedId] = useState<number | null>(initialPostId ?? null);
+  // Post a deep link, the calendar or "Novo Post" pointed at: once its row is in the DOM the body
+  // scrolls so the whole expanded post is visible, not just its trigger row.
+  const [scrollTargetId, setScrollTargetId] = useState<number | null>(initialPostId ?? null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
   const [replyText, setReplyText] = useState<Record<number, string>>({});
@@ -311,6 +315,22 @@ export function WorkflowDrawer({
   const orderedPosts = localOrder
     ? (localOrder.map((id) => posts.find((p) => p.id === id)).filter(Boolean) as WorkflowPost[])
     : posts;
+
+  useEffect(() => {
+    if (scrollTargetId == null || drawerView !== 'posts') return;
+    const body = bodyRef.current;
+    const item = body?.querySelector<HTMLElement>(`[data-post-id="${scrollTargetId}"]`);
+    // Posts still loading: re-runs when they land.
+    if (!body || !item) return;
+    setScrollTargetId(null);
+    const bodyRect = body.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    if (itemRect.top >= bodyRect.top && itemRect.bottom <= bodyRect.bottom) return;
+    // Align the post's top with the body's padding edge. An expanded post is
+    // usually taller than the drawer, so this shows as much of it as fits.
+    const paddingTop = parseFloat(getComputedStyle(body).paddingTop) || 0;
+    body.scrollTop += itemRect.top - bodyRect.top - paddingTop;
+  }, [scrollTargetId, drawerView, posts]);
 
   const postIds = posts.map((p) => p.id).filter(Boolean) as number[];
   const { data: approvals = [] } = useQuery({
@@ -444,6 +464,7 @@ export function WorkflowDrawer({
       });
       refresh();
       setExpandedId(newPost.id!);
+      setScrollTargetId(newPost.id!);
     } catch {
       toast.error('Erro ao criar post');
     }
@@ -942,7 +963,10 @@ export function WorkflowDrawer({
         </div>
 
         {/* Posts section */}
-        <div className={`drawer-body${drawerView === 'calendar' ? ' drawer-body--calendar' : ''}`}>
+        <div
+          ref={bodyRef}
+          className={`drawer-body${drawerView === 'calendar' ? ' drawer-body--calendar' : ''}`}
+        >
           {drawerView === 'calendar' ? (
             <WorkflowCalendarView
               clienteId={clienteId}
@@ -954,6 +978,7 @@ export function WorkflowDrawer({
               onOpenPost={(postId) => {
                 setDrawerView('posts');
                 setExpandedId(postId);
+                setScrollTargetId(postId);
               }}
               onBack={() => setDrawerView('posts')}
             />
@@ -1389,6 +1414,7 @@ function SortablePostItem({
     <div
       ref={setNodeRef}
       style={style}
+      data-post-id={post.id}
       className={`drawer-post-item${isExpanded ? ' expanded' : ''}`}
     >
       {/* Accordion trigger */}
