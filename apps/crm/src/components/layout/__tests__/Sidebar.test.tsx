@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -90,7 +90,14 @@ function setAuth(overrides: Record<string, unknown> = {}) {
 
 function renderSidebar(
   pathname = '/dashboard',
-  props: { isDrawer?: boolean; isOpen?: boolean; onClose?: () => void } = {},
+  props: {
+    isDrawer?: boolean;
+    isOpen?: boolean;
+    onClose?: () => void;
+    collapsible?: boolean;
+    pinned?: boolean;
+    onTogglePinned?: () => void;
+  } = {},
 ) {
   return render(
     <MemoryRouter initialEntries={[pathname]}>
@@ -335,6 +342,134 @@ describe('Sidebar', () => {
     renderSidebar('/dashboard');
 
     expect(screen.queryByTestId('mensagens-nav-badge')).not.toBeInTheDocument();
+  });
+
+  describe('collapsible desktop sidebar', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    function hoverIn(nav: HTMLElement) {
+      fireEvent.mouseEnter(nav);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+    }
+
+    it('is a rail by default and expands over the content on hover', () => {
+      vi.useFakeTimers();
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true });
+      const nav = document.getElementById('sidebar')!;
+
+      expect(nav).toHaveClass('sidebar--rail');
+      // Labels fade, they don't leave: still the links' accessible names.
+      expect(screen.getByRole('link', { name: 'Clientes' })).toBeInTheDocument();
+
+      // A pass across the rail shorter than the hover-intent delay does nothing.
+      fireEvent.mouseEnter(nav);
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+      fireEvent.mouseLeave(nav);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(nav).toHaveClass('sidebar--rail');
+
+      hoverIn(nav);
+      expect(nav).not.toHaveClass('sidebar--rail');
+      expect(nav).toHaveClass('sidebar--overlay');
+
+      fireEvent.mouseLeave(nav);
+      expect(nav).toHaveClass('sidebar--rail');
+    });
+
+    it('stays expanded and not overlaid when pinned, and the toggle reports pin state', () => {
+      setAuth();
+      const onTogglePinned = vi.fn();
+      renderSidebar('/dashboard', { collapsible: true, pinned: true, onTogglePinned });
+      const nav = document.getElementById('sidebar')!;
+
+      expect(nav).not.toHaveClass('sidebar--rail');
+      expect(nav).not.toHaveClass('sidebar--overlay');
+
+      const toggle = screen.getByRole('button', { name: 'Recolher menu lateral' });
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.click(toggle);
+      expect(onTogglePinned).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers to pin when unpinned', () => {
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true });
+
+      expect(screen.getByRole('button', { name: 'Fixar menu lateral aberto' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+
+    it('collapses after a mouse click on a link once the pointer leaves', () => {
+      vi.useFakeTimers();
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true });
+      const nav = document.getElementById('sidebar')!;
+
+      hoverIn(nav);
+      const link = screen.getByRole('link', { name: 'Clientes' });
+      // jsdom matches :focus-visible on every focus; a real mouse click doesn't.
+      const realMatches = Element.prototype.matches;
+      vi.spyOn(Element.prototype, 'matches').mockImplementation(function (
+        this: Element,
+        selector: string,
+      ) {
+        return selector === ':focus-visible' ? false : realMatches.call(this, selector);
+      });
+      act(() => {
+        link.focus();
+      });
+      fireEvent.click(link);
+      fireEvent.mouseLeave(nav);
+
+      expect(nav).toHaveClass('sidebar--rail');
+    });
+
+    it('holds the overlay open while the account menu is open', () => {
+      vi.useFakeTimers();
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true });
+      const nav = document.getElementById('sidebar')!;
+
+      hoverIn(nav);
+      fireEvent.click(document.getElementById('user-menu-wrap')!);
+      fireEvent.mouseLeave(nav);
+
+      expect(nav).toHaveClass('sidebar--overlay');
+    });
+
+    it('expands on keyboard focus', () => {
+      setAuth();
+      renderSidebar('/dashboard', { collapsible: true });
+      const nav = document.getElementById('sidebar')!;
+
+      // jsdom treats this focus as :focus-visible, i.e. keyboard modality.
+      act(() => {
+        screen.getByRole('link', { name: 'Clientes' }).focus();
+      });
+      expect(nav).toHaveClass('sidebar--overlay');
+    });
+
+    it('has no rail or toggle when not collapsible', () => {
+      setAuth();
+      renderSidebar('/dashboard');
+      const nav = document.getElementById('sidebar')!;
+
+      expect(nav).not.toHaveClass('sidebar--rail');
+      expect(nav).not.toHaveClass('sidebar--overlay');
+      expect(screen.queryByRole('button', { name: /menu lateral/ })).not.toBeInTheDocument();
+    });
   });
 
   it('shows "99+" in the Mensagens badge when count > 99', () => {

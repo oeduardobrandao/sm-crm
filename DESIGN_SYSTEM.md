@@ -91,10 +91,16 @@ banner shows). `.main-content` offsets itself with `margin-left: var(--sidebar-w
 
 | Viewport | Sidebar |
 |---|---|
-| ≥ 1101px | Static; `.main-content` is inset by 260px |
+| ≥ 1101px | Static. 64px icon rail by default, expands over the content on hover; pinned open, `.main-content` is inset by 260px |
 | 768–1100px | Off-canvas drawer; `margin-left: 0 !important` |
 | ≤ 900px | Drawer + bottom nav |
 | ≤ 768px | Further compaction |
+
+The pin toggle sits at the top right of the expanded sidebar. Unpinned, `AppLayout` sets
+`data-sidebar-collapsed` on `.app-container` and CSS overrides `--sidebar-width: 64px` there;
+hovering only widens the sidebar itself (`.sidebar--overlay`), so the content never moves until
+the user pins (persisted in localStorage `sidebar-pinned`). Anything inset by the sidebar should
+read `var(--sidebar-width)`, never a literal 260px.
 
 **Anything `position: fixed` and anchored to the sidebar must be `display: none` by default
 and only shown inside `@media (min-width: 1101px)`** — below that the sidebar isn't there and

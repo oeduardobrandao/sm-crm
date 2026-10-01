@@ -130,12 +130,44 @@ function useIsMobile() {
   return isMobile;
 }
 
+const SIDEBAR_PINNED_STORAGE_KEY = 'sidebar-pinned';
+
+// Desktop sidebar: an icon rail by default that expands over the content on
+// hover. Pinning keeps it open and pushes the content over. Deliberately not
+// reset when the viewport drops into drawer/mobile range, so widening the
+// window again restores it.
+function useSidebarPinned() {
+  const [pinned, setPinned] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggle = useCallback(() => {
+    setPinned((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_PINNED_STORAGE_KEY, next ? '1' : '0');
+      } catch {
+        // localStorage unavailable (private mode, quota) -- preference just won't persist.
+      }
+      return next;
+    });
+  }, []);
+
+  return [pinned, toggle] as const;
+}
+
 export default function AppLayout() {
   const location = useLocation();
   const { canSeeFinancials, can } = useAuth();
   const isTablet = useIsTablet();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarPinned, toggleSidebarPinned] = useSidebarPinned();
+  const sidebarCollapsible = !isTablet && !isMobile;
   const financialOutcome = financialGuardOutcome(location.pathname, canSeeFinancials);
   const contractOutcome = contractGuardOutcome(location.pathname, can('contratos', 'ver'));
   // The two guards cover disjoint path sets, so at most one is ever not
@@ -166,7 +198,10 @@ export default function AppLayout() {
 
   return (
     <GuideProvider>
-      <div className="app-container">
+      <div
+        className="app-container"
+        data-sidebar-collapsed={(sidebarCollapsible && !sidebarPinned) || undefined}
+      >
         {!isMobile && (
           <TopBar
             showHamburger={isTablet}
@@ -182,7 +217,14 @@ export default function AppLayout() {
           </GlobalBannerContainer>
         </Suspense>
 
-        <Sidebar isDrawer={isTablet} isOpen={drawerOpen} onClose={closeDrawer} />
+        <Sidebar
+          isDrawer={isTablet}
+          isOpen={drawerOpen}
+          onClose={closeDrawer}
+          collapsible={sidebarCollapsible}
+          pinned={sidebarPinned}
+          onTogglePinned={toggleSidebarPinned}
+        />
 
         {isTablet && drawerOpen && (
           <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />

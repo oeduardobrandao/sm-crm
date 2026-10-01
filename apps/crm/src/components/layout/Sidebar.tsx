@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -20,7 +20,15 @@ interface SidebarProps {
   isDrawer?: boolean;
   isOpen?: boolean;
   onClose?: () => void;
+  /** Desktop static sidebar: an icon rail that expands over the content on hover. */
+  collapsible?: boolean;
+  /** Pinned open: always expanded, and the content sits beside it. */
+  pinned?: boolean;
+  onTogglePinned?: () => void;
 }
+
+// Hover intent: crossing the rail on the way to the content shouldn't flap it open.
+const HOVER_EXPAND_DELAY_MS = 120;
 
 const COLLAPSED_GROUPS_STORAGE_KEY = 'sidebar-collapsed-groups';
 
@@ -35,7 +43,14 @@ function readCollapsedGroups(): Set<string> {
   }
 }
 
-export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: SidebarProps) {
+export default function Sidebar({
+  isDrawer = false,
+  isOpen = false,
+  onClose,
+  collapsible = false,
+  pinned = false,
+  onTogglePinned,
+}: SidebarProps) {
   const { user, profile, signOut, workspaceRole, can } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,6 +65,45 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsedGroups);
+  const [hovered, setHovered] = useState(false);
+  const [keyboardFocused, setKeyboardFocused] = useState(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
+
+  // The open account menu holds the overlay: it lives inside the sidebar and
+  // would otherwise collapse out from under the pointer.
+  const expanded = !collapsible || pinned || hovered || keyboardFocused || userMenuOpen;
+  const isRail = collapsible && !expanded;
+  const isOverlay = collapsible && expanded && !pinned;
+
+  const handleMouseEnter = () => {
+    if (!collapsible) return;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHovered(true), HOVER_EXPAND_DELAY_MS);
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+    setHovered(false);
+  };
+
+  // Only keyboard focus expands the rail. A mouse click leaves focus on the
+  // clicked link, and expanding on any focus would then keep the overlay open
+  // after the pointer leaves.
+  const handleFocus = (e: React.FocusEvent<HTMLElement>) => {
+    if (collapsible && e.target.matches(':focus-visible')) setKeyboardFocused(true);
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setKeyboardFocused(false);
+  };
 
   const toggleGroup = (groupId: string) => {
     setCollapsedGroups((prev) => {
@@ -169,7 +223,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                       aria-disabled="true"
                     >
                       <i className={`ph ${item.icon}`} />
-                      <span>{t(item.labelKey, item.label)}</span>
+                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
                       <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
                     </div>
                   ) : item.locked ? (
@@ -184,7 +238,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                       }}
                     >
                       <i className={`ph ${item.icon}`} />
-                      <span>{t(item.labelKey, item.label)}</span>
+                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
                       <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
                     </a>
                   ) : item.newTab ? (
@@ -198,7 +252,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                       }}
                     >
                       <i className={`ph ${item.icon}`} />
-                      <span>{t(item.labelKey, item.label)}</span>
+                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
                     </a>
                   ) : (
                     <a
@@ -210,7 +264,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                       }}
                     >
                       <i className={ItemIcon} />
-                      <span>{t(item.labelKey, item.label)}</span>
+                      <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
                       {item.id === 'mensagens' && mensagensUnread > 0 && (
                         <span
                           className="nav-badge nav-badge--count"
@@ -232,11 +286,32 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
 
   return (
     <nav
-      className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}`}
+      className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}${isRail ? ' sidebar--rail' : ''}${isOverlay ? ' sidebar--overlay' : ''}`}
       id="sidebar"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
     >
       <div className="sidebar-wrapper">
-        <div className="sidebar-scrollable" style={{ paddingTop: '1rem' }}>
+        {collapsible && (
+          <div className="sidebar-pin-row">
+            <button
+              type="button"
+              className="sidebar-pin-btn"
+              onClick={onTogglePinned}
+              aria-pressed={pinned}
+              aria-label={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+              title={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+            >
+              <i className="ph ph-sidebar-simple" />
+            </button>
+          </div>
+        )}
+        <div
+          className="sidebar-scrollable"
+          style={{ paddingTop: collapsible ? '0.25rem' : '1rem' }}
+        >
           <ul className="sidebar-nav" id="sidebar-nav-main">
             {mainGroups.map(renderGroup)}
           </ul>
