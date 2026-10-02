@@ -3,12 +3,16 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- duplicate_workflow (20261002000021). Cobre:
+-- 99w.0 guarda de colunas: toda coluna de workflows, workflow_etapas e
+--       workflow_select_options esta classificada
 -- 99w.1 fluxo: titulo, campos, etapas no mesmo estado, posicao logo depois
 -- 99w.2 posts: todos copiados sem sufixo, mesma ordem, status pelo modo, midia
 -- 99w.3 opcoes: option_id novo e valores select/multiselect remapeados;
 --       texto que nao e opcao fica igual
 -- 99w.4 isolamento e grants
 -- 99w.5 limite de fluxos ativos desfaz tudo
+-- 99w.6 erros de acesso: papel sem entregas:editar -> permission_denied;
+--       sem workspace ativo -> workspace_not_found
 
 create or replace function pg_temp.dw_env(
   out ws uuid, out usr uuid, out cli bigint, out tmpl bigint)
@@ -32,6 +36,53 @@ begin
     json_build_object('sub', p_usr, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
 end $$;
+
+-- 99w.0 guarda de colunas. Se falhar: a coluna nova precisa entrar em
+-- duplicate_workflow (copiar ou deixar no default de proposito) E na lista abaixo.
+begin;
+do $$
+declare v_missing text;
+begin
+  select string_agg(column_name, ', ' order by column_name) into v_missing
+    from information_schema.columns
+   where table_schema = 'public' and table_name = 'workflows'
+     and column_name not in (
+       -- copiadas
+       'conta_id','cliente_id','titulo','template_id','status','etapa_atual',
+       'recorrente','position','modo_prazo','link_notion','link_drive','concluido_em',
+       -- definidas pela copia
+       'user_id','created_via',
+       -- geradas pelo banco
+       'id','created_at');
+  assert v_missing is null, format('workflows tem coluna nao classificada em duplicate_workflow: %s', v_missing);
+
+  select string_agg(column_name, ', ' order by column_name) into v_missing
+    from information_schema.columns
+   where table_schema = 'public' and table_name = 'workflow_etapas'
+     and column_name not in (
+       -- copiadas
+       'ordem','nome','prazo_dias','tipo_prazo','responsavel_id','tipo','status',
+       'iniciado_em','concluido_em','data_limite',
+       -- definidas pela copia
+       'workflow_id',
+       -- geradas pelo banco
+       'id');
+  assert v_missing is null, format('workflow_etapas tem coluna nao classificada em duplicate_workflow: %s', v_missing);
+
+  select string_agg(column_name, ', ' order by column_name) into v_missing
+    from information_schema.columns
+   where table_schema = 'public' and table_name = 'workflow_select_options'
+     and column_name not in (
+       -- copiadas
+       'property_definition_id','label','color',
+       -- definidas pela copia
+       'workflow_id','conta_id',
+       -- geradas pelo banco (option_id novo e remapeado nos valores dos posts)
+       'id','option_id','created_at');
+  assert v_missing is null, format('workflow_select_options tem coluna nao classificada em duplicate_workflow: %s', v_missing);
+  raise notice 'PASS 99w.0';
+end $$;
+rollback;
 
 begin;
 select et_grant_hosted_parity();
@@ -213,5 +264,56 @@ begin
   assert (select count(*) from workflows where conta_id = e.ws) = 1, 'fluxo orfao';
   assert (select count(*) from workflow_posts where conta_id = e.ws) = 1, 'post orfao';
   raise notice 'PASS 99w.5';
+end $$;
+rollback;
+
+-- 99w.6 erros de acesso dentro do proprio workspace
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; wf bigint; v_role uuid; v_ver uuid; v_sem uuid; v_raised boolean;
+begin
+  e := pg_temp.dw_env();
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (e.usr, e.ws, e.cli, 'F', 'ativo') returning id into wf;
+  insert into workflow_posts (workflow_id, conta_id, titulo) values (wf, e.ws, 'P');
+
+  -- (a) membro do mesmo workspace com papel customizado so de leitura em entregas
+  v_ver := gen_random_uuid();
+  insert into auth.users (id) values (v_ver);
+  insert into workspace_roles (conta_id, nome, permissions)
+    values (e.ws, 'So ver', '{"entregas":"ver"}'::jsonb) returning id into v_role;
+  insert into workspace_members (user_id, workspace_id, role, role_id) values (v_ver, e.ws, 'agent', v_role);
+  update profiles set conta_id = e.ws, active_workspace_id = e.ws where id = v_ver;
+  perform pg_temp.dw_as(v_ver);
+  v_raised := false;
+  begin
+    perform duplicate_workflow(wf, false);
+  exception when others then
+    v_raised := true;
+    assert sqlerrm = 'permission_denied', format('papel so ver: %s', sqlerrm);
+  end;
+  execute 'reset role';
+  assert v_raised, 'papel sem entregas:editar duplicou o fluxo';
+  assert (select count(*) from workflows where conta_id = e.ws) = 1, 'nenhum fluxo criado (permission_denied)';
+  assert (select count(*) from workflow_posts where conta_id = e.ws) = 1, 'nenhum post criado (permission_denied)';
+
+  -- (b) membro sem workspace ativo
+  v_sem := gen_random_uuid();
+  insert into auth.users (id) values (v_sem);
+  insert into workspace_members (user_id, workspace_id, role) values (v_sem, e.ws, 'owner');
+  update profiles set conta_id = e.ws, active_workspace_id = null where id = v_sem;
+  perform pg_temp.dw_as(v_sem);
+  v_raised := false;
+  begin
+    perform duplicate_workflow(wf, false);
+  exception when others then
+    v_raised := true;
+    assert sqlerrm = 'workspace_not_found', format('sem workspace ativo: %s', sqlerrm);
+  end;
+  execute 'reset role';
+  assert v_raised, 'sem workspace ativo duplicou o fluxo';
+  assert (select count(*) from workflows where conta_id = e.ws) = 1, 'nenhum fluxo criado (workspace_not_found)';
+  raise notice 'PASS 99w.6';
 end $$;
 rollback;

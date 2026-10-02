@@ -13,6 +13,8 @@
 -- 99p.5 isolamento e grants: outra conta -> not_found; anon sem EXECUTE;
 --       authenticated nao executa _clone_post_row
 -- 99p.6 limite de plano desfaz tudo
+-- 99p.7 erros de acesso: papel sem entregas:editar -> permission_denied;
+--       sem workspace ativo -> workspace_not_found
 
 create or replace function pg_temp.dp_env(
   out ws uuid, out usr uuid, out cli bigint, out wf bigint)
@@ -351,5 +353,53 @@ begin
   assert (select count(*) from workflow_posts where workflow_id = e.wf) = 2, 'post criado apesar do limite';
   assert (select ordem from workflow_posts where id = p2) = 1, 'empurrao de ordem nao foi desfeito';
   raise notice 'PASS 99p.6';
+end $$;
+rollback;
+
+-- 99p.7 erros de acesso dentro do proprio workspace
+begin;
+select et_grant_hosted_parity();
+do $$
+declare e record; v_post bigint; v_role uuid; v_ver uuid; v_sem uuid; v_raised boolean;
+begin
+  e := pg_temp.dp_env();
+  insert into workflow_posts (workflow_id, conta_id, titulo) values (e.wf, e.ws, 'P') returning id into v_post;
+
+  -- (a) membro do mesmo workspace com papel customizado so de leitura em entregas
+  v_ver := gen_random_uuid();
+  insert into auth.users (id) values (v_ver);
+  insert into workspace_roles (conta_id, nome, permissions)
+    values (e.ws, 'So ver', '{"entregas":"ver"}'::jsonb) returning id into v_role;
+  insert into workspace_members (user_id, workspace_id, role, role_id) values (v_ver, e.ws, 'agent', v_role);
+  update profiles set conta_id = e.ws, active_workspace_id = e.ws where id = v_ver;
+  perform pg_temp.dp_as(v_ver);
+  v_raised := false;
+  begin
+    perform duplicate_post(v_post, false);
+  exception when others then
+    v_raised := true;
+    assert sqlerrm = 'permission_denied', format('papel so ver: %s', sqlerrm);
+  end;
+  execute 'reset role';
+  assert v_raised, 'papel sem entregas:editar duplicou o post';
+  assert (select count(*) from workflow_posts where workflow_id = e.wf) = 1, 'nada criado (permission_denied)';
+
+  -- (b) membro sem workspace ativo
+  v_sem := gen_random_uuid();
+  insert into auth.users (id) values (v_sem);
+  insert into workspace_members (user_id, workspace_id, role) values (v_sem, e.ws, 'owner');
+  update profiles set conta_id = e.ws, active_workspace_id = null where id = v_sem;
+  perform pg_temp.dp_as(v_sem);
+  v_raised := false;
+  begin
+    perform duplicate_post(v_post, false);
+  exception when others then
+    v_raised := true;
+    assert sqlerrm = 'workspace_not_found', format('sem workspace ativo: %s', sqlerrm);
+  end;
+  execute 'reset role';
+  assert v_raised, 'sem workspace ativo duplicou o post';
+  assert (select count(*) from workflow_posts where workflow_id = e.wf) = 1, 'nada criado (workspace_not_found)';
+  raise notice 'PASS 99p.7';
 end $$;
 rollback;

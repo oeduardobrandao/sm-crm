@@ -44,13 +44,11 @@ BEGIN
   -- Fluxos e cards de processo avulso dividem UM espaco de indices por coluna
   -- (reorder_fluxos_board, 20260919000008), entao os dois sao empurrados; so
   -- ativo/concluido viram card, mesmo filtro da RPC de reordenar.
-  IF w.position IS NOT NULL THEN
-    UPDATE workflows SET position = position + 1
-     WHERE conta_id = v_conta AND position > w.position;
-    UPDATE post_processes SET board_position = board_position + 1
-     WHERE conta_id = v_conta AND estado IN ('ativo', 'concluido')
-       AND board_position > w.position;
-  END IF;
+  UPDATE workflows SET position = position + 1
+   WHERE conta_id = v_conta AND position > w.position;
+  UPDATE post_processes SET board_position = board_position + 1
+   WHERE conta_id = v_conta AND estado IN ('ativo', 'concluido')
+     AND board_position > w.position;
 
   INSERT INTO workflows (
     user_id, conta_id, cliente_id, titulo, template_id, status, etapa_atual,
@@ -59,7 +57,7 @@ BEGIN
   VALUES (
     auth.uid(), v_conta, w.cliente_id, w.titulo || ' (cópia)', w.template_id,
     w.status, w.etapa_atual, w.recorrente,
-    CASE WHEN w.position IS NULL THEN NULL ELSE w.position + 1 END,
+    w.position + 1,
     w.modo_prazo, w.link_notion, w.link_drive, w.concluido_em, 'human')
   RETURNING id INTO v_new;
 
