@@ -11,8 +11,11 @@ export function validateReportImage(file: File): string | null {
     return 'Formato não suportado. Use JPG, PNG ou WebP.';
   }
   if (file.size > REPORT_IMAGE_MAX_BYTES) {
-    const mb = Math.round(file.size / (1024 * 1024));
-    return `Esta imagem tem ${mb} MB. O limite é 10 MB.`;
+    // Arredonda para cima na primeira casa: 10,04 MB vira "10,1", nunca "10"
+    // (que leria igual ao limite). Inteiros saem sem casa decimal.
+    const mb = Math.ceil((file.size / (1024 * 1024)) * 10) / 10;
+    const label = mb.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    return `Esta imagem tem ${label} MB. O limite é 10 MB.`;
   }
   return null;
 }
@@ -23,13 +26,18 @@ export function scaledSize(
   max = MAX_SIDE,
 ): { width: number; height: number } {
   const scale = Math.min(1, max / Math.max(w, h));
-  return { width: Math.round(w * scale), height: Math.round(h * scale) };
+  return {
+    width: Math.max(1, Math.round(w * scale)),
+    height: Math.max(1, Math.round(h * scale)),
+  };
 }
 
 export async function prepareReportImage(
   file: File,
 ): Promise<{ file: File; width: number; height: number }> {
-  const bitmap = await createImageBitmap(file);
+  // from-image aplica a rotação EXIF (fotos de celular): o desenho sai de pé e
+  // width/height já são os da imagem de pé.
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   try {
     const { width, height } = scaledSize(bitmap.width, bitmap.height);
     if (width === bitmap.width && height === bitmap.height) return { file, width, height };
