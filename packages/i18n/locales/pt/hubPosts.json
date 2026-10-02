@@ -59,6 +59,11 @@
     "loadError": "Erro ao carregar postagens.",
     "empty": "Nenhuma postagem disponível ainda.",
     "noResults": "Nenhuma postagem encontrada para este filtro.",
+    "emptyRecent": "Nenhuma postagem recente.",
+    "loadOlder": "Carregar posts anteriores",
+    "loadingOlder": "Carregando…",
+    "olderError": "Não foi possível carregar os posts anteriores.",
+    "retryOlder": "Tentar novamente",
     "filter": {
       "label": "Filtrar por status",
       "all": "Todos"

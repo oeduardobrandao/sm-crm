@@ -210,7 +210,9 @@ describe('AprovacoesPage', () => {
     expect(screen.getByRole('dialog', { name: 'B' })).toBeInTheDocument();
     // The approval refreshes the posts query so the approved post leaves the pending list.
     await waitFor(() =>
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['hub-posts', 'token-publico'] }),
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ['hub-posts', 'token-publico'] }),
+      ),
     );
     // The refetch shrinks `pending` underneath the open dialog: A is gone from the grid,
     // the dialog survives on B, and nothing flips to the error state.

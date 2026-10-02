@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -52,6 +52,12 @@ const STATUS_LABEL_PT: Record<string, string> = {
 
 interface Props {
   posts: HubPost[];
+  /** Called with the shown month on mount and on every navigation. */
+  onMonthChange?: (year: number, month: number) => void;
+  /** The shown month's older posts are still loading. */
+  loading?: boolean;
+  /** Rendered under the header (e.g. a failed-month notice with a retry). */
+  notice?: ReactNode;
 }
 
 function formatTimeUTC(iso: string): string {
@@ -59,7 +65,7 @@ function formatTimeUTC(iso: string): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
-export function PostCalendar({ posts }: Props) {
+export function PostCalendar({ posts, onMonthChange, loading, notice }: Props) {
   const { t, i18n } = useTranslation('hubHome');
   const navigate = useNavigate();
 
@@ -77,14 +83,16 @@ export function PostCalendar({ posts }: Props) {
   }
 
   const today = new Date();
-  // Posts are grouped by their scheduled_at date in UTC (see postsForDay
-  // below), so "today" must use the same UTC calendar day — otherwise, for
-  // viewers whose local timezone differs from UTC, the highlighted "today"
-  // cell and the initially selected day drift by one day from where posts
-  // actually land on the grid.
+  // Posts are grouped by their scheduled_at LOCAL calendar day (see postsForDay below), and
+  // the range fetch (`localMonthRange` in postView.ts) depends on that same local-day
+  // bucketing to pick the month it asks the server for.
   const [year, setYear] = useState(today.getUTCFullYear());
   const [month, setMonth] = useState(today.getUTCMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(today.getUTCDate());
+
+  useEffect(() => {
+    onMonthChange?.(year, month);
+  }, [year, month, onMonthChange]);
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -186,6 +194,7 @@ export function PostCalendar({ posts }: Props) {
               </button>
             </div>
           </div>
+          {notice}
 
           {/* Weekday labels — mixed case + light tracking on mobile, matching the reference */}
           <div className="grid grid-cols-7 mb-1 md:mb-2">
@@ -200,7 +209,11 @@ export function PostCalendar({ posts }: Props) {
           </div>
 
           {/* Day grid */}
-          <div className="grid grid-cols-7 gap-x-0 gap-y-0.5 md:gap-1.5">
+          <div
+            data-testid="post-calendar-grid"
+            aria-busy={loading ? 'true' : undefined}
+            className={`grid grid-cols-7 gap-x-0 gap-y-0.5 md:gap-1.5${loading ? ' opacity-60 transition-opacity' : ''}`}
+          >
             {leadingDays.map((d) => (
               <div
                 key={`lead-${d}`}

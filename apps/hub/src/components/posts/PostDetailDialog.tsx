@@ -65,6 +65,8 @@ interface PostDetailDialogProps {
   /** Accessible name of the "not available" fallback; defaults to the Postagens title. */
   fallbackTitle?: string;
   onApprovalSubmitted: () => void;
+  /** Opened from outside the list (deep link to an older post): no "X de Y" counter. */
+  standalone?: boolean;
 }
 
 /**
@@ -234,6 +236,7 @@ type ContentProps = PostDetailDialogProps & {
 
 function PostDetailContent({
   posts,
+  standalone,
   post,
   nav,
   token,
@@ -628,8 +631,8 @@ function PostDetailContent({
 
   return (
     <>
-      {!ghost && navButton('prev')}
-      {!ghost && navButton('next')}
+      {!ghost && !standalone && navButton('prev')}
+      {!ghost && !standalone && navButton('next')}
       <div
         ref={cardRef}
         tabIndex={-1}
@@ -650,12 +653,14 @@ function PostDetailContent({
               reelColumn ? 'md:w-[calc(min(92vh,820px)*9/16)]' : ''
             }`}
           >
-            <span className="absolute top-3 left-3 z-20 rounded-full bg-black/45 text-white text-[12px] px-2 py-0.5">
-              {t('posts.counter', '{{current}} de {{total}}', {
-                current: nav.index + 1,
-                total: posts.length,
-              })}
-            </span>
+            {!standalone && (
+              <span className="absolute top-3 left-3 z-20 rounded-full bg-black/45 text-white text-[12px] px-2 py-0.5">
+                {t('posts.counter', '{{current}} de {{total}}', {
+                  current: nav.index + 1,
+                  total: posts.length,
+                })}
+              </span>
+            )}
             <PostMediaPane post={post} onOpenLightbox={setLightboxIdx} priority />
           </div>
         )}
@@ -678,7 +683,7 @@ function PostDetailContent({
               <div className="flex-1 min-w-0 space-y-2">
                 <h3 className="font-display text-[18px] leading-[1.15] hub-txt">{post.titulo}</h3>
                 {chips}
-                {singleColumn && (
+                {singleColumn && !standalone && (
                   <span className="text-[12px] hub-tx3">
                     {t('posts.counter', '{{current}} de {{total}}', {
                       current: nav.index + 1,

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpRight, FileText, GitBranch } from 'lucide-react';
-import { fetchPosts } from '../api';
+import { hubPostQuery, hubPostsQuery } from '../queries';
 import { clientStatusOf, getClientStatusLabel, getTipoLabel } from '../lib/postView';
 
 interface Props {
@@ -37,8 +37,9 @@ function placementFor(el: HTMLElement | null): 'above' | 'below' {
   return room < CARD_ESTIMATE_PX ? 'below' : 'above';
 }
 
-/** Linked-post chip with a hover preview fed entirely from the already-cached
- * hub-posts payload (thumbnail, tipo/status, fluxo). No extra endpoint. */
+/** Linked-post chip with a hover preview fed from the already-cached hub-posts
+ * shell (thumbnail, tipo/status, fluxo). Posts outside the shell fall back to a
+ * single-post fetch. */
 export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
   const { t } = useTranslation('hubPostCard');
   const [open, setOpen] = useState(false);
@@ -46,10 +47,13 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data } = useQuery({
-    queryKey: ['hub-posts', token],
-    queryFn: () => fetchPosts(token),
-    enabled: open,
+  const { data } = useQuery({ ...hubPostsQuery(token), enabled: open });
+  const fromShell = data?.posts.find((p) => p.id === postId);
+  // Message chips can point at posts older than the shell: fetch just that one, only while
+  // the card is open (at most one hub-read hit per post per staleTime).
+  const { data: singleData } = useQuery({
+    ...hubPostQuery(token, postId),
+    enabled: open && data !== undefined && !fromShell,
   });
 
   function scheduleOpen() {
@@ -63,7 +67,7 @@ export function HubPostChip({ postId, titulo, suffix, base, token }: Props) {
     setOpen(false);
   }
 
-  const post = open ? data?.posts.find((p) => p.id === postId) : undefined;
+  const post = open ? (fromShell ?? singleData?.posts.find((p) => p.id === postId)) : undefined;
   const first = post?.media?.[0];
   const thumb = first ? (first.thumbnail_url ?? (first.kind === 'image' ? first.url : null)) : null;
 
