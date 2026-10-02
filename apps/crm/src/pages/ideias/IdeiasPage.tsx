@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DateRange } from 'react-day-picker';
 import { getIdeias, getClientes, type Ideia } from '@/store';
@@ -41,6 +42,7 @@ import {
 } from '@/components/ui/table';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/context/AuthContext';
+import { IDEIA_STATUS_LABELS } from './ideiaLabels';
 
 const ALL_STATUSES = [
   'nova',
@@ -50,14 +52,7 @@ const ALL_STATUSES = [
   'convertida',
   'concluida',
 ] as const;
-const STATUS_LABELS: Record<string, string> = {
-  nova: 'Nova',
-  em_analise: 'Em análise',
-  aprovada: 'Aprovada',
-  descartada: 'Descartada',
-  convertida: 'Virou tarefa',
-  concluida: 'Concluída',
-};
+const STATUS_LABELS = IDEIA_STATUS_LABELS;
 
 function startOfDayIso(d: Date): string {
   const copy = new Date(d);
@@ -86,6 +81,23 @@ export default function IdeiasPage() {
   });
 
   const [selectedIdeia, setSelectedIdeia] = useState<Ideia | null>(null);
+
+  // Deep link: /ideias?ideia=<id> abre o drawer (busca global, padrão do
+  // ?tarefa= em Tarefas). Espera a lista carregar; id desconhecido só some da URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const ideiaParam = searchParams.get('ideia');
+  useEffect(() => {
+    if (!ideiaParam || isLoading) return;
+    const match = ideias.find((i) => i.id === ideiaParam);
+    if (match) setSelectedIdeia(match);
+    setSearchParams(
+      (prev) => {
+        prev.delete('ideia');
+        return prev;
+      },
+      { replace: true },
+    );
+  }, [ideiaParam, isLoading, ideias, setSearchParams]);
   const [formOpen, setFormOpen] = useState(false);
   const [editingIdeia, setEditingIdeia] = useState<Ideia | null>(null);
   const [search, setSearch] = useState('');
