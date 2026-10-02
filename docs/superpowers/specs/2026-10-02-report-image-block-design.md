@@ -4,7 +4,7 @@ Mockups aprovados: https://claude.ai/artifact/6nuyyYwqYQiCtwHtb9gN18 (7 artboard
 drawer, estados de envio, ajustes interativos, visão do cliente, celular, seletor de
 Arquivos, editor de modelo).
 
-Revisões: review externo Codex (2026-10-02) e review Fable (2026-10-02) incorporados.
+Revisões: review externo Codex (2026-10-02, duas rodadas) e review Fable (2026-10-02) incorporados.
 
 ## Contexto
 
@@ -59,10 +59,16 @@ painel de camadas). Tamanho inicial ao inserir: `full`.
 
 - **Sem `r2_key` no config.** Todo leitor (Hub, print, editor) resolve a chave pela
   linha de `files`, então guardá-la seria redundante e ainda quebraria com arquivos
-  copiados nos Arquivos, cuja chave não tem o prefixo `contas/`
-  (`file-manage/handler.ts:414`, cópia de pasta em `:323`). Esse formato de chave de
-  cópia é um bug pré-existente (imagens copiadas já falham em `useFileUrl.ts`) e fica
-  para um PR separado.
+  copiados nos Arquivos, cuja chave é `<conta>/<uuid>-nome`, sem o prefixo `contas/`
+  (`file-manage/handler.ts:414`, cópia de pasta em `:323`).
+- **Arquivos copiados entram no seletor e precisam funcionar no editor.** Hoje
+  `sign-r2-urls` só assina chaves `contas/<conta>/...` (`handler.ts:135` no GET de
+  bytes, `:167` no POST), então uma cópia apareceria "indisponível" no editor enquanto
+  Hub e PDF (que usam `signMediaUrl` sobre a chave do banco) a mostrariam. Este PR
+  amplia os dois caminhos de `sign-r2-urls` para aceitar também o prefixo
+  `<conta>/` do próprio workspace (continua escopado ao tenant; nada de outro
+  workspace passa). Isso também conserta imagens copiadas no resto do CRM que usam
+  `useFileUrl`. Mudar o formato de chave da cópia fica fora do escopo.
 - **Orientação não é guardada:** deriva da proporção. No popover, trocar a orientação
   leva à proporção padrão daquele lado (`16:9` ou `4:5`). `original` usa
   `width/height`.
@@ -115,8 +121,11 @@ trigger e a proteção do autoclean.
   cliente nos Arquivos e continua lá quando o relatório some.
 - Trigger `AFTER INSERT OR UPDATE OF layout ON report_documents` (SECURITY DEFINER):
   extrai os `config.file_id` dos blocos `image`, mantém só os ids de `files` com o
-  mesmo `conta_id` do relatório **e** `kind = 'image'`, e faz o diff com os vínculos
-  existentes (insere/remove). `GRANT UPDATE (layout, title)` em `report_documents`
+  mesmo `conta_id` do relatório, `kind = 'image'` **e** `mime_type IN ('image/jpeg',
+  'image/png', 'image/webp')` (o backend aceita GIF como `kind = 'image'`,
+  `file-upload-finalize/handler.ts:65`; sem esse filtro uma escrita direta de layout
+  vincularia um GIF e o Hub o mostraria), e faz o diff com os vínculos existentes
+  (insere/remove). `GRANT UPDATE (layout, title)` em `report_documents`
   deixa esse trigger como único escritor de vínculos.
 - **Autoclean noturno (P0 do review Fable).** `storage_autoclean_candidates()`
   (`20260811000002_storage_autoclean_rpcs.sql:47-66`) seleciona arquivos de posts
@@ -127,9 +136,13 @@ trigger e a proteção do autoclean.
   `AND NOT EXISTS (SELECT 1 FROM report_document_files rdf WHERE rdf.file_id = f.id)`
   na seleção e no DELETE final.
 - `file-manage` DELETE `/files/:id` já devolve 409 `file_in_use` com
-  `reference_count > 0`. A resposta ganha `linked_reports: [{ report_id, title }]`,
-  filtrada pelo `profiles.conta_id` do chamador (o tenant do `file-manage`; quem segura
-  o isolamento de fato são as FKs compostas).
+  `reference_count > 0`. A resposta ganha `linked_reports: [{ report_id, title }]`.
+  As duas listas do 409 são filtradas explicitamente pelo `profiles.conta_id` do
+  chamador: a query atual de `linked_posts` (`handler.ts:495`) usa só `file_id` sob
+  service role, e `post_file_links` não tem FK composta (o autoclean trata vínculo
+  cross-tenant malformado como possível, `20260811000002:59`), então hoje ela poderia
+  vazar título de post de outro workspace. Passa a ter
+  `.eq("conta_id", contaId)`; `linked_reports` idem.
 - **Mensagem de arquivo em uso.** Hoje `callFn` (`services/fileService.ts:48-51`)
   lança `new Error(err.error)`, então só a string `file_in_use` chega ao
   `FileContextMenu` (`:185-190`). `callFn` passa a lançar um erro tipado
@@ -166,9 +179,10 @@ trigger e a proteção do autoclean.
 A assinatura de `docHandler`/`printDocHandler` ganha `deps` para assinar; os testes
 existentes em `hub-report-docs/handlers.test.ts` são atualizados.
 
-Cache do Hub: `queryClient` usa `staleTime: Infinity` (`apps/hub/src/queries.ts:13`).
-A query `hub-report-doc` passa a ter `staleTime` de 30 min, para uma aba aberta além
-da validade do fallback de 3600 s (sem media proxy) não ficar com imagens quebradas.
+Cache do Hub: a `useQuery` de `RelatorioDocPage.tsx:20-24` (`['hub-report-doc', ...]`)
+usa o `staleTime` padrão de 0, então refaz a busca a cada montagem e as URLs se
+renovam ao navegar. Não há mudança de cache. (O `staleTime: Infinity` de
+`apps/hub/src/queries.ts:13` é só do bootstrap.)
 
 ### Editor do CRM
 
@@ -219,8 +233,12 @@ A toolbar do bloco ganha o botão "Ajustes da imagem" (`SlidersHorizontal`) que 
 couber" (`Preencher` / `Mostrar inteira`, oculto em `Original`); Enquadramento (grade
 3×3, só em `Preencher`); dica de vertical em largura total com "Usar meia largura";
 Legenda (opcional); Descrição da imagem ("Lida por leitores de tela. Não aparece no
-relatório."); "Trocar imagem". Todas as mudanças vão por `onConfigChange` e entram no
-desfazer/refazer; o envio vira um passo só.
+relatório."); "Trocar imagem". As mudanças de `config` vão por `onConfigChange`
+(`updateBlockConfig` + `commit`, `RelatorioEditorPage.tsx:216-217`) e entram no
+desfazer/refazer; o envio vira um passo só. "Usar meia largura" muda `block.size`, que
+não é `config`: o `ImageBlockEditor` recebe também `onSizeChange(id, size)`, ligado a
+uma operação nova `setBlockSize(layout, id, size)` em `layoutOps.ts` e passada pelo
+`onChange` do canvas, o mesmo caminho dos botões −/+ (`resizeBlock`).
 
 ### Envio
 
@@ -241,7 +259,9 @@ O par `(source_type='client', source_id=clienteId)` já é a raiz do cliente e �
 e a API de pastas só cria pasta comum. A migration:
 
 - recria `folders_source_type_check` (última versão em
-  `20260425000005_clientes_root_folder.sql:4-6`) incluindo `'client_reports'`;
+  `20260425000005_clientes_root_folder.sql:4-6`) com **todos** os valores atuais mais o
+  novo: `'client', 'workflow', 'post', 'root_clients', 'client_reports'`. Omitir
+  `root_clients` faz a migration falhar, porque já existem linhas com esse valor;
 - cria a RPC SECURITY DEFINER
   `get_or_create_client_reports_folder(p_cliente_id bigint) RETURNS bigint`, com
   `SET search_path = public`, `REVOKE ALL ... FROM PUBLIC, anon` e
@@ -319,7 +339,7 @@ imagem." e não altera o bloco. Nunca grava um bloco com `file_id` sem
 ## Hub e PDF
 
 - Hub: `RelatorioDocPage` já usa `BlockRenderer`; abaixo de 720 px os blocos
-  `third`/`half` já viram largura total. Muda só o renderer e o `staleTime`.
+  `third`/`half` já viram largura total. Muda só o renderer.
 - PDF: cache por `pdf_generated_at >= updated_at` continua válido (`updated_at` sobe
   com mudança de layout; o PDF é binário, a expiração da URL não importa depois de
   renderizado). `break-inside: avoid` impede imagem cortada entre páginas.
@@ -332,7 +352,7 @@ imagem." e não altera o bloco. Nunca grava um bloco com `file_id` sem
 - Imagem no MCP de conteúdo.
 - Redimensionar no media proxy (`w=`) para o print; só se o Gotenberg ficar lento com
   imagens grandes.
-- Corrigir o formato de chave de cópia do `file-manage`.
+- Mudar o formato de chave de cópia do `file-manage` (o signer passa a aceitá-lo).
 
 ## Testes
 
@@ -344,22 +364,25 @@ imagem." e não altera o bloco. Nunca grava um bloco com `file_id` sem
 - **Deno** (`_shared/report-docs`, `hub-report-docs`, `report-docs`):
   `validateLayout` (campos, limites, `src`/`r2_key` rejeitados); `signImageBlocks`
   (sem vínculo = sem `src`, perdido = sem `src`, `src` salvo removido, chave vem de
-  `files`); limpeza do modelo em `generate.ts`; `linked_reports` no 409 do
-  `file-manage`.
+  `files`); limpeza do modelo em `generate.ts`; `linked_posts` e `linked_reports` no
+  409 do `file-manage` escopados ao `conta_id` (vínculo de outro workspace não
+  aparece); `sign-r2-urls` aceita `<conta>/` próprio e recusa `<outra-conta>/` nos
+  dois métodos.
 - **Vitest:** `ImageBlock` (proporção, `fit`, `focal` → CSS; sem `src` = `null`; sem
   `loading="lazy"`); `blockHasData`; estados do `ImageBlockEditor`; popover (troca de
   orientação, `Original` oculta ajuste, dica de vertical); `sanitizeLayoutForTemplate`;
-  `resolveImageUrls` com marcador indisponível; `FilePickerModal` single +
+  `resolveImageUrls` com marcador indisponível; `setBlockSize` e "Usar meia largura"; `FilePickerModal` single +
   `initialFolderId` + `onSelectRecords` + filtro de mime; catálogo/ícone; mensagem de
   `file_in_use` com posts e relatórios; aviso do `ApplyTemplateDialog`; downscale que
   preserva PNG.
 - **SQL** (`supabase/tests/entitlements/`, gated no CI): sincronização dos vínculos
   ao inserir/editar/limpar o layout; `reference_count` sobe e desce; `file_id` de
-  outro workspace ou `kind != 'image'` ignorado; insert manual de vínculo
+  outro workspace, `kind != 'image'` ou GIF ignorado; insert manual de vínculo
   cross-workspace barrado pelas FKs compostas; exclusão de arquivo em uso bloqueada;
   excluir relatório libera; exclusão de workspace em cascata não trava;
   `validate_report_layout` rejeita `src`, `r2_key`, enums inválidos e imagem
-  preenchida em `report_templates`; `get_or_create_client_reports_folder` idempotente,
+  preenchida em `report_templates`; a migration aplica sobre pastas `root_clients`
+  existentes; `get_or_create_client_reports_folder` idempotente,
   cria a raiz que falta, recusa cliente de outro workspace e não é executável por
   `anon`; novo caso em `63_storage_autoclean.sql`: arquivo de post antigo usado em
   relatório não é candidato e a noite não aborta.
@@ -370,7 +393,8 @@ imagem." e não altera o bloco. Nunca grava um bloco com `file_id` sem
 ## Ordem de deploy
 
 1. Migration (`db push`).
-2. Deploy de `hub-report-docs` (`--no-verify-jwt`), `report-docs` e `file-manage`.
+2. Deploy de `hub-report-docs` (`--no-verify-jwt`), `report-docs`, `file-manage` e
+   `sign-r2-urls`.
 3. Merge (o merge publica o CRM e o Hub na hora).
 
 Function antiga com layout novo devolve o bloco sem `src` e ele não aparece; por isso
