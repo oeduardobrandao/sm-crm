@@ -16,9 +16,9 @@ describe('RichTextContent (lazy TipTap front)', () => {
       <RichTextContent content={doc} className="corpo" fallbackText="texto guardado" />,
     );
 
-    // Before the chunk resolves: the document's own text, not the stored fallback.
+    // Before the chunk resolves: the stored plain text, like TipTap's own fallback.
     const placeholder = container.querySelector('.corpo p.whitespace-pre-wrap');
-    expect(placeholder?.textContent).toBe('Primeiro parágrafo\n\nSegundo');
+    expect(placeholder?.textContent).toBe('texto guardado');
     expect(container.querySelector('.ProseMirror')).toBeNull();
 
     await waitFor(() => expect(container.querySelector('.ProseMirror')).not.toBeNull());
