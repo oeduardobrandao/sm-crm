@@ -1507,7 +1507,7 @@ export function DuplicateDialog({ target, onClose, onDuplicated }: DuplicateDial
 ```
 
 Three notes for the implementer:
-- If the dialog fails to render in jsdom (providers needed by the `confirmClose` wiring in `apps/crm/src/components/ui/dialog.tsx`), mirror the setup of `apps/crm/src/pages/entregas/components/__tests__/ClientApprovalChoiceDialog.test.tsx`, which renders a shadcn Dialog in isolation.
+- If the dialog fails to render in jsdom (providers needed by the `confirmClose` wiring in `apps/crm/src/components/ui/dialog.tsx`), mock `@/components/ui/dialog` the way `apps/crm/src/pages/entregas/components/__tests__/ClientApprovalChoiceDialog.test.tsx` does (its `vi.mock('@/components/ui/dialog', ...)` at line 17). Make the mocked `Dialog` render children only when `open`, and the mocked `DialogTitle` render an `<h2>`, so the `getByRole('heading', ...)` assertions still hold.
 - `getByLabelText(/Mudar tudo para Rascunho/)` relies on the `<input>` being inside its `<label>`, so keep that structure.
 - `DialogContent`'s `onClick` stops propagation because React events bubble through portals: the board dialog is rendered by `EntregasPage`, not inside a card, but the WorkflowDrawer/StandalonePostDrawer ones sit inside drawers whose overlays have click handlers. If `DialogContent` in `apps/crm/src/components/ui/dialog.tsx` doesn't forward `onClick`, drop the prop and wrap the children in `<div onClick={(e) => e.stopPropagation()}>`.
 
