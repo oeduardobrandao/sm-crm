@@ -25,7 +25,7 @@ export const hubPostsQuery = (token: string) =>
 /**
  * History and range fail fast: one retry, shown in about a second instead of ~7s.
  * Published rows don't change mid-session, so they never refetch on focus or go stale;
- * a reload or remount refreshes them.
+ * a reload refreshes them (or a remount after `invalidateHubPosts` marked them invalidated).
  */
 export const HISTORY_OPTS = {
   retry: 1,
