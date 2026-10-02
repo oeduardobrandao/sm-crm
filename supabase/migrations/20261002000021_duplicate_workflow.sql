@@ -41,9 +41,15 @@ BEGIN
 
   -- Logo depois do original: empurrar todos os posteriores da conta preserva a
   -- ordem relativa em todas as colunas. position nao gera evento.
+  -- Fluxos e cards de processo avulso dividem UM espaco de indices por coluna
+  -- (reorder_fluxos_board, 20260919000008), entao os dois sao empurrados; so
+  -- ativo/concluido viram card, mesmo filtro da RPC de reordenar.
   IF w.position IS NOT NULL THEN
     UPDATE workflows SET position = position + 1
      WHERE conta_id = v_conta AND position > w.position;
+    UPDATE post_processes SET board_position = board_position + 1
+     WHERE conta_id = v_conta AND estado IN ('ativo', 'concluido')
+       AND board_position > w.position;
   END IF;
 
   INSERT INTO workflows (
@@ -66,8 +72,15 @@ BEGIN
    WHERE e.workflow_id = w.id
    ORDER BY e.ordem, e.id;
 
+  -- workflow_select_options so tem RLS pelo conta_id da propria linha: filtrar
+  -- por conta (e pela definicao) impede copiar linha forjada por outra conta.
   FOR o IN
-    SELECT * FROM workflow_select_options WHERE workflow_id = w.id ORDER BY id
+    SELECT wso.* FROM workflow_select_options wso
+     WHERE wso.workflow_id = w.id
+       AND wso.conta_id = v_conta
+       AND EXISTS (SELECT 1 FROM template_property_definitions d
+                    WHERE d.id = wso.property_definition_id AND d.conta_id = v_conta)
+     ORDER BY wso.id
   LOOP
     INSERT INTO workflow_select_options (workflow_id, property_definition_id, conta_id, label, color)
     VALUES (v_new, o.property_definition_id, v_conta, o.label, o.color)

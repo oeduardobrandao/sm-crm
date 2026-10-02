@@ -38,7 +38,7 @@ select et_grant_hosted_parity();
 do $$
 declare
   e record; wf bigint; wf_other bigint; v_new bigint; r record; v_n int;
-  p1 bigint; p2 bigint; f1 bigint;
+  p1 bigint; p2 bigint; f1 bigint; pa1 bigint; pa2 bigint; pr1 bigint; pr2 bigint;
   d_sel bigint; d_multi bigint; d_txt bigint;
   o1 uuid; o2 uuid; n1 uuid; n2 uuid;
   v_val jsonb;
@@ -79,6 +79,13 @@ begin
     (p1, d_multi, jsonb_build_array(o2::text, 'opcao-do-template')),
     (p1, d_txt, to_jsonb(o1::text));   -- texto que parece uuid: nao remapeia
 
+  -- processos avulsos no mesmo espaco de indices do quadro (position do original = 3)
+  update plans set feature_post_processes = true where id = (select plan_id from workspaces where id = e.ws);
+  insert into workflow_posts (conta_id, cliente_id, titulo) values (e.ws, e.cli, 'Avulso A') returning id into pa1;
+  insert into workflow_posts (conta_id, cliente_id, titulo) values (e.ws, e.cli, 'Avulso B') returning id into pa2;
+  insert into post_processes (conta_id, post_id, assinatura, board_position) values (e.ws, pa1, '0|Copy|padrao', 4) returning id into pr1;
+  insert into post_processes (conta_id, post_id, assinatura, board_position) values (e.ws, pa2, '0|Copy|padrao', 3) returning id into pr2;
+
   perform pg_temp.dw_as(e.usr);
   v_new := duplicate_workflow(wf, false);
   execute 'reset role';
@@ -92,6 +99,8 @@ begin
   assert r.position = 4, format('position do clone: %s', r.position);
   assert (select position from workflows where id = wf_other) = 5, 'fluxo seguinte empurrado';
   assert (select position from workflows where id = wf) = 3, 'original intocado';
+  assert (select board_position from post_processes where id = pr1) = 5, 'processo posterior empurrado';
+  assert (select board_position from post_processes where id = pr2) = 3, 'processo anterior/igual intocado';
   select count(*) into v_n from workflow_etapas where workflow_id = v_new;
   assert v_n = 2, format('etapas: %s', v_n);
   select * into r from workflow_etapas where workflow_id = v_new and ordem = 1;
@@ -143,12 +152,17 @@ rollback;
 begin;
 select et_grant_hosted_parity();
 do $$
-declare e record; o record; wf bigint; v_raised boolean;
+declare e record; o record; wf bigint; v_raised boolean; d_forged bigint; v_new bigint;
 begin
   e := pg_temp.dw_env();
   o := pg_temp.dw_env();
   insert into workflows (user_id, conta_id, cliente_id, titulo, status)
     values (e.usr, e.ws, e.cli, 'F', 'ativo') returning id into wf;
+  -- linha forjada: dona da OUTRA conta apontando para o fluxo de e
+  insert into template_property_definitions (template_id, conta_id, name, type)
+    values (o.tmpl, o.ws, 'Forjada', 'select') returning id into d_forged;
+  insert into workflow_select_options (workflow_id, property_definition_id, conta_id, label)
+    values (wf, d_forged, o.ws, 'Forjada');
   perform pg_temp.dw_as(o.usr);
   v_raised := false;
   begin
@@ -159,6 +173,12 @@ begin
   end;
   execute 'reset role';
   assert v_raised, 'outra conta duplicou o fluxo';
+  -- o dono duplica: a opcao forjada de outra conta nao vem junto
+  perform pg_temp.dw_as(e.usr);
+  v_new := duplicate_workflow(wf, false);
+  execute 'reset role';
+  assert not exists (select 1 from workflow_select_options where workflow_id = v_new and label = 'Forjada'), 'opcao forjada copiada';
+  assert not exists (select 1 from workflow_select_options where workflow_id = v_new and conta_id = o.ws), 'linha da outra conta copiada';
   assert not has_function_privilege('anon', 'public.duplicate_workflow(bigint, boolean)', 'EXECUTE'), 'anon tem EXECUTE';
   assert has_function_privilege('service_role', 'public.duplicate_workflow(bigint, boolean)', 'EXECUTE'), 'service_role sem EXECUTE';
   assert has_function_privilege('authenticated', 'public.duplicate_workflow(bigint, boolean)', 'EXECUTE'), 'authenticated sem EXECUTE';
