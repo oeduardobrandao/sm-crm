@@ -17,6 +17,14 @@ function isImage(b: unknown): b is Block {
   return typeof b === "object" && b !== null && (b as Block).type === "image";
 }
 
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "message" in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return String(err);
+}
+
 export async function signImageBlocks(
   db: Db,
   docId: string,
@@ -28,10 +36,16 @@ export async function signImageBlocks(
 
   const keys = new Map<number, string>();
   if (sign) {
-    const { data } = await db
+    const { data, error } = await db
       .from("report_document_files")
       .select("file_id, files(r2_key, media_lost_at)")
       .eq("report_id", docId);
+    if (error) {
+      console.error("[hub-report-docs] sign-images: link query failed", {
+        docId,
+        error: errorMessage(error),
+      });
+    }
     for (const row of (data ?? []) as Array<{
       file_id: number;
       files: { r2_key: string; media_lost_at: string | null } | null;
@@ -45,7 +59,18 @@ export async function signImageBlocks(
       if (!isImage(b)) return b;
       const { src: _drop, ...config } = b.config ?? {};
       const key = typeof config.file_id === "number" ? keys.get(config.file_id) : undefined;
-      const url = key && sign ? await sign(key).catch(() => null) : null;
+      // Sem a chave no log: só doc, arquivo e a mensagem do erro.
+      const url =
+        key && sign
+          ? await sign(key).catch((err: unknown) => {
+              console.error("[hub-report-docs] sign-images: sign failed", {
+                docId,
+                fileId: config.file_id,
+                error: errorMessage(err),
+              });
+              return null;
+            })
+          : null;
       return { ...b, config: url ? { ...config, src: url } : config };
     }),
   );

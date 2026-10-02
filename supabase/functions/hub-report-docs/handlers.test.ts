@@ -267,6 +267,7 @@ Deno.test("doc nao-ready: null mesmo com token valido", async () => {
 
 function makeLinksDb(
   links: Array<{ file_id: number; files: { r2_key: string; media_lost_at: string | null } }>,
+  error: { message: string } | null = null,
 ) {
   const calls: string[] = [];
   return {
@@ -274,7 +275,9 @@ function makeLinksDb(
     db: {
       from: (table: string) => {
         calls.push(table);
-        return { select: () => ({ eq: () => Promise.resolve({ data: links, error: null }) }) };
+        return {
+          select: () => ({ eq: () => Promise.resolve({ data: error ? null : links, error }) }),
+        };
       },
       // deno-lint-ignore no-explicit-any
     } as any,
@@ -343,4 +346,59 @@ Deno.test("signImageBlocks: falha do signer deixa o bloco sem src", async () => 
     async () => null,
   )) as { blocks: Array<{ config?: Record<string, unknown> }> };
   assertEquals(out.blocks[0].config?.src, undefined);
+});
+
+function captureConsoleError() {
+  const original = console.error;
+  const calls: unknown[][] = [];
+  console.error = (...args: unknown[]) => {
+    calls.push(args);
+  };
+  return { calls, restore: () => (console.error = original) };
+}
+
+Deno.test("signImageBlocks: signer que rejeita loga e deixa o bloco sem src", async () => {
+  const { db } = makeLinksDb([
+    { file_id: 1, files: { r2_key: "contas/ws/files/a.png", media_lost_at: null } },
+  ]);
+  const cap = captureConsoleError();
+  try {
+    const out = (await signImageBlocks(
+      db,
+      "doc-1",
+      imgLayout([imgBlock("i1", { file_id: 1, width: 10, height: 10 })]),
+      () => Promise.reject(new Error("r2 down")),
+    )) as { blocks: Array<{ config?: Record<string, unknown> }> };
+    assertEquals(out.blocks[0].config?.src, undefined);
+    assertEquals(out.blocks[0].config?.file_id, 1);
+  } finally {
+    cap.restore();
+  }
+  assertEquals(cap.calls.length, 1);
+  assertEquals(cap.calls[0][0], "[hub-report-docs] sign-images: sign failed");
+  // A chave do R2 nunca vai para o log.
+  assert(!JSON.stringify(cap.calls).includes("contas/ws/files/a.png"));
+});
+
+Deno.test("signImageBlocks: erro na consulta de vínculos loga e nenhum bloco ganha src", async () => {
+  const { db } = makeLinksDb([], { message: "boom" });
+  const cap = captureConsoleError();
+  let signed = 0;
+  try {
+    const out = (await signImageBlocks(
+      db,
+      "doc-1",
+      imgLayout([imgBlock("i1", { file_id: 1, width: 10, height: 10 })]),
+      async () => {
+        signed++;
+        return "https://signed/x";
+      },
+    )) as { blocks: Array<{ config?: Record<string, unknown> }> };
+    assertEquals(out.blocks[0].config?.src, undefined);
+  } finally {
+    cap.restore();
+  }
+  assertEquals(signed, 0);
+  assertEquals(cap.calls.length, 1);
+  assertEquals(cap.calls[0][0], "[hub-report-docs] sign-images: link query failed");
 });
