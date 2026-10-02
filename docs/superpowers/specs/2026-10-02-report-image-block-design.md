@@ -96,7 +96,7 @@ report_document_files (
   conta_id   uuid   NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   PRIMARY KEY (report_id, file_id),
   FOREIGN KEY (report_id, conta_id) REFERENCES report_documents(id, conta_id) ON DELETE CASCADE,
-  FOREIGN KEY (file_id, conta_id)   REFERENCES files(id, conta_id)            -- RESTRICT
+  FOREIGN KEY (file_id, conta_id)   REFERENCES files(id, conta_id)            -- ON DELETE NO ACTION
 )
 CREATE INDEX report_document_files_file_idx ON report_document_files (file_id);
 ```
@@ -108,17 +108,20 @@ trigger e a proteção do autoclean.
 
 - **Exclusão de workspace:** `workspaces → files` (CASCADE) e
   `workspaces → report_documents → report_document_files` (CASCADE) formam um
-  losango com a FK RESTRICT. `post_file_links` tem o mesmo losango hoje e não há
-  caminho de produto que exclua workspace, então isso não está verificado. O teste SQL
-  "exclusão de workspace em cascata não trava" decide: se falhar, a FK de `file_id`
-  vira `NO ACTION DEFERRABLE INITIALLY DEFERRED` (exclusão direta de arquivo continua
-  falhando no commit; PostgREST é um statement por transação).
+  losango. A FK de `file_id` é `ON DELETE NO ACTION` simples (não RESTRICT): ela é
+  checada no fim do statement, depois de todas as cascatas, então a exclusão do
+  workspace passa, e a exclusão direta de um arquivo em uso continua falhando. O teste
+  SQL "exclusão de workspace em cascata não trava" cobre o caso.
 - RLS ligada; `authenticated` só lê (política por `get_my_conta_id()`); escrita só
   pelos triggers. Conceder privilégios explicitamente por role (`REVOKE FROM PUBLIC`
   não tira `anon`/`authenticated`).
 - `trg_*_ref_count_ins/_del` reutilizam `file_update_reference_count()` (SECURITY
   DEFINER), igual a `ideia_files`. **Sem** limpeza de órfão: a imagem vive na pasta do
-  cliente nos Arquivos e continua lá quando o relatório some.
+  cliente nos Arquivos e continua lá quando o relatório some. O guard de órfão que já
+  existe em `ideia_files` (`ideia_file_cleanup_orphan()`, apaga o arquivo quando some o
+  último vínculo de ideia/post) ganha `AND NOT EXISTS (... report_document_files ...)`
+  na mesma migration; sem isso, remover o último vínculo de ideia de um arquivo usado
+  em relatório bateria na FK e abortaria a remoção da ideia ou do anexo.
 - Trigger `AFTER INSERT OR UPDATE OF layout ON report_documents` (SECURITY DEFINER):
   extrai os `config.file_id` dos blocos `image`, mantém só os ids de `files` com o
   mesmo `conta_id` do relatório, `kind = 'image'` **e** `mime_type IN ('image/jpeg',
@@ -130,7 +133,7 @@ trigger e a proteção do autoclean.
 - **Autoclean noturno (P0 do review Fable).** `storage_autoclean_candidates()`
   (`20260811000002_storage_autoclean_rpcs.sql:47-66`) seleciona arquivos de posts
   publicados antigos e só exclui `ideia_files` e o logo do Hub; o `DELETE FROM files`
-  final (`:233-250`) bateria na FK RESTRICT e abortaria a noite inteira para um
+  final (`:233-250`) bateria na FK e abortaria a noite inteira para um
   arquivo de post antigo que também está num relatório. A migration faz
   `CREATE OR REPLACE` de `storage_autoclean_candidates` com
   `AND NOT EXISTS (SELECT 1 FROM report_document_files rdf WHERE rdf.file_id = f.id)`.

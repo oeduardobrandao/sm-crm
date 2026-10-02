@@ -12,7 +12,9 @@ LANGUAGE sql
 IMMUTABLE
 SET search_path = public
 AS $$
-  SELECT CASE
+  -- coalesce: IN/->> sobre chave ausente ou null JSON dá NULL; o resultado tem
+  -- de ser um boolean estrito (NULL num OR do trigger seria tratado como aceito).
+  SELECT coalesce(CASE
     WHEN p_cfg IS NULL THEN true
     WHEN jsonb_typeof(p_cfg) <> 'object' THEN false
     ELSE
@@ -36,7 +38,7 @@ AS $$
       AND (NOT (p_cfg ? 'alt') OR (jsonb_typeof(p_cfg -> 'alt') = 'string'
             AND char_length(p_cfg ->> 'alt') <= 300))
       AND (NOT p_is_template OR NOT (p_cfg ?| ARRAY['file_id','width','height','caption','alt']))
-  END
+  END, false)
 $$;
 
 -- Recria a função inteira preservando o corpo da 20260825000001 (a última
@@ -88,7 +90,8 @@ BEGIN
        OR (b ->> 'type' = 'cover' AND b ->> 'size' <> 'full')
        -- imagem (spec 2026-10-02): config válido; em modelo, sem conteúdo.
        OR (b ->> 'type' = 'image'
-           AND NOT report_image_config_ok(b -> 'config', TG_TABLE_NAME = 'report_templates'))
+           AND report_image_config_ok(b -> 'config', TG_TABLE_NAME = 'report_templates')
+               IS NOT TRUE)
   ) THEN
     RAISE EXCEPTION 'INVALID_LAYOUT';
   END IF;
@@ -182,6 +185,24 @@ REVOKE ALL ON FUNCTION report_document_files_sync() FROM authenticated;
 CREATE TRIGGER trg_report_document_files_sync
   AFTER INSERT OR UPDATE OF layout ON report_documents
   FOR EACH ROW EXECUTE FUNCTION report_document_files_sync();
+
+-- ---------- 2b. órfão de ideia ----------
+-- ideia_file_cleanup_orphan (20260626000001) apaga o arquivo quando some o
+-- último vínculo de ideia/post. Com a FK NO ACTION de report_document_files,
+-- apagar um arquivo ainda usado em relatório abortaria a remoção da ideia ou do
+-- anexo; o guard passa a incluir o vínculo de relatório. Corpo e atributos
+-- idênticos ao original, só o NOT EXISTS novo.
+CREATE OR REPLACE FUNCTION ideia_file_cleanup_orphan() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM ideia_files     WHERE file_id = OLD.file_id)
+     AND NOT EXISTS (SELECT 1 FROM post_file_links WHERE file_id = OLD.file_id)
+     AND NOT EXISTS (SELECT 1 FROM report_document_files WHERE file_id = OLD.file_id) THEN
+    DELETE FROM files WHERE id = OLD.file_id;
+  END IF;
+  RETURN OLD;
+END;
+$$;
 
 -- ---------- 3. autoclean ----------
 -- Só o predicado compartilhado muda: storage_autoclean_run reavalia este

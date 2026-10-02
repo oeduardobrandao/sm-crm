@@ -20,6 +20,8 @@ declare
   f_png bigint; f_gif bigint; f_vid bigint; f_b bigint;
   v_n int; v_rc int; v_raised boolean;
   v_lay jsonb;
+  v_cases jsonb; v_case jsonb; v_idx int;
+  v_ideia uuid; f_idea bigint; f_idea_only bigint; v_doc2 uuid;
 begin
   -- ---- (a) grants ----
   assert not has_table_privilege('anon', 'public.report_document_files', 'SELECT'),
@@ -77,6 +79,36 @@ begin
     if sqlerrm like '%INVALID_LAYOUT%' then v_raised := true; else raise; end if;
   end;
   assert v_raised, 'ratio fora do enum deveria ser rejeitado';
+
+  -- Configs inválidos que NÃO podem passar: o validador tem de devolver
+  -- false estrito (nunca NULL, que o OR do trigger trataria como aceito).
+  v_cases := jsonb_build_array(
+    '{"focal":{"y":0}}'::jsonb,                                  -- focal sem x
+    '{"focal":{}}'::jsonb,                                       -- focal vazio
+    '{"ratio":null}'::jsonb,
+    '{"fit":null}'::jsonb,
+    '{"focal":{"x":0.3,"y":0}}'::jsonb,                          -- fora do conjunto
+    '{"file_id":5,"width":0,"height":10}'::jsonb,
+    '{"file_id":5,"width":1000000,"height":10}'::jsonb,
+    '{"file_id":"5","width":10,"height":10}'::jsonb,             -- file_id string
+    '{"file_id":5}'::jsonb,                                      -- sem width/height
+    jsonb_build_object('caption', repeat('a', 201)),
+    jsonb_build_object('alt', repeat('a', 301)));
+  for v_idx in 0 .. jsonb_array_length(v_cases) - 1 loop
+    v_case := v_cases -> v_idx;
+    assert (select report_image_config_ok(v_case, false)) is false,
+      format('report_image_config_ok deveria ser false estrito para %s', v_case);
+    v_raised := false;
+    begin
+      insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+      values (v_ws_a, v_cli_a, '2026-09-01', '2026-09-30',
+        jsonb_build_object('version', 1, 'blocks', jsonb_build_array(
+          jsonb_build_object('id','i','type','image','size','full','config', v_case))));
+    exception when others then
+      if sqlerrm like '%INVALID_LAYOUT%' then v_raised := true; else raise; end if;
+    end;
+    assert v_raised, format('layout com config %s deveria ser INVALID_LAYOUT', v_case);
+  end loop;
 
   v_raised := false;
   begin
@@ -157,7 +189,29 @@ begin
   assert v_rc = 0, 'excluir o relatorio deveria liberar a referencia';
   delete from files where id = f_png;
 
-  raise notice 'PASS 99_report_image_files (a-f)';
+  -- ---- (h) limpeza de órfão de ideia respeita o vínculo de relatório ----
+  insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes, width, height)
+    values (v_ws_a, 'contas/'||v_ws_a||'/files/i.png', 'i.png', 'image', 'image/png', 100, 10, 10)
+    returning id into f_idea;
+  insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes, width, height)
+    values (v_ws_a, 'contas/'||v_ws_a||'/files/io.png', 'io.png', 'image', 'image/png', 100, 10, 10)
+    returning id into f_idea_only;
+  insert into ideias (workspace_id, cliente_id, titulo, descricao)
+    values (v_ws_a, v_cli_a, 'Ideia', 'x') returning id into v_ideia;
+  insert into ideia_files (ideia_id, file_id, conta_id) values
+    (v_ideia, f_idea, v_ws_a), (v_ideia, f_idea_only, v_ws_a);
+  insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+    values (v_ws_a, v_cli_a, '2026-09-01', '2026-09-30', jsonb_build_object('version', 1, 'blocks',
+      jsonb_build_array(jsonb_build_object('id','i','type','image','size','full','config',
+        jsonb_build_object('file_id', f_idea, 'width', 10, 'height', 10)))))
+    returning id into v_doc2;
+  delete from ideia_files where ideia_id = v_ideia;
+  assert exists (select 1 from files where id = f_idea),
+    'arquivo de ideia usado em relatorio deve sobreviver a remocao do ultimo vinculo da ideia';
+  assert not exists (select 1 from files where id = f_idea_only),
+    'arquivo so de ideia continua sendo apagado como orfao';
+
+  raise notice 'PASS 99_report_image_files (a-f, h)';
 end $$;
 rollback;
 
