@@ -1,17 +1,30 @@
-import { useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../../HubContext';
 import { fetchDashboard } from '../../api';
 import { PeriodSelector } from './PeriodSelector';
 import { TopPostsRow } from './TopPostsRow';
-import { FollowerChart } from './FollowerChart';
-import { ReachChart } from './ReachChart';
+
+const loadCharts = () => import('./DashboardCharts');
+const DashboardCharts = lazy(loadCharts);
+
+const chartSkeleton = (
+  <>
+    <div className="h-[280px] rounded-2xl hub-bg-soft animate-pulse" />
+    <div className="h-[280px] rounded-2xl hub-bg-soft animate-pulse" />
+  </>
+);
 
 export function DashboardSection() {
   const { t } = useTranslation('hubHome');
   const { token } = useHub();
   const [period, setPeriod] = useState(30);
+
+  // Download the chart chunk alongside the dashboard request rather than after it.
+  useEffect(() => {
+    loadCharts().catch(() => {});
+  }, []);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-dashboard', token, period],
@@ -36,10 +49,7 @@ export function DashboardSection() {
             />
           ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="h-[280px] rounded-2xl hub-bg-soft animate-pulse" />
-          <div className="h-[280px] rounded-2xl hub-bg-soft animate-pulse" />
-        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{chartSkeleton}</div>
       </div>
     );
   }
@@ -73,8 +83,12 @@ export function DashboardSection() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FollowerChart followerHistory={data.followerHistory} />
-        <ReachChart reachHistory={data.reachHistory} />
+        <Suspense fallback={chartSkeleton}>
+          <DashboardCharts
+            followerHistory={data.followerHistory}
+            reachHistory={data.reachHistory}
+          />
+        </Suspense>
       </div>
     </div>
   );
