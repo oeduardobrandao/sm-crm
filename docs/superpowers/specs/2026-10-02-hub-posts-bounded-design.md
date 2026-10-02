@@ -70,12 +70,15 @@ Two related findings:
 - **Row cap.** Lookups whose row count grows as posts × N go through `fetchAllRows`
   (`_shared/paginate.ts`) with a total order ending in `id`, as the helper's contract requires:
   `post_approvals` (`created_at, id`), `post_file_links` (`sort_order, id`),
-  `post_property_values` (`id`), and rejected `post_edit_suggestions` (`updated_at desc, id`).
+  `post_property_values` (`display_order, id`; the select gains `id` for that), and both
+  `post_edit_suggestions` lookups (pending by `id`, rejected by `updated_at desc, id`). Pending
+  is at most one per post, but it is paged too: the test mock dequeues `post_edit_suggestions`
+  in call order, and `fetchAllRows` starts its first page before `Promise.all` touches plain
+  builders, so paging only the rejected lookup would swap the two.
   The helper throws on a page error; catch it and keep today's behaviour per lookup (log and
   continue with `[]`).
 - The rest have a cardinality bounded per post or per workflow, stated here so it is a
-  decision rather than an oversight: pending suggestions (at most one per post; prod max 1),
-  `post_processes` (one `ativo` per avulso post), `post_process_steps` (a handful per process),
+  decision rather than an oversight: `post_processes` (one `ativo` per avulso post), `post_process_steps` (a handful per process),
   `workflow_select_options` (per workflow, not per post), and the posts query itself (bounded
   by PR 2). Each of these logs `[hub-posts] row cap reached: <table>` when it returns exactly
   1000 rows, so truncation is never silent.
