@@ -103,6 +103,11 @@ means `(published_at, id) < (ts, id)`, in PostgREST
 `or=(published_at.lt.<ts>,and(published_at.eq.<ts>,id.lt.<id>))`. Paging is on
 `published_at` because every `postado` row has it, while 191 have a null `scheduled_at`. A
 malformed cursor (unparseable date, non-integer id) is a 400.
+The timestamp part is the 30th row's `published_at` string **exactly as PostgREST returned
+it**: `published_at` comes from `now()` (trigger `20260601000001` and the publish pipeline), so
+it carries microseconds, and re-serializing through `Date#toISOString()` truncates to
+milliseconds, making `published_at.eq.<ts>` miss and silently skipping rows between the two
+values. Validation parses the string to check it but never rewrites it.
 
 **Cutoff.** Start of the UTC day 90 days before now. It only moves once a day, so refetches
 within a day agree on what the shell holds.
@@ -121,8 +126,9 @@ published post if **either** date is recent.
   conta/cliente scoped as today. Every post with `scheduled_at >= cutoff` is therefore in the
   shell, so calendar months that start on or after the cutoff are complete without more
   requests.
-- In parallel in phase 1: one row of `status = 'postado' AND published_at < cutoff`
-  (`limit 1`). If it exists, the response carries `olderCursor: "<cutoff>|0"` (with id 0,
+- In parallel in phase 1, placed **after** the posts query in the `Promise.all` array: one
+  row of `status = 'postado' AND published_at < cutoff` (`.limit(1)`, not `.maybeSingle()`),
+  read as `Array.isArray(data) && data.length > 0`. If it exists, the response carries `olderCursor: "<cutoff>|0"` (with id 0,
   "older than" reduces to `published_at < cutoff`) and `historyCutoff: "<cutoff ISO>"`;
   otherwise both are `null`. A post in the shell because of its `scheduled_at` can also come
   back in a history page; the client dedupes by id.
@@ -150,7 +156,9 @@ published post if **either** date is recent.
 - `.eq("id", postId)` plus the conta/cliente scoping. A non-integer id is a 400.
 - Returns `posts: [post]` with its approvals and the rest of the shape.
 - A post that is missing, belongs to another client, or is filtered out by the visibility rule
-  returns 404 `"Post não encontrado."`. A draft must never come back through this mode.
+  returns 404 `"Post não encontrado."`. A never-sent draft must never come back through this
+  mode; an em-produção post (internal status, already seen by the client) is visible and comes
+  back, as in the shell.
 
 More than one of `before`, `from`/`to` and `post_id` is a 400. The PATCH branch is
 unchanged.
@@ -179,6 +187,14 @@ refreshes them and they inherit the 30s staleTime from `createHubQueryClient`:
 | `['hub-posts', token, 'range', from]`          | calendar range for one older month                                                               |
 | `['hub-posts', token, 'post', id]`             | single post                                                                                      |
 
+**Invalidation after approve/correction.** A plain prefix invalidation would refetch every
+loaded history page (TanStack refetches all pages of an infinite query, in sequence) and every
+cached range month: one `hub-read` hit each, per action, for rows the action cannot change
+(history and ranges are `postado` only). The two existing call sites (`PostagensPage.tsx:159`,
+`AprovacoesPage.tsx:147`) become one helper, `invalidateHubPosts(qc, token)`, that refetches
+the shell (`exact: true`) and active single-post queries, and marks history and range queries
+stale with `refetchType: 'none'` (they refresh on next use).
+
 `api.ts` gains `fetchOlderPosts(token, before)`, `fetchPostsInRange(token, from, to)` and
 `fetchPost(token, postId)`.
 
@@ -192,10 +208,17 @@ refreshes them and they inherit the 30s staleTime from `createHubQueryClient`:
   tab, the shell's refetch drops a day of published posts and returns a new cursor; keying on
   it starts a fresh history from that cursor instead of leaving the dropped day in neither
   list.
-- `hasOlder` is `olderCursor != null` before the first `loadOlder()`, then
-  `hasNextPage`. A failed page leaves the button in place with "Tentar novamente";
-  `loadOlder()` retries it (`refetch` for the first page, `fetchNextPage` after).
-- Returns `{ data, posts, isLoading, isError, loadOlder, hasOlder, isLoadingOlder, olderError }`.
+- `hasOlder` is `history.data === undefined ? olderCursor != null : (hasNextPage ||
+isFetchNextPageError)`. (`useInfiniteQuery` reports `hasNextPage === false` with no data, so
+  a bare `hasNextPage` would hide the button after a failed first page.) A failed page leaves
+  the button in place with "Tentar novamente"; `loadOlder()` retries it (`refetch` for the
+  first page, `fetchNextPage` after). History and range queries use `retry: 1`, so the error
+  shows in about a second rather than after the default three retries.
+- `postApprovals` are merged too: shell plus every history page, deduped by approval id.
+  Without this, a published post opened from a history page shows an empty Histórico tab
+  (`PostagensPage.tsx:131` reads the shell's approvals into `PostDetailDialog`).
+- Returns `{ data, posts, postApprovals, isLoading, isError, loadOlder, hasOlder,
+isLoadingOlder, olderError }`.
   `posts` is the shell's posts plus all history pages, deduplicated by id with the shell's copy
   winning. `data` is the shell response (KPIs, `autoPublish*`, `instagramProfile`).
 - Postagens uses it with `history: true`. Home, Aprovações, `usePendingApprovalsCount` and
@@ -205,8 +228,14 @@ refreshes them and they inherit the 30s staleTime from `createHubQueryClient`:
 **Postagens** (`PostagensPage.tsx`):
 
 - `allVisible`, filters and the month dropdown run over the merged `posts`.
-- Under the grid, while `hasOlder`: a "Carregar posts anteriores" button (spinner while
-  `isLoadingOlder`).
+- While `hasOlder`: a "Carregar posts anteriores" button (spinner while `isLoadingOlder`),
+  rendered **regardless of the grid's state**. Today `PostagensPage.tsx:219` replaces the grid
+  with "Nenhuma postagem disponível ainda." when `allVisible` is empty, and the no-results
+  branch skips it too; a client whose agency stopped publishing more than 90 days ago has an
+  empty shell and must still reach its history. With `hasOlder`, the empty copy becomes
+  "Nenhuma postagem recente." above the button.
+- Every read of `data?.posts` / `data?.postApprovals` on the page moves to the merged lists,
+  including `selectedPosts` (line 142, feed preview selection) and `approvals` (line 131).
 - Status chip counts for Aguardando / Correção / Aprovados stay exact (always in the shell).
   "Todos", per-month counts and media counts reflect what is loaded.
 - The publishing poll (`refetchInterval`) stays on the shell query.
@@ -231,7 +260,8 @@ refreshes them and they inherit the 30s staleTime from `createHubQueryClient`:
 **Deep links** (`/postagens/:id`):
 
 - When the id is not in the merged `posts` and the shell has loaded, `PostagensPage` runs the
-  single-post query and passes the result to `PostDetailDialog` as a one-post list.
+  single-post query and passes the result to `PostDetailDialog` as a one-post list, with that
+  response's `postApprovals`.
 - While it loads, the dialog is not mounted (same as while the shell loads today,
   `PostagensPage` only renders it once data is in), so "não disponível" never flashes. On 404
   it mounts with no match and shows "Esta postagem não está disponível." as today.
@@ -270,18 +300,30 @@ Deno (`supabase/functions/__tests__/`, existing `supabaseMock`):
   page; range mode returns by `scheduled_at` (including a post published 60 days after its
   scheduled date) and rejects `to <= from` and ranges over 45 days; malformed cursor and any
   two modes together → 400; `post_id` of a draft and of another client's post → 404.
-- `supabaseMock` dequeues per table + operation, so the new phase 1 `workflow_posts` select
-  (the `limit 1` older check) shifts the queue for every existing hub-posts case in
-  `hub-functions_test.ts`, including the single `files` query case from #622. Update those
-  fixtures in the same PR.
+- `supabaseMock` dequeues per `table:select`, defaults to `{ data: [] }`, and `Promise.all`
+  starts the thenables in array order. With the older check after the posts query, existing
+  `workflow_posts` fixtures keep working (the check gets `[]`, so `olderCursor` is `null`); new
+  tests queue two `workflow_posts` entries. A test asserts `olderCursor: null` for an existing
+  fixture, which catches a `.maybeSingle()`/truthiness mistake (`[]` is truthy).
+- The mock does not execute PostgREST filters, so tests assert the recorded `.or()` arguments
+  (cutoff, cursor timestamp with microseconds kept verbatim, range bounds), and the three modes
+  are smoke-tested on staging before prod.
+- Cursor precision: a history fixture with microsecond `published_at` values sharing a
+  millisecond, checking the `nextCursor` string equals the row's value byte for byte.
+- `post_id` of an em-produção post (has an `enviado_cliente` event) → 200; of a never-sent
+  draft (no such event) → 404.
 
 Vitest (`apps/hub`):
 
 - `useHubPosts`: dedupe with the shell winning; mounting with a non-null `olderCursor` makes
   zero history requests; history disabled when `olderCursor` is null/absent (old backend); a
   new `olderCursor` starts a fresh history.
-- Postagens: button shows and loads, hides when exhausted; deep link outside the list loads
-  via single-post, 404 shows "não disponível", prev/next hidden.
+- Postagens: button shows and loads, hides when exhausted, stays with "Tentar novamente" after
+  a failed first page; an empty shell with `olderCursor` shows the button; a post from a
+  history page shows its approvals; deep link outside the list loads via single-post with its
+  approvals, 404 shows "não disponível", prev/next hidden.
+- `invalidateHubPosts`: refetches the shell, does not refetch loaded history pages or range
+  months.
 - Home calendar: a month before `historyCutoff` fetches exactly its local range once; a month
   after it, or with `historyCutoff` null, fetches nothing; range posts merge with the shell's.
 - HubPostChip: hover on an id outside the shell uses the single-post query.
