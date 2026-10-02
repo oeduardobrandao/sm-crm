@@ -151,7 +151,7 @@ CREATE TRIGGER trg_report_document_files_ref_count_del
 CREATE OR REPLACE FUNCTION report_document_files_sync() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_ids bigint[];
@@ -190,10 +190,12 @@ CREATE TRIGGER trg_report_document_files_sync
 -- ideia_file_cleanup_orphan (20260626000001) apaga o arquivo quando some o
 -- último vínculo de ideia/post. Com a FK NO ACTION de report_document_files,
 -- apagar um arquivo ainda usado em relatório abortaria a remoção da ideia ou do
--- anexo; o guard passa a incluir o vínculo de relatório. Corpo e atributos
--- idênticos ao original, só o NOT EXISTS novo.
+-- anexo; o guard passa a incluir o vínculo de relatório. Corpo idêntico ao
+-- original, só o NOT EXISTS novo; ganha search_path fixo (SECURITY DEFINER).
 CREATE OR REPLACE FUNCTION ideia_file_cleanup_orphan() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM ideia_files     WHERE file_id = OLD.file_id)
      AND NOT EXISTS (SELECT 1 FROM post_file_links WHERE file_id = OLD.file_id)
