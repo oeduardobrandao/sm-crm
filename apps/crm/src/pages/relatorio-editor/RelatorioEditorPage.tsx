@@ -24,6 +24,7 @@ import {
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { useBlockEditing } from './useBlockEditing';
+import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
 import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
 import { useStuckHeader } from './useStuckHeader';
@@ -258,6 +259,8 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
 }
 
 export default function RelatorioEditorPage() {
+  // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
+  usePreventStrayFileDrop();
   const { id } = useParams<{ id: string }>();
   const { data: doc, isLoading } = useQuery({
     queryKey: ['report-doc', id],

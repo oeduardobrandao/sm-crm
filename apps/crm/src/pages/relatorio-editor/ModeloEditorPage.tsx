@@ -13,6 +13,7 @@ import { getReportTemplate, type ReportTemplateRow } from '../../services/report
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { TEMPLATE_AUTOSAVE_TARGET } from './templateAutosave';
 import { useBlockEditing } from './useBlockEditing';
+import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
 import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
 import { useStuckHeader } from './useStuckHeader';
@@ -192,6 +193,8 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
 }
 
 export default function ModeloEditorPage() {
+  // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
+  usePreventStrayFileDrop();
   const { id } = useParams<{ id: string }>();
   const {
     data: template,
