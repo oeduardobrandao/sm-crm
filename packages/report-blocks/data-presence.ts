@@ -31,6 +31,10 @@ export function blockHasData(block: ReportBlock, snapshot: ReportDocSnapshot): b
       return snapshot.top_posts.length > 0;
     case 'tags_table':
       return snapshot.tags_performance.length > 0;
+    case 'image':
+      // Sem arquivo = bloco vazio. O editor mostra a área de soltar
+      // (ImageBlockEditor), nunca o placeholder genérico.
+      return typeof block.config?.file_id === 'number';
     default:
       // Estrutura e texto sempre "têm dado" (cabeçalho vazio ganha editor
       // próprio no modo edição, não placeholder).
