@@ -267,3 +267,37 @@ Deno.test("não consulta popups quando a allowlist de artigos já resolveu todas
   assertEquals(adminChecked, 0);
   assertEquals(userDbCalled, 0);
 });
+
+Deno.test("POST: assina chave de cópia do próprio workspace (<conta>/...)", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps());
+  const res = await handler(makeReq("POST", {
+    keys: ["conta-abc/uuid-foto.png", "other-workspace/uuid-foto.png"],
+  }));
+  assertEquals(res.status, 200);
+  const data = await res.json();
+  assertEquals(
+    data.urls["conta-abc/uuid-foto.png"],
+    "https://r2.example.com/conta-abc/uuid-foto.png?signed=1",
+  );
+  assertEquals(data.urls["other-workspace/uuid-foto.png"], undefined);
+});
+
+Deno.test("GET: serve bytes de chave de cópia própria e 404 para outro workspace", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps());
+  const own = await handler(
+    new Request(
+      "http://localhost/sign-r2-urls?key=" + encodeURIComponent("conta-abc/uuid-foto.png"),
+      { method: "GET", headers: { Authorization: "Bearer test-token" } },
+    ),
+  );
+  assertEquals(own.status, 200);
+  await own.body?.cancel();
+  const other = await handler(
+    new Request(
+      "http://localhost/sign-r2-urls?key=" + encodeURIComponent("other-workspace/uuid-foto.png"),
+      { method: "GET", headers: { Authorization: "Bearer test-token" } },
+    ),
+  );
+  assertEquals(other.status, 404);
+  await other.body?.cancel();
+});
