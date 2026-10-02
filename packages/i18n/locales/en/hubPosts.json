@@ -59,6 +59,11 @@
     "loadError": "Error loading posts.",
     "empty": "No posts available yet.",
     "noResults": "No posts found for this filter.",
+    "emptyRecent": "No recent posts.",
+    "loadOlder": "Load older posts",
+    "loadingOlder": "Loading…",
+    "olderError": "Couldn't load older posts.",
+    "retryOlder": "Try again",
     "filter": {
       "label": "Filter by status",
       "all": "All"

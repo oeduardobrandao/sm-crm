@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useHub } from '../HubContext';
-import { fetchPosts, fetchInstagramFeed } from '../api';
+import { fetchInstagramFeed } from '../api';
+import { useHubPosts } from '../hooks/useHubPosts';
+import { hubPostQuery, invalidateHubPosts } from '../queries';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { PageHeader } from '../components/PageHeader';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
@@ -48,9 +50,18 @@ export function PostagensPage() {
   const [monthFilter, setMonthFilter] = useState<string>(ALL_MONTHS);
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['hub-posts', token],
-    queryFn: () => fetchPosts(token),
+  const {
+    data,
+    posts,
+    postApprovals,
+    isLoading,
+    isError,
+    loadOlder,
+    hasOlder,
+    isLoadingOlder,
+    olderError,
+  } = useHubPosts(token, {
+    history: true,
     // Poll while a post is mid-publishing so the client sees it flip to "Publicado".
     refetchInterval: (query) =>
       (query.state.data?.posts ?? []).some((p) => getPostPublishState(p) === 'publicando')
@@ -64,9 +75,24 @@ export function PostagensPage() {
   const fatalError = isError && data === undefined;
 
   const allVisible = useMemo(
-    () => sortPostsNewestFirst((data?.posts ?? []).filter(isPostClientVisible)),
-    [data?.posts],
+    () => sortPostsNewestFirst(posts.filter(isPostClientVisible)),
+    [posts],
   );
+
+  // A deep link (share link, message chip, calendar) can point at a post older than what is
+  // loaded: fetch just that post. 404 leaves the dialog's "não disponível" branch.
+  const wantsSingle =
+    !isLoading &&
+    !fatalError &&
+    currentId !== null &&
+    currentId > 0 &&
+    !allVisible.some((p) => p.id === currentId);
+  const single = useQuery({ ...hubPostQuery(token, currentId ?? 0), enabled: wantsSingle });
+  // Same visibility guard as the list (defence in depth; an old backend ignores post_id and
+  // returns its whole list).
+  const singlePost = wantsSingle
+    ? single.data?.posts.find((p) => p.id === currentId && isPostClientVisible(p))
+    : undefined;
   // The three filters are cross-faceted: each control's counts reflect the other two
   // selections, so a chip or menu option never advertises posts the current combination hides.
   const inMonth = (p: HubPost) => monthFilter === ALL_MONTHS || getPostMonthKey(p) === monthFilter;
@@ -128,7 +154,7 @@ export function PostagensPage() {
     setMonthFilter(ALL_MONTHS);
   }, [monthFilter, monthOptions]);
 
-  const approvals = data?.postApprovals ?? [];
+  const approvals = postApprovals;
   const instagramProfile = data?.instagramProfile ?? null;
 
   const { data: feedData } = useQuery({
@@ -141,10 +167,8 @@ export function PostagensPage() {
   // array reference (which would reset an in-progress reorder) on every background refetch.
   const selectedPosts = useMemo(
     () =>
-      (data?.posts ?? []).filter(
-        (p) => isPostClientVisible(p) && isFeedSelectable(p) && selectedIds.has(p.id),
-      ),
-    [data?.posts, selectedIds],
+      posts.filter((p) => isPostClientVisible(p) && isFeedSelectable(p) && selectedIds.has(p.id)),
+    [posts, selectedIds],
   );
 
   const handleToggleSelect = useCallback((id: number) => {
@@ -155,10 +179,7 @@ export function PostagensPage() {
       return next;
     });
   }, []);
-  const handleInvalidate = useCallback(
-    () => qc.invalidateQueries({ queryKey: ['hub-posts', token] }),
-    [qc, token],
-  );
+  const handleInvalidate = useCallback(() => invalidateHubPosts(qc, token), [qc, token]);
   const handleCloseGrid = useCallback(() => setShowGrid(false), []);
   const handleOpen = useCallback((id: number) => navigate(`${base}/${id}`), [navigate, base]);
   const handleNavigate = useCallback(
@@ -218,7 +239,9 @@ export function PostagensPage() {
         </div>
       ) : allVisible.length === 0 ? (
         <p className="hub-fade-up text-sm hub-tx2">
-          {t('postagens.empty', 'Nenhuma postagem disponível ainda.')}
+          {hasOlder
+            ? t('postagens.emptyRecent', 'Nenhuma postagem recente.')
+            : t('postagens.empty', 'Nenhuma postagem disponível ainda.')}
         </p>
       ) : (
         <>
@@ -263,12 +286,35 @@ export function PostagensPage() {
         </>
       )}
 
-      {!isLoading && !fatalError && (
+      {!isLoading && !fatalError && hasOlder && (
+        <div className="hub-fade-up flex flex-col items-center gap-2 py-6">
+          {olderError && !isLoadingOlder && (
+            <p className="text-[13px] hub-tx2">
+              {t('postagens.olderError', 'Não foi possível carregar os posts anteriores.')}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={loadOlder}
+            disabled={isLoadingOlder}
+            className="hub-btn-secondary rounded-[4px] px-4 py-2 text-[13px] font-semibold disabled:opacity-60"
+          >
+            {isLoadingOlder
+              ? t('postagens.loadingOlder', 'Carregando…')
+              : olderError
+                ? t('postagens.retryOlder', 'Tentar novamente')
+                : t('postagens.loadOlder', 'Carregar posts anteriores')}
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !fatalError && !(wantsSingle && single.isPending) && (
         <PostDetailDialog
-          posts={visiblePosts}
+          posts={singlePost ? [singlePost] : visiblePosts}
           currentId={currentId}
           token={token}
-          approvals={approvals}
+          approvals={singlePost ? (single.data?.postApprovals ?? []) : approvals}
+          standalone={!!singlePost}
           instagramProfile={instagramProfile}
           workspaceName={bootstrap.workspace.name}
           isAutoPublish={(p) => isAutoPublishActive(data, p.workflow_id, p.id)}

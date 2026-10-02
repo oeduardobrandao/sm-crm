@@ -8,6 +8,8 @@ import type { HubPost, HubPostMedia, HubPostsResponse } from '../../types';
 vi.mock('../../api', () => ({
   fetchPosts: vi.fn(),
   fetchInstagramFeed: vi.fn(),
+  fetchOlderPosts: vi.fn(),
+  fetchPost: vi.fn(),
   submitApproval: vi.fn(),
   submitEditSuggestion: vi.fn(),
   fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
@@ -29,10 +31,12 @@ vi.mock('../../components/InstagramGridPreview', () => ({
   ),
 }));
 
-import { fetchPosts, fetchInstagramFeed } from '../../api';
+import { fetchPosts, fetchInstagramFeed, fetchOlderPosts, fetchPost } from '../../api';
 import { PostagensPage } from '../PostagensPage';
 const mockedFetchPosts = vi.mocked(fetchPosts);
 const mockedFetchInstagramFeed = vi.mocked(fetchInstagramFeed);
+const mockedFetchOlderPosts = vi.mocked(fetchOlderPosts);
+const mockedFetchPost = vi.mocked(fetchPost);
 
 const hubValue = {
   bootstrap: {
@@ -145,7 +149,11 @@ describe('PostagensPage', () => {
     expect(screen.queryByText('Rascunho puro')).not.toBeInTheDocument();
   });
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedFetchOlderPosts.mockReset();
+    mockedFetchPost.mockReset();
+  });
 
   it('renders one flattened newest-first grid with the month dropdown and status chips in one row', async () => {
     renderPage(
@@ -363,8 +371,70 @@ describe('PostagensPage', () => {
   });
 
   it('deep link to an unknown or internal post shows notAvailable', async () => {
-    renderPage(`${BASE}/99`, response({ posts: [post({ id: 1 })] }));
+    mockedFetchPost.mockRejectedValue(new Error('Post não encontrado.'));
+    renderPage(`${BASE}/999`, response({ posts: [post({ id: 1 })] }));
     expect(await screen.findByText('Esta postagem não está disponível.')).toBeInTheDocument();
+    expect(mockedFetchPost).toHaveBeenCalledWith('token-publico', 999);
+  });
+
+  it('an empty shell with older history shows the load button, which appends older posts', async () => {
+    mockedFetchOlderPosts.mockResolvedValue(
+      response({
+        posts: [
+          post({
+            id: 7,
+            titulo: 'Post antigo',
+            status: 'postado',
+            published_at: '2026-01-01T10:00:00+00:00',
+          }),
+        ],
+        nextCursor: null,
+      }),
+    );
+    renderPage(BASE, response({ posts: [], olderCursor: '2026-07-04T00:00:00.000Z|0' }));
+
+    expect(await screen.findByText('Nenhuma postagem recente.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Carregar posts anteriores' }));
+
+    expect(await screen.findByText('Post antigo')).toBeInTheDocument();
+    expect(mockedFetchOlderPosts).toHaveBeenCalledWith(
+      'token-publico',
+      '2026-07-04T00:00:00.000Z|0',
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Carregar posts anteriores' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows no load button without an olderCursor', async () => {
+    renderPage(BASE, response({ posts: [post({ id: 1 })] }));
+    expect(await screen.findByText('Post padrão')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Carregar posts anteriores' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the button as Tentar novamente after a failed page', async () => {
+    mockedFetchOlderPosts.mockRejectedValue(new Error('x'));
+    renderPage(BASE, response({ posts: [post({ id: 1 })], olderCursor: 'c|0' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Carregar posts anteriores' }));
+    expect(
+      await screen.findByRole('button', { name: 'Tentar novamente' }, { timeout: 3000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Não foi possível carregar os posts anteriores.')).toBeInTheDocument();
+  });
+
+  it('a deep link outside the loaded posts opens the single post without a counter', async () => {
+    mockedFetchPost.mockResolvedValue(
+      response({ posts: [post({ id: 5061, titulo: 'Post de março', status: 'postado' })] }),
+    );
+    renderPage(`${BASE}/5061`, response({ posts: [post({ id: 1 })] }));
+    // HubDialog renders the title twice (sr-only Dialog.Title + the card's h3): query the dialog.
+    expect(await screen.findByRole('dialog', { name: 'Post de março' })).toBeInTheDocument();
+    expect(screen.queryByText('1 de 1')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Post anterior' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Próximo post' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Esta postagem não está disponível.')).not.toBeInTheDocument();
   });
 
   it('a background refetch that moves the open post out of the active filter resets the filters', async () => {
