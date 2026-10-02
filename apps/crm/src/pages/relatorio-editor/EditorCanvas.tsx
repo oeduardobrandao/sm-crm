@@ -38,7 +38,11 @@ import { TEXT_BLOCK_TYPES } from '@mesaas/report-blocks/types';
 import { moveBlock, removeBlock, resizeBlock, setBlockSize } from './layoutOps';
 import { CoverEditor } from './CoverEditor';
 import { SectionHeaderEditor } from './SectionHeaderEditor';
-import { ImageBlockEditor, type ImageEditorContext } from './ImageBlockEditor';
+import {
+  IMAGE_SETTINGS_TOGGLE_ATTR,
+  ImageBlockEditor,
+  type ImageEditorContext,
+} from './ImageBlockEditor';
 
 // Placeholder do modo edição para widget sem dado no snapshot: a view/print
 // omite o bloco (guard de cada widget), mas no editor uma célula vazia parece
@@ -165,7 +169,7 @@ function SortableCell({
                 className="rb-edit-btn"
                 aria-label="Ajustes da imagem"
                 aria-pressed={imgSettingsOpen}
-                data-img-settings-toggle={block.id}
+                {...{ [IMAGE_SETTINGS_TOGGLE_ATTR]: block.id }}
                 onClick={() => setImgSettingsOpen((v) => !v)}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
