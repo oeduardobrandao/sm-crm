@@ -50,7 +50,7 @@ JIT is off (`jit = off`), so it's ruled out.
 
 ## Status (2026-10-02)
 
-Implemented on `claude/db-query-performance-audit-2dc21f` (uncommitted when written):
+Shipped in #620 (merged 2026-10-02):
 - Finding 2: `getWorkflowEtapasByWorkflowIds` + `getConcludedWorkflowSummaries` (store/workflows.ts),
   `fetchAllPagedByIds` (store/paging.ts). Used by ConcludedView, the client EntregasTab (active + concluded)
   and Calendário. `getWorkflowPostsCounts` is now chunked + paged, which also removes its silent
@@ -58,7 +58,15 @@ Implemented on `claude/db-query-performance-audit-2dc21f` (uncommitted when writ
 - Finding 5 + 1d: migration `20261002000001_perf_files_thumbnail_idx_views_initplan.sql` (full index, not
   partial, see the migration comment).
 
-Not started: 1a/1b/1c (RLS), 3 (count RPC), 4 (realtime), 6.
+- Finding 3 (branch `claude/entregas-count-rpc`): `get_workflow_post_stats(bigint[])` in migration
+  `20261002000010_get_workflow_post_stats.sql` (SECURITY INVOKER, anon without EXECUTE) and
+  `getWorkflowPostStats` (store/posts.ts) replace the six `workflow_posts` selects on the Entregas board
+  and the client Entregas tab, responsaveis folded in. The query key stays `workflow-posts-counts`, so
+  existing invalidations refresh every count. Staging: one RPC at ~80 ms on both pages, output equal to a
+  direct row count (the seed has only 3 posts; the per-status math is covered by
+  `supabase/tests/entitlements/99_workflow_post_stats.sql`).
+
+Not started: 1a/1b/1c (RLS), 4 (realtime), 6.
 
 ## Findings, ranked by user-visible impact
 
