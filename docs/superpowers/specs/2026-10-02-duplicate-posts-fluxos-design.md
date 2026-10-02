@@ -46,8 +46,10 @@ duplicate_workflow(p_workflow_id bigint, p_to_rascunho boolean) RETURNS bigint  
 - Permissão é `has_permission_for(auth.uid(), conta, 'entregas', 'editar')` (mesma das RPCs de
   processo); erro `permission_denied`. A UI só mostra os itens com `can('entregas', 'editar')`.
 - `_clone_post_row` tem assinatura `(p_conta, p_src_post_id, p_target_workflow_id, p_to_rascunho,
-  p_option_map, p_solo)` e há um helper `_remap_option_value`. Ambas RPCs tomam o advisory lock
-  `':post_move'`, como as process RPCs.
+  p_option_map, p_solo)` onde `p_solo` é true para "Duplicar post" de um post isolado e false
+  para posts dentro da cópia de fluxo (no segundo caso não há sufixo, ordem é preservada,
+  board_ordem fica null e processo não é clonado). Há um helper `_remap_option_value`. Ambas
+  RPCs tomam o advisory lock `':post_move'`, como as process RPCs.
 - Tudo numa transação. Os triggers de limite de plano (`trg_limit_posts`,
   `trg_limit_posts_avulsos`, `trg_limit_workflows`) continuam disparando porque triggers rodam
   independentemente do papel; o `plan_limit_exceeded:<chave>` desfaz a cópia inteira.
@@ -56,7 +58,7 @@ duplicate_workflow(p_workflow_id bigint, p_to_rascunho boolean) RETURNS bigint  
 
 ### Regras de cópia do post
 
-**Colunas copiadas:** `titulo` + `" (cópia)"`, `conteudo`, `conteudo_plain`, `tipo`,
+**Colunas copiadas:** `titulo` (com `" (cópia)"` apenas quando `p_solo = true`), `conteudo`, `conteudo_plain`, `tipo`,
 `platform`, `responsavel_id`, `ig_caption`, `music_note`, `cover_url`, `tiktok_caption`,
 `tiktok_title`, `tiktok_settings`, `ig_trial_strategy`, `is_express`, `scheduled_at`,
 `cliente_id` (só para avulso; com fluxo o trigger `post_a0_sync_cliente` deriva),
@@ -146,7 +148,7 @@ cada valor de propriedade é reescrito: string presente no mapa é trocada; arra
 elemento presente no mapa trocado; o resto fica como está (opções vindas do `config` da
 definição do template não são por fluxo e não mudam).
 
-**Posts:** cada post do fluxo passa por `_clone_post_row` com o mesmo `p_to_rascunho`.
+**Posts:** cada post do fluxo passa por `_clone_post_row` com o mesmo `p_to_rascunho` e `p_solo = false` (sem sufixo no título, `ordem` preservada, `board_ordem = null`, processo não é clonado).
 
 **Não copiados:** `portal_tokens` (o link do Hub é gerado sob demanda), histórico de
 `workflow_events`.
@@ -221,7 +223,8 @@ Copy sem travessão (regra da casa).
     "manter" e zerado no modo Rascunho;
   - campos de publicação zerados e `scheduled_at` mantido;
   - links de mídia apontando para o mesmo arquivo, capa preservada, `reference_count` +1;
-  - posição: `ordem` logo depois do original; `board_ordem` no ponto médio quando o original
+  - posição: para post avulso, `ordem` preservada (não empurra irmãos); para post em fluxo,
+    `ordem` logo depois do original; `board_ordem` no ponto médio quando o original
     tem ranque e o clone fica na mesma coluna, `null` nos demais casos;
   - grants: `authenticated` e `service_role` executam as duas RPCs; ninguém além do
     `service_role` executa `_clone_post_row`;
