@@ -508,7 +508,7 @@ const basePost = {
   workflow_id: 7, workflows: { titulo: "Setembro" },
 };
 
-Deno.test("hub-posts flags a re-armed rascunho post as em_producao and leaves the others null", async () => {
+Deno.test("hub-posts flags a re-armed rascunho post as em_producao and drops a never-sent draft", async () => {
   const db = createSupabaseQueryMock();
   queueHubPostsBase(db, [
     { ...basePost, id: 1, status: "rascunho" },
@@ -528,7 +528,7 @@ Deno.test("hub-posts flags a re-armed rascunho post as em_producao and leaves th
 
   assertEquals(response.status, 200);
   const byId = Object.fromEntries(body.posts.map((p: { id: number; em_producao: unknown }) => [p.id, p.em_producao]));
-  assertEquals(byId, { 1: "proxima_aprovacao", 2: null, 3: null });
+  assertEquals(byId, { 1: "proxima_aprovacao", 3: null });
 
   const call = db.calls.find((c) => c.table === "post_status_events");
   assert(call, "status events must be queried");
@@ -551,7 +551,7 @@ Deno.test("hub-posts skips the status-events query when no post is internal", as
   assertEquals(db.calls.some((c) => c.table === "post_status_events"), false);
 });
 
-Deno.test("hub-posts falls back to em_producao null when the status-events query fails", async () => {
+Deno.test("hub-posts hides internal posts when the status-events query fails", async () => {
   const db = createSupabaseQueryMock();
   queueHubPostsBase(db, [{ ...basePost, id: 1, status: "rascunho" }]);
   db.queue("post_status_events", "select", { data: null, error: { message: "boom" } });
@@ -560,7 +560,7 @@ Deno.test("hub-posts falls back to em_producao null when the status-events query
   const body = await readJson(response);
 
   assertEquals(response.status, 200);
-  assertEquals(body.posts[0].em_producao, null);
+  assertEquals(body.posts, []);
 });
 
 Deno.test("hub-posts paginates the post_status_events lookup past a full page", async () => {
@@ -595,6 +595,201 @@ Deno.test("hub-posts paginates the post_status_events lookup past a full page", 
     "every post_status_events call must use .range()",
   );
 });
+
+Deno.test("hub-posts never returns a never-sent draft or anything tied to it", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [
+    { ...basePost, id: 1, status: "enviado_cliente", workflow_id: 7 },
+    {
+      ...basePost,
+      id: 2,
+      status: "rascunho",
+      workflow_id: 8,
+      workflows: { titulo: "Só rascunho" },
+    },
+  ]);
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+  // No enviado_cliente event for post 2: it was never sent, so it is not em produção.
+  db.queue("post_status_events", "select", { data: [], error: null });
+  db.queue("post_approvals", "select", {
+    data: [
+      {
+        id: 10,
+        post_id: 1,
+        action: "aprovado",
+        comentario: null,
+        is_workspace_user: false,
+        created_at: "2026-09-01T10:00:00.000Z",
+      },
+      {
+        id: 11,
+        post_id: 2,
+        action: "correcao",
+        comentario: "x",
+        is_workspace_user: false,
+        created_at: "2026-09-01T10:00:00.000Z",
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_property_values", "select", {
+    data: [
+      {
+        post_id: 1,
+        value: "a",
+        template_property_definitions: {
+          name: "P",
+          type: "text",
+          config: {},
+          portal_visible: true,
+          display_order: 0,
+        },
+      },
+      {
+        post_id: 2,
+        value: "b",
+        template_property_definitions: {
+          name: "P",
+          type: "text",
+          config: {},
+          portal_visible: true,
+          display_order: 0,
+        },
+      },
+    ],
+    error: null,
+  });
+  db.queue("workflow_select_options", "select", {
+    data: [
+      { workflow_id: 7, property_definition_id: 1, option_id: "o1", label: "A", color: "#000" },
+      { workflow_id: 8, property_definition_id: 1, option_id: "o2", label: "B", color: "#000" },
+    ],
+    error: null,
+  });
+  db.queue("post_file_links", "select", {
+    data: [
+      {
+        id: 100,
+        post_id: 1,
+        is_cover: false,
+        sort_order: 0,
+        files: {
+          id: 1,
+          kind: "image",
+          mime_type: "image/png",
+          r2_key: "contas/conta-1/a.png",
+          thumbnail_r2_key: null,
+          width: 1,
+          height: 1,
+          duration_seconds: null,
+          blur_data_url: null,
+          stream_uid: null,
+          stream_status: null,
+          media_lost_at: null,
+        },
+      },
+      {
+        id: 101,
+        post_id: 2,
+        is_cover: false,
+        sort_order: 0,
+        files: {
+          id: 2,
+          kind: "image",
+          mime_type: "image/png",
+          r2_key: "contas/conta-1/draft.png",
+          thumbnail_r2_key: null,
+          width: 1,
+          height: 1,
+          duration_seconds: null,
+          blur_data_url: null,
+          stream_uid: null,
+          stream_status: null,
+          media_lost_at: null,
+        },
+      },
+    ],
+    error: null,
+  });
+  // Workflow 8 (only the draft) has two open approval etapas: suspended, but must not leak.
+  db.queue("workflow_etapas", "select", {
+    data: [
+      { workflow_id: 8, tipo: "aprovacao_cliente", status: "ativo" },
+      { workflow_id: 8, tipo: "aprovacao_cliente", status: "pendente" },
+    ],
+    error: null,
+  });
+
+  const signed: string[] = [];
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => {
+      signed.push(key);
+      return `https://signed/${key}`;
+    },
+    rateLimit: async () => true,
+  });
+  const body = await readJson(
+    await handler(new Request("https://example.test/hub-posts?token=hub-123")),
+  );
+
+  assertEquals(
+    body.posts.map((p: { id: number }) => p.id),
+    [1],
+  );
+  assertEquals(
+    body.postApprovals.map((a: { id: number }) => a.id),
+    [10],
+  );
+  assertEquals(
+    body.propertyValues.map((v: { post_id: number }) => v.post_id),
+    [1],
+  );
+  assertEquals(
+    body.workflowSelectOptions.map((o: { workflow_id: number }) => o.workflow_id),
+    [7],
+  );
+  assertEquals(body.autoPublishSuspendedWorkflowIds, []);
+  assertEquals(signed, ["contas/conta-1/a.png"], "a dropped draft's media is never signed");
+});
+
+Deno.test(
+  "hub-posts drops a suspended avulso id when the avulso is a never-sent draft",
+  async () => {
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, [
+      { ...basePost, id: 1, status: "enviado_cliente", workflow_id: null, workflows: null },
+      { ...basePost, id: 2, status: "rascunho", workflow_id: null, workflows: null },
+    ]);
+    db.queue("instagram_accounts", "select", { data: null, error: null });
+    db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
+    db.queue("post_status_events", "select", { data: [], error: null });
+    db.queue("post_processes", "select", {
+      data: [
+        { id: 10, post_id: 1 },
+        { id: 11, post_id: 2 },
+      ],
+      error: null,
+    });
+    db.queue("post_process_steps", "select", {
+      data: [
+        { process_id: 10, estado: "ativo" },
+        { process_id: 10, estado: "pendente" },
+        { process_id: 11, estado: "ativo" },
+        { process_id: 11, estado: "pendente" },
+      ],
+      error: null,
+    });
+
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123")),
+    );
+    assertEquals(body.autoPublishSuspendedPostIds, [1]);
+  },
+);
 
 Deno.test("hub-posts rejects missing tokens", async () => {
   const handler = createHubPostsHandler({
@@ -1338,8 +1533,8 @@ Deno.test("hub-posts suspends every workflow when the etapa lookup errors", asyn
   // below must actually carry workflow_id 7 / 8 for the suspend check to run.
   db.queue("workflow_posts", "select", {
     data: [
-      { id: 1, workflow_id: 7, workflows: null },
-      { id: 2, workflow_id: 8, workflows: null },
+      { id: 1, status: "enviado_cliente", workflow_id: 7, workflows: null },
+      { id: 2, status: "enviado_cliente", workflow_id: 8, workflows: null },
     ],
     error: null,
   });
@@ -1372,8 +1567,8 @@ Deno.test("hub-posts flags workflows whose auto-publish is suspended by a later 
   });
   db.queue("workflow_posts", "select", {
     data: [
-      { id: 1, workflow_id: 7, workflows: null },
-      { id: 2, workflow_id: 8, workflows: null },
+      { id: 1, status: "enviado_cliente", workflow_id: 7, workflows: null },
+      { id: 2, status: "enviado_cliente", workflow_id: 8, workflows: null },
     ],
     error: null,
   });
@@ -1440,9 +1635,9 @@ Deno.test("hub-posts lista avulsos com processo individual suspenso por outra ap
   db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
   db.queue("workflow_posts", "select", {
     data: [
-      { id: 1, workflow_id: null, workflows: null },
-      { id: 2, workflow_id: null, workflows: null },
-      { id: 3, workflow_id: null, workflows: null },
+      { id: 1, status: "enviado_cliente", workflow_id: null, workflows: null },
+      { id: 2, status: "enviado_cliente", workflow_id: null, workflows: null },
+      { id: 3, status: "enviado_cliente", workflow_id: null, workflows: null },
     ],
     error: null,
   });
@@ -1472,7 +1667,7 @@ Deno.test("hub-posts lista avulsos com processo individual suspenso por outra ap
 Deno.test("hub-posts suspende todos os avulsos com processo quando a consulta das etapas erra", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
-  db.queue("workflow_posts", "select", { data: [{ id: 1, workflow_id: null, workflows: null }], error: null });
+  db.queue("workflow_posts", "select", { data: [{ id: 1, status: "enviado_cliente", workflow_id: null, workflows: null }], error: null });
   db.queue("instagram_accounts", "select", { data: null, error: null });
   db.queue("clientes", "select", { data: { auto_publish_on_approval: true }, error: null });
   db.queue("post_processes", "select", { data: [{ id: 10, post_id: 1 }], error: null });

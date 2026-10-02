@@ -6,6 +6,7 @@ import { fetchAllRows } from "../_shared/paginate.ts";
 import {
   computeEmProducaoByPost,
   INTERNAL_STATUSES,
+  isHubVisiblePost,
   type EmProducaoReason,
   type StatusEventRow,
 } from "./em-producao.ts";
@@ -325,23 +326,47 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       loadSuspendedPostIds(),
     ]);
 
+    // Never-sent drafts stay on the server. Phase 2 queried with every post id (no extra
+    // round trip); from here on, every field is pruned to the visible set so nothing tied
+    // to a dropped post (approvals, properties, options, suspension ids, media) leaves.
+    const visiblePosts = flatPosts.filter((post: { id: number; status: string }) =>
+      isHubVisiblePost(post, emProducaoByPost),
+    );
+    const visibleIds = new Set<number>(visiblePosts.map((post: { id: number }) => post.id));
+    const visibleWorkflowIds = new Set<number>(
+      visiblePosts
+        .map((post: { workflow_id: number | null }) => post.workflow_id)
+        .filter((id: number | null): id is number => id != null),
+    );
+
     // Internal team notes (replyToPostApproval) never leave the server; same
     // rule as hub-post-history. Filtered in code rather than with a PostgREST
     // .or() so the rule has exactly one definition (_shared/hub-approvals.ts).
-    const postApprovals = ((rawPostApprovals ?? []) as { action: string; is_workspace_user: boolean | null }[])
+    const postApprovals = (
+      (rawPostApprovals ?? []) as {
+        post_id: number;
+        action: string;
+        is_workspace_user: boolean | null;
+      }[]
+    )
+      .filter((a) => visibleIds.has(a.post_id))
       .filter(isClientVisibleApproval);
 
     const suggestionByPost: Record<number, any> = {};
     for (const s of (pendingSuggestions ?? [])) {
+      if (!visibleIds.has(s.post_id)) continue;
       suggestionByPost[s.post_id] = s;
     }
 
     const rejectedAtByPost: Record<number, string> = {};
     for (const r of (rejectedSuggestions ?? [])) {
+      if (!visibleIds.has(r.post_id)) continue;
       if (!rejectedAtByPost[r.post_id]) rejectedAtByPost[r.post_id] = r.updated_at;
     }
 
-    const mediaWithUrls = await Promise.all((mediaLinks ?? []).map(async (link: any) => {
+    const mediaWithUrls = await Promise.all((mediaLinks ?? [])
+      .filter((link: { post_id: number }) => visibleIds.has(link.post_id))
+      .map(async (link: any) => {
       const f = link.files;
       const lost = !!f.media_lost_at;
       return {
@@ -369,7 +394,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       (mediaByPost[media.post_id] ??= []).push(media);
     }
 
-    const flatPostsWithMedia = flatPosts.map((post: any) => {
+    const flatPostsWithMedia = visiblePosts.map((post: any) => {
       const mediaForPost = mediaByPost[post.id] ?? [];
       // First slide by sort_order: what Instagram shows in the feed. The is_cover
       // flag goes stale when a slide is moved to the front, so it is not consulted.
@@ -433,14 +458,18 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     return json({
       posts: postsWithResolvedContent,
       postApprovals,
-      propertyValues: propertyValues ?? [],
-      workflowSelectOptions: workflowSelectOptions ?? [],
+      propertyValues: ((propertyValues ?? []) as { post_id: number }[])
+        .filter((v) => visibleIds.has(v.post_id)),
+      workflowSelectOptions: ((workflowSelectOptions ?? []) as { workflow_id: number }[])
+        .filter((o) => visibleWorkflowIds.has(o.workflow_id)),
       instagramProfile: igAccount
         ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
         : null,
       autoPublishOnApproval,
-      autoPublishSuspendedWorkflowIds,
-      autoPublishSuspendedPostIds,
+      autoPublishSuspendedWorkflowIds: autoPublishSuspendedWorkflowIds
+        .filter((id) => visibleWorkflowIds.has(id)),
+      autoPublishSuspendedPostIds: autoPublishSuspendedPostIds
+        .filter((id) => visibleIds.has(id)),
     });
   };
 }

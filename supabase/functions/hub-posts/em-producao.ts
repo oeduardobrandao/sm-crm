@@ -12,7 +12,7 @@ export const INTERNAL_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 // Mirrors apps/hub/src/lib/postView.ts VISIBLE_STATUSES.
-const CLIENT_VISIBLE_STATUSES: ReadonlySet<string> = new Set([
+export const CLIENT_VISIBLE_STATUSES: ReadonlySet<string> = new Set([
   "enviado_cliente",
   "aprovado_cliente",
   "correcao_cliente",
@@ -65,4 +65,17 @@ export function computeEmProducaoByPost(rows: StatusEventRow[]): Map<number, EmP
     out.set(postId, reasonOf(exit));
   }
   return out;
+}
+
+/** Server-side mirror of the Hub's isPostClientVisible: client-visible statuses, plus internal
+ * posts the client already saw (em produção). Everything else is a never-sent draft and must
+ * not leave the server. */
+export function isHubVisiblePost(
+  post: { id: number; status: string },
+  emProducao: Map<number, unknown>,
+): boolean {
+  return (
+    CLIENT_VISIBLE_STATUSES.has(post.status) ||
+    (INTERNAL_STATUSES.has(post.status) && emProducao.has(post.id))
+  );
 }
