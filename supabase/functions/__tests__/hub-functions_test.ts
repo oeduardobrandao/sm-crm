@@ -874,6 +874,258 @@ Deno.test("hub-posts keeps going with [] when a paged lookup errors", async () =
   assertEquals(body.posts.length, 1);
 });
 
+const CUTOFF = "2026-01-17T00:00:00.000Z";
+const orArgs = (db: ReturnType<typeof createSupabaseQueryMock>, nth = 0) =>
+  db.calls
+    .filter((c) => c.table === "workflow_posts")
+    [nth].modifiers.filter((m) => m.method === "or")
+    .map((m) => m.args[0]);
+
+Deno.test(
+  "hub-posts shell: bounded filter, older check after the posts query, cursor when older exist",
+  async () => {
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, [{ ...basePost, id: 1, status: "enviado_cliente" }]);
+    db.queue("workflow_posts", "select", { data: [{ id: 77 }], error: null }); // older check
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123")),
+    );
+
+    assertEquals(orArgs(db), [
+      `status.neq.postado,published_at.gte.${CUTOFF},scheduled_at.gte.${CUTOFF}`,
+    ]);
+    const older = db.calls.filter((c) => c.table === "workflow_posts")[1];
+    assert(
+      older.modifiers.some(
+        (m) => m.method === "eq" && m.args[0] === "status" && m.args[1] === "postado",
+      ),
+    );
+    assert(
+      older.modifiers.some(
+        (m) => m.method === "lt" && m.args[0] === "published_at" && m.args[1] === CUTOFF,
+      ),
+    );
+    assert(older.modifiers.some((m) => m.method === "limit" && m.args[0] === 1));
+    assert(!older.modifiers.some((m) => m.method === "maybeSingle" || m.method === "single"));
+    assertEquals(body.olderCursor, `${CUTOFF}|0`);
+    assertEquals(body.historyCutoff, CUTOFF);
+    assertEquals("nextCursor" in body, false);
+  },
+);
+
+Deno.test(
+  "hub-posts shell: no older posts means null cursor (an unqueued older check returns [])",
+  async () => {
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, [{ ...basePost, id: 1, status: "enviado_cliente" }]);
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123")),
+    );
+    assertEquals(body.olderCursor, null);
+    assertEquals(body.historyCutoff, null);
+  },
+);
+
+Deno.test(
+  "hub-posts history: postado older than the cursor, 30 per page, cursor verbatim",
+  async () => {
+    const ts = "2026-01-10T10:00:00.123456+00:00";
+    const rows = Array.from({ length: 31 }, (_, i) => ({
+      ...basePost,
+      id: 500 - i,
+      status: "postado",
+      published_at: `2026-01-0${(i % 9) + 1}T10:00:00.12345${i % 10}+00:00`,
+    }));
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, rows);
+    const before = encodeURIComponent(`${ts}|900`);
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(
+        new Request(`https://example.test/hub-posts?token=hub-123&before=${before}`),
+      ),
+    );
+
+    const call = db.calls.filter((c) => c.table === "workflow_posts")[0];
+    assertEquals(orArgs(db), [`published_at.lt.${ts},and(published_at.eq.${ts},id.lt.900)`]);
+    assert(
+      call.modifiers.some(
+        (m) => m.method === "eq" && m.args[0] === "status" && m.args[1] === "postado",
+      ),
+    );
+    assert(call.modifiers.some((m) => m.method === "limit" && m.args[0] === 31));
+    assertEquals(
+      call.modifiers.filter((m) => m.method === "order").map((m) => m.args[0]),
+      ["published_at", "id"],
+    );
+    assertEquals(body.posts.length, 30);
+    assertEquals(body.nextCursor, `${rows[29].published_at}|${rows[29].id}`);
+    assertEquals(
+      db.calls.filter((c) => c.table === "workflow_posts").length,
+      1,
+      "no older check in history mode",
+    );
+    assertEquals("olderCursor" in body, false);
+  },
+);
+
+Deno.test("hub-posts history: last page has nextCursor null", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [
+    { ...basePost, id: 3, status: "postado", published_at: "2026-01-01T10:00:00+00:00" },
+  ]);
+  const before = encodeURIComponent("2026-01-17T00:00:00.000Z|0");
+  const body = await readJson(
+    await hubPostsHandlerFor(db)(
+      new Request(`https://example.test/hub-posts?token=hub-123&before=${before}`),
+    ),
+  );
+  assertEquals(body.posts.length, 1);
+  assertEquals(body.nextCursor, null);
+});
+
+Deno.test("hub-posts range: postado by scheduled_at in [from, to)", async () => {
+  const db = createSupabaseQueryMock();
+  // Published 60 days after its scheduled date: still in its scheduled month.
+  queueHubPostsBase(db, [
+    {
+      ...basePost,
+      id: 4,
+      status: "postado",
+      scheduled_at: "2025-11-10T12:00:00.000Z",
+      published_at: "2026-01-09T12:00:00+00:00",
+    },
+  ]);
+  const url =
+    "https://example.test/hub-posts?token=hub-123&from=2025-11-01T03:00:00.000Z&to=2025-12-01T03:00:00.000Z";
+  const body = await readJson(await hubPostsHandlerFor(db)(new Request(url)));
+
+  const call = db.calls.filter((c) => c.table === "workflow_posts")[0];
+  assert(
+    call.modifiers.some(
+      (m) =>
+        m.method === "gte" &&
+        m.args[0] === "scheduled_at" &&
+        m.args[1] === "2025-11-01T03:00:00.000Z",
+    ),
+  );
+  assert(
+    call.modifiers.some(
+      (m) =>
+        m.method === "lt" &&
+        m.args[0] === "scheduled_at" &&
+        m.args[1] === "2025-12-01T03:00:00.000Z",
+    ),
+  );
+  assert(
+    call.modifiers.some(
+      (m) => m.method === "eq" && m.args[0] === "status" && m.args[1] === "postado",
+    ),
+  );
+  assertEquals(
+    body.posts.map((p: { id: number }) => p.id),
+    [4],
+  );
+  assertEquals("olderCursor" in body || "nextCursor" in body, false);
+});
+
+Deno.test("hub-posts post mode: returns a visible post, scoped to the token's client", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 5061, status: "postado" }]);
+  const body = await readJson(
+    await hubPostsHandlerFor(db)(
+      new Request("https://example.test/hub-posts?token=hub-123&post_id=5061"),
+    ),
+  );
+  const call = db.calls.filter((c) => c.table === "workflow_posts")[0];
+  assert(call.modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === 5061));
+  assert(
+    call.modifiers.some((m) => m.method === "eq" && m.args[0] === "cliente_id" && m.args[1] === 14),
+  );
+  assert(
+    call.modifiers.some(
+      (m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "conta-1",
+    ),
+  );
+  assertEquals(
+    body.posts.map((p: { id: number }) => p.id),
+    [5061],
+  );
+});
+
+Deno.test("hub-posts post mode: an em-produção post comes back", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 9, status: "rascunho" }]);
+  db.queue("post_status_events", "select", {
+    data: [
+      {
+        id: 1,
+        post_id: 9,
+        from_status: "aprovado_interno",
+        to_status: "enviado_cliente",
+        created_at: "2026-03-01T10:00:00.000Z",
+      },
+      {
+        id: 2,
+        post_id: 9,
+        from_status: "correcao_cliente",
+        to_status: "rascunho",
+        created_at: "2026-03-02T10:00:00.000Z",
+      },
+    ],
+    error: null,
+  });
+  const response = await hubPostsHandlerFor(db)(
+    new Request("https://example.test/hub-posts?token=hub-123&post_id=9"),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((await readJson(response)).posts[0].em_producao, "correcao");
+});
+
+Deno.test(
+  "hub-posts post mode: a never-sent draft, or a post outside the client, is 404",
+  async () => {
+    const draftDb = createSupabaseQueryMock();
+    queueHubPostsBase(draftDb, [{ ...basePost, id: 9, status: "rascunho" }]);
+    const draft = await hubPostsHandlerFor(draftDb)(
+      new Request("https://example.test/hub-posts?token=hub-123&post_id=9"),
+    );
+    assertEquals(draft.status, 404);
+    assertEquals(await readJson(draft), { error: "Post não encontrado." });
+
+    const otherDb = createSupabaseQueryMock();
+    queueHubPostsBase(otherDb, []); // the conta/cliente filter matched nothing
+    const other = await hubPostsHandlerFor(otherDb)(
+      new Request("https://example.test/hub-posts?token=hub-123&post_id=1234"),
+    );
+    assertEquals(other.status, 404);
+  },
+);
+
+Deno.test(
+  "hub-posts rejects malformed or combined modes with 400 before reading posts",
+  async () => {
+    for (const qs of [
+      "before=2026-01-01T00:00:00Z,status.neq.x|1",
+      "post_id=abc",
+      "post_id=1&before=2026-01-17T00:00:00.000Z|0",
+      "from=2026-01-01T00:00:00.000Z&to=2026-03-01T00:00:00.000Z",
+    ]) {
+      const db = createSupabaseQueryMock();
+      queueHubPostsBase(db, []);
+      const response = await hubPostsHandlerFor(db)(
+        new Request(`https://example.test/hub-posts?token=hub-123&${qs.replace("|", "%7C")}`),
+      );
+      assertEquals(response.status, 400, qs);
+      assertEquals(await readJson(response), { error: "Parâmetros inválidos." });
+      assertEquals(
+        db.calls.some((c) => c.table === "workflow_posts"),
+        false,
+        qs,
+      );
+    }
+  },
+);
+
 Deno.test("hub-posts rejects missing tokens", async () => {
   const handler = createHubPostsHandler({
     buildCorsHeaders,

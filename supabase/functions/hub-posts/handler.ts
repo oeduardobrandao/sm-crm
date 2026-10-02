@@ -10,6 +10,7 @@ import {
   type EmProducaoReason,
   type StatusEventRow,
 } from "./em-producao.ts";
+import { cursorOf, HISTORY_PAGE_SIZE, parseGetMode, shellCutoff } from "./modes.ts";
 
 function extractR2Keys(content: any): string[] {
   const keys: string[] = [];
@@ -149,28 +150,83 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       return json(data ?? { ok: true }, 200);
     }
 
+    const mode = parseGetMode(url.searchParams);
+    if (!mode) return json({ error: "Parâmetros inválidos." }, 400);
+    const cutoff = shellCutoff(deps.now());
+
     // Every lookup below is batched by id and only depends on what came before
     // it, so the GET runs in three round-trip phases instead of one query at a
     // time: (1) posts plus the token-scoped rows, (2) everything keyed by the
     // post/workflow ids, (3) validating the R2 keys found in rich content.
-    const [{ data: posts }, { data: igAccount }, { data: clienteRow }] = await Promise.all([
-      db
+    //
+    // Spec: docs/superpowers/specs/2026-10-02-hub-posts-bounded-design.md. The shell holds
+    // every post still in flight plus published posts with either date inside the window;
+    // older published posts come through ?before= (Postagens) and ?from=&to= (calendar).
+    let postsQuery = db
+      .from("workflow_posts")
+      .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, ig_trial_strategy, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
+      .eq("conta_id", hubToken.conta_id)
+      .eq("cliente_id", hubToken.cliente_id);
+    if (mode.kind === "shell") {
+      postsQuery = postsQuery
+        .or(`status.neq.postado,published_at.gte.${cutoff},scheduled_at.gte.${cutoff}`)
+        .order("scheduled_at", { ascending: true });
+    } else if (mode.kind === "history") {
+      const { ts, id } = mode.before;
+      postsQuery = postsQuery
+        .eq("status", "postado")
+        .or(`published_at.lt.${ts},and(published_at.eq.${ts},id.lt.${id})`)
+        .order("published_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(HISTORY_PAGE_SIZE + 1);
+    } else if (mode.kind === "range") {
+      postsQuery = postsQuery
+        .eq("status", "postado")
+        .gte("scheduled_at", mode.from)
+        .lt("scheduled_at", mode.to)
+        .order("scheduled_at", { ascending: true })
+        .order("id", { ascending: true });
+    } else {
+      postsQuery = postsQuery.eq("id", mode.postId);
+    }
+
+    // Placed LAST in the array: the test mock dequeues workflow_posts in call order, and an
+    // unqueued select answers [] (read as "nothing older"). A non-empty array is the only
+    // "older exists" signal; never .maybeSingle() or a truthiness check on data.
+    const olderCheck = mode.kind === "shell"
+      ? db
         .from("workflow_posts")
-        .select("id, titulo, tipo, status, ordem, conteudo, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, tiktok_post_url, published_at, publish_error, platform, ig_trial_strategy, media_autocleaned_at, workflow_id, workflows(titulo, created_at)")
+        .select("id")
         .eq("conta_id", hubToken.conta_id)
         .eq("cliente_id", hubToken.cliente_id)
-        .order("scheduled_at", { ascending: true }),
-      db
-        .from("instagram_accounts")
-        .select("username, profile_picture_url")
-        .eq("client_id", hubToken.cliente_id)
-        .maybeSingle(),
-      db
-        .from("clientes")
-        .select("auto_publish_on_approval")
-        .eq("id", hubToken.cliente_id)
-        .single(),
-    ]);
+        .eq("status", "postado")
+        .lt("published_at", cutoff)
+        .limit(1)
+      : Promise.resolve({ data: [] as unknown[] });
+
+    const [{ data: rawPosts }, { data: igAccount }, { data: clienteRow }, { data: olderRows }] =
+      await Promise.all([
+        postsQuery,
+        db
+          .from("instagram_accounts")
+          .select("username, profile_picture_url")
+          .eq("client_id", hubToken.cliente_id)
+          .maybeSingle(),
+        db
+          .from("clientes")
+          .select("auto_publish_on_approval")
+          .eq("id", hubToken.cliente_id)
+          .single(),
+        olderCheck,
+      ]);
+
+    let posts = (rawPosts ?? []) as any[];
+    let nextCursor: string | null = null;
+    if (mode.kind === "history" && posts.length > HISTORY_PAGE_SIZE) {
+      posts = posts.slice(0, HISTORY_PAGE_SIZE);
+      nextCursor = cursorOf(posts[HISTORY_PAGE_SIZE - 1]);
+    }
+    const hasOlder = Array.isArray(olderRows) && olderRows.length > 0;
     warnIfCapped("workflow_posts", posts);
     const autoPublishOnApproval = clienteRow?.auto_publish_on_approval ?? false;
 
@@ -502,6 +558,10 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       };
     });
 
+    if (mode.kind === "post" && postsWithResolvedContent.length === 0) {
+      return json({ error: "Post não encontrado." }, 404);
+    }
+
     return json({
       posts: postsWithResolvedContent,
       postApprovals,
@@ -517,6 +577,10 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .filter((id) => visibleWorkflowIds.has(id)),
       autoPublishSuspendedPostIds: autoPublishSuspendedPostIds
         .filter((id) => visibleIds.has(id)),
+      ...(mode.kind === "shell"
+        ? { olderCursor: hasOlder ? `${cutoff}|0` : null, historyCutoff: hasOlder ? cutoff : null }
+        : {}),
+      ...(mode.kind === "history" ? { nextCursor } : {}),
     });
   };
 }
