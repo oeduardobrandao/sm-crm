@@ -28,7 +28,7 @@ export function pageEditorExtensions(): AnyExtension[] {
     Color,
     Highlight.configure({ multicolor: true }),
     // isAllowedRichTextAutolinkUrl (@mesaas/link-policy) is the autolink-aware form of
-    // the same policy the Hub's reader enforces (RichTextContent.tsx): http/https/
+    // the same policy the Hub's reader enforces (RichTextTiptap.tsx): http/https/
     // mailto/tel allowed, everything else (including relative/anchor-only URLs)
     // rejected. Applying it here too -- not just on the read side -- closes the gap
     // where this editor could persist a link the Hub then silently refuses to render

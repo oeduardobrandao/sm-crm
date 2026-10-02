@@ -1,6 +1,6 @@
 /**
  * Link URL policy shared by every TipTap surface that can render or persist a `link` mark:
- * the Hub's read-only renderer (`apps/hub/src/components/RichTextContent.tsx` -- it backs
+ * the Hub's read-only renderer (`apps/hub/src/components/RichTextTiptap.tsx` -- it backs
  * portal pages AND post captions), the CRM's page editor
  * (`apps/crm/src/pages/cliente-detalhe/hub/pageEditorSchema.ts`), and the CRM's post caption
  * editor (`apps/crm/src/pages/entregas/components/PostEditor.tsx`). Defined ONCE here, in a

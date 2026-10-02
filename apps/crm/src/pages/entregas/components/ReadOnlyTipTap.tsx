@@ -17,7 +17,7 @@ interface ReadOnlyTipTapProps {
 
 // Must stay a superset of the marks/nodes the editable PostEditor can persist into
 // `conteudo`, or TipTap silently drops the ENTIRE document on read (same invariant as the
-// hub's richTextExtensions in apps/hub/src/components/RichTextContent.tsx).
+// hub's richTextExtensions in apps/hub/src/components/RichTextTiptap.tsx).
 export const readOnlyTipTapExtensions = [
   StarterKit.configure({ link: false, underline: false }),
   UnderlineExt,

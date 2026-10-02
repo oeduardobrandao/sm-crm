@@ -40,7 +40,7 @@ import { HubDialog } from '../ui/HubDialog';
 import { formatDate, getPlatformLabel } from '../PostCard';
 import { PostHistoryPanel } from '../PostHistoryPanel';
 import { PostMediaLightbox } from '../PostMediaLightbox';
-import { RichTextContent } from '../RichTextContent';
+import { preloadRichText, RichTextContent } from '../RichTextContent';
 import { SharePostButton } from '../SharePostButton';
 import { StatusTag } from './StatusTag';
 import { PostMediaPane } from './PostMediaPane';
@@ -86,6 +86,12 @@ export function PostDetailDialog(props: PostDetailDialogProps) {
   });
   // The current card's close handler (guard + lightbox check), reached from the chrome.
   const closeRef = useRef<() => void>(() => onNavigate(null));
+
+  // The dialog stays mounted while closed, so this fetches the TipTap chunk right after
+  // the page renders: off the page's critical path, usually ready before a post opens.
+  useEffect(() => {
+    preloadRichText();
+  }, []);
 
   // The held card renders from the snapshot taken when the action was sent, so a list
   // refetch mid-hold (on Aprovações the post leaves the list) cannot pull it away.
