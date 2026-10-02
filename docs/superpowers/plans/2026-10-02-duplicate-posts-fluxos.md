@@ -73,6 +73,32 @@ Apply new migrations with `npx supabase migration up --local`. When Tasks 1–2 
 
 ---
 
+### Task 0: Bring the spec in line with the plan
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-10-02-duplicate-posts-fluxos-design.md`
+
+The user approved these plan-time changes; subagents and reviewers check against the spec, so it must say the same thing before Task 1 starts.
+
+- [ ] **Step 1: Edit the spec**
+1. "Decisões fechadas" → `Nome` row: `" (cópia)"` no post duplicado e no fluxo duplicado; posts copiados junto com o fluxo mantêm o título.
+2. "Forma das funções": replace the "Qualquer membro pode duplicar" bullet with: permissão é `has_permission_for(auth.uid(), conta, 'entregas', 'editar')` (mesma das RPCs de processo), erro `permission_denied`; a UI só mostra os itens com `can('entregas', 'editar')`. `_clone_post_row` signature is `(p_conta, p_src_post_id, p_target_workflow_id, p_to_rascunho, p_option_map, p_solo)`; add `_remap_option_value`. Both RPCs take the `':post_move'` advisory lock, like the process RPCs.
+3. "Processo (post individual)": `board_position` vai para o fim (max + 1), como `apply_post_process`, para não mexer em linhas de outros processos; `revisao = 1`.
+4. "Posição": post avulso não empurra irmãos (fica com a mesma `ordem` do original).
+5. "Pontos de entrada": ícone `CopyPlus` (não `Copy`) nos quatro pontos. `EntregasTab` (cliente-detalhe) não ganha os itens nesta entrega.
+6. "Diálogo": no `WorkflowDrawer` a cópia é expandida e rolada direto, sem "Abrir" no toast; no `StandalonePostDrawer` e nos cards do quadro, "Abrir" como descrito.
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add docs/superpowers/specs/2026-10-02-duplicate-posts-fluxos-design.md
+git commit -m "docs(spec): duplicar post/fluxo, decisões do plano
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
 ### Task 1: `duplicate_post` RPC
 
 **Files:**
@@ -713,7 +739,7 @@ Likely snags and how to resolve them (do not loosen the assertion; fix the cause
 - 99p.1 `files` insert fails on a newer NOT NULL column: add it to the fixture from `20260425000001` + later `ALTER TABLE files` migrations.
 - `post_processes` INSERT rejected by a hardening trigger (`20260919000002_post_process_hardening.sql`): read it; the clone must satisfy the same invariants as `apply_post_process`.
 
-- [ ] **Step 6: Run the whole DB suite once** to make sure nothing else broke.
+- [ ] **Step 6: Run the whole DB suite once** to make sure nothing else broke. A reused local volume can hide grant bugs (see memory `reference_et_grant_hosted_parity`); CI's `entitlement-tests` job on a fresh `supabase start` is the real gate.
 
 Run: `npm run test:db`
 Expected: every file PASS.
@@ -950,7 +976,7 @@ end $$;
 rollback;
 ```
 
-If a fixture INSERT fails on a NOT NULL column (e.g. `workflow_templates`, `workflow_etapas`), copy the minimal insert shape from an existing suite (`grep -l "insert into workflow_templates" supabase/tests/entitlements/*.sql`) rather than guessing.
+`template_property_definitions` and `workflow_select_options` may sit behind `enforce_plan_feature('feature_custom_properties', ...)`. A `feature_disabled:feature_custom_properties` error in the fixture is a fixture problem (enable it with `update plans set feature_custom_properties = true where id = (select plan_id from workspaces where id = e.ws);` inside the transaction), not a bug in `duplicate_workflow`. If a fixture INSERT fails on a NOT NULL column (e.g. `workflow_templates`, `workflow_etapas`), copy the minimal insert shape from an existing suite (`grep -l "insert into workflow_templates" supabase/tests/entitlements/*.sql`) rather than guessing.
 
 - [ ] **Step 2: Run it and confirm it fails**
 
@@ -1480,7 +1506,8 @@ export function DuplicateDialog({ target, onClose, onDuplicated }: DuplicateDial
 }
 ```
 
-Two notes for the implementer:
+Three notes for the implementer:
+- If the dialog fails to render in jsdom (providers needed by the `confirmClose` wiring in `apps/crm/src/components/ui/dialog.tsx`), mirror the setup of `apps/crm/src/pages/entregas/components/__tests__/ClientApprovalChoiceDialog.test.tsx`, which renders a shadcn Dialog in isolation.
 - `getByLabelText(/Mudar tudo para Rascunho/)` relies on the `<input>` being inside its `<label>`, so keep that structure.
 - `DialogContent`'s `onClick` stops propagation because React events bubble through portals: the board dialog is rendered by `EntregasPage`, not inside a card, but the WorkflowDrawer/StandalonePostDrawer ones sit inside drawers whose overlays have click handlers. If `DialogContent` in `apps/crm/src/components/ui/dialog.tsx` doesn't forward `onClick`, drop the prop and wrap the children in `<div onClick={(e) => e.stopPropagation()}>`.
 
@@ -1839,7 +1866,7 @@ Next to the delete-post `AlertDialog` (~line 1679):
 
 Import: `import { DuplicateDialog, type DuplicateTarget } from './components/DuplicateDialog';`
 
-If `setPendingDeepLink`'s state type requires fields beyond `workflowId`/`postId`, read its declaration (~line 445) and pass the minimum it requires; `fromUrl`, `fromDrawerFallback` and `failedWorkflowId` are optional today.
+Pass `{ workflowId: newId, postId: null }` **without** `fromUrl`. The effect at ~line 558 only gives up ("Fluxo não encontrado") when `fromUrl` is set; without it, it keeps waiting until the card arrives in `cards` after the refetch. That is the same contract the "mover posts para um fluxo novo" path (`onOpenWorkflow`) relies on, per the comment in that effect. Read the effect to confirm before wiring.
 
 `apps/crm/src/pages/cliente-detalhe/tabs/EntregasTab.tsx` also renders `KanbanView`; it gets no duplicate props (items hidden there). That is intentional for this change.
 
@@ -1979,16 +2006,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 8: Spec update, full verification, browser check
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-10-02-duplicate-posts-fluxos-design.md`
+- Possibly modify: `docs/superpowers/specs/2026-10-02-duplicate-posts-fluxos-design.md`
 
-- [ ] **Step 1: Record the plan-time decisions in the spec**
-
-Edit the spec so it matches what was built:
-1. "Decisões fechadas" → `Nome` row: `" (cópia)"` no post duplicado e no fluxo duplicado; posts copiados junto com o fluxo mantêm o título.
-2. "Forma das funções": permissão é `has_permission_for(auth.uid(), conta, 'entregas', 'editar')` (mesma das RPCs de processo), erro `permission_denied`; replace the "Qualquer membro pode duplicar" bullet. `_clone_post_row` signature is `(p_conta, p_src_post_id, p_target_workflow_id, p_to_rascunho, p_option_map, p_solo)`; add `_remap_option_value`. Both take the `':post_move'` advisory lock.
-3. "Processo (post individual)": `board_position` vai para o fim (max + 1), como `apply_post_process`, para não mexer em linhas de outros processos; `revisao = 1`.
-4. "Posição": avulso não empurra irmãos (ordem igual à do original).
-5. "Diálogo": no `WorkflowDrawer` a cópia é aberta e rolada direto, sem "Abrir" no toast; no `StandalonePostDrawer` e nos cards, "Abrir" como descrito. Entry points only render with `can('entregas','editar')`. `EntregasTab` (cliente-detalhe) não ganha os itens nesta entrega.
+- [ ] **Step 1: Confirm the spec still matches** what was built (Task 0 updated it). If anything drifted during implementation, edit the spec now.
 
 - [ ] **Step 2: Full local gate**
 
@@ -2017,11 +2037,11 @@ The dev server points at prod by default, so do **not** duplicate real data from
 
 If staging isn't available, stop after Step 2 and tell the user the browser check is pending on applying the migrations to staging.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit** (only if Step 1 or `npm run format` changed files)
 
 ```bash
-git add docs/superpowers/specs/2026-10-02-duplicate-posts-fluxos-design.md
-git commit -m "docs(spec): duplicar post/fluxo, decisões do plano
+git add -A docs apps
+git commit -m "chore(entregas): ajustes finais de duplicar post/fluxo
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
