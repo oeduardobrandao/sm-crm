@@ -911,6 +911,23 @@ export async function removeWorkflowPost(id: number): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Duplica um post (RPC duplicate_post, 20261002000020). A cópia fica logo
+ * depois do original, com a mesma mídia (mesmos arquivos), propriedades e
+ * data. `toRascunho` põe a cópia em rascunho; sem ele o status é mantido,
+ * exceto agendado/postado/falha_publicacao, que viram aprovado_cliente.
+ * Devolve o id do post novo; o erro da RPC sobe cru (plan_limit_exceeded:*,
+ * not_found, permission_denied).
+ */
+export async function clonePost(postId: number, toRascunho: boolean): Promise<number> {
+  const { data, error } = await supabase.rpc('duplicate_post', {
+    p_post_id: postId,
+    p_to_rascunho: toRascunho,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
 // =============================================
 // POSTS AVULSOS (fora de fluxo)
 // =============================================

@@ -659,6 +659,22 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
 }
 
 /**
+ * Duplica um fluxo no estado atual (RPC duplicate_workflow, 20261002000021):
+ * mesmas etapas e datas, todos os posts com a mídia. Diferente de
+ * `duplicateWorkflow`, que é a cópia de recorrência e volta para a etapa 0.
+ * `toRascunho` vale para todos os posts (mesma regra de `clonePost`).
+ * Devolve o id do fluxo novo; o erro da RPC sobe cru.
+ */
+export async function cloneWorkflow(workflowId: number, toRascunho: boolean): Promise<number> {
+  const { data, error } = await supabase.rpc('duplicate_workflow', {
+    p_workflow_id: workflowId,
+    p_to_rascunho: toRascunho,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
+/**
  * Internal helper: compute data_limite for each step given a delivery date.
  * Exported as computeDeliveryDeadlines from useEntregasData.ts for UI use.
  * The anchor (aprovacao_cliente) step gets the delivery date.
