@@ -106,7 +106,8 @@ interface KanbanViewBaseProps {
   /** Kebab "Excluir post" do card de post individual. */
   onDeletePostClick?: (entity: PostEntity) => void;
   /** "Duplicar fluxo" no kebab do card. Ausente = item escondido. */
-  onDuplicateWorkflowClick?: (card: BoardCard, postsCount: number) => void;
+  /** postsCount null = contagem ainda desconhecida (sem linha nas estatísticas). */
+  onDuplicateWorkflowClick?: (card: BoardCard, postsCount: number | null) => void;
   /** "Duplicar post" no kebab do card de post individual. */
   onDuplicatePostClick?: (entity: PostEntity) => void;
   /** Quick-add: opens the new-workflow wizard preloaded with the row's template. */
@@ -1433,7 +1434,7 @@ export function KanbanView({
                               ? () =>
                                   onDuplicateWorkflowClick(
                                     card,
-                                    postsCounts.get(card.workflow.id!) ?? 0,
+                                    postsCounts.get(card.workflow.id!) ?? null,
                                   )
                               : undefined
                           }

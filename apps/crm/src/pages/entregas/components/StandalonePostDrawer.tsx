@@ -685,6 +685,8 @@ export function StandalonePostDrawer({
                     onClick={() =>
                       setDuplicateTarget({ kind: 'post', postId, status: post.status })
                     }
+                    // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
+                    disabled={isSaving}
                     title="Duplicar post"
                     aria-label="Duplicar post"
                   >

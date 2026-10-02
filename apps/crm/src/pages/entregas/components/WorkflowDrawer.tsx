@@ -1547,7 +1547,8 @@ function SortablePostItem({
                 Copiar link do post
               </DropdownMenuItem>
               {onDuplicateRequest && (
-                <DropdownMenuItem onClick={onDuplicateRequest}>
+                // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
+                <DropdownMenuItem onClick={onDuplicateRequest} disabled={isSaving}>
                   <CopyPlus className="h-3.5 w-3.5" />
                   Duplicar post
                 </DropdownMenuItem>

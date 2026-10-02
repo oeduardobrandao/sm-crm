@@ -115,11 +115,13 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuItem: ({
     children,
     onClick,
+    disabled,
   }: {
     children: React.ReactNode;
     onClick?: () => void;
+    disabled?: boolean;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} disabled={disabled}>
       {children}
     </button>
   ),
@@ -133,8 +135,19 @@ vi.mock('@/services/inlineImage', () => ({
   resolveInlineImageUrls: vi.fn(async () => ({})),
 }));
 
+// O stub expõe um botão que dispara onUpdate, para armar o autosave do conteúdo.
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
-  PostEditor: () => <div data-testid="post-editor-stub" />,
+  PostEditor: ({
+    onUpdate,
+  }: {
+    onUpdate?: (json: Record<string, unknown>, plain: string) => void;
+  }) => (
+    <div data-testid="post-editor-stub">
+      <button type="button" onClick={() => onUpdate?.({ type: 'doc' }, 'novo texto')}>
+        Editar conteúdo
+      </button>
+    </div>
+  ),
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
   PropertyPanel: () => <div data-testid="property-panel-stub" />,
@@ -291,6 +304,24 @@ describe('WorkflowDrawer: Duplicar post', () => {
     await screen.findByRole('checkbox', { name: 'Selecionar Post A' });
 
     expect(screen.queryByText('Duplicar post')).not.toBeInTheDocument();
+  });
+
+  it('com o conteúdo do post salvando, o item fica desabilitado só nesse post', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByRole('checkbox', { name: 'Selecionar Post A' });
+
+    fireEvent.click(within(rowOf('Post A')).getByText('Post A'));
+    fireEvent.click(
+      await within(rowOf('Post A')).findByRole('button', { name: 'Editar conteúdo' }),
+    );
+
+    const itemA = within(rowOf('Post A')).getByRole('button', { name: /Duplicar post/ });
+    expect(itemA).toBeDisabled();
+    expect(within(rowOf('Post B')).getByRole('button', { name: /Duplicar post/ })).toBeEnabled();
+
+    // Depois do debounce o save termina e o item volta.
+    await waitFor(() => expect(itemA).toBeEnabled(), { timeout: 3000 });
   });
 
   it('ao confirmar: clona o post, recarrega a lista e toasta', async () => {

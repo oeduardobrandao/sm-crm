@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -14,10 +14,12 @@ import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-error
 
 /** O que está sendo duplicado. `status` (post) decide se o aviso de
  *  reagendar aparece; `active` (fluxo) decide se o toast do chamador oferece
- *  "Abrir" (fluxo concluído/arquivado não aparece no quadro ativo). */
+ *  "Abrir" (fluxo concluído/arquivado não aparece no quadro ativo).
+ *  `postsCount` null = contagem desconhecida (estatísticas ainda carregando, ou
+ *  o fluxo sem linha nelas): o diálogo mostra uma linha neutra. */
 export type DuplicateTarget =
   | { kind: 'post'; postId: number; status: string }
-  | { kind: 'workflow'; workflowId: number; postsCount: number; active: boolean };
+  | { kind: 'workflow'; workflowId: number; postsCount: number | null; active: boolean };
 
 const PUBLISH_STATES = new Set(['agendado', 'postado', 'falha_publicacao']);
 const KEEP_HELP =
@@ -29,7 +31,8 @@ export function duplicateErrorMessage(err: unknown): string {
   return 'Não foi possível duplicar. Tente novamente.';
 }
 
-function postsLine(n: number): string {
+function postsLine(n: number | null): string {
+  if (n === null) return 'Todos os posts do fluxo serão copiados com a mídia.';
   if (n === 0) return 'O fluxo não tem posts. Só as etapas serão copiadas.';
   if (n === 1) return 'O post do fluxo será copiado com a mídia.';
   return `Os ${n} posts do fluxo serão copiados com a mídia.`;
@@ -44,14 +47,19 @@ interface DuplicateDialogProps {
 export function DuplicateDialog({ target, onClose, onDuplicated }: DuplicateDialogProps) {
   const [mode, setMode] = useState<'keep' | 'rascunho'>('keep');
   const [pending, setPending] = useState(false);
+  // O texto segue o último alvo não nulo: ao fechar, `target` vira null antes
+  // da animação de saída acabar e o título trocaria de "post" para "fluxo".
+  const lastTargetRef = useRef<DuplicateTarget | null>(target);
+  if (target) lastTargetRef.current = target;
+  const shown = target ?? lastTargetRef.current;
 
   // Cada abertura começa no padrão.
   useEffect(() => {
     if (target) setMode('keep');
   }, [target]);
 
-  const isPost = target?.kind === 'post';
-  const showKeepHelp = target ? !isPost || PUBLISH_STATES.has(target.status) : false;
+  const isPost = shown?.kind === 'post';
+  const showKeepHelp = shown ? !isPost || PUBLISH_STATES.has(shown.status) : false;
 
   const submit = async () => {
     if (!target || pending) return;
@@ -100,8 +108,8 @@ export function DuplicateDialog({ target, onClose, onDuplicated }: DuplicateDial
         <DialogHeader>
           <DialogTitle>{isPost ? 'Duplicar post' : 'Duplicar fluxo'}</DialogTitle>
           <DialogDescription>
-            {target?.kind === 'workflow'
-              ? postsLine(target.postsCount)
+            {shown?.kind === 'workflow'
+              ? postsLine(shown.postsCount)
               : 'A cópia leva conteúdo, legendas, mídia e propriedades.'}
           </DialogDescription>
         </DialogHeader>

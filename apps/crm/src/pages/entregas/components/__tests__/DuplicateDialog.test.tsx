@@ -65,6 +65,33 @@ describe('DuplicateDialog', () => {
     expect(cloneWorkflow).toHaveBeenCalledWith(8, true);
   });
 
+  it('fluxo com contagem desconhecida mostra a linha neutra', () => {
+    render(
+      <DuplicateDialog
+        target={{ kind: 'workflow', workflowId: 8, postsCount: null, active: true }}
+        onClose={vi.fn()}
+        onDuplicated={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText('Todos os posts do fluxo serão copiados com a mídia.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/não tem posts/)).not.toBeInTheDocument();
+  });
+
+  it('fluxo com 0 posts conhecidos avisa que só as etapas vão', () => {
+    render(
+      <DuplicateDialog
+        target={{ kind: 'workflow', workflowId: 8, postsCount: 0, active: true }}
+        onClose={vi.fn()}
+        onDuplicated={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText('O fluxo não tem posts. Só as etapas serão copiadas.'),
+    ).toBeInTheDocument();
+  });
+
   it('erro: toast e o diálogo continua aberto', async () => {
     clonePost.mockRejectedValue({ message: 'plan_limit_exceeded:max_posts_per_workflow' });
     const onClose = vi.fn();

@@ -7042,6 +7042,16 @@ body.role-agent input[name='valor_total'] {
   background: rgba(239, 68, 68, 0.08);
 }
 
+.drawer-delete-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.drawer-delete-btn:disabled:hover {
+  color: var(--text-muted);
+  background: transparent;
+}
+
 .drawer-kebab-btn {
   display: flex;
   align-items: center;

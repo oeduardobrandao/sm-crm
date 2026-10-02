@@ -111,8 +111,19 @@ vi.mock('@/services/inlineImage', () => ({
 
 // Heavy leaf components -- stubbed out so only StandalonePostDrawer/PostEditorBody's own
 // logic runs (same stub set as WorkflowDrawer.test.tsx).
+// O stub expõe um botão que dispara onUpdate, para armar o autosave do conteúdo.
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
-  PostEditor: () => <div data-testid="post-editor-stub" />,
+  PostEditor: ({
+    onUpdate,
+  }: {
+    onUpdate?: (json: Record<string, unknown>, plain: string) => void;
+  }) => (
+    <div data-testid="post-editor-stub">
+      <button type="button" onClick={() => onUpdate?.({ type: 'doc' }, 'novo texto')}>
+        Editar conteúdo
+      </button>
+    </div>
+  ),
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
   PropertyPanel: () => <div data-testid="property-panel-stub" />,
@@ -371,6 +382,21 @@ describe('StandalonePostDrawer', () => {
 
     fireEvent.click(await screen.findByTitle('Duplicar post'));
     expect(await screen.findByRole('heading', { name: 'Duplicar post' })).toBeInTheDocument();
+  });
+
+  it('com o conteúdo salvando, o botão Duplicar post fica desabilitado', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const btn = await screen.findByTitle('Duplicar post');
+    expect(btn).toBeEnabled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar conteúdo' }));
+    expect(screen.getByTitle('Duplicar post')).toBeDisabled();
+
+    // Depois do debounce o save termina e o botão volta.
+    await waitFor(() => expect(screen.getByTitle('Duplicar post')).toBeEnabled(), {
+      timeout: 3000,
+    });
   });
 
   it('sem permissão de editar entregas não mostra o botão Duplicar post', async () => {

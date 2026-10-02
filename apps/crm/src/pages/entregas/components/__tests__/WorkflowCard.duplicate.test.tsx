@@ -8,7 +8,7 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-vi.mock('../../../store', () => ({
+vi.mock('../../../../store', () => ({
   updateWorkflowEtapa: vi.fn(),
   getWorkflowEvents: vi.fn().mockResolvedValue([]),
 }));
@@ -33,7 +33,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 }));
 
 import { WorkflowCard } from '../WorkflowCard';
-import type { BoardCard } from '../hooks/useEntregasData';
+import type { BoardCard } from '../../hooks/useEntregasData';
 
 function render(ui: React.ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
