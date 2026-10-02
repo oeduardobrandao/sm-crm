@@ -6,7 +6,7 @@ import { readOnlyTipTapExtensions } from '../ReadOnlyTipTap';
 // ReadOnlyTipTap renders `conteudo` wherever the CRM shows a post read-only (approvals,
 // history, etc). Its extension list must register every node/mark the editable PostEditor
 // can persist, or TipTap silently drops the whole document on read -- same invariant as the
-// hub's richTextExtensions (apps/hub/src/components/__tests__/RichTextContent.test.tsx).
+// hub's richTextExtensions (apps/hub/src/components/__tests__/RichTextTiptap.test.tsx).
 describe('ReadOnlyTipTap extensions (readOnlyTipTapExtensions)', () => {
   it('registers no duplicate extension names', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);

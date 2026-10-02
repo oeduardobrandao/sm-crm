@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import { DOMSerializer } from '@tiptap/pm/model';
-import { richTextExtensions } from '../RichTextContent';
+import { richTextExtensions } from '../RichTextTiptap';
 
 // `InlineImageReadonly.renderHTML` builds an inline `style` attribute and an `<img src>`
 // straight out of a persisted ProseMirror document -- content an agency member can craft
@@ -12,7 +12,7 @@ import { richTextExtensions } from '../RichTextContent';
 //
 // Built from the real `richTextExtensions()` set (not just the node in isolation) so the
 // schema has the `doc`/`text` top nodes the node needs to serialize -- same approach as
-// RichTextContent.test.tsx.
+// RichTextTiptap.test.tsx.
 
 function renderInlineImage(attrs: Record<string, unknown>) {
   const schema = getSchema(richTextExtensions(false));

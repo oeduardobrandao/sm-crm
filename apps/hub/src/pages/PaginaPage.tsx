@@ -8,7 +8,7 @@ import { useHub } from '../HubContext';
 import { fetchPage } from '../api';
 import type { HubContentBlock } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
-import { RichTextContent } from '../components/RichTextContent';
+import { RichTextContent } from '../components/RichTextTiptap';
 
 const markdownComponents = {
   h1: (props: React.ComponentProps<'h1'>) => (

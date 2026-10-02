@@ -100,7 +100,7 @@ export function postEditorExtensions({
     // and credentialed URLs) rejected. This Link extension had no `isAllowedUri` at
     // all before, so an `ftp:`, credentialed, or relative URL typed into a post
     // caption persisted here and then rendered as a dead `href=""` in the Hub, which
-    // enforces this same policy on read (RichTextContent.tsx, `autolink: false` there
+    // enforces this same policy on read (RichTextTiptap.tsx, `autolink: false` there
     // -- it only ever validates an already-resolved href, never raw typed text).
     Link.configure({
       openOnClick: false,

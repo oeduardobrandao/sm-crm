@@ -5,7 +5,7 @@ import { postEditorExtensions } from '../PostEditor';
 /**
  * Finding 4 (task-11, fix round 3): PostEditor's Link extension had no `isAllowedUri`
  * at all, so the shared link policy (@mesaas/link-policy) -- enforced on the read side
- * by the Hub's RichTextContent.tsx -- was not enforced on the write side for post
+ * by the Hub's RichTextTiptap.tsx -- was not enforced on the write side for post
  * captions. An `ftp:`/credentialed/relative URL typed here persisted and rendered dead
  * (`href=""`) in the Hub.
  *

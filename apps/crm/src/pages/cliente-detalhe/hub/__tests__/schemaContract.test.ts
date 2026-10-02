@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import { pageEditorExtensions } from '../pageEditorSchema';
-import { richTextExtensions } from '../../../../../../hub/src/components/RichTextContent';
+import { richTextExtensions } from '../../../../../../hub/src/components/RichTextTiptap';
 
 /**
  * Se o editor do CRM puder persistir um nó ou marca que o Hub não conhece, o

@@ -7,8 +7,8 @@ import {
 
 // Unit coverage for the policy itself (see index.ts for the full rationale). The
 // integration-level assertions -- that this function is actually WIRED into both the
-// Hub's reader (RichTextContent.tsx) and the CRM's page editor (pageEditorSchema.ts) --
-// live in apps/hub/src/components/__tests__/RichTextContent.test.tsx and
+// Hub's reader (RichTextTiptap.tsx) and the CRM's page editor (pageEditorSchema.ts) --
+// live in apps/hub/src/components/__tests__/RichTextTiptap.test.tsx and
 // apps/crm/src/pages/cliente-detalhe/hub/__tests__/PaginaRichTextEditor.test.tsx.
 describe('isAllowedRichTextLinkUrl', () => {
   it.each([
