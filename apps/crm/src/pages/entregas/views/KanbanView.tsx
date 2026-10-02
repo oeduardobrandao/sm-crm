@@ -105,6 +105,11 @@ interface KanbanViewBaseProps {
   onDeleteWorkflowClick?: (card: BoardCard) => void;
   /** Kebab "Excluir post" do card de post individual. */
   onDeletePostClick?: (entity: PostEntity) => void;
+  /** "Duplicar fluxo" no kebab do card. Ausente = item escondido. */
+  /** postsCount null = contagem ainda desconhecida (sem linha nas estatísticas). */
+  onDuplicateWorkflowClick?: (card: BoardCard, postsCount: number | null) => void;
+  /** "Duplicar post" no kebab do card de post individual. */
+  onDuplicatePostClick?: (entity: PostEntity) => void;
   /** Quick-add: opens the new-workflow wizard preloaded with the row's template. */
   onAddWorkflow?: (templateId: number | null) => void;
   /** Opens the existing "Gerenciar Templates" modal from the board's trailing "+" tab. */
@@ -324,6 +329,7 @@ function SortableCard({
   onRevertClick,
   onForwardClick,
   onDeleteClick,
+  onDuplicateClick,
   postsCount,
   approvedPostsCount,
   clearedClienteCount,
@@ -339,6 +345,7 @@ function SortableCard({
   onRevertClick: () => void;
   onForwardClick: () => void;
   onDeleteClick?: () => void;
+  onDuplicateClick?: () => void;
   postsCount: number;
   approvedPostsCount: number;
   clearedClienteCount: number;
@@ -367,6 +374,7 @@ function SortableCard({
         onRevertClick={onRevertClick}
         onForwardClick={onForwardClick}
         onDeleteClick={onDeleteClick}
+        onDuplicateClick={onDuplicateClick}
         postsCount={postsCount}
         approvedPostsCount={approvedPostsCount}
         clearedClienteCount={clearedClienteCount}
@@ -388,6 +396,7 @@ function SortablePostCard({
   onRevertClick,
   onRemoveProcessClick,
   onDeleteClick,
+  onDuplicateClick,
 }: {
   entity: PostEntity;
   onClick?: () => void;
@@ -395,6 +404,7 @@ function SortablePostCard({
   onRevertClick?: () => void;
   onRemoveProcessClick?: () => void;
   onDeleteClick?: () => void;
+  onDuplicateClick?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entity.id,
@@ -418,6 +428,7 @@ function SortablePostCard({
         onRevertClick={onRevertClick}
         onRemoveProcessClick={onRemoveProcessClick}
         onDeleteClick={onDeleteClick}
+        onDuplicateClick={onDuplicateClick}
         canRevert={previousStepOf(entity.process) != null}
         forwardLabel={forwardLabelFor(entity.process)}
       />
@@ -446,6 +457,8 @@ export function KanbanView({
   onAddPostIndividual,
   onDeleteWorkflowClick,
   onDeletePostClick,
+  onDuplicateWorkflowClick,
+  onDuplicatePostClick,
   membros,
   templates,
   postsCounts,
@@ -1388,6 +1401,9 @@ export function KanbanView({
                             onDeleteClick={
                               onDeletePostClick ? () => onDeletePostClick(entity) : undefined
                             }
+                            onDuplicateClick={
+                              onDuplicatePostClick ? () => onDuplicatePostClick(entity) : undefined
+                            }
                           />
                         </Fragment>
                       );
@@ -1412,6 +1428,15 @@ export function KanbanView({
                           onForwardClick={() => handleForwardCard(card)}
                           onDeleteClick={
                             onDeleteWorkflowClick ? () => onDeleteWorkflowClick(card) : undefined
+                          }
+                          onDuplicateClick={
+                            onDuplicateWorkflowClick
+                              ? () =>
+                                  onDuplicateWorkflowClick(
+                                    card,
+                                    postsCounts.get(card.workflow.id!) ?? null,
+                                  )
+                              : undefined
                           }
                           postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                           approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}

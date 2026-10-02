@@ -12,13 +12,15 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
+// `can` e um vi.fn() para cada teste poder negar uma permissao especifica.
+const authMock = vi.hoisted(() => ({ can: vi.fn() }));
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'user-1' },
     role: 'owner',
     loading: false,
     profile: null,
-    can: makeCan(fakeMembership({ role: 'owner' })),
+    can: authMock.can,
   }),
 }));
 
@@ -93,6 +95,9 @@ vi.mock('@/store', () => ({
   getWorkflowTemplates: vi.fn(async () => []),
   getClientes: vi.fn(async () => []),
   applyPostProcess: vi.fn(),
+  // Consumed by DuplicateDialog ("Duplicar post" no cabecalho).
+  clonePost: vi.fn(),
+  cloneWorkflow: vi.fn(),
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
@@ -106,8 +111,19 @@ vi.mock('@/services/inlineImage', () => ({
 
 // Heavy leaf components -- stubbed out so only StandalonePostDrawer/PostEditorBody's own
 // logic runs (same stub set as WorkflowDrawer.test.tsx).
+// O stub expõe um botão que dispara onUpdate, para armar o autosave do conteúdo.
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
-  PostEditor: () => <div data-testid="post-editor-stub" />,
+  PostEditor: ({
+    onUpdate,
+  }: {
+    onUpdate?: (json: Record<string, unknown>, plain: string) => void;
+  }) => (
+    <div data-testid="post-editor-stub">
+      <button type="button" onClick={() => onUpdate?.({ type: 'doc' }, 'novo texto')}>
+        Editar conteúdo
+      </button>
+    </div>
+  ),
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
   PropertyPanel: () => <div data-testid="property-panel-stub" />,
@@ -262,6 +278,7 @@ describe('StandalonePostDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     limitsMock.features = null;
+    authMock.can.mockImplementation(makeCan(fakeMembership({ role: 'owner' })));
     mockGetStandalonePost.mockResolvedValue(basePost() as never);
     mockUpdate.mockResolvedValue({} as never);
     mockRemove.mockResolvedValue(undefined as never);
@@ -357,6 +374,41 @@ describe('StandalonePostDrawer', () => {
     expect(await screen.findByText('Histórico')).toBeInTheDocument();
     expect(screen.getByText('Aprovado pelo cliente')).toBeInTheDocument();
     expect(screen.getByText('Cliente')).toBeInTheDocument();
+  });
+
+  it('Duplicar post abre o diálogo quando pode editar entregas', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByTitle('Duplicar post'));
+    expect(await screen.findByRole('heading', { name: 'Duplicar post' })).toBeInTheDocument();
+  });
+
+  it('com o conteúdo salvando, o botão Duplicar post fica desabilitado', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    const btn = await screen.findByTitle('Duplicar post');
+    expect(btn).toBeEnabled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar conteúdo' }));
+    expect(screen.getByTitle('Duplicar post')).toBeDisabled();
+
+    // Depois do debounce o save termina e o botão volta.
+    await waitFor(() => expect(screen.getByTitle('Duplicar post')).toBeEnabled(), {
+      timeout: 3000,
+    });
+  });
+
+  it('sem permissão de editar entregas não mostra o botão Duplicar post', async () => {
+    const owner = makeCan(fakeMembership({ role: 'owner' }));
+    authMock.can.mockImplementation((module, action) =>
+      module === 'entregas' && action === 'editar' ? false : owner(module, action),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByTitle('Remover post');
+    expect(screen.queryByTitle('Duplicar post')).not.toBeInTheDocument();
   });
 
   it('deletes the post through the confirm dialog and closes the drawer', async () => {

@@ -6,6 +6,7 @@ import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   X,
   Trash2,
+  CopyPlus,
   Link2,
   Maximize2,
   Minimize2,
@@ -74,6 +75,7 @@ import { PostTimelinePopover } from './PostTimelinePopover';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
 import { AttachToFluxoDialog } from './AttachToFluxoDialog';
 import { ApplyProcessDialog } from './ApplyProcessDialog';
+import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
 import { usePostProcessCommands } from '../hooks/usePostProcessCommands';
 import {
   canConcluir,
@@ -97,6 +99,8 @@ export interface StandalonePostDrawerProps {
    *  caller is expected to reveal the post's new "Individual" card on the
    *  Fluxos board (revealPostProcesses). */
   onProcessApplied?: (postId: number) => void;
+  /** Depois de "Duplicar post": o toast oferece "Abrir" com o id da cópia. */
+  onDuplicated?: (newPostId: number) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -113,6 +117,7 @@ export function StandalonePostDrawer({
   onRefresh,
   onAttached,
   onProcessApplied,
+  onDuplicated,
 }: StandalonePostDrawerProps) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -169,6 +174,8 @@ export function StandalonePostDrawer({
   // legacy agent already gets full write on instagram_comment_automations
   // everywhere else; only this drawer shortcut denied it.
   const canManageAutomations = can('automacoes', 'editar') === true;
+  const canDuplicate = can('entregas', 'editar') === true;
+  const [duplicateTarget, setDuplicateTarget] = useState<DuplicateTarget | null>(null);
 
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
@@ -672,6 +679,20 @@ export function StandalonePostDrawer({
                 />
                 <CopyPostLinkButton hubUrl={hubUrl} postId={postId} />
                 <CopyLinkButton path={`/entregas?post=${postId}`} label="Copiar link do post" />
+                {canDuplicate && post && (
+                  <button
+                    className="drawer-delete-btn"
+                    onClick={() =>
+                      setDuplicateTarget({ kind: 'post', postId, status: post.status })
+                    }
+                    // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
+                    disabled={isSaving}
+                    title="Duplicar post"
+                    aria-label="Duplicar post"
+                  >
+                    <CopyPlus className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <button
                   className="drawer-delete-btn"
                   onClick={() => setPendingDelete(true)}
@@ -792,6 +813,21 @@ export function StandalonePostDrawer({
         />
       )}
       {commands.dialogs}
+
+      <DuplicateDialog
+        target={duplicateTarget}
+        onClose={() => setDuplicateTarget(null)}
+        onDuplicated={(newId) => {
+          refresh();
+          onRefresh();
+          toast.success(
+            'Post duplicado',
+            onDuplicated
+              ? { action: { label: 'Abrir', onClick: () => onDuplicated(newId) } }
+              : undefined,
+          );
+        }}
+      />
 
       <AlertDialog open={pendingDelete} onOpenChange={(open) => !open && setPendingDelete(false)}>
         <AlertDialogContent>

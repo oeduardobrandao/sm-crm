@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  CopyPlus,
   ExternalLink,
   FileText,
   FolderMinus,
@@ -53,6 +54,8 @@ interface PostProcessCardProps {
    *  TODO(fluxos-cards-compactos): ligar a uma função de exclusão de post
    *  quando o fluxo de exclusão via card existir. */
   onDeleteClick?: () => void;
+  /** "Duplicar post": copia o post e o processo na mesma etapa. */
+  onDuplicateClick?: () => void;
 }
 
 /**
@@ -83,6 +86,7 @@ export function PostProcessCard({
   canRevert,
   onRemoveProcessClick,
   onDeleteClick,
+  onDuplicateClick,
 }: PostProcessCardProps) {
   const navigate = useNavigate();
   const registry = useStatusRegistry();
@@ -465,6 +469,17 @@ export function PostProcessCard({
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     Abrir
+                  </DropdownMenuItem>
+                )}
+                {onDuplicateClick && (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDuplicateClick();
+                    }}
+                  >
+                    <CopyPlus className="h-3.5 w-3.5" />
+                    Duplicar post
                   </DropdownMenuItem>
                 )}
                 {canRevert && onRevertClick && (

@@ -21,6 +21,7 @@ import {
   History,
   MoreVertical,
   Copy,
+  CopyPlus,
   CalendarClock,
 } from 'lucide-react';
 import {
@@ -131,6 +132,7 @@ import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 import { PostEditorBody } from './PostEditorBody';
 import { useClienteSocialAccounts } from '@/hooks/useClienteSocialAccounts';
 import { MovePostsToFluxoDialog } from './MovePostsToFluxoDialog';
+import { DuplicateDialog, type DuplicateTarget } from './DuplicateDialog';
 import { DetachPostsDialog } from './DetachPostsDialog';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 
@@ -248,6 +250,8 @@ export function WorkflowDrawer({
   // Mover para outro fluxo: same two entry points as detach (selection bar +
   // per-post kebab); the dialog itself carries the destination choice.
   const [moveTarget, setMoveTarget] = useState<number[] | null>(null);
+  // Duplicar post: entry point is the per-post kebab; the dialog owns the RPC.
+  const [duplicateTarget, setDuplicateTarget] = useState<DuplicateTarget | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -362,6 +366,7 @@ export function WorkflowDrawer({
   });
 
   const { user, role, can } = useAuth();
+  const canDuplicate = can('entregas', 'editar') === true;
   // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
   // -- AGENT_ROLE_PRESET.automacoes is 'editar' (lib/permissions.ts), so a
   // legacy agent already gets full write on instagram_comment_automations
@@ -1103,6 +1108,16 @@ export function WorkflowDrawer({
                           onSelectChange={(checked) => toggleSelectPost(post.id!, checked)}
                           onDetachRequest={() => openDetachConfirm([post.id!])}
                           onMoveRequest={() => setMoveTarget([post.id!])}
+                          onDuplicateRequest={
+                            canDuplicate
+                              ? () =>
+                                  setDuplicateTarget({
+                                    kind: 'post',
+                                    postId: post.id!,
+                                    status: post.status,
+                                  })
+                              : undefined
+                          }
                           onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
                           onDelete={() => handleDeletePost(post.id!)}
                           onFieldChange={(field, value) =>
@@ -1276,6 +1291,17 @@ export function WorkflowDrawer({
         isTotalSelection={(moveTarget?.length ?? 0) === posts.length}
         onMoved={handleMoved}
       />
+
+      <DuplicateDialog
+        target={duplicateTarget}
+        onClose={() => setDuplicateTarget(null)}
+        onDuplicated={(newId) => {
+          refresh();
+          setExpandedId(newId);
+          setScrollTargetId(newId);
+          toast.success('Post duplicado');
+        }}
+      />
     </>
   );
 }
@@ -1312,6 +1338,8 @@ interface SortablePostItemProps {
   onSelectChange: (checked: boolean) => void;
   onDetachRequest: () => void;
   onMoveRequest: () => void;
+  /** "Duplicar post". Ausente quando o usuário não pode editar entregas. */
+  onDuplicateRequest?: () => void;
   onToggle: () => void;
   onDelete: () => void;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
@@ -1371,6 +1399,7 @@ function SortablePostItem({
   onSelectChange,
   onDetachRequest,
   onMoveRequest,
+  onDuplicateRequest,
   onToggle,
   onDelete,
   onFieldChange,
@@ -1517,6 +1546,13 @@ function SortablePostItem({
                 <Copy className="h-3.5 w-3.5" />
                 Copiar link do post
               </DropdownMenuItem>
+              {onDuplicateRequest && (
+                // Com um save de conteúdo pendente ou em voo a cópia sairia sem a edição.
+                <DropdownMenuItem onClick={onDuplicateRequest} disabled={isSaving}>
+                  <CopyPlus className="h-3.5 w-3.5" />
+                  Duplicar post
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={onMoveRequest}>Mover para outro fluxo</DropdownMenuItem>
               <DropdownMenuItem onClick={onDetachRequest}>Desmembrar do fluxo</DropdownMenuItem>
             </DropdownMenuContent>

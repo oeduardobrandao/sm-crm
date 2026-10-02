@@ -210,3 +210,25 @@ describe('PostProcessCard', () => {
     expect(screen.queryByText(/remover processo/i)).toBeNull();
   });
 });
+
+describe('PostProcessCard: Duplicar post', () => {
+  it('mostra o item e chama onDuplicateClick sem abrir o card', () => {
+    const onClick = vi.fn();
+    const onDuplicateClick = vi.fn();
+    render(
+      <PostProcessCard
+        entity={makeEntity()}
+        onClick={onClick}
+        onDuplicateClick={onDuplicateClick}
+      />,
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: /Duplicar post/ }));
+    expect(onDuplicateClick).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('sem onDuplicateClick não mostra o item', () => {
+    render(<PostProcessCard entity={makeEntity()} />);
+    expect(screen.queryByRole('menuitem', { name: /Duplicar post/ })).not.toBeInTheDocument();
+  });
+});
