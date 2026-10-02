@@ -57,17 +57,32 @@ Two related findings:
   This mirrors `isPostClientVisible`; the visible-status set already exists in
   `em-producao.ts` (`CLIENT_VISIBLE_STATUSES`), so export it and reuse it rather than adding a
   third copy.
-- Filter **before** signing: media links, approvals, suggestions, property values and inline
-  content keys of dropped posts are discarded, and nothing for them is signed or returned.
-  Phase 2 still queries with the full id list, so there is no extra round trip; the waste is a
-  few DB rows server-side.
-- `post_approvals` and `post_file_links` go through `fetchAllRows` (`_shared/paginate.ts`) with
-  a stable order ending in `id` (`created_at, id` and `sort_order, id`), as the helper's
-  contract requires. The helper throws on a page error; catch it there and keep today's
-  behaviour: log and continue with `[]`.
-- Cost: the helper stops only on an empty page (safe whatever prod's `max-rows` is), so these
-  two lookups take one extra round trip each. They run inside the parallel phase 2, so phase 2
-  gets about one round trip longer. Accepted for correctness.
+- Filter **before** signing and serializing. Phase 2 still queries with the full id list (no
+  extra round trip; the waste is a few DB rows server-side), so every response field is then
+  pruned to the visible set. With `V` = visible post ids and `W` = their non-null
+  `workflow_id`s:
+  - `posts`: only `V`.
+  - `postApprovals`, `propertyValues`: rows whose `post_id` is in `V`.
+  - `workflowSelectOptions`, `autoPublishSuspendedWorkflowIds`: entries whose workflow is in `W`.
+  - `autoPublishSuspendedPostIds`: ids in `V`.
+  - Media links and inline content keys (post `conteudo` and pending suggestions): only for `V`,
+    so nothing outside it is signed.
+- **Row cap.** Lookups whose row count grows as posts × N go through `fetchAllRows`
+  (`_shared/paginate.ts`) with a total order ending in `id`, as the helper's contract requires:
+  `post_approvals` (`created_at, id`), `post_file_links` (`sort_order, id`),
+  `post_property_values` (`id`), and rejected `post_edit_suggestions` (`updated_at desc, id`).
+  The helper throws on a page error; catch it and keep today's behaviour per lookup (log and
+  continue with `[]`).
+- The rest have a cardinality bounded per post or per workflow, stated here so it is a
+  decision rather than an oversight: pending suggestions (at most one per post; prod max 1),
+  `post_processes` (one `ativo` per avulso post), `post_process_steps` (a handful per process),
+  `workflow_select_options` (per workflow, not per post), and the posts query itself (bounded
+  by PR 2). Each of these logs `[hub-posts] row cap reached: <table>` when it returns exactly
+  1000 rows, so truncation is never silent.
+- Cost: the helper stops only on an empty page (safe whatever prod's `max-rows` is), so each
+  paged lookup takes one extra round trip. They all run concurrently inside phase 2, so phase 2
+  gets about one round trip longer in total. Accepted for correctness. Prod today: max 116
+  approvals, 104 property values and 8 rejected suggestions per client.
 
 Behaviour change, visible to clients: Home's "Posts este mês" and "Próximo post" count every
 status today (`HomePage.tsx` reads the unfiltered list), so drafts the client never saw stop
@@ -92,13 +107,25 @@ malformed cursor (unparseable date, non-integer id) is a 400.
 **Cutoff.** Start of the UTC day 90 days before now. It only moves once a day, so refetches
 within a day agree on what the shell holds.
 
+**`published_at` and `scheduled_at` diverge.** Of 1,954 published posts with both dates, 264
+were published more than a day after their scheduled date (up to 65 days) and 38 more than a
+day before it (up to 30 days). The calendar and the Postagens month buckets place posts by
+`scheduled_at`, so `published_at` paging cannot tell the calendar when a month is complete.
+The calendar therefore gets its own date-range mode (below), and the shell includes a
+published post if **either** date is recent.
+
 **Default (shell).**
 
-- Posts: `status <> 'postado'` OR `published_at >= cutoff`
-  (`or=(status.neq.postado,published_at.gte.<cutoff>)`), conta/cliente scoped as today.
+- Posts: `status <> 'postado'` OR `published_at >= cutoff` OR `scheduled_at >= cutoff`
+  (`or=(status.neq.postado,published_at.gte.<cutoff>,scheduled_at.gte.<cutoff>)`),
+  conta/cliente scoped as today. Every post with `scheduled_at >= cutoff` is therefore in the
+  shell, so calendar months that start on or after the cutoff are complete without more
+  requests.
 - In parallel in phase 1: one row of `status = 'postado' AND published_at < cutoff`
   (`limit 1`). If it exists, the response carries `olderCursor: "<cutoff>|0"` (with id 0,
-  "older than" reduces to `published_at < cutoff`); otherwise `olderCursor: null`.
+  "older than" reduces to `published_at < cutoff`) and `historyCutoff: "<cutoff ISO>"`;
+  otherwise both are `null`. A post in the shell because of its `scheduled_at` can also come
+  back in a history page; the client dedupes by id.
 
 **`?before=<cursor>` (history page).**
 
@@ -108,6 +135,16 @@ within a day agree on what the shell holds.
 - No `olderCursor`. "Em produção" never applies (no internal statuses), so that lookup is
   skipped by its existing empty-list guard.
 
+**`?from=<ISO>&to=<ISO>` (calendar range).**
+
+- Posts: `status = 'postado'` and `scheduled_at` in `[from, to)`, ordered by
+  `scheduled_at, id`. The browser sends its local month boundaries, so placement matches
+  `PostCalendar`'s local-day bucketing.
+- `to` must be after `from` and at most 45 days later, so one request is bounded to about a
+  month; otherwise 400.
+- Published posts with a null `scheduled_at` never appear on the calendar, so this mode never
+  needs them.
+
 **`?post_id=<int>` (single post).**
 
 - `.eq("id", postId)` plus the conta/cliente scoping. A non-integer id is a 400.
@@ -115,16 +152,23 @@ within a day agree on what the shell holds.
 - A post that is missing, belongs to another client, or is filtered out by the visibility rule
   returns 404 `"Post não encontrado."`. A draft must never come back through this mode.
 
-`before` and `post_id` together is a 400. The PATCH branch is unchanged.
+More than one of `before`, `from`/`to` and `post_id` is a 400. The PATCH branch is
+unchanged.
 
 **Types** (`apps/hub/src/types.ts`): `HubPostsResponse` gains optional
-`olderCursor?: string | null` and `nextCursor?: string | null`.
+`olderCursor?: string | null`, `historyCutoff?: string | null` and
+`nextCursor?: string | null`.
 
-No migration: `idx_workflow_posts_cliente` already narrows to a client's rows.
+**No migration.** `idx_workflow_posts_cliente` narrows every mode to one client's rows, at most
+116 today. Filtering and sorting a few hundred, or a couple of thousand, rows after the index
+lookup costs well under a millisecond, while the payload this design removes is ~1 MB. A
+partial index on `(cliente_id, published_at desc, id desc) where status = 'postado'` is the
+next step if a client passes ~5,000 posts or the history query shows up in
+`pg_stat_statements`. Not before.
 
 ### Frontend
 
-**Query keys.** All three live under the existing `['hub-posts', token]` prefix, so the
+**Query keys.** All four live under the existing `['hub-posts', token]` prefix, so the
 current `invalidateQueries({ queryKey: ['hub-posts', token] })` after approve/correction
 refreshes them and they inherit the 30s staleTime from `createHubQueryClient`:
 
@@ -132,25 +176,31 @@ refreshes them and they inherit the 30s staleTime from `createHubQueryClient`:
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `['hub-posts', token]`                         | shell (unchanged; prefetch, badges, Aprovações, polling)                                         |
 | `['hub-posts', token, 'history', olderCursor]` | `useInfiniteQuery`, `initialPageParam` = `olderCursor`, `getNextPageParam` = page's `nextCursor` |
+| `['hub-posts', token, 'range', from]`          | calendar range for one older month                                                               |
 | `['hub-posts', token, 'post', id]`             | single post                                                                                      |
 
-`api.ts` gains `fetchOlderPosts(token, before)` and `fetchPost(token, postId)`.
+`api.ts` gains `fetchOlderPosts(token, before)`, `fetchPostsInRange(token, from, to)` and
+`fetchPost(token, postId)`.
 
 **`useHubPosts(token, { history })`** (new, `queries.ts`):
 
 - Reads the shell. With `history: true`, also reads the infinite query. `useInfiniteQuery`
   fetches its first page as soon as it is enabled, so `enabled` is a local flag that stays
   false until the first `loadOlder()` call (and requires a non-null `olderCursor`); later calls
-  use `fetchNextPage`. Mounting Home or Postagens therefore makes no history request.
+  use `fetchNextPage`. Mounting Postagens therefore makes no history request.
 - The history key includes `olderCursor`. When the cutoff rolls over at midnight UTC in an open
   tab, the shell's refetch drops a day of published posts and returns a new cursor; keying on
   it starts a fresh history from that cursor instead of leaving the dropped day in neither
   list.
-- Returns `{ data, posts, isLoading, isError, loadOlder, hasOlder, isLoadingOlder }`.
+- `hasOlder` is `olderCursor != null` before the first `loadOlder()`, then
+  `hasNextPage`. A failed page leaves the button in place with "Tentar novamente";
+  `loadOlder()` retries it (`refetch` for the first page, `fetchNextPage` after).
+- Returns `{ data, posts, isLoading, isError, loadOlder, hasOlder, isLoadingOlder, olderError }`.
   `posts` is the shell's posts plus all history pages, deduplicated by id with the shell's copy
   winning. `data` is the shell response (KPIs, `autoPublish*`, `instagramProfile`).
-- Home and Postagens use it with `history: true`. Aprovações, `usePendingApprovalsCount` and
-  `HubPostChip` keep reading the shell only: every pending post is always in it.
+- Postagens uses it with `history: true`. Home, Aprovações, `usePendingApprovalsCount` and
+  `HubPostChip` read the shell only: every pending post is always in it, and the Home calendar
+  uses the range mode instead.
 
 **Postagens** (`PostagensPage.tsx`):
 
@@ -166,11 +216,15 @@ refreshes them and they inherit the 30s staleTime from `createHubQueryClient`:
 **Home calendar** (`HomePage.tsx`, `PostCalendar.tsx`):
 
 - `PostCalendar` gets an optional `onMonthChange(year, month)` and `loading` prop.
-- Home tracks the displayed month. While its first day is earlier than the oldest
-  `published_at` among loaded published posts (minus one day of slack for the
-  `scheduled_at`/`published_at` gap) and `hasOlder`, it calls `loadOlder()`, one page at a
-  time, never two in flight.
-- `loading` shows a light overlay on the grid; month navigation stays usable.
+- Home tracks the displayed month. When the shell has a `historyCutoff` and the month's local
+  start is before it, Home runs the range query for that month (`from` = local month start,
+  `to` = next month's local start) and merges its posts with the shell's, deduped by id.
+  Months starting on or after the cutoff, or any month when `historyCutoff` is null, need no
+  request.
+- One request per older month visited; revisiting it within the staleTime is free.
+- `loading` shows a light overlay on the grid; month navigation stays usable. A failed range
+  request shows the shell's posts for that month with a small "Não foi possível carregar este
+  mês" line and a retry.
 - KPIs keep reading the shell. "Taxa de aprovação" counts current `aprovado_cliente` vs
   `correcao_cliente`, both always in the shell, so it is unchanged by the bound.
 
@@ -192,7 +246,8 @@ The link is unchanged.
 ### Rollout
 
 The new frontend tolerates the old backend: it only calls `?before=` when `olderCursor` is
-non-null, which the old backend never sends, and it reads single posts with
+non-null and the range mode when `historyCutoff` is non-null, neither of which the old backend
+sends, and it reads single posts with
 `posts.find(id)`, so the old backend's full list (ignoring `post_id`) still works. The old
 frontend against the new backend loses posts older than 90 days in an already-open tab until
 the silent update reloads it.
@@ -206,10 +261,15 @@ Deno (`supabase/functions/__tests__/`, existing `supabaseMock`):
 
 - PR 1: never-sent draft dropped and its media not signed; em-produção internal post kept;
   approvals and media read through paging past one page.
-- PR 2: shell keeps a 200-day-old `enviado_cliente`/`aprovado_cliente` post and drops a
-  `postado` older than the cutoff; `olderCursor` null vs set; a history page breaks a tie on
-  `published_at` by id and returns `nextCursor: null` on the last page; malformed cursor and
-  `before`+`post_id` → 400; `post_id` of a draft and of another client's post → 404.
+- PR 1 pruning: a draft's approvals, property values, select options of a draft-only
+  workflow and its suspension ids are absent from the response.
+- PR 2: shell keeps a 200-day-old `enviado_cliente`/`aprovado_cliente` post, drops a
+  `postado` whose two dates are both older than the cutoff, and keeps one with an old
+  `published_at` but recent `scheduled_at`; `olderCursor`/`historyCutoff` null vs set; a
+  history page breaks a tie on `published_at` by id and returns `nextCursor: null` on the last
+  page; range mode returns by `scheduled_at` (including a post published 60 days after its
+  scheduled date) and rejects `to <= from` and ranges over 45 days; malformed cursor and any
+  two modes together → 400; `post_id` of a draft and of another client's post → 404.
 - `supabaseMock` dequeues per table + operation, so the new phase 1 `workflow_posts` select
   (the `limit 1` older check) shifts the queue for every existing hub-posts case in
   `hub-functions_test.ts`, including the single `files` query case from #622. Update those
@@ -222,7 +282,8 @@ Vitest (`apps/hub`):
   new `olderCursor` starts a fresh history.
 - Postagens: button shows and loads, hides when exhausted; deep link outside the list loads
   via single-post, 404 shows "não disponível", prev/next hidden.
-- Home calendar: navigating past the loaded range loads pages until covered, then stops.
+- Home calendar: a month before `historyCutoff` fetches exactly its local range once; a month
+  after it, or with `historyCutoff` null, fetches nothing; range posts merge with the shell's.
 - HubPostChip: hover on an id outside the shell uses the single-post query.
 
 Browser: Hub on :5175 against prod (`node scripts/with-env.mjs npm run dev:hub`) with the
@@ -234,6 +295,8 @@ anteriores", calendar back-navigation, an old deep link.
 - Rendering portal-visible properties in `PostDetailDialog` (separate task).
 - `blur_data_url` weight (~325 KB raw for the largest client): could move to the media
   thumbnails or be dropped for off-screen tiles; not addressed here.
+- Postagens month dropdown completeness: it lists months among loaded posts. An older month
+  appears once "Carregar posts anteriores" reaches it, which the visible button makes clear.
 - Stale `aprovado_cliente`/`enviado_cliente` posts that never advance: they stay in the shell
   by design (pending must never disappear), so a client with many of them still gets a larger
   first load.
