@@ -6,7 +6,9 @@ import { useHub } from '../HubContext';
 import { fetchPosts, fetchInstagramFeed } from '../api';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { PageHeader } from '../components/PageHeader';
-import { MediaFilterChips, type MediaFilter } from '../components/MediaFilterChips';
+import { MediaFilterDropdown, type MediaFilter } from '../components/MediaFilterDropdown';
+import { FloatingFilterBar } from '../components/FloatingFilterBar';
+import { FILTER_PILL_CLASS, filterPillStyle } from '../components/filterPill';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { PostGrid } from '../components/posts/PostGrid';
 import { PostDetailDialog } from '../components/posts/PostDetailDialog';
@@ -30,13 +32,9 @@ function SortToggle({
     { key: 'asc', label: t('aprovacoes.sort.oldest', 'Mais antigos') },
     { key: 'desc', label: t('aprovacoes.sort.newest', 'Mais recentes') },
   ];
+  // `contents`: the pills sit directly in the floating filter row, same shape as the filters.
   return (
-    <div
-      role="group"
-      aria-label={t('aprovacoes.sort.label', 'Ordenar por')}
-      className="inline-flex overflow-hidden rounded-full border"
-      style={{ borderColor: 'var(--hub-bd)' }}
-    >
+    <div role="group" aria-label={t('aprovacoes.sort.label', 'Ordenar por')} className="contents">
       {options.map((opt) => {
         const selected = value === opt.key;
         return (
@@ -45,12 +43,8 @@ function SortToggle({
             type="button"
             aria-pressed={selected}
             onClick={() => onChange(opt.key)}
-            className="px-3 py-1 text-[12px] font-semibold transition-colors"
-            style={
-              selected
-                ? { background: 'var(--hub-txt)', color: 'var(--hub-card)' }
-                : { color: 'var(--hub-tx2)' }
-            }
+            className={FILTER_PILL_CLASS}
+            style={filterPillStyle(selected)}
           >
             {opt.label}
           </button>
@@ -113,7 +107,7 @@ export function AprovacoesPage() {
   }, [pending.length]);
   const mediaCounts = useMemo(() => {
     const withMedia = pending.filter((p) => p.media.length > 0).length;
-    return { all: pending.length, withMedia, withoutMedia: pending.length - withMedia };
+    return { with: withMedia, without: pending.length - withMedia };
   }, [pending]);
   // What the grid AND the dialog receive, so prev/next, the strip and auto-advance follow
   // the on-screen order. `selectedPosts` below deliberately stays on the full pending list.
@@ -185,64 +179,77 @@ export function AprovacoesPage() {
             );
 
   return (
-    <div className="max-w-5xl mx-auto hub-fade-up">
-      <PageHeader
-        title={t('aprovacoes.title', 'Aprovações')}
-        description={description}
-        action={
-          instagramProfile &&
-          pending.length > 0 && (
-            <span className="flex items-center gap-2">
-              {mode === 'select' && (
-                <FeedPreviewButton
-                  selectedCount={selectedPosts.length}
-                  onClick={() => setShowGrid(true)}
-                />
-              )}
-              <button
-                type="button"
-                onClick={() => setMode((m) => (m === 'select' ? 'browse' : 'select'))}
-                className="rounded-[4px] border hub-border px-3 py-2 text-[13px] font-semibold hub-tx2"
-              >
-                {mode === 'select' ? t('posts.done', 'Concluir') : t('posts.select', 'Selecionar')}
-              </button>
-            </span>
-          )
-        }
-      />
+    // No `.hub-fade-up` on this wrapper: its lingering transform would trap the filter bar's
+    // `position: fixed` (see FloatingFilterBar). The header and content fade in on their own.
+    <div className="max-w-5xl mx-auto">
+      <div className="hub-fade-up">
+        <PageHeader
+          title={t('aprovacoes.title', 'Aprovações')}
+          description={description}
+          action={
+            instagramProfile &&
+            pending.length > 0 && (
+              <span className="flex items-center gap-2">
+                {mode === 'select' && (
+                  <FeedPreviewButton
+                    selectedCount={selectedPosts.length}
+                    onClick={() => setShowGrid(true)}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setMode((m) => (m === 'select' ? 'browse' : 'select'))}
+                  className="rounded-[4px] border hub-border px-3 py-2 text-[13px] font-semibold hub-tx2"
+                >
+                  {mode === 'select'
+                    ? t('posts.done', 'Concluir')
+                    : t('posts.select', 'Selecionar')}
+                </button>
+              </span>
+            )
+          }
+        />
+      </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-20">
+        <div className="hub-fade-up flex justify-center py-20">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
       ) : fatalError ? (
-        <div className="py-20 text-center text-sm hub-tx2">
+        <div className="hub-fade-up py-20 text-center text-sm hub-tx2">
           {t('aprovacoes.loadError', 'Erro ao carregar aprovações.')}
         </div>
       ) : (
         <>
           {pending.length > 0 && (
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-              <MediaFilterChips
+            <FloatingFilterBar>
+              <MediaFilterDropdown
                 value={mediaFilter}
                 counts={mediaCounts}
                 onChange={setMediaFilter}
               />
+              <span
+                aria-hidden="true"
+                className="mx-1 h-5 w-px shrink-0"
+                style={{ background: 'var(--hub-bd)' }}
+              />
               <SortToggle value={sortDir} onChange={setSortDir} />
-            </div>
+            </FloatingFilterBar>
           )}
           {pending.length > 0 && visiblePosts.length === 0 ? (
-            <p className="text-sm hub-tx2">
+            <p className="hub-fade-up text-sm hub-tx2">
               {t('aprovacoes.noResults', 'Nenhum post encontrado para este filtro.')}
             </p>
           ) : (
-            <PostGrid
-              posts={visiblePosts}
-              mode={mode}
-              selectedIds={selectedIds}
-              onOpen={handleOpen}
-              onToggle={handleToggleSelect}
-            />
+            <div className="hub-fade-up">
+              <PostGrid
+                posts={visiblePosts}
+                mode={mode}
+                selectedIds={selectedIds}
+                onOpen={handleOpen}
+                onToggle={handleToggleSelect}
+              />
+            </div>
           )}
           <PostDetailDialog
             fallbackTitle={t('aprovacoes.title', 'Aprovações')}

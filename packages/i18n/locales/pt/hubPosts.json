@@ -46,11 +46,6 @@
     "selectHint": "Selecione posts para visualizar como ficarão no feed do Instagram.",
     "loadError": "Erro ao carregar aprovações.",
     "noResults": "Nenhum post encontrado para este filtro.",
-    "mediaFilter": {
-      "label": "Filtrar por mídia",
-      "with": "Com mídia",
-      "without": "Sem mídia"
-    },
     "sort": {
       "label": "Ordenar por",
       "oldest": "Mais antigos",
@@ -67,6 +62,12 @@
     "filter": {
       "label": "Filtrar por status",
       "all": "Todos"
+    },
+    "mediaFilter": {
+      "label": "Filtrar por mídia",
+      "all": "Com e sem mídia",
+      "with": "Com mídia",
+      "without": "Sem mídia"
     },
     "monthFilter": {
       "label": "Filtrar por mês",

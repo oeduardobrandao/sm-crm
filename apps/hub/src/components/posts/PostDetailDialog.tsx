@@ -10,9 +10,11 @@ import {
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
+  CalendarDays,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
+  FolderKanban,
   ImageOff,
   Lock,
   PencilLine,
@@ -35,7 +37,7 @@ import {
 } from '../../lib/postView';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { HubDialog } from '../ui/HubDialog';
-import { formatDate, PlatformBadge } from '../PostCard';
+import { formatDate, getPlatformLabel } from '../PostCard';
 import { PostHistoryPanel } from '../PostHistoryPanel';
 import { PostMediaLightbox } from '../PostMediaLightbox';
 import { RichTextContent } from '../RichTextContent';
@@ -244,6 +246,7 @@ function PostDetailContent({
   onCancelHold,
 }: ContentProps) {
   const { t, i18n } = useTranslation('hubPosts');
+  const { t: tCard } = useTranslation('hubPostCard');
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const kind = pickPostCardKind(post);
   const isPending = post.status === 'enviado_cliente';
@@ -446,34 +449,51 @@ function PostDetailContent({
     setSuggestionView('diff');
   }, []);
 
+  // One status tag, then the post's facts as plain text. Five same-weight pills (status,
+  // type, platform, date, workflow) wrapped into a ragged block that read as noise; only the
+  // status is a state the client acts on, so only it keeps a tag.
+  const typeLabel =
+    kind === 'story'
+      ? t('posts.storyFrames', 'Story · {{count}}', { count: post.media.length })
+      : kind === 'text'
+        ? `${getTipoLabel(t, post.tipo)} · ${t('posts.noMedia', 'Sem mídia')}`
+        : post.media.length > 1
+          ? `${getTipoLabel(t, post.tipo)} · ${t('posts.slides', '{{count}} slides', { count: post.media.length })}`
+          : getTipoLabel(t, post.tipo);
+  const dot = (
+    <span aria-hidden="true" className="mx-1.5 hub-tx3">
+      ·
+    </span>
+  );
   const chips = (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <StatusTag status={getPostPublishState(post)} size="md" />
-      <span className="rounded-full hub-bg-soft hub-tx2 text-[12px] px-2 py-0.5">
-        {kind === 'story'
-          ? t('posts.storyFrames', 'Story · {{count}}', { count: post.media.length })
-          : kind === 'text'
-            ? `${getTipoLabel(t, post.tipo)} · ${t('posts.noMedia', 'Sem mídia')}`
-            : post.media.length > 1
-              ? `${getTipoLabel(t, post.tipo)} · ${t('posts.slides', '{{count}} slides', { count: post.media.length })}`
-              : getTipoLabel(t, post.tipo)}
-      </span>
-      <PlatformBadge platform={post.platform} />
-      {post.ig_trial_strategy && (
-        <span
-          className="rounded-full border text-[12px] px-2 py-0.5"
-          style={{ color: 'var(--hub-acc)', borderColor: 'var(--hub-acc)' }}
-        >
-          {t('shared.reelDeTeste', 'Reel de teste')}
-        </span>
-      )}
-      <span className="rounded-full hub-bg-soft hub-tx2 text-[12px] px-2 py-0.5">
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-1.5 pb-1">
+        <StatusTag status={getPostPublishState(post)} size="md" />
+        {post.ig_trial_strategy && (
+          <span
+            className="inline-flex items-center rounded-[4px] border text-[12px] font-semibold px-2 py-0.5"
+            style={{ color: 'var(--hub-acc)', borderColor: 'var(--hub-acc)' }}
+          >
+            {t('shared.reelDeTeste', 'Reel de teste')}
+          </span>
+        )}
+      </div>
+      <p className="text-[13px] leading-snug hub-tx2">
+        {typeLabel}
+        {dot}
+        {getPlatformLabel(tCard, post.platform ?? 'instagram')}
+      </p>
+      <p className="flex items-center gap-1.5 text-[12.5px] hub-tx2">
+        <CalendarDays size={13} aria-hidden="true" className="shrink-0 hub-tx3" />
         {formatDate(post.scheduled_at, dateLang)}
-      </span>
+      </p>
       {post.workflow_titulo && (
-        <span className="rounded-full hub-bg-soft hub-tx2 text-[12px] px-2 py-0.5">
-          {post.workflow_titulo}
-        </span>
+        <p className="flex items-start gap-1.5 min-w-0 text-[12.5px] leading-snug hub-tx3">
+          <FolderKanban size={13} aria-hidden="true" className="shrink-0 mt-[2px]" />
+          <span className="line-clamp-2" title={post.workflow_titulo}>
+            {post.workflow_titulo}
+          </span>
+        </p>
       )}
     </div>
   );
