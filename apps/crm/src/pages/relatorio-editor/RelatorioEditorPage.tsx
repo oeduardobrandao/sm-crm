@@ -217,6 +217,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
           commit(updateBlockConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
         }
         highlightId={highlightId}
+        imageContext={{ mode: 'report', clientId: doc.client_id }}
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor
             key={block.id}

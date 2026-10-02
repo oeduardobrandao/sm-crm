@@ -161,6 +161,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
           commit(updateBlockConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
         }
         highlightId={highlightId}
+        imageContext={{ mode: 'template' }}
         renderTextBlock={(block: ReportBlock) =>
           block.type === 'text' ? (
             <TextBlockEditor
