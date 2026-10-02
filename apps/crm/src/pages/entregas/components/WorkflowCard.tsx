@@ -28,14 +28,7 @@ import { getInitials } from '@/lib/initials';
 import { WorkflowTimelinePopover } from './WorkflowTimelinePopover';
 import { DeadlinePill } from './DeadlinePill';
 import { etapaDeadlineDate } from '../etapaPrazo';
-
-// Deadline accent colors mapped from class name
-const deadlineAccent: Record<string, string> = {
-  'deadline-ok': '#3ecf8e',
-  'deadline-caution': '#eab308',
-  'deadline-warning': '#ea580c',
-  'deadline-overdue': '#ef4444',
-};
+import { progressColor } from '../progressColor';
 
 interface WorkflowCardProps {
   card: BoardCard;
@@ -120,7 +113,7 @@ export function WorkflowCard({
       })
     : null;
 
-  const accent = deadlineAccent[deadlineClass] ?? '#3ecf8e';
+  const progressFill = progressColor(card.etapaIdx, card.totalEtapas);
 
   return (
     <div
@@ -562,7 +555,7 @@ export function WorkflowCard({
             style={{
               height: '100%',
               width: `${progressPct}%`,
-              background: accent,
+              background: progressFill,
               borderRadius: '999px',
               transition: 'width 0.4s ease',
               opacity: 0.85,

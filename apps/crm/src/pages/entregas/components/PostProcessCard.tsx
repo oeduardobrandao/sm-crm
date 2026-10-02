@@ -26,14 +26,8 @@ import type { PostEntity } from '../boardEntity';
 import { TIPO_LABELS } from '../postLabels';
 import { PostStatusChip } from './PostStatusChip';
 import { DeadlinePill } from './DeadlinePill';
+import { progressColor } from '../progressColor';
 import type { WorkflowPost } from '../../../store';
-
-const deadlineAccent: Record<string, string> = {
-  'deadline-ok': '#3ecf8e',
-  'deadline-caution': '#eab308',
-  'deadline-warning': '#ea580c',
-  'deadline-overdue': '#ef4444',
-};
 
 interface PostProcessCardProps {
   entity: PostEntity;
@@ -113,7 +107,7 @@ export function PostProcessCard({
   const etapaIdx = entity.steps.findIndex((s) => s.ordem === entity.etapaOrdem);
   const total = entity.steps.length;
   const progressPct = total > 0 && etapaIdx >= 0 ? Math.round((etapaIdx / total) * 100) : 0;
-  const accent = hasDeadline ? (deadlineAccent[deadlineClass] ?? '#3ecf8e') : '#3ecf8e';
+  const progressFill = progressColor(etapaIdx, total);
   const post = entity.process.post;
   const cliente = entity.cliente;
   const TipoIcon = TIPO_ICONS[post.tipo];
@@ -352,7 +346,7 @@ export function PostProcessCard({
             style={{
               height: '100%',
               width: `${progressPct}%`,
-              background: accent,
+              background: progressFill,
               borderRadius: '999px',
               opacity: 0.85,
             }}
