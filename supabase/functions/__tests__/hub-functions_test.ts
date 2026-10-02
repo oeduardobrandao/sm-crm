@@ -2644,6 +2644,73 @@ Deno.test("hub-posts: skips R2 keys not found in files table", async () => {
   assertEquals(signedKeys.length, 0);
 });
 
+Deno.test("hub-posts: validates post and suggestion inline-image keys in a single files query", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 1,
+        titulo: "Post com sugestão",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo: { type: "doc", content: [{ type: "inlineImage", attrs: { r2Key: "contas/conta-1/files/post.png" } }] },
+        conteudo_plain: "",
+        scheduled_at: null,
+        workflow_id: 7,
+        workflows: { titulo: "Cal", created_at: "2026-04-01" },
+      },
+    ],
+    error: null,
+  });
+  // Pending suggestion first, rejected second: same table, queued in call order.
+  db.queue("post_edit_suggestions", "select", {
+    data: [
+      {
+        id: 5,
+        post_id: 1,
+        suggested_conteudo: {
+          type: "doc",
+          content: [{ type: "inlineImage", attrs: { r2Key: "contas/conta-1/files/suggestion.png" } }],
+        },
+        suggested_conteudo_plain: "",
+        suggested_ig_caption: null,
+        changed_fields: ["conteudo"],
+        updated_at: "2026-04-10T10:00:00.000Z",
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_edit_suggestions", "select", { data: [], error: null });
+  db.queue("files", "select", {
+    data: [{ r2_key: "contas/conta-1/files/post.png" }, { r2_key: "contas/conta-1/files/suggestion.png" }],
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed/${key}`,
+    rateLimit: async () => true,
+  });
+
+  const res = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(res);
+  assertEquals(res.status, 200);
+  assertEquals(db.calls.filter((c: { table: string }) => c.table === "files").length, 1);
+  assertEquals(body.posts[0].conteudo.content[0].attrs.src, "https://signed/contas/conta-1/files/post.png");
+  assertEquals(
+    body.posts[0].pending_suggestion.suggested_conteudo.content[0].attrs.src,
+    "https://signed/contas/conta-1/files/suggestion.png",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // hub-edit-suggestion
 // ---------------------------------------------------------------------------

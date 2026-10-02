@@ -1,4 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 
@@ -16,6 +18,13 @@ import { fetchBootstrap } from '../../api';
 import { HubShell } from '../HubShell';
 
 const mockedFetchBootstrap = vi.mocked(fetchBootstrap);
+
+// HubShell reads bootstrap through React Query; a fresh client per render keeps
+// one test's cached bootstrap from answering the next.
+function render(ui: ReactElement) {
+  const qc = new QueryClient();
+  return rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
 
 describe('HubShell', () => {
   beforeEach(() => {

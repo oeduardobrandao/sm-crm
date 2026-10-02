@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Outlet, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { HubContext } from '../HubContext';
 import { HubSidebar } from './HubSidebar';
@@ -15,17 +16,21 @@ import {
   type HubRadius,
   type HubCardStyle,
 } from '../theme';
-import { fetchBootstrap } from '../api';
-import type { HubBootstrap } from '../types';
+import { hubBootstrapQuery } from '../queries';
 
 const FONT_LINK_ID = 'hub-custom-fonts';
 
 export function HubShell() {
   const { workspace, token } = useParams<{ workspace: string; token: string }>();
   const { t } = useTranslation();
-  const [bootstrap, setBootstrap] = useState<HubBootstrap | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Usually already in flight: main.tsx prefetches it before the page chunk loads.
+  const bootstrapQuery = useQuery({
+    ...hubBootstrapQuery(workspace ?? '', token ?? ''),
+    enabled: !!workspace && !!token,
+  });
+  const bootstrap = bootstrapQuery.data ?? null;
+  const error = bootstrapQuery.error?.message ?? null;
+  const loading = bootstrapQuery.isPending;
   const { theme, toggleTheme, setTheme, hasStoredPreference } = useTheme();
   const ht = bootstrap?.hub_theme;
   // Defense in depth: hub-bootstrap already fails closed (serves NEUTRAL_HUB_THEME
@@ -41,14 +46,6 @@ export function HubShell() {
   // defaults, even if a stale/tampered payload carries contrary values.
   const effectiveHideBranding = isCustomized ? (ht?.hide_branding ?? false) : false;
   const appliedDefaultAppearance = useRef(false);
-
-  useEffect(() => {
-    if (!workspace || !token) return;
-    fetchBootstrap(workspace, token)
-      .then(setBootstrap)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [workspace, token]);
 
   useEffect(() => {
     if (!bootstrap?.workspace.logo_url) return;
