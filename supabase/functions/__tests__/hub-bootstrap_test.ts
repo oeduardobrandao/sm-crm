@@ -144,6 +144,47 @@ Deno.test("a throwing touchToken must NOT break the client's portal", async () =
   assertEquals(res.status, 200);
 });
 
+Deno.test("post-auth lookups run alongside touchToken, not behind it", async () => {
+  const db = makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true });
+  // resolveHubToken's feature_hub_portal check is RPC #1; the three plan
+  // features the bootstrap serves are #2-#4.
+  let rpcCalls = 0;
+  let allFeaturesStarted!: () => void;
+  const featuresStarted = new Promise<void>((resolve) => (allFeaturesStarted = resolve));
+  const rpc = db.rpc;
+  db.rpc = async () => {
+    if (++rpcCalls === 4) allFeaturesStarted();
+    return await rpc();
+  };
+
+  let touchWaitedOut = false;
+  let timer: number | undefined;
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () => db as any,
+    now: () => NOW,
+    // Serial code would only start the feature RPCs after this resolves, so it
+    // would sit out the full timeout.
+    touchToken: () =>
+      Promise.race([
+        featuresStarted,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(() => {
+            touchWaitedOut = true;
+            resolve();
+          }, 500);
+        }),
+      ]),
+    rateLimit: async () => true,
+  });
+
+  const res = await handler(req());
+  clearTimeout(timer);
+  assertEquals(res.status, 200);
+  assertEquals(touchWaitedOut, false);
+  assertEquals(rpcCalls, 4);
+});
+
 Deno.test("feature_mensagens reflects the effective_plan_feature RPC result", async () => {
   const handler = createHubBootstrapHandler({
     buildCorsHeaders: cors,

@@ -61,20 +61,20 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
     );
     if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
 
+    // Past the auth gate, every lookup below only needs the resolved token and
+    // workspace, so they run concurrently: one round trip instead of six.
+    // Each keeps its own fail-safe, so none can break the portal for the others.
+
     // Sliding window: keep an in-use link alive. Throttled inside the SQL function.
     // Defence in depth — index.ts already swallows errors, but a handler-level catch
     // guarantees no renewal fault can ever reach the client.
-    try {
-      await deps.touchToken(token);
-    } catch {
-      // intentionally ignored
-    }
-
-    const { data: cliente } = await db
-      .from("clientes")
-      .select("nome, foto_url")
-      .eq("id", hubToken.cliente_id)
-      .single();
+    const touch = async () => {
+      try {
+        await deps.touchToken(token);
+      } catch {
+        // intentionally ignored
+      }
+    };
 
     // The client's photo: a manually-uploaded one (clientes.foto_url) takes
     // precedence, falling back to their connected Instagram avatar, cached to
@@ -82,47 +82,45 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
     // expire). Clients with neither are normal, so the IG lookup is
     // best-effort: a miss just falls back to the initial, it must never fail
     // the whole bootstrap.
-    let igFotoUrl: string | null = null;
-    try {
-      const { data: igAccount } = await db
-        .from("instagram_accounts")
-        .select("profile_picture_url")
-        .eq("client_id", hubToken.cliente_id)
-        .maybeSingle();
-      igFotoUrl = igAccount?.profile_picture_url || null;
-    } catch {
-      // intentionally ignored — falls back to the client's initial
-    }
-    const clienteFotoUrl = cliente?.foto_url || igFotoUrl || null;
+    const loadIgFotoUrl = async (): Promise<string | null> => {
+      try {
+        const { data: igAccount } = await db
+          .from("instagram_accounts")
+          .select("profile_picture_url")
+          .eq("client_id", hubToken.cliente_id)
+          .maybeSingle();
+        return igAccount?.profile_picture_url || null;
+      } catch {
+        return null; // falls back to the client's initial
+      }
+    };
 
     // Fail closed: an entitlements RPC hiccup must never break the client's portal —
-    // same defence-in-depth principle as touchToken above, just hiding one nav item
-    // instead of silently doing nothing.
-    let featureMensagens = false;
-    try {
-      featureMensagens = await effectivePlanFeature(db as any, conta.id, "feature_mensagens");
-    } catch {
-      // intentionally ignored — defaults to false
-    }
+    // same defence-in-depth principle as touchToken above. A failed lookup reads as
+    // "not entitled": it hides the Mensagens nav item, the briefing's audio recorder,
+    // or serves the neutral theme, never an error.
+    const feature = async (key: string): Promise<boolean> => {
+      try {
+        return await effectivePlanFeature(db as any, conta.id, key);
+      } catch {
+        return false;
+      }
+    };
 
-    // Fail closed, same defence-in-depth principle as above: an entitlements RPC
-    // hiccup must never break the client's portal — here it just hides the
-    // briefing's audio recorder.
-    let featureBriefingAudio = false;
-    try {
-      featureBriefingAudio = await effectivePlanFeature(db as any, conta.id, "feature_briefing_audio");
-    } catch {
-      // intentionally ignored — defaults to false
-    }
-
-    // Fail closed, same defence-in-depth principle as above: an entitlements RPC
-    // hiccup must never break the client's portal.
-    let brandCustomization = false;
-    try {
-      brandCustomization = await effectivePlanFeature(db as any, conta.id, "feature_brand_customization");
-    } catch {
-      // intentionally ignored — defaults to false
-    }
+    const [, { data: cliente }, igFotoUrl, featureMensagens, featureBriefingAudio, brandCustomization] =
+      await Promise.all([
+        touch(),
+        db
+          .from("clientes")
+          .select("nome, foto_url")
+          .eq("id", hubToken.cliente_id)
+          .single(),
+        loadIgFotoUrl(),
+        feature("feature_mensagens"),
+        feature("feature_briefing_audio"),
+        feature("feature_brand_customization"),
+      ]);
+    const clienteFotoUrl = cliente?.foto_url || igFotoUrl || null;
 
     // When the plan lacks the feature, stored hub_* columns are IGNORED and neutral
     // defaults are served instead — hide_branding: true must never reach a client
