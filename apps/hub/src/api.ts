@@ -103,6 +103,18 @@ export function fetchPosts(token: string) {
   return get<HubPostsResponse>('hub-posts', { token });
 }
 
+export function fetchOlderPosts(token: string, before: string) {
+  return get<HubPostsResponse>('hub-posts', { token, before });
+}
+
+export function fetchPostsInRange(token: string, from: string, to: string) {
+  return get<HubPostsResponse>('hub-posts', { token, from, to });
+}
+
+export function fetchPost(token: string, postId: number) {
+  return get<HubPostsResponse>('hub-posts', { token, post_id: String(postId) });
+}
+
 export function submitApproval(
   token: string,
   post_id: number,

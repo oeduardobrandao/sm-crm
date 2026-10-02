@@ -336,6 +336,13 @@ export interface HubPostsResponse {
   /** Posts avulsos com processo individual que ainda tem outra etapa de
    * aprovação adiante: aprovar agora NÃO autoagenda (espelha hub-approve). */
   autoPublishSuspendedPostIds?: number[];
+  /** Shell only: present when published posts older than the 90-day window exist. Opaque;
+   * pass it back as `before`. Absent from older backends, which return everything. */
+  olderCursor?: string | null;
+  /** Shell only: the window's start (ISO). Calendar months starting before it need a range fetch. */
+  historyCutoff?: string | null;
+  /** History pages only: the next page's cursor, null on the last page. */
+  nextCursor?: string | null;
 }
 
 export interface DashboardTopPost {

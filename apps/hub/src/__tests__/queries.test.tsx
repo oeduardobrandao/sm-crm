@@ -1,15 +1,26 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClientProvider, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', () => ({
   fetchBootstrap: vi.fn(),
   fetchPosts: vi.fn(),
+  fetchOlderPosts: vi.fn(),
+  fetchPostsInRange: vi.fn(),
+  fetchPost: vi.fn(),
 }));
 
-import { fetchBootstrap, fetchPosts } from '../api';
-import { createHubQueryClient, hubBootstrapQuery, prefetchHubShell } from '../queries';
+import { fetchBootstrap, fetchOlderPosts, fetchPosts, fetchPostsInRange } from '../api';
+import {
+  createHubQueryClient,
+  hubBootstrapQuery,
+  hubPostsHistoryKey,
+  hubPostsQuery,
+  hubPostsRangeQuery,
+  invalidateHubPosts,
+  prefetchHubShell,
+} from '../queries';
 
 const mockedFetchBootstrap = vi.mocked(fetchBootstrap);
 const mockedFetchPosts = vi.mocked(fetchPosts);
@@ -79,5 +90,45 @@ describe('prefetchHubShell', () => {
 
     expect(result.current.error?.message).toBe('Link inválido.');
     expect(mockedFetchBootstrap).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('invalidateHubPosts', () => {
+  it('refetches the shell but only marks loaded history pages and range months stale', async () => {
+    mockedFetchPosts.mockReset().mockResolvedValue({ posts: [] } as never);
+    const olderMock = vi
+      .mocked(fetchOlderPosts)
+      .mockReset()
+      .mockResolvedValue({ posts: [], nextCursor: null } as never);
+    const rangeMock = vi
+      .mocked(fetchPostsInRange)
+      .mockReset()
+      .mockResolvedValue({ posts: [] } as never);
+    const qc = createHubQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    renderHook(
+      () => {
+        useQuery(hubPostsQuery('tk'));
+        useInfiniteQuery({
+          queryKey: hubPostsHistoryKey('tk', 'c|0'),
+          queryFn: ({ pageParam }) => fetchOlderPosts('tk', pageParam),
+          initialPageParam: 'c|0',
+          getNextPageParam: () => undefined,
+        });
+        useQuery(hubPostsRangeQuery('tk', '2025-11-01T03:00:00.000Z', '2025-12-01T03:00:00.000Z'));
+      },
+      { wrapper },
+    );
+    await waitFor(() => expect(rangeMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(olderMock).toHaveBeenCalledTimes(1));
+
+    await invalidateHubPosts(qc, 'tk');
+
+    expect(mockedFetchPosts).toHaveBeenCalledTimes(2);
+    expect(olderMock).toHaveBeenCalledTimes(1);
+    expect(rangeMock).toHaveBeenCalledTimes(1);
+    expect(qc.getQueryState(hubPostsHistoryKey('tk', 'c|0'))?.isInvalidated).toBe(true);
   });
 });
