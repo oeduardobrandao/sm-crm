@@ -1768,6 +1768,7 @@ export default function EntregasPage() {
           onRefresh={refresh}
           onAttached={handlePostAttached}
           onProcessApplied={(id) => revealPostProcesses([id])}
+          onDuplicated={(id) => setStandalonePostId(id)}
         />
       )}
       {applyTarget && (
