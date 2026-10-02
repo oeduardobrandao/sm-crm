@@ -40,7 +40,9 @@ duplicate_workflow(p_workflow_id bigint, p_to_rascunho boolean) RETURNS bigint  
   `conta_id IN (SELECT get_my_conta_id())`. Origem inexistente ou de outro workspace levanta o
   mesmo erro genérico (`not_found`), sem distinguir os dois casos.
 - `REVOKE ALL ... FROM PUBLIC, anon` com os papéis nomeados (REVOKE só de PUBLIC não tira de
-  anon/authenticated no hosted) e `GRANT EXECUTE ... TO authenticated`.
+  anon/authenticated no hosted) e `GRANT EXECUTE ... TO authenticated, service_role` (o REVOKE
+  de PUBLIC também tira o `service_role`, ver AGENTS.md). A função interna `_clone_post_row`
+  recebe `REVOKE ALL ... FROM PUBLIC, anon, authenticated` e `GRANT EXECUTE ... TO service_role`.
 - Qualquer membro pode duplicar (owner, admin e agent), igual a criar post hoje: a RLS de
   `workflow_posts` não restringe por papel.
 - Tudo numa transação. Os triggers de limite de plano (`trg_limit_posts`,
@@ -75,19 +77,30 @@ regenerado a partir da mídia (`ensureStorySegments`), então zerar não perde e
 |---|---|---|
 | qualquer | `rascunho`, `custom_status_id = null` | ver linhas abaixo |
 | rascunho, revisão interna, aprovado interno, enviado ao cliente, aprovado pelo cliente, correção | (linha acima) | mesmo `status` e mesmo `custom_status_id` |
-| agendado, postado, falha_publicacao | (linha acima) | `aprovado_cliente`, `custom_status_id = null` |
+| agendado, postado, falha_publicacao | (linha acima) | `aprovado_cliente`, `custom_status_id` já é null |
 
-O `custom_status_id` só fica quando o `status` fica. Um status customizado que se comporta como
-agendado/postado/falha cai na terceira linha, senão o trigger z1 forçaria o `status` de volta
-para o `behaves_as`. Inserir com qualquer status não dispara eventos de status, automações nem
+`post_status_definitions.behaves_as` só aceita os seis status não-máquina, e o trigger z1 zera
+`custom_status_id` nos três de máquina, então um post agendado/postado/falha nunca tem status
+customizado. Inserir com qualquer status não dispara eventos de status, automações nem
 notificações (todos são de UPDATE). Auto-publicação só acontece em `hub-approve` numa aprovação
 real do cliente, então um clone `aprovado_cliente` com data nunca publica sozinho.
+
+A data copiada é referência de calendário. Para publicar o clone alguém precisa clicar em
+Agendar, e o servidor (`validateForScheduling` em `_shared/instagram-publish-utils.ts`) recusa
+`scheduled_at` a menos de 10 minutos no futuro, então uma data antiga obriga a escolher outra.
 
 **Posição:** logo depois do original. `ordem`: os posts do mesmo fluxo (ou, para avulso, do
 mesmo cliente com `workflow_id IS NULL`) com `ordem > original.ordem` sobem 1 e o clone recebe
 `original.ordem + 1` (não há UNIQUE em `ordem`). `board_ordem`: ponto médio entre o original e o
-próximo post do quadro; sem próximo, `original.board_ordem + 1`. Na cópia de fluxo os posts
-mantêm `ordem` e `board_ordem` originais (fluxo novo, sem colisão).
+próximo post ranqueado da mesma coluna do quadro de Publicações (mesmo `conta_id`, mesmo
+`status` e mesmo `custom_status_id` do clone, `board_ordem IS NOT NULL`, menor `board_ordem`
+maior que o do original); sem próximo, `original.board_ordem + 1024` (o `BOARD_ORDEM_STEP` de
+`postsBoardOrder.ts`). Nos demais casos o clone fica com `board_ordem = null`: original sem
+ranque (o caso comum), clone numa coluna diferente da do original (status mudou), ou ponto
+médio que não cabe entre os dois vizinhos. Com `null` ele entra na cauda automática da coluna
+(`scheduled_at`, depois `id`), que para um original sem ranque é logo depois dele quando a
+data é a mesma. A função não re-materializa a coluna. Na cópia de fluxo os posts mantêm a
+`ordem` original e recebem `board_ordem = null`.
 
 **Mídia (`post_file_links`):** uma linha nova por link, apontando para o **mesmo** `file_id`,
 com o mesmo `sort_order` e `is_cover`. Arquivos são compartilhados por desenho: o
@@ -165,14 +178,20 @@ Um componente `DuplicateDialog` (shadcn `Dialog` + `RadioGroup`), usado pelos do
 
 - Título: "Duplicar post" / "Duplicar fluxo".
 - Opção 1 (padrão): "Manter status atuais". Ajuda: "Posts agendados, postados ou com falha
-  voltam para Aprovado pelo cliente, sem agendamento." Na versão de post, a ajuda só aparece
-  quando o post está num desses três status.
+  voltam para Aprovado pelo cliente. A data fica, mas é preciso agendar de novo." Na versão de
+  post, a ajuda só aparece quando o post está num desses três status.
 - Opção 2: "Mudar tudo para Rascunho" (no post: "Mudar para Rascunho").
 - Na versão de fluxo, uma linha informativa: "Os N posts do fluxo serão copiados com a mídia."
 - Botões "Cancelar" e "Duplicar"; o segundo mostra estado de carregamento e o diálogo não fecha
   enquanto a chamada está em voo.
-- Sucesso: fecha, `toast.success('Post duplicado' | 'Fluxo duplicado')` com ação "Abrir"
-  (abre o drawer da cópia), invalida as queries de posts/fluxos/quadro afetadas.
+- Sucesso: fecha, `toast.success('Post duplicado' | 'Fluxo duplicado')` e invalida as queries
+  de posts/fluxos/quadro afetadas. A ação "Abrir" usa o deep link que a página Entregas já
+  resolve, então o RPC só precisa devolver o id:
+  - post: navega para `/entregas?post=<id>` (a forma universal, resolvida por
+    `getStandalonePost` tanto para avulso quanto para post de fluxo);
+  - fluxo: navega para `/entregas?drawer=<id>`, **só quando o clone tem `status = 'ativo'`**.
+    Um clone de fluxo concluído ou arquivado não aparece no quadro ativo, então o toast sai sem
+    ação.
 - Erro: `plan_limit_exceeded` mostra a mensagem do mapeamento existente; qualquer outro erro,
   `toast.error('Não foi possível duplicar. Tente novamente.')`.
 
@@ -191,10 +210,14 @@ Copy sem travessão (regra da casa).
 
 - **psql (`supabase/tests/entitlements/`, gate no CI):**
   - isolamento: membro de outro workspace recebe `not_found`; `anon` não tem EXECUTE;
-  - matriz de status dos dois modos, incluindo status customizado com `behaves_as` agendado;
+  - matriz de status dos dois modos, incluindo um status customizado mantido no modo
+    "manter" e zerado no modo Rascunho;
   - campos de publicação zerados e `scheduled_at` mantido;
   - links de mídia apontando para o mesmo arquivo, capa preservada, `reference_count` +1;
-  - posição: `ordem` e `board_ordem` do clone logo depois do original;
+  - posição: `ordem` logo depois do original; `board_ordem` no ponto médio quando o original
+    tem ranque e o clone fica na mesma coluna, `null` nos demais casos;
+  - grants: `authenticated` e `service_role` executam as duas RPCs; ninguém além do
+    `service_role` executa `_clone_post_row`;
   - fluxo: etapas no mesmo estado, opções com `option_id` novo e valores select/multiselect
     remapeados;
   - limite de plano estourado desfaz tudo (nenhum fluxo, etapa ou post órfão);
