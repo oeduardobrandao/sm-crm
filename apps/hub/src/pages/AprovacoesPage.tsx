@@ -4,6 +4,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useHub } from '../HubContext';
 import { fetchPosts, fetchInstagramFeed } from '../api';
+import { invalidateHubPosts } from '../queries';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { PageHeader } from '../components/PageHeader';
 import { MediaFilterDropdown, type MediaFilter } from '../components/MediaFilterDropdown';
@@ -143,10 +144,7 @@ export function AprovacoesPage() {
       return next;
     });
   }, []);
-  const handleInvalidate = useCallback(
-    () => qc.invalidateQueries({ queryKey: ['hub-posts', token] }),
-    [qc, token],
-  );
+  const handleInvalidate = useCallback(() => invalidateHubPosts(qc, token), [qc, token]);
   const handleCloseGrid = useCallback(() => setShowGrid(false), []);
   const handleOpen = useCallback((id: number) => navigate(`${base}/${id}`), [navigate, base]);
   const handleNavigate = useCallback(
