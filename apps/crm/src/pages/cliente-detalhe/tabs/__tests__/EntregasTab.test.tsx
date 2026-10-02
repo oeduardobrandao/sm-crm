@@ -15,11 +15,7 @@ vi.mock('@/store', () => ({
   approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   duplicateWorkflow: vi.fn(),
-  getWorkflowPostsCounts: vi.fn(),
-  getWorkflowApprovedPostsCounts: vi.fn(),
-  getWorkflowClearedClientePostsCounts: vi.fn(),
-  getWorkflowRevisaoInternaCounts: vi.fn(),
-  getWorkflowAwaitingClientePostsCounts: vi.fn(),
+  getWorkflowPostStats: vi.fn(),
   getConcludedWorkflowsByCliente: vi.fn(),
   getWorkflowPosts: vi.fn(),
   getClientePosts: vi.fn(),
@@ -204,11 +200,7 @@ import {
   approvePostsInternally,
   sendPostsToCliente,
   duplicateWorkflow,
-  getWorkflowPostsCounts,
-  getWorkflowApprovedPostsCounts,
-  getWorkflowClearedClientePostsCounts,
-  getWorkflowRevisaoInternaCounts,
-  getWorkflowAwaitingClientePostsCounts,
+  getWorkflowPostStats,
   getConcludedWorkflowsByCliente,
   getWorkflowPosts,
   getClientePosts,
@@ -243,13 +235,7 @@ const mockedRevertEtapa = vi.mocked(revertEtapa);
 const mockedApprovePostsInternally = vi.mocked(approvePostsInternally);
 const mockedSendPostsToCliente = vi.mocked(sendPostsToCliente);
 const mockedDuplicateWorkflow = vi.mocked(duplicateWorkflow);
-const mockedGetWorkflowPostsCounts = vi.mocked(getWorkflowPostsCounts);
-const mockedGetWorkflowApprovedPostsCounts = vi.mocked(getWorkflowApprovedPostsCounts);
-const mockedGetWorkflowClearedClientePostsCounts = vi.mocked(getWorkflowClearedClientePostsCounts);
-const mockedGetWorkflowRevisaoInternaCounts = vi.mocked(getWorkflowRevisaoInternaCounts);
-const mockedGetWorkflowAwaitingClientePostsCounts = vi.mocked(
-  getWorkflowAwaitingClientePostsCounts,
-);
+const mockedGetWorkflowPostStats = vi.mocked(getWorkflowPostStats);
 const mockedGetConcludedWorkflowsByCliente = vi.mocked(getConcludedWorkflowsByCliente);
 const mockedGetWorkflowPosts = vi.mocked(getWorkflowPosts);
 const mockedGetClientePosts = vi.mocked(getClientePosts);
@@ -439,11 +425,14 @@ async function awaitCountsLoaded(total: number, cleared: number) {
 
 /** cleared/total feed the historical "allCleared" branch in handleForwardConfirm. */
 function mockCounts(cleared: number) {
-  mockedGetWorkflowPostsCounts.mockResolvedValue(new Map([[1, 2]]));
-  mockedGetWorkflowApprovedPostsCounts.mockResolvedValue(new Map());
-  mockedGetWorkflowClearedClientePostsCounts.mockResolvedValue(new Map([[1, cleared]]));
-  mockedGetWorkflowRevisaoInternaCounts.mockResolvedValue(new Map());
-  mockedGetWorkflowAwaitingClientePostsCounts.mockResolvedValue(new Map());
+  mockedGetWorkflowPostStats.mockResolvedValue({
+    total: new Map([[1, 2]]),
+    aprovadoCliente: new Map(),
+    clearedCliente: cleared > 0 ? new Map([[1, cleared]]) : new Map(),
+    enviadoCliente: new Map(),
+    revisaoInterna: new Map(),
+    responsaveis: new Map(),
+  });
 }
 
 describe('EntregasTab', () => {
@@ -821,10 +810,6 @@ describe('EntregasTab', () => {
             'concluded-summaries-cliente',
             'clientes',
             'workflow-posts-counts',
-            'workflow-approved-posts-counts',
-            'workflow-cleared-cliente-counts',
-            'workflow-revisao-interna-counts',
-            'workflow-awaiting-cliente-counts',
             'workflow-covers',
             'workspace-slug',
             'hub-token',

@@ -69,10 +69,6 @@ export function useUpdatePostStatus() {
         qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', vars.workflowId] });
       }
       qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
     },
   });
 }

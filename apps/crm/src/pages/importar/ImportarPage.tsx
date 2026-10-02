@@ -51,9 +51,8 @@ const BATCH_SIZE = 200;
  *   - post            -> workflow_posts table    -> ['scheduled-posts']    (Entregas Calendar "publicações" mode reads posts workspace-wide by date range; per-workflow/per-client keys like workflow-posts-with-props or clientePosts are parameterized by an id that did not exist before the import, so there is no stale cache entry for them to begin with)
  *   - ideia           -> ideias table            -> ['hub-ideias-all']     (IdeiasPage's global list)
  *
- * Per-workflow/per-client aggregate counts (workflow-posts-counts and its
- * siblings) are DERIVED from the `['workflows']` query inside useEntregasData
- * (keyed on the active workflow ids) -- invalidating `['workflows']` changes
+ * Per-workflow/per-client aggregate counts (workflow-posts-counts) are
+ * DERIVED from the `['workflows']` query inside useEntregasData (keyed on the active workflow ids) -- invalidating `['workflows']` changes
  * that derived key once it refetches, which is what makes those counts fresh
  * again without needing their own explicit invalidation here.
  */

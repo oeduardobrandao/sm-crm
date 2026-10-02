@@ -107,14 +107,9 @@ export function AttachToFluxoDialog({
       toast.success(`Post vinculado a "${workflow.titulo}"`);
       qc.invalidateQueries({ queryKey: ['active-posts'] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', selectedId] });
+      // Also refreshes the board's per-workflow status counts (kanban column
+      // headers): the target fluxo's counts stay stale without it.
       qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-      // The board's per-workflow status counts (kanban column headers) read the
-      // post's new workflow too -- without these the target fluxo's counts stay
-      // stale until some other action happens to invalidate them.
-      qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
       qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
       // Fase-3 caches: the post may have had a vigente individual process that
       // attach_post_closing_process just closed.

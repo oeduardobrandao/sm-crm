@@ -1082,8 +1082,6 @@ export function PostsKanbanView({
           // de outro fluxo é inofensivo (são listas refetch-on-demand).
           qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
           qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-          qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
-          qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
         }}
       />
     </>

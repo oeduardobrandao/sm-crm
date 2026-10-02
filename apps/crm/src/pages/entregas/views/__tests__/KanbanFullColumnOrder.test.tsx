@@ -25,11 +25,7 @@ vi.mock('../../../../store', () => ({
   getWorkflowTemplates: vi.fn(),
   getWorkflowEtapas: vi.fn(),
   getWorkflowPostsCounts: vi.fn(),
-  getWorkflowApprovedPostsCounts: vi.fn(),
-  getWorkflowClearedClientePostsCounts: vi.fn(),
-  getWorkflowRevisaoInternaCounts: vi.fn(),
-  getWorkflowAwaitingClientePostsCounts: vi.fn(),
-  getWorkflowPostResponsaveis: vi.fn(),
+  getWorkflowPostStats: vi.fn(),
   getWorkspaceSlug: vi.fn(),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));

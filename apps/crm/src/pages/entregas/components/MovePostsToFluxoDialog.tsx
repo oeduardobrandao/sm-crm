@@ -201,15 +201,10 @@ export function MovePostsToFluxoDialog({
       // match covers every ['workflow-select-options', target, definitionId].
       qc.invalidateQueries({ queryKey: ['workflow-select-options', result.target_workflow_id] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
-      qc.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
       qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
       qc.invalidateQueries({ queryKey: ['workflows'] });
       qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
       qc.invalidateQueries({ queryKey: ['workflow-covers'] });
-      qc.invalidateQueries({ queryKey: ['workflow-post-responsaveis'] });
       qc.invalidateQueries({ queryKey: ['workflow-events', sourceWorkflowId] });
       onMoved(result);
       onClose();

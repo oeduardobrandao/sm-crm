@@ -120,12 +120,6 @@ describe('useUpdatePostStatus', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['active-posts'] });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-posts-with-props', 42] });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-posts-counts'] });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-approved-posts-counts'] });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-cleared-cliente-counts'] });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-revisao-interna-counts'] });
-      expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: ['workflow-awaiting-cliente-counts'],
-      });
     });
   });
 
