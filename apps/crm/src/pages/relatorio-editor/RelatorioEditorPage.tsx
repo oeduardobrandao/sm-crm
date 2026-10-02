@@ -35,7 +35,7 @@ import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
 import { AppearancePopover } from './AppearancePopover';
 import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
-import { applyTemplateLayout } from './templateOps';
+import { applyTemplateLayout, layoutHasFilledImage } from './templateOps';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const qc = useQueryClient();
@@ -246,6 +246,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <ApplyTemplateDialog
         open={applyTplOpen}
         onOpenChange={setApplyTplOpen}
+        warnImagesRemoved={layoutHasFilledImage(layout)}
         onApply={(tpl) => {
           commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
           toast.success('Template aplicado.');

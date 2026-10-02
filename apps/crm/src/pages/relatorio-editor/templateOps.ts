@@ -5,15 +5,12 @@ import type { BlockType, ReportBlock, ReportLayout } from '@mesaas/report-blocks
 
 const AI_TYPES: ReadonlySet<BlockType> = new Set(['ai_summary', 'ai_recommendations', 'ai_goals']);
 
-export function stripAiTextForTemplate(layout: ReportLayout): ReportLayout {
-  return {
-    ...layout,
-    blocks: layout.blocks.map((b) => {
-      if (!AI_TYPES.has(b.type) || b.text === undefined) return b;
-      const { text: _drop, ...rest } = b;
-      return rest as ReportBlock;
-    }),
-  };
+export { sanitizeLayoutForTemplate } from '@mesaas/report-blocks/types';
+
+/** Relatório com ao menos uma imagem preenchida: aplicar um modelo (que só tem
+ * espaços vazios) remove essas imagens do relatório. */
+export function layoutHasFilledImage(layout: ReportLayout): boolean {
+  return layout.blocks.some((b) => b.type === 'image' && typeof b.config?.file_id === 'number');
 }
 
 /** Aplica um template a um relatório existente: substituição completa do

@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
 import { createReportTemplate, setDefaultReportTemplate } from '../../services/reportTemplates';
-import { stripAiTextForTemplate } from './templateOps';
+import { sanitizeLayoutForTemplate } from './templateOps';
 
 export interface SaveTemplateDialogProps {
   open: boolean;
@@ -42,7 +42,7 @@ export function SaveTemplateDialog({ open, onOpenChange, getLayout }: SaveTempla
     if (!trimmed) return;
     setSaving(true);
     try {
-      const stripped = stripAiTextForTemplate(getLayout());
+      const stripped = sanitizeLayoutForTemplate(getLayout());
       const created = await createReportTemplate(trimmed, stripped);
       if (makeDefault) await setDefaultReportTemplate(created.id);
       qc.invalidateQueries({ queryKey: ['report-templates'] });

@@ -17,9 +17,15 @@ export interface ApplyTemplateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onApply: (template: ReportTemplateRow) => void;
+  warnImagesRemoved?: boolean;
 }
 
-export function ApplyTemplateDialog({ open, onOpenChange, onApply }: ApplyTemplateDialogProps) {
+export function ApplyTemplateDialog({
+  open,
+  onOpenChange,
+  onApply,
+  warnImagesRemoved,
+}: ApplyTemplateDialogProps) {
   const qc = useQueryClient();
   // enabled: open evita chamar listReportTemplates enquanto o dialog nunca foi
   // aberto (este componente fica sempre montado na topbar do editor).
@@ -67,6 +73,11 @@ export function ApplyTemplateDialog({ open, onOpenChange, onApply }: ApplyTempla
         <DialogHeader>
           <DialogTitle>Aplicar template</DialogTitle>
         </DialogHeader>
+        {warnImagesRemoved && (
+          <p className="text-sm text-muted-foreground">
+            As imagens deste relatório serão removidas. Elas continuam nos Arquivos do cliente.
+          </p>
+        )}
         {isLoading ? (
           <div className="flex justify-center py-6">
             <Spinner />

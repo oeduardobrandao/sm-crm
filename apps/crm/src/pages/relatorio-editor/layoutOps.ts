@@ -53,6 +53,18 @@ export function resizeBlock(layout: ReportLayout, id: string, delta: 1 | -1): Re
   return { ...layout, blocks };
 }
 
+/** Largura direta (o "Usar meia largura" do bloco de imagem). Capa é sempre
+ * full; mesmo valor, id inexistente ou capa = MESMA referência. */
+export function setBlockSize(layout: ReportLayout, id: string, size: BlockSize): ReportLayout {
+  const idx = layout.blocks.findIndex((b) => b.id === id);
+  if (idx < 0) return layout;
+  const b = layout.blocks[idx];
+  if (b.type === 'cover' || b.size === size) return layout;
+  const blocks = [...layout.blocks];
+  blocks[idx] = { ...b, size };
+  return { ...layout, blocks };
+}
+
 export function removeBlock(layout: ReportLayout, id: string): ReportLayout {
   const blocks = layout.blocks.filter((b) => b.id !== id);
   if (blocks.length === layout.blocks.length) return layout;

@@ -7,6 +7,7 @@ import {
   normalizeCoverSize,
   removeBlock,
   resizeBlock,
+  setBlockSize,
   restoreBlock,
   setLayoutAccent,
   setLayoutFonts,
@@ -278,5 +279,24 @@ describe('normalizeCoverSize', () => {
       blocks: [{ id: 'k', type: 'kpi_reach', size: 'third' }],
     };
     expect(normalizeCoverSize(l)).toBe(l);
+  });
+});
+
+describe('setBlockSize', () => {
+  const base = (): ReportLayout => ({
+    version: 1,
+    blocks: [
+      { id: 'i', type: 'image', size: 'full' },
+      { id: 'c', type: 'cover', size: 'full' },
+    ],
+  });
+  it('muda o size do bloco', () => {
+    expect(setBlockSize(base(), 'i', 'half').blocks[0].size).toBe('half');
+  });
+  it('mesmo size, id inexistente ou capa: MESMA referência', () => {
+    const l = base();
+    expect(setBlockSize(l, 'i', 'full')).toBe(l);
+    expect(setBlockSize(l, 'x', 'half')).toBe(l);
+    expect(setBlockSize(l, 'c', 'half')).toBe(l);
   });
 });
