@@ -214,6 +214,9 @@ Copy sem travessão (regra da casa).
   compartilhados e continuam com `folder_id` da pasta do original.
 - Excluir o original não apaga a mídia do clone: o link do clone mantém o arquivo vivo
   (`file_id` é RESTRICT e o autoclean só leva arquivos cujos posts estão todos postados).
+- Numa coluna cujos fluxos nunca foram reordenados à mão (todos com o mesmo `position`), o
+  fluxo duplicado aparece no fim da coluna, porque o quadro desempata pelo id. Numa coluna com
+  ordem manual ele fica logo depois do original. Reposicionar é um arraste.
 
 ## Testes
 
