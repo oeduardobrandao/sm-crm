@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { docHandler, HubReportListItem, listHandler, printDocHandler } from "./handlers.ts";
+import { signImageBlocks } from "./sign-images.ts";
 import { signPrintToken } from "../_shared/report-docs/print-token.ts";
 import type { HubToken } from "../_shared/hub-token.ts";
 
@@ -262,4 +263,84 @@ Deno.test("doc nao-ready: null mesmo com token valido", async () => {
   const pt = await signPrintToken("doc-1", 2_000_000, SECRET);
 
   assert((await printDocHandler(db, SECRET, "doc-1", pt, 1_000_000)) === null);
+});
+
+function makeLinksDb(
+  links: Array<{ file_id: number; files: { r2_key: string; media_lost_at: string | null } }>,
+) {
+  const calls: string[] = [];
+  return {
+    calls,
+    db: {
+      from: (table: string) => {
+        calls.push(table);
+        return { select: () => ({ eq: () => Promise.resolve({ data: links, error: null }) }) };
+      },
+      // deno-lint-ignore no-explicit-any
+    } as any,
+  };
+}
+
+const imgLayout = (blocks: unknown[]) => ({ version: 1, blocks });
+const imgBlock = (id: string, config: Record<string, unknown>) => ({
+  id,
+  type: "image",
+  size: "full",
+  config,
+});
+
+Deno.test("signImageBlocks: assina só arquivos vinculados e não perdidos, chave vem de files", async () => {
+  const { db } = makeLinksDb([
+    { file_id: 1, files: { r2_key: "contas/ws/files/a.png", media_lost_at: null } },
+    {
+      file_id: 2,
+      files: { r2_key: "contas/ws/files/b.png", media_lost_at: "2026-08-01T00:00:00Z" },
+    },
+  ]);
+  const out = (await signImageBlocks(
+    db,
+    "doc-1",
+    imgLayout([
+      imgBlock("i1", { file_id: 1, width: 10, height: 10 }),
+      imgBlock("i2", { file_id: 2, width: 10, height: 10 }),
+      imgBlock("i3", { file_id: 3, width: 10, height: 10 }),
+      { id: "t", type: "text", size: "full" },
+    ]),
+    async (k) => `https://signed/${k}`,
+  )) as { blocks: Array<{ config?: Record<string, unknown> }> };
+  assertEquals(out.blocks[0].config?.src, "https://signed/contas/ws/files/a.png");
+  assertEquals(out.blocks[1].config?.src, undefined);
+  assertEquals(out.blocks[2].config?.src, undefined);
+});
+
+Deno.test("signImageBlocks: remove src salvo mesmo sem signer", async () => {
+  const { db, calls } = makeLinksDb([]);
+  const out = (await signImageBlocks(
+    db,
+    "doc-1",
+    imgLayout([imgBlock("i1", { src: "https://evil", file_id: 1, width: 1, height: 1 })]),
+    undefined,
+  )) as { blocks: Array<{ config?: Record<string, unknown> }> };
+  assertEquals(out.blocks[0].config?.src, undefined);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("signImageBlocks: layout sem imagem não consulta o banco", async () => {
+  const { db, calls } = makeLinksDb([]);
+  const lay = imgLayout([{ id: "t", type: "text", size: "full" }]);
+  assertEquals(await signImageBlocks(db, "doc-1", lay, async () => "x"), lay);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("signImageBlocks: falha do signer deixa o bloco sem src", async () => {
+  const { db } = makeLinksDb([
+    { file_id: 1, files: { r2_key: "contas/ws/files/a.png", media_lost_at: null } },
+  ]);
+  const out = (await signImageBlocks(
+    db,
+    "doc-1",
+    imgLayout([imgBlock("i1", { file_id: 1, width: 10, height: 10 })]),
+    async () => null,
+  )) as { blocks: Array<{ config?: Record<string, unknown> }> };
+  assertEquals(out.blocks[0].config?.src, undefined);
 });
