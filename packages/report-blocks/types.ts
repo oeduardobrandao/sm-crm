@@ -8,6 +8,8 @@ export type {
   ValidateLayoutResult,
   ReportThemeId,
   ReportFontId,
+  ImageRatio,
+  ImageFit,
 } from '../../supabase/functions/_shared/report-docs/layout';
 export {
   BLOCK_TYPES,
@@ -16,6 +18,12 @@ export {
   normalizeCoverSize,
   REPORT_THEME_IDS,
   REPORT_FONT_IDS,
+  IMAGE_RATIOS,
+  IMAGE_FITS,
+  IMAGE_FOCAL_STEPS,
+  IMAGE_CAPTION_MAX,
+  IMAGE_ALT_MAX,
+  sanitizeLayoutForTemplate,
 } from '../../supabase/functions/_shared/report-docs/layout';
 export type {
   ReportDocSnapshot,

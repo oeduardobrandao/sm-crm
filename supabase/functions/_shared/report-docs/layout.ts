@@ -22,6 +22,8 @@ export const BLOCK_TYPES = [
   "audience_gender", "audience_age", "audience_cities", "audience_countries",
   // Conteúdo
   "top_posts", "post_list", "tags_table",
+  // Mídia
+  "image",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -37,6 +39,62 @@ export const TEXT_BLOCK_TYPES: readonly BlockType[] = [
 export const MAX_BLOCKS = 200;
 export const TOP_POSTS_MIN = 1;
 export const TOP_POSTS_MAX = 12;
+
+export const IMAGE_RATIOS = [
+  "original", "16:9", "3:2", "4:3", "1:1", "4:5", "3:4", "2:3", "9:16",
+] as const;
+export type ImageRatio = (typeof IMAGE_RATIOS)[number];
+export const IMAGE_FITS = ["cover", "contain"] as const;
+export type ImageFit = (typeof IMAGE_FITS)[number];
+export const IMAGE_FOCAL_STEPS = [0, 0.5, 1] as const;
+export const IMAGE_CAPTION_MAX = 200;
+export const IMAGE_ALT_MAX = 300;
+const IMAGE_DIM_MAX = 999_999;
+/** Campos que identificam o CONTEÚDO de uma imagem: nunca viajam num modelo
+ * (decisão 1 do spec 2026-10-02). Espelhado em report_image_config_ok() no SQL. */
+export const IMAGE_TEMPLATE_STRIP_KEYS = ["file_id", "width", "height", "caption", "alt"] as const;
+const AI_TEXT_TYPES: readonly BlockType[] = ["ai_summary", "ai_recommendations", "ai_goals"];
+
+function isPosInt(v: unknown, max: number): boolean {
+  return typeof v === "number" && Number.isInteger(v) && v > 0 && v <= max;
+}
+
+/** Espelho TS de report_image_config_ok() (migration 20261003000001). */
+function imageConfigError(cfg: Record<string, unknown> | undefined): string | null {
+  if (!cfg) return null;
+  if ("src" in cfg || "r2_key" in cfg) return "image config must not carry src or r2_key";
+  if (cfg.ratio !== undefined && !(IMAGE_RATIOS as readonly unknown[]).includes(cfg.ratio)) {
+    return "invalid image ratio";
+  }
+  if (cfg.fit !== undefined && !(IMAGE_FITS as readonly unknown[]).includes(cfg.fit)) {
+    return "invalid image fit";
+  }
+  if (cfg.focal !== undefined) {
+    const f = cfg.focal;
+    if (
+      !isRecord(f) ||
+      !(IMAGE_FOCAL_STEPS as readonly unknown[]).includes(f.x) ||
+      !(IMAGE_FOCAL_STEPS as readonly unknown[]).includes(f.y)
+    ) return "invalid image focal";
+  }
+  if (cfg.file_id !== undefined && !isPosInt(cfg.file_id, Number.MAX_SAFE_INTEGER)) {
+    return "invalid image file_id";
+  }
+  for (const k of ["width", "height"] as const) {
+    if (cfg[k] !== undefined && !isPosInt(cfg[k], IMAGE_DIM_MAX)) return `invalid image ${k}`;
+  }
+  if (cfg.file_id !== undefined && (cfg.width === undefined || cfg.height === undefined)) {
+    return "image with file_id needs width and height";
+  }
+  if (
+    cfg.caption !== undefined &&
+    (typeof cfg.caption !== "string" || cfg.caption.length > IMAGE_CAPTION_MAX)
+  ) return "invalid image caption";
+  if (cfg.alt !== undefined && (typeof cfg.alt !== "string" || cfg.alt.length > IMAGE_ALT_MAX)) {
+    return "invalid image alt";
+  }
+  return null;
+}
 
 export interface ReportBlock {
   id: string;
@@ -158,6 +216,10 @@ export function validateLayout(raw: unknown): ValidateLayoutResult {
         }
       }
     }
+    if (b.type === "image") {
+      const err = imageConfigError(b.config as Record<string, unknown> | undefined);
+      if (err) return { ok: false, error: err };
+    }
   }
   return { ok: true, layout: raw as unknown as ReportLayout };
 }
@@ -179,4 +241,25 @@ export function normalizeCoverSize(layout: ReportLayout): ReportLayout {
     return b;
   });
   return changed ? { ...layout, blocks } : layout;
+}
+
+/** Layout de relatório -> layout de modelo (spec 2026-10-02, "Modelos"): tira o
+ * texto dos blocos ai_* (regenerados por relatório) e o conteúdo dos blocos
+ * image (o modelo guarda só o espaço). Pura; usada pelo CRM e por generate.ts. */
+export function sanitizeLayoutForTemplate(layout: ReportLayout): ReportLayout {
+  return {
+    ...layout,
+    blocks: layout.blocks.map((b) => {
+      if (AI_TEXT_TYPES.includes(b.type) && b.text !== undefined) {
+        const { text: _drop, ...rest } = b;
+        return rest as ReportBlock;
+      }
+      if (b.type === "image" && b.config) {
+        const config = { ...b.config };
+        for (const k of IMAGE_TEMPLATE_STRIP_KEYS) delete config[k];
+        return { ...b, config };
+      }
+      return b;
+    }),
+  };
 }
