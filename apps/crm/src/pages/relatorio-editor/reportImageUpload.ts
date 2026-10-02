@@ -36,8 +36,12 @@ export async function prepareReportImage(
   file: File,
 ): Promise<{ file: File; width: number; height: number }> {
   // from-image aplica a rotação EXIF (fotos de celular): o desenho sai de pé e
-  // width/height já são os da imagem de pé.
-  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  // width/height já são os da imagem de pé. Navegadores anteriores ao valor
+  // 'from-image' (Chrome < 112, Firefox < 111, Safari 15) rejeitam o enum; neles
+  // o padrão sem opção já respeita o EXIF.
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() =>
+    createImageBitmap(file),
+  );
   try {
     const { width, height } = scaledSize(bitmap.width, bitmap.height);
     if (width === bitmap.width && height === bitmap.height) return { file, width, height };

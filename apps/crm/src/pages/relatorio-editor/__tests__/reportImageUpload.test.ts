@@ -56,4 +56,18 @@ describe('prepareReportImage', () => {
     expect(out).toEqual({ file, width: 900, height: 1600 });
     expect(bitmap.close).toHaveBeenCalled();
   });
+  it('navegador que rejeita from-image cai para a chamada sem opção', async () => {
+    const bitmap = { width: 1200, height: 800, close: vi.fn() };
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('invalid imageOrientation'))
+      .mockResolvedValueOnce(bitmap);
+    vi.stubGlobal('createImageBitmap', create);
+    const file = f('image/jpeg', 10);
+    const out = await prepareReportImage(file);
+    expect(create).toHaveBeenNthCalledWith(1, file, { imageOrientation: 'from-image' });
+    expect(create).toHaveBeenNthCalledWith(2, file);
+    expect(out).toEqual({ file, width: 1200, height: 800 });
+    expect(bitmap.close).toHaveBeenCalled();
+  });
 });
