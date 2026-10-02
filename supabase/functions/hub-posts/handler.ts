@@ -6,6 +6,7 @@ import { fetchAllRows } from "../_shared/paginate.ts";
 import {
   computeEmProducaoByPost,
   INTERNAL_STATUSES,
+  isHubVisiblePost,
   type EmProducaoReason,
   type StatusEventRow,
 } from "./em-producao.ts";
@@ -33,6 +34,29 @@ function injectSignedUrls(content: any, urlMap: Record<string, string>): any {
     return node;
   }
   return walk(content);
+}
+
+// PostgREST truncates an unpaged select at db-max-rows (1000 on hosted Supabase) silently.
+const ROW_CAP = 1000;
+
+type PageFetcher<T> = (
+  from: number,
+  to: number,
+) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
+
+/** fetchAllRows with today's failure mode: a failed lookup logs and degrades to []. All-or-nothing per lookup: an error on any page discards the pages already read. */
+async function pagedRows<T>(label: string, fetchPage: PageFetcher<T>): Promise<{ data: T[] }> {
+  try {
+    return { data: await fetchAllRows(fetchPage) };
+  } catch (err) {
+    console.error(`[hub-posts] ${label} lookup failed:`, err);
+    return { data: [] };
+  }
+}
+
+/** Unpaged lookups whose size is bounded per post or per workflow: never silent if that breaks. */
+function warnIfCapped(table: string, rows: unknown[] | null | undefined) {
+  if ((rows?.length ?? 0) >= ROW_CAP) console.warn(`[hub-posts] row cap reached: ${table}`);
 }
 
 type DbClient = {
@@ -147,6 +171,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .eq("id", hubToken.cliente_id)
         .single(),
     ]);
+    warnIfCapped("workflow_posts", posts);
     const autoPublishOnApproval = clienteRow?.auto_publish_on_approval ?? false;
 
     // A post with no workflow_id is avulso (never attached to a flow): the embed
@@ -162,8 +187,8 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     const postIds = flatPosts.map((post: { id: number }) => post.id);
 
     // "Em produção": posts the client already saw that are back with the
-    // agency. Only internal-status posts are looked up; on error every post
-    // falls back to null (today's behaviour: hidden in the Hub).
+    // agency. Only internal-status posts are looked up; on error the em-produção
+    // set is empty, so every internal post is dropped server-side (fail closed).
     const internalPostIds = flatPosts
       .filter((post: { status: string }) => INTERNAL_STATUSES.has(post.status))
       .map((post: { id: number }) => post.id);
@@ -209,6 +234,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .select("workflow_id, tipo, status")
         .in("workflow_id", workflowIds)
         .eq("tipo", "aprovacao_cliente");
+      warnIfCapped("workflow_etapas", etapas);
       if (etapasError) {
         // Fail closed: without the etapa picture, suspend every workflow rather
         // than promise a scheduling that hub-approve's own guard may refuse.
@@ -239,6 +265,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .select("id, post_id")
         .in("post_id", avulsoIds)
         .eq("estado", "ativo");
+      warnIfCapped("post_processes", procs);
       if (procsError) {
         console.error("[hub-posts] post_processes lookup failed:", procsError);
         return avulsoIds;
@@ -250,6 +277,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .select("process_id, estado")
         .in("process_id", procRows.map((p) => p.id))
         .eq("tipo", "aprovacao_cliente");
+      warnIfCapped("post_process_steps", steps);
       if (stepsError) {
         console.error("[hub-posts] post_process_steps lookup failed:", stepsError);
         return procRows.map((p) => p.post_id);
@@ -278,34 +306,50 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     ] = await Promise.all([
       loadEmProducao(),
       postIds.length > 0
-        ? db
-            .from("post_approvals")
-            .select("id, post_id, action, comentario, is_workspace_user, created_at")
-            .in("post_id", postIds)
-            .order("created_at", { ascending: true })
+        ? pagedRows("post_approvals", (from, to) =>
+            db
+              .from("post_approvals")
+              .select("id, post_id, action, comentario, is_workspace_user, created_at")
+              .in("post_id", postIds)
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
         : none,
       postIds.length > 0
-        ? db
-            .from("post_edit_suggestions")
-            .select("id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, updated_at")
-            .in("post_id", postIds)
-            .eq("status", "pending")
+        ? pagedRows("pending suggestions", (from, to) =>
+            db
+              .from("post_edit_suggestions")
+              .select("id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, updated_at")
+              .in("post_id", postIds)
+              .eq("status", "pending")
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
         : none,
       postIds.length > 0
-        ? db
-            .from("post_edit_suggestions")
-            .select("post_id, updated_at")
-            .in("post_id", postIds)
-            .eq("status", "rejected")
-            .order("updated_at", { ascending: false })
+        ? pagedRows("rejected suggestions", (from, to) =>
+            db
+              .from("post_edit_suggestions")
+              .select("id, post_id, updated_at")
+              .in("post_id", postIds)
+              .eq("status", "rejected")
+              .order("updated_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to)
+          )
         : none,
       wiredPostIds.length > 0
-        ? db
-            .from("post_property_values")
-            .select("post_id, value, template_property_definitions!inner(name, type, config, portal_visible, display_order)")
-            .in("post_id", wiredPostIds)
-            .eq("template_property_definitions.portal_visible", true)
-            .order("template_property_definitions(display_order)", { ascending: true })
+        ? pagedRows("post_property_values", (from, to) =>
+            db
+              .from("post_property_values")
+              .select("id, post_id, value, template_property_definitions!inner(name, type, config, portal_visible, display_order)")
+              .in("post_id", wiredPostIds)
+              .eq("template_property_definitions.portal_visible", true)
+              .order("template_property_definitions(display_order)", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
         : none,
       postIds.length > 0 && workflowIds.length > 0
         ? db
@@ -314,34 +358,62 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
             .in("workflow_id", workflowIds)
         : none,
       postIds.length > 0
-        ? db
-            .from("post_file_links")
-            .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, stream_uid, stream_status, media_lost_at)")
-            .in("post_id", postIds)
-            .order("sort_order", { ascending: true })
-            .order("id", { ascending: true })
+        ? pagedRows("post_file_links", (from, to) =>
+            db
+              .from("post_file_links")
+              .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, stream_uid, stream_status, media_lost_at)")
+              .in("post_id", postIds)
+              .order("sort_order", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
         : none,
       loadSuspendedWorkflowIds(),
       loadSuspendedPostIds(),
     ]);
+    warnIfCapped("workflow_select_options", workflowSelectOptions);
+
+    // Never-sent drafts stay on the server. Phase 2 queried with every post id (no extra
+    // round trip); from here on, every field is pruned to the visible set so nothing tied
+    // to a dropped post (approvals, properties, options, suspension ids, media) leaves.
+    const visiblePosts = flatPosts.filter((post: { id: number; status: string }) =>
+      isHubVisiblePost(post, emProducaoByPost),
+    );
+    const visibleIds = new Set<number>(visiblePosts.map((post: { id: number }) => post.id));
+    const visibleWorkflowIds = new Set<number>(
+      visiblePosts
+        .map((post: { workflow_id: number | null }) => post.workflow_id)
+        .filter((id: number | null): id is number => id != null),
+    );
 
     // Internal team notes (replyToPostApproval) never leave the server; same
     // rule as hub-post-history. Filtered in code rather than with a PostgREST
     // .or() so the rule has exactly one definition (_shared/hub-approvals.ts).
-    const postApprovals = ((rawPostApprovals ?? []) as { action: string; is_workspace_user: boolean | null }[])
+    const postApprovals = (
+      (rawPostApprovals ?? []) as {
+        post_id: number;
+        action: string;
+        is_workspace_user: boolean | null;
+      }[]
+    )
+      .filter((a) => visibleIds.has(a.post_id))
       .filter(isClientVisibleApproval);
 
     const suggestionByPost: Record<number, any> = {};
     for (const s of (pendingSuggestions ?? [])) {
+      if (!visibleIds.has(s.post_id)) continue;
       suggestionByPost[s.post_id] = s;
     }
 
     const rejectedAtByPost: Record<number, string> = {};
     for (const r of (rejectedSuggestions ?? [])) {
+      if (!visibleIds.has(r.post_id)) continue;
       if (!rejectedAtByPost[r.post_id]) rejectedAtByPost[r.post_id] = r.updated_at;
     }
 
-    const mediaWithUrls = await Promise.all((mediaLinks ?? []).map(async (link: any) => {
+    const mediaWithUrls = await Promise.all((mediaLinks ?? [])
+      .filter((link: { post_id: number }) => visibleIds.has(link.post_id))
+      .map(async (link: any) => {
       const f = link.files;
       const lost = !!f.media_lost_at;
       return {
@@ -369,7 +441,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       (mediaByPost[media.post_id] ??= []).push(media);
     }
 
-    const flatPostsWithMedia = flatPosts.map((post: any) => {
+    const flatPostsWithMedia = visiblePosts.map((post: any) => {
       const mediaForPost = mediaByPost[post.id] ?? [];
       // First slide by sort_order: what Instagram shows in the feed. The is_cover
       // flag goes stale when a slide is moved to the front, so it is not consulted.
@@ -433,14 +505,18 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     return json({
       posts: postsWithResolvedContent,
       postApprovals,
-      propertyValues: propertyValues ?? [],
-      workflowSelectOptions: workflowSelectOptions ?? [],
+      propertyValues: ((propertyValues ?? []) as { post_id: number }[])
+        .filter((v) => visibleIds.has(v.post_id)),
+      workflowSelectOptions: ((workflowSelectOptions ?? []) as { workflow_id: number }[])
+        .filter((o) => visibleWorkflowIds.has(o.workflow_id)),
       instagramProfile: igAccount
         ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
         : null,
       autoPublishOnApproval,
-      autoPublishSuspendedWorkflowIds,
-      autoPublishSuspendedPostIds,
+      autoPublishSuspendedWorkflowIds: autoPublishSuspendedWorkflowIds
+        .filter((id) => visibleWorkflowIds.has(id)),
+      autoPublishSuspendedPostIds: autoPublishSuspendedPostIds
+        .filter((id) => visibleIds.has(id)),
     });
   };
 }
