@@ -19,7 +19,7 @@ atual de cada post ou passar tudo para Rascunho.
 | Etapas do fluxo | Copiadas no estado atual: a cópia fica na mesma coluna do original |
 | Destino | Mesmo lugar: post no mesmo fluxo (ou avulso), fluxo no mesmo cliente |
 | Post individual (avulso com processo) | O processo é clonado na mesma etapa |
-| Nome | `" (cópia)"` no fim do título do post e do fluxo |
+| Nome | `" (cópia)"` no fim do título do post duplicado e do fluxo duplicado; posts copiados junto com o fluxo mantêm o título |
 
 `duplicateWorkflow` em `apps/crm/src/store/workflows.ts` é a cópia de recorrência (volta para a
 etapa 0, recalcula prazos) e **não muda**. Os wrappers novos se chamam `clonePost` e
@@ -43,14 +43,16 @@ duplicate_workflow(p_workflow_id bigint, p_to_rascunho boolean) RETURNS bigint  
   anon/authenticated no hosted) e `GRANT EXECUTE ... TO authenticated, service_role` (o REVOKE
   de PUBLIC também tira o `service_role`, ver AGENTS.md). A função interna `_clone_post_row`
   recebe `REVOKE ALL ... FROM PUBLIC, anon, authenticated` e `GRANT EXECUTE ... TO service_role`.
-- Qualquer membro pode duplicar (owner, admin e agent), igual a criar post hoje: a RLS de
-  `workflow_posts` não restringe por papel.
+- Permissão é `has_permission_for(auth.uid(), conta, 'entregas', 'editar')` (mesma das RPCs de
+  processo); erro `permission_denied`. A UI só mostra os itens com `can('entregas', 'editar')`.
+- `_clone_post_row` tem assinatura `(p_conta, p_src_post_id, p_target_workflow_id, p_to_rascunho,
+  p_option_map, p_solo)` e há um helper `_remap_option_value`. Ambas RPCs tomam o advisory lock
+  `':post_move'`, como as process RPCs.
 - Tudo numa transação. Os triggers de limite de plano (`trg_limit_posts`,
   `trg_limit_posts_avulsos`, `trg_limit_workflows`) continuam disparando porque triggers rodam
   independentemente do papel; o `plan_limit_exceeded:<chave>` desfaz a cópia inteira.
-- `duplicate_workflow` reutiliza a lógica de cópia de post por meio de uma função interna
-  `_clone_post_row(p_src_post_id, p_target_workflow_id, p_to_rascunho, p_option_map jsonb)`
-  (sem GRANT para `authenticated`), para que as regras de post fiquem num lugar só.
+- `duplicate_workflow` reutiliza a lógica de cópia de post por meio da função interna
+  `_clone_post_row` (sem GRANT para `authenticated`), para que as regras de post fiquem num lugar só.
 
 ### Regras de cópia do post
 
@@ -89,9 +91,9 @@ A data copiada é referência de calendário. Para publicar o clone alguém prec
 Agendar, e o servidor (`validateForScheduling` em `_shared/instagram-publish-utils.ts`) recusa
 `scheduled_at` a menos de 10 minutos no futuro, então uma data antiga obriga a escolher outra.
 
-**Posição:** logo depois do original. `ordem`: os posts do mesmo fluxo (ou, para avulso, do
-mesmo cliente com `workflow_id IS NULL`) com `ordem > original.ordem` sobem 1 e o clone recebe
-`original.ordem + 1` (não há UNIQUE em `ordem`). `board_ordem`: ponto médio entre o original e o
+**Posição:** logo depois do original. `ordem`: posts em fluxo com `ordem > original.ordem` sobem 1
+e o clone recebe `original.ordem + 1`; post avulso não empurra irmãos (fica com a mesma
+`ordem` do original). `board_ordem`: ponto médio entre o original e o
 próximo post ranqueado da mesma coluna do quadro de Publicações (mesmo `conta_id`, mesmo
 `status` e mesmo `custom_status_id` do clone, `board_ordem IS NOT NULL`, menor `board_ordem`
 maior que o do original); sem próximo, `original.board_ordem + 1024` (o `BOARD_ORDEM_STEP` de
@@ -114,8 +116,9 @@ mesmo fluxo as opções são as mesmas e o valor é copiado como está.
 
 **Processo (post individual):** se o post tem processo vigente (`estado IN ('ativo',
 'concluido')`), copiar a linha de `post_processes` (mesmo `template_id`, `template_nome`,
-`assinatura`, `origem_*`, `estado`, `etapa_atual`, `modo_prazo`, `revisao`, `concluido_em`;
-`created_by = auth.uid()`; `board_position` logo depois do original) e todas as
+`assinatura`, `origem_*`, `estado`, `etapa_atual`, `modo_prazo`, `concluido_em`;
+`created_by = auth.uid()`; `board_position` vai para o fim (max + 1), como `apply_post_process`,
+para não mexer em linhas de outros processos; `revisao = 1`) e todas as
 `post_process_steps` com o mesmo estado, prazos e datas. `post_process_events` não são copiados.
 Se o workspace não tem mais `feature_post_processes` (o trigger `trg_feature_post_processes`
 recusaria o INSERT), a função checa antes com o mesmo helper que `enforce_plan_feature` usa e
@@ -167,10 +170,12 @@ na hora de abrir o PR. Aplicar em prod **antes** do merge, porque o merge public
 
 | Onde | Item |
 |---|---|
-| `WorkflowDrawer` → kebab do `SortablePostItem` | "Duplicar post" |
-| `PostProcessCard` kebab | "Duplicar post" |
-| `StandalonePostDrawer` cabeçalho | botão "Duplicar post" (ícone `Copy`, com tooltip) |
-| `WorkflowCard` kebab | "Duplicar fluxo" |
+| `WorkflowDrawer` → kebab do `SortablePostItem` | "Duplicar post" (ícone `CopyPlus`) |
+| `PostProcessCard` kebab | "Duplicar post" (ícone `CopyPlus`) |
+| `StandalonePostDrawer` cabeçalho | botão "Duplicar post" (ícone `CopyPlus`, com tooltip) |
+| `WorkflowCard` kebab | "Duplicar fluxo" (ícone `CopyPlus`) |
+
+`EntregasTab` (cliente-detalhe) não ganha os itens nesta entrega.
 
 ### Diálogo
 
@@ -184,14 +189,16 @@ Um componente `DuplicateDialog` (shadcn `Dialog` + `RadioGroup`), usado pelos do
 - Na versão de fluxo, uma linha informativa: "Os N posts do fluxo serão copiados com a mídia."
 - Botões "Cancelar" e "Duplicar"; o segundo mostra estado de carregamento e o diálogo não fecha
   enquanto a chamada está em voo.
-- Sucesso: fecha, `toast.success('Post duplicado' | 'Fluxo duplicado')` e invalida as queries
-  de posts/fluxos/quadro afetadas. A ação "Abrir" usa o deep link que a página Entregas já
-  resolve, então o RPC só precisa devolver o id:
-  - post: navega para `/entregas?post=<id>` (a forma universal, resolvida por
-    `getStandalonePost` tanto para avulso quanto para post de fluxo);
-  - fluxo: navega para `/entregas?drawer=<id>`, **só quando o clone tem `status = 'ativo'`**.
-    Um clone de fluxo concluído ou arquivado não aparece no quadro ativo, então o toast sai sem
-    ação.
+- Sucesso: fecha e invalida as queries de posts/fluxos/quadro afetadas. Comportamento diverge por
+  contexto:
+  - No `WorkflowDrawer`: a cópia é expandida e rolada direto, sem "Abrir" no toast.
+  - No `StandalonePostDrawer` e nos cards do quadro: toast com "Abrir". A ação usa o deep link
+    que a página Entregas já resolve, então o RPC só precisa devolver o id:
+    - post: navega para `/entregas?post=<id>` (a forma universal, resolvida por
+      `getStandalonePost` tanto para avulso quanto para post de fluxo);
+    - fluxo: navega para `/entregas?drawer=<id>`, **só quando o clone tem `status = 'ativo'`**.
+      Um clone de fluxo concluído ou arquivado não aparece no quadro ativo, então o toast sai sem
+      ação.
 - Erro: `plan_limit_exceeded` mostra a mensagem do mapeamento existente; qualquer outro erro,
   `toast.error('Não foi possível duplicar. Tente novamente.')`.
 
