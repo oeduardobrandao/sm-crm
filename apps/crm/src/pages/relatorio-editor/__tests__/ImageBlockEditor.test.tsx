@@ -46,6 +46,9 @@ function setup(block: ReportBlock, context: ImageEditorContext = { mode: 'report
   return { onConfigChange };
 }
 
+const loaded = () =>
+  ({ data: 'blob:img', isLoading: false, isError: false, refetch: vi.fn() }) as never;
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(useFileUrl).mockReturnValue({
@@ -139,6 +142,102 @@ describe('ImageBlockEditor', () => {
     setup(filled);
     expect(screen.getByText('Imagem indisponível')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Trocar imagem' })).toBeInTheDocument();
+  });
+
+  it('soltar imagem no bloco preenchido troca a imagem num passo', async () => {
+    vi.mocked(useFileUrl).mockReturnValue(loaded());
+    vi.mocked(getClientReportsFolderId).mockResolvedValue(99);
+    vi.mocked(uploadFile).mockResolvedValue({ id: 8, url: 'https://signed/z' } as never);
+    const { onConfigChange } = setup(filled);
+    const frame = screen.getByTestId('image-frame');
+    const file = new File(['x'], 'b.jpg', { type: 'image/jpeg' });
+    fireEvent.dragOver(frame, { dataTransfer: { types: ['Files'], files: [] } });
+    expect(frame).toHaveClass('is-over');
+    fireEvent.drop(frame, { dataTransfer: { types: ['Files'], files: [file] } });
+    await waitFor(() => expect(onConfigChange).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(uploadFile).mock.calls[0][0].file).toBe(file);
+    expect(onConfigChange).toHaveBeenCalledWith('i', {
+      file_id: 8,
+      width: 1600,
+      height: 900,
+      ratio: 'original',
+    });
+  });
+
+  it('Imagem indisponível também aceita soltar uma imagem', async () => {
+    vi.mocked(useFileUrl).mockReturnValue({ ...loaded(), data: null } as never);
+    vi.mocked(getClientReportsFolderId).mockResolvedValue(99);
+    vi.mocked(uploadFile).mockResolvedValue({ id: 9, url: 'https://signed/w' } as never);
+    const { onConfigChange } = setup(filled);
+    const zone = screen.getByText('Imagem indisponível').closest('.rb-img-drop')!;
+    fireEvent.dragOver(zone, { dataTransfer: { types: ['Files'], files: [] } });
+    expect(zone).toHaveClass('is-over');
+    fireEvent.drop(zone, {
+      dataTransfer: { types: ['Files'], files: [new File(['x'], 'c.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(onConfigChange).toHaveBeenCalledTimes(1));
+    expect(onConfigChange.mock.calls[0][1]).toMatchObject({ file_id: 9 });
+  });
+
+  it('arrasto sem arquivo sobre o bloco preenchido não destaca nem envia', () => {
+    vi.mocked(useFileUrl).mockReturnValue(loaded());
+    setup(filled);
+    const frame = screen.getByTestId('image-frame');
+    fireEvent.dragOver(frame, { dataTransfer: { types: ['text/plain'], files: [] } });
+    expect(frame).not.toHaveClass('is-over');
+    fireEvent.drop(frame, { dataTransfer: { types: ['text/plain'], files: [] } });
+    expect(uploadFile).not.toHaveBeenCalled();
+  });
+
+  it('dragleave para um filho da área não apaga o destaque', () => {
+    setup(empty);
+    const zone = screen.getByText('Arraste uma imagem para cá').closest('.rb-img-drop')!;
+    const child = screen.getByRole('button', { name: 'Enviar imagem' });
+    fireEvent.dragOver(zone, { dataTransfer: { types: ['Files'], files: [] } });
+    expect(zone).toHaveClass('is-over');
+    // jsdom não tem DragEvent; MouseEvent carrega relatedTarget até o React.
+    fireEvent(zone, new MouseEvent('dragleave', { bubbles: true, relatedTarget: child }));
+    expect(zone).toHaveClass('is-over');
+    fireEvent(zone, new MouseEvent('dragleave', { bubbles: true, relatedTarget: document.body }));
+    expect(zone).not.toHaveClass('is-over');
+  });
+
+  it('troca que falha num bloco preenchido: Cancelar volta para a imagem atual', async () => {
+    vi.mocked(useFileUrl).mockReturnValue(loaded());
+    vi.mocked(getClientReportsFolderId).mockResolvedValue(99);
+    vi.mocked(uploadFile).mockRejectedValueOnce(new Error('rede'));
+    const { onConfigChange } = setup(filled);
+    fireEvent.drop(screen.getByTestId('image-frame'), {
+      dataTransfer: { types: ['Files'], files: [new File(['x'], 'b.png', { type: 'image/png' })] },
+    });
+    expect(await screen.findByText('Não foi possível enviar a imagem.')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Equipe' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByRole('img', { name: 'Equipe' })).toHaveAttribute('src', 'blob:img');
+    expect(screen.queryByText('Não foi possível enviar a imagem.')).toBeNull();
+    expect(onConfigChange).not.toHaveBeenCalled();
+  });
+
+  it('formato inválido num bloco preenchido também oferece Cancelar', async () => {
+    vi.mocked(useFileUrl).mockReturnValue(loaded());
+    setup(filled);
+    fireEvent.drop(screen.getByTestId('image-frame'), {
+      dataTransfer: { types: ['Files'], files: [new File(['x'], 'a.gif', { type: 'image/gif' })] },
+    });
+    expect(
+      await screen.findByText('Formato não suportado. Use JPG, PNG ou WebP.'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByRole('img', { name: 'Equipe' })).toBeInTheDocument();
+  });
+
+  it('bloco vazio com erro não mostra Cancelar', async () => {
+    setup(empty);
+    fireEvent.change(screen.getByLabelText('Arquivo de imagem'), {
+      target: { files: [new File(['x'], 'a.gif', { type: 'image/gif' })] },
+    });
+    await screen.findByText('Formato não suportado. Use JPG, PNG ou WebP.');
+    expect(screen.queryByRole('button', { name: 'Cancelar' })).toBeNull();
   });
 
   it('modo template: espaço para imagem, sem envio', () => {

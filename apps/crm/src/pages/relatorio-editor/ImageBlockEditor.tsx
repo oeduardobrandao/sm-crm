@@ -3,7 +3,7 @@
 // ajustes ancorado na célula. O layout só recebe file_id + dimensões; a URL
 // fica no cache do useFileUrl e nunca vai para o config persistido (o src só
 // entra numa cópia do bloco, na hora de renderizar).
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { ImagePlus, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,10 @@ function uploadErrorMessage(err: unknown): string {
     return 'Sem espaço de armazenamento no plano.';
   }
   return UPLOAD_FAILED;
+}
+
+function carriesFiles(e: DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types ?? []).includes('Files');
 }
 
 function loadDims(url: string): Promise<{ width: number; height: number }> {
@@ -231,6 +235,28 @@ export function ImageBlockEditor({
     />
   );
 
+  // Soltar arquivo: na área vazia/erro envia, no quadro preenchido ou
+  // indisponível troca a imagem. Só arrasto com arquivo conta (texto do TipTap
+  // passa direto); dragleave para um filho da área não apaga o destaque.
+  const dropHandlers = {
+    onDragOver: (e: DragEvent) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      setDragOver(true);
+    },
+    onDragLeave: (e: DragEvent) => {
+      if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+      setDragOver(false);
+    },
+    onDrop: (e: DragEvent) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) void handleFile(file);
+    },
+  };
+
   const pickerModal = (
     <FilePickerModal
       open={pickerOpen}
@@ -264,17 +290,7 @@ export function ImageBlockEditor({
       <div
         className={`rb-img-drop${dragOver ? ' is-over' : ''}${error ? ' is-error' : ''}`}
         tabIndex={0}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          const file = e.dataTransfer.files?.[0];
-          if (file) void handleFile(file);
-        }}
+        {...dropHandlers}
         onPaste={(e) => {
           const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith('image/'));
           if (file) {
@@ -311,6 +327,12 @@ export function ImageBlockEditor({
               >
                 Escolher outra
               </Button>
+              {/* Troca que falhou: a imagem atual continua válida. */}
+              {cfg.fileId !== null && (
+                <Button size="sm" variant="ghost" onClick={() => setError(null)}>
+                  Cancelar
+                </Button>
+              )}
             </div>
           </>
         ) : (
@@ -335,7 +357,7 @@ export function ImageBlockEditor({
     );
   } else if (url.isError || url.data === null) {
     body = (
-      <div className="rb-img-drop is-error">
+      <div className={`rb-img-drop is-error${dragOver ? ' is-over' : ''}`} {...dropHandlers}>
         <TriangleAlert className="h-5 w-5" aria-hidden />
         <p className="rb-img-drop-title">Imagem indisponível</p>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -351,11 +373,20 @@ export function ImageBlockEditor({
       </div>
     );
   } else if (url.data) {
+    // onDragStart: a <img> é arrastável e o arrasto dela leva "Files"; soltar
+    // no próprio quadro reenviaria a mesma imagem. O dnd-kit usa ponteiro.
     body = (
-      <ImageBlock
-        block={{ ...block, config: { ...block.config, src: url.data } }}
-        snapshot={snapshot}
-      />
+      <div
+        className={`rb-img-frame${dragOver ? ' is-over' : ''}`}
+        data-testid="image-frame"
+        onDragStart={(e) => e.preventDefault()}
+        {...dropHandlers}
+      >
+        <ImageBlock
+          block={{ ...block, config: { ...block.config, src: url.data } }}
+          snapshot={snapshot}
+        />
+      </div>
     );
   } else {
     // Carregando a URL assinada: reserva o quadro no formato final.

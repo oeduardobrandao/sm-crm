@@ -13565,6 +13565,16 @@ a.hub-fill__row-inner:hover {
 .rb-img-drop.is-error {
   border-color: var(--danger);
 }
+.rb-img-frame {
+  border-radius: 12px;
+}
+.rb-img-frame.is-over {
+  outline: 2px dashed var(--text-main);
+  outline-offset: 4px;
+}
+.rb-img-drop.is-error.is-over {
+  border-color: var(--text-main);
+}
 .rb-img-drop-title {
   font-weight: 600;
   color: var(--text-main);
