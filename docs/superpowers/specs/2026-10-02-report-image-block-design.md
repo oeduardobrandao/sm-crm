@@ -132,9 +132,11 @@ trigger e a proteção do autoclean.
   publicados antigos e só exclui `ideia_files` e o logo do Hub; o `DELETE FROM files`
   final (`:233-250`) bateria na FK RESTRICT e abortaria a noite inteira para um
   arquivo de post antigo que também está num relatório. A migration faz
-  `CREATE OR REPLACE` das duas funções com
-  `AND NOT EXISTS (SELECT 1 FROM report_document_files rdf WHERE rdf.file_id = f.id)`
-  na seleção e no DELETE final.
+  `CREATE OR REPLACE` de `storage_autoclean_candidates` com
+  `AND NOT EXISTS (SELECT 1 FROM report_document_files rdf WHERE rdf.file_id = f.id)`.
+  `storage_autoclean_run` não muda: ele reavalia esse predicado sob `FOR UPDATE` e o
+  insert de vínculo toma `FOR KEY SHARE` no arquivo, então nenhum vínculo novo aparece
+  antes do DELETE.
 - `file-manage` DELETE `/files/:id` já devolve 409 `file_in_use` com
   `reference_count > 0`. A resposta ganha `linked_reports: [{ report_id, title }]`.
   As duas listas do 409 são filtradas explicitamente pelo `profiles.conta_id` do

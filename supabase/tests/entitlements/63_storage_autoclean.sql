@@ -31,7 +31,7 @@ declare
   p_pub_null   bigint;  -- postado, published_at forced NULL (corrupt/legacy)
   p_b          bigint;  -- postado 40 days ago, tenant B
   f1 bigint; f2 bigint; f3 bigint; f4 bigint; f5 bigint;
-  f6 bigint; f7 bigint; f8 bigint; f9 bigint; f10 bigint;
+  f6 bigint; f7 bigint; f8 bigint; f9 bigint; f10 bigint; f11 bigint;
   v_ideia    uuid;
   v_ids      bigint[];
   v_res      jsonb;
@@ -127,6 +127,9 @@ begin
   insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes)
     values (v_ws, 'contas/'||v_ws||'/files/f10.png', 'f10', 'image', 'image/png', 512000)
     returning id into f10;  -- linked to a tenant-B POST           => OUT
+  insert into files (conta_id, r2_key, name, kind, mime_type, size_bytes, width, height)
+    values (v_ws, 'contas/'||v_ws||'/files/f11.png', 'f11', 'image', 'image/png', 1024000, 10, 10)
+    returning id into f11;  -- old published post + used in a report => OUT
 
   insert into post_file_links (post_id, file_id, conta_id) values
     (p_pub_old,    f1, v_ws),
@@ -137,7 +140,15 @@ begin
     (p_pub_old,    f7, v_ws),
     (p_pub_old,    f8, v_ws),
     (p_pub_old,    f9, v_ws_b),   -- malformed: link labeled tenant B
-    (p_b,          f10, v_ws);    -- post belongs to tenant B
+    (p_b,          f10, v_ws),    -- post belongs to tenant B
+    (p_pub_old,    f11, v_ws);    -- also referenced by a report document (below)
+
+  -- Report image block (spec 2026-10-02): the sync trigger links f11 to the
+  -- report, and the predicate must then keep it out of the candidate set.
+  insert into report_documents (conta_id, client_id, period_start, period_end, layout)
+    values (v_ws, v_cli, '2026-09-01', '2026-09-30', jsonb_build_object('version', 1, 'blocks',
+      jsonb_build_array(jsonb_build_object('id','i','type','image','size','full','config',
+        jsonb_build_object('file_id', f11, 'width', 10, 'height', 10)))));
 
   insert into ideias (workspace_id, cliente_id, titulo, descricao)
     values (v_ws, v_cli, 'ET ideia', 'x') returning id into v_ideia;
@@ -271,6 +282,8 @@ begin
   select count(*) into v_n from files
    where id in (f2, f3, f4, f5, f6, f7, f9, f10);
   assert v_n = 8, format('all 8 protected files must survive, got %s', v_n);
+  assert exists (select 1 from files where id = f11),
+    'arquivo de post antigo usado em relatório não pode ser apagado pelo autoclean';
 
   -- Third run: nothing left, no notification/audit spam.
   select count(*) into v_n from notifications
