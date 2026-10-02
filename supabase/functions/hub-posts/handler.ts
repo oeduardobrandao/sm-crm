@@ -44,7 +44,7 @@ type PageFetcher<T> = (
   to: number,
 ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
 
-/** fetchAllRows with today's failure mode: a failed lookup logs and degrades to []. */
+/** fetchAllRows with today's failure mode: a failed lookup logs and degrades to []. All-or-nothing per lookup: an error on any page discards the pages already read. */
 async function pagedRows<T>(label: string, fetchPage: PageFetcher<T>): Promise<{ data: T[] }> {
   try {
     return { data: await fetchAllRows(fetchPage) };
@@ -187,8 +187,8 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     const postIds = flatPosts.map((post: { id: number }) => post.id);
 
     // "Em produção": posts the client already saw that are back with the
-    // agency. Only internal-status posts are looked up; on error every post
-    // falls back to null (today's behaviour: hidden in the Hub).
+    // agency. Only internal-status posts are looked up; on error the em-produção
+    // set is empty, so every internal post is dropped server-side (fail closed).
     const internalPostIds = flatPosts
       .filter((post: { status: string }) => INTERNAL_STATUSES.has(post.status))
       .map((post: { id: number }) => post.id);
