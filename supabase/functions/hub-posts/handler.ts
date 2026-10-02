@@ -36,6 +36,29 @@ function injectSignedUrls(content: any, urlMap: Record<string, string>): any {
   return walk(content);
 }
 
+// PostgREST truncates an unpaged select at db-max-rows (1000 on hosted Supabase) silently.
+const ROW_CAP = 1000;
+
+type PageFetcher<T> = (
+  from: number,
+  to: number,
+) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
+
+/** fetchAllRows with today's failure mode: a failed lookup logs and degrades to []. */
+async function pagedRows<T>(label: string, fetchPage: PageFetcher<T>): Promise<{ data: T[] }> {
+  try {
+    return { data: await fetchAllRows(fetchPage) };
+  } catch (err) {
+    console.error(`[hub-posts] ${label} lookup failed:`, err);
+    return { data: [] };
+  }
+}
+
+/** Unpaged lookups whose size is bounded per post or per workflow: never silent if that breaks. */
+function warnIfCapped(table: string, rows: unknown[] | null | undefined) {
+  if ((rows?.length ?? 0) >= ROW_CAP) console.warn(`[hub-posts] row cap reached: ${table}`);
+}
+
 type DbClient = {
   from: (table: string) => any;
   rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
@@ -148,6 +171,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .eq("id", hubToken.cliente_id)
         .single(),
     ]);
+    warnIfCapped("workflow_posts", posts);
     const autoPublishOnApproval = clienteRow?.auto_publish_on_approval ?? false;
 
     // A post with no workflow_id is avulso (never attached to a flow): the embed
@@ -210,6 +234,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .select("workflow_id, tipo, status")
         .in("workflow_id", workflowIds)
         .eq("tipo", "aprovacao_cliente");
+      warnIfCapped("workflow_etapas", etapas);
       if (etapasError) {
         // Fail closed: without the etapa picture, suspend every workflow rather
         // than promise a scheduling that hub-approve's own guard may refuse.
@@ -240,6 +265,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .select("id, post_id")
         .in("post_id", avulsoIds)
         .eq("estado", "ativo");
+      warnIfCapped("post_processes", procs);
       if (procsError) {
         console.error("[hub-posts] post_processes lookup failed:", procsError);
         return avulsoIds;
@@ -251,6 +277,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .select("process_id, estado")
         .in("process_id", procRows.map((p) => p.id))
         .eq("tipo", "aprovacao_cliente");
+      warnIfCapped("post_process_steps", steps);
       if (stepsError) {
         console.error("[hub-posts] post_process_steps lookup failed:", stepsError);
         return procRows.map((p) => p.post_id);
@@ -279,34 +306,50 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     ] = await Promise.all([
       loadEmProducao(),
       postIds.length > 0
-        ? db
-            .from("post_approvals")
-            .select("id, post_id, action, comentario, is_workspace_user, created_at")
-            .in("post_id", postIds)
-            .order("created_at", { ascending: true })
+        ? pagedRows("post_approvals", (from, to) =>
+            db
+              .from("post_approvals")
+              .select("id, post_id, action, comentario, is_workspace_user, created_at")
+              .in("post_id", postIds)
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
         : none,
       postIds.length > 0
-        ? db
-            .from("post_edit_suggestions")
-            .select("id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, updated_at")
-            .in("post_id", postIds)
-            .eq("status", "pending")
+        ? pagedRows("pending suggestions", (from, to) =>
+            db
+              .from("post_edit_suggestions")
+              .select("id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, updated_at")
+              .in("post_id", postIds)
+              .eq("status", "pending")
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
         : none,
       postIds.length > 0
-        ? db
-            .from("post_edit_suggestions")
-            .select("post_id, updated_at")
-            .in("post_id", postIds)
-            .eq("status", "rejected")
-            .order("updated_at", { ascending: false })
+        ? pagedRows("rejected suggestions", (from, to) =>
+            db
+              .from("post_edit_suggestions")
+              .select("id, post_id, updated_at")
+              .in("post_id", postIds)
+              .eq("status", "rejected")
+              .order("updated_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to)
+          )
         : none,
       wiredPostIds.length > 0
-        ? db
-            .from("post_property_values")
-            .select("post_id, value, template_property_definitions!inner(name, type, config, portal_visible, display_order)")
-            .in("post_id", wiredPostIds)
-            .eq("template_property_definitions.portal_visible", true)
-            .order("template_property_definitions(display_order)", { ascending: true })
+        ? pagedRows("post_property_values", (from, to) =>
+            db
+              .from("post_property_values")
+              .select("id, post_id, value, template_property_definitions!inner(name, type, config, portal_visible, display_order)")
+              .in("post_id", wiredPostIds)
+              .eq("template_property_definitions.portal_visible", true)
+              .order("template_property_definitions(display_order)", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
         : none,
       postIds.length > 0 && workflowIds.length > 0
         ? db
@@ -315,16 +358,20 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
             .in("workflow_id", workflowIds)
         : none,
       postIds.length > 0
-        ? db
-            .from("post_file_links")
-            .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, stream_uid, stream_status, media_lost_at)")
-            .in("post_id", postIds)
-            .order("sort_order", { ascending: true })
-            .order("id", { ascending: true })
+        ? pagedRows("post_file_links", (from, to) =>
+            db
+              .from("post_file_links")
+              .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, stream_uid, stream_status, media_lost_at)")
+              .in("post_id", postIds)
+              .order("sort_order", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
         : none,
       loadSuspendedWorkflowIds(),
       loadSuspendedPostIds(),
     ]);
+    warnIfCapped("workflow_select_options", workflowSelectOptions);
 
     // Never-sent drafts stay on the server. Phase 2 queried with every post id (no extra
     // round trip); from here on, every field is pruned to the visible set so nothing tied

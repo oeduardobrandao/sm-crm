@@ -791,6 +791,89 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "hub-posts pages approvals, media, property values and suggestions with a total order",
+  async () => {
+    const db = createSupabaseQueryMock();
+    queueHubPostsBase(db, [{ ...basePost, id: 1, status: "enviado_cliente" }]);
+    db.queue(
+      "post_approvals",
+      "select",
+      {
+        data: [
+          {
+            id: 10,
+            post_id: 1,
+            action: "aprovado",
+            comentario: null,
+            is_workspace_user: false,
+            created_at: "2026-09-01T10:00:00.000Z",
+          },
+        ],
+        error: null,
+      },
+      {
+        data: [
+          {
+            id: 11,
+            post_id: 1,
+            action: "correcao",
+            comentario: "y",
+            is_workspace_user: false,
+            created_at: "2026-09-02T10:00:00.000Z",
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const body = await readJson(
+      await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123")),
+    );
+
+    assertEquals(
+      body.postApprovals.map((a: { id: number }) => a.id),
+      [10, 11],
+    );
+    // Unqueued tables answer [] on the first page, which already ends fetchAllRows (one call);
+    // what matters for them is .range() and a total order ending in id.
+    for (const table of [
+      "post_approvals",
+      "post_file_links",
+      "post_property_values",
+      "post_edit_suggestions",
+    ]) {
+      const calls = db.calls.filter((c) => c.table === table);
+      assert(calls.length >= 1, `${table} must be queried`);
+      assert(
+        calls.every((c) => c.modifiers.some((m) => m.method === "range")),
+        `${table} must use .range()`,
+      );
+      const orders = calls[0].modifiers.filter((m) => m.method === "order").map((m) => m.args[0]);
+      assertEquals(orders[orders.length - 1], "id", `${table} order must end in id`);
+    }
+    assertEquals(
+      db.calls.filter((c) => c.table === "post_approvals").length,
+      3,
+      "two queued pages, then the empty page that ends the loop",
+    );
+  },
+);
+
+Deno.test("hub-posts keeps going with [] when a paged lookup errors", async () => {
+  const db = createSupabaseQueryMock();
+  queueHubPostsBase(db, [{ ...basePost, id: 1, status: "enviado_cliente" }]);
+  db.queue("post_approvals", "select", { data: null, error: { message: "boom" } });
+
+  const response = await hubPostsHandlerFor(db)(
+    new Request("https://example.test/hub-posts?token=hub-123"),
+  );
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+  assertEquals(body.postApprovals, []);
+  assertEquals(body.posts.length, 1);
+});
+
 Deno.test("hub-posts rejects missing tokens", async () => {
   const handler = createHubPostsHandler({
     buildCorsHeaders,
