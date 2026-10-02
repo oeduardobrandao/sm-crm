@@ -7,12 +7,7 @@ import {
   getWorkflowTemplates,
   getAllActiveEtapas,
   getDeadlineInfo,
-  getWorkflowPostsCounts,
-  getWorkflowApprovedPostsCounts,
-  getWorkflowClearedClientePostsCounts,
-  getWorkflowRevisaoInternaCounts,
-  getWorkflowAwaitingClientePostsCounts,
-  getWorkflowPostResponsaveis,
+  getWorkflowPostStats,
   getWorkspaceSlug,
   getVigentePostProcesses,
   type Workflow,
@@ -354,42 +349,20 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
     queryFn: () => getWorkflowCovers(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const { data: postsCountsData } = useQuery({
+  // One RPC for every per-workflow post count the board reads. The key keeps
+  // its old 'workflow-posts-counts' name so every existing invalidation of it
+  // (and the entregas revocation list in AuthContext) refreshes all of them.
+  const { data: postStats } = useQuery({
     queryKey: ['workflow-posts-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowPostsCounts(activeWorkflowIds),
+    queryFn: () => getWorkflowPostStats(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const postsCounts: Map<number, number> = postsCountsData ?? EMPTY_COUNT_MAP;
-  const { data: approvedCountsData } = useQuery({
-    queryKey: ['workflow-approved-posts-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowApprovedPostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const approvedPostsCounts: Map<number, number> = approvedCountsData ?? EMPTY_COUNT_MAP;
-  const { data: clearedClienteCountsData } = useQuery({
-    queryKey: ['workflow-cleared-cliente-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowClearedClientePostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const clearedClienteCounts: Map<number, number> = clearedClienteCountsData ?? EMPTY_COUNT_MAP;
-  const { data: revisaoInternaCountsData } = useQuery({
-    queryKey: ['workflow-revisao-interna-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const revisaoInternaCounts: Map<number, number> = revisaoInternaCountsData ?? EMPTY_COUNT_MAP;
-  const { data: awaitingClienteCountsData } = useQuery({
-    queryKey: ['workflow-awaiting-cliente-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowAwaitingClientePostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const awaitingClienteCounts: Map<number, number> = awaitingClienteCountsData ?? EMPTY_COUNT_MAP;
-  const { data: postResponsaveisData } = useQuery({
-    queryKey: ['workflow-post-responsaveis', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowPostResponsaveis(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const postResponsaveis: Map<number, number[]> = postResponsaveisData ?? EMPTY_RESPONSAVEIS_MAP;
+  const postsCounts: Map<number, number> = postStats?.total ?? EMPTY_COUNT_MAP;
+  const approvedPostsCounts: Map<number, number> = postStats?.aprovadoCliente ?? EMPTY_COUNT_MAP;
+  const clearedClienteCounts: Map<number, number> = postStats?.clearedCliente ?? EMPTY_COUNT_MAP;
+  const revisaoInternaCounts: Map<number, number> = postStats?.revisaoInterna ?? EMPTY_COUNT_MAP;
+  const awaitingClienteCounts: Map<number, number> = postStats?.enviadoCliente ?? EMPTY_COUNT_MAP;
+  const postResponsaveis: Map<number, number[]> = postStats?.responsaveis ?? EMPTY_RESPONSAVEIS_MAP;
 
   const clienteIds = useMemo(() => clientes.map((c) => c.id!).filter(Boolean), [clientes]);
   const { data: clienteAvatars } = useQuery({
@@ -511,11 +484,6 @@ export function useEntregasData(options: UseEntregasDataOptions = {}) {
     qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-post-responsaveis'] });
     qc.invalidateQueries({ queryKey: ['active-posts'] });
     qc.invalidateQueries({ queryKey: ['workflow-events'] });
     qc.invalidateQueries({ queryKey: ['post-processes'] });

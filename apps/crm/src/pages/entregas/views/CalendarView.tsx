@@ -108,7 +108,6 @@ export function CalendarView({
     qc.invalidateQueries({ queryKey: ['scheduled-posts'] });
     qc.invalidateQueries({ queryKey: ['active-posts'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-    qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
   };
 

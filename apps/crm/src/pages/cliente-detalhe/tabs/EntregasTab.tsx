@@ -14,11 +14,7 @@ import {
   approvePostsInternally,
   sendPostsToCliente,
   duplicateWorkflow,
-  getWorkflowPostsCounts,
-  getWorkflowApprovedPostsCounts,
-  getWorkflowClearedClientePostsCounts,
-  getWorkflowRevisaoInternaCounts,
-  getWorkflowAwaitingClientePostsCounts,
+  getWorkflowPostStats,
   getConcludedWorkflowsByCliente,
   getConcludedWorkflowSummaries,
   getClientePosts,
@@ -143,6 +139,8 @@ function RailScrollArrows({ railRef }: { railRef: React.RefObject<HTMLDivElement
     </>
   );
 }
+
+const EMPTY_COUNTS: Map<number, number> = new Map();
 
 /**
  * "Entregas" tab: active workflow board, post delivery calendar, and
@@ -293,31 +291,17 @@ export default function EntregasTab() {
     [workflowsWithEtapas],
   );
 
-  const { data: postsCounts = new Map<number, number>() } = useQuery({
+  // Same query (key and fetch) as the Entregas board in useEntregasData.
+  const { data: postStats } = useQuery({
     queryKey: ['workflow-posts-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowPostsCounts(activeWorkflowIds),
+    queryFn: () => getWorkflowPostStats(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
-  const { data: approvedPostsCounts = new Map<number, number>() } = useQuery({
-    queryKey: ['workflow-approved-posts-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowApprovedPostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const { data: clearedClienteCounts = new Map<number, number>() } = useQuery({
-    queryKey: ['workflow-cleared-cliente-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowClearedClientePostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const { data: revisaoInternaCounts = new Map<number, number>() } = useQuery({
-    queryKey: ['workflow-revisao-interna-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
-  const { data: awaitingClienteCounts = new Map<number, number>() } = useQuery({
-    queryKey: ['workflow-awaiting-cliente-counts', activeWorkflowIds.join(',')],
-    queryFn: () => getWorkflowAwaitingClientePostsCounts(activeWorkflowIds),
-    enabled: activeWorkflowIds.length > 0,
-  });
+  const postsCounts = postStats?.total ?? EMPTY_COUNTS;
+  const approvedPostsCounts = postStats?.aprovadoCliente ?? EMPTY_COUNTS;
+  const clearedClienteCounts = postStats?.clearedCliente ?? EMPTY_COUNTS;
+  const revisaoInternaCounts = postStats?.revisaoInterna ?? EMPTY_COUNTS;
+  const awaitingClienteCounts = postStats?.enviadoCliente ?? EMPTY_COUNTS;
   const { data: workflowCovers } = useQuery({
     queryKey: ['workflow-covers', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowCovers(activeWorkflowIds),
@@ -450,10 +434,6 @@ export default function EntregasTab() {
   const refreshCards = () => {
     queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
     queryClient.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
-    queryClient.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
-    queryClient.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
-    queryClient.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
-    queryClient.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-covers'] });
     queryClient.invalidateQueries({ queryKey: ['concluded-by-cliente', clienteId] });
     queryClient.invalidateQueries({ queryKey: ['concluded-summaries-cliente'] });

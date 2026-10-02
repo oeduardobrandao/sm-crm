@@ -763,29 +763,14 @@ export async function getWorkflowPostsCounts(workflowIds: number[]): Promise<Map
   return counts;
 }
 
-export async function getWorkflowApprovedPostsCounts(
-  workflowIds: number[],
-): Promise<Map<number, number>> {
-  const counts = new Map<number, number>();
-  if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds)
-    .eq('status', 'aprovado_cliente');
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
-    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
-  }
-  return counts;
-}
-
 /**
  * Post statuses that mean the post has cleared client approval — either the
  * client approved it (`aprovado_cliente`) or it moved further down the pipeline
  * (scheduled / posted / publish-failed, all of which happen only after client
  * approval). Used to decide when a client-approval etapa is fully cleared, so a
  * workflow whose posts are already scheduled/posted still counts as approved.
+ * get_workflow_post_stats (migration 20261002000010) repeats this list in its
+ * cleared_cliente column: change both together.
  */
 export const CLIENT_CLEARED_STATUSES = [
   'aprovado_cliente',
@@ -794,74 +779,71 @@ export const CLIENT_CLEARED_STATUSES = [
   'falha_publicacao',
 ] as const;
 
-export async function getWorkflowClearedClientePostsCounts(
-  workflowIds: number[],
-): Promise<Map<number, number>> {
-  const counts = new Map<number, number>();
-  if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds)
-    .in('status', CLIENT_CLEARED_STATUSES as unknown as string[]);
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
-    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
-  }
-  return counts;
+/** Per-workflow post counts for the Entregas board, from one RPC. Each map
+ *  only holds workflows with at least one matching post (or, for
+ *  `responsaveis`, at least one assigned post): a missing key means zero. */
+export interface WorkflowPostStats {
+  total: Map<number, number>;
+  aprovadoCliente: Map<number, number>;
+  /** status in CLIENT_CLEARED_STATUSES. */
+  clearedCliente: Map<number, number>;
+  enviadoCliente: Map<number, number>;
+  revisaoInterna: Map<number, number>;
+  /** Distinct post responsavel_ids, ascending. */
+  responsaveis: Map<number, number[]>;
 }
 
-export async function getWorkflowAwaitingClientePostsCounts(
-  workflowIds: number[],
-): Promise<Map<number, number>> {
-  const counts = new Map<number, number>();
-  if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds)
-    .eq('status', 'enviado_cliente');
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
-    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
-  }
-  return counts;
+interface WorkflowPostStatsRow {
+  workflow_id: number;
+  total: number;
+  aprovado_cliente: number;
+  cleared_cliente: number;
+  enviado_cliente: number;
+  revisao_interna: number;
+  responsavel_ids: number[] | null;
 }
 
-export async function getWorkflowRevisaoInternaCounts(
-  workflowIds: number[],
-): Promise<Map<number, number>> {
-  const counts = new Map<number, number>();
-  if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds)
-    .eq('status', 'revisao_interna');
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
-    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
-  }
-  return counts;
-}
+// The RPC returns at most one row per workflow, so 1000 ids per call keeps
+// every response under PostgREST's silent 1000-row cap.
+const POST_STATS_CHUNK = 1000;
 
-export async function getWorkflowPostResponsaveis(
-  workflowIds: number[],
-): Promise<Map<number, number[]>> {
-  const map = new Map<number, number[]>();
-  if (workflowIds.length === 0) return map;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id, responsavel_id')
-    .in('workflow_id', workflowIds)
-    .not('responsavel_id', 'is', null);
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number; responsavel_id: number }[]) {
-    const arr = map.get(row.workflow_id) ?? [];
-    if (!arr.includes(row.responsavel_id)) arr.push(row.responsavel_id);
-    map.set(row.workflow_id, arr);
+export async function getWorkflowPostStats(workflowIds: number[]): Promise<WorkflowPostStats> {
+  const stats: WorkflowPostStats = {
+    total: new Map(),
+    aprovadoCliente: new Map(),
+    clearedCliente: new Map(),
+    enviadoCliente: new Map(),
+    revisaoInterna: new Map(),
+    responsaveis: new Map(),
+  };
+  const ids = [...new Set(workflowIds)];
+  if (ids.length === 0) return stats;
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += POST_STATS_CHUNK) {
+    chunks.push(ids.slice(i, i + POST_STATS_CHUNK));
   }
-  return map;
+  const pages = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await supabase.rpc('get_workflow_post_stats', {
+        p_workflow_ids: chunk,
+      });
+      if (error) throw error;
+      return (data ?? []) as WorkflowPostStatsRow[];
+    }),
+  );
+  const setCount = (map: Map<number, number>, id: number, n: number) => {
+    if (n > 0) map.set(id, n);
+  };
+  for (const row of pages.flat()) {
+    const id = row.workflow_id;
+    setCount(stats.total, id, row.total);
+    setCount(stats.aprovadoCliente, id, row.aprovado_cliente);
+    setCount(stats.clearedCliente, id, row.cleared_cliente);
+    setCount(stats.enviadoCliente, id, row.enviado_cliente);
+    setCount(stats.revisaoInterna, id, row.revisao_interna);
+    if (row.responsavel_ids?.length) stats.responsaveis.set(id, row.responsavel_ids);
+  }
+  return stats;
 }
 
 /**

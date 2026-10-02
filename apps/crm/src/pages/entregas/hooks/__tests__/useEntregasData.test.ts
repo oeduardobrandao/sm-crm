@@ -14,9 +14,8 @@ import {
 
 // useEntregasData reads `clienteAvatars`/`hubTokens` via two `supabase.from(...)`
 // calls made DIRECTLY (bypassing the mocked store module below), and
-// `getWorkspaceSlug`/`getWorkflowRevisaoInternaCounts`/
-// `getWorkflowAwaitingClientePostsCounts` (never overridden in the store mock
-// either) reach `supabase` internally too. Without this, all of those hit the
+// `getWorkspaceSlug` (never overridden in the store mock either) reaches
+// `supabase` internally too. Without this, all of those hit the
 // REAL `@supabase/supabase-js` client against the fake `VITE_SUPABASE_URL`
 // from vitest.config.ts — a genuine (if failing) network call whose settle
 // time is environment-dependent (fails fast on a sandbox with no DNS, but
@@ -94,20 +93,7 @@ vi.mock('../../../../store', async (importOriginal) => {
     getDeadlineInfo: vi
       .fn()
       .mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' }),
-    getWorkflowPostsCounts: vi.fn().mockResolvedValue(
-      new Map<number, number>([
-        [1, 5],
-        [2, 3],
-      ]),
-    ),
-    getWorkflowApprovedPostsCounts: vi.fn().mockResolvedValue(new Map<number, number>()),
-    getWorkflowClearedClientePostsCounts: vi.fn().mockResolvedValue(new Map<number, number>()),
-    getWorkflowPostResponsaveis: vi.fn().mockResolvedValue(
-      new Map<number, number[]>([
-        [1, [10, 20]],
-        [2, [10]],
-      ]),
-    ),
+    getWorkflowPostStats: vi.fn().mockImplementation(async () => postStatsFixture()),
     getVigentePostProcesses: vi.fn().mockResolvedValue([]),
   };
 });
@@ -118,6 +104,24 @@ vi.mock('../../../../services/postMedia', () => ({
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+// A function declaration, so the hoisted vi.mock factory above can call it.
+function postStatsFixture() {
+  return {
+    total: new Map<number, number>([
+      [1, 5],
+      [2, 3],
+    ]),
+    aprovadoCliente: new Map<number, number>(),
+    clearedCliente: new Map<number, number>(),
+    enviadoCliente: new Map<number, number>(),
+    revisaoInterna: new Map<number, number>(),
+    responsaveis: new Map<number, number[]>([
+      [1, [10, 20]],
+      [2, [10]],
+    ]),
+  };
+}
 
 function makeEtapa(overrides: Partial<WorkflowEtapa>): WorkflowEtapa {
   return {
@@ -310,22 +314,7 @@ describe('useEntregasData', () => {
       diasRestantes: 3,
       resumo: 'em dia',
     });
-    (store.getWorkflowPostsCounts as any).mockResolvedValue(
-      new Map<number, number>([
-        [1, 5],
-        [2, 3],
-      ]),
-    );
-    (store.getWorkflowApprovedPostsCounts as any).mockResolvedValue(new Map<number, number>());
-    (store.getWorkflowClearedClientePostsCounts as any).mockResolvedValue(
-      new Map<number, number>(),
-    );
-    (store.getWorkflowPostResponsaveis as any).mockResolvedValue(
-      new Map<number, number[]>([
-        [1, [10, 20]],
-        [2, [10]],
-      ]),
-    );
+    (store.getWorkflowPostStats as any).mockImplementation(async () => postStatsFixture());
 
     const postMedia = await import('../../../../services/postMedia');
     (postMedia.getWorkflowCovers as any).mockResolvedValue(new Map());
