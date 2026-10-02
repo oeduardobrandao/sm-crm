@@ -15,6 +15,9 @@ interface VideoStageProps {
   autoPlay: boolean;
   onSaveProgress: (videoId: number, position: number, completed: boolean) => void;
   onPlayNext: (next: KbVideo) => void;
+  /** Another series with unwatched videos, offered once this series ends. */
+  nextSeries?: KbVideoSeries | null;
+  onStartSeries?: (seriesId: string) => void;
   /** Called on the first `play` of this video (the parent keys the stage by video id). */
   onFirstPlay?: (videoId: number) => void;
 }
@@ -28,6 +31,8 @@ export function VideoStage({
   autoPlay,
   onSaveProgress,
   onPlayNext,
+  nextSeries = null,
+  onStartSeries,
   onFirstPlay,
 }: VideoStageProps) {
   const [endState, setEndState] = useState<'playing' | 'next' | 'done'>('playing');
@@ -100,17 +105,27 @@ export function VideoStage({
         {endState === 'done' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 p-6 text-center text-white">
             <p className="text-[1.05rem] font-semibold">Série concluída</p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-foreground"
-              onClick={() => {
-                setEndState('playing');
-                setAttempt((a) => a + 1);
-              }}
-            >
-              Assistir de novo
-            </Button>
+            {nextSeries && onStartSeries && (
+              <p className="text-[0.85rem] text-white/80">Próxima série: {nextSeries.title}</p>
+            )}
+            <div className="flex flex-wrap justify-center gap-2">
+              {nextSeries && onStartSeries && (
+                <Button size="sm" onClick={() => onStartSeries(nextSeries.id)}>
+                  Começar
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-foreground"
+                onClick={() => {
+                  setEndState('playing');
+                  setAttempt((a) => a + 1);
+                }}
+              >
+                Assistir de novo
+              </Button>
+            </div>
           </div>
         )}
       </div>
