@@ -24,13 +24,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import {
-  renameFolder,
-  deleteFolder,
-  renameFile,
-  deleteFile,
-  FileApiError,
-} from '@/services/fileService';
+import { renameFolder, deleteFolder, renameFile, deleteFile } from '@/services/fileService';
+import { FileApiError } from '@/services/fileApiError';
 import { fileInUseMessage } from '../fileInUse';
 import { FolderInfoModal } from './FolderInfoModal';
 import type { Folder, FileRecord } from '../types';

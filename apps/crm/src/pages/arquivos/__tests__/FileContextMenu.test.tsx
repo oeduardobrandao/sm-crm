@@ -1,8 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/services/fileService', async () => ({
-  ...(await vi.importActual<typeof import('@/services/fileApiError')>('@/services/fileApiError')),
+vi.mock('@/services/fileService', () => ({
   renameFolder: vi.fn(),
   deleteFolder: vi.fn(),
   renameFile: vi.fn(),

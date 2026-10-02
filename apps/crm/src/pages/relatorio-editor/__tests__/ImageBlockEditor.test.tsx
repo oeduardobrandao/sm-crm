@@ -2,8 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/services/fileService', async () => ({
-  ...(await vi.importActual<object>('@/services/fileApiError')),
+vi.mock('@/services/fileService', () => ({
   uploadFile: vi.fn(),
   getClientReportsFolderId: vi.fn(),
   getClientFolderId: vi.fn(),
