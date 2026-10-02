@@ -3,7 +3,13 @@
 import type { BlockType } from './types';
 
 export type WidgetCategory =
-  'Números' | 'Gráficos' | 'Audiência' | 'Conteúdo' | 'Texto' | 'Mídia' | 'Estrutura';
+  | 'Números'
+  | 'Gráficos'
+  | 'Audiência'
+  | 'Conteúdo'
+  | 'Texto'
+  | 'Mídia'
+  | 'Estrutura';
 
 export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
   'Números',
