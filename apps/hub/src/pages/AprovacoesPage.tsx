@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useHub } from '../HubContext';
-import { fetchPosts, fetchInstagramFeed } from '../api';
-import { invalidateHubPosts } from '../queries';
+import { fetchInstagramFeed } from '../api';
+import { hubPostsQuery, invalidateHubPosts } from '../queries';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { PageHeader } from '../components/PageHeader';
 import { MediaFilterDropdown, type MediaFilter } from '../components/MediaFilterDropdown';
@@ -75,10 +75,7 @@ export function AprovacoesPage() {
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
   const [sortDir, setSortDir] = useState<PostSortDirection>('asc');
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['hub-posts', token],
-    queryFn: () => fetchPosts(token),
-  });
+  const { data, isLoading, isError } = useQuery(hubPostsQuery(token));
   const { data: feedData } = useQuery({
     queryKey: ['hub-instagram-feed', token],
     queryFn: () => fetchInstagramFeed(token),

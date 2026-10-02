@@ -83,11 +83,9 @@ export function PostCalendar({ posts, onMonthChange, loading, notice }: Props) {
   }
 
   const today = new Date();
-  // Posts are grouped by their scheduled_at date in UTC (see postsForDay
-  // below), so "today" must use the same UTC calendar day — otherwise, for
-  // viewers whose local timezone differs from UTC, the highlighted "today"
-  // cell and the initially selected day drift by one day from where posts
-  // actually land on the grid.
+  // Posts are grouped by their scheduled_at LOCAL calendar day (see postsForDay below), and
+  // the range fetch (`localMonthRange` in postView.ts) depends on that same local-day
+  // bucketing to pick the month it asks the server for.
   const [year, setYear] = useState(today.getUTCFullYear());
   const [month, setMonth] = useState(today.getUTCMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(today.getUTCDate());

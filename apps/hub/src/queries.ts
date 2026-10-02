@@ -22,8 +22,17 @@ export const HUB_POSTS_KEY = 'hub-posts';
 export const hubPostsQuery = (token: string) =>
   queryOptions({ queryKey: [HUB_POSTS_KEY, token], queryFn: () => fetchPosts(token) });
 
-/** History and range fail fast: one retry, shown in about a second instead of ~7s. */
-export const HISTORY_RETRY = { retry: 1, retryDelay: 300 } as const;
+/**
+ * History and range fail fast: one retry, shown in about a second instead of ~7s.
+ * Published rows don't change mid-session, so they never refetch on focus or go stale;
+ * a reload or remount refreshes them.
+ */
+export const HISTORY_OPTS = {
+  retry: 1,
+  retryDelay: 300,
+  staleTime: Infinity,
+  refetchOnWindowFocus: false,
+} as const;
 
 export const hubPostsHistoryKey = (token: string, olderCursor: string | null) =>
   [HUB_POSTS_KEY, token, 'history', olderCursor] as const;
@@ -32,7 +41,7 @@ export const hubPostsRangeQuery = (token: string, from: string, to: string) =>
   queryOptions({
     queryKey: [HUB_POSTS_KEY, token, 'range', from],
     queryFn: () => fetchPostsInRange(token, from, to),
-    ...HISTORY_RETRY,
+    ...HISTORY_OPTS,
   });
 
 // A 404 ("não disponível") is an answer, not a failure to retry.

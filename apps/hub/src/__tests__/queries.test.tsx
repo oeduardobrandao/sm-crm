@@ -14,6 +14,7 @@ vi.mock('../api', () => ({
 import { fetchBootstrap, fetchOlderPosts, fetchPosts, fetchPostsInRange } from '../api';
 import {
   createHubQueryClient,
+  HISTORY_OPTS,
   hubBootstrapQuery,
   hubPostsHistoryKey,
   hubPostsQuery,
@@ -130,5 +131,16 @@ describe('invalidateHubPosts', () => {
     expect(olderMock).toHaveBeenCalledTimes(1);
     expect(rangeMock).toHaveBeenCalledTimes(1);
     expect(qc.getQueryState(hubPostsHistoryKey('tk', 'c|0'))?.isInvalidated).toBe(true);
+  });
+});
+
+describe('history and range options', () => {
+  it('never go stale or refetch on window focus', () => {
+    expect(HISTORY_OPTS).toMatchObject({ staleTime: Infinity, refetchOnWindowFocus: false });
+
+    const range = hubPostsRangeQuery('tk', '2025-11-01T03:00:00.000Z', '2025-12-01T03:00:00.000Z');
+    expect(range.staleTime).toBe(Infinity);
+    expect(range.refetchOnWindowFocus).toBe(false);
+    expect(range.retry).toBe(1);
   });
 });

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { fetchOlderPosts } from '../api';
-import { HISTORY_RETRY, hubPostsHistoryKey, hubPostsQuery } from '../queries';
+import { HISTORY_OPTS, hubPostsHistoryKey, hubPostsQuery } from '../queries';
 import { mergeById } from '../lib/mergeById';
 import type { HubPost, HubPostsResponse, PostApproval } from '../types';
 
@@ -46,7 +46,7 @@ export function useHubPosts(
     initialPageParam: olderCursor ?? '',
     getNextPageParam: (page: HubPostsResponse) => page.nextCursor ?? undefined,
     enabled: historyEnabled,
-    ...HISTORY_RETRY,
+    ...HISTORY_OPTS,
   });
 
   const historyData = historyEnabled ? history.data : undefined;
