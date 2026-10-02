@@ -61,14 +61,15 @@ export function FilePickerModal({
   initialFolderId = null,
 }: FilePickerModalProps) {
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
-  const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
+  // Keep the records themselves: the selection must survive folder navigation.
+  const [selectedFiles, setSelectedFiles] = useState<Map<number, FileRecord>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
 
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
       setCurrentFolderId(initialFolderId);
-      setSelectedFileIds(new Set());
+      setSelectedFiles(new Map());
       setSearchQuery('');
     }
   }, [open, initialFolderId]);
@@ -105,27 +106,28 @@ export function FilePickerModal({
     ? subfolders.filter((folder) => folder.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : subfolders;
 
-  function toggleFile(id: number) {
-    setSelectedFileIds((prev) => {
-      if (selectionMode === 'single') return prev.has(id) ? new Set() : new Set([id]);
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
+  function toggleFile(file: FileRecord) {
+    setSelectedFiles((prev) => {
+      if (selectionMode === 'single') {
+        return prev.has(file.id) ? new Map() : new Map([[file.id, file]]);
+      }
+      const next = new Map(prev);
+      if (next.has(file.id)) {
+        next.delete(file.id);
       } else {
-        next.add(id);
+        next.set(file.id, file);
       }
       return next;
     });
   }
 
   function handleVincular() {
-    const ids = [...selectedFileIds];
-    onSelect?.(ids);
-    onSelectRecords?.(allFiles.filter((f) => selectedFileIds.has(f.id)));
+    onSelect?.([...selectedFiles.keys()]);
+    onSelectRecords?.([...selectedFiles.values()]);
     onClose();
   }
 
-  const selectedCount = selectedFileIds.size;
+  const selectedCount = selectedFiles.size;
 
   return (
     <Dialog
@@ -237,13 +239,13 @@ export function FilePickerModal({
                   style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}
                 >
                   {files.map((file) => {
-                    const isSelected = selectedFileIds.has(file.id);
+                    const isSelected = selectedFiles.has(file.id);
                     const thumbSrc = file.thumbnail_url ?? file.url ?? null;
 
                     return (
                       <button
                         key={file.id}
-                        onClick={() => toggleFile(file.id)}
+                        onClick={() => toggleFile(file)}
                         className={`group relative flex flex-col rounded-[14px] overflow-hidden border transition-all duration-150 text-left ${
                           isSelected
                             ? 'border-[var(--primary-color)] shadow-md ring-1 ring-[var(--primary-color)]'

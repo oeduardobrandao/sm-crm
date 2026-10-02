@@ -376,4 +376,37 @@ describe('modo single', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Usar imagem' }));
     expect(onSelectRecords).toHaveBeenCalledWith([expect.objectContaining({ id: 2 })]);
   });
+
+  it('mantém a seleção ao navegar para outra pasta e devolve o registro da pasta de origem', async () => {
+    mockedGetFolderContents.mockImplementation(async (folderId) =>
+      folderId === 5
+        ? makeFolderContents({ files: [makeFile({ id: 50, name: 'outra.jpg' })] })
+        : makeFolderContents({
+            subfolders: [makeFolder({ id: 5, name: 'Outra' })],
+            files: [makeFile({ id: 1, name: 'a.jpg', url: 'https://u/a' })],
+          }),
+    );
+    const onSelectRecords = vi.fn();
+    renderPicker({ selectionMode: 'single', filterKind: ['image'], onSelectRecords });
+    await waitFor(() => expect(screen.getByText('a.jpg')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('a.jpg'));
+    fireEvent.click(screen.getByText('Outra'));
+    await waitFor(() => expect(screen.getByText('outra.jpg')).toBeInTheDocument());
+    expect(screen.getByText('1 imagem selecionada')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Usar imagem' }));
+    expect(onSelectRecords).toHaveBeenCalledWith([expect.objectContaining({ id: 1 })]);
+  });
+
+  it('segundo clique desmarca e desabilita o botão', async () => {
+    mockedGetFolderContents.mockResolvedValue(
+      makeFolderContents({ files: [makeFile({ id: 1, name: 'a.jpg' })] }),
+    );
+    renderPicker({ selectionMode: 'single', filterKind: ['image'] });
+    await waitFor(() => expect(screen.getByText('a.jpg')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('a.jpg'));
+    expect(screen.getByRole('button', { name: 'Usar imagem' })).toBeEnabled();
+    fireEvent.click(screen.getByText('a.jpg'));
+    expect(screen.getByText('Nenhuma imagem selecionada')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Usar imagem' })).toBeDisabled();
+  });
 });
