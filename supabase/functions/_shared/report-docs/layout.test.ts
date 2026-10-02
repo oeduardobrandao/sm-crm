@@ -4,6 +4,7 @@ import {
   LAYOUT_VERSION,
   normalizeCoverSize,
   type ReportLayout,
+  sanitizeLayoutForTemplate,
   validateLayout,
 } from "./layout.ts";
 
@@ -45,8 +46,9 @@ Deno.test("validateLayout rejeita mais de 200 blocos e ids duplicados", () => {
   assert(!validateLayout(layout([block({ id: "x" }), block({ id: "x" })])).ok);
 });
 
-Deno.test("catálogo tem os 26 tipos da spec (25 + kpi_views de 2026-08)", () => {
-  assertEquals(BLOCK_TYPES.length, 26);
+Deno.test("catálogo tem os 27 tipos (26 + image de 2026-10)", () => {
+  assertEquals(BLOCK_TYPES.length, 27);
+  assert((BLOCK_TYPES as readonly string[]).includes("image"));
 });
 
 Deno.test("validateLayout: accent opcional precisa ser hex #rrggbb", () => {
@@ -101,4 +103,62 @@ Deno.test("normalizeCoverSize: cover já full ou sem cover -- mesma referência 
   assertEquals(normalizeCoverSize(withFullCover), withFullCover);
   const withoutCover = layout([block({ type: "kpi_reach", size: "third" })]) as ReportLayout;
   assertEquals(normalizeCoverSize(withoutCover), withoutCover);
+});
+
+const img = (config?: Record<string, unknown>) =>
+  block({ id: "i1", type: "image", size: "full", ...(config ? { config } : {}) });
+
+Deno.test("validateLayout: bloco image vazio e preenchido válidos", () => {
+  assert(validateLayout(layout([img()])).ok);
+  assert(validateLayout(layout([img({
+    file_id: 42, width: 1600, height: 900, ratio: "16:9", fit: "cover",
+    focal: { x: 0.5, y: 0 }, caption: "Legenda", alt: "Descrição",
+  })])).ok);
+});
+
+Deno.test("validateLayout: image rejeita src, r2_key e enums inválidos", () => {
+  assert(!validateLayout(layout([img({ src: "https://x" })])).ok);
+  assert(!validateLayout(layout([img({ r2_key: "contas/x/files/a.png" })])).ok);
+  assert(!validateLayout(layout([img({ ratio: "5:4" })])).ok);
+  assert(!validateLayout(layout([img({ fit: "stretch" })])).ok);
+  assert(!validateLayout(layout([img({ focal: { x: 0.3, y: 0 } })])).ok);
+  assert(!validateLayout(layout([img({ focal: "center" })])).ok);
+});
+
+Deno.test("validateLayout: image exige file_id inteiro positivo com width/height", () => {
+  assert(!validateLayout(layout([img({ file_id: 0, width: 1, height: 1 })])).ok);
+  assert(!validateLayout(layout([img({ file_id: 1.5, width: 1, height: 1 })])).ok);
+  assert(!validateLayout(layout([img({ file_id: 3 })])).ok);
+  assert(!validateLayout(layout([img({ file_id: 3, width: 0, height: 10 })])).ok);
+  assert(!validateLayout(layout([img({ file_id: 3, width: 1_000_000, height: 10 })])).ok);
+});
+
+Deno.test("validateLayout: image limita caption e alt", () => {
+  assert(validateLayout(layout([img({ caption: "a".repeat(200), alt: "b".repeat(300) })])).ok);
+  assert(!validateLayout(layout([img({ caption: "a".repeat(201) })])).ok);
+  assert(!validateLayout(layout([img({ alt: "b".repeat(301) })])).ok);
+  assert(!validateLayout(layout([img({ caption: 5 })])).ok);
+});
+
+Deno.test("sanitizeLayoutForTemplate: tira texto de IA e o conteúdo da imagem", () => {
+  const input: ReportLayout = {
+    version: LAYOUT_VERSION,
+    blocks: [
+      { id: "a", type: "ai_summary", size: "full", text: { type: "doc" } },
+      { id: "t", type: "text", size: "full", text: { type: "doc" } },
+      {
+        id: "i", type: "image", size: "half",
+        config: { file_id: 9, width: 10, height: 20, ratio: "4:5", fit: "contain",
+          focal: { x: 0, y: 1 }, caption: "c", alt: "a" },
+      },
+    ],
+  };
+  const out = sanitizeLayoutForTemplate(input);
+  assertEquals(out.blocks[0], { id: "a", type: "ai_summary", size: "full" });
+  assertEquals(out.blocks[1], input.blocks[1]);
+  assertEquals(out.blocks[2], {
+    id: "i", type: "image", size: "half",
+    config: { ratio: "4:5", fit: "contain", focal: { x: 0, y: 1 } },
+  });
+  assert(validateLayout(out).ok);
 });

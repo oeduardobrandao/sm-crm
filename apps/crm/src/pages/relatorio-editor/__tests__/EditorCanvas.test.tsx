@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { EditorCanvas } from '../EditorCanvas';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
@@ -172,5 +173,60 @@ describe('EditorCanvas', () => {
     fireEvent.change(title, { target: { value: 'Julho especial' } });
     expect(onConfigChange).toHaveBeenCalledWith('c', { title: 'Julho especial' });
     expect(screen.queryByLabelText('Aumentar largura')).not.toBeInTheDocument();
+  });
+
+  it('bloco image: botão Ajustes da imagem na toolbar e área de soltar no corpo', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <EditorCanvas
+          layout={{ version: 1, blocks: [{ id: 'i', type: 'image', size: 'full' }] }}
+          snapshot={makeSnapshotFixture()}
+          onChange={() => {}}
+          onConfigChange={() => {}}
+          imageContext={{ mode: 'template' }}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByLabelText('Ajustes da imagem')).toBeInTheDocument();
+    expect(screen.getByText('Espaço para imagem')).toBeInTheDocument();
+  });
+
+  it('botão Ajustes da imagem abre e fecha o popover', async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <EditorCanvas
+          layout={{ version: 1, blocks: [{ id: 'i', type: 'image', size: 'full' }] }}
+          snapshot={makeSnapshotFixture()}
+          onChange={() => {}}
+          onConfigChange={() => {}}
+          imageContext={{ mode: 'template' }}
+        />
+      </QueryClientProvider>,
+    );
+    const toggle = screen.getByRole('button', { name: 'Ajustes da imagem' });
+    fireEvent.pointerDown(toggle);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Orientação')).toBeInTheDocument();
+    // O Radix só passa a ouvir pointerdown fora depois de um tique.
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    // pointerdown no próprio botão não conta como "fora": o clique fecha.
+    fireEvent.pointerDown(toggle);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText('Orientação')).not.toBeInTheDocument();
+  });
+
+  it('bloco image sem imageContext: sem botão de ajustes nem área de soltar', () => {
+    render(
+      <EditorCanvas
+        layout={{ version: 1, blocks: [{ id: 'i', type: 'image', size: 'full' }] }}
+        snapshot={makeSnapshotFixture()}
+        onChange={() => {}}
+        onConfigChange={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText('Ajustes da imagem')).not.toBeInTheDocument();
+    expect(screen.queryByText('Espaço para imagem')).not.toBeInTheDocument();
   });
 });

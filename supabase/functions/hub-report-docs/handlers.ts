@@ -3,6 +3,7 @@
 // Deno.serve.
 import { verifyPrintToken } from "../_shared/report-docs/print-token.ts";
 import type { HubToken } from "../_shared/hub-token.ts";
+import { signImageBlocks, type SignFn } from "./sign-images.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -96,13 +97,15 @@ export async function docHandler(
   db: Db,
   hubToken: HubToken,
   docId: string,
+  sign?: SignFn,
 ): Promise<HubReportDocPayload | null> {
   const doc = await loadReadyDoc(db, docId);
   // Cadeia inteira (spec §9): documento de outro cliente do MESMO workspace = 404.
   if (!doc || doc.client_id !== hubToken.cliente_id || doc.conta_id !== hubToken.conta_id) {
     return null;
   }
-  return stripInternalFields(doc);
+  const payload = stripInternalFields(doc);
+  return { ...payload, layout: await signImageBlocks(db, docId, payload.layout, sign) };
 }
 
 export async function printDocHandler(
@@ -111,11 +114,13 @@ export async function printDocHandler(
   docId: string,
   pt: string,
   nowEpochS: number,
+  sign?: SignFn,
 ): Promise<HubReportDocPayload | null> {
   if (!secret || !(await verifyPrintToken(pt, docId, nowEpochS, secret))) return null;
   const doc = await loadReadyDoc(db, docId);
   if (!doc) return null;
-  return stripInternalFields(doc);
+  const payload = stripInternalFields(doc);
+  return { ...payload, layout: await signImageBlocks(db, docId, payload.layout, sign) };
 }
 
 // loadReadyDoc's row carries client_id/conta_id/status for the ownership and

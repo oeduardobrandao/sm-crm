@@ -9,6 +9,7 @@ import {
   ChartPie,
   Clock,
   Eye,
+  FileImage,
   Globe,
   Heading,
   Heart,
@@ -61,6 +62,7 @@ export const WIDGET_ICONS: Record<BlockType, LucideIcon> = {
   top_posts: Trophy,
   post_list: List,
   tags_table: Tags,
+  image: FileImage,
 };
 
 export const FALLBACK_WIDGET_ICON: LucideIcon = Shapes;

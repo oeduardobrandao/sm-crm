@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { getContaId } from '../store/core';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
 import { buildDefaultLayout } from '../../../../supabase/functions/_shared/report-docs/default-layout.ts';
-import { stripAiTextForTemplate } from '../pages/relatorio-editor/templateOps';
+import { sanitizeLayoutForTemplate } from '../pages/relatorio-editor/templateOps';
 
 export interface ReportTemplateRow {
   id: string;
@@ -86,7 +86,7 @@ export async function updateReportTemplate(
 
 /** Layout padrão do sistema com todos os blocos opcionais, sem texto de IA. */
 export function buildSystemDefaultLayout(): ReportLayout {
-  return stripAiTextForTemplate(
+  return sanitizeLayoutForTemplate(
     buildDefaultLayout({ hasAi: true, hasAudience: true, hasBestTimes: true, hasTags: true }),
   );
 }

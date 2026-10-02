@@ -73,12 +73,17 @@ export async function resolveImageUrls(fileIds: number[]): Promise<Map<number, s
     if (pending.length === 0) return map;
   }
 
-  const { data: files, error } = await supabase
+  const { data: rows, error } = await supabase
     .from('files')
-    .select('id, r2_key')
+    .select('id, r2_key, kind, media_lost_at')
     .in('id', pending);
   if (error) throw error;
-  if (!files || files.length === 0) return map;
+  // Perdido ou não-imagem não assina (sign-r2-urls não olha files): o id fica
+  // fora do mapa e useFileUrl devolve null, o estado "indisponível" do editor.
+  const files = (rows ?? []).filter(
+    (f: { kind: string; media_lost_at: string | null }) => f.kind === 'image' && !f.media_lost_at,
+  );
+  if (files.length === 0) return map;
 
   const res = await fetch(`${supabaseUrl}/functions/v1/sign-r2-urls`, {
     method: 'POST',

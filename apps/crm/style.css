@@ -13424,6 +13424,209 @@ a.hub-fill__row-inner:hover {
   height: 0;
 }
 
+/* ===== Bloco Imagem no editor (spec 2026-10-02) ===== */
+.rb-img-panel {
+  width: 300px;
+  padding: 0.25rem 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+}
+.rb-img-label {
+  display: block;
+  margin: 0.9rem 0 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.rb-img-help {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-light);
+}
+.rb-img-seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.rb-img-seg-btn {
+  flex: 1 1 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-light);
+  font: inherit;
+  cursor: pointer;
+}
+.rb-img-seg-btn.is-on {
+  background: var(--card-bg);
+  color: var(--text-main);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.rb-img-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rb-img-chip {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-main);
+  font: inherit;
+  cursor: pointer;
+}
+.rb-img-chip.is-on {
+  background: var(--text-main);
+  border-color: var(--text-main);
+  color: var(--card-bg);
+}
+.rb-img-focal {
+  display: grid;
+  grid-template-columns: repeat(3, 28px);
+  gap: 2px;
+  padding: 3px;
+  width: max-content;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.rb-img-focal-dot {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+}
+.rb-img-focal-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--text-light);
+}
+.rb-img-focal-dot.is-on::after {
+  width: 12px;
+  height: 12px;
+  background: var(--text-main);
+}
+.rb-img-seg-btn:focus-visible,
+.rb-img-chip:focus-visible,
+.rb-img-focal-dot:focus-visible,
+.rb-img-link:focus-visible {
+  outline: 2px solid var(--text-main);
+  outline-offset: 2px;
+}
+.rb-img-hint {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-1);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.rb-img-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-main);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.rb-img-footer {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-color);
+}
+.rb-img-drop {
+  box-sizing: border-box;
+  min-height: 240px;
+  border: 1.5px dashed var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  text-align: center;
+  padding: 1.5rem;
+  color: var(--text-light);
+}
+.rb-img-drop.is-over {
+  border-color: var(--text-main);
+  background: var(--surface-hover);
+}
+.rb-img-drop.is-error {
+  border-color: var(--danger);
+}
+.rb-img-frame {
+  border-radius: 12px;
+}
+.rb-img-frame.is-over {
+  outline: 2px dashed var(--text-main);
+  outline-offset: 4px;
+}
+.rb-img-drop.is-error.is-over {
+  border-color: var(--text-main);
+}
+.rb-img-drop-title {
+  font-weight: 600;
+  color: var(--text-main);
+}
+.rb-img-drop-error {
+  font-weight: 600;
+  color: var(--danger-text);
+}
+.rb-img-drop-hint {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  max-width: 280px;
+}
+.rb-img-progress {
+  position: relative;
+}
+.rb-img-progress img {
+  opacity: 0.45;
+}
+.rb-img-progress-bar {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  background: var(--card-bg);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  font-size: 0.8rem;
+}
+.rb-img-progress-track {
+  margin-top: 0.4rem;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.rb-img-progress-fill {
+  height: 100%;
+  background: var(--text-main);
+}
+
 /* ── Editor de relatório: seção fixa "Camadas" ─────────────────────────────
    Painel ancorado à direita. Regra da casa (DESIGN_SYSTEM): UI fixa ancorada
    fica display:none por padrão e só aparece via media query — abaixo do gate

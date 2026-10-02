@@ -135,7 +135,7 @@ function FileInfoContent({ file }: { file: FileRecord }) {
         label="Enviado em"
         value={format(new Date(file.created_at), "dd 'de' MMM 'de' yyyy, HH:mm", { locale: ptBR })}
       />
-      <InfoRow label="Links em posts" value={String(file.reference_count)} />
+      <InfoRow label="Em uso" value={String(file.reference_count)} />
     </div>
   );
 }

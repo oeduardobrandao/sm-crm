@@ -611,3 +611,32 @@ Deno.test("generate: foto manual (clientes.foto_url) tem prioridade sobre a do I
   assertEquals(row.data_snapshot.account.profile_picture_url, manualFoto);
   assertEquals(uploaded.length, 0);
 });
+
+Deno.test("templateId com bloco image: conteúdo da imagem é removido, ratio fica", async () => {
+  const tplLayout = {
+    version: 1,
+    blocks: [
+      { id: "c1", type: "cover", size: "full" },
+      {
+        id: "i1",
+        type: "image",
+        size: "full",
+        config: { ratio: "4:5", file_id: 12, width: 800, height: 1000, caption: "Legenda", alt: "Alt" },
+      },
+    ],
+  };
+  const db = makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: null, include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    report_templates: { id: "t1", conta_id: "c", layout: tplLayout },
+    workspaces: { name: "W", logo_url: null, brand_color: "#111111", report_splash_url: null },
+    instagram_posts: [],
+    instagram_follower_history: [],
+  });
+  await generateReportDocument(db, deps, "c", 1, "2026-07", "b3b2a6a0-1111-4222-8333-444455556666");
+  const inserted = db.inserts[0] as {
+    layout: { blocks: Array<{ id: string; type: string; config?: Record<string, unknown> }> };
+  };
+  const image = inserted.layout.blocks.find((b) => b.id === "i1");
+  assertEquals(image?.config, { ratio: "4:5" });
+});

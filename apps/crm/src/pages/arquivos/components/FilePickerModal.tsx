@@ -27,8 +27,15 @@ import type { FileRecord } from '../types';
 interface FilePickerModalProps {
   open: boolean;
   onClose: () => void;
-  onSelect: (fileIds: number[]) => void;
+  onSelect?: (fileIds: number[]) => void;
+  /** Registros completos (já com `url` assinada pelo file-manage). */
+  onSelectRecords?: (files: FileRecord[]) => void;
   filterKind?: ('image' | 'video')[];
+  /** Filtro extra por mime (ex.: bloco de imagem do relatório não aceita GIF). */
+  allowedMimes?: string[];
+  selectionMode?: 'multiple' | 'single';
+  /** Pasta inicial; aplicada no reset de abertura (que antes zerava para a raiz). */
+  initialFolderId?: number | null;
 }
 
 function FileIcon({ kind, className }: { kind: FileRecord['kind']; className?: string }) {
@@ -43,19 +50,29 @@ function kindLabel(kind: FileRecord['kind']): string {
   return 'Documento';
 }
 
-export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePickerModalProps) {
+export function FilePickerModal({
+  open,
+  onClose,
+  onSelect,
+  onSelectRecords,
+  filterKind,
+  allowedMimes,
+  selectionMode = 'multiple',
+  initialFolderId = null,
+}: FilePickerModalProps) {
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
-  const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
+  // Keep the records themselves: the selection must survive folder navigation.
+  const [selectedFiles, setSelectedFiles] = useState<Map<number, FileRecord>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
 
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
-      setCurrentFolderId(null);
-      setSelectedFileIds(new Set());
+      setCurrentFolderId(initialFolderId);
+      setSelectedFiles(new Map());
       setSearchQuery('');
     }
-  }, [open]);
+  }, [open, initialFolderId]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['folder-contents', currentFolderId],
@@ -73,33 +90,44 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
     ? allFiles.filter((f) => filterKind.includes(f.kind as 'image' | 'video'))
     : allFiles;
 
+  // Apply mime filter; single mode also hides permanently lost media
+  const mimeFilteredFiles = kindFilteredFiles.filter(
+    (f) =>
+      (!allowedMimes || allowedMimes.includes(f.mime_type)) &&
+      (selectionMode === 'multiple' || !f.media_lost_at),
+  );
+
   // Apply search filter (client-side)
   const files = searchQuery.trim()
-    ? kindFilteredFiles.filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : kindFilteredFiles;
+    ? mimeFilteredFiles.filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : mimeFilteredFiles;
 
   const filteredFolders = searchQuery.trim()
     ? subfolders.filter((folder) => folder.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : subfolders;
 
-  function toggleFile(id: number) {
-    setSelectedFileIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
+  function toggleFile(file: FileRecord) {
+    setSelectedFiles((prev) => {
+      if (selectionMode === 'single') {
+        return prev.has(file.id) ? new Map() : new Map([[file.id, file]]);
+      }
+      const next = new Map(prev);
+      if (next.has(file.id)) {
+        next.delete(file.id);
       } else {
-        next.add(id);
+        next.set(file.id, file);
       }
       return next;
     });
   }
 
   function handleVincular() {
-    onSelect([...selectedFileIds]);
+    onSelect?.([...selectedFiles.keys()]);
+    onSelectRecords?.([...selectedFiles.values()]);
     onClose();
   }
 
-  const selectedCount = selectedFileIds.size;
+  const selectedCount = selectedFiles.size;
 
   return (
     <Dialog
@@ -114,10 +142,12 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
       >
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-[var(--border-color)] flex-shrink-0">
           <DialogTitle className="text-base font-semibold text-[var(--text-main)]">
-            Selecionar arquivos
+            {selectionMode === 'single' ? 'Escolher imagem' : 'Selecionar arquivos'}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Escolha um ou mais arquivos para vincular.
+            {selectionMode === 'single'
+              ? 'Escolha uma imagem.'
+              : 'Escolha um ou mais arquivos para vincular.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -209,13 +239,13 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
                   style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}
                 >
                   {files.map((file) => {
-                    const isSelected = selectedFileIds.has(file.id);
+                    const isSelected = selectedFiles.has(file.id);
                     const thumbSrc = file.thumbnail_url ?? file.url ?? null;
 
                     return (
                       <button
                         key={file.id}
-                        onClick={() => toggleFile(file.id)}
+                        onClick={() => toggleFile(file)}
                         className={`group relative flex flex-col rounded-[14px] overflow-hidden border transition-all duration-150 text-left ${
                           isSelected
                             ? 'border-[var(--primary-color)] shadow-md ring-1 ring-[var(--primary-color)]'
@@ -285,9 +315,13 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
         {/* Footer */}
         <DialogFooter className="px-5 py-3 border-t border-[var(--border-color)] flex-shrink-0 flex flex-row items-center justify-between sm:justify-between sm:space-x-0">
           <span className="text-sm text-[var(--text-muted)]">
-            {selectedCount === 0
-              ? 'Nenhum arquivo selecionado'
-              : `${selectedCount} arquivo${selectedCount !== 1 ? 's' : ''} selecionado${selectedCount !== 1 ? 's' : ''}`}
+            {selectionMode === 'single'
+              ? selectedCount === 0
+                ? 'Nenhuma imagem selecionada'
+                : '1 imagem selecionada'
+              : selectedCount === 0
+                ? 'Nenhum arquivo selecionado'
+                : `${selectedCount} arquivo${selectedCount !== 1 ? 's' : ''} selecionado${selectedCount !== 1 ? 's' : ''}`}
           </span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={onClose}>
@@ -299,7 +333,7 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
               onClick={handleVincular}
               className="bg-[var(--primary-color)] text-[#12151a] hover:opacity-90"
             >
-              Vincular
+              {selectionMode === 'single' ? 'Usar imagem' : 'Vincular'}
             </Button>
           </div>
         </DialogFooter>

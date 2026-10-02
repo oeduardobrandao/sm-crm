@@ -493,9 +493,18 @@ export function createFileManageHandler(deps: FileManageDeps) {
         if (!file || file.conta_id !== contaId) return json({ error: "File not found" }, 404);
 
         if (file.reference_count > 0) {
-          const { data: links } = await svc.from("post_file_links")
-            .select("post_id, workflow_posts(titulo, workflow_id, workflows(titulo))")
-            .eq("file_id", fileId);
+          // Escopo explícito por conta_id nas DUAS listas: post_file_links não
+          // tem FK composta e este cliente é service role (spec 2026-10-02).
+          const [{ data: links }, { data: reportLinks }] = await Promise.all([
+            svc.from("post_file_links")
+              .select("post_id, workflow_posts(titulo, workflow_id, workflows(titulo))")
+              .eq("file_id", fileId)
+              .eq("conta_id", contaId),
+            svc.from("report_document_files")
+              .select("report_id, report_documents(title)")
+              .eq("file_id", fileId)
+              .eq("conta_id", contaId),
+          ]);
           return json({
             error: "file_in_use",
             reference_count: file.reference_count,
@@ -503,6 +512,10 @@ export function createFileManageHandler(deps: FileManageDeps) {
               post_id: l.post_id,
               post_titulo: l.workflow_posts?.titulo,
               workflow_titulo: l.workflow_posts?.workflows?.titulo,
+            })),
+            linked_reports: (reportLinks ?? []).map((l: any) => ({
+              report_id: l.report_id,
+              title: l.report_documents?.title ?? "",
             })),
           }, 409);
         }

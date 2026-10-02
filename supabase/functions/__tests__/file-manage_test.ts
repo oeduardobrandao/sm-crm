@@ -512,6 +512,10 @@ Deno.test("file-manage: DELETE /files/:id with references returns 409 with linke
     }],
     error: null,
   });
+  db.queue("report_document_files", "select", {
+    data: [{ report_id: "doc-1", report_documents: { title: "Relatório de setembro" } }],
+    error: null,
+  });
   const handler = makeHandler(db);
   const res = await handler(req("DELETE", "/files/10"));
   assertEquals(res.status, 409);
@@ -519,6 +523,11 @@ Deno.test("file-manage: DELETE /files/:id with references returns 409 with linke
   assertEquals(body.error, "file_in_use");
   assertEquals(body.reference_count, 2);
   assertEquals(body.linked_posts[0].post_id, 50);
+  assertEquals(body.linked_reports, [{ report_id: "doc-1", title: "Relatório de setembro" }]);
+  const postCall = db.calls.find((c) => c.table === "post_file_links" && c.operation === "select");
+  assert(postCall!.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "conta-1"));
+  const repCall = db.calls.find((c) => c.table === "report_document_files");
+  assert(repCall!.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "conta-1"));
 });
 
 Deno.test("file-manage: DELETE /files/:id not found returns 404", async () => {

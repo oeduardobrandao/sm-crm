@@ -10,7 +10,7 @@ import {
   fillAiBlocks, textDoc,
 } from "../_shared/report-docs/tiptap-doc.ts";
 import { snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
-import { normalizeCoverSize, validateLayout, type ReportLayout } from "../_shared/report-docs/layout.ts";
+import { normalizeCoverSize, sanitizeLayoutForTemplate, validateLayout, type ReportLayout } from "../_shared/report-docs/layout.ts";
 import { GenerateError } from "./errors.ts";
 import { loadClientSnapshot } from "./snapshot-source.ts";
 
@@ -75,14 +75,20 @@ export async function generateReportDocument(
     if (!tpl || tpl.conta_id !== contaId) throw new GenerateError("not_found");
     const check = validateLayout(normalizeCoverSize(tpl.layout));
     if (!check.ok) throw new GenerateError("invalid_template");
-    templateLayout = check.layout;
+    // Defesa no servidor (spec 2026-10-02): modelo nunca carrega imagem; a
+    // invariante já vale no banco, isto cobre layout legado/escrito por fora.
+    templateLayout = sanitizeLayoutForTemplate(check.layout);
   } else {
     const { data: tpl } = await db.from("report_templates")
       .select("id, conta_id, layout").eq("conta_id", contaId)
       .eq("is_default", true).maybeSingle();
     if (tpl) {
       const check = validateLayout(normalizeCoverSize(tpl.layout));
-      if (check.ok) templateLayout = check.layout;
+      if (check.ok) {
+        // Defesa no servidor (spec 2026-10-02): modelo nunca carrega imagem; a
+        // invariante já vale no banco, isto cobre layout legado/escrito por fora.
+        templateLayout = sanitizeLayoutForTemplate(check.layout);
+      }
       else console.warn("[report-docs] template default com layout inválido; usando o padrão do sistema");
     }
   }

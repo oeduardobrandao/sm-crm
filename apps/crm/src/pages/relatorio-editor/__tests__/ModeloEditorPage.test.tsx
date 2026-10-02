@@ -69,7 +69,24 @@ beforeEach(() => {
   });
 });
 
+// jsdom não tem DragEvent: Event com um dataTransfer de mentira (só types).
+function dropOnDocument(types: string[]) {
+  const ev = new Event('drop', { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, 'dataTransfer', { value: { types, dropEffect: 'copy' } });
+  document.body.dispatchEvent(ev);
+  return ev.defaultPrevented;
+}
+
 describe('ModeloEditorPage', () => {
+  it('arquivo solto fora das áreas não descarrega o editor; arrasto de texto passa', async () => {
+    const { unmount } = renderAt();
+    await screen.findByDisplayValue('Mensal completo');
+    expect(dropOnDocument(['Files'])).toBe(true);
+    expect(dropOnDocument(['text/plain', 'text/html'])).toBe(false);
+    unmount();
+    expect(dropOnDocument(['Files'])).toBe(false);
+  });
+
   it('abre o modelo com nome editável, aviso de dados de exemplo e placeholder de IA', async () => {
     renderAt();
     expect(await screen.findByDisplayValue('Mensal completo')).toBeInTheDocument();

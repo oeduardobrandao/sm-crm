@@ -30,6 +30,13 @@ function contentTypeForKey(key: string): string {
   return CONTENT_TYPE_BY_EXT[ext] ?? "application/octet-stream";
 }
 
+// Chaves do próprio workspace: uploads (`contas/<conta>/...`) e cópias feitas
+// pelo file-manage (`<conta>/<uuid>-nome`, handler.ts:323,414). Ambas são
+// escopadas ao tenant; nada de outro workspace passa.
+function isOwnKey(key: string, contaId: string): boolean {
+  return key.startsWith(`contas/${contaId}/`) || key.startsWith(`${contaId}/`);
+}
+
 async function resolveContaId(
   deps: SignR2UrlsDeps,
   req: Request,
@@ -132,7 +139,7 @@ export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
 
       const key = new URL(req.url).searchParams.get("key") ?? "";
       // 404 (not 403) for foreign keys — don't confirm another tenant's object exists.
-      if (!key.startsWith(`contas/${resolved.contaId}/`)) {
+      if (!isOwnKey(key, resolved.contaId)) {
         return json({ error: "Not found" }, 404);
       }
       const bytes = await deps.getObjectBytes(key);
@@ -164,9 +171,8 @@ export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
     if (!Array.isArray(body.keys)) return json({ error: "keys must be an array" }, 400);
 
     const svc = deps.createDb();
-    const prefix = `contas/${resolved.contaId}/`;
-    const ownKeys = body.keys.filter((k) => typeof k === "string" && k.startsWith(prefix));
-    const otherKeys = body.keys.filter((k) => typeof k === "string" && !k.startsWith(prefix));
+    const ownKeys = body.keys.filter((k) => typeof k === "string" && isOwnKey(k, resolved.contaId));
+    const otherKeys = body.keys.filter((k) => typeof k === "string" && !isOwnKey(k, resolved.contaId));
 
     let kbKeys: string[] = [];
     if (otherKeys.length > 0) {

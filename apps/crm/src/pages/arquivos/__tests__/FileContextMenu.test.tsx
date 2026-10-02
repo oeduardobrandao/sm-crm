@@ -17,6 +17,7 @@ vi.mock('sonner', () => ({
 
 import { renameFolder, deleteFolder, renameFile, deleteFile } from '@/services/fileService';
 import { toast } from 'sonner';
+import { FileApiError } from '@/services/fileApiError';
 import { FileContextMenu } from '../components/FileContextMenu';
 import type { Folder, FileRecord } from '../types';
 
@@ -289,19 +290,31 @@ describe('FileContextMenu', () => {
     expect(mockedToast.success).toHaveBeenCalledWith('Arquivo excluído');
   });
 
-  it('blocks delete for files linked to posts and shows error toast', () => {
-    const file = makeFile({ id: 100, reference_count: 2 });
+  it('arquivo em uso: abre a confirmação e mostra a mensagem do servidor', async () => {
+    mockedDeleteFile.mockRejectedValueOnce(
+      new FileApiError('file_in_use', 409, {
+        error: 'file_in_use',
+        linked_posts: [{ post_id: 1 }, { post_id: 2 }],
+        linked_reports: [{ report_id: 'a', title: 'Relatório de setembro' }],
+      }),
+    );
+    const file = makeFile({ id: 100, reference_count: 3 });
     render(
       <FileContextMenu item={file} type="file" onActionComplete={onActionComplete} canEdit={true}>
         <div>Linked file</div>
       </FileContextMenu>,
     );
-
     rightClick(screen.getByText('Linked file'));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir' }));
-
-    // Should show toast error, not open confirmation
-    expect(mockedToast.error).toHaveBeenCalledWith(expect.stringContaining('2 post(s)'));
+    await waitFor(() => {
+      expect(screen.getByText(/será excluído permanentemente/)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
+    await waitFor(() =>
+      expect(mockedToast.error).toHaveBeenCalledWith(
+        'Este arquivo está em uso em 2 posts e no relatório Relatório de setembro. Remova de lá primeiro.',
+      ),
+    );
   });
 
   /**

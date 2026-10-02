@@ -8,6 +8,7 @@ export type WidgetCategory =
   | 'Audiência'
   | 'Conteúdo'
   | 'Texto'
+  | 'Mídia'
   | 'Estrutura';
 
 export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
@@ -16,6 +17,7 @@ export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
   'Audiência',
   'Conteúdo',
   'Texto',
+  'Mídia',
   'Estrutura',
 ];
 
@@ -49,6 +51,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
   { type: 'ai_summary', label: 'Resumo do mês', category: 'Texto' },
   { type: 'ai_recommendations', label: 'Recomendações', category: 'Texto' },
   { type: 'ai_goals', label: 'Metas', category: 'Texto' },
+  { type: 'image', label: 'Imagem', category: 'Mídia' },
   { type: 'cover', label: 'Capa', category: 'Estrutura' },
   { type: 'section_header', label: 'Cabeçalho de seção', category: 'Estrutura' },
   { type: 'divider', label: 'Divisor de página', category: 'Estrutura' },

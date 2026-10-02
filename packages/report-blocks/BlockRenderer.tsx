@@ -20,6 +20,7 @@ import { BestTimesBlock } from './blocks/BestTimesBlock';
 import { TopPostsBlock } from './blocks/TopPostsBlock';
 import { PostListBlock } from './blocks/PostListBlock';
 import { TagsTableBlock } from './blocks/TagsTableBlock';
+import { ImageBlock } from './blocks/ImageBlock';
 
 export interface BlockProps {
   block: ReportBlock;
@@ -53,6 +54,7 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   top_posts: TopPostsBlock,
   post_list: PostListBlock,
   tags_table: TagsTableBlock,
+  image: ImageBlock,
 };
 
 export const SIZE_CLASS = { third: 'rb-third', half: 'rb-half', full: 'rb-full' } as const;

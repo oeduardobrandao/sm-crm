@@ -190,3 +190,26 @@
   font-size: 0.78rem;
   opacity: 0.55;
 }
+
+/* Bloco Imagem (spec 2026-10-02): quadro centralizado com teto de 560px de
+   altura (largura = min(100%, 560px * proporção), inline no componente). */
+.rb-image {
+  margin: 0 auto;
+  break-inside: avoid;
+}
+.rb-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--rb-radius, 12px);
+}
+.rb-image img.rb-image-contain {
+  background: var(--rb-soft, rgba(0, 0, 0, 0.04));
+}
+.rb-image figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--rb-ink-soft, inherit);
+  opacity: 0.85;
+}

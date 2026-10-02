@@ -137,7 +137,25 @@ function renderPage(qc = new QueryClient({ defaultOptions: { queries: { retry: f
   };
 }
 
+// jsdom não tem DragEvent: Event com um dataTransfer de mentira (só types).
+function dropOnDocument(types: string[]) {
+  const ev = new Event('drop', { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, 'dataTransfer', { value: { types, dropEffect: 'copy' } });
+  document.body.dispatchEvent(ev);
+  return ev.defaultPrevented;
+}
+
 describe('RelatorioEditorPage (editor)', () => {
+  it('arquivo solto fora das áreas não descarrega o editor; arrasto de texto passa', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    const { unmount } = renderPage();
+    await screen.findByLabelText('Título do relatório');
+    expect(dropOnDocument(['Files'])).toBe(true);
+    expect(dropOnDocument(['text/plain', 'text/html'])).toBe(false);
+    unmount();
+    expect(dropOnDocument(['Files'])).toBe(false);
+  });
+
   it('renderiza topbar de edição: título editável, mês, Aparência e Adicionar widget', async () => {
     getReportDocMock.mockResolvedValue(doc());
     renderPage();

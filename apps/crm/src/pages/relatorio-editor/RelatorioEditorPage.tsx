@@ -24,6 +24,7 @@ import {
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { useBlockEditing } from './useBlockEditing';
+import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
 import { configCoalesceKey, useLayoutHistory } from './useLayoutHistory';
 import { UndoRedoButtons } from './UndoRedoButtons';
 import { useStuckHeader } from './useStuckHeader';
@@ -35,7 +36,7 @@ import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { ApplyTemplateDialog } from './ApplyTemplateDialog';
 import { AppearancePopover } from './AppearancePopover';
 import { moveBlock, normalizeCoverSize, updateBlockConfig, updateBlockText } from './layoutOps';
-import { applyTemplateLayout } from './templateOps';
+import { applyTemplateLayout, layoutHasFilledImage } from './templateOps';
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const qc = useQueryClient();
@@ -217,6 +218,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
           commit(updateBlockConfig(layoutRef.current, id, patch), configCoalesceKey(id, patch))
         }
         highlightId={highlightId}
+        imageContext={{ mode: 'report', clientId: doc.client_id }}
         renderTextBlock={(block: ReportBlock) => (
           <TextBlockEditor
             key={block.id}
@@ -246,6 +248,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       <ApplyTemplateDialog
         open={applyTplOpen}
         onOpenChange={setApplyTplOpen}
+        warnImagesRemoved={layoutHasFilledImage(layout)}
         onApply={(tpl) => {
           commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
           toast.success('Template aplicado.');
@@ -256,6 +259,8 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
 }
 
 export default function RelatorioEditorPage() {
+  // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
+  usePreventStrayFileDrop();
   const { id } = useParams<{ id: string }>();
   const { data: doc, isLoading } = useQuery({
     queryKey: ['report-doc', id],
