@@ -1,6 +1,7 @@
 import { supabase, getContaId, getUserId } from './core';
 import { extractMentionsFromDoc } from '@/components/mentions/mentionTokens';
 import { syncMentions } from './mentions';
+import { fetchAllPagedByIds } from './paging';
 import type { Workflow, WorkflowEtapa } from './workflows';
 
 /**
@@ -744,12 +745,19 @@ export async function getWorkflowPostsWithProperties(
 export async function getWorkflowPostsCounts(workflowIds: number[]): Promise<Map<number, number>> {
   const counts = new Map<number, number>();
   if (workflowIds.length === 0) return counts;
-  const { data, error } = await supabase
-    .from('workflow_posts')
-    .select('workflow_id')
-    .in('workflow_id', workflowIds);
-  if (error) throw error;
-  for (const row of (data ?? []) as { workflow_id: number }[]) {
+  // Chunked + paged: a single unpaged select is silently capped at 1000 rows,
+  // which undercounts once the workflows add up to more than 1000 posts.
+  const rows = await fetchAllPagedByIds(workflowIds, async (chunk, from, to) => {
+    const { data, error } = await supabase
+      .from('workflow_posts')
+      .select('workflow_id')
+      .in('workflow_id', chunk)
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as { workflow_id: number }[];
+  });
+  for (const row of rows) {
     counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
   }
   return counts;

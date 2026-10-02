@@ -14,3 +14,29 @@ export async function fetchAllPaged<T>(
     if (page.length < pageSize) return all;
   }
 }
+
+/**
+ * Max ids per `.in()` filter. The list travels in the request URL, so a
+ * workspace with hundreds of workflows needs several requests, not one huge one.
+ */
+export const IN_FILTER_CHUNK = 150;
+
+/**
+ * Bulk read keyed by an id list: one paged query per chunk of IN_FILTER_CHUNK
+ * ids (chunks in parallel), instead of one request per id. Duplicate ids are
+ * dropped. Rows come back chunk by chunk, each chunk in the query's own order.
+ */
+export async function fetchAllPagedByIds<T, Id extends string | number>(
+  ids: Id[],
+  fetchPage: (chunk: Id[], from: number, to: number) => Promise<T[]>,
+): Promise<T[]> {
+  const unique = [...new Set(ids)];
+  const chunks: Id[][] = [];
+  for (let i = 0; i < unique.length; i += IN_FILTER_CHUNK) {
+    chunks.push(unique.slice(i, i + IN_FILTER_CHUNK));
+  }
+  const results = await Promise.all(
+    chunks.map((chunk) => fetchAllPaged((from, to) => fetchPage(chunk, from, to))),
+  );
+  return results.flat();
+}

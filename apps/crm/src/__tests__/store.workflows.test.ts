@@ -652,4 +652,94 @@ describe('getWorkflowPostsCounts', () => {
     });
     await expect(store.getWorkflowPostsCounts([1])).rejects.toBeTruthy();
   });
+
+  describe('bulk etapas / concluded summaries (no per-workflow requests)', () => {
+    it('getWorkflowEtapasByWorkflowIds groups rows by workflow, keeps ordem order, fills empties', async () => {
+      mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select', {
+        data: [
+          { id: 11, workflow_id: 1, ordem: 0 },
+          { id: 12, workflow_id: 1, ordem: 1 },
+          { id: 21, workflow_id: 2, ordem: 0 },
+        ],
+        error: null,
+      });
+
+      const map = await store.getWorkflowEtapasByWorkflowIds([1, 2, 3]);
+
+      expect(map.get(1)!.map((e) => e.id)).toEqual([11, 12]);
+      expect(map.get(2)!.map((e) => e.id)).toEqual([21]);
+      expect(map.get(3)).toEqual([]);
+      const calls = getCalls('workflow_etapas', 'select');
+      expect(calls).toHaveLength(1);
+      expect(calls[0].modifiers).toEqual(
+        expect.arrayContaining([
+          { method: 'in', args: ['workflow_id', [1, 2, 3]] },
+          { method: 'order', args: ['workflow_id', { ascending: true }] },
+          { method: 'order', args: ['ordem', { ascending: true }] },
+        ]),
+      );
+    });
+
+    it('getWorkflowEtapasByWorkflowIds splits long id lists into chunks of 150', async () => {
+      const ids = Array.from({ length: 301 }, (_, i) => i + 1);
+      mockedSupabase.__queueSupabaseResult(
+        'workflow_etapas',
+        'select',
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+      );
+
+      await store.getWorkflowEtapasByWorkflowIds(ids);
+
+      const inArgs = getCalls('workflow_etapas', 'select').map(
+        (c) => c.modifiers.find((m) => m.method === 'in')!.args[1] as number[],
+      );
+      expect(inArgs.map((a) => a.length)).toEqual([150, 150, 1]);
+      expect(inArgs.flat()).toEqual(ids);
+    });
+
+    it('getWorkflowEtapasByWorkflowIds makes no request for an empty list', async () => {
+      const map = await store.getWorkflowEtapasByWorkflowIds([]);
+      expect(map.size).toBe(0);
+      expect(getCalls('workflow_etapas')).toHaveLength(0);
+    });
+
+    it('getConcludedWorkflowSummaries derives dates and post counts from two bulk reads', async () => {
+      mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select', {
+        data: [
+          {
+            id: 1,
+            workflow_id: 7,
+            ordem: 0,
+            iniciado_em: '2026-09-01T00:00:00Z',
+            concluido_em: '2026-09-03T00:00:00Z',
+          },
+          {
+            id: 2,
+            workflow_id: 7,
+            ordem: 1,
+            iniciado_em: '2026-09-03T00:00:00Z',
+            concluido_em: '2026-09-11T00:00:00Z',
+          },
+        ],
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+        data: [{ workflow_id: 7 }, { workflow_id: 7 }, { workflow_id: 7 }],
+        error: null,
+      });
+      const wf7 = { id: 7, titulo: 'Setembro' } as never;
+      const wf8 = { id: 8, titulo: 'Sem etapas' } as never;
+
+      const summaries = await store.getConcludedWorkflowSummaries([wf7, wf8]);
+
+      expect(summaries).toEqual([
+        { workflow: wf7, postCount: 3, totalDays: 10, completedAt: '2026-09-11T00:00:00Z' },
+        { workflow: wf8, postCount: 0, totalDays: null, completedAt: null },
+      ]);
+      expect(getCalls('workflow_etapas', 'select')).toHaveLength(1);
+      expect(getCalls('workflow_posts', 'select')).toHaveLength(1);
+    });
+  });
 });

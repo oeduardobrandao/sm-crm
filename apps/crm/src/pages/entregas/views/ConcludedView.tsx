@@ -4,11 +4,11 @@ import { toast } from 'sonner';
 import { RotateCcw, FileText, Search } from 'lucide-react';
 import {
   getConcludedWorkflows,
-  getWorkflowEtapas,
-  getWorkflowPosts,
+  getConcludedWorkflowSummaries,
   getClientes,
   reopenWorkflow,
   getVigentePostProcesses,
+  type ConcludedWorkflowSummary,
   type Workflow,
   type Cliente,
   type PostProcessWithPost,
@@ -37,13 +37,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-
-interface ConcludedWorkflowSummary {
-  workflow: Workflow;
-  postCount: number;
-  totalDays: number | null;
-  completedAt: string | null;
-}
 
 interface ClientGroup {
   cliente: Cliente;
@@ -116,30 +109,7 @@ export function ConcludedView({
 
   const { data: summaries = [], isLoading: summariesLoading } = useQuery({
     queryKey: ['concluded-summaries', concludedWorkflows.map((w) => w.id).join(',')],
-    queryFn: async (): Promise<ConcludedWorkflowSummary[]> => {
-      return Promise.all(
-        concludedWorkflows.map(async (workflow): Promise<ConcludedWorkflowSummary> => {
-          const [etapas, posts] = await Promise.all([
-            getWorkflowEtapas(workflow.id!),
-            getWorkflowPosts(workflow.id!),
-          ]);
-          const firstStart = etapas.find((e) => e.iniciado_em)?.iniciado_em;
-          const concludedEtapas = etapas.filter((e) => e.concluido_em);
-          const lastEnd =
-            concludedEtapas.length > 0
-              ? concludedEtapas[concludedEtapas.length - 1].concluido_em
-              : null;
-          const totalDays =
-            firstStart && lastEnd
-              ? Math.round(
-                  (new Date(lastEnd).getTime() - new Date(firstStart).getTime()) /
-                    (1000 * 60 * 60 * 24),
-                )
-              : null;
-          return { workflow, postCount: posts.length, totalDays, completedAt: lastEnd ?? null };
-        }),
-      );
-    },
+    queryFn: () => getConcludedWorkflowSummaries(concludedWorkflows),
     enabled: concludedWorkflows.length > 0,
   });
 

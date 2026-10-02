@@ -6,6 +6,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/store', () => ({
   getWorkflowsByCliente: vi.fn(),
   getWorkflowEtapas: vi.fn(),
+  getWorkflowEtapasByWorkflowIds: vi.fn(),
+  getConcludedWorkflowSummaries: vi.fn(),
   getDeadlineInfo: vi.fn(),
   getMembros: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
@@ -193,6 +195,8 @@ vi.mock('@/pages/entregas/components/HistoryDrawer', () => ({
 import {
   getWorkflowsByCliente,
   getWorkflowEtapas,
+  getWorkflowEtapasByWorkflowIds,
+  getConcludedWorkflowSummaries,
   getDeadlineInfo,
   getMembros,
   hasLaterApprovalEtapa,
@@ -230,6 +234,8 @@ import EntregasTab from '../EntregasTab';
 
 const mockedGetWorkflowsByCliente = vi.mocked(getWorkflowsByCliente);
 const mockedGetWorkflowEtapas = vi.mocked(getWorkflowEtapas);
+const mockedGetWorkflowEtapasByWorkflowIds = vi.mocked(getWorkflowEtapasByWorkflowIds);
+const mockedGetConcludedWorkflowSummaries = vi.mocked(getConcludedWorkflowSummaries);
 const mockedGetDeadlineInfo = vi.mocked(getDeadlineInfo);
 const mockedGetMembros = vi.mocked(getMembros);
 const mockedHasLaterApprovalEtapa = vi.mocked(hasLaterApprovalEtapa);
@@ -446,6 +452,12 @@ describe('EntregasTab', () => {
     mockFeatures = null;
     mockedGetWorkflowsByCliente.mockResolvedValue([workflow()]);
     mockedGetWorkflowEtapas.mockResolvedValue([approvalEtapa, nextEtapa]);
+    mockedGetWorkflowEtapasByWorkflowIds.mockImplementation(
+      async (ids: number[]) => new Map(ids.map((id) => [id, [approvalEtapa, nextEtapa]])),
+    );
+    mockedGetConcludedWorkflowSummaries.mockImplementation(async (wfs) =>
+      wfs.map((w) => ({ workflow: w, postCount: 0, totalDays: null, completedAt: null })),
+    );
     mockedGetDeadlineInfo.mockReturnValue({
       diasRestantes: 2,
       horasRestantes: 0,
@@ -684,6 +696,9 @@ describe('EntregasTab', () => {
     mockedGetWorkflowPosts.mockResolvedValue([]);
     renderTab();
 
+    await waitFor(() =>
+      expect(mockedGetConcludedWorkflowSummaries).toHaveBeenCalledWith([concluded]),
+    );
     fireEvent.click(await screen.findByText('Ciclo Julho'));
     expect(await screen.findByText('HistoryDrawer open: Ciclo Julho')).toBeInTheDocument();
 
