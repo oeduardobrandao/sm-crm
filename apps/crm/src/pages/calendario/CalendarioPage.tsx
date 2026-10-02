@@ -24,7 +24,7 @@ import {
   getMembros,
   getTransacoes,
   getWorkflows,
-  getWorkflowEtapas,
+  getWorkflowEtapasByWorkflowIds,
   addTransacao,
   formatDate,
   getAllClienteDatas,
@@ -743,10 +743,10 @@ export default function CalendarioPage() {
     queryKey: ['calendar-deadlines', workflows.map((w) => w.id).join(',')],
     queryFn: async () => {
       const activeWfs = workflows.filter((w) => w.status === 'ativo');
-      const etapasResults = await Promise.all(activeWfs.map((w) => getWorkflowEtapas(w.id!)));
+      const etapasByWorkflow = await getWorkflowEtapasByWorkflowIds(activeWfs.map((w) => w.id!));
       const events: DeadlineEvent[] = [];
-      activeWfs.forEach((w, idx) => {
-        const etapas = etapasResults[idx];
+      activeWfs.forEach((w) => {
+        const etapas = etapasByWorkflow.get(w.id!) ?? [];
         const activeEtapa = etapas.find((e) => e.status === 'ativo');
         if (!activeEtapa || !activeEtapa.iniciado_em) return;
         const cliente = clientes.find((c) => c.id === w.cliente_id);

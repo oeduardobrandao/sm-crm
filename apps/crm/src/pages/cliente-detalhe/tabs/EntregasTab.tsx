@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, LayoutList } from 'lucide-react';
 import {
   getWorkflowsByCliente,
-  getWorkflowEtapas,
+  getWorkflowEtapasByWorkflowIds,
   getDeadlineInfo,
   getMembros,
   hasLaterApprovalEtapa,
@@ -20,7 +20,7 @@ import {
   getWorkflowRevisaoInternaCounts,
   getWorkflowAwaitingClientePostsCounts,
   getConcludedWorkflowsByCliente,
-  getWorkflowPosts,
+  getConcludedWorkflowSummaries,
   getClientePosts,
   updateWorkflowPost,
   getClientes,
@@ -241,30 +241,7 @@ export default function EntregasTab() {
 
   const { data: concludedSummaries = [] } = useQuery({
     queryKey: ['concluded-summaries-cliente', concludedWfs.map((w) => w.id).join(',')],
-    queryFn: async () => {
-      return Promise.all(
-        concludedWfs.map(async (workflow) => {
-          const [etapas, posts] = await Promise.all([
-            getWorkflowEtapas(workflow.id!),
-            getWorkflowPosts(workflow.id!),
-          ]);
-          const firstStart = etapas.find((e) => e.iniciado_em)?.iniciado_em;
-          const concludedEtapas = etapas.filter((e) => e.concluido_em);
-          const lastEnd =
-            concludedEtapas.length > 0
-              ? concludedEtapas[concludedEtapas.length - 1].concluido_em
-              : null;
-          const totalDays =
-            firstStart && lastEnd
-              ? Math.round(
-                  (new Date(lastEnd).getTime() - new Date(firstStart).getTime()) /
-                    (1000 * 60 * 60 * 24),
-                )
-              : null;
-          return { workflow, postCount: posts.length, totalDays, completedAt: lastEnd ?? null };
-        }),
-      );
-    },
+    queryFn: () => getConcludedWorkflowSummaries(concludedWfs),
     enabled: concludedWfs.length > 0,
   });
 
@@ -302,10 +279,12 @@ export default function EntregasTab() {
       setWorkflowsWithEtapas([]);
       return;
     }
-    Promise.all(
-      activeWfs.map(async (w) => ({ workflow: w, etapas: await getWorkflowEtapas(w.id!) })),
-    )
-      .then(setWorkflowsWithEtapas)
+    getWorkflowEtapasByWorkflowIds(activeWfs.map((w) => w.id!))
+      .then((byWorkflow) =>
+        setWorkflowsWithEtapas(
+          activeWfs.map((w) => ({ workflow: w, etapas: byWorkflow.get(w.id!) ?? [] })),
+        ),
+      )
       .catch(() => setWorkflowsWithEtapas([]));
   }, [clienteWorkflowsRaw]);
 

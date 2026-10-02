@@ -1,6 +1,6 @@
 import { supabase, getUserId, getContaId } from './core';
-import { resetApprovedPostsForNextCycle } from './posts';
-import { fetchAllPaged } from './paging';
+import { getWorkflowPostsCounts, resetApprovedPostsForNextCycle } from './posts';
+import { fetchAllPaged, fetchAllPagedByIds } from './paging';
 import { toLocalISODate } from '../utils/postDate';
 
 // =============================================
@@ -269,6 +269,73 @@ export async function getWorkflowEtapas(workflowId: number): Promise<WorkflowEta
     .order('ordem', { ascending: true });
   if (error) throw error;
   return data || [];
+}
+
+/**
+ * Etapas of many workflows at once: one request per IN_FILTER_CHUNK ids instead
+ * of one getWorkflowEtapas call per workflow. Every requested id gets an entry
+ * (empty when it has no etapas), each list in `ordem` order like getWorkflowEtapas.
+ */
+export async function getWorkflowEtapasByWorkflowIds(
+  workflowIds: number[],
+): Promise<Map<number, WorkflowEtapa[]>> {
+  const map = new Map<number, WorkflowEtapa[]>(workflowIds.map((id) => [id, []]));
+  if (workflowIds.length === 0) return map;
+  const rows = await fetchAllPagedByIds(workflowIds, async (chunk, from, to) => {
+    const { data, error } = await supabase
+      .from('workflow_etapas')
+      .select('*')
+      .in('workflow_id', chunk)
+      .order('workflow_id', { ascending: true })
+      .order('ordem', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as WorkflowEtapa[];
+  });
+  for (const row of rows) map.get(row.workflow_id)?.push(row);
+  return map;
+}
+
+export interface ConcludedWorkflowSummary {
+  workflow: Workflow;
+  postCount: number;
+  totalDays: number | null;
+  completedAt: string | null;
+}
+
+/**
+ * Summary line per concluded workflow (Concluídos and the client's Entregas
+ * tab): first etapa start, last concluded etapa end, and post count. Two bulk
+ * reads for the whole list, never two requests per workflow.
+ */
+export async function getConcludedWorkflowSummaries(
+  workflows: Workflow[],
+): Promise<ConcludedWorkflowSummary[]> {
+  const ids = workflows.map((w) => w.id!);
+  const [etapasByWorkflow, postCounts] = await Promise.all([
+    getWorkflowEtapasByWorkflowIds(ids),
+    getWorkflowPostsCounts(ids),
+  ]);
+  return workflows.map((workflow) => {
+    const etapas = etapasByWorkflow.get(workflow.id!) ?? [];
+    const firstStart = etapas.find((e) => e.iniciado_em)?.iniciado_em;
+    const concludedEtapas = etapas.filter((e) => e.concluido_em);
+    const lastEnd =
+      concludedEtapas.length > 0 ? concludedEtapas[concludedEtapas.length - 1].concluido_em : null;
+    const totalDays =
+      firstStart && lastEnd
+        ? Math.round(
+            (new Date(lastEnd).getTime() - new Date(firstStart).getTime()) / (1000 * 60 * 60 * 24),
+          )
+        : null;
+    return {
+      workflow,
+      postCount: postCounts.get(workflow.id!) ?? 0,
+      totalDays,
+      completedAt: lastEnd ?? null,
+    };
+  });
 }
 
 export async function getAllActiveEtapas(): Promise<

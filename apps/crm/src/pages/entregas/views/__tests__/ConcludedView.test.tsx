@@ -5,8 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const store = vi.hoisted(() => ({
   getConcludedWorkflows: vi.fn(async () => []),
-  getWorkflowEtapas: vi.fn(async () => []),
-  getWorkflowPosts: vi.fn(async () => []),
+  // One bulk call per list (never per workflow); the summary math is covered
+  // in store.workflows.test.ts.
+  getConcludedWorkflowSummaries: vi.fn(async (wfs: Array<Record<string, unknown>>) =>
+    wfs.map((w) => ({ workflow: w, postCount: 0, totalDays: null, completedAt: null })),
+  ),
   getClientes: vi.fn(async () => [{ id: 3, nome: 'Aurora', cor: '#000' }]),
   reopenWorkflow: vi.fn(),
   getVigentePostProcesses: vi.fn(async () => []),
@@ -253,21 +256,25 @@ describe('ConcludedView com processos individuais', () => {
 
   it('fluxo concluído existe mas o resumo (etapas/posts) ainda carrega: não mostra o vazio prematuro', async () => {
     store.getConcludedWorkflows.mockResolvedValueOnce([concludedWorkflow] as never);
-    let resolveEtapas: (value: unknown[]) => void = () => {};
-    store.getWorkflowEtapas.mockImplementationOnce(
+    let resolveSummaries: (value: unknown[]) => void = () => {};
+    store.getConcludedWorkflowSummaries.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
-          resolveEtapas = resolve;
+          resolveSummaries = resolve;
         }),
     );
     renderView();
 
-    await waitFor(() => expect(store.getWorkflowEtapas).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(store.getConcludedWorkflowSummaries).toHaveBeenCalledWith([concludedWorkflow]),
+    );
     expect(screen.queryByText('Nenhum fluxo concluído ainda.')).toBeNull();
     expect(screen.getByText('Carregando...')).toBeInTheDocument();
 
     await act(async () => {
-      resolveEtapas([]);
+      resolveSummaries([
+        { workflow: concludedWorkflow, postCount: 0, totalDays: null, completedAt: null },
+      ]);
     });
     expect(await screen.findByText('Aurora')).toBeInTheDocument();
   });
