@@ -60,19 +60,33 @@ ganha a categoria `'Mídia'` (entre `'Texto'` e `'Estrutura'`) com
 - **`src` é proibido no `config`.** `validateLayout` rejeita. URL assinada nunca é
   persistida (layout nem template).
 - `validateLayout` ganha as regras acima (mensagens de erro em inglês, como as atuais).
-  O trigger `validate_report_layout()` no banco não filtra `type`, então o bloco novo
-  não precisa de migration para ser aceito.
+- **Garantia no banco.** O CRM grava `layout` direto por PostgREST (`report_documents`
+  e `report_templates`), então a validação TS é só do cliente. A migration estende
+  `validate_report_layout()` para blocos `image`: `config` sem a chave `src`; `ratio`
+  e `fit` nos enums; `focal.x`/`focal.y` em `{0, 0.5, 1}`; `file_id`, `width`,
+  `height` inteiros positivos quando presentes; `caption` ≤ 200 e `alt` ≤ 300
+  caracteres. Quando `TG_TABLE_NAME = 'report_templates'`, bloco `image` com
+  `file_id`, `r2_key`, `caption` ou `alt` é rejeitado (`INVALID_LAYOUT`). Isso torna
+  a limpeza de modelo uma invariante do banco, não só do código.
 
 ### Tabela de vínculo (migration nova)
 
 ```
+ALTER TABLE report_documents ADD CONSTRAINT report_documents_id_conta_uq UNIQUE (id, conta_id);
+
 report_document_files (
-  report_id  → report_documents(id) ON DELETE CASCADE,
-  file_id    → files(id)            -- mesma semântica de FK de post_file_links (RESTRICT)
-  conta_id   → workspaces(id)       ON DELETE CASCADE,
-  PRIMARY KEY (report_id, file_id)
+  report_id  uuid   NOT NULL,
+  file_id    bigint NOT NULL,
+  conta_id   uuid   NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  PRIMARY KEY (report_id, file_id),
+  FOREIGN KEY (report_id, conta_id) REFERENCES report_documents(id, conta_id) ON DELETE CASCADE,
+  FOREIGN KEY (file_id, conta_id)   REFERENCES files(id, conta_id)            -- RESTRICT
 )
 ```
+
+FKs compostas amarram relatório, arquivo e vínculo ao mesmo `conta_id` no próprio
+banco (`files_id_conta_uq` já existe desde `20260626000001_ideia_files.sql`); o
+trigger de sincronização não é a única barreira (`report_documents.id` é `uuid`).
 
 - RLS ligada; `authenticated` só lê (política por `get_my_conta_id()`); escrita só
   pelos triggers. Conceder privilégios explicitamente por role (`REVOKE FROM PUBLIC`
@@ -82,12 +96,16 @@ report_document_files (
   Arquivos e continua lá quando o relatório some.
 - Trigger `AFTER INSERT OR UPDATE OF layout ON report_documents` (SECURITY DEFINER):
   extrai os `config.file_id` dos blocos `image`, mantém só os ids de `files` com o
-  mesmo `conta_id` do relatório, e faz o diff com os vínculos existentes
-  (insere/remove).
+  mesmo `conta_id` do relatório **e** `kind = 'image'`, e faz o diff com os vínculos
+  existentes (insere/remove).
 - `file-manage` DELETE `/files/:id` já devolve 409 `file_in_use` com
-  `reference_count > 0`. A resposta ganha `linked_reports: [{ report_id, title }]`, e
-  o `FileContextMenu` do CRM passa a citar o relatório na mensagem ("Esta imagem está
-  em uso no relatório X.").
+  `reference_count > 0`. A resposta ganha `linked_reports: [{ report_id, title }]`
+  (query filtrada pelo `conta_id` do chamador).
+- `FileContextMenu.openDelete` hoje bloqueia localmente quando `reference_count > 0`,
+  antes de chamar o DELETE, com a cópia fixa "vinculado a N post(s)". Esse
+  pré-bloqueio sai: o diálogo de exclusão abre normalmente, e o 409 do servidor vira a
+  mensagem, montada a partir de `linked_posts` e `linked_reports` ("Este arquivo está
+  em uso em 2 posts e no relatório Relatório de setembro. Remova de lá primeiro.").
 - Excluir pasta não é afetado: `files.folder_id` é `ON DELETE SET NULL`, o arquivo
   sobrevive na raiz.
 - Versão da migration: acima do último prefixo de `main` no momento do PR.
@@ -111,10 +129,17 @@ report_document_files (
 ### Editor do CRM
 
 O editor lê `report_documents` direto por PostgREST (não há edge function no caminho).
-Um hook `useReportImageUrls(layout)` coleta os `r2_key` e chama `sign-r2-urls` (já
-restringe às chaves do próprio workspace), com TanStack Query por chave. As URLs ficam
-só nesse cache; o editor passa `src` para o componente em memória e nunca escreve no
-layout.
+Um hook `useReportImageUrls(layout)`, com TanStack Query:
+
+1. Lê `files` (`id, r2_key, kind, media_lost_at`) por PostgREST com
+   `id IN (file_ids)`; a RLS `files_tenant_all` já limita ao workspace.
+2. Arquivo ausente, `kind != 'image'` ou com `media_lost_at`: estado "indisponível",
+   sem assinatura. (`sign-r2-urls` assina qualquer chave com o prefixo do workspace sem
+   olhar `files`, então não serve sozinho para detectar arquivo perdido.)
+3. Os demais: `sign-r2-urls` com o `r2_key` **da linha de `files`**, não o do layout.
+
+As URLs ficam só nesse cache; o editor passa `src` para o componente em memória e
+nunca escreve no layout.
 
 ### Renderer (`packages/report-blocks/blocks/ImageBlock.tsx`)
 
@@ -158,8 +183,19 @@ desfazer/refazer; o envio vira um passo só.
   `reportSplash.ts`, sem achatar transparência em PNG).
 - `uploadFile({ file, folderId })` de `services/fileService.ts` (já envolve
   `trackUnsavedWork` e cria a linha em `files`). `folderId` = subpasta "Relatórios"
-  dentro da pasta do cliente (`folders.source_type='client'`, `source_id=clienteId`),
-  criada na primeira vez.
+  filha da pasta do cliente.
+- **Pasta "Relatórios":** o par `(source_type='client', source_id=clienteId)` já é a
+  raiz do cliente e é único (`folders_source_unique`), e a API de pastas só cria pasta
+  comum. A migration acrescenta `'client_reports'` ao `folders_source_type_check`
+  (última versão em `20260425000005`) e uma RPC SECURITY DEFINER
+  `get_or_create_client_reports_folder(p_cliente_id bigint) RETURNS bigint`: confere
+  que o cliente é do `get_my_conta_id()`, localiza a pasta raiz do cliente e faz
+  `INSERT ... (source='system', source_type='client_reports', source_id=p_cliente_id,
+  parent_id=<raiz do cliente>, name='Relatórios') ON CONFLICT` sobre
+  `folders_source_unique`, devolvendo o id. Atômico: dois primeiros envios
+  simultâneos não duplicam a pasta. `source='system'` impede excluir pelo
+  `file-manage`. Se o usuário mover a pasta, ela continua sendo achada pelo par
+  `source_type`/`source_id`.
 - Colar (`paste`) com o bloco focado também envia.
 
 ### Erros (pt-BR)
@@ -179,6 +215,12 @@ modo single, clicar seleciona um só, o título vira "Escolher imagem" e o botã
 imagem". Aberto com `filterKind={['image']}` e a pasta do cliente. Arquivo com
 `media_lost_at` não aparece. Ao escolher, o bloco recebe `file_id`, `r2_key`,
 `width`, `height` do `FileRecord`; `ratio` volta para `original`.
+
+`FileRecord.width`/`height` são anuláveis (registros antigos). Se vierem nulos, o
+editor carrega a URL assinada do arquivo num `Image()` e usa `naturalWidth` /
+`naturalHeight` antes de gravar o bloco; se o carregamento falhar, mostra "Não foi
+possível abrir esta imagem." e não altera o bloco. Nunca grava um bloco com
+`file_id` sem `width`/`height`.
 
 ## Modelos
 
@@ -224,8 +266,12 @@ imagem". Aberto com `filterKind={['image']}` e a pasta do cliente. Arquivo com
   `file_in_use` com relatório.
 - **SQL** (`supabase/tests/entitlements/`, gated no CI): sincronização dos vínculos
   ao inserir/editar/limpar o layout; `reference_count` sobe e desce; `file_id` de
-  outro workspace ignorado; exclusão de arquivo em uso bloqueada; excluir relatório
-  libera; exclusão de workspace em cascata não trava.
+  outro workspace ou `kind != 'image'` ignorado; insert manual de vínculo
+  cross-workspace barrado pelas FKs compostas; exclusão de arquivo em uso bloqueada;
+  excluir relatório libera; exclusão de workspace em cascata não trava;
+  `validate_report_layout` rejeita `src`, enums inválidos e imagem preenchida em
+  `report_templates`; `get_or_create_client_reports_folder` idempotente e recusa
+  cliente de outro workspace.
 - **Navegador:** envio, colar, escolher dos Arquivos, todas as proporções e ajustes,
   vertical em largura total, Hub (desktop e celular) e PDF exportado.
 
