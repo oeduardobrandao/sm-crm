@@ -82,10 +82,9 @@ function makeEntity(overrides: Partial<PostEntity> = {}): PostEntity {
 }
 
 describe('PostProcessCard', () => {
-  it('sem prazo efetivo: barra de progresso usa o verde de "sem prazo", não o âmbar de caution', () => {
+  it('sem prazo efetivo: o card fica deadline-ok mesmo com diasRestantes <= 3', () => {
     // dl.diasRestantes (2) <= 3 would compute 'deadline-caution' unconditionally
-    // if the accent ignored hasDeadline, even though prazoEfetivo is null and
-    // the pill/border correctly show "Sem prazo" / deadline-ok.
+    // if the card ignored hasDeadline, even though prazoEfetivo is null.
     const entity = makeEntity({ prazoEfetivo: null });
     render(<PostProcessCard entity={entity} />);
 
@@ -93,13 +92,11 @@ describe('PostProcessCard', () => {
     const card = screen.getByTestId('post-process-card');
     expect(card.className).toContain('deadline-ok');
     expect(card.className).not.toContain('deadline-caution');
-
-    const bar = card.querySelector('div[style*="width: 0%"]') as HTMLElement | null;
-    expect(bar).toBeTruthy();
-    expect(bar!.style.background).toBe('rgb(62, 207, 142)'); // #3ecf8e, same fallback as deadline-ok elsewhere
   });
 
-  it('com prazo efetivo vencendo em breve: barra de progresso usa o âmbar de caution', () => {
+  it('a cor da barra segue a etapa, não o prazo', () => {
+    // Prazo vencendo em breve (deadline-caution) não pinta a barra de âmbar:
+    // na primeira etapa ela sai amarela da rampa de progresso.
     const entity = makeEntity({ prazoEfetivo: new Date('2026-01-01T00:00:00.000Z') });
     render(<PostProcessCard entity={entity} />);
 
@@ -107,7 +104,7 @@ describe('PostProcessCard', () => {
     expect(card.className).toContain('deadline-caution');
     const bar = card.querySelector('div[style*="width: 0%"]') as HTMLElement | null;
     expect(bar).toBeTruthy();
-    expect(bar!.style.background).toBe('rgb(234, 179, 8)'); // #eab308, deadline-caution accent
+    expect(bar!.style.background).toBe('rgb(231, 176, 8)'); // hsl(45 93% 47%), início da rampa
   });
 
   it('renderiza Voltar/Avançar com aria-label e não propaga o clique ao card', () => {
