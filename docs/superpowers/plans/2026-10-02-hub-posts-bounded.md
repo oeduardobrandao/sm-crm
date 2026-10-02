@@ -20,6 +20,7 @@
 - The history cursor is `"<published_at>|<id>"` with `published_at` copied byte for byte from the row PostgREST returned. Never round-trip it through `Date`.
 - After ANY `deno test` run: `git checkout deno.lock` and `ls node_modules/.deno >/dev/null 2>&1 && npm ci` (Deno pollutes both).
 - Pre-push gate (CLAUDE.md): `npm run lint`, `npm run format:check`, `npx tsc -p apps/crm/tsconfig.json --noEmit`, `npx tsc -p apps/hub/tsconfig.json --noEmit`, `npx tsc -p apps/admin/tsconfig.json --noEmit`, `npx tsc -p tsconfig.scripts.json`, `npm run test`, `npm run check:functions`, `npm run test:functions`.
+- `supabase/functions/` is excluded from Prettier: match each file's existing style by hand (double quotes in `handler.ts` and the Deno tests).
 - Edge deploy: `npx supabase functions deploy hub-posts --no-verify-jwt --use-api --project-ref <ref>` with STAGING=`wlyzhyfondykzpsiqsce`, PROD=`skjzpekeqefvlojenfsw`. Deploy only from a branch that contains everything on `origin/main` (`git log HEAD..origin/main` empty).
 - Hub browser verification: `node scripts/with-env.mjs npm run dev:hub` on port 5175 (prod CORS only allows 5175).
 
@@ -1457,6 +1458,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 7: `useHubPosts` hook
 
+Deviation from the spec, on purpose: the spec puts `useHubPosts` in `queries.ts`; it lives in `hooks/` next to the other Hub hooks, and `queries.ts` keeps only query options and helpers.
+
 **Files:**
 
 - Create: `apps/hub/src/hooks/useHubPosts.ts`
@@ -1483,7 +1486,7 @@ export function useHubPosts(
   token: string,
   opts?: {
     history?: boolean;
-    refetchInterval?: UseQueryOptions<HubPostsResponse>['refetchInterval'];
+    refetchInterval?: (query: { state: { data?: HubPostsResponse } }) => number | false;
   },
 ): UseHubPostsResult;
 ```
@@ -1614,7 +1617,7 @@ Expected: FAIL, module not found.
 
 ```ts
 import { useCallback, useMemo, useState } from 'react';
-import { useInfiniteQuery, useQuery, type UseQueryOptions } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { fetchOlderPosts } from '../api';
 import { HISTORY_RETRY, hubPostsHistoryKey, hubPostsQuery } from '../queries';
 import { mergeById } from '../lib/mergeById';
@@ -1641,7 +1644,9 @@ export function useHubPosts(
   token: string,
   opts: {
     history?: boolean;
-    refetchInterval?: UseQueryOptions<HubPostsResponse>['refetchInterval'];
+    // Structural on purpose: UseQueryOptions<HubPostsResponse>['refetchInterval'] fails tsc
+    // (TS2769) against hubPostsQuery's inferred string[] key.
+    refetchInterval?: (query: { state: { data?: HubPostsResponse } }) => number | false;
   } = {},
 ): UseHubPostsResult {
   const shell = useQuery({ ...hubPostsQuery(token), refetchInterval: opts.refetchInterval });
@@ -1707,8 +1712,6 @@ export function useHubPosts(
 - [ ] **Step 4: Run to verify pass**
 
 Same command. Expected: PASS. If the failed-first-page test times out, check that `HISTORY_RETRY.retryDelay` is 300 and the hook spreads it after `enabled`.
-
-Known tsc fallback: if `npx tsc -p apps/hub/tsconfig.json --noEmit` rejects `UseQueryOptions<HubPostsResponse>['refetchInterval']` spread into `hubPostsQuery(token)` (query-key generic mismatch), type the option as `refetchInterval?: (query: { state: { data?: HubPostsResponse } }) => number | false` instead; PostagensPage's callback fits both.
 
 - [ ] **Step 5: Commit**
 
@@ -1823,7 +1826,8 @@ it('a deep link outside the loaded posts opens the single post without a counter
     response({ posts: [post({ id: 5061, titulo: 'Post de março', status: 'postado' })] }),
   );
   renderPage(`${BASE}/5061`, response({ posts: [post({ id: 1 })] }));
-  expect(await screen.findByRole('heading', { name: 'Post de março' })).toBeInTheDocument();
+  // HubDialog renders the title twice (sr-only Dialog.Title + the card's h3): query the dialog.
+  expect(await screen.findByRole('dialog', { name: 'Post de março' })).toBeInTheDocument();
   expect(screen.queryByText('1 de 1')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Post anterior' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Próximo post' })).not.toBeInTheDocument();
@@ -1895,7 +1899,11 @@ const wantsSingle =
   currentId > 0 &&
   !allVisible.some((p) => p.id === currentId);
 const single = useQuery({ ...hubPostQuery(token, currentId ?? 0), enabled: wantsSingle });
-const singlePost = wantsSingle ? single.data?.posts.find((p) => p.id === currentId) : undefined;
+// Same visibility guard as the list (defence in depth; an old backend ignores post_id and
+// returns its whole list).
+const singlePost = wantsSingle
+  ? single.data?.posts.find((p) => p.id === currentId && isPostClientVisible(p))
+  : undefined;
 ```
 
 8. The empty branch: `t('postagens.empty', 'Nenhuma postagem disponível ainda.')` becomes
@@ -2040,6 +2048,7 @@ it('reports the shown month on mount and on navigation, and renders loading and 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { HubContext } from '../../HubContext';
 
@@ -2051,7 +2060,7 @@ vi.mock('../../components/PostCalendar', () => ({
     posts: Array<{ titulo: string }>;
     onMonthChange?: (y: number, m: number) => void;
     loading?: boolean;
-    notice?: React.ReactNode;
+    notice?: ReactNode;
   }) => (
     <div>
       <span>Cal: {props.posts.map((p) => p.titulo).join(', ')}</span>
@@ -2220,7 +2229,7 @@ Render `{notice}` right after the desktop header block (the `<div className="hid
 
 - [ ] **Step 6: HomePage**
 
-Imports: `useCallback, useMemo, useState` from `react`; replace `import { useQuery } from '@tanstack/react-query';` (keep) and `import { fetchPosts } from '../api';` with `import { hubPostsQuery, hubPostsRangeQuery } from '../queries';`, `import { mergeById } from '../lib/mergeById';`, and add `localMonthRange` to the `../lib/postView` import.
+Imports: `useCallback, useState` from `react`; replace `import { useQuery } from '@tanstack/react-query';` (keep) and `import { fetchPosts } from '../api';` with `import { hubPostsQuery, hubPostsRangeQuery } from '../queries';`, `import { mergeById } from '../lib/mergeById';`, and add `localMonthRange` to the `../lib/postView` import.
 
 Replace `const { data, isLoading } = useQuery({ queryKey: ['hub-posts', token], queryFn: () => fetchPosts(token) });` with `const { data, isLoading } = useQuery(hubPostsQuery(token));`. Below the existing `const posts = allPosts.filter(...)` line add:
 
@@ -2242,12 +2251,9 @@ const rangeQuery = useQuery({
   ...hubPostsRangeQuery(token, monthRange?.from ?? '', monthRange?.to ?? ''),
   enabled: needsRange,
 });
-const calendarPosts = useMemo(
-  () =>
-    mergeById(posts, needsRange ? (rangeQuery.data?.posts ?? []) : []).filter(
-      (p) => CALENDAR_STATUSES.has(p.status) || isInProduction(p),
-    ),
-  [posts, needsRange, rangeQuery.data?.posts],
+// Plain computation: `posts` is a fresh filter every render, so a memo would never hit.
+const calendarPosts = mergeById(posts, needsRange ? (rangeQuery.data?.posts ?? []) : []).filter(
+  (p) => CALENDAR_STATUSES.has(p.status) || isInProduction(p),
 );
 ```
 
@@ -2300,6 +2306,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `apps/hub/src/pages/AprovacoesPage.tsx:146-149`
 - Modify: `apps/hub/src/components/HubPostChip.tsx`
 - Modify: `apps/hub/src/hooks/usePendingApprovalsCount.ts`
+- Modify: `apps/hub/src/pages/__tests__/aprovacoesPage.test.tsx:213` (invalidation assertion)
 - Test: create `apps/hub/src/components/__tests__/HubPostChip.test.tsx`
 
 **Interfaces:**
@@ -2403,6 +2410,14 @@ const post = open ? (fromShell ?? singleData?.posts.find((p) => p.id === postId)
 const handleInvalidate = useCallback(() => invalidateHubPosts(qc, token), [qc, token]);
 ```
 
+`aprovacoesPage.test.tsx` line 213 asserts the old exact argument; `invalidateHubPosts` adds `exact: true`, so change the assertion to:
+
+```tsx
+expect(invalidateSpy).toHaveBeenCalledWith(
+  expect.objectContaining({ queryKey: ['hub-posts', 'token-publico'] }),
+);
+```
+
 `usePendingApprovalsCount.ts`:
 
 ```ts
@@ -2425,7 +2440,7 @@ Expected: PASS. If `usePendingApprovalsCount.test.tsx` or `mensagensPage.test.ts
 
 ```bash
 npx tsc -p apps/hub/tsconfig.json --noEmit
-git add apps/hub/src/components/HubPostChip.tsx apps/hub/src/components/__tests__/HubPostChip.test.tsx apps/hub/src/pages/AprovacoesPage.tsx apps/hub/src/hooks/usePendingApprovalsCount.ts
+git add apps/hub/src/components/HubPostChip.tsx apps/hub/src/components/__tests__/HubPostChip.test.tsx apps/hub/src/pages/AprovacoesPage.tsx apps/hub/src/pages/__tests__/aprovacoesPage.test.tsx apps/hub/src/hooks/usePendingApprovalsCount.ts
 git commit -m "feat(hub): chips de mensagem buscam o post antigo e invalidação poupa o histórico
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
