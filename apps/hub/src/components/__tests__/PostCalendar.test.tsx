@@ -203,4 +203,15 @@ describe('PostCalendar', () => {
     expect(screen.getByText('Em produção')).toBeInTheDocument();
     expect(screen.queryByText('Revisão interna')).not.toBeInTheDocument();
   });
+
+  it('reports the shown month on mount and on navigation, and renders loading and notice', () => {
+    vi.setSystemTime(new Date('2026-04-17T12:00:00.000Z'));
+    const onMonthChange = vi.fn();
+    render(<PostCalendar posts={[]} onMonthChange={onMonthChange} loading notice={<p>aviso</p>} />);
+    expect(onMonthChange).toHaveBeenLastCalledWith(2026, 3);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Mês anterior' })[0]);
+    expect(onMonthChange).toHaveBeenLastCalledWith(2026, 2);
+    expect(screen.getByTestId('post-calendar-grid')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByText('aviso')).toBeInTheDocument();
+  });
 });

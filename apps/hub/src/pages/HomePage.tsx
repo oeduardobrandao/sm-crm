@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Palette,
@@ -11,8 +12,9 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
-import { fetchPosts } from '../api';
-import { isInProduction } from '../lib/postView';
+import { hubPostsQuery, hubPostsRangeQuery } from '../queries';
+import { mergeById } from '../lib/mergeById';
+import { isInProduction, localMonthRange } from '../lib/postView';
 import { PostCalendar } from '../components/PostCalendar';
 import { DashboardSection } from '../components/dashboard/DashboardSection';
 import { ClientAvatar } from '../components/ClientAvatar';
@@ -46,14 +48,33 @@ export function HomePage() {
   const navigate = useNavigate();
   const base = `/${workspace}/hub/${token}`;
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['hub-posts', token],
-    queryFn: () => fetchPosts(token),
-  });
+  const { data, isLoading } = useQuery(hubPostsQuery(token));
 
   const allPosts = data?.posts ?? [];
   const pendingCount = allPosts.filter((p) => p.status === 'enviado_cliente').length;
   const posts = allPosts.filter((p) => CALENDAR_STATUSES.has(p.status) || isInProduction(p));
+
+  // Months that start before the shell's window are fetched on demand by scheduled_at range
+  // (the shell holds every post scheduled after the cutoff, so later months are complete).
+  const [shown, setShown] = useState<{ year: number; month: number } | null>(null);
+  const handleMonthChange = useCallback(
+    (year: number, month: number) => setShown({ year, month }),
+    [],
+  );
+  const historyCutoff = data?.historyCutoff ?? null;
+  const monthRange = shown ? localMonthRange(shown.year, shown.month) : null;
+  const needsRange =
+    monthRange !== null &&
+    historyCutoff !== null &&
+    Date.parse(monthRange.from) < Date.parse(historyCutoff);
+  const rangeQuery = useQuery({
+    ...hubPostsRangeQuery(token, monthRange?.from ?? '', monthRange?.to ?? ''),
+    enabled: needsRange,
+  });
+  // Plain computation: `posts` is a fresh filter every render, so a memo would never hit.
+  const calendarPosts = mergeById(posts, needsRange ? (rangeQuery.data?.posts ?? []) : []).filter(
+    (p) => CALENDAR_STATUSES.has(p.status) || isInProduction(p),
+  );
 
   const now = new Date();
   const thisMonthCount = allPosts.filter((p) => {
@@ -198,7 +219,25 @@ export function HomePage() {
             <div className="animate-spin h-5 w-5 rounded-full border-2 border-stone-300 border-t-stone-900" />
           </div>
         ) : (
-          <PostCalendar posts={posts} />
+          <PostCalendar
+            posts={calendarPosts}
+            onMonthChange={handleMonthChange}
+            loading={needsRange && rangeQuery.isFetching}
+            notice={
+              needsRange && rangeQuery.isError && !rangeQuery.isFetching ? (
+                <p className="mb-3 flex items-center gap-2 text-[12.5px] hub-tx2">
+                  {t('calendar.rangeError', 'Não foi possível carregar este mês.')}
+                  <button
+                    type="button"
+                    onClick={() => void rangeQuery.refetch()}
+                    className="font-semibold underline"
+                  >
+                    {t('calendar.rangeRetry', 'Tentar novamente')}
+                  </button>
+                </p>
+              ) : null
+            }
+          />
         )}
       </section>
 

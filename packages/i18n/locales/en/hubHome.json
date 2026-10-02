@@ -45,6 +45,8 @@
     "monthYearLabel": "{{month}} {{year}}",
     "noPostsThisDay": "No posts on this day.",
     "selectADay": "Select a day.",
+    "rangeError": "Couldn't load this month.",
+    "rangeRetry": "Try again",
     "tipoLabel": {
       "feed": "Feed",
       "reels": "Reels",

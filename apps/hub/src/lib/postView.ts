@@ -280,3 +280,12 @@ export function formatMonthKey(key: string, lang: string): string {
   );
   return label.charAt(0).toLocaleUpperCase(lang) + label.slice(1);
 }
+
+/** The local calendar month [first instant, first instant of next month), as ISO strings:
+ * the same local-day bucketing PostCalendar uses to place posts. */
+export function localMonthRange(year: number, month: number): { from: string; to: string } {
+  return {
+    from: new Date(year, month, 1).toISOString(),
+    to: new Date(year, month + 1, 1).toISOString(),
+  };
+}
