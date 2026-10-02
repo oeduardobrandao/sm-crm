@@ -37,6 +37,23 @@ export function firstUnwatched(series: KbVideoSeries, progress: ProgressMap): Kb
   return series.videos.find((v) => !isCompleted(progress, v.id)) ?? null;
 }
 
+/** First OTHER series, in display order, that still has an unwatched video. Offered when the
+ * current series ends so a finished series hands off to the next one instead of a rewatch. */
+export function nextSeriesWithUnwatched(
+  series: KbVideoSeries[],
+  currentSeriesId: string,
+  progress: ProgressMap,
+): KbVideoSeries | null {
+  return (
+    series.find((s) => s.id !== currentSeriesId && firstUnwatched(s, progress) !== null) ?? null
+  );
+}
+
+/** Videos linked to an article, in series then video display order. */
+export function videosForArticle(series: KbVideoSeries[], articleSlug: string): KbVideo[] {
+  return series.flatMap((s) => s.videos.filter((v) => v.article?.slug === articleSlug));
+}
+
 export function pickInitial(
   series: KbVideoSeries[],
   progress: ProgressMap,

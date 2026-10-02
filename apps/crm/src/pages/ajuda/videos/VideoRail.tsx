@@ -1,12 +1,5 @@
 import { CheckCircle2, Circle, PlayCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import type { KbVideoSeries } from '@/store/kbVideos';
 import { completedCount, formatDuration, isCompleted, type ProgressMap } from './playlist';
 
@@ -32,20 +25,44 @@ export function VideoRail({
 
   return (
     <div className="flex min-w-0 flex-col gap-3 self-start rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-4">
+      {series.length > 1 && (
+        // Every series stays visible: a closed dropdown hid everything past the first one.
+        <div role="tablist" aria-label="Séries de vídeos" className="flex flex-wrap gap-1.5">
+          {series.map((s) => {
+            const selected = s.id === currentSeries.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => {
+                  if (!selected) onSelectSeries(s.id);
+                }}
+                className={cn(
+                  'flex min-w-0 items-center gap-2 rounded-lg border px-3 py-1.5 text-left text-[0.8rem] transition-colors',
+                  selected
+                    ? 'border-transparent bg-[var(--text-main)] font-semibold text-[var(--card-bg)]'
+                    : 'border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)]',
+                )}
+              >
+                <span className="truncate">{s.title}</span>
+                <span
+                  className={cn(
+                    'shrink-0 text-[0.72rem] tabular-nums',
+                    selected ? 'opacity-70' : 'text-[var(--text-light)]',
+                  )}
+                >
+                  {completedCount(s, progress)}/{s.videos.length}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3">
         {series.length > 1 ? (
-          <Select value={currentSeries.id} onValueChange={onSelectSeries}>
-            <SelectTrigger aria-label="Série de vídeos" className="h-9 min-w-0 flex-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {series.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <p className="text-[0.78rem] text-[var(--text-light)]">Seu progresso</p>
         ) : (
           <p className="min-w-0 truncate text-[0.95rem] font-semibold text-[var(--text-main)]">
             {currentSeries.title}

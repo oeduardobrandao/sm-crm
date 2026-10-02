@@ -7,11 +7,13 @@ import {
   formatDuration,
   mergeProgress,
   nextInSeries,
+  nextSeriesWithUnwatched,
   pickInitial,
   reachedCompletion,
   resolveSelection,
   resumePosition,
   toProgressMap,
+  videosForArticle,
 } from '../playlist';
 
 function v(id: number, seriesId: string, title = `Vídeo ${id}`): KbVideo {
@@ -137,5 +139,27 @@ describe('filterVideos', () => {
     expect(hits.map((h) => h.video.id)).toEqual([2]);
     expect(hits[0].seriesTitle).toBe('Primeiros passos');
     expect(filterVideos(series, '  ')).toEqual([]);
+  });
+});
+
+describe('nextSeriesWithUnwatched', () => {
+  it('hands off to the next series that still has something to watch', () => {
+    expect(nextSeriesWithUnwatched(series, 's1', toProgressMap([]))?.id).toBe('s2');
+  });
+
+  it('never offers the current series and skips fully watched ones', () => {
+    expect(nextSeriesWithUnwatched(series, 's2', toProgressMap([]))?.id).toBe('s1');
+    expect(nextSeriesWithUnwatched(series, 's1', toProgressMap([done(3)]))).toBeNull();
+  });
+});
+
+describe('videosForArticle', () => {
+  it('returns the videos linked to the article across series', () => {
+    const linked: KbVideoSeries[] = [
+      { ...series[0], videos: [{ ...v(1, 's1'), article: { slug: 'relatorios', title: 'R' } }] },
+      { ...series[1], videos: [{ ...v(3, 's2'), article: { slug: 'relatorios', title: 'R' } }] },
+    ];
+    expect(videosForArticle(linked, 'relatorios').map((x) => x.id)).toEqual([1, 3]);
+    expect(videosForArticle(linked, 'outro')).toEqual([]);
   });
 });

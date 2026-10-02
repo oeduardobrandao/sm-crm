@@ -21,6 +21,7 @@ import { TableOfContents } from './components/TableOfContents';
 import { CATEGORY_LABELS, ALL_CATEGORIES } from './categoryConfig';
 import { ArticleCard } from './components/ArticleCard';
 import { useRecordArticleView } from './useRecordKbView';
+import { ArticleVideos } from './videos/ArticleVideos';
 
 function readingTime(plainText: string): number {
   return Math.max(1, Math.ceil(plainText.trim().split(/\s+/).length / 200));
@@ -197,6 +198,7 @@ export default function ArtigoPage() {
 
       <div className="flex gap-8">
         <article className="min-w-0 flex-1">
+          <ArticleVideos articleSlug={article.slug} />
           <EditorContent
             editor={editor}
             className="post-editor-content article-reader-content prose-article"

@@ -5,6 +5,7 @@ import type { KbVideo, KbVideoSeries } from '@/store/kbVideos';
 import {
   allCompleted,
   firstUnwatched,
+  nextSeriesWithUnwatched,
   pickInitial,
   resolveSelection,
   type PlaylistSelection,
@@ -83,6 +84,13 @@ export function VideoPlaylistBlock({
     setAutoPlay(play);
   };
 
+  const startSeries = (seriesId: string, play: boolean) => {
+    const target = series.find((s) => s.id === seriesId);
+    if (!target) return;
+    const video = firstUnwatched(target, progress) ?? target.videos[0];
+    if (video) select(target.id, video.id, play);
+  };
+
   if (collapsed) {
     return (
       <section
@@ -121,18 +129,15 @@ export function VideoPlaylistBlock({
         onSaveProgress={onSaveProgress}
         onFirstPlay={onFirstPlay}
         onPlayNext={(next) => select(resolved.series.id, next.id, true)}
+        nextSeries={nextSeriesWithUnwatched(series, resolved.series.id, progress)}
+        onStartSeries={(seriesId) => startSeries(seriesId, true)}
       />
       <VideoRail
         series={series}
         currentSeries={resolved.series}
         currentVideoId={resolved.video.id}
         progress={progress}
-        onSelectSeries={(seriesId) => {
-          const target = series.find((s) => s.id === seriesId);
-          if (!target) return;
-          const video = firstUnwatched(target, progress) ?? target.videos[0];
-          if (video) select(target.id, video.id, false);
-        }}
+        onSelectSeries={(seriesId) => startSeries(seriesId, false)}
         onSelectVideo={(videoId) => select(resolved.series.id, videoId, false)}
       />
     </section>

@@ -247,6 +247,67 @@ describe('VideoPlaylistBlock', () => {
     expect(onFirstPlay).toHaveBeenLastCalledWith(3);
   });
 
+  describe('with more than one series', () => {
+    const twoSeries: KbVideoSeries[] = [
+      ...series,
+      {
+        id: 's2',
+        title: 'Indo além',
+        slug: 'ia',
+        description: null,
+        display_order: 2,
+        videos: [
+          v(4, 'Métricas do Instagram', { series_id: 's2' }),
+          v(5, 'Relatórios', { series_id: 's2' }),
+        ],
+      },
+    ];
+
+    it('shows every series as a tab with its own progress', () => {
+      renderBlock({ series: twoSeries });
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs.map((t) => t.textContent)).toEqual(['Primeiros passos1/3', 'Indo além0/2']);
+      expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('switches series from its tab, landing on its first unwatched video', () => {
+      renderBlock({ series: twoSeries, progress: toProgressMap([done(1), done(4)]) });
+      fireEvent.click(screen.getByRole('tab', { name: /Indo além/ }));
+      expect(screen.getByRole('heading', { name: 'Relatórios' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Indo além/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('offers the next series when the current one ends', () => {
+      const { container } = renderBlock({
+        series: twoSeries,
+        progress: toProgressMap([done(1), done(2)]),
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Primeiro cliente/ }));
+      const el = videoEl(container);
+      setMedia(el, 100);
+      fireEvent.ended(el);
+      expect(screen.getByText('Próxima série: Indo além')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Começar' }));
+      expect(screen.getByRole('heading', { name: 'Métricas do Instagram' })).toBeInTheDocument();
+    });
+
+    it('offers no next series once every other series was watched', () => {
+      const { container } = renderBlock({
+        series: twoSeries,
+        progress: toProgressMap([done(1), done(2), done(4), done(5)]),
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Primeiro cliente/ }));
+      const el = videoEl(container);
+      setMedia(el, 100);
+      fireEvent.ended(el);
+      expect(screen.getByText('Série concluída')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Começar' })).toBeNull();
+    });
+  });
+
   it('reports nothing when the video is only shown', () => {
     const onFirstPlay = vi.fn();
     renderBlock({ onFirstPlay });
