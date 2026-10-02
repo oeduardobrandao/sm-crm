@@ -1,6 +1,7 @@
 // apps/crm/src/services/fileService.ts
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import { supabase } from '../lib/supabase';
+import { FileApiError } from './fileApiError';
 import type {
   Folder,
   FileRecord,
@@ -8,6 +9,8 @@ import type {
   FolderInfo,
   PostFileLink,
 } from '../pages/arquivos/types';
+
+export { FileApiError };
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -46,8 +49,9 @@ async function callFn<T>(
     throw error;
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+    const err = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const msg = typeof err.error === 'string' ? err.error : `HTTP ${res.status}`;
+    throw new FileApiError(msg, res.status, err);
   }
   return res.json() as Promise<T>;
 }
@@ -523,4 +527,25 @@ function generateBlurDataUrl(file: File): Promise<string> {
     };
     img.src = url;
   });
+}
+
+/** Pasta "Relatórios" do cliente (cria na primeira vez; RPC atômica). */
+export async function getClientReportsFolderId(clienteId: number): Promise<number> {
+  const { data, error } = await supabase.rpc('get_or_create_client_reports_folder', {
+    p_cliente_id: clienteId,
+  });
+  if (error || typeof data !== 'number')
+    throw new Error('Não foi possível preparar a pasta do cliente.');
+  return data;
+}
+
+/** Pasta raiz do cliente nos Arquivos (onde o seletor abre). */
+export async function getClientFolderId(clienteId: number): Promise<number | null> {
+  const { data } = await supabase
+    .from('folders')
+    .select('id')
+    .eq('source_type', 'client')
+    .eq('source_id', clienteId)
+    .maybeSingle();
+  return (data as { id: number } | null)?.id ?? null;
 }

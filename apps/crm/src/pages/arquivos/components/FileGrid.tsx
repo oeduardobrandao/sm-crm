@@ -260,7 +260,7 @@ export function FileGrid(props: FileGridProps) {
               <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Tipo</th>
               <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Tamanho</th>
               <th className="pb-2 pr-4 font-medium text-xs uppercase tracking-wide">Data</th>
-              <th className="pb-2 font-medium text-xs uppercase tracking-wide">Links</th>
+              <th className="pb-2 font-medium text-xs uppercase tracking-wide">Em uso</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
@@ -442,7 +442,10 @@ export function FileGrid(props: FileGridProps) {
                     </td>
                     <td className="py-2.5">
                       {file.reference_count > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
+                        <span
+                          title="Em uso em posts ou relatórios"
+                          className="inline-flex items-center gap-1 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]"
+                        >
                           <LinkIcon className="h-2.5 w-2.5" />
                           {file.reference_count}
                         </span>
@@ -645,7 +648,10 @@ export function FileGrid(props: FileGridProps) {
                 </div>
 
                 {file.reference_count > 0 && (
-                  <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--text-muted)]">
+                  <span
+                    title="Em uso em posts ou relatórios"
+                    className="absolute top-2 right-2 inline-flex items-center gap-1 text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--text-muted)]"
+                  >
                     <LinkIcon className="h-2.5 w-2.5" />
                     {file.reference_count}
                   </span>

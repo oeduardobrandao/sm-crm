@@ -282,6 +282,21 @@ describe('fileService', () => {
 
       await expect(deleteFile(7)).rejects.toThrow('Arquivo está vinculado a postagens');
     });
+
+    it('callFn lança FileApiError com status e corpo', async () => {
+      const body = {
+        error: 'file_in_use',
+        linked_reports: [{ report_id: 'a', title: 'R' }],
+      };
+      fetchHarness.queueResponse({ ok: false, status: 409, json: body });
+
+      await expect(deleteFile(10)).rejects.toMatchObject({
+        name: 'FileApiError',
+        message: 'file_in_use',
+        status: 409,
+        body,
+      });
+    });
   });
 
   describe('uploadFile', () => {

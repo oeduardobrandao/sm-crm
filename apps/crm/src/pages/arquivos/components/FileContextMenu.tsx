@@ -24,7 +24,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { renameFolder, deleteFolder, renameFile, deleteFile } from '@/services/fileService';
+import {
+  renameFolder,
+  deleteFolder,
+  renameFile,
+  deleteFile,
+  FileApiError,
+} from '@/services/fileService';
+import { fileInUseMessage } from '../fileInUse';
 import { FolderInfoModal } from './FolderInfoModal';
 import type { Folder, FileRecord } from '../types';
 import { sanitizeExternalUrl } from '@/utils/security';
@@ -136,13 +143,6 @@ export function FileContextMenu({
   }
 
   function openDelete() {
-    if (!isFolder && file && file.reference_count > 0) {
-      toast.error(
-        `Este arquivo está vinculado a ${file.reference_count} post(s). Desvincule primeiro.`,
-      );
-      closeMenu();
-      return;
-    }
     setDeleteOpen(true);
     closeMenu();
   }
@@ -183,9 +183,8 @@ export function FileContextMenu({
       onActionComplete();
       setDeleteOpen(false);
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : '';
-      if (errorMsg.includes('file_in_use')) {
-        toast.error('Este arquivo está em uso e não pode ser excluído.');
+      if (err instanceof FileApiError && err.body.error === 'file_in_use') {
+        toast.error(fileInUseMessage(err.body));
       } else {
         toast.error('Erro ao excluir');
       }
