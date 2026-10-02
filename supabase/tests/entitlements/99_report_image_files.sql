@@ -238,3 +238,60 @@ begin
   raise notice 'PASS 99_report_image_files (g) workspace cascade';
 end $$;
 rollback;
+
+-- ---- (i) pasta "Relatórios" ----
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_user uuid := gen_random_uuid();
+  v_ws uuid; v_ws_b uuid; v_cli bigint; v_cli_b bigint;
+  v_f1 bigint; v_f2 bigint; v_parent bigint; v_client_folder bigint;
+  v_raised boolean := false; v_n int;
+begin
+  assert not has_function_privilege('anon',
+    'public.get_or_create_client_reports_folder(bigint)', 'EXECUTE'),
+    'anon nao pode executar get_or_create_client_reports_folder';
+  assert has_function_privilege('authenticated',
+    'public.get_or_create_client_reports_folder(bigint)', 'EXECUTE'),
+    'authenticated precisa executar get_or_create_client_reports_folder';
+
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  v_ws := et_make_workspace('pro');
+  v_ws_b := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_user, v_ws, 'Cliente', 'C', '#000') returning id into v_cli;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_user, v_ws_b, 'Outro', 'O', '#000') returning id into v_cli_b;
+  -- simula cliente anterior ao trigger de pastas: sem pasta de cliente
+  delete from folders where conta_id = v_ws and source_type = 'client' and source_id = v_cli;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
+  v_f1 := get_or_create_client_reports_folder(v_cli);
+  v_f2 := get_or_create_client_reports_folder(v_cli);
+  begin
+    perform get_or_create_client_reports_folder(v_cli_b);
+  exception when others then v_raised := true;
+  end;
+  reset role;
+
+  assert v_f1 = v_f2, 'RPC deveria ser idempotente';
+  assert v_raised, 'cliente de outro workspace deveria ser recusado';
+  select parent_id into v_parent from folders where id = v_f1;
+  select id into v_client_folder from folders
+   where conta_id = v_ws and source_type = 'client' and source_id = v_cli;
+  assert v_client_folder is not null, 'RPC deveria recriar a pasta do cliente';
+  assert v_parent = v_client_folder, 'Relatórios deveria ser filha da pasta do cliente';
+  select count(*) into v_n from folders
+   where conta_id = v_ws and source_type = 'client_reports' and source_id = v_cli;
+  assert v_n = 1, 'uma única pasta Relatórios';
+  assert exists (select 1 from folders where conta_id = v_ws and source_type = 'root_clients'),
+    'pastas root_clients continuam válidas após recriar a constraint';
+  raise notice 'PASS 99_report_image_files (i) pasta Relatórios';
+end $$;
+rollback;
