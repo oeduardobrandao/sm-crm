@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Trash2,
   Copy,
+  CopyPlus,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -67,6 +68,8 @@ interface WorkflowCardProps {
    *  ligar a uma função de exclusão de fluxo quando o fluxo de exclusão via
    *  card existir. */
   onDeleteClick?: () => void;
+  /** "Duplicar fluxo". Ausente no overlay de arraste e sem permissão. */
+  onDuplicateClick?: () => void;
 }
 
 export function WorkflowCard({
@@ -86,6 +89,7 @@ export function WorkflowCard({
   revisaoInternaCount,
   awaitingClienteCount,
   onDeleteClick,
+  onDuplicateClick,
 }: WorkflowCardProps) {
   const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
@@ -704,6 +708,17 @@ export function WorkflowCard({
               >
                 <FileText className="h-3.5 w-3.5" />
                 Abrir posts
+              </DropdownMenuItem>
+            )}
+            {onDuplicateClick && !isDragOverlay && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDuplicateClick();
+                }}
+              >
+                <CopyPlus className="h-3.5 w-3.5" />
+                Duplicar fluxo
               </DropdownMenuItem>
             )}
             {card.etapaIdx > 0 && onRevertClick && (

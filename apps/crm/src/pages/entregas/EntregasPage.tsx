@@ -53,6 +53,7 @@ import {
 } from './components/WorkflowModals';
 import { NewWorkflowWizard } from './wizard/NewWorkflowWizard';
 import { NewAvulsoDialog } from './components/NewAvulsoDialog';
+import { DuplicateDialog, type DuplicateTarget } from './components/DuplicateDialog';
 import { KanbanView } from './views/KanbanView';
 import { ChartView } from './views/ChartView';
 import { CalendarView } from './views/CalendarView';
@@ -147,7 +148,8 @@ export default function EntregasPage() {
 
   // contaId is needed by the mode-seeding below, so useAuth is read up front
   // (its own state, tourDone/explainerOpen, is still set up further down).
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
+  const canDuplicate = can('entregas', 'editar') === true;
   const contaId = profile?.active_workspace_id ?? profile?.conta_id ?? 'unknown';
 
   // Processos individuais de produção (spec 2026-09-10). Ships dark.
@@ -188,6 +190,7 @@ export default function EntregasPage() {
   // que já tem o diálogo, o tratamento de revisão obsoleta e a invalidação.
   const [deleteWorkflowTarget, setDeleteWorkflowTarget] = useState<BoardCard | null>(null);
   const [deletePostTarget, setDeletePostTarget] = useState<PostEntity | null>(null);
+  const [duplicateTarget, setDuplicateTarget] = useState<DuplicateTarget | null>(null);
   // One page-wide mode: flipping Fluxos/Publicações persists across Kanban,
   // Calendário and Lista. An explicit ?mode= in the URL wins; with no ?mode=
   // param, it seeds from the conta's last-used mode.
@@ -734,6 +737,36 @@ export default function EntregasPage() {
     } catch {
       toast.error('Erro ao excluir post');
     }
+  };
+  // "Duplicar" nos cards do quadro. "Abrir" usa os mesmos caminhos do deep
+  // link: post individual abre no drawer avulso; fluxo espera o card chegar
+  // no refetch via pendingDeepLink.
+  const handleDuplicated = (newId: number, target: DuplicateTarget) => {
+    refresh();
+    if (target.kind === 'post') {
+      toast.success('Post duplicado', {
+        action: {
+          label: 'Abrir',
+          onClick: () => {
+            setDrawerCard(null);
+            setDrawerInitialPostId(null);
+            setStandalonePostId(newId);
+          },
+        },
+      });
+      return;
+    }
+    toast.success(
+      'Fluxo duplicado',
+      target.active
+        ? {
+            action: {
+              label: 'Abrir',
+              onClick: () => setPendingDeepLink({ workflowId: newId, postId: null }),
+            },
+          }
+        : undefined,
+    );
   };
   // Object-based click contract shared by the four post-list views (Kanban/Lista/
   // Calendário/PublicacoesPanel): a post avulso has no workflow card to open, so it
@@ -1431,6 +1464,27 @@ export default function EntregasPage() {
               onRecurring={setRecurringWfId}
               onDeleteWorkflowClick={setDeleteWorkflowTarget}
               onDeletePostClick={setDeletePostTarget}
+              onDuplicateWorkflowClick={
+                canDuplicate
+                  ? (card, postsCount) =>
+                      setDuplicateTarget({
+                        kind: 'workflow',
+                        workflowId: card.workflow.id!,
+                        postsCount,
+                        active: card.workflow.status === 'ativo',
+                      })
+                  : undefined
+              }
+              onDuplicatePostClick={
+                canDuplicate
+                  ? (entity) =>
+                      setDuplicateTarget({
+                        kind: 'post',
+                        postId: entity.process.post_id,
+                        status: entity.process.post.status,
+                      })
+                  : undefined
+              }
               onAddWorkflow={(templateId) => {
                 setQuickAddTemplateId(templateId);
                 setNewWorkflowOpen(true);
@@ -1695,6 +1749,11 @@ export default function EntregasPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <DuplicateDialog
+        target={duplicateTarget}
+        onClose={() => setDuplicateTarget(null)}
+        onDuplicated={handleDuplicated}
+      />
       {editCard && (
         <EditWorkflowModal
           card={editCard}

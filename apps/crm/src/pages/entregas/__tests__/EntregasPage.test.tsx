@@ -257,7 +257,7 @@ vi.mock('../views/KanbanView', () => ({
 
 // EntregasPage now reads profile.conta_id via useAuth; there is no AuthProvider in this suite.
 vi.mock('../../../context/AuthContext', () => ({
-  useAuth: () => ({ profile: { conta_id: 'conta-1', role: 'owner' } }),
+  useAuth: () => ({ profile: { conta_id: 'conta-1', role: 'owner' }, can: () => true }),
 }));
 
 const limitsMock = vi.hoisted(() => ({ features: null as Record<string, boolean> | null }));
