@@ -61,7 +61,7 @@ const BUCKET_SUB: Record<FilaOrdem, Record<FilaBucket, string>> = {
     sem_prazo: 'sem prazo definido',
   },
   publicacao: {
-    atrasado: 'a data de publicação já passou',
+    atrasado: 'o horário de publicação já passou',
     hoje: 'publica hoje',
     amanha: 'publica amanhã',
     proximos7: 'publica nos próximos 7 dias',
