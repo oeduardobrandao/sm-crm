@@ -166,7 +166,11 @@
   .rb-cover {
     /* Área útil do A4 com as margens de 10mm que o Gotenberg já usa
        (RelatorioPrintPage.tsx: `@page { margin: 10mm; }`). */
-    min-height: calc(277mm / var(--rb-print-zoom));
+    /* Menos 1.5rem: com o zoom, o Chromium reserva o row-gap do grid (1rem)
+       depois da capa na MESMA página; capa de 277mm + gap estoura e gera uma
+       página 2 em branco (medido 2026-10-03: some com gap 0 ou capa <= 274mm).
+       1rem compensa o gap e 0.5rem é folga para o Chromium do Gotenberg. */
+    min-height: calc(277mm / var(--rb-print-zoom) - 1.5rem);
     break-after: page;
   }
   .rb-cover-splash {
