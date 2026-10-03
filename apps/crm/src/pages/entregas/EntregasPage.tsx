@@ -1322,7 +1322,9 @@ export default function EntregasPage() {
         onApply={applySavedView}
         trailing={
           activeView === 'fila' ? (
-            <div className="flex flex-wrap items-center gap-2">
+            // Sempre lado a lado: a linha das abas rola na horizontal no celular,
+            // então quebrar só a deixaria mais alta.
+            <div className="flex items-center gap-2">
               <FilaOrdemPicker ordem={filaOrdem} onChange={setFilaOrdem} />
               <FilaMembroPicker
                 membros={membros}
