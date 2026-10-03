@@ -1,6 +1,14 @@
 import { normalize } from '@/lib/normalizeText';
 import { CATEGORY_LABELS } from '@/pages/ajuda/categoryConfig';
+import { TIPO_LABELS } from '@/pages/entregas/postLabels';
+import { IDEIA_STATUS_LABELS } from '@/pages/ideias/ideiaLabels';
+import { STATUS_LABELS as TAREFA_STATUS_LABELS } from '@/pages/tarefas/tarefasLogic';
+import { buildStatusRegistry } from '@/pages/entregas/statusRegistry';
+import { MESES_ABREV } from '@/utils/postDate';
 import type { KbSearchEntry } from '@/store/kb';
+import type { PostStatusDefinition } from '@/store/postStatuses';
+import type { WorkflowPost } from '@/store/posts';
+import type { TarefaStatus } from '@/store/tarefas';
 
 /**
  * Modelo da busca global (⌘K). Puro: transforma os dados brutos do store em
@@ -15,6 +23,7 @@ export type SearchType =
   | 'transacao'
   | 'fluxo'
   | 'post'
+  | 'tarefa'
   | 'ideia'
   | 'pagina'
   | 'ajuda';
@@ -27,6 +36,7 @@ export const SEARCH_TYPE_ORDER: SearchType[] = [
   'transacao',
   'fluxo',
   'post',
+  'tarefa',
   'ideia',
   'pagina',
   'ajuda',
@@ -39,6 +49,7 @@ export const SEARCH_TYPE_LABELS: Record<SearchType, string> = {
   transacao: 'Financeiro',
   fluxo: 'Fluxos',
   post: 'Postagens',
+  tarefa: 'Tarefas',
   ideia: 'Ideias',
   pagina: 'Páginas',
   ajuda: 'Ajuda',
@@ -52,7 +63,10 @@ export interface SearchItem {
   /** Único entre todos os itens; vira o `value`/`key` do cmdk. */
   key: string;
   label: string;
+  /** Coluna da direita (curta: data, categoria, e-mail). */
   meta: string;
+  /** Segunda linha, unida por " · " na tela: cliente, fluxo, tipo, status. */
+  details?: string[];
   route: string;
   /** Texto normalizado onde a query é procurada. */
   haystack: string;
@@ -69,11 +83,72 @@ export interface SearchSources {
     categoria?: string | null;
     detalhe?: string | null;
   }[];
-  workflows: { id?: number; titulo: string; status?: string | null }[];
-  posts: { id?: number; workflow_id: number | null; titulo: string; tipo?: string | null }[];
-  ideias: { id?: number | string; titulo: string; clientes?: { nome?: string | null } | null }[];
+  workflows: {
+    id?: number;
+    titulo: string;
+    status?: string | null;
+    cliente_id?: number;
+    created_at?: string;
+  }[];
+  posts: {
+    id?: number;
+    workflow_id: number | null;
+    titulo: string;
+    tipo?: WorkflowPost['tipo'] | null;
+    cliente_id?: number;
+    status?: WorkflowPost['status'];
+    custom_status_id?: string | null;
+    scheduled_at?: string | null;
+    created_at?: string;
+  }[];
+  tarefas: {
+    id?: number;
+    titulo: string;
+    status?: TarefaStatus;
+    cliente_nome?: string | null;
+    responsavel_id?: number | null;
+    /** 'YYYY-MM-DD' */
+    data_limite?: string | null;
+    created_at?: string;
+  }[];
+  ideias: {
+    id?: number | string;
+    titulo: string;
+    clientes?: { nome?: string | null } | null;
+    tipo?: 'ideia' | 'solicitacao';
+    status?: string;
+    origem?: 'cliente' | 'agencia';
+    autor?: { nome?: string | null } | null;
+    created_at?: string;
+  }[];
   pages: { id?: number | string; title: string; cliente_id: number }[];
   articles: KbSearchEntry[];
+  /** Status personalizados do workspace; sem eles, o post mostra o status canônico. */
+  statusDefs?: PostStatusDefinition[];
+}
+
+const FLUXO_STATUS_LABELS: Record<string, string> = {
+  ativo: 'Ativo',
+  concluido: 'Concluído',
+  arquivado: 'Arquivado',
+};
+
+/** "2 out", ou "2 out 2025" fora do ano corrente. Vazio para data ausente/inválida. */
+export function formatSearchDate(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const ano = d.getFullYear() !== now.getFullYear() ? ` ${d.getFullYear()}` : '';
+  return `${d.getDate()} ${MESES_ABREV[d.getMonth()]}${ano}`;
+}
+
+function createdMeta(iso: string | null | undefined): string {
+  const date = formatSearchDate(iso);
+  return date ? `Criado em ${date}` : '';
+}
+
+function compact(parts: (string | null | undefined)[]): string[] {
+  return parts.filter((part): part is string => Boolean(part));
 }
 
 /** Deep link for a post result: NULL workflow_id = post avulso (fora de
@@ -94,6 +169,9 @@ export function buildSearchItems(s: SearchSources): SearchItem[] {
   for (const c of s.clientes) if (c.id != null) clienteNome.set(c.id, c.nome);
   const fluxoTitulo = new Map<number, string>();
   for (const w of s.workflows) if (w.id != null) fluxoTitulo.set(w.id, w.titulo);
+  const membroNome = new Map<number | string, string>();
+  for (const m of s.membros) if (m.id != null) membroNome.set(m.id, m.nome);
+  const statusRegistry = buildStatusRegistry(s.statusDefs ?? []);
 
   const items: SearchItem[] = [];
 
@@ -142,32 +220,76 @@ export function buildSearchItems(s: SearchSources): SearchItem[] {
       type: 'fluxo',
       key: `fluxo-${w.id ?? i}`,
       label: w.titulo,
-      meta: w.status ?? '',
+      meta: createdMeta(w.created_at),
+      details: compact([
+        w.cliente_id != null ? clienteNome.get(w.cliente_id) : undefined,
+        w.status ? (FLUXO_STATUS_LABELS[w.status] ?? w.status) : undefined,
+      ]),
       route: `/entregas?drawer=${w.id}`,
       haystack: hay(w.titulo),
     }),
   );
   s.posts.forEach((p, i) => {
     const fluxo = p.workflow_id != null ? (fluxoTitulo.get(p.workflow_id) ?? '') : '';
+    const publicacao = formatSearchDate(p.scheduled_at);
     items.push({
       type: 'post',
       key: `post-${p.id ?? i}`,
       label: p.titulo,
-      meta: p.workflow_id != null ? (p.tipo ?? '') : `${p.tipo ?? ''} · Avulso`,
+      meta: createdMeta(p.created_at),
+      details: compact([
+        p.cliente_id != null ? clienteNome.get(p.cliente_id) : undefined,
+        p.workflow_id != null ? fluxo : 'Avulso',
+        p.tipo ? (TIPO_LABELS[p.tipo] ?? p.tipo) : undefined,
+        p.status
+          ? statusRegistry.resolve({ status: p.status, custom_status_id: p.custom_status_id }).label
+          : undefined,
+        publicacao ? `Publicação ${publicacao}` : undefined,
+      ]),
       route: postHref(p),
       haystack: hay(p.titulo, fluxo),
     });
   });
-  s.ideias.forEach((idea, i) =>
+  s.tarefas.forEach((t, i) => {
+    const prazo = t.data_limite ? formatSearchDate(`${t.data_limite}T00:00:00`) : '';
+    const responsavel = t.responsavel_id != null ? membroNome.get(t.responsavel_id) : undefined;
+    items.push({
+      type: 'tarefa',
+      key: `tarefa-${t.id ?? i}`,
+      label: t.titulo,
+      meta: createdMeta(t.created_at),
+      details: compact([
+        t.cliente_nome,
+        t.status ? TAREFA_STATUS_LABELS[t.status] : undefined,
+        responsavel,
+        prazo ? `Prazo ${prazo}` : undefined,
+      ]),
+      route: `/tarefas?tarefa=${t.id}`,
+      haystack: hay(t.titulo),
+    });
+  });
+  s.ideias.forEach((idea, i) => {
+    const autoria =
+      idea.origem === 'cliente'
+        ? 'Enviada pelo cliente'
+        : idea.autor?.nome
+          ? `Por ${idea.autor.nome}`
+          : undefined;
     items.push({
       type: 'ideia',
       key: `ideia-${idea.id ?? i}`,
       label: idea.titulo,
-      meta: idea.clientes?.nome ?? '',
-      route: '/ideias',
+      meta: createdMeta(idea.created_at),
+      details: compact([
+        idea.clientes?.nome,
+        idea.tipo === 'solicitacao' ? 'Solicitação' : undefined,
+        idea.status ? (IDEIA_STATUS_LABELS[idea.status] ?? idea.status) : undefined,
+        autoria,
+      ]),
+      route: idea.id != null ? `/ideias?ideia=${encodeURIComponent(idea.id)}` : '/ideias',
       haystack: hay(idea.titulo, idea.clientes?.nome),
-    }),
-  );
+    });
+  });
   s.pages.forEach((pg, i) => {
     const cliente = clienteNome.get(pg.cliente_id) ?? '';
     items.push({

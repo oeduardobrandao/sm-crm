@@ -15,14 +15,25 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_key: string, fallback?: string) => fallback ?? _key }),
 }));
 
-vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ canSeeFinancials: false }),
-}));
-
-const { getWorkflowsMock, getAllWorkflowPostsMock, getKbSearchIndexMock } = vi.hoisted(() => ({
+const {
+  getWorkflowsMock,
+  getAllWorkflowPostsMock,
+  getKbSearchIndexMock,
+  getTarefasMock,
+  canTarefasRef,
+} = vi.hoisted(() => ({
   getWorkflowsMock: vi.fn(),
   getAllWorkflowPostsMock: vi.fn(),
   getKbSearchIndexMock: vi.fn(),
+  getTarefasMock: vi.fn(),
+  canTarefasRef: { current: true as boolean },
+}));
+
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({
+    canSeeFinancials: false,
+    can: (module: string) => (module === 'tarefas' ? canTarefasRef.current : true),
+  }),
 }));
 
 vi.mock('@/store/clients', () => ({ getClientes: vi.fn().mockResolvedValue([]) }));
@@ -36,6 +47,10 @@ vi.mock('@/store/hub', () => ({ getAllHubPages: vi.fn().mockResolvedValue([]) })
 vi.mock('@/store/workflows', () => ({ getWorkflows: getWorkflowsMock }));
 vi.mock('@/store/posts', () => ({ getAllWorkflowPosts: getAllWorkflowPostsMock }));
 vi.mock('@/store/kb', () => ({ getKbSearchIndex: getKbSearchIndexMock }));
+vi.mock('@/store/tarefas', () => ({ getTarefas: getTarefasMock }));
+vi.mock('@/store/postStatuses', () => ({
+  getPostStatusDefinitions: vi.fn().mockResolvedValue([]),
+}));
 
 import GlobalSearchTrigger from '../GlobalSearchTrigger';
 import type { KbSearchEntry } from '@/store/kb';
@@ -81,6 +96,35 @@ describe('GlobalSearchTrigger', () => {
       { id: 31, workflow_id: 5, titulo: 'Carrossel amamentação', tipo: 'carrossel' },
     ]);
     getKbSearchIndexMock.mockResolvedValue([]);
+    getTarefasMock.mockReset();
+    getTarefasMock.mockResolvedValue([]);
+    canTarefasRef.current = true;
+  });
+
+  it('finds tarefas and opens them through the ?tarefa= deep link', async () => {
+    getTarefasMock.mockResolvedValue([
+      { id: 9, titulo: 'Revisar briefing', status: 'em_andamento', cliente_nome: 'Clínica Vida' },
+    ]);
+    renderTrigger();
+    openPalette();
+    await screen.findByText(/Digite para buscar/);
+    typeQuery('briefing');
+
+    expect(await screen.findByText('Clínica Vida · Em andamento')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Revisar briefing'));
+    expect(navigateMock).toHaveBeenCalledWith('/tarefas?tarefa=9');
+  });
+
+  it('leaves tarefas out without the tarefas permission', async () => {
+    canTarefasRef.current = false;
+    getTarefasMock.mockResolvedValue([{ id: 9, titulo: 'Revisar briefing', status: 'pendente' }]);
+    renderTrigger();
+    openPalette();
+    await screen.findByText(/Digite para buscar/);
+    typeQuery('briefing');
+
+    expect(await screen.findByText('Nenhum resultado.')).toBeInTheDocument();
+    expect(getTarefasMock).not.toHaveBeenCalled();
   });
 
   it('shows a hint instead of listing everything before the user types', async () => {
@@ -127,7 +171,7 @@ describe('GlobalSearchTrigger', () => {
     await screen.findByText(/Digite para buscar/);
     typeQuery('fora de fluxo');
 
-    expect(await screen.findByText('feed · Avulso')).toBeInTheDocument();
+    expect(await screen.findByText('Avulso · Feed')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Post fora de fluxo'));
 
     expect(navigateMock).toHaveBeenCalledWith('/entregas?post=42');

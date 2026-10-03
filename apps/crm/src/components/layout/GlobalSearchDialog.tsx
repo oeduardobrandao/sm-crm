@@ -7,6 +7,7 @@ import {
   Kanban,
   Image,
   Lightbulb,
+  ListChecks,
   LayoutGrid,
   BookOpen,
   ArrowRight,
@@ -30,8 +31,10 @@ import { getMembros } from '@/store/team';
 import { getWorkflows } from '@/store/workflows';
 import { getAllWorkflowPosts } from '@/store/posts';
 import { getIdeias } from '@/store/ideias';
+import { getTarefas } from '@/store/tarefas';
 import { getAllHubPages } from '@/store/hub';
 import { getKbSearchIndex } from '@/store/kb';
+import { getPostStatusDefinitions } from '@/store/postStatuses';
 import { useAuth } from '@/context/AuthContext';
 import {
   buildSearchItems,
@@ -50,6 +53,7 @@ const TYPE_ICONS: Record<SearchType, ComponentType<{ className?: string }>> = {
   transacao: Wallet,
   fluxo: Kanban,
   post: Image,
+  tarefa: ListChecks,
   ideia: Lightbulb,
   pagina: LayoutGrid,
   ajuda: BookOpen,
@@ -72,8 +76,10 @@ interface GlobalSearchDialogProps {
 export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { canSeeFinancials } = useAuth();
+  const { canSeeFinancials, can } = useAuth();
   const financialsAllowed = canSeeFinancials === true;
+  // Mesmo gate do item Tarefas na sidebar (nav-data).
+  const tarefasAllowed = can('tarefas', 'ver') === true;
 
   const [query, setQuery] = useState('');
   const [activeType, setActiveType] = useState<SearchType | 'all'>('all');
@@ -102,12 +108,22 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
       { queryKey: ['transacoes'], queryFn: getTransacoes, enabled: open && financialsAllowed },
       { queryKey: ['workflows'], queryFn: getWorkflows, enabled: open },
       { queryKey: ['all-workflow-posts'], queryFn: getAllWorkflowPosts, enabled: open },
+      { queryKey: ['tarefas'], queryFn: getTarefas, enabled: open && tarefasAllowed },
       { queryKey: ['ideias'], queryFn: () => getIdeias(), enabled: open },
       { queryKey: ['all-hub-pages'], queryFn: getAllHubPages, enabled: open },
       // Índice leve dos artigos da Central de Ajuda (plataforma, muda pouco).
       {
         queryKey: ['kb-search-index'],
         queryFn: getKbSearchIndex,
+        enabled: open,
+        staleTime: 5 * 60_000,
+      },
+      // Nomes dos status personalizados; sem eles o post mostra o canônico.
+      // Mesma chave de POST_STATUS_DEFINITIONS_QUERY_KEY (useStatusRegistry),
+      // literal para não puxar o barrel do store para cá.
+      {
+        queryKey: ['post-status-definitions'],
+        queryFn: () => getPostStatusDefinitions(),
         enabled: open,
         staleTime: 5 * 60_000,
       },
@@ -121,13 +137,15 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
     transacoesRes,
     workflowsRes,
     postsRes,
+    tarefasRes,
     ideiasRes,
     pagesRes,
     kbRes,
+    statusDefsRes,
   ] = results;
   // O spinner só espera os dados do workspace; o grupo Ajuda entra quando o
   // índice chegar, sem atrasar o resto.
-  const workspaceResults = results.slice(0, 8);
+  const workspaceResults = results.slice(0, 9);
   const isLoading = workspaceResults.some((r) => r.isLoading);
 
   // Guard the result too, not just the query: `enabled: false` only stops a new
@@ -139,9 +157,11 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
   const transacoes = financialsAllowed ? transacoesRes.data : undefined;
   const workflows = workflowsRes.data;
   const posts = postsRes.data;
+  const tarefas = tarefasAllowed ? tarefasRes.data : undefined;
   const ideias = ideiasRes.data;
   const pages = pagesRes.data;
   const articles = kbRes.data;
+  const statusDefs = statusDefsRes.data;
 
   const items = useMemo(
     () =>
@@ -152,11 +172,25 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
         transacoes: transacoes ?? [],
         workflows: workflows ?? [],
         posts: posts ?? [],
+        tarefas: tarefas ?? [],
         ideias: ideias ?? [],
         pages: pages ?? [],
         articles: articles ?? [],
+        statusDefs: statusDefs ?? [],
       }),
-    [clientes, contratos, membros, transacoes, workflows, posts, ideias, pages, articles],
+    [
+      clientes,
+      contratos,
+      membros,
+      transacoes,
+      workflows,
+      posts,
+      tarefas,
+      ideias,
+      pages,
+      articles,
+      statusDefs,
+    ],
   );
 
   const matches = useMemo(() => filterSearchItems(items, query), [items, query]);
@@ -173,7 +207,12 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
   };
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange} commandProps={{ shouldFilter: false }}>
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      commandProps={{ shouldFilter: false }}
+      contentClassName="sm:max-w-3xl"
+    >
       <CommandInput
         ref={inputRef}
         placeholder={t('topbar.searchPlaceholder', 'Buscar...')}
@@ -207,14 +246,14 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
         </div>
       )}
 
-      <CommandList>
+      <CommandList className="max-h-[min(60vh,560px)]">
         {isLoading ? (
           <div className="py-6 text-center">
             <Loader2 className="mx-auto h-4 w-4 animate-spin text-muted-foreground" />
           </div>
         ) : !hasQuery ? (
           <div className="py-6 text-center text-sm text-muted-foreground">
-            Digite para buscar clientes, posts, fluxos, artigos de ajuda…
+            Digite para buscar clientes, posts, tarefas, fluxos, artigos de ajuda…
           </div>
         ) : matches.length === 0 ? (
           <div className="py-6 text-center text-sm">
@@ -228,10 +267,29 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
                 {group.items.map((item) => (
                   <CommandItem key={item.key} value={item.key} onSelect={() => go(item.route)}>
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                    <span className="ml-auto truncate text-xs text-muted-foreground">
-                      {item.meta}
-                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate">{item.label}</span>
+                      {item.details && item.details.length > 0 && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {item.details.join(' · ')}
+                          {/* No celular a data entra aqui, liberando largura para o título. */}
+                          {item.meta && <span className="sm:hidden"> · {item.meta}</span>}
+                        </span>
+                      )}
+                    </div>
+                    {item.meta && (
+                      <span
+                        className={cn(
+                          'ml-auto text-xs text-muted-foreground',
+                          // Data é curta e não pode sumir; texto livre (e-mail) trunca.
+                          item.details
+                            ? 'hidden shrink-0 whitespace-nowrap sm:inline'
+                            : 'max-w-[40%] truncate',
+                        )}
+                      >
+                        {item.meta}
+                      </span>
+                    )}
                   </CommandItem>
                 ))}
                 {group.hiddenCount > 0 &&

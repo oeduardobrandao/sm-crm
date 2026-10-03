@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ideia } from '@/store';
 
@@ -92,17 +93,39 @@ beforeEach(() => {
     .mockResolvedValueOnce([BASE_IDEIA, FRESH_IDEIA]); // refetch triggered by the create flow
 });
 
-async function renderPage() {
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname + location.search}</div>;
+}
+
+async function renderPage(initialEntry = '/ideias') {
   const { default: IdeiasPage } = await import('../IdeiasPage');
   const qc = new QueryClient();
   render(
     <QueryClientProvider client={qc}>
-      <IdeiasPage />
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <IdeiasPage />
+        <LocationProbe />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
 describe('IdeiasPage', () => {
+  it('opens the drawer for ?ideia=<id> once the list loads, then clears the param', async () => {
+    await renderPage('/ideias?ideia=old-1');
+
+    await waitFor(() => expect(screen.getByTestId('drawer')).toHaveTextContent('Ideia antiga'));
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/ideias$/));
+  });
+
+  it('drops an unknown ?ideia= without opening the drawer', async () => {
+    await renderPage('/ideias?ideia=nao-existe');
+
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/ideias$/));
+    expect(screen.queryByTestId('drawer')).not.toBeInTheDocument();
+  });
+
   it('opens the drawer for the ideia NovaIdeiaDialog just created, even though the list was stale at click time', async () => {
     await renderPage();
     await waitFor(() => expect(getIdeiasMock).toHaveBeenCalledTimes(1));
