@@ -149,13 +149,24 @@
   .rb-page-break {
     break-after: page;
   }
+  /* O PDF é a cópia do relatório na tela: o grid mantém os 880px da tela e
+     encolhe com zoom para os 190mm úteis do A4 (210mm menos as margens de
+     10mm do @page em RelatorioPrintPage.tsx) = 718px, ou seja 718/880.
+     Sem isso o grid refluía na largura da folha e as colunas, quebras de
+     texto e proporções das imagens saíam diferentes da tela. zoom (e não
+     transform) porque reduz também o layout, então a paginação acompanha.
+     Medidas físicas abaixo são divididas pelo zoom para manter o tamanho
+     real na folha. */
   .rb-grid {
+    --rb-print-zoom: 0.816;
+    width: 880px;
     max-width: none;
+    zoom: var(--rb-print-zoom);
   }
   .rb-cover {
     /* Área útil do A4 com as margens de 10mm que o Gotenberg já usa
        (RelatorioPrintPage.tsx: `@page { margin: 10mm; }`). */
-    min-height: 277mm;
+    min-height: calc(277mm / var(--rb-print-zoom));
     break-after: page;
   }
   .rb-cover-splash {
@@ -167,7 +178,7 @@
        aplica, mas segue protegendo a página única se o texto crescer (ex.:
        subtítulo com quebra de linha) ou o logoSize estiver no máximo. Sem
        isso o break-after não impede a PRÓPRIA capa de invadir a página 2. */
-    max-height: 190mm;
+    max-height: calc(190mm / var(--rb-print-zoom));
   }
 }
 /* Modo edição (canvas do CRM): célula sem dados NÃO colapsa; mostra aviso.

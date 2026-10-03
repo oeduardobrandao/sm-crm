@@ -19,7 +19,9 @@ import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
 // v4 (2026-10-02): bloco Imagem (#627). O Hub anterior descartava o tipo
 // "image" em silêncio, então PDFs v3 de relatórios com imagem saíram sem ela.
 // O renderer mora no Hub, não aqui: bloco novo no BlockRenderer pede bump.
-export const PDF_RENDERER_VERSION = 4;
+// v5 (2026-10-03): o grid imprime nos 880px da tela com zoom para a largura
+// útil do A4 (report-blocks/styles.css), em vez de refluir na largura da folha.
+export const PDF_RENDERER_VERSION = 5;
 const PRINT_TOKEN_TTL_S = 600;
 const SIGNED_URL_TTL_S = 3600;
 
