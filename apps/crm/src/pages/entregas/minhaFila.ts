@@ -28,6 +28,10 @@ export const FILA_BUCKET_ORDER: FilaBucket[] = [
   'sem_prazo',
 ];
 
+/** Eixo das seções da fila: 'prazo' (padrão) usa o prazo da etapa;
+ *  'publicacao' usa a data de publicação do post (scheduled_at). */
+export type FilaOrdem = 'prazo' | 'publicacao';
+
 export const FILA_BUCKET_LABELS: Record<FilaBucket, string> = {
   atrasado: 'Atrasado',
   hoje: 'Hoje',
@@ -35,6 +39,19 @@ export const FILA_BUCKET_LABELS: Record<FilaBucket, string> = {
   proximos7: 'Próximos 7 dias',
   depois: 'Depois',
   sem_prazo: 'Sem prazo',
+};
+
+/** Mesmos rótulos do "Data de postagem" da Lista (listGrouping.ts). */
+export const FILA_BUCKET_LABELS_BY_ORDEM: Record<FilaOrdem, Record<FilaBucket, string>> = {
+  prazo: FILA_BUCKET_LABELS,
+  publicacao: {
+    atrasado: 'Data passada',
+    hoje: 'Hoje',
+    amanha: 'Amanhã',
+    proximos7: 'Próximos 7 dias',
+    depois: 'Depois',
+    sem_prazo: 'Sem data',
+  },
 };
 
 export type FilaMargem =
@@ -103,6 +120,8 @@ export interface FilaItem {
   /** 'etapa' = prazo da etapa; 'publicacao' = fallback por scheduled_at (origem
    *  'responsavel' sem etapa com prazo); null = sem prazo nenhum. */
   prazoOrigem: 'etapa' | 'publicacao' | null;
+  /** Seção da linha: pelo prazo (prazoDate/deadline) ou, na ordem
+   *  'publicacao', pela própria data de publicação. */
   bucket: FilaBucket;
   margem: FilaMargem;
 }
@@ -219,6 +238,7 @@ function makeItem(
   card: BoardCard | undefined,
   entity: PostEntity | undefined,
   now: Date,
+  ordem: FilaOrdem,
 ): FilaItem {
   let prazoDate: Date | null;
   let deadline: DeadlineInfo;
@@ -238,7 +258,18 @@ function makeItem(
     deadline = stage ? stage.deadline : deadlineFromPrazoEfetivo(null, null, now);
     prazoOrigem = null;
   }
-  const bucket = filaBucketOf(prazoDate, deadline, now);
+  // Na ordem por publicação, a seção vem só de scheduled_at, com a mesma
+  // semântica de instante do fallback acima: publicou-deveria-ter às 8h e são
+  // 10h é "Data passada". prazoDate/deadline continuam os da etapa (chips,
+  // "Comece por aqui", cabeçalho do fluxo).
+  const bucket =
+    ordem === 'publicacao'
+      ? filaBucketOf(
+          post.scheduled_at ? new Date(post.scheduled_at) : null,
+          deadlineFromPrazoEfetivo(post.scheduled_at, null, now),
+          now,
+        )
+      : filaBucketOf(prazoDate, deadline, now);
   // Prazo = a própria publicação: margem seria zero por definição; chip omitido.
   const margem: FilaMargem =
     prazoOrigem === 'publicacao'
@@ -272,13 +303,15 @@ function groupTitle(g: FilaGroup): string {
   return g.card ? g.card.workflow.titulo : g.items[0].post.titulo;
 }
 
-/** prazo asc (null último) -> menor scheduled_at dos filhos (já ordenados) ->
- *  título. */
-function compareGroups(a: FilaGroup, b: FilaGroup): number {
+/** 'prazo': prazo asc (null último) -> menor scheduled_at dos filhos (já
+ *  ordenados) -> título. 'publicacao': menor scheduled_at primeiro, depois
+ *  prazo e título. */
+function compareGroups(a: FilaGroup, b: FilaGroup, ordem: FilaOrdem): number {
   const ad = a.prazoDate?.getTime() ?? Infinity;
   const bd = b.prazoDate?.getTime() ?? Infinity;
-  if (ad !== bd) return ad - bd;
   const bySched = compareScheduledOnly(a.items[0].post.scheduled_at, b.items[0].post.scheduled_at);
+  if (ordem === 'publicacao' && bySched !== 0) return bySched;
+  if (ad !== bd) return ad - bd;
   if (bySched !== 0) return bySched;
   return groupTitle(a).localeCompare(groupTitle(b), 'pt-BR');
 }
@@ -303,7 +336,12 @@ function compareChegando(a: ChegandoItem, b: ChegandoItem): number {
  * de tudo; a regra da etapa vence a do responsável; quem não entrou na fila
  * ainda pode entrar em Chegando pela próxima etapa.
  */
-export function buildMinhaFila(input: MinhaFilaInput, membroId: number, now: Date): MinhaFila {
+export function buildMinhaFila(
+  input: MinhaFilaInput,
+  membroId: number,
+  now: Date,
+  ordem: FilaOrdem = 'prazo',
+): MinhaFila {
   const cardsByWorkflowId = new Map<number, BoardCard>();
   for (const c of input.cards) if (c.workflow.id != null) cardsByWorkflowId.set(c.workflow.id, c);
   const postEntityByPostId = new Map<number, PostEntity>();
@@ -323,7 +361,7 @@ export function buildMinhaFila(input: MinhaFilaInput, membroId: number, now: Dat
       origem = 'responsavel';
 
     if (origem) {
-      raw.push(makeItem(post, origem, stage, card, entity, now));
+      raw.push(makeItem(post, origem, stage, card, entity, now, ordem));
       continue;
     }
     if (!stage) continue;
@@ -364,7 +402,7 @@ export function buildMinhaFila(input: MinhaFilaInput, membroId: number, now: Dat
     }
     const sorted = [...groups.values()];
     for (const g of sorted) g.items.sort((a, b) => compareScheduledAt(a.post, b.post));
-    sorted.sort(compareGroups);
+    sorted.sort((a, b) => compareGroups(a, b, ordem));
     return { bucket, groups: sorted, count: sorted.reduce((n, g) => n + g.items.length, 0) };
   });
 

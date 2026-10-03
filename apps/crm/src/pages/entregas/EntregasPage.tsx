@@ -62,7 +62,7 @@ import { PostsKanbanView } from './views/PostsKanbanView';
 import { PostsListView } from './views/PostsListView';
 import { ConcludedView } from './views/ConcludedView';
 import { MinhaFilaView } from './views/MinhaFilaView';
-import { buildMinhaFila, EMPTY_FILA } from './minhaFila';
+import { buildMinhaFila, EMPTY_FILA, type FilaOrdem } from './minhaFila';
 import { useCurrentMembro } from '@/hooks/useCurrentMembro';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { useOverlayHistoryEntry } from '@/hooks/useOverlayHistoryEntry';
@@ -76,6 +76,7 @@ import { ListToolbar } from './components/ListToolbar';
 import { ResponsaveisPanel } from './components/ResponsaveisPanel';
 import { VistasTabs } from './components/VistasTabs';
 import { FilaMembroPicker } from './components/FilaMembroPicker';
+import { FilaOrdemPicker } from './components/FilaOrdemPicker';
 import { useActivePosts } from './hooks/useActivePosts';
 import { selectSemProcessoPosts, productionFiltersActive, SEM_PROCESSO_LIMIT } from './semProcesso';
 import { useOpenParam } from '../../hooks/useOpenParam';
@@ -102,6 +103,8 @@ import {
   persistBoardColumnSort,
   loadLastEntidade,
   persistLastEntidade,
+  loadFilaOrdem,
+  persistFilaOrdem,
   hasLastMode,
   loadListGroupBy,
   persistListGroupBy,
@@ -240,6 +243,16 @@ export default function EntregasPage() {
   } = useCurrentMembro();
   const currentMembroId = currentMembro?.id ?? null;
   const filaMembroId = filaMembro ?? currentMembroId;
+  // Eixo das seções da fila: preferência por conta, fora da URL e das vistas salvas.
+  const [filaOrdem, setFilaOrdemState] = useState<FilaOrdem>(() => loadFilaOrdem(contaId));
+  const setFilaOrdem = useCallback(
+    (ordem: FilaOrdem) => {
+      setFilaOrdemState(ordem);
+      persistFilaOrdem(contaId, ordem);
+      captureEvent('minha_fila_ordem_changed', { ordem });
+    },
+    [contaId],
+  );
   const registry = useStatusRegistry();
   const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
   // Post avulso (fora de fluxo) currently open in the standalone slot below.
@@ -883,9 +896,14 @@ export default function EntregasPage() {
   const fila = useMemo(
     () =>
       filaView && filaMembroId != null
-        ? buildMinhaFila({ cards, posts: activePosts, postEntities }, filaMembroId, new Date())
+        ? buildMinhaFila(
+            { cards, posts: activePosts, postEntities },
+            filaMembroId,
+            new Date(),
+            filaOrdem,
+          )
         : EMPTY_FILA,
-    [filaView, filaMembroId, cards, activePosts, postEntities],
+    [filaView, filaMembroId, cards, activePosts, postEntities, filaOrdem],
   );
   // Dependências obrigatórias da fila (spec § Estados): workflows/etapas/
   // processos (entregasPending: o spinner de página só vê isLoading, que é
@@ -918,8 +936,10 @@ export default function EntregasPage() {
       total: fila.counts.total,
       atrasados: fila.counts.atrasados,
       chegando: fila.chegando.length,
+      // atrasados conta a primeira seção, que muda de sentido com a ordem.
+      ordem: filaOrdem,
     });
-  }, [filaView, filaLoading, filaError, filaMembroId, currentMembroId, fila]);
+  }, [filaView, filaLoading, filaError, filaMembroId, currentMembroId, fila, filaOrdem]);
 
   // Posts-mode filtering (boardFilters.filterActivePosts): busca / cliente /
   // status / tipo aplicam ao post; etapa, responsável e prazo aplicam à etapa
@@ -1302,12 +1322,15 @@ export default function EntregasPage() {
         onApply={applySavedView}
         trailing={
           activeView === 'fila' ? (
-            <FilaMembroPicker
-              membros={membros}
-              membroId={filaMembroId}
-              currentMembroId={currentMembroId}
-              onChange={setFilaMembro}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <FilaOrdemPicker ordem={filaOrdem} onChange={setFilaOrdem} />
+              <FilaMembroPicker
+                membros={membros}
+                membroId={filaMembroId}
+                currentMembroId={currentMembroId}
+                onChange={setFilaMembro}
+              />
+            </div>
           ) : showFilters ? (
             <div className="relative w-[220px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50" />
@@ -1655,13 +1678,15 @@ export default function EntregasPage() {
       )}
       {activeView === 'fila' && (
         <MinhaFilaView
-          // Trocar de membro remonta a vista: expandido/recolhido não vaza
-          // da fila de uma pessoa para a de outra.
-          key={filaMembroId ?? 'none'}
+          // Trocar de membro ou de ordem remonta a vista: expandido/recolhido
+          // não vaza da fila de uma pessoa para a de outra, nem de um eixo de
+          // seções para o outro.
+          key={`${filaMembroId ?? 'none'}:${filaOrdem}`}
           fila={fila}
           membros={membros}
           membroId={filaMembroId}
           currentMembroId={currentMembroId}
+          ordem={filaOrdem}
           registry={registry}
           isLoading={filaLoading}
           isError={filaError}

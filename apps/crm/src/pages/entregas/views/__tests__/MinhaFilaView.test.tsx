@@ -255,6 +255,18 @@ describe('MinhaFilaView', () => {
     expect(screen.getByText('Stories evento')).toBeInTheDocument();
   });
 
+  it('ordem publicacao swaps the section copy and the first two counters', () => {
+    const { container } = renderView({ ordem: 'publicacao' });
+    const atrasado = sectionHead(container, 'atrasado');
+    expect(within(atrasado).getByText('Data passada')).toHaveClass('fila-pill--red');
+    expect(within(atrasado).getByText('a data de publicação já passou')).toBeInTheDocument();
+    expect(within(sectionHead(container, 'hoje')).getByText('publica hoje')).toBeInTheDocument();
+    const stats = screen.getByTestId('fila-summary');
+    expect(within(stats).getByText('Data passada')).toBeInTheDocument();
+    expect(within(stats).getByText('Publicam hoje')).toBeInTheDocument();
+    expect(within(stats).queryByText('Atrasados')).not.toBeInTheDocument();
+  });
+
   it('shows the four counters and the "Comece por aqui" card with the first item', () => {
     renderView();
     const stats = screen.getByTestId('fila-summary');

@@ -32,8 +32,10 @@ export type AnalyticsEvent =
   | 'entregas_lista_agrupar'
   | 'entregas_lista_responsaveis_aberto'
   // "Minha fila": one per entry into the fila tab (and again on member switch),
-  // and the dashboard teaser's clicks (item row vs "Ver minha fila").
+  // the dashboard teaser's clicks (item row vs "Ver minha fila"), and each change
+  // of the fila's section order (prazo da etapa vs data de publicação).
   | 'minha_fila_opened'
+  | 'minha_fila_ordem_changed'
   | 'minha_fila_teaser_clicked'
   | 'guide_opened'
   | 'guide_closed'
