@@ -340,7 +340,7 @@ describe('WorkflowDrawer refresh() query invalidation', () => {
     renderDrawer(qc);
 
     // Post A is expanded via initialPostId; its "Tipo" select shows the current tipo label.
-    const tipoSelect = await screen.findByDisplayValue('Feed');
+    const tipoSelect = await screen.findByDisplayValue('Imagem');
     fireEvent.change(tipoSelect, { target: { value: 'reels' } });
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { tipo: 'reels' }));
@@ -661,7 +661,7 @@ describe('WorkflowDrawer schedule lock (status agendado)', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    const tipoSelect = (await screen.findByDisplayValue('Feed')) as HTMLSelectElement;
+    const tipoSelect = (await screen.findByDisplayValue('Imagem')) as HTMLSelectElement;
     expect(tipoSelect.disabled).toBe(true);
 
     expect(screen.getByTestId('platform-selector-stub').getAttribute('data-disabled')).toBe('true');
@@ -689,7 +689,7 @@ describe('WorkflowDrawer schedule lock (status agendado)', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    const tipoSelect = (await screen.findByDisplayValue('Feed')) as HTMLSelectElement;
+    const tipoSelect = (await screen.findByDisplayValue('Imagem')) as HTMLSelectElement;
     expect(tipoSelect.disabled).toBe(false);
     expect(screen.getByTestId('platform-selector-stub').getAttribute('data-disabled')).toBe(
       'false',
@@ -722,7 +722,7 @@ describe('WorkflowDrawer Histórico tab', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderDrawer(qc);
 
-    await screen.findByDisplayValue('Feed');
+    await screen.findByDisplayValue('Imagem');
     // Exact match: the expanded post row also renders a "Histórico de versões"
     // button (PostVersionHistorySheet's entry point), which a loose /Histórico/i
     // regex would ambiguously match too.

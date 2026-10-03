@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { CONTENT_FORMATS } from '@mesaas/platforms';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -44,7 +45,7 @@ import { getPostProcessErrorToast } from '../postProcessErrors';
 const avulsoSchema = z.object({
   cliente_id: z.string().min(1, 'Selecione um cliente'),
   titulo: z.string().trim().min(1, 'Informe o título do post'),
-  tipo: z.enum(['feed', 'reels', 'stories', 'carrossel']),
+  tipo: z.enum(CONTENT_FORMATS),
 });
 
 type AvulsoFormValues = z.infer<typeof avulsoSchema>;

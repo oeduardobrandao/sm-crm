@@ -387,6 +387,12 @@
       "stories": "Stories",
       "carrossel": "Carousel"
     },
+    "contentFormat": {
+      "feed": "Image",
+      "carrossel": "Carousel",
+      "reels": "Vertical video",
+      "stories": "Stories"
+    },
     "postStatus": {
       "rascunho": "Draft",
       "revisao_interna": "In review",

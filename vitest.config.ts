@@ -14,6 +14,7 @@ export default defineConfig({
       '@mesaas/app-lifecycle': path.resolve(__dirname, 'packages/app-lifecycle/index.ts'),
       '@mesaas/link-policy': path.resolve(__dirname, 'packages/link-policy/index.ts'),
       '@mesaas/text-diff': path.resolve(__dirname, 'packages/text-diff/index.ts'),
+      '@mesaas/platforms': path.resolve(__dirname, 'supabase/functions/_shared/platform-registry.ts'),
       '@shared': path.resolve(__dirname, 'supabase/functions/_shared'),
     },
   },

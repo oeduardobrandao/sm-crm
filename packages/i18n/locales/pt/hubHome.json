@@ -4,7 +4,7 @@
     "kpi": {
       "postsThisMonth": {
         "label": "Posts este mês",
-        "hint": "Feed, Reels, Stories"
+        "hint": "Imagem, Vídeo vertical, Stories"
       },
       "pendingApprovals": {
         "label": "Aprovações pendentes",
@@ -48,8 +48,8 @@
     "rangeError": "Não foi possível carregar este mês.",
     "rangeRetry": "Tentar novamente",
     "tipoLabel": {
-      "feed": "Feed",
-      "reels": "Reels",
+      "feed": "Imagem",
+      "reels": "Vídeo vertical",
       "stories": "Stories",
       "carrossel": "Carrossel"
     },

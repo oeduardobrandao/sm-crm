@@ -387,6 +387,12 @@
       "stories": "Stories",
       "carrossel": "Carrossel"
     },
+    "contentFormat": {
+      "feed": "Imagem",
+      "carrossel": "Carrossel",
+      "reels": "Vídeo vertical",
+      "stories": "Stories"
+    },
     "postStatus": {
       "rascunho": "Rascunho",
       "revisao_interna": "Em revisão",
