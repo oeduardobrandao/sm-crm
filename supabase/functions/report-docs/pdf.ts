@@ -16,7 +16,10 @@ import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
 // impressão — sem ele o Chromium imprimia UMA página só (caixa de rolagem
 // monolítica) e descartava o resto do relatório. v2 no mesmo dia: margens
 // zeradas + @page + temas. Bump invalida PDFs cacheados da geometria antiga.
-export const PDF_RENDERER_VERSION = 3;
+// v4 (2026-10-02): bloco Imagem (#627). O Hub anterior descartava o tipo
+// "image" em silêncio, então PDFs v3 de relatórios com imagem saíram sem ela.
+// O renderer mora no Hub, não aqui: bloco novo no BlockRenderer pede bump.
+export const PDF_RENDERER_VERSION = 4;
 const PRINT_TOKEN_TTL_S = 600;
 const SIGNED_URL_TTL_S = 3600;
 
