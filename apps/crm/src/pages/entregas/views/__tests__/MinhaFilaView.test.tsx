@@ -31,6 +31,7 @@ vi.mock('@/components/ui/select', () => ({
 
 import { MinhaFilaView } from '../MinhaFilaView';
 import { FilaMembroPicker } from '../../components/FilaMembroPicker';
+import { FilaOrdemPicker } from '../../components/FilaOrdemPicker';
 import { buildMinhaFila, EMPTY_FILA } from '../../minhaFila';
 import { buildStatusRegistry } from '../../statusRegistry';
 import { toPostEntity } from '../../boardEntity';
@@ -255,6 +256,18 @@ describe('MinhaFilaView', () => {
     expect(screen.getByText('Stories evento')).toBeInTheDocument();
   });
 
+  it('ordem publicacao swaps the section copy and the first two counters', () => {
+    const { container } = renderView({ ordem: 'publicacao' });
+    const atrasado = sectionHead(container, 'atrasado');
+    expect(within(atrasado).getByText('Data passada')).toHaveClass('fila-pill--red');
+    expect(within(atrasado).getByText('o horário de publicação já passou')).toBeInTheDocument();
+    expect(within(sectionHead(container, 'hoje')).getByText('publica hoje')).toBeInTheDocument();
+    const stats = screen.getByTestId('fila-summary');
+    expect(within(stats).getByText('Data passada')).toBeInTheDocument();
+    expect(within(stats).getByText('Publicam hoje')).toBeInTheDocument();
+    expect(within(stats).queryByText('Atrasados')).not.toBeInTheDocument();
+  });
+
   it('shows the four counters and the "Comece por aqui" card with the first item', () => {
     renderView();
     const stats = screen.getByTestId('fila-summary');
@@ -467,5 +480,21 @@ describe('FilaMembroPicker', () => {
       />,
     );
     expect(screen.getByLabelText('Fila de')).toHaveValue('');
+  });
+});
+
+describe('FilaOrdemPicker', () => {
+  it('offers both orders and emits the picked one; ignores unknown values', () => {
+    const onChange = vi.fn();
+    render(<FilaOrdemPicker ordem="prazo" onChange={onChange} />);
+    // The Select shim labels every select "Fila de"; there is only one here.
+    const select = screen.getByRole('combobox');
+    expect(select).toHaveValue('prazo');
+    expect(screen.getByRole('option', { name: 'Prazo da etapa' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Data de publicação' })).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: 'publicacao' } });
+    expect(onChange).toHaveBeenLastCalledWith('publicacao');
+    fireEvent.change(select, { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 });

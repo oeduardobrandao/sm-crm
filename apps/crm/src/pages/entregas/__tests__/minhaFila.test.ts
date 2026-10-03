@@ -538,6 +538,97 @@ describe('buildMinhaFila: grupos e ordem', () => {
 
 // ── Chegando ────────────────────────────────────────────────────────────────
 
+describe('buildMinhaFila: ordem por publicação', () => {
+  it('sem ordem é prazo: mesma saída que passar prazo explícito', () => {
+    const c = card({ wf: 1, resp: ME, dataLimiteDias: 1 });
+    const input = {
+      cards: [c],
+      posts: [post(1, { workflow_id: 1, scheduled_at: iso(9) })],
+      postEntities: [],
+    };
+    expect(buildMinhaFila(input, ME, NOW).items[0].bucket).toBe('amanha');
+    expect(buildMinhaFila(input, ME, NOW, 'prazo').items[0].bucket).toBe('amanha');
+  });
+
+  it('seção vem de scheduled_at; prazo, deadline e margem continuam os da etapa', () => {
+    const late = card({ wf: 1, resp: ME, dataLimiteDias: -2, deadline: LATE });
+    const fila = buildMinhaFila(
+      {
+        cards: [late],
+        posts: [
+          post(1, { workflow_id: 1, scheduled_at: iso(9) }),
+          post(2, { workflow_id: 1 }),
+          // Publicação hoje às 8h, NOW 10h: instante já passou.
+          post(3, { responsavel_id: ME, scheduled_at: iso(0, 8) }),
+          post(4, { responsavel_id: ME, scheduled_at: iso(0, 18) }),
+          post(5, { responsavel_id: ME, scheduled_at: iso(1) }),
+        ],
+        postEntities: [],
+      },
+      ME,
+      NOW,
+      'publicacao',
+    );
+    const by = (id: number) => fila.items.find((i) => i.post.id === id)!;
+    // Etapa atrasada, publicação daqui a 9 dias: sai de Atrasado e vai para Depois.
+    expect(by(1).bucket).toBe('depois');
+    expect(by(1).prazoOrigem).toBe('etapa');
+    expect(by(1).deadline.estourado).toBe(true);
+    expect(by(1).margem.kind).toBe('dias');
+    // Etapa atrasada sem data de publicação: Sem data.
+    expect(by(2).bucket).toBe('sem_prazo');
+    expect(by(3).bucket).toBe('atrasado');
+    expect(by(4).bucket).toBe('hoje');
+    expect(by(5).bucket).toBe('amanha');
+    expect(fila.counts.atrasados).toBe(1);
+    expect(fila.top?.post.id).toBe(3);
+  });
+
+  it('posts de um fluxo se dividem pelas seções da publicação, cada pedaço agrupado', () => {
+    const c = card({ wf: 1, resp: ME, dataLimiteDias: 1 });
+    const fila = buildMinhaFila(
+      {
+        cards: [c],
+        posts: [
+          post(1, { workflow_id: 1, scheduled_at: iso(1) }),
+          post(2, { workflow_id: 1, scheduled_at: iso(3) }),
+          post(3, { workflow_id: 1, scheduled_at: iso(4) }),
+        ],
+        postEntities: [],
+      },
+      ME,
+      NOW,
+      'publicacao',
+    );
+    const keysOf = (b: string) =>
+      fila.sections.find((s) => s.bucket === b)!.groups.map((g) => [g.key, g.items.length]);
+    expect(keysOf('amanha')).toEqual([['fluxo:1', 1]]);
+    expect(keysOf('proximos7')).toEqual([['fluxo:1', 2]]);
+  });
+
+  it('grupos ordenam pela menor publicação antes do prazo da etapa', () => {
+    const cedo = card({ wf: 1, titulo: 'Prazo cedo', resp: ME, dataLimiteDias: 1 });
+    const tarde = card({ wf: 2, titulo: 'Prazo tarde', resp: ME, dataLimiteDias: 6 });
+    const fila = buildMinhaFila(
+      {
+        cards: [cedo, tarde],
+        posts: [
+          post(10, { workflow_id: 1, scheduled_at: iso(6) }),
+          post(20, { workflow_id: 2, scheduled_at: iso(3) }),
+          post(30, { responsavel_id: ME, scheduled_at: iso(5) }),
+        ],
+        postEntities: [],
+      },
+      ME,
+      NOW,
+      'publicacao',
+    );
+    const p7 = fila.sections.find((s) => s.bucket === 'proximos7')!;
+    expect(p7.groups.map((g) => g.key)).toEqual(['fluxo:2', 'post:30', 'fluxo:1']);
+    expect(ids(fila)).toEqual([20, 30, 10]);
+  });
+});
+
 describe('buildMinhaFila: chegando', () => {
   it('próxima etapa do fluxo minha entra em chegando com etapa atual, responsável e chegaDate', () => {
     const c = card({ wf: 1, resp: OTHER, nextResp: ME, dataLimiteDias: 1 });

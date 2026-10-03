@@ -14,11 +14,12 @@ import { TIPO_ICONS } from '../tipoIcons';
 import { PostStatusChip } from '../components/PostStatusChip';
 import type { StatusRegistry } from '../statusRegistry';
 import {
-  FILA_BUCKET_LABELS,
+  FILA_BUCKET_LABELS_BY_ORDEM,
   type ChegandoItem,
   type FilaBucket,
   type FilaGroup,
   type FilaItem,
+  type FilaOrdem,
   type MinhaFila,
 } from '../minhaFila';
 
@@ -28,6 +29,8 @@ export interface MinhaFilaViewProps {
   /** Membro efetivo (explícito ou o próprio). null = login sem membro e nada escolhido. */
   membroId: number | null;
   currentMembroId: number | null;
+  /** Eixo das seções (o builder já agrupou por ele); aqui só muda a copy. */
+  ordem?: FilaOrdem;
   registry: StatusRegistry;
   isLoading: boolean;
   isError: boolean;
@@ -48,13 +51,28 @@ const BUCKET_TONE: Record<FilaBucket, Tone> = {
   sem_prazo: 'neutral',
 };
 
-const BUCKET_SUB: Record<FilaBucket, string> = {
-  atrasado: 'o prazo já passou',
-  hoje: 'vence hoje',
-  amanha: 'vence amanhã',
-  proximos7: 'vence nos próximos 7 dias',
-  depois: 'vence depois de 7 dias',
-  sem_prazo: 'sem prazo definido',
+const BUCKET_SUB: Record<FilaOrdem, Record<FilaBucket, string>> = {
+  prazo: {
+    atrasado: 'o prazo já passou',
+    hoje: 'vence hoje',
+    amanha: 'vence amanhã',
+    proximos7: 'vence nos próximos 7 dias',
+    depois: 'vence depois de 7 dias',
+    sem_prazo: 'sem prazo definido',
+  },
+  publicacao: {
+    atrasado: 'o horário de publicação já passou',
+    hoje: 'publica hoje',
+    amanha: 'publica amanhã',
+    proximos7: 'publica nos próximos 7 dias',
+    depois: 'publica depois de 7 dias',
+    sem_prazo: 'sem data de publicação',
+  },
+};
+
+const STAT_LABELS: Record<FilaOrdem, { atrasados: string; hoje: string }> = {
+  prazo: { atrasados: 'Atrasados', hoje: 'Vencem hoje' },
+  publicacao: { atrasados: 'Data passada', hoje: 'Publicam hoje' },
 };
 
 function prazoTone(deadline: DeadlineInfo): Tone {
@@ -417,6 +435,7 @@ export function MinhaFilaView({
   membros,
   membroId,
   currentMembroId,
+  ordem = 'prazo',
   registry,
   isLoading,
   isError,
@@ -473,8 +492,8 @@ export function MinhaFilaView({
 
       {showBody && !empty && (
         <div className="fila-stats" data-testid="fila-summary">
-          <Stat label="Atrasados" value={fila.counts.atrasados} tone="red" />
-          <Stat label="Vencem hoje" value={countOf('hoje')} tone="amber" />
+          <Stat label={STAT_LABELS[ordem].atrasados} value={fila.counts.atrasados} tone="red" />
+          <Stat label={STAT_LABELS[ordem].hoje} value={countOf('hoje')} tone="amber" />
           <Stat label="Esta semana" value={countOf('amanha') + countOf('proximos7')} />
           <Stat label="Chegando" value={fila.chegando.length} />
         </div>
@@ -517,7 +536,7 @@ export function MinhaFilaView({
           .filter((section) => section.count > 0)
           .map((section) => {
             const isOpen = open.has(section.bucket);
-            const label = FILA_BUCKET_LABELS[section.bucket];
+            const label = FILA_BUCKET_LABELS_BY_ORDEM[ordem][section.bucket];
             return (
               <section key={section.bucket} className="fila-section" data-bucket={section.bucket}>
                 <button
@@ -533,7 +552,7 @@ export function MinhaFilaView({
                       >
                         {label}
                       </span>
-                      <span className="fila-section-sub">{BUCKET_SUB[section.bucket]}</span>
+                      <span className="fila-section-sub">{BUCKET_SUB[ordem][section.bucket]}</span>
                       <ChevronUp className="fila-section-chevron h-4 w-4" aria-hidden="true" />
                     </>
                   ) : (

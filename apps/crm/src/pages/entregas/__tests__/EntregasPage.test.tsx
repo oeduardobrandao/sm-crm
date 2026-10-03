@@ -390,12 +390,14 @@ vi.mock('../views/MinhaFilaView', () => ({
     fila,
     membroId,
     currentMembroId,
+    ordem,
     isLoading,
     isError,
   }: {
     fila: { items: unknown[] };
     membroId: number | null;
     currentMembroId: number | null;
+    ordem?: string;
     isLoading: boolean;
     isError: boolean;
   }) => (
@@ -403,6 +405,7 @@ vi.mock('../views/MinhaFilaView', () => ({
       <div>
         Fila view: membro {membroId ?? 'none'} / self {currentMembroId ?? 'none'}
       </div>
+      <div>Fila ordem: {ordem ?? 'unset'}</div>
       <div>Fila state: {isError ? 'error' : isLoading ? 'loading' : 'ready'}</div>
       <div>Fila items: {fila.items.length}</div>
     </div>
@@ -415,6 +418,21 @@ vi.mock('../components/FilaMembroPicker', () => ({
     <>
       <button onClick={() => onChange(12)}>Pick member 12</button>
       <button onClick={() => onChange(null)}>Pick self</button>
+    </>
+  ),
+}));
+
+vi.mock('../components/FilaOrdemPicker', () => ({
+  FilaOrdemPicker: ({
+    ordem,
+    onChange,
+  }: {
+    ordem: string;
+    onChange: (ordem: 'prazo' | 'publicacao') => void;
+  }) => (
+    <>
+      <span>Ordem picker: {ordem}</span>
+      <button onClick={() => onChange('publicacao')}>Order by publicacao</button>
     </>
   ),
 }));
@@ -2770,6 +2788,22 @@ describe('EntregasPage: Minha fila', () => {
     fireEvent.click(screen.getByText('Pick member 12'));
     expect(openedCalls()).toHaveLength(2);
     expect(openedCalls()[1][1]).toMatchObject({ membro_is_self: false });
+  });
+
+  it('ordem defaults to prazo, persists the pick per conta and is read back on mount', () => {
+    const first = renderFila();
+    expect(screen.getByText('Fila ordem: prazo')).toBeInTheDocument();
+    expect(openedCalls()[0][1]).toMatchObject({ ordem: 'prazo' });
+    fireEvent.click(screen.getByText('Order by publicacao'));
+    expect(screen.getByText('Fila ordem: publicacao')).toBeInTheDocument();
+    expect(screen.getByText('Ordem picker: publicacao')).toBeInTheDocument();
+    expect(localStorage.getItem('entregas_fila_ordem_conta-1')).toBe('publicacao');
+    expect(analyticsMock.captureEvent).toHaveBeenCalledWith('minha_fila_ordem_changed', {
+      ordem: 'publicacao',
+    });
+    first.unmount();
+    renderFila();
+    expect(screen.getByText('Fila ordem: publicacao')).toBeInTheDocument();
   });
 
   it('does not fire minha_fila_opened while loading or on error', () => {

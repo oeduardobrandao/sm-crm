@@ -1,6 +1,7 @@
 import type { EntregasMode } from './components/ModeToggle';
 import type { EntidadeFilter, ListGroupBy } from './viewQuery';
 import { BOARD_COLUMN_SORTS, type BoardColumnSort } from './postsBoardOrder';
+import type { FilaOrdem } from './minhaFila';
 
 /** Ordenacao de uma coluna (etapa) do board de Fluxos: 'prazo' (padrao,
  *  atrasados primeiro) ou 'manual' (position persistida via drag). */
@@ -160,6 +161,31 @@ export function loadListGroupBy(contaId: string): ListGroupBy | null {
 export function persistListGroupBy(contaId: string, groupBy: ListGroupBy): void {
   try {
     localStorage.setItem(listGroupKey(contaId), groupBy);
+  } catch {
+    // Best effort: a preferência só não sobrevive ao reload.
+  }
+}
+
+// Lista local (só tipo de minhaFila): o módulo da fila puxa o store e o cliente
+// supabase, que este arquivo de preferências não precisa carregar.
+const FILA_ORDENS: FilaOrdem[] = ['prazo', 'publicacao'];
+
+const filaOrdemKey = (contaId: string) => `entregas_fila_ordem_${contaId}`;
+
+/** Ordem da Minha fila (prazo da etapa ou data de publicação), por conta.
+ *  Cai no padrão, 'prazo', sem preferência gravada ou com lixo. */
+export function loadFilaOrdem(contaId: string): FilaOrdem {
+  try {
+    const raw = localStorage.getItem(filaOrdemKey(contaId));
+    return raw && (FILA_ORDENS as string[]).includes(raw) ? (raw as FilaOrdem) : 'prazo';
+  } catch {
+    return 'prazo';
+  }
+}
+
+export function persistFilaOrdem(contaId: string, ordem: FilaOrdem): void {
+  try {
+    localStorage.setItem(filaOrdemKey(contaId), ordem);
   } catch {
     // Best effort: a preferência só não sobrevive ao reload.
   }
