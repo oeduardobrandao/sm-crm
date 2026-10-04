@@ -65,4 +65,14 @@ FROM popup_interactions pi
 JOIN profiles p ON p.id = pi.user_id
 JOIN global_popups g ON g.id = pi.popup_id
 WHERE p.conta_id IS NOT NULL
+  -- Reaplicar a migration (db push pode gravar a versão e reverter o DDL) não
+  -- duplica o histórico.
+  AND NOT EXISTS (
+    SELECT 1 FROM audit_log a
+    WHERE a.resource_type = 'popup'
+      AND a.resource_id = pi.popup_id::text
+      AND a.actor_user_id = pi.user_id
+      AND a.action = 'popup-' || pi.action
+      AND a.created_at = pi.created_at
+  )
 ORDER BY pi.created_at;
