@@ -19,6 +19,10 @@ import {
   Upload,
   Undo2,
   Activity,
+  Eye,
+  X,
+  MousePointerClick,
+  CheckCheck,
   ChevronLeft,
   ChevronRight,
   type LucideIcon,
@@ -26,7 +30,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { listWorkspaceEvents } from '../lib/api';
-import { eventMeta, eventDescription, FILTERABLE_TYPES } from './workspace-events';
+import { eventMeta, eventDescription, filterActions, FILTERABLE_TYPES } from './workspace-events';
 import { EmptyState } from '../components/EmptyState';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -66,6 +70,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Upload,
   Undo2,
   Activity,
+  Eye,
+  X,
+  MousePointerClick,
+  CheckCheck,
 };
 
 const PAGE_SIZE = 15;
@@ -79,7 +87,7 @@ export default function WorkspaceEventsCard({ workspaceId }: { workspaceId: stri
   const [filterType, setFilterType] = useState('');
 
   const offset = page * PAGE_SIZE;
-  const eventTypes = filterType ? [filterType] : undefined;
+  const eventTypes = filterType ? filterActions(filterType) : undefined;
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'workspace', workspaceId, 'events', { offset, filterType }],
