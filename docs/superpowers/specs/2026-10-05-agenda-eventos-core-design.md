@@ -175,12 +175,12 @@ O formulário e o arrastar carregam o início/fim **da ocorrência** que o usuá
 
 **`agenda_listar(p_de timestamptz, p_ate timestamptz, p_ocorrencia_id bigint DEFAULT NULL)`**: STABLE, SECURITY DEFINER, exige `has_permission('calendario','ver')`. Com `p_ocorrencia_id`, ignora o intervalo e devolve só essa ocorrência (deep link); sem ele, exige `p_ate - p_de ≤ 100 dias` e devolve as ocorrências não canceladas com `inicio < p_ate AND fim > p_de` do workspace, acrescentando `inicio >= p_de - 31 dias` (duração máxima de um evento) para o índice `(conta_id, inicio, fim)` limitar a varredura dos dois lados. O filtro por pessoa é feito no cliente (uma chave de query só). Colunas:
 
-`ocorrencia_id, evento_id, data_original, inicio, fim, dia_inteiro, data_inicio_local, data_fim_local, titulo, descricao, local, link_reuniao, tipo, cor, cliente_id, cliente_nome, privado, mascarado, recorrente, regra jsonb, organizador_id, participantes jsonb, minha_resposta, pode_editar, pode_responder`
+`ocorrencia_id, evento_id, data_original, inicio, fim, dia_inteiro, data_inicio_local, data_fim_local, titulo, descricao, local, link_reuniao, tipo, cor, cliente_id, cliente_nome, privado, mascarado, recorrente, regra jsonb, lembretes int[], organizador_id, participantes jsonb, minha_resposta, pode_editar, pode_responder, tz`
 
 - Conteúdo = `CASE WHEN '<campo>' = ANY(o.campos_sobrescritos) THEN o.<campo> ELSE e.<campo> END` para cada um dos quatro campos.
 - `data_inicio_local`/`data_fim_local` (date, fim exclusivo) = datas no `tz` da série; usadas para eventos de dia inteiro na UI.
 - `participantes` = `[{user_id, resposta}]` com resposta efetiva, só de quem ainda está em `workspace_members`.
-- **Máscara** (privado, usuário não é organizador nem participante): `titulo = 'Ocupado'`, `mascarado = true`; `descricao, local, link_reuniao, cliente_id, cliente_nome, tipo, cor, regra` NULL; `participantes` com os `user_id` de todos os participantes **sem** resposta (o "ocupado" aparece na agenda de cada envolvido no filtro por pessoa; revela só quem está ocupado, que o bloco já revela).
+- **Máscara** (privado, usuário não é organizador nem participante): `titulo = 'Ocupado'`, `mascarado = true`; `descricao, local, link_reuniao, cliente_id, cliente_nome, tipo, cor, regra, lembretes` NULL; `participantes` com os `user_id` de todos os participantes **sem** resposta (o "ocupado" aparece na agenda de cada envolvido no filtro por pessoa; revela só quem está ocupado, que o bloco já revela).
 - `pode_editar` = `has_permission('calendario','editar') AND (organizador_id = v_user OR (papel em workspace_members IN ('owner','admin') AND NOT privado))`.
 - `pode_responder` = participante e não organizador.
 
@@ -259,7 +259,7 @@ Lembrete atrasado mais de 15 min (banco fora do ar) é descartado. Mover um even
 
 ### Store: `apps/crm/src/store/agenda.ts` (no barrel)
 
-Tipos `AgendaOcorrencia`, `AgendaEvento`, `AgendaParticipante`, `AgendaRegra`, `AgendaEscopo`, `AgendaResposta`. Funções: `listAgenda(de, ate)`, `getAgendaOcorrencia(id)` (= `agenda_listar` com `p_ocorrencia_id`), `getAgendaEvento(eventoId)` (série + participantes, leitura direta), `criarEvento`, `editarEvento`, `excluirEvento`, `responderEvento`. `formatAgendaError(err)`: mensagens `agenda:` viram a copy do toast; o resto, "Não foi possível salvar o evento. Tente novamente." O payload de criação inclui `tz` do navegador; edições não enviam `tz` (imutável).
+Tipos `AgendaOcorrencia`, `AgendaEvento`, `AgendaParticipante`, `AgendaRegra`, `AgendaEscopo`, `AgendaResposta`. Funções: `listAgenda(de, ate)`, `getAgendaOcorrencia(id)` (= `agenda_listar` com `p_ocorrencia_id`; a linha traz regra, lembretes e participantes, então o formulário não precisa de outra leitura), `criarEvento`, `editarEvento`, `excluirEvento`, `responderEvento`. `formatAgendaError(err)`: mensagens `agenda:` viram a copy do toast; o resto, "Não foi possível salvar o evento. Tente novamente." O payload de criação inclui `tz` do navegador; edições não enviam `tz` (imutável).
 
 ### Página
 
