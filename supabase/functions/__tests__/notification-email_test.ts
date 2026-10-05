@@ -140,3 +140,31 @@ Deno.test("buildDigestHtml: escapes user-controlled heading/body, no raw <script
   assert(html.includes("&amp;"), "expected escaped ampersand in output");
   assert(html.includes("&quot;"), "expected escaped quote in output");
 });
+
+Deno.test("resolveDigestItem: event_invited names the actor and escapes the title in the html", () => {
+  const item = resolveDigestItem({
+    type: "event_invited",
+    metadata: { titulo: "Gravação <b>", inicio: "2026-10-05T17:00:00Z", ator_nome: "Bruno", recorrente: true },
+    link: "/calendario?evento=1",
+  });
+  assertEquals(item.heading, "Bruno convidou você para um evento");
+  assertEquals(item.link, "/calendario?evento=1");
+  const html = buildDigestHtml([item], "https://app.example.test");
+  assert(html.includes("Gravação &lt;b&gt;"));
+  assert(!html.includes("Gravação <b>"));
+});
+
+Deno.test("resolveDigestItem: event_invited without actor degrades to a generic subject", () => {
+  const item = resolveDigestItem({ type: "event_invited", metadata: null, link: null });
+  assertEquals(item.heading, "Alguém convidou você para um evento");
+  assertEquals(item.link, "/");
+});
+
+Deno.test("resolveDigestItem: event_updated and event_cancelled carry the title in the heading", () => {
+  const upd = resolveDigestItem({ type: "event_updated", metadata: { titulo: "Reunião" }, link: "/calendario?evento=2" });
+  assertEquals(upd.heading, "Evento alterado: Reunião");
+  const can = resolveDigestItem({ type: "event_cancelled", metadata: { titulo: "Reunião" }, link: "/calendario?data=2026-10-05" });
+  assertEquals(can.heading, "Evento cancelado: Reunião");
+  assertEquals(can.link, "/calendario?data=2026-10-05");
+  assert(!upd.heading.includes("—") && !can.heading.includes("—"));
+});
