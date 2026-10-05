@@ -171,7 +171,7 @@ describe('GlobalSearchTrigger', () => {
     await screen.findByText(/Digite para buscar/);
     typeQuery('fora de fluxo');
 
-    expect(await screen.findByText('Avulso · Feed')).toBeInTheDocument();
+    expect(await screen.findByText('Avulso · Imagem')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Post fora de fluxo'));
 
     expect(navigateMock).toHaveBeenCalledWith('/entregas?post=42');

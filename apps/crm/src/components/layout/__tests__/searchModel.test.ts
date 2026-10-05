@@ -89,7 +89,7 @@ describe('buildSearchItems', () => {
       'Publicação 12 out',
     ]);
     expect(byKey['post-31'].meta).toBe('Criado em 2 out');
-    expect(byKey['post-42'].details).toEqual(['Clínica Vida', 'Avulso', 'Feed', 'Rascunho']);
+    expect(byKey['post-42'].details).toEqual(['Clínica Vida', 'Avulso', 'Imagem', 'Rascunho']);
     expect(byKey['post-42'].meta).toBe('Criado em 4 mar 2025');
     expect(byKey['fluxo-5'].details).toEqual(['Clínica Vida', 'Ativo']);
     expect(byKey['fluxo-5'].meta).toBe('Criado em 1 jul');
@@ -180,7 +180,7 @@ describe('buildSearchItems', () => {
     expect(byKey['post-31'].route).toBe('/entregas?drawer=5&post=31');
     expect(byKey['post-31'].haystack).toContain('julho');
     expect(byKey['post-42'].route).toBe('/entregas?post=42');
-    expect(byKey['post-42'].details).toEqual(['Avulso', 'Feed']);
+    expect(byKey['post-42'].details).toEqual(['Avulso', 'Imagem']);
     expect(byKey['pagina-p1'].meta).toBe('Clínica Vida');
     expect(byKey['ajuda-a1'].route).toBe('/ajuda/como-conectar-o-instagram');
     expect(byKey['ajuda-a1'].meta).toBe('Instagram & Analytics');
