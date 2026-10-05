@@ -46,6 +46,7 @@
 - **Branch:** a new branch off fresh `origin/main` after P0 is merged: `claude/platform-agnostic-p1`. Run `git fetch origin main && git checkout -b claude/platform-agnostic-p1 origin/main`.
 - **Migration versions:**
   - Use `20261005100001`, `20261005100002`, `20261005100003` and `20261005100004` (the last one added in review, deviation 10).
+  - Renumbered on 2026-10-05 from `20260929100001..4` to sit above main's tail (`20261004000001`). `20261005100005` (`duplicate_workflow` keeps `plataformas`) and `20261005100006` (`_clone_post_row` keeps the source post's destinations) were added in the same rebase sync.
   - Before `gh pr create`, run `ls supabase/migrations | tail -5`. If main has anything at or above these numbers, renumber above main's tail. Every version prefix must be unique.
 - **Allowed values:**
   - Platform ids stored in SQL: exactly `'instagram'`, `'tiktok'`, `'geral'` (the registry's `PLATFORM_IDS`).

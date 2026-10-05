@@ -47,14 +47,16 @@ GRANT SELECT (
   foto_url, send_event_email, event_email_unsub_at, plataformas_padrao
 ) ON public.clientes TO authenticated;
 
--- clientes_v: SELECT vigente copiado de 20260904000001:35-45, coluna nova
--- APENDADA POR ÚLTIMO (inserir no meio renomeia colunas por ordinal).
+-- clientes_v: SELECT vigente copiado VERBATIM de 20261002000001:25-35 (a mais
+-- recente: can_see_financials() num subselect, avaliado uma vez por query em
+-- vez de por linha), coluna nova APENDADA POR ÚLTIMO (inserir no meio renomeia
+-- colunas por ordinal). CREATE OR REPLACE VIEW mantém os grants da view.
 CREATE OR REPLACE VIEW public.clientes_v WITH (security_barrier = true) AS
   SELECT c.id, c.user_id, c.conta_id, c.nome, c.sigla, c.cor, c.plano,
          c.email, c.telefone, c.status, c.created_at, c.notion_page_url,
          c.data_pagamento, c.especialidade, c.data_aniversario, c.dia_entrega,
          c.auto_publish_on_approval, c.send_report_email, c.include_ai_analysis,
-         CASE WHEN public.can_see_financials()
+         CASE WHEN (SELECT public.can_see_financials())
               THEN c.valor_mensal ELSE NULL END AS valor_mensal,
          c.foto_url,
          c.send_event_email, c.event_email_unsub_at,
