@@ -1,16 +1,13 @@
 import type { NotificationType } from '@/store/notifications';
 
 export type NotificationCategory =
-  | 'aprovacoes_hub'
-  | 'entregas_fluxo'
-  | 'equipe'
-  | 'integracoes'
-  | 'sistema';
+  'aprovacoes_hub' | 'entregas_fluxo' | 'equipe' | 'agenda' | 'integracoes' | 'sistema';
 
 export const CATEGORY_ORDER: NotificationCategory[] = [
   'aprovacoes_hub',
   'entregas_fluxo',
   'equipe',
+  'agenda',
   'integracoes',
   'sistema',
 ];
@@ -19,6 +16,7 @@ export const CATEGORY_LABELS: Record<NotificationCategory, string> = {
   aprovacoes_hub: 'Aprovações e Hub',
   entregas_fluxo: 'Entregas e fluxo',
   equipe: 'Equipe',
+  agenda: 'Agenda',
   integracoes: 'Integrações',
   sistema: 'Sistema',
 };
@@ -33,6 +31,7 @@ export interface NotificationCatalogEntry {
 
 const RESP_ADMINS = 'responsável pelo item + donos e admins';
 const ADMINS = 'donos e admins';
+const PARTICIPANTES = 'Participantes do evento';
 
 export const NOTIFICATION_CATALOG = {
   post_approved: {
@@ -159,6 +158,41 @@ export const NOTIFICATION_CATALOG = {
     label: 'Menções',
     when: 'alguém menciona você com @',
     recipients: 'somente quem foi mencionado',
+    emailEligible: true,
+  },
+  event_invited: {
+    category: 'agenda',
+    label: 'Convites para eventos',
+    when: 'alguém adiciona você a um evento',
+    recipients: PARTICIPANTES,
+    emailEligible: true,
+  },
+  event_updated: {
+    category: 'agenda',
+    label: 'Eventos alterados',
+    when: 'muda o horário, o local ou a repetição de um evento seu',
+    recipients: PARTICIPANTES,
+    emailEligible: true,
+  },
+  event_cancelled: {
+    category: 'agenda',
+    label: 'Eventos cancelados',
+    when: 'um evento seu é cancelado ou você é removido dele',
+    recipients: PARTICIPANTES,
+    emailEligible: true,
+  },
+  event_rsvp: {
+    category: 'agenda',
+    label: 'Respostas aos seus convites',
+    when: 'um participante responde a um evento que você organizou',
+    recipients: 'Organizador do evento',
+    emailEligible: false,
+  },
+  event_reminder: {
+    category: 'agenda',
+    label: 'Lembretes de eventos',
+    when: 'no horário dos lembretes que você definiu',
+    recipients: PARTICIPANTES,
     emailEligible: true,
   },
   instagram_connected_by_client: {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AlarmClock, CalendarCheck, CalendarClock, CalendarPlus, CalendarX } from 'lucide-react';
 import { getNotificationDisplay } from '../lib/notification-config';
 
 describe('getNotificationDisplay', () => {
@@ -134,5 +135,76 @@ describe('getNotificationDisplay', () => {
 
     expect(display.tone).toBeDefined();
     expect(display.icon).toBeDefined();
+  });
+
+  describe('agenda events', () => {
+    const base = {
+      evento_id: 1,
+      ocorrencia_id: 2,
+      titulo: 'Gravação: Clínica Sorriso',
+      inicio: '2026-10-05T14:00:00',
+      data_local: '2026-10-05',
+      dia_inteiro: false,
+      ator_nome: 'Ana',
+    };
+
+    it('event_invited', () => {
+      const d = getNotificationDisplay('event_invited', base);
+      expect(d.icon).toBe(CalendarPlus);
+      expect(d.title).toBe('Ana convidou você');
+      expect(d.body).toBe('Gravação: Clínica Sorriso · seg., 5 de out., 14:00');
+    });
+
+    it('event_invited falls back without actor and shows date only for all-day', () => {
+      const d = getNotificationDisplay('event_invited', {
+        ...base,
+        ator_nome: undefined,
+        dia_inteiro: true,
+      });
+      expect(d.title).toBe('Novo convite');
+      expect(d.body).toBe('Gravação: Clínica Sorriso · seg., 5 de out.');
+    });
+
+    it('event_updated', () => {
+      const d = getNotificationDisplay('event_updated', base);
+      expect(d.icon).toBe(CalendarClock);
+      expect(d.title).toBe('Evento alterado: Gravação: Clínica Sorriso');
+      expect(d.body).toBe('seg., 5 de out., 14:00');
+    });
+
+    it('event_cancelled and removed variant', () => {
+      const c = getNotificationDisplay('event_cancelled', base);
+      expect(c.icon).toBe(CalendarX);
+      expect(c.title).toBe('Evento cancelado: Gravação: Clínica Sorriso');
+      const r = getNotificationDisplay('event_cancelled', { ...base, motivo: 'removido' });
+      expect(r.title).toBe('Você foi removido de Gravação: Clínica Sorriso');
+    });
+
+    it('event_rsvp maps resposta', () => {
+      const sim = getNotificationDisplay('event_rsvp', { ...base, resposta: 'sim' });
+      expect(sim.icon).toBe(CalendarCheck);
+      expect(sim.title).toBe('Ana respondeu: Sim');
+      expect(sim.body).toBe('Gravação: Clínica Sorriso · seg., 5 de out., 14:00');
+      expect(getNotificationDisplay('event_rsvp', { ...base, resposta: 'nao' }).title).toBe(
+        'Ana respondeu: Não',
+      );
+      expect(getNotificationDisplay('event_rsvp', { ...base, resposta: 'talvez' }).title).toBe(
+        'Ana respondeu: Talvez',
+      );
+    });
+
+    it('event_reminder prefix by minutos', () => {
+      const t = (minutos: number | undefined, dia_inteiro = false) =>
+        getNotificationDisplay('event_reminder', { ...base, minutos, dia_inteiro });
+      expect(t(10).icon).toBe(AlarmClock);
+      expect(t(10).title).toBe('Em 10 minutos: Gravação: Clínica Sorriso');
+      expect(t(0).title).toBe('Agora: Gravação: Clínica Sorriso');
+      expect(t(1440, true).title).toBe('Amanhã: Gravação: Clínica Sorriso');
+      expect(t(900, true).title).toBe('Amanhã: Gravação: Clínica Sorriso');
+      expect(t(-540, true).title).toBe('Hoje: Gravação: Clínica Sorriso');
+      expect(t(60).title).toBe('Em 1 hora: Gravação: Clínica Sorriso');
+      expect(t(1).title).toBe('Em 1 minuto: Gravação: Clínica Sorriso');
+      expect(t(undefined).title).toBe('Lembrete: Gravação: Clínica Sorriso');
+    });
   });
 });

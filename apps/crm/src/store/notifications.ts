@@ -22,7 +22,12 @@ export type NotificationType =
   | 'instagram_connected_by_client'
   | 'post_publish_failed'
   | 'storage_autoclean_report'
-  | 'instagram_automation_failed';
+  | 'instagram_automation_failed'
+  | 'event_invited'
+  | 'event_updated'
+  | 'event_cancelled'
+  | 'event_rsvp'
+  | 'event_reminder';
 
 export interface Notification {
   id: string;
