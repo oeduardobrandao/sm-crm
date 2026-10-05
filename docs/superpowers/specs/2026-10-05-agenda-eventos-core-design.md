@@ -25,7 +25,7 @@ Este documento só implementa o sub-projeto 1, mas modela o que 2 e 3 vão preci
 
 1. **Abordagem B: regra + ocorrências materializadas.** A série guarda a regra (fonte da verdade). Ocorrências são linhas reais geradas até um horizonte móvel de 24 meses. Estado por ocorrência (RSVP, exceções, lembrete enviado) mora na linha da ocorrência. Precedente direto: `tarefa_series` (migration `20260925000030`).
 2. **Toda a matemática de data fica no banco** (PL/pgSQL), como em tarefas. Nenhum `rrule.js` no front nem no Deno.
-3. **Fuso:** cada série grava o fuso de quem a criou (`tz`, IANA, vindo de `Intl.DateTimeFormat().resolvedOptions().timeZone` no navegador; padrão `America/Sao_Paulo`). Regras são expandidas em horário de parede desse fuso e convertidas para instante com `AT TIME ZONE tz`. O FullCalendar roda em `timeZone: 'local'` (padrão; sem plugin de fuso): cada pessoa vê os eventos no horário do próprio navegador. Eventos de dia inteiro são sempre datas, nunca instantes, na UI (ver "Dia inteiro").
+3. **Fuso:** cada série grava o fuso de quem a criou (`tz`, IANA, vindo de `Intl.DateTimeFormat().resolvedOptions().timeZone` no navegador; padrão `America/Sao_Paulo`). **`tz` é imutável depois da criação** (edições não enviam `tz` e o RPC ignora a chave); um organizador viajando não desloca a série. O formulário de edição interpreta data e hora no `tz` da série, não no do navegador. Regras são expandidas em horário de parede desse fuso e convertidas para instante com `AT TIME ZONE tz`. O FullCalendar roda em `timeZone: 'local'` (padrão; sem plugin de fuso): cada pessoa vê os eventos no horário do próprio navegador. Eventos de dia inteiro são sempre datas, nunca instantes, na UI (ver "Dia inteiro").
 4. **Identidade de participante = auth uid**, amarrada a `workspace_members`. A lista de pessoas (filtro e seletor de participantes) usa o roster de `getWorkspaceUsers()` (`workspace_members → profiles`, id = uuid), nunca `membros` (ids numéricos; nem todo usuário tem `membros`, e `membros` inclui gente sem login). Convidados externos por e-mail ficam para o sub-projeto 3.
 5. **Calendário de UI: FullCalendar 6.1.21 (MIT)**: `@fullcalendar/react`, `core`, `daygrid`, `timegrid`, `list`, `interaction`, todos `~6.1.21` (a 7.x de `core`/`react` exige `temporal-polyfill` e os plugins de visão ainda não têm 7.x em `latest`). Sem `@fullcalendar/rrule`, sem tier premium.
 6. **E-mail de convite, alteração e cancelamento vai pelo digest existente** (`notification-email-cron`, chega em até ~15 min, respeita as preferências da Central). **Lembrete tem caminho próprio**: um job pg_cron SQL a cada minuto gera os lembretes in-app e marca os e-mails pendentes; a edge function de envio só é chamada nos minutos em que há e-mail pendente.
@@ -54,7 +54,7 @@ Prefixo `agenda_`. Todas as tabelas têm `conta_id uuid NOT NULL REFERENCES work
 | `privado` | `boolean NOT NULL DEFAULT false` | |
 | `dia_inteiro` | `boolean NOT NULL DEFAULT false` | |
 | `tz` | `text NOT NULL DEFAULT 'America/Sao_Paulo'` | validado no guard (trigger), não em CHECK: `'2000-01-01'::timestamp AT TIME ZONE tz` dentro de `BEGIN/EXCEPTION` |
-| `dtstart` | `timestamp NOT NULL` | parede local (em `tz`) da 1ª ocorrência; `dia_inteiro` ⇒ 00:00 |
+| `dtstart` | `timestamp NOT NULL` | parede local (em `tz`) da 1ª ocorrência; `dia_inteiro` ⇒ 00:00. Limite inferior: na criação, `dtstart::date >= agenda_hoje(tz) - 366 dias`; numa edição, o `dtstart` novo não pode ser anterior a `least(dtstart atual, agenda_hoje(tz) - 366 dias)` (raise "agenda: a data de início é antiga demais"). Limita o trabalho de materializar uma série diária retroativa |
 | `duracao_min` | `int NULL` | evento com horário: > 0 e ≤ 14 dias; `dia_inteiro` ⇒ NULL |
 | `duracao_dias` | `int NULL` | `dia_inteiro`: 1..31; senão NULL |
 | `freq` | `text NULL` | NULL = não repete; CHECK IN (`daily`,`weekly`,`monthly`,`yearly`) |
@@ -92,7 +92,8 @@ CHECKs de coerência: `freq IS NULL ⇒ dias_semana, mensal_modo, mensal_ordinal
 | `inicio` | `timestamptz NOT NULL` | instante efetivo |
 | `fim` | `timestamptz NOT NULL` | `> inicio` |
 | `horario_alterado` | `boolean NOT NULL DEFAULT false` | exceção de horário/data ("este evento" ou arrastar) |
-| `titulo`, `descricao`, `local`, `link_reuniao` | `text NULL` | exceções de conteúdo; NULL = herda da série |
+| `titulo`, `descricao`, `local`, `link_reuniao` | `text NULL` | valores de exceção de conteúdo |
+| `campos_sobrescritos` | `text[] NOT NULL DEFAULT '{}'` | quais dos quatro campos acima a ocorrência sobrescreve (subconjunto de `{titulo,descricao,local,link_reuniao}`). Campo listado usa o valor da ocorrência **mesmo NULL** (permite apagar a descrição ou o link herdados só neste evento); campo não listado herda da série |
 | `cancelada` | `boolean NOT NULL DEFAULT false` | "excluir este evento": lápide (EXDATE) |
 
 `UNIQUE (evento_id, data_original)`: regras nunca produzem duas ocorrências na mesma data local, então a data é chave suficiente e sobrevive a mudança de horário da série. Índices: `(conta_id, inicio, fim) WHERE NOT cancelada` (listagem por workspace) e `(evento_id, inicio) WHERE NOT cancelada` (lembretes).
@@ -150,10 +151,10 @@ Preâmbulo comum dos RPCs de cliente: `v_conta := get_my_conta_id(); v_user := a
 
 `agenda_materializar(p_evento_id bigint, p_ate date)` (interna): insere as datas de `agenda_datas_regra(e, coalesce(horizonte_ate + 1, dtstart::date), p_ate)` com `ON CONFLICT (evento_id, data_original) DO NOTHING` e `agenda_inicio_fim`. Atualiza `horizonte_ate`; marca `materializacao_completa = true` quando não há regra ou a regra termina antes de `p_ate`. Horizonte: `agenda_hoje(tz) + 24 meses`.
 
-`agenda_regenerar(p_evento_id bigint, p_reset_horario boolean)` (interna), chamada quando regra, `dtstart`, duração, `dia_inteiro` ou `tz` mudam com escopo "todos" (e na série nova de um split):
+`agenda_regenerar(p_evento_id bigint, p_reset_horario boolean)` (interna), chamada quando regra, `dtstart`, duração ou `dia_inteiro` mudam com escopo "todos" (e na série nova de um split):
 1. Calcula o conjunto novo de datas em `[dtstart::date, horizonte]`.
 2. Apaga ocorrências cuja `data_original` saiu do conjunto (inclusive exceções e RSVPs por ocorrência delas; o Google faz igual).
-3. Nas que ficaram: recalcula `inicio`/`fim` das que têm `horario_alterado = false`; com `p_reset_horario = true` (mudou `dia_inteiro` ou `tz`), recalcula todas e zera `horario_alterado`, porque uma exceção com horário não faz sentido numa série de dia inteiro e vice-versa.
+3. Nas que ficaram: recalcula `inicio`/`fim` das que têm `horario_alterado = false`; com `p_reset_horario = true` (mudou `dia_inteiro`), recalcula todas e zera `horario_alterado`, porque uma exceção com horário não faz sentido numa série de dia inteiro e vice-versa.
 4. Insere as datas novas. Lápides cuja data continua na regra permanecem.
 
 ### Gerador diário
@@ -176,7 +177,7 @@ O formulário e o arrastar carregam o início/fim **da ocorrência** que o usuá
 
 `ocorrencia_id, evento_id, data_original, inicio, fim, dia_inteiro, data_inicio_local, data_fim_local, titulo, descricao, local, link_reuniao, tipo, cor, cliente_id, cliente_nome, privado, mascarado, recorrente, regra jsonb, organizador_id, participantes jsonb, minha_resposta, pode_editar, pode_responder`
 
-- Conteúdo = `coalesce(exceção da ocorrência, série)`.
+- Conteúdo = `CASE WHEN '<campo>' = ANY(o.campos_sobrescritos) THEN o.<campo> ELSE e.<campo> END` para cada um dos quatro campos.
 - `data_inicio_local`/`data_fim_local` (date, fim exclusivo) = datas no `tz` da série; usadas para eventos de dia inteiro na UI.
 - `participantes` = `[{user_id, resposta}]` com resposta efetiva, só de quem ainda está em `workspace_members`.
 - **Máscara** (privado, usuário não é organizador nem participante): `titulo = 'Ocupado'`, `mascarado = true`; `descricao, local, link_reuniao, cliente_id, cliente_nome, tipo, cor, regra` NULL; `participantes` com os `user_id` de todos os participantes **sem** resposta (o "ocupado" aparece na agenda de cada envolvido no filtro por pessoa; revela só quem está ocupado, que o bloco já revela).
@@ -188,11 +189,11 @@ O formulário e o arrastar carregam o início/fim **da ocorrência** que o usuá
 **`agenda_evento_editar(p_ocorrencia_id bigint, p_escopo text, p_evento jsonb, p_participantes uuid[] DEFAULT NULL) RETURNS bigint`**: `p_escopo IN ('esta','seguintes','todas')`. Trava a série `FOR UPDATE` e exige `pode_editar`. Ocorrência inexistente, de outro workspace ou cancelada: raise "agenda: este evento não existe mais". Retorna o id da ocorrência que representa a editada.
 - Evento sem regra: escopo ignorado; edita série e ocorrência única (regenera).
 - `seguintes` na primeira ocorrência viva da série vira `todas`.
-- **`esta`:** grava exceções na ocorrência: conteúdo (`titulo`, `descricao`, `local`, `link_reuniao`) e horário (`inicio`, `fim`, `horario_alterado = true`, inclusive mudança de data; `data_original` não muda). Campos de série (`tipo`, `cor`, `cliente_id`, `privado`, `dia_inteiro`, `lembretes`, regra, participantes) diferentes dos da série: raise (a UI já desabilita "Este evento" com "Vale para toda a série").
-- **`todas`:** atualiza a série com o payload e o `dtstart` derivado (seção acima). Mudou regra, `dtstart`, duração, `dia_inteiro` ou `tz`: `agenda_regenerar(id, p_reset_horario => dia_inteiro ou tz mudou)`. Exceções de conteúdo sobreviventes ficam. `p_participantes` não nulo substitui o conjunto (novos `pendente`; removidos perdem as respostas por ocorrência).
+- **`esta`:** grava exceções na ocorrência: conteúdo (cada um de `titulo`, `descricao`, `local`, `link_reuniao` que difere do valor efetivo atual entra em `campos_sobrescritos` com o valor do payload, inclusive NULL; voltar ao valor da série remove o campo da lista) e horário (`inicio`, `fim`, `horario_alterado = true`, inclusive mudança de data; `data_original` não muda). Campos de série (`tipo`, `cor`, `cliente_id`, `privado`, `dia_inteiro`, `lembretes`, regra, participantes) diferentes dos da série: raise (a UI já desabilita "Este evento" com "Vale para toda a série").
+- **`todas`:** atualiza a série com o payload e o `dtstart` derivado (seção acima). Mudou regra, `dtstart`, duração ou `dia_inteiro`: `agenda_regenerar(id, p_reset_horario => dia_inteiro mudou)`. Exceções de conteúdo sobreviventes ficam. `p_participantes` não nulo substitui o conjunto (novos `pendente`; removidos perdem as respostas por ocorrência).
 - **`seguintes`:** split no corte `c = data_original` da ocorrência editada.
   1. Série antiga: `ate = c - 1`, `contagem = NULL`, `materializacao_completa = true`.
-  2. Série nova: payload + `dtstart` derivado, `serie_origem_id` = antiga, participantes = `p_participantes` ou cópia (com respostas da série). `contagem` da nova: o valor do payload se o usuário mexeu no fim da regra; senão `contagem_antiga - count(agenda_datas_regra(antiga, dtstart_antigo::date, c - 1))` (lápides contam), e se der ≤ 0 não há série nova.
+  2. Série nova: payload + `dtstart` derivado, `serie_origem_id` = antiga, participantes = `p_participantes` ou cópia (com respostas da série). Quem ficou de fora da série nova perde as `agenda_respostas` das ocorrências re-parentadas (apagadas antes do re-parent) e recebe `event_cancelled` com `motivo = 'removido'` para os eventos seguintes. `contagem` da nova: se o payload traz a regra **idêntica** à guardada (mesmos `freq`, `intervalo`, `dias_semana`, `mensal_*`, `ate`, `contagem`), o fim não foi mexido e `contagem_nova = contagem_antiga - count(agenda_datas_regra(antiga, dtstart_antigo::date, c - 1))` (lápides contam; ≤ 0 = não há série nova). Se a regra do payload difere em qualquer chave, ela vale como está, `contagem` incluída (o formulário mostra o fim da série como estava, e o usuário vê e edita esse valor).
   3. Ocorrências antigas com `data_original >= c`: as que estão na regra nova são **re-parentadas** (`UPDATE evento_id`), preservando exceções de conteúdo, lápides e RSVPs por ocorrência, e têm `inicio`/`fim` recalculados se `horario_alterado = false`; as demais são apagadas; as que faltam são materializadas.
   4. Se a série antiga ficou sem ocorrência viva, é apagada.
 - **Notificações:** `event_updated` aos participantes atuais (exceto o ator) quando muda título, horário, data, regra, local, link ou `dia_inteiro` (só descrição, cor ou lembretes não notifica). Adicionados recebem `event_invited`; removidos, `event_cancelled` com `metadata.motivo = 'removido'`.
@@ -258,7 +259,7 @@ Lembrete atrasado mais de 15 min (banco fora do ar) é descartado. Mover um even
 
 ### Store: `apps/crm/src/store/agenda.ts` (no barrel)
 
-Tipos `AgendaOcorrencia`, `AgendaEvento`, `AgendaParticipante`, `AgendaRegra`, `AgendaEscopo`, `AgendaResposta`. Funções: `listAgenda(de, ate)`, `getAgendaOcorrencia(id)` (= `agenda_listar` com `p_ocorrencia_id`), `getAgendaEvento(eventoId)` (série + participantes, leitura direta), `criarEvento`, `editarEvento`, `excluirEvento`, `responderEvento`. `formatAgendaError(err)`: mensagens `agenda:` viram a copy do toast; o resto, "Não foi possível salvar o evento. Tente novamente." O payload enviado inclui `tz` do navegador em criar e em editar `todas`/`seguintes`.
+Tipos `AgendaOcorrencia`, `AgendaEvento`, `AgendaParticipante`, `AgendaRegra`, `AgendaEscopo`, `AgendaResposta`. Funções: `listAgenda(de, ate)`, `getAgendaOcorrencia(id)` (= `agenda_listar` com `p_ocorrencia_id`), `getAgendaEvento(eventoId)` (série + participantes, leitura direta), `criarEvento`, `editarEvento`, `excluirEvento`, `responderEvento`. `formatAgendaError(err)`: mensagens `agenda:` viram a copy do toast; o resto, "Não foi possível salvar o evento. Tente novamente." O payload de criação inclui `tz` do navegador; edições não enviam `tz` (imutável).
 
 ### Página
 
@@ -274,7 +275,7 @@ Componentes em `apps/crm/src/pages/calendario/agenda/` (visual nos mockups):
   - Visual: tinta do tipo (ou `cor`) com ponto; mascarado listrado cinza "Ocupado"; `pendente` com borda tracejada; `nao` riscado com opacidade.
 - **`AgendaSidebar.tsx`**: "Criar evento", mini-mês (`components/ui/calendar.tsx`), "Minha agenda / Toda a equipe", pessoas do roster `getWorkspaceUsers()` com checkbox e avatar (`avatarColorClass(user_id)` + `getInitials`), legenda dos tipos. Filtro em `localStorage` (`agenda-filtro`, try/catch). ≤ 1100px: `Sheet`.
 - **`EventoPopover.tsx`**: título, "Segunda, 5 de outubro · 14:00 a 16:00", resumo da recorrência, local, "Entrar na reunião" (`sanitizeUrl`), cliente, lembretes, descrição, participantes com status, RSVP "Sim / Não / Talvez" quando `pode_responder` (recorrente pergunta "Este evento / Todos os eventos"), Editar/Excluir quando `pode_editar`. Mascarado: só "Ocupado" e horário.
-- **`EventoFormDialog.tsx`** + **`eventoFormSchema.ts`** (react-hook-form + zod, padrão `TarefaFormDialog`; `confirmClose`/`onConfirmClose`). Campos: título, tipo, cliente, data + hora início/fim (passo de 15 min) ou datas (dia inteiro), Dia inteiro, Repetir, participantes (combobox multi com `ui/command.tsx`, roster por uuid), local, link, descrição, lembretes (até 5; com horário: "Na hora", "5/10/15/30 minutos antes", "1 hora antes", "1 dia antes"; dia inteiro: "No dia às 9h", "1 dia antes às 9h", "1 semana antes às 9h"), privado ("Outras pessoas verão apenas 'Ocupado' nesse horário."). Padrão: `{10}` com horário, `{}` em dia inteiro. Data e hora são interpretadas no fuso do navegador.
+- **`EventoFormDialog.tsx`** + **`eventoFormSchema.ts`** (react-hook-form + zod, padrão `TarefaFormDialog`; `confirmClose`/`onConfirmClose`). Campos: título, tipo, cliente, data + hora início/fim (passo de 15 min) ou datas (dia inteiro), Dia inteiro, Repetir, participantes (combobox multi com `ui/command.tsx`, roster por uuid), local, link, descrição, lembretes (até 5; com horário: "Na hora", "5/10/15/30 minutos antes", "1 hora antes", "1 dia antes"; dia inteiro: "No dia às 9h", "1 dia antes às 9h", "1 semana antes às 9h"), privado ("Outras pessoas verão apenas 'Ocupado' nesse horário."). Padrão: `{10}` com horário, `{}` em dia inteiro. Na criação, data e hora são interpretadas no fuso do navegador; na edição, no `tz` da série.
 - **`RepetirSelect.tsx`** + **`RecorrenciaPersonalizadaDialog.tsx`**: opções derivadas da data de início ("Não se repete", "Todos os dias", "Semanal: cada {segunda}", "Mensal: no dia {5}", "Mensal: na {primeira} {segunda}", "Mensal: na última {segunda}" só quando aplicável, "Anual: em {5 de outubro}", "Todos os dias úteis (segunda a sexta)", "Personalizar…"). Mudar a data recalcula a opção pronta escolhida. Personalizado: a cada N {dias|semanas|meses|anos}, dias da semana (`WEEKDAY_CHIPS`), modo mensal, termina "Nunca / Em {data} / Após N ocorrências", com o resumo em texto.
 - **`EscopoEventoDialog.tsx`**: "Editar evento recorrente" / "Excluir evento recorrente?" com "Este evento / Este e os seguintes / Todos os eventos". Mudou campo de série: "Este evento" desabilitado com "Vale para toda a série".
 - **`agendaLogic.ts`** (puro, testado): regra ↔ formulário, `descreverRegra` pt-BR, opções do Repetir, `AgendaOcorrencia` → `EventInput` (com o caso dia inteiro), rótulos de lembrete, `ehUltimaSemanaDoMes`, campos que obrigam escopo de série, montagem do payload de edição.
@@ -300,7 +301,7 @@ Componentes em `apps/crm/src/pages/calendario/agenda/` (visual nos mockups):
 - Concorrência: `FOR UPDATE` na série serializa edições; RSVPs usam `FOR SHARE`.
 - Evento que atravessa a meia-noite: aparece nos dois dias (`inicio < p_ate AND fim > p_de`).
 - "Este evento" arrastado para outro dia: `data_original` fica (identidade); uma regeneração "todas" posterior não o reposiciona (`horario_alterado`), salvo mudança de `dia_inteiro`/`tz`.
-- Viewer em outro fuso: eventos com horário aparecem no horário dele; dia inteiro aparece na mesma data para todos.
+- Viewer em outro fuso: eventos com horário aparecem no horário dele; dia inteiro aparece na mesma data para todos. Ao editar, o formulário mostra e interpreta data/hora no `tz` da série (com a nota "Horários no fuso {tz}" quando difere do navegador).
 
 ## Testes
 
@@ -328,7 +329,7 @@ Ordem (o merge deploya o frontend na hora):
 
 **Rollback (runbook, com o SQL pronto em `docs/superpowers/specs/assets/2026-10-05-agenda-rollback.sql`, não aplicado por migration):**
 - Só lembretes: `cron.unschedule('agenda-lembretes')`. Nada mais muda.
-- Tudo: `cron.unschedule` dos dois jobs; `DELETE FROM notifications WHERE type IN (5 tipos)`; `DELETE FROM notification_inapp_prefs/notification_email_prefs WHERE type IN (...)`; recriar `claim_notification_emails` e os três CHECKs com as listas anteriores (copiadas de `20260903000001`/`20260815000004`); `DROP` das funções e tabelas `agenda_*`. Frontend: reverter o PR antes, para nenhum bundle chamar os RPCs. Os tipos novos nos CHECKs são inofensivos se ficarem, então o passo de restauração dos CHECKs é opcional num rollback parcial.
+- Tudo: `cron.unschedule` dos dois jobs; `DELETE FROM notifications WHERE type IN (5 tipos)`; `DELETE FROM notification_inapp_prefs/notification_email_prefs WHERE type IN (...)`; **remover só os 5 tipos da definição atual** dos três CHECKs e do array de `claim_notification_emails`, lendo o estado vigente (`pg_get_constraintdef` / `pg_get_functiondef` + `replace` dos 5 literais, em um bloco `DO` que falha se algum literal não for encontrado), nunca recolando listas históricas: outro PR pode ter acrescentado tipos depois deste; `DROP` das funções e tabelas `agenda_*`. Frontend: reverter o PR antes, para nenhum bundle chamar os RPCs. Os tipos novos nos CHECKs são inofensivos se ficarem, então o passo de restauração dos CHECKs é opcional num rollback parcial.
 
 Numeração: próximas versões livres acima do topo de main ao abrir o PR (hoje `20261005000001` e `20261005000002`).
 
@@ -352,7 +353,9 @@ Numeração: próximas versões livres acima do topo de main ao abrir o PR (hoje
 
 ## Registro das revisões
 
-Fable (21 pontos) e Codex (8 pontos), 2026-10-05. Incorporados: recursão de RLS (helper definer), claim de lembrete dirigido pela série e janela corrigida, derivação de `dtstart` por delta, `insert` direto com `RETURNING`, lacunas do split, reset de `horario_alterado`, normalização de `dtstart`, ordem de travas e `SKIP LOCKED`, job SQL-only com chamada condicional, `timeZone: 'local'` + dia inteiro como data, máscara com participantes, permissão do RSVP, `materializacao_completa`, `tz` validado no guard, ledger sem grant, filtro de membros no fan-out, caminhos de teste, `document.title`, `agenda_listar` com `p_ocorrencia_id`, filtro por pessoa no cliente (Fable); FKs compostas, ledger com `inicio_alvo`, roster por uuid, fim de dia inteiro por data local, runbook de rollback (Codex).
+Fable (21 pontos) e Codex (8 pontos), 2026-10-05. Segunda rodada do Codex (6 pontos), todos incorporados: `contagem` do split decidida por comparação com a regra guardada, `campos_sobrescritos` para apagar conteúdo herdado só numa ocorrência, respostas de removidos apagadas no split, `tz` imutável, limite inferior de `dtstart`, rollback lendo o schema vigente.
+
+Primeira rodada, incorporados: recursão de RLS (helper definer), claim de lembrete dirigido pela série e janela corrigida, derivação de `dtstart` por delta, `insert` direto com `RETURNING`, lacunas do split, reset de `horario_alterado`, normalização de `dtstart`, ordem de travas e `SKIP LOCKED`, job SQL-only com chamada condicional, `timeZone: 'local'` + dia inteiro como data, máscara com participantes, permissão do RSVP, `materializacao_completa`, `tz` validado no guard, ledger sem grant, filtro de membros no fan-out, caminhos de teste, `document.title`, `agenda_listar` com `p_ocorrencia_id`, filtro por pessoa no cliente (Fable); FKs compostas, ledger com `inicio_alvo`, roster por uuid, fim de dia inteiro por data local, runbook de rollback (Codex).
 
 Decididos de forma diferente da sugestão:
 - **`pode_editar` (Codex P1, Fable P3):** mantido organizador + owner/admin como regra de produto explícita (decisão 8), em vez de liberar a edição de eventos alheios para qualquer um com `calendario: editar`.
