@@ -107,15 +107,22 @@ BEGIN
   -- Destinos da origem (P1): troca os que z6 semeou pelo quadro pelos da
   -- origem, só platform e format, e re-deriva platform. GUC ligado: o sync de
   -- post_targets e o a2 não mexem na linha; o UPDATE abaixo grava o derivado.
+  -- caption/title/settings do destino ficam de fora DE PROPÓSITO em P1 (nada
+  -- os grava ainda); rever quando o editor de Destinos de P2 passar a gravá-los.
   PERFORM set_config('app.post_targets_sync', 'on', true);
   DELETE FROM post_targets WHERE post_id = v_new;
   INSERT INTO post_targets (conta_id, post_id, platform, format)
   SELECT p_conta, v_new, t.platform, t.format
     FROM post_targets t
    WHERE t.post_id = s.id AND t.conta_id = p_conta
+     -- stories nunca vai para o TikTok, mesmo que a origem legada carregue o destino
+     AND NOT (s.tipo = 'stories' AND t.platform = 'tiktok')
    ORDER BY t.id;
   v_derived := public.derive_post_platform(v_new);
-  UPDATE workflow_posts SET platform = v_derived
+  -- Se o quadro não lista Instagram, o z4b derivou outro platform no INSERT e
+  -- o z5 limpou o trial; com o Instagram da origem de volta, o trial volta
+  -- junto (o z5 roda de novo neste UPDATE e ainda limpa se não for Instagram).
+  UPDATE workflow_posts SET platform = v_derived, ig_trial_strategy = s.ig_trial_strategy
    WHERE id = v_new AND platform IS DISTINCT FROM v_derived;
   PERFORM set_config('app.post_targets_sync', COALESCE(v_prev, ''), true);
 

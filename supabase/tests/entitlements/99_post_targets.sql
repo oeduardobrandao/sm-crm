@@ -642,7 +642,8 @@ do $$
 declare
   v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_cli2 bigint;
   v_wf_ig bigint; v_wf_mix bigint;
-  v_a bigint; v_b bigint; v_c bigint; v_clone bigint; v_new_wf bigint;
+  v_a bigint; v_b bigint; v_c bigint; v_d bigint; v_e bigint; v_wf_ex bigint;
+  v_clone bigint; v_new_wf bigint;
   v_arr text[]; v_plat text; r record;
 begin
   v_ws := et_make_workspace('max');
@@ -679,6 +680,17 @@ begin
     values (v_wf_ig, v_ws, 'c', 'feed') returning id into v_c;
   update workflow_posts set platform = 'both' where id = v_c;
 
+  -- D: reels com trial do Instagram num quadro que deixou de listar Instagram
+  -- (o post mantém o destino). E: stories legado com destino TikTok.
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_uid, v_ws, v_cli, 'Ex-IG', 'ativo') returning id into v_wf_ex;
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo, ig_trial_strategy)
+    values (v_wf_ex, v_ws, 'd', 'reels', 'manual') returning id into v_d;
+  update workflows set plataformas = array['geral'] where id = v_wf_ex;
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_ig, v_ws, 'e', 'stories') returning id into v_e;
+  insert into post_targets (conta_id, post_id, platform) values (v_ws, v_e, 'tiktok');
+
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
 
@@ -707,6 +719,24 @@ begin
   select platform into v_plat from workflow_posts where id = v_clone;
   assert v_arr = array['instagram','tiktok'] and v_plat = 'both',
     format('duplicate_post com TikTok: %s / %s', v_arr, v_plat);
+
+  -- duplicate_post D: o trial do Instagram sobrevive ao z5 do INSERT (o quadro
+  -- sem Instagram derivava 'other' antes de os destinos da origem voltarem)
+  v_clone := duplicate_post(v_d, false);
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_clone;
+  select * into r from workflow_posts where id = v_clone;
+  assert v_arr = array['instagram'] and r.platform = 'instagram'
+     and r.ig_trial_strategy = 'manual',
+    format('duplicate_post reels com trial: %s / %s / %s', v_arr, r.platform, r.ig_trial_strategy);
+
+  -- duplicate_post E: stories nunca leva TikTok, mesmo com destino legado
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_e;
+  assert v_arr = array['instagram','tiktok'], format('fixture stories legado: %s', v_arr);
+  v_clone := duplicate_post(v_e, false);
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_clone;
+  select platform into v_plat from workflow_posts where id = v_clone;
+  assert v_arr = array['instagram'] and v_plat = 'instagram',
+    format('duplicate_post stories com TikTok legado: %s / %s', v_arr, v_plat);
 
   -- duplicate_workflow: cada post copiado mantém os destinos da origem
   v_new_wf := duplicate_workflow(v_wf_ig, false);
