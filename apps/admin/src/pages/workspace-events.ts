@@ -25,7 +25,14 @@ const ACTION_MAP: Record<string, EventMeta> = {
   import_commit_batch: { label: 'Importacao concluida', icon: 'Upload' },
   import_undo: { label: 'Importacao desfeita', icon: 'Undo2' },
   instagram_connected_by_client: { label: 'Instagram conectado (cliente)', icon: 'Link' },
+  'popup-seen': { label: 'Popup visualizado', icon: 'Eye' },
+  'popup-closed': { label: 'Popup fechado', icon: 'X' },
+  'popup-cta': { label: 'Popup: clique no botão', icon: 'MousePointerClick' },
+  'popup-ack': { label: 'Popup confirmado', icon: 'CheckCheck' },
 };
+
+/** Ações gravadas pelo trigger audit_popup_interaction (uma por PopupAction do CRM). */
+export const POPUP_ACTIONS = ['popup-seen', 'popup-closed', 'popup-cta', 'popup-ack'];
 
 export function eventMeta(action: string): EventMeta {
   return ACTION_MAP[action] ?? { label: action.replace(/[-_.]/g, ' '), icon: 'Activity' };
@@ -45,6 +52,11 @@ export function eventDescription(event: WorkspaceEvent): string {
     case 'update-role':
     case 'remove-user':
       return event.resource_id ?? '';
+    case 'popup-seen':
+    case 'popup-closed':
+    case 'popup-cta':
+    case 'popup-ack':
+      return (meta.title as string) ?? '';
     default:
       return '';
   }
@@ -60,4 +72,10 @@ export const FILTERABLE_TYPES = [
   { value: 'post-agendado', label: 'Post agendado' },
   { value: 'update-role', label: 'Cargo alterado' },
   { value: 'remove-user', label: 'Membro removido' },
+  { value: 'popups', label: 'Interações com popups' },
 ] as const;
+
+/** Ações do audit_log que uma opção do filtro cobre (grupos como 'popups' cobrem várias). */
+export function filterActions(value: string): string[] {
+  return value === 'popups' ? POPUP_ACTIONS : [value];
+}
