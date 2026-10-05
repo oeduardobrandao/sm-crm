@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Plataformas por quadro + post_targets (migrations 20261005100001..3).
+-- Plataformas por quadro + post_targets (migrations 20261005100001..6).
 -- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
 
 -- 1. Colunas plataformas: default, CHECK e allowlist de clientes
@@ -572,5 +572,148 @@ begin
   select platform into v_plat from workflow_posts where id = v_p;
   assert v_arr = array['instagram'] and v_plat = 'instagram',
     format('express -> both: %s / %s', v_arr, v_plat);
+end $$;
+rollback;
+
+-- 12. duplicate_workflow (20261002000021 -> 20261005100005): a cópia herda as
+-- plataformas do quadro. Antes nascia {instagram} e o post só Geral copiado
+-- ficava sem destino nenhum (platform 'other' não semeia social, e o quadro
+-- {instagram} não tem Geral).
+begin;
+select et_grant_hosted_parity();
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_wf bigint;
+  v_p bigint; v_new_wf bigint; v_clone bigint; v_arr text[]; v_plat text; v_board text[];
+begin
+  v_ws := et_make_workspace('max');
+  insert into auth.users (id) values (v_uid);
+  insert into workspace_members (user_id, workspace_id, role) values (v_uid, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_uid;
+  insert into clientes (user_id, conta_id, nome, sigla, cor, plataformas_padrao)
+    values (v_uid, v_ws, 'C', 'C', '#000', array['geral']) returning id into v_cli;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli, 'Geral', 'ativo', array['geral']) returning id into v_wf;
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf, v_ws, 'a', 'feed') returning id into v_p;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
+  v_new_wf := duplicate_workflow(v_wf, false);
+
+  select plataformas into v_board from workflows where id = v_new_wf;
+  assert v_board = array['geral'], format('plataformas da cópia do fluxo: %s', v_board);
+  select id into v_clone from workflow_posts where workflow_id = v_new_wf;
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_clone;
+  select platform into v_plat from workflow_posts where id = v_clone;
+  assert v_arr = array['geral'] and v_plat = 'other',
+    format('post geral na cópia do fluxo: %s / %s', v_arr, v_plat);
+  raise notice 'PASS 99pt.12';
+end $$;
+rollback;
+
+-- 13. _clone_post_row (20261002000020 -> 20261005100006): a cópia de um post
+-- (duplicate_post e cada post de duplicate_workflow) tem os MESMOS destinos da
+-- origem, com o formato, e não os padrões do quadro. Estado de publicação,
+-- ids externos e legenda do destino não são copiados.
+begin;
+select et_grant_hosted_parity();
+do $$
+declare v_missing text;
+begin
+  -- Guarda de colunas. Se falhar: a coluna nova de post_targets precisa entrar
+  -- em _clone_post_row (copiar ou deixar no default de propósito) E aqui.
+  select string_agg(column_name, ', ' order by column_name) into v_missing
+    from information_schema.columns
+   where table_schema = 'public' and table_name = 'post_targets'
+     and column_name not in (
+       -- copiadas
+       'platform','format',
+       -- definidas pela cópia
+       'conta_id','post_id',
+       -- default de propósito (publicação, ids externos, conteúdo por destino)
+       'caption','title','settings','scheduled_at','status','external_id',
+       'permalink','error','error_code','retry_count','processing_at','published_at',
+       -- geradas pelo banco
+       'id','created_at','updated_at');
+  assert v_missing is null, format('post_targets tem coluna nao classificada em _clone_post_row: %s', v_missing);
+end $$;
+do $$
+declare
+  v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_cli2 bigint;
+  v_wf_ig bigint; v_wf_mix bigint;
+  v_a bigint; v_b bigint; v_c bigint; v_clone bigint; v_new_wf bigint;
+  v_arr text[]; v_plat text; r record;
+begin
+  v_ws := et_make_workspace('max');
+  insert into auth.users (id) values (v_uid);
+  insert into workspace_members (user_id, workspace_id, role) values (v_uid, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_uid;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'D', 'D', '#000') returning id into v_cli2;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status)
+    values (v_uid, v_ws, v_cli, 'IG', 'ativo') returning id into v_wf_ig;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, status, plataformas)
+    values (v_uid, v_ws, v_cli2, 'Mix', 'ativo', array['instagram','geral']) returning id into v_wf_mix;
+
+  -- A: quadro só Instagram com um destino Geral a mais (fora da lista do quadro),
+  -- formato no destino Instagram e estado de publicação que não pode ir junto.
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_ig, v_ws, 'a', 'feed') returning id into v_a;
+  insert into post_targets (conta_id, post_id, platform, caption)
+    values (v_ws, v_a, 'geral', 'legenda geral');
+  update post_targets
+     set format = 'reels', status = 'publicado', external_id = 'ext-1',
+         permalink = 'https://x/1', published_at = now()
+   where post_id = v_a and platform = 'instagram';
+
+  -- B: quadro Instagram+Geral, post legado sem o destino Geral.
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_mix, v_ws, 'b', 'feed') returning id into v_b;
+  delete from post_targets where post_id = v_b and platform = 'geral';
+
+  -- C: quadro só Instagram, post com TikTok pelo seletor legado.
+  insert into workflow_posts (workflow_id, conta_id, titulo, tipo)
+    values (v_wf_ig, v_ws, 'c', 'feed') returning id into v_c;
+  update workflow_posts set platform = 'both' where id = v_c;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
+
+  -- duplicate_post A: mantém Geral; formato copiado; publicação não
+  v_clone := duplicate_post(v_a, false);
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_clone;
+  select platform into v_plat from workflow_posts where id = v_clone;
+  assert v_arr = array['geral','instagram'] and v_plat = 'instagram',
+    format('duplicate_post com Geral extra: %s / %s', v_arr, v_plat);
+  select * into r from post_targets where post_id = v_clone and platform = 'instagram';
+  assert r.format = 'reels', format('formato do destino: %s', r.format);
+  assert r.status = 'pendente' and r.external_id is null and r.permalink is null
+     and r.published_at is null,
+    format('estado de publicação copiado: %s / %s', r.status, r.external_id);
+  select * into r from post_targets where post_id = v_clone and platform = 'geral';
+  assert r.caption is null, format('legenda do destino copiada: %s', r.caption);
+
+  -- duplicate_post B: não ganha o Geral do quadro
+  v_clone := duplicate_post(v_b, false);
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_clone;
+  assert v_arr = array['instagram'], format('duplicate_post sem Geral: %s', v_arr);
+
+  -- duplicate_post C: mantém TikTok
+  v_clone := duplicate_post(v_c, false);
+  select array_agg(platform order by platform) into v_arr from post_targets where post_id = v_clone;
+  select platform into v_plat from workflow_posts where id = v_clone;
+  assert v_arr = array['instagram','tiktok'] and v_plat = 'both',
+    format('duplicate_post com TikTok: %s / %s', v_arr, v_plat);
+
+  -- duplicate_workflow: cada post copiado mantém os destinos da origem
+  v_new_wf := duplicate_workflow(v_wf_ig, false);
+  select array_agg(t.platform order by t.platform) into v_arr
+    from post_targets t join workflow_posts wp on wp.id = t.post_id
+   where wp.workflow_id = v_new_wf and wp.titulo = 'a';
+  assert v_arr = array['geral','instagram'], format('duplicate_workflow, post A: %s', v_arr);
+  raise notice 'PASS 99pt.13';
 end $$;
 rollback;
