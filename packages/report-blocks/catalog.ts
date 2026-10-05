@@ -29,6 +29,7 @@ export interface WidgetCatalogEntry {
 
 export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
   { type: 'kpi_followers_gained', label: 'Novos seguidores', category: 'Números' },
+  { type: 'kpi_follows', label: 'Seguidores conquistados', category: 'Números' },
   { type: 'kpi_followers_total', label: 'Seguidores totais', category: 'Números' },
   { type: 'kpi_reach', label: 'Alcance', category: 'Números' },
   { type: 'kpi_views', label: 'Visualizações', category: 'Números' },
