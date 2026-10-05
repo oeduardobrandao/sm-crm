@@ -24,3 +24,4 @@ export * from './popups';
 export * from './computed';
 export * from './kb';
 export * from './mentions';
+export * from './agenda';
