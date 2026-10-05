@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Plataformas por quadro + post_targets (migrations 20260929100001..3).
+-- Plataformas por quadro + post_targets (migrations 20261005100001..3).
 -- Spec: docs/superpowers/specs/2026-09-29-platform-agnostic-posts-design.md
 
 -- 1. Colunas plataformas: default, CHECK e allowlist de clientes
@@ -292,7 +292,7 @@ end $$;
 rollback;
 
 -- 5. Automacoes de comentario do Instagram: post so Geral (platform 'other')
---    nao e alvo (migration 20260929100003)
+--    nao e alvo (migration 20261005100003)
 begin;
 select et_grant_hosted_parity();
 do $$

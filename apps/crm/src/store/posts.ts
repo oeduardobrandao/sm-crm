@@ -40,7 +40,7 @@ function compareCreatedAtAsc(a: { created_at: string }, b: { created_at: string 
   return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
 }
 
-/** Derivado de post_targets pelo banco (migration 20260929100002):
+/** Derivado de post_targets pelo banco (migration 20261005100002):
  *  instagram+tiktok -> both; 'other' = nenhum destino Instagram/TikTok (ex.: só Geral).
  *  'stories' nunca tem destino TikTok. */
 export type PostPlatform = 'instagram' | 'tiktok' | 'both' | 'other';
