@@ -24,6 +24,7 @@ const DEFAULT_SIZE: Partial<Record<BlockType, BlockSize>> = {
   kpi_posts_count: 'third',
   kpi_profile_views: 'third',
   kpi_website_clicks: 'third',
+  kpi_follows: 'third',
   audience_gender: 'half',
   audience_age: 'half',
   audience_cities: 'half',

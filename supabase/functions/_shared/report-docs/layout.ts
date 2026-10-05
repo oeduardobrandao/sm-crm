@@ -15,7 +15,7 @@ export const BLOCK_TYPES = [
   // Números
   "kpi_followers_gained", "kpi_followers_total", "kpi_reach", "kpi_views",
   "kpi_engagement_rate", "kpi_saves", "kpi_posts_count",
-  "kpi_profile_views", "kpi_website_clicks",
+  "kpi_profile_views", "kpi_website_clicks", "kpi_follows",
   // Gráficos
   "chart_followers", "chart_formats", "chart_best_times",
   // Audiência

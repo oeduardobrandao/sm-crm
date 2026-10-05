@@ -35,6 +35,38 @@ describe('KpiCardBlock', () => {
     expect(screen.getByText('-3,3%')).toBeInTheDocument(); // (87-90)/90
   });
 
+  it('kpi_follows: card próprio das entradas, ao lado do saldo líquido', () => {
+    render(
+      <BlockRenderer
+        layout={l([
+          { id: 'k1', type: 'kpi_followers_gained', size: 'third' },
+          { id: 'k2', type: 'kpi_follows', size: 'third' },
+        ])}
+        snapshot={makeSnapshotFixture()}
+        mode="view"
+      />,
+    );
+    expect(screen.getByText('Novos seguidores')).toBeInTheDocument();
+    expect(screen.getByText('132')).toBeInTheDocument();
+    expect(screen.getByText('Seguidores conquistados')).toBeInTheDocument();
+    expect(screen.getByText('171')).toBeInTheDocument();
+    expect(screen.getByText('+22,1%')).toBeInTheDocument(); // (171-140)/140
+  });
+
+  it('kpi_follows em snapshot antigo (sem a chave): o card some, sem quebrar', () => {
+    const snap = makeSnapshotFixture();
+    delete (snap.kpis as Partial<typeof snap.kpis>).follows;
+    const { container } = render(
+      <BlockRenderer
+        layout={l([{ id: 'k1', type: 'kpi_follows', size: 'third' }])}
+        snapshot={snap}
+        mode="view"
+      />,
+    );
+    expect(screen.queryByText('Seguidores conquistados')).not.toBeInTheDocument();
+    expect(container.querySelector('.rb-kpi')).toBeNull();
+  });
+
   it('valor null: o card some; prev null: sem chip', () => {
     const snap = makeSnapshotFixture();
     snap.kpis.profile_views = { value: null, unit: 'count', prev: null };

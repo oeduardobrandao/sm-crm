@@ -46,9 +46,10 @@ Deno.test("validateLayout rejeita mais de 200 blocos e ids duplicados", () => {
   assert(!validateLayout(layout([block({ id: "x" }), block({ id: "x" })])).ok);
 });
 
-Deno.test("catálogo tem os 27 tipos (26 + image de 2026-10)", () => {
-  assertEquals(BLOCK_TYPES.length, 27);
+Deno.test("catálogo tem os 28 tipos (26 + image e kpi_follows de 2026-10)", () => {
+  assertEquals(BLOCK_TYPES.length, 28);
   assert((BLOCK_TYPES as readonly string[]).includes("image"));
+  assert((BLOCK_TYPES as readonly string[]).includes("kpi_follows"));
 });
 
 Deno.test("validateLayout: accent opcional precisa ser hex #rrggbb", () => {

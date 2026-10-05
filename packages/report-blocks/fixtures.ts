@@ -28,6 +28,7 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
       posts_count: { value: 14, unit: 'count', prev: 12 },
       profile_views: { value: 2210, unit: 'count', prev: 1980 },
       website_clicks: { value: 87, unit: 'count', prev: 90 },
+      follows: { value: 171, unit: 'count', prev: 140 },
     },
     follower_trend: [
       { date: '2026-07-01', count: 12320 },
