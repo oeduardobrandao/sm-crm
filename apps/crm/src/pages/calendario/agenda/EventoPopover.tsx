@@ -20,6 +20,7 @@ import { avatarColorClass } from '@/lib/avatarColor';
 import { getInitials } from '@/lib/initials';
 import {
   AGENDA_QUERY_KEY,
+  ehAgendaNaoExiste,
   excluirEvento,
   formatAgendaError,
   responderEvento,
@@ -88,10 +89,36 @@ function quando(o: AgendaOcorrencia): string {
   }
   const ini = new Date(o.inicio);
   const fim = new Date(o.fim);
-  if (format(ini, 'yyyy-MM-dd') === format(fim, 'yyyy-MM-dd')) {
+  // An end at local midnight closes the start day ("22:00 a 00:00").
+  const ultimoDia =
+    fim.getHours() === 0 && fim.getMinutes() === 0 && fim > ini ? addDays(fim, -1) : fim;
+  if (format(ini, 'yyyy-MM-dd') === format(ultimoDia, 'yyyy-MM-dd')) {
     return `${diaComSemana(ini)} · ${hora(ini)} a ${hora(fim)}`;
   }
   return `${diaComSemana(ini)} · ${hora(ini)} a ${minuscula(diaComSemana(fim))} · ${hora(fim)}`;
+}
+
+/** "4 participantes · 2 sim, 1 não, 1 aguardando": non-zero parts only. */
+function resumoParticipantes(
+  c: Record<AgendaResposta, number>,
+  total: number,
+): {
+  titulo: string;
+  detalhe: string;
+} {
+  const partes = [
+    [c.sim, 'sim'],
+    [c.nao, 'não'],
+    [c.pendente, 'aguardando'],
+    [c.talvez, 'talvez'],
+  ] as const;
+  return {
+    titulo: `${total} ${total === 1 ? 'participante' : 'participantes'}`,
+    detalhe: partes
+      .filter(([n]) => n > 0)
+      .map(([n, rotulo]) => `${n} ${rotulo}`)
+      .join(', '),
+  };
 }
 
 /** The rule is labelled from the series-local start (weekday, day of month). */
@@ -238,7 +265,18 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
     return c;
   }, [o.participantes]);
 
+  const resumo = resumoParticipantes(contagem, participantes.length);
+
   const invalidarAgenda = () => qc.invalidateQueries({ queryKey: [AGENDA_QUERY_KEY] });
+
+  /** The event is gone: refresh the grid and drop the popover. Other errors
+   *  (permission, validation) keep it open. */
+  const fecharSeSumiu = (err: unknown) => {
+    if (!ehAgendaNaoExiste(err)) return;
+    void invalidarAgenda();
+    setSub(null);
+    onClose();
+  };
 
   const responder = async (resposta: Resposta, escopo: 'esta' | 'todas') => {
     setEnviando(true);
@@ -250,6 +288,7 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
       setSub(null);
     } catch (err) {
       toast.error(formatAgendaError(err));
+      fecharSeSumiu(err);
     } finally {
       setEnviando(false);
     }
@@ -272,6 +311,7 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
     } catch (err) {
       toast.error(formatAgendaError(err));
       setEnviando(false);
+      fecharSeSumiu(err);
     }
   };
 
@@ -404,9 +444,9 @@ export function EventoPopover({ ocorrencia: o, anchor, onClose, onEditar }: Even
                   style={{ borderColor: 'var(--border-color)' }}
                 >
                   <div className="text-[13px] font-semibold">
-                    <span>{`${participantes.length} participantes`}</span>{' '}
+                    <span>{resumo.titulo}</span>{' '}
                     <span className="font-normal" style={{ color: 'var(--text-muted)' }}>
-                      {`· ${contagem.sim} sim, ${contagem.pendente} aguardando, ${contagem.talvez} talvez`}
+                      {`· ${resumo.detalhe}`}
                     </span>
                   </div>
                   <ul

@@ -127,6 +127,25 @@ describe('useAgendaMutations.mover', () => {
     );
   });
 
+  it('offers no Desfazer when the RPC returns no occurrence id', async () => {
+    editarEventoMock.mockResolvedValue(null);
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const { result } = setup();
+    act(() =>
+      result.current.mover(
+        ocorrencia(),
+        new Date(2028, 11, 6, 9, 0),
+        new Date(2028, 11, 6, 10, 0),
+        vi.fn(),
+      ),
+    );
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock).toHaveBeenCalledWith('Evento movido');
+    expect(toastMock.mock.calls[0]).toHaveLength(1);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
+    expect(editarEventoMock).toHaveBeenCalledTimes(1);
+  });
+
   it('all-day moves send date strings with the exclusive end as is', async () => {
     editarEventoMock.mockResolvedValue(7);
     const { result } = setup();
@@ -171,6 +190,7 @@ describe('useAgendaMutations.mover', () => {
 
   it('reverts and shows the agenda error when the save fails', async () => {
     editarEventoMock.mockRejectedValue({ message: 'agenda: você não pode editar este evento' });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
     const { result } = setup();
     const revert = vi.fn();
     act(() =>
@@ -184,6 +204,7 @@ describe('useAgendaMutations.mover', () => {
     await waitFor(() => expect(revert).toHaveBeenCalledTimes(1));
     expect(toastErrorMock).toHaveBeenCalledWith('Você não pode editar este evento');
     expect(toastMock).not.toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
   });
 
   describe('recurring', () => {
@@ -247,6 +268,7 @@ describe('useAgendaMutations.mover', () => {
 
     it('reverts and closes the dialog when the scoped save fails', async () => {
       editarEventoMock.mockRejectedValue(new Error('boom'));
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
       const mover = montar();
       const revert = vi.fn();
       mover(serie(), new Date(2026, 9, 6, 9, 0), new Date(2026, 9, 6, 10, 0), revert);
@@ -259,6 +281,7 @@ describe('useAgendaMutations.mover', () => {
         'Não foi possível salvar o evento. Tente novamente.',
       );
       expect(screen.queryByText('Editar evento recorrente')).not.toBeInTheDocument();
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
     });
   });
 });

@@ -171,6 +171,36 @@ describe('EventoPopover', () => {
     );
     const lista = await screen.findByRole('list', { name: 'Participantes' });
     expect(within(lista).getByText('Não')).toBeInTheDocument();
+    expect(screen.getByText('2 participantes')).toBeInTheDocument();
+    expect(screen.getByText('· 1 sim, 1 não')).toBeInTheDocument();
+  });
+
+  it('summarizes only the non-zero answers, sim, não, aguardando, talvez', async () => {
+    abrir(
+      ocorrencia({
+        participantes: [
+          { user_id: 'bruno', resposta: 'sim' },
+          { user_id: 'carla', resposta: 'sim' },
+          { user_id: 'diego', resposta: 'nao' },
+          { user_id: 'me', resposta: 'pendente' },
+        ],
+      }),
+    );
+    await screen.findByRole('list', { name: 'Participantes' });
+    expect(screen.getByText('4 participantes')).toBeInTheDocument();
+    expect(screen.getByText('· 2 sim, 1 não, 1 aguardando')).toBeInTheDocument();
+  });
+
+  it('uses the singular for a single participant', async () => {
+    abrir(
+      ocorrencia({
+        participantes: [{ user_id: 'bruno', resposta: 'sim' }],
+        pode_responder: false,
+      }),
+    );
+    await screen.findByRole('list', { name: 'Participantes' });
+    expect(screen.getByText('1 participante')).toBeInTheDocument();
+    expect(screen.getByText('· 1 sim')).toBeInTheDocument();
   });
 
   it('falls back to a generic name for someone not in the roster', async () => {
@@ -219,6 +249,28 @@ describe('EventoPopover', () => {
       }),
     );
     expect(await screen.findByText('30 de setembro a 2 de outubro')).toBeInTheDocument();
+  });
+
+  it('an end at midnight stays on the start day', async () => {
+    abrir(
+      ocorrencia({
+        inicio: new Date(2026, 9, 5, 22, 0).toISOString(),
+        fim: new Date(2026, 9, 6, 0, 0).toISOString(),
+      }),
+    );
+    expect(await screen.findByText('Segunda, 5 de outubro · 22:00 a 00:00')).toBeInTheDocument();
+  });
+
+  it('a timed event past midnight shows both days', async () => {
+    abrir(
+      ocorrencia({
+        inicio: new Date(2026, 9, 5, 22, 0).toISOString(),
+        fim: new Date(2026, 9, 6, 2, 0).toISOString(),
+      }),
+    );
+    expect(
+      await screen.findByText('Segunda, 5 de outubro · 22:00 a terça, 6 de outubro · 02:00'),
+    ).toBeInTheDocument();
   });
 
   it('labels all-day reminders', async () => {
@@ -282,6 +334,30 @@ describe('EventoPopover', () => {
       await waitFor(() =>
         expect(toastErrorMock).toHaveBeenCalledWith('Este evento não existe mais'),
       );
+    });
+
+    it('closes and refreshes when the event no longer exists', async () => {
+      responderEventoMock.mockRejectedValue({ message: 'agenda: este evento não existe mais' });
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      const { onClose } = abrir(ocorrencia({ recorrente: true, regra: REGRA }));
+      const grupo = await screen.findByRole('group', { name: 'Sua resposta' });
+      fireEvent.click(within(grupo).getByRole('button', { name: 'Sim' }));
+      const alerta = await screen.findByRole('alertdialog', { name: 'Responder a qual evento?' });
+      fireEvent.click(within(alerta).getByRole('button', { name: 'Todos os eventos' }));
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
+      expect(toastErrorMock).toHaveBeenCalledWith('Este evento não existe mais');
+    });
+
+    it('keeps the popover open on other answer errors', async () => {
+      responderEventoMock.mockRejectedValue(new Error('boom'));
+      const { onClose } = abrir(ocorrencia());
+      const grupo = await screen.findByRole('group', { name: 'Sua resposta' });
+      fireEvent.click(within(grupo).getByRole('button', { name: 'Sim' }));
+      await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog', { name: 'Gravação: Clínica Sorriso' })).toBeInTheDocument();
     });
 
     it('is hidden when the user cannot answer', async () => {
@@ -349,6 +425,22 @@ describe('EventoPopover', () => {
 
       await waitFor(() => expect(excluirEventoMock).toHaveBeenCalledWith(7, 'todas'));
       await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+
+    it('closes and refreshes when the event to delete no longer exists', async () => {
+      excluirEventoMock.mockRejectedValue(new Error('agenda: este evento não existe mais'));
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      const { onClose } = abrir(ocorrencia({ recorrente: true, regra: REGRA }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Excluir evento' }));
+      const alerta = await screen.findByRole('alertdialog', {
+        name: 'Excluir evento recorrente?',
+      });
+      fireEvent.click(within(alerta).getByRole('button', { name: 'Excluir' }));
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
+      expect(toastErrorMock).toHaveBeenCalledWith('Este evento não existe mais');
+      expect(toastSuccessMock).not.toHaveBeenCalled();
     });
 
     it('keeps the dialog and shows the error when the delete fails', async () => {

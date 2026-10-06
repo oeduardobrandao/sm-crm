@@ -76,6 +76,12 @@ export function useAgendaMutations(): {
       editarEvento(o.ocorrencia_id, 'todas', payload, null)
         .then((novoId) => {
           void invalidar();
+          // null: the move pushed the event past the materialization horizon,
+          // so there is no occurrence to undo on.
+          if (typeof novoId !== 'number') {
+            toast('Evento movido');
+            return;
+          }
           toast('Evento movido', {
             action: {
               label: 'Desfazer',
@@ -83,13 +89,18 @@ export function useAgendaMutations(): {
                 // The RPC may regenerate the row on a date move: undo the id it returned.
                 editarEvento(novoId, 'todas', payloadOriginal(o), null)
                   .then(() => invalidar())
-                  .catch((err: unknown) => toast.error(formatAgendaError(err)));
+                  .catch((err: unknown) => {
+                    void invalidar();
+                    toast.error(formatAgendaError(err));
+                  });
               },
             },
           });
         })
         .catch((err: unknown) => {
           revert();
+          // The row may be stale or gone: refetch whatever the error was.
+          void invalidar();
           toast.error(formatAgendaError(err));
         });
     },
@@ -107,6 +118,7 @@ export function useAgendaMutations(): {
       })
       .catch((err: unknown) => {
         revert();
+        void invalidar();
         toast.error(formatAgendaError(err));
       })
       .finally(() => {

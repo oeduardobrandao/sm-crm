@@ -14,6 +14,7 @@ import {
   AGENDA_QUERY_KEY,
   criarEvento,
   editarEvento,
+  ehAgendaNaoExiste,
   excluirEvento,
   formatAgendaError,
   getAgendaOcorrencia,
@@ -196,5 +197,22 @@ describe('formatAgendaError', () => {
     expect(formatAgendaError('agenda')).toBe(generic);
     expect(formatAgendaError(null)).toBe(generic);
     expect(formatAgendaError(new Error('agenda: '))).toBe(generic);
+  });
+});
+
+describe('ehAgendaNaoExiste', () => {
+  it('matches the not-found RAISE as Error or PostgrestError-like object', () => {
+    expect(ehAgendaNaoExiste(new Error('agenda: este evento não existe mais'))).toBe(true);
+    expect(
+      ehAgendaNaoExiste({ message: '  agenda:  Este evento não existe mais ', code: 'P0001' }),
+    ).toBe(true);
+  });
+
+  it('is false for every other error', () => {
+    expect(ehAgendaNaoExiste(new Error('agenda: você não pode editar este evento'))).toBe(false);
+    expect(ehAgendaNaoExiste(new Error('este evento não existe mais'))).toBe(false);
+    expect(ehAgendaNaoExiste({ message: 'Failed to fetch' })).toBe(false);
+    expect(ehAgendaNaoExiste('agenda: este evento não existe mais')).toBe(false);
+    expect(ehAgendaNaoExiste(null)).toBe(false);
   });
 });

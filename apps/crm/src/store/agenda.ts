@@ -110,13 +110,15 @@ export async function getAgendaOcorrencia(id: number): Promise<AgendaOcorrencia 
 export async function criarEvento(
   p: AgendaEventoPayload,
   participantes: string[],
-): Promise<{ evento_id: number; ocorrencia_id: number; dtstart: string }> {
+): Promise<{ evento_id: number; ocorrencia_id: number | null; dtstart: string }> {
   const { data, error } = await supabase.rpc('agenda_evento_criar', {
     p_evento: p,
     p_participantes: participantes,
   });
   if (error) throw error;
-  const row = (data as { evento_id: number; ocorrencia_id: number; dtstart: string }[] | null)?.[0];
+  const row = (
+    data as { evento_id: number; ocorrencia_id: number | null; dtstart: string }[] | null
+  )?.[0];
   if (!row) throw new Error('agenda_evento_criar returned no row');
   return row;
 }
@@ -128,7 +130,7 @@ export async function editarEvento(
   escopo: AgendaEscopo,
   p: Partial<AgendaEventoPayload>,
   participantes: string[] | null,
-): Promise<number> {
+): Promise<number | null> {
   const { data, error } = await supabase.rpc('agenda_evento_editar', {
     p_ocorrencia_id: ocorrenciaId,
     p_escopo: escopo,
@@ -136,7 +138,7 @@ export async function editarEvento(
     p_participantes: participantes,
   });
   if (error) throw error;
-  return data as number;
+  return data as number | null;
 }
 
 export async function excluirEvento(ocorrenciaId: number, escopo: AgendaEscopo): Promise<void> {
@@ -161,6 +163,17 @@ export async function responderEvento(
 }
 
 const AGENDA_ERRO_GENERICO = 'Não foi possível salvar o evento. Tente novamente.';
+
+/** True for the RPCs' 'agenda: este evento não existe mais' (the occurrence or
+ *  series is gone). Reads the message like formatAgendaError does. */
+export function ehAgendaNaoExiste(e: unknown): boolean {
+  const message =
+    e && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string'
+      ? (e as { message: string }).message
+      : null;
+  if (!message) return false;
+  return /^agenda:\s*este evento não existe mais\.?$/i.test(message.trim());
+}
 
 /** 'agenda: x' (RAISE from the agenda RPCs) -> 'X'; anything else -> generic copy.
  *  Accepts Error instances and PostgrestError-like `{ message }` objects. */
