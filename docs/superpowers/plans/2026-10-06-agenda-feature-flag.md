@@ -113,3 +113,64 @@ e.g. the updated `96_*`), `supabase/functions/_shared/entitlements.ts`, new
 - [ ] Rollout checklist in memory gains: redeploy `workspace-limits` and `platform-admin`
   (they bundle `FEATURE_COLUMNS`; a stale `workspace-limits` hides the key even with the
   override set), then set `{"feature_agenda": true}` on the pilot workspace's overrides.
+
+---
+
+## Amendments after Fable review (these OVERRIDE the sections above where they conflict)
+
+**Lane 1**
+- **A1 (1.2/1.3 placement).** The workspace variable is `v_conta` (`get_my_conta_id()`). Put
+  the gate right after the `IF v_conta IS NULL OR v_user IS NULL ... END IF;` block in
+  `agenda_evento_criar`, `agenda_evento_editar`, `agenda_evento_excluir`, `agenda_responder`,
+  before `has_permission` / scope validation. In `agenda_listar`: `RETURN;` (0 rows) before
+  `has_permission` and before the "período inválido" raise. `effective_plan_feature` is
+  callable from these DEFINER functions (granted to authenticated/service_role).
+- **A2 (1.4 mechanisms).** Claim (`agenda_claim_emails_lembrete`): add `OR NOT
+  effective_plan_feature(l.conta_id, 'feature_agenda')` to the stale-settle UPDATE's OR-list
+  (the block that settles rows to `'nao'`), so claimed rows of a disabled workspace are never
+  sent. Tick (`agenda_tick_lembretes`): do NOT call it inside the per-row LATERAL of `cand`
+  (non-inlinable plpgsql, would run per series × minute × occurrence). Filter once per
+  workspace before the insert, e.g. a CTE of `SELECT DISTINCT conta_id FROM cand` kept only
+  where `effective_plan_feature(conta_id, 'feature_agenda')`, joined in `dest` before `ins`.
+- **A3 (1.5 suites).** `scripts/test-entitlements.sh` runs each file in its own psql and every
+  file is one `begin; ... rollback;`, so there is no cross-suite leakage: put
+  `update plans set feature_agenda = true;` right after `begin;` in every suite that calls the
+  agenda RPCs (all `99_agenda_*.sql` and any other, e.g. `96_*`; grep `agenda_`). Note
+  `et_make_workspace(p_plan, p_overrides)` writes `resource_overrides`, NOT
+  `feature_overrides`; for the new suite's "override on a false plan" case insert directly:
+  `insert into workspace_plan_overrides (workspace_id, feature_overrides) values (ws,
+  '{"feature_agenda": true}')`.
+
+**Lane 2**
+- **A4 (replaces 2.3).** There is no agenda prefetch. The branch's `AuthContext.tsx` change
+  only adds `'agenda-ocorrencias'` to `MODULE_QUERY_KEYS.calendario` (purge on permission
+  downgrade). Leave `AuthContext.tsx` unchanged.
+- **A5 (replaces the switching design in 2.2).** `ProtectedRoute` shows a full-page spinner
+  while `useWorkspaceLimits().isLoading`, so the page never mounts with `features === null` on
+  a cold load. Derive the tab, no effect: keep the user's pick in state (`escolha`, initially
+  null) and compute `activeTab = escolha && (escolha !== 'agenda' || agendaAtiva) ? escolha :
+  agendaAtiva ? 'agenda' : <pre-branch default tab>`. Gate the existing `?evento=`/`?data=`
+  effect (CalendarioPage.tsx ~:714) on `agendaAtiva` (off: it must not select a tab that does
+  not render). Title: keep the branch's per-tab title and restore-on-unmount in BOTH modes (it
+  fixes a known title leak; pre-branch set no title), do not strip it for parity.
+  Lazy-load the agenda: `const AgendaTab = lazy(() => import('./agenda/AgendaTab'))` +
+  `Suspense` (flag-off workspaces must not download FullCalendar); the test's
+  `vi.mock('../agenda/AgendaTab')` keeps working.
+- **A6 (error copy).** Agenda paths format errors with `formatAgendaError`
+  (`store/agenda.ts` ~:180), which ignores entitlement errors. Make it run
+  `mapEntitlementError` first and return `entitlementMessage(...)` on a match (test it).
+- **A7 (2.4 detail).** `SuasNotificacoesSection` maps `CATEGORY_ORDER` then filters rows: skip
+  a category whose rows are all hidden (no empty "Agenda" header). `NotificacoesTab.test.tsx`
+  and `CalendarioPage.test.tsx` need a `useWorkspaceLimits` mock (pattern:
+  `components/layout/__tests__/Sidebar.test.tsx:9`).
+- **A8 (2.5 confirmed).** Revert both e2e specs to `origin/main`.
+
+**Integration**
+- **A9 (rollout reason, replaces the last bullet).** `mergeEntitlements` spreads
+  `feature_overrides` after the column loop, so a stale `workspace-limits` still emits an
+  override; it only misses the plan column. Redeploy `workspace-limits` and `platform-admin`
+  anyway (the Admin plan form/plan-mutations only round-trip the column once deployed). Order:
+  `db push` (both migrations) → deploy `workspace-limits`, `platform-admin`,
+  `notification-email-cron`, `agenda-lembretes-email` → merge → set the pilot override.
+- **A10 (node_modules).** Lane 1's deno run pollutes the shared `node_modules`; the controller
+  runs `npm ci` before integration gates.
