@@ -53,8 +53,12 @@ vi.mock('@fullcalendar/react', async () => {
     }, []);
     return (
       <div data-testid="fullcalendar">
+        {/* Keyed by title too, so an edited event gets a NEW node, as FullCalendar
+            re-renders chips after a refetch. */}
         {(props.events ?? []).map((e: { id: string; title: string }) => (
-          <span key={e.id}>{e.title}</span>
+          <span key={`${e.id}:${e.title}`} data-ocorrencia-id={e.id}>
+            {e.title}
+          </span>
         ))}
       </div>
     );
@@ -79,8 +83,16 @@ vi.mock('../EventoFormDialog', () => ({
     ) : null,
 }));
 vi.mock('../EventoPopover', () => ({
-  EventoPopover: (p: { ocorrencia: AgendaOcorrencia; onEditar: (o: AgendaOcorrencia) => void }) => (
-    <div data-testid="evento-popover">
+  EventoPopover: (p: {
+    ocorrencia: AgendaOcorrencia;
+    anchor: HTMLElement;
+    onEditar: (o: AgendaOcorrencia) => void;
+  }) => (
+    <div
+      data-testid="evento-popover"
+      data-anchor-connected={String(p.anchor.isConnected)}
+      data-anchor-id={p.anchor.dataset.ocorrenciaId ?? 'container'}
+    >
       {p.ocorrencia.titulo}
       <button type="button" onClick={() => p.onEditar(p.ocorrencia)}>
         editar-stub
@@ -110,7 +122,7 @@ import { toast } from 'sonner';
 import * as agendaStore from '../../../../store/agenda';
 import * as workspaceStore from '../../../../store/workspace';
 import AgendaTab from '../AgendaTab';
-import { tituloDoPeriodo } from '../AgendaView';
+import { permitirArraste, tituloDoPeriodo } from '../AgendaView';
 
 function oc(over: Partial<AgendaOcorrencia>): AgendaOcorrencia {
   return {
@@ -174,7 +186,7 @@ function LocationProbe() {
 
 function renderTab(url = '/calendario') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const utils = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[url]}>
         <AgendaTab />
@@ -182,9 +194,13 @@ function renderTab(url = '/calendario') {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...utils, queryClient };
 }
 
+const mqListeners = new Map<string, Set<(e: { matches: boolean }) => void>>();
+
 function stubMatchMedia(matching: (q: string) => boolean) {
+  mqListeners.clear();
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     configurable: true,
@@ -194,10 +210,24 @@ function stubMatchMedia(matching: (q: string) => boolean) {
       onchange: null,
       addListener: vi.fn(),
       removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
+      addEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
+        if (!mqListeners.has(query)) mqListeners.set(query, new Set());
+        mqListeners.get(query)!.add(fn);
+      },
+      removeEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
+        mqListeners.get(query)?.delete(fn);
+      },
       dispatchEvent: vi.fn(),
     }),
+  });
+}
+
+/** Resize: re-stub matchMedia and fire every registered change listener. */
+function resizeTo(matching: (q: string) => boolean) {
+  const atuais = [...mqListeners.entries()];
+  stubMatchMedia(matching);
+  act(() => {
+    for (const [query, fns] of atuais) fns.forEach((fn) => fn({ matches: matching(query) }));
   });
 }
 
@@ -266,6 +296,60 @@ describe('AgendaTab', () => {
     expect(await screen.findByTestId('evento-popover')).toHaveTextContent('Alinhamento: Dr. Paulo');
     expect(fc.api.gotoDate).toHaveBeenCalledWith(new Date('2026-10-07T14:00:00Z'));
     expect(toast).not.toHaveBeenCalled();
+    // Outside the loaded rows, so the popover shows the fetched snapshot.
+    expect(screen.getByTestId('evento-popover')).toHaveAttribute('data-anchor-id', 'container');
+  });
+
+  it('drops ?evento= once the popover opens, so it is not reopened later', async () => {
+    vi.mocked(agendaStore.getAgendaOcorrencia).mockResolvedValue(
+      oc({ ocorrencia_id: 42, titulo: 'Alinhamento: Dr. Paulo', inicio: '2026-10-07T14:00:00Z' }),
+    );
+    const { unmount } = renderTab('/calendario?evento=42&x=1');
+
+    expect(await screen.findByTestId('evento-popover')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('?x=1'));
+    expect(screen.getByTestId('location')).not.toHaveTextContent('evento');
+    expect(agendaStore.getAgendaOcorrencia).toHaveBeenCalledTimes(1);
+
+    // Tab switch and back = AgendaTab remounts on the now clean URL.
+    unmount();
+    renderTab('/calendario?x=1');
+    await screen.findByText('Reunião de pauta');
+    expect(screen.queryByTestId('evento-popover')).not.toBeInTheDocument();
+    expect(agendaStore.getAgendaOcorrencia).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the popover on fresh data and a live anchor after a refetch', async () => {
+    const { queryClient } = renderTab();
+    await screen.findByText('Gravação: Clínica Sorriso');
+
+    const chip = screen.getByText('Gravação: Clínica Sorriso');
+    act(() =>
+      fc.props!.eventClick({
+        el: chip,
+        jsEvent: { preventDefault: vi.fn() },
+        event: { extendedProps: { ocorrencia: CONVIDADO } },
+      }),
+    );
+    const pop = await screen.findByTestId('evento-popover');
+    expect(pop).toHaveAttribute('data-anchor-id', '2');
+    expect(pop).toHaveAttribute('data-anchor-connected', 'true');
+
+    // An RSVP/edit elsewhere invalidates the agenda; the chip is re-rendered.
+    vi.mocked(agendaStore.listAgenda).mockResolvedValue([
+      MEU,
+      { ...CONVIDADO, titulo: 'Gravação remarcada', minha_resposta: 'sim' },
+      DE_OUTRO,
+    ]);
+    await act(() => queryClient.invalidateQueries({ queryKey: ['agenda-ocorrencias'] }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('evento-popover')).toHaveTextContent('Gravação remarcada'),
+    );
+    expect(chip.isConnected).toBe(false);
+    const atual = screen.getByTestId('evento-popover');
+    expect(atual).toHaveAttribute('data-anchor-connected', 'true');
+    expect(atual).toHaveAttribute('data-anchor-id', '2');
   });
 
   it('?evento= that does not exist shows a toast and drops the param', async () => {
@@ -351,6 +435,48 @@ describe('AgendaTab', () => {
     const end = new Date(2026, 9, 7, 10);
     fc.props!.eventDrop({ event: { start, end, extendedProps: { ocorrencia: MEU } }, revert });
     expect(moverMock).toHaveBeenCalledWith(MEU, start, end, revert);
+  });
+});
+
+describe('AgendaTab resize', () => {
+  beforeEach(() => {
+    fc.props = null;
+    Object.values(fc.api).forEach((f) => f.mockReset());
+    stubMatchMedia(() => false);
+    vi.mocked(agendaStore.listAgenda).mockResolvedValue([MEU]);
+    vi.mocked(workspaceStore.getWorkspaceUsers).mockResolvedValue(ROSTER);
+  });
+
+  it('leaves the week view when the window shrinks to a phone', async () => {
+    renderTab();
+    await screen.findByText('Reunião de pauta');
+    expect(fc.api.changeView).not.toHaveBeenCalled();
+
+    resizeTo((q) => q.includes('max-width: 767px') || q.includes('max-width: 1100px'));
+
+    await waitFor(() => expect(fc.api.changeView).toHaveBeenCalledWith('listWeek'));
+  });
+});
+
+describe('permitirArraste (eventAllow)', () => {
+  it('rejects moving between the all-day row and the time grid', () => {
+    expect(permitirArraste({ allDay: true }, { allDay: false })).toBe(false);
+    expect(permitirArraste({ allDay: false }, { allDay: true })).toBe(false);
+  });
+
+  it('allows same-kind moves and external drops', () => {
+    expect(permitirArraste({ allDay: false }, { allDay: false })).toBe(true);
+    expect(permitirArraste({ allDay: true }, { allDay: true })).toBe(true);
+    expect(permitirArraste({ allDay: true }, null)).toBe(true);
+  });
+
+  it('is wired into FullCalendar', async () => {
+    stubMatchMedia(() => false);
+    vi.mocked(agendaStore.listAgenda).mockResolvedValue([]);
+    vi.mocked(workspaceStore.getWorkspaceUsers).mockResolvedValue(ROSTER);
+    renderTab();
+    await waitFor(() => expect(fc.props).not.toBeNull());
+    expect(fc.props!.eventAllow).toBe(permitirArraste);
   });
 });
 

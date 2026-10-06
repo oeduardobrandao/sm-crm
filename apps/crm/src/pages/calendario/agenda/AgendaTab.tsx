@@ -106,8 +106,12 @@ export default function AgendaTab() {
   const [periodo, setPeriodo] = useState<Periodo | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState(() => new Date());
   const [filtro, setFiltro] = useState<AgendaFiltro>(lerFiltro);
+  // Only the id is the source of truth: the occurrence is re-read from the
+  // current query data (the snapshot covers rows outside the loaded range) and
+  // the anchor is re-resolved when FullCalendar replaces the chip.
   const [popover, setPopover] = useState<{
-    ocorrencia: AgendaOcorrencia;
+    id: number;
+    snapshot: AgendaOcorrencia;
     anchorEl: HTMLElement;
   } | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -187,36 +191,64 @@ export default function AgendaTab() {
     calRef.current?.getApi().unselect();
   }
 
-  function fecharPopover() {
-    setPopover(null);
-    if (searchParams.has('evento')) {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.delete('evento');
-          return next;
-        },
-        { replace: true },
-      );
-    }
-  }
+  const abrirPopover = useCallback((o: AgendaOcorrencia, anchorEl: HTMLElement) => {
+    setPopover({ id: o.ocorrencia_id, snapshot: o, anchorEl });
+  }, []);
+
+  /** The chip FullCalendar currently shows for an occurrence, else the tab. */
+  const resolverAnchor = useCallback(
+    (id: number): HTMLElement | null =>
+      containerRef.current?.querySelector<HTMLElement>(`[data-ocorrencia-id="${id}"]`) ??
+      containerRef.current,
+    [],
+  );
+
+  const ocorrenciaDoPopover = popover
+    ? (ocorrencias.find((o) => o.ocorrencia_id === popover.id) ?? popover.snapshot)
+    : null;
+  const anchorDoPopover = popover
+    ? popover.anchorEl.isConnected
+      ? popover.anchorEl
+      : resolverAnchor(popover.id)
+    : null;
+
+  // After a refetch FullCalendar re-renders the chips (on its own schedule), so
+  // the stored element can end up detached: swap it for the new chip.
+  useEffect(() => {
+    if (!popover) return;
+    const raf = requestAnimationFrame(() => {
+      if (popover.anchorEl.isConnected) return;
+      const novo = resolverAnchor(popover.id);
+      if (novo) setPopover((p) => (p && p.id === popover.id ? { ...p, anchorEl: novo } : p));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [popover, eventos, resolverAnchor]);
 
   // ---- Deep link: ?evento=<ocorrencia_id> opens it, ?data=yyyy-mm-dd positions --------
   const eventoParam = searchParams.get('evento');
   const dataParam = searchParams.get('data');
   const [pendente, setPendente] = useState<AgendaOcorrencia | null>(null);
 
+  // React Router recreates setSearchParams on every param change: keep it in a
+  // ref so the deep-link effect depends on the id alone.
+  const setSearchParamsRef = useRef(setSearchParams);
+  useEffect(() => {
+    setSearchParamsRef.current = setSearchParams;
+  }, [setSearchParams]);
+  const removerEventoParam = useCallback(() => {
+    setSearchParamsRef.current(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('evento');
+        return next;
+      },
+      { replace: true },
+    );
+  }, []);
+
   useEffect(() => {
     if (eventoParam === null) return;
-    const removerParam = () =>
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.delete('evento');
-          return next;
-        },
-        { replace: true },
-      );
+    const removerParam = removerEventoParam;
     const id = parseInt(eventoParam, 10);
     if (isNaN(id)) {
       removerParam();
@@ -238,7 +270,7 @@ export default function AgendaTab() {
     return () => {
       ativo = false;
     };
-  }, [eventoParam, setSearchParams]);
+  }, [eventoParam, removerEventoParam]);
 
   useEffect(() => {
     if (!dataParam || !DATA_RE.test(dataParam)) return;
@@ -252,12 +284,11 @@ export default function AgendaTab() {
   useEffect(() => {
     if (!pendente) return;
     const abrir = () => {
-      const chip = containerRef.current?.querySelector<HTMLElement>(
-        `[data-ocorrencia-id="${pendente.ocorrencia_id}"]`,
-      );
-      const anchor = chip ?? containerRef.current;
-      if (anchor) setPopover({ ocorrencia: pendente, anchorEl: anchor });
+      const anchor = resolverAnchor(pendente.ocorrencia_id);
+      if (anchor) abrirPopover(pendente, anchor);
       setPendente(null);
+      // Consumed: a tab switch and back (or a reload) must not reopen it.
+      removerEventoParam();
     };
     const alvo = inicioDaOcorrencia(pendente);
     const pronto = periodo !== null && alvo >= periodo.start && alvo < periodo.end && !isFetching;
@@ -267,7 +298,14 @@ export default function AgendaTab() {
     }
     const t = setTimeout(abrir, 1500);
     return () => clearTimeout(t);
-  }, [pendente, periodo, isFetching]);
+  }, [pendente, periodo, isFetching, resolverAnchor, abrirPopover, removerEventoParam]);
+
+  // Desktop -> phone resize: the phone toggle has no "Semana", so leave that view.
+  useEffect(() => {
+    if (isMobile && periodo?.view === 'timeGridWeek') {
+      calRef.current?.getApi().changeView('listWeek');
+    }
+  }, [isMobile, periodo?.view]);
 
   const sidebar = (
     <AgendaSidebar
@@ -325,7 +363,7 @@ export default function AgendaTab() {
           eventos={eventos}
           onDatesSet={onDatesSet}
           onSelect={(inicio, fim, diaInteiro) => abrirCriar(inicio, fim, diaInteiro)}
-          onEventClick={(ocorrencia, anchorEl) => setPopover({ ocorrencia, anchorEl })}
+          onEventClick={abrirPopover}
           onMover={mover}
         />
       </div>
@@ -345,13 +383,13 @@ export default function AgendaTab() {
           document.body,
         )}
 
-      {popover && (
+      {ocorrenciaDoPopover && anchorDoPopover && (
         <EventoPopover
-          ocorrencia={popover.ocorrencia}
-          anchor={popover.anchorEl}
-          onClose={fecharPopover}
+          ocorrencia={ocorrenciaDoPopover}
+          anchor={anchorDoPopover}
+          onClose={() => setPopover(null)}
           onEditar={(o) => {
-            fecharPopover();
+            setPopover(null);
             setForm({ modo: 'editar', ocorrencia: o });
           }}
         />

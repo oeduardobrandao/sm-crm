@@ -70,6 +70,16 @@ function alturaDaVisao(view: AgendaViewType, isMobile: boolean): number | 'auto'
 
 const hora = (d: Date) => format(d, 'HH:mm');
 
+/** Drags may not cross between the all-day row and the time grid: FullCalendar
+ *  then drops the end (allDayMaintainDuration is off) and dia_inteiro is a
+ *  series-level field the drag payload never carries. */
+export function permitirArraste(
+  span: { allDay: boolean },
+  ev: { allDay: boolean } | null,
+): boolean {
+  return !ev || span.allDay === ev.allDay;
+}
+
 function ConteudoDoEvento({ arg }: { arg: EventContentArg }) {
   const o = arg.event.extendedProps.ocorrencia as AgendaOcorrencia;
   const { start, end, allDay, title } = arg.event;
@@ -249,6 +259,7 @@ export default function AgendaView({
               arg.revert,
             )
           }
+          eventAllow={permitirArraste}
           eventDidMount={(arg: EventMountArg) => {
             arg.el.dataset.ocorrenciaId = arg.event.id;
           }}

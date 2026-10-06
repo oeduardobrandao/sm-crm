@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { useEffect } from 'react';
+import { MemoryRouter, useNavigate, type NavigateFunction } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { NicheCalendarDef } from '../nicheCalendars/types';
@@ -115,12 +116,22 @@ vi.mock('@/components/ui/select', async () => {
 import * as store from '../../../store';
 import CalendarioPage from '../CalendarioPage';
 
+const nav: { current: NavigateFunction | null } = { current: null };
+function NavProbe() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    nav.current = navigate;
+  }, [navigate]);
+  return null;
+}
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/calendario']}>
         <CalendarioPage />
+        <NavProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -154,6 +165,36 @@ describe('CalendarioPage — Agenda', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Calendário' }));
     expect(screen.queryByTestId('agenda-tab')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Calendário' })).toBeInTheDocument();
+  });
+
+  it.each(['/calendario?evento=5', '/calendario?data=2026-12-24'])(
+    'switches back to Agenda when %s arrives while another tab is open',
+    async (url) => {
+      renderPage();
+      fireEvent.click(screen.getByRole('button', { name: 'Datas Comemorativas' }));
+      expect(screen.queryByTestId('agenda-tab')).not.toBeInTheDocument();
+
+      act(() => {
+        void nav.current!(url);
+      });
+
+      expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument();
+    },
+  );
+
+  it('switches back again for a new ?evento= even when an older one is still in the URL', async () => {
+    renderPage();
+    act(() => {
+      void nav.current!('/calendario?evento=5');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Calendário' }));
+    expect(screen.queryByTestId('agenda-tab')).not.toBeInTheDocument();
+
+    act(() => {
+      void nav.current!('/calendario?evento=6');
+    });
+    expect(await screen.findByTestId('agenda-tab')).toBeInTheDocument();
   });
 
   it('sets the tab title while mounted and restores the previous one on unmount', () => {
