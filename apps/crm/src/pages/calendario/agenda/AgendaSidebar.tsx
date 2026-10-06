@@ -50,7 +50,8 @@ export interface AgendaSidebarProps {
   onFiltroChange: (f: AgendaFiltro) => void;
   dataSelecionada: Date;
   onDataChange: (d: Date) => void;
-  onCriar: () => void;
+  /** Absent for roles without calendario:editar: the button is not rendered. */
+  onCriar?: () => void;
 }
 
 export default function AgendaSidebar({
@@ -82,10 +83,12 @@ export default function AgendaSidebar({
 
   return (
     <div className="agenda-sidebar">
-      <Button type="button" size="lg" className="agenda-sidebar__criar" onClick={onCriar}>
-        <Plus aria-hidden="true" />
-        Criar evento
-      </Button>
+      {onCriar && (
+        <Button type="button" size="lg" className="agenda-sidebar__criar" onClick={onCriar}>
+          <Plus aria-hidden="true" />
+          Criar evento
+        </Button>
+      )}
 
       <div className="agenda-sidebar__card">
         <Calendar

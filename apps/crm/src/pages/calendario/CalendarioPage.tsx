@@ -720,11 +720,19 @@ export default function CalendarioPage() {
   // on unmount so it doesn't leak into the next route (EntregasPage pattern).
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'Agenda | Mesaas';
     return () => {
       document.title = previousTitle;
     };
   }, []);
+  useEffect(() => {
+    const nome =
+      activeTab === 'agenda'
+        ? 'Agenda'
+        : activeTab === 'financeiro'
+          ? 'Calendário'
+          : 'Datas Comemorativas';
+    document.title = `${nome} | Mesaas`;
+  }, [activeTab]);
   const nicheKeys = NICHE_CALENDARS.map((n) => n.key);
   const [activeNicheKey, setActiveNicheKey] = useState(() =>
     readStoredNicheKey(nicheKeys, DEFAULT_NICHE_KEY),

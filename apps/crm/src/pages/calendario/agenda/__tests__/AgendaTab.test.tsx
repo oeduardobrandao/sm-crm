@@ -105,8 +105,13 @@ vi.mock('../useAgendaMutations', () => ({
 }));
 
 // ---- App modules ------------------------------------------------------------------
+let podeEditar: boolean | 'unknown' = true;
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u-me' } }),
+  useAuth: () => ({
+    user: { id: 'u-me' },
+    can: (mod: string, acao?: string) =>
+      mod === 'calendario' && acao === 'editar' ? podeEditar : true,
+  }),
 }));
 vi.mock('../../../../store/agenda', () => ({
   AGENDA_QUERY_KEY: 'agenda-ocorrencias',
@@ -234,6 +239,7 @@ function resizeTo(matching: (q: string) => boolean) {
 
 describe('AgendaTab', () => {
   beforeEach(() => {
+    podeEditar = true;
     localStorage.clear();
     fc.props = null;
     Object.values(fc.api).forEach((f) => f.mockReset());
@@ -243,6 +249,24 @@ describe('AgendaTab', () => {
     vi.mocked(agendaStore.listAgenda).mockResolvedValue([MEU, CONVIDADO, DE_OUTRO]);
     vi.mocked(agendaStore.getAgendaOcorrencia).mockResolvedValue(null);
     vi.mocked(workspaceStore.getWorkspaceUsers).mockResolvedValue(ROSTER);
+  });
+
+  it.each([false, 'unknown'] as const)(
+    'without calendario:editar (%s) there is no way to start creating an event',
+    async (valor) => {
+      podeEditar = valor;
+      renderTab();
+      await waitFor(() => expect(fc.props).not.toBeNull());
+      expect(screen.queryByRole('button', { name: 'Criar evento' })).toBeNull();
+      expect(fc.props?.selectable).toBe(false);
+    },
+  );
+
+  it('with calendario:editar the create button and select-to-create are on', async () => {
+    renderTab();
+    await waitFor(() => expect(fc.props).not.toBeNull());
+    expect(screen.getAllByRole('button', { name: 'Criar evento' }).length).toBeGreaterThan(0);
+    expect(fc.props?.selectable).toBe(true);
   });
 
   it('fetches the range FullCalendar reports through datesSet and renders the events', async () => {

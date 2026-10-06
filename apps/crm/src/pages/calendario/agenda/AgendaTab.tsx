@@ -97,8 +97,10 @@ const inicioDaOcorrencia = (o: AgendaOcorrencia) =>
   o.dia_inteiro ? parseDateOnly(o.data_inicio_local) : new Date(o.inicio);
 
 export default function AgendaTab() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const meuId = user?.id ?? null;
+  // View-only roles never see the create entry points ('unknown' = still resolving).
+  const podeCriar = can('calendario', 'editar') === true;
   const isMobile = useMediaQuery('(max-width: 767px)');
   const sidebarEmSheet = useMediaQuery('(max-width: 1100px)');
   const [searchParams, setSearchParams] = useSearchParams();
@@ -321,7 +323,7 @@ export default function AgendaTab() {
         calRef.current?.getApi().gotoDate(d);
         setSheetAberto(false);
       }}
-      onCriar={() => abrirCriar()}
+      onCriar={podeCriar ? () => abrirCriar() : undefined}
     />
   );
 
@@ -330,7 +332,7 @@ export default function AgendaTab() {
       {sidebarEmSheet ? (
         <>
           <div className="agenda-barra">
-            {!isMobile && (
+            {!isMobile && podeCriar && (
               <Button type="button" onClick={() => abrirCriar()}>
                 <Plus aria-hidden="true" />
                 Criar evento
@@ -364,7 +366,9 @@ export default function AgendaTab() {
           titulo={periodo?.titulo ?? ''}
           eventos={eventos}
           onDatesSet={onDatesSet}
-          onSelect={(inicio, fim, diaInteiro) => abrirCriar(inicio, fim, diaInteiro)}
+          onSelect={
+            podeCriar ? (inicio, fim, diaInteiro) => abrirCriar(inicio, fim, diaInteiro) : undefined
+          }
           onEventClick={abrirPopover}
           onMover={mover}
         />
@@ -373,6 +377,7 @@ export default function AgendaTab() {
       {/* Portaled: CalendarioPage wraps the tab in .animate-up, whose transform
           would make it the containing block of a position: fixed child. */}
       {isMobile &&
+        podeCriar &&
         createPortal(
           <button
             type="button"

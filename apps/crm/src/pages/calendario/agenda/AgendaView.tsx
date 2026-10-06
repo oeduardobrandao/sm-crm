@@ -143,7 +143,8 @@ export interface AgendaViewProps {
   titulo: string;
   eventos: EventInput[];
   onDatesSet: (arg: DatesSetArg) => void;
-  onSelect: (inicio: Date, fim: Date, diaInteiro: boolean) => void;
+  /** Absent for roles without calendario:editar: select-to-create is off. */
+  onSelect?: (inicio: Date, fim: Date, diaInteiro: boolean) => void;
   onEventClick: (o: AgendaOcorrencia, el: HTMLElement) => void;
   onMover: (o: AgendaOcorrencia, novoInicio: Date, novoFim: Date, revert: () => void) => void;
 }
@@ -221,7 +222,7 @@ export default function AgendaView({
           headerToolbar={false}
           firstDay={1}
           nowIndicator
-          selectable
+          selectable={onSelect !== undefined}
           selectMirror
           dayMaxEvents
           slotMinTime="06:00:00"
@@ -238,7 +239,7 @@ export default function AgendaView({
           eventDisplay="block"
           events={eventos}
           datesSet={onDatesSet}
-          select={(arg) => onSelect(arg.start, arg.end, arg.allDay)}
+          select={(arg) => onSelect?.(arg.start, arg.end, arg.allDay)}
           eventClick={(arg: EventClickArg) => {
             arg.jsEvent.preventDefault();
             onEventClick(arg.event.extendedProps.ocorrencia as AgendaOcorrencia, arg.el);

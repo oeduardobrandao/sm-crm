@@ -205,6 +205,17 @@ describe('CalendarioPage — Agenda', () => {
     unmount();
     expect(document.title).toBe('Anterior | Mesaas');
   });
+
+  it('names the tab title after the active tab', () => {
+    document.title = 'Anterior | Mesaas';
+    const { unmount } = renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Calendário' }));
+    expect(document.title).toBe('Calendário | Mesaas');
+    fireEvent.click(screen.getByRole('button', { name: 'Datas Comemorativas' }));
+    expect(document.title).toBe('Datas Comemorativas | Mesaas');
+    unmount();
+    expect(document.title).toBe('Anterior | Mesaas');
+  });
 });
 
 describe('CalendarioPage — Datas Comemorativas', () => {
