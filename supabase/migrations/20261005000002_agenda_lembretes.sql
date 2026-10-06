@@ -31,8 +31,17 @@ CREATE INDEX agenda_lembretes_email_idx ON public.agenda_lembretes (email_lease_
 CREATE INDEX agenda_lembretes_user_idx ON public.agenda_lembretes (user_id);
 CREATE INDEX agenda_lembretes_criado_idx ON public.agenda_lembretes (criado_em);
 
--- the tick is driven by the series that have reminders
-CREATE INDEX agenda_eventos_com_lembretes_idx ON public.agenda_eventos (id) WHERE cardinality(lembretes) > 0;
+-- The tick is driven by the series with reminders that can still have an
+-- occurrence in the window (see agenda_tick_lembretes): one-offs by dtstart,
+-- recurring series by ate (NULL ate, no end, as 'infinity' so the range stays
+-- sargable). Occurrences moved by hand out of a finished series are found
+-- through the third index.
+CREATE INDEX agenda_eventos_lembretes_avulso_idx ON public.agenda_eventos (dtstart)
+  WHERE cardinality(lembretes) > 0 AND freq IS NULL;
+CREATE INDEX agenda_eventos_lembretes_serie_idx ON public.agenda_eventos ((coalesce(ate, 'infinity'::date)))
+  WHERE cardinality(lembretes) > 0 AND freq IS NOT NULL;
+CREATE INDEX agenda_ocorrencias_movidas_idx ON public.agenda_ocorrencias (inicio)
+  WHERE horario_alterado AND NOT cancelada;
 
 -- service_role only: no tenant ever reads the ledger
 ALTER TABLE public.agenda_lembretes ENABLE ROW LEVEL SECURITY;
@@ -79,6 +88,17 @@ DECLARE
   v_secret text;
 BEGIN
   FOR r IN
+    -- Candidate series: a reminder is due when inicio is in (p_now - 15 min + m,
+    -- p_now + m] and m >= -1440, so no occurrence starting before
+    -- p_now - 1 day 15 min can be due. A series is "live" when it can still have
+    -- such an occurrence: a one-off whose dtstart is at most 2 local days old,
+    -- or a recurring series with no ate or an ate at most 2 local days old (a
+    -- contagem series has no ate and stays live). The exact test is per series
+    -- tz; the coarse UTC bound in front of it (3 days covers any tz offset) is
+    -- the sargable superset the partial indexes serve. An occurrence moved by
+    -- hand past its series' ate is the one thing the bound misses, so the second
+    -- branch reads moved occurrences in the window through their own index, for
+    -- series that are NOT live (the two branches never overlap).
     WITH cand AS (
       SELECT o.id AS ocorrencia_id, o.conta_id, o.inicio, o.fim, o.data_original,
              CASE WHEN 'titulo' = ANY (o.campos_sobrescritos) THEN o.titulo ELSE e.titulo END AS titulo,
@@ -93,6 +113,28 @@ BEGIN
              FOR KEY SHARE SKIP LOCKED
         ) o ON true
        WHERE cardinality(e.lembretes) > 0
+         AND ((e.freq IS NULL AND e.dtstart >= (p_now AT TIME ZONE 'UTC') - interval '3 days')
+              OR (e.freq IS NOT NULL AND coalesce(e.ate, 'infinity'::date) >= ((p_now AT TIME ZONE 'UTC') - interval '3 days')::date))
+         AND CASE WHEN e.freq IS NULL THEN e.dtstart >= (p_now AT TIME ZONE e.tz) - interval '2 days'
+                  ELSE e.ate IS NULL OR e.ate >= ((p_now AT TIME ZONE e.tz) - interval '2 days')::date END
+      UNION ALL
+      SELECT o.id, o.conta_id, o.inicio, o.fim, o.data_original,
+             CASE WHEN 'titulo' = ANY (o.campos_sobrescritos) THEN o.titulo ELSE e.titulo END,
+             e.id, e.tz, e.dia_inteiro, m.m
+        FROM (
+          SELECT oc.* FROM public.agenda_ocorrencias oc
+           WHERE oc.horario_alterado AND NOT oc.cancelada
+             AND oc.inicio >  p_now - interval '1 day 15 minutes'
+             AND oc.inicio <= p_now + interval '28 days'
+             FOR KEY SHARE SKIP LOCKED
+        ) o
+        JOIN public.agenda_eventos e ON e.id = o.evento_id
+       CROSS JOIN LATERAL unnest(e.lembretes) AS m(m)
+       WHERE cardinality(e.lembretes) > 0
+         AND o.inicio >  p_now - interval '15 minutes' + make_interval(mins => m.m)
+         AND o.inicio <= p_now + make_interval(mins => m.m)
+         AND NOT CASE WHEN e.freq IS NULL THEN e.dtstart >= (p_now AT TIME ZONE e.tz) - interval '2 days'
+                      ELSE e.ate IS NULL OR e.ate >= ((p_now AT TIME ZONE e.tz) - interval '2 days')::date END
     ), dest AS (
       SELECT c.*, ap.user_id
         FROM cand c
@@ -228,7 +270,12 @@ GRANT EXECUTE ON FUNCTION public.agenda_claim_emails_lembrete(int) TO service_ro
 
 -- Internal (service_role). Settles one claimed row: ok -> 'enviado'; failure ->
 -- back to 'pendente' while email_tentativas < 3, else 'falhou'. Only a row that
--- is 'enviando' changes, so a late or repeated mark is a no-op.
+-- is 'enviando' changes, so a repeated mark is a no-op, and only while its
+-- lease ended at most 5 minutes ago, so a send that outlived its 2-minute lease
+-- by more than that cannot settle the row. Limitation: the mark carries no
+-- claim token (the handler's 5 arguments are fixed), so a late mark that lands
+-- after another run re-claimed the row (fresh lease) still settles that newer
+-- claim. The fence only stops very stale marks.
 CREATE OR REPLACE FUNCTION public.agenda_marcar_email_lembrete(
   p_ocorrencia_id bigint, p_user_id uuid, p_minutos int, p_inicio_alvo timestamptz, p_ok boolean)
 RETURNS void LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public AS $$
@@ -239,7 +286,8 @@ RETURNS void LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public AS 
          email_lease_ate = NULL
    WHERE l.ocorrencia_id = p_ocorrencia_id AND l.user_id = p_user_id
      AND l.minutos = p_minutos AND l.inicio_alvo = p_inicio_alvo
-     AND l.email_status = 'enviando';
+     AND l.email_status = 'enviando'
+     AND l.email_lease_ate >= now() - interval '5 minutes';
 $$;
 REVOKE ALL ON FUNCTION public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean) TO service_role;

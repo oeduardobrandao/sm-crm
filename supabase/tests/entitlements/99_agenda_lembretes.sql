@@ -295,6 +295,90 @@ begin
   raise notice 'PASS 99_agenda_lembretes (stale, kick, cleanup)';
 end $$;
 
+-- ============ block 3b: bounded tick candidates, mark fence ============
+do $$
+declare
+  v_ws uuid;
+  v_o uuid := gen_random_uuid();
+  v_oc bigint; v_ev bigint;
+  v_n int;
+  v_status text;
+begin
+  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  delete from agenda_lembretes;
+  v_ws := et_make_workspace('start');
+  insert into auth.users (id) values (v_o);
+  insert into workspace_members (user_id, workspace_id, role) values (v_o, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_o;
+
+  -- edge of the bound: a -1440 reminder on yesterday's one-off and on the last
+  -- occurrence of a daily series that ended yesterday still fire
+  v_oc := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2026-10-04T14:00:00","fim_local":"2026-10-04T15:00:00","lembretes":[-1440]}'), '{}');
+  assert pg_temp.tick('2026-10-05 14:05-03') = 1, 'one-off: -1440 reminder at the bound not fired';
+  -- each case retires its occurrences so later ticks count only the next one
+  update agenda_ocorrencias set cancelada = true where conta_id = v_ws;
+  v_oc := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('inicio_local', '2026-09-28T14:00:00', 'fim_local', '2026-09-28T15:00:00',
+    'lembretes', jsonb_build_array(-1440),
+    'regra', jsonb_build_object('freq','daily','intervalo',1,'dias_semana',null,'mensal_modo',null,'mensal_ordinal',null,'ate','2026-10-04','contagem',null))), '{}');
+  assert pg_temp.tick('2026-10-05 14:05-03') = 1, 'series ended yesterday: -1440 reminder on its last occurrence not fired';
+  update agenda_ocorrencias set cancelada = true where conta_id = v_ws;
+
+  -- a one-off 3 days old is not probed: its occurrence is forced into the
+  -- window (an inconsistent state no RPC produces) and still gets no claim
+  v_oc := pg_temp.criar(v_o, pg_temp.p('{"inicio_local":"2026-10-02T14:00:00","fim_local":"2026-10-02T15:00:00","lembretes":[10]}'), '{}');
+  update agenda_ocorrencias set inicio = '2026-10-05 14:05-03', fim = '2026-10-05 15:05-03' where id = v_oc;
+  assert pg_temp.tick('2026-10-05 14:00-03') = 0, 'a one-off 3 days old was probed';
+  perform 1 from agenda_lembretes where ocorrencia_id = v_oc;
+  assert not found, 'ledger row for a one-off 3 days old';
+  update agenda_ocorrencias set cancelada = true where conta_id = v_ws;
+
+  -- a series whose ate passed 3 days ago is not probed either
+  v_oc := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('inicio_local', '2026-09-28T14:00:00', 'fim_local', '2026-09-28T15:00:00',
+    'lembretes', jsonb_build_array(10),
+    'regra', jsonb_build_object('freq','daily','intervalo',1,'dias_semana',null,'mensal_modo',null,'mensal_ordinal',null,'ate','2026-10-02','contagem',null))), '{}');
+  select o.evento_id into v_ev from agenda_ocorrencias o where o.id = v_oc;
+  select o.id into v_oc from agenda_ocorrencias o where o.evento_id = v_ev and o.data_original = '2026-10-02';
+  update agenda_ocorrencias set inicio = '2026-10-05 16:05-03', fim = '2026-10-05 17:05-03' where id = v_oc;
+  assert pg_temp.tick('2026-10-05 16:00-03') = 0, 'a series ended 3 days ago was probed';
+  perform 1 from agenda_lembretes where ocorrencia_id = v_oc;
+  assert not found, 'ledger row for a series ended 3 days ago';
+  -- but an occurrence moved by hand past that ate (horario_alterado) is found
+  update agenda_ocorrencias set horario_alterado = true where id = v_oc;
+  assert pg_temp.tick('2026-10-05 16:00-03') = 1, 'occurrence moved past ate missed';
+  assert pg_temp.tick('2026-10-05 16:01-03') = 0, 'moved occurrence claimed twice';
+  perform 1 from agenda_lembretes where ocorrencia_id = v_oc and minutos = 10 and inicio_alvo = '2026-10-05 16:05-03';
+  assert found, 'moved occurrence ledger row';
+  update agenda_ocorrencias set cancelada = true where conta_id = v_ws;
+  -- a moved occurrence of a live series is claimed once (the branches never overlap)
+  v_oc := pg_temp.criar(v_o, pg_temp.p(jsonb_build_object('inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'lembretes', jsonb_build_array(10), 'regra', jsonb_build_object('freq','daily','intervalo',1,'dias_semana',null,'mensal_modo',null,'mensal_ordinal',null,'ate',null,'contagem',null))), '{}');
+  select o.evento_id into v_ev from agenda_ocorrencias o where o.id = v_oc;
+  select o.id into v_oc from agenda_ocorrencias o where o.evento_id = v_ev and o.data_original = '2026-10-06';
+  update agenda_ocorrencias set inicio = '2026-10-06 18:05-03', fim = '2026-10-06 19:05-03', horario_alterado = true where id = v_oc;
+  assert pg_temp.tick('2026-10-06 18:00-03') = 1, 'moved occurrence of a live series not claimed exactly once';
+
+  -- mark fence: a mark more than 5 minutes after the lease ended is dropped
+  delete from agenda_lembretes where ocorrencia_id <> v_oc;
+  execute 'set local role service_role';
+  select count(*) into v_n from public.agenda_claim_emails_lembrete(10);
+  execute 'reset role';
+  assert v_n = 1, format('fence setup: %s claimed', v_n);
+  update agenda_lembretes set email_lease_ate = now() - interval '6 minutes' where ocorrencia_id = v_oc;
+  execute 'set local role service_role';
+  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, '2026-10-06 18:05-03', true);
+  execute 'reset role';
+  select email_status into v_status from agenda_lembretes where ocorrencia_id = v_oc;
+  assert v_status = 'enviando', format('a very stale mark landed: %s', v_status);
+  update agenda_lembretes set email_lease_ate = now() - interval '4 minutes' where ocorrencia_id = v_oc;
+  execute 'set local role service_role';
+  perform public.agenda_marcar_email_lembrete(v_oc, v_o, 10, '2026-10-06 18:05-03', true);
+  execute 'reset role';
+  select email_status into v_status from agenda_lembretes where ocorrencia_id = v_oc;
+  assert v_status = 'enviado', format('a mark within 5 minutes of the lease did not land: %s', v_status);
+
+  raise notice 'PASS 99_agenda_lembretes (bounded candidates, mark fence)';
+end $$;
+
 -- ============ block 4: rollback runbook (inside this transaction, rolled back) ============
 \i docs/superpowers/specs/assets/2026-10-05-agenda-rollback.sql
 
