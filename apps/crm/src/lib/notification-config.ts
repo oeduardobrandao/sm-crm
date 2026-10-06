@@ -1,8 +1,13 @@
 import {
+  AlarmClock,
   AlertCircle,
   AlertTriangle,
   AtSign,
   Bell,
+  CalendarCheck,
+  CalendarClock,
+  CalendarPlus,
+  CalendarX,
   CheckCircle,
   CheckSquare,
   ClipboardCheck,
@@ -20,6 +25,8 @@ import {
   UserPlus,
   type LucideIcon,
 } from 'lucide-react';
+import { format, isValid, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import type { NotificationType } from '../store';
 import { STATUS_LABELS } from '../pages/entregas/postLabels';
 import { formatStorageBytes } from '../components/usage/usage-meter-state';
@@ -45,6 +52,45 @@ export const NOTIFICATION_FALLBACK_ICON: LucideIcon = Bell;
 
 const s = (v: unknown, fallback: string): string =>
   typeof v === 'string' && v.length > 0 ? v : fallback;
+
+/** "seg., 5 de out., 14:00" (all-day: no time). Shown in the viewer's timezone. */
+function formatEventWhen(m: Record<string, unknown>): string {
+  const allDay = m.dia_inteiro === true;
+  const raw = allDay ? m.data_local : m.inicio;
+  const d = typeof raw === 'string' ? parseISO(raw) : null;
+  if (!d || !isValid(d)) return '';
+  // EEEEEE is the short weekday ("seg"); EEE would give "segunda" in the ptBR locale.
+  return format(d, allDay ? "EEEEEE'.,' d 'de' MMM'.'" : "EEEEEE'.,' d 'de' MMM'.,' HH:mm", {
+    locale: ptBR,
+  });
+}
+
+/** Reminder lead prefix. `minutos` = minutes before start (negative = after). */
+function reminderPrefix(m: Record<string, unknown>): string {
+  const min = typeof m.minutos === 'number' ? m.minutos : null;
+  if (min === null) return 'Lembrete';
+  const days = Math.ceil(min / 1440);
+  if (m.dia_inteiro === true) {
+    if (min <= 0) return 'Hoje';
+    return days === 1 ? 'Amanhã' : `Em ${days} dias`;
+  }
+  if (min <= 0) return 'Agora';
+  if (min >= 1440) return days === 1 ? 'Amanhã' : `Em ${days} dias`;
+  if (min >= 60 && min % 60 === 0) {
+    const h = min / 60;
+    return `Em ${h} ${h === 1 ? 'hora' : 'horas'}`;
+  }
+  return `Em ${min} ${min === 1 ? 'minuto' : 'minutos'}`;
+}
+
+/** "{titulo} · {data}" (date omitted when unknown). */
+function eventBody(m: Record<string, unknown>): string {
+  const when = formatEventWhen(m);
+  const title = s(m.titulo, 'Evento');
+  return when ? `${title} · ${when}` : title;
+}
+
+const RSVP_LABELS: Record<string, string> = { sim: 'Sim', nao: 'Não', talvez: 'Talvez' };
 
 export function getNotificationDisplay(
   type: NotificationType,
@@ -237,6 +283,49 @@ export function getNotificationDisplay(
         body: `${filesCount} ${filesCount === 1 ? 'arquivo removido' : 'arquivos removidos'} · ${formatStorageBytes(bytesFreed)} liberados`,
       };
     }
+    case 'event_invited': {
+      const actor = typeof m.ator_nome === 'string' && m.ator_nome ? m.ator_nome : null;
+      return {
+        icon: CalendarPlus,
+        tone: 'teal',
+        title: actor ? `${actor} convidou você` : 'Novo convite',
+        body: eventBody(m),
+      };
+    }
+    case 'event_updated':
+      return {
+        icon: CalendarClock,
+        tone: 'warning',
+        title: `Evento alterado: ${s(m.titulo, 'Evento')}`,
+        body: formatEventWhen(m),
+      };
+    case 'event_cancelled':
+      return {
+        icon: CalendarX,
+        tone: 'danger',
+        title:
+          m.motivo === 'removido'
+            ? `Você foi removido de ${s(m.titulo, 'Evento')}`
+            : `Evento cancelado: ${s(m.titulo, 'Evento')}`,
+        body: formatEventWhen(m),
+      };
+    case 'event_rsvp': {
+      const resposta = RSVP_LABELS[s(m.resposta, '')];
+      const actor = s(m.ator_nome, 'Alguém');
+      return {
+        icon: CalendarCheck,
+        tone: m.resposta === 'nao' ? 'warning' : 'success',
+        title: resposta ? `${actor} respondeu: ${resposta}` : `${actor} respondeu ao convite`,
+        body: eventBody(m),
+      };
+    }
+    case 'event_reminder':
+      return {
+        icon: AlarmClock,
+        tone: 'primary',
+        title: `${reminderPrefix(m)}: ${s(m.titulo, 'Evento')}`,
+        body: formatEventWhen(m),
+      };
     default:
       // Resilience: a notification type the DB allows but the UI doesn't know yet
       // (e.g. added by a migration ahead of the frontend) must never crash the list.

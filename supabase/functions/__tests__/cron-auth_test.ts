@@ -7,6 +7,7 @@ import { createPostMediaCleanupCronHandler } from "../post-media-cleanup-cron/ha
 import { createPublishCronHandler } from "../instagram-publish-cron/handler.ts";
 import { createNotificationCleanupCronHandler } from "../notification-cleanup-cron/handler.ts";
 import { createNotificationDeadlineCronHandler } from "../notification-deadline-cron/handler.ts";
+import { createAgendaLembretesEmailHandler } from "../agenda-lembretes-email/handler.ts";
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 const timingSafeEqual = (a: string, b: string) => a === b;
@@ -166,4 +167,17 @@ Deno.test("notification-deadline-cron delegates to run callback when secret is v
   }));
   assertEquals(response.status, 200);
   assertEquals(called, true);
+});
+
+Deno.test("agenda-lembretes-email rejects requests without the shared cron secret", async () => {
+  let called = false;
+  const handler = createAgendaLembretesEmailHandler({
+    cronSecret: "segredo-cron",
+    timingSafeEqual,
+    run: async () => { called = true; return new Response("ok"); },
+  });
+
+  const response = await handler(new Request("https://example.test/agenda-lembretes-email"));
+  assertEquals(response.status, 401);
+  assertEquals(called, false);
 });

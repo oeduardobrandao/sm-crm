@@ -17,6 +17,7 @@ import {
   type NotificationEmailType,
 } from '@/store/notificationPrefs';
 import { INAPP_PREFS_KEY } from '@/hooks/useNotifications';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import type { NotificationType } from '@/store/notifications';
 
 const INAPP_PREFS_QUERY_KEY = ['notification-inapp-prefs-page'];
@@ -35,10 +36,14 @@ const enabledOf = (prefs: Record<string, boolean> | undefined, type: string) =>
 
 const SAVE_ERROR_MESSAGE = 'Não foi possível salvar. Tente novamente.';
 
-/** "Suas notificações": in-app x e-mail matrix for all 22 catalog types,
+/** "Suas notificações": in-app x e-mail matrix for all catalog types,
  * grouped by category, plus a master "Pausar tudo" row per channel. */
 export default function SuasNotificacoesSection() {
   const qc = useQueryClient();
+  // The agenda_* types only make sense where the Agenda exists (feature_agenda). Hidden
+  // here, not in the catalog: an old notification still renders in the bell.
+  const { features } = useWorkspaceLimits();
+  const agendaAtiva = features?.feature_agenda === true;
 
   const { data: inappPrefs, isLoading: inappLoading } = useQuery({
     queryKey: INAPP_PREFS_QUERY_KEY,
@@ -159,60 +164,69 @@ export default function SuasNotificacoesSection() {
         </span>
       </div>
 
-      {CATEGORY_ORDER.map((category) => (
-        <div key={category} className="mt-4">
-          <h3 className="mb-2 text-sm font-semibold text-[color:var(--text-main)]">
-            {CATEGORY_LABELS[category]}
-          </h3>
-          <div className="divide-y divide-[color:var(--border-color)]">
-            {CATALOG_ROWS.filter((row) => row.category === category).map((row) => {
-              // Narrowed via the catalog-derived type guard, so the mutate call
-              // below needs no cast to NotificationEmailType.
-              const emailType = isEmailEligibleType(row.type) ? row.type : null;
-              return (
-                <div
-                  key={row.type}
-                  className="grid grid-cols-[1fr_72px_72px] items-center gap-2 py-3"
-                >
-                  <div>
-                    <div className="font-medium">{row.label}</div>
-                    <div className="text-sm text-[color:var(--text-muted)]">Quando: {row.when}</div>
-                    <div className="text-sm text-[color:var(--text-muted)]">
-                      Quem recebe: {row.recipients}
+      {CATEGORY_ORDER.map((category) => {
+        const rows = CATALOG_ROWS.filter(
+          (row) => row.category === category && (agendaAtiva || row.category !== 'agenda'),
+        );
+        // No empty "Agenda" header when every row of the category is hidden.
+        if (rows.length === 0) return null;
+        return (
+          <div key={category} className="mt-4">
+            <h3 className="mb-2 text-sm font-semibold text-[color:var(--text-main)]">
+              {CATEGORY_LABELS[category]}
+            </h3>
+            <div className="divide-y divide-[color:var(--border-color)]">
+              {rows.map((row) => {
+                // Narrowed via the catalog-derived type guard, so the mutate call
+                // below needs no cast to NotificationEmailType.
+                const emailType = isEmailEligibleType(row.type) ? row.type : null;
+                return (
+                  <div
+                    key={row.type}
+                    className="grid grid-cols-[1fr_72px_72px] items-center gap-2 py-3"
+                  >
+                    <div>
+                      <div className="font-medium">{row.label}</div>
+                      <div className="text-sm text-[color:var(--text-muted)]">
+                        Quando: {row.when}
+                      </div>
+                      <div className="text-sm text-[color:var(--text-muted)]">
+                        Quem recebe: {row.recipients}
+                      </div>
                     </div>
-                  </div>
-                  <span className="flex justify-center">
-                    <Switch
-                      aria-label={`${row.label} (no app)`}
-                      disabled={inappPaused}
-                      checked={enabledOf(inappPrefs, row.type)}
-                      onCheckedChange={(v) => saveInapp.mutate({ type: row.type, enabled: v })}
-                    />
-                  </span>
-                  <span className="flex justify-center">
-                    {emailType ? (
+                    <span className="flex justify-center">
                       <Switch
-                        aria-label={`${row.label} (e-mail)`}
-                        disabled={emailPaused}
-                        checked={enabledOf(emailPrefs, row.type)}
-                        onCheckedChange={(v) => saveEmail.mutate({ type: emailType, enabled: v })}
+                        aria-label={`${row.label} (no app)`}
+                        disabled={inappPaused}
+                        checked={enabledOf(inappPrefs, row.type)}
+                        onCheckedChange={(v) => saveInapp.mutate({ type: row.type, enabled: v })}
                       />
-                    ) : (
-                      <span
-                        className="text-center text-[color:var(--text-muted)]"
-                        title="Este tipo não vira e-mail"
-                        aria-label={`${row.label}: este tipo não vira e-mail`}
-                      >
-                        ·
-                      </span>
-                    )}
-                  </span>
-                </div>
-              );
-            })}
+                    </span>
+                    <span className="flex justify-center">
+                      {emailType ? (
+                        <Switch
+                          aria-label={`${row.label} (e-mail)`}
+                          disabled={emailPaused}
+                          checked={enabledOf(emailPrefs, row.type)}
+                          onCheckedChange={(v) => saveEmail.mutate({ type: emailType, enabled: v })}
+                        />
+                      ) : (
+                        <span
+                          className="text-center text-[color:var(--text-muted)]"
+                          title="Este tipo não vira e-mail"
+                          aria-label={`${row.label}: este tipo não vira e-mail`}
+                        >
+                          ·
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

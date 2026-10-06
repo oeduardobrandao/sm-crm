@@ -64,7 +64,17 @@ declare
     'public.tarefas_serie_ao_excluir_fn()',
     'public.tarefa_series_apos_retomar_fn()',
     'public.tarefa_serie_validar_refs(uuid, bigint, bigint)',
-    'public.generate_recurring_tarefas()'
+    'public.generate_recurring_tarefas()',
+    'public.agenda_materializar(bigint, date)',
+    'public.agenda_regenerar(bigint, boolean)',
+    'public.agenda_gerar_horizonte()',
+    'public.agenda_validar_payload(uuid, jsonb, public.agenda_eventos)',
+    'public.agenda_notificar(uuid, bigint, bigint, text, uuid[], uuid, jsonb)',
+    'public.agenda_pode_editar(public.agenda_eventos, uuid, uuid)',
+    'public.agenda_definir_participantes(bigint, uuid, uuid, uuid[])',
+    'public.agenda_tick_lembretes(timestamptz, boolean)',
+    'public.agenda_claim_emails_lembrete(int)',
+    'public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean)'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
@@ -93,13 +103,17 @@ end $$;
 --   - effective_plan_feature: called from get_workflow_analytics
 --     (LANGUAGE sql STABLE SECURITY INVOKER) -- SECURITY INVOKER runs the whole
 --     function body, including internal calls, as the caller.
+--   - agenda_pode_ver_evento: called directly inside the RLS SELECT policy on
+--     agenda_eventos (20261005000001_agenda_eventos.sql), so it evaluates as the
+--     querying role.
 -- Only anon is revoked (same pattern already used by popup_trigger_matches).
 do $$
 declare
   v_fn text;
   v_fns text[] := array[
     'public.resolve_workspace_plan(uuid)',
-    'public.effective_plan_feature(uuid, text)'
+    'public.effective_plan_feature(uuid, text)',
+    'public.agenda_pode_ver_evento(bigint, boolean, uuid)'
   ];
 begin
   foreach v_fn in array v_fns loop

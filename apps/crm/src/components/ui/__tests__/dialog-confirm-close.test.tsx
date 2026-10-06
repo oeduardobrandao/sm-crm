@@ -86,3 +86,31 @@ describe('DialogContent close confirmation', () => {
     expect(hasUnsavedWork()).toBe(false);
   });
 });
+
+describe('DialogContent layout', () => {
+  it('default layout keeps the built-in Close button', () => {
+    render(
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent>
+          <DialogTitle>Título</DialogTitle>
+          <p>corpo</p>
+        </DialogContent>
+      </Dialog>,
+    );
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy();
+  });
+
+  it('fullscreen layout renders no built-in Close button and keeps the scroll hook', () => {
+    render(
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent layout="fullscreen">
+          <DialogTitle>Título</DialogTitle>
+          <p>corpo</p>
+        </DialogContent>
+      </Dialog>,
+    );
+    expect(screen.queryByRole('button', { name: /close/i })).toBeNull();
+    expect(document.querySelector('[data-dialog-scroll]')).toBeTruthy();
+    expect(screen.getByRole('dialog').className).toContain('inset-0');
+  });
+});

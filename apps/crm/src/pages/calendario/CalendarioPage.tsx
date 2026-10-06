@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Globe, Flag } from 'lucide-react';
@@ -43,6 +44,11 @@ import {
   readStoredNicheKey,
   writeStoredNicheKey,
 } from './nicheCalendars/registry';
+import { Spinner } from '@/components/ui/spinner';
+import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+
+// Lazy: FullCalendar is heavy and workspaces without feature_agenda never render it.
+const AgendaTab = lazy(() => import('./agenda/AgendaTab'));
 
 // ---- Types ----
 interface DeadlineEvent {
@@ -702,7 +708,47 @@ function NicheCalendar({ niche }: { niche: NicheCalendarDef }) {
 
 // ---- Main Page ----
 export default function CalendarioPage() {
-  const [activeTab, setActiveTab] = useState<'financeiro' | 'comemorativas'>('financeiro');
+  // Agenda ships behind the `feature_agenda` plan flag. Off (or still unknown): the page is
+  // the one that existed before the Agenda, with no Agenda tab.
+  const { features } = useWorkspaceLimits();
+  const agendaAtiva = features?.feature_agenda === true;
+  // The user's own pick; the effective tab is derived so the default follows the flag
+  // without an effect (and never selects a tab that is not rendered).
+  const [escolha, setEscolha] = useState<'agenda' | 'financeiro' | 'comemorativas' | null>(null);
+  const activeTab: 'agenda' | 'financeiro' | 'comemorativas' =
+    escolha && (escolha !== 'agenda' || agendaAtiva)
+      ? escolha
+      : agendaAtiva
+        ? 'agenda'
+        : 'financeiro';
+  const [searchParams] = useSearchParams();
+  const eventoParam = searchParams.get('evento');
+  const dataParam = searchParams.get('data');
+
+  // A notification can link here while the page is already open on another tab.
+  // Keyed on the values, not a boolean: a new ?evento= must switch back even when
+  // a previous one is still in the URL.
+  useEffect(() => {
+    if (agendaAtiva && (eventoParam !== null || dataParam !== null)) setEscolha('agenda');
+  }, [agendaAtiva, eventoParam, dataParam]);
+
+  // App route outside usePageMeta: set the tab title and restore the previous one
+  // on unmount so it doesn't leak into the next route (EntregasPage pattern).
+  useEffect(() => {
+    const previousTitle = document.title;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
+  useEffect(() => {
+    const nome =
+      activeTab === 'agenda'
+        ? 'Agenda'
+        : activeTab === 'financeiro'
+          ? 'Calendário'
+          : 'Datas Comemorativas';
+    document.title = `${nome} | Mesaas`;
+  }, [activeTab]);
   const nicheKeys = NICHE_CALENDARS.map((n) => n.key);
   const [activeNicheKey, setActiveNicheKey] = useState(() =>
     readStoredNicheKey(nicheKeys, DEFAULT_NICHE_KEY),
@@ -784,30 +830,58 @@ export default function CalendarioPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <header className="header animate-up">
         <div className="header-title">
-          <h1>{activeTab === 'financeiro' ? 'Calendário' : activeNiche.title}</h1>
+          <h1>
+            {activeTab === 'agenda'
+              ? 'Agenda'
+              : activeTab === 'financeiro'
+                ? 'Calendário'
+                : activeNiche.title}
+          </h1>
           <p style={{ color: 'var(--text-muted)' }}>
-            {activeTab === 'financeiro' ? 'Visão geral mensal.' : activeNiche.subtitle}
+            {activeTab === 'agenda'
+              ? 'Eventos, reuniões e gravações da equipe.'
+              : activeTab === 'financeiro'
+                ? 'Visão geral mensal.'
+                : activeNiche.subtitle}
           </p>
         </div>
       </header>
 
       <div className="calendar-tabs animate-up">
+        {agendaAtiva && (
+          <button
+            className={`calendar-tab${activeTab === 'agenda' ? ' active' : ''}`}
+            onClick={() => setEscolha('agenda')}
+          >
+            Agenda
+          </button>
+        )}
         <button
           className={`calendar-tab${activeTab === 'financeiro' ? ' active' : ''}`}
-          onClick={() => setActiveTab('financeiro')}
+          onClick={() => setEscolha('financeiro')}
         >
           Calendário
         </button>
         <button
           className={`calendar-tab${activeTab === 'comemorativas' ? ' active' : ''}`}
-          onClick={() => setActiveTab('comemorativas')}
+          onClick={() => setEscolha('comemorativas')}
         >
           Datas Comemorativas
         </button>
       </div>
 
       <div className="animate-up">
-        {activeTab === 'financeiro' ? (
+        {activeTab === 'agenda' ? (
+          <Suspense
+            fallback={
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+                <Spinner />
+              </div>
+            }
+          >
+            <AgendaTab />
+          </Suspense>
+        ) : activeTab === 'financeiro' ? (
           <FinanceiroCalendar
             clientes={clientes}
             membros={membros}

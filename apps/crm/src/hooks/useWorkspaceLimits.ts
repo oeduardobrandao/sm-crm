@@ -48,6 +48,8 @@ export interface FeatureFlags {
   /** Processos individuais de produção (spec 2026-09-10). The workspace-limits
    *  edge function already returns it (FEATURE_COLUMNS in _shared/entitlements.ts). */
   feature_post_processes: boolean;
+  /** Agenda de eventos da equipe (spec 2026-10-05). Sem ela o /calendario é a página de antes da Agenda. */
+  feature_agenda: boolean;
 }
 
 interface WorkspaceLimitsResponse {

@@ -5,7 +5,7 @@ import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/not
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // Real catalog + category constants (Task 3) are pure static data: kept real
-// here so the "5 groups / 22 rows" assertions exercise the actual catalog,
+// here so the "6 groups / 27 rows" assertions exercise the actual catalog,
 // not a stand-in. Only the prefs store (network calls) is mocked.
 const getInapp = vi.fn();
 const setInapp = vi.fn().mockResolvedValue(undefined);
@@ -27,6 +27,14 @@ vi.mock('@/hooks/useNotifications', () => ({
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// The agenda_* rows are shown only with the plan flag feature_agenda.
+const { mockFeatures } = vi.hoisted(() => ({
+  mockFeatures: { current: { feature_agenda: true } as { feature_agenda: boolean } | null },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: mockFeatures.current }),
+}));
 
 // EmailsAutomaticosSection (Task 8): reads/writes profiles.marketing_opt_in
 // via useAuth() + a direct supabase update, same shape as PerfilTab.tsx.
@@ -168,6 +176,7 @@ describe('NotificacoesTab', () => {
     // which wipes vi.fn() implementations down to a no-op returning undefined
     // after every test. Re-establishing the base implementation here keeps
     // every test's queryFn resolving a real value regardless of test order.
+    mockFeatures.current = { feature_agenda: true };
     getInapp.mockReset().mockResolvedValue({});
     setInapp.mockReset().mockResolvedValue(undefined);
     getEmail.mockReset().mockResolvedValue({});
@@ -190,13 +199,13 @@ describe('NotificacoesTab', () => {
     updateWorkspaceBrandingMock.mockReset().mockResolvedValue(undefined);
   });
 
-  it('renders the 5 CATEGORY_LABELS groups and all 22 catalog type rows', async () => {
+  it('renders the 6 CATEGORY_LABELS groups and all 27 catalog type rows', async () => {
     renderTab();
     for (const category of CATEGORY_ORDER) {
       expect(await screen.findByText(CATEGORY_LABELS[category])).toBeInTheDocument();
     }
-    expect(CATEGORY_ORDER.length).toBe(5);
-    expect(Object.keys(NOTIFICATION_CATALOG).length).toBe(22);
+    expect(CATEGORY_ORDER.length).toBe(6);
+    expect(Object.keys(NOTIFICATION_CATALOG).length).toBe(27);
     for (const entry of Object.values(NOTIFICATION_CATALOG)) {
       // getAllByText, not getByText: NOTIFICATION_CATALOG.instagram_connected_by_client
       // shares its label ("Instagram conectado") with a fixed row in
@@ -204,6 +213,23 @@ describe('NotificacoesTab', () => {
       // event, but that row is the always-on transactional email, which is
       // exactly why this catalog entry is emailEligible: false.
       expect(screen.getAllByText(entry.label).length).toBeGreaterThan(0);
+    }
+  });
+
+  it.each([
+    ['off', { feature_agenda: false }],
+    ['not loaded yet', null],
+  ])('hides the Agenda group and its rows when the flag is %s', async (_name, features) => {
+    mockFeatures.current = features;
+    renderTab();
+    await screen.findByText(CATEGORY_LABELS.equipe);
+    expect(screen.queryByRole('heading', { level: 3, name: CATEGORY_LABELS.agenda })).toBeNull();
+    for (const entry of Object.values(NOTIFICATION_CATALOG)) {
+      if (entry.category === 'agenda') {
+        expect(screen.queryByText(entry.label)).not.toBeInTheDocument();
+      } else {
+        expect(screen.getAllByText(entry.label).length).toBeGreaterThan(0);
+      }
     }
   });
 

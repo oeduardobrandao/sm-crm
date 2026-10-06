@@ -99,6 +99,7 @@ export interface Plan {
   feature_instagram_automation: boolean;
   feature_briefing_audio: boolean;
   feature_post_processes: boolean;
+  feature_agenda: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -245,6 +246,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_instagram_automation',
   'feature_briefing_audio',
   'feature_post_processes',
+  'feature_agenda',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -272,6 +274,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_instagram_automation: 'Automação do Instagram',
   feature_briefing_audio: 'Gravação de áudio',
   feature_post_processes: 'Processos individuais (Entregas)',
+  feature_agenda: 'Agenda',
 };
 
 export const RATE_LIMIT_KEYS = [

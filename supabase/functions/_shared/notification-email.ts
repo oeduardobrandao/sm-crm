@@ -21,6 +21,10 @@ function ctx(a?: string, b?: string): string | undefined {
   return [a, b].filter(Boolean).join(" · ") || undefined;
 }
 
+function eventHeading(prefix: string, titulo?: string): string {
+  return titulo ? `${prefix}: ${titulo}` : prefix;
+}
+
 /** Map a claimed notification row to a rendered digest item. Metadata keys are
  * read defensively (verified against the emitting triggers); anything missing
  * degrades to a generic line rather than throwing. Priority = urgency order. */
@@ -50,6 +54,17 @@ export function resolveDigestItem(
       return { priority: 5, heading: `${s(m, "actor_name") ?? "Alguém"} mencionou você`, body: s(m, "excerpt"), context: s(m, "context_title"), link };
     case "post_approved":
       return { priority: 6, heading: "Post aprovado pelo cliente", body: s(m, "comentario"), context: ctx(s(m, "client_name"), s(m, "post_title")), link };
+    case "event_invited":
+      return { priority: 4, heading: `${s(m, "ator_nome") ?? "Alguém"} convidou você para um evento`, body: s(m, "titulo"), context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
+    case "event_updated":
+      return { priority: 3, heading: eventHeading("Evento alterado", s(m, "titulo")), context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
+    case "event_cancelled": {
+      // metadata.motivo is an enum ('removido' = you were taken off the event), never display text.
+      const heading = s(m, "motivo") === "removido"
+        ? `Você foi removido de ${s(m, "titulo") ?? "um evento"}`
+        : eventHeading("Evento cancelado", s(m, "titulo"));
+      return { priority: 3, heading, context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
+    }
     default:
       return { priority: 9, heading: "Nova notificação no Mesaas", context: undefined, link };
   }
