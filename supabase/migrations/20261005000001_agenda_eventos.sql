@@ -1333,18 +1333,18 @@ BEGIN
     v_novo := public.agenda_validar_payload(v_conta, p_evento, v_e);
     IF v_tem_horario THEN
       v_delta := v_novo.dtstart::date - (v_o.inicio AT TIME ZONE v_e.tz)::date;
+      -- Moving a recurring series to another day needs an explicit regra (the
+      -- form always sends one): a stored rule cannot follow a shifted date in
+      -- general (biweekly sets crossing a week boundary, monthly ordinals,
+      -- ate). The UI sends date-changing drags of a recurring event as esta,
+      -- so this is a backstop. A same-day time change (delta 0) keeps working.
+      IF v_e.freq IS NOT NULL AND NOT (p_evento ? 'regra') AND v_delta <> 0 THEN
+        RAISE EXCEPTION 'agenda: para mudar o dia da repetição, edite o evento';
+      END IF;
       IF v_escopo = 'todas' THEN
         v_novo.dtstart := (v_e.dtstart::date + v_delta) + v_novo.dtstart::time;
       ELSE
         v_novo.dtstart := (v_c + v_delta) + v_novo.dtstart::time;
-      END IF;
-      -- a drag (no regra in the payload) of a weekly series moves its weekdays
-      -- with it, like Google: Mon+Wed dragged one day later becomes Tue+Thu.
-      -- Monthly and yearly rules already follow dtstart. An explicit regra (the
-      -- form always sends one) is used as is.
-      IF NOT (p_evento ? 'regra') AND v_e.freq = 'weekly' AND v_delta <> 0 THEN
-        v_novo.dias_semana := ARRAY(SELECT DISTINCT (((d.d + v_delta) % 7) + 7) % 7
-                                      FROM unnest(v_e.dias_semana) AS d(d) ORDER BY 1);
       END IF;
     ELSIF v_escopo = 'seguintes' THEN
       v_novo.dtstart := v_c + v_e.dtstart::time;
@@ -1352,7 +1352,7 @@ BEGIN
 
     IF v_escopo = 'seguintes' THEN
       -- contagem of the new series: a payload contagem equal to the stored one
-      -- (or no regra at all, a drag) means "the end was not touched", whatever
+      -- (or no regra at all, a same-day drag) means "the end was not touched", whatever
       -- else the rule changed (the form re-derives dias_semana from a moved
       -- date), so the remaining count carries over (tombstones count). A
       -- different contagem is the user's new end and is taken as sent.
