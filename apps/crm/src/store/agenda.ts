@@ -1,4 +1,5 @@
 import { supabase } from './core';
+import { entitlementMessage, mapEntitlementError } from '../lib/entitlement-errors';
 
 // Agenda (eventos da equipe). Thin wrappers over the agenda_* RPCs; the
 // database owns recurrence, materialization, masking and permissions.
@@ -175,9 +176,14 @@ export function ehAgendaNaoExiste(e: unknown): boolean {
   return /^agenda:\s*este evento não existe mais\.?$/i.test(message.trim());
 }
 
-/** 'agenda: x' (RAISE from the agenda RPCs) -> 'X'; anything else -> generic copy.
+/** 'agenda: x' (RAISE from the agenda RPCs) -> 'X'; plan entitlement errors -> their
+ *  plan copy; anything else -> generic copy.
  *  Accepts Error instances and PostgrestError-like `{ message }` objects. */
 export function formatAgendaError(err: unknown): string {
+  // A workspace whose plan lacks the Agenda gets 'feature_disabled:feature_agenda'
+  // (no 'agenda:' prefix): say so instead of the generic save error.
+  const entitlement = mapEntitlementError(err);
+  if (entitlement) return entitlementMessage(entitlement);
   const message =
     err && typeof err === 'object' && typeof (err as { message?: unknown }).message === 'string'
       ? (err as { message: string }).message

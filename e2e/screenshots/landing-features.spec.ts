@@ -191,8 +191,6 @@ test('crm: calendario (maio, vestido de setembro)', async ({ page }) => {
   await page.goto('/calendario');
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(2000);
-  // Agenda is the default tab now; this capture shows the Calendário tab.
-  await page.getByRole('button', { name: 'Calendário', exact: true }).click();
   for (let i = 0; i < 4; i++) {
     await page.locator('.calendar-nav button').first().click();
     await page.waitForTimeout(300);

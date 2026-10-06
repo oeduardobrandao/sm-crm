@@ -39,3 +39,13 @@ describe('mapEntitlementError feature_post_processes', () => {
     });
   });
 });
+
+describe('mapEntitlementError feature_agenda', () => {
+  it('rotula feature_agenda em português', () => {
+    expect(mapEntitlementError({ message: 'feature_disabled:feature_agenda' })).toEqual({
+      kind: 'feature',
+      key: 'feature_agenda',
+      label: 'Agenda',
+    });
+  });
+});

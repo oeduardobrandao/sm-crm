@@ -190,6 +190,16 @@ describe('formatAgendaError', () => {
     ).toBe('Você não pode editar este evento');
   });
 
+  it('names the Agenda when the plan lacks the feature (DB raise or edge body)', () => {
+    const expected = 'O recurso "Agenda" não está disponível no seu plano.';
+    expect(formatAgendaError({ message: 'feature_disabled:feature_agenda', code: 'P0001' })).toBe(
+      expected,
+    );
+    expect(formatAgendaError({ error: 'feature_disabled', feature: 'feature_agenda' })).toBe(
+      expected,
+    );
+  });
+
   it('falls back to the generic copy for anything else', () => {
     const generic = 'Não foi possível salvar o evento. Tente novamente.';
     expect(formatAgendaError(new Error('duplicate key value'))).toBe(generic);

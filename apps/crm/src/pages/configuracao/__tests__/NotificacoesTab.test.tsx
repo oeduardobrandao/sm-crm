@@ -28,6 +28,14 @@ vi.mock('@/hooks/useNotifications', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// The agenda_* rows are shown only with the plan flag feature_agenda.
+const { mockFeatures } = vi.hoisted(() => ({
+  mockFeatures: { current: { feature_agenda: true } as { feature_agenda: boolean } | null },
+}));
+vi.mock('@/hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({ features: mockFeatures.current }),
+}));
+
 // EmailsAutomaticosSection (Task 8): reads/writes profiles.marketing_opt_in
 // via useAuth() + a direct supabase update, same shape as PerfilTab.tsx.
 const { mockUseAuth, mockSupabaseUpdate, mockSupabaseEq } = vi.hoisted(() => ({
@@ -168,6 +176,7 @@ describe('NotificacoesTab', () => {
     // which wipes vi.fn() implementations down to a no-op returning undefined
     // after every test. Re-establishing the base implementation here keeps
     // every test's queryFn resolving a real value regardless of test order.
+    mockFeatures.current = { feature_agenda: true };
     getInapp.mockReset().mockResolvedValue({});
     setInapp.mockReset().mockResolvedValue(undefined);
     getEmail.mockReset().mockResolvedValue({});
@@ -204,6 +213,23 @@ describe('NotificacoesTab', () => {
       // event, but that row is the always-on transactional email, which is
       // exactly why this catalog entry is emailEligible: false.
       expect(screen.getAllByText(entry.label).length).toBeGreaterThan(0);
+    }
+  });
+
+  it.each([
+    ['off', { feature_agenda: false }],
+    ['not loaded yet', null],
+  ])('hides the Agenda group and its rows when the flag is %s', async (_name, features) => {
+    mockFeatures.current = features;
+    renderTab();
+    await screen.findByText(CATEGORY_LABELS.equipe);
+    expect(screen.queryByRole('heading', { level: 3, name: CATEGORY_LABELS.agenda })).toBeNull();
+    for (const entry of Object.values(NOTIFICATION_CATALOG)) {
+      if (entry.category === 'agenda') {
+        expect(screen.queryByText(entry.label)).not.toBeInTheDocument();
+      } else {
+        expect(screen.getAllByText(entry.label).length).toBeGreaterThan(0);
+      }
     }
   });
 

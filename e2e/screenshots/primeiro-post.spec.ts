@@ -403,7 +403,7 @@ test('primeiro post walkthrough', async ({ page }) => {
 
   // ── Seção 8: e agora? ───────────────────────────────────────────────────────
   await page.goto('/calendario');
-  await page.getByRole('heading', { name: 'Agenda', level: 1 }).waitFor();
+  await page.getByRole('heading', { name: 'Calendário', level: 1 }).waitFor();
   await shoot(page, SLUG, 33, 'acompanhar-no-calendario');
 
   // Falha a execução se qualquer chamada para fora foi tentada. Deve ser a
