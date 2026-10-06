@@ -249,6 +249,13 @@ export default function AgendaTab() {
     setAnchorRascunho(null);
   }
 
+  /** A plain click selects one 30-min slot; like Google, it starts a 1 h event. */
+  function fimDoClique(inicio: Date, fim: Date, diaInteiro: boolean): Date {
+    return !diaInteiro && fim.getTime() - inicio.getTime() <= 30 * 60_000
+      ? addHours(inicio, 1)
+      : fim;
+  }
+
   /** Desktop slot select: drop a draft chip there and open the quick card. */
   function abrirRascunho(inicio: Date, fim: Date, diaInteiro: boolean) {
     // The draft chip replaces FullCalendar's selection mirror.
@@ -510,10 +517,11 @@ export default function AgendaTab() {
           onDatesSet={onDatesSet}
           onSelect={
             podeCriar
-              ? (inicio, fim, diaInteiro) =>
-                  isMobile
-                    ? abrirCriar(inicio, fim, diaInteiro)
-                    : abrirRascunho(inicio, fim, diaInteiro)
+              ? (inicio, fim, diaInteiro) => {
+                  const f = fimDoClique(inicio, fim, diaInteiro);
+                  if (isMobile) abrirCriar(inicio, f, diaInteiro);
+                  else abrirRascunho(inicio, f, diaInteiro);
+                }
               : undefined
           }
           onEventClick={abrirPopover}

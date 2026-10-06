@@ -116,6 +116,7 @@ vi.mock('../EventoRapidoCard', async () => {
           data-testid="evento-rapido"
           data-anchor-id={p.anchor.dataset.ocorrenciaId ?? 'outro'}
           data-anchor-connected={String(p.anchor.isConnected)}
+          data-fim={`${p.inicial.fim.getHours()}:${p.inicial.fim.getMinutes()}`}
         >
           {`rapido inicio:${p.inicial.inicio.getHours()}h dia-inteiro:${String(p.inicial.diaInteiro)}`}
           <button
@@ -520,6 +521,17 @@ describe('AgendaTab', () => {
   describe('quick create', () => {
     const selecionar = (start: Date, end: Date, allDay = false) =>
       act(() => fc.props!.select({ start, end, allDay }));
+
+    it('a single-slot click (30 min) starts a 1 h draft; a drag keeps its range', async () => {
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 9, 30));
+      expect(await screen.findByTestId('evento-rapido')).toHaveAttribute('data-fim', '10:0');
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 11, 30));
+      await waitFor(() =>
+        expect(screen.getByTestId('evento-rapido')).toHaveAttribute('data-fim', '11:30'),
+      );
+    });
 
     beforeEach(() => {
       rapido.montagens = 0;
