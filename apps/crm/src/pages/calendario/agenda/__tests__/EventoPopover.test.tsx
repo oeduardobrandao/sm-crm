@@ -407,6 +407,15 @@ describe('EventoPopover', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it('closes on an outside click', async () => {
+    const { onClose } = abrir(ocorrencia());
+    await screen.findByRole('dialog');
+    // Radix registers its outside-pointer listener on the next tick.
+    await new Promise((r) => setTimeout(r, 0));
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
   it('survives an anchor that left the DOM', async () => {
     anchor.remove();
     abrir(ocorrencia());
