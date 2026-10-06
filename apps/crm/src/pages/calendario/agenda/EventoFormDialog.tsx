@@ -56,7 +56,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
 import {
   AGENDA_QUERY_KEY,
-  criarEvento,
   editarEvento,
   ehAgendaNaoExiste,
   formatAgendaError,
@@ -68,7 +67,6 @@ import {
 } from '@/store/agenda';
 import { getClientes, sortClientesByNome } from '@/store/clients';
 import { getWorkspaceUsers } from '@/store/workspace';
-import { toDateOnlyString } from '../../tarefas/tarefasLogic';
 import {
   LEMBRETES_DIA_INTEIRO,
   LEMBRETES_HORARIO,
@@ -91,7 +89,6 @@ import {
   montarPayloadEdicao,
   motivoSerie,
   regraAcompanhouData,
-  rotuloDtstart,
   hhmm,
   valoresDeOcorrencia,
   valoresIniciaisCriar,
@@ -103,6 +100,7 @@ import { PessoasCombobox, type PessoaEquipe } from './PessoasCombobox';
 import { RecorrenciaPersonalizadaDialog } from './RecorrenciaPersonalizadaDialog';
 import { QuandoCampos } from './QuandoCampos';
 import { RepetirSelect } from './RepetirSelect';
+import { useCriarEvento } from './useCriarEvento';
 
 export type EventoFormDialogProps =
   | {
@@ -233,21 +231,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
     }
   };
 
-  const criar = useMutation({
-    mutationFn: (valores: EventoFormValues) =>
-      criarEvento({ ...montarPayload(valores), tz: fusoDoNavegador() }, valores.participantes),
-    onSuccess: (res, valores) => {
-      terminar();
-      toast.success('Evento criado');
-      // ocorrencia_id may be null (one-off beyond the horizon); dtstart is always there.
-      const dtstart = res?.dtstart ?? null;
-      if (dtstart && dtstart.slice(0, 10) !== toDateOnlyString(valores.data_inicio)) {
-        toast(`A série começa em ${rotuloDtstart(dtstart)}.`);
-      }
-      fechar();
-    },
-    onError: tratarErro,
-  });
+  const criar = useCriarEvento({ onCriado: fechar });
 
   const editar = useMutation({
     mutationFn: (p: {
