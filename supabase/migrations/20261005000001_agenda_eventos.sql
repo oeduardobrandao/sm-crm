@@ -251,3 +251,240 @@ BEGIN
   END LOOP;
 END
 $$;
+
+-- ============ (2) DATE MATH + MATERIALIZATION + GENERATOR ============
+
+-- Pure date functions keep the default EXECUTE (like tarefa_next_date): they
+-- read nothing but their arguments and the clock.
+
+-- "Today" in a series' tz. app.agenda_hoje pins it for the SQL suites.
+CREATE OR REPLACE FUNCTION public.agenda_hoje(p_tz text) RETURNS date
+LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT coalesce(NULLIF(current_setting('app.agenda_hoje', true), '')::date,
+                  (now() AT TIME ZONE p_tz)::date);
+$$;
+
+-- Rule dates in [p_de, p_ate], honouring ate and contagem. Semantics (spec
+-- "Semântica da regra", aligned with RFC 5545): dtstart is the first
+-- occurrence; monthly dia_mes skips months without that day; yearly 29/02 only
+-- in leap years; weekly intervalo counts Monday-to-Sunday weeks (WKST=MO);
+-- contagem counts from dtstart (tombstones included, since they are rule dates).
+-- Candidates are scanned day by day from dtstart::date: the 366-day lower bound
+-- on dtstart plus the 24-month horizon keep that to ~3 years. Numbering starts
+-- at dtstart, so cutting the scan at v_fim never changes the ordinal of a
+-- date <= v_fim. Dates are cast to timestamp (not timestamptz) so the result
+-- never depends on the session TimeZone.
+CREATE OR REPLACE FUNCTION public.agenda_datas_regra(p_e public.agenda_eventos, p_de date, p_ate date)
+RETURNS SETOF date LANGUAGE plpgsql STABLE SET search_path = public AS $$
+DECLARE
+  v_ini date := p_e.dtstart::date;
+  v_fim date := least(p_ate, coalesce(p_e.ate, p_ate));
+  v_dow int := extract(dow FROM p_e.dtstart::date)::int;
+BEGIN
+  IF p_e.freq IS NULL THEN
+    IF v_ini BETWEEN p_de AND p_ate THEN RETURN NEXT v_ini; END IF;
+    RETURN;
+  END IF;
+  IF v_fim IS NULL OR v_fim < v_ini OR v_fim < p_de THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  WITH cand AS (
+    SELECT g::date AS d FROM generate_series(v_ini::timestamp, v_fim::timestamp, interval '1 day') g
+  ), regra AS (
+    SELECT c.d FROM cand c
+    WHERE CASE p_e.freq
+      WHEN 'daily' THEN (c.d - v_ini) % p_e.intervalo = 0
+      WHEN 'weekly' THEN extract(dow FROM c.d)::int = ANY (p_e.dias_semana)
+           AND ((date_trunc('week', c.d::timestamp)::date - date_trunc('week', v_ini::timestamp)::date) / 7) % p_e.intervalo = 0
+      WHEN 'monthly' THEN
+           ((extract(year FROM c.d)::int * 12 + extract(month FROM c.d)::int)
+            - (extract(year FROM v_ini)::int * 12 + extract(month FROM v_ini)::int)) % p_e.intervalo = 0
+           AND CASE p_e.mensal_modo
+             WHEN 'dia_mes' THEN extract(day FROM c.d) = extract(day FROM v_ini)
+             WHEN 'dia_semana' THEN extract(dow FROM c.d)::int = v_dow AND (
+               (p_e.mensal_ordinal > 0 AND (extract(day FROM c.d)::int - 1) / 7 + 1 = p_e.mensal_ordinal)
+               OR (p_e.mensal_ordinal = -1
+                   AND (c.d + 7) > ((date_trunc('month', c.d::timestamp) + interval '1 month')::date - 1)))
+             ELSE false
+           END
+      WHEN 'yearly' THEN (extract(year FROM c.d)::int - extract(year FROM v_ini)::int) % p_e.intervalo = 0
+           AND extract(month FROM c.d) = extract(month FROM v_ini)
+           AND extract(day FROM c.d) = extract(day FROM v_ini)
+      ELSE false
+    END
+  ), numeradas AS (
+    SELECT r.d, row_number() OVER (ORDER BY r.d) AS n FROM regra r
+  )
+  SELECT n.d FROM numeradas n
+  WHERE (p_e.contagem IS NULL OR n.n <= p_e.contagem)
+    AND n.d BETWEEN p_de AND v_fim
+  ORDER BY n.d;
+END $$;
+
+-- First rule date >= dtstart::date, at dtstart's wall-clock time. contagem is
+-- ignored here (it counts from the normalized dtstart, so it cannot be applied
+-- before normalizing). The scan stops at ate or at dtstart + 5 years (the ate
+-- CHECK's own ceiling).
+CREATE OR REPLACE FUNCTION public.agenda_normalizar_dtstart(p_e public.agenda_eventos)
+RETURNS timestamp LANGUAGE plpgsql STABLE SET search_path = public AS $$
+DECLARE
+  v_e public.agenda_eventos := p_e;
+  v_d date;
+BEGIN
+  v_e.contagem := NULL;
+  SELECT min(d) INTO v_d
+    FROM public.agenda_datas_regra(v_e, p_e.dtstart::date,
+                                   coalesce(p_e.ate, (p_e.dtstart::date + interval '5 years')::date)) d;
+  IF v_d IS NULL THEN
+    RAISE EXCEPTION 'agenda: a repetição não gera nenhuma data';
+  END IF;
+  RETURN v_d + p_e.dtstart::time;
+END $$;
+
+-- inicio/fim of the occurrence on p_data (spec "Geração de inicio/fim"). Timed:
+-- local wall clock -> instant, fim = inicio + elapsed minutes (like Google).
+-- All-day: local-date arithmetic, then conversion (never + 24h), so a DST day
+-- is 23 or 25 hours long.
+CREATE OR REPLACE FUNCTION public.agenda_inicio_fim(p_e public.agenda_eventos, p_data date, OUT inicio timestamptz, OUT fim timestamptz)
+LANGUAGE plpgsql STABLE SET search_path = public AS $$
+BEGIN
+  IF p_e.dia_inteiro THEN
+    inicio := (p_data::timestamp) AT TIME ZONE p_e.tz;
+    fim := ((p_data + p_e.duracao_dias)::timestamp) AT TIME ZONE p_e.tz;
+  ELSE
+    inicio := (p_data + p_e.dtstart::time) AT TIME ZONE p_e.tz;
+    fim := inicio + make_interval(mins => p_e.duracao_min);
+  END IF;
+END $$;
+
+-- Internal: materialize a series up to least(p_ate, today + 24 months).
+-- Starts after the last materialized date (horizonte_ate + 1), so a date that
+-- was removed on purpose is never resurrected; ON CONFLICT makes concurrent
+-- runs harmless. The event row is locked so the cron and an RPC never race on
+-- horizonte_ate. horizonte_ate never moves backwards.
+CREATE OR REPLACE FUNCTION public.agenda_materializar(p_evento_id bigint, p_ate date)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  e public.agenda_eventos;
+  v_ate date;
+  v_h date;
+BEGIN
+  SELECT * INTO e FROM public.agenda_eventos WHERE id = p_evento_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN; END IF;
+
+  v_ate := least(p_ate, (public.agenda_hoje(e.tz) + interval '24 months')::date);
+  v_h := greatest(coalesce(e.horizonte_ate, v_ate), v_ate);
+
+  INSERT INTO public.agenda_ocorrencias (conta_id, evento_id, data_original, inicio, fim)
+  SELECT e.conta_id, e.id, d.d, f.inicio, f.fim
+    FROM public.agenda_datas_regra(e, coalesce(e.horizonte_ate + 1, e.dtstart::date), v_ate) AS d(d)
+    CROSS JOIN LATERAL public.agenda_inicio_fim(e, d.d) f
+  ON CONFLICT (evento_id, data_original) DO NOTHING;
+
+  UPDATE public.agenda_eventos ev
+     SET horizonte_ate = v_h,
+         materializacao_completa = (
+           e.freq IS NULL
+           OR (e.ate IS NOT NULL AND e.ate <= v_h)
+           OR (e.contagem IS NOT NULL
+               AND (SELECT count(*) FROM public.agenda_datas_regra(e, e.dtstart::date, v_h)) >= e.contagem))
+   WHERE ev.id = e.id;
+END $$;
+
+-- Internal: re-apply the (changed) rule, dtstart, duration or dia_inteiro of a
+-- whole series (scope "todas", and the new series of a split). Occurrences
+-- whose date left the rule are deleted with their exceptions and per-occurrence
+-- RSVPs; surviving ones are recalculated unless horario_alterado (all of them,
+-- flag cleared, when p_reset_horario: a timed exception makes no sense in an
+-- all-day series and vice versa); tombstones on surviving dates stay; new dates
+-- are inserted.
+CREATE OR REPLACE FUNCTION public.agenda_regenerar(p_evento_id bigint, p_reset_horario boolean)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  e public.agenda_eventos;
+  v_h date;
+  v_datas date[];
+BEGIN
+  SELECT * INTO e FROM public.agenda_eventos WHERE id = p_evento_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN; END IF;
+
+  v_h := (public.agenda_hoje(e.tz) + interval '24 months')::date;
+  v_h := greatest(coalesce(e.horizonte_ate, v_h), v_h);
+  v_datas := coalesce(ARRAY(SELECT d FROM public.agenda_datas_regra(e, e.dtstart::date, v_h) d), '{}');
+
+  DELETE FROM public.agenda_ocorrencias o
+   WHERE o.evento_id = e.id AND NOT (o.data_original = ANY (v_datas));
+
+  UPDATE public.agenda_ocorrencias o
+     SET inicio = f.inicio,
+         fim = f.fim,
+         horario_alterado = CASE WHEN p_reset_horario THEN false ELSE o.horario_alterado END
+    FROM public.agenda_ocorrencias o2
+    CROSS JOIN LATERAL public.agenda_inicio_fim(e, o2.data_original) f
+   WHERE o.id = o2.id
+     AND o.evento_id = e.id
+     AND (p_reset_horario OR NOT o.horario_alterado)
+     AND (o.inicio IS DISTINCT FROM f.inicio OR o.fim IS DISTINCT FROM f.fim OR (p_reset_horario AND o.horario_alterado));
+
+  INSERT INTO public.agenda_ocorrencias (conta_id, evento_id, data_original, inicio, fim)
+  SELECT e.conta_id, e.id, d.d, f.inicio, f.fim
+    FROM unnest(v_datas) AS d(d)
+    CROSS JOIN LATERAL public.agenda_inicio_fim(e, d.d) f
+  ON CONFLICT (evento_id, data_original) DO NOTHING;
+
+  UPDATE public.agenda_eventos ev
+     SET horizonte_ate = v_h,
+         materializacao_completa = (
+           e.freq IS NULL
+           OR (e.ate IS NOT NULL AND e.ate <= v_h)
+           OR (e.contagem IS NOT NULL AND cardinality(v_datas) >= e.contagem))
+   WHERE ev.id = e.id;
+END $$;
+
+-- Internal, run by pg_cron (SQL-only, like generate_recurring_tarefas): extend
+-- every open series whose horizon is behind today + 24 months. SKIP LOCKED so a
+-- series being edited is simply picked up on the next run; one failing series
+-- is logged and skipped, never aborting the run. Returns the number of series
+-- extended. (Migration B adds the 30-day ledger cleanup here.)
+CREATE INDEX agenda_eventos_horizonte_idx ON public.agenda_eventos (horizonte_ate) WHERE NOT materializacao_completa;
+
+CREATE OR REPLACE FUNCTION public.agenda_gerar_horizonte()
+RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  s record;
+  v_n int := 0;
+BEGIN
+  FOR s IN
+    SELECT ev.id, ev.tz FROM public.agenda_eventos ev
+     WHERE NOT ev.materializacao_completa
+       AND (ev.horizonte_ate IS NULL
+            OR ev.horizonte_ate < (public.agenda_hoje(ev.tz) + interval '24 months')::date)
+     ORDER BY ev.id
+     FOR UPDATE SKIP LOCKED
+  LOOP
+    BEGIN
+      PERFORM public.agenda_materializar(s.id, (public.agenda_hoje(s.tz) + interval '24 months')::date);
+      v_n := v_n + 1;
+    EXCEPTION WHEN others THEN
+      RAISE WARNING 'agenda_gerar_horizonte: evento % falhou: %', s.id, SQLERRM;
+    END;
+  END LOOP;
+  RETURN v_n;
+END $$;
+
+REVOKE ALL ON FUNCTION public.agenda_materializar(bigint, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.agenda_materializar(bigint, date) TO service_role;
+REVOKE ALL ON FUNCTION public.agenda_regenerar(bigint, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.agenda_regenerar(bigint, boolean) TO service_role;
+REVOKE ALL ON FUNCTION public.agenda_gerar_horizonte() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.agenda_gerar_horizonte() TO service_role;
+
+-- Daily at 04:23 UTC (01:23 in Sao Paulo), a free minute in the table of
+-- 20260925110001_stagger_cron_schedules.sql. Daily is enough: the horizon is
+-- 24 months ahead, so a missed run costs nothing visible.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'agenda-horizonte') THEN PERFORM cron.unschedule('agenda-horizonte'); END IF;
+END $$;
+SELECT cron.schedule('agenda-horizonte', '23 4 * * *', $$SELECT public.agenda_gerar_horizonte()$$);
