@@ -152,9 +152,10 @@ export function EventoRapidoCard({
           e.preventDefault();
           form.setFocus('titulo');
         }}
-        // Pressing on the draft chip itself keeps the card (Google behaviour);
-        // anywhere else on the grid closes it and may start a new selection.
-        onPointerDownOutside={(e) => {
+        // Pressing on (or focusing) the draft chip itself keeps the card (Google
+        // behaviour); anywhere else on the grid closes it and may start a new
+        // selection. onInteractOutside covers both the pointer and focus paths.
+        onInteractOutside={(e) => {
           const alvo = e.target as Element | null;
           if (alvo?.closest?.('[data-ocorrencia-id="rascunho"]')) e.preventDefault();
         }}
