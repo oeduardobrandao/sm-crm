@@ -74,7 +74,7 @@ vi.mock('@fullcalendar/core/locales/pt-br', () => ({ default: {} }));
 // ---- Tasks 10/11 components (never the stubs) ---------------------------------------
 const { moverMock, rapido } = vi.hoisted(() => ({
   moverMock: vi.fn(),
-  rapido: { montagens: 0 },
+  rapido: { montagens: 0, fechamentos: [] as (() => void)[] },
 }));
 vi.mock('../EventoFormDialog', () => ({
   EventoFormDialog: (p: {
@@ -110,6 +110,8 @@ vi.mock('../EventoRapidoCard', async () => {
     }) => {
       React.useEffect(() => {
         rapido.montagens += 1;
+        rapido.fechamentos.push(p.onClose);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
       }, []);
       return (
         <div
@@ -521,6 +523,25 @@ describe('AgendaTab', () => {
   describe('quick create', () => {
     const selecionar = (start: Date, end: Date, allDay = false) =>
       act(() => fc.props!.select({ start, end, allDay }));
+
+    it('a late close from an earlier card leaves the newer draft alone', async () => {
+      rapido.fechamentos = [];
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
+      await screen.findByTestId('evento-rapido');
+      selecionar(new Date(2026, 9, 7, 14), new Date(2026, 9, 7, 15));
+      await waitFor(() =>
+        expect(screen.getByTestId('evento-rapido')).toHaveTextContent('inicio:14h'),
+      );
+      // What the first card's save calls when it resolves after the second select.
+      act(() => rapido.fechamentos[0]());
+      expect(screen.getByTestId('evento-rapido')).toHaveTextContent('inicio:14h');
+      expect(screen.getByText('(Sem título)')).toBeInTheDocument();
+      // The current card's own close still works.
+      act(() => rapido.fechamentos[rapido.fechamentos.length - 1]());
+      expect(screen.queryByTestId('evento-rapido')).not.toBeInTheDocument();
+    });
 
     it('a single-slot click (30 min) starts a 1 h draft; a drag keeps its range', async () => {
       renderTab();

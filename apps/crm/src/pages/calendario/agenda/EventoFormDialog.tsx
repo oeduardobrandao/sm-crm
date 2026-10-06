@@ -323,7 +323,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
 
   const onSubmit = (valores: EventoFormValues) => {
     if (!ocorrencia) {
-      criar.mutate(valores);
+      criar.criar(valores);
       return;
     }
     const b = base.current!;

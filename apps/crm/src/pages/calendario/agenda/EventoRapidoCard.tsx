@@ -127,7 +127,7 @@ export function EventoRapidoCard({
   const maisOpcoes = () => {
     if (!salvando) onMaisOpcoes(form.getValues());
   };
-  const onSubmit = form.handleSubmit((v) => criar.mutate(v));
+  const onSubmit = form.handleSubmit((v) => criar.criar(v));
 
   return (
     <Popover open onOpenChange={(aberto) => !aberto && fechar()}>

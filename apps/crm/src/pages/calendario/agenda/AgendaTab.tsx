@@ -162,6 +162,7 @@ export default function AgendaTab() {
   const [rascunho, setRascunho] = useState<RascunhoEvento | null>(null);
   const [rascunhoInicial, setRascunhoInicial] = useState<Intervalo | null>(null);
   const [selecao, setSelecao] = useState(0);
+  const selecaoRef = useRef(0);
   const [anchorRascunho, setAnchorRascunho] = useState<HTMLElement | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
   const { mover, dialog } = useAgendaMutations();
@@ -249,6 +250,12 @@ export default function AgendaTab() {
     setAnchorRascunho(null);
   }
 
+  /** Close from card `n` only: a save that resolves after the user already
+   *  picked another slot must not wipe the newer draft. */
+  function descartarRascunhoDe(n: number) {
+    if (n === selecaoRef.current) descartarRascunho();
+  }
+
   /** A plain click selects one 30-min slot; like Google, it starts a 1 h event. */
   function fimDoClique(inicio: Date, fim: Date, diaInteiro: boolean): Date {
     return !diaInteiro && fim.getTime() - inicio.getTime() <= 30 * 60_000
@@ -261,7 +268,8 @@ export default function AgendaTab() {
     // The draft chip replaces FullCalendar's selection mirror.
     calRef.current?.getApi().unselect();
     setPopover(null);
-    setSelecao((n) => n + 1);
+    selecaoRef.current += 1;
+    setSelecao(selecaoRef.current);
     setAnchorRascunho(null);
     setRascunhoInicial({ inicio, fim, diaInteiro });
     setRascunho({
@@ -564,7 +572,7 @@ export default function AgendaTab() {
           inicial={rascunhoInicial}
           anchor={anchorRascunho}
           onRascunhoChange={atualizarRascunho}
-          onClose={descartarRascunho}
+          onClose={() => descartarRascunhoDe(selecao)}
           onMaisOpcoes={abrirMaisOpcoes}
         />
       )}

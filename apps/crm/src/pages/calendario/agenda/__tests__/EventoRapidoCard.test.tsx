@@ -220,6 +220,21 @@ describe('EventoRapidoCard', () => {
     await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
   });
 
+  it('a second Enter while the save is in flight creates nothing more', async () => {
+    let resolver!: (v: unknown) => void;
+    criarEventoMock.mockReturnValueOnce(new Promise((r) => (resolver = r)));
+    abrir();
+    fireEvent.change(titulo(), { target: { value: 'Pauta' } });
+    fireEvent.submit(titulo().form!);
+    await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
+    fireEvent.submit(titulo().form!);
+    fireEvent.submit(titulo().form!);
+    // Let the extra submits run their async validation before checking.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(criarEventoMock).toHaveBeenCalledTimes(1);
+    resolver({ evento_id: 1, ocorrencia_id: 1, dtstart: '2026-10-06T09:00:00' });
+  });
+
   it('picking a tipo pill changes the payload tipo', async () => {
     abrir();
     fireEvent.change(titulo(), { target: { value: 'Gravar reels' } });
