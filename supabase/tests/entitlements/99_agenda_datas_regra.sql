@@ -8,6 +8,9 @@
 -- "today" is pinned with app.agenda_hoje.
 
 begin;
+-- Agenda rollout flag (feature_agenda, migration A): on for every plan inside
+-- this transaction; 99_agenda_feature_flag.sql covers the flag-off paths.
+update plans set feature_agenda = true;
 
 create or replace function pg_temp.datas(p_id bigint, p_de date, p_ate date) returns date[] language sql as $$
   select array_agg(d order by d) from public.agenda_datas_regra((select e from public.agenda_eventos e where e.id = p_id), p_de, p_ate) d;

@@ -8,6 +8,9 @@
 -- final rollback.
 
 begin;
+-- Agenda rollout flag (feature_agenda, migration A): on for every plan inside
+-- this transaction; 99_agenda_feature_flag.sql covers the flag-off paths.
+update plans set feature_agenda = true;
 select et_grant_hosted_parity(array['agenda_eventos','agenda_ocorrencias','agenda_participantes','agenda_respostas']);
 revoke all on public.agenda_eventos, public.agenda_ocorrencias, public.agenda_participantes, public.agenda_respostas from anon, authenticated;
 grant select on public.agenda_eventos, public.agenda_ocorrencias, public.agenda_participantes, public.agenda_respostas to authenticated;

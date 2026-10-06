@@ -10,6 +10,9 @@
 -- blocks before the final rollback.
 
 begin;
+-- Agenda rollout flag (feature_agenda, migration A): on for every plan inside
+-- this transaction; 99_agenda_feature_flag.sql covers the flag-off paths.
+update plans set feature_agenda = true;
 select et_grant_hosted_parity(array['agenda_eventos','agenda_ocorrencias','agenda_participantes','agenda_respostas']);
 -- Defensive, as in 99_tarefa_series_rls: 92_reorder_fluxos_board.sql calls
 -- et_grant_hosted_parity() outside any transaction, so in a full harness run

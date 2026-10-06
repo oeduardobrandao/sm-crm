@@ -4,6 +4,16 @@
 -- Sections: (1) tables + guard + RLS, (2) date math + materialization + generator,
 -- (3) read/create RPCs + notification types, (4) edit/delete/RSVP RPCs.
 
+-- ============ (0) FLAG DE ROLLOUT ============
+-- A Agenda nasce desligada em todos os planos e e ligada por workspace via
+-- workspace_plan_overrides.feature_overrides (Admin da plataforma), no mesmo
+-- desenho de feature_post_processes (20260918000001). Com a flag desligada as
+-- RPCs de escrita (criar, editar, excluir, responder) levantam
+-- feature_disabled:feature_agenda, agenda_listar devolve zero linhas e os
+-- lembretes (migration B) nao sao criados nem enviados. A materializacao
+-- (agenda_gerar_horizonte) segue sem gate. Lancamento = ligar a coluna nos planos.
+ALTER TABLE public.plans ADD COLUMN IF NOT EXISTS feature_agenda boolean NOT NULL DEFAULT false;
+
 -- ============ (1) TABLES ============
 
 -- agenda_eventos is the series; a one-off event is a series without a rule.
@@ -954,6 +964,9 @@ DECLARE
 BEGIN
   v_conta := get_my_conta_id(); v_user := auth.uid();
   IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  IF NOT public.effective_plan_feature(v_conta, 'feature_agenda') THEN
+    RAISE EXCEPTION 'feature_disabled:feature_agenda' USING ERRCODE = 'P0001';
+  END IF;
   IF NOT public.has_permission('calendario', 'editar') THEN
     RAISE EXCEPTION 'agenda: você não pode criar eventos';
   END IF;
@@ -1035,6 +1048,8 @@ DECLARE
 BEGIN
   v_conta := get_my_conta_id(); v_user := auth.uid();
   IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  -- flag off: no rows, no raise (stale clients and prefetches stay quiet)
+  IF NOT public.effective_plan_feature(v_conta, 'feature_agenda') THEN RETURN; END IF;
   IF NOT public.has_permission('calendario', 'ver') THEN
     RAISE EXCEPTION 'agenda: você não pode ver a agenda';
   END IF;
@@ -1232,6 +1247,9 @@ DECLARE
 BEGIN
   v_conta := get_my_conta_id(); v_user := auth.uid();
   IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  IF NOT public.effective_plan_feature(v_conta, 'feature_agenda') THEN
+    RAISE EXCEPTION 'feature_disabled:feature_agenda' USING ERRCODE = 'P0001';
+  END IF;
   IF p_escopo IS NULL OR p_escopo NOT IN ('esta', 'seguintes', 'todas') THEN
     RAISE EXCEPTION 'agenda: escopo inválido';
   END IF;
@@ -1548,6 +1566,9 @@ DECLARE
 BEGIN
   v_conta := get_my_conta_id(); v_user := auth.uid();
   IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  IF NOT public.effective_plan_feature(v_conta, 'feature_agenda') THEN
+    RAISE EXCEPTION 'feature_disabled:feature_agenda' USING ERRCODE = 'P0001';
+  END IF;
   IF p_escopo IS NULL OR p_escopo NOT IN ('esta', 'seguintes', 'todas') THEN
     RAISE EXCEPTION 'agenda: escopo inválido';
   END IF;
@@ -1616,6 +1637,9 @@ DECLARE
 BEGIN
   v_conta := get_my_conta_id(); v_user := auth.uid();
   IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  IF NOT public.effective_plan_feature(v_conta, 'feature_agenda') THEN
+    RAISE EXCEPTION 'feature_disabled:feature_agenda' USING ERRCODE = 'P0001';
+  END IF;
   IF NOT public.has_permission('calendario', 'ver') THEN
     RAISE EXCEPTION 'agenda: você não pode ver a agenda';
   END IF;

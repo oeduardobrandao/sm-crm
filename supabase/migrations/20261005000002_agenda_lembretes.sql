@@ -77,6 +77,11 @@ $$;
 -- all e-mails off). When anything is waiting for e-mail, the edge function is
 -- kicked through pg_net in a guarded block: a failure there never discards the
 -- claims (the next tick retries through pendente / an expired lease).
+-- Rollout flag (migration A): only workspaces with feature_agenda get claims.
+-- The flag is checked once per workspace: contas holds the distinct conta_ids
+-- of the due candidates and ativas filters them. Both are MATERIALIZED so the
+-- planner can neither push the (non-inlinable) check down into cand nor
+-- re-evaluate it per joined row.
 -- Returns the number of claims created.
 CREATE OR REPLACE FUNCTION public.agenda_tick_lembretes(p_now timestamptz DEFAULT now(), p_chamar_email boolean DEFAULT true)
 RETURNS int LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
@@ -135,9 +140,15 @@ BEGIN
          AND o.inicio <= p_now + make_interval(mins => m.m)
          AND NOT CASE WHEN e.freq IS NULL THEN e.dtstart >= (p_now AT TIME ZONE e.tz) - interval '2 days'
                       ELSE e.ate IS NULL OR e.ate >= ((p_now AT TIME ZONE e.tz) - interval '2 days')::date END
+    ), contas AS MATERIALIZED (
+      SELECT DISTINCT c.conta_id FROM cand c
+    ), ativas AS MATERIALIZED (
+      SELECT k.conta_id FROM contas k
+       WHERE public.effective_plan_feature(k.conta_id, 'feature_agenda')
     ), dest AS (
       SELECT c.*, ap.user_id
         FROM cand c
+        JOIN ativas a ON a.conta_id = c.conta_id
         JOIN public.agenda_participantes ap ON ap.evento_id = c.evento_id
         JOIN public.workspace_members wm ON wm.workspace_id = c.conta_id AND wm.user_id = ap.user_id
         LEFT JOIN public.agenda_respostas ar ON ar.ocorrencia_id = c.ocorrencia_id AND ar.user_id = ap.user_id
@@ -219,8 +230,10 @@ GRANT EXECUTE ON FUNCTION public.agenda_tick_lembretes(timestamptz, boolean) TO 
 -- workspace, or the effective answer is now 'nao', computed like the tick's
 -- dest: the per-occurrence answer overrides the series one). A row claimed
 -- while e-mail delivery was down must not leak a private event to someone the
--- organizer removed. Returns the event data the e-mail needs (effective title, place and
--- link; tz for formatting).
+-- organizer removed. Rows of a workspace whose feature_agenda was turned off
+-- after the tick claimed them are settled as 'nao' too (never sent). Returns
+-- the event data the e-mail needs (effective title, place and link; tz for
+-- formatting).
 CREATE OR REPLACE FUNCTION public.agenda_claim_emails_lembrete(p_limit int DEFAULT 100)
 RETURNS TABLE (ocorrencia_id bigint, user_id uuid, minutos int, inicio_alvo timestamptz, notification_id uuid,
                titulo text, inicio timestamptz, fim timestamptz, dia_inteiro boolean, local text, link_reuniao text,
@@ -245,7 +258,8 @@ BEGIN
           OR coalesce((SELECT ar.resposta FROM public.agenda_respostas ar
                         WHERE ar.ocorrencia_id = l.ocorrencia_id AND ar.user_id = l.user_id),
                       (SELECT p.resposta FROM public.agenda_participantes p
-                        WHERE p.evento_id = o.evento_id AND p.user_id = l.user_id)) = 'nao');
+                        WHERE p.evento_id = o.evento_id AND p.user_id = l.user_id)) = 'nao'
+          OR NOT public.effective_plan_feature(l.conta_id, 'feature_agenda'));
 
   RETURN QUERY
   WITH alvo AS (

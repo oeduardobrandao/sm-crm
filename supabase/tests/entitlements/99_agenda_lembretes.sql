@@ -9,6 +9,9 @@
 -- called with p_chamar_email => false except where the e-mail kick is under test.
 
 begin;
+-- Agenda rollout flag (feature_agenda, migration A): on for every plan inside
+-- this transaction; 99_agenda_feature_flag.sql covers the flag-off paths.
+update plans set feature_agenda = true;
 select et_grant_hosted_parity(array['agenda_eventos','agenda_ocorrencias','agenda_participantes','agenda_respostas','agenda_lembretes']);
 revoke all on public.agenda_eventos, public.agenda_ocorrencias, public.agenda_participantes, public.agenda_respostas from anon, authenticated;
 grant select on public.agenda_eventos, public.agenda_ocorrencias, public.agenda_participantes, public.agenda_respostas to authenticated;
@@ -501,6 +504,9 @@ begin
   assert to_regclass('public.agenda_eventos') is null and to_regclass('public.agenda_lembretes') is null, 'agenda tables survived the rollback';
   assert not exists (select 1 from pg_proc where proname like 'agenda\_%'), 'agenda functions survived the rollback';
   assert not exists (select 1 from cron.job where jobname in ('agenda-lembretes', 'agenda-horizonte')), 'agenda cron jobs survived the rollback';
+  assert not exists (select 1 from information_schema.columns
+                      where table_schema = 'public' and table_name = 'plans' and column_name = 'feature_agenda'),
+    'plans.feature_agenda survived the rollback';
 
   raise notice 'PASS 99_agenda_lembretes (rollback runbook)';
 end $$;

@@ -3,7 +3,14 @@
 --
 -- Spec: docs/superpowers/specs/2026-10-05-agenda-eventos-core-design.md ("Rollout").
 -- Migrations undone: 20261005000001_agenda_eventos.sql (A) and
--- 20261005000002_agenda_lembretes.sql (B).
+-- 20261005000002_agenda_lembretes.sql (B), including A's plans.feature_agenda
+-- column (step 5).
+--
+-- Before step 5 runs in a real environment, "feature_agenda" must already be gone
+-- from FEATURE_COLUMNS (supabase/functions/_shared/entitlements.ts) and
+-- workspace-limits + platform-admin redeployed: platform-admin's plan mutations
+-- write every FEATURE_COLUMNS column, so a deployed copy that still lists it
+-- fails on the dropped column.
 --
 -- Reminders only (partial rollback): run just
 --   SELECT cron.unschedule('agenda-lembretes');
@@ -112,3 +119,9 @@ DROP FUNCTION IF EXISTS
   public.agenda_pode_ver_evento(bigint, boolean, uuid),
   public.agenda_eventos_guard(),
   public.agenda_hoje(text);
+
+-- ---- 5. the rollout flag (see the header: edge functions first) ----
+UPDATE public.workspace_plan_overrides
+   SET feature_overrides = feature_overrides - 'feature_agenda'
+ WHERE feature_overrides ? 'feature_agenda';
+ALTER TABLE public.plans DROP COLUMN IF EXISTS feature_agenda;
