@@ -325,4 +325,192 @@ begin
   raise notice 'PASS 99_agenda_rls (tables, guard, RLS)';
 end $$;
 
+-- ============ block 2: agenda_listar masking, permissions, range ============
+create or replace function pg_temp.p(p jsonb default '{}') returns jsonb language sql as $f$
+  select jsonb_build_object(
+    'titulo', 'Evento', 'descricao', null, 'local', null, 'link_reuniao', null,
+    'tipo', 'reuniao', 'cor', null, 'cliente_id', null, 'privado', false, 'dia_inteiro', false,
+    'tz', 'America/Sao_Paulo', 'inicio_local', '2026-10-05T14:00:00', 'fim_local', '2026-10-05T16:00:00',
+    'lembretes', '[]'::jsonb, 'regra', null) || p;
+$f$;
+create or replace function pg_temp.como(p_user uuid) returns void language plpgsql as $f$
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+end $f$;
+grant execute on all functions in schema pg_temp to authenticated, service_role;
+
+do $$
+declare
+  v_ws_a uuid; v_ws_b uuid;
+  v_owner uuid := gen_random_uuid();   -- organizer of the private event
+  v_admin uuid := gen_random_uuid();
+  v_agent uuid := gen_random_uuid();   -- plain agent, organizes a public event
+  v_part uuid := gen_random_uuid();    -- participant of the private event
+  v_none uuid := gen_random_uuid();    -- not involved in anything
+  v_gone uuid := gen_random_uuid();    -- participant later removed from the workspace
+  v_blind uuid := gen_random_uuid();   -- custom role calendario none
+  v_xb uuid := gen_random_uuid();      -- ws B
+  v_role_none uuid;
+  v_cli bigint;
+  v_priv bigint; v_pub bigint; v_ag bigint; v_dia bigint; v_b bigint;
+  v_oc_priv bigint; v_oc_b bigint; v_oc_canc bigint;
+  v_n bigint; v_msg text;
+  r record;
+begin
+  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  v_ws_a := et_make_workspace('max');
+  v_ws_b := et_make_workspace('start');
+  insert into auth.users (id) values (v_owner), (v_admin), (v_agent), (v_part), (v_none), (v_gone), (v_blind), (v_xb);
+  insert into workspace_roles (conta_id, nome, permissions)
+    values (v_ws_a, 'Sem calendário', '{"calendario":"none"}') returning id into v_role_none;
+  insert into workspace_members (user_id, workspace_id, role) values
+    (v_owner, v_ws_a, 'owner'), (v_admin, v_ws_a, 'admin'), (v_agent, v_ws_a, 'agent'),
+    (v_part, v_ws_a, 'agent'), (v_none, v_ws_a, 'agent'), (v_gone, v_ws_a, 'agent'), (v_xb, v_ws_b, 'owner');
+  insert into workspace_members (user_id, workspace_id, role, role_id) values (v_blind, v_ws_a, 'agent', v_role_none);
+  update profiles set conta_id = v_ws_a, active_workspace_id = v_ws_a where id in (v_owner, v_admin, v_agent, v_part, v_none, v_gone, v_blind);
+  update profiles set conta_id = v_ws_b, active_workspace_id = v_ws_b where id = v_xb;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_owner, v_ws_a, 'Clínica Sorriso', 'CS', '#000') returning id into v_cli;
+
+  assert has_function_privilege('authenticated', 'public.agenda_listar(timestamptz, timestamptz, bigint)', 'EXECUTE'), 'authenticated must execute agenda_listar';
+  assert has_function_privilege('anon', 'public.agenda_listar(timestamptz, timestamptz, bigint)', 'EXECUTE') = false, 'anon must not execute agenda_listar';
+
+  -- ---- fixtures through the create RPC ----
+  execute 'set local role authenticated';
+  perform pg_temp.como(v_owner);
+  select c.evento_id, c.ocorrencia_id into v_priv, v_oc_priv from public.agenda_evento_criar(pg_temp.p(jsonb_build_object(
+    'titulo', 'Conversa CONFIDENTIAL', 'descricao', 'Pauta secreta', 'local', 'Sala 2', 'link_reuniao', 'https://meet.example/x',
+    'tipo', 'interno', 'cor', 'roxo', 'cliente_id', v_cli, 'privado', true, 'lembretes', jsonb_build_array(10),
+    'regra', '{"freq":"weekly","intervalo":1,"dias_semana":[1],"mensal_modo":null,"mensal_ordinal":null,"ate":null,"contagem":null}'::jsonb)),
+    array[v_part, v_gone]) c;
+  select c.evento_id into v_pub from public.agenda_evento_criar(pg_temp.p(jsonb_build_object(
+    'titulo', 'Reunião aberta', 'inicio_local', '2026-10-06T10:00:00', 'fim_local', '2026-10-06T11:00:00')), array[v_part]) c;
+  select c.evento_id into v_dia from public.agenda_evento_criar(pg_temp.p(jsonb_build_object(
+    'titulo', 'Captação', 'dia_inteiro', true, 'inicio_local', '2026-10-08T00:00:00', 'fim_local', '2026-10-10T00:00:00')), '{}') c;
+  perform pg_temp.como(v_agent);
+  select c.evento_id into v_ag from public.agenda_evento_criar(pg_temp.p(jsonb_build_object(
+    'titulo', 'Do agente', 'inicio_local', '2026-10-07T09:00:00', 'fim_local', '2026-10-07T09:30:00')), '{}') c;
+  perform pg_temp.como(v_xb);
+  select c.evento_id, c.ocorrencia_id into v_b, v_oc_b from public.agenda_evento_criar(pg_temp.p('{"titulo":"De B FOREIGN"}'), '{}') c;
+  execute 'reset role';
+
+  delete from workspace_members where user_id = v_gone and workspace_id = v_ws_a;
+  -- a cancelled occurrence is not listed
+  update agenda_ocorrencias set cancelada = true where evento_id = v_priv and data_original = '2026-10-12' returning id into v_oc_canc;
+
+  execute 'set local role authenticated';
+
+  -- ---- a non-involved member: the private event is masked ----
+  perform pg_temp.como(v_none);
+  select count(*) into v_n from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03');
+  assert v_n = 4, format('non-involved: expected 4 rows in the week, got %s', v_n);
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_priv;
+  assert r.titulo = 'Ocupado' and r.mascarado, format('masked titulo: %s', r.titulo);
+  assert r.descricao is null and r.local is null and r.link_reuniao is null, 'masked event leaks content';
+  assert r.tipo is null and r.cor is null and r.cliente_id is null and r.cliente_nome is null, 'masked event leaks tipo/cor/cliente';
+  assert r.regra is null and r.lembretes is null, 'masked event leaks regra/lembretes';
+  assert r.privado and r.recorrente and r.organizador_id = v_owner, 'masked event flags';
+  assert r.inicio = '2026-10-05 17:00+00' and r.fim = '2026-10-05 19:00+00', 'masked event keeps its time';
+  assert jsonb_array_length(r.participantes) = 2, format('masked participantes: %s', r.participantes);
+  assert r.participantes @> jsonb_build_array(jsonb_build_object('user_id', v_owner, 'resposta', null),
+                                              jsonb_build_object('user_id', v_part, 'resposta', null)),
+    format('masked participantes must list user_ids without resposta: %s', r.participantes);
+  assert not r.participantes @> jsonb_build_array(jsonb_build_object('user_id', v_gone)), 'removed member still listed';
+  assert not r.pode_editar and not r.pode_responder and r.minha_resposta is null, 'masked event: flags for a non-involved member';
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_pub;
+  assert r.titulo = 'Reunião aberta' and not r.mascarado and r.regra is null and r.lembretes = '{}', 'public event shown as is';
+  assert not r.pode_editar and not r.pode_responder, 'agent non-participant flags on a public event';
+  perform 1 from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_b;
+  assert not found, 'event of another workspace listed';
+  perform 1 from public.agenda_listar('2026-10-05 00:00-03', '2026-10-20 00:00-03') l where l.ocorrencia_id = v_oc_canc;
+  assert not found, 'cancelled occurrence listed';
+
+  -- local dates: timed (exclusive end = next day) and all-day
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_pub;
+  assert r.data_inicio_local = '2026-10-06' and r.data_fim_local = '2026-10-07' and r.tz = 'America/Sao_Paulo',
+    format('timed local dates: %s %s', r.data_inicio_local, r.data_fim_local);
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_dia;
+  assert r.dia_inteiro and r.data_inicio_local = '2026-10-08' and r.data_fim_local = '2026-10-10',
+    format('all-day local dates: %s %s', r.data_inicio_local, r.data_fim_local);
+
+  -- ---- the participant sees real data ----
+  perform pg_temp.como(v_part);
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_priv;
+  assert r.titulo = 'Conversa CONFIDENTIAL' and not r.mascarado and r.descricao = 'Pauta secreta' and r.local = 'Sala 2'
+     and r.link_reuniao = 'https://meet.example/x' and r.tipo = 'interno' and r.cor = 'roxo'
+     and r.cliente_id = v_cli and r.cliente_nome = 'Clínica Sorriso' and r.lembretes = '{10}',
+    format('participant view: %s', to_jsonb(r));
+  assert r.participantes @> jsonb_build_array(jsonb_build_object('user_id', v_owner, 'resposta', 'sim'),
+                                              jsonb_build_object('user_id', v_part, 'resposta', 'pendente')),
+    format('participant view participantes: %s', r.participantes);
+  assert r.minha_resposta = 'pendente' and r.pode_responder and not r.pode_editar, 'participant flags';
+  -- regra: all seven keys, explicit nulls (never stripped)
+  assert r.regra = '{"freq":"weekly","intervalo":1,"dias_semana":[1],"mensal_modo":null,"mensal_ordinal":null,"ate":null,"contagem":null}'::jsonb,
+    format('regra: %s', r.regra);
+  assert (select count(*) from jsonb_object_keys(r.regra)) = 7, 'regra lacks keys';
+
+  -- ---- organizer, owner/admin, agent: pode_editar ----
+  perform pg_temp.como(v_owner);
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_priv;
+  assert r.pode_editar and not r.pode_responder and r.minha_resposta = 'sim' and not r.mascarado, 'organizer flags on the private event';
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_ag;
+  assert r.pode_editar, 'owner cannot edit a public event of an agent';
+  perform pg_temp.como(v_admin);
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_ag;
+  assert r.pode_editar, 'admin cannot edit a public event';
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_priv;
+  assert not r.pode_editar and r.mascarado, 'admin can edit a private event of someone else';
+  perform pg_temp.como(v_agent);
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_ag;
+  assert r.pode_editar and not r.pode_responder, 'agent cannot edit their own event';
+  select * into r from public.agenda_listar('2026-10-05 00:00-03', '2026-10-12 00:00-03') l where l.evento_id = v_pub;
+  assert not r.pode_editar, 'agent can edit a public event of someone else';
+
+  -- ---- range and deep link ----
+  v_msg := null;
+  begin
+    perform public.agenda_listar('2026-01-01', '2026-04-15');
+  exception when others then v_msg := sqlerrm; end;
+  assert v_msg = 'agenda: período inválido', format('105-day range: %s', v_msg);
+  v_msg := null;
+  begin
+    perform public.agenda_listar(null, null);
+  exception when others then v_msg := sqlerrm; end;
+  assert v_msg = 'agenda: período inválido', format('no range: %s', v_msg);
+  v_msg := null;
+  begin
+    perform public.agenda_listar('2026-10-12', '2026-10-05');
+  exception when others then v_msg := sqlerrm; end;
+  assert v_msg = 'agenda: período inválido', format('inverted range: %s', v_msg);
+  select count(*) into v_n from public.agenda_listar('2026-01-01', '2026-04-11');
+  assert v_n = 0, '100-day range rejected or wrong';
+  select count(*) into v_n from public.agenda_listar(p_ocorrencia_id => v_oc_b);
+  assert v_n = 0, 'deep link to an occurrence of another workspace returned rows';
+  select count(*) into v_n from public.agenda_listar(p_ocorrencia_id => v_oc_priv);
+  assert v_n = 1, 'deep link to an own occurrence';
+  select count(*) into v_n from public.agenda_listar(p_ocorrencia_id => v_oc_canc);
+  assert v_n = 0, 'deep link to a cancelled occurrence returned rows';
+  -- an event spanning the window start is listed (inicio < p_de < fim)
+  select count(*) into v_n from public.agenda_listar('2026-10-09 00:00-03', '2026-10-09 12:00-03') l where l.evento_id = v_dia;
+  assert v_n = 1, 'all-day event spanning the window start not listed';
+
+  -- ---- no calendario permission ----
+  perform pg_temp.como(v_blind);
+  v_msg := null;
+  begin
+    perform public.agenda_listar('2026-10-05', '2026-10-12');
+  exception when others then v_msg := sqlerrm; end;
+  assert v_msg = 'agenda: você não pode ver a agenda', format('calendario none: %s', v_msg);
+
+  -- ---- removed member: no workspace ----
+  perform pg_temp.como(v_gone);
+  v_msg := null;
+  begin
+    perform public.agenda_listar('2026-10-05', '2026-10-12');
+  exception when others then v_msg := sqlerrm; end;
+  assert v_msg = 'agenda: sessão sem workspace ativo', format('removed member: %s', v_msg);
+  execute 'reset role';
+
+  raise notice 'PASS 99_agenda_rls (agenda_listar)';
+end $$;
+
 rollback;

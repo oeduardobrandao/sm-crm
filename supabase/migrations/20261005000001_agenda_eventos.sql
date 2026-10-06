@@ -495,3 +495,596 @@ DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'agenda-horizonte') THEN PERFORM cron.unschedule('agenda-horizonte'); END IF;
 END $$;
 SELECT cron.schedule('agenda-horizonte', '23 4 * * *', $$SELECT public.agenda_gerar_horizonte()$$);
+
+-- ============ (3) READ/CREATE RPCs + NOTIFICATION TYPES ============
+
+-- ---- notification types ----
+-- Lists copied from the most recent definitions (notifications_type_check:
+-- 20260815000004_instagram_automation_rpcs.sql, 22 values;
+-- notification_inapp_prefs / notification_email_prefs: 20260903000001), only
+-- APPENDING the agenda types. This file is now the most recent definition:
+-- the next migration copies FROM HERE.
+ALTER TABLE public.notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+ALTER TABLE public.notifications ADD CONSTRAINT notifications_type_check CHECK (
+  type IN (
+    'post_approved', 'post_correction', 'post_message',
+    'idea_submitted', 'briefing_answered',
+    'step_activated', 'step_completed', 'post_assigned',
+    'workflow_completed', 'deadline_approaching',
+    'invite_accepted', 'member_role_changed', 'member_removed',
+    'post_edit_suggestion', 'task_assigned', 'client_message',
+    'mention', 'post_status_automation',
+    'instagram_connected_by_client',
+    'post_publish_failed', 'storage_autoclean_report',
+    'instagram_automation_failed',
+    'event_invited', 'event_updated', 'event_cancelled', 'event_rsvp', 'event_reminder'
+  )
+);
+
+ALTER TABLE public.notification_inapp_prefs DROP CONSTRAINT notification_inapp_prefs_type_check;
+ALTER TABLE public.notification_inapp_prefs ADD CONSTRAINT notification_inapp_prefs_type_check CHECK (type IN (
+  'post_approved','post_correction','post_message','post_edit_suggestion',
+  'idea_submitted','briefing_answered','step_activated','step_completed',
+  'post_assigned','task_assigned','workflow_completed','deadline_approaching',
+  'invite_accepted','member_role_changed','member_removed','client_message',
+  'mention','post_status_automation','instagram_connected_by_client',
+  'post_publish_failed','storage_autoclean_report','instagram_automation_failed',
+  'event_invited','event_updated','event_cancelled','event_rsvp','event_reminder',
+  '__all__'
+));
+
+-- event_rsvp has no e-mail; event_reminder has its own e-mail path (migration B)
+-- but is a user-facing e-mail preference, so it is accepted here.
+ALTER TABLE public.notification_email_prefs DROP CONSTRAINT notification_email_prefs_type_check;
+ALTER TABLE public.notification_email_prefs ADD CONSTRAINT notification_email_prefs_type_check CHECK (type IN (
+  'post_approved','post_publish_failed','post_correction','post_message',
+  'client_message','deadline_approaching','task_assigned','post_assigned',
+  'mention',
+  'event_invited','event_updated','event_cancelled','event_reminder',
+  '__all__'
+));
+
+-- Recreated with the three digest agenda types (only change vs 20260903000001).
+-- event_reminder is NOT here: reminder rows are written with emailed_at set and
+-- mailed by their own path; event_rsvp has no e-mail.
+create or replace function claim_notification_emails(
+  p_settle_before timestamptz,
+  p_after         timestamptz,
+  p_limit         int
+)
+returns table (id uuid, user_id uuid, type text, metadata jsonb, link text, created_at timestamptz)
+language sql
+security definer
+set search_path = public
+as $$
+  update notifications n
+     set emailed_at = now()
+   where n.id in (
+     select n2.id from notifications n2
+     where n2.type = any (array[
+       'post_approved','post_publish_failed','post_correction','post_message',
+       'client_message','deadline_approaching','task_assigned','post_assigned',
+       'mention',
+       'event_invited','event_updated','event_cancelled'
+     ])
+       and n2.read_at is null and n2.dismissed_at is null and n2.emailed_at is null
+       and n2.created_at <= p_settle_before and n2.created_at >= p_after
+       and exists (
+         select 1 from workspace_members wm
+         where wm.workspace_id = n2.workspace_id and wm.user_id = n2.user_id
+       )
+       and not exists (
+         select 1 from notification_email_prefs p
+         where p.user_id = n2.user_id and p.enabled = false
+           and (p.type = n2.type or p.type = '__all__')
+       )
+     order by n2.created_at asc
+     limit p_limit
+     for update skip locked
+   )
+  returning n.id, n.user_id, n.type, n.metadata, n.link, n.created_at;
+$$;
+
+-- REVOKE FROM PUBLIC também derruba service_role nesta instância — re-grant.
+revoke all on function claim_notification_emails(timestamptz, timestamptz, int)
+  from public, anon, authenticated;
+grant execute on function claim_notification_emails(timestamptz, timestamptz, int)
+  to service_role;
+
+-- ---- internal: notification fan-out ----
+-- Filters the recipients to current members of p_conta BEFORE calling
+-- insert_notification_batch (the helper does not filter), excluding the actor.
+-- Metadata keys are a contract with the CRM display and the e-mail digest:
+-- evento_id, ocorrencia_id, titulo (effective), inicio, fim, dia_inteiro,
+-- data_local (yyyy-mm-dd in the series tz), recorrente, escopo, ator_nome,
+-- merged with p_extra (motivo = 'removido', resposta, minutos come from there).
+-- Link: /calendario?evento={ocorrencia_id}; cancelled, or no occurrence yet
+-- (an event past the materialization horizon): /calendario?data={yyyy-mm-dd}.
+CREATE OR REPLACE FUNCTION public.agenda_notificar(
+  p_conta uuid, p_evento_id bigint, p_ocorrencia_id bigint, p_tipo text,
+  p_destinatarios uuid[], p_ator uuid, p_extra jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  e public.agenda_eventos;
+  o public.agenda_ocorrencias;
+  v_filtrados uuid[];
+  v_inicio timestamptz;
+  v_fim timestamptz;
+  v_titulo text;
+  v_data_local date;
+  v_link text;
+  v_metadata jsonb;
+BEGIN
+  SELECT ARRAY(
+    SELECT DISTINCT d.u FROM unnest(p_destinatarios) AS d(u)
+      JOIN public.workspace_members wm ON wm.user_id = d.u AND wm.workspace_id = p_conta
+     WHERE d.u IS NOT NULL AND d.u IS DISTINCT FROM p_ator)
+    INTO v_filtrados;
+  IF cardinality(v_filtrados) = 0 THEN RETURN; END IF;
+
+  SELECT * INTO e FROM public.agenda_eventos ev WHERE ev.id = p_evento_id AND ev.conta_id = p_conta;
+  IF NOT FOUND THEN RETURN; END IF;
+
+  IF p_ocorrencia_id IS NOT NULL THEN
+    SELECT * INTO o FROM public.agenda_ocorrencias oc
+     WHERE oc.id = p_ocorrencia_id AND oc.evento_id = e.id AND oc.conta_id = p_conta;
+  END IF;
+  IF o.id IS NOT NULL THEN
+    v_inicio := o.inicio;
+    v_fim := o.fim;
+    v_titulo := CASE WHEN 'titulo' = ANY (o.campos_sobrescritos) THEN o.titulo ELSE e.titulo END;
+  ELSE
+    SELECT f.inicio, f.fim INTO v_inicio, v_fim FROM public.agenda_inicio_fim(e, e.dtstart::date) f;
+    v_titulo := e.titulo;
+  END IF;
+  v_data_local := (v_inicio AT TIME ZONE e.tz)::date;
+
+  v_link := CASE WHEN p_tipo = 'event_cancelled' OR o.id IS NULL
+                 THEN '/calendario?data=' || to_char(v_data_local, 'YYYY-MM-DD')
+                 ELSE '/calendario?evento=' || o.id END;
+
+  v_metadata := jsonb_build_object(
+    'evento_id', e.id,
+    'ocorrencia_id', o.id,
+    'titulo', v_titulo,
+    'inicio', v_inicio,
+    'fim', v_fim,
+    'dia_inteiro', e.dia_inteiro,
+    'data_local', to_char(v_data_local, 'YYYY-MM-DD'),
+    'recorrente', e.freq IS NOT NULL,
+    'escopo', NULL,
+    'ator_nome', (SELECT pr.nome FROM public.profiles pr WHERE pr.id = p_ator)
+  ) || coalesce(p_extra, '{}'::jsonb);
+
+  PERFORM public.insert_notification_batch(p_conta, v_filtrados, p_tipo, v_link, v_metadata, p_ator);
+END $$;
+REVOKE ALL ON FUNCTION public.agenda_notificar(uuid, bigint, bigint, text, uuid[], uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.agenda_notificar(uuid, bigint, bigint, text, uuid[], uuid, jsonb) TO service_role;
+
+-- ---- internal: payload -> unsaved agenda_eventos row ----
+-- Merge rule: a key absent from p_evento keeps p_base's value (with p_base NULL
+-- a missing required key raises); a key present with JSON null sets NULL; tz is
+-- read only on create (p_base NULL) and ignored on edit. inicio_local/fim_local
+-- are local wall clocks in the series tz and must come together; they become
+-- dtstart (the wall clock as sent: the edit RPC derives the series dtstart from
+-- it) and duracao_min (elapsed minutes, as occurrences are generated) or
+-- duracao_dias (exclusive end date - start date). The rule is always explicit:
+-- keys that do not apply to its freq are cleared. Every raise is user-facing
+-- pt-BR copy prefixed "agenda: ".
+CREATE OR REPLACE FUNCTION public.agenda_validar_payload(p_conta uuid, p_evento jsonb, p_base public.agenda_eventos DEFAULT NULL)
+RETURNS public.agenda_eventos LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v public.agenda_eventos;
+  p jsonb := p_evento;
+  r jsonb;
+  v_ini timestamp;
+  v_fim timestamp;
+  v_txt text;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN
+    RAISE EXCEPTION 'agenda: dados do evento incompletos';
+  END IF;
+
+  IF p_base IS NULL THEN
+    IF NOT (p ? 'titulo' AND p ? 'inicio_local' AND p ? 'fim_local') THEN
+      RAISE EXCEPTION 'agenda: dados do evento incompletos';
+    END IF;
+    v.tipo := 'reuniao';
+    v.privado := false;
+    v.dia_inteiro := false;
+    v.tz := 'America/Sao_Paulo';
+    v.intervalo := 1;
+    v.lembretes := '{}';
+    v.materializacao_completa := false;
+  ELSE
+    v := p_base;
+  END IF;
+  v.conta_id := p_conta;
+
+  -- ---- content ----
+  IF p ? 'titulo' THEN
+    IF jsonb_typeof(p->'titulo') NOT IN ('string', 'null') THEN RAISE EXCEPTION 'agenda: dados do evento inválidos'; END IF;
+    v.titulo := btrim(p->>'titulo');
+    IF v.titulo IS NULL OR v.titulo = '' THEN RAISE EXCEPTION 'agenda: informe um título'; END IF;
+  END IF;
+  IF p ? 'descricao' THEN
+    IF jsonb_typeof(p->'descricao') NOT IN ('string', 'null') THEN RAISE EXCEPTION 'agenda: dados do evento inválidos'; END IF;
+    v.descricao := NULLIF(p->>'descricao', '');
+  END IF;
+  IF p ? 'local' THEN
+    IF jsonb_typeof(p->'local') NOT IN ('string', 'null') THEN RAISE EXCEPTION 'agenda: dados do evento inválidos'; END IF;
+    v.local := NULLIF(btrim(p->>'local'), '');
+  END IF;
+  IF p ? 'link_reuniao' THEN
+    IF jsonb_typeof(p->'link_reuniao') NOT IN ('string', 'null') THEN RAISE EXCEPTION 'agenda: link da reunião inválido'; END IF;
+    v.link_reuniao := NULLIF(btrim(p->>'link_reuniao'), '');
+    IF v.link_reuniao IS NOT NULL AND (v.link_reuniao !~* '^https?://' OR char_length(v.link_reuniao) > 500) THEN
+      RAISE EXCEPTION 'agenda: link da reunião inválido';
+    END IF;
+  END IF;
+
+  -- ---- classification ----
+  IF p ? 'tipo' THEN
+    v.tipo := p->>'tipo';
+    IF jsonb_typeof(p->'tipo') <> 'string'
+       OR v.tipo NOT IN ('reuniao','gravacao','captacao','apresentacao','interno','outro') THEN
+      RAISE EXCEPTION 'agenda: dados do evento inválidos';
+    END IF;
+  END IF;
+  IF p ? 'cor' THEN
+    v.cor := p->>'cor';
+    IF jsonb_typeof(p->'cor') NOT IN ('string', 'null')
+       OR (v.cor IS NOT NULL AND v.cor NOT IN ('azul','rosa','laranja','roxo','verde','teal','cinza','amarelo')) THEN
+      RAISE EXCEPTION 'agenda: dados do evento inválidos';
+    END IF;
+  END IF;
+  IF p ? 'cliente_id' THEN
+    IF jsonb_typeof(p->'cliente_id') = 'null' THEN
+      v.cliente_id := NULL;
+    ELSIF jsonb_typeof(p->'cliente_id') <> 'number' OR (p->>'cliente_id') !~ '^[0-9]{1,18}$' THEN
+      RAISE EXCEPTION 'agenda: cliente não encontrado';
+    ELSE
+      v.cliente_id := (p->>'cliente_id')::bigint;
+      IF NOT EXISTS (SELECT 1 FROM public.clientes c WHERE c.id = v.cliente_id AND c.conta_id = p_conta) THEN
+        RAISE EXCEPTION 'agenda: cliente não encontrado';
+      END IF;
+    END IF;
+  END IF;
+  IF p ? 'privado' THEN
+    IF jsonb_typeof(p->'privado') <> 'boolean' THEN RAISE EXCEPTION 'agenda: dados do evento inválidos'; END IF;
+    v.privado := (p->>'privado')::boolean;
+  END IF;
+  IF p ? 'dia_inteiro' THEN
+    IF jsonb_typeof(p->'dia_inteiro') <> 'boolean' THEN RAISE EXCEPTION 'agenda: dados do evento inválidos'; END IF;
+    v.dia_inteiro := (p->>'dia_inteiro')::boolean;
+  END IF;
+
+  -- ---- tz (create only) ----
+  IF p_base IS NULL AND p ? 'tz' THEN
+    IF jsonb_typeof(p->'tz') <> 'string' THEN RAISE EXCEPTION 'agenda: fuso horário inválido'; END IF;
+    v.tz := p->>'tz';
+    BEGIN
+      PERFORM '2000-01-01'::timestamp AT TIME ZONE v.tz;
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'agenda: fuso horário inválido';
+    END;
+  END IF;
+
+  -- ---- start / duration ----
+  IF (p ? 'inicio_local') <> (p ? 'fim_local') THEN
+    RAISE EXCEPTION 'agenda: dados do evento incompletos';
+  END IF;
+  IF p ? 'inicio_local' THEN
+    IF jsonb_typeof(p->'inicio_local') <> 'string' OR jsonb_typeof(p->'fim_local') <> 'string' THEN
+      RAISE EXCEPTION 'agenda: dados do evento inválidos';
+    END IF;
+    BEGIN
+      v_ini := (p->>'inicio_local')::timestamp;
+      v_fim := (p->>'fim_local')::timestamp;
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'agenda: dados do evento inválidos';
+    END;
+    IF v_ini IS NULL OR v_fim IS NULL OR NOT isfinite(v_ini) OR NOT isfinite(v_fim) THEN
+      RAISE EXCEPTION 'agenda: dados do evento inválidos';
+    END IF;
+    IF v.dia_inteiro THEN
+      v.dtstart := v_ini::date::timestamp;
+      v.duracao_min := NULL;
+      v.duracao_dias := v_fim::date - v_ini::date;
+      IF v.duracao_dias <= 0 THEN RAISE EXCEPTION 'agenda: o fim precisa ser depois do início'; END IF;
+      IF v.duracao_dias > 31 THEN RAISE EXCEPTION 'agenda: o evento é longo demais'; END IF;
+    ELSE
+      v_ini := date_trunc('minute', v_ini);
+      v_fim := date_trunc('minute', v_fim);
+      IF v_fim <= v_ini THEN RAISE EXCEPTION 'agenda: o fim precisa ser depois do início'; END IF;
+      v.dtstart := v_ini;
+      v.duracao_dias := NULL;
+      -- elapsed minutes between the two wall clocks in the series tz (a DST
+      -- jump inside the event counts), never below one minute
+      v.duracao_min := greatest(1, (extract(epoch FROM ((v_fim AT TIME ZONE v.tz) - (v_ini AT TIME ZONE v.tz))) / 60)::int);
+      IF v.duracao_min > 20160 THEN RAISE EXCEPTION 'agenda: o evento é longo demais'; END IF;
+    END IF;
+  ELSIF p_base IS NOT NULL AND v.dia_inteiro IS DISTINCT FROM p_base.dia_inteiro THEN
+    -- switching all-day on or off needs the new start and end
+    RAISE EXCEPTION 'agenda: dados do evento incompletos';
+  END IF;
+
+  -- ---- reminders ----
+  IF p ? 'lembretes' THEN
+    IF jsonb_typeof(p->'lembretes') = 'null' THEN
+      v.lembretes := '{}';
+    ELSIF jsonb_typeof(p->'lembretes') <> 'array'
+       OR jsonb_array_length(p->'lembretes') > 5
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(p->'lembretes') x(j)
+                   WHERE jsonb_typeof(x.j) <> 'number' OR (x.j #>> '{}') !~ '^-?[0-9]{1,5}$'
+                      OR (x.j #>> '{}')::int NOT BETWEEN -1440 AND 40320)
+       OR (SELECT count(DISTINCT x.j) <> count(*) FROM jsonb_array_elements(p->'lembretes') x(j)) THEN
+      RAISE EXCEPTION 'agenda: lembrete inválido';
+    ELSE
+      v.lembretes := ARRAY(SELECT (x.j #>> '{}')::int FROM jsonb_array_elements(p->'lembretes') WITH ORDINALITY x(j, n) ORDER BY x.n);
+    END IF;
+  END IF;
+
+  -- ---- rule ----
+  IF p ? 'regra' THEN
+    r := p->'regra';
+    IF jsonb_typeof(r) = 'null' THEN
+      v.freq := NULL; v.intervalo := 1; v.dias_semana := NULL; v.mensal_modo := NULL;
+      v.mensal_ordinal := NULL; v.ate := NULL; v.contagem := NULL;
+    ELSIF jsonb_typeof(r) <> 'object' THEN
+      RAISE EXCEPTION 'agenda: repetição inválida';
+    ELSE
+      v.freq := r->>'freq';
+      IF jsonb_typeof(r->'freq') IS DISTINCT FROM 'string' OR v.freq NOT IN ('daily','weekly','monthly','yearly') THEN
+        RAISE EXCEPTION 'agenda: repetição inválida';
+      END IF;
+      IF r ? 'intervalo' AND jsonb_typeof(r->'intervalo') <> 'null' THEN
+        IF jsonb_typeof(r->'intervalo') <> 'number' OR (r->>'intervalo') !~ '^[0-9]{1,2}$' OR (r->>'intervalo')::int < 1 THEN
+          RAISE EXCEPTION 'agenda: repetição inválida';
+        END IF;
+        v.intervalo := (r->>'intervalo')::int;
+      ELSE
+        v.intervalo := 1;
+      END IF;
+
+      v.dias_semana := NULL;
+      IF v.freq = 'weekly' THEN
+        IF jsonb_typeof(r->'dias_semana') IS DISTINCT FROM 'array'
+           OR jsonb_array_length(r->'dias_semana') NOT BETWEEN 1 AND 7
+           OR EXISTS (SELECT 1 FROM jsonb_array_elements(r->'dias_semana') x(j)
+                       WHERE jsonb_typeof(x.j) <> 'number' OR (x.j #>> '{}') !~ '^[0-6]$')
+           OR (SELECT count(DISTINCT x.j) <> count(*) FROM jsonb_array_elements(r->'dias_semana') x(j)) THEN
+          RAISE EXCEPTION 'agenda: dias da semana inválidos';
+        END IF;
+        v.dias_semana := ARRAY(SELECT (x.j #>> '{}')::int FROM jsonb_array_elements(r->'dias_semana') x(j) ORDER BY 1);
+      END IF;
+
+      v.mensal_modo := NULL; v.mensal_ordinal := NULL;
+      IF v.freq = 'monthly' THEN
+        v.mensal_modo := r->>'mensal_modo';
+        IF v.mensal_modo IS NULL OR v.mensal_modo NOT IN ('dia_mes','dia_semana') THEN
+          RAISE EXCEPTION 'agenda: repetição inválida';
+        END IF;
+        IF v.mensal_modo = 'dia_semana' THEN
+          IF jsonb_typeof(r->'mensal_ordinal') IS DISTINCT FROM 'number' OR (r->>'mensal_ordinal') NOT IN ('1','2','3','4','-1') THEN
+            RAISE EXCEPTION 'agenda: repetição inválida';
+          END IF;
+          v.mensal_ordinal := (r->>'mensal_ordinal')::int;
+        END IF;
+      END IF;
+
+      v.ate := NULL; v.contagem := NULL;
+      IF jsonb_typeof(r->'ate') = 'string' THEN
+        BEGIN
+          v.ate := (r->>'ate')::date;
+        EXCEPTION WHEN others THEN
+          RAISE EXCEPTION 'agenda: repetição inválida';
+        END;
+      ELSIF r ? 'ate' AND jsonb_typeof(r->'ate') <> 'null' THEN
+        RAISE EXCEPTION 'agenda: repetição inválida';
+      END IF;
+      IF jsonb_typeof(r->'contagem') = 'number' THEN
+        IF (r->>'contagem') !~ '^[0-9]{1,3}$' OR (r->>'contagem')::int NOT BETWEEN 1 AND 730 THEN
+          RAISE EXCEPTION 'agenda: repetição inválida';
+        END IF;
+        v.contagem := (r->>'contagem')::int;
+      ELSIF r ? 'contagem' AND jsonb_typeof(r->'contagem') <> 'null' THEN
+        RAISE EXCEPTION 'agenda: repetição inválida';
+      END IF;
+      IF v.ate IS NOT NULL AND v.contagem IS NOT NULL THEN
+        RAISE EXCEPTION 'agenda: repetição inválida';
+      END IF;
+    END IF;
+  END IF;
+
+  IF v.titulo IS NULL OR v.dtstart IS NULL THEN
+    RAISE EXCEPTION 'agenda: dados do evento incompletos';
+  END IF;
+  IF v.freq IS NOT NULL AND v.ate IS NOT NULL THEN
+    IF v.ate < v.dtstart::date THEN
+      RAISE EXCEPTION 'agenda: a repetição não gera nenhuma data';
+    END IF;
+    IF v.ate > (v.dtstart::date + interval '5 years')::date THEN
+      RAISE EXCEPTION 'agenda: repetição inválida';
+    END IF;
+  END IF;
+
+  IF v.dtstart::date < least(coalesce(p_base.dtstart::date, 'infinity'::date), public.agenda_hoje(v.tz) - 366) THEN
+    RAISE EXCEPTION 'agenda: a data de início é antiga demais';
+  END IF;
+
+  RETURN v;
+END $$;
+REVOKE ALL ON FUNCTION public.agenda_validar_payload(uuid, jsonb, public.agenda_eventos) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.agenda_validar_payload(uuid, jsonb, public.agenda_eventos) TO service_role;
+
+-- ---- client RPC: create ----
+-- Returns the first occurrence and the normalized dtstart (the UI warns "A série
+-- começa em {data}" when it differs from the chosen start). An event dated past
+-- the 24-month materialization horizon has no occurrence yet: ocorrencia_id is
+-- NULL and the generator materializes it when "today" catches up.
+CREATE OR REPLACE FUNCTION public.agenda_evento_criar(p_evento jsonb, p_participantes uuid[])
+RETURNS TABLE (evento_id bigint, ocorrencia_id bigint, dtstart timestamp)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+#variable_conflict use_column
+DECLARE
+  v_conta uuid;
+  v_user uuid;
+  v_e public.agenda_eventos;
+  v_id bigint;
+  v_oc bigint;
+  v_parts uuid[];
+BEGIN
+  v_conta := get_my_conta_id(); v_user := auth.uid();
+  IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  IF NOT public.has_permission('calendario', 'editar') THEN
+    RAISE EXCEPTION 'agenda: você não pode criar eventos';
+  END IF;
+
+  v_e := public.agenda_validar_payload(v_conta, p_evento, NULL);
+  v_e.organizador_id := v_user;
+  v_e.dtstart := public.agenda_normalizar_dtstart(v_e);
+
+  v_parts := ARRAY(SELECT DISTINCT d.u FROM unnest(coalesce(p_participantes, '{}'::uuid[])) AS d(u)
+                    WHERE d.u IS NOT NULL AND d.u <> v_user);
+  IF cardinality(v_parts) > 50 THEN
+    RAISE EXCEPTION 'agenda: no máximo 50 participantes';
+  END IF;
+  IF EXISTS (SELECT 1 FROM unnest(v_parts) AS d(u)
+              WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm
+                                 WHERE wm.user_id = d.u AND wm.workspace_id = v_conta)) THEN
+    RAISE EXCEPTION 'agenda: participante fora do workspace';
+  END IF;
+
+  INSERT INTO public.agenda_eventos (
+    conta_id, organizador_id, titulo, descricao, local, link_reuniao, tipo, cor, cliente_id,
+    privado, dia_inteiro, tz, dtstart, duracao_min, duracao_dias, freq, intervalo, dias_semana,
+    mensal_modo, mensal_ordinal, ate, contagem, lembretes)
+  VALUES (
+    v_conta, v_user, v_e.titulo, v_e.descricao, v_e.local, v_e.link_reuniao, v_e.tipo, v_e.cor, v_e.cliente_id,
+    v_e.privado, v_e.dia_inteiro, v_e.tz, v_e.dtstart, v_e.duracao_min, v_e.duracao_dias, v_e.freq, v_e.intervalo,
+    v_e.dias_semana, v_e.mensal_modo, v_e.mensal_ordinal, v_e.ate, v_e.contagem, v_e.lembretes)
+  RETURNING agenda_eventos.id INTO v_id;
+
+  INSERT INTO public.agenda_participantes (evento_id, conta_id, user_id, resposta, respondido_em)
+  VALUES (v_id, v_conta, v_user, 'sim', now());
+  INSERT INTO public.agenda_participantes (evento_id, conta_id, user_id, resposta)
+  SELECT v_id, v_conta, d.u, 'pendente' FROM unnest(v_parts) AS d(u);
+
+  PERFORM public.agenda_materializar(v_id, (public.agenda_hoje(v_e.tz) + interval '24 months')::date);
+
+  SELECT o.id INTO v_oc FROM public.agenda_ocorrencias o
+   WHERE o.evento_id = v_id ORDER BY o.data_original LIMIT 1;
+
+  PERFORM public.agenda_notificar(v_conta, v_id, v_oc, 'event_invited', v_parts, v_user, '{}'::jsonb);
+
+  RETURN QUERY SELECT v_id, v_oc, v_e.dtstart;
+END $$;
+REVOKE ALL ON FUNCTION public.agenda_evento_criar(jsonb, uuid[]) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.agenda_evento_criar(jsonb, uuid[]) TO authenticated, service_role;
+
+-- ---- client RPC: read ----
+-- One row per visible, non-cancelled occurrence. With p_ocorrencia_id (deep
+-- link) the range is ignored and only that occurrence comes back; otherwise both
+-- bounds are required and span at most 100 days. inicio >= p_de - 31 days (the
+-- longest event) lets the (conta_id, inicio, fim) index bound the scan on both
+-- sides; the deep link reuses the same query with the occurrence's own bounds.
+-- Masking ("ocupado"): a private event the viewer neither organizes nor
+-- attends shows titulo 'Ocupado' and NULL content, rule and reminders, and its
+-- participants without answers. regra is jsonb_build_object over all seven keys
+-- (explicit nulls, never stripped: the CRM compares them).
+CREATE OR REPLACE FUNCTION public.agenda_listar(p_de timestamptz DEFAULT NULL, p_ate timestamptz DEFAULT NULL, p_ocorrencia_id bigint DEFAULT NULL)
+RETURNS TABLE (
+  ocorrencia_id bigint, evento_id bigint, data_original date,
+  inicio timestamptz, fim timestamptz, dia_inteiro boolean,
+  data_inicio_local date, data_fim_local date,
+  titulo text, descricao text, local text, link_reuniao text,
+  tipo text, cor text, cliente_id bigint, cliente_nome text,
+  privado boolean, mascarado boolean, recorrente boolean,
+  regra jsonb, lembretes int[], organizador_id uuid,
+  participantes jsonb,
+  minha_resposta text, pode_editar boolean, pode_responder boolean, tz text
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+#variable_conflict use_column
+DECLARE
+  v_conta uuid;
+  v_user uuid;
+  v_role text;
+  v_editar boolean;
+  v_de timestamptz := p_de;
+  v_ate timestamptz := p_ate;
+BEGIN
+  v_conta := get_my_conta_id(); v_user := auth.uid();
+  IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  IF NOT public.has_permission('calendario', 'ver') THEN
+    RAISE EXCEPTION 'agenda: você não pode ver a agenda';
+  END IF;
+
+  IF p_ocorrencia_id IS NOT NULL THEN
+    SELECT o.inicio, o.fim INTO v_de, v_ate FROM public.agenda_ocorrencias o
+     WHERE o.id = p_ocorrencia_id AND o.conta_id = v_conta AND NOT o.cancelada;
+    IF NOT FOUND THEN RETURN; END IF;
+  ELSIF v_de IS NULL OR v_ate IS NULL OR v_ate <= v_de OR v_ate - v_de > interval '100 days' THEN
+    RAISE EXCEPTION 'agenda: período inválido';
+  END IF;
+
+  SELECT wm.role::text INTO v_role FROM public.workspace_members wm
+   WHERE wm.workspace_id = v_conta AND wm.user_id = v_user;
+  v_editar := public.has_permission('calendario', 'editar');
+
+  RETURN QUERY
+  SELECT
+    o.id, e.id, o.data_original,
+    o.inicio, o.fim, e.dia_inteiro,
+    (o.inicio AT TIME ZONE e.tz)::date,
+    CASE WHEN e.dia_inteiro THEN (o.fim AT TIME ZONE e.tz)::date
+         ELSE ((o.fim AT TIME ZONE e.tz) - interval '1 microsecond')::date + 1 END,
+    CASE WHEN m.mascarado THEN 'Ocupado'
+         WHEN 'titulo' = ANY (o.campos_sobrescritos) THEN o.titulo ELSE e.titulo END,
+    CASE WHEN m.mascarado THEN NULL
+         WHEN 'descricao' = ANY (o.campos_sobrescritos) THEN o.descricao ELSE e.descricao END,
+    CASE WHEN m.mascarado THEN NULL
+         WHEN 'local' = ANY (o.campos_sobrescritos) THEN o.local ELSE e.local END,
+    CASE WHEN m.mascarado THEN NULL
+         WHEN 'link_reuniao' = ANY (o.campos_sobrescritos) THEN o.link_reuniao ELSE e.link_reuniao END,
+    CASE WHEN m.mascarado THEN NULL ELSE e.tipo END,
+    CASE WHEN m.mascarado THEN NULL ELSE e.cor END,
+    CASE WHEN m.mascarado THEN NULL ELSE e.cliente_id END,
+    CASE WHEN m.mascarado THEN NULL ELSE c.nome END,
+    e.privado, m.mascarado, e.freq IS NOT NULL,
+    CASE WHEN m.mascarado OR e.freq IS NULL THEN NULL
+         ELSE jsonb_build_object('freq', e.freq, 'intervalo', e.intervalo, 'dias_semana', e.dias_semana,
+                                 'mensal_modo', e.mensal_modo, 'mensal_ordinal', e.mensal_ordinal,
+                                 'ate', e.ate, 'contagem', e.contagem) END,
+    CASE WHEN m.mascarado THEN NULL ELSE e.lembretes END,
+    e.organizador_id,
+    coalesce((
+      SELECT jsonb_agg(jsonb_build_object(
+               'user_id', ap.user_id,
+               'resposta', CASE WHEN m.mascarado THEN NULL ELSE coalesce(ar.resposta, ap.resposta) END)
+             ORDER BY ap.user_id)
+        FROM public.agenda_participantes ap
+        JOIN public.workspace_members wm ON wm.user_id = ap.user_id AND wm.workspace_id = v_conta
+        LEFT JOIN public.agenda_respostas ar ON ar.ocorrencia_id = o.id AND ar.user_id = ap.user_id
+       WHERE ap.evento_id = e.id), '[]'::jsonb),
+    CASE WHEN eu.user_id IS NULL THEN NULL ELSE coalesce(mr.resposta, eu.resposta) END,
+    v_editar AND (e.organizador_id = v_user OR (v_role IN ('owner', 'admin') AND NOT e.privado)),
+    eu.user_id IS NOT NULL AND e.organizador_id IS DISTINCT FROM v_user,
+    e.tz
+  FROM public.agenda_ocorrencias o
+  JOIN public.agenda_eventos e ON e.id = o.evento_id AND e.conta_id = v_conta
+  LEFT JOIN public.agenda_participantes eu ON eu.evento_id = e.id AND eu.user_id = v_user
+  LEFT JOIN public.agenda_respostas mr ON mr.ocorrencia_id = o.id AND mr.user_id = v_user
+  LEFT JOIN public.clientes c ON c.id = e.cliente_id AND c.conta_id = v_conta
+  CROSS JOIN LATERAL (
+    SELECT (e.privado AND e.organizador_id IS DISTINCT FROM v_user AND eu.user_id IS NULL) AS mascarado
+  ) m
+  WHERE o.conta_id = v_conta
+    AND NOT o.cancelada
+    AND o.inicio < v_ate AND o.fim > v_de AND o.inicio >= v_de - interval '31 days'
+    AND (p_ocorrencia_id IS NULL OR o.id = p_ocorrencia_id)
+  ORDER BY o.inicio, o.id;
+END $$;
+REVOKE ALL ON FUNCTION public.agenda_listar(timestamptz, timestamptz, bigint) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.agenda_listar(timestamptz, timestamptz, bigint) TO authenticated, service_role;
