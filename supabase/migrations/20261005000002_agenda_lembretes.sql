@@ -215,7 +215,11 @@ GRANT EXECUTE ON FUNCTION public.agenda_tick_lembretes(timestamptz, boolean) TO 
 -- 'falhou' instead of being re-claimed forever. Before claiming, rows that must
 -- no longer be e-mailed are settled as 'nao': the occurrence was cancelled,
 -- moved (inicio <> inicio_alvo: the move created its own reminder), or already
--- ended. Returns the event data the e-mail needs (effective title, place and
+-- ended, or the recipient is no longer involved (removed from the event or the
+-- workspace, or the effective answer is now 'nao', computed like the tick's
+-- dest: the per-occurrence answer overrides the series one). A row claimed
+-- while e-mail delivery was down must not leak a private event to someone the
+-- organizer removed. Returns the event data the e-mail needs (effective title, place and
 -- link; tz for formatting).
 CREATE OR REPLACE FUNCTION public.agenda_claim_emails_lembrete(p_limit int DEFAULT 100)
 RETURNS TABLE (ocorrencia_id bigint, user_id uuid, minutos int, inicio_alvo timestamptz, notification_id uuid,
@@ -233,7 +237,15 @@ BEGIN
     FROM public.agenda_ocorrencias o
    WHERE o.id = l.ocorrencia_id
      AND (l.email_status = 'pendente' OR (l.email_status = 'enviando' AND l.email_lease_ate < now()))
-     AND (o.cancelada OR o.inicio <> l.inicio_alvo OR o.fim < now());
+     AND (o.cancelada OR o.inicio <> l.inicio_alvo OR o.fim < now()
+          OR NOT EXISTS (SELECT 1 FROM public.agenda_participantes p
+                          WHERE p.evento_id = o.evento_id AND p.user_id = l.user_id)
+          OR NOT EXISTS (SELECT 1 FROM public.workspace_members wm
+                          WHERE wm.workspace_id = l.conta_id AND wm.user_id = l.user_id)
+          OR coalesce((SELECT ar.resposta FROM public.agenda_respostas ar
+                        WHERE ar.ocorrencia_id = l.ocorrencia_id AND ar.user_id = l.user_id),
+                      (SELECT p.resposta FROM public.agenda_participantes p
+                        WHERE p.evento_id = o.evento_id AND p.user_id = l.user_id)) = 'nao');
 
   RETURN QUERY
   WITH alvo AS (

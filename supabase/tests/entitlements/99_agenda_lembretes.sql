@@ -379,6 +379,82 @@ begin
   raise notice 'PASS 99_agenda_lembretes (bounded candidates, mark fence)';
 end $$;
 
+-- ============ block 3c: the claim re-checks involvement; no anon on date helpers ============
+do $$
+declare
+  v_ws uuid;
+  v_o uuid := gen_random_uuid();
+  v_rem uuid := gen_random_uuid();   -- removed from the event
+  v_sai uuid := gen_random_uuid();   -- removed from the workspace
+  v_occ uuid := gen_random_uuid();   -- answers nao for this occurrence
+  v_ser uuid := gen_random_uuid();   -- answers nao for the series
+  v_fica uuid := gen_random_uuid();  -- still involved
+  v_oc bigint; v_ev bigint;
+  v_n int;
+  v_users uuid[];
+  v_f text;
+begin
+  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  delete from agenda_lembretes;
+  v_ws := et_make_workspace('max');
+  insert into auth.users (id) values (v_o), (v_rem), (v_sai), (v_occ), (v_ser), (v_fica);
+  insert into workspace_members (user_id, workspace_id, role) values
+    (v_o, v_ws, 'owner'), (v_rem, v_ws, 'agent'), (v_sai, v_ws, 'agent'),
+    (v_occ, v_ws, 'agent'), (v_ser, v_ws, 'agent'), (v_fica, v_ws, 'agent');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_o, v_rem, v_sai, v_occ, v_ser, v_fica);
+
+  -- a private event; the tick writes pendente rows for all six
+  v_oc := pg_temp.criar(v_o, pg_temp.p('{"titulo":"Privado","privado":true,"inicio_local":"2027-05-03T14:00:00","fim_local":"2027-05-03T15:00:00"}'),
+                        array[v_rem, v_sai, v_occ, v_ser, v_fica]);
+  select o.evento_id into v_ev from agenda_ocorrencias o where o.id = v_oc;
+  assert pg_temp.tick('2027-05-03 13:50-03') = 6, 'involvement setup: six claims';
+  select count(*) into v_n from agenda_lembretes where ocorrencia_id = v_oc and email_status = 'pendente';
+  assert v_n = 6, format('involvement setup: %s pendente', v_n);
+
+  -- then, while e-mail is down, the involvement changes
+  delete from agenda_participantes where evento_id = v_ev and user_id = v_rem;
+  delete from workspace_members where workspace_id = v_ws and user_id = v_sai;
+  insert into agenda_respostas (ocorrencia_id, conta_id, user_id, resposta) values (v_oc, v_ws, v_occ, 'nao');
+  update agenda_participantes set resposta = 'nao' where evento_id = v_ev and user_id = v_ser;
+  -- a per-occurrence sim overrides a series nao (the effective answer, like the tick)
+  update agenda_participantes set resposta = 'nao' where evento_id = v_ev and user_id = v_fica;
+  insert into agenda_respostas (ocorrencia_id, conta_id, user_id, resposta) values (v_oc, v_ws, v_fica, 'sim');
+
+  execute 'set local role service_role';
+  select array_agg(c.user_id order by c.user_id) into v_users from public.agenda_claim_emails_lembrete(10) c;
+  execute 'reset role';
+  assert v_users = (select array_agg(u order by u) from unnest(array[v_o, v_fica]) u),
+    format('claimed recipients: %s', v_users);
+  select count(*) into v_n from agenda_lembretes
+   where ocorrencia_id = v_oc and email_status = 'nao' and user_id in (v_rem, v_sai, v_occ, v_ser);
+  assert v_n = 4, format('no-longer-involved rows not settled as nao: %s', v_n);
+  select count(*) into v_n from agenda_lembretes
+   where ocorrencia_id = v_oc and email_status = 'enviando' and user_id in (v_o, v_fica);
+  assert v_n = 2, format('involved rows not claimed: %s', v_n);
+
+  -- an expired lease of someone removed meanwhile is settled too, not re-claimed
+  delete from agenda_participantes where evento_id = v_ev and user_id = v_fica;
+  update agenda_lembretes set email_lease_ate = now() - interval '1 second' where ocorrencia_id = v_oc and user_id in (v_o, v_fica);
+  execute 'set local role service_role';
+  select array_agg(c.user_id) into v_users from public.agenda_claim_emails_lembrete(10) c;
+  execute 'reset role';
+  assert v_users = array[v_o], format('re-claim after removal: %s', v_users);
+  perform 1 from agenda_lembretes where ocorrencia_id = v_oc and user_id = v_fica and email_status = 'nao';
+  assert found, 'removed participant with an expired lease not settled as nao';
+
+  -- the pure date helpers: no EXECUTE for anon; authenticated and service_role keep it
+  foreach v_f in array array['public.agenda_hoje(text)',
+                             'public.agenda_datas_regra(public.agenda_eventos, date, date)',
+                             'public.agenda_normalizar_dtstart(public.agenda_eventos)',
+                             'public.agenda_inicio_fim(public.agenda_eventos, date)'] loop
+    assert not has_function_privilege('anon', v_f, 'EXECUTE'), format('anon can execute %s', v_f);
+    assert has_function_privilege('authenticated', v_f, 'EXECUTE'), format('authenticated cannot execute %s', v_f);
+    assert has_function_privilege('service_role', v_f, 'EXECUTE'), format('service_role cannot execute %s', v_f);
+  end loop;
+
+  raise notice 'PASS 99_agenda_lembretes (claim re-checks involvement, date helper grants)';
+end $$;
+
 -- ============ block 4: rollback runbook (inside this transaction, rolled back) ============
 \i docs/superpowers/specs/assets/2026-10-05-agenda-rollback.sql
 

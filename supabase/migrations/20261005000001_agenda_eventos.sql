@@ -254,8 +254,9 @@ $$;
 
 -- ============ (2) DATE MATH + MATERIALIZATION + GENERATOR ============
 
--- Pure date functions keep the default EXECUTE (like tarefa_next_date): they
--- read nothing but their arguments and the clock.
+-- Pure date functions: they read nothing but their arguments and the clock.
+-- EXECUTE for authenticated and service_role only (no anon), granted after
+-- agenda_inicio_fim below.
 
 -- "Today" in a series' tz. app.agenda_hoje pins it for the SQL suites.
 CREATE OR REPLACE FUNCTION public.agenda_hoje(p_tz text) RETURNS date
@@ -362,6 +363,15 @@ BEGIN
     fim := inicio + make_interval(mins => p_e.duracao_min);
   END IF;
 END $$;
+
+REVOKE EXECUTE ON FUNCTION public.agenda_hoje(text),
+  public.agenda_datas_regra(public.agenda_eventos, date, date),
+  public.agenda_normalizar_dtstart(public.agenda_eventos),
+  public.agenda_inicio_fim(public.agenda_eventos, date) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.agenda_hoje(text),
+  public.agenda_datas_regra(public.agenda_eventos, date, date),
+  public.agenda_normalizar_dtstart(public.agenda_eventos),
+  public.agenda_inicio_fim(public.agenda_eventos, date) TO authenticated, service_role;
 
 -- Internal: materialize a series up to least(p_ate, today + 24 months).
 -- Starts after the last materialized date (horizonte_ate + 1), so a date that
