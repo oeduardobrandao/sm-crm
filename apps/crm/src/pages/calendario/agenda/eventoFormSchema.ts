@@ -161,7 +161,7 @@ export const eventoFormSchema = z
 
 export type EventoFormValues = z.infer<typeof eventoFormSchema>;
 
-function hhmm(d: Date): string {
+export function hhmm(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 

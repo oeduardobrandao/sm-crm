@@ -3,7 +3,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { addDays, differenceInCalendarDays, startOfDay } from 'date-fns';
+import { startOfDay } from 'date-fns';
 import { Plus, X } from 'lucide-react';
 import {
   AlertDialog,
@@ -16,7 +16,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { DatePicker } from '@/components/ui/date-picker';
 import {
   CONFIRM_CLOSE_DISCARD,
   CONFIRM_CLOSE_KEEP_EDITING,
@@ -77,18 +76,15 @@ import {
   TIPO_LABEL,
   fusoDoNavegador,
   opcaoDaRegra,
-  rederivarRegra,
   rotuloLembrete,
   type RepetirOpcaoId,
 } from './agendaLogic';
 import {
-  HORARIOS,
   MAX_LEMBRETES,
   MAX_PARTICIPANTES,
   camposDeSerieAlterados,
   chavesAlteradas,
   combinarDataHora,
-  duracaoRotulo,
   eventoFormSchema,
   mesmasPessoas,
   montarPayload,
@@ -96,6 +92,7 @@ import {
   motivoSerie,
   regraAcompanhouData,
   rotuloDtstart,
+  hhmm,
   valoresDeOcorrencia,
   valoresIniciaisCriar,
   type CampoSerie,
@@ -104,6 +101,7 @@ import {
 import { EscopoEventoDialog } from './EscopoEventoDialog';
 import { PessoasCombobox, type PessoaEquipe } from './PessoasCombobox';
 import { RecorrenciaPersonalizadaDialog } from './RecorrenciaPersonalizadaDialog';
+import { QuandoCampos } from './QuandoCampos';
 import { RepetirSelect } from './RepetirSelect';
 
 export type EventoFormDialogProps =
@@ -139,15 +137,6 @@ interface EscopoPendente {
   depois: AgendaEventoPayload;
   participantes: string[] | null;
   campos: CampoSerie[];
-}
-
-function hhmm(d: Date): string {
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-/** The grid plus the current value when it is off the 15-min grid (API-made events). */
-function opcoesHorario(atual: string): string[] {
-  return HORARIOS.includes(atual) ? HORARIOS : [atual, ...HORARIOS];
 }
 
 /** Criar / editar evento (spec: EventoFormDialog). On create, dates and times
@@ -278,7 +267,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
   });
 
   const salvando = criar.isPending || editar.isPending;
-  const { isDirty, errors } = form.formState;
+  const { isDirty } = form.formState;
 
   const salvarEdicao = (e: EscopoPendente, esc: AgendaEscopo) => {
     const b = base.current!;
@@ -321,30 +310,6 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
 
   // ---- Changes with side effects (not effects: a reset must not trigger them) ----
 
-  const mudarDataInicio = (d: Date | undefined) => {
-    if (!d) return;
-    const atual = form.getValues();
-    const nova = startOfDay(d);
-    const delta = differenceInCalendarDays(nova, atual.data_inicio);
-    form.setValue('data_inicio', nova, SUJO);
-    form.setValue('data_fim', addDays(atual.data_fim, delta), SUJO);
-    const regra = rederivarRegra(atual.repetir, atual.regra, nova);
-    form.setValue('regra', regra, SUJO);
-    form.setValue('repetir', opcaoDaRegra(regra, nova), SUJO);
-  };
-
-  const mudarHoraInicio = (h: string) => {
-    const atual = form.getValues();
-    const inicioAntes = combinarDataHora(atual.data_inicio, atual.hora_inicio);
-    const fimAntes = combinarDataHora(atual.data_fim, atual.hora_fim);
-    const duracao = fimAntes.getTime() - inicioAntes.getTime();
-    const novoInicio = combinarDataHora(atual.data_inicio, h);
-    const novoFim = new Date(novoInicio.getTime() + (duracao > 0 ? duracao : 60 * 60_000));
-    form.setValue('hora_inicio', h, SUJO);
-    form.setValue('data_fim', startOfDay(novoFim), SUJO);
-    form.setValue('hora_fim', hhmm(novoFim), SUJO);
-  };
-
   const mudarDiaInteiro = (on: boolean) => {
     const atual = form.getValues();
     form.setValue('dia_inteiro', on, SUJO);
@@ -368,24 +333,12 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
   };
 
   const diaInteiro = !!v.dia_inteiro;
-  const erroFim = (diaInteiro ? errors.data_fim : errors.hora_fim)?.message;
   const dataInicio = v.data_inicio ?? new Date();
-  const inicioCompleto = combinarDataHora(dataInicio, v.hora_inicio ?? '00:00');
-  const fimEmOutroDia =
-    !!v.data_fim && toDateOnlyString(v.data_fim) !== toDateOnlyString(dataInicio);
   const lembretes = v.lembretes ?? [];
   const lembretesOferta = (diaInteiro ? LEMBRETES_DIA_INTEIRO : LEMBRETES_HORARIO).filter(
     (m) => !lembretes.includes(m),
   );
   const fusoDiferente = ocorrencia && ocorrencia.tz !== fusoDoNavegador() ? ocorrencia.tz : null;
-
-  const rotuloFim = (h: string) => {
-    if (!v.data_fim) return h;
-    const min = Math.round(
-      (combinarDataHora(v.data_fim, h).getTime() - inicioCompleto.getTime()) / 60_000,
-    );
-    return min > 0 && min < 1440 ? `${h} (${duracaoRotulo(min)})` : h;
-  };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && !salvando && fechar()}>
@@ -486,90 +439,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
             </div>
 
             <div className="flex flex-col gap-2.5">
-              <div className="flex flex-wrap items-end gap-2.5">
-                <div className="flex min-w-[180px] flex-[1.3] flex-col gap-2">
-                  <Label>Quando</Label>
-                  <DatePicker
-                    value={v.data_inicio}
-                    onChange={mudarDataInicio}
-                    placeholder="Data de início"
-                    displayFormat="EEE, d 'de' MMM 'de' yyyy"
-                    clearable={false}
-                    className="mb-0 h-10 w-full"
-                  />
-                </div>
-                {!diaInteiro && (
-                  <div className="min-w-[96px] flex-[.8]">
-                    <Select value={v.hora_inicio} onValueChange={mudarHoraInicio}>
-                      <SelectTrigger aria-label="Hora de início" className="h-10">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-72">
-                        {opcoesHorario(v.hora_inicio ?? '').map((h) => (
-                          <SelectItem key={h} value={h}>
-                            {h}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <span className="pb-2.5 text-sm" style={{ color: 'var(--text-muted)' }}>
-                  até
-                </span>
-                {!diaInteiro && (
-                  <FormField
-                    control={form.control}
-                    name="hora_fim"
-                    render={({ field }) => (
-                      <FormItem className="min-w-[140px] flex-[.8]">
-                        <Select value={field.value} onValueChange={field.onChange}>
-                          <FormControl>
-                            <SelectTrigger aria-label="Hora de fim" className="h-10">
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="max-h-72">
-                            {opcoesHorario(field.value).map((h) => (
-                              <SelectItem key={h} value={h}>
-                                {rotuloFim(h)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
-                )}
-                {(diaInteiro || fimEmOutroDia) && (
-                  <FormField
-                    control={form.control}
-                    name="data_fim"
-                    render={({ field }) => (
-                      <FormItem className="min-w-[180px] flex-[1.3]">
-                        <DatePicker
-                          value={field.value}
-                          onChange={(d) => d && field.onChange(startOfDay(d))}
-                          placeholder="Data de fim"
-                          displayFormat="EEE, d 'de' MMM 'de' yyyy"
-                          clearable={false}
-                          className="mb-0 h-10 w-full"
-                        />
-                      </FormItem>
-                    )}
-                  />
-                )}
-              </div>
-              {erroFim && (
-                <p role="alert" className="text-[0.8rem] font-medium text-destructive">
-                  {erroFim}
-                </p>
-              )}
-              {fusoDiferente && (
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Horários no fuso {fusoDiferente}
-                </p>
-              )}
+              <QuandoCampos form={form} fusoDiferente={fusoDiferente} />
               <div className="flex flex-wrap items-center gap-5">
                 <div className="flex items-center gap-2">
                   <Switch
