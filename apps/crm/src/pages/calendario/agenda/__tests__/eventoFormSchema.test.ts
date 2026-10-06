@@ -5,6 +5,7 @@ import {
   MAX_LEMBRETES,
   MAX_PARTICIPANTES,
   camposDeSerieAlterados,
+  chavesAlteradas,
   duracaoRotulo,
   eventoFormSchema,
   montarPayload,
@@ -407,71 +408,112 @@ describe('regra <-> personalizada', () => {
 
 describe('edit payload', () => {
   const antes = montarPayload(valoresDeOcorrencia(ocorrencia()));
+  const r1 = regra({ dias_semana: [1] });
+  const SERIE = {
+    regra: null,
+    tipo: 'gravacao',
+    cor: null,
+    cliente_id: 12,
+    privado: false,
+    dia_inteiro: false,
+    lembretes: [10],
+  };
+  const CONTEUDO = {
+    titulo: 'Gravação: Clínica Sorriso',
+    descricao: null,
+    local: 'Estúdio 2',
+    link_reuniao: null,
+  };
+  const HORARIO = { inicio_local: '2026-10-05T14:00:00', fim_local: '2026-10-05T16:30:00' };
 
-  it('carries only the changed keys and never tz', () => {
-    const depois = { ...antes, titulo: 'Novo título', descricao: null };
-    expect(
-      montarPayloadEdicao(antes, depois, { escopo: 'todas', regraAcompanhouData: false }),
-    ).toEqual({ titulo: 'Novo título' });
-    expect(
-      montarPayloadEdicao(antes, { ...antes, tz: 'UTC' } as typeof antes, {
-        escopo: 'todas',
-        regraAcompanhouData: false,
-      }),
-    ).toEqual({});
+  it('lists the changed keys, reminders as a set and the rule deep', () => {
+    expect(chavesAlteradas(antes, { ...antes })).toEqual([]);
+    expect(chavesAlteradas(antes, { ...antes, lembretes: [10] })).toEqual([]);
+    const a = { ...antes, lembretes: [10, 1440], regra: r1 };
+    expect(chavesAlteradas(a, { ...a, lembretes: [1440, 10], regra: { ...r1 } })).toEqual([]);
+    expect(chavesAlteradas(antes, { ...antes, local: null, fim_local: HORARIO.fim_local })).toEqual(
+      ['local', 'fim_local'],
+    );
   });
 
-  it('sends null to clear a field', () => {
-    const comLocal = { ...antes, local: 'Estúdio 2' };
+  it('"todas" always carries the rule and the series fields, content only when changed', () => {
+    expect(montarPayloadEdicao(antes, antes, { escopo: 'todas' })).toEqual(SERIE);
     expect(
-      montarPayloadEdicao(
-        comLocal,
-        { ...comLocal, local: null },
-        {
-          escopo: 'todas',
-          regraAcompanhouData: false,
-        },
-      ),
-    ).toEqual({ local: null });
+      montarPayloadEdicao(antes, { ...antes, titulo: 'Novo', local: null }, { escopo: 'todas' }),
+    ).toEqual({ ...SERIE, titulo: 'Novo', local: null });
+    expect(montarPayloadEdicao(antes, antes, { escopo: 'seguintes' })).toEqual(SERIE);
   });
 
-  it('compares reminders as a set', () => {
-    const a = { ...antes, lembretes: [10, 1440] };
-    expect(
-      montarPayloadEdicao(
-        a,
-        { ...a, lembretes: [1440, 10] },
-        {
-          escopo: 'todas',
-          regraAcompanhouData: false,
-        },
-      ),
-    ).toEqual({});
+  it('"todas" from an occurrence with a title override keeps the override out', () => {
+    const o = ocorrencia({ recorrente: true, regra: r1, titulo: 'Só nesta semana' });
+    const a = montarPayload(valoresDeOcorrencia(o));
+    const p = montarPayloadEdicao(a, { ...a, lembretes: [30] }, { escopo: 'todas' });
+    expect(p).toEqual({ ...SERIE, regra: r1, lembretes: [30] });
+    expect('titulo' in p).toBe(false);
   });
 
-  it('drops a regra that only followed the date for "esta"', () => {
-    const r1 = regra({ dias_semana: [1] });
-    const r3 = regra({ dias_semana: [3] });
+  it('times travel as a pair, and only when they changed', () => {
+    const soFim = { ...antes, fim_local: HORARIO.fim_local };
+    expect(montarPayloadEdicao(antes, soFim, { escopo: 'todas' })).toEqual({
+      ...SERIE,
+      ...HORARIO,
+    });
+    expect(montarPayloadEdicao(antes, soFim, { escopo: 'esta' })).toEqual({
+      ...CONTEUDO,
+      ...HORARIO,
+    });
+    const p = montarPayloadEdicao(antes, { ...antes, titulo: 'x' }, { escopo: 'todas' });
+    expect('inicio_local' in p || 'fim_local' in p).toBe(false);
+  });
+
+  it('an all-day end-date change sends both time keys', () => {
+    const o = ocorrencia({
+      dia_inteiro: true,
+      inicio: '2026-10-05T03:00:00+00:00',
+      fim: '2026-10-06T03:00:00+00:00',
+      lembretes: [],
+    });
+    const v = valoresDeOcorrencia(o);
+    const a = montarPayload(v);
+    const d = montarPayload({ ...v, data_fim: new Date(2026, 9, 6) });
+    expect(montarPayloadEdicao(a, d, { escopo: 'todas' })).toMatchObject({
+      inicio_local: '2026-10-05T00:00:00',
+      fim_local: '2026-10-07T00:00:00',
+    });
+  });
+
+  it('a dia_inteiro change sends both time keys', () => {
+    const d = montarPayload({ ...valoresDeOcorrencia(ocorrencia()), dia_inteiro: true });
+    expect(montarPayloadEdicao(antes, d, { escopo: 'todas' })).toMatchObject({
+      dia_inteiro: true,
+      inicio_local: '2026-10-05T00:00:00',
+      fim_local: '2026-10-06T00:00:00',
+    });
+  });
+
+  it('"esta" always sends the four content keys and never series fields or tz', () => {
     const a = { ...antes, regra: r1 };
     const d = {
       ...a,
-      regra: r3,
+      regra: regra({ dias_semana: [3] }),
       inicio_local: '2026-10-07T14:00:00',
       fim_local: '2026-10-07T16:00:00',
-    };
-    expect(montarPayloadEdicao(a, d, { escopo: 'esta', regraAcompanhouData: true })).toEqual({
+      tz: 'UTC',
+    } as typeof a;
+    expect(montarPayloadEdicao(a, d, { escopo: 'esta' })).toEqual({
+      ...CONTEUDO,
       inicio_local: '2026-10-07T14:00:00',
       fim_local: '2026-10-07T16:00:00',
     });
-    expect(montarPayloadEdicao(a, d, { escopo: 'todas', regraAcompanhouData: true })).toEqual({
-      regra: r3,
+    expect(montarPayloadEdicao(a, d, { escopo: 'todas' })).toEqual({
+      ...SERIE,
+      regra: regra({ dias_semana: [3] }),
       inicio_local: '2026-10-07T14:00:00',
       fim_local: '2026-10-07T16:00:00',
     });
   });
 
   it('knows when the rule only followed the date', () => {
-    const r1 = regra({ dias_semana: [1] });
     expect(regraAcompanhouData('semanal', r1, QUA_7, regra({ dias_semana: [3] }))).toBe(true);
     expect(regraAcompanhouData('semanal', r1, QUA_7, regra({ freq: 'daily' }))).toBe(false);
     expect(regraAcompanhouData('nao', null, QUA_7, null)).toBe(true);

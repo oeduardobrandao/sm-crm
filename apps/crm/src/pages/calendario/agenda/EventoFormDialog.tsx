@@ -85,6 +85,7 @@ import {
   MAX_LEMBRETES,
   MAX_PARTICIPANTES,
   camposDeSerieAlterados,
+  chavesAlteradas,
   combinarDataHora,
   duracaoRotulo,
   eventoFormSchema,
@@ -121,6 +122,9 @@ export type EventoFormDialogProps =
 
 const TIPOS = Object.keys(TIPO_LABEL) as AgendaTipo[];
 const SUJO = { shouldDirty: true } as const;
+/** The PopoverContent/SelectContent layer. DropdownMenuContent defaults to
+ *  9011, the same as DialogContent, so the reminders menu is lifted to it. */
+const MENU_SOBRE_DIALOG_Z = 'z-[9012]';
 
 /** Snapshot taken when the dialog opens; the edit payload diffs against it. */
 interface Base {
@@ -132,7 +136,6 @@ interface Base {
 
 interface EscopoPendente {
   depois: AgendaEventoPayload;
-  acompanhou: boolean;
   participantes: string[] | null;
   campos: CampoSerie[];
 }
@@ -270,6 +273,8 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
       payload: Partial<AgendaEventoPayload>;
       participantes: string[] | null;
     }) => editarEvento(ocorrencia!.ocorrencia_id, p.escopo, p.payload, p.participantes),
+    // The returned occurrence id is not used: it can be null when a one-off moves
+    // past the materialized horizon (today + 24 months), like on create.
     onSuccess: () => {
       terminar();
       toast.success('Evento atualizado');
@@ -286,10 +291,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
     const b = base.current!;
     editar.mutate({
       escopo: esc,
-      payload: montarPayloadEdicao(b.antes, e.depois, {
-        escopo: esc,
-        regraAcompanhouData: e.acompanhou,
-      }),
+      payload: montarPayloadEdicao(b.antes, e.depois, { escopo: esc }),
       participantes: esc === 'esta' ? null : e.participantes,
     });
   };
@@ -305,18 +307,15 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
     const pessoasMudaram = !mesmasPessoas(b.participantes, valores.participantes);
     const pendente: EscopoPendente = {
       depois,
-      acompanhou,
       participantes: pessoasMudaram ? valores.participantes : null,
       campos: camposDeSerieAlterados(b.antes, depois, {
         participantesMudaram: pessoasMudaram,
         regraAcompanhouData: acompanhou,
       }),
     };
-    const nada =
-      Object.keys(
-        montarPayloadEdicao(b.antes, depois, { escopo: 'todas', regraAcompanhouData: acompanhou }),
-      ).length === 0 && !pessoasMudaram;
-    if (nada) {
+    // The payload is not a pure diff (todas always carries the rule and series
+    // fields), so "nothing changed" comes from the diff helper.
+    if (chavesAlteradas(b.antes, depois).length === 0 && !pessoasMudaram) {
       fechar();
       return;
     }
@@ -712,7 +711,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                           Adicionar lembrete
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="z-[9012]">
+                      <DropdownMenuContent align="start" className={MENU_SOBRE_DIALOG_Z}>
                         {lembretesOferta.map((m) => (
                           <DropdownMenuItem
                             key={m}

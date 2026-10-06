@@ -488,8 +488,26 @@ describe('EventoFormDialog: criar', () => {
   });
 });
 
+// What every todas/seguintes edit of ocorrencia() carries (rule always explicit),
+// and the content keys every esta edit carries.
+const SERIE = {
+  regra: null,
+  tipo: 'gravacao',
+  cor: null,
+  cliente_id: 12,
+  privado: false,
+  dia_inteiro: false,
+  lembretes: [10],
+};
+const CONTEUDO = {
+  titulo: 'Gravação: Clínica Sorriso',
+  descricao: null,
+  local: null,
+  link_reuniao: null,
+};
+
 describe('EventoFormDialog: editar', () => {
-  it('pre-fills in the series tz and sends only what changed, with todas and no tz', async () => {
+  it('pre-fills in the series tz and saves a one-off with todas, no times and no tz', async () => {
     const { onOpenChange, invalidate } = editar(ocorrencia());
     expect(screen.getByText('Editar evento')).toBeInTheDocument();
     expect(titulo().value).toBe('Gravação: Clínica Sorriso');
@@ -503,7 +521,7 @@ describe('EventoFormDialog: editar', () => {
     expect(editarEventoMock).toHaveBeenCalledWith(
       7,
       'todas',
-      { titulo: 'Gravação: novembro' },
+      { ...SERIE, titulo: 'Gravação: novembro' },
       null,
     );
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -528,6 +546,7 @@ describe('EventoFormDialog: editar', () => {
     await waitFor(() => expect(editarEventoMock).toHaveBeenCalled());
     const payload = editarEventoMock.mock.calls[0][2];
     expect(payload).toEqual({
+      ...SERIE,
       inicio_local: '2026-10-05T15:00:00',
       fim_local: '2026-10-05T17:00:00',
     });
@@ -555,7 +574,12 @@ describe('EventoFormDialog: editar', () => {
     expect(editarEventoMock).not.toHaveBeenCalled();
     fireEvent.click(within(dlg).getByRole('button', { name: 'Salvar' }));
     await waitFor(() =>
-      expect(editarEventoMock).toHaveBeenCalledWith(7, 'seguintes', { lembretes: [] }, null),
+      expect(editarEventoMock).toHaveBeenCalledWith(
+        7,
+        'seguintes',
+        { ...SERIE, regra: SEMANAL_SEG, lembretes: [] },
+        null,
+      ),
     );
   });
 
@@ -578,7 +602,14 @@ describe('EventoFormDialog: editar', () => {
     ).toBeInTheDocument();
     fireEvent.click(within(dlg).getByRole('radio', { name: 'Todos os eventos' }));
     fireEvent.click(within(dlg).getByRole('button', { name: 'Salvar' }));
-    await waitFor(() => expect(editarEventoMock).toHaveBeenCalledWith(7, 'todas', {}, []));
+    await waitFor(() =>
+      expect(editarEventoMock).toHaveBeenCalledWith(
+        7,
+        'todas',
+        { ...SERIE, regra: SEMANAL_SEG },
+        [],
+      ),
+    );
   });
 
   it('moving one occurrence keeps "Este evento" and leaves the rule out', async () => {
@@ -595,7 +626,7 @@ describe('EventoFormDialog: editar', () => {
       expect(editarEventoMock).toHaveBeenCalledWith(
         7,
         'esta',
-        { inicio_local: '2026-10-07T14:00:00', fim_local: '2026-10-07T16:00:00' },
+        { ...CONTEUDO, inicio_local: '2026-10-07T14:00:00', fim_local: '2026-10-07T16:00:00' },
         null,
       ),
     );
@@ -611,10 +642,95 @@ describe('EventoFormDialog: editar', () => {
     await waitFor(() => expect(editarEventoMock).toHaveBeenCalled());
     expect(editarEventoMock.mock.calls[0][1]).toBe('todas');
     expect(editarEventoMock.mock.calls[0][2]).toEqual({
+      ...SERIE,
       inicio_local: '2026-10-07T14:00:00',
       fim_local: '2026-10-07T16:00:00',
       regra: { ...SEMANAL_SEG, dias_semana: [3] },
     });
+  });
+
+  it('an end-time-only edit of a one-off sends both time keys', async () => {
+    editar(ocorrencia());
+    fireEvent.change(select('Hora de fim'), { target: { value: '16:30' } });
+    salvar();
+    await waitFor(() =>
+      expect(editarEventoMock).toHaveBeenCalledWith(
+        7,
+        'todas',
+        { ...SERIE, inicio_local: '2026-10-05T14:00:00', fim_local: '2026-10-05T16:30:00' },
+        null,
+      ),
+    );
+  });
+
+  it.each([
+    ['Este evento', 'esta', CONTEUDO],
+    ['Todos os eventos', 'todas', { ...SERIE, regra: SEMANAL_SEG }],
+  ] as const)(
+    'an end-time-only recurring edit with "%s" sends both time keys',
+    async (opcao, esc, resto) => {
+      editar(ocorrencia({ recorrente: true, regra: SEMANAL_SEG }));
+      fireEvent.change(select('Hora de fim'), { target: { value: '16:30' } });
+      salvar();
+      const dlg = await screen.findByRole('alertdialog', { name: 'Editar evento recorrente' });
+      expect(within(dlg).getByRole('radio', { name: 'Este evento' })).toBeEnabled();
+      fireEvent.click(within(dlg).getByRole('radio', { name: opcao }));
+      fireEvent.click(within(dlg).getByRole('button', { name: 'Salvar' }));
+      await waitFor(() =>
+        expect(editarEventoMock).toHaveBeenCalledWith(
+          7,
+          esc,
+          { ...resto, inicio_local: '2026-10-05T14:00:00', fim_local: '2026-10-05T16:30:00' },
+          null,
+        ),
+      );
+    },
+  );
+
+  it('an all-day end-date-only edit sends both time keys', async () => {
+    editar(
+      ocorrencia({
+        dia_inteiro: true,
+        inicio: '2026-10-05T03:00:00+00:00',
+        fim: '2026-10-06T03:00:00+00:00',
+        lembretes: [],
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('Data de fim'), { target: { value: '2026-10-07' } });
+    salvar();
+    await waitFor(() => expect(editarEventoMock).toHaveBeenCalled());
+    expect(editarEventoMock.mock.calls[0][2]).toEqual({
+      ...SERIE,
+      dia_inteiro: true,
+      lembretes: [],
+      inicio_local: '2026-10-05T00:00:00',
+      fim_local: '2026-10-08T00:00:00',
+    });
+  });
+
+  it('"todas" from an occurrence with a title override keeps the title and times out', async () => {
+    editar(ocorrencia({ recorrente: true, regra: SEMANAL_SEG, titulo: 'Só nesta semana' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover lembrete 10 minutos antes' }));
+    salvar();
+    const dlg = await screen.findByRole('alertdialog', { name: 'Editar evento recorrente' });
+    fireEvent.click(within(dlg).getByRole('radio', { name: 'Todos os eventos' }));
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(editarEventoMock).toHaveBeenCalled());
+    const payload = editarEventoMock.mock.calls[0][2];
+    expect(payload).toEqual({ ...SERIE, regra: SEMANAL_SEG, lembretes: [] });
+    expect('titulo' in payload).toBe(false);
+    expect('inicio_local' in payload || 'fim_local' in payload).toBe(false);
+  });
+
+  it('treats a null occurrence id from editarEvento as success', async () => {
+    editarEventoMock.mockResolvedValue(null);
+    const { onOpenChange, invalidate } = editar(ocorrencia());
+    fireEvent.change(screen.getByLabelText('Data de início'), { target: { value: '2029-01-08' } });
+    salvar();
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('Evento atualizado'));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
   it('cancelling the scope dialog keeps the form open', async () => {

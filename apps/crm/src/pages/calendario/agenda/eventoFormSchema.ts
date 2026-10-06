@@ -398,26 +398,56 @@ const CHAVES_EDICAO = [
   'regra',
 ] as const satisfies readonly (keyof AgendaEventoPayload)[];
 
-/** Partial p_evento for agenda_evento_editar: only the keys that changed (an
- *  absent key keeps the stored value; null clears it). Never `tz` (immutable).
- *  For "esta", a rule that only followed the date is left out, since the
- *  series rule does not change. */
+export type ChaveEdicao = (typeof CHAVES_EDICAO)[number];
+
+const CHAVES_CONTEUDO = ['titulo', 'descricao', 'local', 'link_reuniao'] as const;
+const CHAVES_SERIE = ['tipo', 'cor', 'cliente_id', 'privado', 'dia_inteiro', 'lembretes'] as const;
+
+/** Keys whose value differs between the form as opened and as submitted
+ *  (reminders compared as a set, the rule deep). Drives the no-op check and the
+ *  "Este evento" lock; the payload itself is not a pure diff (montarPayloadEdicao). */
+export function chavesAlteradas(
+  antes: AgendaEventoPayload,
+  depois: AgendaEventoPayload,
+): ChaveEdicao[] {
+  return CHAVES_EDICAO.filter((k) => {
+    if (k === 'lembretes') return !mesmoConjunto(antes.lembretes, depois.lembretes);
+    if (k === 'regra') return !mesmaRegra(antes.regra, depois.regra);
+    return antes[k] !== depois[k];
+  });
+}
+
+/** p_evento for agenda_evento_editar (absent key = keep, null = clear; never `tz`).
+ *  - The times travel as a pair: both when either (or dia_inteiro) changed,
+ *    neither otherwise, so an occurrence moved by hand never pushes its time
+ *    onto the series and the RPC never sees a lone inicio_local/fim_local.
+ *  - "esta": the four content keys always (the RPC compares them with the
+ *    occurrence's effective values), never series fields, so a rule that only
+ *    followed the date stays out.
+ *  - "todas"/"seguintes": the rule (always explicit) and every series field;
+ *    content keys only when changed, so an occurrence's title override is not
+ *    promoted to the series. */
 export function montarPayloadEdicao(
   antes: AgendaEventoPayload,
   depois: AgendaEventoPayload,
-  opts: { escopo: AgendaEscopo; regraAcompanhouData: boolean },
+  opts: { escopo: AgendaEscopo },
 ): Partial<AgendaEventoPayload> {
+  const mudou = new Set(chavesAlteradas(antes, depois));
   const out: Partial<AgendaEventoPayload> = {};
-  for (const k of CHAVES_EDICAO) {
-    const igual =
-      k === 'lembretes'
-        ? mesmoConjunto(antes.lembretes, depois.lembretes)
-        : k === 'regra'
-          ? mesmaRegra(antes.regra, depois.regra)
-          : antes[k] === depois[k];
-    if (!igual) (out as Record<string, unknown>)[k] = depois[k];
+  const por = <K extends ChaveEdicao>(k: K) => {
+    (out as Record<string, unknown>)[k] = depois[k];
+  };
+  if (opts.escopo === 'esta') {
+    CHAVES_CONTEUDO.forEach(por);
+  } else {
+    CHAVES_CONTEUDO.filter((k) => mudou.has(k)).forEach(por);
+    por('regra');
+    CHAVES_SERIE.forEach(por);
   }
-  if (opts.escopo === 'esta' && opts.regraAcompanhouData) delete out.regra;
+  if (mudou.has('inicio_local') || mudou.has('fim_local') || mudou.has('dia_inteiro')) {
+    por('inicio_local');
+    por('fim_local');
+  }
   return out;
 }
 
