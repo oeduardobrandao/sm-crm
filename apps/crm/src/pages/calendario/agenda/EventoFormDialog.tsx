@@ -495,7 +495,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                     placeholder="Data de início"
                     displayFormat="EEE, d 'de' MMM 'de' yyyy"
                     clearable={false}
-                    className="h-10 w-full"
+                    className="mb-0 h-10 w-full"
                   />
                 </div>
                 {!diaInteiro && (
@@ -553,7 +553,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
                           placeholder="Data de fim"
                           displayFormat="EEE, d 'de' MMM 'de' yyyy"
                           clearable={false}
-                          className="h-10 w-full"
+                          className="mb-0 h-10 w-full"
                         />
                       </FormItem>
                     )}
