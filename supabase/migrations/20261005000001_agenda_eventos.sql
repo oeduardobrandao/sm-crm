@@ -710,7 +710,7 @@ BEGIN
   END IF;
   IF p ? 'descricao' THEN
     IF jsonb_typeof(p->'descricao') NOT IN ('string', 'null') THEN RAISE EXCEPTION 'agenda: dados do evento inválidos'; END IF;
-    v.descricao := NULLIF(p->>'descricao', '');
+    v.descricao := NULLIF(btrim(p->>'descricao'), '');
     IF char_length(v.descricao) > 5000 THEN RAISE EXCEPTION 'agenda: a descrição pode ter no máximo 5000 caracteres'; END IF;
   END IF;
   IF p ? 'local' THEN
@@ -903,7 +903,11 @@ BEGIN
   IF v.titulo IS NULL OR v.dtstart IS NULL THEN
     RAISE EXCEPTION 'agenda: dados do evento incompletos';
   END IF;
-  IF v.freq IS NOT NULL AND v.ate IS NOT NULL THEN
+  -- on edit (p_base not NULL) dtstart here is the edited occurrence's own start,
+  -- which may sit past ate (an esta move of the last occurrence); the edit RPC
+  -- checks the derived series dtstart (normalization raises when the rule
+  -- generates nothing; the 5-year ceiling is re-checked there too)
+  IF p_base IS NULL AND v.freq IS NOT NULL AND v.ate IS NOT NULL THEN
     IF v.ate < v.dtstart::date THEN
       RAISE EXCEPTION 'agenda: a repetição não gera nenhuma data';
     END IF;
@@ -994,8 +998,8 @@ GRANT EXECUTE ON FUNCTION public.agenda_evento_criar(jsonb, uuid[]) TO authentic
 -- sides; the deep link reuses the same query with the occurrence's own bounds.
 -- Masking ("ocupado"): a private event the viewer neither organizes nor
 -- attends shows titulo 'Ocupado' and NULL content, rule and reminders, and its
--- participants without answers. pode_editar is agenda_pode_editar (section 4),
--- the same rule the edit/delete RPCs enforce. regra is jsonb_build_object over all seven keys
+-- participants without answers. pode_editar is the rule of agenda_pode_editar
+-- (section 4, used by the edit/delete RPCs), inlined here. regra is jsonb_build_object over all seven keys
 -- (explicit nulls, never stripped: the CRM compares them).
 CREATE OR REPLACE FUNCTION public.agenda_listar(p_de timestamptz DEFAULT NULL, p_ate timestamptz DEFAULT NULL, p_ocorrencia_id bigint DEFAULT NULL)
 RETURNS TABLE (
@@ -1014,6 +1018,8 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_conta uuid;
   v_user uuid;
+  v_editar boolean;
+  v_role text;
   v_de timestamptz := p_de;
   v_ate timestamptz := p_ate;
 BEGIN
@@ -1030,6 +1036,13 @@ BEGIN
   ELSIF v_de IS NULL OR v_ate IS NULL OR v_ate <= v_de OR v_ate - v_de > interval '100 days' THEN
     RAISE EXCEPTION 'agenda: período inválido';
   END IF;
+
+  -- pode_editar: the rule of agenda_pode_editar (section 4), evaluated inline
+  -- from the caller's permission and role computed once, instead of a
+  -- non-inlinable DEFINER call per row. Keep both in sync.
+  v_editar := public.has_permission('calendario', 'editar');
+  SELECT wm.role::text INTO v_role FROM public.workspace_members wm
+   WHERE wm.workspace_id = v_conta AND wm.user_id = v_user;
 
   RETURN QUERY
   SELECT
@@ -1067,7 +1080,7 @@ BEGIN
         LEFT JOIN public.agenda_respostas ar ON ar.ocorrencia_id = o.id AND ar.user_id = ap.user_id
        WHERE ap.evento_id = e.id), '[]'::jsonb),
     CASE WHEN eu.user_id IS NULL THEN NULL ELSE coalesce(mr.resposta, eu.resposta) END,
-    public.agenda_pode_editar(e, v_user, v_conta),
+    coalesce(v_editar AND (e.organizador_id = v_user OR (v_role IN ('owner', 'admin') AND NOT e.privado)), false),
     eu.user_id IS NOT NULL AND e.organizador_id IS DISTINCT FROM v_user,
     e.tz
   FROM public.agenda_ocorrencias o
@@ -1093,8 +1106,9 @@ GRANT EXECUTE ON FUNCTION public.agenda_listar(timestamptz, timestamptz, bigint)
 -- table trigger locks in the opposite order.
 
 -- Internal: who may edit or delete a series. Calendar editar permission and
--- either the organizer, or an owner/admin when the event is not private. Used
--- by agenda_listar.pode_editar and by the edit/delete RPCs.
+-- either the organizer, or an owner/admin when the event is not private. The
+-- single definition for the edit/delete RPCs; agenda_listar evaluates the same
+-- rule inline for pode_editar (section 3). Keep both in sync.
 CREATE OR REPLACE FUNCTION public.agenda_pode_editar(p_e public.agenda_eventos, p_user uuid, p_conta uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT coalesce(
@@ -1324,17 +1338,28 @@ BEGIN
       ELSE
         v_novo.dtstart := (v_c + v_delta) + v_novo.dtstart::time;
       END IF;
+      -- a drag (no regra in the payload) of a weekly series moves its weekdays
+      -- with it, like Google: Mon+Wed dragged one day later becomes Tue+Thu.
+      -- Monthly and yearly rules already follow dtstart. An explicit regra (the
+      -- form always sends one) is used as is.
+      IF NOT (p_evento ? 'regra') AND v_e.freq = 'weekly' AND v_delta <> 0 THEN
+        v_novo.dias_semana := ARRAY(SELECT DISTINCT (((d.d + v_delta) % 7) + 7) % 7
+                                      FROM unnest(v_e.dias_semana) AS d(d) ORDER BY 1);
+      END IF;
     ELSIF v_escopo = 'seguintes' THEN
       v_novo.dtstart := v_c + v_e.dtstart::time;
     END IF;
 
     IF v_escopo = 'seguintes' THEN
-      -- contagem of the new series: the stored rule unchanged means "the end was
-      -- not touched", so the remaining count carries over (tombstones count)
+      -- contagem of the new series: a payload contagem equal to the stored one
+      -- (or no regra at all, a drag) means "the end was not touched", whatever
+      -- else the rule changed (the form re-derives dias_semana from a moved
+      -- date), so the remaining count carries over (tombstones count). A
+      -- different contagem is the user's new end and is taken as sent.
       v_regra_igual := NOT (p_evento ? 'regra')
         OR (v_novo.freq, v_novo.intervalo, v_novo.dias_semana, v_novo.mensal_modo, v_novo.mensal_ordinal, v_novo.ate, v_novo.contagem)
            IS NOT DISTINCT FROM (v_e.freq, v_e.intervalo, v_e.dias_semana, v_e.mensal_modo, v_e.mensal_ordinal, v_e.ate, v_e.contagem);
-      IF v_regra_igual AND v_e.contagem IS NOT NULL THEN
+      IF v_e.contagem IS NOT NULL AND v_novo.contagem IS NOT DISTINCT FROM v_e.contagem THEN
         v_contagem := v_e.contagem - (SELECT count(*) FROM public.agenda_datas_regra(v_e, v_e.dtstart::date, v_c - 1));
         IF v_contagem <= 0 THEN RAISE EXCEPTION 'agenda: a repetição não gera nenhuma data'; END IF;
         v_novo.contagem := v_contagem;
@@ -1454,6 +1479,18 @@ BEGIN
       IF NOT EXISTS (SELECT 1 FROM public.agenda_ocorrencias o WHERE o.evento_id = v_e.id AND NOT o.cancelada) THEN
         DELETE FROM public.agenda_eventos ev WHERE ev.id = v_e.id;
       END IF;
+    END IF;
+
+    -- the edited occurrence takes the times of this edit even if it had been
+    -- moved by hand before (other hand-moved occurrences keep theirs)
+    IF v_tem_horario THEN
+      SELECT * INTO v_novo FROM public.agenda_eventos ev WHERE ev.id = v_alvo;
+      -- (its data_original as stored now: a one-off moved it along)
+      UPDATE public.agenda_ocorrencias o
+         SET inicio = f.inicio, fim = f.fim, horario_alterado = false
+        FROM public.agenda_ocorrencias o2
+        CROSS JOIN LATERAL public.agenda_inicio_fim(v_novo, o2.data_original) f
+       WHERE o.id = o2.id AND o.id = v_o.id AND o.evento_id = v_alvo;
     END IF;
 
     SELECT o.id INTO v_ret FROM public.agenda_ocorrencias o

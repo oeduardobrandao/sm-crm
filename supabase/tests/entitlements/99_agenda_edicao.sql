@@ -164,6 +164,12 @@ begin
   assert v_n = 51, format('50 others + organizer: %s participant rows', v_n);
   execute 'set local role authenticated';
 
+  -- descricao is trimmed like the other text fields
+  select c.evento_id into v_ev from public.agenda_evento_criar(pg_temp.payload('{"descricao":"  Pauta  "}'), '{}') c;
+  assert (select e.descricao from agenda_eventos e where e.id = v_ev) = 'Pauta', 'descricao not trimmed';
+  select c.evento_id into v_ev from public.agenda_evento_criar(pg_temp.payload('{"descricao":"   "}'), '{}') c;
+  assert (select e.descricao from agenda_eventos e where e.id = v_ev) is null, 'blank descricao not NULL';
+
   -- overlong text fields get pt-BR errors, not the raw CHECK
   v_msg := pg_temp.erro_criar(pg_temp.payload(jsonb_build_object('titulo', repeat('a', 201))));
   assert v_msg = 'agenda: o título pode ter no máximo 200 caracteres', format('201-char title: %s', v_msg);
@@ -624,6 +630,118 @@ begin
   raise notice 'PASS 99_agenda_edicao (editar)';
 end $$;
 
+-- ============ block 3b: drags of recurring series, esta past ate (fix round 1) ============
+do $$
+declare
+  f jsonb; v_ws uuid; v_o uuid;
+  v_w1 bigint; v_w2 bigint; v_w3 bigint; v_m1 bigint; v_m2 bigint; v_e1 bigint; v_e2 bigint;
+  v_novo bigint; v_ret bigint; v_oc bigint;
+  v_msg text;
+  e public.agenda_eventos; o public.agenda_ocorrencias;
+begin
+  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  f := pg_temp.fx();
+  v_ws := f->>'ws'; v_o := f->>'o';
+  execute 'set local role authenticated';
+  perform pg_temp.como(v_o);
+
+  -- W1: weekly Monday, times-only drag of 10-19 to Tuesday 10:00 with todas -> every Tuesday
+  select c.evento_id into v_w1 from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'W1', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}'))), '{}') c;
+  v_ret := public.agenda_evento_editar(pg_temp.oc(v_w1, '2026-10-19'), 'todas',
+    '{"inicio_local":"2026-10-20T10:00:00","fim_local":"2026-10-20T11:00:00"}');
+  e := pg_temp.row_ev(v_w1);
+  assert e.dias_semana = '{2}' and e.dtstart = '2026-10-06 10:00', format('W1 todas drag: dias %s dtstart %s', e.dias_semana, e.dtstart);
+  assert pg_temp.oc(v_w1, '2026-10-06') is not null, 'W1 todas drag: the first occurrence was lost';
+  assert pg_temp.sql(format($q$select count(*) from agenda_ocorrencias where evento_id = %s and (extract(dow from data_original) <> 2 or data_original < '2026-10-06')$q$, v_w1)) = 0,
+    'W1 todas drag: rows off the new weekday';
+  o := pg_temp.row_oc(v_ret);
+  assert o.data_original = '2026-10-20' and o.inicio = '2026-10-20 13:00+00' and o.fim = '2026-10-20 14:00+00',
+    format('W1 todas drag: dragged occurrence %s', to_jsonb(o));
+
+  -- W2: the same drag with seguintes -> nothing before the cut lost, Tuesdays from the drop
+  select c.evento_id into v_w2 from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'W2', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}'))), '{}') c;
+  v_ret := public.agenda_evento_editar(pg_temp.oc(v_w2, '2026-10-19'), 'seguintes',
+    '{"inicio_local":"2026-10-20T10:00:00","fim_local":"2026-10-20T11:00:00"}');
+  assert pg_temp.oc(v_w2, '2026-10-05') is not null and pg_temp.oc(v_w2, '2026-10-12') is not null, 'W2 seguintes drag lost rows before the cut';
+  assert (pg_temp.row_ev(v_w2)).ate = '2026-10-18', 'W2 seguintes drag: old series end';
+  v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_w2));
+  e := pg_temp.row_ev(v_novo);
+  assert e.dias_semana = '{2}' and e.dtstart = '2026-10-20 10:00', format('W2 seguintes drag: new series %s', to_jsonb(e));
+  o := pg_temp.row_oc(v_ret);
+  assert o.evento_id = v_novo and o.data_original = '2026-10-20' and o.inicio = '2026-10-20 13:00+00',
+    format('W2 seguintes drag: dragged occurrence %s', to_jsonb(o));
+
+  -- W3: Mon+Wed dragged one day later with todas -> Tue+Thu
+  select c.evento_id into v_w3 from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'W3', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1,3}'))), '{}') c;
+  v_ret := public.agenda_evento_editar(pg_temp.oc(v_w3, '2026-10-12'), 'todas',
+    '{"inicio_local":"2026-10-13T09:00:00","fim_local":"2026-10-13T10:00:00"}');
+  e := pg_temp.row_ev(v_w3);
+  assert e.dias_semana = '{2,4}' and e.dtstart = '2026-10-06 09:00', format('W3 drag: dias %s dtstart %s', e.dias_semana, e.dtstart);
+  assert pg_temp.oc(v_w3, '2026-10-06') is not null and pg_temp.oc(v_w3, '2026-10-08') is not null, 'W3 drag: first Tue/Thu missing';
+  assert (pg_temp.row_oc(v_ret)).data_original = '2026-10-13', 'W3 drag: dragged occurrence not on Tuesday 10-13';
+
+  -- an explicit regra is used as is (no weekday shift)
+  perform public.agenda_evento_editar(pg_temp.oc(v_w3, '2026-10-20'), 'todas', jsonb_build_object(
+    'inicio_local', '2026-10-21T09:00:00', 'fim_local', '2026-10-21T10:00:00', 'regra', pg_temp.semanal('{2,4}')));
+  e := pg_temp.row_ev(v_w3);
+  assert e.dias_semana = '{2,4}' and e.dtstart = '2026-10-08 09:00', format('W3 explicit regra: dias %s dtstart %s', e.dias_semana, e.dtstart);
+
+  -- probes: monthly rules follow dtstart (2nd Tuesday dragged +1 -> 2nd Wednesday; day 15 -> day 16)
+  select c.evento_id into v_m1 from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'M1', 'inicio_local', '2026-10-13T09:00:00', 'fim_local', '2026-10-13T10:00:00',
+    'regra', '{"freq":"monthly","intervalo":1,"dias_semana":null,"mensal_modo":"dia_semana","mensal_ordinal":2,"ate":null,"contagem":null}'::jsonb)), '{}') c;
+  v_ret := public.agenda_evento_editar(pg_temp.oc(v_m1, '2026-11-10'), 'todas',
+    '{"inicio_local":"2026-11-11T09:00:00","fim_local":"2026-11-11T10:00:00"}');
+  e := pg_temp.row_ev(v_m1);
+  assert e.dtstart = '2026-10-14 09:00' and e.mensal_ordinal = 2, format('M1 drag: %s', to_jsonb(e));
+  assert (pg_temp.row_oc(v_ret)).data_original = '2026-11-11' and pg_temp.oc(v_m1, '2026-12-09') is not null,
+    'M1 drag: not on the 2nd Wednesday';
+  select c.evento_id into v_m2 from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'M2', 'inicio_local', '2026-10-15T09:00:00', 'fim_local', '2026-10-15T10:00:00',
+    'regra', '{"freq":"monthly","intervalo":1,"dias_semana":null,"mensal_modo":"dia_mes","mensal_ordinal":null,"ate":null,"contagem":null}'::jsonb)), '{}') c;
+  v_ret := public.agenda_evento_editar(pg_temp.oc(v_m2, '2026-11-15'), 'todas',
+    '{"inicio_local":"2026-11-16T09:00:00","fim_local":"2026-11-16T10:00:00"}');
+  assert (pg_temp.row_ev(v_m2)).dtstart = '2026-10-16 09:00' and (pg_temp.row_oc(v_ret)).data_original = '2026-11-16',
+    'M2 drag: not on day 16';
+
+  -- E1: an esta drag of the last occurrence past ate works; a todas opened from it works too
+  select c.evento_id into v_e1 from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'E1', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', '{"freq":"daily","intervalo":1,"dias_semana":null,"mensal_modo":null,"mensal_ordinal":null,"ate":"2026-10-09","contagem":null}'::jsonb)), '{}') c;
+  v_oc := pg_temp.oc(v_e1, '2026-10-09');
+  v_msg := pg_temp.erro_editar(v_oc, 'esta', '{"inicio_local":"2026-10-12T09:00:00","fim_local":"2026-10-12T10:00:00"}');
+  assert v_msg is null, format('esta past ate: %s', v_msg);
+  assert (pg_temp.row_oc(v_oc)).inicio = '2026-10-12 12:00+00', 'esta past ate: not moved';
+  v_msg := pg_temp.erro_editar(v_oc, 'todas', '{"titulo":"E1b","inicio_local":"2026-10-12T11:00:00","fim_local":"2026-10-12T12:00:00"}');
+  assert v_msg is null, format('todas from an occurrence moved past ate: %s', v_msg);
+  e := pg_temp.row_ev(v_e1);
+  assert e.titulo = 'E1b' and e.dtstart = '2026-10-05 11:00' and e.ate = '2026-10-09', format('todas past ate: %s', to_jsonb(e));
+  -- the edited occurrence takes the times of this edit, on its own date
+  o := pg_temp.row_oc(v_oc);
+  assert o.inicio = '2026-10-09 14:00+00' and not o.horario_alterado, format('todas past ate: edited occurrence %s', to_jsonb(o));
+  -- E2: same with seguintes
+  select c.evento_id into v_e2 from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'E2', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', '{"freq":"daily","intervalo":1,"dias_semana":null,"mensal_modo":null,"mensal_ordinal":null,"ate":"2026-10-09","contagem":null}'::jsonb)), '{}') c;
+  v_oc := pg_temp.oc(v_e2, '2026-10-09');
+  perform public.agenda_evento_editar(v_oc, 'esta', '{"inicio_local":"2026-10-12T09:00:00","fim_local":"2026-10-12T10:00:00"}');
+  v_msg := pg_temp.erro_editar(v_oc, 'seguintes', '{"titulo":"E2b","inicio_local":"2026-10-12T15:00:00","fim_local":"2026-10-12T16:00:00"}');
+  assert v_msg is null, format('seguintes from an occurrence moved past ate: %s', v_msg);
+  v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_e2));
+  o := pg_temp.row_oc(v_oc);
+  assert o.evento_id = v_novo and o.inicio = '2026-10-09 18:00+00' and not o.horario_alterado,
+    format('seguintes past ate: edited occurrence %s', to_jsonb(o));
+  execute 'reset role';
+
+  raise notice 'PASS 99_agenda_edicao (drags, esta past ate)';
+end $$;
+
 -- ============ block 4: seguintes (split) ============
 do $$
 declare
@@ -646,6 +764,7 @@ begin
   v_oc6 := pg_temp.oc(v_c, '2026-11-09');
   execute 'reset role';
   insert into agenda_respostas (ocorrencia_id, conta_id, user_id, resposta) values (v_oc6, v_ws, v_b1, 'talvez');
+  update agenda_ocorrencias set cancelada = true where id = pg_temp.oc(v_c, '2026-11-16');
   execute 'set local role authenticated';
   -- an earlier esta date move on the cut occurrence (to Wednesday)
   perform public.agenda_evento_editar(v_oc4, 'esta', '{"inicio_local":"2026-10-28T09:00:00","fim_local":"2026-10-28T10:00:00"}');
@@ -662,6 +781,13 @@ begin
     format('new series: %s', to_jsonb(e));
   assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s', v_novo)) = 7, 'new series rows';
   assert v_ret = v_oc4, format('seguintes returned %s, expected the re-parented cut occurrence %s', v_ret, v_oc4);
+  -- the edited (earlier hand-moved) occurrence takes this edit's times on its own date
+  o := pg_temp.row_oc(v_oc4);
+  assert o.evento_id = v_novo and o.inicio = '2026-10-26 17:00+00' and o.fim = '2026-10-26 18:00+00' and not o.horario_alterado,
+    format('edited occurrence times after seguintes: %s', to_jsonb(o));
+  -- a tombstone on a date of the new rule moves over, still cancelled
+  o := pg_temp.row_oc(pg_temp.sql(format($q$select id from agenda_ocorrencias where data_original = '2026-11-16' and evento_id in (%s, %s)$q$, v_c, v_novo)));
+  assert o.evento_id = v_novo and o.cancelada, format('tombstone not re-parented: %s', to_jsonb(o));
   o := pg_temp.row_oc(v_oc6);
   assert o.evento_id = v_novo and o.inicio = '2026-11-09 17:00+00', format('6th occurrence not re-parented / recalculated: %s', to_jsonb(o));
   assert pg_temp.sql(format($q$select count(*) from agenda_respostas where ocorrencia_id = %s and user_id = %L and resposta = 'talvez'$q$, v_oc6, v_b1)) = 1,
@@ -698,14 +824,33 @@ begin
   v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_e5));
   assert (pg_temp.row_ev(v_novo)).contagem = 5, 'payload contagem not used';
   assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s', v_novo)) = 5, 'contagem 5 rows';
-  -- F: any other rule key changed: payload contagem used as is
+  -- F: the form re-derives the weekday from a moved date (Mon -> Wed) but keeps
+  -- contagem 10: the end was not touched, the remaining 7 carry over
   select c.evento_id into v_f from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
     'titulo', 'F', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}', 10))), '{}') c;
+  perform public.agenda_evento_editar(pg_temp.oc(v_f, '2026-10-26'), 'seguintes', jsonb_build_object(
+    'inicio_local', '2026-10-28T09:00:00', 'fim_local', '2026-10-28T10:00:00', 'regra', pg_temp.semanal('{3}', 10)));
+  v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_f));
+  e := pg_temp.row_ev(v_novo);
+  assert e.contagem = 7 and e.dias_semana = '{3}' and e.dtstart = '2026-10-28 09:00', format('re-derived weekday split: %s', to_jsonb(e));
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s', v_novo)) = 7, 're-derived weekday split rows';
+  -- any rule key changed and contagem equal: still the remainder (intervalo 2)
+  select c.evento_id into v_f from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'F2', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
     'regra', pg_temp.semanal('{1}', 10))), '{}') c;
   perform public.agenda_evento_editar(pg_temp.oc(v_f, '2026-10-26'), 'seguintes',
     jsonb_build_object('regra', pg_temp.semanal('{1}', 10) || '{"intervalo":2}'));
   v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_f));
-  assert (pg_temp.row_ev(v_novo)).contagem = 10 and (pg_temp.row_ev(v_novo)).intervalo = 2, 'changed rule: contagem not taken from the payload';
+  assert (pg_temp.row_ev(v_novo)).contagem = 7 and (pg_temp.row_ev(v_novo)).intervalo = 2, 'intervalo changed, contagem equal: remainder not derived';
+  -- a drag (no regra) of a contagem series: weekday shift, remainder carried
+  select c.evento_id into v_f from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'F3', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}', 10))), '{}') c;
+  perform public.agenda_evento_editar(pg_temp.oc(v_f, '2026-10-26'), 'seguintes',
+    '{"inicio_local":"2026-10-27T09:00:00","fim_local":"2026-10-27T10:00:00"}');
+  v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_f));
+  assert (pg_temp.row_ev(v_novo)).contagem = 7 and (pg_temp.row_ev(v_novo)).dias_semana = '{2}', 'drag of a contagem series: remainder or weekday';
 
   -- G: seguintes at the first live occurrence is todas
   select c.evento_id into v_g from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
