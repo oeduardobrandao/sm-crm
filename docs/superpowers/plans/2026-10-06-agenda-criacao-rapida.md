@@ -1,7 +1,6 @@
 # Agenda: quick-create card + full-size editor — Implementation Plan
 
-> **For agentic workers:** two independent lanes (A, B) run in parallel worktrees off base
-> `c5be338b3`. Steps use checkbox (`- [ ]`) syntax.
+> **For agentic workers:** two independent lanes (A, B) run in parallel worktrees off the base commit named in the dispatch. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** creating an event works like Google Calendar. Clicking or dragging on the
 week/day grid (or a day in month view) drops a placeholder card on that slot and opens a
@@ -49,6 +48,15 @@ values.
 - `eventoFormSchema.ts` exports `hhmm`, `valoresIniciaisCriar({inicio, fim, diaInteiro})`
   (`fim` exclusive for all-day), `montarPayload`, `eventoFormSchema`, `EventoFormValues`.
 - `ConteudoDoEvento` (AgendaView) tolerates an event without `extendedProps.ocorrencia`.
+- `EventoFormDialogProps` `criar` variant already declares `rascunho?: Partial<EventoFormValues>`
+  (unused until Lane A). Lane B never edits `EventoFormDialog.tsx`.
+- `useCriarEvento` awaits `invalidateQueries` before `onCriado`, so the caller closes once the
+  new event is on the grid (no empty-slot flash after the draft chip goes).
+
+## Non-goals
+
+- Google's Event/Task/Out of office tabs: the Tipo pills take that row. No tasks here.
+- Changing the existing event popover or the edit flow beyond using the new full-size editor.
 
 ## Interface between the lanes (both lanes code against this exactly)
 
@@ -72,22 +80,35 @@ export type EventoFormDialogProps =
 ### Lane A: full-size editor (`EventoFormDialog`)
 
 **Files:** modify `apps/crm/src/pages/calendario/agenda/EventoFormDialog.tsx`,
-`apps/crm/src/pages/calendario/agenda/__tests__/EventoFormDialog.test.tsx`.
+`apps/crm/src/pages/calendario/agenda/__tests__/EventoFormDialog.test.tsx`,
+`apps/crm/src/components/ui/dialog.tsx` (+ its test).
 
-- [ ] **A1. `rascunho` prop.** In the open/reset effect, create mode: `form.reset(
-  valoresIniciaisCriar(...))`, take `base.current` from those reset values, then for each key
-  of `rascunho` call `form.setValue(key, value, { shouldDirty: true })`. Read `rascunho`
-  through a ref updated every render so a new object identity never re-runs the effect (the
-  effect's deps stay `[open, ocorrenciaId, inicioMs, fimMs, diaInteiroInicial, form]`). The
-  `useForm` `defaultValues` for create mode also merge `rascunho` so the first paint already
-  shows it. Test: render `modo="criar"` with `rascunho={{ titulo: 'Pauta', participantes:
-  ['u1'] }}` → title input shows "Pauta"; clicking Cancelar opens the discard confirm (dirty);
-  Salvar submits `criarEvento` with `titulo: 'Pauta'` and participants `['u1']`.
+- [ ] **A1. `rascunho` prop** (the type is already on base). Keep `rascunho` in a ref synced
+  by an effect declared BEFORE the reset effect (pattern at AgendaTab.tsx:238-241; no
+  render-time ref writes), so a new object identity never re-runs the reset (its deps stay
+  `[open, ocorrenciaId, inicioMs, fimMs, diaInteiroInicial, form]`). In the reset effect, create
+  mode: `form.reset(valores)` with `valores = valoresIniciaisCriar(...)`, take `base.current`
+  from `valores`, then, if the ref holds a draft, `form.reset({ ...valores, ...semUndefined(
+  rascunho) }, { keepDefaultValues: true })` so the carried fields are dirty against the
+  defaults (drop `undefined` entries of the `Partial` first). Tests: `modo="criar"` with
+  `rascunho={{ titulo: 'Pauta', participantes: ['u1'] }}` → title input shows "Pauta";
+  clicking **Fechar** opens the discard confirm (dirty); Salvar submits `criarEvento` with
+  `titulo: 'Pauta'` and participants `['u1']`.
 - [ ] **A2. Full-viewport layout (desktop ≥ 768px).** `DialogContent` covers the viewport:
-  override the centered/translate classes so it is `inset-0`, `h-[100dvh]`, `w-screen`,
-  `max-w-none`, `rounded-none`, `p-0`, `translate-x-0 translate-y-0`, with
-  `background: var(--bg-color)`. Read `components/ui/dialog.tsx` to see which base classes to
-  override (tailwind-merge resolves conflicts). Structure, top to bottom:
+  `className` alone cannot do it: `DialogContent` (components/ui/dialog.tsx:103, :143-151)
+  wraps children in a `p-6 max-h-[85vh] grid gap-4 overflow-y-auto` div marked
+  `data-dialog-scroll` and always renders its own absolute Close button; its base string has
+  `max-h-[85vh]`, `border`, `sm:rounded-lg` and zoom/slide enter animations. Add an additive
+  prop to `DialogContent`: `layout?: 'default' | 'fullscreen'` (default `'default'`, every
+  other caller unchanged). `'fullscreen'`: base classes become a fixed `inset-0` panel,
+  `h-[100dvh] w-screen max-w-none rounded-none border-0 p-0`, no translate, fade-only
+  animation, `background: var(--bg-color)`; the inner wrapper keeps `data-dialog-scroll`
+  (TourOverlay reads it) but becomes `flex h-full flex-col` with no padding, max-height or
+  grid gap; the built-in Close button is not rendered (the editor has its own X). Add a small
+  test for the prop in the existing dialog test file if there is one (else a new
+  `components/ui/__tests__/dialog-fullscreen.test.tsx`): fullscreen renders no built-in
+  "Close" button, default still does. The editor passes `layout="fullscreen"` on desktop and
+  mobile. Structure, top to bottom:
   1. **Top bar** (sticky, no scroll): close button (`X` icon, `aria-label="Fechar"`, calls
      the same path as Cancelar, so a dirty form confirms), the title input as a large
      underlined field (`aria-label="Título"`, placeholder "Adicionar título", font ~22px,
@@ -110,8 +131,8 @@ export type EventoFormDialogProps =
      `EscopoEventoDialog` nested where they are.
 - [ ] **A3. Mobile (< 768px).** Same component, single column, the whole dialog scrolls; top
   bar stays sticky. No horizontal scroll at 375px.
-- [ ] **A4. Tests.** Update `EventoFormDialog.test.tsx` only where it asserted the old
-  footer/labels; add the A1 tests. All other behaviour (payloads, scope dialog, reminders,
+- [ ] **A4. Tests.** Known breaks to update: EventoFormDialog.test.tsx:480-483 and :741
+  click "Cancelar" (now the X, `aria-label="Fechar"`). Add the A1 tests. All other behaviour (payloads, scope dialog, reminders,
   errors) is unchanged and its tests must still pass untouched.
 - [ ] **A5. Commit** `feat(agenda): full-size event editor that can start from a draft`.
 
@@ -120,29 +141,41 @@ export type EventoFormDialogProps =
 **Files:** create `apps/crm/src/pages/calendario/agenda/EventoRapidoCard.tsx`,
 `apps/crm/src/pages/calendario/agenda/__tests__/EventoRapidoCard.test.tsx`; modify
 `AgendaTab.tsx`, `AgendaView.tsx`, `__tests__/AgendaTab.test.tsx`, and the `.agenda-*` block
-of `apps/crm/style.css` (only new `.agenda-rapido*` / `.agenda-ev--rascunho` rules).
+of `apps/crm/style.css` (only new `.agenda-rapido*` / `.agenda-ev--rascunho` rules), and
+`EventoPopover.tsx` (export `ancoraVirtual` only).
 
 - [ ] **B1. Draft state in `AgendaTab`.**
   ```ts
   interface Rascunho { inicio: Date; fim: Date; diaInteiro: boolean; titulo: string; tipo: AgendaTipo }
   const RASCUNHO_ID = 'rascunho';
   ```
-  - `onSelect` (desktop): `calRef.current?.getApi().unselect()`, close the event popover,
-    set `rascunho = { inicio, fim, diaInteiro, titulo: '', tipo: <form default tipo> }`.
-    Mobile keeps `abrirCriar(inicio, fim, diaInteiro)`.
+  - `onSelect` (desktop): `calRef.current?.getApi().unselect()` (the draft chip replaces
+    FullCalendar's selection mirror; leave `unselectAuto` at its default, it only acts while a
+    selection exists), close the event popover, bump a `selecao` counter, set
+    `rascunhoInicial = { inicio, fim, diaInteiro }` and `rascunho = { inicio, fim, diaInteiro,
+    titulo: '', tipo: valoresIniciaisCriar(...).tipo }`. Mobile keeps
+    `abrirCriar(inicio, fim, diaInteiro)`.
   - `eventos` passed to `AgendaView` = the occurrence events plus, when a draft exists, one
-    EventInput: `{ id: RASCUNHO_ID, title: titulo.trim() || '(Sem título)', start, end,
-    allDay, editable: false, classNames: ['agenda-ev--rascunho'], backgroundColor/borderColor
-    = TIPO_COR[tipo] }` (match how occurrence events get colors; read
-    `agendaLogic.ts`). No `extendedProps.ocorrencia`.
-  - `eventClick` on the draft chip does nothing (guard in AgendaView: no `ocorrencia` → return).
-    `eventAllow`/drag: draft is not editable.
-  - `unselectAuto={false}` on `FullCalendar` (AgendaView). Keep `selectMirror` for the
-    drag-in-progress feedback.
+    EventInput built like `toEventInput` (agendaLogic.ts:333-349): `{ id: RASCUNHO_ID, title:
+    titulo.trim() || '(Sem título)', start, end, allDay, editable: false, classNames:
+    ['agenda-ev', 'agenda-ev--rascunho'], backgroundColor: `${TIPO_COR[tipo]}24`, borderColor:
+    TIPO_COR[tipo], textColor: 'var(--text-main)', extendedProps: { rascunho: 1 } }`. No
+    `extendedProps.ocorrencia`. Sort it first so `dayMaxEvents` never folds it into "+N mais":
+    `eventOrder="-rascunho,start,-duration,allDay,title"` on FullCalendar (the default order
+    with the draft key in front).
+  - AgendaView `eventClick`: `const o = arg.event.extendedProps.ocorrencia as
+    AgendaOcorrencia | undefined; if (!o) return;` after `preventDefault()` (today it passes
+    undefined to `abrirPopover` and crashes). The draft is not editable, so no drag/resize.
+  - Keep `selectMirror` for the drag-in-progress feedback.
   - Anchor: the draft chip, found with the existing `[data-ocorrencia-id="…"]` lookup
     (`eventDidMount` already stamps `event.id`); generalize `resolverAnchor` to take
-    `number | string`. Re-resolve after re-renders the same way the event popover does. Until
-    the chip mounts (first frame), anchor to the container.
+    `number | string`. Re-resolve after re-renders the same way the event popover does
+    (FullCalendar re-creates the chip node on every `events` change). Fallback when the chip
+    is not mounted: the selected day's cell (`.fc-timegrid-col[data-date="yyyy-MM-dd"]` or
+    `.fc-daygrid-day[data-date="yyyy-MM-dd"]`), never the whole container.
+  - The setter passed to the card is `useCallback(..., [])` and bails out when nothing
+    changed (compare `inicio/fim.getTime()`, `diaInteiro`, `titulo`, `tipo` inside the
+    functional `setRascunho`, returning the previous object), so the card's effect cannot loop.
 - [ ] **B2. `EventoRapidoCard`.**
   ```ts
   export interface EventoRapidoCardProps {
@@ -157,9 +190,10 @@ of `apps/crm/style.css` (only new `.agenda-rapido*` / `.agenda-ev--rascunho` rul
   - Own `useForm<EventoFormValues>` with `zodResolver(eventoFormSchema)` and
     `defaultValues: valoresIniciaisCriar(inicial)`.
   - Radix `Popover` (open while mounted) + `PopoverAnchor virtualRef` over `anchor` (copy the
-    `ancoraVirtual` helper pattern from `EventoPopover.tsx`, or export it from there and
-    import). `side="right"`, `align="start"`, `sideOffset={8}`, `collisionPadding={16}`
-    (Radix flips to the left near the right edge). Width 448px, `max-w-[calc(100vw-32px)]`.
+    `ancoraVirtual` helper from `EventoPopover.tsx` by exporting it there; EventoPopover.tsx is
+    a Lane B file for that one-word change). `side="right"`, `align="start"`, `sideOffset={8}`,
+    `collisionPadding={16}` (Radix flips to the left near the right edge), and
+    `updatePositionStrategy="always"` so the card follows the chip as it moves. Width 448px, `max-w-[calc(100vw-32px)]`.
     NO internal scroll: no `overflow-y-auto`, no max-height; the content is short by design.
     Styling as `EventoPopover` (card bg, radius 12, popover shadow). Root class `agenda-rapido`.
   - Content, top to bottom (Google's quick card, Mesaas tokens):
@@ -182,8 +216,9 @@ of `apps/crm/style.css` (only new `.agenda-rapido*` / `.agenda-ev--rascunho` rul
   - Submit: `form.handleSubmit((v) => criar.mutate(v))` with `useCriarEvento({ onCriado:
     onClose })`. Disable both buttons while pending.
   - `useUnsavedWork(form.formState.isDirty || criar.isPending)`.
-  - Live draft: watch `titulo`, `tipo`, `data_inicio`, `hora_inicio`, `data_fim`, `hora_fim`,
-    `dia_inteiro`; in an effect keyed on those primitives (dates via `getTime()`), compute
+  - Live draft: keep `onRascunhoChange` in a ref (synced in an effect); watch `titulo`,
+    `tipo`, `data_inicio`, `hora_inicio`, `data_fim`, `hora_fim`, `dia_inteiro`; in an effect
+    keyed on those primitives only (dates via `getTime()`), compute
     `inicio = combinarDataHora(data_inicio, hora_inicio)`, `fim` = timed:
     `combinarDataHora(data_fim, hora_fim)`, all-day: `addDays(startOfDay(data_fim), 1)`
     (exclusive), and call `onRascunhoChange`. Skip invalid ranges (fim ≤ inicio).
@@ -193,26 +228,28 @@ of `apps/crm/style.css` (only new `.agenda-rapido*` / `.agenda-ev--rascunho` rul
     close the card: they are React children of the card, which Radix already treats as inside;
     verify with a test that opening the people combobox keeps the card open.
 - [ ] **B3. Wiring in `AgendaTab`.** Render `EventoRapidoCard` when `rascunho && !isMobile`,
-  keyed by the draft's initial `inicio.getTime()` + `fim.getTime()` + `diaInteiro` (a new
-  selection remounts it; the live `onRascunhoChange` updates must NOT change the key — keep
-  the initial range in a separate `rascunhoInicial` state). `onClose` → clear both.
+  keyed by the `selecao` counter (every new selection remounts it, even on the same slot; the
+  live `onRascunhoChange` updates must NOT change the key) and given `inicial={rascunhoInicial}`. `onClose` → clear both.
   `onMaisOpcoes(v)` → clear the draft, `setForm({ modo: 'criar', inicial: <current range>,
   rascunho: v })`, and pass `rascunho={form.rascunho}` to `EventoFormDialog` (extend the
   `form` state union with optional `rascunho`). The "Criar" button / FAB keep opening the
   full editor directly.
-- [ ] **B4. Styles.** `.agenda-ev--rascunho`: the chip looks like a real event with a soft
-  elevation (`box-shadow: 0 6px 16px rgba(0,0,0,.18)`) and stays above siblings (`z-index:
-  5` on its harness). Dark mode via tokens.
+- [ ] **B4. Styles.** `.agenda-fc .fc-event.agenda-ev--rascunho`: soft elevation
+  (`box-shadow: 0 6px 16px rgba(0,0,0,.18)`). TimeGrid sets `zIndex` inline on the harness, so
+  lift it with `.agenda-fc .fc-timegrid-event-harness:has(> .agenda-ev--rascunho) { z-index:
+  50 !important; }`. Dark mode via tokens.
 - [ ] **B5. Tests.**
   - `EventoRapidoCard.test.tsx` (mock `@/store/agenda` `criarEvento`, `@/store/workspace`,
-    `@/context/AuthContext`, `sonner`, like `EventoFormDialog.test.tsx`): renders title input
+    `@/context/AuthContext`, `sonner`, AND `@/components/ui/select` + `@/components/ui/date-picker`
+    exactly like EventoFormDialog.test.tsx:68 and :97, since Radix Select does not work in jsdom): renders title input
     focused, no "Repetir"/"Descrição" fields; Salvar with empty title shows "Informe um
     título." and does not call `criarEvento`; typing a title + Salvar calls `criarEvento` with
     the selected range and `onClose`; "Mais opções" calls `onMaisOpcoes` with the typed title;
     typing a title calls `onRascunhoChange` with that title; picking a tipo pill changes the
     payload `tipo`.
   - `AgendaTab.test.tsx`: mock `../EventoRapidoCard` like `../EventoFormDialog` is mocked.
-    Desktop select → the card renders (not the dialog); mobile select → the dialog renders;
+    Desktop select → the card renders (not the dialog; this replaces the assertion at
+    AgendaTab.test.tsx:424-432); mobile select → the dialog renders;
     card `onMaisOpcoes` → dialog renders with `modo="criar"` and the `rascunho`; card
     `onClose` → card gone.
 - [ ] **B6. Commit** `feat(agenda): Google-style quick-create card on the selected slot`.

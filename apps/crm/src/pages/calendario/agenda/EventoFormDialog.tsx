@@ -109,6 +109,9 @@ export type EventoFormDialogProps =
       modo: 'criar';
       /** `fim` is exclusive for all-day selections (FullCalendar). */
       inicial: { inicio: Date; fim: Date; diaInteiro: boolean };
+      /** Values typed in the quick card. Read once when the dialog opens; the
+       *  fields it carries start dirty so closing asks to discard. */
+      rascunho?: Partial<EventoFormValues>;
     }
   | {
       open: boolean;

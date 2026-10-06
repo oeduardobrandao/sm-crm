@@ -12,8 +12,10 @@ export function useCriarEvento({ onCriado }: { onCriado: () => void }) {
   return useMutation({
     mutationFn: (valores: EventoFormValues) =>
       criarEvento({ ...montarPayload(valores), tz: fusoDoNavegador() }, valores.participantes),
-    onSuccess: (res, valores) => {
-      void qc.invalidateQueries({ queryKey: [AGENDA_QUERY_KEY] });
+    // Awaited so the caller closes once the new event is on the grid (the quick
+    // card's draft chip would otherwise leave the slot empty for a moment).
+    onSuccess: async (res, valores) => {
+      await qc.invalidateQueries({ queryKey: [AGENDA_QUERY_KEY] });
       toast.success('Evento criado');
       // ocorrencia_id may be null (one-off beyond the horizon); dtstart is always there.
       const dtstart = res?.dtstart ?? null;
