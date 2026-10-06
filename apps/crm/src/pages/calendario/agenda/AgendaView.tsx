@@ -80,18 +80,19 @@ export function permitirArraste(
   return !ev || span.allDay === ev.allDay;
 }
 
-function ConteudoDoEvento({ arg }: { arg: EventContentArg }) {
-  const o = arg.event.extendedProps.ocorrencia as AgendaOcorrencia;
+export function ConteudoDoEvento({ arg }: { arg: EventContentArg }) {
+  // Undefined for the selectMirror placeholder drawn while a slot is selected.
+  const o = arg.event.extendedProps.ocorrencia as AgendaOcorrencia | undefined;
   const { start, end, allDay, title } = arg.event;
   const mes = arg.view.type === 'dayGridMonth';
   const horario =
     !allDay && start ? (end && !mes ? `${hora(start)} a ${hora(end)}` : hora(start)) : '';
-  const detalhe = [horario, !mes && o.local ? o.local : ''].filter(Boolean).join(' · ');
+  const detalhe = [horario, !mes && o?.local ? o.local : ''].filter(Boolean).join(' · ');
 
   if (mes || allDay) {
     return (
       <div className="agenda-ev__linha">
-        {!o.mascarado && (
+        {o && !o.mascarado && (
           <span
             className="agenda-ev__dot"
             style={{ background: arg.borderColor }}
@@ -106,7 +107,7 @@ function ConteudoDoEvento({ arg }: { arg: EventContentArg }) {
   return (
     <div className="agenda-ev__bloco">
       <div className="agenda-ev__titulo">
-        {!o.mascarado && (
+        {o && !o.mascarado && (
           <span
             className="agenda-ev__dot"
             style={{ background: arg.borderColor }}
