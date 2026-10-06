@@ -59,6 +59,7 @@ import {
   AGENDA_QUERY_KEY,
   criarEvento,
   editarEvento,
+  ehAgendaNaoExiste,
   formatAgendaError,
   type AgendaEscopo,
   type AgendaEventoPayload,
@@ -149,14 +150,6 @@ function opcoesHorario(atual: string): string[] {
   return HORARIOS.includes(atual) ? HORARIOS : [atual, ...HORARIOS];
 }
 
-function semPrefixoNaoExiste(err: unknown): boolean {
-  const msg =
-    err && typeof err === 'object' && typeof (err as { message?: unknown }).message === 'string'
-      ? (err as { message: string }).message
-      : '';
-  return /este evento não existe mais/i.test(msg);
-}
-
 /** Criar / editar evento (spec: EventoFormDialog). On create, dates and times
  *  are the browser's wall clock; on edit, the series tz's (emFuso). */
 export function EventoFormDialog(props: EventoFormDialogProps) {
@@ -244,7 +237,7 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
 
   const tratarErro = (err: unknown) => {
     toast.error(formatAgendaError(err));
-    if (semPrefixoNaoExiste(err)) {
+    if (ehAgendaNaoExiste(err)) {
       setEscopo(null);
       terminar();
       fechar();
