@@ -994,7 +994,8 @@ GRANT EXECUTE ON FUNCTION public.agenda_evento_criar(jsonb, uuid[]) TO authentic
 -- sides; the deep link reuses the same query with the occurrence's own bounds.
 -- Masking ("ocupado"): a private event the viewer neither organizes nor
 -- attends shows titulo 'Ocupado' and NULL content, rule and reminders, and its
--- participants without answers. regra is jsonb_build_object over all seven keys
+-- participants without answers. pode_editar is agenda_pode_editar (section 4),
+-- the same rule the edit/delete RPCs enforce. regra is jsonb_build_object over all seven keys
 -- (explicit nulls, never stripped: the CRM compares them).
 CREATE OR REPLACE FUNCTION public.agenda_listar(p_de timestamptz DEFAULT NULL, p_ate timestamptz DEFAULT NULL, p_ocorrencia_id bigint DEFAULT NULL)
 RETURNS TABLE (
@@ -1013,8 +1014,6 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_conta uuid;
   v_user uuid;
-  v_role text;
-  v_editar boolean;
   v_de timestamptz := p_de;
   v_ate timestamptz := p_ate;
 BEGIN
@@ -1031,10 +1030,6 @@ BEGIN
   ELSIF v_de IS NULL OR v_ate IS NULL OR v_ate <= v_de OR v_ate - v_de > interval '100 days' THEN
     RAISE EXCEPTION 'agenda: período inválido';
   END IF;
-
-  SELECT wm.role::text INTO v_role FROM public.workspace_members wm
-   WHERE wm.workspace_id = v_conta AND wm.user_id = v_user;
-  v_editar := public.has_permission('calendario', 'editar');
 
   RETURN QUERY
   SELECT
@@ -1072,7 +1067,7 @@ BEGIN
         LEFT JOIN public.agenda_respostas ar ON ar.ocorrencia_id = o.id AND ar.user_id = ap.user_id
        WHERE ap.evento_id = e.id), '[]'::jsonb),
     CASE WHEN eu.user_id IS NULL THEN NULL ELSE coalesce(mr.resposta, eu.resposta) END,
-    v_editar AND (e.organizador_id = v_user OR (v_role IN ('owner', 'admin') AND NOT e.privado)),
+    public.agenda_pode_editar(e, v_user, v_conta),
     eu.user_id IS NOT NULL AND e.organizador_id IS DISTINCT FROM v_user,
     e.tz
   FROM public.agenda_ocorrencias o
@@ -1091,3 +1086,532 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.agenda_listar(timestamptz, timestamptz, bigint) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.agenda_listar(timestamptz, timestamptz, bigint) TO authenticated, service_role;
+
+-- ============ (4) EDIT / DELETE / RSVP RPCs ============
+-- Lock order (spec "Ordem de travas"): the series row first (FOR UPDATE for
+-- edits and deletes, FOR SHARE for RSVPs), only then occurrences by id. No
+-- table trigger locks in the opposite order.
+
+-- Internal: who may edit or delete a series. Calendar editar permission and
+-- either the organizer, or an owner/admin when the event is not private. Used
+-- by agenda_listar.pode_editar and by the edit/delete RPCs.
+CREATE OR REPLACE FUNCTION public.agenda_pode_editar(p_e public.agenda_eventos, p_user uuid, p_conta uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT coalesce(
+    p_e.conta_id = p_conta
+    AND public.has_permission_for(p_user, p_conta, 'calendario', 'editar')
+    AND (p_e.organizador_id = p_user
+         OR (NOT p_e.privado AND EXISTS (
+               SELECT 1 FROM public.workspace_members wm
+                WHERE wm.workspace_id = p_conta AND wm.user_id = p_user
+                  AND wm.role::text IN ('owner', 'admin')))),
+    false);
+$$;
+REVOKE ALL ON FUNCTION public.agenda_pode_editar(public.agenda_eventos, uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.agenda_pode_editar(public.agenda_eventos, uuid, uuid) TO service_role;
+
+-- Internal: replace the participant set of a series (the organizer is never
+-- removed; a missing one is restored). Deduplicates, caps at 50 others,
+-- requires workspace membership.
+-- Removed participants lose their per-occurrence RSVPs on this series' rows;
+-- added ones start pendente. Returns who was added and who was removed.
+CREATE OR REPLACE FUNCTION public.agenda_definir_participantes(
+  p_evento_id bigint, p_conta uuid, p_organizador uuid, p_novos uuid[],
+  OUT adicionados uuid[], OUT removidos uuid[])
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_novos uuid[];
+BEGIN
+  v_novos := ARRAY(SELECT DISTINCT d.u FROM unnest(coalesce(p_novos, '{}'::uuid[])) AS d(u)
+                    WHERE d.u IS NOT NULL AND d.u IS DISTINCT FROM p_organizador);
+  IF cardinality(v_novos) > 50 THEN
+    RAISE EXCEPTION 'agenda: no máximo 50 participantes';
+  END IF;
+  IF EXISTS (SELECT 1 FROM unnest(v_novos) AS d(u)
+              WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm
+                                 WHERE wm.user_id = d.u AND wm.workspace_id = p_conta)) THEN
+    RAISE EXCEPTION 'agenda: participante fora do workspace';
+  END IF;
+
+  removidos := ARRAY(SELECT ap.user_id FROM public.agenda_participantes ap
+                      WHERE ap.evento_id = p_evento_id
+                        AND ap.user_id IS DISTINCT FROM p_organizador
+                        AND NOT (ap.user_id = ANY (v_novos)));
+  adicionados := ARRAY(SELECT d.u FROM unnest(v_novos) AS d(u)
+                        WHERE NOT EXISTS (SELECT 1 FROM public.agenda_participantes ap
+                                           WHERE ap.evento_id = p_evento_id AND ap.user_id = d.u));
+
+  DELETE FROM public.agenda_respostas ar
+   USING public.agenda_ocorrencias o
+   WHERE ar.ocorrencia_id = o.id AND o.evento_id = p_evento_id AND ar.user_id = ANY (removidos);
+  DELETE FROM public.agenda_participantes ap
+   WHERE ap.evento_id = p_evento_id AND ap.user_id = ANY (removidos);
+  INSERT INTO public.agenda_participantes (evento_id, conta_id, user_id, resposta)
+  SELECT p_evento_id, p_conta, d.u, 'pendente' FROM unnest(adicionados) AS d(u);
+  -- the form sends the set without the organizer (as on create): the organizer
+  -- always stays, answering sim
+  IF p_organizador IS NOT NULL THEN
+    INSERT INTO public.agenda_participantes (evento_id, conta_id, user_id, resposta, respondido_em)
+    VALUES (p_evento_id, p_conta, p_organizador, 'sim', now())
+    ON CONFLICT (evento_id, user_id) DO NOTHING;
+  END IF;
+END $$;
+REVOKE ALL ON FUNCTION public.agenda_definir_participantes(bigint, uuid, uuid, uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.agenda_definir_participantes(bigint, uuid, uuid, uuid[]) TO service_role;
+
+-- ---- client RPC: edit ----
+-- p_escopo: 'esta' (exceptions on this occurrence), 'seguintes' (split the
+-- series at this occurrence's data_original), 'todas' (the whole series). A
+-- series without a rule ignores the scope (todas); 'seguintes' at the first live
+-- occurrence is 'todas'. p_evento follows the merge rule of
+-- agenda_validar_payload (an absent key keeps the stored value, so a drag sends
+-- only inicio_local/fim_local). The form and the drag carry the start of THIS
+-- occurrence; the series dtstart is derived with the date delta of this edit
+-- (spec "Como o payload vira dtstart") and then normalized. Returns the
+-- occurrence that represents the edited one: the same id, or (when its date
+-- left the rule) the first live occurrence from that date on, else the series'
+-- first, else NULL (a one-off moved past the materialization horizon has no
+-- occurrence until the generator reaches it).
+CREATE OR REPLACE FUNCTION public.agenda_evento_editar(p_ocorrencia_id bigint, p_escopo text, p_evento jsonb, p_participantes uuid[] DEFAULT NULL)
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_conta uuid;
+  v_user uuid;
+  v_o public.agenda_ocorrencias;
+  v_e public.agenda_eventos;
+  v_base public.agenda_eventos;
+  v_novo public.agenda_eventos;
+  v_escopo text;
+  v_primeira boolean;
+  v_tem_horario boolean;
+  v_delta int;
+  v_hoje date;
+  v_h date;
+  v_c date;
+  v_datas date[];
+  v_alvo bigint;          -- series that ends up holding the edited occurrence
+  v_ret bigint;
+  v_regen boolean := false;
+  v_reset boolean := false;
+  v_notifica boolean := false;
+  v_regra_igual boolean;
+  v_contagem int;
+  v_add uuid[] := '{}';
+  v_rem uuid[] := '{}';
+  v_atuais uuid[];
+  v_pedidos uuid[];
+  v_campos text[];
+  v_ini timestamptz; v_fim timestamptz;
+  v_gen_ini timestamptz; v_gen_fim timestamptz;
+  v_old_titulo text; v_old_local text; v_old_link text;
+  v_destinatarios uuid[];
+BEGIN
+  v_conta := get_my_conta_id(); v_user := auth.uid();
+  IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  IF p_escopo IS NULL OR p_escopo NOT IN ('esta', 'seguintes', 'todas') THEN
+    RAISE EXCEPTION 'agenda: escopo inválido';
+  END IF;
+  IF p_evento IS NULL OR jsonb_typeof(p_evento) <> 'object' THEN
+    RAISE EXCEPTION 'agenda: dados do evento incompletos';
+  END IF;
+
+  SELECT o.* INTO v_o FROM public.agenda_ocorrencias o
+   WHERE o.id = p_ocorrencia_id AND o.conta_id = v_conta AND NOT o.cancelada;
+  IF NOT FOUND THEN RAISE EXCEPTION 'agenda: este evento não existe mais'; END IF;
+  SELECT e.* INTO v_e FROM public.agenda_eventos e
+   WHERE e.id = v_o.evento_id AND e.conta_id = v_conta FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'agenda: este evento não existe mais'; END IF;
+  IF NOT public.agenda_pode_editar(v_e, v_user, v_conta) THEN
+    RAISE EXCEPTION 'agenda: você não pode editar este evento';
+  END IF;
+  -- re-read the occurrence after the series lock (it may have changed meanwhile)
+  SELECT o.* INTO v_o FROM public.agenda_ocorrencias o
+   WHERE o.id = p_ocorrencia_id AND o.evento_id = v_e.id AND NOT o.cancelada;
+  IF NOT FOUND THEN RAISE EXCEPTION 'agenda: este evento não existe mais'; END IF;
+
+  v_primeira := NOT EXISTS (SELECT 1 FROM public.agenda_ocorrencias o
+                             WHERE o.evento_id = v_e.id AND NOT o.cancelada AND o.data_original < v_o.data_original);
+  IF v_e.freq IS NULL OR (p_escopo = 'seguintes' AND v_primeira) THEN
+    v_escopo := 'todas';
+  ELSE
+    v_escopo := p_escopo;
+  END IF;
+
+  v_tem_horario := p_evento ? 'inicio_local' OR p_evento ? 'fim_local';
+  v_hoje := public.agenda_hoje(v_e.tz);
+  v_c := v_o.data_original;
+  v_old_titulo := CASE WHEN 'titulo' = ANY (v_o.campos_sobrescritos) THEN v_o.titulo ELSE v_e.titulo END;
+  v_old_local := CASE WHEN 'local' = ANY (v_o.campos_sobrescritos) THEN v_o.local ELSE v_e.local END;
+  v_old_link := CASE WHEN 'link_reuniao' = ANY (v_o.campos_sobrescritos) THEN v_o.link_reuniao ELSE v_e.link_reuniao END;
+  -- current participants other than the organizer, still members (what the form shows)
+  v_atuais := ARRAY(SELECT ap.user_id FROM public.agenda_participantes ap
+                      JOIN public.workspace_members wm ON wm.user_id = ap.user_id AND wm.workspace_id = v_conta
+                     WHERE ap.evento_id = v_e.id AND ap.user_id IS DISTINCT FROM v_e.organizador_id
+                     ORDER BY ap.user_id);
+
+  -- ======== esta ========
+  IF v_escopo = 'esta' THEN
+    -- base: the series with this occurrence's effective content, so a drag that
+    -- sends only times keeps an existing content override
+    v_base := v_e;
+    v_base.titulo := v_old_titulo;
+    v_base.descricao := CASE WHEN 'descricao' = ANY (v_o.campos_sobrescritos) THEN v_o.descricao ELSE v_e.descricao END;
+    v_base.local := v_old_local;
+    v_base.link_reuniao := v_old_link;
+    v_novo := public.agenda_validar_payload(v_conta, p_evento, v_base);
+
+    IF v_novo.tipo IS DISTINCT FROM v_e.tipo
+       OR v_novo.cor IS DISTINCT FROM v_e.cor
+       OR v_novo.cliente_id IS DISTINCT FROM v_e.cliente_id
+       OR v_novo.privado IS DISTINCT FROM v_e.privado
+       OR v_novo.dia_inteiro IS DISTINCT FROM v_e.dia_inteiro
+       OR ARRAY(SELECT x FROM unnest(v_novo.lembretes) x ORDER BY x) IS DISTINCT FROM ARRAY(SELECT x FROM unnest(v_e.lembretes) x ORDER BY x)
+       OR (v_novo.freq, v_novo.intervalo, v_novo.dias_semana, v_novo.mensal_modo, v_novo.mensal_ordinal, v_novo.ate, v_novo.contagem)
+          IS DISTINCT FROM (v_e.freq, v_e.intervalo, v_e.dias_semana, v_e.mensal_modo, v_e.mensal_ordinal, v_e.ate, v_e.contagem) THEN
+      RAISE EXCEPTION 'agenda: este campo vale para toda a série';
+    END IF;
+    IF p_participantes IS NOT NULL THEN
+      v_pedidos := ARRAY(SELECT DISTINCT d.u FROM unnest(p_participantes) AS d(u)
+                          WHERE d.u IS NOT NULL AND d.u IS DISTINCT FROM v_e.organizador_id ORDER BY d.u);
+      IF v_pedidos IS DISTINCT FROM v_atuais THEN
+        RAISE EXCEPTION 'agenda: este campo vale para toda a série';
+      END IF;
+    END IF;
+
+    IF v_tem_horario THEN
+      SELECT f.inicio, f.fim INTO v_ini, v_fim FROM public.agenda_inicio_fim(v_novo, v_novo.dtstart::date) f;
+    ELSE
+      v_ini := v_o.inicio; v_fim := v_o.fim;
+    END IF;
+    SELECT g.inicio, g.fim INTO v_gen_ini, v_gen_fim FROM public.agenda_inicio_fim(v_e, v_o.data_original) g;
+
+    -- a field differing from the series is an override (even NULL); equal to
+    -- the series value it is dropped from the list
+    v_campos := ARRAY(SELECT c.campo FROM unnest(ARRAY['titulo', 'descricao', 'local', 'link_reuniao']) WITH ORDINALITY AS c(campo, n)
+                       WHERE CASE c.campo
+                               WHEN 'titulo' THEN v_novo.titulo IS DISTINCT FROM v_e.titulo
+                               WHEN 'descricao' THEN v_novo.descricao IS DISTINCT FROM v_e.descricao
+                               WHEN 'local' THEN v_novo.local IS DISTINCT FROM v_e.local
+                               ELSE v_novo.link_reuniao IS DISTINCT FROM v_e.link_reuniao
+                             END
+                       ORDER BY c.n);
+
+    UPDATE public.agenda_ocorrencias o
+       SET titulo = CASE WHEN 'titulo' = ANY (v_campos) THEN v_novo.titulo END,
+           descricao = CASE WHEN 'descricao' = ANY (v_campos) THEN v_novo.descricao END,
+           local = CASE WHEN 'local' = ANY (v_campos) THEN v_novo.local END,
+           link_reuniao = CASE WHEN 'link_reuniao' = ANY (v_campos) THEN v_novo.link_reuniao END,
+           campos_sobrescritos = v_campos,
+           inicio = v_ini,
+           fim = v_fim,
+           horario_alterado = (v_ini, v_fim) IS DISTINCT FROM (v_gen_ini, v_gen_fim)
+     WHERE o.id = v_o.id;
+
+    v_notifica := v_novo.titulo IS DISTINCT FROM v_old_titulo
+               OR v_novo.local IS DISTINCT FROM v_old_local
+               OR v_novo.link_reuniao IS DISTINCT FROM v_old_link
+               OR (v_ini, v_fim) IS DISTINCT FROM (v_o.inicio, v_o.fim);
+    v_alvo := v_e.id;
+    v_ret := v_o.id;
+
+  ELSE
+    -- ======== todas / seguintes: derive the series dtstart ========
+    v_novo := public.agenda_validar_payload(v_conta, p_evento, v_e);
+    IF v_tem_horario THEN
+      v_delta := v_novo.dtstart::date - (v_o.inicio AT TIME ZONE v_e.tz)::date;
+      IF v_escopo = 'todas' THEN
+        v_novo.dtstart := (v_e.dtstart::date + v_delta) + v_novo.dtstart::time;
+      ELSE
+        v_novo.dtstart := (v_c + v_delta) + v_novo.dtstart::time;
+      END IF;
+    ELSIF v_escopo = 'seguintes' THEN
+      v_novo.dtstart := v_c + v_e.dtstart::time;
+    END IF;
+
+    IF v_escopo = 'seguintes' THEN
+      -- contagem of the new series: the stored rule unchanged means "the end was
+      -- not touched", so the remaining count carries over (tombstones count)
+      v_regra_igual := NOT (p_evento ? 'regra')
+        OR (v_novo.freq, v_novo.intervalo, v_novo.dias_semana, v_novo.mensal_modo, v_novo.mensal_ordinal, v_novo.ate, v_novo.contagem)
+           IS NOT DISTINCT FROM (v_e.freq, v_e.intervalo, v_e.dias_semana, v_e.mensal_modo, v_e.mensal_ordinal, v_e.ate, v_e.contagem);
+      IF v_regra_igual AND v_e.contagem IS NOT NULL THEN
+        v_contagem := v_e.contagem - (SELECT count(*) FROM public.agenda_datas_regra(v_e, v_e.dtstart::date, v_c - 1));
+        IF v_contagem <= 0 THEN RAISE EXCEPTION 'agenda: a repetição não gera nenhuma data'; END IF;
+        v_novo.contagem := v_contagem;
+      END IF;
+    END IF;
+
+    IF v_novo.dtstart::date < least(v_e.dtstart::date, v_hoje - 366) THEN
+      RAISE EXCEPTION 'agenda: a data de início é antiga demais';
+    END IF;
+    IF v_novo.freq IS NOT NULL AND v_novo.ate IS NOT NULL
+       AND v_novo.ate > (v_novo.dtstart::date + interval '5 years')::date THEN
+      RAISE EXCEPTION 'agenda: repetição inválida';
+    END IF;
+    v_novo.dtstart := public.agenda_normalizar_dtstart(v_novo);
+    v_reset := v_novo.dia_inteiro IS DISTINCT FROM v_e.dia_inteiro;
+
+    IF v_escopo = 'todas' THEN
+      v_regen := (v_novo.freq, v_novo.intervalo, v_novo.dias_semana, v_novo.mensal_modo, v_novo.mensal_ordinal, v_novo.ate, v_novo.contagem)
+                   IS DISTINCT FROM (v_e.freq, v_e.intervalo, v_e.dias_semana, v_e.mensal_modo, v_e.mensal_ordinal, v_e.ate, v_e.contagem)
+              OR v_novo.dtstart IS DISTINCT FROM v_e.dtstart
+              OR v_novo.duracao_min IS DISTINCT FROM v_e.duracao_min
+              OR v_novo.duracao_dias IS DISTINCT FROM v_e.duracao_dias
+              OR v_reset;
+      v_notifica := v_regen
+                 OR v_novo.titulo IS DISTINCT FROM v_e.titulo
+                 OR v_novo.local IS DISTINCT FROM v_e.local
+                 OR v_novo.link_reuniao IS DISTINCT FROM v_e.link_reuniao;
+
+      UPDATE public.agenda_eventos ev
+         SET titulo = v_novo.titulo, descricao = v_novo.descricao, local = v_novo.local,
+             link_reuniao = v_novo.link_reuniao, tipo = v_novo.tipo, cor = v_novo.cor,
+             cliente_id = v_novo.cliente_id, privado = v_novo.privado, dia_inteiro = v_novo.dia_inteiro,
+             dtstart = v_novo.dtstart, duracao_min = v_novo.duracao_min, duracao_dias = v_novo.duracao_dias,
+             freq = v_novo.freq, intervalo = v_novo.intervalo, dias_semana = v_novo.dias_semana,
+             mensal_modo = v_novo.mensal_modo, mensal_ordinal = v_novo.mensal_ordinal,
+             ate = v_novo.ate, contagem = v_novo.contagem, lembretes = v_novo.lembretes
+       WHERE ev.id = v_e.id;
+
+      IF p_participantes IS NOT NULL THEN
+        SELECT d.adicionados, d.removidos INTO v_add, v_rem
+          FROM public.agenda_definir_participantes(v_e.id, v_conta, v_e.organizador_id, p_participantes) d;
+      END IF;
+
+      IF v_regen THEN
+        -- a one-off keeps its single occurrence (id, RSVPs, deep links): move
+        -- its identity date along before regenerating
+        IF v_e.freq IS NULL AND v_novo.freq IS NULL THEN
+          UPDATE public.agenda_ocorrencias o
+             SET data_original = v_novo.dtstart::date
+           WHERE o.evento_id = v_e.id;
+        END IF;
+        PERFORM public.agenda_regenerar(v_e.id, v_reset);
+      END IF;
+      v_alvo := v_e.id;
+
+    ELSE
+      -- ======== seguintes: split at v_c ========
+      v_notifica := NOT v_regra_igual
+                 OR v_novo.dtstart IS DISTINCT FROM (v_c + v_e.dtstart::time)
+                 OR v_novo.duracao_min IS DISTINCT FROM v_e.duracao_min
+                 OR v_novo.duracao_dias IS DISTINCT FROM v_e.duracao_dias
+                 OR v_reset
+                 OR v_novo.titulo IS DISTINCT FROM v_e.titulo
+                 OR v_novo.local IS DISTINCT FROM v_e.local
+                 OR v_novo.link_reuniao IS DISTINCT FROM v_e.link_reuniao;
+
+      -- 1. the old series ends the day before the cut
+      UPDATE public.agenda_eventos ev
+         SET ate = v_c - 1, contagem = NULL, materializacao_completa = true
+       WHERE ev.id = v_e.id;
+
+      -- 2. the new series, with the participants (and their series answers) copied
+      INSERT INTO public.agenda_eventos (
+        conta_id, organizador_id, titulo, descricao, local, link_reuniao, tipo, cor, cliente_id,
+        privado, dia_inteiro, tz, dtstart, duracao_min, duracao_dias, freq, intervalo, dias_semana,
+        mensal_modo, mensal_ordinal, ate, contagem, lembretes, serie_origem_id)
+      VALUES (
+        v_conta, v_e.organizador_id, v_novo.titulo, v_novo.descricao, v_novo.local, v_novo.link_reuniao,
+        v_novo.tipo, v_novo.cor, v_novo.cliente_id, v_novo.privado, v_novo.dia_inteiro, v_e.tz,
+        v_novo.dtstart, v_novo.duracao_min, v_novo.duracao_dias, v_novo.freq, v_novo.intervalo,
+        v_novo.dias_semana, v_novo.mensal_modo, v_novo.mensal_ordinal, v_novo.ate, v_novo.contagem,
+        v_novo.lembretes, v_e.id)
+      RETURNING id INTO v_alvo;
+      SELECT * INTO v_novo FROM public.agenda_eventos ev WHERE ev.id = v_alvo;
+
+      INSERT INTO public.agenda_participantes (evento_id, conta_id, user_id, resposta, respondido_em)
+      SELECT v_alvo, v_conta, ap.user_id, ap.resposta, ap.respondido_em
+        FROM public.agenda_participantes ap WHERE ap.evento_id = v_e.id;
+
+      -- 3. old rows from the cut: those on the new rule move over (exceptions,
+      --    tombstones and per-occurrence RSVPs preserved), the rest go
+      v_h := (v_hoje + interval '24 months')::date;
+      v_h := greatest(coalesce(v_e.horizonte_ate, v_h), v_h);
+      v_datas := coalesce(ARRAY(SELECT d FROM public.agenda_datas_regra(v_novo, v_novo.dtstart::date, v_h) d), '{}');
+      UPDATE public.agenda_ocorrencias o
+         SET evento_id = v_alvo
+       WHERE o.evento_id = v_e.id AND o.data_original >= v_c AND o.data_original = ANY (v_datas);
+      DELETE FROM public.agenda_ocorrencias o
+       WHERE o.evento_id = v_e.id AND o.data_original >= v_c;
+      UPDATE public.agenda_ocorrencias o
+         SET inicio = f.inicio,
+             fim = f.fim,
+             horario_alterado = CASE WHEN v_reset THEN false ELSE o.horario_alterado END
+        FROM public.agenda_ocorrencias o2
+        CROSS JOIN LATERAL public.agenda_inicio_fim(v_novo, o2.data_original) f
+       WHERE o.id = o2.id AND o.evento_id = v_alvo
+         AND (v_reset OR NOT o.horario_alterado);
+      PERFORM public.agenda_materializar(v_alvo, v_h);
+
+      -- participants left out lose their answers on the moved rows (helper)
+      IF p_participantes IS NOT NULL THEN
+        SELECT d.adicionados, d.removidos INTO v_add, v_rem
+          FROM public.agenda_definir_participantes(v_alvo, v_conta, v_e.organizador_id, p_participantes) d;
+      END IF;
+
+      -- 4. an old series left without a live occurrence is deleted
+      IF NOT EXISTS (SELECT 1 FROM public.agenda_ocorrencias o WHERE o.evento_id = v_e.id AND NOT o.cancelada) THEN
+        DELETE FROM public.agenda_eventos ev WHERE ev.id = v_e.id;
+      END IF;
+    END IF;
+
+    SELECT o.id INTO v_ret FROM public.agenda_ocorrencias o
+     WHERE o.evento_id = v_alvo AND NOT o.cancelada
+     ORDER BY (o.id = v_o.id) DESC, (o.data_original >= v_c) DESC, o.data_original
+     LIMIT 1;
+  END IF;
+
+  -- ---- notifications (the actor is excluded by agenda_notificar) ----
+  IF v_notifica THEN
+    v_destinatarios := ARRAY(SELECT ap.user_id FROM public.agenda_participantes ap
+                              WHERE ap.evento_id = v_alvo AND NOT (ap.user_id = ANY (v_add)));
+    PERFORM public.agenda_notificar(v_conta, v_alvo, v_ret, 'event_updated', v_destinatarios, v_user,
+                                    jsonb_build_object('escopo', v_escopo));
+  END IF;
+  IF cardinality(v_add) > 0 THEN
+    PERFORM public.agenda_notificar(v_conta, v_alvo, v_ret, 'event_invited', v_add, v_user,
+                                    jsonb_build_object('escopo', v_escopo));
+  END IF;
+  IF cardinality(v_rem) > 0 THEN
+    PERFORM public.agenda_notificar(v_conta, v_alvo, v_ret, 'event_cancelled', v_rem, v_user,
+                                    jsonb_build_object('escopo', v_escopo, 'motivo', 'removido'));
+  END IF;
+
+  RETURN v_ret;
+END $$;
+REVOKE ALL ON FUNCTION public.agenda_evento_editar(bigint, text, jsonb, uuid[]) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.agenda_evento_editar(bigint, text, jsonb, uuid[]) TO authenticated, service_role;
+
+-- ---- client RPC: delete ----
+-- 'esta' leaves a tombstone (EXDATE); 'seguintes' ends the series the day
+-- before (and drops the rows from there); 'todas' deletes the series (cascade).
+-- A series left without a live occurrence (and nothing more to materialize) is
+-- deleted. Participants except the actor get event_cancelled BEFORE the delete,
+-- so the notification still carries the title and date.
+CREATE OR REPLACE FUNCTION public.agenda_evento_excluir(p_ocorrencia_id bigint, p_escopo text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_conta uuid;
+  v_user uuid;
+  v_o public.agenda_ocorrencias;
+  v_e public.agenda_eventos;
+  v_escopo text;
+  v_primeira boolean;
+BEGIN
+  v_conta := get_my_conta_id(); v_user := auth.uid();
+  IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  IF p_escopo IS NULL OR p_escopo NOT IN ('esta', 'seguintes', 'todas') THEN
+    RAISE EXCEPTION 'agenda: escopo inválido';
+  END IF;
+
+  SELECT o.* INTO v_o FROM public.agenda_ocorrencias o
+   WHERE o.id = p_ocorrencia_id AND o.conta_id = v_conta AND NOT o.cancelada;
+  IF NOT FOUND THEN RAISE EXCEPTION 'agenda: este evento não existe mais'; END IF;
+  SELECT e.* INTO v_e FROM public.agenda_eventos e
+   WHERE e.id = v_o.evento_id AND e.conta_id = v_conta FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'agenda: este evento não existe mais'; END IF;
+  IF NOT public.agenda_pode_editar(v_e, v_user, v_conta) THEN
+    RAISE EXCEPTION 'agenda: você não pode editar este evento';
+  END IF;
+  SELECT o.* INTO v_o FROM public.agenda_ocorrencias o
+   WHERE o.id = p_ocorrencia_id AND o.evento_id = v_e.id AND NOT o.cancelada;
+  IF NOT FOUND THEN RAISE EXCEPTION 'agenda: este evento não existe mais'; END IF;
+
+  v_primeira := NOT EXISTS (SELECT 1 FROM public.agenda_ocorrencias o
+                             WHERE o.evento_id = v_e.id AND NOT o.cancelada AND o.data_original < v_o.data_original);
+  IF v_e.freq IS NULL OR (p_escopo = 'seguintes' AND v_primeira) THEN
+    v_escopo := 'todas';
+  ELSE
+    v_escopo := p_escopo;
+  END IF;
+
+  PERFORM public.agenda_notificar(
+    v_conta, v_e.id, v_o.id, 'event_cancelled',
+    ARRAY(SELECT ap.user_id FROM public.agenda_participantes ap WHERE ap.evento_id = v_e.id),
+    v_user, jsonb_build_object('escopo', v_escopo));
+
+  IF v_escopo = 'todas' THEN
+    DELETE FROM public.agenda_eventos ev WHERE ev.id = v_e.id;
+    RETURN;
+  ELSIF v_escopo = 'esta' THEN
+    UPDATE public.agenda_ocorrencias o SET cancelada = true WHERE o.id = v_o.id;
+  ELSE
+    UPDATE public.agenda_eventos ev
+       SET ate = v_o.data_original - 1, contagem = NULL, materializacao_completa = true
+     WHERE ev.id = v_e.id;
+    DELETE FROM public.agenda_ocorrencias o
+     WHERE o.evento_id = v_e.id AND o.data_original >= v_o.data_original;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM public.agenda_ocorrencias o WHERE o.evento_id = v_e.id AND NOT o.cancelada)
+     AND EXISTS (SELECT 1 FROM public.agenda_eventos ev WHERE ev.id = v_e.id AND ev.materializacao_completa) THEN
+    DELETE FROM public.agenda_eventos ev WHERE ev.id = v_e.id;
+  END IF;
+END $$;
+REVOKE ALL ON FUNCTION public.agenda_evento_excluir(bigint, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.agenda_evento_excluir(bigint, text) TO authenticated, service_role;
+
+-- ---- client RPC: RSVP ----
+-- 'todas' answers for the series and clears the user's per-occurrence answers
+-- from now on (past ones stay as history); 'esta' upserts the answer for this
+-- occurrence only. A series without a rule always answers at series level.
+-- The series row is locked FOR SHARE: concurrent RSVPs proceed in parallel,
+-- edits (FOR UPDATE) serialize with them. The organizer gets event_rsvp.
+CREATE OR REPLACE FUNCTION public.agenda_responder(p_ocorrencia_id bigint, p_resposta text, p_escopo text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_conta uuid;
+  v_user uuid;
+  v_o public.agenda_ocorrencias;
+  v_e public.agenda_eventos;
+  v_escopo text;
+BEGIN
+  v_conta := get_my_conta_id(); v_user := auth.uid();
+  IF v_conta IS NULL OR v_user IS NULL THEN RAISE EXCEPTION 'agenda: sessão sem workspace ativo'; END IF;
+  IF NOT public.has_permission('calendario', 'ver') THEN
+    RAISE EXCEPTION 'agenda: você não pode ver a agenda';
+  END IF;
+  IF p_resposta IS NULL OR p_resposta NOT IN ('sim', 'nao', 'talvez') THEN
+    RAISE EXCEPTION 'agenda: resposta inválida';
+  END IF;
+  IF p_escopo IS NULL OR p_escopo NOT IN ('esta', 'todas') THEN
+    RAISE EXCEPTION 'agenda: escopo inválido';
+  END IF;
+
+  SELECT o.* INTO v_o FROM public.agenda_ocorrencias o
+   WHERE o.id = p_ocorrencia_id AND o.conta_id = v_conta AND NOT o.cancelada;
+  IF NOT FOUND THEN RAISE EXCEPTION 'agenda: este evento não existe mais'; END IF;
+  SELECT e.* INTO v_e FROM public.agenda_eventos e
+   WHERE e.id = v_o.evento_id AND e.conta_id = v_conta FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'agenda: este evento não existe mais'; END IF;
+  SELECT o.* INTO v_o FROM public.agenda_ocorrencias o
+   WHERE o.id = p_ocorrencia_id AND o.evento_id = v_e.id AND NOT o.cancelada;
+  IF NOT FOUND THEN RAISE EXCEPTION 'agenda: este evento não existe mais'; END IF;
+
+  IF v_e.organizador_id = v_user THEN
+    RAISE EXCEPTION 'agenda: o organizador não responde ao próprio evento';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.agenda_participantes ap WHERE ap.evento_id = v_e.id AND ap.user_id = v_user) THEN
+    RAISE EXCEPTION 'agenda: você não participa deste evento';
+  END IF;
+
+  v_escopo := CASE WHEN v_e.freq IS NULL THEN 'todas' ELSE p_escopo END;
+  IF v_escopo = 'todas' THEN
+    UPDATE public.agenda_participantes ap
+       SET resposta = p_resposta, respondido_em = now()
+     WHERE ap.evento_id = v_e.id AND ap.user_id = v_user;
+    DELETE FROM public.agenda_respostas ar
+     USING public.agenda_ocorrencias o
+     WHERE ar.ocorrencia_id = o.id AND o.evento_id = v_e.id AND ar.user_id = v_user AND o.inicio >= now();
+  ELSE
+    INSERT INTO public.agenda_respostas AS ar (ocorrencia_id, conta_id, user_id, resposta, respondido_em)
+    VALUES (v_o.id, v_conta, v_user, p_resposta, now())
+    ON CONFLICT (ocorrencia_id, user_id) DO UPDATE SET resposta = EXCLUDED.resposta, respondido_em = EXCLUDED.respondido_em;
+  END IF;
+
+  PERFORM public.agenda_notificar(v_conta, v_e.id, v_o.id, 'event_rsvp', ARRAY[v_e.organizador_id], v_user,
+                                  jsonb_build_object('resposta', p_resposta, 'escopo', v_escopo));
+END $$;
+REVOKE ALL ON FUNCTION public.agenda_responder(bigint, text, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.agenda_responder(bigint, text, text) TO authenticated, service_role;

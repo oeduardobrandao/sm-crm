@@ -320,4 +320,559 @@ begin
   raise notice 'PASS 99_agenda_edicao (notification types)';
 end $$;
 
+-- ============ shared helpers for blocks 3-6 (edit, split, delete, RSVP) ============
+-- Fixture: ws A ('max') with owner O, agents B1 B2 B3 AG, admin AD; ws B with X.
+create or replace function pg_temp.fx() returns jsonb language plpgsql as $f$
+declare
+  v_ws uuid := et_make_workspace('max');
+  v_wsb uuid := et_make_workspace('start');
+  v jsonb := '{}';
+  k text;
+  u uuid;
+begin
+  foreach k in array array['o','b1','b2','b3','ag','ad','x'] loop
+    u := gen_random_uuid();
+    insert into auth.users (id) values (u);
+    v := v || jsonb_build_object(k, u);
+  end loop;
+  insert into workspace_members (user_id, workspace_id, role) values
+    ((v->>'o')::uuid, v_ws, 'owner'), ((v->>'b1')::uuid, v_ws, 'agent'), ((v->>'b2')::uuid, v_ws, 'agent'),
+    ((v->>'b3')::uuid, v_ws, 'agent'), ((v->>'ag')::uuid, v_ws, 'agent'), ((v->>'ad')::uuid, v_ws, 'admin'),
+    ((v->>'x')::uuid, v_wsb, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws
+   where id in ((v->>'o')::uuid, (v->>'b1')::uuid, (v->>'b2')::uuid, (v->>'b3')::uuid, (v->>'ag')::uuid, (v->>'ad')::uuid);
+  update profiles set conta_id = v_wsb, active_workspace_id = v_wsb where id = (v->>'x')::uuid;
+  update profiles set nome = 'Olga' where id = (v->>'o')::uuid;
+  update profiles set nome = 'Bia' where id = (v->>'b1')::uuid;
+  return v || jsonb_build_object('ws', v_ws, 'wsb', v_wsb);
+end $f$;
+create or replace function pg_temp.como(p_user uuid) returns void language plpgsql as $f$
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+end $f$;
+-- lookups bypass RLS (security definer, owner postgres) so they work under any role
+create or replace function pg_temp.oc(p_ev bigint, p_d date) returns bigint language sql security definer as $f$
+  select o.id from public.agenda_ocorrencias o where o.evento_id = p_ev and o.data_original = p_d;
+$f$;
+create or replace function pg_temp.row_oc(p_id bigint) returns public.agenda_ocorrencias language sql security definer as $f$
+  select o from public.agenda_ocorrencias o where o.id = p_id;
+$f$;
+create or replace function pg_temp.row_ev(p_id bigint) returns public.agenda_eventos language sql security definer as $f$
+  select e from public.agenda_eventos e where e.id = p_id;
+$f$;
+create or replace function pg_temp.nnotif(p_user uuid, p_tipo text) returns bigint language sql security definer as $f$
+  select count(*) from public.notifications n where n.user_id = p_user and n.type = p_tipo;
+$f$;
+create or replace function pg_temp.limpa_notif(p_ws uuid) returns void language sql security definer as $f$
+  delete from public.notifications n where n.workspace_id = p_ws;
+$f$;
+create or replace function pg_temp.sql(p text) returns bigint language plpgsql security definer as $f$
+declare v bigint; begin execute p into v; return v; end $f$;
+create or replace function pg_temp.erro_editar(p_oc bigint, p_esc text, p jsonb, parts uuid[] default null) returns text language plpgsql as $f$
+begin
+  perform public.agenda_evento_editar(p_oc, p_esc, p, parts);
+  return null;
+exception when others then
+  return sqlerrm;
+end $f$;
+create or replace function pg_temp.erro_excluir(p_oc bigint, p_esc text) returns text language plpgsql as $f$
+begin
+  perform public.agenda_evento_excluir(p_oc, p_esc);
+  return null;
+exception when others then
+  return sqlerrm;
+end $f$;
+create or replace function pg_temp.erro_responder(p_oc bigint, p_resp text, p_esc text) returns text language plpgsql as $f$
+begin
+  perform public.agenda_responder(p_oc, p_resp, p_esc);
+  return null;
+exception when others then
+  return sqlerrm;
+end $f$;
+create or replace function pg_temp.semanal(p_dias int[], p_contagem int default null) returns jsonb language sql as $f$
+  select jsonb_build_object('freq','weekly','intervalo',1,'dias_semana',to_jsonb(p_dias),'mensal_modo',null,
+                            'mensal_ordinal',null,'ate',null,'contagem',p_contagem);
+$f$;
+grant execute on all functions in schema pg_temp to authenticated, service_role;
+
+-- ============ block 3: agenda_evento_editar (esta / todas / permissions / participants) ============
+do $$
+declare
+  f jsonb; v_ws uuid; v_o uuid; v_b1 uuid; v_b2 uuid; v_b3 uuid; v_ag uuid; v_ad uuid; v_x uuid;
+  v_s bigint; v_t bigint; v_n1 bigint; v_old bigint; v_priv bigint; v_s2 bigint;
+  v_ret bigint; v_oc bigint;
+  v_msg text;
+  o public.agenda_ocorrencias; e public.agenda_eventos;
+begin
+  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  f := pg_temp.fx();
+  v_ws := f->>'ws'; v_o := f->>'o'; v_b1 := f->>'b1'; v_b2 := f->>'b2'; v_b3 := f->>'b3'; v_ag := f->>'ag'; v_ad := f->>'ad'; v_x := f->>'x';
+
+  foreach v_msg in array array['public.agenda_evento_editar(bigint, text, jsonb, uuid[])',
+                               'public.agenda_evento_excluir(bigint, text)',
+                               'public.agenda_responder(bigint, text, text)'] loop
+    assert has_function_privilege('authenticated', v_msg, 'EXECUTE'), format('authenticated must execute %s', v_msg);
+    assert has_function_privilege('anon', v_msg, 'EXECUTE') = false, format('anon must not execute %s', v_msg);
+  end loop;
+  foreach v_msg in array array['public.agenda_pode_editar(public.agenda_eventos, uuid, uuid)',
+                               'public.agenda_definir_participantes(bigint, uuid, uuid, uuid[])'] loop
+    assert has_function_privilege('authenticated', v_msg, 'EXECUTE') = false, format('authenticated executes %s', v_msg);
+  end loop;
+
+  execute 'set local role authenticated';
+  perform pg_temp.como(v_o);
+  -- S: weekly Monday 09:00-10:00 from 2026-10-05, local Estúdio, B1 + B2
+  select c.evento_id into v_s from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'Gravação semanal', 'local', 'Estúdio', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}'))), array[v_b1, v_b2]) c;
+  perform pg_temp.limpa_notif(v_ws);
+
+  -- ---- esta: title + move to Tuesday 10:00 ----
+  v_oc := pg_temp.oc(v_s, '2026-10-19');
+  v_ret := public.agenda_evento_editar(v_oc, 'esta',
+    '{"titulo":"Especial","inicio_local":"2026-10-20T10:00:00","fim_local":"2026-10-20T11:00:00"}');
+  assert v_ret = v_oc, format('esta returned %s, expected %s', v_ret, v_oc);
+  o := pg_temp.row_oc(v_oc);
+  assert o.campos_sobrescritos = '{titulo}' and o.titulo = 'Especial' and o.horario_alterado
+     and o.data_original = '2026-10-19' and o.inicio = '2026-10-20 13:00+00' and o.fim = '2026-10-20 14:00+00',
+    format('esta row: %s', to_jsonb(o));
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s and (campos_sobrescritos <> ''{}'' or horario_alterado)', v_s)) = 1,
+    'esta touched other occurrences';
+  e := pg_temp.row_ev(v_s);
+  assert e.titulo = 'Gravação semanal' and e.dtstart = '2026-10-05 09:00', 'esta changed the series';
+  assert pg_temp.nnotif(v_b1, 'event_updated') = 1 and pg_temp.nnotif(v_b2, 'event_updated') = 1, 'esta: participants not notified once';
+  assert pg_temp.nnotif(v_o, 'event_updated') = 0, 'esta: the actor was notified';
+
+  -- series fields with esta raise
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_s, '2026-10-26'), 'esta', '{"tipo":"outro"}');
+  assert v_msg = 'agenda: este campo vale para toda a série', format('esta tipo: %s', v_msg);
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_s, '2026-10-26'), 'esta', '{"lembretes":[30]}');
+  assert v_msg = 'agenda: este campo vale para toda a série', format('esta lembretes: %s', v_msg);
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_s, '2026-10-26'), 'esta', jsonb_build_object('regra', pg_temp.semanal('{2}')));
+  assert v_msg = 'agenda: este campo vale para toda a série', format('esta regra: %s', v_msg);
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_s, '2026-10-26'), 'esta', '{}', array[v_b1]);
+  assert v_msg = 'agenda: este campo vale para toda a série', format('esta participantes: %s', v_msg);
+  -- the full form state with unchanged series fields is fine (lembretes and participants in any order)
+  v_ret := public.agenda_evento_editar(pg_temp.oc(v_s, '2026-10-26'), 'esta', pg_temp.payload(jsonb_build_object(
+    'titulo', 'Especial 2', 'local', 'Estúdio', 'inicio_local', '2026-10-26T09:00:00', 'fim_local', '2026-10-26T10:00:00',
+    'lembretes', jsonb_build_array(1440, 10), 'regra', pg_temp.semanal('{1}'))), array[v_b2, v_b1, v_o]);
+  o := pg_temp.row_oc(v_ret);
+  assert o.campos_sobrescritos = '{titulo}' and not o.horario_alterado, format('full-state esta: %s', to_jsonb(o));
+
+  -- ---- esta clearing inherited content, then restoring it ----
+  v_oc := pg_temp.oc(v_s, '2026-11-02');
+  perform public.agenda_evento_editar(v_oc, 'esta', '{"local":null}');
+  o := pg_temp.row_oc(v_oc);
+  assert o.campos_sobrescritos = '{local}' and o.local is null, format('esta local null: %s', to_jsonb(o));
+  select l.local into v_msg from public.agenda_listar(p_ocorrencia_id => v_oc) l;
+  assert v_msg is null, 'agenda_listar still shows the inherited local';
+  select l.local into v_msg from public.agenda_listar(p_ocorrencia_id => pg_temp.oc(v_s, '2026-11-09')) l;
+  assert v_msg = 'Estúdio', 'clearing local leaked to another occurrence';
+  perform public.agenda_evento_editar(v_oc, 'esta', '{"local":"Estúdio"}');
+  o := pg_temp.row_oc(v_oc);
+  assert o.campos_sobrescritos = '{}', format('restoring the series value kept the override: %s', to_jsonb(o));
+
+  -- ---- drag (times only) keeps a title override ----
+  v_oc := pg_temp.oc(v_s, '2026-10-26');
+  perform public.agenda_evento_editar(v_oc, 'esta', '{"inicio_local":"2026-10-26T15:00:00","fim_local":"2026-10-26T16:00:00"}');
+  o := pg_temp.row_oc(v_oc);
+  assert o.campos_sobrescritos = '{titulo}' and o.titulo = 'Especial 2' and o.horario_alterado and o.inicio = '2026-10-26 18:00+00',
+    format('drag lost the title override: %s', to_jsonb(o));
+
+  -- ---- partial payload esta on a recurring series: only times change ----
+  v_oc := pg_temp.oc(v_s, '2026-11-16');
+  perform public.agenda_evento_editar(v_oc, 'esta', '{"inicio_local":"2026-11-17T10:00:00","fim_local":"2026-11-17T11:00:00"}');
+  o := pg_temp.row_oc(v_oc);
+  assert o.campos_sobrescritos = '{}' and o.horario_alterado and o.inicio = '2026-11-17 13:00+00', format('partial esta: %s', to_jsonb(o));
+  e := pg_temp.row_ev(v_s);
+  assert e.titulo = 'Gravação semanal' and e.tipo = 'gravacao' and e.lembretes = '{10,1440}' and e.local = 'Estúdio'
+     and e.freq = 'weekly' and e.dias_semana = '{1}', format('partial esta changed the series: %s', to_jsonb(e));
+  assert pg_temp.sql(format('select count(*) from agenda_participantes where evento_id = %s', v_s)) = 3, 'partial esta changed participants';
+
+  -- ---- todas: tz is immutable ----
+  perform public.agenda_evento_editar(pg_temp.oc(v_s, '2026-11-09'), 'todas', '{"tz":"Asia/Tokyo","titulo":"Gravação S"}');
+  e := pg_temp.row_ev(v_s);
+  assert e.tz = 'America/Sao_Paulo' and e.titulo = 'Gravação S', format('todas tz: %s %s', e.tz, e.titulo);
+  -- content-only overrides survive a todas without regeneration
+  assert (pg_temp.row_oc(pg_temp.oc(v_s, '2026-10-19'))).titulo = 'Especial', 'todas dropped a content override';
+
+  -- ---- todas changing dia_inteiro: every row recalculated, horario_alterado cleared ----
+  perform pg_temp.limpa_notif(v_ws);
+  v_ret := public.agenda_evento_editar(pg_temp.oc(v_s, '2026-11-09'), 'todas',
+    '{"dia_inteiro":true,"inicio_local":"2026-11-09T00:00:00","fim_local":"2026-11-10T00:00:00"}');
+  assert v_ret = pg_temp.oc(v_s, '2026-11-09'), 'todas dia_inteiro: wrong occurrence returned';
+  e := pg_temp.row_ev(v_s);
+  assert e.dia_inteiro and e.dtstart = '2026-10-05 00:00' and e.duracao_dias = 1 and e.duracao_min is null,
+    format('todas dia_inteiro series: %s', to_jsonb(e));
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s and horario_alterado', v_s)) = 0,
+    'todas dia_inteiro kept horario_alterado';
+  assert pg_temp.sql(format($q$select count(*) from agenda_ocorrencias where evento_id = %s
+      and ((inicio at time zone 'America/Sao_Paulo')::time <> '00:00' or fim - inicio <> interval '1 day'
+           or (inicio at time zone 'America/Sao_Paulo')::date <> data_original)$q$, v_s)) = 0,
+    'todas dia_inteiro: rows not recalculated';
+  assert pg_temp.nnotif(v_b1, 'event_updated') = 1, 'todas dia_inteiro: B1 not notified';
+
+  -- ---- todas with a date delta: Mon+Wed -> Wed only, moved from the 10-12 occurrence to Wed 10-14 11:00 ----
+  select c.evento_id into v_t from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'Mon Wed', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1,3}'))), array[v_b1, v_b2]) c;
+  perform public.agenda_evento_editar(pg_temp.oc(v_t, '2026-10-19'), 'esta', '{"titulo":"Segunda especial"}');
+  perform public.agenda_evento_editar(pg_temp.oc(v_t, '2026-10-21'), 'esta', '{"titulo":"Fica"}');
+  v_oc := pg_temp.oc(v_t, '2026-10-12');
+  v_ret := public.agenda_evento_editar(v_oc, 'todas', jsonb_build_object(
+    'inicio_local', '2026-10-14T11:00:00', 'fim_local', '2026-10-14T12:00:00', 'regra', pg_temp.semanal('{3}')));
+  e := pg_temp.row_ev(v_t);
+  assert e.dtstart = '2026-10-07 11:00' and e.dias_semana = '{3}', format('todas delta: dtstart %s dias %s', e.dtstart, e.dias_semana);
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s and extract(dow from data_original) <> 3', v_t)) = 0,
+    'todas delta: non-Wednesday rows left';
+  assert pg_temp.oc(v_t, '2026-10-19') is null, 'todas delta: the Monday 10-19 override survived';
+  o := pg_temp.row_oc(pg_temp.oc(v_t, '2026-10-21'));
+  assert o.titulo = 'Fica' and o.campos_sobrescritos = '{titulo}' and o.inicio = '2026-10-21 14:00+00',
+    format('todas delta: surviving override: %s', to_jsonb(o));
+  assert v_ret = pg_temp.oc(v_t, '2026-10-14'), format('todas delta returned %s (expected the 10-14 occurrence)', v_ret);
+
+  -- ---- partial payload on a one-off (scope ignored): times change, everything else kept, same occurrence ----
+  select c.evento_id, c.ocorrencia_id into v_n1, v_oc from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'Avulso', 'local', 'Sala', 'lembretes', jsonb_build_array(10),
+    'inicio_local', '2026-10-07T14:00:00', 'fim_local', '2026-10-07T15:00:00')), array[v_b1]) c;
+  v_ret := public.agenda_evento_editar(v_oc, 'esta', '{"inicio_local":"2026-10-08T16:00:00","fim_local":"2026-10-08T17:30:00"}');
+  assert v_ret = v_oc, format('one-off drag returned %s, expected the same occurrence %s', v_ret, v_oc);
+  e := pg_temp.row_ev(v_n1);
+  assert e.dtstart = '2026-10-08 16:00' and e.duracao_min = 90 and e.titulo = 'Avulso' and e.local = 'Sala'
+     and e.tipo = 'gravacao' and e.lembretes = '{10}' and e.freq is null,
+    format('one-off drag series: %s', to_jsonb(e));
+  o := pg_temp.row_oc(v_oc);
+  assert o.data_original = '2026-10-08' and o.inicio = '2026-10-08 19:00+00' and o.fim = '2026-10-08 20:30+00' and not o.horario_alterado,
+    format('one-off drag occurrence: %s', to_jsonb(o));
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s', v_n1)) = 1, 'one-off drag: row count';
+  assert pg_temp.sql(format('select count(*) from agenda_participantes where evento_id = %s', v_n1)) = 2, 'one-off drag: participants changed';
+  -- a one-off moved past the horizon has no occurrence until the generator reaches it: NULL return
+  v_ret := public.agenda_evento_editar(v_oc, 'todas', '{"inicio_local":"2029-03-01T16:00:00","fim_local":"2029-03-01T17:00:00"}');
+  assert v_ret is null, format('one-off past the horizon returned %s', v_ret);
+  e := pg_temp.row_ev(v_n1);
+  assert e.dtstart = '2029-03-01 16:00' and not e.materializacao_completa, 'one-off past the horizon: series';
+
+  -- ---- old dtstart on edit ----
+  select c.evento_id into v_old from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'Antiga', 'inicio_local', '2025-12-09T09:00:00', 'fim_local', '2025-12-09T10:00:00',
+    'regra', pg_temp.semanal('{2}'))), '{}') c;
+  -- from the 2026-03-17 occurrence, 100 days earlier: the derived series start is 2025-08-31
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_old, '2026-03-17'), 'todas', jsonb_build_object(
+    'inicio_local', '2025-12-07T09:00:00', 'fim_local', '2025-12-07T10:00:00', 'regra', pg_temp.semanal('{0}')));
+  assert v_msg = 'agenda: a data de início é antiga demais', format('todas 100 days earlier: %s', v_msg);
+  assert pg_temp.erro_editar(pg_temp.oc(v_old, '2026-03-17'), 'todas', '{"titulo":"Antiga 2"}') is null, 'todas keeping the old dtstart failed';
+  e := pg_temp.row_ev(v_old);
+  assert e.dtstart = '2025-12-09 09:00' and e.titulo = 'Antiga 2', 'todas keeping the old dtstart changed it';
+
+  -- ---- participants under todas ----
+  select c.evento_id into v_s2 from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'Com gente', 'inicio_local', '2026-10-06T09:00:00', 'fim_local', '2026-10-06T10:00:00',
+    'regra', pg_temp.semanal('{2}'))), array[v_b1, v_b2]) c;
+  execute 'reset role';
+  insert into agenda_respostas (ocorrencia_id, conta_id, user_id, resposta) values (pg_temp.oc(v_s2, '2026-10-13'), v_ws, v_b2, 'sim');
+  delete from notifications where workspace_id = v_ws;
+  execute 'set local role authenticated';
+  perform public.agenda_evento_editar(pg_temp.oc(v_s2, '2026-10-13'), 'todas', '{}', array[v_b1, v_b3]);
+  assert pg_temp.sql(format('select count(*) from agenda_participantes where evento_id = %s and user_id = %L', v_s2, v_b2)) = 0, 'B2 still a participant';
+  assert pg_temp.sql(format('select count(*) from agenda_participantes where evento_id = %s and user_id = %L and resposta = ''pendente''', v_s2, v_b3)) = 1, 'B3 not added';
+  assert pg_temp.sql(format('select count(*) from agenda_respostas where user_id = %L', v_b2)) = 0, 'B2 RSVPs survived the removal';
+  assert pg_temp.nnotif(v_b2, 'event_cancelled') = 1, 'B2 got no event_cancelled';
+  assert pg_temp.sql(format($q$select count(*) from notifications where user_id = %L and type = 'event_cancelled' and metadata->>'motivo' = 'removido'$q$, v_b2)) = 1,
+    'B2 event_cancelled lacks motivo removido';
+  assert pg_temp.nnotif(v_b3, 'event_invited') = 1, 'B3 got no event_invited';
+  assert pg_temp.nnotif(v_b1, 'event_updated') = 0 and pg_temp.nnotif(v_b1, 'event_invited') = 0, 'B1 notified without a change';
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_s2, '2026-10-13'), 'todas', '{}', array[v_b1, v_x]);
+  assert v_msg = 'agenda: participante fora do workspace', format('todas foreign participant: %s', v_msg);
+  -- the form sends the set without the organizer: an admin replacing it with {B3}
+  -- keeps the organizer (sim), never removes or notifies them
+  perform pg_temp.limpa_notif(v_ws);
+  perform pg_temp.como(v_ad);
+  perform public.agenda_evento_editar(pg_temp.oc(v_s2, '2026-10-13'), 'todas', '{}', array[v_b3]);
+  assert pg_temp.sql(format($q$select count(*) from agenda_participantes where evento_id = %s and user_id = %L and resposta = 'sim'$q$, v_s2, v_o)) = 1,
+    'organizer dropped from the participants';
+  assert pg_temp.sql(format('select count(*) from agenda_participantes where evento_id = %s', v_s2)) = 2, 'expected organizer + B3';
+  assert pg_temp.sql(format($q$select count(*) from notifications where user_id = %L and type like 'event\_%%'$q$, v_o)) = 0,
+    'organizer notified about a participant change';
+  assert pg_temp.nnotif(v_b1, 'event_cancelled') = 1, 'B1 not told about the removal';
+  perform pg_temp.como(v_o);
+
+  -- ---- permissions and missing occurrences ----
+  select c.evento_id into v_priv from public.agenda_evento_criar(pg_temp.payload('{"titulo":"Privado","privado":true}'), array[v_b1]) c;
+  perform pg_temp.como(v_ag);
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_s2, '2026-10-13'), 'todas', '{"titulo":"x"}');
+  assert v_msg = 'agenda: você não pode editar este evento', format('agent non-organizer: %s', v_msg);
+  perform pg_temp.como(v_ad);
+  assert pg_temp.erro_editar(pg_temp.oc(v_s2, '2026-10-13'), 'todas', '{"titulo":"Pelo admin"}') is null, 'admin cannot edit a public event';
+  assert (pg_temp.row_ev(v_s2)).organizador_id = v_o, 'admin edit changed the organizer';
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_priv, '2026-10-05'), 'todas', '{"titulo":"x"}');
+  assert v_msg = 'agenda: você não pode editar este evento', format('admin on a private event: %s', v_msg);
+  perform pg_temp.como(v_o);
+  v_msg := pg_temp.erro_editar(-1, 'todas', '{}');
+  assert v_msg = 'agenda: este evento não existe mais', format('nonexistent occurrence: %s', v_msg);
+  execute 'reset role';
+  update agenda_ocorrencias set cancelada = true where id = pg_temp.oc(v_s2, '2026-10-20');
+  execute 'set local role authenticated';
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_s2, '2026-10-20'), 'esta', '{"titulo":"x"}');
+  assert v_msg = 'agenda: este evento não existe mais', format('cancelled occurrence: %s', v_msg);
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_s2, '2026-10-27'), 'algumas', '{}');
+  assert v_msg = 'agenda: escopo inválido', format('bad scope: %s', v_msg);
+  perform pg_temp.como(v_x);
+  v_msg := pg_temp.erro_editar(pg_temp.oc(v_s2, '2026-10-27'), 'todas', '{"titulo":"x"}');
+  assert v_msg = 'agenda: este evento não existe mais', format('other workspace: %s', v_msg);
+  execute 'reset role';
+
+  raise notice 'PASS 99_agenda_edicao (editar)';
+end $$;
+
+-- ============ block 4: seguintes (split) ============
+do $$
+declare
+  f jsonb; v_ws uuid; v_o uuid; v_b1 uuid; v_b2 uuid;
+  v_c bigint; v_d bigint; v_e5 bigint; v_f bigint; v_g bigint;
+  v_novo bigint; v_ret bigint; v_oc4 bigint; v_oc6 bigint;
+  e public.agenda_eventos; o public.agenda_ocorrencias;
+begin
+  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  f := pg_temp.fx();
+  v_ws := f->>'ws'; v_o := f->>'o'; v_b1 := f->>'b1'; v_b2 := f->>'b2';
+  execute 'set local role authenticated';
+  perform pg_temp.como(v_o);
+
+  -- C: contagem 10, Mondays 09:00 from 10-05 (10-05 .. 12-07); split at the 4th (10-26)
+  select c.evento_id into v_c from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'Dez vezes', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}', 10))), array[v_b1, v_b2]) c;
+  v_oc4 := pg_temp.oc(v_c, '2026-10-26');
+  v_oc6 := pg_temp.oc(v_c, '2026-11-09');
+  execute 'reset role';
+  insert into agenda_respostas (ocorrencia_id, conta_id, user_id, resposta) values (v_oc6, v_ws, v_b1, 'talvez');
+  execute 'set local role authenticated';
+  -- an earlier esta date move on the cut occurrence (to Wednesday)
+  perform public.agenda_evento_editar(v_oc4, 'esta', '{"inicio_local":"2026-10-28T09:00:00","fim_local":"2026-10-28T10:00:00"}');
+  -- the form shows the occurrence's current date (Wednesday) with a new time; same rule as stored
+  v_ret := public.agenda_evento_editar(v_oc4, 'seguintes', jsonb_build_object(
+    'inicio_local', '2026-10-28T14:00:00', 'fim_local', '2026-10-28T15:00:00', 'regra', pg_temp.semanal('{1}', 10)));
+  e := pg_temp.row_ev(v_c);
+  assert e.ate = '2026-10-25' and e.contagem is null and e.materializacao_completa, format('old series after split: %s', to_jsonb(e));
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s and not cancelada', v_c)) = 3, 'old series live rows';
+  v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_c));
+  assert v_novo is not null, 'no new series';
+  e := pg_temp.row_ev(v_novo);
+  assert e.contagem = 7 and e.dtstart = '2026-10-26 14:00' and e.dias_semana = '{1}' and e.organizador_id = v_o,
+    format('new series: %s', to_jsonb(e));
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s', v_novo)) = 7, 'new series rows';
+  assert v_ret = v_oc4, format('seguintes returned %s, expected the re-parented cut occurrence %s', v_ret, v_oc4);
+  o := pg_temp.row_oc(v_oc6);
+  assert o.evento_id = v_novo and o.inicio = '2026-11-09 17:00+00', format('6th occurrence not re-parented / recalculated: %s', to_jsonb(o));
+  assert pg_temp.sql(format($q$select count(*) from agenda_respostas where ocorrencia_id = %s and user_id = %L and resposta = 'talvez'$q$, v_oc6, v_b1)) = 1,
+    'RSVP on the re-parented occurrence lost';
+  assert pg_temp.sql(format('select count(*) from agenda_participantes where evento_id = %s', v_novo)) = 3, 'participants not copied';
+
+  -- D: removing a participant with seguintes
+  select c.evento_id into v_d from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'D', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}'))), array[v_b1, v_b2]) c;
+  execute 'reset role';
+  insert into agenda_respostas (ocorrencia_id, conta_id, user_id, resposta) values (pg_temp.oc(v_d, '2026-11-09'), v_ws, v_b2, 'nao');
+  insert into agenda_respostas (ocorrencia_id, conta_id, user_id, resposta) values (pg_temp.oc(v_d, '2026-10-12'), v_ws, v_b2, 'nao');
+  delete from notifications where workspace_id = v_ws;
+  execute 'set local role authenticated';
+  perform public.agenda_evento_editar(pg_temp.oc(v_d, '2026-10-19'), 'seguintes', '{"titulo":"D2"}', array[v_b1]);
+  v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_d));
+  assert pg_temp.sql(format('select count(*) from agenda_participantes where evento_id = %s and user_id = %L', v_novo, v_b2)) = 0, 'B2 in the new series';
+  assert pg_temp.sql(format('select count(*) from agenda_participantes where evento_id = %s and user_id = %L', v_d, v_b2)) = 1, 'B2 left the old series';
+  assert pg_temp.sql(format('select count(*) from agenda_respostas where ocorrencia_id = %s', pg_temp.oc(v_novo, '2026-11-09'))) = 0,
+    'B2 RSVP on a re-parented occurrence survived';
+  assert pg_temp.sql(format('select count(*) from agenda_respostas where ocorrencia_id = %s', pg_temp.oc(v_d, '2026-10-12'))) = 1,
+    'B2 RSVP on an earlier occurrence was deleted';
+  assert pg_temp.sql(format($q$select count(*) from notifications where user_id = %L and type = 'event_cancelled' and metadata->>'motivo' = 'removido'$q$, v_b2)) = 1,
+    'B2 got no event_cancelled removido';
+  assert pg_temp.nnotif(v_b1, 'event_updated') = 1, 'B1 not told about the title change';
+  assert (pg_temp.row_ev(v_novo)).titulo = 'D2' and (pg_temp.row_ev(v_d)).titulo = 'D', 'split titles';
+
+  -- E: a payload contagem different from the stored one is used as is
+  select c.evento_id into v_e5 from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'E', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}', 10))), '{}') c;
+  perform public.agenda_evento_editar(pg_temp.oc(v_e5, '2026-10-26'), 'seguintes', jsonb_build_object('regra', pg_temp.semanal('{1}', 5)));
+  v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_e5));
+  assert (pg_temp.row_ev(v_novo)).contagem = 5, 'payload contagem not used';
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s', v_novo)) = 5, 'contagem 5 rows';
+  -- F: any other rule key changed: payload contagem used as is
+  select c.evento_id into v_f from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'F', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}', 10))), '{}') c;
+  perform public.agenda_evento_editar(pg_temp.oc(v_f, '2026-10-26'), 'seguintes',
+    jsonb_build_object('regra', pg_temp.semanal('{1}', 10) || '{"intervalo":2}'));
+  v_novo := pg_temp.sql(format('select id from agenda_eventos where serie_origem_id = %s', v_f));
+  assert (pg_temp.row_ev(v_novo)).contagem = 10 and (pg_temp.row_ev(v_novo)).intervalo = 2, 'changed rule: contagem not taken from the payload';
+
+  -- G: seguintes at the first live occurrence is todas
+  select c.evento_id into v_g from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'G', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}'))), '{}') c;
+  perform public.agenda_evento_excluir(pg_temp.oc(v_g, '2026-10-05'), 'esta');
+  v_ret := public.agenda_evento_editar(pg_temp.oc(v_g, '2026-10-12'), 'seguintes', '{"titulo":"G2"}');
+  assert v_ret = pg_temp.oc(v_g, '2026-10-12'), 'seguintes at the first live occurrence returned another row';
+  assert pg_temp.sql(format('select count(*) from agenda_eventos where serie_origem_id = %s', v_g)) = 0, 'seguintes at the first live occurrence split';
+  assert (pg_temp.row_ev(v_g)).titulo = 'G2', 'seguintes as todas did not edit the series';
+  execute 'reset role';
+
+  raise notice 'PASS 99_agenda_edicao (seguintes)';
+end $$;
+
+-- ============ block 5: agenda_evento_excluir ============
+do $$
+declare
+  f jsonb; v_ws uuid; v_o uuid; v_b1 uuid; v_b2 uuid; v_ag uuid;
+  v_h bigint; v_k bigint; v_um bigint; v_oc bigint; v_canc bigint;
+  v_msg text;
+  e public.agenda_eventos;
+begin
+  perform set_config('app.agenda_hoje', '2026-10-05', true);
+  f := pg_temp.fx();
+  v_ws := f->>'ws'; v_o := f->>'o'; v_b1 := f->>'b1'; v_b2 := f->>'b2'; v_ag := f->>'ag';
+  execute 'set local role authenticated';
+  perform pg_temp.como(v_o);
+  select c.evento_id into v_h from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'H semanal', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}'))), array[v_b1, v_b2]) c;
+  perform pg_temp.limpa_notif(v_ws);
+
+  -- permission
+  perform pg_temp.como(v_ag);
+  v_msg := pg_temp.erro_excluir(pg_temp.oc(v_h, '2026-10-12'), 'esta');
+  assert v_msg = 'agenda: você não pode editar este evento', format('agent delete: %s', v_msg);
+  perform pg_temp.como(v_o);
+  v_msg := pg_temp.erro_excluir(pg_temp.oc(v_h, '2026-10-12'), 'tudo');
+  assert v_msg = 'agenda: escopo inválido', format('bad delete scope: %s', v_msg);
+
+  -- esta: tombstone, notified before
+  v_canc := pg_temp.oc(v_h, '2026-10-12');
+  perform public.agenda_evento_excluir(v_canc, 'esta');
+  assert (pg_temp.row_oc(v_canc)).cancelada, 'esta delete did not cancel';
+  assert pg_temp.nnotif(v_b1, 'event_cancelled') = 1 and pg_temp.nnotif(v_b2, 'event_cancelled') = 1 and pg_temp.nnotif(v_o, 'event_cancelled') = 0,
+    'esta delete notifications';
+  assert pg_temp.sql(format($q$select count(*) from notifications where user_id = %L and type = 'event_cancelled'
+      and metadata->>'titulo' = 'H semanal' and link = '/calendario?data=2026-10-12' and not (metadata ? 'motivo')$q$, v_b1)) = 1,
+    'esta delete notification content';
+  v_msg := pg_temp.erro_excluir(v_canc, 'esta');
+  assert v_msg = 'agenda: este evento não existe mais', format('deleting a tombstone: %s', v_msg);
+  -- a todas regeneration keeps the tombstone
+  perform public.agenda_evento_editar(pg_temp.oc(v_h, '2026-10-19'), 'todas', '{"inicio_local":"2026-10-19T10:00:00","fim_local":"2026-10-19T11:00:00"}');
+  assert (pg_temp.row_oc(v_canc)).cancelada, 'todas regeneration revived a tombstone';
+  assert (pg_temp.row_ev(v_h)).dtstart = '2026-10-05 10:00', 'todas time change';
+
+  -- seguintes: ate = cut - 1, rows from the cut deleted
+  perform public.agenda_evento_excluir(pg_temp.oc(v_h, '2026-11-02'), 'seguintes');
+  e := pg_temp.row_ev(v_h);
+  assert e.ate = '2026-11-01' and e.contagem is null and e.materializacao_completa, format('seguintes delete series: %s', to_jsonb(e));
+  assert pg_temp.sql(format($q$select count(*) from agenda_ocorrencias where evento_id = %s and data_original >= '2026-11-02'$q$, v_h)) = 0,
+    'seguintes delete left rows from the cut';
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s', v_h)) = 4, 'seguintes delete: rows before the cut';
+
+  -- todas: series gone, notified before (rows exist with the title)
+  perform pg_temp.limpa_notif(v_ws);
+  perform public.agenda_evento_excluir(pg_temp.oc(v_h, '2026-10-19'), 'todas');
+  assert pg_temp.sql(format('select count(*) from agenda_eventos where id = %s', v_h)) = 0, 'todas delete kept the series';
+  assert pg_temp.sql(format('select count(*) from agenda_ocorrencias where evento_id = %s', v_h)) = 0, 'todas delete kept rows';
+  assert pg_temp.sql(format($q$select count(*) from notifications where type = 'event_cancelled' and metadata->>'titulo' = 'H semanal'
+      and user_id in (%L, %L)$q$, v_b1, v_b2)) = 2, 'todas delete notifications';
+
+  -- deleting the last live occurrence with esta deletes the series
+  select c.evento_id into v_k from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'Duas', 'inicio_local', '2026-10-05T09:00:00', 'fim_local', '2026-10-05T10:00:00',
+    'regra', pg_temp.semanal('{1}', 2))), '{}') c;
+  perform public.agenda_evento_excluir(pg_temp.oc(v_k, '2026-10-05'), 'esta');
+  assert pg_temp.sql(format('select count(*) from agenda_eventos where id = %s', v_k)) = 1, 'series deleted with a live occurrence left';
+  perform public.agenda_evento_excluir(pg_temp.oc(v_k, '2026-10-12'), 'esta');
+  assert pg_temp.sql(format('select count(*) from agenda_eventos where id = %s', v_k)) = 0, 'series without live occurrences kept';
+
+  -- a one-off with esta is deleted outright
+  select c.evento_id, c.ocorrencia_id into v_um, v_oc from public.agenda_evento_criar(pg_temp.payload(), array[v_b1]) c;
+  perform public.agenda_evento_excluir(v_oc, 'esta');
+  assert pg_temp.sql(format('select count(*) from agenda_eventos where id = %s', v_um)) = 0, 'one-off not deleted';
+  execute 'reset role';
+
+  raise notice 'PASS 99_agenda_edicao (excluir)';
+end $$;
+
+-- ============ block 6: agenda_responder ============
+-- "future" uses the real now(): the series starts 14 days before today, so it
+-- has past and future occurrences.
+do $$
+declare
+  f jsonb; v_ws uuid; v_o uuid; v_b1 uuid; v_ag uuid;
+  v_hoje date := current_date;
+  v_r bigint; v_um bigint; v_oc_um bigint;
+  v_pass bigint; v_fut1 bigint; v_fut2 bigint;
+  v_msg text; v_resp text;
+begin
+  perform set_config('app.agenda_hoje', v_hoje::text, true);
+  f := pg_temp.fx();
+  v_ws := f->>'ws'; v_o := f->>'o'; v_b1 := f->>'b1'; v_ag := f->>'ag';
+  execute 'set local role authenticated';
+  perform pg_temp.como(v_o);
+  select c.evento_id into v_r from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'RSVP', 'inicio_local', (v_hoje - 14)::text || 'T09:00:00', 'fim_local', (v_hoje - 14)::text || 'T10:00:00',
+    'regra', pg_temp.semanal(array[extract(dow from v_hoje)::int]))), array[v_b1]) c;
+  select c.evento_id, c.ocorrencia_id into v_um, v_oc_um from public.agenda_evento_criar(pg_temp.payload(jsonb_build_object(
+    'titulo', 'Avulso RSVP', 'inicio_local', (v_hoje + 3)::text || 'T09:00:00', 'fim_local', (v_hoje + 3)::text || 'T10:00:00')), array[v_b1]) c;
+  v_pass := pg_temp.oc(v_r, v_hoje - 14);
+  v_fut1 := pg_temp.oc(v_r, v_hoje + 7);
+  v_fut2 := pg_temp.oc(v_r, v_hoje + 14);
+  perform pg_temp.limpa_notif(v_ws);
+
+  -- organizer cannot answer
+  v_msg := pg_temp.erro_responder(v_fut1, 'sim', 'esta');
+  assert v_msg = 'agenda: o organizador não responde ao próprio evento', format('organizer RSVP: %s', v_msg);
+
+  perform pg_temp.como(v_b1);
+  perform public.agenda_responder(v_fut1, 'sim', 'esta');
+  assert pg_temp.sql(format($q$select count(*) from agenda_respostas where ocorrencia_id = %s and user_id = %L and resposta = 'sim'$q$, v_fut1, v_b1)) = 1,
+    'esta RSVP not stored';
+  select l.minha_resposta into v_resp from public.agenda_listar(p_ocorrencia_id => v_fut1) l;
+  assert v_resp = 'sim', format('listar minha_resposta on the answered occurrence: %s', v_resp);
+  select l.minha_resposta into v_resp from public.agenda_listar(p_ocorrencia_id => v_fut2) l;
+  assert v_resp = 'pendente', format('listar minha_resposta on another occurrence: %s', v_resp);
+  assert pg_temp.nnotif(v_o, 'event_rsvp') = 1, 'organizer did not get one event_rsvp';
+  assert pg_temp.sql(format($q$select count(*) from notifications where user_id = %L and type = 'event_rsvp'
+      and metadata->>'resposta' = 'sim' and metadata->>'ator_nome' = 'Bia' and link = '/calendario?evento=%s'$q$, v_o, v_fut1)) = 1,
+    'event_rsvp metadata';
+  -- esta again upserts
+  perform public.agenda_responder(v_fut1, 'talvez', 'esta');
+  assert pg_temp.sql(format($q$select count(*) from agenda_respostas where ocorrencia_id = %s and user_id = %L and resposta = 'talvez'$q$, v_fut1, v_b1)) = 1,
+    'esta RSVP not upserted';
+
+  -- todas: series answer; future per-occurrence answers removed, past ones stay
+  perform public.agenda_responder(v_pass, 'talvez', 'esta');
+  perform public.agenda_responder(v_fut2, 'sim', 'esta');
+  perform public.agenda_responder(v_fut1, 'nao', 'todas');
+  assert pg_temp.sql(format($q$select count(*) from agenda_participantes where evento_id = %s and user_id = %L and resposta = 'nao' and respondido_em is not null$q$, v_r, v_b1)) = 1,
+    'todas RSVP not stored on the series';
+  assert pg_temp.sql(format('select count(*) from agenda_respostas where user_id = %L and ocorrencia_id in (%s, %s)', v_b1, v_fut1, v_fut2)) = 0,
+    'todas RSVP kept future per-occurrence answers';
+  assert pg_temp.sql(format('select count(*) from agenda_respostas where user_id = %L and ocorrencia_id = %s', v_b1, v_pass)) = 1,
+    'todas RSVP removed a past per-occurrence answer';
+  select l.minha_resposta into v_resp from public.agenda_listar(p_ocorrencia_id => v_fut2) l;
+  assert v_resp = 'nao', format('listar after todas: %s', v_resp);
+
+  -- a one-off: esta is stored on the series
+  perform public.agenda_responder(v_oc_um, 'sim', 'esta');
+  assert pg_temp.sql(format($q$select count(*) from agenda_participantes where evento_id = %s and user_id = %L and resposta = 'sim'$q$, v_um, v_b1)) = 1,
+    'one-off RSVP not stored on the series';
+
+  v_msg := pg_temp.erro_responder(v_fut1, 'pendente', 'todas');
+  assert v_msg = 'agenda: resposta inválida', format('bad answer: %s', v_msg);
+  v_msg := pg_temp.erro_responder(v_fut1, 'sim', 'seguintes');
+  assert v_msg = 'agenda: escopo inválido', format('bad RSVP scope: %s', v_msg);
+
+  perform pg_temp.como(v_ag);
+  v_msg := pg_temp.erro_responder(v_fut1, 'sim', 'esta');
+  assert v_msg = 'agenda: você não participa deste evento', format('non-participant RSVP: %s', v_msg);
+  execute 'reset role';
+
+  raise notice 'PASS 99_agenda_edicao (responder)';
+end $$;
+
 rollback;
