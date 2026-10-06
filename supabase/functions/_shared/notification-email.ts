@@ -57,9 +57,14 @@ export function resolveDigestItem(
     case "event_invited":
       return { priority: 4, heading: `${s(m, "ator_nome") ?? "Alguém"} convidou você para um evento`, body: s(m, "titulo"), context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
     case "event_updated":
-      return { priority: 3, heading: eventHeading("Evento alterado", s(m, "titulo")), body: s(m, "motivo"), context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
-    case "event_cancelled":
-      return { priority: 3, heading: eventHeading("Evento cancelado", s(m, "titulo")), body: s(m, "motivo"), context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
+      return { priority: 3, heading: eventHeading("Evento alterado", s(m, "titulo")), context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
+    case "event_cancelled": {
+      // metadata.motivo is an enum ('removido' = you were taken off the event), never display text.
+      const heading = s(m, "motivo") === "removido"
+        ? `Você foi removido de ${s(m, "titulo") ?? "um evento"}`
+        : eventHeading("Evento cancelado", s(m, "titulo"));
+      return { priority: 3, heading, context: m?.recorrente === true ? "Evento recorrente" : undefined, link };
+    }
     default:
       return { priority: 9, heading: "Nova notificação no Mesaas", context: undefined, link };
   }

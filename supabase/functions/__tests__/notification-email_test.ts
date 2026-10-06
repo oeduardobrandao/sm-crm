@@ -168,3 +168,15 @@ Deno.test("resolveDigestItem: event_updated and event_cancelled carry the title 
   assertEquals(can.link, "/calendario?data=2026-10-05");
   assert(!upd.heading.includes("—") && !can.heading.includes("—"));
 });
+
+Deno.test("resolveDigestItem: event_cancelled with motivo 'removido' says you were removed, never prints the enum", () => {
+  const item = resolveDigestItem({
+    type: "event_cancelled",
+    metadata: { titulo: "Reunião", motivo: "removido" },
+    link: "/calendario?data=2026-10-05",
+  });
+  assertEquals(item.heading, "Você foi removido de Reunião");
+  assertEquals(item.body, undefined);
+  const semTitulo = resolveDigestItem({ type: "event_cancelled", metadata: { motivo: "removido" }, link: null });
+  assertEquals(semTitulo.heading, "Você foi removido de um evento");
+});
