@@ -53,9 +53,20 @@ function payloadOriginal(o: AgendaOcorrencia): MovePayload {
   };
 }
 
+/** True when the move changes the occurrence's start date in the series tz
+ *  (all-day: the start date; resizing only the end keeps it). */
+function mudouODia(o: AgendaOcorrencia, payload: MovePayload): boolean {
+  const diaAtual = o.dia_inteiro
+    ? o.data_inicio_local
+    : paredeNoFuso(new Date(o.inicio), o.tz).slice(0, 10);
+  return payload.inicio_local.slice(0, 10) !== diaAtual;
+}
+
 /** Drag-to-move for the Agenda grid. A single event saves at once with a
  *  "Desfazer" toast; a recurring one asks the scope first through `dialog`,
- *  which the tab renders. Cancel or failure calls FullCalendar's revert(). */
+ *  which the tab renders, unless the drag changes the day: that only applies
+ *  to this occurrence (the server rejects a date move for the whole series
+ *  without a rule). Cancel or failure calls FullCalendar's revert(). */
 export function useAgendaMutations(): {
   mover: (o: AgendaOcorrencia, novoInicio: Date, novoFim: Date, revert: () => void) => void;
   dialog: ReactNode;
@@ -70,7 +81,20 @@ export function useAgendaMutations(): {
     (o: AgendaOcorrencia, novoInicio: Date, novoFim: Date, revert: () => void) => {
       const payload = payloadDoMovimento(o, novoInicio, novoFim);
       if (o.recorrente) {
-        setPendente({ o, payload, revert });
+        if (!mudouODia(o, payload)) {
+          setPendente({ o, payload, revert });
+          return;
+        }
+        editarEvento(o.ocorrencia_id, 'esta', payload, null)
+          .then(() => {
+            void invalidar();
+            toast('Evento movido. Para mudar o dia de todos, edite o evento.');
+          })
+          .catch((err: unknown) => {
+            revert();
+            void invalidar();
+            toast.error(formatAgendaError(err));
+          });
         return;
       }
       editarEvento(o.ocorrencia_id, 'todas', payload, null)

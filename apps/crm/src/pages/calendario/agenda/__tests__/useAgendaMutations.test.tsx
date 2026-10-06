@@ -226,7 +226,7 @@ describe('useAgendaMutations.mover', () => {
     it('asks for the scope first and reverts on cancel', () => {
       const mover = montar();
       const revert = vi.fn();
-      mover(serie(), new Date(2026, 9, 6, 9, 0), new Date(2026, 9, 6, 10, 0), revert);
+      mover(serie(), new Date(2026, 9, 5, 9, 0), new Date(2026, 9, 5, 10, 0), revert);
 
       expect(editarEventoMock).not.toHaveBeenCalled();
       expect(screen.getByText('Editar evento recorrente')).toBeInTheDocument();
@@ -239,12 +239,114 @@ describe('useAgendaMutations.mover', () => {
       expect(editarEventoMock).not.toHaveBeenCalled();
     });
 
+    it('a same-day time change opens the dialog with all three options', () => {
+      const mover = montar();
+      mover(serie(), new Date(2026, 9, 5, 15, 0), new Date(2026, 9, 5, 17, 0), vi.fn());
+      expect(screen.getByText('Editar evento recorrente')).toBeInTheDocument();
+      for (const nome of ['Este evento', 'Este e os seguintes', 'Todos os eventos']) {
+        expect(screen.getByRole('radio', { name: nome })).not.toBeDisabled();
+      }
+      expect(editarEventoMock).not.toHaveBeenCalled();
+    });
+
+    it('a date change saves this occurrence directly, without the dialog', async () => {
+      editarEventoMock.mockResolvedValue(7);
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      const mover = montar();
+      const novoInicio = new Date(2026, 9, 6, 14, 0);
+      const novoFim = new Date(2026, 9, 6, 16, 0);
+      mover(serie(), novoInicio, novoFim, vi.fn());
+
+      expect(screen.queryByText('Editar evento recorrente')).not.toBeInTheDocument();
+      await waitFor(() => expect(toastMock).toHaveBeenCalled());
+      expect(editarEventoMock).toHaveBeenCalledWith(
+        7,
+        'esta',
+        { inicio_local: paredeNoFuso(novoInicio, TZ), fim_local: paredeNoFuso(novoFim, TZ) },
+        null,
+      );
+      expect(toastMock).toHaveBeenCalledWith(
+        'Evento movido. Para mudar o dia de todos, edite o evento.',
+      );
+      expect(toastMock.mock.calls[0]).toHaveLength(1);
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
+    });
+
+    it('a failed date change reverts', async () => {
+      editarEventoMock.mockRejectedValue(new Error('boom'));
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      const mover = montar();
+      const revert = vi.fn();
+      mover(serie(), new Date(2026, 9, 6, 14, 0), new Date(2026, 9, 6, 16, 0), revert);
+      await waitFor(() => expect(revert).toHaveBeenCalledTimes(1));
+      expect(toastErrorMock).toHaveBeenCalled();
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['agenda-ocorrencias'] });
+    });
+
+    it('a timed drag whose start crosses midnight is a date change', async () => {
+      editarEventoMock.mockResolvedValue(7);
+      const mover = montar();
+      const novoInicio = new Date(2026, 9, 6, 0, 30);
+      const novoFim = new Date(2026, 9, 6, 2, 30);
+      mover(serie(), novoInicio, novoFim, vi.fn());
+      expect(screen.queryByText('Editar evento recorrente')).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(editarEventoMock).toHaveBeenCalledWith(
+          7,
+          'esta',
+          { inicio_local: paredeNoFuso(novoInicio, TZ), fim_local: paredeNoFuso(novoFim, TZ) },
+          null,
+        ),
+      );
+    });
+
+    it('a timed drag that only ends past midnight keeps the start day and asks', () => {
+      const mover = montar();
+      mover(serie(), new Date(2026, 9, 5, 23, 0), new Date(2026, 9, 6, 1, 0), vi.fn());
+      expect(screen.getByText('Editar evento recorrente')).toBeInTheDocument();
+      expect(editarEventoMock).not.toHaveBeenCalled();
+    });
+
+    it('all-day: moving the start date saves directly as esta', async () => {
+      editarEventoMock.mockResolvedValue(7);
+      const mover = montar();
+      const o = ocorrencia({
+        recorrente: true,
+        dia_inteiro: true,
+        data_inicio_local: '2026-10-05',
+        data_fim_local: '2026-10-06',
+      });
+      mover(o, new Date(2026, 9, 7), new Date(2026, 9, 8), vi.fn());
+      expect(screen.queryByText('Editar evento recorrente')).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(editarEventoMock).toHaveBeenCalledWith(
+          7,
+          'esta',
+          { inicio_local: '2026-10-07T00:00:00', fim_local: '2026-10-08T00:00:00' },
+          null,
+        ),
+      );
+    });
+
+    it('all-day: resizing only the end keeps the start and opens the dialog', () => {
+      const mover = montar();
+      const o = ocorrencia({
+        recorrente: true,
+        dia_inteiro: true,
+        data_inicio_local: '2026-10-05',
+        data_fim_local: '2026-10-06',
+      });
+      mover(o, new Date(2026, 9, 5), new Date(2026, 9, 8), vi.fn());
+      expect(screen.getByText('Editar evento recorrente')).toBeInTheDocument();
+      expect(editarEventoMock).not.toHaveBeenCalled();
+    });
+
     it('saves with the chosen scope and the partial payload', async () => {
       editarEventoMock.mockResolvedValue(9);
       const invalidate = vi.spyOn(qc, 'invalidateQueries');
       const mover = montar();
-      const novoInicio = new Date(2026, 9, 6, 9, 0);
-      const novoFim = new Date(2026, 9, 6, 10, 0);
+      const novoInicio = new Date(2026, 9, 5, 9, 0);
+      const novoFim = new Date(2026, 9, 5, 10, 0);
       const revert = vi.fn();
       mover(serie(), novoInicio, novoFim, revert);
 
@@ -271,7 +373,7 @@ describe('useAgendaMutations.mover', () => {
       const invalidate = vi.spyOn(qc, 'invalidateQueries');
       const mover = montar();
       const revert = vi.fn();
-      mover(serie(), new Date(2026, 9, 6, 9, 0), new Date(2026, 9, 6, 10, 0), revert);
+      mover(serie(), new Date(2026, 9, 5, 9, 0), new Date(2026, 9, 5, 10, 0), revert);
 
       fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 
