@@ -228,6 +228,66 @@ const titulo = () => screen.getByLabelText('Título') as HTMLInputElement;
 const salvar = () => fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 const select = (nome: string) => screen.getByRole('combobox', { name: nome }) as HTMLSelectElement;
 
+describe('EventoFormDialog: rascunho do card rápido', () => {
+  const INICIAL = {
+    inicio: new Date(2026, 9, 5, 14, 0),
+    fim: new Date(2026, 9, 5, 15, 0),
+    diaInteiro: false,
+  };
+  const comRascunho = (rascunho: Partial<import('../eventoFormSchema').EventoFormValues>) => {
+    const onOpenChange = vi.fn();
+    const r = montar(
+      <EventoFormDialog
+        open
+        onOpenChange={onOpenChange}
+        modo="criar"
+        inicial={INICIAL}
+        rascunho={rascunho}
+      />,
+    );
+    return { ...r, onOpenChange };
+  };
+
+  it('starts from the draft values and asks before discarding them', async () => {
+    const { onOpenChange } = comRascunho({ titulo: 'Pauta', participantes: ['u1'] });
+    expect(titulo().value).toBe('Pauta');
+    expect(await screen.findByRole('button', { name: 'Remover Ana Lima' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(await screen.findByText('Fechar sem salvar?')).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('submits the draft values', async () => {
+    comRascunho({ titulo: 'Pauta', participantes: ['u1'] });
+    salvar();
+    await waitFor(() => expect(criarEventoMock).toHaveBeenCalledTimes(1));
+    const [payload, participantes] = criarEventoMock.mock.calls[0];
+    expect(payload.titulo).toBe('Pauta');
+    expect(participantes).toEqual(['u1']);
+  });
+
+  it('a new draft identity does not wipe what was typed after opening', () => {
+    const onOpenChange = vi.fn();
+    const ui = (rascunho: { titulo: string }) => (
+      <EventoFormDialog
+        open
+        onOpenChange={onOpenChange}
+        modo="criar"
+        inicial={INICIAL}
+        rascunho={rascunho}
+      />
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const envolver = (el: React.ReactElement) => (
+      <QueryClientProvider client={qc}>{el}</QueryClientProvider>
+    );
+    const { rerender } = render(envolver(ui({ titulo: 'Pauta' })));
+    fireEvent.change(titulo(), { target: { value: 'Pauta editada' } });
+    rerender(envolver(ui({ titulo: 'Pauta' })));
+    expect(titulo().value).toBe('Pauta editada');
+  });
+});
+
 describe('EventoFormDialog: criar', () => {
   it('submits criarEvento with local wall clocks, the browser tz and [10] reminders', async () => {
     const { onOpenChange, invalidate } = criar();
@@ -477,10 +537,10 @@ describe('EventoFormDialog: criar', () => {
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
-  it('Cancelar on a dirty form asks too', async () => {
+  it('the X (Fechar) button on a dirty form asks too', async () => {
     const { onOpenChange } = criar();
     fireEvent.change(titulo(), { target: { value: 'Algo' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
     expect(await screen.findByText('Fechar sem salvar?')).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Fechar mesmo assim' }));
