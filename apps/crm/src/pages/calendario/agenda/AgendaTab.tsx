@@ -73,9 +73,11 @@ function gravarFiltro(f: AgendaFiltro) {
   }
 }
 
+/** Row shape returned by getWorkspaceUsers() (already flattened: id = auth uid). */
 interface WorkspaceUserRow {
-  user_id: string;
-  profiles: { id: string; nome: string | null; avatar_url: string | null } | null;
+  id: string;
+  nome: string | null;
+  avatar_url: string | null;
 }
 
 type FormState =
@@ -133,9 +135,9 @@ export default function AgendaTab() {
   const pessoas = useMemo<AgendaPessoa[]>(
     () =>
       (roster as WorkspaceUserRow[]).map((r) => ({
-        id: r.user_id,
-        nome: r.profiles?.nome || 'Sem nome',
-        avatarUrl: r.profiles?.avatar_url ?? null,
+        id: r.id,
+        nome: r.nome || 'Sem nome',
+        avatarUrl: r.avatar_url ?? null,
       })),
     [roster],
   );

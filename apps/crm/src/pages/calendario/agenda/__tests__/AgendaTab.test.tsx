@@ -173,10 +173,11 @@ const DE_OUTRO = oc({
   minha_resposta: null,
 });
 
+// Same shape getWorkspaceUsers() returns (flattened; id = auth uid).
 const ROSTER = [
-  { user_id: 'u-me', profiles: { id: 'u-me', nome: 'Ana Lima', avatar_url: null } },
-  { user_id: 'u-bruno', profiles: { id: 'u-bruno', nome: 'Bruno Costa', avatar_url: null } },
-  { user_id: 'u-carla', profiles: { id: 'u-carla', nome: 'Carla Mendes', avatar_url: null } },
+  { id: 'u-me', nome: 'Ana Lima', avatar_url: null },
+  { id: 'u-bruno', nome: 'Bruno Costa', avatar_url: null },
+  { id: 'u-carla', nome: 'Carla Mendes', avatar_url: null },
 ];
 
 function LocationProbe() {
