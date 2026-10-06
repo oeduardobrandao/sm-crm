@@ -71,7 +71,10 @@ declare
     'public.agenda_validar_payload(uuid, jsonb, public.agenda_eventos)',
     'public.agenda_notificar(uuid, bigint, bigint, text, uuid[], uuid, jsonb)',
     'public.agenda_pode_editar(public.agenda_eventos, uuid, uuid)',
-    'public.agenda_definir_participantes(bigint, uuid, uuid, uuid[])'
+    'public.agenda_definir_participantes(bigint, uuid, uuid, uuid[])',
+    'public.agenda_tick_lembretes(timestamptz, boolean)',
+    'public.agenda_claim_emails_lembrete(int)',
+    'public.agenda_marcar_email_lembrete(bigint, uuid, int, timestamptz, boolean)'
   ];
   -- check_resource_limit and rls_auto_enable are deliberately excluded: they have
   -- no CREATE FUNCTION in any migration in this repo (prod-only drift, locked down
