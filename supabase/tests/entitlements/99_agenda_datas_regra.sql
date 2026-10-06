@@ -41,12 +41,17 @@ begin
     values (v_ws, 'c1', '2026-10-05 09:00', 60, 'daily', 2) returning id into v_id;
   assert pg_temp.datas(v_id, '2026-10-05', '2026-10-12') = array['2026-10-05','2026-10-07','2026-10-09','2026-10-11']::date[],
     format('1 daily intervalo 2: %s', pg_temp.datas(v_id, '2026-10-05', '2026-10-12'));
+  -- a window starting after dtstart keeps the dtstart anchor (the scan starts at p_de)
+  assert pg_temp.datas(v_id, '2026-10-06', '2026-10-12') = array['2026-10-07','2026-10-09','2026-10-11']::date[],
+    format('1 daily intervalo 2 from p_de: %s', pg_temp.datas(v_id, '2026-10-06', '2026-10-12'));
 
   -- 2. weekly, intervalo 2, seg + qua, across the year boundary
   insert into agenda_eventos (conta_id, titulo, dtstart, duracao_min, freq, intervalo, dias_semana)
     values (v_ws, 'c2', '2026-12-28 09:00', 60, 'weekly', 2, '{1,3}') returning id into v_id;
   assert pg_temp.datas(v_id, '2026-12-28', '2027-01-24') = array['2026-12-28','2026-12-30','2027-01-11','2027-01-13']::date[],
     format('2 weekly intervalo 2: %s', pg_temp.datas(v_id, '2026-12-28', '2027-01-24'));
+  assert pg_temp.datas(v_id, '2027-01-05', '2027-01-24') = array['2027-01-11','2027-01-13']::date[],
+    format('2 weekly intervalo 2 from p_de: %s', pg_temp.datas(v_id, '2027-01-05', '2027-01-24'));
 
   -- 3. monthly dia_mes on the 31st skips short months
   insert into agenda_eventos (conta_id, titulo, dtstart, duracao_min, freq, mensal_modo)
@@ -65,6 +70,8 @@ begin
     values (v_ws, 'c5', '2026-10-30 09:00', 60, 'monthly', 'dia_semana', -1) returning id into v_id;
   assert pg_temp.datas(v_id, '2026-10-01', '2026-12-31') = array['2026-10-30','2026-11-27','2026-12-25']::date[],
     format('5 monthly ultima sexta: %s', pg_temp.datas(v_id, '2026-10-01', '2026-12-31'));
+  assert pg_temp.datas(v_id, '2026-11-01', '2026-12-31') = array['2026-11-27','2026-12-25']::date[],
+    format('5 monthly ultima sexta from p_de: %s', pg_temp.datas(v_id, '2026-11-01', '2026-12-31'));
 
   -- 6. yearly on 29/02 only in leap years
   insert into agenda_eventos (conta_id, titulo, dtstart, duracao_min, freq)
@@ -182,6 +189,35 @@ begin
   select count(*) into v_n from agenda_ocorrencias where evento_id = v_full;
   select materializacao_completa into v_c from agenda_eventos where id = v_full;
   assert v_n = 1 and v_c, format('13 non-repeating: rows %s complete %s', v_n, v_c);
+
+  -- 13b. a one-off past the horizon stays incomplete until "today" catches up
+  insert into agenda_eventos (conta_id, titulo, dtstart, duracao_min)
+    values (v_ws, 'm4', '2029-01-10 10:00', 30) returning id into v_full;
+  perform public.agenda_materializar(v_full, '2099-01-01');
+  select count(*) into v_n from agenda_ocorrencias where evento_id = v_full;
+  select materializacao_completa into v_c from agenda_eventos where id = v_full;
+  assert v_n = 0 and not v_c, format('13b one-off past the horizon: rows %s complete %s', v_n, v_c);
+  perform set_config('app.agenda_hoje', '2027-02-01', true);
+  perform public.agenda_gerar_horizonte();
+  select count(*) into v_n from agenda_ocorrencias where evento_id = v_full;
+  select materializacao_completa into v_c from agenda_eventos where id = v_full;
+  assert v_n = 1 and v_c, format('13b one-off after today caught up: rows %s complete %s', v_n, v_c);
+  perform set_config('app.agenda_hoje', '2026-10-05', true);
+
+  -- 13c. regenerar moving an in-horizon one-off past the horizon: 0 rows, not complete
+  insert into agenda_eventos (conta_id, titulo, dtstart, duracao_min)
+    values (v_ws, 'm5', '2026-10-20 10:00', 30) returning id into v_full;
+  perform public.agenda_materializar(v_full, '2099-01-01');
+  update agenda_eventos set dtstart = '2029-03-01 10:00' where id = v_full;
+  perform public.agenda_regenerar(v_full, false);
+  select count(*) into v_n from agenda_ocorrencias where evento_id = v_full;
+  select materializacao_completa into v_c from agenda_eventos where id = v_full;
+  assert v_n = 0 and not v_c, format('13c regenerar past the horizon: rows %s complete %s', v_n, v_c);
+  -- no series is ever complete with 0 rows
+  perform 1 from agenda_eventos ev
+   where ev.materializacao_completa and ev.freq is null
+     and not exists (select 1 from agenda_ocorrencias o where o.evento_id = ev.id);
+  assert not found, '13c a one-off is complete with no occurrence';
 
   -- 14. agenda_regenerar: {1,3} -> {3}
   insert into agenda_eventos (conta_id, titulo, dtstart, duracao_min, freq, dias_semana)

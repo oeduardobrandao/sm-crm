@@ -269,17 +269,21 @@ $$;
 -- occurrence; monthly dia_mes skips months without that day; yearly 29/02 only
 -- in leap years; weekly intervalo counts Monday-to-Sunday weeks (WKST=MO);
 -- contagem counts from dtstart (tombstones included, since they are rule dates).
--- Candidates are scanned day by day from dtstart::date: the 366-day lower bound
--- on dtstart plus the 24-month horizon keep that to ~3 years. Numbering starts
--- at dtstart, so cutting the scan at v_fim never changes the ordinal of a
--- date <= v_fim. Dates are cast to timestamp (not timestamptz) so the result
--- never depends on the session TimeZone.
+-- Candidates are scanned day by day up to least(p_ate, ate). Without contagem
+-- the scan starts at greatest(dtstart, p_de) (the rule formulas are anchored
+-- on dtstart, not on the scan start), so it covers only the asked window; with
+-- contagem it starts at dtstart, because numbering counts from dtstart
+-- (contagem <= 730 bounds that scan by the rule's own length). Cutting the scan
+-- at its end never changes the ordinal of an earlier date. Dates are cast to
+-- timestamp (not timestamptz) so the result never depends on the session
+-- TimeZone.
 CREATE OR REPLACE FUNCTION public.agenda_datas_regra(p_e public.agenda_eventos, p_de date, p_ate date)
 RETURNS SETOF date LANGUAGE plpgsql STABLE SET search_path = public AS $$
 DECLARE
   v_ini date := p_e.dtstart::date;
   v_fim date := least(p_ate, coalesce(p_e.ate, p_ate));
   v_dow int := extract(dow FROM p_e.dtstart::date)::int;
+  v_scan date := CASE WHEN p_e.contagem IS NULL THEN greatest(p_e.dtstart::date, p_de) ELSE p_e.dtstart::date END;
 BEGIN
   IF p_e.freq IS NULL THEN
     IF v_ini BETWEEN p_de AND p_ate THEN RETURN NEXT v_ini; END IF;
@@ -291,7 +295,7 @@ BEGIN
 
   RETURN QUERY
   WITH cand AS (
-    SELECT g::date AS d FROM generate_series(v_ini::timestamp, v_fim::timestamp, interval '1 day') g
+    SELECT g::date AS d FROM generate_series(v_scan::timestamp, v_fim::timestamp, interval '1 day') g
   ), regra AS (
     SELECT c.d FROM cand c
     WHERE CASE p_e.freq
@@ -363,7 +367,9 @@ END $$;
 -- Starts after the last materialized date (horizonte_ate + 1), so a date that
 -- was removed on purpose is never resurrected; ON CONFLICT makes concurrent
 -- runs harmless. The event row is locked so the cron and an RPC never race on
--- horizonte_ate. horizonte_ate never moves backwards.
+-- horizonte_ate. horizonte_ate never moves backwards. A one-off event dated
+-- after the horizon gets no row yet and stays incomplete, so the generator
+-- materializes it once "today" catches up (never complete with 0 rows).
 CREATE OR REPLACE FUNCTION public.agenda_materializar(p_evento_id bigint, p_ate date)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -386,7 +392,7 @@ BEGIN
   UPDATE public.agenda_eventos ev
      SET horizonte_ate = v_h,
          materializacao_completa = (
-           e.freq IS NULL
+           (e.freq IS NULL AND e.dtstart::date <= v_h)
            OR (e.ate IS NOT NULL AND e.ate <= v_h)
            OR (e.contagem IS NOT NULL
                AND (SELECT count(*) FROM public.agenda_datas_regra(e, e.dtstart::date, v_h)) >= e.contagem))
@@ -437,18 +443,19 @@ BEGIN
   UPDATE public.agenda_eventos ev
      SET horizonte_ate = v_h,
          materializacao_completa = (
-           e.freq IS NULL
+           (e.freq IS NULL AND e.dtstart::date <= v_h)
            OR (e.ate IS NOT NULL AND e.ate <= v_h)
            OR (e.contagem IS NOT NULL AND cardinality(v_datas) >= e.contagem))
    WHERE ev.id = e.id;
 END $$;
+
+CREATE INDEX agenda_eventos_horizonte_idx ON public.agenda_eventos (horizonte_ate) WHERE NOT materializacao_completa;
 
 -- Internal, run by pg_cron (SQL-only, like generate_recurring_tarefas): extend
 -- every open series whose horizon is behind today + 24 months. SKIP LOCKED so a
 -- series being edited is simply picked up on the next run; one failing series
 -- is logged and skipped, never aborting the run. Returns the number of series
 -- extended. (Migration B adds the 30-day ledger cleanup here.)
-CREATE INDEX agenda_eventos_horizonte_idx ON public.agenda_eventos (horizonte_ate) WHERE NOT materializacao_completa;
 
 CREATE OR REPLACE FUNCTION public.agenda_gerar_horizonte()
 RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
