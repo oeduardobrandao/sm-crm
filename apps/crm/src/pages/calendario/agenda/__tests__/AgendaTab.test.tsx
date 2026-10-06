@@ -72,16 +72,77 @@ vi.mock('@fullcalendar/interaction', () => ({ default: {} }));
 vi.mock('@fullcalendar/core/locales/pt-br', () => ({ default: {} }));
 
 // ---- Tasks 10/11 components (never the stubs) ---------------------------------------
-const { moverMock } = vi.hoisted(() => ({ moverMock: vi.fn() }));
+const { moverMock, rapido } = vi.hoisted(() => ({
+  moverMock: vi.fn(),
+  rapido: { montagens: 0 },
+}));
 vi.mock('../EventoFormDialog', () => ({
-  EventoFormDialog: (p: { open: boolean; modo: string; inicial?: { diaInteiro: boolean } }) =>
+  EventoFormDialog: (p: {
+    open: boolean;
+    modo: string;
+    inicial?: { inicio: Date; diaInteiro: boolean };
+    rascunho?: { titulo?: string };
+  }) =>
     p.open ? (
       <div data-testid="evento-form">
         {p.modo}
         {p.inicial ? ` dia-inteiro:${String(p.inicial.diaInteiro)}` : ''}
+        {p.inicial ? ` inicio:${p.inicial.inicio.getHours()}h` : ''}
+        {p.rascunho ? ` rascunho:${p.rascunho.titulo ?? ''}` : ''}
       </div>
     ) : null,
 }));
+vi.mock('../EventoRapidoCard', async () => {
+  const React = await vi.importActual<typeof import('react')>('react');
+  return {
+    EventoRapidoCard: (p: {
+      inicial: { inicio: Date; fim: Date; diaInteiro: boolean };
+      anchor: HTMLElement;
+      onRascunhoChange: (r: {
+        inicio: Date;
+        fim: Date;
+        diaInteiro: boolean;
+        titulo: string;
+        tipo: string;
+      }) => void;
+      onClose: () => void;
+      onMaisOpcoes: (v: Record<string, unknown>) => void;
+    }) => {
+      React.useEffect(() => {
+        rapido.montagens += 1;
+      }, []);
+      return (
+        <div
+          data-testid="evento-rapido"
+          data-anchor-id={p.anchor.dataset.ocorrenciaId ?? 'outro'}
+          data-anchor-connected={String(p.anchor.isConnected)}
+        >
+          {`rapido inicio:${p.inicial.inicio.getHours()}h dia-inteiro:${String(p.inicial.diaInteiro)}`}
+          <button
+            type="button"
+            onClick={() =>
+              p.onRascunhoChange({
+                inicio: new Date(2026, 9, 6, 14),
+                fim: new Date(2026, 9, 6, 15),
+                diaInteiro: false,
+                titulo: 'Pauta ao vivo',
+                tipo: 'gravacao',
+              })
+            }
+          >
+            digitar-stub
+          </button>
+          <button type="button" onClick={() => p.onMaisOpcoes({ titulo: 'Pauta ao vivo' })}>
+            mais-stub
+          </button>
+          <button type="button" onClick={p.onClose}>
+            fechar-stub
+          </button>
+        </div>
+      );
+    },
+  };
+});
 vi.mock('../EventoPopover', () => ({
   EventoPopover: (p: {
     ocorrencia: AgendaOcorrencia;
@@ -421,7 +482,7 @@ describe('AgendaTab', () => {
     expect(fc.api.changeView).toHaveBeenCalledWith('dayGridMonth');
   });
 
-  it('selecting a slot opens the create form; clicking an event opens the popover', async () => {
+  it('selecting a slot opens the quick card; clicking an event opens the popover', async () => {
     renderTab();
     await screen.findByText('Reunião de pauta');
 
@@ -432,7 +493,10 @@ describe('AgendaTab', () => {
         allDay: false,
       }),
     );
-    expect(await screen.findByTestId('evento-form')).toHaveTextContent('criar dia-inteiro:false');
+    expect(await screen.findByTestId('evento-rapido')).toHaveTextContent(
+      'rapido inicio:9h dia-inteiro:false',
+    );
+    expect(screen.queryByTestId('evento-form')).not.toBeInTheDocument();
 
     const el = document.createElement('div');
     act(() =>
@@ -445,10 +509,169 @@ describe('AgendaTab', () => {
     expect(await screen.findByTestId('evento-popover')).toHaveTextContent(
       'Gravação: Clínica Sorriso',
     );
+    // Opening an event drops the draft.
+    expect(screen.queryByTestId('evento-rapido')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'editar-stub' }));
     expect(await screen.findByTestId('evento-form')).toHaveTextContent('editar');
     expect(screen.queryByTestId('evento-popover')).not.toBeInTheDocument();
+  });
+
+  describe('quick create', () => {
+    const selecionar = (start: Date, end: Date, allDay = false) =>
+      act(() => fc.props!.select({ start, end, allDay }));
+
+    beforeEach(() => {
+      rapido.montagens = 0;
+    });
+
+    it('a desktop select drops a draft chip, anchors the card to it and unselects', async () => {
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
+
+      const card = await screen.findByTestId('evento-rapido');
+      expect(fc.api.unselect).toHaveBeenCalled();
+      expect(screen.getByText('(Sem título)')).toBeInTheDocument();
+      await waitFor(() => expect(card).toHaveAttribute('data-anchor-id', 'rascunho'));
+      const draft = (fc.props!.events as Array<Record<string, any>>).find(
+        (e) => e.id === 'rascunho',
+      );
+      expect(draft).toMatchObject({
+        title: '(Sem título)',
+        start: new Date(2026, 9, 6, 9),
+        end: new Date(2026, 9, 6, 10),
+        allDay: false,
+        editable: false,
+        classNames: ['agenda-ev', 'agenda-ev--rascunho'],
+        borderColor: '#3b82f6',
+        extendedProps: { rascunho: 1 },
+      });
+      expect(draft!.extendedProps.ocorrencia).toBeUndefined();
+      // The draft sorts first, so "+N mais" never folds it away.
+      expect(fc.props!.eventOrder).toBe('rascunho,start,-duration,allDay,title');
+    });
+
+    it('the chip follows the card without remounting it, on a live anchor', async () => {
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
+      await screen.findByTestId('evento-rapido');
+
+      fireEvent.click(screen.getByRole('button', { name: 'digitar-stub' }));
+
+      expect(await screen.findByText('Pauta ao vivo')).toBeInTheDocument();
+      expect(screen.queryByText('(Sem título)')).not.toBeInTheDocument();
+      const draft = (fc.props!.events as Array<Record<string, any>>).find(
+        (e) => e.id === 'rascunho',
+      );
+      expect(draft).toMatchObject({
+        start: new Date(2026, 9, 6, 14),
+        end: new Date(2026, 9, 6, 15),
+        borderColor: '#e1306c',
+      });
+      // The mock re-creates the chip node on a title change: the card re-anchors.
+      await waitFor(() =>
+        expect(screen.getByTestId('evento-rapido')).toHaveAttribute(
+          'data-anchor-connected',
+          'true',
+        ),
+      );
+      expect(screen.getByTestId('evento-rapido')).toHaveAttribute('data-anchor-id', 'rascunho');
+      expect(rapido.montagens).toBe(1);
+
+      // A new selection, even on the same slot, remounts the card.
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
+      await waitFor(() => expect(rapido.montagens).toBe(2));
+      expect(await screen.findByText('(Sem título)')).toBeInTheDocument();
+    });
+
+    it('a phone select opens the full editor directly', async () => {
+      stubMatchMedia((q) => q.includes('max-width: 767px') || q.includes('max-width: 1100px'));
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
+
+      expect(await screen.findByTestId('evento-form')).toHaveTextContent('criar dia-inteiro:false');
+      expect(screen.queryByTestId('evento-rapido')).not.toBeInTheDocument();
+      expect(screen.queryByText('(Sem título)')).not.toBeInTheDocument();
+    });
+
+    it('"Mais opções" swaps the card for the full editor, carrying the draft', async () => {
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
+      await screen.findByTestId('evento-rapido');
+      fireEvent.click(screen.getByRole('button', { name: 'digitar-stub' }));
+      await screen.findByText('Pauta ao vivo');
+
+      fireEvent.click(screen.getByRole('button', { name: 'mais-stub' }));
+
+      // The live range (moved to 14h in the card), not the original selection.
+      expect(await screen.findByTestId('evento-form')).toHaveTextContent(
+        'criar dia-inteiro:false inicio:14h rascunho:Pauta ao vivo',
+      );
+      expect(screen.queryByTestId('evento-rapido')).not.toBeInTheDocument();
+      expect(screen.queryByText('Pauta ao vivo')).not.toBeInTheDocument();
+    });
+
+    it('closing the card removes it and the draft chip', async () => {
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
+      await screen.findByTestId('evento-rapido');
+
+      fireEvent.click(screen.getByRole('button', { name: 'fechar-stub' }));
+
+      await waitFor(() => expect(screen.queryByTestId('evento-rapido')).not.toBeInTheDocument());
+      expect(screen.queryByText('(Sem título)')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('evento-form')).not.toBeInTheDocument();
+    });
+
+    it('a month-view day click drops an all-day draft', async () => {
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+      selecionar(new Date(2026, 9, 8), new Date(2026, 9, 9), true);
+
+      expect(await screen.findByTestId('evento-rapido')).toHaveTextContent('dia-inteiro:true');
+      const draft = (fc.props!.events as Array<Record<string, any>>).find(
+        (e) => e.id === 'rascunho',
+      );
+      expect(draft).toMatchObject({ allDay: true, start: new Date(2026, 9, 8) });
+    });
+
+    it('clicking the draft chip never opens the event popover', async () => {
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
+      await screen.findByTestId('evento-rapido');
+
+      const preventDefault = vi.fn();
+      act(() =>
+        fc.props!.eventClick({
+          el: screen.getByText('(Sem título)'),
+          jsEvent: { preventDefault },
+          event: { extendedProps: { rascunho: 1 } },
+        }),
+      );
+      expect(preventDefault).toHaveBeenCalled();
+      expect(screen.queryByTestId('evento-popover')).not.toBeInTheDocument();
+      expect(screen.getByTestId('evento-rapido')).toBeInTheDocument();
+    });
+
+    it('shrinking to a phone drops the draft', async () => {
+      renderTab();
+      await screen.findByText('Reunião de pauta');
+      selecionar(new Date(2026, 9, 6, 9), new Date(2026, 9, 6, 10));
+      await screen.findByTestId('evento-rapido');
+
+      resizeTo((q) => q.includes('max-width: 767px') || q.includes('max-width: 1100px'));
+
+      await waitFor(() => expect(screen.queryByTestId('evento-rapido')).not.toBeInTheDocument());
+      expect(screen.queryByText('(Sem título)')).not.toBeInTheDocument();
+    });
   });
 
   it('dragging an event hands it to useAgendaMutations.mover', async () => {

@@ -165,7 +165,7 @@ const RESPOSTAS: { id: Resposta; label: string }[] = [
 /** Floating-ui virtual element over `anchor`: its rect is read on every
  *  measure, so the popover follows scrolls and re-layouts. A detached anchor
  *  (the grid re-rendered under it) keeps the last rect instead of jumping. */
-function ancoraVirtual(anchor: HTMLElement) {
+export function ancoraVirtual(anchor: HTMLElement) {
   let ultimo = anchor.getBoundingClientRect();
   return {
     getBoundingClientRect: () => {

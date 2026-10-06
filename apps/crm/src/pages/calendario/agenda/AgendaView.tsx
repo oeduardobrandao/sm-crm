@@ -81,7 +81,7 @@ export function permitirArraste(
 }
 
 export function ConteudoDoEvento({ arg }: { arg: EventContentArg }) {
-  // Undefined for the selectMirror placeholder drawn while a slot is selected.
+  // Undefined for the selectMirror placeholder and the quick-create draft chip.
   const o = arg.event.extendedProps.ocorrencia as AgendaOcorrencia | undefined;
   const { start, end, allDay, title } = arg.event;
   const mes = arg.view.type === 'dayGridMonth';
@@ -238,12 +238,19 @@ export default function AgendaView({
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           // Month chips as tinted blocks like the week grid (default is a dot row).
           eventDisplay="block"
+          // The default order with the draft chip first, so dayMaxEvents never
+          // folds it into "+N mais". No leading "-": FullCalendar sorts a defined
+          // field before an undefined one, and "-" would flip that to last.
+          eventOrder="rascunho,start,-duration,allDay,title"
           events={eventos}
           datesSet={onDatesSet}
           select={(arg) => onSelect?.(arg.start, arg.end, arg.allDay)}
           eventClick={(arg: EventClickArg) => {
             arg.jsEvent.preventDefault();
-            onEventClick(arg.event.extendedProps.ocorrencia as AgendaOcorrencia, arg.el);
+            // The quick-create draft chip carries no occurrence.
+            const o = arg.event.extendedProps.ocorrencia as AgendaOcorrencia | undefined;
+            if (!o) return;
+            onEventClick(o, arg.el);
           }}
           eventDrop={(arg: EventDropArg) =>
             onMover(

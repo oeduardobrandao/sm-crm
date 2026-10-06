@@ -4,8 +4,8 @@ import { useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type FullCalendar from '@fullcalendar/react';
-import type { DatesSetArg } from '@fullcalendar/core';
-import { addHours, startOfHour } from 'date-fns';
+import type { DatesSetArg, EventInput } from '@fullcalendar/core';
+import { addHours, format, startOfHour } from 'date-fns';
 import { Plus, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -18,7 +18,7 @@ import {
 } from '../../../store/agenda';
 import { getWorkspaceUsers } from '../../../store/workspace';
 import { parseDateOnly } from '../../tarefas/tarefasLogic';
-import { filtrarPorPessoas, toEventInput } from './agendaLogic';
+import { TIPO_COR, filtrarPorPessoas, toEventInput } from './agendaLogic';
 import AgendaView, { tituloDoPeriodo, type AgendaViewType } from './AgendaView';
 import AgendaSidebar, {
   FILTRO_PADRAO,
@@ -28,11 +28,15 @@ import AgendaSidebar, {
 } from './AgendaSidebar';
 import { EventoFormDialog } from './EventoFormDialog';
 import { EventoPopover } from './EventoPopover';
+import { EventoRapidoCard, type RascunhoEvento } from './EventoRapidoCard';
+import { valoresIniciaisCriar, type EventoFormValues } from './eventoFormSchema';
 import { useAgendaMutations } from './useAgendaMutations';
 
 const FILTRO_KEY = 'agenda-filtro';
 const NAO_ENCONTRADO = 'Este evento não existe mais ou você não tem acesso.';
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Event id of the quick-create draft chip (also its data-ocorrencia-id). */
+const RASCUNHO_ID = 'rascunho';
 
 /** max-width queries on purpose: the test setup stubs matchMedia with
  *  `matches: false`, which then means "desktop". */
@@ -80,9 +84,42 @@ interface WorkspaceUserRow {
   avatar_url: string | null;
 }
 
+interface Intervalo {
+  inicio: Date;
+  /** Exclusive for all-day ranges (FullCalendar). */
+  fim: Date;
+  diaInteiro: boolean;
+}
+
 type FormState =
-  | { modo: 'criar'; inicial: { inicio: Date; fim: Date; diaInteiro: boolean } }
+  | { modo: 'criar'; inicial: Intervalo; rascunho?: Partial<EventoFormValues> }
   | { modo: 'editar'; ocorrencia: AgendaOcorrencia };
+
+const mesmoRascunho = (a: RascunhoEvento, b: RascunhoEvento) =>
+  a.inicio.getTime() === b.inicio.getTime() &&
+  a.fim.getTime() === b.fim.getTime() &&
+  a.diaInteiro === b.diaInteiro &&
+  a.titulo === b.titulo &&
+  a.tipo === b.tipo;
+
+/** The draft as a grid chip, styled like toEventInput's. Not editable: the card
+ *  moves it. No extendedProps.ocorrencia (eventClick ignores it). */
+function rascunhoEventInput(r: RascunhoEvento): EventInput {
+  const cor = TIPO_COR[r.tipo];
+  return {
+    id: RASCUNHO_ID,
+    title: r.titulo.trim() || '(Sem título)',
+    start: r.inicio,
+    end: r.fim,
+    allDay: r.diaInteiro,
+    editable: false,
+    classNames: ['agenda-ev', 'agenda-ev--rascunho'],
+    backgroundColor: `${cor}24`,
+    borderColor: cor,
+    textColor: 'var(--text-main)',
+    extendedProps: { rascunho: 1 },
+  };
+}
 
 interface Periodo {
   start: Date;
@@ -119,6 +156,13 @@ export default function AgendaTab() {
     anchorEl: HTMLElement;
   } | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
+  // Quick create (desktop): the selection as a draft chip plus the card next to it.
+  // `rascunhoInicial` seeds the card; `rascunho` follows what the card has typed;
+  // `selecao` keys the card so every new selection remounts it.
+  const [rascunho, setRascunho] = useState<RascunhoEvento | null>(null);
+  const [rascunhoInicial, setRascunhoInicial] = useState<Intervalo | null>(null);
+  const [selecao, setSelecao] = useState(0);
+  const [anchorRascunho, setAnchorRascunho] = useState<HTMLElement | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
   const { mover, dialog } = useAgendaMutations();
 
@@ -144,12 +188,20 @@ export default function AgendaTab() {
     [roster],
   );
 
-  const eventos = useMemo(
+  const eventosDasOcorrencias = useMemo<EventInput[]>(
     () =>
       filtrarPorPessoas(ocorrencias, idsDoFiltro(filtro, meuId, pessoas)).map((o) =>
         toEventInput(o, meuId ?? ''),
       ),
     [ocorrencias, filtro, meuId, pessoas],
+  );
+  const rascunhoVisivel = rascunho && !isMobile ? rascunho : null;
+  const eventos = useMemo(
+    () =>
+      rascunhoVisivel
+        ? [...eventosDasOcorrencias, rascunhoEventInput(rascunhoVisivel)]
+        : eventosDasOcorrencias,
+    [eventosDasOcorrencias, rascunhoVisivel],
   );
 
   function mudarFiltro(f: AgendaFiltro) {
@@ -187,7 +239,47 @@ export default function AgendaTab() {
     const f = fim ?? addHours(i, 1);
     setPopover(null);
     setSheetAberto(false);
+    descartarRascunho();
     setForm({ modo: 'criar', inicial: { inicio: i, fim: f, diaInteiro } });
+  }
+
+  function descartarRascunho() {
+    setRascunho(null);
+    setRascunhoInicial(null);
+    setAnchorRascunho(null);
+  }
+
+  /** Desktop slot select: drop a draft chip there and open the quick card. */
+  function abrirRascunho(inicio: Date, fim: Date, diaInteiro: boolean) {
+    // The draft chip replaces FullCalendar's selection mirror.
+    calRef.current?.getApi().unselect();
+    setPopover(null);
+    setSelecao((n) => n + 1);
+    setAnchorRascunho(null);
+    setRascunhoInicial({ inicio, fim, diaInteiro });
+    setRascunho({
+      inicio,
+      fim,
+      diaInteiro,
+      titulo: '',
+      tipo: valoresIniciaisCriar({ inicio, fim, diaInteiro }).tipo,
+    });
+  }
+
+  // Stable and a no-op when nothing changed, so the card's effect cannot loop.
+  const atualizarRascunho = useCallback((r: RascunhoEvento) => {
+    setRascunho((prev) => (prev === null || mesmoRascunho(prev, r) ? prev : r));
+  }, []);
+
+  function abrirMaisOpcoes(valores: EventoFormValues) {
+    const atual = rascunho ?? rascunhoInicial;
+    descartarRascunho();
+    if (!atual) return;
+    setForm({
+      modo: 'criar',
+      inicial: { inicio: atual.inicio, fim: atual.fim, diaInteiro: atual.diaInteiro },
+      rascunho: valores,
+    });
   }
 
   function fecharForm() {
@@ -196,16 +288,58 @@ export default function AgendaTab() {
   }
 
   const abrirPopover = useCallback((o: AgendaOcorrencia, anchorEl: HTMLElement) => {
+    setRascunho(null);
+    setRascunhoInicial(null);
+    setAnchorRascunho(null);
     setPopover({ id: o.ocorrencia_id, snapshot: o, anchorEl });
   }, []);
 
-  /** The chip FullCalendar currently shows for an occurrence, else the tab. */
-  const resolverAnchor = useCallback(
-    (id: number): HTMLElement | null =>
-      containerRef.current?.querySelector<HTMLElement>(`[data-ocorrencia-id="${id}"]`) ??
-      containerRef.current,
+  /** The chip FullCalendar currently shows for an event id, if mounted. */
+  const chipDoEvento = useCallback(
+    (id: number | string): HTMLElement | null =>
+      containerRef.current?.querySelector<HTMLElement>(`[data-ocorrencia-id="${id}"]`) ?? null,
     [],
   );
+
+  /** The chip FullCalendar currently shows for an occurrence, else the tab. */
+  const resolverAnchor = useCallback(
+    (id: number): HTMLElement | null => chipDoEvento(id) ?? containerRef.current,
+    [chipDoEvento],
+  );
+
+  /** The draft chip, else the selected day's cell (never the whole tab). */
+  const resolverAnchorRascunho = useCallback(
+    (r: RascunhoEvento): HTMLElement | null => {
+      const chip = chipDoEvento(RASCUNHO_ID);
+      if (chip) return chip;
+      const dia = format(r.inicio, 'yyyy-MM-dd');
+      const seletores = [
+        `.fc-timegrid-col[data-date="${dia}"]`,
+        `.fc-daygrid-day[data-date="${dia}"]`,
+      ];
+      if (r.diaInteiro) seletores.reverse();
+      for (const sel of seletores) {
+        const cel = containerRef.current?.querySelector<HTMLElement>(sel);
+        if (cel) return cel;
+      }
+      return null;
+    },
+    [chipDoEvento],
+  );
+
+  // FullCalendar mounts the draft chip after this render and re-creates it when
+  // the draft changes (title, time), so (re)resolve the anchor once it is there.
+  useEffect(() => {
+    if (!rascunhoVisivel) return;
+    const raf = requestAnimationFrame(() => {
+      const novo = resolverAnchorRascunho(rascunhoVisivel);
+      setAnchorRascunho((atual) => {
+        if (atual?.isConnected && (atual === novo || novo === null)) return atual;
+        return novo ?? atual;
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [rascunhoVisivel, eventos, resolverAnchorRascunho]);
 
   const ocorrenciaDoPopover = popover
     ? (ocorrencias.find((o) => o.ocorrencia_id === popover.id) ?? popover.snapshot)
@@ -311,6 +445,14 @@ export default function AgendaTab() {
     }
   }, [isMobile, periodo?.view]);
 
+  // Phones have no quick card: a desktop -> phone resize drops the draft.
+  useEffect(() => {
+    if (!isMobile) return;
+    setRascunho(null);
+    setRascunhoInicial(null);
+    setAnchorRascunho(null);
+  }, [isMobile]);
+
   const sidebar = (
     <AgendaSidebar
       meuId={meuId}
@@ -367,7 +509,12 @@ export default function AgendaTab() {
           eventos={eventos}
           onDatesSet={onDatesSet}
           onSelect={
-            podeCriar ? (inicio, fim, diaInteiro) => abrirCriar(inicio, fim, diaInteiro) : undefined
+            podeCriar
+              ? (inicio, fim, diaInteiro) =>
+                  isMobile
+                    ? abrirCriar(inicio, fim, diaInteiro)
+                    : abrirRascunho(inicio, fim, diaInteiro)
+              : undefined
           }
           onEventClick={abrirPopover}
           onMover={mover}
@@ -403,12 +550,24 @@ export default function AgendaTab() {
       )}
       {dialog}
 
+      {rascunhoVisivel && rascunhoInicial && anchorRascunho && (
+        <EventoRapidoCard
+          key={selecao}
+          inicial={rascunhoInicial}
+          anchor={anchorRascunho}
+          onRascunhoChange={atualizarRascunho}
+          onClose={descartarRascunho}
+          onMaisOpcoes={abrirMaisOpcoes}
+        />
+      )}
+
       {form?.modo === 'criar' && (
         <EventoFormDialog
           open
           onOpenChange={(o) => !o && fecharForm()}
           modo="criar"
           inicial={form.inicial}
+          rascunho={form.rascunho}
         />
       )}
       {form?.modo === 'editar' && (
