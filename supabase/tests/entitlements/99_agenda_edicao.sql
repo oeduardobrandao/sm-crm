@@ -46,6 +46,7 @@ declare
   v_n bigint;
   v_msg text;
   v_meta jsonb; v_link text;
+  v_cinquenta uuid[];
   r record;
 begin
   perform set_config('app.agenda_hoje', '2026-10-05', true);
@@ -151,9 +152,29 @@ begin
   assert v_msg = 'agenda: cliente não encontrado', format('foreign cliente: %s', v_msg);
   v_msg := pg_temp.erro_criar(pg_temp.payload(), (select array_agg(gen_random_uuid()) from generate_series(1, 51)));
   assert v_msg = 'agenda: no máximo 50 participantes', format('51 participants: %s', v_msg);
+  -- upper edge: 50 others plus the organizer is accepted
+  execute 'reset role';
+  select array_agg(gen_random_uuid()) into v_cinquenta from generate_series(1, 50);
+  insert into auth.users (id) select unnest(v_cinquenta);
+  insert into workspace_members (user_id, workspace_id, role) select u, v_ws_a, 'agent' from unnest(v_cinquenta) u;
+  execute 'set local role authenticated';
+  select c.evento_id into v_ev from public.agenda_evento_criar(pg_temp.payload(), v_cinquenta || v_owner) c;
+  execute 'reset role';
+  select count(*) into v_n from agenda_participantes where evento_id = v_ev;
+  assert v_n = 51, format('50 others + organizer: %s participant rows', v_n);
+  execute 'set local role authenticated';
 
-  -- lower bound: 400 days before today
-  v_msg := pg_temp.erro_criar(pg_temp.payload('{"inicio_local":"2025-09-30T14:00:00","fim_local":"2025-09-30T15:00:00"}'));
+  -- overlong text fields get pt-BR errors, not the raw CHECK
+  v_msg := pg_temp.erro_criar(pg_temp.payload(jsonb_build_object('titulo', repeat('a', 201))));
+  assert v_msg = 'agenda: o título pode ter no máximo 200 caracteres', format('201-char title: %s', v_msg);
+  assert pg_temp.erro_criar(pg_temp.payload(jsonb_build_object('titulo', repeat('a', 200)))) is null, '200-char title rejected';
+  v_msg := pg_temp.erro_criar(pg_temp.payload(jsonb_build_object('descricao', repeat('a', 5001))));
+  assert v_msg = 'agenda: a descrição pode ter no máximo 5000 caracteres', format('5001-char description: %s', v_msg);
+  v_msg := pg_temp.erro_criar(pg_temp.payload(jsonb_build_object('local', repeat('a', 301))));
+  assert v_msg = 'agenda: o local pode ter no máximo 300 caracteres', format('301-char local: %s', v_msg);
+
+  -- lower bound: 400 days before today (2026-10-05 - 400 = 2025-08-31)
+  v_msg := pg_temp.erro_criar(pg_temp.payload('{"inicio_local":"2025-08-31T14:00:00","fim_local":"2025-08-31T15:00:00"}'));
   assert v_msg = 'agenda: a data de início é antiga demais', format('old dtstart: %s', v_msg);
   -- 300 days back is fine
   assert pg_temp.erro_criar(pg_temp.payload('{"inicio_local":"2025-12-09T14:00:00","fim_local":"2025-12-09T15:00:00"}')) is null,
@@ -242,7 +263,8 @@ declare
   v_ws uuid;
   v_user uuid := gen_random_uuid();
   v_t text;
-  v_inv uuid; v_rem uuid; v_rsvp uuid;
+  v_inv uuid; v_rem uuid; v_rsvp uuid; v_upd uuid; v_canc uuid;
+  v_claimed uuid[];
   v_rejected boolean;
 begin
   v_ws := et_make_workspace('start');
@@ -272,14 +294,19 @@ begin
   insert into notifications (workspace_id, user_id, type) values (v_ws, v_user, 'instagram_automation_failed');
   insert into notification_email_prefs (user_id, type, enabled) values (v_user, 'post_approved', true);
 
-  -- claim: an old event_invited / event_updated / event_cancelled row is claimed, event_reminder / event_rsvp never
+  -- claim: old event_invited / event_updated / event_cancelled rows are claimed, event_reminder / event_rsvp never
   insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_invited', now() - interval '15 minutes') returning id into v_inv;
+  insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_updated', now() - interval '15 minutes') returning id into v_upd;
+  insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_cancelled', now() - interval '15 minutes') returning id into v_canc;
   insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_reminder', now() - interval '15 minutes') returning id into v_rem;
   insert into notifications (workspace_id, user_id, type, created_at) values (v_ws, v_user, 'event_rsvp', now() - interval '15 minutes') returning id into v_rsvp;
 
   execute 'set local role service_role';
-  perform 1 from public.claim_notification_emails(now() - interval '10 minutes', now() - interval '1 day', 100) c where c.id = v_inv;
-  assert found, 'claim_notification_emails did not claim an event_invited row';
+  select array_agg(c.id) into v_claimed from public.claim_notification_emails(now() - interval '10 minutes', now() - interval '1 day', 100) c;
+  assert v_inv = any (v_claimed), 'claim_notification_emails did not claim an event_invited row';
+  assert v_upd = any (v_claimed), 'claim_notification_emails did not claim an event_updated row';
+  assert v_canc = any (v_claimed), 'claim_notification_emails did not claim an event_cancelled row';
+  assert not (v_rem = any (v_claimed)) and not (v_rsvp = any (v_claimed)), 'claim_notification_emails claimed a reminder or RSVP row';
   execute 'reset role';
   perform 1 from notifications where id = v_rem and emailed_at is null;
   assert found, 'claim_notification_emails claimed an event_reminder row';
