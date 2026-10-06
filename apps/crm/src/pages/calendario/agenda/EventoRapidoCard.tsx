@@ -231,7 +231,7 @@ export function EventoRapidoCard({
 
             <Linha icone={<Clock {...ICONE} />}>
               <div className="agenda-rapido__quando">
-                <QuandoCampos form={form} rotulo={false} />
+                <QuandoCampos form={form} rotulo={false} empilhado />
               </div>
               <button type="button" className="agenda-rapido__repetir" onClick={maisOpcoes}>
                 Não se repete

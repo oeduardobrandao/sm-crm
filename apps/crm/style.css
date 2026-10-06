@@ -5248,12 +5248,6 @@ select.form-input option {
   border-radius: 999px;
 }
 
-/* QuandoCampos' first child (the start date) takes a row of its own, so the
-   times sit on one line below it inside the 448px card. */
-.agenda-rapido__quando > div > div:first-child > div:first-child {
-  flex: 1 1 100%;
-}
-
 .agenda-rapido__repetir {
   margin-top: 6px;
   padding: 0;

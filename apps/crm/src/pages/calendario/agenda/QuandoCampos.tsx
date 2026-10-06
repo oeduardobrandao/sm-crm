@@ -33,12 +33,21 @@ export interface QuandoCamposProps {
   fusoDiferente?: string | null;
   /** Shows the "Quando" label above the start date. */
   rotulo?: boolean;
+  /** Dates always on a row of their own (narrow containers like the quick
+   *  card). Otherwise they only stack below the `sm` breakpoint. */
+  empilhado?: boolean;
 }
 
 /** Start date, start/end times and (all-day or multi-day) end date, shared by
  *  the quick-create card and the full event form. Moving the start date or time
  *  keeps the duration; the date also re-derives the recurrence rule. */
-export function QuandoCampos({ form, fusoDiferente = null, rotulo = true }: QuandoCamposProps) {
+export function QuandoCampos({
+  form,
+  fusoDiferente = null,
+  rotulo = true,
+  empilhado = false,
+}: QuandoCamposProps) {
+  const colunaData = empilhado ? 'basis-full' : 'basis-full sm:basis-0';
   const v = useWatch({ control: form.control }) as EventoFormValues;
   const { errors } = form.formState;
 
@@ -84,7 +93,7 @@ export function QuandoCampos({ form, fusoDiferente = null, rotulo = true }: Quan
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-end gap-2.5">
-        <div className="flex min-w-[180px] flex-[1.3] flex-col gap-2">
+        <div className={`flex min-w-[180px] flex-[1.3] flex-col gap-2 ${colunaData}`}>
           {rotulo && <Label>Quando</Label>}
           <DatePicker
             value={v.data_inicio}
@@ -143,7 +152,7 @@ export function QuandoCampos({ form, fusoDiferente = null, rotulo = true }: Quan
             control={form.control}
             name="data_fim"
             render={({ field }) => (
-              <FormItem className="min-w-[180px] flex-[1.3]">
+              <FormItem className={`min-w-[180px] flex-[1.3] ${colunaData}`}>
                 <DatePicker
                   value={field.value}
                   onChange={(d) => d && field.onChange(startOfDay(d))}
